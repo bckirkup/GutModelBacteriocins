@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build_type: [Release, Debug]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake libopenmpi-dev openmpi-bin libhdf5-mpi-dev
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DGUTIBM_USE_MPI=ON \
+            -DGUTIBM_USE_HDF5=ON
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Unit tests
+        run: cd build && ctest --output-on-failure
+
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          pip install ruff
+          pip install -r python/requirements.txt
+
+      - name: Ruff check
+        run: ruff check python/
+
+      - name: Import check
+        run: python -c "import gut_ibm_tools; print('gut_ibm_tools OK')"
+        working-directory: python
+        env:
+          PYTHONPATH: .

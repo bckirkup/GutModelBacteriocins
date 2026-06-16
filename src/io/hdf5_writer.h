@@ -26,6 +26,7 @@ struct HDF5Config {
   std::string filename   = "gut_ibm_output.h5";
   Int         dump_every = 100;   // steps between dumps
   bool        parallel   = false; // MPI-parallel I/O
+  bool        enabled    = true;  // set false to suppress all I/O (e.g. tests)
 };
 
 class HDF5Writer {

@@ -52,6 +52,7 @@ class FixBacteriocin : public Fix {
 
  private:
   void check_sos_induction(Agent& agent, Real dt);
+  void apply_microcin_secretion(Agent& agent, Real dt);
   void lyse_agent(Agent& agent);
   Real retardation_for_pI(Real pI) const;
 

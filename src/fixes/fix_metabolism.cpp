@@ -128,9 +128,10 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
     mu *= (1.0 - cfg_.metE_penalty - cfg_.eut_penalty);
   }
 
-  // Plasmid maintenance cost
+  // Plasmid maintenance cost (reduced by compensatory mutations per VADI §79)
   if (!agent.genome.bi_loci.empty()) {
-    Real plasmid_cost = 0.02 * agent.genome.bi_loci.size();  // 2% per locus
+    Real per_locus = std::max(0.0, 0.02 - agent.genome.plasmid_cost_amelioration);
+    Real plasmid_cost = per_locus * agent.genome.bi_loci.size();
     plasmid_cost = std::min(plasmid_cost, 0.10);  // cap at 10%
     mu *= (1.0 - plasmid_cost);
   }

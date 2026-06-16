@@ -28,6 +28,10 @@ struct MutationConfig {
 
   // Max BI clusters per genome
   Int  max_bi_loci             = 8;
+
+  // Compensatory mutation: ameliorates plasmid metabolic cost over time
+  Real compensatory_rate       = 1.0e-6;  // per division
+  Real compensatory_reduction  = 0.005;   // per-locus cost reduced by this
 };
 
 class FixMutation : public Fix {
@@ -42,6 +46,7 @@ class FixMutation : public Fix {
   void recombine_bi_locus(Agent& agent);
   void mutate_receptor(Agent& agent);
   void generate_super_killer(Agent& agent);
+  void compensatory_mutation(Agent& agent);
 
   BICluster create_novel_toxin(const BICluster& parent);
 

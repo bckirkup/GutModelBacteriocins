@@ -35,6 +35,7 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
   a.genome.generation   = 0;
   a.genome.has_conjugative_plasmid = false;
   a.genome.mutations    = 0;
+  a.genome.plasmid_cost_amelioration = 0.0;
   a.genome.receptor_expression.fill(1.0);
 
   a.age       = 0.0;

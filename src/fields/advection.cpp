@@ -58,4 +58,16 @@ Real AdvectionField::washout_rate(Real z) const {
   return radial_velocity(z) / h_;
 }
 
+Real AdvectionField::taylor_aris_D_eff(Real z, Real D_mol) const {
+  if (!cfg_.taylor_aris_enabled || D_mol <= 0.0) return D_mol;
+
+  // Local velocity magnitude
+  Real U = distal_velocity(z);
+
+  // Taylor-Aris dispersion: D_eff = D_mol + U² h² / (210 D_mol)
+  // This captures shear-enhanced longitudinal spreading in the mucus layer
+  Real D_taylor = (U * U * h_ * h_) / (210.0 * D_mol);
+  return D_mol + D_taylor;
+}
+
 }  // namespace gutibm
