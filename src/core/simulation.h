@@ -1,0 +1,126 @@
+/* -----------------------------------------------------------------------
+   GutIBM – Main simulation engine
+   Orchestrates the biological timestep loop inspired by NUFEB's
+   nufeb_run.h, with decoupled timescales:
+   
+   1. Biology module (bio_dt ~60s):
+      - Metabolism (Monod growth, division, death)
+      - Mutation (stochastic BI locus changes)
+      - Bacteriocin (SOS lysis, toxin release)
+      - Receptor (competitive binding, killing)
+      - Conjugation (HGT between neighbors)
+   
+   2. Chemistry module (instantaneous via QSSA):
+      - Green's function superposition for toxin fields
+      - Nutrient depletion zones
+      - VBF sink/source coupling
+   
+   3. Physics module (same dt as biology):
+      - Advection (mucus flow)
+      - VBF drag
+      - Cell–cell mechanical repulsion
+   ----------------------------------------------------------------------- */
+
+#ifndef GUTIBM_SIMULATION_H
+#define GUTIBM_SIMULATION_H
+
+#include "types.h"
+#include "agent.h"
+#include "domain.h"
+#include "random.h"
+#include "chemical_field.h"
+#include "advection.h"
+#include "vbf.h"
+#include "qssa_solver.h"
+#include "lineage_tracker.h"
+#include "hdf5_writer.h"
+#include "input_parser.h"
+#include "fix.h"
+
+#include <memory>
+#include <vector>
+
+namespace gutibm {
+
+class Simulation {
+ public:
+  Simulation() = default;
+  ~Simulation() = default;
+
+  // Initialize from config
+  void init(const SimulationConfig& cfg);
+
+  // Run the simulation
+  void run();
+
+  // Single timestep
+  void step(Real dt);
+
+  // Accessors (const and non-const)
+  AgentPool&             agents()          { return agents_; }
+  const AgentPool&       agents()    const { return agents_; }
+
+  Domain&                domain()          { return domain_; }
+  const Domain&          domain()    const { return domain_; }
+
+  ChemicalField&         chemical_field()       { return chem_; }
+  const ChemicalField&   chemical_field() const { return chem_; }
+
+  AdvectionField&        advection()       { return advection_; }
+  const AdvectionField&  advection() const { return advection_; }
+
+  VBF&                   vbf()             { return vbf_; }
+  const VBF&             vbf()       const { return vbf_; }
+
+  QSSASolver&            qssa()            { return qssa_; }
+  const QSSASolver&      qssa()      const { return qssa_; }
+
+  LineageTracker&        lineage_tracker()       { return lineage_; }
+  const LineageTracker&  lineage_tracker() const { return lineage_; }
+
+  RNG&                   rng()             { return rng_; }
+
+  Real                   time()      const { return time_; }
+  Int                    step_count() const { return step_count_; }
+
+ private:
+  // Initialization helpers
+  void init_population(const SimulationConfig& cfg);
+  void update_grid_coupling();
+  void rebuild_spatial_hash();
+  void remove_dead_agents();
+  void check_washout();
+  void take_lineage_snapshot();
+
+  // Module execution (NUFEB-inspired)
+  void module_biology(Real dt);
+  void module_chemistry();
+  void module_physics(Real dt);
+
+  // State
+  AgentPool       agents_;
+  Domain          domain_;
+  ChemicalField   chem_;
+  AdvectionField  advection_;
+  VBF             vbf_;
+  QSSASolver      qssa_;
+  LineageTracker  lineage_;
+  HDF5Writer      hdf5_;
+  RNG             rng_;
+
+  // Fix modules
+  std::vector<std::unique_ptr<Fix>> fixes_;
+
+  // Config
+  SimulationConfig cfg_;
+
+  // Timers
+  Real time_       = 0.0;
+  Int  step_count_ = 0;
+  Real next_output_ = 0.0;
+  Real next_snapshot_ = 0.0;
+};
+
+}  // namespace gutibm
+
+#endif  // GUTIBM_SIMULATION_H

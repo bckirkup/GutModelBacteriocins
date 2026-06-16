@@ -1,0 +1,14 @@
+build/
+*.o
+*.a
+*.so
+*.dylib
+gut_ibm
+*.h5
+*.hdf5
+*.pyc
+__pycache__/
+*.egg-info/
+.cache/
+cmake-build*/
+compile_commands.json

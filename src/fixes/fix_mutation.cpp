@@ -1,0 +1,146 @@
+/* -----------------------------------------------------------------------
+   GutIBM – Mutation fix implementation
+   ----------------------------------------------------------------------- */
+
+#include "fix_mutation.h"
+#include "simulation.h"
+#include <algorithm>
+
+namespace gutibm {
+
+FixMutation::FixMutation(Simulation& sim, const MutationConfig& cfg)
+    : Fix("mutation", sim), cfg_(cfg) {}
+
+void FixMutation::compute(Real dt) {
+  // Mutations occur during division events.
+  // This fix is called after metabolism's division pass.
+  // We check recently-divided agents (age ~0).
+  auto& agents = sim_.agents();
+
+  for (Int i = 0; i < agents.size(); ++i) {
+    Agent& a = agents[i];
+    if (a.state == PhenoState::DEAD) continue;
+    if (a.age > dt) continue;  // only newly divided cells
+
+    mutate_on_division(a);
+  }
+}
+
+void FixMutation::mutate_on_division(Agent& agent) {
+  auto& rng = sim_.rng();
+
+  // BI locus duplication
+  if (rng.bernoulli(cfg_.bi_duplication_rate)) {
+    duplicate_bi_locus(agent);
+  }
+
+  // BI locus recombination
+  if (rng.bernoulli(cfg_.bi_recombination_rate)) {
+    recombine_bi_locus(agent);
+  }
+
+  // Receptor downregulation mutation
+  if (rng.bernoulli(cfg_.receptor_mutation_rate)) {
+    mutate_receptor(agent);
+  }
+
+  // Super-killer emergence
+  if (rng.bernoulli(cfg_.super_killer_rate)) {
+    generate_super_killer(agent);
+  }
+}
+
+void FixMutation::duplicate_bi_locus(Agent& agent) {
+  if (agent.genome.bi_loci.empty()) return;
+  if (static_cast<Int>(agent.genome.bi_loci.size()) >= cfg_.max_bi_loci) return;
+
+  auto& rng = sim_.rng();
+  Int idx = rng.randint(0, static_cast<Int>(agent.genome.bi_loci.size()) - 1);
+  agent.genome.bi_loci.push_back(agent.genome.bi_loci[idx]);
+  agent.genome.mutations++;
+
+  sim_.lineage_tracker().record_mutation(agent.tag, "bi_duplication",
+                                          agent.genome.lineage_id);
+}
+
+void FixMutation::recombine_bi_locus(Agent& agent) {
+  if (agent.genome.bi_loci.size() < 2) return;
+
+  auto& rng = sim_.rng();
+  Int i1 = rng.randint(0, static_cast<Int>(agent.genome.bi_loci.size()) - 1);
+  Int i2 = rng.randint(0, static_cast<Int>(agent.genome.bi_loci.size()) - 1);
+  if (i1 == i2) return;
+
+  // Swap immunity between two BI clusters
+  std::swap(agent.genome.bi_loci[i1].immunity_id,
+            agent.genome.bi_loci[i2].immunity_id);
+  agent.genome.mutations++;
+
+  sim_.lineage_tracker().record_mutation(agent.tag, "bi_recombination",
+                                          agent.genome.lineage_id);
+}
+
+void FixMutation::mutate_receptor(Agent& agent) {
+  auto& rng = sim_.rng();
+  Int receptor = rng.randint(0, NUM_RECEPTORS - 1);
+
+  agent.receptor_expr[receptor] =
+      std::max(0.0, agent.receptor_expr[receptor] - cfg_.receptor_reduction);
+  agent.genome.receptor_expression[receptor] = agent.receptor_expr[receptor];
+  agent.genome.mutations++;
+
+  // If expression is very low, mark as resistant
+  if (agent.receptor_expr[receptor] < 0.2) {
+    agent.state = PhenoState::RESISTANT;
+  }
+
+  sim_.lineage_tracker().record_mutation(agent.tag, "receptor_downreg",
+                                          agent.genome.lineage_id);
+}
+
+void FixMutation::generate_super_killer(Agent& agent) {
+  if (agent.genome.bi_loci.empty()) return;
+
+  auto& rng = sim_.rng();
+  Int idx = rng.randint(0, static_cast<Int>(agent.genome.bi_loci.size()) - 1);
+
+  BICluster novel = create_novel_toxin(agent.genome.bi_loci[idx]);
+
+  if (static_cast<Int>(agent.genome.bi_loci.size()) < cfg_.max_bi_loci) {
+    agent.genome.bi_loci.push_back(novel);
+  }
+  agent.genome.mutations++;
+
+  sim_.lineage_tracker().record_mutation(agent.tag, "super_killer",
+                                          agent.genome.lineage_id);
+}
+
+BICluster FixMutation::create_novel_toxin(const BICluster& parent) {
+  auto& rng = sim_.rng();
+  BICluster novel = parent;
+
+  // New toxin ID (unique)
+  novel.toxin_id = static_cast<uint16_t>(rng.randint(1000, 65000));
+
+  // Slightly altered properties
+  novel.pI += rng.gaussian(0.0, 0.5);
+  novel.pI = std::clamp(novel.pI, 3.0, 12.0);
+
+  // Reclassify based on new pI
+  if (novel.pI > 8.5) {
+    novel.bclass = BacteriocinClass::LETHAL_CORE;
+  } else if (novel.pI < 6.0) {
+    novel.bclass = BacteriocinClass::LETHAL_HALO;
+  } else {
+    novel.bclass = BacteriocinClass::NEUTRAL;
+  }
+
+  // Altered target receptor (may hijack a different TBDT)
+  if (rng.bernoulli(0.3)) {
+    novel.target = static_cast<ReceptorType>(rng.randint(0, NUM_RECEPTORS - 1));
+  }
+
+  return novel;
+}
+
+}  // namespace gutibm
