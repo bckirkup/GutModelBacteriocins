@@ -1,0 +1,27 @@
+{
+  "#": "Full diversity paradox simulation: residents vs immigrants.",
+  "#": "Tests the Advective Double-Bind / Combinatorial Washout Trap.",
+  "#": "Validation targets: 70-80% resident retention, monochromatic patches.",
+
+  "total_time": 604800,
+  "bio_dt": 60,
+  "output_interval": 3600,
+  "seed": 42,
+
+  "domain_x": 0.002,
+  "domain_y": 0.002,
+  "domain_z": 0.0001,
+  "grid_dx": 2e-6,
+
+  "mucus_thickness": 100e-6,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+
+  "vbf_density": 1e11,
+  "vbf_viscosity": 0.01,
+
+  "sos_lysis_prob": 0.01,
+
+  "hdf5_file": "diversity_paradox_output.h5",
+  "hdf5_every": 60
+}

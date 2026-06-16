@@ -1,0 +1,26 @@
+{
+  "#": "Single resident colony with colicin production in flowing mucus.",
+  "#": "Tests comet-tail formation and SOS lysis dynamics.",
+
+  "total_time": 86400,
+  "bio_dt": 60,
+  "output_interval": 3600,
+  "seed": 12345,
+
+  "domain_x": 0.001,
+  "domain_y": 0.001,
+  "domain_z": 0.0001,
+  "grid_dx": 2e-6,
+
+  "mucus_thickness": 100e-6,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+
+  "vbf_density": 1e11,
+  "vbf_viscosity": 0.01,
+
+  "sos_lysis_prob": 0.01,
+
+  "hdf5_file": "single_colony_output.h5",
+  "hdf5_every": 60
+}
