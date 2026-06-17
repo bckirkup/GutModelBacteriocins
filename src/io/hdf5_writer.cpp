@@ -21,6 +21,11 @@ namespace gutibm {
 void HDF5Writer::init(const HDF5Config& cfg) {
   cfg_ = cfg;
 
+  if (!cfg_.enabled) {
+    enabled_ = false;
+    return;
+  }
+
 #ifdef GUTIBM_HDF5
   enabled_ = true;
 

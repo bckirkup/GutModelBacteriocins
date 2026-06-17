@@ -195,6 +195,23 @@ examples/
 tests/            Unit tests for spatial hash, Green's functions, agents
 ```
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/MECHANISMS.md](docs/MECHANISMS.md) | Biological mechanism deep-dives for each Fix module |
+| [docs/API.md](docs/API.md) | Class and function reference |
+| [docs/PARAMETERS.md](docs/PARAMETERS.md) | All configurable parameters with defaults and units |
+| [EARI.md](EARI.md) | Eco-Advective Receptor Interference blueprint |
+| [VADI.md](VADI.md) | Viscous Advective-Diffusion Interference blueprint |
+
+## CI
+
+GitHub Actions runs on every push/PR to `main`:
+- **Build matrix**: Release + Debug, Ubuntu latest, cmake + OpenMPI + HDF5
+- **Tests**: Unit tests (spatial hash, Green's function, agent) + smoke test (end-to-end mini simulation)
+- **Python**: ruff lint + import check on `gut_ibm_tools`
+
 ## References
 
 - NUFEB-2: Li et al., *NUFEB: A massively parallel simulator for individual-based

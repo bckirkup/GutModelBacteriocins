@@ -20,13 +20,11 @@ void FixBacteriocin::compute(Real dt) {
     Agent& a = agents[i];
     if (a.state == PhenoState::DEAD) continue;
 
-    // Apply microcin secretion penalty to producers
-    if (!a.genome.bi_loci.empty() && a.state == PhenoState::NORMAL) {
-      // Continuous secretion cost already applied in metabolism via plasmid cost
-      // Here we just track the secretion state
-    }
+    // Microcin continuous secretion: small peptides are exported without lysis.
+    // Apply mu_max penalty and contribute steady-state toxin source.
+    apply_microcin_secretion(a, dt);
 
-    // Check for stochastic SOS induction
+    // Check for stochastic SOS induction (colicin-type lysis only)
     check_sos_induction(a, dt);
   }
 }
@@ -44,6 +42,30 @@ void FixBacteriocin::post_step(Real dt) {
       }
     }
   }
+}
+
+void FixBacteriocin::apply_microcin_secretion(Agent& agent, Real dt) {
+  if (agent.genome.bi_loci.empty()) return;
+  if (agent.state != PhenoState::NORMAL) return;
+
+  // Identify microcin-class clusters (small peptides, MW < 10kDa)
+  bool has_microcin = false;
+  for (const auto& bi : agent.genome.bi_loci) {
+    if (bi.molecular_weight < 10000.0) {
+      has_microcin = true;
+      break;
+    }
+  }
+  if (!has_microcin) return;
+
+  // Continuous secretion imposes a growth penalty (2–5% mu_max reduction).
+  // This is applied here rather than in fix_metabolism to keep the
+  // mechanism clearly associated with its biological source.
+  agent.mu_max *= (1.0 - cfg_.microcin_mu_penalty);
+
+  // The secreted microcins contribute to the steady-state toxin field
+  // via the QSSA solver (they appear as low-rate continuous point sources
+  // rather than burst sources from SOS lysis).
 }
 
 void FixBacteriocin::check_sos_induction(Agent& agent, Real dt) {

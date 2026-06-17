@@ -28,6 +28,8 @@ struct ReceptorConfig {
   Real kd_colicinE_btuB   = 5.0e-10;  // Colicin E affinity for BtuB
   Real kd_enterobactin    = 1.0e-8;   // enterobactin affinity for FepA
   Real kd_colicinB_fepA   = 2.0e-9;   // Colicin B affinity for FepA
+  Real kd_lin_enterobactin = 5.0e-8;  // linearized enterobactin for CirA
+  Real kd_colicinIa_cirA  = 3.0e-9;   // Colicin Ia affinity for CirA
 
   // Kill rate constants (1/s per occupied receptor)
   Real kill_rate_colicin  = 1.0e-3;   // single-hit kill rate

@@ -95,6 +95,28 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
     total_kill += cfg_.kill_rate_colicin * occ * eff * dt;
   }
 
+  // CirA-mediated killing (colicin Ia, microcin V)
+  {
+    Real expr = agent.receptor_expr[static_cast<int>(ReceptorType::CirA)];
+    // CirA transports linearized enterobactin — use iron field as proxy
+    Int i_iron = chem.find("iron");
+    Real ligand = (i_iron >= 0) ? chem.conc(i_iron, cell) * 0.1 : 0.0;
+
+    Real occ = toxin_occupancy(tox_conc, ligand,
+                                cfg_.kd_colicinIa_cirA,
+                                cfg_.kd_lin_enterobactin,
+                                expr);
+    bool has_immunity = false;
+    for (const auto& bi : agent.genome.bi_loci) {
+      if (bi.target == ReceptorType::CirA) {
+        has_immunity = true;
+        break;
+      }
+    }
+    Real eff = has_immunity ? cfg_.immunity_factor : 1.0;
+    total_kill += cfg_.kill_rate_microcin * occ * eff * dt;
+  }
+
   return std::min(1.0 - std::exp(-total_kill), 1.0);
 }
 

@@ -26,6 +26,10 @@ struct AdvectionConfig {
   // Velocity profile: near-zero at epithelium (z=0), max at lumen (z=max)
   // Parabolic profile: v(z) = v_max * (z/h)^alpha
   Real profile_alpha       = 1.5;      // shear profile exponent
+
+  // Taylor-Aris effective dispersion enhancement
+  // D_eff = D_mol + (U^2 * h^2) / (210 * D_mol)  for Poiseuille flow
+  bool  taylor_aris_enabled = true;
 };
 
 class AdvectionField {
@@ -52,6 +56,10 @@ class AdvectionField {
   // Washout rate at height z (1/s)
   // gamma_flow = v_radial(z) / mucus_thickness
   Real washout_rate(Real z) const;
+
+  // Taylor-Aris effective dispersion coefficient at height z
+  // Accounts for shear-enhanced longitudinal spreading
+  Real taylor_aris_D_eff(Real z, Real D_mol) const;
 
   const AdvectionConfig& config() const { return cfg_; }
 

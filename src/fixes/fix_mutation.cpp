@@ -48,6 +48,11 @@ void FixMutation::mutate_on_division(Agent& agent) {
   if (rng.bernoulli(cfg_.super_killer_rate)) {
     generate_super_killer(agent);
   }
+
+  // Compensatory chromosomal mutation that ameliorates plasmid cost
+  if (rng.bernoulli(cfg_.compensatory_rate)) {
+    compensatory_mutation(agent);
+  }
 }
 
 void FixMutation::duplicate_bi_locus(Agent& agent) {
@@ -112,6 +117,22 @@ void FixMutation::generate_super_killer(Agent& agent) {
   agent.genome.mutations++;
 
   sim_.lineage_tracker().record_mutation(agent.tag, "super_killer",
+                                          agent.genome.lineage_id);
+}
+
+void FixMutation::compensatory_mutation(Agent& agent) {
+  if (agent.genome.bi_loci.empty()) return;
+
+  // Compensatory chromosomal mutations rapidly ameliorate the metabolic
+  // drain of plasmid maintenance over time (VADI §79).
+  // This reduces the effective per-locus cost in fix_metabolism.
+  agent.genome.plasmid_cost_amelioration += cfg_.compensatory_reduction;
+  // Cap: cannot eliminate more than 75% of original cost
+  agent.genome.plasmid_cost_amelioration =
+      std::min(agent.genome.plasmid_cost_amelioration, 0.015);
+  agent.genome.mutations++;
+
+  sim_.lineage_tracker().record_mutation(agent.tag, "compensatory",
                                           agent.genome.lineage_id);
 }
 

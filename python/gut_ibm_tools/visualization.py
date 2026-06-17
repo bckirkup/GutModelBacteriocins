@@ -4,7 +4,6 @@ Visualization utilities for GutIBM output.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -117,9 +116,9 @@ def plot_lineage_composition(
     t_hours = np.array(times) / 3600
 
     labels = sorted(lineage_data.keys())
-    data_arrays = np.array([lineage_data[l] for l in labels])
+    data_arrays = np.array([lineage_data[lb] for lb in labels])
 
-    ax.stackplot(t_hours, data_arrays, labels=[f"L{l}" for l in labels],
+    ax.stackplot(t_hours, data_arrays, labels=[f"L{lb}" for lb in labels],
                  alpha=0.7)
     ax.set_xlabel("Time (hours)")
     ax.set_ylabel("Agent count")

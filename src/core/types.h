@@ -78,6 +78,7 @@ struct Genome {
   std::array<Real, NUM_RECEPTORS> receptor_expression;  // 0.0–1.0 expression
   bool has_conjugative_plasmid;      // can initiate HGT
   uint32_t mutations;                // accumulated mutation count
+  Real plasmid_cost_amelioration;    // compensatory mutations reduce per-locus cost
 };
 
 inline Real sphere_volume(Real radius) {

@@ -12,7 +12,6 @@ import numpy as np
 from .analysis import (
     comet_tail_index,
     monochromatic_patch_score,
-    nearest_neighbor_distances,
     spatial_clustering_index,
 )
 from .hdf5_reader import GutIBMData
