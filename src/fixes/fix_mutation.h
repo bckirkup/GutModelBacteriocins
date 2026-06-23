@@ -22,6 +22,7 @@ struct MutationConfig {
   Real bi_recombination_rate   = 5.0e-6;   // BI locus recombination
   Real receptor_mutation_rate  = 1.0e-7;   // receptor downregulation
   Real super_killer_rate       = 1.0e-8;   // novel toxin variant
+  Real partial_resistance_rate  = 5.0e-7;   // extracellular loop missense mutation
 
   // Receptor mutation effect
   Real receptor_reduction      = 0.1;      // expression drops by 0.1 per mutation
@@ -51,6 +52,7 @@ class FixMutation : public Fix {
   void duplicate_bi_locus(Agent& agent);
   void recombine_bi_locus(Agent& agent);
   void mutate_receptor(Agent& agent);
+  void partial_resistance_mutation(Agent& agent);
   void generate_super_killer(Agent& agent);
   void compensatory_mutation(Agent& agent);
 

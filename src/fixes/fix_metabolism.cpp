@@ -104,25 +104,38 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
 
   // Receptor-modified Km values
   // When receptor expression drops, effective Km increases (worse affinity)
-  Real expr_fepA = agent.receptor_expr[static_cast<int>(ReceptorType::FepA)];
-  Real expr_iroN = agent.receptor_expr[static_cast<int>(ReceptorType::IroN)];
-  Real expr_iutA = agent.receptor_expr[static_cast<int>(ReceptorType::IutA)];
-  Real expr_fiu  = agent.receptor_expr[static_cast<int>(ReceptorType::Fiu)];
-  Real expr_btuB = agent.receptor_expr[static_cast<int>(ReceptorType::BtuB)];
+  // Receptor expressions for graded iron uptake + partial resistance
+  int ri_fepA = static_cast<int>(ReceptorType::FepA);
+  int ri_btuB = static_cast<int>(ReceptorType::BtuB);
+  int ri_iroN = static_cast<int>(ReceptorType::IroN);
+  int ri_iutA = static_cast<int>(ReceptorType::IutA);
+  int ri_fiu  = static_cast<int>(ReceptorType::Fiu);
+  Real expr_fepA = agent.receptor_expr[ri_fepA];
+  Real expr_iroN = agent.receptor_expr[ri_iroN];
+  Real expr_iutA = agent.receptor_expr[ri_iutA];
+  Real expr_fiu  = agent.receptor_expr[ri_fiu];
+  Real expr_btuB = agent.receptor_expr[ri_btuB];
 
   // Prevent division by zero
   expr_btuB = std::max(expr_btuB, 0.01);
 
-  // Graded iron uptake: each receptor contributes proportional to expression and affinity
+  // Partial resistance ligand_affinity modulates effective Km
+  Real lig_aff_fepA = std::max(agent.genome.ligand_affinity[ri_fepA], 0.01);
+  Real lig_aff_btuB = std::max(agent.genome.ligand_affinity[ri_btuB], 0.01);
+  Real lig_aff_iroN = std::max(agent.genome.ligand_affinity[ri_iroN], 0.01);
+  Real lig_aff_iutA = std::max(agent.genome.ligand_affinity[ri_iutA], 0.01);
+  Real lig_aff_fiu  = std::max(agent.genome.ligand_affinity[ri_fiu],  0.01);
+
+  // Graded iron uptake: each receptor contributes proportional to expression,
+  // ligand affinity, and its own Km
   Real iron_uptake = 0.0;
-  iron_uptake += expr_fepA * S_iron / (cfg_.km_iron_primary + S_iron);
-  iron_uptake += expr_iroN * S_iron / (cfg_.km_iron_iroN + S_iron);
-  iron_uptake += expr_iutA * S_iron / (cfg_.km_iron_iutA + S_iron);
-  iron_uptake += expr_fiu  * S_iron / (cfg_.km_iron_fiu  + S_iron);
-  // Normalize: wild-type with all receptors at 1.0 should give ~same as before
+  iron_uptake += expr_fepA * lig_aff_fepA * S_iron / (cfg_.km_iron_primary + S_iron);
+  iron_uptake += expr_iroN * lig_aff_iroN * S_iron / (cfg_.km_iron_iroN + S_iron);
+  iron_uptake += expr_iutA * lig_aff_iutA * S_iron / (cfg_.km_iron_iutA + S_iron);
+  iron_uptake += expr_fiu  * lig_aff_fiu  * S_iron / (cfg_.km_iron_fiu  + S_iron);
   Real monod_iron = iron_uptake / (1.0 + expr_iroN + expr_iutA + expr_fiu);
 
-  Real Km_b12  = agent.km_b12  / expr_btuB;
+  Real Km_b12  = agent.km_b12  / (expr_btuB * lig_aff_btuB);
   Real Km_carb = agent.km_carbon;
 
   // Triple Monod kinetics (uncoupled)

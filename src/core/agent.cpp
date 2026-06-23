@@ -37,6 +37,8 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
   a.genome.mutations    = 0;
   a.genome.plasmid_cost_amelioration = 0.0;
   a.genome.receptor_expression.fill(1.0);
+  a.genome.toxin_affinity.fill(1.0);
+  a.genome.ligand_affinity.fill(1.0);
 
   a.age       = 0.0;
   a.sos_timer = -1.0;

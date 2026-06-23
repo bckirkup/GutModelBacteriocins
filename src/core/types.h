@@ -81,6 +81,12 @@ struct Genome {
   bool has_conjugative_plasmid;      // can initiate HGT
   uint32_t mutations;                // accumulated mutation count
   Real plasmid_cost_amelioration;    // compensatory mutations reduce per-locus cost
+
+  // Per-receptor partial resistance: separate toxin vs ligand affinity
+  // Missense mutations in extracellular loops can abrogate colicin binding
+  // while retaining sufficient affinity for native ligands (VADI §78, §101)
+  std::array<Real, NUM_RECEPTORS> toxin_affinity;   // 1.0 = wild-type, 0.01 = 100x reduced toxin binding
+  std::array<Real, NUM_RECEPTORS> ligand_affinity;  // 1.0 = wild-type, should stay > 0.5 for partial resistance
 };
 
 inline Real sphere_volume(Real radius) {
