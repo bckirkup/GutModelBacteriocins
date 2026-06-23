@@ -204,6 +204,22 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 
 ---
 
+## Mechanics (Cell-Cell Contact)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `mechanics.hertz_k` | 1e-6 | N/m^1.5 | Hertzian spring constant |
+| `mechanics.hertzian_enabled` | true | — | Use Hertzian (F∝δ^1.5) vs linear (F∝δ) |
+| `mechanics.adhesion_enabled` | false | — | Enable EPS-mediated adhesion |
+| `mechanics.adhesion_strength` | 1e-12 | N | Maximum adhesion force |
+| `mechanics.adhesion_range` | 0.5e-6 | m | Range beyond contact for adhesion |
+
+**Hertzian contact model:** `F = hertz_k * overlap^(3/2)` where `overlap = r_i + r_j - d`. Calibrated from AFM measurements of bacterial elastic modulus (~0.1–1 MPa). Only applies when cells physically overlap (`overlap > 0`).
+
+**EPS adhesion:** When enabled, cells within `adhesion_range` of contact experience an attractive force that decays linearly with gap distance. Models extracellular polymeric substance (EPS) bridging for biofilm-like clustering.
+
+---
+
 ## Conjugation
 
 | Parameter | Default | Units | Description |

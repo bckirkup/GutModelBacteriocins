@@ -16,6 +16,7 @@
 #include "fix_bacteriocin.h"
 #include "fix_conjugation.h"
 #include "fix_mutation.h"
+#include "fix_mechanics.h"
 #include "hdf5_writer.h"
 
 #include <string>
@@ -49,6 +50,7 @@ struct SimulationConfig {
   BacteriocinConfig bacteriocin;
   ConjugationConfig conjugation;
   MutationConfig mutation;
+  MechanicsConfig mechanics;
 
   // Output
   HDF5Config hdf5;

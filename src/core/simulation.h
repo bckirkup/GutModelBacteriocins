@@ -46,6 +46,10 @@ class Simulation {
  public:
   Simulation() = default;
   ~Simulation() = default;
+  Simulation(Simulation&&) = default;
+  Simulation& operator=(Simulation&&) = default;
+  Simulation(const Simulation&) = delete;
+  Simulation& operator=(const Simulation&) = delete;
 
   // Initialize from config
   void init(const SimulationConfig& cfg);

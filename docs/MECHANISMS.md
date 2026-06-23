@@ -163,6 +163,46 @@ Chromosomal mutations that ameliorate plasmid metabolic cost. Reduces per-locus 
 
 ---
 
+## 6. fix_mechanics — Soft-Sphere Mechanical Repulsion
+
+**Biological basis:** Bacterial cells are deformable spheres with an elastic modulus of ~0.1–1 MPa (measured by AFM). When two cells overlap due to growth or flow, they exert a repulsive contact force following Hertzian contact mechanics.
+
+**Hertzian contact model:**
+```
+overlap = r_i + r_j - d       (positive when cells overlap)
+F = k * overlap^(3/2)         (Hertzian, non-linear)
+```
+
+This is physically more accurate than a linear spring (`F ∝ overlap`) because:
+1. Contact area grows with indentation → force rises faster than linearly
+2. Matches AFM force-displacement curves on bacterial cells
+3. Prevents excessive interpenetration at large overlaps
+
+**Force application:** Equal-and-opposite impulses using reduced mass weighting:
+```
+push_i = F * dt / m_i * (m_j / (m_i + m_j))
+push_j = F * dt / m_j * (m_i / (m_i + m_j))
+```
+This ensures momentum conservation and correct size-dependent response.
+
+**EPS-mediated adhesion (optional):**
+
+When `adhesion_enabled = true`, cells within `adhesion_range` of contact (but not overlapping) experience a short-range attractive force:
+```
+gap = d - (r_i + r_j)
+F_adhesion = adhesion_strength * (1 - gap / adhesion_range)
+```
+This models extracellular polymeric substance (EPS) bridging, relevant for:
+- Biofilm microcolony formation
+- Kin-recognition clustering
+- Protection from advective washout
+
+The adhesion force decays linearly to zero at `adhesion_range`, preventing long-range artifacts.
+
+**Calibration:** The default `hertz_k = 1e-6 N/m^1.5` corresponds to the effective spring constant for two 0.5 µm radius *E. coli* cells with Young's modulus ~0.5 MPa and Poisson ratio ~0.5.
+
+---
+
 ## QSSA Solver — Quasi-Steady-State Diffusion
 
 **Why not FTCS?** At 1 um grid resolution, the CFL stability criterion forces sub-millisecond timesteps for explicit diffusion. Since small-molecule diffusion equilibrates in microseconds-to-minutes while cell biology operates on hour timescales, we exploit this separation via QSSA.
