@@ -145,7 +145,7 @@ where `gamma` is the local shear rate (from advection field) and `gamma_crit` is
 
 ## 5. fix_mutation — Stochastic Genome Evolution
 
-**Five mutation classes:**
+**Six mutation classes:**
 
 ### a) BI locus duplication (rate: 10^-5 per division)
 Tandem duplication of an existing BI cluster. Expands the agent's toxin range. Capped at `max_bi_loci` (default 8).
@@ -156,7 +156,19 @@ Swaps immunity proteins between two BI clusters. Creates novel toxin/immunity co
 ### c) Receptor downregulation (rate: 10^-7 per division)
 Reduces expression of a randomly-selected receptor by `receptor_reduction` (default 0.1). When expression drops below 0.2, agent transitions to RESISTANT phenotype. Provides toxin resistance at the cost of nutrient uptake.
 
-### d) Super-killer emergence (rate: 10^-8 per division)
+### d) Partial resistance — extracellular loop missense (rate: 5 × 10^-7 per division)
+Missense mutations in receptor extracellular loops can abrogate colicin binding while retaining sufficient affinity for native ligands (VADI §78, §101). Unlike full receptor downregulation:
+- **Receptor expression is unchanged** — no MetE pathway penalty, no loss of nutrient uptake capacity
+- **Toxin Kd increased 10–100×** — `toxin_affinity` set to [0.01, 0.1], effectively raising the concentration required for colicin binding
+- **Ligand Kd within 2× of wild-type** — `ligand_affinity` set to [0.5, 1.0], preserving nutrient transport
+
+This allows strains to potentially bypass the Combinatorial Washout Trap by resisting toxins without incurring the metabolic double-bind penalty. The `toxin_occupancy()` function in fix_receptor scales both Kd values:
+```
+eff_Kd_tox    = Kd_tox    / toxin_affinity     (larger → less toxin binding)
+eff_Kd_ligand = Kd_ligand / ligand_affinity     (slightly larger → slightly less nutrient binding)
+```
+
+### e) Super-killer emergence (rate: 10^-8 per division)
 Generates a novel toxin variant from an existing BI cluster. The new toxin has:
 - Unique toxin_id
 - Gaussian-perturbed pI (std = 0.5)
@@ -165,7 +177,7 @@ Generates a novel toxin variant from an existing BI cluster. The new toxin has:
 
 The immunity-escape mechanism operates through the agent's own BI cluster: `immunity_binding_affinity` on a given cluster determines how well that cluster's immunity protein cross-neutralizes incoming toxins targeting the same receptor. When a neighbouring cell produces an escape-variant toxin, the target agent's existing immunity provides only partial protection (effective factor = `immunity_factor × immunity_binding_affinity`).
 
-### e) Compensatory mutation (rate: 10^-6 per division)
+### f) Compensatory mutation (rate: 10^-6 per division)
 Chromosomal mutations that ameliorate plasmid metabolic cost. Reduces per-locus cost by `compensatory_reduction` (default 0.005), capped so that at most 75% of the original cost can be eliminated. This models the well-documented phenomenon where bacteria rapidly evolve to reduce the fitness cost of newly acquired plasmids (VADI Section 79).
 
 ---

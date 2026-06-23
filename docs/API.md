@@ -250,7 +250,7 @@ class Fix {
 | `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `retardation_basic/acidic/neutral`, `D_free_colicin`, `burst_molecules`, `microcin_mu_penalty` |
 | `FixReceptor` | `ReceptorConfig` | `kd_*` binding affinities, `kill_rate_colicin/microcin`, `immunity_factor` |
 | `FixConjugation` | `ConjugationConfig` | `base_transfer_prob`, `contact_radius`, `shear_crit` |
-| `FixMutation` | `MutationConfig` | Per-division rates for duplication, recombination, receptor downreg, super-killer, compensatory; `immunity_escape_prob`, `escape_affinity_lo/hi` |
+| `FixMutation` | `MutationConfig` | Per-division rates for duplication, recombination, receptor downreg, partial resistance, super-killer, compensatory; `immunity_escape_prob`, `escape_affinity_lo/hi`, `missense_prob`, `missense_affinity_lo/hi` |
 | `FixMechanics` | `MechanicsConfig` | `hertz_k`, `hertzian_enabled`, `adhesion_enabled`, `adhesion_strength`, `adhesion_range` |
 
 ---
@@ -286,6 +286,8 @@ void compute(Real dt) override;
 | `has_conjugative_plasmid` | `bool` | Can initiate HGT |
 | `mutations` | `uint32_t` | Accumulated mutation count |
 | `plasmid_cost_amelioration` | `Real` | Compensatory reduction |
+| `toxin_affinity` | `array<Real, 7>` | Per-receptor toxin binding affinity (1.0 = wild-type, 0.01 = 100× reduced) |
+| `ligand_affinity` | `array<Real, 7>` | Per-receptor ligand binding affinity (1.0 = wild-type, ≥ 0.5 for partial resistance) |
 
 ### `BICluster`
 **Header:** `src/core/types.h`

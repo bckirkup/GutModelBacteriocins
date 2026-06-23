@@ -125,6 +125,40 @@ void test_genome_operations() {
   std::cout << "  test_genome_operations: PASSED\n";
 }
 
+void test_partial_resistance_fields() {
+  Agent a = Agent::create_default(1, 1, {0, 0, 0}, 5e-4);
+
+  // Default: all affinities should be 1.0 (wild-type)
+  for (int r = 0; r < NUM_RECEPTORS; ++r) {
+    assert(a.genome.toxin_affinity[r] == 1.0);
+    assert(a.genome.ligand_affinity[r] == 1.0);
+  }
+
+  // Simulate a partial resistance mutation on BtuB
+  int btuB = static_cast<int>(ReceptorType::BtuB);
+  a.genome.toxin_affinity[btuB] = 0.05;   // 20x reduced toxin binding
+  a.genome.ligand_affinity[btuB] = 0.8;   // within 2x of wild-type
+
+  // Receptor expression should remain unchanged (distinct from downregulation)
+  assert(a.receptor_expr[btuB] == 1.0);
+  assert(a.genome.receptor_expression[btuB] == 1.0);
+
+  // Verify toxin affinity is heavily reduced
+  assert(a.genome.toxin_affinity[btuB] < 0.11);
+  assert(a.genome.toxin_affinity[btuB] > 0.0);
+
+  // Verify ligand affinity stays near wild-type
+  assert(a.genome.ligand_affinity[btuB] >= 0.5);
+  assert(a.genome.ligand_affinity[btuB] <= 1.0);
+
+  // Other receptors should be unaffected
+  int fepA = static_cast<int>(ReceptorType::FepA);
+  assert(a.genome.toxin_affinity[fepA] == 1.0);
+  assert(a.genome.ligand_affinity[fepA] == 1.0);
+
+  std::cout << "  test_partial_resistance_fields: PASSED\n";
+}
+
 void test_sphere_volume() {
   Real r = 0.5e-6;
   Real vol = sphere_volume(r);
@@ -141,6 +175,7 @@ int main() {
   test_plasmid_library();
   test_classify_by_pI();
   test_genome_operations();
+  test_partial_resistance_fields();
   test_sphere_volume();
   std::cout << "All agent tests passed.\n";
   return 0;

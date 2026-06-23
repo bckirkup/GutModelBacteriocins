@@ -50,9 +50,12 @@ class FixReceptor : public Fix {
   Real compute_kill_prob(const Agent& agent, Real dt) const;
 
   // Competitive binding fraction: toxin occupancy given ligand competition
+  // toxin_aff / ligand_aff scale the respective Kd values for partial resistance
   Real toxin_occupancy(Real tox_conc, Real ligand_conc,
                         Real kd_tox, Real kd_ligand,
-                        Real receptor_expr) const;
+                        Real receptor_expr,
+                        Real toxin_aff = 1.0,
+                        Real ligand_aff = 1.0) const;
 
   ReceptorConfig cfg_;
 };

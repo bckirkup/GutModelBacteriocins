@@ -248,6 +248,7 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 | `mutation.super_killer_rate` | 1e-8 | per division | Novel toxin variant |
 | `mutation.compensatory_rate` | 1e-6 | per division | Plasmid cost amelioration |
 | `mutation.receptor_reduction` | 0.1 | — | Expression drop per mutation |
+| `mutation.partial_resistance_rate` | 5e-7 | per division | Extracellular loop missense mutation |
 | `mutation.compensatory_reduction` | 0.005 | — | Per-locus cost reduction |
 | `mutation.max_bi_loci` | 8 | — | Maximum BI clusters per genome |
 | `mutation.immunity_escape_prob` | 0.5 | — | Fraction of super-killers with immunity escape |

@@ -45,6 +45,11 @@ void FixMutation::mutate_on_division(Agent& agent) {
     mutate_receptor(agent);
   }
 
+  // Partial resistance: extracellular loop missense mutation
+  if (rng.bernoulli(cfg_.partial_resistance_rate)) {
+    partial_resistance_mutation(agent);
+  }
+
   // Super-killer emergence
   if (rng.bernoulli(cfg_.super_killer_rate)) {
     generate_super_killer(agent);
@@ -101,6 +106,23 @@ void FixMutation::mutate_receptor(Agent& agent) {
   }
 
   sim_.lineage_tracker().record_mutation(agent.tag, "receptor_downreg",
+                                          agent.genome.lineage_id);
+}
+
+void FixMutation::partial_resistance_mutation(Agent& agent) {
+  auto& rng = sim_.rng();
+  Int receptor = rng.randint(0, NUM_RECEPTORS - 1);
+
+  // Reduce toxin binding affinity by 10–100x (Kd multiplier 0.01–0.1)
+  agent.genome.toxin_affinity[receptor] = rng.uniform(0.01, 0.1);
+
+  // Ligand affinity stays within 2x of wild-type (0.5–1.0)
+  agent.genome.ligand_affinity[receptor] = rng.uniform(0.5, 1.0);
+
+  // Receptor expression is NOT changed (distinct from full downregulation)
+  agent.genome.mutations++;
+
+  sim_.lineage_tracker().record_mutation(agent.tag, "partial_resistance",
                                           agent.genome.lineage_id);
 }
 
