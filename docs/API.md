@@ -62,7 +62,7 @@ Single bacterial cell. Each agent has spatial, metabolic, receptor, phenotype, a
 | `biomass` | `Real` | Dry biomass (kg) |
 | `mu_max` | `Real` | Intrinsic max growth rate (1/s) |
 | `mu_realized` | `Real` | Current growth rate after penalties |
-| `receptor_expr` | `array<Real, 7>` | Expression level per receptor (0–1) |
+| `receptor_expr` | `array<Real, 8>` | Expression level per receptor (0–1) |
 | `state` | `PhenoState` | NORMAL, RESISTANT, SOS_INDUCED, DEAD |
 | `genome` | `Genome` | BI clusters, lineage, mutations |
 | `age` | `Real` | Time since last division (s) |
@@ -219,7 +219,7 @@ class Fix {
 
 | Fix | Config struct | Key parameters |
 |-----|--------------|----------------|
-| `FixMetabolism` | `MetabolismConfig` | `mu_max_default`, `division_threshold`, `metE_penalty`, `eut_penalty`, `maintenance_rate` |
+| `FixMetabolism` | `MetabolismConfig` | `mu_max_default`, `division_threshold`, `metE_penalty`, `eut_penalty`, `maintenance_rate`, `km_iron_primary`, `km_iron_iroN`, `km_iron_iutA`, `km_iron_fiu` |
 | `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `retardation_basic/acidic/neutral`, `D_free_colicin`, `burst_molecules`, `microcin_mu_penalty` |
 | `FixReceptor` | `ReceptorConfig` | `kd_*` binding affinities, `kill_rate_colicin/microcin`, `immunity_factor` |
 | `FixConjugation` | `ConjugationConfig` | `base_transfer_prob`, `contact_radius`, `shear_crit` |
@@ -238,7 +238,7 @@ class Fix {
 | `parent_id` | `TagID` | Immediate parent |
 | `generation` | `uint32_t` | Division count from ancestor |
 | `bi_loci` | `vector<BICluster>` | Bacteriocin-immunity clusters |
-| `receptor_expression` | `array<Real, 7>` | Per-receptor expression |
+| `receptor_expression` | `array<Real, 8>` | Per-receptor expression |
 | `has_conjugative_plasmid` | `bool` | Can initiate HGT |
 | `mutations` | `uint32_t` | Accumulated mutation count |
 | `plasmid_cost_amelioration` | `Real` | Compensatory reduction |

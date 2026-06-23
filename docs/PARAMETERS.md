@@ -94,6 +94,12 @@ This captures shear-enhanced spreading of toxins in the mucus flow.
 | `metabolism.metE_penalty` | 0.05 | — | MetE pathway cost (BtuB loss) |
 | `metabolism.eut_penalty` | 0.03 | — | Ethanolamine loss (BtuB loss) |
 | `metabolism.maintenance_rate` | 1e-5 | 1/s | Maintenance energy |
+| `metabolism.km_iron_primary` | 10e-6 | mol/m³ | FepA iron Km (10 nM) |
+| `metabolism.km_iron_iroN` | 50e-6 | mol/m³ | IroN salmochelin Km (50 nM) |
+| `metabolism.km_iron_iutA` | 100e-6 | mol/m³ | IutA aerobactin Km (100 nM) |
+| `metabolism.km_iron_fiu` | 200e-6 | mol/m³ | Fiu catecholate Km (200 nM) |
+
+**Graded iron uptake:** Iron acquisition uses multiple receptor systems in parallel. FepA is primary (highest affinity), with IroN, IutA, and Fiu as secondary fallbacks. When FepA is downregulated (e.g. to resist colicin B), cells switch to these secondary pathways rather than experiencing complete iron starvation. The effective iron Monod term sums contributions from all receptors weighted by expression level, then normalizes to preserve wild-type growth at full expression.
 
 **MetE pathway:** When BtuB expression < 0.5, cells must synthesize methionine via the MetE pathway instead of the B12-dependent MetH pathway. MetE requires ~5% of the proteome, and cells also lose ethanolamine utilization (normally B12-dependent).
 
