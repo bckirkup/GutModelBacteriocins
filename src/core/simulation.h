@@ -94,6 +94,7 @@ class Simulation {
   void rebuild_spatial_hash();
   void remove_dead_agents();
   void check_washout();
+  void crypt_migration(Real dt);
   void take_lineage_snapshot();
 
   // Module execution (NUFEB-inspired)

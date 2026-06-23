@@ -38,10 +38,10 @@ step(dt):
   4. module_biology(dt)   — execute all Fix modules (uses ghosts for neighbor queries)
   5. Clear ghost agents
   6. module_chemistry()   — QSSA steady-state fields
-  7. module_physics(dt)   — advection, drag, mechanical repulsion
+  7. module_physics(dt)   — crypt migration, advection, drag, repulsion
   8. Post-step: fix post-processing (division, lysis completion)
   9. Migrate agents that crossed slab boundaries (MPI_Sendrecv)
- 10. Cleanup: check washout, remove dead agents
+ 10. Cleanup: check washout (crypt agents exempt), remove dead agents
  11. MPI_Allreduce for global statistics
 ```
 
@@ -66,6 +66,7 @@ Single bacterial cell. Each agent has spatial, metabolic, receptor, phenotype, a
 | `state` | `PhenoState` | NORMAL, RESISTANT, SOS_INDUCED, DEAD |
 | `genome` | `Genome` | BI clusters, lineage, mutations |
 | `age` | `Real` | Time since last division (s) |
+| `in_crypt` | `bool` | True when agent resides in a crypt refugium |
 
 **Factory:** `Agent::create_default(tag, type, pos, mu_max)` — creates a wild-type cell with default parameters.
 
@@ -158,8 +159,9 @@ Dual-vector mucus flow field.
 | `distal_velocity(Real z)` | Distal component at height z |
 | `shear_rate(Vec3 pos)` | Local shear magnitude |
 | `advect(Vec3& pos, Real dt)` | Move a position by flow |
-| `washout_rate(Real z)` | Dilution rate at height z |
+| `washout_rate(Real z)` | Dilution rate at height z (0 in crypt zone) |
 | `taylor_aris_D_eff(z, D_mol)` | Shear-enhanced dispersion coefficient |
+| `in_crypt_zone(Real z)` | True if z falls within the crypt zero-flow zone |
 
 ---
 

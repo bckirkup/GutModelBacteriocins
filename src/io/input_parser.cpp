@@ -87,6 +87,11 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     else if (key == "vbf_density")       cfg.vbf.density = parse_real(val);
     else if (key == "vbf_viscosity")     cfg.vbf.viscosity = parse_real(val);
     else if (key == "sos_lysis_prob")    cfg.bacteriocin.sos_lysis_prob = parse_real(val);
+    else if (key == "crypts_enabled")     cfg.advection.crypts_enabled = (val == "true" || val == "1");
+    else if (key == "crypt_depth")       cfg.advection.crypt_depth = parse_real(val);
+    else if (key == "crypt_exit_rate")   cfg.advection.crypt_exit_rate = parse_real(val);
+    else if (key == "crypt_entry_rate")  cfg.advection.crypt_entry_rate = parse_real(val);
+    else if (key == "crypt_carrying_capacity") cfg.advection.crypt_carrying_capacity = parse_int(val);
     else if (key == "hdf5_file")         cfg.hdf5.filename = val;
     else if (key == "hdf5_every")        cfg.hdf5.dump_every = parse_int(val);
   }

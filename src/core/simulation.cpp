@@ -124,6 +124,11 @@ void Simulation::init_population(const SimulationConfig& cfg) {
         }
       }
 
+      // Tag agents spawned inside the crypt zone
+      if (advection_.in_crypt_zone(a.x[2])) {
+        a.in_crypt = true;
+      }
+
       agents_.push_back(std::move(a));
     }
   }
@@ -257,6 +262,9 @@ void Simulation::module_chemistry() {
 }
 
 void Simulation::module_physics(Real dt) {
+  // Crypt migration (stochastic entry/exit) before advection
+  crypt_migration(dt);
+
   for (Int i = 0; i < agents_.size(); ++i) {
     Agent& a = agents_[i];
     if (a.state == PhenoState::DEAD) continue;
@@ -344,6 +352,9 @@ void Simulation::check_washout() {
     Agent& a = agents_[i];
     if (a.state == PhenoState::DEAD) continue;
 
+    // Agents in crypt refugia bypass washout entirely
+    if (a.in_crypt) continue;
+
     if (a.x[2] >= z_max) {
       a.state = PhenoState::DEAD;
       lineage_.record_washout(a.tag, a.genome.lineage_id, a.x);
@@ -355,6 +366,47 @@ void Simulation::check_washout() {
       // Metabolically crippled in high-flow zone → washout
       a.state = PhenoState::DEAD;
       lineage_.record_washout(a.tag, a.genome.lineage_id, a.x);
+    }
+  }
+}
+
+void Simulation::crypt_migration(Real dt) {
+  if (!cfg_.advection.crypts_enabled) return;
+
+  Real crypt_z = domain_.lo()[2] + cfg_.advection.crypt_depth;
+  Real lo_z    = domain_.lo()[2];
+  Real epsilon = cfg_.advection.crypt_depth * 0.01;  // small offset above crypt boundary
+
+  // Count agents currently in the crypt for carrying-capacity enforcement
+  Int crypt_pop = 0;
+  for (Int i = 0; i < agents_.size(); ++i) {
+    if (agents_[i].state != PhenoState::DEAD && agents_[i].in_crypt)
+      ++crypt_pop;
+  }
+
+  for (Int i = 0; i < agents_.size(); ++i) {
+    Agent& a = agents_[i];
+    if (a.state == PhenoState::DEAD) continue;
+
+    if (a.in_crypt) {
+      // Stochastic exit from crypt
+      Real p_exit = 1.0 - std::exp(-cfg_.advection.crypt_exit_rate * dt);
+      if (rng_.bernoulli(p_exit)) {
+        a.x[2] = crypt_z + epsilon;
+        a.in_crypt = false;
+        --crypt_pop;
+      }
+    } else {
+      // Only agents near the crypt boundary can enter
+      if (a.x[2] < crypt_z + cfg_.advection.crypt_depth) {
+        if (crypt_pop >= cfg_.advection.crypt_carrying_capacity) continue;
+        Real p_entry = 1.0 - std::exp(-cfg_.advection.crypt_entry_rate * dt);
+        if (rng_.bernoulli(p_entry)) {
+          a.x[2] = rng_.uniform(lo_z, crypt_z);
+          a.in_crypt = true;
+          ++crypt_pop;
+        }
+      }
     }
   }
 }

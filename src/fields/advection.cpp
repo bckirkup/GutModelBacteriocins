@@ -20,16 +20,20 @@ void AdvectionField::init(const AdvectionConfig& cfg, const Domain& domain) {
 }
 
 Real AdvectionField::radial_velocity(Real z) const {
+  if (cfg_.crypts_enabled && z < lo_z_ + cfg_.crypt_depth) return 0.0;
   Real zn = std::clamp((z - lo_z_) / h_, 0.0, 1.0);
   return v_radial_max_ * std::pow(zn, cfg_.profile_alpha);
 }
 
 Real AdvectionField::distal_velocity(Real z) const {
+  if (cfg_.crypts_enabled && z < lo_z_ + cfg_.crypt_depth) return 0.0;
   Real zn = std::clamp((z - lo_z_) / h_, 0.0, 1.0);
   return v_distal_max_ * std::pow(zn, cfg_.profile_alpha);
 }
 
 Vec3 AdvectionField::velocity(const Vec3& pos) const {
+  if (cfg_.crypts_enabled && pos[2] < lo_z_ + cfg_.crypt_depth)
+    return {0.0, 0.0, 0.0};
   Real vx = distal_velocity(pos[2]);   // distal (x-direction)
   Real vy = 0.0;                       // no lateral flow
   Real vz = radial_velocity(pos[2]);   // radial (z, toward lumen)
@@ -55,7 +59,12 @@ void AdvectionField::advect(Vec3& pos, Real dt) const {
 }
 
 Real AdvectionField::washout_rate(Real z) const {
+  if (cfg_.crypts_enabled && z < lo_z_ + cfg_.crypt_depth) return 0.0;
   return radial_velocity(z) / h_;
+}
+
+bool AdvectionField::in_crypt_zone(Real z) const {
+  return cfg_.crypts_enabled && z < lo_z_ + cfg_.crypt_depth;
 }
 
 Real AdvectionField::taylor_aris_D_eff(Real z, Real D_mol) const {
