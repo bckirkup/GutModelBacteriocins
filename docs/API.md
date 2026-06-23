@@ -192,15 +192,40 @@ Analytical Green's function kernels for point sources in bounded domain.
 | `with_advection(r, pos, params)` | Includes flow-advected asymmetry |
 | `with_images(r, z_src, z_tgt, params)` | Method of Images for bounded z |
 
+### `Octree`
+**Header:** `src/diffusion/octree.h`
+
+Barnes-Hut octree for O(N log N) far-field source aggregation. Distant source clusters are approximated by a single monopole at the source-weighted centroid. Controlled by the opening-angle parameter `theta`.
+
+| Method | Description |
+|--------|-------------|
+| `build(positions, strengths, Domain&)` | Construct octree from source positions and strengths |
+| `evaluate_far_field(target, theta, near_cutoff, gf, avg_params)` | Far-field monopole contribution at a target point |
+| `evaluate_field(target, theta, near_cutoff, gf, positions, params, avg_params)` | Full near+far field at target |
+| `num_nodes()` | Number of tree nodes |
+| `empty()` | Whether the tree has zero nodes |
+
+**`OctreeNode` fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `center` | `Vec3` | Geometric center of the cell |
+| `half_size` | `Real` | Half the side length |
+| `total_source_strength` | `Real` | Sum of source rates in subtree |
+| `center_of_source` | `Vec3` | Source-weighted centroid |
+| `children[8]` | `int` | Child node indices (-1 = no child) |
+| `sources` | `vector<int>` | Leaf source indices |
+| `is_leaf` | `bool` | Whether this is a leaf node |
+
 ### `QSSASolver`
 **Header:** `src/diffusion/qssa_solver.h`
 
-Quasi-steady-state toxin field computation.
+Quasi-steady-state toxin field computation. Supports optional Barnes-Hut acceleration via `QSSAConfig::use_fmm`.
 
 | Method | Description |
 |--------|-------------|
 | `init(QSSAConfig&, Domain&, AdvectionField&)` | Setup |
-| `solve_bacteriocin_field(agents, chem, idx)` | Compute toxin field |
+| `solve_bacteriocin_field(agents, chem, idx)` | Compute toxin field (exact or Barnes-Hut depending on `use_fmm`) |
 | `solve_nutrient_depletion(agents, chem)` | Compute depletion zones |
 | `point_concentration(target, sources, params)` | Single-point query |
 

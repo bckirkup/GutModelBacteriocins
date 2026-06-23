@@ -3,11 +3,13 @@
    ----------------------------------------------------------------------- */
 
 #include "qssa_solver.h"
+#include "octree.h"
 #include "domain.h"
 #include "advection.h"
 #include "chemical_field.h"
 #include "agent.h"
 #include <cmath>
+#include <numeric>
 
 namespace gutibm {
 
@@ -51,12 +53,109 @@ void QSSASolver::solve_bacteriocin_field(
 
   if (sources.empty()) return;
 
+  if (cfg_.use_fmm) {
+    solve_bacteriocin_field_fmm(sources, params, chem, toxin_species_idx);
+    return;
+  }
+
   // Superpose onto grid
   std::vector<Real> toxin_conc;
   gf_.superpose_to_grid(sources, params, toxin_conc, cfg_.toxin_cutoff);
 
   // Deposit onto chemical field
   for (Int c = 0; c < chem.ncells(); ++c) {
+    chem.conc(toxin_species_idx, c) = toxin_conc[c];
+  }
+}
+
+void QSSASolver::solve_bacteriocin_field_fmm(
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    ChemicalField& chem,
+    Int toxin_species_idx) const {
+
+  // Build source strengths for the octree (use source_rate as strength)
+  std::vector<Real> strengths(sources.size());
+  for (size_t i = 0; i < sources.size(); ++i)
+    strengths[i] = params[i].source_rate;
+
+  // Compute average GreensFunctionParams for the monopole kernel
+  GreensFunctionParams avg_params{};
+  Real total_s = 0.0;
+  for (size_t i = 0; i < params.size(); ++i) {
+    Real s = strengths[i];
+    avg_params.diff_coeff  += s * params[i].diff_coeff;
+    avg_params.pI          += s * params[i].pI;
+    avg_params.retardation += s * params[i].retardation;
+    total_s += s;
+  }
+  if (total_s > 0.0) {
+    avg_params.diff_coeff  /= total_s;
+    avg_params.pI          /= total_s;
+    avg_params.retardation /= total_s;
+  } else {
+    avg_params.diff_coeff  = 4e-11;
+    avg_params.pI          = 7.0;
+    avg_params.retardation = 5.0;
+  }
+  avg_params.source_rate = 0.0;  // set per-node during traversal
+
+  Octree tree;
+  tree.build(sources, strengths, *domain_);
+
+  Int nx = domain_->nx(), ny = domain_->ny(), nz = domain_->nz();
+  Int ncells = domain_->ncells();
+
+  // Near-field: exact evaluation within cutoff via spatial hash approach
+  std::vector<Real> toxin_conc(ncells, 0.0);
+
+  for (size_t s = 0; s < sources.size(); ++s) {
+    const Vec3& src = sources[s];
+    const GreensFunctionParams& p = params[s];
+
+    Int src_ix, src_iy, src_iz;
+    domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
+
+    Int span = static_cast<Int>(std::ceil(cfg_.toxin_cutoff / domain_->dx()));
+
+    for (Int dz = -span; dz <= span; ++dz) {
+      Int iz = src_iz + dz;
+      if (iz < 0 || iz >= nz) continue;
+      for (Int dy = -span; dy <= span; ++dy) {
+        Int iy = src_iy + dy;
+        if (domain_->config().periodic[1]) {
+          iy = ((iy % ny) + ny) % ny;
+        } else if (iy < 0 || iy >= ny) continue;
+
+        for (Int dx = -span; dx <= span; ++dx) {
+          Int ix = src_ix + dx;
+          if (domain_->config().periodic[0]) {
+            ix = ((ix % nx) + nx) % nx;
+          } else if (ix < 0 || ix >= nx) continue;
+
+          Vec3 tgt = domain_->cell_center(ix, iy, iz);
+          Real c = gf_.concentration_bounded(src, tgt, p);
+          Int idx = domain_->cell_index(ix, iy, iz);
+          toxin_conc[idx] += c;
+        }
+      }
+    }
+  }
+
+  // Far-field: Barnes-Hut monopole for each grid cell
+  for (Int iz = 0; iz < nz; ++iz) {
+    for (Int iy = 0; iy < ny; ++iy) {
+      for (Int ix = 0; ix < nx; ++ix) {
+        Vec3 tgt = domain_->cell_center(ix, iy, iz);
+        Real far = tree.evaluate_far_field(
+            tgt, cfg_.fmm_theta, cfg_.toxin_cutoff, gf_, avg_params);
+        Int idx = domain_->cell_index(ix, iy, iz);
+        toxin_conc[idx] += far;
+      }
+    }
+  }
+
+  for (Int c = 0; c < ncells; ++c) {
     chem.conc(toxin_species_idx, c) = toxin_conc[c];
   }
 }

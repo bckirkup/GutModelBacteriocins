@@ -19,6 +19,7 @@
 
 #include "types.h"
 #include "greens_function.h"
+#include "octree.h"
 #include <vector>
 
 namespace gutibm {
@@ -37,6 +38,10 @@ struct QSSAConfig {
   // Bacteriocin source parameters
   Real colicin_release_rate = 1.0e-18; // mol/s per lysed cell (burst)
   Real microcin_secretion   = 1.0e-20; // mol/s continuous secretion
+
+  // Barnes-Hut acceleration (far-field aggregation)
+  bool use_fmm  = false;   // enable Barnes-Hut octree for far-field
+  Real fmm_theta = 0.5;    // opening angle (0→exact, 1→fast/approximate)
 };
 
 class QSSASolver {
@@ -67,6 +72,13 @@ class QSSASolver {
   const GreensFunction& gf() const { return gf_; }
 
  private:
+  // Build octree from sources and evaluate grid using Barnes-Hut
+  void solve_bacteriocin_field_fmm(
+      const std::vector<Vec3>& sources,
+      const std::vector<GreensFunctionParams>& params,
+      ChemicalField& chem,
+      Int toxin_species_idx) const;
+
   QSSAConfig cfg_;
   GreensFunction gf_;
   const Domain* domain_ = nullptr;

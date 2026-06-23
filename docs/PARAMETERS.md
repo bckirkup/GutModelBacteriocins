@@ -134,7 +134,14 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 | `qssa.colicin_release_rate` | 1e-18 | mol/s | Burst release per lysed cell |
 | `qssa.microcin_secretion` | 1e-20 | mol/s | Continuous secretion rate |
 
-**Scaling note:** At 10^6 agents, naive O(N × M) evaluation is expensive. The cutoff radius limits each grid cell to nearby sources only, giving effective O(N) via spatial hashing.
+### Barnes-Hut Acceleration
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `qssa.use_fmm` | false | — | Enable Barnes-Hut octree for far-field aggregation |
+| `qssa.fmm_theta` | 0.5 | — | Opening angle parameter (0→exact, 1→fast/approximate) |
+
+**Scaling note:** At 10^6 agents, naive O(N × M) evaluation is expensive. The cutoff radius limits each grid cell to nearby sources only, giving effective O(N) via spatial hashing. When `use_fmm` is true, distant sources beyond the cutoff are aggregated via a Barnes-Hut octree monopole approximation, reducing total cost to O(N log N). The opening angle `fmm_theta` controls accuracy: smaller values are more accurate but slower. Typical values: 0.3 (conservative), 0.5 (balanced), 0.7 (fast).
 
 ---
 
