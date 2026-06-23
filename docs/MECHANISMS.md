@@ -113,7 +113,7 @@ P(kill) = 1 - exp(-kill_rate * Occupancy * dt)
 
 When nutrients are scarce, receptors are unoccupied and "unlocked" — maximum toxin sensitivity. When nutrients are abundant, competitive inhibition protects cells.
 
-**Immunity:** Agents carrying the cognate immunity protein (from their BI cluster) get 1000x protection (`immunity_factor = 0.001`).
+**Immunity and affinity-neutralization (VADI §57):** Agents carrying a BI cluster targeting the same receptor get protection scaled by `immunity_factor * immunity_binding_affinity`. For wild-type clusters (`immunity_binding_affinity = 1.0`) this yields the full 1000× protection (`immunity_factor = 0.001`). Super-killer immunity-escape variants have reduced `immunity_binding_affinity` (typically 0.01–0.3), so the effective protection drops to 3–100× — making the agent partially vulnerable to the novel toxin even though it carries the ancestral immunity gene. The best (lowest `eff`) among all matching BI clusters is used.
 
 ---
 
@@ -154,7 +154,9 @@ Generates a novel toxin variant from an existing BI cluster. The new toxin has:
 - Unique toxin_id
 - Gaussian-perturbed pI (std = 0.5)
 - 30% chance of switching target receptor
-This models the evolution of "super-killers" that bypass cognate immunity.
+- **Immunity-escape mutation** (probability `immunity_escape_prob`, default 50%): reduces `immunity_binding_affinity` to a value drawn uniformly from [`escape_affinity_lo`, `escape_affinity_hi`] (default [0.01, 0.3]). This models the VADI §57 affinity-neutralization matrix where structural changes in the novel toxin reduce the binding affinity of the cognate immunity protein, creating variants that partially evade immunity.
+
+The immunity-escape mechanism operates through the agent's own BI cluster: `immunity_binding_affinity` on a given cluster determines how well that cluster's immunity protein cross-neutralizes incoming toxins targeting the same receptor. When a neighbouring cell produces an escape-variant toxin, the target agent's existing immunity provides only partial protection (effective factor = `immunity_factor × immunity_binding_affinity`).
 
 ### e) Compensatory mutation (rate: 10^-6 per division)
 Chromosomal mutations that ameliorate plasmid metabolic cost. Reduces per-locus cost by `compensatory_reduction` (default 0.005), capped so that at most 75% of the original cost can be eliminated. This models the well-documented phenomenon where bacteria rapidly evolve to reduce the fitness cost of newly acquired plasmids (VADI Section 79).

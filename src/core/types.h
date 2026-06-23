@@ -68,6 +68,7 @@ struct BICluster {
   Real diff_coeff;          // free diffusion coefficient (m^2/s)
   Real retardation;         // mucin retardation factor (1 = no retardation)
   Real molecular_weight;    // Da
+  Real immunity_binding_affinity = 1.0;  // 1.0 = full cognate protection, 0.0 = none
 };
 
 // Agent genome (compact representation for 10^7 agents)

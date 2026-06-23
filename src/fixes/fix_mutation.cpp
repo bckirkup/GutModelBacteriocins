@@ -117,7 +117,10 @@ void FixMutation::generate_super_killer(Agent& agent) {
   }
   agent.genome.mutations++;
 
-  sim_.lineage_tracker().record_mutation(agent.tag, "super_killer",
+  const char* label = (novel.immunity_binding_affinity < 1.0)
+                          ? "super_killer_escape"
+                          : "super_killer";
+  sim_.lineage_tracker().record_mutation(agent.tag, label,
                                           agent.genome.lineage_id);
 }
 
@@ -154,6 +157,14 @@ BICluster FixMutation::create_novel_toxin(const BICluster& parent) {
   // Altered target receptor (may hijack a different TBDT)
   if (rng.bernoulli(0.3)) {
     novel.target = static_cast<ReceptorType>(rng.randint(0, NUM_RECEPTORS - 1));
+  }
+
+  // Immunity-escape mutation: reduce cognate immunity binding affinity
+  // so that existing immunity proteins provide less cross-protection
+  // against this novel toxin variant (VADI §57)
+  if (rng.bernoulli(cfg_.immunity_escape_prob)) {
+    novel.immunity_binding_affinity =
+        rng.uniform(cfg_.escape_affinity_lo, cfg_.escape_affinity_hi);
   }
 
   return novel;

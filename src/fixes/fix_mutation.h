@@ -29,6 +29,12 @@ struct MutationConfig {
   // Max BI clusters per genome
   Int  max_bi_loci             = 8;
 
+  // Immunity-escape: probability that a super-killer also reduces cognate
+  // immunity binding affinity (VADI §57 affinity-neutralization matrix)
+  Real immunity_escape_prob    = 0.5;     // fraction of super-killers with escape
+  Real escape_affinity_lo      = 0.01;    // lower bound of reduced affinity
+  Real escape_affinity_hi      = 0.3;     // upper bound (3–100× reduced protection)
+
   // Compensatory mutation: ameliorates plasmid metabolic cost over time
   Real compensatory_rate       = 1.0e-6;  // per division
   Real compensatory_reduction  = 0.005;   // per-locus cost reduced by this

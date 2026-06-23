@@ -225,7 +225,7 @@ class Fix {
 | `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `retardation_basic/acidic/neutral`, `D_free_colicin`, `burst_molecules`, `microcin_mu_penalty` |
 | `FixReceptor` | `ReceptorConfig` | `kd_*` binding affinities, `kill_rate_colicin/microcin`, `immunity_factor` |
 | `FixConjugation` | `ConjugationConfig` | `base_transfer_prob`, `contact_radius`, `shear_crit` |
-| `FixMutation` | `MutationConfig` | Per-division rates for duplication, recombination, receptor downreg, super-killer, compensatory |
+| `FixMutation` | `MutationConfig` | Per-division rates for duplication, recombination, receptor downreg, super-killer, compensatory; `immunity_escape_prob`, `escape_affinity_lo/hi` |
 
 ---
 
@@ -258,6 +258,7 @@ class Fix {
 | `diff_coeff` | Free diffusion coefficient (m²/s) |
 | `retardation` | Mucin retardation factor |
 | `molecular_weight` | Daltons |
+| `immunity_binding_affinity` | Cross-protection efficacy (1.0 = full, 0.0 = none) |
 
 ### `PlasmidLibrary`
 **Header:** `src/genome/plasmid.h`
