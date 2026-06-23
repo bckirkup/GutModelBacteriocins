@@ -185,3 +185,30 @@ The 99% obligate anaerobic microbiota is modeled as a continuum rather than disc
 - **Nutrient sink**: Background consumption at volumetric rate
 - **Mucin liberation**: Monosaccharide release from mucin glycoproteins (carbon source)
 - **Carrying capacity**: Local density limit for the simulation domain
+
+---
+
+## z-Dependent Nutrient Gradient
+
+**Biological basis:** Mucin-derived monosaccharides (the primary carbon source for *Enterobacteriaceae* in the gut) are liberated by goblet cells at the epithelial surface (z=0). The concentration of free monosaccharides is highest near the epithelium and decays exponentially into the lumen.
+
+**Implementation:**
+
+### Chemical field initialization
+When `z_gradient_enabled` is set for a chemical species, the initial concentration follows:
+```
+C(z) = C_max * exp(-z_rel / lambda_mucin)
+```
+where `z_rel` is the distance from the epithelium and `lambda_mucin` is the characteristic decay length (~25 μm by default). The Dirichlet boundary at z=0 maintains `boundary_conc` as the peak value.
+
+### VBF mucin liberation coupling
+When `mucin_z_gradient_enabled`, the monosaccharide release rate applied by the VBF also varies with z:
+```
+rate(z) = mucin_liberation * exp(-z_rel / mucin_z_gradient_lambda)
+```
+This couples the ongoing carbon source term to the same spatial gradient, maintaining the profile during simulation.
+
+### Biological consequences
+- Agents near the epithelium (z ~ 0) have access to more carbon, leading to faster Monod growth.
+- Agents further from the epithelium face carbon limitation, reducing their competitive fitness.
+- Combined with the advective washout trap (flow increases with z), this creates a strong spatial advantage for epithelium-attached colonies: high nutrients, low flow.

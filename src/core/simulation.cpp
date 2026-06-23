@@ -222,7 +222,7 @@ void Simulation::module_chemistry() {
   qssa_.solve_nutrient_depletion(agents_, chem_);
 
   // VBF coupling (nutrient sink/source)
-  vbf_.apply_nutrient_coupling(chem_, cfg_.bio_dt);
+  vbf_.apply_nutrient_coupling(chem_, domain_, cfg_.bio_dt);
 
   // Apply reactions to concentrations
   for (Int s = 0; s < chem_.num_species(); ++s) {

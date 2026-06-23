@@ -14,12 +14,17 @@ SimulationConfig InputParser::default_config() {
   SimulationConfig cfg;
 
   // Default chemical species
+  // Carbon gets z-gradient enabled (mucin-derived monosaccharides peak at epithelium)
   cfg.chemicals = {
-    {"carbon",      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0},
-    {"iron",        1.0e-9, 1.0,  1.0e-6, 1.0e-6,  0.0},
-    {"b12",         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0},
-    {"bacteriocin", 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4},
+    {"carbon",      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0, true,  25.0e-6},
+    {"iron",        1.0e-9, 1.0,  1.0e-6, 1.0e-6,  0.0, false, 25.0e-6},
+    {"b12",         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0, false, 25.0e-6},
+    {"bacteriocin", 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4, false, 25.0e-6},
   };
+
+  // VBF mucin z-gradient enabled by default (consistent with carbon gradient)
+  cfg.vbf.mucin_z_gradient_enabled = true;
+  cfg.vbf.mucin_z_gradient_lambda  = 25.0e-6;
 
   // Default initial population: resident (B2 phylogroup) + immigrant
   SimulationConfig::InitialStrain resident;
@@ -85,6 +90,18 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     else if (key == "distal_transit")    cfg.advection.distal_transit_time = parse_real(val);
     else if (key == "vbf_density")       cfg.vbf.density = parse_real(val);
     else if (key == "vbf_viscosity")     cfg.vbf.viscosity = parse_real(val);
+    else if (key == "vbf_mucin_z_gradient")  cfg.vbf.mucin_z_gradient_enabled = (val == "true" || val == "1");
+    else if (key == "vbf_mucin_z_lambda")    cfg.vbf.mucin_z_gradient_lambda = parse_real(val);
+    else if (key == "carbon_z_gradient")     {
+      for (auto& c : cfg.chemicals) {
+        if (c.name == "carbon") { c.z_gradient_enabled = (val == "true" || val == "1"); break; }
+      }
+    }
+    else if (key == "carbon_z_lambda")       {
+      for (auto& c : cfg.chemicals) {
+        if (c.name == "carbon") { c.z_gradient_lambda = parse_real(val); break; }
+      }
+    }
     else if (key == "sos_lysis_prob")    cfg.bacteriocin.sos_lysis_prob = parse_real(val);
     else if (key == "hdf5_file")         cfg.hdf5.filename = val;
     else if (key == "hdf5_every")        cfg.hdf5.dump_every = parse_int(val);
