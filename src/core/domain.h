@@ -28,6 +28,12 @@ struct DomainConfig {
 
   // Spatial hash cell size (should be >= max interaction range)
   Real hash_cell_size = 10.0e-6;  // 10 um
+
+  // MPI decomposition axis: 0 = x (distal flow direction)
+  Int mpi_decomp_axis = 0;
+
+  // Ghost layer thickness (should be >= hash_cell_size for correct neighbor queries)
+  Real ghost_width = 10.0e-6;  // 10 um default
 };
 
 class Domain {
@@ -73,6 +79,21 @@ class Domain {
   Int rank() const { return rank_; }
   Int nprocs() const { return nprocs_; }
 
+  // Local slab bounds (this rank's partition along decomp axis)
+  Real local_lo_x() const { return local_lo_x_; }
+  Real local_hi_x() const { return local_hi_x_; }
+  Real ghost_width() const { return ghost_width_; }
+
+  // Check if a position falls within this rank's local domain
+  bool is_local(const Vec3& pos) const;
+
+  // Determine which rank owns a position
+  Int owner_rank(const Vec3& pos) const;
+
+  // Neighbor ranks (-1 if no neighbor; wraps for periodic axis)
+  Int rank_lo() const { return rank_lo_; }
+  Int rank_hi() const { return rank_hi_; }
+
   // Spatial hash
   SpatialHash& spatial_hash() { return hash_; }
   const SpatialHash& spatial_hash() const { return hash_; }
@@ -80,6 +101,8 @@ class Domain {
   const DomainConfig& config() const { return cfg_; }
 
  private:
+  void decompose();
+
   DomainConfig cfg_;
   Vec3 lo_{}, hi_{};
   Int nx_ = 0, ny_ = 0, nz_ = 0;
@@ -91,6 +114,13 @@ class Domain {
 
   Int rank_   = 0;
   Int nprocs_ = 1;
+
+  // Slab decomposition along x-axis
+  Real local_lo_x_ = 0.0;
+  Real local_hi_x_ = 0.0;
+  Real ghost_width_ = 0.0;
+  Int rank_lo_ = -1;  // neighbor rank in -x direction
+  Int rank_hi_ = -1;  // neighbor rank in +x direction
 };
 
 }  // namespace gutibm
