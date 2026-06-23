@@ -20,21 +20,39 @@ The QSSA solver and advection field operate between fix passes (chemistry and ph
 
 ## 1. fix_metabolism — Triple Monod Growth
 
-**Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through FepA), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics.
+**Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics.
 
 **Equation:**
 ```
-mu = mu_max * [C]/(Km_C + [C]) * [Fe]/(Km_Fe + [Fe]) * [B12]/(Km_B12 + [B12])
+mu = mu_max * [C]/(Km_C + [C]) * monod_iron * [B12]/(Km_B12 + [B12])
 ```
 
-**Receptor coupling:** When receptor expression drops (e.g. FepA downregulated to resist colicin B), the effective Km increases:
+**Graded iron uptake (Issue #10):** Rather than relying solely on FepA, iron acquisition uses four receptor systems in parallel with different affinities:
+
+| Receptor | Siderophore | Km (nM) | Role |
+|----------|-------------|---------|------|
+| FepA | Enterobactin | 10 | Primary (highest affinity) |
+| IroN | Salmochelin | 50 | Secondary (glycosylated enterobactin) |
+| IutA | Aerobactin | 100 | Secondary (hydroxamate) |
+| Fiu | Catecholates | 200 | Tertiary (broad specificity) |
+
 ```
-Km_Fe_eff = Km_Fe / expr_FepA    (expr in [0, 1])
+iron_uptake = Σ expr_i * [Fe]/(Km_i + [Fe])   for i ∈ {FepA, IroN, IutA, Fiu}
+monod_iron  = iron_uptake / (1 + expr_IroN + expr_IutA + expr_Fiu)
 ```
-This implements the metabolic "double-bind": resistance to toxin = nutrient starvation.
+
+This replaces the previous binary FepA-dependent penalty (`Km_Fe / expr_FepA`). When FepA is downregulated to resist colicin B/D, cells switch to secondary systems rather than complete iron starvation. The normalization ensures wild-type cells (all receptors at 1.0) maintain equivalent growth.
+
+**Note:** FhuA (ferrichrome) is NOT included as a secondary iron fallback because it transports fungal ferrichrome, which is not an endogenous enterobactin pathway (corrects EARI §70).
 
 **Penalties applied:**
-- **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Cost = `metE_penalty` (default 5%) + ethanolamine utilization loss `eut_penalty` (default 3%).
+- **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Base cost = `metE_penalty` (default 5%) + ethanolamine utilization loss `eut_penalty` (default 3%). The MetE cost is further amplified by local acetate concentration (see below).
+- **Acetate inhibition of MetE** (VADI §87): Colonic acetate (60–100 mM) inhibits the MetE enzyme. The effective MetE penalty is scaled via Michaelis-Menten kinetics:
+  ```
+  acetate_factor = 1 + (max_factor - 1) * [acetate] / (Km + [acetate])
+  metE_eff = metE_penalty * acetate_factor
+  ```
+  At 80 mM acetate (Km = 40 mol/m³, max_factor = 2.5), the penalty doubles from 5% to 10%. This strengthens the Combinatorial Washout Trap: BtuB-downregulated cells face a larger proteome burden in the acetate-rich colon.
 - **Plasmid maintenance**: 2% per BI locus (reduced by compensatory mutations, see fix_mutation). Capped at 10%.
 - **Maintenance energy**: Subtracted from mu_realized after all growth terms.
 
@@ -65,8 +83,10 @@ Small peptide microcins (<10 kDa, e.g. MccV) are exported without lysis:
 | Class | pI range | Retardation | Behavior |
 |-------|----------|-------------|----------|
 | Lethal Core | > 8.5 | R = 50 | Binds mucin glycoproteins, concentrates near producer |
-| Lethal Halo | < 6.0 | R = 1.5 | Repelled by anionic mucin, spreads widely |
-| Neutral | 6.0–8.5 | R = 5.0 | Intermediate diffusion |
+| Lethal Halo | < 7.0 | R = 1.5 | Repelled by anionic mucin, spreads widely |
+| Neutral | 7.0–8.5 | R = 5.0 | Intermediate diffusion |
+
+*Note:* The HALO threshold was raised from pI < 6.0 to pI < 7.0 (VADI §74) to correctly classify bacteriocins secreted as acidic complexes (e.g. Colicin E2 with Im2, net complex pI ≈ 6.5). The `classify_by_pI()` function in `src/genome/plasmid.h` is the single source of truth for these thresholds.
 
 The effective diffusion coefficient: `D_eff = D_free / R`
 
@@ -235,3 +255,24 @@ This couples the ongoing carbon source term to the same spatial gradient, mainta
 - Agents near the epithelium (z ~ 0) have access to more carbon, leading to faster Monod growth.
 - Agents further from the epithelium face carbon limitation, reducing their competitive fitness.
 - Combined with the advective washout trap (flow increases with z), this creates a strong spatial advantage for epithelium-attached colonies: high nutrients, low flow.
+
+---
+
+## Spatial Validation — Exclusion-Radius Clustering (VADI §75)
+
+**Background:** The original plan to validate strain-specific spatial patterns via HiPR-FISH targeting immunity mRNA was abandoned because immunity transcripts exist in single-digit copy numbers per cell — below the detection threshold of standard HiPR-FISH probes.
+
+**Replacement approach:** Exclusion-radius and NND clustering metrics that can be validated with DNA-FISH phylogroup probes or HCR-FISH amplification, both of which target multicopy sequences.
+
+**Metrics computed by `validate_spatial_signatures()`:**
+
+| Metric | What it measures | Empirical target |
+|--------|-----------------|------------------|
+| `monochromatic_score` | Same-type neighbor fraction | > 0.7 |
+| `comet_tail_ratio` | Downstream/upstream toxin concentration | > 1.5 |
+| `mean_exclusion_radius` | Mean distance to nearest competing-type boundary | Phylogroup-dependent |
+| `hopkins_statistic` | Global spatial clustering (Hopkins H) | > 0.7 |
+| `nnd_mean` | Grand mean NND between competing clones | Phylogroup-dependent |
+| `comet_tail_asymmetry` | Concentration-weighted downstream elongation | > 1.0 |
+
+The exclusion radius captures the characteristic "no-go zone" each bacteriocin-producing strain creates around itself; NND between competing clones quantifies how far apart rival phylogroups settle; the Hopkins statistic confirms non-random spatial arrangement.

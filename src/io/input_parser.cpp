@@ -17,9 +17,10 @@ SimulationConfig InputParser::default_config() {
   // Carbon gets z-gradient enabled (mucin-derived monosaccharides peak at epithelium)
   cfg.chemicals = {
     {"carbon",      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0, true,  25.0e-6},
-    {"iron",        1.0e-9, 1.0,  1.0e-6, 1.0e-6,  0.0, false, 25.0e-6},
+    {"iron",        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0, false, 25.0e-6},
     {"b12",         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0, false, 25.0e-6},
     {"bacteriocin", 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4, false, 25.0e-6},
+    {"acetate",     1.2e-9,  1.0,  80.0,   80.0,    0.0, false, 25.0e-6},
   };
 
   // VBF mucin z-gradient enabled by default (consistent with carbon gradient)

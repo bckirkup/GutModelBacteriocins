@@ -105,27 +105,46 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   // Receptor-modified Km values
   // When receptor expression drops, effective Km increases (worse affinity)
   Real expr_fepA = agent.receptor_expr[static_cast<int>(ReceptorType::FepA)];
+  Real expr_iroN = agent.receptor_expr[static_cast<int>(ReceptorType::IroN)];
+  Real expr_iutA = agent.receptor_expr[static_cast<int>(ReceptorType::IutA)];
+  Real expr_fiu  = agent.receptor_expr[static_cast<int>(ReceptorType::Fiu)];
   Real expr_btuB = agent.receptor_expr[static_cast<int>(ReceptorType::BtuB)];
 
   // Prevent division by zero
-  expr_fepA = std::max(expr_fepA, 0.01);
   expr_btuB = std::max(expr_btuB, 0.01);
 
-  Real Km_iron = agent.km_iron / expr_fepA;
+  // Graded iron uptake: each receptor contributes proportional to expression and affinity
+  Real iron_uptake = 0.0;
+  iron_uptake += expr_fepA * S_iron / (cfg_.km_iron_primary + S_iron);
+  iron_uptake += expr_iroN * S_iron / (cfg_.km_iron_iroN + S_iron);
+  iron_uptake += expr_iutA * S_iron / (cfg_.km_iron_iutA + S_iron);
+  iron_uptake += expr_fiu  * S_iron / (cfg_.km_iron_fiu  + S_iron);
+  // Normalize: wild-type with all receptors at 1.0 should give ~same as before
+  Real monod_iron = iron_uptake / (1.0 + expr_iroN + expr_iutA + expr_fiu);
+
   Real Km_b12  = agent.km_b12  / expr_btuB;
   Real Km_carb = agent.km_carbon;
 
   // Triple Monod kinetics (uncoupled)
   Real monod_carbon = S_carbon / (Km_carb + S_carbon);
-  Real monod_iron   = S_iron   / (Km_iron + S_iron);
   Real monod_b12    = S_b12    / (Km_b12  + S_b12);
 
   Real mu = agent.mu_max * monod_carbon * monod_iron * monod_b12;
 
   // Metabolic penalties for receptor downregulation
-  // BtuB loss → MetE pathway required (5% proteome cost + ethanolamine loss)
+  // BtuB loss → MetE pathway required (proteome cost + ethanolamine loss)
+  // Acetate inhibits MetE, scaling the penalty with local [acetate]
   if (expr_btuB < 0.5) {
-    mu *= (1.0 - cfg_.metE_penalty - cfg_.eut_penalty);
+    Real metE_eff = cfg_.metE_penalty;
+    Int i_acetate = chem.find("acetate");
+    if (i_acetate >= 0) {
+      Real acetate_conc = chem.conc(i_acetate, cell);
+      Real acetate_factor = 1.0
+          + (cfg_.metE_acetate_max_factor - 1.0)
+            * acetate_conc / (cfg_.metE_acetate_km + acetate_conc);
+      metE_eff *= acetate_factor;
+    }
+    mu *= (1.0 - metE_eff - cfg_.eut_penalty);
   }
 
   // Plasmid maintenance cost (reduced by compensatory mutations per VADI §79)

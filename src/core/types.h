@@ -37,6 +37,7 @@ enum class ReceptorType : uint8_t {
   IroN  = 4,   // salmochelin (secondary enterobactin)
   Fiu   = 5,   // catechol siderophores
   CirA  = 6,   // linearized enterobactin / colicin Ia
+  IutA  = 7,   // aerobactin (secondary iron uptake)
   NUM_RECEPTOR_TYPES
 };
 
@@ -45,8 +46,8 @@ static constexpr int NUM_RECEPTORS = static_cast<int>(ReceptorType::NUM_RECEPTOR
 // Bacteriocin classification by isoelectric point
 enum class BacteriocinClass : uint8_t {
   LETHAL_CORE = 0,   // pI > 8.5 → binds mucin → concentrated near producer
-  LETHAL_HALO = 1,   // pI < 6.0 → repelled by mucin → wider diffuse halo
-  NEUTRAL     = 2    // 6.0 <= pI <= 8.5
+  LETHAL_HALO = 1,   // pI < 7.0 → repelled by mucin → wider diffuse halo
+  NEUTRAL     = 2    // 7.0 <= pI <= 8.5
 };
 
 // Agent phenotype states

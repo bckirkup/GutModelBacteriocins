@@ -62,7 +62,7 @@ Single bacterial cell. Each agent has spatial, metabolic, receptor, phenotype, a
 | `biomass` | `Real` | Dry biomass (kg) |
 | `mu_max` | `Real` | Intrinsic max growth rate (1/s) |
 | `mu_realized` | `Real` | Current growth rate after penalties |
-| `receptor_expr` | `array<Real, 7>` | Expression level per receptor (0–1) |
+| `receptor_expr` | `array<Real, 8>` | Expression level per receptor (0–1) |
 | `state` | `PhenoState` | NORMAL, RESISTANT, SOS_INDUCED, DEAD |
 | `genome` | `Genome` | BI clusters, lineage, mutations |
 | `age` | `Real` | Time since last division (s) |
@@ -219,7 +219,7 @@ class Fix {
 
 | Fix | Config struct | Key parameters |
 |-----|--------------|----------------|
-| `FixMetabolism` | `MetabolismConfig` | `mu_max_default`, `division_threshold`, `metE_penalty`, `eut_penalty`, `maintenance_rate` |
+| `FixMetabolism` | `MetabolismConfig` | `mu_max_default`, `division_threshold`, `metE_penalty`, `eut_penalty`, `maintenance_rate`, `km_iron_primary`, `km_iron_iroN`, `km_iron_iutA`, `km_iron_fiu` |
 | `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `retardation_basic/acidic/neutral`, `D_free_colicin`, `burst_molecules`, `microcin_mu_penalty` |
 | `FixReceptor` | `ReceptorConfig` | `kd_*` binding affinities, `kill_rate_colicin/microcin`, `immunity_factor` |
 | `FixConjugation` | `ConjugationConfig` | `base_transfer_prob`, `contact_radius`, `shear_crit` |
@@ -238,7 +238,7 @@ class Fix {
 | `parent_id` | `TagID` | Immediate parent |
 | `generation` | `uint32_t` | Division count from ancestor |
 | `bi_loci` | `vector<BICluster>` | Bacteriocin-immunity clusters |
-| `receptor_expression` | `array<Real, 7>` | Per-receptor expression |
+| `receptor_expression` | `array<Real, 8>` | Per-receptor expression |
 | `has_conjugative_plasmid` | `bool` | Can initiate HGT |
 | `mutations` | `uint32_t` | Accumulated mutation count |
 | `plasmid_cost_amelioration` | `Real` | Compensatory reduction |
@@ -313,10 +313,34 @@ Package: `python/gut_ibm_tools/`
 Read GutIBM HDF5 output files into pandas DataFrames.
 
 ### `analysis`
-Spatial statistics: Hopkins statistic, nearest-neighbor distances, monochromatic patch score.
+Spatial statistics and exclusion-radius clustering metrics.
+
+| Function | Description |
+|----------|-------------|
+| `nearest_neighbor_distances(positions, types)` | NND between competing clones (nearest different-type agent). Returns `dict[int, ndarray]`. |
+| `inter_type_distances(positions, types)` | Pairwise inter-type NND. Returns `dict[tuple[int,int], ndarray]`. |
+| `spatial_clustering_index(positions, types)` | Hopkins statistic variant per type. |
+| `monochromatic_patch_score(positions, types, radius)` | Fraction of same-type neighbors within radius. |
+| `exclusion_radius(positions, types, target_type)` | Mean distance from target-type agents to nearest different-type agent. |
+| `hopkins_statistic(positions, n_samples=None)` | Hopkins clustering statistic over the full point cloud. H > 0.7 → clustered. |
+| `comet_tail_asymmetry_index(positions, concentrations, flow_direction=0)` | Concentration-weighted downstream elongation ratio. |
+| `comet_tail_index(positions, concentrations, flow_direction)` | Downstream/upstream mean concentration ratio. |
 
 ### `validation`
-Compare simulation output to empirical targets: 70–80% resident retention, comet-tail asymmetry index > 1.5, HiPR-FISH clustering metrics.
+Compare simulation output to empirical targets using exclusion-radius clustering (VADI §75).
+
+`validate_spatial_signatures(data, step)` returns:
+- `monochromatic_score` – same-type neighbor fraction (target > 0.7)
+- `comet_tail_ratio` – advective asymmetry (target > 1.5)
+- `mean_exclusion_radius` – mean inter-type boundary distance
+- `hopkins_statistic` – global clustering (target > 0.7)
+- `nnd_mean` – grand mean of competing-clone NND
+- `comet_tail_asymmetry` – concentration-weighted elongation
+
+`validate_genomic_signatures(data)` returns:
+- `resident_retention` – fraction of original lineages surviving (target 70–80%)
+- `resident_mean_bi_loci` / `transient_mean_bi_loci` – BI cluster counts
+- `transient_mean_btuB_expression` – receptor downregulation in transients
 
 ### `visualization`
 Plot agent distributions, chemical fields, lineage time-series.
