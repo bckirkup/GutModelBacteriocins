@@ -154,7 +154,8 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 | `metabolism.metE_penalty` | 0.05 | — | MetE pathway base cost (BtuB loss) |
 | `metabolism.metE_acetate_km` | 40.0 | mol/m³ | Half-saturation for acetate inhibition of MetE |
 | `metabolism.metE_acetate_max_factor` | 2.5 | — | Max scaling factor at saturating acetate |
-| `metabolism.eut_penalty` | 0.03 | — | Ethanolamine loss (BtuB loss) |
+| `metabolism.eut_km` | 0.1e-3 | mol/m³ | Ethanolamine half-saturation for eut utilization penalty |
+| `metabolism.eut_max_penalty` | 0.10 | — | Max eut penalty when ethanolamine abundant |
 | `metabolism.maintenance_rate` | 1e-5 | 1/s | Maintenance energy |
 | `metabolism.km_iron_primary` | 10e-6 | mol/m³ | FepA iron Km (10 nM) |
 | `metabolism.km_iron_iroN` | 50e-6 | mol/m³ | IroN salmochelin Km (50 nM) |
@@ -163,7 +164,9 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 
 **Graded iron uptake:** Iron acquisition uses multiple receptor systems in parallel. FepA is primary (highest affinity), with IroN, IutA, and Fiu as secondary fallbacks. When FepA is downregulated (e.g. to resist colicin B), cells switch to these secondary pathways rather than experiencing complete iron starvation. The effective iron Monod term sums contributions from all receptors weighted by expression level, then normalizes to preserve wild-type growth at full expression.
 
-**MetE pathway:** When BtuB expression < 0.5, cells must synthesize methionine via the MetE pathway instead of the B12-dependent MetH pathway. MetE requires ~5% of the proteome, and cells also lose ethanolamine utilization (normally B12-dependent).
+**MetE pathway:** When BtuB expression < 0.5, cells must synthesize methionine via the MetE pathway instead of the B12-dependent MetH pathway. MetE requires ~5% of the proteome.
+
+**Ethanolamine utilization loss:** The eut operon is B12-dependent. When BtuB is downregulated the penalty is proportional to local [ethanolamine] via Monod kinetics: `eut_effect = eut_max_penalty * [EA] / (eut_km + [EA])`. In inflamed gut (high ethanolamine) the cost is much larger than at homeostatic levels.
 
 **Acetate inhibition of MetE (VADI §87):** Colonic acetate (60–100 mM) severely inhibits the MetE enzyme. The effective penalty is scaled by local acetate concentration via Michaelis-Menten kinetics:
 ```

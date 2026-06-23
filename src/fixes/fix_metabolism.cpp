@@ -132,8 +132,9 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   Real mu = agent.mu_max * monod_carbon * monod_iron * monod_b12;
 
   // Metabolic penalties for receptor downregulation
-  // BtuB loss → MetE pathway required (proteome cost + ethanolamine loss)
+  // BtuB loss → MetE pathway required (proteome cost)
   // Acetate inhibits MetE, scaling the penalty with local [acetate]
+  // + concentration-dependent ethanolamine utilization loss
   if (expr_btuB < 0.5) {
     Real metE_eff = cfg_.metE_penalty;
     Int i_acetate = chem.find("acetate");
@@ -144,7 +145,11 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
             * acetate_conc / (cfg_.metE_acetate_km + acetate_conc);
       metE_eff *= acetate_factor;
     }
-    mu *= (1.0 - metE_eff - cfg_.eut_penalty);
+    Real eut_conc = 0.0;
+    Int i_eut = chem.find("ethanolamine");
+    if (i_eut >= 0) eut_conc = chem.conc(i_eut, cell);
+    Real eut_effect = cfg_.eut_max_penalty * eut_conc / (cfg_.eut_km + eut_conc);
+    mu *= (1.0 - metE_eff - eut_effect);
   }
 
   // Plasmid maintenance cost (reduced by compensatory mutations per VADI §79)

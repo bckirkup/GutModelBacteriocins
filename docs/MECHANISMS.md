@@ -46,7 +46,12 @@ This replaces the previous binary FepA-dependent penalty (`Km_Fe / expr_FepA`). 
 **Note:** FhuA (ferrichrome) is NOT included as a secondary iron fallback because it transports fungal ferrichrome, which is not an endogenous enterobactin pathway (corrects EARI §70).
 
 **Penalties applied:**
-- **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Base cost = `metE_penalty` (default 5%) + ethanolamine utilization loss `eut_penalty` (default 3%). The MetE cost is further amplified by local acetate concentration (see below).
+- **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Base cost = `metE_penalty` (default 5%). The MetE cost is further amplified by local acetate concentration (see below). Additionally, concentration-dependent ethanolamine utilization loss applies:
+  ```
+  eut_effect = eut_max_penalty * [EA] / (eut_km + [EA])
+  mu *= (1 - metE_eff - eut_effect)
+  ```
+  At homeostatic [EA] (~0.5 mM, `eut_km` = 0.1 mM) the eut penalty is ~8.3%. In inflamed gut ([EA] >> Km) it approaches `eut_max_penalty` (10%). With zero ethanolamine the penalty vanishes.
 - **Acetate inhibition of MetE** (VADI §87): Colonic acetate (60–100 mM) inhibits the MetE enzyme. The effective MetE penalty is scaled via Michaelis-Menten kinetics:
   ```
   acetate_factor = 1 + (max_factor - 1) * [acetate] / (Km + [acetate])

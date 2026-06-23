@@ -48,8 +48,9 @@ struct MetabolismConfig {
   Real metE_acetate_km    = 40.0;
   // At saturating acetate, penalty = metE_penalty * metE_acetate_max_factor
   Real metE_acetate_max_factor = 2.5;
-  // Ethanolamine utilization loss when BtuB downregulated
-  Real eut_penalty        = 0.03;
+  // Ethanolamine utilization: concentration-dependent penalty (Monod)
+  Real eut_km             = 0.1e-3;   // half-saturation for eut utilization (mol/m³)
+  Real eut_max_penalty    = 0.10;     // max penalty when ethanolamine abundant
 };
 
 class FixMetabolism : public Fix {
