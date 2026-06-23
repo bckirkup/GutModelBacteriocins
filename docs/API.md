@@ -26,16 +26,23 @@ Main orchestration engine. Manages the timestep loop inspired by NUFEB's `nufeb_
 | `rng()` | Access the random number generator |
 | `time()` | Current simulation time (s) |
 | `step_count()` | Number of completed steps |
+| `global_agent_count()` | Total agents across all MPI ranks |
+| `global_mu_avg()` | Global mean growth rate (via MPI_Allreduce) |
 
 **Timestep structure:**
 ```
 step(dt):
-  1. Pre-step: zero reactions, rebuild spatial hash, update grid coupling
-  2. module_biology(dt)   — execute all Fix modules
-  3. module_chemistry()   — QSSA steady-state fields
-  4. module_physics(dt)   — advection, drag, mechanical repulsion
-  5. Post-step: fix post-processing (division, lysis completion)
-  6. Cleanup: check washout, remove dead agents
+  1. Pre-step: clear ghosts, zero reactions
+  2. Exchange ghost agents (MPI boundary layers)
+  3. Rebuild spatial hash, update grid coupling
+  4. module_biology(dt)   — execute all Fix modules (uses ghosts for neighbor queries)
+  5. Clear ghost agents
+  6. module_chemistry()   — QSSA steady-state fields
+  7. module_physics(dt)   — advection, drag, mechanical repulsion
+  8. Post-step: fix post-processing (division, lysis completion)
+  9. Migrate agents that crossed slab boundaries (MPI_Sendrecv)
+ 10. Cleanup: check washout, remove dead agents
+ 11. MPI_Allreduce for global statistics
 ```
 
 ---
@@ -86,8 +93,8 @@ Vector-backed container for agents with O(1) removal (swap-and-pop).
 
 | Method | Description |
 |--------|-------------|
-| `init(DomainConfig&)` | Set up grid and spatial hash |
-| `lo()`, `hi()` | Domain bounds (Vec3) |
+| `init(DomainConfig&)` | Set up grid, spatial hash, and slab decomposition |
+| `lo()`, `hi()` | Global domain bounds (Vec3) |
 | `nx()`, `ny()`, `nz()` | Grid dimensions |
 | `ncells()` | Total grid cells |
 | `apply_pbc(Vec3&)` | Apply periodic boundary conditions |
@@ -95,6 +102,11 @@ Vector-backed container for agents with O(1) removal (swap-and-pop).
 | `cell_index(ix, iy, iz)` | Grid indices → flat index |
 | `min_image_delta(a, b)` | Minimum-image displacement |
 | `spatial_hash()` | Access `SpatialHash` |
+| `local_lo_x()`, `local_hi_x()` | This rank's slab bounds along decomposition axis |
+| `ghost_width()` | Ghost layer thickness (m) |
+| `is_local(Vec3)` | Check if position is within this rank's slab |
+| `owner_rank(Vec3)` | Determine which rank owns a position |
+| `rank_lo()`, `rank_hi()` | Neighbor ranks in ±x direction (-1 if none) |
 
 ---
 

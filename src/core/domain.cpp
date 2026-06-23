@@ -20,8 +20,6 @@ void Domain::init(const DomainConfig& cfg) {
   ny_ = std::max(1, static_cast<Int>(std::round(sz[1] / dx_)));
   nz_ = std::max(1, static_cast<Int>(std::round(sz[2] / dx_)));
 
-  hash_.init(lo_, hi_, cfg.hash_cell_size);
-
 #ifdef GUTIBM_MPI
   int mpi_initialized = 0;
   MPI_Initialized(&mpi_initialized);
@@ -30,6 +28,10 @@ void Domain::init(const DomainConfig& cfg) {
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs_);
   }
 #endif
+
+  decompose();
+
+  hash_.init(lo_, hi_, cfg.hash_cell_size);
 }
 
 void Domain::pos_to_grid(const Vec3& pos, Int& ix, Int& iy, Int& iz) const {
@@ -77,6 +79,53 @@ Vec3 Domain::min_image_delta(const Vec3& pos_i, const Vec3& pos_j) const {
 Real Domain::min_image_dist_sq(const Vec3& a, const Vec3& b) const {
   Vec3 d = min_image_delta(a, b);
   return d[0]*d[0] + d[1]*d[1] + d[2]*d[2];
+}
+
+void Domain::decompose() {
+  Int axis = cfg_.mpi_decomp_axis;  // 0 = x
+  Real global_lo = lo_[axis];
+  Real global_hi = hi_[axis];
+  Real total_len = global_hi - global_lo;
+  Real slab_width = total_len / nprocs_;
+
+  local_lo_x_ = global_lo + rank_ * slab_width;
+  local_hi_x_ = global_lo + (rank_ + 1) * slab_width;
+
+  // Last rank absorbs any floating-point remainder
+  if (rank_ == nprocs_ - 1) {
+    local_hi_x_ = global_hi;
+  }
+
+  ghost_width_ = cfg_.ghost_width;
+
+  // Determine neighbor ranks
+  bool axis_periodic = periodic_[axis];
+  rank_lo_ = rank_ - 1;
+  rank_hi_ = rank_ + 1;
+
+  if (rank_lo_ < 0) {
+    rank_lo_ = axis_periodic ? (nprocs_ - 1) : -1;
+  }
+  if (rank_hi_ >= nprocs_) {
+    rank_hi_ = axis_periodic ? 0 : -1;
+  }
+}
+
+bool Domain::is_local(const Vec3& pos) const {
+  if (nprocs_ <= 1) return true;
+  Int axis = cfg_.mpi_decomp_axis;
+  return pos[axis] >= local_lo_x_ && pos[axis] < local_hi_x_;
+}
+
+Int Domain::owner_rank(const Vec3& pos) const {
+  if (nprocs_ <= 1) return 0;
+  Int axis = cfg_.mpi_decomp_axis;
+  Real global_lo = lo_[axis];
+  Real total_len = hi_[axis] - global_lo;
+  Real slab_width = total_len / nprocs_;
+
+  Int r = static_cast<Int>(std::floor((pos[axis] - global_lo) / slab_width));
+  return std::clamp(r, 0, nprocs_ - 1);
 }
 
 }  // namespace gutibm

@@ -184,6 +184,29 @@ Near-zero at epithelium (z = 0), maximum at lumen (z = h). This creates a spatia
 
 ---
 
+## MPI Domain Decomposition
+
+The simulation domain is partitioned across MPI ranks using 1D slab decomposition along the x-axis (distal flow direction). This enables multi-node scaling for large agent populations.
+
+### Slab Decomposition
+The domain is divided into `nprocs` equal-width slabs along the x-axis. Each rank owns agents within its slab bounds `[local_lo_x, local_hi_x)`.
+
+### Ghost Layers
+Before the biology module, each rank exchanges **ghost agents** — copies of agents within `ghost_width` of slab boundaries — with its neighbors. This ensures correct neighbor queries (spatial hash lookups) for cross-boundary interactions (conjugation, mechanical repulsion, receptor binding).
+
+Ghost agents are read-only and discarded before the physics module to avoid double-counting position updates.
+
+### Agent Migration
+After the physics module (advection + mechanics), agents that have moved past their slab boundary are serialized and sent to the appropriate neighbor rank via `MPI_Sendrecv`. The full agent state — position, velocity, metabolism, genome, BI clusters — is transferred.
+
+### Global Statistics
+`MPI_Allreduce` aggregates per-rank counts and growth rate sums to produce global agent count and mean growth rate. These are used for output and lineage tracking.
+
+### HDF5 Parallel I/O
+When `hdf5.parallel = true`, the file is opened with `H5Pset_fapl_mpio` and agent data is written using collective hyperslab operations — each rank writes its local agents at a computed offset. Grid, metadata, and lineage data are written by rank 0 only.
+
+---
+
 ## Viscoelastic Background Field (VBF)
 
 The 99% obligate anaerobic microbiota is modeled as a continuum rather than discrete agents:
