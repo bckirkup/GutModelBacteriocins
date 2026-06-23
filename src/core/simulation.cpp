@@ -185,6 +185,9 @@ void Simulation::run() {
 }
 
 void Simulation::step(Real dt) {
+  // Update advection time for peristaltic oscillation
+  advection_.set_time(time_);
+
   // Pre-step: clear ghosts from previous step
   clear_ghost_agents();
   chem_.zero_reactions();

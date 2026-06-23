@@ -37,6 +37,13 @@ struct AdvectionConfig {
   Real  crypt_exit_rate      = 1.0e-4;   // per-second probability of agent exiting crypt
   Real  crypt_entry_rate     = 5.0e-5;   // per-second probability of agent entering crypt
   Int   crypt_carrying_capacity = 50;    // max agents per crypt region
+
+  // Peristaltic mixing: oscillatory modulation of flow velocity
+  // Ref: VADI §77 — colonic slow waves (~15–30 s period)
+  bool peristaltic_enabled      = false;
+  Real peristaltic_period       = 20.0;   // seconds (slow wave period)
+  Real peristaltic_amplitude    = 0.5;    // ±50% modulation of gamma_flow
+  Real peristaltic_wavelength   = 0.0;    // 0 = uniform, >0 = propagating wave (m)
 };
 
 class AdvectionField {
@@ -56,6 +63,12 @@ class AdvectionField {
 
   // Local shear rate magnitude (for conjugation MPS calc)
   Real shear_rate(const Vec3& pos) const;
+
+  // Set current simulation time (for peristaltic oscillation)
+  void set_time(Real t) { current_time_ = t; }
+
+  // Peristaltic modulation factor at position (1.0 when disabled)
+  Real peristaltic_factor(const Vec3& pos) const;
 
   // Advect an agent position by dt
   void advect(Vec3& pos, Real dt) const;
@@ -79,6 +92,7 @@ class AdvectionField {
   Real v_distal_max_ = 0.0;
   Real h_ = 100.0e-6;
   Real lo_z_ = 0.0;
+  Real current_time_ = 0.0;
 };
 
 }  // namespace gutibm

@@ -57,6 +57,21 @@ All configurable parameters for the GutIBM simulation, with defaults and biologi
 
 This captures shear-enhanced spreading of toxins in the mucus flow.
 
+### Peristaltic Mixing (VADI §77)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `advection.peristaltic_enabled` | false | — | Enable oscillatory flow modulation |
+| `advection.peristaltic_period` | 20 | s | Slow-wave period (colonic: 15–30 s) |
+| `advection.peristaltic_amplitude` | 0.5 | — | ±50% modulation of flow velocity |
+| `advection.peristaltic_wavelength` | 0.0 | m | 0 = uniform, >0 = propagating contractile wave |
+
+**Modulation:** When enabled, both radial and distal velocities are multiplied by:
+```
+peristaltic_factor = 1 + amplitude * sin(2π t/period − 2π x/wavelength)
+```
+With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation everywhere).
+
 ---
 
 ## Crypt Refugia
