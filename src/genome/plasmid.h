@@ -19,6 +19,10 @@ struct PlasmidEntry {
   std::string description;
 };
 
+// Classify bacteriocin by isoelectric point.
+// Thresholds: pI > 8.5 → CORE, pI < 7.0 → HALO, else NEUTRAL.
+BacteriocinClass classify_by_pI(Real pI);
+
 // Library of well-characterized E. coli bacteriocin systems
 class PlasmidLibrary {
  public:

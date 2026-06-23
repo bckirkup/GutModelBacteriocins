@@ -43,24 +43,71 @@ void test_agent_pool() {
 }
 
 void test_plasmid_library() {
+  // ColE1: pI 9.0 → LETHAL_CORE
   auto col_e1 = PlasmidLibrary::colicin_E1();
   assert(col_e1.target == ReceptorType::BtuB);
-  assert(col_e1.pI > 8.5);
+  assert(std::abs(col_e1.pI - 9.0) < 1e-6);
   assert(col_e1.bclass == BacteriocinClass::LETHAL_CORE);
 
+  // ColE2: pI 6.5 → LETHAL_HALO (secreted as acidic Im2 complex)
+  auto col_e2 = PlasmidLibrary::colicin_E2();
+  assert(col_e2.target == ReceptorType::BtuB);
+  assert(std::abs(col_e2.pI - 6.5) < 1e-6);
+  assert(col_e2.bclass == BacteriocinClass::LETHAL_HALO);
+
+  // ColB: pI 5.4 → LETHAL_HALO
   auto col_b = PlasmidLibrary::colicin_B();
   assert(col_b.target == ReceptorType::FepA);
-  assert(col_b.pI < 6.0);
+  assert(std::abs(col_b.pI - 5.4) < 1e-6);
   assert(col_b.bclass == BacteriocinClass::LETHAL_HALO);
 
-  // ColE2 correction: secreted as complex, net acidic
-  auto col_e2 = PlasmidLibrary::colicin_E2();
-  assert(col_e2.pI < 7.0);  // corrected per VADI review
+  // ColIa: pI 7.2 → NEUTRAL
+  auto col_ia = PlasmidLibrary::colicin_Ia();
+  assert(col_ia.target == ReceptorType::CirA);
+  assert(std::abs(col_ia.pI - 7.2) < 1e-6);
+  assert(col_ia.bclass == BacteriocinClass::NEUTRAL);
+
+  // ColM: pI 9.3 → LETHAL_CORE
+  auto col_m = PlasmidLibrary::colicin_M();
+  assert(col_m.target == ReceptorType::FhuA);
+  assert(std::abs(col_m.pI - 9.3) < 1e-6);
+  assert(col_m.bclass == BacteriocinClass::LETHAL_CORE);
+
+  // MccV: pI 5.0 → LETHAL_HALO
+  auto mcc_v = PlasmidLibrary::microcin_V();
+  assert(mcc_v.target == ReceptorType::CirA);
+  assert(std::abs(mcc_v.pI - 5.0) < 1e-6);
+  assert(mcc_v.bclass == BacteriocinClass::LETHAL_HALO);
 
   const auto& lib = PlasmidLibrary::entries();
-  assert(lib.size() >= 5);
+  assert(lib.size() == 6);
 
   std::cout << "  test_plasmid_library: PASSED\n";
+}
+
+void test_classify_by_pI() {
+  // LETHAL_CORE: pI > 8.5
+  assert(classify_by_pI(9.0) == BacteriocinClass::LETHAL_CORE);
+  assert(classify_by_pI(8.6) == BacteriocinClass::LETHAL_CORE);
+  assert(classify_by_pI(12.0) == BacteriocinClass::LETHAL_CORE);
+
+  // LETHAL_HALO: pI < 7.0
+  assert(classify_by_pI(6.9) == BacteriocinClass::LETHAL_HALO);
+  assert(classify_by_pI(6.5) == BacteriocinClass::LETHAL_HALO);
+  assert(classify_by_pI(5.0) == BacteriocinClass::LETHAL_HALO);
+  assert(classify_by_pI(3.0) == BacteriocinClass::LETHAL_HALO);
+
+  // NEUTRAL: 7.0 <= pI <= 8.5
+  assert(classify_by_pI(7.0) == BacteriocinClass::NEUTRAL);
+  assert(classify_by_pI(7.5) == BacteriocinClass::NEUTRAL);
+  assert(classify_by_pI(8.0) == BacteriocinClass::NEUTRAL);
+  assert(classify_by_pI(8.5) == BacteriocinClass::NEUTRAL);
+
+  // Boundary checks
+  assert(classify_by_pI(7.0) == BacteriocinClass::NEUTRAL);   // exactly 7.0 → NEUTRAL
+  assert(classify_by_pI(8.5) == BacteriocinClass::NEUTRAL);   // exactly 8.5 → NEUTRAL
+
+  std::cout << "  test_classify_by_pI: PASSED\n";
 }
 
 void test_genome_operations() {
@@ -92,6 +139,7 @@ int main() {
   test_agent_creation();
   test_agent_pool();
   test_plasmid_library();
+  test_classify_by_pI();
   test_genome_operations();
   test_sphere_volume();
   std::cout << "All agent tests passed.\n";

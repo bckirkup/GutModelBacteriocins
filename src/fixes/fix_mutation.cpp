@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "fix_mutation.h"
+#include "plasmid.h"
 #include "simulation.h"
 #include <algorithm>
 
@@ -148,13 +149,7 @@ BICluster FixMutation::create_novel_toxin(const BICluster& parent) {
   novel.pI = std::clamp(novel.pI, 3.0, 12.0);
 
   // Reclassify based on new pI
-  if (novel.pI > 8.5) {
-    novel.bclass = BacteriocinClass::LETHAL_CORE;
-  } else if (novel.pI < 6.0) {
-    novel.bclass = BacteriocinClass::LETHAL_HALO;
-  } else {
-    novel.bclass = BacteriocinClass::NEUTRAL;
-  }
+  novel.bclass = classify_by_pI(novel.pI);
 
   // Altered target receptor (may hijack a different TBDT)
   if (rng.bernoulli(0.3)) {
