@@ -8,6 +8,7 @@
 #include "fix_bacteriocin.h"
 #include "fix_conjugation.h"
 #include "fix_mutation.h"
+#include "fix_mechanics.h"
 #include "plasmid.h"
 
 #include <iostream>
@@ -53,6 +54,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   fixes_.push_back(std::make_unique<FixReceptor>(*this, cfg.receptor));
   fixes_.push_back(std::make_unique<FixConjugation>(*this, cfg.conjugation));
   fixes_.push_back(std::make_unique<FixMutation>(*this, cfg.mutation));
+  fixes_.push_back(std::make_unique<FixMechanics>(*this, cfg.mechanics));
 
   // Initialize fixes
   for (auto& fix : fixes_) {
@@ -291,37 +293,11 @@ void Simulation::module_physics(Real dt) {
     domain_.apply_pbc(a.x);
   }
 
-  // Simple mechanical repulsion between overlapping cells
-  auto& hash = domain_.spatial_hash();
-  for (Int i = 0; i < agents_.size(); ++i) {
-    Agent& ai = agents_[i];
-    if (ai.state == PhenoState::DEAD) continue;
-
-    auto neighbors = hash.query_neighbors(ai.x);
-    for (Int j : neighbors) {
-      if (j <= i) continue;
-      Agent& aj = agents_[j];
-      if (aj.state == PhenoState::DEAD) continue;
-
-      Vec3 delta = domain_.min_image_delta(ai.x, aj.x);
-      Real d2 = delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2];
-      Real sum_r = ai.radius + aj.radius;
-
-      if (d2 < sum_r * sum_r && d2 > 0.0) {
-        Real d = std::sqrt(d2);
-        Real overlap = sum_r - d;
-        Real force_mag = 1.0e-10 * overlap;  // Hertzian-like repulsion
-
-        Vec3 n = {delta[0]/d, delta[1]/d, delta[2]/d};
-        Real push = force_mag * dt / std::max(ai.mass, 1.0e-30);
-
-        ai.x[0] -= n[0] * push * 0.5;
-        ai.x[1] -= n[1] * push * 0.5;
-        ai.x[2] -= n[2] * push * 0.5;
-        aj.x[0] += n[0] * push * 0.5;
-        aj.x[1] += n[1] * push * 0.5;
-        aj.x[2] += n[2] * push * 0.5;
-      }
+  // Mechanical repulsion handled by FixMechanics (registered as a fix)
+  for (auto& fix : fixes_) {
+    if (fix->name() == "mechanics") {
+      fix->compute(dt);
+      break;
     }
   }
 }

@@ -251,6 +251,23 @@ class Fix {
 | `FixReceptor` | `ReceptorConfig` | `kd_*` binding affinities, `kill_rate_colicin/microcin`, `immunity_factor` |
 | `FixConjugation` | `ConjugationConfig` | `base_transfer_prob`, `contact_radius`, `shear_crit` |
 | `FixMutation` | `MutationConfig` | Per-division rates for duplication, recombination, receptor downreg, super-killer, compensatory; `immunity_escape_prob`, `escape_affinity_lo/hi` |
+| `FixMechanics` | `MechanicsConfig` | `hertz_k`, `hertzian_enabled`, `adhesion_enabled`, `adhesion_strength`, `adhesion_range` |
+
+---
+
+### `FixMechanics`
+**Header:** `src/fixes/fix_mechanics.h`
+
+Computes Hertzian contact forces between overlapping agents and optional EPS-mediated adhesion. Replaces the previous inline linear repulsion in `module_physics()`.
+
+```cpp
+FixMechanics(Simulation& sim, const MechanicsConfig& cfg);
+void compute(Real dt) override;
+```
+
+**Hertzian repulsion:** For each neighbor pair with overlap > 0, applies `F = hertz_k * overlap^1.5` as equal-and-opposite impulses weighted by reduced mass.
+
+**EPS adhesion:** When enabled, cells separated by gap < `adhesion_range` receive a linearly decaying attractive force `F = adhesion_strength * (1 - gap/range)`.
 
 ---
 
