@@ -5,6 +5,7 @@
 #include "chemical_field.h"
 #include "domain.h"
 #include <algorithm>
+#include <cmath>
 #include <stdexcept>
 
 namespace gutibm {
@@ -20,6 +21,20 @@ void ChemicalField::init(const Domain& domain,
   for (Int s = 0; s < nspec_; ++s) {
     conc_[s].assign(ncells_, specs_[s].initial_conc);
     reac_[s].assign(ncells_, 0.0);
+
+    if (specs_[s].z_gradient_enabled) {
+      Int nx = domain.nx(), ny = domain.ny(), nz = domain.nz();
+      for (Int iz = 0; iz < nz; ++iz) {
+        Real z_rel = (iz + 0.5) * domain.dx();
+        Real factor = std::exp(-z_rel / specs_[s].z_gradient_lambda);
+        for (Int iy = 0; iy < ny; ++iy) {
+          for (Int ix = 0; ix < nx; ++ix) {
+            Int cell = domain.cell_index(ix, iy, iz);
+            conc_[s][cell] = specs_[s].initial_conc * factor;
+          }
+        }
+      }
+    }
   }
 }
 
@@ -36,6 +51,7 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
     Real bc = specs_[s].boundary_conc;
 
     // z=0 (epithelial surface): Dirichlet for nutrients
+    // When z_gradient_enabled, bc is the peak concentration at the epithelium
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
         Int idx = domain.cell_index(ix, iy, 0);

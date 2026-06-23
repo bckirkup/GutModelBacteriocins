@@ -90,6 +90,21 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 
 ---
 
+## Chemical Species – z-Dependent Gradient
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `ChemicalSpec.z_gradient_enabled` | false (true for carbon) | — | Enable exponential z-decay from epithelium |
+| `ChemicalSpec.z_gradient_lambda` | 25e-6 | m | Characteristic decay length |
+| `carbon_z_gradient` | true | — | Config file key for carbon gradient |
+| `carbon_z_lambda` | 25e-6 | m | Config file key for carbon decay length |
+
+**Profile:** `C(z) = C_max * exp(-z_rel / lambda)` where `z_rel` is the distance from the epithelium (z=0).
+
+**Biological basis:** Mucin-derived monosaccharides are liberated primarily at the epithelial surface where host goblet cells secrete mucin glycoproteins. The anaerobic background degrades mucin locally, so the concentration of free monosaccharides is highest near z=0 and decays exponentially into the lumen. A characteristic length of ~25 μm places most carbon within the inner mucus layer.
+
+---
+
 ## VBF (Viscoelastic Background Field)
 
 | Parameter | Default | Units | Description |
@@ -97,9 +112,16 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 | `vbf.density` | 1e11 | #/m^3 | Anaerobic background density |
 | `vbf.drag_coeff` | 1e-9 | N·s/m | Stokes drag coefficient |
 | `vbf.nutrient_sink` | 1e-4 | mol/m^3/s | Background nutrient consumption |
-| `vbf.mucin_liberation` | 5e-5 | mol/m^3/s | Monosaccharide release |
+| `vbf.mucin_liberation` | 5e-5 | mol/m^3/s | Peak monosaccharide release (at z=0) |
 | `vbf.carrying_cap` | 1e12 | #/m^3 | Local carrying capacity |
 | `vbf.viscosity` | 0.01 | Pa·s | Effective viscosity (~10× water) |
+| `vbf.mucin_z_gradient_enabled` | true | — | z-dependent mucin liberation rate |
+| `vbf.mucin_z_gradient_lambda` | 25e-6 | m | Liberation decay length from epithelium |
+
+**Mucin liberation profile:** When `mucin_z_gradient_enabled`, the liberation rate varies as:
+`rate(z) = mucin_liberation * exp(-z_rel / mucin_z_gradient_lambda)`
+
+This ensures the carbon source term fed into the chemical field is strongest near the epithelium and decays toward the lumen, consistent with the chemical concentration gradient.
 
 ---
 

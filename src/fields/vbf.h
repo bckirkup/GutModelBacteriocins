@@ -23,6 +23,10 @@ struct VBFConfig {
   Real mucin_liberation = 5.0e-5;   // monosaccharide release from mucin (mol/m^3/s)
   Real carrying_cap     = 1.0e12;   // local carrying capacity (#/m^3)
   Real viscosity        = 0.01;     // effective viscosity (Pa·s), ~10x water
+
+  // z-dependent mucin liberation: rate(z) = mucin_liberation * exp(-z_rel / lambda)
+  bool mucin_z_gradient_enabled = false;
+  Real mucin_z_gradient_lambda  = 25.0e-6;  // characteristic decay length (m)
 };
 
 class VBF {
@@ -32,7 +36,8 @@ class VBF {
   void init(const VBFConfig& cfg, const Domain& domain);
 
   // Apply VBF nutrient sink/source to chemical field
-  void apply_nutrient_coupling(ChemicalField& chem, Real dt) const;
+  void apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
+                                Real dt) const;
 
   // Compute drag force on an agent at position with velocity
   Vec3 drag_force(const Vec3& agent_vel) const;
@@ -46,6 +51,9 @@ class VBF {
   Real density() const { return cfg_.density; }
 
   const VBFConfig& config() const { return cfg_; }
+
+  // Mucin liberation rate at a z-position relative to the epithelium
+  Real mucin_rate(Real z_rel) const;
 
  private:
   VBFConfig cfg_;

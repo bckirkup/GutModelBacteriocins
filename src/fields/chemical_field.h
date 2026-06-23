@@ -21,6 +21,10 @@ struct ChemicalSpec {
   Real initial_conc;     // initial bulk concentration (mol/m^3)
   Real boundary_conc;    // Dirichlet boundary (epithelial supply or luminal)
   Real decay_rate;       // first-order decay (1/s)
+
+  // z-dependent gradient: C(z) = C_max * exp(-z_rel / z_gradient_lambda)
+  bool z_gradient_enabled = false;
+  Real z_gradient_lambda  = 25.0e-6;  // characteristic decay length (m)
 };
 
 class ChemicalField {
