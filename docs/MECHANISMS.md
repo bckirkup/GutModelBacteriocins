@@ -4,6 +4,25 @@ Detailed descriptions of each Fix module, their biological basis, and implementa
 
 ---
 
+## Adaptive Timestep Selection
+
+When `adaptive_dt_enabled = true`, `compute_adaptive_dt()` selects the biological timestep each iteration using CFL-like constraints:
+
+```
+dt = dt_max
+dt = min(dt, dt_growth_limit / max(|mu_realized|))   // growth constraint
+if (sos_count > 5)  dt = min(dt, 10)                  // lysis cascade
+if (sos_count > 20) dt = min(dt, 2)
+if (density > 1e15) dt = min(dt, 10)                  // overcrowding
+dt = clamp(dt * dt_safety, dt_min, dt_max)
+```
+
+The adaptive dt is recomputed before every call to `step()`. During quiescent periods, `dt` rises toward `dt_max` (up to 300 s), improving throughput. During mass lysis or rapid growth, `dt` drops to resolve the fast dynamics (down to `dt_min` = 1 s). The safety factor (default 0.8) provides a margin below the stability limit.
+
+The `run()` loop uses `while (time < total_time)` with the adaptive dt, clamping the final step to avoid overshooting `total_time`.
+
+---
+
 ## Fix Architecture (NUFEB-inspired)
 
 Each biological rule is encapsulated as a **Fix** — a modular computation unit called once per biological timestep. Fixes are executed in order:
