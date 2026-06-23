@@ -6,6 +6,10 @@
 #include "simulation.h"
 #include <cmath>
 #include <algorithm>
+#include <vector>
+#ifdef GUTIBM_OPENMP
+#include <omp.h>
+#endif
 
 namespace gutibm {
 
@@ -15,22 +19,28 @@ FixReceptor::FixReceptor(Simulation& sim, const ReceptorConfig& cfg)
 void FixReceptor::compute(Real dt) {
   auto& agents = sim_.agents();
   auto& rng    = sim_.rng();
+  Int n = agents.size();
 
-  for (Int i = 0; i < agents.size(); ++i) {
+  // Precompute kill probabilities in parallel (read-only on chem/agent)
+  std::vector<Real> kill_probs(n, 0.0);
+  #ifdef GUTIBM_OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
+  for (Int i = 0; i < n; ++i) {
+    const Agent& a = agents[i];
+    if (a.state == PhenoState::DEAD || a.state == PhenoState::SOS_INDUCED)
+      continue;
+    kill_probs[i] = compute_kill_prob(a, dt);
+  }
+
+  // Apply kills serially (RNG is not thread-safe)
+  for (Int i = 0; i < n; ++i) {
     Agent& a = agents[i];
     if (a.state == PhenoState::DEAD || a.state == PhenoState::SOS_INDUCED)
       continue;
 
-    Real p_kill = compute_kill_prob(a, dt);
-
-    if (p_kill > 0.0 && rng.bernoulli(p_kill)) {
-      // Check immunity
+    if (kill_probs[i] > 0.0 && rng.bernoulli(kill_probs[i])) {
       bool immune = false;
-      // Agent is immune to its own toxins (cognate immunity)
-      // For external toxins, check if agent carries matching immunity
-      // (simplified: if agent has BI cluster targeting same receptor,
-      //  the immunity protein protects)
-      // Full immunity check is handled here
       if (!immune) {
         a.state = PhenoState::DEAD;
       }

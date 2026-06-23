@@ -10,14 +10,21 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # ── Options ──────────────────────────────────────────────────────────────
-option(GUTIBM_USE_MPI   "Enable MPI parallelism"  ON)
-option(GUTIBM_USE_HDF5  "Enable HDF5 output"      ON)
-option(BUILD_TESTING     "Build unit tests"         ON)
+option(GUTIBM_USE_MPI    "Enable MPI parallelism"   ON)
+option(GUTIBM_USE_HDF5   "Enable HDF5 output"       ON)
+option(GUTIBM_USE_OPENMP "Enable OpenMP parallelism" OFF)
+option(BUILD_TESTING      "Build unit tests"          ON)
 
 # ── MPI ──────────────────────────────────────────────────────────────────
 if(GUTIBM_USE_MPI)
   find_package(MPI REQUIRED COMPONENTS CXX)
   add_definitions(-DGUTIBM_MPI)
+endif()
+
+# ── OpenMP ─────────────────────────────────────────────────────────────────
+if(GUTIBM_USE_OPENMP)
+  find_package(OpenMP REQUIRED COMPONENTS CXX)
+  add_definitions(-DGUTIBM_OPENMP)
 endif()
 
 # ── HDF5 ─────────────────────────────────────────────────────────────────
@@ -59,6 +66,10 @@ endif()
 if(GUTIBM_USE_HDF5)
   target_include_directories(gut_ibm PRIVATE ${HDF5_INCLUDE_DIRS})
   target_link_libraries(gut_ibm PRIVATE ${HDF5_LIBRARIES})
+endif()
+
+if(GUTIBM_USE_OPENMP)
+  target_link_libraries(gut_ibm PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
 target_link_libraries(gut_ibm PRIVATE ${MATH_LIB})

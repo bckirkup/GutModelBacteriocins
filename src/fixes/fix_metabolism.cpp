@@ -6,6 +6,9 @@
 #include "simulation.h"
 #include <cmath>
 #include <algorithm>
+#ifdef GUTIBM_OPENMP
+#include <omp.h>
+#endif
 
 namespace gutibm {
 
@@ -16,6 +19,9 @@ void FixMetabolism::init() {}
 
 void FixMetabolism::compute(Real dt) {
   auto& agents = sim_.agents();
+  #ifdef GUTIBM_OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
   for (Int i = 0; i < agents.size(); ++i) {
     Agent& a = agents[i];
     if (a.state == PhenoState::DEAD) continue;
@@ -190,13 +196,25 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   Real cell_vol = sim_.domain().dx() * sim_.domain().dx() * sim_.domain().dx();
 
   if (i_carbon >= 0 && cell_vol > 0.0) {
-    chem.reac(i_carbon, cell) -= d_biomass * cfg_.yield_carbon / cell_vol;
+    Real delta_c = d_biomass * cfg_.yield_carbon / cell_vol;
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    chem.reac(i_carbon, cell) -= delta_c;
   }
   if (i_iron >= 0 && cell_vol > 0.0) {
-    chem.reac(i_iron, cell) -= d_biomass * cfg_.yield_iron / cell_vol;
+    Real delta_fe = d_biomass * cfg_.yield_iron / cell_vol;
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    chem.reac(i_iron, cell) -= delta_fe;
   }
   if (i_b12 >= 0 && cell_vol > 0.0) {
-    chem.reac(i_b12, cell) -= d_biomass * cfg_.yield_b12 / cell_vol;
+    Real delta_b12 = d_biomass * cfg_.yield_b12 / cell_vol;
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    chem.reac(i_b12, cell) -= delta_b12;
   }
 }
 

@@ -12,6 +12,7 @@ jobs:
     strategy:
       matrix:
         build_type: [Release, Debug]
+        openmp: [OFF, ON]
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +26,8 @@ jobs:
           cmake -B build \
             -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
             -DGUTIBM_USE_MPI=ON \
-            -DGUTIBM_USE_HDF5=ON
+            -DGUTIBM_USE_HDF5=ON \
+            -DGUTIBM_USE_OPENMP=${{ matrix.openmp }}
 
       - name: Build
         run: cmake --build build -j$(nproc)

@@ -10,6 +10,9 @@
 #include "agent.h"
 #include <cmath>
 #include <numeric>
+#ifdef GUTIBM_OPENMP
+#include <omp.h>
+#endif
 
 namespace gutibm {
 
@@ -63,6 +66,9 @@ void QSSASolver::solve_bacteriocin_field(
   gf_.superpose_to_grid(sources, params, toxin_conc, cfg_.toxin_cutoff);
 
   // Deposit onto chemical field
+  #ifdef GUTIBM_OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
   for (Int c = 0; c < chem.ncells(); ++c) {
     chem.conc(toxin_species_idx, c) = toxin_conc[c];
   }
@@ -171,6 +177,9 @@ void QSSASolver::solve_nutrient_depletion(
   Int i_b12    = chem.find("b12");
   Int i_carbon = chem.find("carbon");
 
+  #ifdef GUTIBM_OPENMP
+  #pragma omp parallel for schedule(dynamic)
+  #endif
   for (Int i = 0; i < agents.size(); ++i) {
     const Agent& a = agents[i];
     if (a.state == PhenoState::DEAD) continue;
@@ -182,12 +191,21 @@ void QSSASolver::solve_nutrient_depletion(
     Real consumption = a.mu_realized * a.biomass;
 
     if (i_iron >= 0) {
+      #ifdef GUTIBM_OPENMP
+      #pragma omp atomic
+      #endif
       chem.reac(i_iron, cell) -= consumption * 1.0e-6;  // iron stoichiometry
     }
     if (i_b12 >= 0) {
+      #ifdef GUTIBM_OPENMP
+      #pragma omp atomic
+      #endif
       chem.reac(i_b12, cell) -= consumption * 1.0e-9;   // B12 stoichiometry
     }
     if (i_carbon >= 0) {
+      #ifdef GUTIBM_OPENMP
+      #pragma omp atomic
+      #endif
       chem.reac(i_carbon, cell) -= consumption * 0.5;    // carbon stoichiometry
     }
   }

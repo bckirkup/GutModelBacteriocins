@@ -350,6 +350,39 @@ Tracks genealogy and allele time-series for validation.
 
 ---
 
+## OpenMP Parallelism
+
+GutIBM supports shared-memory parallelism via OpenMP. Enable with `-DGUTIBM_USE_OPENMP=ON`.
+
+**Compile-time guard:** All OpenMP pragmas are wrapped in `#ifdef GUTIBM_OPENMP`, so the code compiles cleanly with or without OpenMP.
+
+**Parallelized functions:**
+
+| Function | File | Strategy |
+|----------|------|----------|
+| `GreensFunction::superpose_to_grid()` | `greens_function.cpp` | Thread-local grid vectors, merged via `omp critical` |
+| `QSSASolver::solve_bacteriocin_field()` | `qssa_solver.cpp` | `omp parallel for` over grid cells (deposition) |
+| `QSSASolver::solve_nutrient_depletion()` | `qssa_solver.cpp` | `omp parallel for` with `omp atomic` on shared grid |
+| `FixMetabolism::compute()` | `fix_metabolism.cpp` | `omp parallel for` over agents; atomic nutrient writes |
+| `FixReceptor::compute()` | `fix_receptor.cpp` | Parallel kill-prob precomputation; serial RNG application |
+| `Simulation::module_physics()` | `simulation.cpp` | `omp parallel for` over advection pass |
+| `Simulation::module_chemistry()` | `simulation.cpp` | `omp parallel for` over reaction application |
+| `Simulation::update_grid_coupling()` | `simulation.cpp` | `omp parallel for` over agents |
+
+**Thread safety notes:**
+- Chemical field reaction writes use `#pragma omp atomic` for concurrent cell access
+- `GreensFunction::superpose_to_grid()` uses thread-local accumulation buffers to avoid false sharing
+- RNG-dependent operations (kill decisions, mutation) remain serial
+- Mechanical repulsion (pairwise neighbor push) remains serial due to symmetric position updates
+
+---
+
+## GPU Acceleration (Planned)
+
+A stub for future CUDA/OpenCL kernels is located in `src/gpu/`. See `src/gpu/README.md` for the planned architecture covering Green's function evaluation, spatial hash operations, agent updates, and field operations.
+
+---
+
 ## Python Toolkit
 
 Package: `python/gut_ibm_tools/`
