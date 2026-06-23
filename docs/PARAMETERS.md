@@ -59,6 +59,22 @@ This captures shear-enhanced spreading of toxins in the mucus flow.
 
 ---
 
+## Crypt Refugia
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `advection.crypts_enabled` | false | — | Enable crypt zero-flow zones |
+| `advection.crypt_depth` | 10e-6 | m | Depth of crypt zone below epithelium (z < lo_z + depth) |
+| `advection.crypt_exit_rate` | 1e-4 | 1/s | Per-second probability of agent exiting crypt |
+| `advection.crypt_entry_rate` | 5e-5 | 1/s | Per-second probability of agent entering crypt |
+| `advection.crypt_carrying_capacity` | 50 | — | Maximum agents in crypt region |
+
+**Biological context:** Intestinal crypts and the firmly adherent inner mucus layer provide physical refugia where advective flow is effectively zero (γ_flow ≈ 0). Agents in this zone bypass the Washout Trap criterion (μ_realized < γ_flow), enabling colonization persistence even under metabolic stress (VADI §80, §98–99).
+
+**Config file keys:** `crypts_enabled`, `crypt_depth`, `crypt_exit_rate`, `crypt_entry_rate`, `crypt_carrying_capacity`.
+
+---
+
 ## VBF (Viscoelastic Background Field)
 
 | Parameter | Default | Units | Description |

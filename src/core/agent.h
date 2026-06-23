@@ -50,6 +50,9 @@ struct Agent {
   Real   age;              // time since last division (s)
   Real   sos_timer;        // SOS response countdown (s), <0 = inactive
 
+  // ── Crypt state ──────────────────────────────────────────────────────
+  bool   in_crypt = false; // true when agent resides in a crypt refugium
+
   // ── Grid coupling ─────────────────────────────────────────────────────
   Int    grid_cell;        // index into the chemical field grid
 

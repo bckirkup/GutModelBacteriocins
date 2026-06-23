@@ -201,6 +201,24 @@ When `hdf5.parallel = true`, the file is opened with `H5Pset_fapl_mpio` and agen
 
 ---
 
+## Crypt Refugia — Zero-Flow Zones (VADI §80, §98–99)
+
+**Biological basis:** The model’s original assumption that advective flow is inescapable throughout the domain is unrealistic. Intestinal crypts and the firmly adherent inner mucus layer have γ_flow ≈ 0, providing physical refugia where the Washout Trap threshold (μ_realized < γ_flow) can be bypassed entirely.
+
+**Implementation:**
+
+When `crypts_enabled = true`, a crypt zone is defined as `z < lo_z + crypt_depth`. Within this zone:
+
+1. **Zero flow:** `velocity()`, `radial_velocity()`, `distal_velocity()`, and `washout_rate()` all return 0. Agents are not advected.
+2. **Washout bypass:** `check_washout()` skips agents with `in_crypt = true`, regardless of their μ_realized.
+3. **Stochastic migration:** Each timestep, `crypt_migration(dt)` processes:
+   - **Exit:** Crypt agents exit with probability `1 - exp(-crypt_exit_rate * dt)`, placed at `z = crypt_depth + ε`.
+   - **Entry:** Flow-zone agents near the crypt boundary enter with probability `1 - exp(-crypt_entry_rate * dt)`, placed at random z within the crypt zone. Entry is blocked when the crypt population reaches `crypt_carrying_capacity`.
+4. **Agent flag:** Each agent carries an `in_crypt` boolean, set during initialization for agents spawned inside the crypt zone and updated dynamically by migration.
+
+**Derivative issue:** The current implementation uses a simple z-threshold model. More complex crypt geometry (discrete invaginations, variable crypt density) may be warranted for spatially heterogeneous mucosa.
+
+---
 ## Viscoelastic Background Field (VBF)
 
 The 99% obligate anaerobic microbiota is modeled as a continuum rather than discrete agents:

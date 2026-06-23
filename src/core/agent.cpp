@@ -40,6 +40,7 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
 
   a.age       = 0.0;
   a.sos_timer = -1.0;
+  a.in_crypt  = false;
   a.grid_cell = -1;
 
   return a;

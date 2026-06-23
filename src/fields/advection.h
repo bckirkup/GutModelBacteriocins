@@ -30,6 +30,13 @@ struct AdvectionConfig {
   // Taylor-Aris effective dispersion enhancement
   // D_eff = D_mol + (U^2 * h^2) / (210 * D_mol)  for Poiseuille flow
   bool  taylor_aris_enabled = true;
+
+  // Crypt refugia: zero-flow zones near epithelium (VADI §80, §98-99)
+  bool  crypts_enabled       = false;
+  Real  crypt_depth          = 10.0e-6;  // z < lo_z + crypt_depth is zero-flow (10 um)
+  Real  crypt_exit_rate      = 1.0e-4;   // per-second probability of agent exiting crypt
+  Real  crypt_entry_rate     = 5.0e-5;   // per-second probability of agent entering crypt
+  Int   crypt_carrying_capacity = 50;    // max agents per crypt region
 };
 
 class AdvectionField {
@@ -60,6 +67,9 @@ class AdvectionField {
   // Taylor-Aris effective dispersion coefficient at height z
   // Accounts for shear-enhanced longitudinal spreading
   Real taylor_aris_D_eff(Real z, Real D_mol) const;
+
+  // Query whether a z-coordinate falls within the crypt zone
+  bool in_crypt_zone(Real z) const;
 
   const AdvectionConfig& config() const { return cfg_; }
 

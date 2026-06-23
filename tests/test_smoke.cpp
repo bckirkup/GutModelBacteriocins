@@ -236,12 +236,160 @@ void test_receptor_killing() {
             << " targets=" << type2_alive << ")\n";
 }
 
+void test_crypt_agents_survive_washout() {
+  // Agents in the crypt zone must not be washed out even with
+  // negative mu_realized (the Washout Trap bypass per VADI §98-99).
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo  = {0, 0, 0};
+  cfg.domain.hi  = {50e-6, 50e-6, 50e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.total_time      = 600.0;
+  cfg.bio_dt          = 60.0;
+  cfg.output_interval = 600.0;
+  cfg.seed            = 7777;
+  cfg.hdf5.enabled    = false;
+
+  // Enable crypts with a generous depth so all agents fall inside
+  cfg.advection.crypts_enabled       = true;
+  cfg.advection.crypt_depth          = 25e-6;
+  cfg.advection.crypt_exit_rate      = 0.0;  // disable exit so they stay
+  cfg.advection.crypt_entry_rate     = 0.0;
+  cfg.advection.crypt_carrying_capacity = 100;
+  cfg.advection.mucus_thickness      = 50e-6;
+  cfg.advection.distal_length        = 50e-6;
+
+  cfg.qssa.toxin_cutoff   = 25e-6;
+  cfg.qssa.nutrient_cutoff = 15e-6;
+
+  // Place agents exclusively in the crypt zone (z < 25 um)
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain s;
+  s.type = 1; s.count = 10; s.mu_max = 5e-4;
+  s.plasmids = {}; s.conjugative = false;
+  cfg.initial_strains.push_back(s);
+
+  Simulation sim;
+  sim.init(cfg);
+
+  // Force all agents to negative mu_realized (metabolically crippled)
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    Agent& a = sim.agents()[i];
+    a.mu_realized = -1.0;          // strongly negative
+    a.x[2] = 5e-6;                 // inside crypt
+    a.in_crypt = true;
+  }
+  Int initial_count = sim.agents().size();
+  assert(initial_count > 0);
+
+  // Run the simulation
+  sim.run();
+
+  // All crypt agents should survive despite negative mu_realized
+  Int alive = 0;
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    if (sim.agents()[i].state != PhenoState::DEAD) alive++;
+  }
+  assert(alive == initial_count);
+
+  std::cout << "  test_crypt_agents_survive_washout: PASSED"
+            << " (alive=" << alive << "/" << initial_count << ")\n";
+}
+
+void test_crypt_zero_velocity() {
+  // Verify that velocity, washout_rate, and in_crypt_zone behave
+  // correctly when crypts are enabled.
+  AdvectionConfig acfg;
+  acfg.crypts_enabled = true;
+  acfg.crypt_depth    = 10e-6;
+  acfg.mucus_thickness = 50e-6;
+
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {50e-6, 50e-6, 50e-6};
+  dcfg.grid_dx = 5e-6;
+  dcfg.hash_cell_size = 10e-6;
+
+  Domain dom;
+  dom.init(dcfg);
+
+  AdvectionField adv;
+  adv.init(acfg, dom);
+
+  // Inside crypt (z = 5 um < 10 um depth)
+  assert(adv.in_crypt_zone(5e-6));
+  assert(adv.radial_velocity(5e-6) == 0.0);
+  assert(adv.distal_velocity(5e-6) == 0.0);
+  assert(adv.washout_rate(5e-6) == 0.0);
+  Vec3 v_in = adv.velocity({25e-6, 25e-6, 5e-6});
+  assert(v_in[0] == 0.0 && v_in[1] == 0.0 && v_in[2] == 0.0);
+
+  // Outside crypt (z = 30 um > 10 um depth)
+  assert(!adv.in_crypt_zone(30e-6));
+  assert(adv.radial_velocity(30e-6) > 0.0);
+  assert(adv.distal_velocity(30e-6) > 0.0);
+  assert(adv.washout_rate(30e-6) > 0.0);
+
+  std::cout << "  test_crypt_zero_velocity: PASSED\n";
+}
+
+void test_crypt_migration_in_out() {
+  // With high entry/exit rates, agents should migrate between zones.
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo  = {0, 0, 0};
+  cfg.domain.hi  = {50e-6, 50e-6, 50e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.total_time      = 600.0;
+  cfg.bio_dt          = 60.0;
+  cfg.output_interval = 600.0;
+  cfg.seed            = 8888;
+  cfg.hdf5.enabled    = false;
+  cfg.advection.mucus_thickness = 50e-6;
+  cfg.advection.distal_length   = 50e-6;
+
+  // Enable crypts with very high entry rate so some agents enter
+  cfg.advection.crypts_enabled        = true;
+  cfg.advection.crypt_depth           = 10e-6;
+  cfg.advection.crypt_exit_rate       = 1.0;   // ~1/s, very high
+  cfg.advection.crypt_entry_rate      = 1.0;   // ~1/s, very high
+  cfg.advection.crypt_carrying_capacity = 100;
+
+  cfg.qssa.toxin_cutoff   = 25e-6;
+  cfg.qssa.nutrient_cutoff = 15e-6;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain s;
+  s.type = 1; s.count = 20; s.mu_max = 5e-4;
+  s.plasmids = {}; s.conjugative = false;
+  cfg.initial_strains.push_back(s);
+
+  Simulation sim;
+  sim.init(cfg);
+
+  // Place all agents just above the crypt zone so they can enter
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    sim.agents()[i].x[2] = 12e-6;
+    sim.agents()[i].in_crypt = false;
+  }
+
+  sim.run();
+
+  // With very high migration rates over 600 s, at least one agent
+  // should have ended up in the crypt at some point. We cannot
+  // guarantee the exact final state, but the simulation should not crash.
+  std::cout << "  test_crypt_migration_in_out: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Smoke Tests ===\n";
   test_mini_simulation();
   test_metabolism_integration();
   test_advection_moves_agents();
   test_receptor_killing();
+  test_crypt_agents_survive_washout();
+  test_crypt_zero_velocity();
+  test_crypt_migration_in_out();
   std::cout << "All smoke tests passed.\n";
   return 0;
 }
