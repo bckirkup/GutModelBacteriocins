@@ -196,6 +196,24 @@ Near-zero at epithelium (z = 0), maximum at lumen (z = h). This creates a spatia
 
 **Washout criterion:** When `mu_realized < gamma_flow = v_radial(z) / h`, the agent cannot grow fast enough to resist radial flow and is expelled.
 
+### Peristaltic Mixing (VADI §77)
+
+Real colonic flow is not steady-state — periodic slow-wave contractions modulate the local flow velocity at ~15–30 s intervals. GutIBM models this via an oscillatory perturbation:
+
+```
+v_effective(pos, t) = v_base(pos) * peristaltic_factor(pos, t)
+peristaltic_factor  = 1 + A * sin(2π t/T − 2π x/λ)
+```
+
+where:
+- **A** = amplitude (default 0.5, i.e. ±50% modulation)
+- **T** = period (default 20 s)
+- **λ** = wavelength (0 = spatially uniform oscillation; >0 = propagating contractile wave along x-axis)
+
+**Effect on agents:** Bacteria near the lumen experience periodically enhanced and reduced advective drag. This creates transient "washout surges" that can dislodge cells with marginal growth rates (`mu_realized ≈ gamma_flow`), and quiescent intervals that allow brief recovery. The net effect increases the selective pressure for fast-growing cells near the luminal surface while leaving epithelium-proximal residents relatively unaffected (due to the power-law velocity profile).
+
+**Propagating wave mode:** When `wavelength > 0`, the oscillation has a spatial phase offset along the x-axis (distal direction), mimicking a contractile wave propagating aborally. Cells at different x-positions experience the peak flow at different times, which enhances longitudinal mixing and dispersal.
+
 ---
 
 ## MPI Domain Decomposition

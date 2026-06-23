@@ -9,6 +9,15 @@
 
 namespace gutibm {
 
+Real AdvectionField::peristaltic_factor(const Vec3& pos) const {
+  if (!cfg_.peristaltic_enabled) return 1.0;
+  Real phase = 2.0 * PI * current_time_ / cfg_.peristaltic_period;
+  if (cfg_.peristaltic_wavelength > 0.0) {
+    phase -= 2.0 * PI * pos[0] / cfg_.peristaltic_wavelength;
+  }
+  return 1.0 + cfg_.peristaltic_amplitude * std::sin(phase);
+}
+
 void AdvectionField::init(const AdvectionConfig& cfg, const Domain& domain) {
   cfg_  = cfg;
   h_    = cfg.mucus_thickness;
@@ -34,9 +43,10 @@ Real AdvectionField::distal_velocity(Real z) const {
 Vec3 AdvectionField::velocity(const Vec3& pos) const {
   if (cfg_.crypts_enabled && pos[2] < lo_z_ + cfg_.crypt_depth)
     return {0.0, 0.0, 0.0};
-  Real vx = distal_velocity(pos[2]);   // distal (x-direction)
-  Real vy = 0.0;                       // no lateral flow
-  Real vz = radial_velocity(pos[2]);   // radial (z, toward lumen)
+  Real pf = peristaltic_factor(pos);
+  Real vx = distal_velocity(pos[2]) * pf;   // distal (x-direction)
+  Real vy = 0.0;                             // no lateral flow
+  Real vz = radial_velocity(pos[2]) * pf;   // radial (z, toward lumen)
   return {vx, vy, vz};
 }
 
