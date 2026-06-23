@@ -226,6 +226,9 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 | `mutation.receptor_reduction` | 0.1 | — | Expression drop per mutation |
 | `mutation.compensatory_reduction` | 0.005 | — | Per-locus cost reduction |
 | `mutation.max_bi_loci` | 8 | — | Maximum BI clusters per genome |
+| `mutation.immunity_escape_prob` | 0.5 | — | Fraction of super-killers with immunity escape |
+| `mutation.escape_affinity_lo` | 0.01 | — | Lower bound of reduced binding affinity |
+| `mutation.escape_affinity_hi` | 0.3 | — | Upper bound of reduced binding affinity |
 
 ---
 

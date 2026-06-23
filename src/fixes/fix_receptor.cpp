@@ -62,15 +62,16 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
                                 cfg_.kd_colicinE_btuB,
                                 cfg_.kd_b12_btuB,
                                 expr);
-    // Check immunity
-    bool has_immunity = false;
+    // Check immunity — best-matching BI cluster determines cross-protection.
+    // immunity_binding_affinity < 1 indicates reduced cross-neutralization
+    // (e.g. against immunity-escape super-killer toxins, VADI §57).
+    Real eff = 1.0;
     for (const auto& bi : agent.genome.bi_loci) {
       if (bi.target == ReceptorType::BtuB) {
-        has_immunity = true;
-        break;
+        Real candidate = cfg_.immunity_factor * bi.immunity_binding_affinity;
+        if (candidate < eff) eff = candidate;
       }
     }
-    Real eff = has_immunity ? cfg_.immunity_factor : 1.0;
     total_kill += cfg_.kill_rate_colicin * occ * eff * dt;
   }
 
@@ -84,14 +85,13 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
                                 cfg_.kd_colicinB_fepA,
                                 cfg_.kd_enterobactin,
                                 expr);
-    bool has_immunity = false;
+    Real eff = 1.0;
     for (const auto& bi : agent.genome.bi_loci) {
       if (bi.target == ReceptorType::FepA) {
-        has_immunity = true;
-        break;
+        Real candidate = cfg_.immunity_factor * bi.immunity_binding_affinity;
+        if (candidate < eff) eff = candidate;
       }
     }
-    Real eff = has_immunity ? cfg_.immunity_factor : 1.0;
     total_kill += cfg_.kill_rate_colicin * occ * eff * dt;
   }
 
@@ -106,14 +106,13 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
                                 cfg_.kd_colicinIa_cirA,
                                 cfg_.kd_lin_enterobactin,
                                 expr);
-    bool has_immunity = false;
+    Real eff = 1.0;
     for (const auto& bi : agent.genome.bi_loci) {
       if (bi.target == ReceptorType::CirA) {
-        has_immunity = true;
-        break;
+        Real candidate = cfg_.immunity_factor * bi.immunity_binding_affinity;
+        if (candidate < eff) eff = candidate;
       }
     }
-    Real eff = has_immunity ? cfg_.immunity_factor : 1.0;
     total_kill += cfg_.kill_rate_microcin * occ * eff * dt;
   }
 
