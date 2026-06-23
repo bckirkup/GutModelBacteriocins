@@ -69,6 +69,19 @@ endif()
 target_link_libraries(test_iron_fallback PRIVATE ${MATH_LIB})
 add_test(NAME iron_fallback COMMAND test_iron_fallback)
 
+# ── test_octree ──────────────────────────────────────────────────────────
+add_executable(test_octree test_octree.cpp ${LIB_SOURCES})
+target_include_directories(test_octree PRIVATE ${TEST_INCLUDE_DIRS})
+if(GUTIBM_USE_MPI)
+  target_link_libraries(test_octree PRIVATE MPI::MPI_CXX)
+endif()
+if(GUTIBM_USE_HDF5)
+  target_include_directories(test_octree PRIVATE ${HDF5_INCLUDE_DIRS})
+  target_link_libraries(test_octree PRIVATE ${HDF5_LIBRARIES})
+endif()
+target_link_libraries(test_octree PRIVATE ${MATH_LIB})
+add_test(NAME octree COMMAND test_octree)
+
 # ── test_smoke (end-to-end integration) ──────────────────────────────────
 add_executable(test_smoke test_smoke.cpp ${LIB_SOURCES})
 target_include_directories(test_smoke PRIVATE ${TEST_INCLUDE_DIRS})
