@@ -1,6 +1,6 @@
 """
 Spatial clustering analysis and nearest-neighbor distance (NND) metrics.
-Generates simulated HiPR-FISH spatial clustering metrics for validation.
+Exclusion-radius and NND clustering metrics for validation.
 """
 
 from __future__ import annotations
@@ -11,21 +11,35 @@ from scipy.spatial import KDTree
 
 def nearest_neighbor_distances(positions: np.ndarray, types: np.ndarray) -> dict[int, np.ndarray]:
     """
-    Compute nearest-neighbor distances between agents of the same type.
-    Returns dict mapping type → array of NNDs.
+    NND between competing clones.
+
+    For each agent, compute the distance to the nearest agent of a
+    *different* type.  Returns dict mapping type → array of distances.
     """
     result: dict[int, np.ndarray] = {}
     unique_types = np.unique(types)
 
+    if len(unique_types) < 2:
+        for t in unique_types:
+            result[int(t)] = np.array([])
+        return result
+
     for t in unique_types:
         mask = types == t
         pts = positions[mask]
-        if len(pts) < 2:
+        if len(pts) == 0:
             result[int(t)] = np.array([])
             continue
-        tree = KDTree(pts)
-        dists, _ = tree.query(pts, k=2)  # k=2: self + nearest
-        result[int(t)] = dists[:, 1]  # column 1 = nearest non-self
+
+        other_mask = ~mask
+        other_pts = positions[other_mask]
+        if len(other_pts) == 0:
+            result[int(t)] = np.array([])
+            continue
+
+        other_tree = KDTree(other_pts)
+        dists, _ = other_tree.query(pts, k=1)
+        result[int(t)] = dists.flatten()
 
     return result
 
@@ -122,6 +136,90 @@ def monochromatic_patch_score(
         fractions.append(same / len(neighbors))
 
     return float(np.mean(fractions)) if fractions else 0.0
+
+
+def exclusion_radius(
+    positions: np.ndarray,
+    types: np.ndarray,
+    target_type: int,
+) -> float:
+    """Mean distance from *target_type* agents to nearest different-type agent."""
+    mask = types == target_type
+    target_pts = positions[mask]
+    other_pts = positions[~mask]
+
+    if len(target_pts) == 0 or len(other_pts) == 0:
+        return 0.0
+
+    tree = KDTree(other_pts)
+    dists, _ = tree.query(target_pts, k=1)
+    return float(np.mean(dists))
+
+
+def hopkins_statistic(
+    positions: np.ndarray,
+    n_samples: int | None = None,
+) -> float:
+    """
+    Hopkins clustering statistic over the full point cloud.
+
+    H > 0.7 → significantly clustered; ≈ 0.5 → random.
+    """
+    n = len(positions)
+    if n < 10:
+        return 0.5
+
+    m = n_samples if n_samples is not None else min(n // 2, 100)
+    m = max(1, min(m, n))
+
+    tree = KDTree(positions)
+
+    indices = np.random.choice(n, m, replace=False)
+    sample = positions[indices]
+    dists_data, _ = tree.query(sample, k=2)
+    nnd_data = dists_data[:, 1]
+
+    lo = positions.min(axis=0)
+    hi = positions.max(axis=0)
+    random_pts = np.random.uniform(lo, hi, size=(m, positions.shape[1]))
+    dists_rand, _ = tree.query(random_pts, k=1)
+    nnd_rand = dists_rand.flatten()
+
+    sum_data = np.sum(nnd_data)
+    sum_rand = np.sum(nnd_rand)
+    denom = sum_data + sum_rand
+    return float(sum_rand / denom) if denom > 0 else 0.5
+
+
+def comet_tail_asymmetry_index(
+    positions: np.ndarray,
+    concentrations: np.ndarray,
+    flow_direction: int = 0,
+) -> float:
+    """
+    Enhanced comet-tail metric measuring downstream elongation.
+
+    *flow_direction* is the axis index (0 = x, 1 = y, 2 = z).
+    Returns the ratio of concentration-weighted mean downstream distance
+    to upstream distance; values > 1 indicate advective comet-tail.
+    """
+    if len(positions) == 0 or len(concentrations) == 0:
+        return 1.0
+
+    centroid = np.mean(positions, axis=0)
+    projections = positions[:, flow_direction] - centroid[flow_direction]
+
+    downstream = projections > 0
+    upstream = ~downstream
+
+    if not np.any(downstream) or not np.any(upstream):
+        return 1.0
+
+    c = np.abs(concentrations)
+    w_down = np.sum(c[downstream] * np.abs(projections[downstream]))
+    w_up = np.sum(c[upstream] * np.abs(projections[upstream]))
+
+    return float(w_down / max(w_up, 1e-30))
 
 
 def comet_tail_index(

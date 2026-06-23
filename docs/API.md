@@ -301,10 +301,34 @@ Package: `python/gut_ibm_tools/`
 Read GutIBM HDF5 output files into pandas DataFrames.
 
 ### `analysis`
-Spatial statistics: Hopkins statistic, nearest-neighbor distances, monochromatic patch score.
+Spatial statistics and exclusion-radius clustering metrics.
+
+| Function | Description |
+|----------|-------------|
+| `nearest_neighbor_distances(positions, types)` | NND between competing clones (nearest different-type agent). Returns `dict[int, ndarray]`. |
+| `inter_type_distances(positions, types)` | Pairwise inter-type NND. Returns `dict[tuple[int,int], ndarray]`. |
+| `spatial_clustering_index(positions, types)` | Hopkins statistic variant per type. |
+| `monochromatic_patch_score(positions, types, radius)` | Fraction of same-type neighbors within radius. |
+| `exclusion_radius(positions, types, target_type)` | Mean distance from target-type agents to nearest different-type agent. |
+| `hopkins_statistic(positions, n_samples=None)` | Hopkins clustering statistic over the full point cloud. H > 0.7 → clustered. |
+| `comet_tail_asymmetry_index(positions, concentrations, flow_direction=0)` | Concentration-weighted downstream elongation ratio. |
+| `comet_tail_index(positions, concentrations, flow_direction)` | Downstream/upstream mean concentration ratio. |
 
 ### `validation`
-Compare simulation output to empirical targets: 70–80% resident retention, comet-tail asymmetry index > 1.5, HiPR-FISH clustering metrics.
+Compare simulation output to empirical targets using exclusion-radius clustering (VADI §75).
+
+`validate_spatial_signatures(data, step)` returns:
+- `monochromatic_score` – same-type neighbor fraction (target > 0.7)
+- `comet_tail_ratio` – advective asymmetry (target > 1.5)
+- `mean_exclusion_radius` – mean inter-type boundary distance
+- `hopkins_statistic` – global clustering (target > 0.7)
+- `nnd_mean` – grand mean of competing-clone NND
+- `comet_tail_asymmetry` – concentration-weighted elongation
+
+`validate_genomic_signatures(data)` returns:
+- `resident_retention` – fraction of original lineages surviving (target 70–80%)
+- `resident_mean_bi_loci` / `transient_mean_bi_loci` – BI cluster counts
+- `transient_mean_btuB_expression` – receptor downregulation in transients
 
 ### `visualization`
 Plot agent distributions, chemical fields, lineage time-series.
