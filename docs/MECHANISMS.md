@@ -34,7 +34,13 @@ Km_Fe_eff = Km_Fe / expr_FepA    (expr in [0, 1])
 This implements the metabolic "double-bind": resistance to toxin = nutrient starvation.
 
 **Penalties applied:**
-- **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Cost = `metE_penalty` (default 5%) + ethanolamine utilization loss `eut_penalty` (default 3%).
+- **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Base cost = `metE_penalty` (default 5%) + ethanolamine utilization loss `eut_penalty` (default 3%). The MetE cost is further amplified by local acetate concentration (see below).
+- **Acetate inhibition of MetE** (VADI §87): Colonic acetate (60–100 mM) inhibits the MetE enzyme. The effective MetE penalty is scaled via Michaelis-Menten kinetics:
+  ```
+  acetate_factor = 1 + (max_factor - 1) * [acetate] / (Km + [acetate])
+  metE_eff = metE_penalty * acetate_factor
+  ```
+  At 80 mM acetate (Km = 40 mol/m³, max_factor = 2.5), the penalty doubles from 5% to 10%. This strengthens the Combinatorial Washout Trap: BtuB-downregulated cells face a larger proteome burden in the acetate-rich colon.
 - **Plasmid maintenance**: 2% per BI locus (reduced by compensatory mutations, see fix_mutation). Capped at 10%.
 - **Maintenance energy**: Subtracted from mu_realized after all growth terms.
 
