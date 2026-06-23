@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstring>
 #include <numeric>
+#include <iomanip>
 #ifdef GUTIBM_OPENMP
 #include <omp.h>
 #endif
@@ -93,6 +94,12 @@ void Simulation::init(const SimulationConfig& cfg) {
               << "  Global agents: " << global_agent_count_ << "\n"
               << "  Chemical species: " << chem_.num_species() << "\n"
               << "  Bio dt: " << cfg.bio_dt << " s\n"
+              << "  Adaptive dt: " << (cfg.adaptive_dt_enabled ? "ON" : "OFF")
+              << (cfg.adaptive_dt_enabled
+                    ? (" [" + std::to_string(cfg.dt_min) + "s, "
+                       + std::to_string(cfg.dt_max) + "s]")
+                    : "")
+              << "\n"
               << "  Total time: " << cfg.total_time << " s\n"
               << std::flush;
   }
@@ -139,10 +146,40 @@ void Simulation::init_population(const SimulationConfig& cfg) {
   }
 }
 
-void Simulation::run() {
-  Real dt = cfg_.bio_dt;
-  Int total_steps = static_cast<Int>(std::ceil(cfg_.total_time / dt));
+Real Simulation::compute_adaptive_dt() const {
+  if (!cfg_.adaptive_dt_enabled) return cfg_.bio_dt;
 
+  Real dt = cfg_.dt_max;
+
+  // Growth rate constraint: mu_max * dt < growth_limit
+  Real max_mu = 0.0;
+  Int sos_count = 0;
+  for (Int i = 0; i < agents_.size(); ++i) {
+    if (agents_[i].state == PhenoState::DEAD) continue;
+    max_mu = std::max(max_mu, std::abs(agents_[i].mu_realized));
+    if (agents_[i].state == PhenoState::SOS_INDUCED) sos_count++;
+  }
+  if (max_mu > 0) dt = std::min(dt, cfg_.dt_growth_limit / max_mu);
+
+  // SOS cascade constraint: reduce dt during active lysis
+  if (sos_count > 5)  dt = std::min(dt, 10.0);
+  if (sos_count > 20) dt = std::min(dt, 2.0);
+
+  // Agent density constraint
+  Vec3 sz = domain_.size();
+  Real volume = sz[0] * sz[1] * sz[2];
+  if (volume > 0.0) {
+    Real density = static_cast<Real>(agents_.size()) / volume;
+    if (density > 1e15) dt = std::min(dt, 10.0);
+  }
+
+  // Apply safety factor and bounds
+  dt *= cfg_.dt_safety;
+  dt = std::clamp(dt, cfg_.dt_min, cfg_.dt_max);
+  return dt;
+}
+
+void Simulation::run() {
   int rank = domain_.rank();
 
   // Initial output
@@ -151,15 +188,21 @@ void Simulation::run() {
     take_lineage_snapshot();
   }
 
-  for (Int s = 1; s <= total_steps; ++s) {
+  while (time_ < cfg_.total_time) {
+    Real dt = compute_adaptive_dt();
+
+    // Clamp so we don't overshoot total_time
+    if (time_ + dt > cfg_.total_time) dt = cfg_.total_time - time_;
+
     step(dt);
 
     // Periodic output
     if (time_ >= next_output_) {
-      hdf5_.write_step(*this, s, time_);
+      hdf5_.write_step(*this, step_count_, time_);
       if (rank == 0) {
-        std::cout << "Step " << s << "/" << total_steps
+        std::cout << "Step " << step_count_
                   << "  t=" << time_ << "s"
+                  << "  dt=" << std::setprecision(3) << dt << "s"
                   << "  global_agents=" << global_agent_count_
                   << "  local_agents=" << agents_.size()
                   << "  mu_avg=" << global_mu_avg_
@@ -176,13 +219,14 @@ void Simulation::run() {
   }
 
   // Final output
-  hdf5_.write_step(*this, total_steps, time_);
+  hdf5_.write_step(*this, step_count_, time_);
   hdf5_.finalize();
 
   if (rank == 0) {
     Real retention = lineage_.resident_retention(cfg_.total_time * 0.5);
     std::cout << "\nSimulation complete.\n"
               << "  Final global agents: " << global_agent_count_ << "\n"
+              << "  Steps taken: " << step_count_ << "\n"
               << "  Resident retention: " << retention * 100.0 << "%\n"
               << "  Dominant lineage: " << lineage_.dominant_lineage() << "\n"
               << std::flush;
@@ -214,7 +258,7 @@ void Simulation::step(Real dt) {
   clear_ghost_agents();
 
   // 2. Chemistry module (QSSA, instantaneous)
-  module_chemistry();
+  module_chemistry(dt);
 
   // 3. Physics module (advection + mechanics)
   module_physics(dt);
@@ -244,7 +288,7 @@ void Simulation::module_biology(Real dt) {
   }
 }
 
-void Simulation::module_chemistry() {
+void Simulation::module_chemistry(Real dt) {
   // QSSA: compute steady-state toxin field via Green's functions
   Int i_tox = chem_.find("bacteriocin");
   if (i_tox >= 0) {
@@ -255,7 +299,7 @@ void Simulation::module_chemistry() {
   qssa_.solve_nutrient_depletion(agents_, chem_);
 
   // VBF coupling (nutrient sink/source)
-  vbf_.apply_nutrient_coupling(chem_, domain_, cfg_.bio_dt);
+  vbf_.apply_nutrient_coupling(chem_, domain_, dt);
 
   // Apply reactions to concentrations
   for (Int s = 0; s < chem_.num_species(); ++s) {
@@ -263,7 +307,7 @@ void Simulation::module_chemistry() {
     #pragma omp parallel for schedule(static)
     #endif
     for (Int c = 0; c < chem_.ncells(); ++c) {
-      chem_.conc(s, c) += chem_.reac(s, c) * cfg_.bio_dt;
+      chem_.conc(s, c) += chem_.reac(s, c) * dt;
       chem_.conc(s, c) = std::max(chem_.conc(s, c), 0.0);
     }
   }

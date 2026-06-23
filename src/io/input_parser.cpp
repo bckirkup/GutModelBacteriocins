@@ -112,6 +112,11 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     else if (key == "crypt_carrying_capacity") cfg.advection.crypt_carrying_capacity = parse_int(val);
     else if (key == "hdf5_file")         cfg.hdf5.filename = val;
     else if (key == "hdf5_every")        cfg.hdf5.dump_every = parse_int(val);
+    else if (key == "adaptive_dt_enabled") cfg.adaptive_dt_enabled = (val == "true" || val == "1");
+    else if (key == "dt_min")            cfg.dt_min = parse_real(val);
+    else if (key == "dt_max")            cfg.dt_max = parse_real(val);
+    else if (key == "dt_safety")         cfg.dt_safety = parse_real(val);
+    else if (key == "dt_growth_limit")   cfg.dt_growth_limit = parse_real(val);
   }
 
   return cfg;

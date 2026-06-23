@@ -33,6 +33,13 @@ struct SimulationConfig {
   Real bio_dt            = 60.0;       // 1 min biological timestep
   Real output_interval   = 3600.0;     // hourly output
 
+  // Adaptive timestep (CFL-like)
+  bool adaptive_dt_enabled = false;
+  Real dt_min            = 1.0;        // minimum timestep (s)
+  Real dt_max            = 300.0;      // maximum timestep (s)
+  Real dt_safety         = 0.8;        // CFL safety factor
+  Real dt_growth_limit   = 0.1;        // max mu*dt allowed
+
   // Domain
   DomainConfig domain;
 

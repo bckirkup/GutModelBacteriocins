@@ -15,6 +15,26 @@ All configurable parameters for the GutIBM simulation, with defaults and biologi
 
 **Guidance:** `bio_dt` should be ≤ 60 s for accurate growth dynamics. Larger values speed up simulation but may miss fast-timescale events (SOS induction, toxin killing).
 
+### Adaptive Timestep
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `adaptive_dt_enabled` | false | — | Enable CFL-like adaptive timestep |
+| `dt_min` | 1 | s | Minimum allowed timestep |
+| `dt_max` | 300 | s | Maximum allowed timestep |
+| `dt_safety` | 0.8 | — | Safety factor applied after constraint computation |
+| `dt_growth_limit` | 0.1 | — | Maximum mu × dt product allowed |
+
+When `adaptive_dt_enabled = true`, the simulation replaces the fixed `bio_dt` loop with a `while (time < total_time)` loop that recomputes `dt` each step based on three constraints:
+
+1. **Growth rate**: `dt ≤ dt_growth_limit / max(|mu_realized|)` — prevents large fractional biomass changes per step.
+2. **SOS cascade**: `dt ≤ 10 s` when >5 SOS-induced agents; `dt ≤ 2 s` when >20 — resolves lysis burst dynamics.
+3. **Agent density**: `dt ≤ 10 s` when density exceeds 10^15 /m^3 — avoids numerical overlap in crowded regions.
+
+After constraint evaluation, `dt` is multiplied by `dt_safety` and clamped to `[dt_min, dt_max]`.
+
+When disabled (`adaptive_dt_enabled = false`), the fixed `bio_dt` is used as before.
+
 ---
 
 ## Domain

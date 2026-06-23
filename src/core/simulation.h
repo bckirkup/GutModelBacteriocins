@@ -91,6 +91,10 @@ class Simulation {
   Int  global_agent_count() const { return global_agent_count_; }
   Real global_mu_avg()      const { return global_mu_avg_; }
 
+  // Adaptive timestep computation
+  Real compute_adaptive_dt() const;
+
+
  private:
   // Initialization helpers
   void init_population(const SimulationConfig& cfg);
@@ -103,7 +107,7 @@ class Simulation {
 
   // Module execution (NUFEB-inspired)
   void module_biology(Real dt);
-  void module_chemistry();
+  void module_chemistry(Real dt);
   void module_physics(Real dt);
 
   // MPI domain decomposition
