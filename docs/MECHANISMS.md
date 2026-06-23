@@ -132,6 +132,8 @@ where `gamma` is the local shear rate (from advection field) and `gamma_crit` is
 - Cells must be within contact distance (`contact_radius`, default 2 um)
 - Recipient must not already carry the same toxin_id
 
+**F-pili length heterogeneity (VADI §55):** When `pili_heterogeneity = true`, each conjugation attempt samples its effective contact radius from `uniform(pili_length_min, pili_length_max)` (default 1–4 μm). This replaces the fixed `contact_radius` for that attempt. In vivo F-pili exhibit significant length heterogeneity; shorter pili restrict transfer to immediate neighbors while longer pili can bridge larger gaps. The stochastic sampling means each donor–recipient pair evaluation uses an independently drawn pilus length per timestep.
+
 **Effect:** Recipient gains a copy of one randomly-selected BI cluster from the donor. This enables the spatial spreading of bacteriocin-immunity cassettes through the population.
 
 ---

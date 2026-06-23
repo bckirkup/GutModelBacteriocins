@@ -23,17 +23,23 @@ void FixConjugation::compute(Real dt) {
     if (!donor.genome.has_conjugative_plasmid) continue;
     if (donor.genome.bi_loci.empty()) continue;
 
+    // Determine effective pilus reach for this conjugation attempt
+    Real effective_radius = cfg_.pili_length;
+    if (cfg_.pili_heterogeneity) {
+      effective_radius = rng.uniform(cfg_.pili_length_min, cfg_.pili_length_max);
+    }
+
     // Find nearby potential recipients within pili reach
-    auto neighbors = hash.query_radius(donor.x, cfg_.pili_length);
+    auto neighbors = hash.query_radius(donor.x, effective_radius);
 
     for (Int j : neighbors) {
       if (j == i) continue;
       Agent& recipient = agents[j];
       if (recipient.state == PhenoState::DEAD) continue;
 
-      // Check distance
+      // Check distance against sampled pilus length
       Real d2 = sim_.domain().min_image_dist_sq(donor.x, recipient.x);
-      if (d2 > cfg_.pili_length * cfg_.pili_length) continue;
+      if (d2 > effective_radius * effective_radius) continue;
 
       // Local shear rate
       Real shear = adv.shear_rate(donor.x);
