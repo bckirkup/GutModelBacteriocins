@@ -83,6 +83,10 @@ class Simulation {
   Real                   time()      const { return time_; }
   Int                    step_count() const { return step_count_; }
 
+  // MPI global statistics (valid after allreduce)
+  Int  global_agent_count() const { return global_agent_count_; }
+  Real global_mu_avg()      const { return global_mu_avg_; }
+
  private:
   // Initialization helpers
   void init_population(const SimulationConfig& cfg);
@@ -96,6 +100,17 @@ class Simulation {
   void module_biology(Real dt);
   void module_chemistry();
   void module_physics(Real dt);
+
+  // MPI domain decomposition
+  void migrate_agents();
+  void exchange_ghost_agents();
+  void clear_ghost_agents();
+  void allreduce_global_stats();
+
+  // Ghost agent tracking
+  std::vector<Int> ghost_indices_;  // indices of ghost agents in the pool
+  Int global_agent_count_ = 0;      // total agents across all ranks
+  Real global_mu_avg_ = 0.0;        // global average growth rate
 
   // State
   AgentPool       agents_;

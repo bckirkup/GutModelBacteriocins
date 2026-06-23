@@ -26,8 +26,12 @@ All configurable parameters for the GutIBM simulation, with defaults and biologi
 | `domain.grid_dx` | 2e-6 | m | Grid cell size |
 | `domain.hash_cell_size` | 10e-6 | m | Spatial hash bucket size |
 | `domain.periodic` | {true, true, false} | — | Periodicity per axis |
+| `domain.mpi_decomp_axis` | 0 | — | Axis for 1D slab decomposition (0=x) |
+| `domain.ghost_width` | 10e-6 | m | Ghost layer thickness for cross-rank neighbor queries |
 
 **Biological context:** The domain represents a patch of colonic mucus layer. x,y are periodic (infinite mucosa plane). z spans from epithelium (z=0) to luminal surface (z=h).
+
+**MPI decomposition:** The domain is partitioned into equal-width slabs along `mpi_decomp_axis` (default: x, the distal flow direction). Each rank owns one slab. `ghost_width` should be ≥ `hash_cell_size` to ensure correct neighbor queries across slab boundaries.
 
 ---
 
@@ -157,7 +161,7 @@ This captures shear-enhanced spreading of toxins in the mucus flow.
 |-----------|---------|-------|-------------|
 | `hdf5.filename` | `gut_ibm_output.h5` | — | Output file path |
 | `hdf5.dump_every` | 100 | steps | Steps between dumps |
-| `hdf5.parallel` | false | — | MPI-parallel I/O |
+| `hdf5.parallel` | false | — | MPI-parallel I/O (each rank writes its agents via collective hyperslab) |
 | `hdf5.enabled` | true | — | Set false to suppress output |
 
 ---
