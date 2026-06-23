@@ -6,12 +6,18 @@
 
 namespace gutibm {
 
+BacteriocinClass classify_by_pI(Real pI) {
+  if (pI > 8.5) return BacteriocinClass::LETHAL_CORE;
+  if (pI < 7.0) return BacteriocinClass::LETHAL_HALO;
+  return BacteriocinClass::NEUTRAL;
+}
+
 BICluster PlasmidLibrary::colicin_E1() {
   return BICluster{
     .toxin_id        = 1,
     .immunity_id     = 1,
     .target          = ReceptorType::BtuB,
-    .bclass          = BacteriocinClass::LETHAL_CORE,
+    .bclass          = classify_by_pI(9.0),
     .pI              = 9.0,
     .diff_coeff      = 4.0e-11,    // ~50 kDa protein
     .retardation     = 50.0,       // basic → binds mucin strongly
@@ -26,7 +32,7 @@ BICluster PlasmidLibrary::colicin_E2() {
     .toxin_id        = 2,
     .immunity_id     = 2,
     .target          = ReceptorType::BtuB,
-    .bclass          = BacteriocinClass::LETHAL_HALO,
+    .bclass          = classify_by_pI(6.5),
     .pI              = 6.5,        // complex pI (corrected per VADI review)
     .diff_coeff      = 3.5e-11,
     .retardation     = 3.0,        // modest retardation
@@ -39,7 +45,7 @@ BICluster PlasmidLibrary::colicin_B() {
     .toxin_id        = 3,
     .immunity_id     = 3,
     .target          = ReceptorType::FepA,
-    .bclass          = BacteriocinClass::LETHAL_HALO,
+    .bclass          = classify_by_pI(5.4),
     .pI              = 5.4,
     .diff_coeff      = 4.0e-11,
     .retardation     = 1.5,        // acidic → repelled by mucin
@@ -52,7 +58,7 @@ BICluster PlasmidLibrary::colicin_Ia() {
     .toxin_id        = 4,
     .immunity_id     = 4,
     .target          = ReceptorType::CirA,
-    .bclass          = BacteriocinClass::NEUTRAL,
+    .bclass          = classify_by_pI(7.2),
     .pI              = 7.2,
     .diff_coeff      = 4.0e-11,
     .retardation     = 5.0,
@@ -65,7 +71,7 @@ BICluster PlasmidLibrary::colicin_M() {
     .toxin_id        = 5,
     .immunity_id     = 5,
     .target          = ReceptorType::FhuA,
-    .bclass          = BacteriocinClass::LETHAL_CORE,
+    .bclass          = classify_by_pI(9.3),
     .pI              = 9.3,
     .diff_coeff      = 5.0e-11,
     .retardation     = 60.0,
@@ -78,7 +84,7 @@ BICluster PlasmidLibrary::microcin_V() {
     .toxin_id        = 10,
     .immunity_id     = 10,
     .target          = ReceptorType::CirA,
-    .bclass          = BacteriocinClass::LETHAL_HALO,
+    .bclass          = classify_by_pI(5.0),
     .pI              = 5.0,
     .diff_coeff      = 1.0e-10,    // small peptide → faster diffusion
     .retardation     = 1.2,

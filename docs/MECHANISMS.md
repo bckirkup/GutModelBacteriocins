@@ -65,8 +65,10 @@ Small peptide microcins (<10 kDa, e.g. MccV) are exported without lysis:
 | Class | pI range | Retardation | Behavior |
 |-------|----------|-------------|----------|
 | Lethal Core | > 8.5 | R = 50 | Binds mucin glycoproteins, concentrates near producer |
-| Lethal Halo | < 6.0 | R = 1.5 | Repelled by anionic mucin, spreads widely |
-| Neutral | 6.0–8.5 | R = 5.0 | Intermediate diffusion |
+| Lethal Halo | < 7.0 | R = 1.5 | Repelled by anionic mucin, spreads widely |
+| Neutral | 7.0–8.5 | R = 5.0 | Intermediate diffusion |
+
+*Note:* The HALO threshold was raised from pI < 6.0 to pI < 7.0 (VADI §74) to correctly classify bacteriocins secreted as acidic complexes (e.g. Colicin E2 with Im2, net complex pI ≈ 6.5). The `classify_by_pI()` function in `src/genome/plasmid.h` is the single source of truth for these thresholds.
 
 The effective diffusion coefficient: `D_eff = D_free / R`
 
