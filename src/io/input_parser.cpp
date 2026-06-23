@@ -19,6 +19,7 @@ SimulationConfig InputParser::default_config() {
     {"iron",        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0},
     {"b12",         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0},
     {"bacteriocin", 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4},
+    {"acetate",     1.2e-9,  1.0,  80.0,   80.0,    0.0},
   };
 
   // Default initial population: resident (B2 phylogroup) + immigrant

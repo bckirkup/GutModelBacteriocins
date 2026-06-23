@@ -44,6 +44,10 @@ struct MetabolismConfig {
 
   // MetE penalty: 5% proteome cost when BtuB downregulated
   Real metE_penalty       = 0.05;
+  // Acetate inhibition of MetE: half-saturation constant (mol/m³)
+  Real metE_acetate_km    = 40.0;
+  // At saturating acetate, penalty = metE_penalty * metE_acetate_max_factor
+  Real metE_acetate_max_factor = 2.5;
   // Ethanolamine utilization loss when BtuB downregulated
   Real eut_penalty        = 0.03;
 };

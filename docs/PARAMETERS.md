@@ -91,7 +91,9 @@ This captures shear-enhanced spreading of toxins in the mucus flow.
 |-----------|---------|-------|-------------|
 | `metabolism.mu_max_default` | 5e-4 | 1/s | Default max growth rate |
 | `metabolism.division_threshold` | 2.0 | — | Biomass ratio for division |
-| `metabolism.metE_penalty` | 0.05 | — | MetE pathway cost (BtuB loss) |
+| `metabolism.metE_penalty` | 0.05 | — | MetE pathway base cost (BtuB loss) |
+| `metabolism.metE_acetate_km` | 40.0 | mol/m³ | Half-saturation for acetate inhibition of MetE |
+| `metabolism.metE_acetate_max_factor` | 2.5 | — | Max scaling factor at saturating acetate |
 | `metabolism.eut_penalty` | 0.03 | — | Ethanolamine loss (BtuB loss) |
 | `metabolism.maintenance_rate` | 1e-5 | 1/s | Maintenance energy |
 | `metabolism.km_iron_primary` | 10e-6 | mol/m³ | FepA iron Km (10 nM) |
@@ -102,6 +104,12 @@ This captures shear-enhanced spreading of toxins in the mucus flow.
 **Graded iron uptake:** Iron acquisition uses multiple receptor systems in parallel. FepA is primary (highest affinity), with IroN, IutA, and Fiu as secondary fallbacks. When FepA is downregulated (e.g. to resist colicin B), cells switch to these secondary pathways rather than experiencing complete iron starvation. The effective iron Monod term sums contributions from all receptors weighted by expression level, then normalizes to preserve wild-type growth at full expression.
 
 **MetE pathway:** When BtuB expression < 0.5, cells must synthesize methionine via the MetE pathway instead of the B12-dependent MetH pathway. MetE requires ~5% of the proteome, and cells also lose ethanolamine utilization (normally B12-dependent).
+
+**Acetate inhibition of MetE (VADI §87):** Colonic acetate (60–100 mM) severely inhibits the MetE enzyme. The effective penalty is scaled by local acetate concentration via Michaelis-Menten kinetics:
+```
+metE_eff = metE_penalty * (1 + (max_factor - 1) * [acetate] / (Km + [acetate]))
+```
+At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty rises from 5% to ~10%. At saturating acetate the penalty approaches 12.5% (`base × max_factor`). This strengthens the Combinatorial Washout Trap by increasing the metabolic cost of BtuB downregulation in acetate-rich environments.
 
 ---
 
