@@ -16,6 +16,9 @@
 #include "advection.h"
 #include <cmath>
 #include <algorithm>
+#ifdef GUTIBM_OPENMP
+#include <omp.h>
+#endif
 
 namespace gutibm {
 
@@ -104,6 +107,51 @@ void GreensFunction::superpose_to_grid(
   grid_conc.assign(ncells, 0.0);
 
   // For each source, only contribute to grid cells within cutoff
+#ifdef GUTIBM_OPENMP
+  #pragma omp parallel
+  {
+    std::vector<Real> local_conc(ncells, 0.0);
+    #pragma omp for schedule(dynamic)
+    for (size_t s = 0; s < sources.size(); ++s) {
+      const Vec3& src = sources[s];
+      const GreensFunctionParams& p = params[s];
+
+      Int src_ix, src_iy, src_iz;
+      domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
+
+      Int span = static_cast<Int>(std::ceil(cutoff_radius / domain_->dx()));
+
+      for (Int dz = -span; dz <= span; ++dz) {
+        Int iz = src_iz + dz;
+        if (iz < 0 || iz >= nz) continue;
+        for (Int dy = -span; dy <= span; ++dy) {
+          Int iy = src_iy + dy;
+          if (domain_->config().periodic[1]) {
+            iy = ((iy % ny) + ny) % ny;
+          } else if (iy < 0 || iy >= ny) continue;
+
+          for (Int dx = -span; dx <= span; ++dx) {
+            Int ix = src_ix + dx;
+            if (domain_->config().periodic[0]) {
+              ix = ((ix % nx) + nx) % nx;
+            } else if (ix < 0 || ix >= nx) continue;
+
+            Vec3 tgt = domain_->cell_center(ix, iy, iz);
+            Real c = concentration_bounded(src, tgt, p);
+            Int idx = domain_->cell_index(ix, iy, iz);
+            local_conc[idx] += c;
+          }
+        }
+      }
+    }
+    #pragma omp critical
+    {
+      for (Int c = 0; c < ncells; ++c) {
+        grid_conc[c] += local_conc[c];
+      }
+    }
+  }
+#else
   for (size_t s = 0; s < sources.size(); ++s) {
     const Vec3& src = sources[s];
     const GreensFunctionParams& p = params[s];
@@ -118,7 +166,6 @@ void GreensFunction::superpose_to_grid(
       if (iz < 0 || iz >= nz) continue;
       for (Int dy = -span; dy <= span; ++dy) {
         Int iy = src_iy + dy;
-        // Handle PBC in y
         if (domain_->config().periodic[1]) {
           iy = ((iy % ny) + ny) % ny;
         } else if (iy < 0 || iy >= ny) continue;
@@ -137,6 +184,7 @@ void GreensFunction::superpose_to_grid(
       }
     }
   }
+#endif
 }
 
 Real GreensFunction::peclet(const Vec3& pos, Real D_eff, Real length_scale) const {

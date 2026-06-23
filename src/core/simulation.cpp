@@ -16,6 +16,9 @@
 #include <cmath>
 #include <cstring>
 #include <numeric>
+#ifdef GUTIBM_OPENMP
+#include <omp.h>
+#endif
 
 #ifdef GUTIBM_MPI
 #include <mpi.h>
@@ -256,6 +259,9 @@ void Simulation::module_chemistry() {
 
   // Apply reactions to concentrations
   for (Int s = 0; s < chem_.num_species(); ++s) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp parallel for schedule(static)
+    #endif
     for (Int c = 0; c < chem_.ncells(); ++c) {
       chem_.conc(s, c) += chem_.reac(s, c) * cfg_.bio_dt;
       chem_.conc(s, c) = std::max(chem_.conc(s, c), 0.0);
@@ -270,6 +276,10 @@ void Simulation::module_physics(Real dt) {
   // Crypt migration (stochastic entry/exit) before advection
   crypt_migration(dt);
 
+  // Advection pass: each agent independent (read-only on fields)
+  #ifdef GUTIBM_OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
   for (Int i = 0; i < agents_.size(); ++i) {
     Agent& a = agents_[i];
     if (a.state == PhenoState::DEAD) continue;
@@ -312,6 +322,9 @@ void Simulation::rebuild_spatial_hash() {
 }
 
 void Simulation::update_grid_coupling() {
+  #ifdef GUTIBM_OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
   for (Int i = 0; i < agents_.size(); ++i) {
     Agent& a = agents_[i];
     if (a.state == PhenoState::DEAD) continue;

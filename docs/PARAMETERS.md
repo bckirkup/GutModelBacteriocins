@@ -256,6 +256,40 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 
 ---
 
+## OpenMP Threading
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `GUTIBM_USE_OPENMP` | `OFF` | CMake option to enable OpenMP parallelism |
+
+**Build with OpenMP:**
+```bash
+cmake -B build -DGUTIBM_USE_OPENMP=ON
+cmake --build build -j$(nproc)
+```
+
+**Thread control (runtime):**
+```bash
+export OMP_NUM_THREADS=8     # limit thread count
+export OMP_SCHEDULE=dynamic  # override schedule policy
+```
+
+**Parallelized regions:**
+- Green's function superposition (`superpose_to_grid`): thread-local accumulation with dynamic scheduling
+- QSSA bacteriocin field deposition: static schedule over grid cells
+- QSSA nutrient depletion: dynamic schedule over agents with atomic grid updates
+- Agent metabolism (growth rate + biomass): static schedule, atomic nutrient consumption
+- Receptor kill probability: static schedule (precomputed in parallel, applied serially)
+- Agent advection and physics: static schedule over agents
+- Chemical field reaction application: static schedule over grid cells
+- Grid coupling update: static schedule over agents
+
+**Thread safety:** Shared chemical field updates use `#pragma omp atomic` to prevent
+race conditions when multiple agents occupy the same grid cell. The mechanical repulsion
+loop (pairwise neighbor interactions) remains serial due to cross-agent writes.
+
+---
+
 ## HDF5 Output
 
 | Parameter | Default | Units | Description |
