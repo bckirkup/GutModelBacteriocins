@@ -20,18 +20,30 @@ The QSSA solver and advection field operate between fix passes (chemistry and ph
 
 ## 1. fix_metabolism — Triple Monod Growth
 
-**Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through FepA), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics.
+**Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics.
 
 **Equation:**
 ```
-mu = mu_max * [C]/(Km_C + [C]) * [Fe]/(Km_Fe + [Fe]) * [B12]/(Km_B12 + [B12])
+mu = mu_max * [C]/(Km_C + [C]) * monod_iron * [B12]/(Km_B12 + [B12])
 ```
 
-**Receptor coupling:** When receptor expression drops (e.g. FepA downregulated to resist colicin B), the effective Km increases:
+**Graded iron uptake (Issue #10):** Rather than relying solely on FepA, iron acquisition uses four receptor systems in parallel with different affinities:
+
+| Receptor | Siderophore | Km (nM) | Role |
+|----------|-------------|---------|------|
+| FepA | Enterobactin | 10 | Primary (highest affinity) |
+| IroN | Salmochelin | 50 | Secondary (glycosylated enterobactin) |
+| IutA | Aerobactin | 100 | Secondary (hydroxamate) |
+| Fiu | Catecholates | 200 | Tertiary (broad specificity) |
+
 ```
-Km_Fe_eff = Km_Fe / expr_FepA    (expr in [0, 1])
+iron_uptake = Σ expr_i * [Fe]/(Km_i + [Fe])   for i ∈ {FepA, IroN, IutA, Fiu}
+monod_iron  = iron_uptake / (1 + expr_IroN + expr_IutA + expr_Fiu)
 ```
-This implements the metabolic "double-bind": resistance to toxin = nutrient starvation.
+
+This replaces the previous binary FepA-dependent penalty (`Km_Fe / expr_FepA`). When FepA is downregulated to resist colicin B/D, cells switch to secondary systems rather than complete iron starvation. The normalization ensures wild-type cells (all receptors at 1.0) maintain equivalent growth.
+
+**Note:** FhuA (ferrichrome) is NOT included as a secondary iron fallback because it transports fungal ferrichrome, which is not an endogenous enterobactin pathway (corrects EARI §70).
 
 **Penalties applied:**
 - **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Cost = `metE_penalty` (default 5%) + ethanolamine utilization loss `eut_penalty` (default 3%).

@@ -3,15 +3,18 @@
    
    Growth rate:
      mu = mu_max * [S_carbon/(Km_carbon + S_carbon)]
-                  * [S_iron/(Km_iron + S_iron)]
+                  * monod_iron
                   * [S_b12/(Km_b12 + S_b12)]
                   - maintenance
    
-   Receptor-dependent Km modification:
-     Km_iron = Km_base / receptor_expr[FepA]
-     Km_b12  = Km_base / receptor_expr[BtuB]
+   Iron uptake uses graded fallback across multiple receptor systems:
+     FepA (primary, Km ~10 nM), IroN (salmochelin, 50 nM),
+     IutA (aerobactin, 100 nM), Fiu (catecholate, 200 nM).
+   When FepA is downregulated, cells switch to secondary receptors
+   rather than complete iron starvation.
    
-   When receptor expression drops, Km increases → growth penalty.
+   B12-dependent Km modification:
+     Km_b12 = Km_base / receptor_expr[BtuB]
    
    Division: when biomass exceeds 2x initial, cell divides.
    Death: natural decay or if mu_realized < 0 for extended period.
@@ -32,6 +35,12 @@ struct MetabolismConfig {
   Real yield_carbon       = 0.5;      // carbon yield coefficient
   Real yield_iron         = 1.0e-6;   // iron yield (mol Fe / kg biomass)
   Real yield_b12          = 1.0e-9;   // B12 yield
+
+  // Iron uptake Km values per receptor system
+  Real km_iron_primary    = 10.0e-6;  // FepA: 10 nM in mol/m^3
+  Real km_iron_iroN       = 50.0e-6;  // IroN: 50 nM (salmochelin)
+  Real km_iron_iutA       = 100.0e-6; // IutA: 100 nM (aerobactin)
+  Real km_iron_fiu        = 200.0e-6; // Fiu: 200 nM (catecholate)
 
   // MetE penalty: 5% proteome cost when BtuB downregulated
   Real metE_penalty       = 0.05;

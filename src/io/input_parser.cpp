@@ -16,7 +16,7 @@ SimulationConfig InputParser::default_config() {
   // Default chemical species
   cfg.chemicals = {
     {"carbon",      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0},
-    {"iron",        1.0e-9, 1.0,  1.0e-6, 1.0e-6,  0.0},
+    {"iron",        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0},
     {"b12",         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0},
     {"bacteriocin", 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4},
   };

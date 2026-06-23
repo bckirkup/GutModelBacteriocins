@@ -37,6 +37,7 @@ enum class ReceptorType : uint8_t {
   IroN  = 4,   // salmochelin (secondary enterobactin)
   Fiu   = 5,   // catechol siderophores
   CirA  = 6,   // linearized enterobactin / colicin Ia
+  IutA  = 7,   // aerobactin (secondary iron uptake)
   NUM_RECEPTOR_TYPES
 };
 
