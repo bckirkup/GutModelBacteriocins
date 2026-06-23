@@ -75,7 +75,8 @@ void test_metE_config_defaults() {
   assert(std::abs(mcfg.metE_penalty - 0.05) < 1e-12);
   assert(std::abs(mcfg.metE_acetate_km - 40.0) < 1e-12);
   assert(std::abs(mcfg.metE_acetate_max_factor - 2.5) < 1e-12);
-  assert(std::abs(mcfg.eut_penalty - 0.03) < 1e-12);
+  assert(std::abs(mcfg.eut_km - 0.1e-3) < 1e-15);
+  assert(std::abs(mcfg.eut_max_penalty - 0.10) < 1e-12);
   std::cout << "  test_metE_config_defaults: PASSED\n";
 }
 
