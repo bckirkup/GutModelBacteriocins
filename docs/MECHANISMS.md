@@ -220,3 +220,24 @@ The 99% obligate anaerobic microbiota is modeled as a continuum rather than disc
 - **Nutrient sink**: Background consumption at volumetric rate
 - **Mucin liberation**: Monosaccharide release from mucin glycoproteins (carbon source)
 - **Carrying capacity**: Local density limit for the simulation domain
+
+---
+
+## Spatial Validation — Exclusion-Radius Clustering (VADI §75)
+
+**Background:** The original plan to validate strain-specific spatial patterns via HiPR-FISH targeting immunity mRNA was abandoned because immunity transcripts exist in single-digit copy numbers per cell — below the detection threshold of standard HiPR-FISH probes.
+
+**Replacement approach:** Exclusion-radius and NND clustering metrics that can be validated with DNA-FISH phylogroup probes or HCR-FISH amplification, both of which target multicopy sequences.
+
+**Metrics computed by `validate_spatial_signatures()`:**
+
+| Metric | What it measures | Empirical target |
+|--------|-----------------|------------------|
+| `monochromatic_score` | Same-type neighbor fraction | > 0.7 |
+| `comet_tail_ratio` | Downstream/upstream toxin concentration | > 1.5 |
+| `mean_exclusion_radius` | Mean distance to nearest competing-type boundary | Phylogroup-dependent |
+| `hopkins_statistic` | Global spatial clustering (Hopkins H) | > 0.7 |
+| `nnd_mean` | Grand mean NND between competing clones | Phylogroup-dependent |
+| `comet_tail_asymmetry` | Concentration-weighted downstream elongation | > 1.0 |
+
+The exclusion radius captures the characteristic "no-go zone" each bacteriocin-producing strain creates around itself; NND between competing clones quantifies how far apart rival phylogroups settle; the Hopkins statistic confirms non-random spatial arrangement.

@@ -1,7 +1,7 @@
 """
 Validation metrics against empirical datasets.
 Tests the model's predictions against:
-1. HiPR-FISH spatial clustering (mouse gut)
+1. Exclusion-radius / NND spatial clustering (VADI §75)
 2. Longitudinal metagenomics (human, 70-80% retention)
 """
 
@@ -10,21 +10,28 @@ from __future__ import annotations
 import numpy as np
 
 from .analysis import (
+    comet_tail_asymmetry_index,
     comet_tail_index,
+    exclusion_radius,
+    hopkins_statistic,
     monochromatic_patch_score,
-    spatial_clustering_index,
+    nearest_neighbor_distances,
 )
 from .hdf5_reader import GutIBMData
 
 
 def validate_spatial_signatures(data: GutIBMData, step: str) -> dict[str, float]:
     """
-    Validate spatial signatures against HiPR-FISH expectations.
+    Validate spatial signatures via exclusion-radius clustering (VADI §75).
 
-    Metrics:
-    - monochromatic_score: should be > 0.7 for Enterobacteriaceae
-    - clustering_index: should show significant clustering (> 0.6)
-    - comet_tail_ratio: should be > 1.5 indicating advective asymmetry
+    Retained metrics:
+        monochromatic_score  – should be > 0.7
+        comet_tail_ratio     – should be > 1.5
+    New exclusion-radius metrics:
+        mean_exclusion_radius – mean over all types
+        hopkins_statistic     – H > 0.7 → significantly clustered
+        nnd_mean              – grand mean of inter-type NND
+        comet_tail_asymmetry  – concentration-weighted downstream elongation
     """
     agents = data.get_agents(step)
     grid = data.get_grid(step)
@@ -32,16 +39,10 @@ def validate_spatial_signatures(data: GutIBMData, step: str) -> dict[str, float]
     positions = np.column_stack([agents["x"], agents["y"], agents["z"]])
     types = agents["type"]
 
-    # Monochromatic patchiness (same-type neighbors)
+    # --- retained metrics ------------------------------------------------
     mono_score = monochromatic_patch_score(positions, types)
 
-    # Spatial clustering
-    clustering = spatial_clustering_index(positions, types)
-    mean_clustering = float(np.mean(list(clustering.values()))) if clustering else 0.5
-
-    # Comet-tail asymmetry
     bacteriocin = grid.get("bacteriocin", np.zeros(1))
-    # Rough grid-position mapping (1D for now)
     n = len(bacteriocin)
     grid_pos = np.column_stack([
         np.linspace(0, 1e-3, n),
@@ -50,10 +51,34 @@ def validate_spatial_signatures(data: GutIBMData, step: str) -> dict[str, float]
     ])
     comet = comet_tail_index(grid_pos, bacteriocin)
 
+    # --- new exclusion-radius metrics ------------------------------------
+    unique_types = np.unique(types)
+
+    # Localized exclusion radii per phylogroup
+    excl_radii = {
+        int(t): exclusion_radius(positions, types, int(t))
+        for t in unique_types
+    }
+    mean_excl = float(np.mean(list(excl_radii.values()))) if excl_radii else 0.0
+
+    # Hopkins clustering over the full point cloud
+    hopkins = hopkins_statistic(positions)
+
+    # NND between competing clones
+    nnd = nearest_neighbor_distances(positions, types)
+    all_nnd = np.concatenate(list(nnd.values())) if nnd else np.array([])
+    nnd_mean = float(np.mean(all_nnd)) if len(all_nnd) > 0 else 0.0
+
+    # Enhanced comet-tail asymmetry (concentration-weighted)
+    comet_asym = comet_tail_asymmetry_index(grid_pos, bacteriocin, flow_direction=0)
+
     return {
         "monochromatic_score": mono_score,
-        "mean_clustering_index": mean_clustering,
         "comet_tail_ratio": comet,
+        "mean_exclusion_radius": mean_excl,
+        "hopkins_statistic": hopkins,
+        "nnd_mean": nnd_mean,
+        "comet_tail_asymmetry": comet_asym,
     }
 
 
