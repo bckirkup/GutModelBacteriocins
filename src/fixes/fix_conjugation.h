@@ -21,10 +21,13 @@
 namespace gutibm {
 
 struct ConjugationConfig {
-  Real pili_length        = 4.0e-6;   // max F-pilus reach (m)
+  Real pili_length        = 4.0e-6;   // max F-pilus reach (m), used when heterogeneity off
   Real base_transfer_rate = 1.0e-4;   // conjugation events per s per pair
   Real shear_critical     = 10.0;     // critical shear rate (1/s)
   Real plasmid_copy_cost  = 0.02;     // 2% mu penalty per transferred plasmid
+  bool pili_heterogeneity = false;    // enable per-event F-pilus length sampling
+  Real pili_length_min    = 1.0e-6;   // min F-pilus length (m), uniform lower bound
+  Real pili_length_max    = 4.0e-6;   // max F-pilus length (m), uniform upper bound
 };
 
 class FixConjugation : public Fix {

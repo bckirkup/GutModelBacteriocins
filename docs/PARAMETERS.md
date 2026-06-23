@@ -225,8 +225,13 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
 | `conjugation.base_transfer_prob` | 1e-3 | — | Base HGT probability |
-| `conjugation.contact_radius` | 2e-6 | m | Max pilus reach |
+| `conjugation.contact_radius` | 2e-6 | m | Max pilus reach (used when heterogeneity off) |
 | `conjugation.shear_crit` | 10.0 | 1/s | Critical shear for MPS |
+| `conjugation.pili_heterogeneity` | false | — | Enable per-event F-pilus length sampling |
+| `conjugation.pili_length_min` | 1e-6 | m | Min F-pilus length (uniform lower bound) |
+| `conjugation.pili_length_max` | 4e-6 | m | Max F-pilus length (uniform upper bound) |
+
+**Pili heterogeneity (VADI §55):** In vivo F-pili are 1–4 μm with significant length heterogeneity. When `pili_heterogeneity = true`, each conjugation attempt samples its effective contact radius from `uniform(pili_length_min, pili_length_max)` instead of using the fixed `contact_radius`. The expected mean reach is 2.5 μm.
 
 ---
 

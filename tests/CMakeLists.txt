@@ -82,6 +82,19 @@ endif()
 target_link_libraries(test_octree PRIVATE ${MATH_LIB})
 add_test(NAME octree COMMAND test_octree)
 
+# ── test_conjugation ─────────────────────────────────────────────────────
+add_executable(test_conjugation test_conjugation.cpp ${LIB_SOURCES})
+target_include_directories(test_conjugation PRIVATE ${TEST_INCLUDE_DIRS})
+if(GUTIBM_USE_MPI)
+  target_link_libraries(test_conjugation PRIVATE MPI::MPI_CXX)
+endif()
+if(GUTIBM_USE_HDF5)
+  target_include_directories(test_conjugation PRIVATE ${HDF5_INCLUDE_DIRS})
+  target_link_libraries(test_conjugation PRIVATE ${HDF5_LIBRARIES})
+endif()
+target_link_libraries(test_conjugation PRIVATE ${MATH_LIB})
+add_test(NAME conjugation COMMAND test_conjugation)
+
 # ── test_smoke (end-to-end integration) ──────────────────────────────────
 add_executable(test_smoke test_smoke.cpp ${LIB_SOURCES})
 target_include_directories(test_smoke PRIVATE ${TEST_INCLUDE_DIRS})
