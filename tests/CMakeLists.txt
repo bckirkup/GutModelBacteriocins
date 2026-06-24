@@ -336,3 +336,21 @@ if(GUTIBM_USE_OPENMP)
 endif()
 target_link_libraries(test_mutation PRIVATE ${MATH_LIB})
 add_test(NAME mutation COMMAND test_mutation)
+
+# ── test_hdf5_roundtrip ──────────────────────────────────────────────────
+if(GUTIBM_USE_HDF5)
+  add_executable(test_hdf5_roundtrip test_hdf5_roundtrip.cpp ${LIB_SOURCES})
+  target_include_directories(test_hdf5_roundtrip PRIVATE ${TEST_INCLUDE_DIRS})
+  if(GUTIBM_USE_MPI)
+    target_link_libraries(test_hdf5_roundtrip PRIVATE MPI::MPI_CXX)
+  endif()
+  target_include_directories(test_hdf5_roundtrip PRIVATE ${HDF5_INCLUDE_DIRS})
+  target_link_libraries(test_hdf5_roundtrip PRIVATE ${HDF5_LIBRARIES})
+  if(GUTIBM_USE_OPENMP)
+    target_link_libraries(test_hdf5_roundtrip PRIVATE OpenMP::OpenMP_CXX)
+  endif()
+  target_link_libraries(test_hdf5_roundtrip PRIVATE ${MATH_LIB})
+  add_test(NAME hdf5_roundtrip COMMAND test_hdf5_roundtrip)
+  # Parallel round-trip (np>1) is deferred: HDF5Writer step groups are created
+  # on every rank without existence checks, causing duplicate-link errors.
+endif()
