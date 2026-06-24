@@ -216,10 +216,23 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
 void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
   const auto& atoms = snap.agents;
   const auto& lin   = snap.lineage;
+  const auto& gen   = snap.genome;
   const size_t n    = atoms.id.size();
 
   TagID max_tag = 0;
   agents_.reserve(static_cast<Int>(n));
+
+  // Prefix sum of BI locus counts for flat genome arrays.
+  std::vector<size_t> bi_offsets(n + 1, 0);
+  for (size_t i = 0; i < n; ++i) {
+    bi_offsets[i + 1] = bi_offsets[i] + static_cast<size_t>(lin.num_bi_loci[i]);
+  }
+  if (gen.present) {
+    size_t expected_bi = bi_offsets[n];
+    if (gen.bi_toxin_id.size() != expected_bi) {
+      throw std::runtime_error("checkpoint BI locus count mismatch in genome group");
+    }
+  }
 
   for (size_t i = 0; i < n; ++i) {
     Vec3 pos = {atoms.x[i], atoms.y[i], atoms.z[i]};
@@ -241,13 +254,43 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     a.genome.generation = static_cast<uint32_t>(lin.generation[i]);
     a.receptor_expr[static_cast<int>(ReceptorType::BtuB)] = lin.btuB_expression[i];
     a.receptor_expr[static_cast<int>(ReceptorType::FepA)] = lin.fepA_expression[i];
-    for (Int r = 0; r < NUM_RECEPTORS; ++r) {
-      a.genome.receptor_expression[r] = a.receptor_expr[r];
-    }
 
-    // BI cluster identity is not serialized; preserve locus count for lineage stats.
-    a.genome.bi_loci.clear();
-    a.genome.bi_loci.resize(static_cast<size_t>(lin.num_bi_loci[i]));
+    if (gen.present) {
+      a.genome.parent_id = static_cast<TagID>(gen.parent_id[i]);
+      a.genome.mutations = static_cast<uint32_t>(gen.mutations[i]);
+      a.genome.has_conjugative_plasmid = (gen.has_conjugative_plasmid[i] != 0);
+      a.genome.plasmid_cost_amelioration = gen.plasmid_cost_amelioration[i];
+      for (Int r = 0; r < NUM_RECEPTORS; ++r) {
+        const size_t idx = i * NUM_RECEPTORS + static_cast<size_t>(r);
+        a.genome.receptor_expression[r] = gen.receptor_expression[idx];
+        a.genome.toxin_affinity[r] = gen.toxin_affinity[idx];
+        a.genome.ligand_affinity[r] = gen.ligand_affinity[idx];
+        a.receptor_expr[r] = gen.receptor_expression[idx];
+      }
+
+      a.genome.bi_loci.clear();
+      a.genome.bi_loci.reserve(static_cast<size_t>(lin.num_bi_loci[i]));
+      for (size_t b = bi_offsets[i]; b < bi_offsets[i + 1]; ++b) {
+        BICluster bi;
+        bi.toxin_id = static_cast<uint16_t>(gen.bi_toxin_id[b]);
+        bi.immunity_id = static_cast<uint16_t>(gen.bi_immunity_id[b]);
+        bi.target = static_cast<ReceptorType>(gen.bi_target[b]);
+        bi.bclass = static_cast<BacteriocinClass>(gen.bi_bclass[b]);
+        bi.pI = gen.bi_pI[b];
+        bi.diff_coeff = gen.bi_diff_coeff[b];
+        bi.retardation = gen.bi_retardation[b];
+        bi.molecular_weight = gen.bi_molecular_weight[b];
+        bi.immunity_binding_affinity = gen.bi_immunity_binding_affinity[b];
+        a.genome.bi_loci.push_back(bi);
+      }
+    } else {
+      for (Int r = 0; r < NUM_RECEPTORS; ++r) {
+        a.genome.receptor_expression[r] = a.receptor_expr[r];
+      }
+      // Legacy snapshots: preserve locus count only (empty BICluster entries).
+      a.genome.bi_loci.clear();
+      a.genome.bi_loci.resize(static_cast<size_t>(lin.num_bi_loci[i]));
+    }
 
     if (advection_.in_crypt_zone(a.x[2])) {
       a.in_crypt = true;

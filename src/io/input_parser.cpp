@@ -108,6 +108,37 @@ void InputParser::apply_flat_key(SimulationConfig& cfg,
     }
   }
   else if (key == "sos_lysis_prob")    cfg.bacteriocin.sos_lysis_prob = parse_real(key, val);
+  // Receptor Fix tunables
+  else if (key == "kd_b12_btuB")        cfg.receptor.kd_b12_btuB = parse_real(key, val);
+  else if (key == "kd_colicinE_btuB")  cfg.receptor.kd_colicinE_btuB = parse_real(key, val);
+  else if (key == "kd_enterobactin")    cfg.receptor.kd_enterobactin = parse_real(key, val);
+  else if (key == "kd_colicinB_fepA")   cfg.receptor.kd_colicinB_fepA = parse_real(key, val);
+  else if (key == "kd_lin_enterobactin") cfg.receptor.kd_lin_enterobactin = parse_real(key, val);
+  else if (key == "kd_colicinIa_cirA") cfg.receptor.kd_colicinIa_cirA = parse_real(key, val);
+  else if (key == "kill_rate_colicin")  cfg.receptor.kill_rate_colicin = parse_real(key, val);
+  else if (key == "kill_rate_microcin") cfg.receptor.kill_rate_microcin = parse_real(key, val);
+  else if (key == "immunity_factor")    cfg.receptor.immunity_factor = parse_real(key, val);
+  // Conjugation Fix tunables
+  else if (key == "pili_length")        cfg.conjugation.pili_length = parse_real(key, val);
+  else if (key == "base_transfer_rate") cfg.conjugation.base_transfer_rate = parse_real(key, val);
+  else if (key == "shear_critical")     cfg.conjugation.shear_critical = parse_real(key, val);
+  else if (key == "plasmid_copy_cost")  cfg.conjugation.plasmid_copy_cost = parse_real(key, val);
+  else if (key == "pili_heterogeneity") cfg.conjugation.pili_heterogeneity = (val == "true" || val == "1");
+  else if (key == "pili_length_min")    cfg.conjugation.pili_length_min = parse_real(key, val);
+  else if (key == "pili_length_max")    cfg.conjugation.pili_length_max = parse_real(key, val);
+  // Mutation Fix tunables
+  else if (key == "bi_duplication_rate")    cfg.mutation.bi_duplication_rate = parse_real(key, val);
+  else if (key == "bi_recombination_rate")  cfg.mutation.bi_recombination_rate = parse_real(key, val);
+  else if (key == "receptor_mutation_rate") cfg.mutation.receptor_mutation_rate = parse_real(key, val);
+  else if (key == "super_killer_rate")      cfg.mutation.super_killer_rate = parse_real(key, val);
+  else if (key == "partial_resistance_rate") cfg.mutation.partial_resistance_rate = parse_real(key, val);
+  else if (key == "receptor_reduction")     cfg.mutation.receptor_reduction = parse_real(key, val);
+  else if (key == "max_bi_loci")            cfg.mutation.max_bi_loci = parse_int(key, val);
+  else if (key == "immunity_escape_prob")   cfg.mutation.immunity_escape_prob = parse_real(key, val);
+  else if (key == "escape_affinity_lo")     cfg.mutation.escape_affinity_lo = parse_real(key, val);
+  else if (key == "escape_affinity_hi")     cfg.mutation.escape_affinity_hi = parse_real(key, val);
+  else if (key == "compensatory_rate")      cfg.mutation.compensatory_rate = parse_real(key, val);
+  else if (key == "compensatory_reduction") cfg.mutation.compensatory_reduction = parse_real(key, val);
   else if (key == "crypts_enabled")     cfg.advection.crypts_enabled = (val == "true" || val == "1");
   else if (key == "crypt_depth")       cfg.advection.crypt_depth = parse_real(key, val);
   else if (key == "crypt_exit_rate")   cfg.advection.crypt_exit_rate = parse_real(key, val);

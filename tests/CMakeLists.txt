@@ -358,8 +358,16 @@ if(GUTIBM_USE_HDF5)
   endif()
   target_link_libraries(test_hdf5_roundtrip PRIVATE ${MATH_LIB})
   add_test(NAME hdf5_roundtrip COMMAND test_hdf5_roundtrip)
-  # Parallel round-trip (np>1) is deferred: HDF5Writer step groups are created
-  # on every rank without existence checks, causing duplicate-link errors.
+  if(GUTIBM_USE_MPI)
+    add_test(
+      NAME hdf5_roundtrip_parallel
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_hdf5_roundtrip> ${MPIEXEC_POSTFLAGS}
+    )
+    set_tests_properties(hdf5_roundtrip_parallel PROPERTIES
+      PASS_REGULAR_EXPRESSION "All HDF5 round-trip tests passed"
+    )
+  endif()
 
   add_executable(test_hdf5_checkpoint test_hdf5_checkpoint.cpp ${LIB_SOURCES})
   target_include_directories(test_hdf5_checkpoint PRIVATE ${TEST_INCLUDE_DIRS})

@@ -25,6 +25,10 @@
 
   "sos_lysis_prob": 0.01,
 
+  "bi_duplication_rate": 2e-5,
+  "base_transfer_rate": 1.5e-4,
+  "kd_colicinE_btuB": 4e-10,
+
   "toxin_cutoff": 200e-6,
   "nutrient_cutoff": 50e-6,
   "use_fmm": true,

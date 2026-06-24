@@ -45,6 +45,7 @@ class HDF5Writer {
   void write_metadata(const Simulation& sim, const std::string& group,
                        Int step, Real time);
   void write_lineage(const Simulation& sim, const std::string& group);
+  void write_genome(const Simulation& sim, const std::string& group);
 
   HDF5Config cfg_;
   bool enabled_ = false;
