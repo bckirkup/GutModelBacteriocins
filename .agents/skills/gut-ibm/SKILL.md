@@ -46,7 +46,7 @@ No manual source-list edit needed for new Fix or diffusion files.
 cd build && ctest --output-on-failure
 ```
 
-18 CTest targets (all run at `nprocs=1` today — no multi-rank MPI tests yet):
+19 CTest targets (all run at `nprocs=1` today — no multi-rank MPI tests yet):
 
 | Test | File | Focus |
 |------|------|-------|
@@ -64,8 +64,9 @@ cd build && ctest --output-on-failure
 | `immunity_escape` | `test_immunity_escape.cpp` | Affinity-neutralization matrix |
 | `mechanics` | `test_mechanics.cpp` | Hertzian contact, adhesion |
 | `ethanolamine` | `test_ethanolamine.cpp` | Nutrient-conditional eut penalty |
-| `openmp_parity` | `test_openmp_parity.cpp` | Determinism within one build |
+| `openmp_parity` | `test_openmp_parity.cpp` | Determinism + cross-build fingerprint |
 | `adaptive_dt` | `test_adaptive_dt.cpp` | Adaptive timestep selection |
+| `agent_transfer` | `test_agent_transfer.cpp` | MPI pack/unpack round-trip |
 | `fix_registry` | `test_fix_registry.cpp` | Default Fix plugin registration |
 | `input_parser` | `test_input_parser.cpp` | Example JSON config files |
 
@@ -199,13 +200,13 @@ Use **exact** names from `PlasmidLibrary::entries()` in `src/genome/plasmid.cpp`
 | `ColM` | FhuA | Lethal Core |
 | `MccV` | CirA | Microcin V, conjugative |
 
-**Do not use** `colicin_E1`, `colicin_B`, etc. — those are factory method names, not library keys. Mismatched names silently spawn agents with **no plasmids**. Several existing tests still use the wrong names (see issue #42).
+**Do not use** unknown plasmid names — `PlasmidLibrary::find()` resolves canonical names (`ColE1`, …) and legacy aliases (`colicin_E1`, …). Unknown names log a warning and spawn agents without BI loci.
 
 ### MPI decomposition
 
 1D slab decomposition along `DomainConfig::mpi_decomp_axis` (default `0` = x, distal flow). Set in code, not input file. Ghost agents exchanged at slab boundaries; agents migrate via `migrate_agents()`.
 
-**Caveat:** MPI serialization in `simulation.cpp` omits `in_crypt`, `immunity_binding_affinity`, and `toxin_affinity`/`ligand_affinity` — multi-rank runs can lose state (issue #41).
+**Caveat:** MPI serialization lives in `src/core/agent_transfer.cpp` — update pack/unpack when adding agent or genome fields.
 
 ### HDF5 output
 

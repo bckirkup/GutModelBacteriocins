@@ -240,6 +240,22 @@ endif()
 target_link_libraries(test_adaptive_dt PRIVATE ${MATH_LIB})
 add_test(NAME adaptive_dt COMMAND test_adaptive_dt)
 
+# ── test_agent_transfer ──────────────────────────────────────────────────
+add_executable(test_agent_transfer test_agent_transfer.cpp ${LIB_SOURCES})
+target_include_directories(test_agent_transfer PRIVATE ${TEST_INCLUDE_DIRS})
+if(GUTIBM_USE_MPI)
+  target_link_libraries(test_agent_transfer PRIVATE MPI::MPI_CXX)
+endif()
+if(GUTIBM_USE_HDF5)
+  target_include_directories(test_agent_transfer PRIVATE ${HDF5_INCLUDE_DIRS})
+  target_link_libraries(test_agent_transfer PRIVATE ${HDF5_LIBRARIES})
+endif()
+if(GUTIBM_USE_OPENMP)
+  target_link_libraries(test_agent_transfer PRIVATE OpenMP::OpenMP_CXX)
+endif()
+target_link_libraries(test_agent_transfer PRIVATE ${MATH_LIB})
+add_test(NAME agent_transfer COMMAND test_agent_transfer)
+
 # ── test_fix_registry ────────────────────────────────────────────────────
 add_executable(test_fix_registry test_fix_registry.cpp ${LIB_SOURCES})
 target_include_directories(test_fix_registry PRIVATE ${TEST_INCLUDE_DIRS})

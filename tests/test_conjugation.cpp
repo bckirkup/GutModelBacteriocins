@@ -94,7 +94,7 @@ void test_heterogeneity_integration() {
   donor.type        = 1;
   donor.count       = 10;
   donor.mu_max      = 5e-4;
-  donor.plasmids    = {"colicin_B"};
+  donor.plasmids    = {"ColB"};
   donor.conjugative = true;
   cfg.initial_strains.push_back(donor);
 
@@ -145,7 +145,7 @@ void test_heterogeneity_disabled_uses_fixed() {
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain s;
   s.type = 1; s.count = 5; s.mu_max = 5e-4;
-  s.plasmids = {"colicin_B"}; s.conjugative = true;
+  s.plasmids = {"ColB"}; s.conjugative = true;
   cfg.initial_strains.push_back(s);
 
   SimulationConfig::InitialStrain r;

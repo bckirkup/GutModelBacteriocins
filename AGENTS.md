@@ -79,7 +79,7 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | `src/io/hdf5_writer.cpp` | Parallel HDF5 output (write-only) |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
 | `examples/` | `single_colony/`, `diversity_paradox/` input templates |
-| `tests/` | 18 CTest targets |
+| `tests/` | 19 CTest targets |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 
 ## Key Concepts
@@ -94,19 +94,17 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 
 ## Known Bugs & Landmines
 
-Read these before investigating "why doesn't X work?"
+| Issue | Status | Notes |
+|-------|--------|-------|
+| **#40 Metabolic washout** | Fixed | `check_washout()` uses `mu_realized < gamma_flow` |
+| **#41 MPI state loss** | Fixed | `agent_transfer.cpp` serializes crypt, affinities, immunity escape |
+| **#42 Plasmid names** | Fixed | `PlasmidLibrary::find()` + aliases; warn on unknown names |
+| **#43 No multi-rank tests** | Open | All CTest runs at `nprocs=1` |
+| Input parser gaps | Open | Strains, FMM, peristaltic params only configurable in C++ |
+| No checkpoint restart | Open | `hdf5_writer.cpp` write-only |
+| `parse_real()` silent zero | Open | Bad config values become 0.0 without warning |
 
-| Issue | Symptom | Location |
-|-------|---------|----------|
-| **#40 Metabolic washout broken** | Receptor-downregulated immigrants never washed out metabolically; only `z >= z_max` washout fires | `simulation.cpp:check_washout()` — spurious `&& mu_realized < 0.0` |
-| **#41 MPI state loss** | Crypt refugia, immunity escape, partial resistance lost after rank migration | `AgentTransferData` / `BIClusterTransferData` in `simulation.cpp` |
-| **#42 Plasmid name mismatch** | Agents spawn with zero `bi_loci`; tests pass without exercising bacteriocins | Library uses `ColE1`; many tests/docs use `colicin_E1` (silent no-op) |
-| **#43 No multi-rank tests** | MPI bugs undetected until manual `mpirun -np N` | All CTest runs at `nprocs=1` |
-| Input parser gaps | Strains, FMM, peristaltic params only configurable in C++ | `input_parser.cpp` |
-| No checkpoint restart | Cannot resume from HDF5 snapshot | `hdf5_writer.cpp` write-only |
-| `parse_real()` silent zero | Bad config values become 0.0 without warning | `input_parser.cpp` |
-
-When writing or fixing tests that involve plasmids, **always use `ColE1`/`ColB`/etc.** and assert `agent.genome.bi_loci.size() > 0`.
+When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colicin_E1` aliases still resolve) and assert `agent.genome.bi_loci.size() > 0`.
 
 ## Test Coverage Map
 
