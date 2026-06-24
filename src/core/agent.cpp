@@ -7,6 +7,30 @@
 
 namespace gutibm {
 
+TagID AgentPool::first_tag_for_rank(Int rank, Int nprocs) {
+  return static_cast<TagID>(rank) + 1;
+}
+
+TagID AgentPool::tag_stride(Int nprocs) {
+  return static_cast<TagID>(std::max(1, nprocs));
+}
+
+TagID AgentPool::next_tag_after_max(TagID max_seen, Int rank, Int nprocs) {
+  const TagID stride = tag_stride(nprocs);
+  TagID candidate = std::max(max_seen + 1, first_tag_for_rank(rank, nprocs));
+  const TagID offset = (candidate - 1) % stride;
+  const TagID rank_offset = static_cast<TagID>(rank);
+  if (offset != rank_offset) {
+    candidate += (rank_offset + stride - offset) % stride;
+  }
+  return candidate;
+}
+
+void AgentPool::configure_tags(TagID first_tag, TagID stride) {
+  next_tag_ = first_tag;
+  tag_stride_ = std::max<TagID>(1, stride);
+}
+
 Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
   Agent a{};
   a.tag           = id;

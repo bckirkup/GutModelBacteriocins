@@ -94,6 +94,12 @@ class Domain {
   Int rank_lo() const { return rank_lo_; }
   Int rank_hi() const { return rank_hi_; }
 
+  // True when periodic wrap maps both slab faces to the same neighbor rank
+  // (e.g. 2-rank decomposition along a periodic axis).
+  bool neighbors_collapsed() const {
+    return nprocs_ > 1 && rank_lo_ >= 0 && rank_lo_ == rank_hi_;
+  }
+
   // Spatial hash
   SpatialHash& spatial_hash() { return hash_; }
   const SpatialHash& spatial_hash() const { return hash_; }

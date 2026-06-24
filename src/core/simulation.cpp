@@ -119,6 +119,9 @@ void Simulation::init(const SimulationConfig& cfg) {
 }
 
 void Simulation::init_population(const SimulationConfig& cfg) {
+  agents_.configure_tags(AgentPool::first_tag_for_rank(domain_.rank(), domain_.nprocs()),
+                           AgentPool::tag_stride(domain_.nprocs()));
+
   for (const auto& strain : cfg.initial_strains) {
     for (Int i = 0; i < strain.count; ++i) {
       Vec3 pos = {
@@ -254,7 +257,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     agents_.push_back(std::move(a));
   }
 
-  agents_.set_next_tag(max_tag + 1);
+  agents_.configure_tags(
+      AgentPool::next_tag_after_max(max_tag, domain_.rank(), domain_.nprocs()),
+      AgentPool::tag_stride(domain_.nprocs()));
 
   for (const auto& [name, values] : snap.grid.species) {
     Int spec = chem_.find(name);
@@ -667,6 +672,94 @@ void Simulation::take_lineage_snapshot() {
 //  MPI domain decomposition helpers (serialization in agent_transfer.cpp)
 // ---------------------------------------------------------------------------
 
+#ifdef GUTIBM_MPI
+namespace {
+
+void mpi_exchange_sizes_distinct(Int rank_lo, Int rank_hi,
+                                 int sz_send_lo, int sz_send_hi,
+                                 int& sz_recv_lo, int& sz_recv_hi,
+                                 int tag_lo_send, int tag_lo_recv,
+                                 int tag_hi_send, int tag_hi_recv) {
+  if (rank_lo >= 0) {
+    MPI_Sendrecv(&sz_send_lo, 1, MPI_INT, rank_lo, tag_lo_send,
+                 &sz_recv_lo, 1, MPI_INT, rank_lo, tag_lo_recv,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+  if (rank_hi >= 0) {
+    MPI_Sendrecv(&sz_send_hi, 1, MPI_INT, rank_hi, tag_hi_send,
+                 &sz_recv_hi, 1, MPI_INT, rank_hi, tag_hi_recv,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+}
+
+void mpi_exchange_buffers_distinct(Int rank_lo, Int rank_hi,
+                                   const std::vector<char>& buf_send_lo,
+                                   const std::vector<char>& buf_send_hi,
+                                   std::vector<char>& buf_recv_lo,
+                                   std::vector<char>& buf_recv_hi,
+                                   int sz_recv_lo, int sz_recv_hi,
+                                   int tag_lo_send, int tag_lo_recv,
+                                   int tag_hi_send, int tag_hi_recv) {
+  if (rank_lo >= 0) {
+    MPI_Sendrecv(buf_send_lo.data(), static_cast<int>(buf_send_lo.size()), MPI_CHAR,
+                 rank_lo, tag_lo_send,
+                 buf_recv_lo.data(), sz_recv_lo, MPI_CHAR,
+                 rank_lo, tag_lo_recv,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+  if (rank_hi >= 0) {
+    MPI_Sendrecv(buf_send_hi.data(), static_cast<int>(buf_send_hi.size()), MPI_CHAR,
+                 rank_hi, tag_hi_send,
+                 buf_recv_hi.data(), sz_recv_hi, MPI_CHAR,
+                 rank_hi, tag_hi_recv,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  }
+}
+
+void mpi_exchange_sizes_collapsed(Int neighbor, int tag,
+                                  int sz_send_lo, int sz_send_hi,
+                                  int& sz_recv_lo, int& sz_recv_hi) {
+  int sizes_send[2] = {sz_send_lo, sz_send_hi};
+  int sizes_recv[2] = {0, 0};
+  MPI_Sendrecv(sizes_send, 2, MPI_INT, neighbor, tag,
+               sizes_recv, 2, MPI_INT, neighbor, tag,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  sz_recv_lo = sizes_recv[0];
+  sz_recv_hi = sizes_recv[1];
+}
+
+void mpi_exchange_buffers_collapsed(Int neighbor, int tag,
+                                    const std::vector<char>& buf_send_lo,
+                                    const std::vector<char>& buf_send_hi,
+                                    std::vector<char>& buf_recv_lo,
+                                    std::vector<char>& buf_recv_hi,
+                                    int sz_recv_lo, int sz_recv_hi) {
+  std::vector<char> send_buf;
+  send_buf.reserve(buf_send_lo.size() + buf_send_hi.size());
+  send_buf.insert(send_buf.end(), buf_send_lo.begin(), buf_send_lo.end());
+  send_buf.insert(send_buf.end(), buf_send_hi.begin(), buf_send_hi.end());
+
+  buf_recv_lo.resize(static_cast<size_t>(sz_recv_lo));
+  buf_recv_hi.resize(static_cast<size_t>(sz_recv_hi));
+  std::vector<char> recv_buf(static_cast<size_t>(sz_recv_lo + sz_recv_hi));
+
+  MPI_Sendrecv(send_buf.data(), static_cast<int>(send_buf.size()), MPI_CHAR, neighbor, tag,
+               recv_buf.data(), static_cast<int>(recv_buf.size()), MPI_CHAR, neighbor, tag,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+  if (sz_recv_lo > 0) {
+    std::memcpy(buf_recv_lo.data(), recv_buf.data(),
+                static_cast<size_t>(sz_recv_lo));
+  }
+  if (sz_recv_hi > 0) {
+    std::memcpy(buf_recv_hi.data(), recv_buf.data() + sz_recv_lo,
+                static_cast<size_t>(sz_recv_hi));
+  }
+}
+
+}  // namespace
+#endif
+
 void Simulation::migrate_agents() {
 #ifdef GUTIBM_MPI
   if (domain_.nprocs() <= 1) return;
@@ -718,35 +811,31 @@ void Simulation::migrate_agents() {
   int sz_send_hi = static_cast<int>(buf_send_hi.size());
   int sz_recv_lo = 0, sz_recv_hi = 0;
 
-  // Sendrecv with lo neighbor
-  if (domain_.rank_lo() >= 0) {
-    MPI_Sendrecv(&sz_send_lo, 1, MPI_INT, domain_.rank_lo(), 0,
-                 &sz_recv_lo, 1, MPI_INT, domain_.rank_lo(), 1,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  }
-  // Sendrecv with hi neighbor
-  if (domain_.rank_hi() >= 0) {
-    MPI_Sendrecv(&sz_send_hi, 1, MPI_INT, domain_.rank_hi(), 1,
-                 &sz_recv_hi, 1, MPI_INT, domain_.rank_hi(), 0,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  if (domain_.neighbors_collapsed()) {
+    mpi_exchange_sizes_collapsed(domain_.rank_lo(), 0,
+                                 sz_send_lo, sz_send_hi,
+                                 sz_recv_lo, sz_recv_hi);
+  } else {
+    mpi_exchange_sizes_distinct(domain_.rank_lo(), domain_.rank_hi(),
+                                sz_send_lo, sz_send_hi,
+                                sz_recv_lo, sz_recv_hi,
+                                0, 1, 1, 0);
   }
 
   // Exchange agent data
   std::vector<char> buf_recv_lo(sz_recv_lo), buf_recv_hi(sz_recv_hi);
 
-  if (domain_.rank_lo() >= 0) {
-    MPI_Sendrecv(buf_send_lo.data(), sz_send_lo, MPI_CHAR,
-                 domain_.rank_lo(), 2,
-                 buf_recv_lo.data(), sz_recv_lo, MPI_CHAR,
-                 domain_.rank_lo(), 3,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  }
-  if (domain_.rank_hi() >= 0) {
-    MPI_Sendrecv(buf_send_hi.data(), sz_send_hi, MPI_CHAR,
-                 domain_.rank_hi(), 3,
-                 buf_recv_hi.data(), sz_recv_hi, MPI_CHAR,
-                 domain_.rank_hi(), 2,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  if (domain_.neighbors_collapsed()) {
+    mpi_exchange_buffers_collapsed(domain_.rank_lo(), 2,
+                                   buf_send_lo, buf_send_hi,
+                                   buf_recv_lo, buf_recv_hi,
+                                   sz_recv_lo, sz_recv_hi);
+  } else {
+    mpi_exchange_buffers_distinct(domain_.rank_lo(), domain_.rank_hi(),
+                                  buf_send_lo, buf_send_hi,
+                                  buf_recv_lo, buf_recv_hi,
+                                  sz_recv_lo, sz_recv_hi,
+                                  2, 3, 3, 2);
   }
 
   // Unpack received agents
@@ -797,33 +886,31 @@ void Simulation::exchange_ghost_agents() {
   int sz_send_hi = static_cast<int>(buf_send_hi.size());
   int sz_recv_lo = 0, sz_recv_hi = 0;
 
-  if (domain_.rank_lo() >= 0) {
-    MPI_Sendrecv(&sz_send_lo, 1, MPI_INT, domain_.rank_lo(), 10,
-                 &sz_recv_lo, 1, MPI_INT, domain_.rank_lo(), 11,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  }
-  if (domain_.rank_hi() >= 0) {
-    MPI_Sendrecv(&sz_send_hi, 1, MPI_INT, domain_.rank_hi(), 11,
-                 &sz_recv_hi, 1, MPI_INT, domain_.rank_hi(), 10,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  if (domain_.neighbors_collapsed()) {
+    mpi_exchange_sizes_collapsed(domain_.rank_lo(), 10,
+                                 sz_send_lo, sz_send_hi,
+                                 sz_recv_lo, sz_recv_hi);
+  } else {
+    mpi_exchange_sizes_distinct(domain_.rank_lo(), domain_.rank_hi(),
+                                sz_send_lo, sz_send_hi,
+                                sz_recv_lo, sz_recv_hi,
+                                10, 11, 11, 10);
   }
 
   // Exchange data
   std::vector<char> buf_recv_lo(sz_recv_lo), buf_recv_hi(sz_recv_hi);
 
-  if (domain_.rank_lo() >= 0) {
-    MPI_Sendrecv(buf_send_lo.data(), sz_send_lo, MPI_CHAR,
-                 domain_.rank_lo(), 12,
-                 buf_recv_lo.data(), sz_recv_lo, MPI_CHAR,
-                 domain_.rank_lo(), 13,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  }
-  if (domain_.rank_hi() >= 0) {
-    MPI_Sendrecv(buf_send_hi.data(), sz_send_hi, MPI_CHAR,
-                 domain_.rank_hi(), 13,
-                 buf_recv_hi.data(), sz_recv_hi, MPI_CHAR,
-                 domain_.rank_hi(), 12,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  if (domain_.neighbors_collapsed()) {
+    mpi_exchange_buffers_collapsed(domain_.rank_lo(), 12,
+                                   buf_send_lo, buf_send_hi,
+                                   buf_recv_lo, buf_recv_hi,
+                                   sz_recv_lo, sz_recv_hi);
+  } else {
+    mpi_exchange_buffers_distinct(domain_.rank_lo(), domain_.rank_hi(),
+                                  buf_send_lo, buf_send_hi,
+                                  buf_recv_lo, buf_recv_hi,
+                                  sz_recv_lo, sz_recv_hi,
+                                  12, 13, 13, 12);
   }
 
   // Unpack and add as ghost agents
