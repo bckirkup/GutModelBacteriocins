@@ -85,6 +85,8 @@ class AdvectionField {
   bool in_crypt_zone(Real z) const;
 
   const AdvectionConfig& config() const { return cfg_; }
+  Real lo_z() const { return lo_z_; }
+  Real current_time() const { return current_time_; }
 
  private:
   AdvectionConfig cfg_;

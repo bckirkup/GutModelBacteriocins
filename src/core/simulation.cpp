@@ -6,6 +6,13 @@
 #include "agent_transfer.h"
 #include "fix_registry.h"
 #include "plasmid.h"
+#include "dispatch.h"
+#include "qssa_gpu.h"
+#ifdef GUTIBM_CUDA
+#include "gpu_kernels.h"
+#include "device_memory.h"
+#include <cuda_runtime.h>
+#endif
 
 #include <iostream>
 #include <algorithm>
@@ -48,6 +55,15 @@ void Simulation::init(const SimulationConfig& cfg) {
 
   // HDF5 output
   hdf5_.init(cfg.hdf5);
+
+  // GPU acceleration
+  gpu_set_config(cfg.gpu);
+  gpu_init_for_rank(domain_.rank(), domain_.nprocs());
+  gpu_active_ = gpu_runtime_enabled();
+  if (gpu_active_) {
+    chem_gpu_.init(chem_);
+    agents_gpu_.sync_from_host(agents_);
+  }
 
   // Register biological fixes via plugin registry
   fixes_ = FixRegistry::create_all(*this, cfg);
@@ -93,6 +109,11 @@ void Simulation::init(const SimulationConfig& cfg) {
                     : "")
               << "\n"
               << "  Total time: " << cfg.total_time << " s\n"
+              << "  GPU: " << (gpu_active_ ? "ON" : "OFF")
+              << (gpu_active_
+                    ? (" (device " + std::to_string(gpu_device().device_id()) + ")")
+                    : "")
+              << "\n"
               << std::flush;
   }
 }
@@ -153,6 +174,14 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   fixes_ = FixRegistry::create_all(*this, cfg);
   for (auto& fix : fixes_) {
     fix->init();
+  }
+
+  gpu_set_config(cfg.gpu);
+  gpu_init_for_rank(domain_.rank(), domain_.nprocs());
+  gpu_active_ = gpu_runtime_enabled();
+  if (gpu_active_) {
+    chem_gpu_.init(chem_);
+    agents_gpu_.sync_from_host(agents_);
   }
 
 #ifndef GUTIBM_HDF5
@@ -359,10 +388,32 @@ void Simulation::step(Real dt) {
 
   // Pre-step: clear ghosts from previous step
   clear_ghost_agents();
+  if (gpu_active_) {
+    chem_gpu_.zero_reactions_on_device();
+  }
   chem_.zero_reactions();
 
   // Exchange ghost agents for cross-boundary neighbor queries
   exchange_ghost_agents();
+
+  if (gpu_active_) {
+    agents_gpu_.sync_from_host(agents_);
+    chem_gpu_.sync_to_device(chem_);
+#ifdef GUTIBM_CUDA
+    gpu::launch_grid_coupling_kernel(
+        agents_gpu_.x(), agents_gpu_.y(), agents_gpu_.z(),
+        agents_gpu_.grid_cell(), agents_gpu_.state(),
+        domain_.lo()[0], domain_.lo()[1], domain_.lo()[2], domain_.dx(),
+        domain_.nx(), domain_.ny(), domain_.nz(),
+        agents_.size(), 0);
+    cudaDeviceSynchronize();
+    gpu_check_error("grid_coupling_kernel");
+    agents_gpu_.sync_to_host(agents_);
+#endif
+    gpu_build_spatial_hash(
+        agents_gpu_, agents_.size(), domain_.lo(), domain_.hi(),
+        domain_.spatial_hash().cell_size(), spatial_hash_gpu_);
+  }
 
   rebuild_spatial_hash();
   update_grid_coupling();
@@ -391,6 +442,10 @@ void Simulation::step(Real dt) {
   // Migrate agents that crossed slab boundaries
   migrate_agents();
 
+  if (gpu_active_) {
+    agents_gpu_.sync_from_host(agents_);
+  }
+
   // Cleanup
   check_washout();
   remove_dead_agents();
@@ -413,15 +468,37 @@ void Simulation::module_chemistry(Real dt) {
   Int i_tox = chem_.find("bacteriocin");
   if (i_tox >= 0) {
     qssa_.solve_bacteriocin_field(agents_, chem_, i_tox);
+    if (gpu_active_) {
+      chem_gpu_.sync_to_device(chem_);
+    }
   }
 
   // Nutrient depletion
-  qssa_.solve_nutrient_depletion(agents_, chem_);
+  if (gpu_active_) {
+    agents_gpu_.sync_from_host(agents_);
+    if (!gpu_solve_nutrient_depletion(agents_gpu_, agents_.size(), chem_gpu_, chem_)) {
+      qssa_.solve_nutrient_depletion(agents_, chem_);
+    }
+  } else {
+    qssa_.solve_nutrient_depletion(agents_, chem_);
+  }
 
-  // VBF coupling (nutrient sink/source)
+  // VBF coupling (nutrient sink/source) — CPU path updates host reac_
+  if (gpu_active_) {
+    chem_gpu_.sync_to_host(chem_);
+  }
   vbf_.apply_nutrient_coupling(chem_, domain_, dt);
+  if (gpu_active_) {
+    chem_gpu_.sync_to_device(chem_);
+  }
 
   // Apply reactions to concentrations
+  if (gpu_active_ && chem_gpu_.apply_reactions(dt, domain_)) {
+    chem_gpu_.apply_boundaries(domain_, chem_);
+    chem_gpu_.sync_to_host(chem_);
+    return;
+  }
+
   for (Int s = 0; s < chem_.num_species(); ++s) {
     #ifdef GUTIBM_OPENMP
     #pragma omp parallel for schedule(static)

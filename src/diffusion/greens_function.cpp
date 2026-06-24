@@ -14,6 +14,8 @@
 #include "greens_function.h"
 #include "domain.h"
 #include "advection.h"
+#include "greens_function_gpu.h"
+#include "dispatch.h"
 #include <cmath>
 #include <algorithm>
 #ifdef GUTIBM_OPENMP
@@ -105,6 +107,14 @@ void GreensFunction::superpose_to_grid(
   Int ncells = domain_->ncells();
 
   grid_conc.assign(ncells, 0.0);
+
+#ifdef GUTIBM_CUDA
+  if (gpu_runtime_enabled() && adv_ && domain_) {
+    if (gpu_superpose_to_grid(*domain_, *adv_, sources, params, grid_conc, cutoff_radius)) {
+      return;
+    }
+  }
+#endif
 
   // For each source, only contribute to grid cells within cutoff
 #ifdef GUTIBM_OPENMP

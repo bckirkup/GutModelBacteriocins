@@ -1,61 +1,85 @@
-# GPU Acceleration — Planned Architecture
+# GPU Acceleration
 
-This directory is a stub for the planned CUDA/OpenCL GPU acceleration of GutIBM.
-The current implementation uses OpenMP threading as an intermediate parallelism step
-(see issue #18). A full GPU port is tracked as a separate derivative issue.
+CUDA GPU acceleration for GutIBM (issue #33). OpenMP remains the CPU shared-memory path when CUDA is disabled or no device is available.
 
-## Planned Kernel Targets
+## Implemented Kernels
 
-### 1. Green's Function Superposition (`greens_kernel.cu`)
-- Each CUDA thread evaluates one source-cell pair
-- Grid: `(num_sources, num_grid_cells_in_cutoff)`
-- Shared memory for source positions and GF parameters
-- Expected speedup: 50-100x over serial (embarrassingly parallel)
+| File | Role |
+|------|------|
+| `greens_kernel.cu` | QSSA Green's function superposition (brute-force path) |
+| `field_update_kernel.cu` | Reaction integration, boundaries, nutrient depletion, grid coupling |
+| `agent_update_kernel.cu` | Metabolism Monod growth + biomass update |
+| `spatial_hash_kernel.cu` | Parallel cell-key assignment for agent sorting |
 
-### 2. Spatial Hash Build & Query (`spatial_hash_kernel.cu`)
-- Parallel radix sort on cell keys for cache-coherent queries
-- Atomic insert into hash buckets
-- Neighbor queries: one thread per agent, shared-memory tile for bucket contents
+Host-side facades: `device.cpp`, `dispatch.cpp`, `greens_function_gpu.cpp`, `chemical_field_gpu.cpp`, `agent_pool_gpu.cpp`, `spatial_hash_gpu.cpp`, `qssa_gpu.cpp`.
 
-### 3. Agent Update (`agent_update_kernel.cu`)
-- Monod kinetics, growth, advection: one thread per agent
-- Structure-of-Arrays (SoA) layout for coalesced memory access
-- Separate kernels for read-only (growth rate) and write (state update) phases
+## Build
 
-### 4. Chemical Field Update (`field_update_kernel.cu`)
-- Grid-parallel reaction application
-- Boundary condition enforcement
-- Trivially parallel: one thread per grid cell per species
-
-## Memory Layout
-
-Current AoS (Array of Structures) agent layout should be converted to SoA
-for GPU coalescing:
-
-```
-// CPU (current):  Agent[] — each Agent has x, v, biomass, mu, ...
-// GPU (planned):  x[], v[], biomass[], mu[], ...  (separate arrays)
+```bash
+cmake -B build -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON -DGUTIBM_USE_CUDA=ON
+cmake --build build -j$(nproc)
 ```
 
-## Build Integration
+Prerequisites:
+- NVIDIA GPU with Compute Capability >= 6.0 (Pascal+)
+- CUDA Toolkit >= 11.0 (or `nvidia-cuda-toolkit` on Ubuntu)
+- NVIDIA driver for runtime execution
 
-```cmake
-option(GUTIBM_USE_CUDA "Enable CUDA GPU acceleration" OFF)
-if(GUTIBM_USE_CUDA)
-  enable_language(CUDA)
-  add_definitions(-DGUTIBM_CUDA)
-  # CUDA sources would be added here
-endif()
+## Runtime Configuration
+
+Input file keys:
+```
+gpu_enabled true
+gpu_device_id 0    # omit or -1 for auto (MPI rank % device count)
 ```
 
-## Prerequisites
+C++ API:
+```cpp
+cfg.gpu.enabled = true;
+cfg.gpu.device_id = 0;  // -1 = auto
+```
 
-- NVIDIA GPU with Compute Capability >= 6.0 (Pascal or newer)
-- CUDA Toolkit >= 11.0
-- Or: OpenCL 1.2+ runtime for vendor-neutral GPU support
+## Architecture
 
-## Fallback Strategy
+```
+Simulation::step()
+  ├─ GPU: sync agents/fields to device after MPI ghost exchange
+  ├─ GPU: grid coupling, spatial hash cell keys
+  ├─ GPU: FixMetabolism compute (Monod + biomass)
+  ├─ GPU: QSSA GF superposition + nutrient depletion + field update
+  ├─ CPU: VBF coupling, mechanics, conjugation, mutation, receptor RNG
+  └─ GPU: sync back to host before MPI migration
+```
 
-The GPU kernels will be guarded by `#ifdef GUTIBM_CUDA` with automatic
-fallback to the OpenMP-threaded CPU path when CUDA is unavailable.
-This ensures the code remains portable across all platforms.
+Agent genomes (`bi_loci` variable length) remain on the host; SoA device buffers carry scalars and `bi_loci_count` for metabolism penalties.
+
+## Memory
+
+Default 1 mm × 1 mm × 100 µm grid at 2 µm resolution:
+- ~12.5M cells × 6 species × (`conc` + `reac`) ≈ **1.2 GB** device memory for `ChemicalFieldGpu`
+- Agent SoA scales ~O(N) with additional VRAM
+
+## Tests
+
+```bash
+cd build && ctest -R 'greens_function_gpu|gpu_smoke' --output-on-failure
+bash scripts/compare_gpu_parity.sh
+```
+
+Tests skip the GPU execution path when no CUDA device is present (compile-only CI still builds all kernels).
+
+## Fallback
+
+All GPU entry points return `false` or no-op when:
+1. Built without `GUTIBM_USE_CUDA`
+2. `gpu_enabled` is false in config
+3. No CUDA device is available
+
+The existing OpenMP/serial CPU implementations are used unchanged.
+
+## Not Yet on GPU
+
+- Barnes-Hut FMM (`use_fmm=true` near/far field stays on CPU)
+- Mechanics, conjugation, mutation, receptor kill RNG
+- HDF5 checkpoint I/O
+- OpenCL / HIP portability

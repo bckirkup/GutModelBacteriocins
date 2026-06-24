@@ -379,9 +379,33 @@ GutIBM supports shared-memory parallelism via OpenMP. Enable with `-DGUTIBM_USE_
 
 ---
 
-## GPU Acceleration (Planned)
+## GPU Acceleration
 
-A stub for future CUDA/OpenCL kernels is located in `src/gpu/`. See `src/gpu/README.md` for the planned architecture covering Green's function evaluation, spatial hash operations, agent updates, and field operations.
+CUDA GPU acceleration is optional (`-DGUTIBM_USE_CUDA=ON`). When disabled at compile time or runtime, the simulation falls back to the OpenMP/serial CPU path.
+
+**Compile-time guard:** GPU code is wrapped in `#ifdef GUTIBM_CUDA`.
+
+**Runtime config** (input file or `SimulationConfig::gpu`):
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `gpu_enabled` | `false` | Enable GPU kernels (requires CUDA build) |
+| `gpu_device_id` | `-1` | CUDA device index; `-1` auto-selects `rank % device_count` under MPI |
+
+**GPU-accelerated modules:**
+
+| Module | File | Notes |
+|--------|------|-------|
+| Green's function superposition | `src/gpu/greens_kernel.cu` | Brute-force QSSA path only; FMM stays on CPU |
+| Chemical field integration | `src/gpu/field_update_kernel.cu` | `conc += reac * dt`, boundary conditions |
+| Nutrient depletion | `src/gpu/field_update_kernel.cu` | Atomic writes to `reac_` |
+| Metabolism (Monod growth) | `src/gpu/agent_update_kernel.cu` | Division/death remain on CPU |
+| Grid coupling | `src/gpu/field_update_kernel.cu` | Agent position → `grid_cell` |
+| Spatial hash build | `src/gpu/spatial_hash_kernel.cu` | Cell-key sort; host hash still used for mechanics |
+
+**Still CPU-only:** mechanics, conjugation, mutation (RNG), receptor kill decisions, VBF coupling, FMM far-field, HDF5 I/O.
+
+See `src/gpu/README.md` for build prerequisites and memory requirements.
 
 ---
 

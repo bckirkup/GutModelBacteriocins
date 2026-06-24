@@ -37,6 +37,11 @@
 #include "hdf5_reader.h"
 #include "input_parser.h"
 #include "fix.h"
+#include "chemical_field_gpu.h"
+#include "agent_pool_gpu.h"
+#include "spatial_hash_gpu.h"
+#include "dispatch.h"
+#include "gpu_kernels.h"
 
 #include <memory>
 #include <vector>
@@ -103,6 +108,12 @@ class Simulation {
   // Adaptive timestep computation
   Real compute_adaptive_dt() const;
 
+  bool gpu_active() const { return gpu_active_; }
+  ChemicalFieldGpu&       chem_gpu()       { return chem_gpu_; }
+  const ChemicalFieldGpu& chem_gpu() const { return chem_gpu_; }
+  AgentPoolGpu&           agents_gpu()       { return agents_gpu_; }
+  const AgentPoolGpu&     agents_gpu() const { return agents_gpu_; }
+
 
  private:
   // Initialization helpers
@@ -153,6 +164,12 @@ class Simulation {
   Int  step_count_ = 0;
   Real next_output_ = 0.0;
   Real next_snapshot_ = 0.0;
+
+  // GPU acceleration state
+  bool gpu_active_ = false;
+  ChemicalFieldGpu chem_gpu_;
+  AgentPoolGpu agents_gpu_;
+  SpatialHashGpu spatial_hash_gpu_;
 };
 
 }  // namespace gutibm

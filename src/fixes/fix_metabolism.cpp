@@ -19,6 +19,33 @@ void FixMetabolism::init() {}
 
 void FixMetabolism::compute(Real dt) {
   auto& agents = sim_.agents();
+
+  if (sim_.gpu_active()) {
+    auto& ag = sim_.agents_gpu();
+    auto& cg = sim_.chem_gpu();
+    ag.sync_from_host(agents);
+    auto& chem = sim_.chemical_field();
+    Int i_carbon = chem.find("carbon");
+    Int i_iron = chem.find("iron");
+    Int i_b12 = chem.find("b12");
+    Int i_acetate = chem.find("acetate");
+    Int i_eut = chem.find("ethanolamine");
+    if (ag.run_metabolism(
+            sim_.domain(), cfg_,
+            i_carbon >= 0 ? cg.conc_device(i_carbon) : nullptr,
+            i_iron >= 0 ? cg.conc_device(i_iron) : nullptr,
+            i_b12 >= 0 ? cg.conc_device(i_b12) : nullptr,
+            i_acetate >= 0 ? cg.conc_device(i_acetate) : nullptr,
+            i_eut >= 0 ? cg.conc_device(i_eut) : nullptr,
+            i_carbon >= 0 ? cg.reac_device(i_carbon) : nullptr,
+            i_iron >= 0 ? cg.reac_device(i_iron) : nullptr,
+            i_b12 >= 0 ? cg.reac_device(i_b12) : nullptr,
+            dt)) {
+      ag.sync_to_host(agents);
+      return;
+    }
+  }
+
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(static)
   #endif
