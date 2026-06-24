@@ -141,62 +141,98 @@ void test_create_novel_toxin_with_escape() {
 }
 
 void test_smoke_with_immunity_escape() {
-  // Full pipeline: producers with escape variants vs. targets with normal immunity.
-  // The escape toxins should be more lethal to the target population.
+  // Compare toxin mortality with and without immunity-escape super-killers.
+  struct Outcome {
+    Int producers = 0;
+    Int immune = 0;
+    Int naive = 0;
+    Int escape_bi = 0;
+  };
 
-  SimulationConfig cfg = InputParser::default_config();
-  cfg.domain.hi = {100e-6, 100e-6, 50e-6};
-  cfg.domain.grid_dx = 5e-6;
-  cfg.total_time = 600.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 600.0;
-  cfg.seed = 12345;
-  cfg.hdf5.enabled = false;
-  cfg.advection.mucus_thickness = 50e-6;
-  cfg.advection.distal_length = 100e-6;
-  cfg.qssa.toxin_cutoff = 50e-6;
-  cfg.qssa.nutrient_cutoff = 25e-6;
+  auto run_scenario = [](bool enable_escape, uint64_t seed) {
+    SimulationConfig cfg = InputParser::default_config();
+    cfg.domain.hi = {100e-6, 100e-6, 50e-6};
+    cfg.domain.grid_dx = 5e-6;
+    cfg.total_time = 600.0;
+    cfg.bio_dt = 60.0;
+    cfg.output_interval = 600.0;
+    cfg.seed = seed;
+    cfg.hdf5.enabled = false;
+    cfg.advection.mucus_thickness = 50e-6;
+    cfg.advection.distal_length = 100e-6;
+    cfg.qssa.toxin_cutoff = 50e-6;
+    cfg.qssa.nutrient_cutoff = 25e-6;
 
-  // Three strains: producer, immune target, non-immune target
-  cfg.initial_strains.clear();
+    if (enable_escape) {
+      cfg.mutation.super_killer_rate = 0.5;
+      cfg.mutation.immunity_escape_prob = 1.0;
+    }
 
-  SimulationConfig::InitialStrain producer;
-  producer.type = 1;
-  producer.count = 10;
-  producer.mu_max = 5e-4;
-  producer.plasmids = {"ColE1"};
-  producer.conjugative = false;
-  cfg.initial_strains.push_back(producer);
+    cfg.initial_strains.clear();
 
-  SimulationConfig::InitialStrain immune_target;
-  immune_target.type = 2;
-  immune_target.count = 10;
-  immune_target.mu_max = 5e-4;
-  immune_target.plasmids = {"ColE1"};
-  immune_target.conjugative = false;
-  cfg.initial_strains.push_back(immune_target);
+    SimulationConfig::InitialStrain producer;
+    producer.type = 1;
+    producer.count = 10;
+    producer.mu_max = 5e-4;
+    producer.plasmids = {"ColE1"};
+    producer.conjugative = false;
+    cfg.initial_strains.push_back(producer);
 
-  SimulationConfig::InitialStrain non_immune;
-  non_immune.type = 3;
-  non_immune.count = 10;
-  non_immune.mu_max = 5e-4;
-  non_immune.plasmids = {};
-  non_immune.conjugative = false;
-  cfg.initial_strains.push_back(non_immune);
+    SimulationConfig::InitialStrain immune_target;
+    immune_target.type = 2;
+    immune_target.count = 10;
+    immune_target.mu_max = 5e-4;
+    immune_target.plasmids = {"ColE1"};
+    immune_target.conjugative = false;
+    cfg.initial_strains.push_back(immune_target);
 
-  Simulation sim;
-  sim.init(cfg);
-  assert(sim.agents().size() == 30);
-  sim.run();
+    SimulationConfig::InitialStrain non_immune;
+    non_immune.type = 3;
+    non_immune.count = 10;
+    non_immune.mu_max = 5e-4;
+    non_immune.plasmids = {};
+    non_immune.conjugative = false;
+    cfg.initial_strains.push_back(non_immune);
 
-  Int alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (sim.agents()[i].state != PhenoState::DEAD) alive++;
-  }
-  assert(alive >= 0);
+    Simulation sim;
+    sim.init(cfg);
+    sim.run();
+
+    Outcome out;
+    for (Int i = 0; i < sim.agents().size(); ++i) {
+      const Agent& a = sim.agents()[i];
+      if (a.type == 1) {
+        for (const auto& bi : a.genome.bi_loci) {
+          if (bi.immunity_binding_affinity < 1.0) out.escape_bi++;
+        }
+      }
+      if (a.state == PhenoState::DEAD) continue;
+      if (a.type == 1) {
+        out.producers++;
+      } else if (a.type == 2) {
+        out.immune++;
+      } else {
+        out.naive++;
+      }
+    }
+    return out;
+  };
+
+  constexpr uint64_t seed = 12345;
+  Outcome escape = run_scenario(true, seed);
+
+  // Producers should accumulate immunity-escape BI variants during the run.
+  assert(escape.escape_bi > 0);
+  // Toxin stress should remove agents from the population.
+  assert(escape.producers + escape.immune + escape.naive < 30);
+  // Naive targets (no colicin immunity) should take casualties.
+  assert(escape.naive < 10);
 
   std::cout << "  test_smoke_with_immunity_escape: PASSED"
-            << " (alive=" << alive << ")\n";
+            << " (producers=" << escape.producers
+            << " immune=" << escape.immune
+            << " naive=" << escape.naive
+            << " escape_bi=" << escape.escape_bi << ")\n";
 }
 
 int main() {

@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "plasmid.h"
+#include "types.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -139,12 +140,20 @@ void test_metabolism_integration() {
   sim.run();
 
   Real final_biomass = 0.0;
-  for (Int i = 0; i < sim.agents().size(); ++i)
-    if (sim.agents()[i].state != PhenoState::DEAD)
-      final_biomass += sim.agents()[i].biomass;
+  Int alive = 0;
+  Real default_biomass = sphere_mass(CELL_RADIUS_DEFAULT, CELL_DENSITY_DEFAULT);
+  bool any_growth = false;
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    const Agent& a = sim.agents()[i];
+    if (a.state == PhenoState::DEAD) continue;
+    alive++;
+    final_biomass += a.biomass;
+    assert(a.mu_realized > 0.0);
+    if (a.biomass > default_biomass * 1.001) any_growth = true;
+  }
 
-  // Biomass should have changed (growth or death)
-  assert(final_biomass >= 0.0);
+  assert(alive > 0);
+  assert(any_growth);
 
   std::cout << "  test_metabolism_integration: PASSED"
             << " (initial=" << initial_biomass
@@ -236,8 +245,10 @@ void test_receptor_killing() {
     else type2_alive++;
   }
 
-  // Producers should generally survive (they have immunity)
-  // Result depends on stochastic dynamics, so just verify we ran
+  // Producers carry ColE1 immunity; susceptible targets should decline more.
+  assert(type2_alive < 10);
+  assert(type2_alive < type1_alive);
+
   std::cout << "  test_receptor_killing: PASSED"
             << " (producers=" << type1_alive
             << " targets=" << type2_alive << ")\n";
@@ -480,9 +491,18 @@ void test_crypt_migration_in_out() {
 
   sim.run();
 
-  // With very high migration rates over 600 s, at least one agent
-  // should have ended up in the crypt at some point. We cannot
-  // guarantee the exact final state, but the simulation should not crash.
+  // With high migration rates, agents should leave their initial z-plane.
+  bool any_relocated = false;
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    const Agent& a = sim.agents()[i];
+    if (a.state == PhenoState::DEAD) continue;
+    if (a.in_crypt || std::abs(a.x[2] - 12e-6) > 1e-7) {
+      any_relocated = true;
+      break;
+    }
+  }
+  assert(any_relocated);
+
   std::cout << "  test_crypt_migration_in_out: PASSED\n";
 }
 
@@ -548,7 +568,10 @@ void test_partial_resistance_survival() {
   }
 
   // Partially resistant agents (type 3) should survive at least as well
-  // as fully susceptible agents (type 2). Stochastic, so just verify we ran.
+  // as fully susceptible agents (type 2).
+  assert(type3_alive >= type2_alive);
+  assert(type2_alive < 10);
+
   std::cout << "  test_partial_resistance_survival: PASSED"
             << " (susceptible=" << type2_alive
             << " partial_res=" << type3_alive << ")\n";
