@@ -1,0 +1,49 @@
+{
+  "_comment": [
+    "Short EARI/VADI validation run for CI regression (issue #56).",
+    "Targets: spatial clustering (VADI §75), comet-tail advection (EARI),",
+    "resident retention window (EARI longitudinal metagenomics analog)."
+  ],
+
+  "total_time": 3600,
+  "bio_dt": 60,
+  "output_interval": 1800,
+  "seed": 4092,
+
+  "domain_x": 0.0005,
+  "domain_y": 0.0005,
+  "domain_z": 0.0001,
+  "grid_dx": 5e-6,
+
+  "mucus_thickness": 80e-6,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+
+  "vbf_density": 1e11,
+  "vbf_viscosity": 0.01,
+
+  "sos_lysis_prob": 0.01,
+
+  "toxin_cutoff": 100e-6,
+  "nutrient_cutoff": 50e-6,
+
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 120,
+      "mu_max": 5.5e-4,
+      "plasmids": ["ColE1", "ColB"],
+      "conjugative": true
+    },
+    {
+      "type": 2,
+      "count": 40,
+      "mu_max": 5.0e-4,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ],
+
+  "hdf5_file": "eari_vadi_validation.h5",
+  "hdf5_every": 60
+}

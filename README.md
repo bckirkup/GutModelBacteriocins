@@ -192,6 +192,7 @@ python/
 examples/
   single_colony/  Comet-tail formation test
   diversity_paradox/  Full Advective Double-Bind simulation
+  eari_vadi_validation/  Short CI regression scenario (issue #56)
 tests/            Unit tests for spatial hash, Green's functions, agents
 ```
 
@@ -208,9 +209,11 @@ tests/            Unit tests for spatial hash, Green's functions, agents
 ## CI
 
 GitHub Actions runs on every push/PR to `main`:
-- **Build matrix**: Release + Debug, Ubuntu latest, cmake + OpenMPI + HDF5
-- **Tests**: Unit tests (spatial hash, Green's function, agent) + smoke test (end-to-end mini simulation)
-- **Python**: ruff lint + import check on `gut_ibm_tools`
+- **Build matrix**: Release + Debug, OpenMP ON/OFF, Ubuntu latest, cmake + OpenMPI + HDF5
+- **Tests**: CTest unit tests including MPI multi-rank and HDF5 round-trip
+- **Python**: ruff lint + pytest on `gut_ibm_tools`
+- **OpenMP parity**: serial vs OpenMP simulation fingerprint comparison
+- **EARI/VADI validation**: short simulation → HDF5 → golden-file metric regression (`scripts/validate_eari_vadi.sh`)
 
 ## References
 
