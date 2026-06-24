@@ -311,6 +311,32 @@ loop (pairwise neighbor interactions) remains serial due to cross-agent writes.
 
 ---
 
+## GPU Acceleration
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `GUTIBM_USE_CUDA` | `OFF` | CMake option to compile CUDA kernels |
+| `gpu_enabled` | `false` | Runtime toggle (input file); requires CUDA build |
+| `gpu_device_id` | `-1` | CUDA device index; `-1` = `MPI_rank % num_devices` |
+
+**Build with CUDA:**
+```bash
+cmake -B build -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON -DGUTIBM_USE_CUDA=ON
+cmake --build build -j$(nproc)
+```
+
+**Example input file:**
+```
+gpu_enabled true
+gpu_device_id 0
+```
+
+**Memory:** Default domain (~12.5M cells × 6 species × 2 arrays) uses ~1.2 GB VRAM for the chemical field mirror alone. Plan for ≥4 GB VRAM for typical agent counts.
+
+**Parity:** GPU results use relaxed floating-point tolerance vs CPU (see `tests/test_gpu_smoke.cpp`). Bit-identical reproducibility is not guaranteed.
+
+---
+
 ## HDF5 Output
 
 | Parameter | Default | Units | Description |

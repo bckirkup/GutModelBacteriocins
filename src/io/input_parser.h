@@ -19,6 +19,7 @@
 #include "fix_mechanics.h"
 #include "hdf5_writer.h"
 #include "hdf5_reader.h"
+#include "gpu_config.h"
 
 #include <string>
 #include <vector>
@@ -85,6 +86,9 @@ struct SimulationConfig {
 
   // Random seed
   uint64_t seed = 42;
+
+  // GPU acceleration (requires CUDA build)
+  GpuConfig gpu;
 };
 
 class InputParser {

@@ -30,10 +30,19 @@ OpenMP (optional, off by default):
 cmake .. -DGUTIBM_USE_OPENMP=ON ...
 ```
 
+CUDA GPU acceleration (optional, off by default):
+
+```bash
+cmake .. -DGUTIBM_USE_CUDA=ON ...
+# Runtime: gpu_enabled true in input file, or cfg.gpu.enabled = true in code
+```
+
 Prerequisites (Ubuntu):
 
 ```bash
 sudo apt-get install cmake libopenmpi-dev openmpi-bin libhdf5-mpi-dev
+# Optional GPU build:
+sudo apt-get install nvidia-cuda-toolkit
 ```
 
 Sources are collected via `file(GLOB_RECURSE ...)` in `CMakeLists.txt` — new `.cpp`
@@ -46,7 +55,7 @@ No manual source-list edit needed for new Fix or diffusion files.
 cd build && ctest --output-on-failure
 ```
 
-19 CTest targets (all run at `nprocs=1` today — no multi-rank MPI tests yet):
+27 CTest targets (all run at `nprocs=1` today — no multi-rank MPI tests yet):
 
 | Test | File | Focus |
 |------|------|-------|
@@ -69,6 +78,8 @@ cd build && ctest --output-on-failure
 | `agent_transfer` | `test_agent_transfer.cpp` | MPI pack/unpack round-trip |
 | `fix_registry` | `test_fix_registry.cpp` | Default Fix plugin registration |
 | `input_parser` | `test_input_parser.cpp` | Example JSON config files |
+| `greens_function_gpu` | `test_greens_function_gpu.cpp` | GPU vs CPU GF parity (CUDA build) |
+| `gpu_smoke` | `test_gpu_smoke.cpp` | Short CPU vs GPU simulation fingerprint |
 
 **No dedicated tests yet** for `fix_bacteriocin`, `fix_receptor`, or `fix_mutation` in isolation.
 
@@ -256,4 +267,4 @@ Always assert mechanism outcomes when testing biology (e.g. `bi_loci.size() > 0`
 
 ## GPU
 
-`src/gpu/` is a planning stub only. OpenMP is the current CPU parallelism path. Full GPU port tracked in issue #33.
+CUDA acceleration lives in `src/gpu/`. Enable with `-DGUTIBM_USE_CUDA=ON` and `gpu_enabled true` at runtime. Falls back to OpenMP/serial CPU when CUDA is unavailable. See `src/gpu/README.md` and issue #33.

@@ -5,7 +5,13 @@ file(GLOB_RECURSE LIB_SOURCES
   ${CMAKE_SOURCE_DIR}/src/fixes/*.cpp
   ${CMAKE_SOURCE_DIR}/src/genome/*.cpp
   ${CMAKE_SOURCE_DIR}/src/io/*.cpp
+  ${CMAKE_SOURCE_DIR}/src/gpu/*.cpp
 )
+
+set(LIB_CUDA_SOURCES "")
+if(GUTIBM_USE_CUDA)
+  file(GLOB LIB_CUDA_SOURCES ${CMAKE_SOURCE_DIR}/src/gpu/*.cu)
+endif()
 
 set(TEST_INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}/src
@@ -15,6 +21,7 @@ set(TEST_INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}/src/fixes
   ${CMAKE_SOURCE_DIR}/src/genome
   ${CMAKE_SOURCE_DIR}/src/io
+  ${CMAKE_SOURCE_DIR}/src/gpu
 )
 
 # ── test_spatial_hash ────────────────────────────────────────────────────
@@ -389,4 +396,61 @@ if(GUTIBM_USE_MPI)
   set_tests_properties(mpi_multi_rank PROPERTIES
     PASS_REGULAR_EXPRESSION "All MPI multi-rank tests passed"
   )
+endif()
+
+# ── test_greens_function_gpu ─────────────────────────────────────────────
+add_executable(test_greens_function_gpu test_greens_function_gpu.cpp ${LIB_SOURCES} ${LIB_CUDA_SOURCES})
+target_include_directories(test_greens_function_gpu PRIVATE ${TEST_INCLUDE_DIRS})
+if(GUTIBM_USE_MPI)
+  target_link_libraries(test_greens_function_gpu PRIVATE MPI::MPI_CXX)
+endif()
+if(GUTIBM_USE_HDF5)
+  target_include_directories(test_greens_function_gpu PRIVATE ${HDF5_INCLUDE_DIRS})
+  target_link_libraries(test_greens_function_gpu PRIVATE ${HDF5_LIBRARIES})
+endif()
+if(GUTIBM_USE_OPENMP)
+  target_link_libraries(test_greens_function_gpu PRIVATE OpenMP::OpenMP_CXX)
+endif()
+if(GUTIBM_USE_CUDA)
+  target_link_libraries(test_greens_function_gpu PRIVATE CUDA::cudart)
+  set_target_properties(test_greens_function_gpu PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+endif()
+target_link_libraries(test_greens_function_gpu PRIVATE ${MATH_LIB})
+add_test(NAME greens_function_gpu COMMAND test_greens_function_gpu)
+
+# ── test_gpu_smoke ───────────────────────────────────────────────────────
+add_executable(test_gpu_smoke test_gpu_smoke.cpp ${LIB_SOURCES} ${LIB_CUDA_SOURCES})
+target_include_directories(test_gpu_smoke PRIVATE ${TEST_INCLUDE_DIRS})
+if(GUTIBM_USE_MPI)
+  target_link_libraries(test_gpu_smoke PRIVATE MPI::MPI_CXX)
+endif()
+if(GUTIBM_USE_HDF5)
+  target_include_directories(test_gpu_smoke PRIVATE ${HDF5_INCLUDE_DIRS})
+  target_link_libraries(test_gpu_smoke PRIVATE ${HDF5_LIBRARIES})
+endif()
+if(GUTIBM_USE_OPENMP)
+  target_link_libraries(test_gpu_smoke PRIVATE OpenMP::OpenMP_CXX)
+endif()
+if(GUTIBM_USE_CUDA)
+  target_link_libraries(test_gpu_smoke PRIVATE CUDA::cudart)
+  set_target_properties(test_gpu_smoke PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+endif()
+target_link_libraries(test_gpu_smoke PRIVATE ${MATH_LIB})
+add_test(NAME gpu_smoke COMMAND test_gpu_smoke)
+
+# Link CUDA objects into all library-backed tests when enabled
+if(GUTIBM_USE_CUDA)
+  set(GUTIBM_ALL_TEST_TARGETS
+    test_spatial_hash test_greens_function test_agent test_iron_fallback
+    test_octree test_conjugation test_smoke test_z_gradient test_domain_decomp
+    test_acetate_mete test_advection_peristaltic test_immunity_escape test_mechanics
+    test_ethanolamine test_openmp_parity test_adaptive_dt test_agent_transfer
+    test_fix_registry test_input_parser test_bacteriocin test_receptor test_mutation
+    test_hdf5_roundtrip test_hdf5_checkpoint test_mpi_multi_rank
+  )
+  foreach(tgt ${GUTIBM_ALL_TEST_TARGETS})
+    target_sources(${tgt} PRIVATE ${LIB_CUDA_SOURCES})
+    target_link_libraries(${tgt} PRIVATE CUDA::cudart)
+    set_target_properties(${tgt} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+  endforeach()
 endif()

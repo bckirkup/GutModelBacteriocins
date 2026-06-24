@@ -13,6 +13,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(GUTIBM_USE_MPI    "Enable MPI parallelism"   ON)
 option(GUTIBM_USE_HDF5   "Enable HDF5 output"       ON)
 option(GUTIBM_USE_OPENMP "Enable OpenMP parallelism" OFF)
+option(GUTIBM_USE_CUDA   "Enable CUDA GPU acceleration" OFF)
 option(BUILD_TESTING      "Build unit tests"          ON)
 
 # ── MPI ──────────────────────────────────────────────────────────────────
@@ -25,6 +26,18 @@ endif()
 if(GUTIBM_USE_OPENMP)
   find_package(OpenMP REQUIRED COMPONENTS CXX)
   add_definitions(-DGUTIBM_OPENMP)
+endif()
+
+# ── CUDA ─────────────────────────────────────────────────────────────────
+if(GUTIBM_USE_CUDA)
+  enable_language(CUDA)
+  set(CMAKE_CUDA_STANDARD 17)
+  set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+  if(NOT CMAKE_CUDA_ARCHITECTURES)
+    set(CMAKE_CUDA_ARCHITECTURES "60;70;80")
+  endif()
+  find_package(CUDAToolkit REQUIRED)
+  add_definitions(-DGUTIBM_CUDA)
 endif()
 
 # ── HDF5 ─────────────────────────────────────────────────────────────────
@@ -45,9 +58,15 @@ file(GLOB_RECURSE SOURCES
   src/fixes/*.cpp
   src/genome/*.cpp
   src/io/*.cpp
+  src/gpu/*.cpp
 )
 
-add_executable(gut_ibm src/main.cpp ${SOURCES})
+set(GPU_CUDA_SOURCES "")
+if(GUTIBM_USE_CUDA)
+  file(GLOB GPU_CUDA_SOURCES src/gpu/*.cu)
+endif()
+
+add_executable(gut_ibm src/main.cpp ${SOURCES} ${GPU_CUDA_SOURCES})
 
 target_include_directories(gut_ibm PRIVATE
   ${CMAKE_SOURCE_DIR}/src
@@ -57,6 +76,7 @@ target_include_directories(gut_ibm PRIVATE
   ${CMAKE_SOURCE_DIR}/src/fixes
   ${CMAKE_SOURCE_DIR}/src/genome
   ${CMAKE_SOURCE_DIR}/src/io
+  ${CMAKE_SOURCE_DIR}/src/gpu
 )
 
 if(GUTIBM_USE_MPI)
@@ -70,6 +90,11 @@ endif()
 
 if(GUTIBM_USE_OPENMP)
   target_link_libraries(gut_ibm PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
+if(GUTIBM_USE_CUDA)
+  target_link_libraries(gut_ibm PRIVATE CUDA::cudart)
+  set_target_properties(gut_ibm PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 
 target_link_libraries(gut_ibm PRIVATE ${MATH_LIB})

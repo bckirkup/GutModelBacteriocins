@@ -86,6 +86,33 @@ jobs:
       - name: Compare serial vs OpenMP fingerprints
         run: bash scripts/compare_openmp_parity.sh
 
+  cuda-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake libopenmpi-dev openmpi-bin libhdf5-mpi-dev nvidia-cuda-toolkit
+
+      - name: Configure with CUDA
+        run: |
+          cmake -B build-cuda \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGUTIBM_USE_MPI=ON \
+            -DGUTIBM_USE_HDF5=ON \
+            -DGUTIBM_USE_CUDA=ON
+
+      - name: Build
+        run: cmake --build build-cuda -j$(nproc)
+
+      - name: Unit tests (GPU tests skip without device)
+        run: cd build-cuda && ctest --output-on-failure
+
+      - name: GPU parity script
+        run: bash scripts/compare_gpu_parity.sh
+
   eari-vadi-validation:
     runs-on: ubuntu-latest
     steps:
