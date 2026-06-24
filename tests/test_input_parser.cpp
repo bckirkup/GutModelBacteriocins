@@ -9,7 +9,10 @@
 #include <cmath>
 #include <string>
 #include <fstream>
+#include <sstream>
 #include <cstdio>
+#include <cstdlib>
+#include <stdexcept>
 
 #ifndef GUTIBM_SOURCE_DIR
 #define GUTIBM_SOURCE_DIR "."
@@ -167,6 +170,71 @@ void test_json_document_parser() {
   std::cout << "  test_json_document_parser: PASSED\n";
 }
 
+void test_malformed_numeric_warnings_json() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.json";
+
+  std::stringstream err;
+  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
+  SimulationConfig cfg = InputParser::parse(path);
+  std::cerr.rdbuf(old_err);
+
+  assert(std::abs(cfg.domain.hi[0]) < 1e-15);
+  assert(cfg.seed == 0);
+  assert(cfg.hdf5.dump_every == 0);
+
+  const std::string warnings = err.str();
+  assert(warnings.find("domain_x") != std::string::npos);
+  assert(warnings.find("1mm") != std::string::npos);
+  assert(warnings.find("seed") != std::string::npos);
+  assert(warnings.find("not_a_number") != std::string::npos);
+  assert(warnings.find("hdf5_every") != std::string::npos);
+  assert(warnings.find("12steps") != std::string::npos);
+  std::cout << "  test_malformed_numeric_warnings_json: PASSED\n";
+}
+
+void test_malformed_numeric_warnings_legacy() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.legacy";
+
+  std::stringstream err;
+  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
+  SimulationConfig cfg = InputParser::parse(path);
+  std::cerr.rdbuf(old_err);
+
+  assert(std::abs(cfg.domain.hi[0]) < 1e-15);
+  assert(cfg.seed == 0);
+  assert(cfg.hdf5.dump_every == 0);
+
+  const std::string warnings = err.str();
+  assert(warnings.find("domain_x") != std::string::npos);
+  assert(warnings.find("1mm") != std::string::npos);
+  std::cout << "  test_malformed_numeric_warnings_legacy: PASSED\n";
+}
+
+void test_strict_config_aborts_on_bad_numeric() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.json";
+
+  const char* previous = std::getenv("GUTIBM_STRICT_CONFIG");
+  std::string saved;
+  if (previous) saved = previous;
+  setenv("GUTIBM_STRICT_CONFIG", "1", 1);
+
+  bool threw = false;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+
+  if (saved.empty()) {
+    unsetenv("GUTIBM_STRICT_CONFIG");
+  } else {
+    setenv("GUTIBM_STRICT_CONFIG", saved.c_str(), 1);
+  }
+
+  assert(threw);
+  std::cout << "  test_strict_config_aborts_on_bad_numeric: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -178,6 +246,9 @@ int main() {
   test_strain_spawn_integration();
   test_fixes_fixture();
   test_json_document_parser();
+  test_malformed_numeric_warnings_json();
+  test_malformed_numeric_warnings_legacy();
+  test_strict_config_aborts_on_bad_numeric();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }
