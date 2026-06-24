@@ -68,8 +68,16 @@ void HDF5Writer::write_step(const Simulation& sim, Int step, Real time) {
   oss << "step_" << std::setw(6) << std::setfill('0') << step;
   std::string gname = oss.str();
 
+  if (H5Lexists(fid, gname.c_str(), H5P_DEFAULT) > 0) {
+    return;
+  }
+
   hid_t step_group = H5Gcreate2(fid, gname.c_str(), H5P_DEFAULT,
                                   H5P_DEFAULT, H5P_DEFAULT);
+  if (step_group < 0) {
+    H5Eclear2(H5E_DEFAULT);
+    return;
+  }
 
   write_agents(sim, gname);
   write_grid(sim, gname);

@@ -135,7 +135,9 @@ void compare_snapshots(const std::vector<AgentSnapshot>& expected,
 
 void test_hdf5_reader_api(const std::string& filename) {
   HDF5Reader reader;
-  assert(reader.open(filename));
+  if (!reader.open(filename)) {
+    throw std::runtime_error("HDF5Reader::open failed for " + filename);
+  }
 
   auto steps = reader.list_steps();
   assert(steps.size() >= 3);
