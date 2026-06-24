@@ -367,3 +367,26 @@ if(GUTIBM_USE_HDF5)
   target_link_libraries(test_hdf5_checkpoint PRIVATE ${MATH_LIB})
   add_test(NAME hdf5_checkpoint COMMAND test_hdf5_checkpoint)
 endif()
+
+# ── test_mpi_multi_rank (requires mpirun -np >= 2) ───────────────────────
+if(GUTIBM_USE_MPI)
+  add_executable(test_mpi_multi_rank test_mpi_multi_rank.cpp ${LIB_SOURCES})
+  target_include_directories(test_mpi_multi_rank PRIVATE ${TEST_INCLUDE_DIRS})
+  target_link_libraries(test_mpi_multi_rank PRIVATE MPI::MPI_CXX)
+  if(GUTIBM_USE_HDF5)
+    target_include_directories(test_mpi_multi_rank PRIVATE ${HDF5_INCLUDE_DIRS})
+    target_link_libraries(test_mpi_multi_rank PRIVATE ${HDF5_LIBRARIES})
+  endif()
+  if(GUTIBM_USE_OPENMP)
+    target_link_libraries(test_mpi_multi_rank PRIVATE OpenMP::OpenMP_CXX)
+  endif()
+  target_link_libraries(test_mpi_multi_rank PRIVATE ${MATH_LIB})
+  add_test(
+    NAME mpi_multi_rank
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+            ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_multi_rank> ${MPIEXEC_POSTFLAGS}
+  )
+  set_tests_properties(mpi_multi_rank PROPERTIES
+    PASS_REGULAR_EXPRESSION "All MPI multi-rank tests passed"
+  )
+endif()
