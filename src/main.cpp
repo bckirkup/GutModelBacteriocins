@@ -31,7 +31,11 @@ int main(int argc, char** argv) {
   }
 
   gutibm::Simulation sim;
-  sim.init(cfg);
+  if (!cfg.checkpoint.file.empty()) {
+    sim.init_from_checkpoint(cfg, cfg.checkpoint.file, cfg.checkpoint.step);
+  } else {
+    sim.init(cfg);
+  }
   sim.run();
 
 #ifdef GUTIBM_MPI
