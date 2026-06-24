@@ -156,8 +156,8 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 
 ### Two ways to configure
 
-1. **C++ tests / programmatic** — build `SimulationConfig` directly or start from `InputParser::default_config()` and override fields. This is how most tests work and is the only way to set `initial_strains` today.
-2. **Input file** — line-oriented pseudo-JSON parsed by `InputParser::parse()`. Only ~30 flat keys; strains and Fix tunables are **not** parseable from file yet.
+1. **C++ tests / programmatic** — build `SimulationConfig` directly or start from `InputParser::default_config()` and override fields.
+2. **Input file** — line-oriented pseudo-JSON parsed by `InputParser::parse()`. Supports flat keys plus JSON arrays for `initial_strains` and `fixes`.
 
 ### Input file keys (parsed today)
 
@@ -171,11 +171,14 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `sos_lysis_prob` | Bacteriocin Fix |
 | `crypts_enabled`, `crypt_depth`, `crypt_exit_rate`, `crypt_entry_rate`, `crypt_carrying_capacity` | Crypt refugia |
 | `hdf5_file`, `hdf5_every` | HDF5 output |
+| `checkpoint_file`, `checkpoint_step` | Checkpoint restart |
 | `adaptive_dt_enabled`, `dt_min`, `dt_max`, `dt_safety`, `dt_growth_limit` | Adaptive timestep |
+| `initial_strains` | JSON array of strain objects |
+| `fixes` | JSON array of Fix plugin names (execution order) |
 
 `parse_real()` returns `0.0` on failure — silent. Unknown keys are ignored.
 
-### Initial strains (code only for now)
+### Initial strains (JSON array or code)
 
 ```cpp
 SimulationConfig::InitialStrain s;
@@ -186,6 +189,18 @@ s.plasmids = {"ColE1", "ColB"};  // exact match required — see below
 s.conjugative = true;
 cfg.initial_strains.push_back(s);
 ```
+
+### Fix selection (JSON array or code)
+
+```json
+"fixes": ["metabolism", "bacteriocin", "receptor", "conjugation", "mutation", "mechanics"]
+```
+
+```cpp
+cfg.enabled_fixes = {"metabolism", "mechanics"};  // empty = all defaults
+```
+
+Register new Fix factories in `src/fixes/fix_registry.cpp` — no `simulation.cpp` edits needed.
 
 ### Plasmid library names (canonical)
 

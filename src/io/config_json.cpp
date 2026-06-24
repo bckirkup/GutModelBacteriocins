@@ -213,6 +213,16 @@ size_t find_initial_strains_array(const std::string& content) {
   return bracket;
 }
 
+size_t find_fixes_array(const std::string& content) {
+  const std::string key = "\"fixes\":";
+  size_t key_pos = content.find(key);
+  if (key_pos == std::string::npos) return std::string::npos;
+
+  size_t bracket = content.find('[', key_pos + key.size());
+  if (bracket == std::string::npos) return std::string::npos;
+  return bracket;
+}
+
 }  // namespace
 
 InitialStrainsParseResult ConfigJson::parse_initial_strains(const std::string& content) {
@@ -251,6 +261,29 @@ InitialStrainsParseResult ConfigJson::parse_initial_strains(const std::string& c
               << " — using default strains\n";
     result.found = false;
     result.strains.clear();
+  }
+
+  return result;
+}
+
+EnabledFixesParseResult ConfigJson::parse_enabled_fixes(const std::string& content) {
+  EnabledFixesParseResult result;
+  size_t array_pos = find_fixes_array(content);
+  if (array_pos == std::string::npos) {
+    return result;
+  }
+
+  result.found = true;
+  std::string array_text = content.substr(array_pos);
+  JsonCursor cursor(array_text);
+
+  try {
+    result.names = cursor.parse_string_array();
+  } catch (const std::exception& ex) {
+    std::cerr << "Warning: failed to parse fixes: " << ex.what()
+              << " — using default fix list\n";
+    result.found = false;
+    result.names.clear();
   }
 
   return result;

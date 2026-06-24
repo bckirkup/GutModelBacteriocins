@@ -116,6 +116,25 @@ void test_strain_spawn_integration() {
   std::cout << "  test_strain_spawn_integration: PASSED\n";
 }
 
+void test_fixes_fixture() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_fixes.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.enabled_fixes.size() == 2);
+  assert(cfg.enabled_fixes[0] == "metabolism");
+  assert(cfg.enabled_fixes[1] == "mechanics");
+  assert(cfg.initial_strains.size() == 1);
+  assert(cfg.initial_strains[0].count == 10);
+
+  cfg.hdf5.enabled = false;
+  Simulation sim;
+  sim.init(cfg);
+  auto names = sim.fix_names();
+  assert(names.size() == 2);
+  assert(names[0] == "metabolism");
+  assert(names[1] == "mechanics");
+  std::cout << "  test_fixes_fixture: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -125,6 +144,7 @@ int main() {
   test_strain_fixture();
   test_diversity_paradox_strains();
   test_strain_spawn_integration();
+  test_fixes_fixture();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }

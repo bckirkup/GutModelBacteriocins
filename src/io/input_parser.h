@@ -80,6 +80,9 @@ struct SimulationConfig {
   };
   std::vector<InitialStrain> initial_strains;
 
+  // Fix plugins to instantiate (empty = all registered defaults in order)
+  std::vector<std::string> enabled_fixes;
+
   // Random seed
   uint64_t seed = 42;
 };

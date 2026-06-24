@@ -150,6 +150,11 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     cfg.initial_strains = std::move(strains.strains);
   }
 
+  EnabledFixesParseResult fixes = ConfigJson::parse_enabled_fixes(content);
+  if (fixes.found) {
+    cfg.enabled_fixes = std::move(fixes.names);
+  }
+
   return cfg;
 }
 

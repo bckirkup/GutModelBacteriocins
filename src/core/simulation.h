@@ -93,6 +93,9 @@ class Simulation {
   Real                   time()      const { return time_; }
   Int                    step_count() const { return step_count_; }
 
+  // Active Fix plugin names in execution order
+  std::vector<std::string> fix_names() const;
+
   // MPI global statistics (valid after allreduce)
   Int  global_agent_count() const { return global_agent_count_; }
   Real global_mu_avg()      const { return global_mu_avg_; }
