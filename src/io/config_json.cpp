@@ -6,6 +6,7 @@
 
 #include <cctype>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 
 namespace gutibm {
@@ -98,6 +99,61 @@ class JsonCursor {
     return out;
   }
 
+  std::vector<SimulationConfig::InitialStrain> parse_strain_array() {
+    std::vector<SimulationConfig::InitialStrain> out;
+    if (!match('[')) throw std::runtime_error("expected JSON array");
+    skip_ws();
+    if (match(']')) return out;
+    while (true) {
+      out.push_back(parse_strain_object());
+      skip_ws();
+      if (match(']')) break;
+      if (!match(',')) throw std::runtime_error("expected ',' in JSON array");
+    }
+    return out;
+  }
+
+  char peek() {
+    skip_ws();
+    return pos_ < text_.size() ? text_[pos_] : '\0';
+  }
+
+  void skip_value() {
+    skip_ws();
+    if (pos_ >= text_.size()) throw std::runtime_error("unexpected end of JSON");
+
+    char c = text_[pos_];
+    if (c == '"') {
+      (void)parse_string();
+      return;
+    }
+    if (c == '{') {
+      skip_object();
+      return;
+    }
+    if (c == '[') {
+      skip_array();
+      return;
+    }
+    if (std::isdigit(static_cast<unsigned char>(c)) || c == '-' || c == '+') {
+      (void)parse_number();
+      return;
+    }
+    if (text_.compare(pos_, 4, "true") == 0) {
+      pos_ += 4;
+      return;
+    }
+    if (text_.compare(pos_, 5, "false") == 0) {
+      pos_ += 5;
+      return;
+    }
+    if (text_.compare(pos_, 4, "null") == 0) {
+      pos_ += 4;
+      return;
+    }
+    throw std::runtime_error("unsupported JSON value");
+  }
+
   SimulationConfig::InitialStrain parse_strain_object() {
     if (!match('{')) throw std::runtime_error("expected JSON object");
 
@@ -162,46 +218,31 @@ class JsonCursor {
     }
   }
 
- private:
-  void skip_value() {
-    skip_ws();
-    if (pos_ >= text_.size()) throw std::runtime_error("unexpected end of JSON");
-
-    char c = text_[pos_];
-    if (c == '"') {
-      (void)parse_string();
-      return;
-    }
-    if (c == '{') {
-      skip_object();
-      return;
-    }
-    if (c == '[') {
-      skip_array();
-      return;
-    }
-    if (std::isdigit(static_cast<unsigned char>(c)) || c == '-' || c == '+') {
-      (void)parse_number();
-      return;
-    }
-    if (text_.compare(pos_, 4, "true") == 0) {
-      pos_ += 4;
-      return;
-    }
-    if (text_.compare(pos_, 5, "false") == 0) {
-      pos_ += 5;
-      return;
-    }
-    if (text_.compare(pos_, 4, "null") == 0) {
-      pos_ += 4;
-      return;
-    }
-    throw std::runtime_error("unsupported JSON value");
-  }
-
   const std::string& text_;
   size_t pos_ = 0;
 };
+
+void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor& cursor) {
+  const char c = cursor.peek();
+  if (c == '"') {
+    InputParser::apply_flat_key(cfg, key, cursor.parse_string());
+  } else if (c == 't' || c == 'f') {
+    InputParser::apply_flat_key(cfg, key, cursor.parse_bool() ? "true" : "false");
+  } else if (std::isdigit(static_cast<unsigned char>(c)) || c == '-' || c == '+') {
+    const Real value = cursor.parse_number();
+    std::ostringstream oss;
+    oss << value;
+    InputParser::apply_flat_key(cfg, key, oss.str());
+  } else {
+    cursor.skip_value();
+  }
+}
+
+size_t find_json_object(const std::string& content) {
+  const size_t pos = content.find_first_not_of(" \t\r\n");
+  if (pos == std::string::npos || content[pos] != '{') return std::string::npos;
+  return pos;
+}
 
 size_t find_initial_strains_array(const std::string& content) {
   const std::string key = "\"initial_strains\":";
@@ -287,6 +328,46 @@ EnabledFixesParseResult ConfigJson::parse_enabled_fixes(const std::string& conte
   }
 
   return result;
+}
+
+bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& content) {
+  const size_t object_pos = find_json_object(content);
+  if (object_pos == std::string::npos) {
+    return false;
+  }
+
+  try {
+    JsonCursor cursor(content.substr(object_pos));
+    if (!cursor.match('{')) return false;
+
+    cursor.skip_ws();
+    if (cursor.match('}')) return true;
+
+    while (true) {
+      const std::string key = cursor.parse_string();
+      if (!cursor.match(':')) throw std::runtime_error("expected ':' after key");
+
+      if (!key.empty() && key.front() == '_') {
+        cursor.skip_value();
+      } else if (key == "initial_strains") {
+        cfg.initial_strains = cursor.parse_strain_array();
+      } else if (key == "fixes") {
+        cfg.enabled_fixes = cursor.parse_string_array();
+      } else {
+        apply_json_scalar(cfg, key, cursor);
+      }
+
+      cursor.skip_ws();
+      if (cursor.match('}')) break;
+      if (!cursor.match(',')) throw std::runtime_error("expected ',' between object fields");
+    }
+
+    return true;
+  } catch (const std::exception& ex) {
+    std::cerr << "Warning: JSON config parse failed: " << ex.what()
+              << " — falling back to legacy parser\n";
+    return false;
+  }
 }
 
 }  // namespace gutibm

@@ -120,10 +120,7 @@ ctest --output-on-failure
 ## Usage
 
 ```bash
-# Default configuration (24h, 600 agents)
-./gut_ibm
-
-# Custom configuration
+# Custom configuration (strict JSON — see docs/CONFIG_FORMAT.md)
 ./gut_ibm ../examples/diversity_paradox/input.json
 
 # MPI parallel
@@ -200,6 +197,7 @@ tests/            Unit tests for spatial hash, Green's functions, agents
 
 | Document | Description |
 |----------|-------------|
+| [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) | Strict JSON input format and `_comment` convention |
 | [docs/MECHANISMS.md](docs/MECHANISMS.md) | Biological mechanism deep-dives for each Fix module |
 | [docs/API.md](docs/API.md) | Class and function reference |
 | [docs/PARAMETERS.md](docs/PARAMETERS.md) | All configurable parameters with defaults and units |

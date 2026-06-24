@@ -56,6 +56,9 @@ jobs:
           cmake -B build -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON
           cmake --build build --target test_hdf5_roundtrip -j$(nproc)
 
+      - name: Validate config JSON syntax
+        run: bash scripts/validate_config_json.sh
+
       - name: Ruff check
         run: ruff check python/
 

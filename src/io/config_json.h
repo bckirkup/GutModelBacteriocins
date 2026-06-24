@@ -30,6 +30,9 @@ class ConfigJson {
 
   // Parse fixes from full file content. Returns found=false when absent.
   static EnabledFixesParseResult parse_enabled_fixes(const std::string& content);
+
+  // Parse a strict JSON config document into cfg. Returns true on success.
+  static bool parse_document(SimulationConfig& cfg, const std::string& content);
 };
 
 }  // namespace gutibm

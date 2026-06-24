@@ -1,5 +1,7 @@
 # Diversity Paradox Full Simulation
 
+Config format: strict JSON with optional `"_comment"` — see [CONFIG_FORMAT.md](../../docs/CONFIG_FORMAT.md).
+
 Week-long simulation testing the Advective Double-Bind hypothesis.
 Resident B2-phylogroup colonies (expressing Colicin E1 + Colicin B
 as a "super-killer" array) compete against naive immigrant strains.
