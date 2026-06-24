@@ -13,5 +13,6 @@ setup(
     ],
     extras_require={
         "viz": ["matplotlib>=3.5"],
+        "dev": ["pytest>=7.0", "ruff>=0.1"],
     },
 )
