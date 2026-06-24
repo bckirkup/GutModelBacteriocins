@@ -3,10 +3,12 @@
    ----------------------------------------------------------------------- */
 
 #include "input_parser.h"
+#include "config_json.h"
 #include "plasmid.h"
 #include <iostream>
 #include <algorithm>
 #include <stdexcept>
+#include <sstream>
 
 namespace gutibm {
 
@@ -58,8 +60,13 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     return cfg;
   }
 
+  std::ostringstream content_stream;
+  content_stream << ifs.rdbuf();
+  const std::string content = content_stream.str();
+
+  std::istringstream lines(content);
   std::string line;
-  while (std::getline(ifs, line)) {
+  while (std::getline(lines, line)) {
     line = trim(line);
     if (line.empty() || line[0] == '#' || line[0] == '/' || line[0] == '{' || line[0] == '}')
       continue;
@@ -136,6 +143,11 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     else if (key == "dt_max")            cfg.dt_max = parse_real(val);
     else if (key == "dt_safety")         cfg.dt_safety = parse_real(val);
     else if (key == "dt_growth_limit")   cfg.dt_growth_limit = parse_real(val);
+  }
+
+  InitialStrainsParseResult strains = ConfigJson::parse_initial_strains(content);
+  if (strains.found) {
+    cfg.initial_strains = std::move(strains.strains);
   }
 
   return cfg;

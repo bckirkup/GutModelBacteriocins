@@ -30,6 +30,23 @@
   "use_fmm": true,
   "fmm_theta": 0.5,
 
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 500,
+      "mu_max": 5.5e-4,
+      "plasmids": ["ColE1", "ColB"],
+      "conjugative": true
+    },
+    {
+      "type": 2,
+      "count": 100,
+      "mu_max": 5.0e-4,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ],
+
   "hdf5_file": "diversity_paradox_output.h5",
   "hdf5_every": 60
 }

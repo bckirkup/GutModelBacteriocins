@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "input_parser.h"
+#include "simulation.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -66,12 +67,64 @@ void test_fmm_peristaltic_fixture() {
   std::cout << "  test_fmm_peristaltic_fixture: PASSED\n";
 }
 
+void test_strain_fixture() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_strains.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.initial_strains.size() == 2);
+
+  const auto& resident = cfg.initial_strains[0];
+  assert(resident.type == 1);
+  assert(resident.count == 12);
+  assert(std::abs(resident.mu_max - 5.5e-4) < 1e-12);
+  assert(resident.plasmids.size() == 1);
+  assert(resident.plasmids[0] == "ColE1");
+  assert(resident.conjugative == false);
+
+  const auto& immigrant = cfg.initial_strains[1];
+  assert(immigrant.type == 2);
+  assert(immigrant.count == 4);
+  assert(immigrant.plasmids.empty());
+  std::cout << "  test_strain_fixture: PASSED\n";
+}
+
+void test_diversity_paradox_strains() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/examples/diversity_paradox/input.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.initial_strains.size() == 2);
+  assert(cfg.initial_strains[0].plasmids.size() == 2);
+  assert(cfg.initial_strains[0].plasmids[0] == "ColE1");
+  assert(cfg.initial_strains[0].plasmids[1] == "ColB");
+  assert(cfg.initial_strains[1].count == 100);
+  std::cout << "  test_diversity_paradox_strains: PASSED\n";
+}
+
+void test_strain_spawn_integration() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_strains.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.hdf5.enabled = false;
+  cfg.total_time = 1.0;
+
+  Simulation sim;
+  sim.init(cfg);
+
+  Int with_bi = 0;
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    if (!sim.agents()[i].genome.bi_loci.empty()) ++with_bi;
+  }
+  assert(with_bi > 0);
+  std::cout << "  test_strain_spawn_integration: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
   test_single_colony_peristaltic_keys();
   test_diversity_paradox_example();
   test_fmm_peristaltic_fixture();
+  test_strain_fixture();
+  test_diversity_paradox_strains();
+  test_strain_spawn_integration();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }
