@@ -46,7 +46,7 @@ No manual source-list edit needed for new Fix or diffusion files.
 cd build && ctest --output-on-failure
 ```
 
-16 CTest targets (all run at `nprocs=1` today — no multi-rank MPI tests yet):
+19 CTest targets (all run at `nprocs=1` today — no multi-rank MPI tests yet):
 
 | Test | File | Focus |
 |------|------|-------|
@@ -64,8 +64,11 @@ cd build && ctest --output-on-failure
 | `immunity_escape` | `test_immunity_escape.cpp` | Affinity-neutralization matrix |
 | `mechanics` | `test_mechanics.cpp` | Hertzian contact, adhesion |
 | `ethanolamine` | `test_ethanolamine.cpp` | Nutrient-conditional eut penalty |
-| `openmp_parity` | `test_openmp_parity.cpp` | Determinism within one build |
-| `agent_transfer` | `test_agent_transfer.cpp` | MPI pack/unpack round-trip (crypt, affinities, immunity escape) |
+| `openmp_parity` | `test_openmp_parity.cpp` | Determinism + cross-build fingerprint |
+| `adaptive_dt` | `test_adaptive_dt.cpp` | Adaptive timestep selection |
+| `agent_transfer` | `test_agent_transfer.cpp` | MPI pack/unpack round-trip |
+| `fix_registry` | `test_fix_registry.cpp` | Default Fix plugin registration |
+| `input_parser` | `test_input_parser.cpp` | Example JSON config files |
 
 **No dedicated tests yet** for `fix_bacteriocin`, `fix_receptor`, or `fix_mutation` in isolation.
 
@@ -94,11 +97,10 @@ pip install -e ".[viz]"
 pip install ruff pytest   # dev tools (not in setup.py extras yet)
 ```
 
-Import from submodules (`__init__.py` only exports `__version__`):
+Import from package root (re-exported in `__init__.py`):
 
 ```python
-from gut_ibm_tools.hdf5_reader import GutIBMData
-from gut_ibm_tools import analysis, validation, visualization
+from gut_ibm_tools import GutIBMData, analysis, validation, visualization
 ```
 
 CI currently runs `ruff check python/` and an import smoke test only — no pytest in CI yet.
@@ -126,12 +128,7 @@ Chemistry is instantaneous (QSSA); bio timestep (`bio_dt`, default 60 s) is deco
 1. Create `src/fixes/fix_<name>.h` and `src/fixes/fix_<name>.cpp`
 2. Inherit from `Fix` (`src/fixes/fix.h`)
 3. Implement `compute(Real dt)` (required); override `init()`, `pre_step()`, `post_step()` as needed
-4. **Register in `Simulation::init()`** in `src/core/simulation.cpp` — there is no `fix_registry.cpp`:
-
-   ```cpp
-   fixes_.push_back(std::make_unique<FixMyFix>(*this, cfg.my_fix));
-   ```
-
+4. **Register in `FixRegistry`** — add `register_fix("my_fix", ...)` in `src/fixes/fix_registry.cpp` (or call `FixRegistry::register_fix` from module init)
 5. Add config struct to `src/io/input_parser.h` (`SimulationConfig`) with sensible defaults in `default_config()`
 6. Add test in `tests/test_<name>.cpp` and register in `tests/CMakeLists.txt` (copy an existing test block)
 7. Update `examples/` if the feature is user-facing

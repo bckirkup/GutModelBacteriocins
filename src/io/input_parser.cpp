@@ -71,6 +71,15 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     std::string key = trim(line.substr(0, colon));
     std::string val = trim(line.substr(colon + 1));
 
+    // Metadata keys (e.g. "_comment") — valid JSON, ignored by parser
+    if (!key.empty() && key.front() == '_') continue;
+
+    // Remove quotes from key if present
+    if (key.size() >= 2 && key.front() == '"' && key.back() == '"') {
+      key = key.substr(1, key.size() - 2);
+      if (!key.empty() && key.front() == '_') continue;
+    }
+
     // Remove trailing comma and quotes
     if (!val.empty() && val.back() == ',') val.pop_back();
     val = trim(val);

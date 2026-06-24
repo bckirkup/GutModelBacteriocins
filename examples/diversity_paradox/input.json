@@ -1,7 +1,9 @@
 {
-  "#": "Full diversity paradox simulation: residents vs immigrants.",
-  "#": "Tests the Advective Double-Bind / Combinatorial Washout Trap.",
-  "#": "Validation targets: 70-80% resident retention, monochromatic patches.",
+  "_comment": [
+    "Full diversity paradox simulation: residents vs immigrants.",
+    "Tests the Advective Double-Bind / Combinatorial Washout Trap.",
+    "Validation targets: 70-80% resident retention, monochromatic patches."
+  ],
 
   "total_time": 604800,
   "bio_dt": 60,

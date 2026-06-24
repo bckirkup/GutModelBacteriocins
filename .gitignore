@@ -1,4 +1,6 @@
 build/
+build-openmp-off/
+build-openmp-on/
 *.o
 *.a
 *.so

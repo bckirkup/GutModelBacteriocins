@@ -49,7 +49,7 @@ cd python && ruff check .
 
 ## Architecture Rules
 
-- **NUFEB-2 Fix architecture** — biological rules are modular Fix plugins (registered in `Simulation::init()`, not a registry file)
+- **NUFEB-2 Fix architecture** — biological rules are modular Fix plugins (`FixRegistry` in `src/fixes/fix_registry.cpp`)
 - **QSSA for chemistry** — no explicit PDE solvers; analytical Green's function kernels
 - **VBF for anaerobes** — 99% of background flora is a continuum field, not discrete agents
 - **Spatial hashing** — O(N) neighbor lookups, not O(N²)
@@ -68,18 +68,18 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 
 | Path | Purpose |
 |------|---------|
-| `src/core/simulation.cpp` | Main loop, Fix registration, MPI migration, washout |
+| `src/core/simulation.cpp` | Main loop, MPI migration, washout |
 | `src/core/domain.cpp` | Slab decomposition, `owner_rank()`, ghost bounds |
 | `src/core/spatial_hash.*` | O(N) neighbor queries |
 | `src/fields/` | ChemicalField, AdvectionField, VBF |
 | `src/diffusion/` | Green's function, QSSA solver, Barnes-Hut octree |
-| `src/fixes/` | Six biological Fix modules + `fix_mechanics` |
+| `src/fixes/fix_registry.cpp` | Fix plugin registration and factory |
 | `src/genome/plasmid.cpp` | Plasmid library (`ColE1`, `ColB`, …) |
 | `src/io/input_parser.cpp` | Line-oriented config parser (~30 flat keys) |
 | `src/io/hdf5_writer.cpp` | Parallel HDF5 output (write-only) |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
 | `examples/` | `single_colony/`, `diversity_paradox/` input templates |
-| `tests/` | 16 CTest targets |
+| `tests/` | 19 CTest targets |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 
 ## Key Concepts
@@ -123,7 +123,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 ### New Fix module
 1. `src/fixes/fix_<name>.{h,cpp}` inheriting `Fix`
 2. Config struct in `input_parser.h` + defaults in `default_config()`
-3. Register in `Simulation::init()` (`simulation.cpp`) — **not** a registry file
+3. Register in `FixRegistry::register_fix()` inside `fix_registry.cpp` (or call from a static initializer)
 4. `tests/test_<name>.cpp` + entry in `tests/CMakeLists.txt`
 5. Update `docs/MECHANISMS.md` if biological behavior changes
 
