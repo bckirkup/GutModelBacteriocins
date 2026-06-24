@@ -99,6 +99,14 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     else if (key == "mucus_thickness")   cfg.advection.mucus_thickness = parse_real(val);
     else if (key == "radial_turnover")   cfg.advection.radial_turnover = parse_real(val);
     else if (key == "distal_transit")    cfg.advection.distal_transit_time = parse_real(val);
+    else if (key == "peristaltic_enabled")   cfg.advection.peristaltic_enabled = (val == "true" || val == "1");
+    else if (key == "peristaltic_period")    cfg.advection.peristaltic_period = parse_real(val);
+    else if (key == "peristaltic_amplitude") cfg.advection.peristaltic_amplitude = parse_real(val);
+    else if (key == "peristaltic_wavelength") cfg.advection.peristaltic_wavelength = parse_real(val);
+    else if (key == "toxin_cutoff")      cfg.qssa.toxin_cutoff = parse_real(val);
+    else if (key == "nutrient_cutoff")   cfg.qssa.nutrient_cutoff = parse_real(val);
+    else if (key == "use_fmm")           cfg.qssa.use_fmm = (val == "true" || val == "1");
+    else if (key == "fmm_theta")         cfg.qssa.fmm_theta = parse_real(val);
     else if (key == "vbf_density")       cfg.vbf.density = parse_real(val);
     else if (key == "vbf_viscosity")     cfg.vbf.viscosity = parse_real(val);
     else if (key == "vbf_mucin_z_gradient")  cfg.vbf.mucin_z_gradient_enabled = (val == "true" || val == "1");

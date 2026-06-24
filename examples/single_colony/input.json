@@ -1,7 +1,8 @@
 {
   "_comment": [
     "Single resident colony with colicin production in flowing mucus.",
-    "Tests comet-tail formation and SOS lysis dynamics."
+    "Tests comet-tail formation and SOS lysis dynamics.",
+    "Peristaltic mixing modulates distal flow (see peristaltic_* keys below)."
   ],
 
   "total_time": 86400,
@@ -17,6 +18,11 @@
   "mucus_thickness": 100e-6,
   "radial_turnover": 5400,
   "distal_transit": 43200,
+
+  "peristaltic_enabled": true,
+  "peristaltic_period": 20.0,
+  "peristaltic_amplitude": 0.5,
+  "peristaltic_wavelength": 0.001,
 
   "vbf_density": 1e11,
   "vbf_viscosity": 0.01,

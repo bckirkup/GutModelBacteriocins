@@ -1,0 +1,15 @@
+{
+  "total_time": 3600,
+  "bio_dt": 60,
+  "seed": 99,
+
+  "peristaltic_enabled": true,
+  "peristaltic_period": 15.0,
+  "peristaltic_amplitude": 0.3,
+  "peristaltic_wavelength": 0.0005,
+
+  "toxin_cutoff": 100e-6,
+  "nutrient_cutoff": 25e-6,
+  "use_fmm": true,
+  "fmm_theta": 0.3
+}

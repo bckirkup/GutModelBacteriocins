@@ -2,7 +2,8 @@
   "_comment": [
     "Full diversity paradox simulation: residents vs immigrants.",
     "Tests the Advective Double-Bind / Combinatorial Washout Trap.",
-    "Validation targets: 70-80% resident retention, monochromatic patches."
+    "Validation targets: 70-80% resident retention, monochromatic patches.",
+    "QSSA/FMM: enable use_fmm for 10^6+ agents; fmm_theta 0.3 (accurate), 0.5 (balanced), 0.7 (fast)."
   ],
 
   "total_time": 604800,
@@ -23,6 +24,11 @@
   "vbf_viscosity": 0.01,
 
   "sos_lysis_prob": 0.01,
+
+  "toxin_cutoff": 200e-6,
+  "nutrient_cutoff": 50e-6,
+  "use_fmm": true,
+  "fmm_theta": 0.5,
 
   "hdf5_file": "diversity_paradox_output.h5",
   "hdf5_every": 60
