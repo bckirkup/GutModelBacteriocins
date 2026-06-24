@@ -340,7 +340,7 @@ Example:
   "type": 1,
   "count": 1000,
   "mu_max": 5e-4,
-  "plasmids": ["colicin_E1"],
+  "plasmids": ["ColE1"],
   "conjugative": false
 }
 ```

@@ -38,7 +38,7 @@ static SimulationConfig make_test_config(int seed) {
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain s1;
   s1.type = 1; s1.count = 20; s1.mu_max = 5e-4;
-  s1.plasmids = {"colicin_E1"}; s1.conjugative = false;
+  s1.plasmids = {"ColE1"}; s1.conjugative = false;
   cfg.initial_strains.push_back(s1);
 
   SimulationConfig::InitialStrain s2;

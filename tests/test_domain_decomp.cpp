@@ -157,7 +157,7 @@ void test_single_rank_simulation_unchanged() {
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain resident;
   resident.type = 1; resident.count = 20; resident.mu_max = 5e-4;
-  resident.plasmids = {"colicin_E1"}; resident.conjugative = false;
+  resident.plasmids = {"ColE1"}; resident.conjugative = false;
   cfg.initial_strains.push_back(resident);
 
   SimulationConfig::InitialStrain immigrant;
