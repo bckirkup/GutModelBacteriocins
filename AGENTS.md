@@ -1,12 +1,22 @@
 # AGENTS.md — AI Agent Guidelines for GutIBM
 
 ## Repository Purpose
+
 Massively parallel 3D Individual-based Model (IbM) for simulating
 *Enterobacteriaceae* population dynamics and genomic diversity in the colonic
 mucus layer. C++17 core with Python analysis tools. Built on NUFEB-2
 framework philosophy with MPI domain decomposition and HDF5 I/O.
 
+**Version:** 0.1.0 (early research prototype — not production-HPC-ready)
+
+## First Steps
+
+1. Read `.agents/skills/gut-ibm/SKILL.md` for build commands, test inventory, config keys, and Fix registration workflow.
+2. Skim `docs/MECHANISMS.md` before editing any Fix module.
+3. Check **Known Bugs & Landmines** below before debugging unexpected behavior.
+
 ## Setup
+
 ```bash
 mkdir -p build && cd build
 cmake .. -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON
@@ -14,67 +24,170 @@ make -j$(nproc)
 ```
 
 Python analysis tools:
+
 ```bash
-cd python && pip install -e ".[dev]"
+cd python && pip install -e ".[viz]"
+pip install ruff pytest   # dev tooling
 ```
 
 ## Validation Commands
+
 Run these before committing:
+
 ```bash
 # C++ build (with warnings)
-cd build && cmake .. -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON -DCMAKE_CXX_FLAGS="-Wall -Wextra" && make -j$(nproc)
+cd build && cmake .. -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON \
+  -DCMAKE_CXX_FLAGS="-Wall -Wextra" && make -j$(nproc)
 
 # C++ tests
 cd build && ctest --output-on-failure
 
 # Python tools (if modified)
-cd python && ruff check . && pytest
+cd python && ruff check .
+# pytest not in CI yet — run locally when adding Python tests
 ```
 
 ## Architecture Rules
-- **NUFEB-2 Fix architecture** — biological rules are modular Fix plugins
+
+- **NUFEB-2 Fix architecture** — biological rules are modular Fix plugins (registered in `Simulation::init()`, not a registry file)
 - **QSSA for chemistry** — no explicit PDE solvers; analytical Green's function kernels
 - **VBF for anaerobes** — 99% of background flora is a continuum field, not discrete agents
 - **Spatial hashing** — O(N) neighbor lookups, not O(N²)
-- **MPI domain decomposition** — code must be parallelizable across HPC nodes
+- **MPI domain decomposition** — 1D slab along x-axis; ghost exchange + agent migration
 - **Never modify tests to make them pass** — fix the implementation
 
+### Timestep modules (do not reorder casually)
+
+```
+pre_step → biology (all Fixes compute) → chemistry (QSSA) → physics (advection + mechanics) → post_step → MPI migrate → washout → cleanup
+```
+
+Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled from chemistry.
+
 ## Key Files
+
 | Path | Purpose |
 |------|---------|
-| `src/core/` | Simulation engine, domain management, spatial hashing |
-| `src/fields/` | Spatial environment and chemical gradient management |
-| `src/diffusion/` | Analytical advection-diffusion kernel implementations |
-| `src/fixes/` | Biological rule modules (metabolism, lysis, conjugation) |
-| `src/genome/` | Genomic state, BI locus evolution, mutation logic |
-| `src/io/` | Parallel HDF5 data persistence and checkpointing |
-| `python/gut_ibm_tools/` | Analysis suite for spatial and genomic signatures |
-| `examples/` | Configuration templates for specific biological scenarios |
-| `tests/` | C++ unit tests (CTest) |
+| `src/core/simulation.cpp` | Main loop, Fix registration, MPI migration, washout |
+| `src/core/domain.cpp` | Slab decomposition, `owner_rank()`, ghost bounds |
+| `src/core/spatial_hash.*` | O(N) neighbor queries |
+| `src/fields/` | ChemicalField, AdvectionField, VBF |
+| `src/diffusion/` | Green's function, QSSA solver, Barnes-Hut octree |
+| `src/fixes/` | Six biological Fix modules + `fix_mechanics` |
+| `src/genome/plasmid.cpp` | Plasmid library (`ColE1`, `ColB`, …) |
+| `src/io/input_parser.cpp` | Line-oriented config parser (~30 flat keys) |
+| `src/io/hdf5_writer.cpp` | Parallel HDF5 output (write-only) |
+| `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
+| `examples/` | `single_colony/`, `diversity_paradox/` input templates |
+| `tests/` | 16 CTest targets |
+| `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 
 ## Key Concepts
+
 - **Advective Double-Bind (EARI)**: Growth/resistance trade-off leading to washout
-- **Combinatorial Washout Trap (VADI)**: Physical expulsion when μ < γ_flow
+- **Combinatorial Washout Trap (VADI)**: Physical expulsion when μ_realized < γ_flow
 - **Lethal Core/Halo**: Spatial toxin zones based on isoelectric point (pI)
 - **Comet-tails**: Downstream-elongated inhibitory zones from mucus flow
 - **BI Locus**: Bacteriocin-Immunity genetic region subject to recombination
 - **Method of Images**: Boundary condition technique for diffusion kernels
 - **MPS (Mating-Pair Stabilization)**: Shear-dependent HGT probability
 
+## Known Bugs & Landmines
+
+Read these before investigating "why doesn't X work?"
+
+| Issue | Symptom | Location |
+|-------|---------|----------|
+| **#40 Metabolic washout broken** | Receptor-downregulated immigrants never washed out metabolically; only `z >= z_max` washout fires | `simulation.cpp:check_washout()` — spurious `&& mu_realized < 0.0` |
+| **#41 MPI state loss** | Crypt refugia, immunity escape, partial resistance lost after rank migration | `AgentTransferData` / `BIClusterTransferData` in `simulation.cpp` |
+| **#42 Plasmid name mismatch** | Agents spawn with zero `bi_loci`; tests pass without exercising bacteriocins | Library uses `ColE1`; many tests/docs use `colicin_E1` (silent no-op) |
+| **#43 No multi-rank tests** | MPI bugs undetected until manual `mpirun -np N` | All CTest runs at `nprocs=1` |
+| Input parser gaps | Strains, FMM, peristaltic params only configurable in C++ | `input_parser.cpp` |
+| No checkpoint restart | Cannot resume from HDF5 snapshot | `hdf5_writer.cpp` write-only |
+| `parse_real()` silent zero | Bad config values become 0.0 without warning | `input_parser.cpp` |
+
+When writing or fixing tests that involve plasmids, **always use `ColE1`/`ColB`/etc.** and assert `agent.genome.bi_loci.size() > 0`.
+
+## Test Coverage Map
+
+**Well tested:** spatial hash, Green's functions, octree/FMM, mechanics, advection, adaptive dt, iron fallback, acetate/MetE, ethanolamine, z-gradients, crypt refugia (single rank), immunity escape math.
+
+**Gaps (add tests when touching these areas):**
+- `fix_bacteriocin`, `fix_receptor`, `fix_mutation` — no isolated unit tests
+- HDF5 round-trip / parallel I/O
+- Multi-rank MPI (`mpirun -np > 1`)
+- Python `gut_ibm_tools` — no pytest in CI
+- Metabolic washout trap end-to-end
+- OpenMP serial vs OpenMP build equivalence
+
+## Adding Features — Agent Checklist
+
+### New Fix module
+1. `src/fixes/fix_<name>.{h,cpp}` inheriting `Fix`
+2. Config struct in `input_parser.h` + defaults in `default_config()`
+3. Register in `Simulation::init()` (`simulation.cpp`) — **not** a registry file
+4. `tests/test_<name>.cpp` + entry in `tests/CMakeLists.txt`
+5. Update `docs/MECHANISMS.md` if biological behavior changes
+
+### New diffusion / QSSA kernel
+1. `src/diffusion/` — QSSA-compatible, Method of Images
+2. Wire through `QSSASolver`
+3. Analytical verification test
+
+### MPI-sensitive changes
+- Guard all MPI calls with rank checks
+- Ensure collectives are called by all ranks
+- Update `pack_agent`/`unpack_agent` if adding agent or genome fields
+- Test manually with `mpirun -np 4` until #43 is resolved
+
+### Python changes
+- Import from submodules (`gut_ibm_tools.hdf5_reader`, not top-level)
+- Add pytest tests; run `ruff check python/`
+
+## Configuration Quick Reference
+
+| What | How |
+|------|-----|
+| Run with file | `./gut_ibm examples/single_colony/input.json` |
+| Default strains | Resident (`ColE1`+`ColB`, 500) + immigrant (100), no plasmids |
+| Strain setup in tests | `cfg.initial_strains` on `SimulationConfig` |
+| Plasmid names | `ColE1`, `ColE2`, `ColB`, `ColIa`, `ColM`, `MccV` |
+| HDF5 interval | `hdf5_every` (input file) or `cfg.hdf5.dump_every` (code) |
+| Disable HDF5 in tests | `cfg.hdf5.enabled = false` |
+| MPI decomp axis | `cfg.domain.mpi_decomp_axis` (default 0 = x) |
+| Barnes-Hut FMM | `cfg.qssa.use_fmm`, `cfg.qssa.fmm_theta` (code only) |
+| Peristaltic mixing | `cfg.advection.peristaltic_*` (code only) |
+
+Full parameter docs: `docs/PARAMETERS.md`.
+
 ## Spec Documents
+
 - `EARI.md` — Eco-Advective Receptor Interference framework
 - `VADI.md` — Viscous Advective-Diffusion Interference framework
+- `docs/MECHANISMS.md` — per-Fix biological mechanisms
+- `docs/API.md` — class reference
+- `docs/PARAMETERS.md` — configurable parameters
 
 ## Code Conventions
+
 - C++17 with modern idioms (smart pointers, RAII, move semantics)
-- CMake build system
+- CMake build system; sources GLOB'd — no manual source list for new `.cpp` in `src/`
 - MPI for parallelism (guard all MPI calls with rank checks)
 - HDF5 for I/O (parallel HDF5 when MPI is enabled)
-- Python analysis code uses NumPy, SciPy, h5py
+- Python: NumPy, SciPy, h5py; matplotlib optional via `[viz]` extra
+- Fix hooks: `init()`, `pre_step()`, `compute()`, `post_step()` — not `pre_force`/`post_force`
 
 ## PR Requirements
-- Clean build with -Wall -Wextra (no new warnings)
+
+- Clean build with `-Wall -Wextra` (no new warnings)
 - All CTest tests pass
-- New features include tests
+- New features include tests with **biological outcome assertions**
 - MPI-safe (no deadlocks, proper collective operations)
-- Update examples/ if adding new biological scenarios
+- Update `examples/` if adding user-facing config
+- Update this file and `SKILL.md` if changing architecture, config keys, or known bugs
+
+## Open Issue Tracker (code review, Jun 2026)
+
+Critical path: #40 (washout), #41 (MPI serialization), #42 (plasmid names), #43 (MPI tests), #56 (validation pipeline).
+
+Full list: GitHub issues #40–#59 plus #33 (GPU), #29 (higher-order FMM), #25 (HCR-FISH validation).
