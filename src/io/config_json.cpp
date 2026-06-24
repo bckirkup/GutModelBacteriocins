@@ -8,6 +8,7 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <utility>
 
 namespace gutibm {
 
@@ -15,7 +16,7 @@ namespace {
 
 class JsonCursor {
  public:
-  explicit JsonCursor(const std::string& text) : text_(text) {}
+  explicit JsonCursor(std::string text) : text_(std::move(text)) {}
 
   void skip_ws() {
     while (pos_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[pos_]))) {
@@ -218,7 +219,7 @@ class JsonCursor {
     }
   }
 
-  const std::string& text_;
+  std::string text_;
   size_t pos_ = 0;
 };
 
@@ -274,8 +275,7 @@ InitialStrainsParseResult ConfigJson::parse_initial_strains(const std::string& c
   }
 
   result.found = true;
-  std::string array_text = content.substr(array_pos);
-  JsonCursor cursor(array_text);
+  JsonCursor cursor(content.substr(array_pos));
 
   if (!cursor.match('[')) {
     std::cerr << "Warning: malformed initial_strains array — using default strains\n";
@@ -315,8 +315,7 @@ EnabledFixesParseResult ConfigJson::parse_enabled_fixes(const std::string& conte
   }
 
   result.found = true;
-  std::string array_text = content.substr(array_pos);
-  JsonCursor cursor(array_text);
+  JsonCursor cursor(content.substr(array_pos));
 
   try {
     result.names = cursor.parse_string_array();
