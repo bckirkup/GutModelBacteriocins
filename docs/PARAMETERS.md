@@ -344,6 +344,11 @@ Unknown Fix names log a warning and are skipped. Register new Fix modules in
 
 ---
 
+## Input Config Format
+
+Simulation configs are strict JSON. Use `"_comment"` (string or array) for
+human-readable notes — see [CONFIG_FORMAT.md](CONFIG_FORMAT.md).
+
 ## Initial Population
 
 Each strain in `initial_strains` has:

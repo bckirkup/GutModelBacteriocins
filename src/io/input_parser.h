@@ -95,6 +95,11 @@ class InputParser {
   // Create default config with standard gut parameters
   static SimulationConfig default_config();
 
+  // Apply a single flat config key (used by JSON and legacy line parsers).
+  static void apply_flat_key(SimulationConfig& cfg,
+                             const std::string& key,
+                             const std::string& val);
+
  private:
   static std::string trim(const std::string& s);
   static Real parse_real(const std::string& val);

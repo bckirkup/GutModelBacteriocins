@@ -8,6 +8,8 @@
 #include <iostream>
 #include <cmath>
 #include <string>
+#include <fstream>
+#include <cstdio>
 
 #ifndef GUTIBM_SOURCE_DIR
 #define GUTIBM_SOURCE_DIR "."
@@ -135,6 +137,36 @@ void test_fixes_fixture() {
   std::cout << "  test_fixes_fixture: PASSED\n";
 }
 
+void test_json_document_parser() {
+  const std::string json = R"({
+    "_comment": "inline JSON document test",
+    "total_time": 1234,
+    "seed": 99,
+    "peristaltic_enabled": true,
+    "initial_strains": [
+      {"type": 1, "count": 3, "mu_max": 5e-4, "plasmids": ["ColE1"], "conjugative": false}
+    ],
+    "fixes": ["metabolism"]
+  })";
+
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/_inline_json_doc.json";
+  {
+    std::ofstream out(path);
+    out << json;
+  }
+
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(std::abs(cfg.total_time - 1234.0) < 1e-6);
+  assert(cfg.seed == 99);
+  assert(cfg.advection.peristaltic_enabled == true);
+  assert(cfg.initial_strains.size() == 1);
+  assert(cfg.initial_strains[0].plasmids[0] == "ColE1");
+  assert(cfg.enabled_fixes.size() == 1);
+  assert(cfg.enabled_fixes[0] == "metabolism");
+  std::remove(path.c_str());
+  std::cout << "  test_json_document_parser: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -145,6 +177,7 @@ int main() {
   test_diversity_paradox_strains();
   test_strain_spawn_integration();
   test_fixes_fixture();
+  test_json_document_parser();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }

@@ -1,5 +1,7 @@
 # Single Colony Comet-Tail Test
 
+Config format: strict JSON with optional `"_comment"` — see [CONFIG_FORMAT.md](../../docs/CONFIG_FORMAT.md).
+
 Tests the formation of advective "comet-tail" chemical exclusion zones
 from a single resident Enterobacteriaceae colony expressing Colicin E1
 (Lethal Core, pI ~9.0) and Colicin B (Lethal Halo, pI ~5.4).
