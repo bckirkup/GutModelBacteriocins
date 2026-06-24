@@ -18,6 +18,7 @@
 #include "fix_mutation.h"
 #include "fix_mechanics.h"
 #include "hdf5_writer.h"
+#include "hdf5_reader.h"
 
 #include <string>
 #include <vector>
@@ -61,6 +62,13 @@ struct SimulationConfig {
 
   // Output
   HDF5Config hdf5;
+
+  // Checkpoint restart (non-empty file → resume instead of initial_strains)
+  struct CheckpointConfig {
+    std::string file;  // HDF5 snapshot to load
+    std::string step;  // step group name; empty = latest
+  };
+  CheckpointConfig checkpoint;
 
   // Initial population
   struct InitialStrain {

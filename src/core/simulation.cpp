@@ -13,6 +13,7 @@
 #include <cstring>
 #include <numeric>
 #include <iomanip>
+#include <stdexcept>
 #ifdef GUTIBM_OPENMP
 #include <omp.h>
 #endif
@@ -133,6 +134,126 @@ void Simulation::init_population(const SimulationConfig& cfg) {
 
       agents_.push_back(std::move(a));
     }
+  }
+}
+
+void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
+                                      const std::string& h5_file,
+                                      const std::string& step) {
+  cfg_ = cfg;
+  rng_.seed(cfg.seed);
+
+  domain_.init(cfg.domain);
+  chem_.init(domain_, cfg.chemicals);
+  advection_.init(cfg.advection, domain_);
+  vbf_.init(cfg.vbf, domain_);
+  qssa_.init(cfg.qssa, domain_, advection_);
+  lineage_.init(cfg.output_interval);
+  hdf5_.init(cfg.hdf5);
+  fixes_ = FixRegistry::create_all(*this, cfg);
+  for (auto& fix : fixes_) {
+    fix->init();
+  }
+
+#ifndef GUTIBM_HDF5
+  (void)h5_file;
+  (void)step;
+  throw std::runtime_error("checkpoint restart requires HDF5 support");
+#else
+  HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(h5_file, step);
+  apply_checkpoint_snapshot(snap);
+
+  rebuild_spatial_hash();
+  update_grid_coupling();
+  allreduce_global_stats();
+
+  int rank = domain_.rank();
+  if (rank == 0) {
+    std::cout << "GutIBM restored from checkpoint:\n"
+              << "  File: " << h5_file << "\n"
+              << "  Step group: " << snap.step_name << "\n"
+              << "  Restored time: " << time_ << " s\n"
+              << "  Restored step: " << step_count_ << "\n"
+              << "  Global agents: " << global_agent_count_ << "\n"
+              << "  Local agents: " << agents_.size() << "\n"
+              << std::flush;
+  }
+#endif
+}
+
+void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
+  const auto& atoms = snap.agents;
+  const auto& lin   = snap.lineage;
+  const size_t n    = atoms.id.size();
+
+  TagID max_tag = 0;
+  agents_.reserve(static_cast<Int>(n));
+
+  for (size_t i = 0; i < n; ++i) {
+    Vec3 pos = {atoms.x[i], atoms.y[i], atoms.z[i]};
+    if (!domain_.is_local(pos)) continue;
+
+    Real mu_guess = std::max(atoms.mu[i], 1.0e-8);
+    Agent a = Agent::create_default(static_cast<TagID>(atoms.id[i]),
+                                    atoms.type[i], pos, mu_guess);
+    a.owner_rank   = domain_.rank();
+    a.state        = static_cast<PhenoState>(atoms.state[i]);
+    a.radius       = atoms.radius[i];
+    a.outer_radius = atoms.radius[i] * 1.05;
+    a.mass         = sphere_mass(a.radius, CELL_DENSITY_DEFAULT);
+    a.biomass      = atoms.biomass[i];
+    a.mu_realized  = atoms.mu[i];
+    a.mu_max       = std::max(mu_guess, atoms.mu[i]);
+
+    a.genome.lineage_id = static_cast<TagID>(atoms.lineage[i]);
+    a.genome.generation = static_cast<uint32_t>(lin.generation[i]);
+    a.receptor_expr[static_cast<int>(ReceptorType::BtuB)] = lin.btuB_expression[i];
+    a.receptor_expr[static_cast<int>(ReceptorType::FepA)] = lin.fepA_expression[i];
+    for (Int r = 0; r < NUM_RECEPTORS; ++r) {
+      a.genome.receptor_expression[r] = a.receptor_expr[r];
+    }
+
+    // BI cluster identity is not serialized; preserve locus count for lineage stats.
+    a.genome.bi_loci.clear();
+    a.genome.bi_loci.resize(static_cast<size_t>(lin.num_bi_loci[i]));
+
+    if (advection_.in_crypt_zone(a.x[2])) {
+      a.in_crypt = true;
+    }
+
+    max_tag = std::max(max_tag, static_cast<TagID>(atoms.id[i]));
+    agents_.push_back(std::move(a));
+  }
+
+  agents_.set_next_tag(max_tag + 1);
+
+  for (const auto& [name, values] : snap.grid.species) {
+    Int spec = chem_.find(name);
+    if (spec < 0) {
+      if (domain_.rank() == 0) {
+        std::cerr << "Warning: checkpoint grid species '" << name
+                  << "' not in simulation config — skipped\n";
+      }
+      continue;
+    }
+    if (static_cast<Int>(values.size()) != chem_.ncells()) {
+      throw std::runtime_error("checkpoint grid size mismatch for species: " + name);
+    }
+    for (Int c = 0; c < chem_.ncells(); ++c) {
+      chem_.conc(spec, c) = values[static_cast<size_t>(c)];
+    }
+  }
+
+  time_       = snap.metadata.time;
+  step_count_ = snap.metadata.step;
+
+  if (time_ <= 0.0) {
+    next_output_   = 0.0;
+    next_snapshot_ = 0.0;
+  } else {
+    const Real interval = cfg_.output_interval;
+    next_output_   = (std::floor(time_ / interval) + 1.0) * interval;
+    next_snapshot_ = next_output_;
   }
 }
 

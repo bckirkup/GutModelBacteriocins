@@ -34,6 +34,7 @@
 #include "qssa_solver.h"
 #include "lineage_tracker.h"
 #include "hdf5_writer.h"
+#include "hdf5_reader.h"
 #include "input_parser.h"
 #include "fix.h"
 
@@ -53,6 +54,11 @@ class Simulation {
 
   // Initialize from config
   void init(const SimulationConfig& cfg);
+
+  // Initialize domain/modules and restore state from an HDF5 snapshot
+  void init_from_checkpoint(const SimulationConfig& cfg,
+                            const std::string& h5_file,
+                            const std::string& step = "");
 
   // Run the simulation
   void run();
@@ -98,6 +104,7 @@ class Simulation {
  private:
   // Initialization helpers
   void init_population(const SimulationConfig& cfg);
+  void apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap);
   void update_grid_coupling();
   void rebuild_spatial_hash();
   void remove_dead_agents();
