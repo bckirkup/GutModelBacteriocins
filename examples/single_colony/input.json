@@ -29,6 +29,16 @@
 
   "sos_lysis_prob": 0.01,
 
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 500,
+      "mu_max": 5.5e-4,
+      "plasmids": ["ColE1", "ColB"],
+      "conjugative": true
+    }
+  ],
+
   "hdf5_file": "single_colony_output.h5",
   "hdf5_every": 60
 }
