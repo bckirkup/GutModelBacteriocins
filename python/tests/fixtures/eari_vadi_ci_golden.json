@@ -1,0 +1,15 @@
+{
+  "scenario": "eari_vadi_ci",
+  "metrics": {
+    "monochromatic_score": 0.0,
+    "comet_tail_ratio": 0.9598986796160722,
+    "mean_exclusion_radius": 0.00011618093675935176,
+    "hopkins_statistic": 0.4027606600057502,
+    "nnd_mean": 0.00013248830556193778,
+    "comet_tail_asymmetry": 1.009428958056908,
+    "resident_retention": 0.1125,
+    "resident_mean_bi_loci": 1.6666666666666667,
+    "transient_mean_bi_loci": 0.0,
+    "transient_mean_btuB_expression": 1.0
+  }
+}
