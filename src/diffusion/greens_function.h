@@ -71,6 +71,8 @@ class GreensFunction {
   Real peclet(const Vec3& pos, Real D_eff, Real length_scale) const;
 
  private:
+  void require_init() const;
+
   // Single image contribution
   Real single_kernel(const Vec3& src, const Vec3& tgt,
                       Real D_eff, Real Q,

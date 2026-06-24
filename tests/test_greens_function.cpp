@@ -10,6 +10,7 @@
 #include <cassert>
 #include <iostream>
 #include <cmath>
+#include <string>
 
 using namespace gutibm;
 
@@ -173,6 +174,37 @@ void test_lethal_core_vs_halo() {
             << " conc_ratio=" << actual_ratio << ")\n";
 }
 
+void test_uninitialized_throws() {
+  GreensFunction gf;
+  Vec3 source = {500e-6, 500e-6, 50e-6};
+  Vec3 target = {510e-6, 500e-6, 50e-6};
+  GreensFunctionParams params;
+  params.diff_coeff  = 4e-11;
+  params.source_rate = 1e-18;
+  params.pI          = 7.0;
+  params.retardation = 1.0;
+
+  auto expect_init_error = [](const auto& fn) {
+    try {
+      fn();
+      assert(false && "expected GreensFunction to throw before init()");
+    } catch (const std::runtime_error& e) {
+      assert(std::string(e.what()).find("init()") != std::string::npos);
+    }
+  };
+
+  expect_init_error([&]() { (void)gf.concentration(source, target, params); });
+  expect_init_error([&]() { (void)gf.concentration_bounded(source, target, params); });
+  expect_init_error([&]() { (void)gf.peclet(source, 4e-11, 50e-6); });
+
+  std::vector<Vec3> sources = {source};
+  std::vector<GreensFunctionParams> params_vec = {params};
+  std::vector<Real> grid;
+  expect_init_error([&]() { gf.superpose_to_grid(sources, params_vec, grid, 50e-6); });
+
+  std::cout << "  test_uninitialized_throws: PASSED\n";
+}
+
 void test_peclet_number() {
   DomainConfig dcfg;
   dcfg.lo = {0, 0, 0};
@@ -205,6 +237,7 @@ void test_peclet_number() {
 
 int main() {
   std::cout << "=== Green's Function Tests ===\n";
+  test_uninitialized_throws();
   test_radial_symmetry_no_flow();
   test_comet_tail_asymmetry();
   test_lethal_core_vs_halo();
