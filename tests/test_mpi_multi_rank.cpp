@@ -26,8 +26,7 @@ SimulationConfig make_mpi_config() {
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
   cfg.domain.ghost_width = 10e-6;
-  // Non-periodic x: with 2 ranks, each slab has a unique neighbor (avoids
-  // duplicate Sendrecv to the same rank when rank_lo == rank_hi).
+  // Non-periodic x decomp: distinct lo/hi neighbors with 2 ranks.
   cfg.domain.periodic = {false, true, false};
   cfg.total_time = 300.0;
   cfg.bio_dt = 60.0;
@@ -84,6 +83,18 @@ std::vector<TagID> gather_live_tags_flat(const Simulation& sim) {
   return all;
 }
 
+void assert_unique_tags(const std::vector<TagID>& tags) {
+  std::vector<TagID> sorted = tags;
+  std::sort(sorted.begin(), sorted.end());
+  assert(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
+}
+
+SimulationConfig make_mpi_periodic_config() {
+  SimulationConfig cfg = make_mpi_config();
+  cfg.domain.periodic = {true, true, false};
+  return cfg;
+}
+
 void require_two_ranks() {
   int nprocs = 1;
   MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -129,6 +140,36 @@ void test_slab_decomposition() {
   }
 }
 
+void test_slab_decomposition_periodic_x() {
+  require_two_ranks();
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  DomainConfig cfg;
+  cfg.lo = {0, 0, 0};
+  cfg.hi = {100e-6, 100e-6, 50e-6};
+  cfg.mpi_decomp_axis = 0;
+  cfg.ghost_width = 10e-6;
+  cfg.periodic = {true, true, false};
+
+  Domain dom;
+  dom.init(cfg);
+
+  assert(dom.neighbors_collapsed());
+  if (rank == 0) {
+    assert(dom.rank_lo() == 1);
+    assert(dom.rank_hi() == 1);
+  } else {
+    assert(dom.rank_lo() == 0);
+    assert(dom.rank_hi() == 0);
+  }
+
+  if (rank == 0) {
+    std::cout << "  test_slab_decomposition_periodic_x: PASSED\n";
+  }
+}
+
 void test_init_population_partitioned() {
   require_two_ranks();
 
@@ -146,6 +187,7 @@ void test_init_population_partitioned() {
 
   auto tags = gather_live_tags_flat(sim);
   assert(static_cast<Int>(tags.size()) == sim.global_agent_count());
+  assert_unique_tags(tags);
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -186,6 +228,9 @@ void test_migration_preserves_global_count() {
   assert(moved_x > 0.0);
 
   sim.step(cfg.bio_dt);
+
+  auto tags = gather_live_tags_flat(sim);
+  assert_unique_tags(tags);
 
   int found_on_rank1 = 0;
   if (rank == 1) {
@@ -239,6 +284,68 @@ void test_boundary_ghost_exchange_runs() {
   }
 }
 
+void test_periodic_x_ghost_and_migration() {
+  require_two_ranks();
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  SimulationConfig cfg = make_mpi_periodic_config();
+  cfg.advection.distal_transit_time = 1e12;
+  Simulation sim;
+  sim.init(cfg);
+
+  assert(sim.domain().neighbors_collapsed());
+  assert_unique_tags(gather_live_tags_flat(sim));
+
+  const Real gw = sim.domain().ghost_width();
+  Real moved_x = 0.0;
+  if (rank == 0) {
+    for (Int i = 0; i < sim.agents().size(); ++i) {
+      Agent& a = sim.agents()[i];
+      if (a.state == PhenoState::DEAD) continue;
+      a.x[0] = sim.domain().local_hi_x() - gw * 0.5;
+      moved_x = sim.domain().local_hi_x() + 5e-6;
+      a.mu_realized = a.mu_max;
+      break;
+    }
+  } else {
+    for (Int i = 0; i < sim.agents().size(); ++i) {
+      Agent& a = sim.agents()[i];
+      if (a.state == PhenoState::DEAD) continue;
+      a.x[0] = sim.domain().local_lo_x() + gw * 0.5;
+      break;
+    }
+  }
+
+  sim.step(cfg.bio_dt);
+  assert(sim.global_agent_count() == 40);
+  assert_unique_tags(gather_live_tags_flat(sim));
+
+  if (rank == 0) {
+    moved_x = sim.domain().local_hi_x() + 5e-6;
+    for (Int i = 0; i < sim.agents().size(); ++i) {
+      Agent& a = sim.agents()[i];
+      if (a.state != PhenoState::DEAD) {
+        a.x[0] = moved_x;
+        a.x[1] = 50e-6;
+        a.x[2] = 25e-6;
+        a.mu_realized = a.mu_max;
+        break;
+      }
+    }
+  }
+  MPI_Bcast(&moved_x, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+
+  sim.step(cfg.bio_dt);
+  assert(sim.global_agent_count() == 40);
+  assert_unique_tags(gather_live_tags_flat(sim));
+
+  if (rank == 0) {
+    std::cout << "  test_periodic_x_ghost_and_migration: PASSED\n";
+  }
+}
+
 void test_multirank_simulation_steps() {
   require_two_ranks();
 
@@ -255,6 +362,7 @@ void test_multirank_simulation_steps() {
 
   assert(sim.global_agent_count() > 0);
   assert(sim.global_agent_count() <= initial_global);
+  assert_unique_tags(gather_live_tags_flat(sim));
 
   if (rank == 0) {
     std::cout << "  test_multirank_simulation_steps: PASSED"
@@ -277,9 +385,11 @@ int main(int argc, char** argv) {
   }
 
   test_slab_decomposition();
+  test_slab_decomposition_periodic_x();
   test_init_population_partitioned();
   test_migration_preserves_global_count();
   test_boundary_ghost_exchange_runs();
+  test_periodic_x_ghost_and_migration();
   test_multirank_simulation_steps();
 
   if (rank == 0) {

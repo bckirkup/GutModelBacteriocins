@@ -25,6 +25,24 @@ void test_agent_creation() {
   std::cout << "  test_agent_creation: PASSED\n";
 }
 
+void test_global_tag_stride() {
+  AgentPool pool;
+  pool.configure_tags(AgentPool::first_tag_for_rank(0, 2), AgentPool::tag_stride(2));
+  assert(pool.next_tag() == 1);
+  assert(pool.next_tag() == 3);
+  assert(pool.next_tag() == 5);
+
+  pool.configure_tags(AgentPool::first_tag_for_rank(1, 2), AgentPool::tag_stride(2));
+  assert(pool.next_tag() == 2);
+  assert(pool.next_tag() == 4);
+
+  assert(AgentPool::next_tag_after_max(5, 0, 2) == 7);
+  assert(AgentPool::next_tag_after_max(6, 1, 2) == 8);
+  assert(AgentPool::next_tag_after_max(0, 1, 4) == 2);
+
+  std::cout << "  test_global_tag_stride: PASSED\n";
+}
+
 void test_agent_pool() {
   AgentPool pool;
   pool.reserve(100);
@@ -189,6 +207,7 @@ void test_sphere_volume() {
 int main() {
   std::cout << "=== Agent Tests ===\n";
   test_agent_creation();
+  test_global_tag_stride();
   test_agent_pool();
   test_plasmid_library();
   test_plasmid_find();

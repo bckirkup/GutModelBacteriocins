@@ -78,12 +78,23 @@ class AgentPool {
   auto begin()  const { return agents_.begin(); }
   auto end()    const { return agents_.end(); }
 
-  TagID next_tag() { return next_tag_++; }
-  void  set_next_tag(TagID t) { next_tag_ = t; }
+  TagID next_tag() {
+    const TagID id = next_tag_;
+    next_tag_ += tag_stride_;
+    return id;
+  }
+  void set_next_tag(TagID t) { next_tag_ = t; }
+
+  // Globally unique tags: id = rank + 1 + k * nprocs (k = 0, 1, 2, ...)
+  static TagID first_tag_for_rank(Int rank, Int nprocs);
+  static TagID tag_stride(Int nprocs);
+  static TagID next_tag_after_max(TagID max_seen, Int rank, Int nprocs);
+  void configure_tags(TagID first_tag, TagID stride);
 
  private:
   std::vector<Agent> agents_;
   TagID next_tag_ = 1;
+  TagID tag_stride_ = 1;
 };
 
 }  // namespace gutibm
