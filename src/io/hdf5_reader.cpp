@@ -196,11 +196,16 @@ bool HDF5Reader::open(const std::string& filename) {
   filename_ = filename;
 
 #ifdef GUTIBM_HDF5
-  file_id_ = static_cast<int64_t>(H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT));
-  if (file_id_ < 0) {
+  // Clear stale HDF5 errors (e.g. from writer duplicate-group warnings).
+  H5Eclear2(H5E_DEFAULT);
+
+  hid_t fid = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  if (fid < 0) {
     open_ = false;
+    file_id_ = -1;
     return false;
   }
+  file_id_ = static_cast<int64_t>(fid);
   open_ = true;
   return true;
 #else
