@@ -106,8 +106,8 @@ class InputParser {
 
  private:
   static std::string trim(const std::string& s);
-  static Real parse_real(const std::string& val);
-  static Int parse_int(const std::string& val);
+  static Real parse_real(const std::string& key, const std::string& val);
+  static Int parse_int(const std::string& key, const std::string& val);
 };
 
 }  // namespace gutibm
