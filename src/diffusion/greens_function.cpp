@@ -18,6 +18,7 @@
 #include "dispatch.h"
 #include <cmath>
 #include <algorithm>
+#include <stdexcept>
 #ifdef GUTIBM_OPENMP
 #include <omp.h>
 #endif
@@ -29,6 +30,13 @@ void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   adv_    = &adv;
   z_lo_   = domain.lo()[2];
   z_hi_   = domain.hi()[2];
+}
+
+void GreensFunction::require_init() const {
+  if (!domain_ || !adv_) {
+    throw std::runtime_error(
+        "GreensFunction::init() must be called before concentration queries");
+  }
 }
 
 Real GreensFunction::single_kernel(const Vec3& src, const Vec3& tgt,
@@ -58,6 +66,7 @@ Real GreensFunction::single_kernel(const Vec3& src, const Vec3& tgt,
 
 Real GreensFunction::concentration(const Vec3& source, const Vec3& target,
                                     const GreensFunctionParams& params) const {
+  require_init();
   Real D_eff = params.diff_coeff / params.retardation;
   Vec3 flow  = adv_->velocity(source);
   return single_kernel(source, target, D_eff, params.source_rate, flow);
@@ -65,6 +74,7 @@ Real GreensFunction::concentration(const Vec3& source, const Vec3& target,
 
 Real GreensFunction::concentration_bounded(const Vec3& source, const Vec3& target,
                                             const GreensFunctionParams& params) const {
+  require_init();
   Real D_eff = params.diff_coeff / params.retardation;
   Vec3 flow  = adv_->velocity(source);
   Real Q     = params.source_rate;
@@ -102,6 +112,7 @@ void GreensFunction::superpose_to_grid(
     const std::vector<GreensFunctionParams>& params,
     std::vector<Real>& grid_conc,
     Real cutoff_radius) const {
+  require_init();
 
   Int nx = domain_->nx(), ny = domain_->ny(), nz = domain_->nz();
   Int ncells = domain_->ncells();
@@ -198,6 +209,7 @@ void GreensFunction::superpose_to_grid(
 }
 
 Real GreensFunction::peclet(const Vec3& pos, Real D_eff, Real length_scale) const {
+  require_init();
   Vec3 v = adv_->velocity(pos);
   Real U = std::sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
   return (U * length_scale) / D_eff;
