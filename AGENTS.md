@@ -189,3 +189,5 @@ Full parameter docs: `docs/PARAMETERS.md`.
 Critical path: #40 (washout), #41 (MPI serialization), #42 (plasmid names), #43 (MPI tests), #56 (validation pipeline).
 
 Full list: GitHub issues #40–#59 plus #33 (GPU), #29 (higher-order FMM), #25 (HCR-FISH validation).
+
+**Project board:** [docs/PROJECT_BOARD.md](docs/PROJECT_BOARD.md) — kanban layout, PR bundles, merge order. Run `./scripts/setup_project_board.sh` to create GitHub labels, milestones, and a Projects v2 board.
