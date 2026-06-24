@@ -28,6 +28,10 @@ class PlasmidLibrary {
  public:
   static const std::vector<PlasmidEntry>& entries();
 
+  // Resolve a plasmid by canonical name or legacy alias (e.g. colicin_E1 → ColE1).
+  // Returns nullptr if not found.
+  static const PlasmidEntry* find(const std::string& name);
+
   // Create a default BI cluster for a named colicin
   static BICluster colicin_E1();   // pI ~9.0, pore-forming, BtuB
   static BICluster colicin_E2();   // nuclease, BtuB (secreted as acidic complex)

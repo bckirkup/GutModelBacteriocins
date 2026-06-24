@@ -46,7 +46,7 @@ void test_mini_simulation() {
   resident.type       = 1;
   resident.count      = 30;
   resident.mu_max     = 5.0e-4;
-  resident.plasmids   = {"colicin_E1"};
+  resident.plasmids   = {"ColE1"};
   resident.conjugative = false;
   cfg.initial_strains.push_back(resident);
 
@@ -64,7 +64,7 @@ void test_mini_simulation() {
   conj.type       = 3;
   conj.count      = 5;
   conj.mu_max     = 4.5e-4;
-  conj.plasmids   = {"colicin_B"};
+  conj.plasmids   = {"ColB"};
   conj.conjugative = true;
   cfg.initial_strains.push_back(conj);
 
@@ -76,6 +76,13 @@ void test_mini_simulation() {
   sim.init(cfg);
 
   assert(sim.agents().size() == 50);
+
+  // Plasmids must be assigned (ColE1 / ColB)
+  Int with_plasmid = 0;
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    if (!sim.agents()[i].genome.bi_loci.empty()) ++with_plasmid;
+  }
+  assert(with_plasmid == 35);  // 30 ColE1 + 5 ColB
 
   // Run the simulation
   sim.run();
@@ -208,7 +215,7 @@ void test_receptor_killing() {
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain producer;
   producer.type = 1; producer.count = 10; producer.mu_max = 5e-4;
-  producer.plasmids = {"colicin_E1"}; producer.conjugative = false;
+  producer.plasmids = {"ColE1"}; producer.conjugative = false;
   cfg.initial_strains.push_back(producer);
 
   SimulationConfig::InitialStrain target;
@@ -294,6 +301,104 @@ void test_crypt_agents_survive_washout() {
 
   std::cout << "  test_crypt_agents_survive_washout: PASSED"
             << " (alive=" << alive << "/" << initial_count << ")\n";
+}
+
+void test_metabolic_washout_trap() {
+  // Combinatorial Washout Trap: 0 < mu_realized < gamma_flow → washed out
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo  = {0, 0, 0};
+  cfg.domain.hi  = {50e-6, 50e-6, 50e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.total_time      = 60.0;
+  cfg.bio_dt          = 60.0;
+  cfg.output_interval = 60.0;
+  cfg.seed            = 4242;
+  cfg.hdf5.enabled    = false;
+  cfg.advection.crypts_enabled = false;
+  cfg.advection.mucus_thickness = 50e-6;
+  cfg.advection.radial_turnover = 5400.0;
+  cfg.advection.distal_length = 50e-6;
+  cfg.advection.distal_transit_time = 43200.0;
+  cfg.qssa.toxin_cutoff = 25e-6;
+  cfg.qssa.nutrient_cutoff = 15e-6;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain s;
+  s.type = 1;
+  s.count = 1;
+  s.mu_max = 5e-4;
+  s.plasmids = {};
+  s.conjugative = false;
+  cfg.initial_strains.push_back(s);
+
+  Simulation sim;
+  sim.init(cfg);
+  assert(sim.agents().size() == 1);
+
+  Agent& a = sim.agents()[0];
+  Real z = 45e-6;
+  a.x[2] = z;
+  a.in_crypt = false;
+
+  Real gamma = sim.advection().washout_rate(z);
+  assert(gamma > 0.0);
+
+  // Receptor-downregulated immigrant scenario: metabolism yields mu << gamma
+  for (int k = 0; k < NUM_RECEPTORS; ++k) {
+    a.receptor_expr[k] = 0.01;
+    a.genome.receptor_expression[k] = 0.01;
+  }
+  a.mu_max = 1e-6;
+  a.km_carbon = 500.0;
+
+  sim.step(60.0);
+  assert(a.mu_realized < gamma);
+  assert(a.state == PhenoState::DEAD);
+
+  std::cout << "  test_metabolic_washout_trap: PASSED"
+            << " (mu=" << a.mu_realized << " gamma=" << gamma << ")\n";
+}
+
+void test_metabolic_washout_survives_above_threshold() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo  = {0, 0, 0};
+  cfg.domain.hi  = {50e-6, 50e-6, 50e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.total_time      = 60.0;
+  cfg.bio_dt          = 60.0;
+  cfg.output_interval = 60.0;
+  cfg.seed            = 4343;
+  cfg.hdf5.enabled    = false;
+  cfg.advection.crypts_enabled = false;
+  cfg.advection.mucus_thickness = 50e-6;
+  cfg.advection.radial_turnover = 5400.0;
+  cfg.advection.distal_length = 50e-6;
+  cfg.qssa.toxin_cutoff = 25e-6;
+  cfg.qssa.nutrient_cutoff = 15e-6;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain s;
+  s.type = 1;
+  s.count = 1;
+  s.mu_max = 5e-4;
+  s.plasmids = {};
+  s.conjugative = false;
+  cfg.initial_strains.push_back(s);
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent& a = sim.agents()[0];
+  a.x[2] = 5e-6;  // low-flow zone near epithelium
+  a.in_crypt = false;
+
+  Real gamma = sim.advection().washout_rate(a.x[2]);
+  sim.step(60.0);
+  assert(a.mu_realized > gamma);
+  assert(a.state != PhenoState::DEAD);
+
+  std::cout << "  test_metabolic_washout_survives_above_threshold: PASSED\n";
 }
 
 void test_crypt_zero_velocity() {
@@ -401,7 +506,7 @@ void test_partial_resistance_survival() {
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain producer;
   producer.type = 1; producer.count = 10; producer.mu_max = 5e-4;
-  producer.plasmids = {"colicin_E1"}; producer.conjugative = false;
+  producer.plasmids = {"ColE1"}; producer.conjugative = false;
   cfg.initial_strains.push_back(producer);
 
   // Fully susceptible targets (type 2)
@@ -455,6 +560,8 @@ int main() {
   test_metabolism_integration();
   test_advection_moves_agents();
   test_receptor_killing();
+  test_metabolic_washout_trap();
+  test_metabolic_washout_survives_above_threshold();
   test_crypt_agents_survive_washout();
   test_crypt_zero_velocity();
   test_crypt_migration_in_out();

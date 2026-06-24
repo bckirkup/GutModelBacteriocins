@@ -85,6 +85,24 @@ void test_plasmid_library() {
   std::cout << "  test_plasmid_library: PASSED\n";
 }
 
+void test_plasmid_find() {
+  const PlasmidEntry* e1 = PlasmidLibrary::find("ColE1");
+  assert(e1 != nullptr);
+  assert(e1->name == "ColE1");
+  assert(e1->cluster.target == ReceptorType::BtuB);
+
+  // Legacy alias used in older tests/docs
+  const PlasmidEntry* alias = PlasmidLibrary::find("colicin_E1");
+  assert(alias != nullptr);
+  assert(alias->name == "ColE1");
+
+  assert(PlasmidLibrary::find("ColB") != nullptr);
+  assert(PlasmidLibrary::find("colicin_B") != nullptr);
+  assert(PlasmidLibrary::find("not_a_plasmid") == nullptr);
+
+  std::cout << "  test_plasmid_find: PASSED\n";
+}
+
 void test_classify_by_pI() {
   // LETHAL_CORE: pI > 8.5
   assert(classify_by_pI(9.0) == BacteriocinClass::LETHAL_CORE);
@@ -173,6 +191,7 @@ int main() {
   test_agent_creation();
   test_agent_pool();
   test_plasmid_library();
+  test_plasmid_find();
   test_classify_by_pI();
   test_genome_operations();
   test_partial_resistance_fields();

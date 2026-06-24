@@ -136,7 +136,7 @@ void test_smoke_with_ethanolamine() {
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain s;
   s.type = 1; s.count = 20; s.mu_max = 5e-4;
-  s.plasmids = {"colicin_E1"}; s.conjugative = false;
+  s.plasmids = {"ColE1"}; s.conjugative = false;
   cfg.initial_strains.push_back(s);
 
   SimulationConfig::InitialStrain s2;

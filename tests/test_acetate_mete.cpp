@@ -181,7 +181,7 @@ void test_smoke_with_acetate() {
   producer.type = 2;
   producer.count = 5;
   producer.mu_max = 5e-4;
-  producer.plasmids = {"colicin_E1"};
+  producer.plasmids = {"ColE1"};
   producer.conjugative = false;
   cfg.initial_strains.push_back(producer);
 

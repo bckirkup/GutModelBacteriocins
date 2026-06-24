@@ -65,7 +65,7 @@ cd build && ctest --output-on-failure
 | `mechanics` | `test_mechanics.cpp` | Hertzian contact, adhesion |
 | `ethanolamine` | `test_ethanolamine.cpp` | Nutrient-conditional eut penalty |
 | `openmp_parity` | `test_openmp_parity.cpp` | Determinism within one build |
-| `adaptive_dt` | `test_adaptive_dt.cpp` | Adaptive timestep selection |
+| `agent_transfer` | `test_agent_transfer.cpp` | MPI pack/unpack round-trip (crypt, affinities, immunity escape) |
 
 **No dedicated tests yet** for `fix_bacteriocin`, `fix_receptor`, or `fix_mutation` in isolation.
 
@@ -203,13 +203,13 @@ Use **exact** names from `PlasmidLibrary::entries()` in `src/genome/plasmid.cpp`
 | `ColM` | FhuA | Lethal Core |
 | `MccV` | CirA | Microcin V, conjugative |
 
-**Do not use** `colicin_E1`, `colicin_B`, etc. — those are factory method names, not library keys. Mismatched names silently spawn agents with **no plasmids**. Several existing tests still use the wrong names (see issue #42).
+**Do not use** unknown plasmid names — `PlasmidLibrary::find()` resolves canonical names (`ColE1`, …) and legacy aliases (`colicin_E1`, …). Unknown names log a warning and spawn agents without BI loci.
 
 ### MPI decomposition
 
 1D slab decomposition along `DomainConfig::mpi_decomp_axis` (default `0` = x, distal flow). Set in code, not input file. Ghost agents exchanged at slab boundaries; agents migrate via `migrate_agents()`.
 
-**Caveat:** MPI serialization in `simulation.cpp` omits `in_crypt`, `immunity_binding_affinity`, and `toxin_affinity`/`ligand_affinity` — multi-rank runs can lose state (issue #41).
+**Caveat:** MPI serialization lives in `src/core/agent_transfer.cpp` — update pack/unpack when adding agent or genome fields.
 
 ### HDF5 output
 

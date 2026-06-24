@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "plasmid.h"
+#include <unordered_map>
 
 namespace gutibm {
 
@@ -108,6 +109,26 @@ const std::vector<PlasmidEntry>& PlasmidLibrary::entries() {
      "Small peptide microcin, continuous secretion, CirA receptor"},
   };
   return lib;
+}
+
+const PlasmidEntry* PlasmidLibrary::find(const std::string& name) {
+  static const std::unordered_map<std::string, std::string> aliases = {
+    {"colicin_E1", "ColE1"},
+    {"colicin_E2", "ColE2"},
+    {"colicin_B",  "ColB"},
+    {"colicin_Ia", "ColIa"},
+    {"colicin_M",  "ColM"},
+    {"microcin_V", "MccV"},
+  };
+
+  std::string key = name;
+  auto it = aliases.find(name);
+  if (it != aliases.end()) key = it->second;
+
+  for (const auto& entry : entries()) {
+    if (entry.name == key) return &entry;
+  }
+  return nullptr;
 }
 
 }  // namespace gutibm

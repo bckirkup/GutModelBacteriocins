@@ -106,7 +106,7 @@ void test_create_novel_toxin_with_escape() {
   s.type = 1;
   s.count = 20;
   s.mu_max = 5e-4;
-  s.plasmids = {"colicin_E1"};
+  s.plasmids = {"ColE1"};
   s.conjugative = false;
   cfg.initial_strains.push_back(s);
 
@@ -132,6 +132,9 @@ void test_create_novel_toxin_with_escape() {
 
   // With 50% super-killer rate + 100% escape prob + 20 agents dividing
   // over 10 timesteps, we should have at least some escape variants
+  assert(total_bi > 0);
+  assert(escape_count > 0);
+
   std::cout << "  test_create_novel_toxin_with_escape: PASSED"
             << " (escape_bi=" << escape_count
             << " total_bi=" << total_bi << ")\n";
@@ -161,7 +164,7 @@ void test_smoke_with_immunity_escape() {
   producer.type = 1;
   producer.count = 10;
   producer.mu_max = 5e-4;
-  producer.plasmids = {"colicin_E1"};
+  producer.plasmids = {"ColE1"};
   producer.conjugative = false;
   cfg.initial_strains.push_back(producer);
 
@@ -169,7 +172,7 @@ void test_smoke_with_immunity_escape() {
   immune_target.type = 2;
   immune_target.count = 10;
   immune_target.mu_max = 5e-4;
-  immune_target.plasmids = {"colicin_E1"};
+  immune_target.plasmids = {"ColE1"};
   immune_target.conjugative = false;
   cfg.initial_strains.push_back(immune_target);
 
