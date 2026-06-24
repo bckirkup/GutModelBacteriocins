@@ -6,6 +6,7 @@
 
 #include "simulation.h"
 #include "input_parser.h"
+#include "sim_fingerprint.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -172,6 +173,44 @@ void test_grid_coupling_consistency() {
   std::cout << "  test_grid_coupling_consistency: PASSED\n";
 }
 
+void test_cross_build_fingerprint() {
+  // Deterministic, non-stochastic scenario for serial vs OpenMP comparison.
+  // Emits FINGERPRINT=<hex> for scripts/compare_openmp_parity.sh
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo  = {0, 0, 0};
+  cfg.domain.hi  = {80e-6, 80e-6, 40e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.total_time      = 180.0;
+  cfg.bio_dt          = 60.0;
+  cfg.output_interval = 180.0;
+  cfg.seed            = 31415;
+  cfg.hdf5.enabled    = false;
+  cfg.advection.mucus_thickness = 40e-6;
+  cfg.advection.distal_length   = 80e-6;
+  cfg.qssa.toxin_cutoff = 40e-6;
+  cfg.qssa.nutrient_cutoff = 20e-6;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain s;
+  s.type = 1;
+  s.count = 12;
+  s.mu_max = 4e-4;
+  s.plasmids = {};
+  s.conjugative = false;
+  cfg.initial_strains.push_back(s);
+
+  Simulation sim;
+  sim.init(cfg);
+  sim.run();
+
+  std::string fp = test_util::fingerprint_hex(sim);
+  std::cout << "FINGERPRINT=" << fp << "\n";
+  assert(!fp.empty());
+
+  std::cout << "  test_cross_build_fingerprint: PASSED (fp=" << fp << ")\n";
+}
+
 int main() {
   std::cout << "=== OpenMP Parity Tests ===\n";
   test_openmp_compile_flag();
@@ -179,6 +218,7 @@ int main() {
   test_deterministic_growth();
   test_chemical_field_parity();
   test_grid_coupling_consistency();
+  test_cross_build_fingerprint();
   std::cout << "All OpenMP parity tests passed.\n";
   return 0;
 }

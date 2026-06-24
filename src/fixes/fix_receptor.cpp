@@ -40,10 +40,7 @@ void FixReceptor::compute(Real dt) {
       continue;
 
     if (kill_probs[i] > 0.0 && rng.bernoulli(kill_probs[i])) {
-      bool immune = false;
-      if (!immune) {
-        a.state = PhenoState::DEAD;
-      }
+      a.state = PhenoState::DEAD;
     }
   }
 }

@@ -1,6 +1,8 @@
 {
-  "#": "Single resident colony with colicin production in flowing mucus.",
-  "#": "Tests comet-tail formation and SOS lysis dynamics.",
+  "_comment": [
+    "Single resident colony with colicin production in flowing mucus.",
+    "Tests comet-tail formation and SOS lysis dynamics."
+  ],
 
   "total_time": 86400,
   "bio_dt": 60,

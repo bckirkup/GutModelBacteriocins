@@ -3,12 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
-#include "fix_metabolism.h"
-#include "fix_receptor.h"
-#include "fix_bacteriocin.h"
-#include "fix_conjugation.h"
-#include "fix_mutation.h"
-#include "fix_mechanics.h"
+#include "fix_registry.h"
 #include "plasmid.h"
 
 #include <iostream>
@@ -52,13 +47,8 @@ void Simulation::init(const SimulationConfig& cfg) {
   // HDF5 output
   hdf5_.init(cfg.hdf5);
 
-  // Register biological fixes
-  fixes_.push_back(std::make_unique<FixMetabolism>(*this, cfg.metabolism));
-  fixes_.push_back(std::make_unique<FixBacteriocin>(*this, cfg.bacteriocin));
-  fixes_.push_back(std::make_unique<FixReceptor>(*this, cfg.receptor));
-  fixes_.push_back(std::make_unique<FixConjugation>(*this, cfg.conjugation));
-  fixes_.push_back(std::make_unique<FixMutation>(*this, cfg.mutation));
-  fixes_.push_back(std::make_unique<FixMechanics>(*this, cfg.mechanics));
+  // Register biological fixes via plugin registry
+  fixes_ = FixRegistry::create_all(*this, cfg);
 
   // Initialize fixes
   for (auto& fix : fixes_) {
