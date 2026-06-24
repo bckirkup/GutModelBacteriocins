@@ -17,11 +17,19 @@ struct InitialStrainsParseResult {
   std::vector<SimulationConfig::InitialStrain> strains;
 };
 
+struct EnabledFixesParseResult {
+  bool found = false;
+  std::vector<std::string> names;
+};
+
 class ConfigJson {
  public:
   // Parse initial_strains from full file content. Returns found=false when
   // the key is absent; found=true with strains (possibly empty) on success.
   static InitialStrainsParseResult parse_initial_strains(const std::string& content);
+
+  // Parse fixes from full file content. Returns found=false when absent.
+  static EnabledFixesParseResult parse_enabled_fixes(const std::string& content);
 };
 
 }  // namespace gutibm

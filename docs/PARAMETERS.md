@@ -322,6 +322,28 @@ loop (pairwise neighbor interactions) remains serial due to cross-agent writes.
 
 ---
 
+## Fix Plugins
+
+Optional `fixes` array in the input JSON selects which Fix modules run and in what order.
+When omitted, all registered defaults are used in registry order:
+
+`metabolism` → `bacteriocin` → `receptor` → `conjugation` → `mutation` → `mechanics`
+
+| Config key | Maps to | Description |
+|------------|---------|-------------|
+| `fixes` | `SimulationConfig::enabled_fixes` | JSON string array of Fix names |
+
+Example (growth + mechanics only):
+
+```json
+"fixes": ["metabolism", "mechanics"]
+```
+
+Unknown Fix names log a warning and are skipped. Register new Fix modules in
+`src/fixes/fix_registry.cpp` without editing `simulation.cpp`.
+
+---
+
 ## Initial Population
 
 Each strain in `initial_strains` has:

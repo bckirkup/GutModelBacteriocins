@@ -257,6 +257,15 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
   }
 }
 
+std::vector<std::string> Simulation::fix_names() const {
+  std::vector<std::string> names;
+  names.reserve(fixes_.size());
+  for (const auto& fix : fixes_) {
+    names.push_back(fix->name());
+  }
+  return names;
+}
+
 Real Simulation::compute_adaptive_dt() const {
   if (!cfg_.adaptive_dt_enabled) return cfg_.bio_dt;
 

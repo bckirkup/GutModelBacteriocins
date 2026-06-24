@@ -1,0 +1,24 @@
+{
+  "_comment": "Subset of Fix plugins for parser tests (issue #48).",
+
+  "total_time": 600,
+  "bio_dt": 60,
+  "seed": 7,
+
+  "domain_x": 0.0001,
+  "domain_y": 0.0001,
+  "domain_z": 0.00005,
+  "grid_dx": 5e-6,
+
+  "fixes": ["metabolism", "mechanics"],
+
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 10,
+      "mu_max": 5.0e-4,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ]
+}

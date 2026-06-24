@@ -27,9 +27,12 @@ class FixRegistry {
   // Built-in Fix modules in default execution order.
   static void register_defaults();
 
-  // Instantiate all registered fixes (order = registration order).
+  // Instantiate registered fixes (order = registration order, or cfg.enabled_fixes).
   static std::vector<std::unique_ptr<Fix>> create_all(Simulation& sim,
                                                       const SimulationConfig& cfg);
+
+  // Default fix names in registration order.
+  static std::vector<std::string> default_fix_names();
 
   // Names of currently registered fixes (for diagnostics/tests).
   static std::vector<std::string> registered_names();

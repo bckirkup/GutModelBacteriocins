@@ -11,6 +11,9 @@
 #include "fix_mechanics.h"
 #include "simulation.h"
 
+#include <iostream>
+#include <unordered_map>
+
 namespace gutibm {
 
 std::vector<std::pair<std::string, FixRegistry::Factory>>& FixRegistry::entries() {
@@ -59,13 +62,39 @@ void FixRegistry::register_defaults() {
 std::vector<std::unique_ptr<Fix>> FixRegistry::create_all(Simulation& sim,
                                                           const SimulationConfig& cfg) {
   register_defaults();
-  std::vector<std::unique_ptr<Fix>> fixes;
-  fixes.reserve(entries().size());
+
+  std::vector<std::string> order = cfg.enabled_fixes;
+  if (order.empty()) {
+    order = default_fix_names();
+  }
+
+  std::unordered_map<std::string, Factory> factories;
+  factories.reserve(entries().size());
   for (auto& [name, factory] : entries()) {
-    (void)name;
-    fixes.push_back(factory(sim, cfg));
+    factories.emplace(name, factory);
+  }
+
+  std::vector<std::unique_ptr<Fix>> fixes;
+  fixes.reserve(order.size());
+  for (const auto& name : order) {
+    auto it = factories.find(name);
+    if (it == factories.end()) {
+      std::cerr << "Warning: unknown fix '" << name << "' — skipping\n";
+      continue;
+    }
+    fixes.push_back(it->second(sim, cfg));
   }
   return fixes;
+}
+
+std::vector<std::string> FixRegistry::default_fix_names() {
+  register_defaults();
+  std::vector<std::string> names;
+  names.reserve(entries().size());
+  for (const auto& e : entries()) {
+    names.push_back(e.first);
+  }
+  return names;
 }
 
 std::vector<std::string> FixRegistry::registered_names() {
