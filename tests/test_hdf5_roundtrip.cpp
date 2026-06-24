@@ -1,0 +1,344 @@
+/* -----------------------------------------------------------------------
+   GutIBM – HDF5 write/read round-trip tests (issue #52)
+   ----------------------------------------------------------------------- */
+
+#include "simulation.h"
+#include "input_parser.h"
+#include "plasmid.h"
+
+#include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#ifdef GUTIBM_HDF5
+extern "C" {
+#include <hdf5.h>
+}
+#endif
+
+#ifdef GUTIBM_MPI
+#include <mpi.h>
+#endif
+
+using namespace gutibm;
+
+namespace {
+
+constexpr Real kTol = 1e-12;
+
+#ifdef GUTIBM_HDF5
+
+bool dataset_exists(hid_t file, const std::string& path) {
+  return H5Lexists(file, path.c_str(), H5P_DEFAULT) > 0;
+}
+
+template <typename T>
+std::vector<T> read_dataset_1d(hid_t file, const std::string& path, hid_t h5_type) {
+  hid_t dset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
+  assert(dset >= 0);
+
+  hid_t space = H5Dget_space(dset);
+  int ndims = H5Sget_simple_extent_ndims(space);
+  assert(ndims == 1);
+  hsize_t len = 0;
+  H5Sget_simple_extent_dims(space, &len, nullptr);
+
+  std::vector<T> data(static_cast<size_t>(len));
+  H5Dread(dset, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, data.data());
+
+  H5Sclose(space);
+  H5Dclose(dset);
+  return data;
+}
+
+template <typename T>
+T read_scalar(hid_t file, const std::string& path, hid_t h5_type) {
+  auto data = read_dataset_1d<T>(file, path, h5_type);
+  assert(data.size() == 1);
+  return data[0];
+}
+
+SimulationConfig make_roundtrip_config(const std::string& filename, bool parallel) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.total_time = 120.0;
+  cfg.bio_dt = 60.0;
+  cfg.output_interval = 60.0;
+  cfg.seed = 24680;
+  cfg.hdf5.enabled = true;
+  cfg.hdf5.filename = filename;
+  cfg.hdf5.dump_every = 1;
+  cfg.hdf5.parallel = parallel;
+  cfg.advection.mucus_thickness = 25e-6;
+  cfg.advection.distal_length = 50e-6;
+  cfg.qssa.toxin_cutoff = 25e-6;
+  cfg.qssa.nutrient_cutoff = 15e-6;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain resident;
+  resident.type = 1;
+  resident.count = 8;
+  resident.mu_max = 5e-4;
+  resident.plasmids = {"ColE1"};
+  resident.conjugative = false;
+  cfg.initial_strains.push_back(resident);
+
+  SimulationConfig::InitialStrain immigrant;
+  immigrant.type = 2;
+  immigrant.count = 4;
+  immigrant.mu_max = 5e-4;
+  immigrant.plasmids = {};
+  immigrant.conjugative = false;
+  cfg.initial_strains.push_back(immigrant);
+
+  return cfg;
+}
+
+struct AgentSnapshot {
+  int64_t id;
+  int32_t type;
+  int32_t state;
+  double x;
+  double y;
+  double z;
+  double radius;
+  double biomass;
+  double mu;
+  int64_t lineage;
+};
+
+std::vector<AgentSnapshot> collect_all_agents(const Simulation& sim) {
+  std::vector<AgentSnapshot> out;
+  out.reserve(sim.agents().size());
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    const Agent& a = sim.agents()[i];
+    out.push_back(AgentSnapshot{
+      a.tag,
+      a.type,
+      static_cast<int32_t>(a.state),
+      a.x[0], a.x[1], a.x[2],
+      a.radius,
+      a.biomass,
+      a.mu_realized,
+      a.genome.lineage_id,
+    });
+  }
+  std::sort(out.begin(), out.end(),
+            [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
+              return lhs.id < rhs.id;
+            });
+  return out;
+}
+
+std::vector<AgentSnapshot> read_agent_snapshots(hid_t file, const std::string& step) {
+  const std::string prefix = step + "/atoms/";
+  auto ids      = read_dataset_1d<int64_t>(file, prefix + "id",      H5T_NATIVE_INT64);
+  auto types    = read_dataset_1d<int32_t>(file, prefix + "type",    H5T_NATIVE_INT32);
+  auto states   = read_dataset_1d<int32_t>(file, prefix + "state",   H5T_NATIVE_INT32);
+  auto xs       = read_dataset_1d<double>(file, prefix + "x",        H5T_NATIVE_DOUBLE);
+  auto ys       = read_dataset_1d<double>(file, prefix + "y",        H5T_NATIVE_DOUBLE);
+  auto zs       = read_dataset_1d<double>(file, prefix + "z",        H5T_NATIVE_DOUBLE);
+  auto radii    = read_dataset_1d<double>(file, prefix + "radius",   H5T_NATIVE_DOUBLE);
+  auto biomass  = read_dataset_1d<double>(file, prefix + "biomass",  H5T_NATIVE_DOUBLE);
+  auto mus      = read_dataset_1d<double>(file, prefix + "mu",       H5T_NATIVE_DOUBLE);
+  auto lineages = read_dataset_1d<int64_t>(file, prefix + "lineage", H5T_NATIVE_INT64);
+
+  const size_t n = ids.size();
+  assert(types.size() == n);
+  assert(states.size() == n);
+  assert(xs.size() == n);
+  assert(ys.size() == n);
+  assert(zs.size() == n);
+  assert(radii.size() == n);
+  assert(biomass.size() == n);
+  assert(mus.size() == n);
+  assert(lineages.size() == n);
+
+  std::vector<AgentSnapshot> out(n);
+  for (size_t i = 0; i < n; ++i) {
+    out[i] = AgentSnapshot{
+      ids[i], types[i], states[i],
+      xs[i], ys[i], zs[i],
+      radii[i], biomass[i], mus[i], lineages[i],
+    };
+  }
+  std::sort(out.begin(), out.end(),
+            [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
+              return lhs.id < rhs.id;
+            });
+  return out;
+}
+
+void assert_schema(hid_t file, const std::string& step) {
+  assert(dataset_exists(file, step + "/atoms/id"));
+  assert(dataset_exists(file, step + "/atoms/type"));
+  assert(dataset_exists(file, step + "/atoms/state"));
+  assert(dataset_exists(file, step + "/atoms/x"));
+  assert(dataset_exists(file, step + "/atoms/y"));
+  assert(dataset_exists(file, step + "/atoms/z"));
+  assert(dataset_exists(file, step + "/atoms/radius"));
+  assert(dataset_exists(file, step + "/atoms/biomass"));
+  assert(dataset_exists(file, step + "/atoms/mu"));
+  assert(dataset_exists(file, step + "/atoms/lineage"));
+
+  assert(dataset_exists(file, step + "/grid/bacteriocin"));
+  assert(dataset_exists(file, step + "/grid/carbon"));
+  assert(dataset_exists(file, step + "/metadata/time"));
+  assert(dataset_exists(file, step + "/metadata/step"));
+  assert(dataset_exists(file, step + "/metadata/num_agents"));
+  assert(dataset_exists(file, step + "/metadata/num_lineages"));
+  assert(dataset_exists(file, step + "/lineage/btuB_expression"));
+  assert(dataset_exists(file, step + "/lineage/num_bi_loci"));
+}
+
+void compare_agent_snapshots(const std::vector<AgentSnapshot>& expected,
+                             const std::vector<AgentSnapshot>& actual) {
+  assert(expected.size() == actual.size());
+  for (size_t i = 0; i < expected.size(); ++i) {
+    assert(expected[i].id == actual[i].id);
+    assert(expected[i].type == actual[i].type);
+    assert(expected[i].state == actual[i].state);
+    assert(std::abs(expected[i].x - actual[i].x) < kTol);
+    assert(std::abs(expected[i].y - actual[i].y) < kTol);
+    assert(std::abs(expected[i].z - actual[i].z) < kTol);
+    assert(std::abs(expected[i].radius - actual[i].radius) < kTol);
+    assert(std::abs(expected[i].biomass - actual[i].biomass) < kTol);
+    assert(std::abs(expected[i].mu - actual[i].mu) < kTol);
+    assert(expected[i].lineage == actual[i].lineage);
+  }
+}
+
+void validate_step_schema(hid_t file, const std::string& step) {
+  assert_schema(file, step);
+}
+
+void validate_step_metadata(hid_t file,
+                          const std::string& step,
+                          Int expected_step,
+                          Real expected_time,
+                          Int expected_agents) {
+  auto meta_agents = read_scalar<int32_t>(file, step + "/metadata/num_agents",
+                                          H5T_NATIVE_INT32);
+  auto meta_step   = read_scalar<int32_t>(file, step + "/metadata/step",
+                                          H5T_NATIVE_INT32);
+  auto meta_time   = read_scalar<double>(file, step + "/metadata/time",
+                                         H5T_NATIVE_DOUBLE);
+
+  assert(meta_step == expected_step);
+  assert(std::abs(meta_time - expected_time) < kTol);
+  assert(meta_agents == expected_agents);
+
+  auto file_agents = read_agent_snapshots(file, step);
+  assert(static_cast<int32_t>(file_agents.size()) == meta_agents);
+}
+
+void validate_step_agents_match_sim(hid_t file,
+                                    const std::string& step,
+                                    const Simulation& sim) {
+  assert_schema(file, step);
+
+  auto meta_agents = read_scalar<int32_t>(file, step + "/metadata/num_agents",
+                                          H5T_NATIVE_INT32);
+  assert(meta_agents == static_cast<int32_t>(sim.global_agent_count()));
+
+  auto file_agents = read_agent_snapshots(file, step);
+  assert(static_cast<int32_t>(file_agents.size()) == meta_agents);
+
+  auto local_agents = collect_all_agents(sim);
+#ifdef GUTIBM_MPI
+  if (sim.domain().nprocs() == 1) {
+    compare_agent_snapshots(local_agents, file_agents);
+  } else {
+    assert(!file_agents.empty());
+    assert(file_agents.size() == static_cast<size_t>(sim.global_agent_count()));
+    for (const auto& a : file_agents) {
+      assert(a.radius > 0.0);
+      assert(std::isfinite(a.x));
+      assert(std::isfinite(a.y));
+      assert(std::isfinite(a.z));
+    }
+    (void)local_agents;
+  }
+#else
+  compare_agent_snapshots(local_agents, file_agents);
+#endif
+
+  auto grid_bacteriocin = read_dataset_1d<double>(
+      file, step + "/grid/bacteriocin", H5T_NATIVE_DOUBLE);
+  assert(grid_bacteriocin.size() ==
+         static_cast<size_t>(sim.chemical_field().ncells()));
+}
+
+void validate_step(hid_t file,
+                   const std::string& step,
+                   const Simulation& sim,
+                   Int expected_step,
+                   Real expected_time) {
+  validate_step_schema(file, step);
+  validate_step_metadata(file, step, expected_step, expected_time,
+                         static_cast<Int>(sim.global_agent_count()));
+  validate_step_agents_match_sim(file, step, sim);
+}
+
+void run_roundtrip(bool parallel_io) {
+  const char* tmpdir = std::getenv("TMPDIR");
+  const char* env_path = std::getenv("GUTIBM_ROUNDTRIP_H5");
+  std::string base = tmpdir ? tmpdir : "/tmp";
+  std::string filename = env_path ? env_path
+                         : base + "/gutibm_roundtrip_"
+                           + (parallel_io ? "parallel" : "serial") + ".h5";
+
+  SimulationConfig cfg = make_roundtrip_config(filename, parallel_io);
+  Simulation sim;
+  sim.init(cfg);
+  sim.run();
+
+  hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  assert(file >= 0);
+
+  validate_step_schema(file, "step_000000");
+  validate_step_metadata(file, "step_000000", 0, 0.0, 12);
+  validate_step(file, "step_000002", sim, 2, 120.0);
+
+  H5Fclose(file);
+}
+
+#endif  // GUTIBM_HDF5
+
+}  // namespace
+
+int main(int argc, char** argv) {
+#ifdef GUTIBM_MPI
+  MPI_Init(&argc, &argv);
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+#else
+  int rank = 0;
+#endif
+
+  (void)argc;
+  (void)argv;
+
+#ifndef GUTIBM_HDF5
+  if (rank == 0) {
+    std::cout << "HDF5 disabled at build time — skipping round-trip tests.\n";
+  }
+#else
+  if (rank == 0) std::cout << "=== HDF5 Serial Round-Trip Tests ===\n";
+  run_roundtrip(false);
+  if (rank == 0) {
+    std::cout << "  test_serial_roundtrip: PASSED\n";
+    std::cout << "All HDF5 round-trip tests passed.\n";
+  }
+#endif
+
+#ifdef GUTIBM_MPI
+  MPI_Finalize();
+#endif
+  return 0;
+}
