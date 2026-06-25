@@ -292,6 +292,9 @@ void test_periodic_x_ghost_and_migration() {
 
   SimulationConfig cfg = make_mpi_periodic_config();
   cfg.advection.distal_transit_time = 1e12;
+  cfg.advection.crypts_enabled = true;
+  cfg.advection.crypt_exit_rate = 0.0;
+  cfg.advection.crypt_entry_rate = 0.0;
   Simulation sim;
   sim.init(cfg);
 
@@ -315,6 +318,14 @@ void test_periodic_x_ghost_and_migration() {
       if (a.state == PhenoState::DEAD) continue;
       a.x[0] = sim.domain().local_lo_x() + gw * 0.5;
       break;
+    }
+  }
+
+  // Crypt refugia bypass washout so this test isolates periodic MPI exchange.
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    Agent& a = sim.agents()[i];
+    if (a.state != PhenoState::DEAD) {
+      a.in_crypt = true;
     }
   }
 

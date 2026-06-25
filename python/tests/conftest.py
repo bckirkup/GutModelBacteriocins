@@ -9,6 +9,13 @@ import numpy as np
 import pytest
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "integration: requires a built C++ test binary or long-running simulation",
+    )
+
+
 def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> None:
     """Write a minimal GutIBM-compatible HDF5 file for tests."""
     rng = np.random.default_rng(42)

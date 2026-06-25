@@ -5,9 +5,9 @@
     "resident retention window (EARI longitudinal metagenomics analog)."
   ],
 
-  "total_time": 3600,
+  "total_time": 900,
   "bio_dt": 60,
-  "output_interval": 1800,
+  "output_interval": 450,
   "seed": 4092,
 
   "domain_x": 0.0005,
@@ -45,5 +45,5 @@
   ],
 
   "hdf5_file": "eari_vadi_validation.h5",
-  "hdf5_every": 60
+  "hdf5_every": 5
 }

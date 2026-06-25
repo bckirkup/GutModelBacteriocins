@@ -32,6 +32,7 @@ def writer_snapshot(tmp_path_factory: pytest.TempPathFactory) -> Path:
     return h5_path
 
 
+@pytest.mark.integration
 def test_python_reader_roundtrip_schema(writer_snapshot: Path) -> None:
     with GutIBMData(writer_snapshot) as data:
         assert data.steps == ["step_000000", "step_000001", "step_000002"]

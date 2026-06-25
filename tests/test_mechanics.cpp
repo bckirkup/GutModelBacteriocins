@@ -18,7 +18,10 @@ using namespace gutibm;
 static Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
                                      MechanicsConfig mcfg = {}) {
   SimulationConfig cfg = InputParser::default_config();
-  cfg.initial_strains.clear();  // we'll add agents manually
+  cfg.initial_strains.clear();
+  cfg.domain.hi = {100e-6, 100e-6, 100e-6};
+  cfg.domain.grid_dx = 10e-6;
+  cfg.domain.hash_cell_size = 20e-6;
   cfg.mechanics = mcfg;
   cfg.hdf5.enabled = false;
 

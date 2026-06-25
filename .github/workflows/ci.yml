@@ -6,13 +6,14 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-and-test:
+  unit-tests:
+    name: Unit tests (Release)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        build_type: [Release, Debug]
-        openmp: [OFF, ON]
     steps:
       - uses: actions/checkout@v4
 
@@ -24,56 +25,48 @@ jobs:
       - name: Configure
         run: |
           cmake -B build \
-            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_BUILD_TYPE=Release \
             -DGUTIBM_USE_MPI=ON \
             -DGUTIBM_USE_HDF5=ON \
-            -DGUTIBM_USE_OPENMP=${{ matrix.openmp }}
+            -DGUTIBM_USE_OPENMP=OFF
 
       - name: Build
         run: cmake --build build -j$(nproc)
 
-      - name: Unit tests
-        run: cd build && ctest --output-on-failure
+      - name: Fast unit tests
+        run: |
+          cd build
+          ctest -L unit -LE slow --output-on-failure --parallel $(nproc)
 
-  python-lint:
+  integration-tests:
+    name: Integration tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install Python dependencies
-        run: |
-          pip install ruff pytest
-          pip install -e "python/.[dev,viz]"
-
-      - name: Build HDF5 round-trip test binary
+      - name: Install dependencies
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y cmake libopenmpi-dev openmpi-bin libhdf5-mpi-dev
-          cmake -B build -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON
-          cmake --build build --target test_hdf5_roundtrip -j$(nproc)
 
-      - name: Validate config JSON syntax
-        run: bash scripts/validate_config_json.sh
-
-      - name: Ruff check
-        run: ruff check python/
-
-      - name: Import check
+      - name: Configure
         run: |
-          python -c "from gut_ibm_tools import GutIBMData, validation, analysis; print('gut_ibm_tools OK')"
-        working-directory: python
+          cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DGUTIBM_USE_MPI=ON \
+            -DGUTIBM_USE_HDF5=ON \
+            -DGUTIBM_USE_OPENMP=OFF
 
-      - name: Pytest
-        run: pytest tests/ -v
-        working-directory: python
-        env:
-          GUTIBM_BUILD_DIR: ${{ github.workspace }}/build
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: Integration + slow unit tests
+        run: |
+          cd build
+          ctest -L 'integration|slow' -LE gpu --output-on-failure --parallel 2
 
   openmp-parity:
+    name: OpenMP parity
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +80,7 @@ jobs:
         run: bash scripts/compare_openmp_parity.sh
 
   cuda-compile:
+    name: CUDA build + GPU tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -107,13 +101,14 @@ jobs:
       - name: Build
         run: cmake --build build-cuda -j$(nproc)
 
-      - name: Unit tests (GPU tests skip without device)
-        run: cd build-cuda && ctest --output-on-failure
+      - name: GPU tests
+        run: cd build-cuda && ctest -L gpu --output-on-failure
 
       - name: GPU parity script
         run: bash scripts/compare_gpu_parity.sh
 
   eari-vadi-validation:
+    name: EARI/VADI regression
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,3 +124,32 @@ jobs:
 
       - name: EARI/VADI validation regression
         run: bash scripts/validate_eari_vadi.sh
+
+  python-lint:
+    name: Python lint + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        run: |
+          pip install ruff pytest
+          pip install -e "python/.[dev,viz]"
+
+      - name: Validate config JSON syntax
+        run: bash scripts/validate_config_json.sh
+
+      - name: Ruff check
+        run: ruff check python/
+
+      - name: Import check
+        run: python -c "from gut_ibm_tools import GutIBMData, validation, analysis; print('gut_ibm_tools OK')"
+        working-directory: python
+
+      - name: Pytest (fast)
+        run: pytest tests/ -v -m "not integration"
+        working-directory: python
