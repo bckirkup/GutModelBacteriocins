@@ -28,24 +28,34 @@ namespace {
 #ifdef GUTIBM_HDF5
 
 #ifdef GUTIBM_MPI
+bool mpi_is_active() {
+  int initialized = 0;
+  MPI_Initialized(&initialized);
+  return initialized != 0;
+}
+
 int mpi_rank_world() {
+  if (!mpi_is_active()) return 0;
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   return rank;
 }
 
 int mpi_nprocs_world() {
+  if (!mpi_is_active()) return 1;
   int nprocs = 1;
   MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
   return nprocs;
 }
 
 bool mpi_multi_rank() {
-  return mpi_nprocs_world() > 1;
+  return mpi_is_active() && mpi_nprocs_world() > 1;
 }
 
 void mpi_barrier_world() {
-  MPI_Barrier(MPI_COMM_WORLD);
+  if (mpi_is_active()) {
+    MPI_Barrier(MPI_COMM_WORLD);
+  }
 }
 #else
 int mpi_rank_world() { return 0; }
