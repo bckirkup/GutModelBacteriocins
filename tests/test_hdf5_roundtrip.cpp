@@ -5,6 +5,7 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "plasmid.h"
+#include "hdf5_reader.h"
 
 #include <algorithm>
 #include <cassert>
@@ -194,6 +195,9 @@ void assert_schema(hid_t file, const std::string& step) {
   assert(dataset_exists(file, step + "/metadata/num_lineages"));
   assert(dataset_exists(file, step + "/lineage/btuB_expression"));
   assert(dataset_exists(file, step + "/lineage/num_bi_loci"));
+  assert(dataset_exists(file, step + "/genome/parent_id"));
+  assert(dataset_exists(file, step + "/genome/bi_toxin_id"));
+  assert(dataset_exists(file, step + "/genome/bi_pI"));
 }
 
 void compare_agent_snapshots(const std::vector<AgentSnapshot>& expected,
@@ -274,6 +278,31 @@ void validate_step_agents_match_sim(hid_t file,
          static_cast<size_t>(sim.chemical_field().ncells()));
 }
 
+void validate_step_genome(hid_t /*file*/, const std::string& /*step*/,
+                          const Simulation& sim) {
+  const BICluster ref = PlasmidLibrary::colicin_E1();
+  int with_bi = 0;
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    const Agent& a = sim.agents()[i];
+    if (a.genome.bi_loci.empty()) continue;
+    ++with_bi;
+    const BICluster& bi = a.genome.bi_loci[0];
+    assert(bi.toxin_id == ref.toxin_id);
+    assert(bi.immunity_id == ref.immunity_id);
+    assert(bi.target == ref.target);
+    assert(std::abs(bi.pI - ref.pI) < kTol);
+    assert(std::abs(bi.diff_coeff - ref.diff_coeff) < kTol);
+    assert(std::abs(bi.retardation - ref.retardation) < kTol);
+  }
+#ifdef GUTIBM_MPI
+  int global_with_bi = 0;
+  MPI_Allreduce(&with_bi, &global_with_bi, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  assert(global_with_bi > 0);
+#else
+  assert(with_bi > 0);
+#endif
+}
+
 void validate_step(hid_t file,
                    const std::string& step,
                    const Simulation& sim,
@@ -283,6 +312,42 @@ void validate_step(hid_t file,
   validate_step_metadata(file, step, expected_step, expected_time,
                          static_cast<Int>(sim.global_agent_count()));
   validate_step_agents_match_sim(file, step, sim);
+  validate_step_genome(file, step, sim);
+}
+
+void validate_parallel_roundtrip(const Simulation& sim, const std::string& filename) {
+  HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(filename, "step_000002");
+  assert(snap.genome.present);
+  assert(snap.metadata.step == 2);
+  assert(std::abs(snap.metadata.time - 120.0) < kTol);
+  assert(snap.metadata.num_agents == sim.global_agent_count());
+  assert(static_cast<Int>(snap.agents.id.size()) == sim.global_agent_count());
+
+  auto grid_it = snap.grid.species.find("bacteriocin");
+  assert(grid_it != snap.grid.species.end());
+  assert(grid_it->second.size() == static_cast<size_t>(sim.chemical_field().ncells()));
+
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    const Agent& a = sim.agents()[i];
+    size_t j = 0;
+    for (; j < snap.agents.id.size(); ++j) {
+      if (snap.agents.id[j] == a.tag) break;
+    }
+    assert(j < snap.agents.id.size());
+    assert(std::abs(snap.agents.x[j] - a.x[0]) < kTol);
+  }
+
+#ifdef GUTIBM_MPI
+  int with_bi = 0;
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    if (!sim.agents()[i].genome.bi_loci.empty()) ++with_bi;
+  }
+  int global_with_bi = 0;
+  MPI_Allreduce(&with_bi, &global_with_bi, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  assert(global_with_bi > 0);
+#else
+  validate_step_genome(static_cast<hid_t>(-1), "step_000002", sim);
+#endif
 }
 
 void run_roundtrip(bool parallel_io) {
@@ -297,6 +362,16 @@ void run_roundtrip(bool parallel_io) {
   Simulation sim;
   sim.init(cfg);
   sim.run();
+
+#ifdef GUTIBM_MPI
+  int nprocs = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+  if (nprocs > 1) {
+    MPI_Barrier(MPI_COMM_WORLD);
+    validate_parallel_roundtrip(sim, filename);
+    return;
+  }
+#endif
 
   hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   assert(file >= 0);
@@ -329,12 +404,32 @@ int main(int argc, char** argv) {
     std::cout << "HDF5 disabled at build time — skipping round-trip tests.\n";
   }
 #else
+#ifdef GUTIBM_MPI
+  int nprocs = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+  if (nprocs == 1) {
+    if (rank == 0) std::cout << "=== HDF5 Serial Round-Trip Tests ===\n";
+    run_roundtrip(false);
+    if (rank == 0) {
+      std::cout << "  test_serial_roundtrip: PASSED\n";
+      std::cout << "All HDF5 round-trip tests passed.\n";
+    }
+  } else {
+    if (rank == 0) std::cout << "=== HDF5 Parallel Round-Trip Tests ===\n";
+    run_roundtrip(true);
+    if (rank == 0) {
+      std::cout << "  test_parallel_roundtrip: PASSED\n";
+      std::cout << "All HDF5 round-trip tests passed.\n";
+    }
+  }
+#else
   if (rank == 0) std::cout << "=== HDF5 Serial Round-Trip Tests ===\n";
   run_roundtrip(false);
   if (rank == 0) {
     std::cout << "  test_serial_roundtrip: PASSED\n";
     std::cout << "All HDF5 round-trip tests passed.\n";
   }
+#endif
 #endif
 
 #ifdef GUTIBM_MPI

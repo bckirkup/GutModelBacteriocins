@@ -41,6 +41,29 @@ struct HDF5CheckpointLineage {
   std::vector<int32_t> generation;
 };
 
+struct HDF5CheckpointGenome {
+  bool present = false;
+
+  std::vector<int64_t> parent_id;
+  std::vector<int32_t> mutations;
+  std::vector<int32_t> has_conjugative_plasmid;
+  std::vector<double>  plasmid_cost_amelioration;
+  std::vector<double>  receptor_expression;  // N * NUM_RECEPTORS, row-major
+  std::vector<double>  toxin_affinity;
+  std::vector<double>  ligand_affinity;
+
+  // Flat BI locus arrays (length = sum of num_bi_loci)
+  std::vector<int32_t> bi_toxin_id;
+  std::vector<int32_t> bi_immunity_id;
+  std::vector<int32_t> bi_target;
+  std::vector<int32_t> bi_bclass;
+  std::vector<double>  bi_pI;
+  std::vector<double>  bi_diff_coeff;
+  std::vector<double>  bi_retardation;
+  std::vector<double>  bi_molecular_weight;
+  std::vector<double>  bi_immunity_binding_affinity;
+};
+
 struct HDF5CheckpointGrid {
   std::map<std::string, std::vector<double>> species;
 };
@@ -50,6 +73,7 @@ struct HDF5CheckpointSnapshot {
   HDF5CheckpointMetadata   metadata;
   HDF5CheckpointAgents     agents;
   HDF5CheckpointLineage    lineage;
+  HDF5CheckpointGenome     genome;
   HDF5CheckpointGrid       grid;
 };
 

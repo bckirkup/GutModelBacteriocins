@@ -198,17 +198,17 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 
 ## Receptor Binding
 
-| Parameter | Default | Units | Description |
-|-----------|---------|-------|-------------|
-| `receptor.kd_b12_btuB` | 1e-9 | mol/m^3 | B12 affinity for BtuB |
-| `receptor.kd_colicinE_btuB` | 5e-10 | mol/m^3 | Colicin E affinity for BtuB |
-| `receptor.kd_enterobactin` | 1e-8 | mol/m^3 | Enterobactin affinity for FepA |
-| `receptor.kd_colicinB_fepA` | 2e-9 | mol/m^3 | Colicin B affinity for FepA |
-| `receptor.kd_lin_enterobactin` | 5e-8 | mol/m^3 | Linearized enterobactin for CirA |
-| `receptor.kd_colicinIa_cirA` | 3e-9 | mol/m^3 | Colicin Ia affinity for CirA |
-| `receptor.kill_rate_colicin` | 1e-3 | 1/s | Single-hit colicin kill rate |
-| `receptor.kill_rate_microcin` | 5e-4 | 1/s | Microcin kill rate (slower) |
-| `receptor.immunity_factor` | 0.001 | — | 1000× immunity protection |
+| Parameter | Config key | Default | Units | Description |
+|-----------|------------|---------|-------|-------------|
+| `receptor.kd_b12_btuB` | `kd_b12_btuB` | 1e-9 | mol/m^3 | B12 affinity for BtuB |
+| `receptor.kd_colicinE_btuB` | `kd_colicinE_btuB` | 5e-10 | mol/m^3 | Colicin E affinity for BtuB |
+| `receptor.kd_enterobactin` | `kd_enterobactin` | 1e-8 | mol/m^3 | Enterobactin affinity for FepA |
+| `receptor.kd_colicinB_fepA` | `kd_colicinB_fepA` | 2e-9 | mol/m^3 | Colicin B affinity for FepA |
+| `receptor.kd_lin_enterobactin` | `kd_lin_enterobactin` | 5e-8 | mol/m^3 | Linearized enterobactin for CirA |
+| `receptor.kd_colicinIa_cirA` | `kd_colicinIa_cirA` | 3e-9 | mol/m^3 | Colicin Ia affinity for CirA |
+| `receptor.kill_rate_colicin` | `kill_rate_colicin` | 1e-3 | 1/s | Single-hit colicin kill rate |
+| `receptor.kill_rate_microcin` | `kill_rate_microcin` | 5e-4 | 1/s | Microcin kill rate (slower) |
+| `receptor.immunity_factor` | `immunity_factor` | 0.001 | — | 1000× immunity protection |
 
 ---
 
@@ -245,35 +245,36 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 
 ## Conjugation
 
-| Parameter | Default | Units | Description |
-|-----------|---------|-------|-------------|
-| `conjugation.base_transfer_prob` | 1e-3 | — | Base HGT probability |
-| `conjugation.contact_radius` | 2e-6 | m | Max pilus reach (used when heterogeneity off) |
-| `conjugation.shear_crit` | 10.0 | 1/s | Critical shear for MPS |
-| `conjugation.pili_heterogeneity` | false | — | Enable per-event F-pilus length sampling |
-| `conjugation.pili_length_min` | 1e-6 | m | Min F-pilus length (uniform lower bound) |
-| `conjugation.pili_length_max` | 4e-6 | m | Max F-pilus length (uniform upper bound) |
+| Parameter | Config key | Default | Units | Description |
+|-----------|------------|---------|-------|-------------|
+| `conjugation.pili_length` | `pili_length` | 4e-6 | m | Max F-pilus reach (heterogeneity off) |
+| `conjugation.base_transfer_rate` | `base_transfer_rate` | 1e-4 | 1/s | Conjugation events per s per pair |
+| `conjugation.shear_critical` | `shear_critical` | 10.0 | 1/s | Critical shear for MPS |
+| `conjugation.plasmid_copy_cost` | `plasmid_copy_cost` | 0.02 | — | Metabolic cost per transferred plasmid |
+| `conjugation.pili_heterogeneity` | `pili_heterogeneity` | false | — | Enable per-event F-pilus length sampling |
+| `conjugation.pili_length_min` | `pili_length_min` | 1e-6 | m | Min F-pilus length (uniform lower bound) |
+| `conjugation.pili_length_max` | `pili_length_max` | 4e-6 | m | Max F-pilus length (uniform upper bound) |
 
-**Pili heterogeneity (VADI §55):** In vivo F-pili are 1–4 μm with significant length heterogeneity. When `pili_heterogeneity = true`, each conjugation attempt samples its effective contact radius from `uniform(pili_length_min, pili_length_max)` instead of using the fixed `contact_radius`. The expected mean reach is 2.5 μm.
+**Pili heterogeneity (VADI §55):** In vivo F-pili are 1–4 μm with significant length heterogeneity. When `pili_heterogeneity = true`, each conjugation attempt samples its effective contact radius from `uniform(pili_length_min, pili_length_max)` instead of using the fixed `pili_length`. The expected mean reach is 2.5 μm.
 
 ---
 
 ## Mutation
 
-| Parameter | Default | Units | Description |
-|-----------|---------|-------|-------------|
-| `mutation.bi_duplication_rate` | 1e-5 | per division | BI locus duplication |
-| `mutation.bi_recombination_rate` | 5e-6 | per division | BI locus recombination |
-| `mutation.receptor_mutation_rate` | 1e-7 | per division | Receptor downregulation |
-| `mutation.super_killer_rate` | 1e-8 | per division | Novel toxin variant |
-| `mutation.compensatory_rate` | 1e-6 | per division | Plasmid cost amelioration |
-| `mutation.receptor_reduction` | 0.1 | — | Expression drop per mutation |
-| `mutation.partial_resistance_rate` | 5e-7 | per division | Extracellular loop missense mutation |
-| `mutation.compensatory_reduction` | 0.005 | — | Per-locus cost reduction |
-| `mutation.max_bi_loci` | 8 | — | Maximum BI clusters per genome |
-| `mutation.immunity_escape_prob` | 0.5 | — | Fraction of super-killers with immunity escape |
-| `mutation.escape_affinity_lo` | 0.01 | — | Lower bound of reduced binding affinity |
-| `mutation.escape_affinity_hi` | 0.3 | — | Upper bound of reduced binding affinity |
+| Parameter | Config key | Default | Units | Description |
+|-----------|------------|---------|-------|-------------|
+| `mutation.bi_duplication_rate` | `bi_duplication_rate` | 1e-5 | per division | BI locus duplication |
+| `mutation.bi_recombination_rate` | `bi_recombination_rate` | 5e-6 | per division | BI locus recombination |
+| `mutation.receptor_mutation_rate` | `receptor_mutation_rate` | 1e-7 | per division | Receptor downregulation |
+| `mutation.super_killer_rate` | `super_killer_rate` | 1e-8 | per division | Novel toxin variant |
+| `mutation.compensatory_rate` | `compensatory_rate` | 1e-6 | per division | Plasmid cost amelioration |
+| `mutation.receptor_reduction` | `receptor_reduction` | 0.1 | — | Expression drop per mutation |
+| `mutation.partial_resistance_rate` | `partial_resistance_rate` | 5e-7 | per division | Extracellular loop missense mutation |
+| `mutation.compensatory_reduction` | `compensatory_reduction` | 0.005 | — | Per-locus cost reduction |
+| `mutation.max_bi_loci` | `max_bi_loci` | 8 | — | Maximum BI clusters per genome |
+| `mutation.immunity_escape_prob` | `immunity_escape_prob` | 0.5 | — | Fraction of super-killers with immunity escape |
+| `mutation.escape_affinity_lo` | `escape_affinity_lo` | 0.01 | — | Lower bound of reduced binding affinity |
+| `mutation.escape_affinity_hi` | `escape_affinity_hi` | 0.3 | — | Upper bound of reduced binding affinity |
 
 ---
 

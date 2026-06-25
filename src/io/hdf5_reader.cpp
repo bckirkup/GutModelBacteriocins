@@ -139,6 +139,68 @@ HDF5CheckpointLineage read_lineage(hid_t file, const std::string& step) {
   return out;
 }
 
+HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
+  HDF5CheckpointGenome out;
+  const std::string prefix = step + "/genome/";
+  if (!link_exists(file, step + "/genome")) {
+    return out;
+  }
+
+  out.present = true;
+  out.parent_id = read_dataset_1d<int64_t>(file, prefix + "parent_id", H5T_NATIVE_INT64);
+  out.mutations = read_dataset_1d<int32_t>(file, prefix + "mutations", H5T_NATIVE_INT32);
+  out.has_conjugative_plasmid =
+      read_dataset_1d<int32_t>(file, prefix + "has_conjugative_plasmid", H5T_NATIVE_INT32);
+  out.plasmid_cost_amelioration =
+      read_dataset_1d<double>(file, prefix + "plasmid_cost_amelioration", H5T_NATIVE_DOUBLE);
+  out.receptor_expression =
+      read_dataset_1d<double>(file, prefix + "receptor_expression", H5T_NATIVE_DOUBLE);
+  out.toxin_affinity =
+      read_dataset_1d<double>(file, prefix + "toxin_affinity", H5T_NATIVE_DOUBLE);
+  out.ligand_affinity =
+      read_dataset_1d<double>(file, prefix + "ligand_affinity", H5T_NATIVE_DOUBLE);
+
+  out.bi_toxin_id =
+      read_dataset_1d<int32_t>(file, prefix + "bi_toxin_id", H5T_NATIVE_INT32);
+  out.bi_immunity_id =
+      read_dataset_1d<int32_t>(file, prefix + "bi_immunity_id", H5T_NATIVE_INT32);
+  out.bi_target =
+      read_dataset_1d<int32_t>(file, prefix + "bi_target", H5T_NATIVE_INT32);
+  out.bi_bclass =
+      read_dataset_1d<int32_t>(file, prefix + "bi_bclass", H5T_NATIVE_INT32);
+  out.bi_pI =
+      read_dataset_1d<double>(file, prefix + "bi_pI", H5T_NATIVE_DOUBLE);
+  out.bi_diff_coeff =
+      read_dataset_1d<double>(file, prefix + "bi_diff_coeff", H5T_NATIVE_DOUBLE);
+  out.bi_retardation =
+      read_dataset_1d<double>(file, prefix + "bi_retardation", H5T_NATIVE_DOUBLE);
+  out.bi_molecular_weight =
+      read_dataset_1d<double>(file, prefix + "bi_molecular_weight", H5T_NATIVE_DOUBLE);
+  out.bi_immunity_binding_affinity =
+      read_dataset_1d<double>(file, prefix + "bi_immunity_binding_affinity",
+                              H5T_NATIVE_DOUBLE);
+
+  const size_t n = out.parent_id.size();
+  if (out.mutations.size() != n || out.has_conjugative_plasmid.size() != n ||
+      out.plasmid_cost_amelioration.size() != n ||
+      out.receptor_expression.size() != n * NUM_RECEPTORS ||
+      out.toxin_affinity.size() != n * NUM_RECEPTORS ||
+      out.ligand_affinity.size() != n * NUM_RECEPTORS) {
+    throw std::runtime_error("inconsistent genome per-agent dataset lengths in " + step);
+  }
+
+  const size_t n_bi = out.bi_toxin_id.size();
+  if (out.bi_immunity_id.size() != n_bi || out.bi_target.size() != n_bi ||
+      out.bi_bclass.size() != n_bi || out.bi_pI.size() != n_bi ||
+      out.bi_diff_coeff.size() != n_bi || out.bi_retardation.size() != n_bi ||
+      out.bi_molecular_weight.size() != n_bi ||
+      out.bi_immunity_binding_affinity.size() != n_bi) {
+    throw std::runtime_error("inconsistent BI locus dataset lengths in " + step);
+  }
+
+  return out;
+}
+
 HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   const std::string prefix = step + "/metadata/";
   HDF5CheckpointMetadata meta;
@@ -254,6 +316,7 @@ HDF5CheckpointSnapshot HDF5Reader::load_step(const std::string& step_name) const
   snap.metadata = read_metadata(static_cast<hid_t>(file_id_), step_name);
   snap.agents   = read_agents(static_cast<hid_t>(file_id_), step_name);
   snap.lineage  = read_lineage(static_cast<hid_t>(file_id_), step_name);
+  snap.genome   = read_genome(static_cast<hid_t>(file_id_), step_name);
   snap.grid     = read_grid(static_cast<hid_t>(file_id_), step_name);
 
   if (snap.metadata.num_agents != static_cast<Int>(snap.agents.id.size())) {

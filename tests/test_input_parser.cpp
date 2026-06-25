@@ -210,6 +210,22 @@ void test_malformed_numeric_warnings_legacy() {
   std::cout << "  test_malformed_numeric_warnings_legacy: PASSED\n";
 }
 
+void test_fix_tunables_fixture() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_fix_tunables.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(std::abs(cfg.receptor.kd_colicinE_btuB - 1e-9) < 1e-15);
+  assert(std::abs(cfg.receptor.kill_rate_colicin - 2e-3) < 1e-12);
+  assert(std::abs(cfg.receptor.immunity_factor - 0.0005) < 1e-12);
+  assert(std::abs(cfg.conjugation.base_transfer_rate - 2e-4) < 1e-12);
+  assert(cfg.conjugation.pili_heterogeneity == true);
+  assert(std::abs(cfg.conjugation.pili_length_min - 2e-6) < 1e-15);
+  assert(std::abs(cfg.conjugation.pili_length_max - 3e-6) < 1e-15);
+  assert(std::abs(cfg.mutation.bi_duplication_rate - 1e-4) < 1e-12);
+  assert(cfg.mutation.max_bi_loci == 6);
+  assert(std::abs(cfg.mutation.immunity_escape_prob - 0.75) < 1e-12);
+  std::cout << "  test_fix_tunables_fixture: PASSED\n";
+}
+
 void test_strict_config_aborts_on_bad_numeric() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.json";
 
@@ -245,6 +261,7 @@ int main() {
   test_diversity_paradox_strains();
   test_strain_spawn_integration();
   test_fixes_fixture();
+  test_fix_tunables_fixture();
   test_json_document_parser();
   test_malformed_numeric_warnings_json();
   test_malformed_numeric_warnings_legacy();

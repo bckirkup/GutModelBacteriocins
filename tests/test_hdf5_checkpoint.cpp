@@ -5,6 +5,7 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "hdf5_reader.h"
+#include "plasmid.h"
 
 #include <algorithm>
 #include <cassert>
@@ -131,6 +132,67 @@ void compare_snapshots(const std::vector<AgentSnapshot>& expected,
   }
 }
 
+void assert_genome_bi_identity(const Simulation& sim) {
+  const BICluster ref = PlasmidLibrary::colicin_E1();
+  int with_bi = 0;
+  for (Int i = 0; i < sim.agents().size(); ++i) {
+    const Agent& a = sim.agents()[i];
+    if (a.genome.bi_loci.empty()) continue;
+    ++with_bi;
+    assert(a.genome.bi_loci.size() > 0);
+    const BICluster& bi = a.genome.bi_loci[0];
+    assert(bi.toxin_id == ref.toxin_id);
+    assert(bi.immunity_id == ref.immunity_id);
+    assert(bi.target == ref.target);
+    assert(std::abs(bi.pI - ref.pI) < kTol);
+    assert(std::abs(bi.diff_coeff - ref.diff_coeff) < kTol);
+    assert(std::abs(bi.retardation - ref.retardation) < kTol);
+    assert(std::abs(bi.molecular_weight - ref.molecular_weight) < kTol);
+  }
+  assert(with_bi > 0);
+}
+
+void assert_genome_matches_snapshot(const Simulation& sim,
+                                    const HDF5CheckpointSnapshot& snap) {
+  assert(snap.genome.present);
+  const size_t n = snap.agents.id.size();
+  std::vector<size_t> bi_offsets(n + 1, 0);
+  for (size_t i = 0; i < n; ++i) {
+    bi_offsets[i + 1] = bi_offsets[i] + static_cast<size_t>(snap.lineage.num_bi_loci[i]);
+  }
+
+  int matched = 0;
+  for (Int li = 0; li < sim.agents().size(); ++li) {
+    const Agent& a = sim.agents()[li];
+    size_t gi = 0;
+    for (; gi < n; ++gi) {
+      if (static_cast<TagID>(snap.agents.id[gi]) == a.tag) break;
+    }
+    assert(gi < n);
+    ++matched;
+
+    assert(a.genome.parent_id == static_cast<TagID>(snap.genome.parent_id[gi]));
+    assert(a.genome.mutations == static_cast<uint32_t>(snap.genome.mutations[gi]));
+    assert(a.genome.has_conjugative_plasmid ==
+           (snap.genome.has_conjugative_plasmid[gi] != 0));
+    assert(std::abs(a.genome.plasmid_cost_amelioration -
+                    snap.genome.plasmid_cost_amelioration[gi]) < kTol);
+    assert(static_cast<Int>(a.genome.bi_loci.size()) == snap.lineage.num_bi_loci[gi]);
+
+    for (size_t b = 0; b < a.genome.bi_loci.size(); ++b) {
+      const size_t flat = bi_offsets[gi] + b;
+      const BICluster& bi = a.genome.bi_loci[b];
+      assert(bi.toxin_id == static_cast<uint16_t>(snap.genome.bi_toxin_id[flat]));
+      assert(bi.immunity_id == static_cast<uint16_t>(snap.genome.bi_immunity_id[flat]));
+      assert(static_cast<int32_t>(bi.target) == snap.genome.bi_target[flat]);
+      assert(std::abs(bi.pI - snap.genome.bi_pI[flat]) < kTol);
+      assert(std::abs(bi.immunity_binding_affinity -
+                      snap.genome.bi_immunity_binding_affinity[flat]) < kTol);
+    }
+  }
+  assert(matched > 0);
+}
+
 #ifdef GUTIBM_HDF5
 
 void test_hdf5_reader_api(const std::string& filename) {
@@ -150,6 +212,7 @@ void test_hdf5_reader_api(const std::string& filename) {
   assert(std::abs(snap.metadata.time - 120.0) < kTol);
   assert(snap.metadata.num_agents == static_cast<Int>(snap.agents.id.size()));
   assert(snap.metadata.num_agents == static_cast<Int>(snap.lineage.generation.size()));
+  assert(snap.genome.present);
   assert(snap.grid.species.count("carbon") > 0);
   assert(snap.grid.species.at("carbon").size() > 0);
 
@@ -185,10 +248,42 @@ void test_checkpoint_restart(const std::string& filename) {
   auto restored_agents = collect_agents(resumed);
   assert(static_cast<Int>(restored_agents.size()) == ckpt.metadata.num_agents);
   compare_snapshots(expected_agents, restored_agents);
+  assert_genome_bi_identity(resumed);
+  assert_genome_matches_snapshot(resumed, ckpt);
 
   resumed.run();
   assert(resumed.time() > ckpt.metadata.time);
   assert(resumed.step_count() > ckpt.metadata.step);
+}
+
+void test_split_run_matches_uninterrupted(const std::string& filename) {
+  SimulationConfig split_cfg = make_checkpoint_config(filename + ".split.h5");
+  split_cfg.total_time = 60.0;
+  Simulation first;
+  first.init(split_cfg);
+  first.run();
+
+  HDF5CheckpointSnapshot mid =
+      HDF5Reader::load_snapshot(split_cfg.hdf5.filename, "step_000001");
+  assert(mid.genome.present);
+  assert(mid.metadata.step == 1);
+  assert(std::abs(mid.metadata.time - 60.0) < kTol);
+
+  SimulationConfig resume_cfg = split_cfg;
+  resume_cfg.hdf5.enabled = false;
+  resume_cfg.total_time = 120.0;
+  resume_cfg.initial_strains.clear();
+
+  Simulation resumed;
+  resumed.init_from_checkpoint(resume_cfg, split_cfg.hdf5.filename, "step_000001");
+  assert(resumed.time() == mid.metadata.time);
+  assert(resumed.step_count() == mid.metadata.step);
+  assert(resumed.global_agent_count() == mid.metadata.num_agents);
+  assert_genome_matches_snapshot(resumed, mid);
+
+  resumed.run();
+  assert(std::abs(resumed.time() - 120.0) < kTol);
+  assert(resumed.step_count() == 2);
 }
 
 #endif  // GUTIBM_HDF5
@@ -219,9 +314,11 @@ int main(int argc, char** argv) {
 
   if (rank == 0) std::cout << "=== HDF5 Checkpoint Restart Tests ===\n";
   test_checkpoint_restart(filename);
+  test_split_run_matches_uninterrupted(filename);
   if (rank == 0) {
     std::cout << "  test_hdf5_reader_api: PASSED\n";
     std::cout << "  test_checkpoint_restart: PASSED\n";
+    std::cout << "  test_split_run_matches_uninterrupted: PASSED\n";
     std::cout << "All HDF5 checkpoint tests passed.\n";
   }
 #endif

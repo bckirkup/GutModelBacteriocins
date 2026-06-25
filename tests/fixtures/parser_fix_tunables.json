@@ -1,0 +1,38 @@
+{
+  "_comment": "Non-default Fix module parameters (receptor, conjugation, mutation)",
+
+  "total_time": 3600,
+  "bio_dt": 60,
+  "seed": 77,
+
+  "domain_x": 50e-6,
+  "domain_y": 50e-6,
+  "domain_z": 25e-6,
+  "grid_dx": 5e-6,
+
+  "kd_colicinE_btuB": 1e-9,
+  "kill_rate_colicin": 2e-3,
+  "immunity_factor": 0.0005,
+
+  "base_transfer_rate": 2e-4,
+  "pili_heterogeneity": true,
+  "pili_length_min": 2e-6,
+  "pili_length_max": 3e-6,
+
+  "bi_duplication_rate": 1e-4,
+  "max_bi_loci": 6,
+  "immunity_escape_prob": 0.75,
+
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 10,
+      "mu_max": 5e-4,
+      "plasmids": ["ColE1"],
+      "conjugative": false
+    }
+  ],
+
+  "hdf5_file": "fix_tunables_test.h5",
+  "hdf5_every": 100
+}
