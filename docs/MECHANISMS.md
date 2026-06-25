@@ -260,17 +260,17 @@ D_eff = D_mol + U(z)^2 * h^2 / (210 * D_mol)
 ```
 This is computed via `AdvectionField::taylor_aris_D_eff()`.
 
-### Barnes-Hut Far-Field Acceleration
+### FMM Far-Field Acceleration
 
-When `QSSAConfig::use_fmm = true`, the QSSA solver uses a Barnes-Hut octree to accelerate the Green's function superposition from O(N × M) to O(N log N):
+When `QSSAConfig::use_fmm = true`, the QSSA solver uses a kernel-independent Fast Multipole Method to accelerate the Green's function superposition:
 
-1. **Build**: Construct an octree over all active toxin sources, computing monopole moments (total source strength, source-weighted centroid) at each internal node.
-2. **Near-field** (distance ≤ `toxin_cutoff`): Evaluate exact advection-diffusion Green's function per-source, preserving accuracy for nearby lethal core/halo interactions.
-3. **Far-field** (distance > `toxin_cutoff`): Traverse the octree; accept a node's monopole approximation when `cell_size / distance < theta` (opening-angle criterion). The monopole uses the node's aggregate strength at its source-weighted centroid with source-rate-weighted average diffusion parameters.
+1. **Build**: Construct an octree over all active toxin sources with Cartesian multipole moments up to `fmm_expansion_order` (default 2).
+2. **Upward pass (P2M + M2M)**: Accumulate particle charges into leaf moments, then shift and combine into parent nodes.
+3. **M2L + L2L**: Translate well-separated remote multipoles into local expansions and propagate downward for O(N+M) grid evaluation.
+4. **Near-field** (distance ≤ `toxin_cutoff`): Evaluate exact advection-diffusion Green's function per-source, preserving accuracy for nearby lethal core/halo interactions.
+5. **Far-field** (distance > `toxin_cutoff`): Deposit `total_fmm − near_exact` per grid cell using the precomputed local expansions.
 
-The opening angle `theta` controls the accuracy/speed trade-off. At `theta = 0`, all interactions are computed exactly (equivalent to the original method). At `theta = 0.5`, the monopole error is bounded by ~theta² for smooth fields, giving a good balance for bacteriocin concentration fields.
-
-**Note:** This is a simplified Barnes-Hut (monopole-only) implementation. A full Fast Multipole Method (FMM) with higher-order multipole expansions would provide O(N) scaling with tighter error bounds — see derivative issue for future work.
+The opening angle `theta` controls the well-separated criterion. Expansion order `p` gives error ~ theta^p for smooth fields. Order 1 recovers monopole Barnes-Hut; orders 2–3 add dipole/quadrupole/octupole terms via source-position Taylor coefficients of the advection-diffusion kernel (not assuming a 1/r Laplace kernel).
 
 ---
 

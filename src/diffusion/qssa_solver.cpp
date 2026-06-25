@@ -3,7 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "qssa_solver.h"
-#include "octree.h"
+#include "fmm.h"
 #include "domain.h"
 #include "advection.h"
 #include "chemical_field.h"
@@ -80,12 +80,12 @@ void QSSASolver::solve_bacteriocin_field_fmm(
     ChemicalField& chem,
     Int toxin_species_idx) const {
 
-  // Build source strengths for the octree (use source_rate as strength)
+  // Build source strengths for the FMM tree (use source_rate as strength)
   std::vector<Real> strengths(sources.size());
   for (size_t i = 0; i < sources.size(); ++i)
     strengths[i] = params[i].source_rate;
 
-  // Compute average GreensFunctionParams for the monopole kernel
+  // Source-rate-weighted average kernel parameters for far-field expansion
   GreensFunctionParams avg_params{};
   Real total_s = 0.0;
   for (size_t i = 0; i < params.size(); ++i) {
@@ -104,10 +104,11 @@ void QSSASolver::solve_bacteriocin_field_fmm(
     avg_params.pI          = 7.0;
     avg_params.retardation = 5.0;
   }
-  avg_params.source_rate = 0.0;  // set per-node during traversal
+  avg_params.source_rate = 0.0;
 
-  Octree tree;
-  tree.build(sources, strengths, *domain_);
+  FMM fmm;
+  fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
+  fmm.compute_local_expansions(cfg_.fmm_theta, gf_, avg_params);
 
   Int nx = domain_->nx(), ny = domain_->ny(), nz = domain_->nz();
   Int ncells = domain_->ncells();
@@ -148,14 +149,15 @@ void QSSASolver::solve_bacteriocin_field_fmm(
     }
   }
 
-  // Far-field: Barnes-Hut monopole for each grid cell
+  // Far-field: FMM multipole for each grid cell.  When local expansions are
+  // precomputed, use total - near to avoid double-counting near sources.
   for (Int iz = 0; iz < nz; ++iz) {
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
         Vec3 tgt = domain_->cell_center(ix, iy, iz);
-        Real far = tree.evaluate_far_field(
-            tgt, cfg_.fmm_theta, cfg_.toxin_cutoff, gf_, avg_params);
         Int idx = domain_->cell_index(ix, iy, iz);
+        Real total = fmm.evaluate_total_field(tgt, cfg_.fmm_theta, gf_, avg_params);
+        Real far = std::max(0.0, total - toxin_conc[idx]);
         toxin_conc[idx] += far;
       }
     }

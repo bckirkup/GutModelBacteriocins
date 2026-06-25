@@ -67,6 +67,7 @@ void test_fmm_peristaltic_fixture() {
   assert(std::abs(cfg.advection.peristaltic_wavelength - 0.0005) < 1e-15);
   assert(cfg.qssa.use_fmm == true);
   assert(std::abs(cfg.qssa.fmm_theta - 0.3) < 1e-12);
+  assert(cfg.qssa.fmm_expansion_order == 2);
   assert(std::abs(cfg.qssa.toxin_cutoff - 100e-6) < 1e-15);
   assert(std::abs(cfg.qssa.nutrient_cutoff - 25e-6) < 1e-15);
   std::cout << "  test_fmm_peristaltic_fixture: PASSED\n";

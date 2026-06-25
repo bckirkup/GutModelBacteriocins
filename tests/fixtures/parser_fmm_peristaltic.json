@@ -11,5 +11,6 @@
   "toxin_cutoff": 100e-6,
   "nutrient_cutoff": 25e-6,
   "use_fmm": true,
-  "fmm_theta": 0.3
+  "fmm_theta": 0.3,
+  "fmm_expansion_order": 2
 }
