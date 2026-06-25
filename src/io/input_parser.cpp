@@ -93,6 +93,7 @@ void InputParser::apply_flat_key(SimulationConfig& cfg,
   else if (key == "nutrient_cutoff")   cfg.qssa.nutrient_cutoff = parse_real(key, val);
   else if (key == "use_fmm")           cfg.qssa.use_fmm = (val == "true" || val == "1");
   else if (key == "fmm_theta")         cfg.qssa.fmm_theta = parse_real(key, val);
+  else if (key == "fmm_expansion_order") cfg.qssa.fmm_expansion_order = parse_int(key, val);
   else if (key == "vbf_density")       cfg.vbf.density = parse_real(key, val);
   else if (key == "vbf_viscosity")     cfg.vbf.viscosity = parse_real(key, val);
   else if (key == "vbf_mucin_z_gradient")  cfg.vbf.mucin_z_gradient_enabled = (val == "true" || val == "1");

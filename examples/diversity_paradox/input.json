@@ -33,6 +33,7 @@
   "nutrient_cutoff": 50e-6,
   "use_fmm": true,
   "fmm_theta": 0.5,
+  "fmm_expansion_order": 2,
 
   "initial_strains": [
     {

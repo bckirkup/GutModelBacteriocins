@@ -19,7 +19,7 @@
 
 #include "types.h"
 #include "greens_function.h"
-#include "octree.h"
+#include "fmm.h"
 #include <vector>
 
 namespace gutibm {
@@ -39,9 +39,10 @@ struct QSSAConfig {
   Real colicin_release_rate = 1.0e-18; // mol/s per lysed cell (burst)
   Real microcin_secretion   = 1.0e-20; // mol/s continuous secretion
 
-  // Barnes-Hut acceleration (far-field aggregation)
-  bool use_fmm  = false;   // enable Barnes-Hut octree for far-field
+  // FMM / Barnes-Hut acceleration (far-field aggregation)
+  bool use_fmm  = false;   // enable octree far-field acceleration
   Real fmm_theta = 0.5;    // opening angle (0→exact, 1→fast/approximate)
+  int  fmm_expansion_order = 2;  // 1=monopole, 2=dipole+quadrupole, 3=octupole
 };
 
 class QSSASolver {
@@ -72,7 +73,7 @@ class QSSASolver {
   const GreensFunction& gf() const { return gf_; }
 
  private:
-  // Build octree from sources and evaluate grid using Barnes-Hut
+  // Build FMM tree from sources and evaluate grid using multipole expansions
   void solve_bacteriocin_field_fmm(
       const std::vector<Vec3>& sources,
       const std::vector<GreensFunctionParams>& params,

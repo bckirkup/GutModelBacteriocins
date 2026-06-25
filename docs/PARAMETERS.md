@@ -158,10 +158,11 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `qssa.use_fmm` | false | — | Enable Barnes-Hut octree for far-field aggregation |
+| `qssa.use_fmm` | false | — | Enable FMM octree for far-field aggregation |
 | `qssa.fmm_theta` | 0.5 | — | Opening angle parameter (0→exact, 1→fast/approximate) |
+| `qssa.fmm_expansion_order` | 2 | — | Multipole order: 1=monopole, 2=dipole+quadrupole, 3=octupole |
 
-**Scaling note:** At 10^6 agents, naive O(N × M) evaluation is expensive. The cutoff radius limits each grid cell to nearby sources only, giving effective O(N) via spatial hashing. When `use_fmm` is true, distant sources beyond the cutoff are aggregated via a Barnes-Hut octree monopole approximation, reducing total cost to O(N log N). The opening angle `fmm_theta` controls accuracy: smaller values are more accurate but slower. Typical values: 0.3 (conservative), 0.5 (balanced), 0.7 (fast).
+**Scaling note:** At 10^6 agents, naive O(N × M) evaluation is expensive. The cutoff radius limits each grid cell to nearby sources only, giving effective O(N) via spatial hashing. When `use_fmm` is true, distant sources beyond the cutoff are aggregated via a kernel-independent FMM with Cartesian multipole expansions (M2M, M2L, L2L), giving O(N+M) far-field cost after preprocessing. The opening angle `fmm_theta` controls accuracy: smaller values are more accurate but slower. Increase `fmm_expansion_order` for tighter error bounds (~theta^p) without changing theta. Typical values: `fmm_theta` 0.3 (conservative), 0.5 (balanced), 0.7 (fast); `fmm_expansion_order` 2 (default).
 
 ---
 
