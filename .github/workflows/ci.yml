@@ -147,7 +147,7 @@ jobs:
         run: ruff check python/
 
       - name: Import check
-        run: python -c "from gut_ibm_tools import GutIBMData, validation, analysis; print('gut_ibm_tools OK')"
+        run: python -c "from gut_ibm_tools import GutIBMData, validation, analysis, fish_observation; print('gut_ibm_tools OK')"
         working-directory: python
 
       - name: Pytest (fast)

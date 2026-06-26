@@ -472,3 +472,31 @@ def validate_fish_observability(
         ),
         **spatial,
     }
+
+
+def flatten_fish_metrics(
+    result: dict[str, float | dict[str, dict[str, float]]],
+) -> dict[str, float]:
+    """Flatten *validate_fish_observability* output to scalar metrics for CI."""
+    technique = result.get("technique_comparison", {})
+    if not isinstance(technique, dict):
+        technique = {}
+
+    flat: dict[str, float] = {}
+    for key, value in result.items():
+        if key == "technique_comparison":
+            continue
+        flat[key] = float(value)  # type: ignore[arg-type]
+
+    probe_keys = (
+        ("immunity_mrna", "immunity_mrna_detection_fraction"),
+        ("immunity_mrna_hcr", "immunity_mrna_hcr_detection_fraction"),
+        ("colicin_plasmid", "colicin_plasmid_detection_fraction"),
+        ("rrna_phylogroup", "rrna_phylogroup_detection_fraction"),
+    )
+    for probe_name, metric_name in probe_keys:
+        probe_stats = technique.get(probe_name, {})
+        if isinstance(probe_stats, dict) and "detection_fraction" in probe_stats:
+            flat[metric_name] = float(probe_stats["detection_fraction"])
+
+    return flat
