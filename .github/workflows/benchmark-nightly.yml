@@ -1,0 +1,37 @@
+name: Benchmark nightly
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: benchmark-nightly-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scaling-benchmark:
+    name: Scaling benchmark sweep
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake libopenmpi-dev openmpi-bin libhdf5-mpi-dev
+
+      - name: Run scaling benchmark sweep
+        env:
+          AGENT_COUNTS: "10000 50000 100000"
+          MPI_RANKS: "1 2"
+          STEPS: "3"
+        run: bash scripts/run_scaling_benchmark.sh
+
+      - name: Upload benchmark CSV
+        uses: actions/upload-artifact@v4
+        with:
+          name: scaling-benchmark-results
+          path: benchmark_results/*.csv
+          if-no-files-found: warn

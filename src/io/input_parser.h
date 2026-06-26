@@ -89,6 +89,9 @@ struct SimulationConfig {
 
   // GPU acceleration (requires CUDA build)
   GpuConfig gpu;
+
+  // Per-step wall-clock profiling (rank 0 prints summary at end of run)
+  bool profile_steps = false;
 };
 
 class InputParser {

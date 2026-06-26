@@ -39,7 +39,8 @@ The simulation targets **10⁶–10⁷** discrete cells by:
    not discrete agents.
 4. **MPI domain decomposition** — scales across HPC nodes.
 
-## Biological Mechanisms
+See [docs/SCALING.md](docs/SCALING.md) for benchmark scripts, memory budgets, and
+recommended `use_fmm` / MPI settings at 10⁶–10⁷ agents.
 
 ### The Advective Double-Bind (EARI) / Combinatorial Washout Trap (VADI)
 

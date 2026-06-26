@@ -182,6 +182,7 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `sos_lysis_prob` | Bacteriocin Fix |
 | `crypts_enabled`, `crypt_depth`, `crypt_exit_rate`, `crypt_entry_rate`, `crypt_carrying_capacity` | Crypt refugia |
 | `hdf5_file`, `hdf5_every` | HDF5 output |
+| `profile_steps` | Per-step profiling (`docs/SCALING.md`) |
 | `checkpoint_file`, `checkpoint_step` | Checkpoint restart |
 | `adaptive_dt_enabled`, `dt_min`, `dt_max`, `dt_safety`, `dt_growth_limit` | Adaptive timestep |
 | `initial_strains` | JSON array of strain objects |
@@ -263,6 +264,7 @@ Always assert mechanism outcomes when testing biology (e.g. `bi_loci.size() > 0`
 - `VADI.md` — Viscous Advective-Diffusion Interference (combinatorial washout trap)
 - `docs/MECHANISMS.md` — per-Fix biological detail
 - `docs/PARAMETERS.md` — full parameter reference (some keys not yet in parser)
+- `docs/SCALING.md` — 10⁶–10⁷ agent benchmarks, memory, FMM tuning
 - `docs/API.md` — class/function reference
 
 ## GPU

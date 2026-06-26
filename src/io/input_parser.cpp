@@ -156,6 +156,7 @@ void InputParser::apply_flat_key(SimulationConfig& cfg,
   else if (key == "dt_growth_limit")   cfg.dt_growth_limit = parse_real(key, val);
   else if (key == "gpu_enabled")       cfg.gpu.enabled = (val == "true" || val == "1");
   else if (key == "gpu_device_id")     cfg.gpu.device_id = parse_int(key, val);
+  else if (key == "profile_steps")   cfg.profile_steps = (val == "true" || val == "1");
 }
 
 SimulationConfig InputParser::parse(const std::string& filename) {

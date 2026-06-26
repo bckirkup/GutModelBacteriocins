@@ -25,6 +25,7 @@
 #define GUTIBM_SIMULATION_H
 
 #include "types.h"
+#include "step_profiler.h"
 #include "agent.h"
 #include "domain.h"
 #include "random.h"
@@ -109,6 +110,11 @@ class Simulation {
   Real compute_adaptive_dt() const;
 
   bool gpu_active() const { return gpu_active_; }
+
+  const StepProfile& step_profile() const { return step_profile_; }
+  void reset_step_profile() { step_profile_.reset(); }
+  void print_step_profile() const;
+
   ChemicalFieldGpu&       chem_gpu()       { return chem_gpu_; }
   const ChemicalFieldGpu& chem_gpu() const { return chem_gpu_; }
   AgentPoolGpu&           agents_gpu()       { return agents_gpu_; }
@@ -164,6 +170,9 @@ class Simulation {
   Int  step_count_ = 0;
   Real next_output_ = 0.0;
   Real next_snapshot_ = 0.0;
+
+  // Step profiling
+  StepProfile step_profile_;
 
   // GPU acceleration state
   bool gpu_active_ = false;
