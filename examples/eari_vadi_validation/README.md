@@ -29,7 +29,9 @@ cd ../python
 pip install -e ".[dev]"
 python -m gut_ibm_tools.validation_regression \
   ../build/eari_vadi_validation.h5 \
-  --golden tests/fixtures/eari_vadi_ci_golden.json
+  --golden tests/fixtures/eari_vadi_ci_golden.json \
+  --fish-golden tests/fixtures/eari_vadi_ci_fish_golden.json \
+  --check-fish-targets
 ```
 
 Or use the CI helper script from the repo root:
@@ -47,4 +49,10 @@ python -m gut_ibm_tools.validation_regression \
   ../build/eari_vadi_validation.h5 \
   --write-golden tests/fixtures/eari_vadi_ci_golden.json \
   --scenario eari_vadi_ci
+
+# FISH observability golden (issue #25):
+python -m gut_ibm_tools.validation_regression \
+  ../build/eari_vadi_validation.h5 \
+  --write-fish-golden tests/fixtures/eari_vadi_ci_fish_golden.json \
+  --fish-scenario eari_vadi_ci_fish
 ```

@@ -1,0 +1,16 @@
+{
+  "scenario": "sample_hdf5_fish",
+  "metrics": {
+    "plasmid_dna_fish_detection_fraction": 0.75,
+    "plasmid_dna_fish_mean_snr": 71.37511759231397,
+    "immunity_hipr_detectable": 0.0,
+    "immunity_hcr_detectable": 1.0,
+    "n_detected": 9.0,
+    "detection_fraction": 0.75,
+    "monochromatic_score_detected": 1.0,
+    "immunity_mrna_detection_fraction": 0.3333333333333333,
+    "immunity_mrna_hcr_detection_fraction": 1.0,
+    "colicin_plasmid_detection_fraction": 0.75,
+    "rrna_phylogroup_detection_fraction": 1.0
+  }
+}

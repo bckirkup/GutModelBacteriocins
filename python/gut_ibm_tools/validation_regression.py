@@ -17,6 +17,7 @@ from typing import Any
 
 import numpy as np
 
+from .fish_observation import flatten_fish_metrics, validate_fish_observability
 from .hdf5_reader import GutIBMData
 from .validation import validate_genomic_signatures, validate_spatial_signatures
 
@@ -69,6 +70,45 @@ GOLDEN_METRICS = frozenset({
     "transient_mean_bi_loci",
     "transient_mean_btuB_expression",
 })
+
+# FISH observability metrics (issue #25) — deterministic given fixed RNG seed.
+FISH_GOLDEN_METRICS = frozenset({
+    "plasmid_dna_fish_detection_fraction",
+    "plasmid_dna_fish_mean_snr",
+    "immunity_hipr_detectable",
+    "immunity_hcr_detectable",
+    "n_detected",
+    "detection_fraction",
+    "monochromatic_score_detected",
+    "immunity_mrna_detection_fraction",
+    "immunity_mrna_hcr_detection_fraction",
+    "colicin_plasmid_detection_fraction",
+    "rrna_phylogroup_detection_fraction",
+})
+
+# Biological invariants enforced on every CI FISH check (VADI §75).
+FISH_TARGETS: dict[str, dict[str, Any]] = {
+    "immunity_hipr_detectable": {
+        "max": 0.5,
+        "description": "Immunity mRNA below HiPR-FISH detection (single-digit copies)",
+        "references": ["VADI §75", "issue #25"],
+    },
+    "immunity_hcr_detectable": {
+        "min": 0.5,
+        "description": "HCR-FISH amplification rescues low-copy immunity mRNA",
+        "references": ["VADI §75", "issue #25"],
+    },
+    "plasmid_dna_fish_detection_fraction": {
+        "min": 0.5,
+        "description": "Multicopy plasmid DNA-FISH detects colicin carriers",
+        "references": ["docs/MECHANISMS.md", "issue #25"],
+    },
+    "rrna_phylogroup_detection_fraction": {
+        "min": 0.9,
+        "description": "Multicopy rRNA operons detectable by DNA-FISH",
+        "references": ["VADI §75", "issue #25"],
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -123,6 +163,86 @@ def check_thresholds(metrics: dict[str, float]) -> list[ValidationFailure]:
     return failures
 
 
+def evaluate_fish_metrics(
+    h5_path: str | Path,
+    *,
+    step: str | None = None,
+    fish_seed: int = 25,
+) -> dict[str, float]:
+    """Compute FISH observability metrics from an HDF5 file (issue #25)."""
+    with GutIBMData(h5_path) as data:
+        if not data.steps:
+            raise ValueError(f"No step groups found in {h5_path}")
+        target_step = step if step is not None else data.steps[-1]
+        rng = np.random.default_rng(fish_seed)
+        raw = validate_fish_observability(data, target_step, rng=rng)
+        return flatten_fish_metrics(raw)
+
+
+def check_fish_targets(metrics: dict[str, float]) -> list[ValidationFailure]:
+    """Check FISH metrics against documented detection-limit invariants."""
+    failures: list[ValidationFailure] = []
+
+    for name, spec in FISH_TARGETS.items():
+        if name not in metrics:
+            continue
+        value = metrics[name]
+        if "min" in spec and value < spec["min"]:
+            refs = ", ".join(spec.get("references", []))
+            failures.append(ValidationFailure(
+                name,
+                f"{value:.4g} < min {spec['min']} ({spec['description']}; {refs})",
+            ))
+        if "max" in spec and value > spec["max"]:
+            refs = ", ".join(spec.get("references", []))
+            failures.append(ValidationFailure(
+                name,
+                f"{value:.4g} > max {spec['max']} ({spec['description']}; {refs})",
+            ))
+
+    return failures
+
+
+def compare_fish_golden(
+    metrics: dict[str, float],
+    golden: dict[str, Any],
+    *,
+    rtol: float = 1e-4,
+    atol: float = 1e-6,
+) -> list[ValidationFailure]:
+    """Compare computed FISH metrics to a golden baseline within tolerance."""
+    failures: list[ValidationFailure] = []
+    expected = golden.get("metrics", golden)
+
+    for name in FISH_GOLDEN_METRICS:
+        if name not in expected:
+            continue
+        if name not in metrics:
+            failures.append(ValidationFailure(f"fish.{name}", "missing from computed metrics"))
+            continue
+        exp = float(expected[name])
+        got = float(metrics[name])
+        if not np.isclose(got, exp, rtol=rtol, atol=atol):
+            failures.append(ValidationFailure(
+                f"fish.{name}",
+                f"got {got:.6g}, expected {exp:.6g} (rtol={rtol}, atol={atol})",
+            ))
+
+    return failures
+
+
+def write_fish_golden(metrics: dict[str, float], path: str | Path, *, scenario: str) -> None:
+    payload = {
+        "scenario": scenario,
+        "metrics": {k: float(v) for k, v in metrics.items() if k in FISH_GOLDEN_METRICS},
+    }
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+        f.write("\n")
+
+
 def compare_golden(
     metrics: dict[str, float],
     golden: dict[str, Any],
@@ -172,12 +292,15 @@ def run_validation(
     h5_path: str | Path,
     *,
     golden_path: str | Path | None = None,
+    fish_golden_path: str | Path | None = None,
     check_targets: bool = False,
+    enforce_fish_targets: bool = False,
     rtol: float = 1e-4,
     atol: float = 1e-6,
-) -> tuple[dict[str, float], list[ValidationFailure]]:
+) -> tuple[dict[str, float], dict[str, float] | None, list[ValidationFailure]]:
     metrics = evaluate_metrics(h5_path)
     failures: list[ValidationFailure] = []
+    fish_metrics: dict[str, float] | None = None
 
     if golden_path is not None:
         golden = load_golden(golden_path)
@@ -186,12 +309,23 @@ def run_validation(
     if check_targets:
         failures.extend(check_thresholds(metrics))
 
-    return metrics, failures
+    if fish_golden_path is not None or enforce_fish_targets:
+        fish_metrics = evaluate_fish_metrics(h5_path)
+        if fish_golden_path is not None:
+            fish_golden = load_golden(fish_golden_path)
+            failures.extend(compare_fish_golden(
+                fish_metrics, fish_golden, rtol=rtol, atol=atol,
+            ))
+        if enforce_fish_targets:
+            failures.extend(check_fish_targets(fish_metrics))
+
+    return metrics, fish_metrics, failures
 
 
-def _print_metrics(metrics: dict[str, float]) -> None:
+def _print_metrics(metrics: dict[str, float], *, prefix: str = "") -> None:
+    label = f"{prefix} " if prefix else ""
     for key in sorted(metrics):
-        print(f"  {key}: {metrics[key]:.6g}")
+        print(f"  {label}{key}: {metrics[key]:.6g}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -222,6 +356,27 @@ def main(argv: list[str] | None = None) -> int:
         default="eari_vadi_ci",
         help="Scenario label stored in --write-golden output",
     )
+    parser.add_argument(
+        "--fish-golden",
+        type=Path,
+        help="Golden JSON baseline for FISH observability regression (issue #25)",
+    )
+    parser.add_argument(
+        "--check-fish-targets",
+        action="store_true",
+        help="Enforce FISH detection-limit invariants (HiPR vs HCR vs plasmid DNA-FISH)",
+    )
+    parser.add_argument(
+        "--write-fish-golden",
+        type=Path,
+        metavar="PATH",
+        help="Write computed FISH metrics to a golden JSON file and exit",
+    )
+    parser.add_argument(
+        "--fish-scenario",
+        default="eari_vadi_ci_fish",
+        help="Scenario label stored in --write-fish-golden output",
+    )
     args = parser.parse_args(argv)
 
     if not args.h5_file.is_file():
@@ -234,6 +389,16 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
+    if args.write_fish_golden is not None:
+        fish_metrics = evaluate_fish_metrics(args.h5_file)
+        write_fish_golden(fish_metrics, args.write_fish_golden, scenario=args.fish_scenario)
+        print(f"Wrote FISH golden metrics to {args.write_fish_golden}")
+        _print_metrics(
+            {k: fish_metrics[k] for k in sorted(fish_metrics) if k in FISH_GOLDEN_METRICS},
+            prefix="fish",
+        )
+        return 0
+
     if args.write_golden is not None:
         write_golden(metrics, args.write_golden, scenario=args.scenario)
         print(f"Wrote golden metrics to {args.write_golden}")
@@ -241,14 +406,28 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     failures: list[ValidationFailure] = []
+    fish_metrics: dict[str, float] | None = None
     if args.golden is not None:
         golden = load_golden(args.golden)
         failures.extend(compare_golden(metrics, golden, rtol=args.rtol, atol=args.atol))
     if args.check_targets:
         failures.extend(check_thresholds(metrics))
 
+    if args.fish_golden is not None or args.check_fish_targets:
+        fish_metrics = evaluate_fish_metrics(args.h5_file)
+        if args.fish_golden is not None:
+            fish_golden = load_golden(args.fish_golden)
+            failures.extend(compare_fish_golden(
+                fish_metrics, fish_golden, rtol=args.rtol, atol=args.atol,
+            ))
+        if args.check_fish_targets:
+            failures.extend(check_fish_targets(fish_metrics))
+
     print("Validation metrics:")
     _print_metrics(metrics)
+    if fish_metrics is not None:
+        print("FISH observability metrics:")
+        _print_metrics(fish_metrics, prefix="fish")
 
     if failures:
         print("\nValidation failures:", file=sys.stderr)
@@ -259,8 +438,12 @@ def main(argv: list[str] | None = None) -> int:
     modes = []
     if args.golden is not None:
         modes.append(f"golden ({args.golden})")
+    if args.fish_golden is not None:
+        modes.append(f"fish golden ({args.fish_golden})")
     if args.check_targets:
         modes.append("EARI/VADI targets")
+    if args.check_fish_targets:
+        modes.append("FISH targets")
     label = " and ".join(modes) if modes else "metrics only"
     print(f"\nValidation passed ({label}).")
     return 0

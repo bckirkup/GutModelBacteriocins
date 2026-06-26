@@ -164,6 +164,23 @@ def test_compute_snr_and_detection_mask() -> None:
     assert detected.tolist() == [False, False, True]
 
 
+def test_flatten_fish_metrics_roundtrip() -> None:
+    from gut_ibm_tools.fish_observation import flatten_fish_metrics
+
+    raw = {
+        "technique_comparison": {
+            "immunity_mrna": {"detection_fraction": 0.1},
+            "colicin_plasmid": {"detection_fraction": 0.9},
+        },
+        "plasmid_dna_fish_detection_fraction": 0.9,
+        "immunity_hipr_detectable": 0.0,
+    }
+    flat = flatten_fish_metrics(raw)
+    assert flat["immunity_mrna_detection_fraction"] == 0.1
+    assert flat["colicin_plasmid_detection_fraction"] == 0.9
+    assert flat["plasmid_dna_fish_detection_fraction"] == 0.9
+
+
 def test_fish_probe_validation_errors() -> None:
     with pytest.raises(ValueError, match="hybridization_efficiency"):
         FishProbe(
