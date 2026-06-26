@@ -320,6 +320,7 @@ loop (pairwise neighbor interactions) remains serial due to cross-agent writes.
 | `GUTIBM_USE_CUDA` | `OFF` | CMake option to compile CUDA kernels |
 | `gpu_enabled` | `false` | Runtime toggle (input file); requires CUDA build |
 | `gpu_device_id` | `-1` | CUDA device index; `-1` = `MPI_rank % num_devices` |
+| `profile_steps` | `false` | Per-step wall-clock profiling on rank 0 (see `docs/SCALING.md`) |
 
 **Build with CUDA:**
 ```bash

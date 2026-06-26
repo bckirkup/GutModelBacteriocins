@@ -63,7 +63,7 @@ jobs:
       - name: Integration + slow unit tests
         run: |
           cd build
-          ctest -L 'integration|slow' -LE gpu --output-on-failure --parallel 2
+          ctest -L 'integration|slow|benchmark' -LE gpu --output-on-failure --parallel 2
 
   openmp-parity:
     name: OpenMP parity

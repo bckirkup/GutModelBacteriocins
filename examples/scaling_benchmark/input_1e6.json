@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "Scaling benchmark template for 10^6 agents (issue #55).",
+    "Run: mpirun -np 4 ./gut_ibm ../examples/scaling_benchmark/input_1e6.json",
+    "Full sweep: bash scripts/run_scaling_benchmark.sh",
+    "Enable profile_steps for per-phase hotspot breakdown."
+  ],
+
+  "total_time": 600,
+  "bio_dt": 60,
+  "output_interval": 1.0e9,
+  "seed": 55,
+  "profile_steps": true,
+
+  "domain_x": 0.002,
+  "domain_y": 0.002,
+  "domain_z": 0.0001,
+  "grid_dx": 2e-6,
+
+  "mucus_thickness": 100e-6,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+
+  "vbf_density": 1e11,
+  "vbf_viscosity": 0.01,
+
+  "toxin_cutoff": 200e-6,
+  "nutrient_cutoff": 50e-6,
+  "use_fmm": true,
+  "fmm_theta": 0.5,
+  "fmm_expansion_order": 2,
+
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 1000000,
+      "mu_max": 5.5e-4,
+      "plasmids": ["ColE1", "ColB"],
+      "conjugative": true
+    }
+  ],
+
+  "hdf5_file": "scaling_benchmark_1e6.h5",
+  "hdf5_every": 0
+}

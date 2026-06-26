@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Lightweight scaling benchmark (10^5 agents) for manual/HPC smoke runs.",
+    "CI uses tests/test_scaling_benchmark.cpp at smaller counts."
+  ],
+
+  "total_time": 300,
+  "bio_dt": 60,
+  "output_interval": 1.0e9,
+  "seed": 55,
+  "profile_steps": true,
+
+  "domain_x": 0.001,
+  "domain_y": 0.001,
+  "domain_z": 0.0001,
+  "grid_dx": 2e-6,
+
+  "toxin_cutoff": 200e-6,
+  "nutrient_cutoff": 50e-6,
+  "use_fmm": true,
+  "fmm_theta": 0.5,
+
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 100000,
+      "mu_max": 5.5e-4,
+      "plasmids": ["ColE1", "ColB"],
+      "conjugative": true
+    }
+  ],
+
+  "hdf5_file": "scaling_benchmark_1e5.h5",
+  "hdf5_every": 0
+}

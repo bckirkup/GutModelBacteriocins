@@ -376,6 +376,37 @@ Real Simulation::compute_adaptive_dt() const {
   return dt;
 }
 
+void Simulation::print_step_profile() const {
+  if (step_profile_.step_count <= 0) return;
+
+  const int n = step_profile_.step_count;
+  const double inv = 1.0 / static_cast<double>(n);
+  const double total = step_profile_.total_s() * inv;
+
+  std::cout << "Step profile (mean wall time per step, s):\n"
+            << "  ghost_exchange=" << step_profile_.ghost_exchange_s * inv << "\n"
+            << "  spatial_hash=" << step_profile_.spatial_hash_s * inv << "\n"
+            << "  biology=" << step_profile_.biology_s * inv << "\n"
+            << "  chemistry=" << step_profile_.chemistry_s * inv << "\n"
+            << "  physics=" << step_profile_.physics_s * inv << "\n"
+            << "  mpi_migrate=" << step_profile_.mpi_migrate_s * inv << "\n"
+            << "  cleanup=" << step_profile_.cleanup_s * inv << "\n"
+            << "  total=" << total << "\n"
+            << "PROFILE_CSV steps=" << n
+            << " ghost_s=" << step_profile_.ghost_exchange_s * inv
+            << " hash_s=" << step_profile_.spatial_hash_s * inv
+            << " biology_s=" << step_profile_.biology_s * inv
+            << " chemistry_s=" << step_profile_.chemistry_s * inv
+            << " physics_s=" << step_profile_.physics_s * inv
+            << " mpi_s=" << step_profile_.mpi_migrate_s * inv
+            << " cleanup_s=" << step_profile_.cleanup_s * inv
+            << " total_s=" << total
+            << " agents=" << global_agent_count_
+            << " ranks=" << domain_.nprocs()
+            << "\n"
+            << std::flush;
+}
+
 void Simulation::run() {
   int rank = domain_.rank();
 
@@ -427,10 +458,16 @@ void Simulation::run() {
               << "  Resident retention: " << retention * 100.0 << "%\n"
               << "  Dominant lineage: " << lineage_.dominant_lineage() << "\n"
               << std::flush;
+    if (cfg_.profile_steps) {
+      print_step_profile();
+    }
   }
 }
 
 void Simulation::step(Real dt) {
+  StepProfiler profiler(cfg_.profile_steps);
+  profiler.start();
+
   // Update advection time for peristaltic oscillation
   advection_.set_time(time_);
 
@@ -443,6 +480,7 @@ void Simulation::step(Real dt) {
 
   // Exchange ghost agents for cross-boundary neighbor queries
   exchange_ghost_agents();
+  profiler.lap(step_profile_.ghost_exchange_s);
 
   if (gpu_active_) {
     agents_gpu_.sync_from_host(agents_);
@@ -465,6 +503,7 @@ void Simulation::step(Real dt) {
 
   rebuild_spatial_hash();
   update_grid_coupling();
+  profiler.lap(step_profile_.spatial_hash_s);
 
   for (auto& fix : fixes_) {
     fix->pre_step(dt);
@@ -472,15 +511,18 @@ void Simulation::step(Real dt) {
 
   // 1. Biology module (uses ghost agents for neighbor interactions)
   module_biology(dt);
+  profiler.lap(step_profile_.biology_s);
 
   // Clear ghosts before physics to avoid moving them
   clear_ghost_agents();
 
   // 2. Chemistry module (QSSA, instantaneous)
   module_chemistry(dt);
+  profiler.lap(step_profile_.chemistry_s);
 
   // 3. Physics module (advection + mechanics)
   module_physics(dt);
+  profiler.lap(step_profile_.physics_s);
 
   // Post-step
   for (auto& fix : fixes_) {
@@ -489,6 +531,7 @@ void Simulation::step(Real dt) {
 
   // Migrate agents that crossed slab boundaries
   migrate_agents();
+  profiler.lap(step_profile_.mpi_migrate_s);
 
   if (gpu_active_) {
     agents_gpu_.sync_from_host(agents_);
@@ -500,6 +543,11 @@ void Simulation::step(Real dt) {
 
   // Compute global statistics
   allreduce_global_stats();
+  profiler.lap(step_profile_.cleanup_s);
+
+  if (cfg_.profile_steps) {
+    step_profile_.step_count++;
+  }
 
   time_ += dt;
   step_count_++;
