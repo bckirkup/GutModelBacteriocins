@@ -44,7 +44,7 @@ cd build && ctest --output-on-failure
 
 # Python tools (if modified)
 cd python && ruff check .
-# pytest not in CI yet — run locally when adding Python tests
+cd python && pytest tests/ -v -m "not integration"
 ```
 
 ## Architecture Rules
@@ -75,11 +75,12 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | `src/diffusion/` | Green's function, QSSA solver, Barnes-Hut octree |
 | `src/fixes/fix_registry.cpp` | Fix plugin registration and factory |
 | `src/genome/plasmid.cpp` | Plasmid library (`ColE1`, `ColB`, …) |
-| `src/io/input_parser.cpp` | Line-oriented config parser (~30 flat keys) |
-| `src/io/hdf5_writer.cpp` | Parallel HDF5 output (write-only) |
+| `src/io/input_parser.cpp` | JSON + legacy flat-key config parser |
+| `src/io/hdf5_writer.cpp` | Parallel HDF5 output + genome checkpoint groups |
+| `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
-| `examples/` | `single_colony/`, `diversity_paradox/` input templates |
-| `tests/` | 19 CTest targets |
+| `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/` |
+| `tests/` | 30 CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 
 ## Key Concepts
@@ -99,24 +100,54 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | **#40 Metabolic washout** | Fixed | `check_washout()` uses `mu_realized < gamma_flow` |
 | **#41 MPI state loss** | Fixed | `agent_transfer.cpp` serializes crypt, affinities, immunity escape |
 | **#42 Plasmid names** | Fixed | `PlasmidLibrary::find()` + aliases; warn on unknown names |
-| **#43 No multi-rank tests** | Open | All CTest runs at `nprocs=1` |
-| Input parser gaps | Open | Strains, FMM, peristaltic params only configurable in C++ |
-| No checkpoint restart | Open | `hdf5_writer.cpp` write-only |
-| `parse_real()` silent zero | Open | Bad config values become 0.0 without warning |
+| **#43 Multi-rank tests** | Fixed | `mpi_multi_rank` + `hdf5_roundtrip_parallel` CTest targets |
+| **#78 parse_real() silent zero** | Fixed | Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts |
+| GPU portability | Open | CUDA CI compiles/tests; no multi-GPU or production HPC path |
+| Large-scale MPI scaling | Open | 2-rank tests only; manual `mpirun -np 4+` for HPC validation |
 
 When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colicin_E1` aliases still resolve) and assert `agent.genome.bi_loci.size() > 0`.
 
 ## Test Coverage Map
 
-**Well tested:** spatial hash, Green's functions, octree/FMM, mechanics, advection, adaptive dt, iron fallback, acetate/MetE, ethanolamine, z-gradients, crypt refugia (single rank), immunity escape math.
+### C++ (CTest — 30 targets)
 
-**Gaps (add tests when touching these areas):**
-- `fix_bacteriocin`, `fix_receptor`, `fix_mutation` — no isolated unit tests
-- HDF5 round-trip / parallel I/O
-- Multi-rank MPI (`mpirun -np > 1`)
-- Python `gut_ibm_tools` — no pytest in CI
-- Metabolic washout trap end-to-end
-- OpenMP serial vs OpenMP build equivalence
+**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, bacteriocin, receptor, mutation.
+
+**Slow unit:** mechanics, immunity escape.
+
+**Integration (`ctest -L integration`):** smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), HDF5 round-trip, HDF5 checkpoint restart.
+
+**MPI:** `mpi_multi_rank` (`mpirun -np 2`), `hdf5_roundtrip_parallel`.
+
+**OpenMP:** `openmp_parity` + `scripts/compare_openmp_parity.sh` (serial vs OpenMP fingerprint).
+
+**GPU (CUDA job):** `greens_function_gpu`, `gpu_smoke` + `scripts/compare_gpu_parity.sh`.
+
+**Benchmark:** `scaling_benchmark` (issue #55 smoke counts).
+
+**Config diversity guardrail:** `test_config_diversity` runs short simulations from parser fixtures and example JSON files and asserts distinct deterministic fingerprints — catches configs silently reverting to defaults.
+
+### Python (pytest in CI)
+
+`python-lint` job runs `ruff check`, import smoke, and `pytest tests/ -m "not integration"`. Coverage includes HDF5 reader, analysis helpers, validation regression helpers, and FISH observation models (#25).
+
+### CI jobs (`.github/workflows/ci.yml`)
+
+| Job | What it exercises |
+|-----|-------------------|
+| `unit-tests` | Fast CTest unit shard |
+| `integration-tests` | Smoke, config diversity, HDF5, slow/benchmark tests |
+| `openmp-parity` | Serial vs OpenMP build fingerprints |
+| `cuda-compile` | GPU build + parity script |
+| `eari-vadi-validation` | Short EARI/VADI + FISH golden regression (#56, #25) |
+| `python-lint` | JSON syntax, ruff, pytest (fast) |
+
+### Gaps (add tests when touching these areas)
+
+- Multi-rank MPI beyond 2 processes (`mpirun -np 4+`)
+- Python integration pytest in CI (marked `integration` today)
+- Metabolic washout trap as a dedicated long-horizon regression
+- OpenMP equivalence on stochastic (toxin-kill) scenarios
 
 ## Adding Features — Agent Checklist
 
@@ -136,11 +167,16 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 - Guard all MPI calls with rank checks
 - Ensure collectives are called by all ranks
 - Update `pack_agent`/`unpack_agent` if adding agent or genome fields
-- Test manually with `mpirun -np 4` until #43 is resolved
+- Extend `test_mpi_multi_rank.cpp` when adding migration-sensitive state
 
 ### Python changes
 - Import from submodules (`gut_ibm_tools.hdf5_reader`, not top-level)
 - Add pytest tests; run `ruff check python/`
+
+### New config keys
+- Add to `InputParser::apply_flat_key()` and/or `config_json.cpp`
+- Add parser fixture under `tests/fixtures/` + assertion in `test_input_parser.cpp`
+- Extend `test_config_diversity.cpp` if the key should change simulation outcomes
 
 ## Configuration Quick Reference
 
@@ -148,13 +184,18 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 |------|-----|
 | Run with file | `./gut_ibm examples/single_colony/input.json` |
 | Default strains | Resident (`ColE1`+`ColB`, 500) + immigrant (100), no plasmids |
-| Strain setup in tests | `cfg.initial_strains` on `SimulationConfig` |
+| Strain setup in tests | `cfg.initial_strains` on `SimulationConfig` or `initial_strains` JSON array |
+| Fix selection | `fixes` JSON array or `cfg.enabled_fixes` (empty = all registered) |
+| Fix tunables | Flat keys (`kd_colicinE_btuB`, `bi_duplication_rate`, …) — see `docs/PARAMETERS.md` |
 | Plasmid names | `ColE1`, `ColE2`, `ColB`, `ColIa`, `ColM`, `MccV` |
 | HDF5 interval | `hdf5_every` (input file) or `cfg.hdf5.dump_every` (code) |
+| Checkpoint restart | `checkpoint_file` + optional `checkpoint_step` in input JSON |
 | Disable HDF5 in tests | `cfg.hdf5.enabled = false` |
+| Strict config | `GUTIBM_STRICT_CONFIG=1` aborts on invalid numerics |
 | MPI decomp axis | `cfg.domain.mpi_decomp_axis` (default 0 = x) |
-| Barnes-Hut FMM | `cfg.qssa.use_fmm`, `cfg.qssa.fmm_theta` (code only) |
-| Peristaltic mixing | `cfg.advection.peristaltic_*` (code only) |
+| Barnes-Hut FMM | `use_fmm`, `fmm_theta`, `fmm_expansion_order` in input JSON |
+| Peristaltic mixing | `peristaltic_*` keys in input JSON |
+| GPU | `gpu_enabled` in input JSON (CUDA build required) |
 
 Full parameter docs: `docs/PARAMETERS.md`.
 
@@ -165,13 +206,14 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `docs/MECHANISMS.md` — per-Fix biological mechanisms
 - `docs/API.md` — class reference
 - `docs/PARAMETERS.md` — configurable parameters
+- `docs/SCALING.md` — agent-count benchmarks and profiling
 
 ## Code Conventions
 
 - C++17 with modern idioms (smart pointers, RAII, move semantics)
 - CMake build system; sources GLOB'd — no manual source list for new `.cpp` in `src/`
 - MPI for parallelism (guard all MPI calls with rank checks)
-- HDF5 for I/O (parallel HDF5 when MPI is enabled)
+- HDF5 for I/O (parallel HDF5 when MPI enabled)
 - Python: NumPy, SciPy, h5py; matplotlib optional via `[viz]` extra
 - Fix hooks: `init()`, `pre_step()`, `compute()`, `post_step()` — not `pre_force`/`post_force`
 
@@ -184,10 +226,10 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - Update `examples/` if adding user-facing config
 - Update this file and `SKILL.md` if changing architecture, config keys, or known bugs
 
-## Open Issue Tracker (code review, Jun 2026)
+## Open Issue Tracker (Jun 2026)
 
-Critical path: #40 (washout), #41 (MPI serialization), #42 (plasmid names), #43 (MPI tests), #56 (validation pipeline).
+Recently closed critical path: #40–#43, #56, #75–#81, #25 (FISH models), #29 (higher-order FMM), #55 (scaling benchmarks).
 
-Full list: GitHub issues #40–#59 plus #33 (GPU), #29 (higher-order FMM), #25 (HCR-FISH validation).
+Remaining long-horizon: #33 (GPU production path), larger-scale MPI/HPC validation.
 
 **Project board:** [docs/PROJECT_BOARD.md](docs/PROJECT_BOARD.md) — kanban layout, PR bundles, merge order. Run `./scripts/setup_project_board.sh` to create GitHub labels, milestones, and a Projects v2 board.
