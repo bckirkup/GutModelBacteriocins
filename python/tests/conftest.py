@@ -73,6 +73,19 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
             lin.create_dataset("num_bi_loci", data=n_bi)
             lin.create_dataset("generation", data=np.zeros(n_agents, dtype=np.int32))
 
+            # Genome: plasmid carriage for DNA-FISH copy-number inference.
+            # Use a dedicated RNG so spatial/lineage streams stay golden-stable.
+            genome_rng = np.random.default_rng(9000 + step_idx)
+            genome = step_grp.create_group("genome")
+            has_conj = np.where(resident_mask, 1, 0).astype(np.int32)
+            genome.create_dataset("has_conjugative_plasmid", data=has_conj)
+            genome.create_dataset(
+                "plasmid_cost_amelioration",
+                data=genome_rng.uniform(0.0, 0.2, n_agents),
+            )
+            genome.create_dataset("mutations", data=np.zeros(n_agents, dtype=np.int32))
+            genome.create_dataset("parent_id", data=np.arange(n_agents, dtype=np.int64))
+
 
 @pytest.fixture
 def single_step_hdf5(tmp_path: Path) -> Path:

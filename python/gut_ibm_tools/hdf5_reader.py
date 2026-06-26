@@ -66,6 +66,15 @@ class GutIBMData:
         grp = self._file[f"{step}/lineage"]
         return {name: np.array(ds) for name, ds in grp.items()}
 
+    def get_genome(self, step: str) -> dict[str, np.ndarray]:
+        """Return per-agent genome arrays for a given step (if present)."""
+        assert self._file is not None
+        path = f"{step}/genome"
+        if path not in self._file:
+            return {}
+        grp = self._file[path]
+        return {name: np.array(ds) for name, ds in grp.items()}
+
     def time_series(self, field: str = "num_agents") -> tuple[np.ndarray, np.ndarray]:
         """Extract a scalar time series from metadata."""
         times, vals = [], []

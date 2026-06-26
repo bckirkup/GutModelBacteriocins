@@ -47,6 +47,13 @@ def test_get_lineage(sample_hdf5: Path) -> None:
         assert len(lineage["btuB_expression"]) == 12
 
 
+def test_get_genome(sample_hdf5: Path) -> None:
+    with GutIBMData(sample_hdf5) as data:
+        genome = data.get_genome("step_000000")
+        assert "has_conjugative_plasmid" in genome
+        assert len(genome["has_conjugative_plasmid"]) == 12
+
+
 def test_time_series_num_agents(sample_hdf5: Path) -> None:
     with GutIBMData(sample_hdf5) as data:
         times, counts = data.time_series("num_agents")
