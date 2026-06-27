@@ -6,6 +6,7 @@
 #include "input_parser.h"
 #include "plasmid.h"
 #include "hdf5_reader.h"
+#include "path_utils.h"
 
 #include <algorithm>
 #include <cassert>
@@ -350,13 +351,38 @@ void validate_parallel_roundtrip(const Simulation& sim, const std::string& filen
 #endif
 }
 
+std::string resolve_shared_test_h5_path(const char* env_var, const std::string& tag) {
+#ifdef GUTIBM_MPI
+  int rank = 0;
+  int nprocs = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+  std::string filename;
+  if (rank == 0) {
+    filename = resolve_test_h5_path(env_var, tag);
+  }
+
+  if (nprocs > 1) {
+    int len = 0;
+    if (rank == 0) len = static_cast<int>(filename.size());
+    MPI_Bcast(&len, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (rank != 0) filename.resize(static_cast<size_t>(len));
+    if (len > 0) {
+      MPI_Bcast(filename.data(), len, MPI_CHAR, 0, MPI_COMM_WORLD);
+    }
+  }
+
+  return filename;
+#else
+  return resolve_test_h5_path(env_var, tag);
+#endif
+}
+
 void run_roundtrip(bool parallel_io) {
-  const char* tmpdir = std::getenv("TMPDIR");
-  const char* env_path = std::getenv("GUTIBM_ROUNDTRIP_H5");
-  std::string base = tmpdir ? tmpdir : "/tmp";
-  std::string filename = env_path ? env_path
-                         : base + "/gutibm_roundtrip_"
-                           + (parallel_io ? "parallel" : "serial") + ".h5";
+  std::string filename = resolve_shared_test_h5_path(
+      "GUTIBM_ROUNDTRIP_H5",
+      parallel_io ? "roundtrip_parallel" : "roundtrip_serial");
 
   SimulationConfig cfg = make_roundtrip_config(filename, parallel_io);
   Simulation sim;

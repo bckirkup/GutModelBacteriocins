@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "hdf5_writer.h"
+#include "path_utils.h"
 #include "simulation.h"
 
 #ifdef GUTIBM_HDF5
@@ -201,6 +202,17 @@ void HDF5Writer::init(const HDF5Config& cfg) {
     return;
   }
 #endif
+
+  try {
+    validate_output_file_path(cfg_.filename);
+  } catch (const std::exception& ex) {
+    if (io_rank(cfg_) == 0) {
+      std::cerr << "Warning: invalid HDF5 output path '" << cfg_.filename
+                << "': " << ex.what() << " — HDF5 output disabled\n";
+    }
+    enabled_ = false;
+    return;
+  }
 
   file_id_ = static_cast<int64_t>(
       H5Fcreate(cfg_.filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT));

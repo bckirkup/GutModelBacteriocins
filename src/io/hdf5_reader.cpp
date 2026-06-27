@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "hdf5_reader.h"
+#include "path_utils.h"
 
 #include <algorithm>
 #include <cassert>
@@ -255,13 +256,20 @@ HDF5Reader::~HDF5Reader() {
 
 bool HDF5Reader::open(const std::string& filename) {
   close();
-  filename_ = filename;
+
+  try {
+    filename_ = validate_input_file_path(filename);
+  } catch (const std::exception&) {
+    open_ = false;
+    file_id_ = -1;
+    return false;
+  }
 
 #ifdef GUTIBM_HDF5
   // Clear stale HDF5 errors (e.g. from writer duplicate-group warnings).
   H5Eclear2(H5E_DEFAULT);
 
-  hid_t fid = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  hid_t fid = H5Fopen(filename_.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   if (fid < 0) {
     open_ = false;
     file_id_ = -1;
