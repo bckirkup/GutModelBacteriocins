@@ -73,6 +73,7 @@ gutibm_add_test(ethanolamine test_ethanolamine.cpp LABELS "unit")
 gutibm_add_test(adaptive_dt test_adaptive_dt.cpp LABELS "unit")
 gutibm_add_test(agent_transfer test_agent_transfer.cpp LABELS "unit")
 gutibm_add_test(fix_registry test_fix_registry.cpp LABELS "unit")
+gutibm_add_test(path_utils test_path_utils.cpp LABELS "unit")
 gutibm_add_test(input_parser test_input_parser.cpp
   LABELS "unit"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

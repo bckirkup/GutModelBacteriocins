@@ -4,6 +4,7 @@
 
 #include "input_parser.h"
 #include "config_json.h"
+#include "path_utils.h"
 #include "plasmid.h"
 #include <iostream>
 #include <algorithm>
@@ -145,9 +146,15 @@ void InputParser::apply_flat_key(SimulationConfig& cfg,
   else if (key == "crypt_exit_rate")   cfg.advection.crypt_exit_rate = parse_real(key, val);
   else if (key == "crypt_entry_rate")  cfg.advection.crypt_entry_rate = parse_real(key, val);
   else if (key == "crypt_carrying_capacity") cfg.advection.crypt_carrying_capacity = parse_int(key, val);
-  else if (key == "hdf5_file")         cfg.hdf5.filename = val;
+  else if (key == "hdf5_file") {
+    validate_path_syntax(val);
+    cfg.hdf5.filename = val;
+  }
   else if (key == "hdf5_every")        cfg.hdf5.dump_every = parse_int(key, val);
-  else if (key == "checkpoint_file")   cfg.checkpoint.file = val;
+  else if (key == "checkpoint_file") {
+    validate_path_syntax(val);
+    cfg.checkpoint.file = val;
+  }
   else if (key == "checkpoint_step")   cfg.checkpoint.step = val;
   else if (key == "adaptive_dt_enabled") cfg.adaptive_dt_enabled = (val == "true" || val == "1");
   else if (key == "dt_min")            cfg.dt_min = parse_real(key, val);
@@ -162,9 +169,18 @@ void InputParser::apply_flat_key(SimulationConfig& cfg,
 SimulationConfig InputParser::parse(const std::string& filename) {
   SimulationConfig cfg = default_config();
 
-  std::ifstream ifs(filename);
-  if (!ifs.is_open()) {
+  std::string config_path;
+  try {
+    config_path = validate_input_file_path(filename);
+  } catch (const std::exception& ex) {
     std::cerr << "Warning: cannot open config file '" << filename
+              << "' (" << ex.what() << "), using defaults\n";
+    return cfg;
+  }
+
+  std::ifstream ifs(config_path);
+  if (!ifs.is_open()) {
+    std::cerr << "Warning: cannot open config file '" << config_path
               << "', using defaults\n";
     return cfg;
   }

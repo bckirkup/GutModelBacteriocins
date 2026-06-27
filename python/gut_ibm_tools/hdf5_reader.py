@@ -10,12 +10,14 @@ from typing import Any
 import h5py
 import numpy as np
 
+from .path_utils import validate_input_path
+
 
 class GutIBMData:
     """Lazy-loading wrapper around a GutIBM HDF5 output file."""
 
     def __init__(self, filepath: str | Path) -> None:
-        self.path = Path(filepath)
+        self.path = validate_input_path(filepath)
         self._file: h5py.File | None = None
 
     def open(self) -> None:

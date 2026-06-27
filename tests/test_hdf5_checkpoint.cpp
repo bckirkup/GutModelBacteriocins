@@ -5,6 +5,7 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "hdf5_reader.h"
+#include "path_utils.h"
 #include "plasmid.h"
 
 #include <algorithm>
@@ -307,10 +308,7 @@ int main(int argc, char** argv) {
     std::cout << "HDF5 disabled at build time — skipping checkpoint tests.\n";
   }
 #else
-  const char* tmpdir = std::getenv("TMPDIR");
-  const char* env_path = std::getenv("GUTIBM_CHECKPOINT_H5");
-  std::string base = tmpdir ? tmpdir : "/tmp";
-  std::string filename = env_path ? env_path : base + "/gutibm_checkpoint_test.h5";
+  std::string filename = resolve_test_h5_path("GUTIBM_CHECKPOINT_H5", "checkpoint");
 
   if (rank == 0) std::cout << "=== HDF5 Checkpoint Restart Tests ===\n";
   test_checkpoint_restart(filename);

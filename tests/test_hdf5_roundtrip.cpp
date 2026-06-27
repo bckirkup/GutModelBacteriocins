@@ -6,6 +6,7 @@
 #include "input_parser.h"
 #include "plasmid.h"
 #include "hdf5_reader.h"
+#include "path_utils.h"
 
 #include <algorithm>
 #include <cassert>
@@ -351,12 +352,9 @@ void validate_parallel_roundtrip(const Simulation& sim, const std::string& filen
 }
 
 void run_roundtrip(bool parallel_io) {
-  const char* tmpdir = std::getenv("TMPDIR");
-  const char* env_path = std::getenv("GUTIBM_ROUNDTRIP_H5");
-  std::string base = tmpdir ? tmpdir : "/tmp";
-  std::string filename = env_path ? env_path
-                         : base + "/gutibm_roundtrip_"
-                           + (parallel_io ? "parallel" : "serial") + ".h5";
+  std::string filename = resolve_test_h5_path("GUTIBM_ROUNDTRIP_H5",
+                                              parallel_io ? "roundtrip_parallel"
+                                                          : "roundtrip_serial");
 
   SimulationConfig cfg = make_roundtrip_config(filename, parallel_io);
   Simulation sim;

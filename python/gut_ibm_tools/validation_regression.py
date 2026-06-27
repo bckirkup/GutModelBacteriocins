@@ -18,6 +18,7 @@ from typing import Any
 import numpy as np
 
 from .fish_observation import flatten_fish_metrics, validate_fish_observability
+from .path_utils import validate_input_path, validate_output_path, validate_path_syntax
 from .hdf5_reader import GutIBMData
 from .validation import validate_genomic_signatures, validate_spatial_signatures
 
@@ -236,8 +237,9 @@ def write_fish_golden(metrics: dict[str, float], path: str | Path, *, scenario: 
         "scenario": scenario,
         "metrics": {k: float(v) for k, v in metrics.items() if k in FISH_GOLDEN_METRICS},
     }
-    out = Path(path)
+    out = validate_path_syntax(path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    validate_output_path(out)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
         f.write("\n")
@@ -272,7 +274,8 @@ def compare_golden(
 
 
 def load_golden(path: str | Path) -> dict[str, Any]:
-    with open(path, encoding="utf-8") as f:
+    safe_path = validate_input_path(path)
+    with open(safe_path, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -281,8 +284,9 @@ def write_golden(metrics: dict[str, float], path: str | Path, *, scenario: str) 
         "scenario": scenario,
         "metrics": {k: float(v) for k, v in metrics.items() if k in GOLDEN_METRICS},
     }
-    out = Path(path)
+    out = validate_path_syntax(path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    validate_output_path(out)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
         f.write("\n")
@@ -298,7 +302,8 @@ def run_validation(
     rtol: float = 1e-4,
     atol: float = 1e-6,
 ) -> tuple[dict[str, float], dict[str, float] | None, list[ValidationFailure]]:
-    metrics = evaluate_metrics(h5_path)
+    safe_h5_path = validate_input_path(h5_path)
+    metrics = evaluate_metrics(safe_h5_path)
     failures: list[ValidationFailure] = []
     fish_metrics: dict[str, float] | None = None
 
@@ -310,7 +315,7 @@ def run_validation(
         failures.extend(check_thresholds(metrics))
 
     if fish_golden_path is not None or enforce_fish_targets:
-        fish_metrics = evaluate_fish_metrics(h5_path)
+        fish_metrics = evaluate_fish_metrics(safe_h5_path)
         if fish_golden_path is not None:
             fish_golden = load_golden(fish_golden_path)
             failures.extend(compare_fish_golden(
