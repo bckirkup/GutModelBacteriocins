@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest
@@ -38,6 +37,7 @@ def test_validate_output_path_rejects_symlink_in_world_writable_parent(
     world_dir = tmp_path / "world_writable"
     world_dir.mkdir(mode=0o777)
     real_file = world_dir / "real.h5"
+    real_file.write_bytes(b"data")
     link = world_dir / "linked.h5"
     link.symlink_to(real_file)
 

@@ -351,10 +351,38 @@ void validate_parallel_roundtrip(const Simulation& sim, const std::string& filen
 #endif
 }
 
+std::string resolve_shared_test_h5_path(const char* env_var, const std::string& tag) {
+#ifdef GUTIBM_MPI
+  int rank = 0;
+  int nprocs = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+  std::string filename;
+  if (rank == 0) {
+    filename = resolve_test_h5_path(env_var, tag);
+  }
+
+  if (nprocs > 1) {
+    int len = 0;
+    if (rank == 0) len = static_cast<int>(filename.size());
+    MPI_Bcast(&len, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (rank != 0) filename.resize(static_cast<size_t>(len));
+    if (len > 0) {
+      MPI_Bcast(filename.data(), len, MPI_CHAR, 0, MPI_COMM_WORLD);
+    }
+  }
+
+  return filename;
+#else
+  return resolve_test_h5_path(env_var, tag);
+#endif
+}
+
 void run_roundtrip(bool parallel_io) {
-  std::string filename = resolve_test_h5_path("GUTIBM_ROUNDTRIP_H5",
-                                              parallel_io ? "roundtrip_parallel"
-                                                          : "roundtrip_serial");
+  std::string filename = resolve_shared_test_h5_path(
+      "GUTIBM_ROUNDTRIP_H5",
+      parallel_io ? "roundtrip_parallel" : "roundtrip_serial");
 
   SimulationConfig cfg = make_roundtrip_config(filename, parallel_io);
   Simulation sim;
