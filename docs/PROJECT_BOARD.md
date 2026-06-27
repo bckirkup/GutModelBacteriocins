@@ -68,7 +68,7 @@ _None_
 |--------|--------|-------|-------|
 | **HDF5 checkpoint v2** | #80 + #81 | `track:hdf5` | Writer schema + `mpirun -np 2` round-trip; natural single PR |
 | **Fix tunables** | #79 | `track:config` | Nested JSON keys; land after #78 (merged) |
-| **Docs hygiene** | #76 | `track:docs` | Refresh `AGENTS.md` after above land; docs-only |
+| **Docs hygiene** | #76 | `track:docs` | AGENTS.md + SKILL refresh; config diversity CI test |
 
 ### Backlog
 
@@ -146,7 +146,7 @@ Suggested priorities:
 
 ## Closed queue reference (#40–#60)
 
-The Jun 2026 review queue is largely complete. Remaining follow-ups are #76–#81 plus long-horizon #25, #29, #55. See [AGENTS.md](../AGENTS.md) open issue tracker for landmines still documented as open in code comments.
+The Jun 2026 review queue is largely complete (#40–#81, #25, #29, #55). Remaining long-horizon: #33 (GPU production path), larger-scale MPI/HPC validation. See [AGENTS.md](../AGENTS.md) for current landmines.
 
 ---
 

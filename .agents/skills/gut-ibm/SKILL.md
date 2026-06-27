@@ -55,7 +55,15 @@ No manual source-list edit needed for new Fix or diffusion files.
 cd build && ctest --output-on-failure
 ```
 
-27 CTest targets (all run at `nprocs=1` today — no multi-rank MPI tests yet):
+CI shards tests by label (see `.github/workflows/ci.yml`):
+
+```bash
+ctest -L unit -LE slow --output-on-failure      # fast unit gate
+ctest -L 'integration|slow|benchmark' -LE gpu   # integration job
+ctest -L gpu                                     # CUDA job only
+```
+
+30 CTest targets (2-rank MPI tests included; no `mpirun -np 4+` gate yet):
 
 | Test | File | Focus |
 |------|------|-------|
@@ -64,8 +72,10 @@ cd build && ctest --output-on-failure
 | `agent` | `test_agent.cpp` | Agent pool, plasmid library |
 | `iron_fallback` | `test_iron_fallback.cpp` | Secondary iron receptors |
 | `octree` | `test_octree.cpp` | Barnes-Hut FMM vs exact GF |
+| `fmm` | `test_fmm.cpp` | Higher-order FMM accuracy |
 | `conjugation` | `test_conjugation.cpp` | Pili length heterogeneity |
 | `smoke` | `test_smoke.cpp` | End-to-end mini simulation |
+| `config_diversity` | `test_config_diversity.cpp` | Distinct fingerprints across configs |
 | `z_gradient` | `test_z_gradient.cpp` | Z-dependent nutrient gradients |
 | `domain_decomp` | `test_domain_decomp.cpp` | Slab logic (single rank) |
 | `acetate_mete` | `test_acetate_mete.cpp` | Acetate inhibition of MetE |
@@ -78,10 +88,15 @@ cd build && ctest --output-on-failure
 | `agent_transfer` | `test_agent_transfer.cpp` | MPI pack/unpack round-trip |
 | `fix_registry` | `test_fix_registry.cpp` | Default Fix plugin registration |
 | `input_parser` | `test_input_parser.cpp` | Example JSON config files |
+| `bacteriocin` | `test_bacteriocin.cpp` | SOS lysis / secretion unit tests |
+| `receptor` | `test_receptor.cpp` | TBDT binding / killing unit tests |
+| `mutation` | `test_mutation.cpp` | BI locus evolution unit tests |
+| `hdf5_roundtrip` | `test_hdf5_roundtrip.cpp` | Writer/reader schema parity |
+| `hdf5_checkpoint` | `test_hdf5_checkpoint.cpp` | Checkpoint restart |
+| `mpi_multi_rank` | `test_mpi_multi_rank.cpp` | 2-rank agent migration |
+| `scaling_benchmark` | `test_scaling_benchmark.cpp` | Agent-count timing smoke |
 | `greens_function_gpu` | `test_greens_function_gpu.cpp` | GPU vs CPU GF parity (CUDA build) |
 | `gpu_smoke` | `test_gpu_smoke.cpp` | Short CPU vs GPU simulation fingerprint |
-
-**No dedicated tests yet** for `fix_bacteriocin`, `fix_receptor`, or `fix_mutation` in isolation.
 
 ## Run Simulation
 
@@ -114,7 +129,7 @@ Import from package root (re-exported in `__init__.py`):
 from gut_ibm_tools import GutIBMData, analysis, validation, visualization
 ```
 
-CI currently runs `ruff check python/` and an import smoke test only — no pytest in CI yet.
+CI runs `ruff check python/`, fast pytest (`-m "not integration"`), JSON config validation (`scripts/validate_config_json.sh`), and EARI/VADI golden regression (`scripts/validate_eari_vadi.sh`).
 
 ## Simulation Timestep (read before touching `simulation.cpp`)
 
@@ -187,8 +202,14 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `adaptive_dt_enabled`, `dt_min`, `dt_max`, `dt_safety`, `dt_growth_limit` | Adaptive timestep |
 | `initial_strains` | JSON array of strain objects |
 | `fixes` | JSON array of Fix plugin names (execution order) |
+| `kd_colicinE_btuB`, `kill_rate_colicin`, … | Receptor Fix tunables |
+| `base_transfer_rate`, `pili_heterogeneity`, … | Conjugation Fix tunables |
+| `bi_duplication_rate`, `max_bi_loci`, … | Mutation Fix tunables |
+| `use_fmm`, `fmm_theta`, `fmm_expansion_order` | Barnes-Hut FMM |
+| `peristaltic_enabled`, `peristaltic_period`, … | Peristaltic advection |
+| `gpu_enabled` | GPU acceleration (CUDA build) |
 
-`parse_real()` returns `0.0` on failure — silent. Unknown keys are ignored.
+Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts. Unknown keys are ignored.
 
 ### Initial strains (JSON array or code)
 
@@ -257,6 +278,8 @@ sim.run();
 ```
 
 Always assert mechanism outcomes when testing biology (e.g. `bi_loci.size() > 0`, kill counts, washout events).
+
+For config keys and parser fixtures, extend `test_config_diversity.cpp` so distinct settings produce distinct simulation fingerprints — this catches silent overrides to `default_config()`.
 
 ## Spec Documents
 
