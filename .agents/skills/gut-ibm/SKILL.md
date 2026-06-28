@@ -293,3 +293,87 @@ For config keys and parser fixtures, extend `test_config_diversity.cpp` so disti
 ## GPU
 
 CUDA acceleration lives in `src/gpu/`. Enable with `-DGUTIBM_USE_CUDA=ON` and `gpu_enabled true` at runtime. Falls back to OpenMP/serial CPU when CUDA is unavailable. See `src/gpu/README.md` and issue #33.
+
+## SonarQube Coding Guidelines
+
+The project is scanned by SonarQube (`bckirkup_GutModelBacteriocins`). Follow these patterns to avoid recurring issues.
+
+### C++ Exception Handling (S112, S1181)
+
+Use domain-specific exceptions from `src/core/error.h`, never generic `std::runtime_error`:
+
+```cpp
+#include "error.h"
+// Good:
+throw gutibm::ConfigError("missing key: " + key);
+throw gutibm::HDF5Error("dataset not found");
+throw gutibm::PathError("path traversal detected");
+throw gutibm::SimulationError("invalid state");
+// Bad:
+throw std::runtime_error("something went wrong");
+```
+
+Hierarchy: `Error` ← `ConfigError`, `IOError` ← `HDF5Error`/`PathError`, `CheckpointError`, `SimulationError`.
+
+Catch blocks must name specific types, never `catch (...)`:
+
+```cpp
+// Good:
+catch (const ConfigError& e) { ... }
+catch (const IOError& e) { ... }       // catches HDF5Error + PathError
+catch (const std::exception& e) { ... } // only as last resort in parse helpers
+// Bad:
+catch (...) { ... }
+```
+
+### Enum-to-Integer Conversion (S7035)
+
+Use the `to_underlying()` polyfill in `src/core/types.h` (C++17-safe):
+
+```cpp
+int idx = to_underlying(ReceptorType::BtuB);  // Good
+int idx = static_cast<int>(ReceptorType::BtuB); // Bad — triggers S7035
+```
+
+Exception: compile-time constants like `NUM_RECEPTORS` keep `static_cast<int>()` because they need a specific result type.
+
+### Variable Declarations (S1659)
+
+One variable per declaration statement:
+
+```cpp
+// Good:
+std::vector<double> x(n);
+std::vector<double> y(n);
+int lo = 0;
+int hi = 0;
+
+// Bad:
+std::vector<double> x(n), y(n);
+int lo = 0, hi = 0;
+```
+
+### Python RNG (S6711, S6709)
+
+Use `np.random.default_rng()` instead of the legacy `np.random.seed()` / `np.random.choice()` API:
+
+```python
+# Good:
+rng = np.random.default_rng(seed)
+indices = rng.choice(n, m, replace=False)
+values = rng.uniform(lo, hi, size=(m, 3))
+
+# Bad:
+np.random.seed(seed)
+indices = np.random.choice(n, m, replace=False)
+```
+
+Pass `rng` as an optional parameter to functions that need randomness. Default to `np.random.default_rng()` when `None`.
+
+### General Patterns
+
+- **Nullptr (S4962):** Use `nullptr`, never `NULL` or `0` for pointers.
+- **Const references (S5350):** Pass non-trivial objects by `const&` when not modifying.
+- **Moved-from objects (S5272):** Don't read a value after `std::move`; extract needed data first.
+- **Empty blocks (S108):** Add a comment explaining why the block is intentionally empty.
+- **Unused variables (S1481):** Remove or `(void)var;` for deliberately unused parameters.

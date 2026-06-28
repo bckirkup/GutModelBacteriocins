@@ -20,7 +20,11 @@ from .analysis import (
 from .hdf5_reader import GutIBMData
 
 
-def validate_spatial_signatures(data: GutIBMData, step: str) -> dict[str, float]:
+def validate_spatial_signatures(
+    data: GutIBMData,
+    step: str,
+    rng: np.random.Generator | None = None,
+) -> dict[str, float]:
     """
     Validate spatial signatures via exclusion-radius clustering (VADI §75).
 
@@ -62,7 +66,7 @@ def validate_spatial_signatures(data: GutIBMData, step: str) -> dict[str, float]
     mean_excl = float(np.mean(list(excl_radii.values()))) if excl_radii else 0.0
 
     # Hopkins clustering over the full point cloud
-    hopkins = hopkins_statistic(positions)
+    hopkins = hopkins_statistic(positions, rng=rng)
 
     # NND between competing clones
     nnd = nearest_neighbor_distances(positions, types)

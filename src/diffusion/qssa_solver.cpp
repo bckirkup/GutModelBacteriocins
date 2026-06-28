@@ -110,7 +110,9 @@ void QSSASolver::solve_bacteriocin_field_fmm(
   fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
   fmm.compute_local_expansions(cfg_.fmm_theta, gf_, avg_params);
 
-  Int nx = domain_->nx(), ny = domain_->ny(), nz = domain_->nz();
+  Int nx = domain_->nx();
+  Int ny = domain_->ny();
+  Int nz = domain_->nz();
   Int ncells = domain_->ncells();
 
   // Near-field: exact evaluation within cutoff via spatial hash approach
@@ -120,7 +122,9 @@ void QSSASolver::solve_bacteriocin_field_fmm(
     const Vec3& src = sources[s];
     const GreensFunctionParams& p = params[s];
 
-    Int src_ix, src_iy, src_iz;
+    Int src_ix = 0;
+    Int src_iy = 0;
+    Int src_iz = 0;
     domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
 
     Int span = static_cast<Int>(std::ceil(cfg_.toxin_cutoff / domain_->dx()));

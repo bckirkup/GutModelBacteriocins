@@ -34,10 +34,20 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   resize(n);
   if (n <= 0) return;
 
-  std::vector<double> x(n), y(n), z(n);
-  std::vector<int> grid_cell(n), state(n), bi_loci_count(n);
-  std::vector<double> mu_realized(n), biomass(n), radius(n), mass(n), age(n);
-  std::vector<double> mu_max(n), km_b12(n), km_carbon(n);
+  std::vector<double> x(n);
+  std::vector<double> y(n);
+  std::vector<double> z(n);
+  std::vector<int> grid_cell(n);
+  std::vector<int> state(n);
+  std::vector<int> bi_loci_count(n);
+  std::vector<double> mu_realized(n);
+  std::vector<double> biomass(n);
+  std::vector<double> radius(n);
+  std::vector<double> mass(n);
+  std::vector<double> age(n);
+  std::vector<double> mu_max(n);
+  std::vector<double> km_b12(n);
+  std::vector<double> km_carbon(n);
   std::vector<double> receptor_expr(static_cast<size_t>(NUM_RECEPTORS) * n);
   std::vector<double> ligand_affinity(static_cast<size_t>(NUM_RECEPTORS) * n);
   std::vector<double> plasmid_amelioration(n);
@@ -88,7 +98,11 @@ void AgentPoolGpu::sync_to_host(AgentPool& pool) const {
   Int n = pool.size();
   if (n <= 0 || n != size_) return;
 
-  std::vector<double> mu_realized(n), biomass(n), radius(n), mass(n), age(n);
+  std::vector<double> mu_realized(n);
+  std::vector<double> biomass(n);
+  std::vector<double> radius(n);
+  std::vector<double> mass(n);
+  std::vector<double> age(n);
   std::vector<int> grid_cell(n);
   d_mu_realized_.download(mu_realized);
   d_biomass_.download(biomass);

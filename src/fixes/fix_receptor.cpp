@@ -61,7 +61,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
 
   // BtuB-mediated killing (colicin E family)
   {
-    int ri = static_cast<int>(ReceptorType::BtuB);
+    int ri = to_underlying(ReceptorType::BtuB);
     Real expr = agent.receptor_expr[ri];
     Int i_b12 = chem.find("b12");
     Real ligand = (i_b12 >= 0) ? chem.conc(i_b12, cell) : 0.0;
@@ -87,7 +87,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
 
   // FepA-mediated killing (colicin B/D)
   {
-    int ri = static_cast<int>(ReceptorType::FepA);
+    int ri = to_underlying(ReceptorType::FepA);
     Real expr = agent.receptor_expr[ri];
     Int i_iron = chem.find("iron");
     Real ligand = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
@@ -110,7 +110,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
 
   // CirA-mediated killing (colicin Ia, microcin V)
   {
-    int ri = static_cast<int>(ReceptorType::CirA);
+    int ri = to_underlying(ReceptorType::CirA);
     Real expr = agent.receptor_expr[ri];
     // CirA transports linearized enterobactin — use iron field as proxy
     Int i_iron = chem.find("iron");

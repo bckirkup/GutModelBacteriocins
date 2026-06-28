@@ -7,6 +7,7 @@
 #include <cassert>
 #include <iostream>
 #include <cmath>
+#include <utility>
 
 using namespace gutibm;
 
@@ -155,8 +156,8 @@ void test_genome_operations() {
   assert(a.genome.bi_loci.size() == 2);
 
   // Receptor downregulation
-  a.receptor_expr[static_cast<int>(ReceptorType::BtuB)] = 0.1;
-  assert(a.receptor_expr[static_cast<int>(ReceptorType::BtuB)] < 0.5);
+  a.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
+  assert(a.receptor_expr[to_underlying(ReceptorType::BtuB)] < 0.5);
 
   std::cout << "  test_genome_operations: PASSED\n";
 }
@@ -171,7 +172,7 @@ void test_partial_resistance_fields() {
   }
 
   // Simulate a partial resistance mutation on BtuB
-  int btuB = static_cast<int>(ReceptorType::BtuB);
+  int btuB = to_underlying(ReceptorType::BtuB);
   a.genome.toxin_affinity[btuB] = 0.05;   // 20x reduced toxin binding
   a.genome.ligand_affinity[btuB] = 0.8;   // within 2x of wild-type
 
@@ -188,7 +189,7 @@ void test_partial_resistance_fields() {
   assert(a.genome.ligand_affinity[btuB] <= 1.0);
 
   // Other receptors should be unaffected
-  int fepA = static_cast<int>(ReceptorType::FepA);
+  int fepA = to_underlying(ReceptorType::FepA);
   assert(a.genome.toxin_affinity[fepA] == 1.0);
   assert(a.genome.ligand_affinity[fepA] == 1.0);
 

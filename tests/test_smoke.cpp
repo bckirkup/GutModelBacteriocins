@@ -545,7 +545,7 @@ void test_partial_resistance_survival() {
   sim.init(cfg);
 
   // Apply partial resistance to type-3 agents (BtuB toxin_affinity reduced)
-  int btuB = static_cast<int>(ReceptorType::BtuB);
+  int btuB = to_underlying(ReceptorType::BtuB);
   for (Int i = 0; i < sim.agents().size(); ++i) {
     Agent& a = sim.agents()[i];
     if (a.type == 3) {

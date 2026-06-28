@@ -14,6 +14,7 @@
 
 #ifdef GUTIBM_MPI
 #include <mpi.h>
+#include "error.h"
 #endif
 
 int main(int argc, char** argv) {

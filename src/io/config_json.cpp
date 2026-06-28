@@ -7,7 +7,7 @@
 #include <cctype>
 #include <iostream>
 #include <sstream>
-#include <stdexcept>
+#include "error.h"
 #include <utility>
 
 namespace gutibm {
@@ -38,7 +38,7 @@ class JsonCursor {
   std::string parse_string() {
     skip_ws();
     if (pos_ >= text_.size() || text_[pos_] != '"') {
-      throw std::runtime_error("expected JSON string");
+      throw ConfigError("expected JSON string");
     }
     ++pos_;
     std::string out;
@@ -46,17 +46,17 @@ class JsonCursor {
       char c = text_[pos_++];
       if (c == '"') return out;
       if (c == '\\') {
-        if (pos_ >= text_.size()) throw std::runtime_error("truncated JSON escape");
+        if (pos_ >= text_.size()) throw ConfigError("truncated JSON escape");
         char esc = text_[pos_++];
         if (esc == '"' || esc == '\\' || esc == '/') out.push_back(esc);
         else if (esc == 'n') out.push_back('\n');
         else if (esc == 't') out.push_back('\t');
-        else throw std::runtime_error("unsupported JSON escape");
+        else throw ConfigError("unsupported JSON escape");
       } else {
         out.push_back(c);
       }
     }
-    throw std::runtime_error("unterminated JSON string");
+    throw ConfigError("unterminated JSON string");
   }
 
   Real parse_number() {
@@ -69,7 +69,7 @@ class JsonCursor {
             text_[pos_] == '+')) {
       ++pos_;
     }
-    if (start == pos_) throw std::runtime_error("expected JSON number");
+    if (start == pos_) throw ConfigError("expected JSON number");
     return std::stod(text_.substr(start, pos_ - start));
   }
 
@@ -83,33 +83,33 @@ class JsonCursor {
       pos_ += 5;
       return false;
     }
-    throw std::runtime_error("expected JSON boolean");
+    throw ConfigError("expected JSON boolean");
   }
 
   std::vector<std::string> parse_string_array() {
     std::vector<std::string> out;
-    if (!match('[')) throw std::runtime_error("expected JSON array");
+    if (!match('[')) throw ConfigError("expected JSON array");
     skip_ws();
     if (match(']')) return out;
     while (true) {
       out.push_back(parse_string());
       skip_ws();
       if (match(']')) break;
-      if (!match(',')) throw std::runtime_error("expected ',' in JSON array");
+      if (!match(',')) throw ConfigError("expected ',' in JSON array");
     }
     return out;
   }
 
   std::vector<SimulationConfig::InitialStrain> parse_strain_array() {
     std::vector<SimulationConfig::InitialStrain> out;
-    if (!match('[')) throw std::runtime_error("expected JSON array");
+    if (!match('[')) throw ConfigError("expected JSON array");
     skip_ws();
     if (match(']')) return out;
     while (true) {
       out.push_back(parse_strain_object());
       skip_ws();
       if (match(']')) break;
-      if (!match(',')) throw std::runtime_error("expected ',' in JSON array");
+      if (!match(',')) throw ConfigError("expected ',' in JSON array");
     }
     return out;
   }
@@ -121,7 +121,7 @@ class JsonCursor {
 
   void skip_value() {
     skip_ws();
-    if (pos_ >= text_.size()) throw std::runtime_error("unexpected end of JSON");
+    if (pos_ >= text_.size()) throw ConfigError("unexpected end of JSON");
 
     char c = text_[pos_];
     if (c == '"') {
@@ -152,11 +152,11 @@ class JsonCursor {
       pos_ += 4;
       return;
     }
-    throw std::runtime_error("unsupported JSON value");
+    throw ConfigError("unsupported JSON value");
   }
 
   SimulationConfig::InitialStrain parse_strain_object() {
-    if (!match('{')) throw std::runtime_error("expected JSON object");
+    if (!match('{')) throw ConfigError("expected JSON object");
 
     SimulationConfig::InitialStrain strain{};
     strain.mu_max = 5.0e-4;
@@ -167,7 +167,7 @@ class JsonCursor {
 
     while (true) {
       std::string key = parse_string();
-      if (!match(':')) throw std::runtime_error("expected ':' in JSON object");
+      if (!match(':')) throw ConfigError("expected ':' in JSON object");
 
       if (!key.empty() && key.front() == '_') {
         skip_value();
@@ -187,35 +187,35 @@ class JsonCursor {
 
       skip_ws();
       if (match('}')) break;
-      if (!match(',')) throw std::runtime_error("expected ',' in JSON object");
+      if (!match(',')) throw ConfigError("expected ',' in JSON object");
     }
 
     return strain;
   }
 
   void skip_object() {
-    if (!match('{')) throw std::runtime_error("expected JSON object");
+    if (!match('{')) throw ConfigError("expected JSON object");
     skip_ws();
     if (match('}')) return;
     while (true) {
       (void)parse_string();
-      if (!match(':')) throw std::runtime_error("expected ':' in JSON object");
+      if (!match(':')) throw ConfigError("expected ':' in JSON object");
       skip_value();
       skip_ws();
       if (match('}')) break;
-      if (!match(',')) throw std::runtime_error("expected ',' in JSON object");
+      if (!match(',')) throw ConfigError("expected ',' in JSON object");
     }
   }
 
   void skip_array() {
-    if (!match('[')) throw std::runtime_error("expected JSON array");
+    if (!match('[')) throw ConfigError("expected JSON array");
     skip_ws();
     if (match(']')) return;
     while (true) {
       skip_value();
       skip_ws();
       if (match(']')) break;
-      if (!match(',')) throw std::runtime_error("expected ',' in JSON array");
+      if (!match(',')) throw ConfigError("expected ',' in JSON array");
     }
   }
 
@@ -294,10 +294,10 @@ InitialStrainsParseResult ConfigJson::parse_initial_strains(const std::string& c
       cursor.skip_ws();
       if (cursor.match(']')) break;
       if (!cursor.match(',')) {
-        throw std::runtime_error("expected ',' between strain objects");
+        throw ConfigError("expected ',' between strain objects");
       }
     }
-  } catch (const std::exception& ex) {
+  } catch (const ConfigError& ex) {
     std::cerr << "Warning: failed to parse initial_strains: " << ex.what()
               << " — using default strains\n";
     result.found = false;
@@ -319,7 +319,7 @@ EnabledFixesParseResult ConfigJson::parse_enabled_fixes(const std::string& conte
 
   try {
     result.names = cursor.parse_string_array();
-  } catch (const std::exception& ex) {
+  } catch (const ConfigError& ex) {
     std::cerr << "Warning: failed to parse fixes: " << ex.what()
               << " — using default fix list\n";
     result.found = false;
@@ -344,7 +344,7 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
 
     while (true) {
       const std::string key = cursor.parse_string();
-      if (!cursor.match(':')) throw std::runtime_error("expected ':' after key");
+      if (!cursor.match(':')) throw ConfigError("expected ':' after key");
 
       if (!key.empty() && key.front() == '_') {
         cursor.skip_value();
@@ -358,11 +358,11 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
 
       cursor.skip_ws();
       if (cursor.match('}')) break;
-      if (!cursor.match(',')) throw std::runtime_error("expected ',' between object fields");
+      if (!cursor.match(',')) throw ConfigError("expected ',' between object fields");
     }
 
     return true;
-  } catch (const std::exception& ex) {
+  } catch (const ConfigError& ex) {
     std::cerr << "Warning: JSON config parse failed: " << ex.what()
               << " — falling back to legacy parser\n";
     return false;

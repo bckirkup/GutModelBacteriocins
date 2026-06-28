@@ -67,7 +67,11 @@ def inter_type_distances(positions: np.ndarray, types: np.ndarray) -> dict[tuple
     return result
 
 
-def spatial_clustering_index(positions: np.ndarray, types: np.ndarray) -> dict[int, float]:
+def spatial_clustering_index(
+    positions: np.ndarray,
+    types: np.ndarray,
+    rng: np.random.Generator | None = None,
+) -> dict[int, float]:
     """
     Compute a clustering index (Hopkins statistic variant) per type.
     Values > 0.5 indicate clustering; ~0.5 = random; < 0.5 = regular.
@@ -86,8 +90,9 @@ def spatial_clustering_index(positions: np.ndarray, types: np.ndarray) -> dict[i
         tree = KDTree(pts)
 
         # Sample m random points
+        _rng = rng if rng is not None else np.random.default_rng()
         m = min(n // 2, 100)
-        indices = np.random.choice(n, m, replace=False)
+        indices = _rng.choice(n, m, replace=False)
         sample = pts[indices]
 
         # NND from sample to rest
@@ -97,7 +102,7 @@ def spatial_clustering_index(positions: np.ndarray, types: np.ndarray) -> dict[i
         # Random reference points
         lo = pts.min(axis=0)
         hi = pts.max(axis=0)
-        random_pts = np.random.uniform(lo, hi, size=(m, pts.shape[1]))
+        random_pts = _rng.uniform(lo, hi, size=(m, pts.shape[1]))
         dists_rand, _ = tree.query(random_pts, k=1)
         nnd_rand = dists_rand.flatten()
 
@@ -159,6 +164,7 @@ def exclusion_radius(
 def hopkins_statistic(
     positions: np.ndarray,
     n_samples: int | None = None,
+    rng: np.random.Generator | None = None,
 ) -> float:
     """
     Hopkins clustering statistic over the full point cloud.
@@ -174,14 +180,15 @@ def hopkins_statistic(
 
     tree = KDTree(positions)
 
-    indices = np.random.choice(n, m, replace=False)
+    _rng = rng if rng is not None else np.random.default_rng()
+    indices = _rng.choice(n, m, replace=False)
     sample = positions[indices]
     dists_data, _ = tree.query(sample, k=2)
     nnd_data = dists_data[:, 1]
 
     lo = positions.min(axis=0)
     hi = positions.max(axis=0)
-    random_pts = np.random.uniform(lo, hi, size=(m, positions.shape[1]))
+    random_pts = _rng.uniform(lo, hi, size=(m, positions.shape[1]))
     dists_rand, _ = tree.query(random_pts, k=1)
     nnd_rand = dists_rand.flatten()
 

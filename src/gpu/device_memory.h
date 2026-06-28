@@ -2,7 +2,7 @@
 #define GUTIBM_DEVICE_MEMORY_H
 
 #include <cstddef>
-#include <stdexcept>
+#include "error.h"
 #include <vector>
 
 #ifdef GUTIBM_CUDA
@@ -15,7 +15,7 @@ inline void gpu_check_error(const char* what) {
 #ifdef GUTIBM_CUDA
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
-    throw std::runtime_error(std::string(what) + ": " + cudaGetErrorString(err));
+    throw Error(std::string(what) + ": " + cudaGetErrorString(err));
   }
 #endif
   (void)what;

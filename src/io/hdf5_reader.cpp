@@ -7,7 +7,7 @@
 
 #include <algorithm>
 #include <cassert>
-#include <stdexcept>
+#include "error.h"
 
 #ifdef GUTIBM_HDF5
 extern "C" {
@@ -28,12 +28,12 @@ bool link_exists(hid_t loc, const std::string& path) {
 template <typename T>
 std::vector<T> read_dataset_1d(hid_t file, const std::string& path, hid_t h5_type) {
   if (!link_exists(file, path)) {
-    throw std::runtime_error("missing HDF5 dataset: " + path);
+    throw HDF5Error("missing HDF5 dataset: " + path);
   }
 
   hid_t dset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
   if (dset < 0) {
-    throw std::runtime_error("failed to open HDF5 dataset: " + path);
+    throw HDF5Error("failed to open HDF5 dataset: " + path);
   }
 
   hid_t space = H5Dget_space(dset);
@@ -41,7 +41,7 @@ std::vector<T> read_dataset_1d(hid_t file, const std::string& path, hid_t h5_typ
   if (ndims != 1) {
     H5Sclose(space);
     H5Dclose(dset);
-    throw std::runtime_error("expected 1D dataset: " + path);
+    throw HDF5Error("expected 1D dataset: " + path);
   }
 
   hsize_t len = 0;
@@ -53,7 +53,7 @@ std::vector<T> read_dataset_1d(hid_t file, const std::string& path, hid_t h5_typ
     if (status < 0) {
       H5Sclose(space);
       H5Dclose(dset);
-      throw std::runtime_error("failed to read HDF5 dataset: " + path);
+      throw HDF5Error("failed to read HDF5 dataset: " + path);
     }
   }
 
@@ -66,7 +66,7 @@ template <typename T>
 T read_scalar(hid_t file, const std::string& path, hid_t h5_type) {
   auto data = read_dataset_1d<T>(file, path, h5_type);
   if (data.size() != 1) {
-    throw std::runtime_error("expected scalar dataset: " + path);
+    throw HDF5Error("expected scalar dataset: " + path);
   }
   return data[0];
 }
@@ -92,7 +92,9 @@ std::vector<std::string> list_step_groups(hid_t file) {
   H5Literate(file, H5_INDEX_NAME, H5_ITER_INC, nullptr, collect_step_link, &data);
   std::sort(steps.begin(), steps.end(),
             [](const std::string& a, const std::string& b) {
-              return std::stoi(a.substr(5)) < std::stoi(b.substr(5));
+              const int na = std::stoi(a.substr(5));
+              const int nb = std::stoi(b.substr(5));
+              return na < nb;
             });
   return steps;
 }
@@ -115,7 +117,7 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
   if (out.type.size() != n || out.state.size() != n || out.x.size() != n ||
       out.y.size() != n || out.z.size() != n || out.radius.size() != n ||
       out.biomass.size() != n || out.mu.size() != n || out.lineage.size() != n) {
-    throw std::runtime_error("inconsistent agent dataset lengths in " + step);
+    throw HDF5Error("inconsistent agent dataset lengths in " + step);
   }
   return out;
 }
@@ -135,7 +137,7 @@ HDF5CheckpointLineage read_lineage(hid_t file, const std::string& step) {
   const size_t n = out.btuB_expression.size();
   if (out.fepA_expression.size() != n || out.num_bi_loci.size() != n ||
       out.generation.size() != n) {
-    throw std::runtime_error("inconsistent lineage dataset lengths in " + step);
+    throw HDF5Error("inconsistent lineage dataset lengths in " + step);
   }
   return out;
 }
@@ -187,7 +189,7 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       out.receptor_expression.size() != n * NUM_RECEPTORS ||
       out.toxin_affinity.size() != n * NUM_RECEPTORS ||
       out.ligand_affinity.size() != n * NUM_RECEPTORS) {
-    throw std::runtime_error("inconsistent genome per-agent dataset lengths in " + step);
+    throw HDF5Error("inconsistent genome per-agent dataset lengths in " + step);
   }
 
   const size_t n_bi = out.bi_toxin_id.size();
@@ -196,7 +198,7 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       out.bi_diff_coeff.size() != n_bi || out.bi_retardation.size() != n_bi ||
       out.bi_molecular_weight.size() != n_bi ||
       out.bi_immunity_binding_affinity.size() != n_bi) {
-    throw std::runtime_error("inconsistent BI locus dataset lengths in " + step);
+    throw HDF5Error("inconsistent BI locus dataset lengths in " + step);
   }
 
   return out;
@@ -225,12 +227,12 @@ herr_t collect_link_name(hid_t /*group*/, const char* name, const H5L_info_t* /*
 HDF5CheckpointGrid read_grid(hid_t file, const std::string& step) {
   const std::string grid_path = step + "/grid";
   if (!link_exists(file, grid_path)) {
-    throw std::runtime_error("missing grid group: " + grid_path);
+    throw HDF5Error("missing grid group: " + grid_path);
   }
 
   hid_t grid_group = H5Gopen2(file, grid_path.c_str(), H5P_DEFAULT);
   if (grid_group < 0) {
-    throw std::runtime_error("failed to open grid group: " + grid_path);
+    throw HDF5Error("failed to open grid group: " + grid_path);
   }
 
   HDF5CheckpointGrid grid;
@@ -259,7 +261,7 @@ bool HDF5Reader::open(const std::string& filename) {
 
   try {
     filename_ = validate_input_file_path(filename);
-  } catch (const std::exception&) {
+  } catch (const IOError& ) {
     open_ = false;
     file_id_ = -1;
     return false;
@@ -313,10 +315,10 @@ std::string HDF5Reader::latest_step() const {
 HDF5CheckpointSnapshot HDF5Reader::load_step(const std::string& step_name) const {
 #ifdef GUTIBM_HDF5
   if (!open_) {
-    throw std::runtime_error("HDF5Reader is not open");
+    throw HDF5Error("HDF5Reader is not open");
   }
   if (!link_exists(static_cast<hid_t>(file_id_), step_name)) {
-    throw std::runtime_error("missing step group: " + step_name);
+    throw HDF5Error("missing step group: " + step_name);
   }
 
   HDF5CheckpointSnapshot snap;
@@ -328,15 +330,15 @@ HDF5CheckpointSnapshot HDF5Reader::load_step(const std::string& step_name) const
   snap.grid     = read_grid(static_cast<hid_t>(file_id_), step_name);
 
   if (snap.metadata.num_agents != static_cast<Int>(snap.agents.id.size())) {
-    throw std::runtime_error("metadata num_agents does not match atoms dataset");
+    throw HDF5Error("metadata num_agents does not match atoms dataset");
   }
   if (snap.metadata.num_agents != static_cast<Int>(snap.lineage.generation.size())) {
-    throw std::runtime_error("metadata num_agents does not match lineage dataset");
+    throw HDF5Error("metadata num_agents does not match lineage dataset");
   }
   return snap;
 #else
   (void)step_name;
-  throw std::runtime_error("HDF5 support not compiled in");
+  throw HDF5Error("HDF5 support not compiled in");
 #endif
 }
 
@@ -344,14 +346,14 @@ HDF5CheckpointSnapshot HDF5Reader::load_snapshot(const std::string& filename,
                                                  const std::string& step_name) {
   HDF5Reader reader;
   if (!reader.open(filename)) {
-    throw std::runtime_error("failed to open HDF5 file: " + filename);
+    throw HDF5Error("failed to open HDF5 file: " + filename);
   }
 
   std::string step = step_name;
   if (step.empty()) {
     step = reader.latest_step();
     if (step.empty()) {
-      throw std::runtime_error("no step groups found in: " + filename);
+      throw HDF5Error("no step groups found in: " + filename);
     }
   }
   return reader.load_step(step);

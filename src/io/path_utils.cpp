@@ -8,7 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
-#include <stdexcept>
+#include "error.h"
 #include <string>
 #include <system_error>
 #include <unistd.h>
@@ -54,13 +54,13 @@ void reject_symlink_in_world_writable_parent(const fs::path& path,
   if (!is_world_writable_directory(parent_canon)) return;
 
   if (fs::is_symlink(fs::symlink_status(parent))) {
-    throw std::runtime_error(
+    throw PathError(
         std::string("refusing to ") + operation +
         " via symlinked parent in world-writable directory: " + parent.string());
   }
 
   if (fs::exists(path) && fs::is_symlink(fs::symlink_status(path))) {
-    throw std::runtime_error(
+    throw PathError(
         std::string("refusing to ") + operation +
         " through symlink in world-writable directory: " + path.string());
   }
@@ -71,7 +71,7 @@ std::string temp_directory() {
     validate_path_syntax(tmpdir);
     fs::path dir(tmpdir);
     if (!fs::exists(dir) || !fs::is_directory(dir)) {
-      throw std::runtime_error("TMPDIR is not a directory: " + dir.string());
+      throw PathError("TMPDIR is not a directory: " + dir.string());
     }
     return dir.string();
   }
@@ -82,13 +82,13 @@ std::string temp_directory() {
 
 void validate_path_syntax(const std::string& path) {
   if (path.empty()) {
-    throw std::runtime_error("empty path");
+    throw PathError("empty path");
   }
   if (path_has_null_byte(path)) {
-    throw std::runtime_error("path contains null byte");
+    throw PathError("path contains null byte");
   }
   if (path_has_parent_traversal(path)) {
-    throw std::runtime_error("path contains parent-directory traversal ('..')");
+    throw PathError("path contains parent-directory traversal ('..')");
   }
 }
 
@@ -97,13 +97,13 @@ std::string validate_input_file_path(const std::string& path) {
 
   const fs::path p(path);
   if (!fs::exists(p)) {
-    throw std::runtime_error("input file not found: " + path);
+    throw PathError("input file not found: " + path);
   }
 
   reject_symlink_in_world_writable_parent(p, "read");
 
   if (!fs::is_regular_file(p)) {
-    throw std::runtime_error("input path is not a regular file: " + path);
+    throw PathError("input path is not a regular file: " + path);
   }
 
   return fs::weakly_canonical(p).string();
@@ -116,10 +116,10 @@ void validate_output_file_path(const std::string& path) {
   const fs::path parent = parent_directory_for(p);
 
   if (!fs::exists(parent)) {
-    throw std::runtime_error("output directory does not exist: " + parent.string());
+    throw PathError("output directory does not exist: " + parent.string());
   }
   if (!fs::is_directory(parent)) {
-    throw std::runtime_error("output parent is not a directory: " + parent.string());
+    throw PathError("output parent is not a directory: " + parent.string());
   }
 
   reject_symlink_in_world_writable_parent(p, "write");
@@ -127,10 +127,10 @@ void validate_output_file_path(const std::string& path) {
   if (fs::exists(p)) {
     const fs::file_status status = fs::symlink_status(p);
     if (fs::is_symlink(status)) {
-      throw std::runtime_error("refusing to overwrite symlink: " + path);
+      throw PathError("refusing to overwrite symlink: " + path);
     }
     if (!fs::is_regular_file(status) && !fs::is_regular_file(p)) {
-      throw std::runtime_error("output path exists and is not a regular file: " + path);
+      throw PathError("output path exists and is not a regular file: " + path);
     }
   }
 }
@@ -149,7 +149,7 @@ std::string secure_temp_file(const std::string& prefix) {
 
   const int fd = mkstemp(buf.data());
   if (fd < 0) {
-    throw std::runtime_error(
+    throw PathError(
         std::string("failed to create secure temporary file in ") + dir +
         ": " + std::strerror(errno));
   }
