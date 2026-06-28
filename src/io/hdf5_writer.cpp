@@ -21,6 +21,7 @@ extern "C" {
 #include <sstream>
 #include <iomanip>
 #include <numeric>
+#include "error.h"
 
 namespace gutibm {
 
@@ -205,7 +206,7 @@ void HDF5Writer::init(const HDF5Config& cfg) {
 
   try {
     validate_output_file_path(cfg_.filename);
-  } catch (const std::exception& ex) {
+  } catch (const IOError& ex) {
     if (io_rank(cfg_) == 0) {
       std::cerr << "Warning: invalid HDF5 output path '" << cfg_.filename
                 << "': " << ex.what() << " — HDF5 output disabled\n";
@@ -267,10 +268,14 @@ void HDF5Writer::write_agents(const Simulation& sim, const std::string& group) {
   Int n = agents.size();
 
   std::vector<int64_t> ids(static_cast<size_t>(n));
-  std::vector<int32_t> types(static_cast<size_t>(n)), states(static_cast<size_t>(n));
-  std::vector<double>  x(static_cast<size_t>(n)), y(static_cast<size_t>(n)),
-                       z(static_cast<size_t>(n)), radius(static_cast<size_t>(n)),
-                       biomass(static_cast<size_t>(n)), mu(static_cast<size_t>(n));
+  std::vector<int32_t> types(static_cast<size_t>(n));
+  std::vector<int32_t> states(static_cast<size_t>(n));
+  std::vector<double> x(static_cast<size_t>(n));
+  std::vector<double> y(static_cast<size_t>(n));
+  std::vector<double> z(static_cast<size_t>(n));
+  std::vector<double> radius(static_cast<size_t>(n));
+  std::vector<double> biomass(static_cast<size_t>(n));
+  std::vector<double> mu(static_cast<size_t>(n));
   std::vector<int64_t> lineage(static_cast<size_t>(n));
 
   for (Int i = 0; i < n; ++i) {
@@ -388,13 +393,15 @@ void HDF5Writer::write_lineage(const Simulation& sim, const std::string& group) 
   const auto& agents = sim.agents();
   Int n = agents.size();
 
-  std::vector<double> btuB_expr(static_cast<size_t>(n)), fepA_expr(static_cast<size_t>(n));
-  std::vector<int32_t> n_bi(static_cast<size_t>(n)), generation(static_cast<size_t>(n));
+  std::vector<double> btuB_expr(static_cast<size_t>(n));
+  std::vector<double> fepA_expr(static_cast<size_t>(n));
+  std::vector<int32_t> n_bi(static_cast<size_t>(n));
+  std::vector<int32_t> generation(static_cast<size_t>(n));
 
   for (Int i = 0; i < n; ++i) {
     const Agent& a = agents[i];
-    btuB_expr[static_cast<size_t>(i)]  = a.receptor_expr[static_cast<int>(ReceptorType::BtuB)];
-    fepA_expr[static_cast<size_t>(i)]  = a.receptor_expr[static_cast<int>(ReceptorType::FepA)];
+    btuB_expr[static_cast<size_t>(i)]  = a.receptor_expr[to_underlying(ReceptorType::BtuB)];
+    fepA_expr[static_cast<size_t>(i)]  = a.receptor_expr[to_underlying(ReceptorType::FepA)];
     n_bi[static_cast<size_t>(i)]       = static_cast<int32_t>(a.genome.bi_loci.size());
     generation[static_cast<size_t>(i)] = static_cast<int32_t>(a.genome.generation);
   }
@@ -424,15 +431,22 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) {
   const hsize_t local_n = static_cast<hsize_t>(n);
 
   std::vector<int64_t> parent_id(static_cast<size_t>(n));
-  std::vector<int32_t> mutations(static_cast<size_t>(n)),
-                       has_conjugative(static_cast<size_t>(n));
+  std::vector<int32_t> mutations(static_cast<size_t>(n));
+  std::vector<int32_t> has_conjugative(static_cast<size_t>(n));
   std::vector<double> plasmid_amel(static_cast<size_t>(n));
-  std::vector<double> receptor_expr(static_cast<size_t>(n) * NUM_RECEPTORS),
-                      toxin_aff(static_cast<size_t>(n) * NUM_RECEPTORS),
-                      ligand_aff(static_cast<size_t>(n) * NUM_RECEPTORS);
+  std::vector<double> receptor_expr(static_cast<size_t>(n) * NUM_RECEPTORS);
+  std::vector<double> toxin_aff(static_cast<size_t>(n) * NUM_RECEPTORS);
+  std::vector<double> ligand_aff(static_cast<size_t>(n) * NUM_RECEPTORS);
 
-  std::vector<int32_t> bi_toxin_id, bi_immunity_id, bi_target, bi_bclass;
-  std::vector<double> bi_pI, bi_diff, bi_ret, bi_mw, bi_imm_aff;
+  std::vector<int32_t> bi_toxin_id;
+  std::vector<int32_t> bi_immunity_id;
+  std::vector<int32_t> bi_target;
+  std::vector<int32_t> bi_bclass;
+  std::vector<double> bi_pI;
+  std::vector<double> bi_diff;
+  std::vector<double> bi_ret;
+  std::vector<double> bi_mw;
+  std::vector<double> bi_imm_aff;
 
   for (Int i = 0; i < n; ++i) {
     const Agent& a = agents[i];

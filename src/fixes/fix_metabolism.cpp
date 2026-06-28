@@ -8,6 +8,7 @@
 #include <algorithm>
 #ifdef GUTIBM_OPENMP
 #include <omp.h>
+#include <utility>
 #endif
 
 namespace gutibm {
@@ -138,11 +139,11 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   // Receptor-modified Km values
   // When receptor expression drops, effective Km increases (worse affinity)
   // Receptor expressions for graded iron uptake + partial resistance
-  int ri_fepA = static_cast<int>(ReceptorType::FepA);
-  int ri_btuB = static_cast<int>(ReceptorType::BtuB);
-  int ri_iroN = static_cast<int>(ReceptorType::IroN);
-  int ri_iutA = static_cast<int>(ReceptorType::IutA);
-  int ri_fiu  = static_cast<int>(ReceptorType::Fiu);
+  int ri_fepA = to_underlying(ReceptorType::FepA);
+  int ri_btuB = to_underlying(ReceptorType::BtuB);
+  int ri_iroN = to_underlying(ReceptorType::IroN);
+  int ri_iutA = to_underlying(ReceptorType::IutA);
+  int ri_fiu  = to_underlying(ReceptorType::Fiu);
   Real expr_fepA = agent.receptor_expr[ri_fepA];
   Real expr_iroN = agent.receptor_expr[ri_iroN];
   Real expr_iutA = agent.receptor_expr[ri_iutA];

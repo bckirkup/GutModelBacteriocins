@@ -18,7 +18,7 @@
 #include "dispatch.h"
 #include <cmath>
 #include <algorithm>
-#include <stdexcept>
+#include "error.h"
 #ifdef GUTIBM_OPENMP
 #include <omp.h>
 #endif
@@ -34,7 +34,7 @@ void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
 
 void GreensFunction::require_init() const {
   if (!domain_ || !adv_) {
-    throw std::runtime_error(
+    throw SimulationError(
         "GreensFunction::init() must be called before concentration queries");
   }
 }
@@ -114,7 +114,9 @@ void GreensFunction::superpose_to_grid(
     Real cutoff_radius) const {
   require_init();
 
-  Int nx = domain_->nx(), ny = domain_->ny(), nz = domain_->nz();
+  Int nx = domain_->nx();
+  Int ny = domain_->ny();
+  Int nz = domain_->nz();
   Int ncells = domain_->ncells();
 
   grid_conc.assign(ncells, 0.0);
@@ -137,7 +139,9 @@ void GreensFunction::superpose_to_grid(
       const Vec3& src = sources[s];
       const GreensFunctionParams& p = params[s];
 
-      Int src_ix, src_iy, src_iz;
+      Int src_ix = 0;
+      Int src_iy = 0;
+      Int src_iz = 0;
       domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
 
       Int span = static_cast<Int>(std::ceil(cutoff_radius / domain_->dx()));
@@ -159,7 +163,7 @@ void GreensFunction::superpose_to_grid(
 
             Vec3 tgt = domain_->cell_center(ix, iy, iz);
             Real c = concentration_bounded(src, tgt, p);
-            Int idx = domain_->cell_index(ix, iy, iz);
+            auto idx = domain_->cell_index(ix, iy, iz);
             local_conc[idx] += c;
           }
         }
@@ -177,7 +181,9 @@ void GreensFunction::superpose_to_grid(
     const Vec3& src = sources[s];
     const GreensFunctionParams& p = params[s];
 
-    Int src_ix, src_iy, src_iz;
+    Int src_ix = 0;
+    Int src_iy = 0;
+    Int src_iz = 0;
     domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
 
     Int span = static_cast<Int>(std::ceil(cutoff_radius / domain_->dx()));

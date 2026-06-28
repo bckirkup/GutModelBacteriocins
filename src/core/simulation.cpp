@@ -20,7 +20,8 @@
 #include <cstring>
 #include <numeric>
 #include <iomanip>
-#include <stdexcept>
+#include "error.h"
+#include <utility>
 #ifdef GUTIBM_OPENMP
 #include <omp.h>
 #endif
@@ -190,7 +191,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
 #ifndef GUTIBM_HDF5
   (void)h5_file;
   (void)step;
-  throw std::runtime_error("checkpoint restart requires HDF5 support");
+  throw SimulationError("checkpoint restart requires HDF5 support");
 #else
   HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(h5_file, step);
   apply_checkpoint_snapshot(snap);
@@ -230,7 +231,7 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
   if (gen.present) {
     size_t expected_bi = bi_offsets[n];
     if (gen.bi_toxin_id.size() != expected_bi) {
-      throw std::runtime_error("checkpoint BI locus count mismatch in genome group");
+      throw SimulationError("checkpoint BI locus count mismatch in genome group");
     }
   }
 
@@ -252,8 +253,8 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 
     a.genome.lineage_id = static_cast<TagID>(atoms.lineage[i]);
     a.genome.generation = static_cast<uint32_t>(lin.generation[i]);
-    a.receptor_expr[static_cast<int>(ReceptorType::BtuB)] = lin.btuB_expression[i];
-    a.receptor_expr[static_cast<int>(ReceptorType::FepA)] = lin.fepA_expression[i];
+    a.receptor_expr[to_underlying(ReceptorType::BtuB)] = lin.btuB_expression[i];
+    a.receptor_expr[to_underlying(ReceptorType::FepA)] = lin.fepA_expression[i];
 
     if (gen.present) {
       a.genome.parent_id = static_cast<TagID>(gen.parent_id[i]);
@@ -314,7 +315,7 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
       continue;
     }
     if (static_cast<Int>(values.size()) != chem_.ncells()) {
-      throw std::runtime_error("checkpoint grid size mismatch for species: " + name);
+      throw SimulationError("checkpoint grid size mismatch for species: " + name);
     }
     for (Int c = 0; c < chem_.ncells(); ++c) {
       chem_.conc(spec, c) = values[static_cast<size_t>(c)];
@@ -666,7 +667,9 @@ void Simulation::update_grid_coupling() {
     Agent& a = agents_[i];
     if (a.state == PhenoState::DEAD) continue;
 
-    Int ix, iy, iz;
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
     domain_.pos_to_grid(a.x, ix, iy, iz);
     a.grid_cell = domain_.cell_index(ix, iy, iz);
   }
@@ -859,7 +862,8 @@ void Simulation::migrate_agents() {
   Int my_rank = domain_.rank();
 
   // Collect agents that need to migrate to lo/hi neighbors
-  std::vector<Agent> send_lo, send_hi;
+  std::vector<Agent> send_lo;
+  std::vector<Agent> send_hi;
   std::vector<Int> to_remove;
 
   for (Int i = 0; i < agents_.size(); ++i) {
@@ -893,14 +897,16 @@ void Simulation::migrate_agents() {
   }
 
   // Serialize
-  std::vector<char> buf_send_lo, buf_send_hi;
+  std::vector<char> buf_send_lo;
+  std::vector<char> buf_send_hi;
   agent_transfer_serialize(send_lo, buf_send_lo);
   agent_transfer_serialize(send_hi, buf_send_hi);
 
   // Exchange sizes with neighbors
   int sz_send_lo = static_cast<int>(buf_send_lo.size());
   int sz_send_hi = static_cast<int>(buf_send_hi.size());
-  int sz_recv_lo = 0, sz_recv_hi = 0;
+  int sz_recv_lo = 0;
+  int sz_recv_hi = 0;
 
   if (domain_.neighbors_collapsed()) {
     mpi_exchange_sizes_collapsed(domain_.rank_lo(), 0,
@@ -914,7 +920,8 @@ void Simulation::migrate_agents() {
   }
 
   // Exchange agent data
-  std::vector<char> buf_recv_lo(sz_recv_lo), buf_recv_hi(sz_recv_hi);
+  std::vector<char> buf_recv_lo(sz_recv_lo);
+  std::vector<char> buf_recv_hi(sz_recv_hi);
 
   if (domain_.neighbors_collapsed()) {
     mpi_exchange_buffers_collapsed(domain_.rank_lo(), 2,
@@ -952,7 +959,8 @@ void Simulation::exchange_ghost_agents() {
   Real gw = domain_.ghost_width();
 
   // Collect agents near slab boundaries to send as ghosts
-  std::vector<Agent> ghost_lo, ghost_hi;
+  std::vector<Agent> ghost_lo;
+  std::vector<Agent> ghost_hi;
 
   for (Int i = 0; i < agents_.size(); ++i) {
     const Agent& a = agents_[i];
@@ -968,14 +976,16 @@ void Simulation::exchange_ghost_agents() {
   }
 
   // Serialize
-  std::vector<char> buf_send_lo, buf_send_hi;
+  std::vector<char> buf_send_lo;
+  std::vector<char> buf_send_hi;
   agent_transfer_serialize(ghost_lo, buf_send_lo);
   agent_transfer_serialize(ghost_hi, buf_send_hi);
 
   // Exchange sizes
   int sz_send_lo = static_cast<int>(buf_send_lo.size());
   int sz_send_hi = static_cast<int>(buf_send_hi.size());
-  int sz_recv_lo = 0, sz_recv_hi = 0;
+  int sz_recv_lo = 0;
+  int sz_recv_hi = 0;
 
   if (domain_.neighbors_collapsed()) {
     mpi_exchange_sizes_collapsed(domain_.rank_lo(), 10,
@@ -989,7 +999,8 @@ void Simulation::exchange_ghost_agents() {
   }
 
   // Exchange data
-  std::vector<char> buf_recv_lo(sz_recv_lo), buf_recv_hi(sz_recv_hi);
+  std::vector<char> buf_recv_lo(sz_recv_lo);
+  std::vector<char> buf_recv_hi(sz_recv_hi);
 
   if (domain_.neighbors_collapsed()) {
     mpi_exchange_buffers_collapsed(domain_.rank_lo(), 12,

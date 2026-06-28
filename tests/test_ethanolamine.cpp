@@ -59,7 +59,7 @@ static Real measure_mu(Real eut_initial_conc) {
 
   // Downregulate BtuB so the eut penalty path fires (expr < 0.5)
   Agent& a = sim.agents()[0];
-  a.receptor_expr[static_cast<int>(ReceptorType::BtuB)] = 0.1;
+  a.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
 
   // Run one biological timestep
   sim.step(cfg.bio_dt);

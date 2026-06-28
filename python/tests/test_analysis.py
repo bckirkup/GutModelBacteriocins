@@ -71,14 +71,10 @@ def test_hopkins_statistic_clustered_vs_random() -> None:
     clustered = rng.normal(loc=25e-6, scale=2e-6, size=(80, 3))
     clustered = np.clip(clustered, 0, None)
 
-    # Hopkins uses np.random internally — fix seed for reproducibility.
-    np.random.seed(42)
-    h_clustered = analysis.hopkins_statistic(clustered)
+    h_clustered = analysis.hopkins_statistic(clustered, rng=np.random.default_rng(42))
 
-    np.random.seed(42)
     uniform = rng.uniform(0, 50e-6, size=(80, 3))
-    np.random.seed(42)
-    h_uniform = analysis.hopkins_statistic(uniform)
+    h_uniform = analysis.hopkins_statistic(uniform, rng=np.random.default_rng(42))
 
     assert h_clustered > h_uniform
 

@@ -128,12 +128,12 @@ def evaluate_metrics(
     random_seed: int = 4092,
 ) -> dict[str, float]:
     """Compute spatial and genomic validation metrics from an HDF5 file."""
-    np.random.seed(random_seed)
+    rng = np.random.default_rng(random_seed)
     with GutIBMData(h5_path) as data:
         if not data.steps:
             raise ValueError(f"No step groups found in {h5_path}")
         target_step = step if step is not None else data.steps[-1]
-        spatial = validate_spatial_signatures(data, target_step)
+        spatial = validate_spatial_signatures(data, target_step, rng=rng)
         genomic = validate_genomic_signatures(data)
         if "error" in genomic:
             raise ValueError("Genomic validation requires at least two HDF5 steps")

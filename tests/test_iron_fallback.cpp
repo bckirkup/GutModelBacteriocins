@@ -14,7 +14,7 @@ using namespace gutibm;
 
 void test_receptor_type_iutA_exists() {
   // IutA should be at index 7
-  static_assert(static_cast<int>(ReceptorType::IutA) == 7,
+  static_assert(to_underlying(ReceptorType::IutA) == 7,
                 "IutA must be ReceptorType 7");
   static_assert(NUM_RECEPTORS == 8,
                 "NUM_RECEPTORS must be 8 with IutA added");
@@ -23,7 +23,7 @@ void test_receptor_type_iutA_exists() {
 
 void test_agent_iutA_default_expression() {
   Agent a = Agent::create_default(1, 1, {100e-6, 100e-6, 50e-6}, 5e-4);
-  Real iutA_expr = a.receptor_expr[static_cast<int>(ReceptorType::IutA)];
+  Real iutA_expr = a.receptor_expr[to_underlying(ReceptorType::IutA)];
   assert(std::abs(iutA_expr - 1.0) < 1e-12);
   std::cout << "  test_agent_iutA_default_expression: PASSED\n";
 }

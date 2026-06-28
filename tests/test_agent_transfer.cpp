@@ -14,8 +14,8 @@ void test_round_trip_preserves_state() {
   Agent a = Agent::create_default(42, 3, {10e-6, 20e-6, 30e-6}, 4e-4);
   a.in_crypt = true;
   a.mu_realized = 1.2e-5;
-  a.genome.toxin_affinity[static_cast<int>(ReceptorType::BtuB)] = 0.05;
-  a.genome.ligand_affinity[static_cast<int>(ReceptorType::FepA)] = 0.75;
+  a.genome.toxin_affinity[to_underlying(ReceptorType::BtuB)] = 0.05;
+  a.genome.ligand_affinity[to_underlying(ReceptorType::FepA)] = 0.75;
   a.genome.has_conjugative_plasmid = true;
 
   BICluster bi = PlasmidLibrary::colicin_E1();
@@ -38,8 +38,8 @@ void test_round_trip_preserves_state() {
   assert(b.in_crypt == true);
   assert(std::abs(b.mu_realized - a.mu_realized) < 1e-20);
   assert(b.genome.has_conjugative_plasmid == true);
-  assert(std::abs(b.genome.toxin_affinity[static_cast<int>(ReceptorType::BtuB)] - 0.05) < 1e-12);
-  assert(std::abs(b.genome.ligand_affinity[static_cast<int>(ReceptorType::FepA)] - 0.75) < 1e-12);
+  assert(std::abs(b.genome.toxin_affinity[to_underlying(ReceptorType::BtuB)] - 0.05) < 1e-12);
+  assert(std::abs(b.genome.ligand_affinity[to_underlying(ReceptorType::FepA)] - 0.75) < 1e-12);
   assert(b.genome.bi_loci.size() == 2);
   assert(std::abs(b.genome.bi_loci[0].immunity_binding_affinity - 0.12) < 1e-12);
   assert(std::abs(b.genome.bi_loci[1].immunity_binding_affinity - 1.0) < 1e-12);

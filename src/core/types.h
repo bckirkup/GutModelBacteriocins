@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <limits>
+#include <type_traits>
 #include <vector>
 
 namespace gutibm {
@@ -95,6 +96,12 @@ inline Real sphere_volume(Real radius) {
 
 inline Real sphere_mass(Real radius, Real density) {
   return sphere_volume(radius) * density;
+}
+
+// C++17 polyfill for std::to_underlying (C++23)
+template <typename E>
+constexpr auto to_underlying(E e) noexcept {
+  return static_cast<std::underlying_type_t<E>>(e);
 }
 
 }  // namespace gutibm

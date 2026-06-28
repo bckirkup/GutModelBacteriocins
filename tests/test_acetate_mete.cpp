@@ -97,14 +97,14 @@ void test_acetate_increases_penalty() {
   sim_low.init(cfg_low);
   Int n_low_init = sim_low.agents().size();
   for (Int i = 0; i < n_low_init; ++i) {
-    sim_low.agents()[i].receptor_expr[static_cast<int>(ReceptorType::BtuB)] = 0.1;
+    sim_low.agents()[i].receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
   }
 
   Simulation sim_high;
   sim_high.init(cfg_high);
   Int n_high_init = sim_high.agents().size();
   for (Int i = 0; i < n_high_init; ++i) {
-    sim_high.agents()[i].receptor_expr[static_cast<int>(ReceptorType::BtuB)] = 0.1;
+    sim_high.agents()[i].receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
   }
 
   // Record initial biomass

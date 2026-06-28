@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <utility>
 
 using namespace gutibm;
 
@@ -33,8 +34,8 @@ static Agent make_susceptible_agent(Simulation& sim) {
   };
   Agent a = Agent::create_default(sim.agents().next_tag(), 2, center, 5e-4);
   // Isolate BtuB-mediated killing for colicin E immunity tests.
-  a.receptor_expr[static_cast<int>(ReceptorType::FepA)] = 0.0;
-  a.receptor_expr[static_cast<int>(ReceptorType::CirA)] = 0.0;
+  a.receptor_expr[to_underlying(ReceptorType::FepA)] = 0.0;
+  a.receptor_expr[to_underlying(ReceptorType::CirA)] = 0.0;
   Int ix, iy, iz;
   sim.domain().pos_to_grid(a.x, ix, iy, iz);
   a.grid_cell = sim.domain().cell_index(ix, iy, iz);
@@ -129,7 +130,7 @@ void test_partial_resistance_reduces_lethality() {
   auto sim_resistant = make_empty_sim(6006);
   Agent resistant = make_susceptible_agent(sim_resistant);
   Int cell = resistant.grid_cell;
-  resistant.genome.toxin_affinity[static_cast<int>(ReceptorType::BtuB)] = 1.0e-6;
+  resistant.genome.toxin_affinity[to_underlying(ReceptorType::BtuB)] = 1.0e-6;
   set_local_chemistry(sim_resistant, cell, 1.0e-7, 0.0);
   sim_resistant.agents().push_back(std::move(resistant));
 

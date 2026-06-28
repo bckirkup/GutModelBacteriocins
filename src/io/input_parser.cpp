@@ -8,7 +8,7 @@
 #include "plasmid.h"
 #include <iostream>
 #include <algorithm>
-#include <stdexcept>
+#include "error.h"
 #include <sstream>
 #include <cstdlib>
 
@@ -28,7 +28,7 @@ void warn_parse_failure(const char* kind,
   std::cerr << "Warning: config key '" << key << "' has invalid " << kind
             << " value '" << val << "' — using 0\n";
   if (strict_config_enabled()) {
-    throw std::runtime_error("invalid config value for key '" + key + "'");
+    throw ConfigError("invalid config value for key '" + key + "'");
   }
 }
 
@@ -172,7 +172,7 @@ SimulationConfig InputParser::parse(const std::string& filename) {
   std::string config_path;
   try {
     config_path = validate_input_file_path(filename);
-  } catch (const std::exception& ex) {
+  } catch (const IOError& ex) {
     std::cerr << "Warning: cannot open config file '" << filename
               << "' (" << ex.what() << "), using defaults\n";
     return cfg;
@@ -258,7 +258,7 @@ Real InputParser::parse_real(const std::string& key, const std::string& val) {
       return 0.0;
     }
     return result;
-  } catch (...) {
+  } catch (const std::exception&) {
     warn_parse_failure("numeric", key, val);
     return 0.0;
   }
@@ -279,7 +279,7 @@ Int InputParser::parse_int(const std::string& key, const std::string& val) {
       return 0;
     }
     return result;
-  } catch (...) {
+  } catch (const std::exception&) {
     warn_parse_failure("integer", key, val);
     return 0;
   }
