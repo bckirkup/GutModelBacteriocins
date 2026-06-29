@@ -64,6 +64,15 @@ cd python && pip install -e ".[dev]"  # installs ruff, pytest, etc.
 
 Python tests: 46 non-integration tests + 1 deselected (integration marker). All should pass.
 
+## SonarQube-sensitive test patterns
+
+When writing or reviewing Python tests, follow `.agents/skills/sonarqube-python/SKILL.md`:
+
+- Float comparisons: `pytest.approx()` or `np.testing.assert_allclose` — never `== 0.0`
+- Paths in tests: use `tmp_path` fixtures; production path helpers live in `gut_ibm_tools.path_utils`
+
+When writing C++ tests with random fixtures, use `gutibm::RNG` (see `.agents/skills/sonarqube-cpp/SKILL.md`), not `std::mt19937`.
+
 ## Golden File Considerations
 
 When modifying RNG usage (e.g., switching from `np.random.seed()` to `np.random.default_rng()`), the deterministic stream changes. This requires updating golden files:
