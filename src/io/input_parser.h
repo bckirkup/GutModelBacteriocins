@@ -22,6 +22,7 @@
 #include "gpu_config.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 #include <fstream>
@@ -108,7 +109,7 @@ class InputParser {
                              const std::string& val);
 
  private:
-  static std::string trim(const std::string& s);
+  static std::string trim(std::string_view s);
   static Real parse_real(const std::string& key, const std::string& val);
   static Int parse_int(const std::string& key, const std::string& val);
 };

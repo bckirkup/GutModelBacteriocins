@@ -37,8 +37,7 @@ bool DeviceContext::init(int device_id) {
     active_ = false;
     return false;
   }
-  cudaError_t err = cudaSetDevice(device_id);
-  if (err != cudaSuccess) {
+  if (cudaError_t err = cudaSetDevice(device_id); err != cudaSuccess) {
     g_last_error = cudaGetErrorString(err);
     active_ = false;
     return false;

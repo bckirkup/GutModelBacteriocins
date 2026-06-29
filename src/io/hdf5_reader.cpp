@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <string_view>
 #include "error.h"
 
 #ifdef GUTIBM_HDF5
@@ -88,10 +89,9 @@ std::vector<std::string> list_step_groups(hid_t file) {
   std::vector<std::string> steps;
   data.steps = &steps;
   H5Literate(file, H5_INDEX_NAME, H5_ITER_INC, nullptr, collect_step_link, &data);
-  std::sort(steps.begin(), steps.end(),
-            [](const std::string& sa, const std::string& sb) {
-              const auto na = std::stoi(sa.substr(5));
-              const auto nb = std::stoi(sb.substr(5));
+  std::ranges::sort(steps, [](std::string_view sa, std::string_view sb) {
+              const auto na = std::stoi(std::string(sa.substr(5)));
+              const auto nb = std::stoi(std::string(sb.substr(5)));
               return na < nb;
             });
   return steps;
@@ -111,8 +111,8 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
   out.mu       = read_dataset_1d<double>(file, prefix + "mu",      H5T_NATIVE_DOUBLE);
   out.lineage  = read_dataset_1d<int64_t>(file, prefix + "lineage", H5T_NATIVE_INT64);
 
-  const auto n = out.id.size();
-  if (out.type.size() != n || out.state.size() != n || out.x.size() != n ||
+  if (const auto n = out.id.size();
+      out.type.size() != n || out.state.size() != n || out.x.size() != n ||
       out.y.size() != n || out.z.size() != n || out.radius.size() != n ||
       out.biomass.size() != n || out.mu.size() != n || out.lineage.size() != n) {
     throw HDF5Error("inconsistent agent dataset lengths in " + step);
@@ -132,8 +132,8 @@ HDF5CheckpointLineage read_lineage(hid_t file, const std::string& step) {
   out.generation      = read_dataset_1d<int32_t>(file, prefix + "generation",
                                                  H5T_NATIVE_INT32);
 
-  const auto n = out.btuB_expression.size();
-  if (out.fepA_expression.size() != n || out.num_bi_loci.size() != n ||
+  if (const auto n = out.btuB_expression.size();
+      out.fepA_expression.size() != n || out.num_bi_loci.size() != n ||
       out.generation.size() != n) {
     throw HDF5Error("inconsistent lineage dataset lengths in " + step);
   }
@@ -181,8 +181,8 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       read_dataset_1d<double>(file, prefix + "bi_immunity_binding_affinity",
                               H5T_NATIVE_DOUBLE);
 
-  const auto n = out.parent_id.size();
-  if (out.mutations.size() != n || out.has_conjugative_plasmid.size() != n ||
+  if (const auto n = out.parent_id.size();
+      out.mutations.size() != n || out.has_conjugative_plasmid.size() != n ||
       out.plasmid_cost_amelioration.size() != n ||
       out.receptor_expression.size() != n * NUM_RECEPTORS ||
       out.toxin_affinity.size() != n * NUM_RECEPTORS ||
@@ -190,8 +190,8 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
     throw HDF5Error("inconsistent genome per-agent dataset lengths in " + step);
   }
 
-  const auto n_bi = out.bi_toxin_id.size();
-  if (out.bi_immunity_id.size() != n_bi || out.bi_target.size() != n_bi ||
+  if (const auto n_bi = out.bi_toxin_id.size();
+      out.bi_immunity_id.size() != n_bi || out.bi_target.size() != n_bi ||
       out.bi_bclass.size() != n_bi || out.bi_pI.size() != n_bi ||
       out.bi_diff_coeff.size() != n_bi || out.bi_retardation.size() != n_bi ||
       out.bi_molecular_weight.size() != n_bi ||

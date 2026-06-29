@@ -136,7 +136,7 @@ void FMM::upward_pass(const std::vector<Vec3>& positions,
   // Post-order traversal: leaves first, then internal nodes.
   for (auto i = static_cast<int>(nodes_.size()) - 1; i >= 0; --i) {
     FMMNode& node = nodes_[i];
-    std::fill(node.multipole.begin(), node.multipole.end(), 0.0);
+    std::ranges::fill(node.multipole, 0.0);
 
     if (node.is_leaf) {
       for (int idx : node.sources) {
@@ -201,7 +201,7 @@ void FMM::compute_local_expansions(Real theta,
   if (nodes_.empty()) return;
 
   for (auto& node : nodes_)
-    std::fill(node.local.begin(), node.local.end(), 0.0);
+    std::ranges::fill(node.local, 0.0);
 
   // M2L at every node, then L2L from root downward.
   for (auto i = 0; i < static_cast<int>(nodes_.size()); ++i)

@@ -85,7 +85,7 @@ std::vector<TagID> gather_live_tags_flat(const Simulation& sim) {
 
 void assert_unique_tags(const std::vector<TagID>& tags) {
   std::vector<TagID> sorted = tags;
-  std::sort(sorted.begin(), sorted.end());
+  std::ranges::sort(sorted);
   assert(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
 }
 

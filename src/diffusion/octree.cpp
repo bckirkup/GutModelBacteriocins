@@ -143,8 +143,8 @@ void Octree::traverse_far(int node_idx,
   if (dist + diag < std::sqrt(near_cutoff2)) return;
 
   // Barnes-Hut opening criterion: cell_size / distance < theta
-  Real cell_size = 2.0 * node.half_size;
-  if (!node.is_leaf && (cell_size / std::max(dist, 1e-30)) >= theta) {
+  if (Real cell_size = 2.0 * node.half_size;
+      !node.is_leaf && (cell_size / std::max(dist, 1e-30)) >= theta) {
     // Open this node — recurse into children
     for (int c = 0; c < 8; ++c) {
       if (node.children[c] >= 0) {

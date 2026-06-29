@@ -36,8 +36,7 @@ void FixMechanics::compute(Real dt) {
       Vec3 n = {delta[0]/d, delta[1]/d, delta[2]/d};
 
       // --- Repulsive force (overlap > 0) ---
-      Real overlap = sum_r - d;
-      if (overlap > 0.0) {
+      if (Real overlap = sum_r - d; overlap > 0.0) {
         Real force_mag;
         if (cfg_.hertzian_enabled) {
           // Hertzian contact: F = k * overlap^(3/2)

@@ -52,7 +52,7 @@ bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
 
   std::vector<int> order(static_cast<size_t>(num_agents));
   for (Int i = 0; i < num_agents; ++i) order[static_cast<size_t>(i)] = i;
-  std::stable_sort(order.begin(), order.end(), [&](int a, int b) {
+  std::ranges::stable_sort(order, [&](int a, int b) {
     return keys[static_cast<size_t>(a)] < keys[static_cast<size_t>(b)];
   });
   for (Int i = 0; i < num_agents; ++i) {

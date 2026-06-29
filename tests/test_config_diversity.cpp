@@ -245,9 +245,8 @@ void test_peristaltic_toggle_changes_fingerprint() {
 
 void test_same_config_is_reproducible() {
   SimulationConfig cfg = growth_baseline(9001);
-  uint64_t fp1 = run_fingerprint(cfg);
-  uint64_t fp2 = run_fingerprint(cfg);
-  if (fp1 != fp2) {
+  const uint64_t fp1 = run_fingerprint(cfg);
+  if (const uint64_t fp2 = run_fingerprint(cfg); fp1 != fp2) {
     std::cerr << "ERROR: reproducibility failure fp1=" << fp1 << " fp2=" << fp2 << "\n";
     assert(false);
   }
