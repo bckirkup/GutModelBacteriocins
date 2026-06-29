@@ -19,8 +19,7 @@ int coeff_index(int ox, int oy, int oz, int order) {
   for (int total = 0; total <= order; ++total) {
     for (int iz = 0; iz <= total; ++iz) {
       for (int iy = 0; iy <= total - iz; ++iy) {
-        int ix = total - iy - iz;
-        if (ix == ox && iy == oy && iz == oz) return idx;
+        if (int ix = total - iy - iz; ix == ox && iy == oy && iz == oz) return idx;
         idx++;
       }
     }
@@ -63,8 +62,9 @@ void add_particle(std::vector<Real>& moments,
                   Real charge,
                   const Vec3& position,
                   const Vec3& center) {
-  const int n = num_coefficients(order);
-  if (static_cast<int>(moments.size()) < n) moments.assign(n, 0.0);
+  if (const int n = num_coefficients(order); static_cast<int>(moments.size()) < n) {
+    moments.assign(n, 0.0);
+  }
 
   Vec3 dr = {position[0] - center[0],
              position[1] - center[1],

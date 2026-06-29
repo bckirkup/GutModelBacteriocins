@@ -7,6 +7,7 @@
 #include <cctype>
 #include <iostream>
 #include <sstream>
+#include <string_view>
 #include "error.h"
 #include <utility>
 
@@ -245,7 +246,7 @@ size_t find_json_object(const std::string& content) {
   return pos;
 }
 
-size_t find_initial_strains_array(const std::string& content) {
+size_t find_initial_strains_array(std::string_view content) {
   const std::string key = "\"initial_strains\":";
   size_t key_pos = content.find(key);
   if (key_pos == std::string::npos) return std::string::npos;
@@ -255,7 +256,7 @@ size_t find_initial_strains_array(const std::string& content) {
   return bracket;
 }
 
-size_t find_fixes_array(const std::string& content) {
+size_t find_fixes_array(std::string_view content) {
   const std::string key = "\"fixes\":";
   size_t key_pos = content.find(key);
   if (key_pos == std::string::npos) return std::string::npos;

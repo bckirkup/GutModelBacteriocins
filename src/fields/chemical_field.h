@@ -8,6 +8,7 @@
 
 #include "types.h"
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace gutibm {
@@ -51,7 +52,7 @@ class ChemicalField {
   void apply_boundaries(const Domain& domain);
 
   // Get species index by name
-  Int find(const std::string& name) const;
+  Int find(std::string_view name) const;
 
   const ChemicalSpec& spec(Int i) const { return specs_[i]; }
   const std::vector<ChemicalSpec>& specs() const { return specs_; }

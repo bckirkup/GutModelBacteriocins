@@ -235,11 +235,11 @@ SimulationConfig InputParser::parse(const std::string& filename) {
   return cfg;
 }
 
-std::string InputParser::trim(const std::string& s) {
+std::string InputParser::trim(std::string_view s) {
   auto start = s.find_first_not_of(" \t\r\n");
-  if (start == std::string::npos) return "";
+  if (start == std::string_view::npos) return "";
   auto end = s.find_last_not_of(" \t\r\n");
-  return s.substr(start, end - start + 1);
+  return std::string(s.substr(start, end - start + 1));
 }
 
 Real InputParser::parse_real(const std::string& key, const std::string& val) {

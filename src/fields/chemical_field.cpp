@@ -42,7 +42,7 @@ void ChemicalField::init(const Domain& domain,
 
 void ChemicalField::zero_reactions() {
   for (Int s = 0; s < nspec_; ++s) {
-    std::fill(reac_[s].begin(), reac_[s].end(), 0.0);
+    std::ranges::fill(reac_[s], 0.0);
   }
 }
 
@@ -74,7 +74,7 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
   }
 }
 
-Int ChemicalField::find(const std::string& name) const {
+Int ChemicalField::find(std::string_view name) const {
   for (Int i = 0; i < nspec_; ++i) {
     if (specs_[i].name == name) return i;
   }

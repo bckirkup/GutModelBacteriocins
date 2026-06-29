@@ -11,6 +11,7 @@
 #include <filesystem>
 #include "error.h"
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <unistd.h>
 #include <vector>
@@ -23,8 +24,8 @@ namespace {
 
 namespace fs = std::filesystem;
 
-bool path_has_null_byte(const std::string& path) {
-  return path.find('\0') != std::string::npos;
+bool path_has_null_byte(const std::string_view path) {
+  return path.find('\0') != std::string_view::npos;
 }
 
 bool path_has_parent_traversal(const std::string& path) {
@@ -74,10 +75,12 @@ void reject_symlink_in_world_writable_parent(const fs::path& path,
   const fs::path parent = parent_directory_for(path);
   if (!fs::exists(parent)) return;
 
-  const fs::path parent_canon = fs::weakly_canonical(parent);
-  if (!is_world_writable_directory(parent_canon)) return;
+  if (const fs::path parent_canon = fs::weakly_canonical(parent);
+      !is_world_writable_directory(parent_canon)) {
+    return;
+  }
 
-  if (fs::is_symlink(fs::symlink_status(parent))) {
+  if (auto status = fs::symlink_status(parent); fs::is_symlink(status)) {
     throw PathError(
         std::string("refusing to ") + operation +
         " via symlinked parent in world-writable directory: " + parent.string());

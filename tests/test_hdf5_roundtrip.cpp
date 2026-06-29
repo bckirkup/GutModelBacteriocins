@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef GUTIBM_HDF5
@@ -64,7 +65,7 @@ T read_scalar(hid_t file, const std::string& path, hid_t h5_type) {
   return data[0];
 }
 
-SimulationConfig make_roundtrip_config(const std::string& filename, bool parallel) {
+SimulationConfig make_roundtrip_config(std::string_view filename, bool parallel) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
@@ -118,7 +119,7 @@ std::vector<AgentSnapshot> collect_all_agents(const Simulation& sim) {
   std::vector<AgentSnapshot> out;
   out.reserve(sim.agents().size());
   for (const Agent& a : sim.agents()) {
-    out.push_back(AgentSnapshot{
+    out.emplace_back(
       a.tag,
       a.type,
       static_cast<int32_t>(a.state),
@@ -126,11 +127,9 @@ std::vector<AgentSnapshot> collect_all_agents(const Simulation& sim) {
       a.radius,
       a.biomass,
       a.mu_realized,
-      a.genome.lineage_id,
-    });
+      a.genome.lineage_id);
   }
-  std::sort(out.begin(), out.end(),
-            [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
+  std::ranges::sort(out, [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
               return lhs.id < rhs.id;
             });
   return out;
@@ -171,8 +170,7 @@ std::vector<AgentSnapshot> read_agent_snapshots(hid_t file, const std::string& s
     };
     ++i;
   }
-  std::sort(out.begin(), out.end(),
-            [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
+  std::ranges::sort(out, [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
               return lhs.id < rhs.id;
             });
   return out;
