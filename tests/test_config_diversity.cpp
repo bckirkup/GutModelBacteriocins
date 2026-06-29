@@ -8,6 +8,7 @@
 #include "input_parser.h"
 #include "sim_fingerprint.h"
 
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -50,9 +51,9 @@ void shrink_for_ci(SimulationConfig& cfg) {
   }
 
   // Coarsen grid if the shrunk domain still implies a huge cell count.
-  Int nx = static_cast<Int>(std::ceil(cfg.domain.hi[0] / cfg.domain.grid_dx));
-  Int ny = static_cast<Int>(std::ceil(cfg.domain.hi[1] / cfg.domain.grid_dx));
-  Int nz = static_cast<Int>(std::ceil(cfg.domain.hi[2] / cfg.domain.grid_dx));
+  auto nx = static_cast<Int>(std::ceil(cfg.domain.hi[0] / cfg.domain.grid_dx));
+  auto ny = static_cast<Int>(std::ceil(cfg.domain.hi[1] / cfg.domain.grid_dx));
+  auto nz = static_cast<Int>(std::ceil(cfg.domain.hi[2] / cfg.domain.grid_dx));
   while (nx * ny * nz > 20000 && cfg.domain.grid_dx < 20e-6) {
     cfg.domain.grid_dx *= 2.0;
     nx = static_cast<Int>(std::ceil(cfg.domain.hi[0] / cfg.domain.grid_dx));
@@ -138,11 +139,11 @@ void test_fixture_configs_produce_distinct_fingerprints() {
     const char* label;
     const char* fixture;
   };
-  const Scenario scenarios[] = {
-      {"strains", "parser_strains.json"},
-      {"fix_subset", "parser_fixes.json"},
-      {"fix_tunables", "parser_fix_tunables.json"},
-      {"fmm_peristaltic", "parser_fmm_peristaltic.json"},
+  constexpr std::array scenarios = {
+      Scenario{"strains", "parser_strains.json"},
+      Scenario{"fix_subset", "parser_fixes.json"},
+      Scenario{"fix_tunables", "parser_fix_tunables.json"},
+      Scenario{"fmm_peristaltic", "parser_fmm_peristaltic.json"},
   };
 
   std::vector<std::pair<std::string, uint64_t>> fingerprints;

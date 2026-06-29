@@ -95,10 +95,10 @@ void reject_symlink_in_world_writable_parent(const fs::path& path,
 
 std::string temp_directory() {
   fs::path dir;
-  if (const char* tmpdir = std::getenv("TMPDIR"); tmpdir && tmpdir[0] != '\0') {
+  if (const char* tmpdir = std::getenv("TMPDIR"); tmpdir && tmpdir[0] != '\0') {  // NOSONAR cpp:S5443 — validated below
     dir = fs::path(tmpdir);
   } else {
-    dir = fs::temp_directory_path();
+    dir = fs::temp_directory_path();  // NOSONAR cpp:S5443 — validated below; mkstemp creates private file
   }
   return validate_temp_directory(dir);
 }

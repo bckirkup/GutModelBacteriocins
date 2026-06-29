@@ -200,8 +200,10 @@ void test_advection_moves_agents() {
     Vec3 delta;
     for (int d : {0, 1, 2})
       delta[d] = a.x[d] - (*pos_it)[d];
-    Real dist = std::sqrt(delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2]);
-    if (dist > 1e-15) any_moved = true;
+    if (const Real dist = std::sqrt(delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2]);
+        dist > 1e-15) {
+      any_moved = true;
+    }
     ++pos_it;
   }
   assert(any_moved);

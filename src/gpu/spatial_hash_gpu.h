@@ -21,7 +21,7 @@ struct SpatialHashGpu {
   DeviceBuffer<int> sorted_agent_indices;
   DeviceBuffer<int> cell_keys;
 
-  void build(const AgentPoolGpu& agents, Int num_agents);
+  void build(const AgentPoolGpu& agents, Int num_agents) const;
   void set_active(bool v) { active_ = v; }
   bool active() const { return active_; }
 

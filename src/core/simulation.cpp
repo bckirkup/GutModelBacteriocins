@@ -14,6 +14,7 @@
 #include <cuda_runtime.h>
 #endif
 
+#include <format>
 #include <iostream>
 #include <algorithm>
 #include <array>
@@ -184,10 +185,13 @@ enum class MigrateSide { None, Lo, Hi };
 
 MigrateSide classify_migration(const Agent& agent, Int my_rank, Int axis,
                                const Domain& domain) {
-  Int dest = domain.owner_rank(agent.x);
-  if (dest == my_rank) return MigrateSide::None;
-  if (dest == domain.rank_lo()) return MigrateSide::Lo;
-  if (dest == domain.rank_hi()) return MigrateSide::Hi;
+  if (const Int dest = domain.owner_rank(agent.x); dest == my_rank) {
+    return MigrateSide::None;
+  } else if (dest == domain.rank_lo()) {
+    return MigrateSide::Lo;
+  } else if (dest == domain.rank_hi()) {
+    return MigrateSide::Hi;
+  }
   return (agent.x[axis] < domain.local_lo_x()) ? MigrateSide::Lo : MigrateSide::Hi;
 }
 
@@ -266,14 +270,13 @@ void Simulation::init(const SimulationConfig& cfg) {
               << "  Bio dt: " << cfg.bio_dt << " s\n"
               << "  Adaptive dt: " << (cfg.adaptive_dt_enabled ? "ON" : "OFF")
               << (cfg.adaptive_dt_enabled
-                    ? (" [" + std::to_string(cfg.dt_min) + "s, "
-                       + std::to_string(cfg.dt_max) + "s]")
+                    ? std::format(" [{}s, {}s]", cfg.dt_min, cfg.dt_max)
                     : "")
               << "\n"
               << "  Total time: " << cfg.total_time << " s\n"
               << "  GPU: " << (gpu_active_ ? "ON" : "OFF")
               << (gpu_active_
-                    ? (" (device " + std::to_string(gpu_device().device_id()) + ")")
+                    ? std::format(" (device {})", gpu_device().device_id())
                     : "")
               << "\n"
               << std::flush;

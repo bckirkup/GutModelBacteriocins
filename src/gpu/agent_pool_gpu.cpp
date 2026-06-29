@@ -123,9 +123,9 @@ void AgentPoolGpu::sync_to_host(AgentPool& pool) const {
 }
 
 bool AgentPoolGpu::run_metabolism(
-    const Domain& domain, MetabolismConfig& cfg,
-    double* d_conc_carbon, double* d_conc_iron, double* d_conc_b12,
-    double* d_conc_acetate, double* d_conc_eut,
+    const Domain& domain, const MetabolismConfig& cfg,
+    const double* d_conc_carbon, const double* d_conc_iron, const double* d_conc_b12,
+    const double* d_conc_acetate, const double* d_conc_eut,
     double* d_reac_carbon, double* d_reac_iron, double* d_reac_b12,
     double dt) {
 

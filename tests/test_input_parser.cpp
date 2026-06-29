@@ -4,6 +4,7 @@
 
 #include "input_parser.h"
 #include "simulation.h"
+#include "error.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -238,7 +239,7 @@ void test_strict_config_aborts_on_bad_numeric() {
   bool threw = false;
   try {
     (void)InputParser::parse(path);
-  } catch (const std::runtime_error&) {
+  } catch (const ConfigError&) {
     threw = true;
   }
 

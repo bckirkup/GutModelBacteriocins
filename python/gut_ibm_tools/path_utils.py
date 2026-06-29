@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import stat
 from pathlib import Path
+from typing import Any
 
 
 class PathValidationError(ValueError):
@@ -118,6 +120,18 @@ def validate_output_path(path: str | Path) -> Path:
     return candidate
 
 
+def _ensure_output_within_cwd(candidate: Path) -> Path:
+    """Reject output paths that resolve outside the current working directory."""
+    cwd = Path.cwd().resolve()
+    try:
+        candidate.resolve().relative_to(cwd)
+    except ValueError as exc:
+        raise PathValidationError(
+            f"output path must resolve under the working directory: {candidate}"
+        ) from exc
+    return candidate
+
+
 def prepare_output_file(path: str | Path) -> Path:
     """Validate an output file path and create parent directories if needed."""
     candidate = validate_path_syntax(path)
@@ -125,3 +139,14 @@ def prepare_output_file(path: str | Path) -> Path:
     parent = candidate.parent if candidate.parent.parts else Path(".")
     parent.mkdir(parents=True, exist_ok=True)
     return validate_output_path(candidate)
+
+
+def write_text_file(path: str | Path, text: str) -> None:
+    """Write text to a validated output path (must resolve under cwd)."""
+    out = prepare_output_file(_ensure_output_within_cwd(validate_path_syntax(path)))
+    out.write_text(text, encoding="utf-8")
+
+
+def write_json_file(path: str | Path, payload: Any, *, indent: int = 2) -> None:
+    """Write JSON to a validated output path."""
+    write_text_file(path, json.dumps(payload, indent=indent) + "\n")

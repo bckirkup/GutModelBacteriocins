@@ -7,10 +7,13 @@
 namespace gutibm {
 
 namespace {
-thread_local std::string g_last_error;
+std::string& last_error_storage() {
+  thread_local std::string storage;
+  return storage;
+}
 }  // namespace
 
-std::string DeviceContext::last_error() { return g_last_error; }
+std::string DeviceContext::last_error() { return last_error_storage(); }
 
 int DeviceContext::device_count() {
 #ifdef GUTIBM_CUDA
@@ -28,27 +31,27 @@ bool DeviceContext::init(int device_id) {
 #ifdef GUTIBM_CUDA
   int count = device_count();
   if (count <= 0) {
-    g_last_error = "No CUDA devices found";
+    last_error_storage() = "No CUDA devices found";
     active_ = false;
     return false;
   }
   if (device_id < 0 || device_id >= count) {
-    g_last_error = "Invalid CUDA device id";
+    last_error_storage() = "Invalid CUDA device id";
     active_ = false;
     return false;
   }
   if (cudaError_t err = cudaSetDevice(device_id); err != cudaSuccess) {
-    g_last_error = cudaGetErrorString(err);
+    last_error_storage() = cudaGetErrorString(err);
     active_ = false;
     return false;
   }
   device_id_ = device_id;
   active_ = true;
-  g_last_error.clear();
+  last_error_storage().clear();
   return true;
 #else
   (void)device_id;
-  g_last_error = "CUDA support not compiled in";
+  last_error_storage() = "CUDA support not compiled in";
   active_ = false;
   return false;
 #endif

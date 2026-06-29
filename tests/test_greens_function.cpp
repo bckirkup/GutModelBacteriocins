@@ -7,6 +7,7 @@
 #include "greens_function.h"
 #include "domain.h"
 #include "advection.h"
+#include "error.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -185,7 +186,7 @@ void test_uninitialized_throws() {
     try {
       fn();
       assert(false && "expected GreensFunction to throw before init()");
-    } catch (const std::runtime_error& e) {
+    } catch (const SimulationError& e) {
       assert(std::string(e.what()).find("init()") != std::string::npos);
     }
   };

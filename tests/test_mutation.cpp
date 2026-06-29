@@ -45,13 +45,13 @@ void test_bi_duplication_increases_loci() {
 
   auto sim = make_empty_sim(7007);
   Agent a = make_dividing_agent(sim);
-  Int n_before = static_cast<Int>(a.genome.bi_loci.size());
+  auto n_before = static_cast<Int>(a.genome.bi_loci.size());
   sim.agents().push_back(std::move(a));
 
   FixMutation fix(sim, cfg);
   fix.compute(60.0);
 
-  Int n_after = static_cast<Int>(sim.agents()[0].genome.bi_loci.size());
+  auto n_after = static_cast<Int>(sim.agents()[0].genome.bi_loci.size());
   assert(n_after == n_before + 1);
   assert(sim.agents()[0].genome.mutations > 0);
 
@@ -116,13 +116,13 @@ void test_super_killer_immunity_escape() {
 
   auto sim = make_empty_sim(9010);
   Agent a = make_dividing_agent(sim);
-  Int n_before = static_cast<Int>(a.genome.bi_loci.size());
+  auto n_before = static_cast<Int>(a.genome.bi_loci.size());
   sim.agents().push_back(std::move(a));
 
   FixMutation fix(sim, cfg);
   fix.compute(60.0);
 
-  Int n_after = static_cast<Int>(sim.agents()[0].genome.bi_loci.size());
+  auto n_after = static_cast<Int>(sim.agents()[0].genome.bi_loci.size());
   assert(n_after == n_before + 1);
 
   const BICluster& novel = sim.agents()[0].genome.bi_loci.back();
@@ -140,7 +140,7 @@ void test_mutation_skips_aged_agents() {
   auto sim = make_empty_sim(9011);
   Agent a = make_dividing_agent(sim);
   a.age = 120.0;
-  Int n_before = static_cast<Int>(a.genome.bi_loci.size());
+  auto n_before = static_cast<Int>(a.genome.bi_loci.size());
   sim.agents().push_back(std::move(a));
 
   FixMutation fix(sim, cfg);
