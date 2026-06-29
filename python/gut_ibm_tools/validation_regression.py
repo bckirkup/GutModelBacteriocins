@@ -333,7 +333,7 @@ def _print_metrics(metrics: dict[str, float], *, prefix: str = "") -> None:
         print(f"  {label}{key}: {metrics[key]:.6g}")
 
 
-def main(argv: list[str] | None = None) -> int:
+def _build_validation_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Validate GutIBM HDF5 output against EARI/VADI targets or golden baselines.",
     )
@@ -382,36 +382,45 @@ def main(argv: list[str] | None = None) -> int:
         default="eari_vadi_ci_fish",
         help="Scenario label stored in --write-fish-golden output",
     )
-    args = parser.parse_args(argv)
+    return parser
 
-    if not args.h5_file.is_file():
-        print(f"ERROR: HDF5 file not found: {args.h5_file}", file=sys.stderr)
-        return 2
 
+def _load_metrics_or_exit(h5_file: Path) -> dict[str, float] | None:
+    if not h5_file.is_file():
+        print(f"ERROR: HDF5 file not found: {h5_file}", file=sys.stderr)
+        return None
     try:
-        metrics = evaluate_metrics(args.h5_file)
+        return evaluate_metrics(h5_file)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
+        return None
 
-    if args.write_fish_golden is not None:
-        fish_metrics = evaluate_fish_metrics(args.h5_file)
-        write_fish_golden(fish_metrics, args.write_fish_golden, scenario=args.fish_scenario)
-        print(f"Wrote FISH golden metrics to {args.write_fish_golden}")
-        _print_metrics(
-            {k: fish_metrics[k] for k in sorted(fish_metrics) if k in FISH_GOLDEN_METRICS},
-            prefix="fish",
-        )
-        return 0
 
-    if args.write_golden is not None:
-        write_golden(metrics, args.write_golden, scenario=args.scenario)
-        print(f"Wrote golden metrics to {args.write_golden}")
-        _print_metrics({k: metrics[k] for k in sorted(metrics) if k in GOLDEN_METRICS})
-        return 0
+def _handle_write_fish_golden(args: argparse.Namespace) -> int:
+    fish_metrics = evaluate_fish_metrics(args.h5_file)
+    write_fish_golden(fish_metrics, args.write_fish_golden, scenario=args.fish_scenario)
+    print(f"Wrote FISH golden metrics to {args.write_fish_golden}")
+    _print_metrics(
+        {k: fish_metrics[k] for k in sorted(fish_metrics) if k in FISH_GOLDEN_METRICS},
+        prefix="fish",
+    )
+    return 0
 
+
+def _handle_write_golden(args: argparse.Namespace, metrics: dict[str, float]) -> int:
+    write_golden(metrics, args.write_golden, scenario=args.scenario)
+    print(f"Wrote golden metrics to {args.write_golden}")
+    _print_metrics({k: metrics[k] for k in sorted(metrics) if k in GOLDEN_METRICS})
+    return 0
+
+
+def _collect_validation_failures(
+    args: argparse.Namespace,
+    metrics: dict[str, float],
+) -> tuple[list[ValidationFailure], dict[str, float] | None]:
     failures: list[ValidationFailure] = []
     fish_metrics: dict[str, float] | None = None
+
     if args.golden is not None:
         golden = load_golden(args.golden)
         failures.extend(compare_golden(metrics, golden, rtol=args.rtol, atol=args.atol))
@@ -428,6 +437,25 @@ def main(argv: list[str] | None = None) -> int:
         if args.check_fish_targets:
             failures.extend(check_fish_targets(fish_metrics))
 
+    return failures, fish_metrics
+
+
+def _validation_mode_label(args: argparse.Namespace) -> str:
+    modes = []
+    if args.golden is not None:
+        modes.append(f"golden ({args.golden})")
+    if args.fish_golden is not None:
+        modes.append(f"fish golden ({args.fish_golden})")
+    if args.check_targets:
+        modes.append("EARI/VADI targets")
+    if args.check_fish_targets:
+        modes.append("FISH targets")
+    return " and ".join(modes) if modes else "metrics only"
+
+
+def _handle_validate(args: argparse.Namespace, metrics: dict[str, float]) -> int:
+    failures, fish_metrics = _collect_validation_failures(args, metrics)
+
     print("Validation metrics:")
     _print_metrics(metrics)
     if fish_metrics is not None:
@@ -440,18 +468,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {failure}", file=sys.stderr)
         return 1
 
-    modes = []
-    if args.golden is not None:
-        modes.append(f"golden ({args.golden})")
-    if args.fish_golden is not None:
-        modes.append(f"fish golden ({args.fish_golden})")
-    if args.check_targets:
-        modes.append("EARI/VADI targets")
-    if args.check_fish_targets:
-        modes.append("FISH targets")
-    label = " and ".join(modes) if modes else "metrics only"
-    print(f"\nValidation passed ({label}).")
+    print(f"\nValidation passed ({_validation_mode_label(args)}).")
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _build_validation_parser().parse_args(argv)
+
+    metrics = _load_metrics_or_exit(args.h5_file)
+    if metrics is None:
+        return 2
+
+    if args.write_fish_golden is not None:
+        return _handle_write_fish_golden(args)
+    if args.write_golden is not None:
+        return _handle_write_golden(args, metrics)
+    return _handle_validate(args, metrics)
 
 
 if __name__ == "__main__":

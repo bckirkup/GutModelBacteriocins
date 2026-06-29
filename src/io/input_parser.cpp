@@ -33,6 +33,61 @@ void warn_parse_failure(const char* kind,
   }
 }
 
+std::string trim_config(std::string_view s) {
+  auto start = s.find_first_not_of(" \t\r\n");
+  if (start == std::string_view::npos) return "";
+  auto end = s.find_last_not_of(" \t\r\n");
+  return std::string(s.substr(start, end - start + 1));
+}
+
+Real parse_config_real(const std::string& key, const std::string& val) {
+  const std::string trimmed = trim_config(val);
+  if (trimmed.empty()) {
+    warn_parse_failure("numeric", key, val);
+    return 0.0;
+  }
+
+  try {
+    size_t consumed = 0;
+    const Real result = std::stod(trimmed, &consumed);
+    if (consumed != trimmed.size()) {
+      warn_parse_failure("numeric", key, val);
+      return 0.0;
+    }
+    return result;
+  } catch (const std::invalid_argument&) {
+    warn_parse_failure("numeric", key, val);
+    return 0.0;
+  } catch (const std::out_of_range&) {
+    warn_parse_failure("numeric", key, val);
+    return 0.0;
+  }
+}
+
+Int parse_config_int(const std::string& key, const std::string& val) {
+  const std::string trimmed = trim_config(val);
+  if (trimmed.empty()) {
+    warn_parse_failure("integer", key, val);
+    return 0;
+  }
+
+  try {
+    size_t consumed = 0;
+    const Int result = std::stoi(trimmed, &consumed);
+    if (consumed != trimmed.size()) {
+      warn_parse_failure("integer", key, val);
+      return 0;
+    }
+    return result;
+  } catch (const std::invalid_argument&) {
+    warn_parse_failure("integer", key, val);
+    return 0;
+  } catch (const std::out_of_range&) {
+    warn_parse_failure("integer", key, val);
+    return 0;
+  }
+}
+
 }  // namespace
 
 SimulationConfig InputParser::default_config() {
@@ -73,98 +128,214 @@ SimulationConfig InputParser::default_config() {
   return cfg;
 }
 
+namespace {
+
+using FlatKeyHandler = bool (*)(SimulationConfig&, const std::string&, const std::string&);
+
+bool apply_time_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "total_time")           { cfg.total_time = parse_config_real(key, val); return true; }
+  if (key == "bio_dt")               { cfg.bio_dt = parse_config_real(key, val); return true; }
+  if (key == "output_interval")      { cfg.output_interval = parse_config_real(key, val); return true; }
+  if (key == "seed")                 { cfg.seed = static_cast<uint64_t>(parse_config_int(key, val)); return true; }
+  return false;
+}
+
+bool apply_domain_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "grid_dx")              { cfg.domain.grid_dx = parse_config_real(key, val); return true; }
+  if (key == "domain_x")             { cfg.domain.hi[0] = parse_config_real(key, val); return true; }
+  if (key == "domain_y")             { cfg.domain.hi[1] = parse_config_real(key, val); return true; }
+  if (key == "domain_z")             { cfg.domain.hi[2] = parse_config_real(key, val); return true; }
+  return false;
+}
+
+bool apply_advection_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "mucus_thickness")      { cfg.advection.mucus_thickness = parse_config_real(key, val); return true; }
+  if (key == "radial_turnover")      { cfg.advection.radial_turnover = parse_config_real(key, val); return true; }
+  if (key == "distal_transit")       { cfg.advection.distal_transit_time = parse_config_real(key, val); return true; }
+  if (key == "peristaltic_enabled")  { cfg.advection.peristaltic_enabled = (val == "true" || val == "1"); return true; }
+  if (key == "peristaltic_period")   { cfg.advection.peristaltic_period = parse_config_real(key, val); return true; }
+  if (key == "peristaltic_amplitude") { cfg.advection.peristaltic_amplitude = parse_config_real(key, val); return true; }
+  if (key == "peristaltic_wavelength") { cfg.advection.peristaltic_wavelength = parse_config_real(key, val); return true; }
+  if (key == "crypts_enabled")       { cfg.advection.crypts_enabled = (val == "true" || val == "1"); return true; }
+  if (key == "crypt_depth")          { cfg.advection.crypt_depth = parse_config_real(key, val); return true; }
+  if (key == "crypt_exit_rate")      { cfg.advection.crypt_exit_rate = parse_config_real(key, val); return true; }
+  if (key == "crypt_entry_rate")     { cfg.advection.crypt_entry_rate = parse_config_real(key, val); return true; }
+  if (key == "crypt_carrying_capacity") { cfg.advection.crypt_carrying_capacity = parse_config_int(key, val); return true; }
+  return false;
+}
+
+bool apply_qssa_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "toxin_cutoff")         { cfg.qssa.toxin_cutoff = parse_config_real(key, val); return true; }
+  if (key == "nutrient_cutoff")      { cfg.qssa.nutrient_cutoff = parse_config_real(key, val); return true; }
+  if (key == "use_fmm")              { cfg.qssa.use_fmm = (val == "true" || val == "1"); return true; }
+  if (key == "fmm_theta")            { cfg.qssa.fmm_theta = parse_config_real(key, val); return true; }
+  if (key == "fmm_expansion_order")  { cfg.qssa.fmm_expansion_order = parse_config_int(key, val); return true; }
+  return false;
+}
+
+bool apply_vbf_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "vbf_density")          { cfg.vbf.density = parse_config_real(key, val); return true; }
+  if (key == "vbf_viscosity")        { cfg.vbf.viscosity = parse_config_real(key, val); return true; }
+  if (key == "vbf_mucin_z_gradient") { cfg.vbf.mucin_z_gradient_enabled = (val == "true" || val == "1"); return true; }
+  if (key == "vbf_mucin_z_lambda")   { cfg.vbf.mucin_z_gradient_lambda = parse_config_real(key, val); return true; }
+  return false;
+}
+
+bool apply_chemical_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "carbon_z_gradient") {
+    for (auto& c : cfg.chemicals) {
+      if (c.name == "carbon") { c.z_gradient_enabled = (val == "true" || val == "1"); return true; }
+    }
+    return true;
+  }
+  if (key == "carbon_z_lambda") {
+    for (auto& c : cfg.chemicals) {
+      if (c.name == "carbon") { c.z_gradient_lambda = parse_config_real(key, val); return true; }
+    }
+    return true;
+  }
+  if (key == "sos_lysis_prob")       { cfg.bacteriocin.sos_lysis_prob = parse_config_real(key, val); return true; }
+  return false;
+}
+
+bool apply_receptor_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "kd_b12_btuB")          { cfg.receptor.kd_b12_btuB = parse_config_real(key, val); return true; }
+  if (key == "kd_colicinE_btuB")     { cfg.receptor.kd_colicinE_btuB = parse_config_real(key, val); return true; }
+  if (key == "kd_enterobactin")       { cfg.receptor.kd_enterobactin = parse_config_real(key, val); return true; }
+  if (key == "kd_colicinB_fepA")      { cfg.receptor.kd_colicinB_fepA = parse_config_real(key, val); return true; }
+  if (key == "kd_lin_enterobactin")   { cfg.receptor.kd_lin_enterobactin = parse_config_real(key, val); return true; }
+  if (key == "kd_colicinIa_cirA")    { cfg.receptor.kd_colicinIa_cirA = parse_config_real(key, val); return true; }
+  if (key == "kill_rate_colicin")     { cfg.receptor.kill_rate_colicin = parse_config_real(key, val); return true; }
+  if (key == "kill_rate_microcin")    { cfg.receptor.kill_rate_microcin = parse_config_real(key, val); return true; }
+  if (key == "immunity_factor")       { cfg.receptor.immunity_factor = parse_config_real(key, val); return true; }
+  return false;
+}
+
+bool apply_conjugation_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "pili_length")           { cfg.conjugation.pili_length = parse_config_real(key, val); return true; }
+  if (key == "base_transfer_rate")    { cfg.conjugation.base_transfer_rate = parse_config_real(key, val); return true; }
+  if (key == "shear_critical")          { cfg.conjugation.shear_critical = parse_config_real(key, val); return true; }
+  if (key == "plasmid_copy_cost")     { cfg.conjugation.plasmid_copy_cost = parse_config_real(key, val); return true; }
+  if (key == "pili_heterogeneity")    { cfg.conjugation.pili_heterogeneity = (val == "true" || val == "1"); return true; }
+  if (key == "pili_length_min")       { cfg.conjugation.pili_length_min = parse_config_real(key, val); return true; }
+  if (key == "pili_length_max")       { cfg.conjugation.pili_length_max = parse_config_real(key, val); return true; }
+  return false;
+}
+
+bool apply_mutation_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "bi_duplication_rate")     { cfg.mutation.bi_duplication_rate = parse_config_real(key, val); return true; }
+  if (key == "bi_recombination_rate")   { cfg.mutation.bi_recombination_rate = parse_config_real(key, val); return true; }
+  if (key == "receptor_mutation_rate")  { cfg.mutation.receptor_mutation_rate = parse_config_real(key, val); return true; }
+  if (key == "super_killer_rate")       { cfg.mutation.super_killer_rate = parse_config_real(key, val); return true; }
+  if (key == "partial_resistance_rate") { cfg.mutation.partial_resistance_rate = parse_config_real(key, val); return true; }
+  if (key == "receptor_reduction")      { cfg.mutation.receptor_reduction = parse_config_real(key, val); return true; }
+  if (key == "max_bi_loci")             { cfg.mutation.max_bi_loci = parse_config_int(key, val); return true; }
+  if (key == "immunity_escape_prob")    { cfg.mutation.immunity_escape_prob = parse_config_real(key, val); return true; }
+  if (key == "escape_affinity_lo")      { cfg.mutation.escape_affinity_lo = parse_config_real(key, val); return true; }
+  if (key == "escape_affinity_hi")      { cfg.mutation.escape_affinity_hi = parse_config_real(key, val); return true; }
+  if (key == "compensatory_rate")       { cfg.mutation.compensatory_rate = parse_config_real(key, val); return true; }
+  if (key == "compensatory_reduction")  { cfg.mutation.compensatory_reduction = parse_config_real(key, val); return true; }
+  return false;
+}
+
+bool apply_io_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "hdf5_file") {
+    validate_path_syntax(val);
+    cfg.hdf5.filename = val;
+    return true;
+  }
+  if (key == "hdf5_every")           { cfg.hdf5.dump_every = parse_config_int(key, val); return true; }
+  if (key == "checkpoint_file") {
+    validate_path_syntax(val);
+    cfg.checkpoint.file = val;
+    return true;
+  }
+  if (key == "checkpoint_step")        { cfg.checkpoint.step = val; return true; }
+  return false;
+}
+
+bool apply_dt_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "adaptive_dt_enabled")  { cfg.adaptive_dt_enabled = (val == "true" || val == "1"); return true; }
+  if (key == "dt_min")               { cfg.dt_min = parse_config_real(key, val); return true; }
+  if (key == "dt_max")               { cfg.dt_max = parse_config_real(key, val); return true; }
+  if (key == "dt_safety")            { cfg.dt_safety = parse_config_real(key, val); return true; }
+  if (key == "dt_growth_limit")      { cfg.dt_growth_limit = parse_config_real(key, val); return true; }
+  return false;
+}
+
+bool apply_misc_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "gpu_enabled")          { cfg.gpu.enabled = (val == "true" || val == "1"); return true; }
+  if (key == "gpu_device_id")        { cfg.gpu.device_id = parse_config_int(key, val); return true; }
+  if (key == "profile_steps")        { cfg.profile_steps = (val == "true" || val == "1"); return true; }
+  return false;
+}
+
+constexpr FlatKeyHandler k_flat_key_handlers[] = {
+  apply_time_key,
+  apply_domain_key,
+  apply_advection_key,
+  apply_qssa_key,
+  apply_vbf_key,
+  apply_chemical_key,
+  apply_receptor_key,
+  apply_conjugation_key,
+  apply_mutation_key,
+  apply_io_key,
+  apply_dt_key,
+  apply_misc_key,
+};
+
+bool parse_legacy_key_value(const std::string& line,
+                            std::string& key_out,
+                            std::string& val_out) {
+  std::string trimmed = trim_config(line);
+  if (trimmed.empty() || trimmed[0] == '#' || trimmed[0] == '/' ||
+      trimmed[0] == '{' || trimmed[0] == '}') {
+    return false;
+  }
+
+  auto colon = trimmed.find(':');
+  if (colon == std::string::npos) return false;
+
+  std::string key = trim_config(trimmed.substr(0, colon));
+  std::string val = trim_config(trimmed.substr(colon + 1));
+  if (key.empty() || key.front() == '_') return false;
+
+  if (key.size() >= 2 && key.front() == '"' && key.back() == '"') {
+    key = key.substr(1, key.size() - 2);
+    if (!key.empty() && key.front() == '_') return false;
+  }
+
+  if (!val.empty() && val.back() == ',') val.pop_back();
+  val = trim_config(val);
+  if (val.size() >= 2 && val.front() == '"' && val.back() == '"') {
+    val = val.substr(1, val.size() - 2);
+  }
+
+  key_out = std::move(key);
+  val_out = std::move(val);
+  return true;
+}
+
+void parse_legacy_flat_keys(const std::string& content, SimulationConfig& cfg) {
+  std::istringstream lines(content);
+  std::string line;
+  while (std::getline(lines, line)) {
+    std::string key;
+    std::string val;
+    if (!parse_legacy_key_value(line, key, val)) continue;
+    InputParser::apply_flat_key(cfg, key, val);
+  }
+}
+
+}  // namespace
+
 void InputParser::apply_flat_key(SimulationConfig& cfg,
                                  const std::string& key,
                                  const std::string& val) {
-  if (key == "total_time")             cfg.total_time = parse_real(key, val);
-  else if (key == "bio_dt")            cfg.bio_dt = parse_real(key, val);
-  else if (key == "output_interval")   cfg.output_interval = parse_real(key, val);
-  else if (key == "seed")              cfg.seed = static_cast<uint64_t>(parse_int(key, val));
-  else if (key == "grid_dx")           cfg.domain.grid_dx = parse_real(key, val);
-  else if (key == "domain_x")          cfg.domain.hi[0] = parse_real(key, val);
-  else if (key == "domain_y")          cfg.domain.hi[1] = parse_real(key, val);
-  else if (key == "domain_z")          cfg.domain.hi[2] = parse_real(key, val);
-  else if (key == "mucus_thickness")   cfg.advection.mucus_thickness = parse_real(key, val);
-  else if (key == "radial_turnover")   cfg.advection.radial_turnover = parse_real(key, val);
-  else if (key == "distal_transit")    cfg.advection.distal_transit_time = parse_real(key, val);
-  else if (key == "peristaltic_enabled")   cfg.advection.peristaltic_enabled = (val == "true" || val == "1");
-  else if (key == "peristaltic_period")    cfg.advection.peristaltic_period = parse_real(key, val);
-  else if (key == "peristaltic_amplitude") cfg.advection.peristaltic_amplitude = parse_real(key, val);
-  else if (key == "peristaltic_wavelength") cfg.advection.peristaltic_wavelength = parse_real(key, val);
-  else if (key == "toxin_cutoff")      cfg.qssa.toxin_cutoff = parse_real(key, val);
-  else if (key == "nutrient_cutoff")   cfg.qssa.nutrient_cutoff = parse_real(key, val);
-  else if (key == "use_fmm")           cfg.qssa.use_fmm = (val == "true" || val == "1");
-  else if (key == "fmm_theta")         cfg.qssa.fmm_theta = parse_real(key, val);
-  else if (key == "fmm_expansion_order") cfg.qssa.fmm_expansion_order = parse_int(key, val);
-  else if (key == "vbf_density")       cfg.vbf.density = parse_real(key, val);
-  else if (key == "vbf_viscosity")     cfg.vbf.viscosity = parse_real(key, val);
-  else if (key == "vbf_mucin_z_gradient")  cfg.vbf.mucin_z_gradient_enabled = (val == "true" || val == "1");
-  else if (key == "vbf_mucin_z_lambda")    cfg.vbf.mucin_z_gradient_lambda = parse_real(key, val);
-  else if (key == "carbon_z_gradient")     {
-    for (auto& c : cfg.chemicals) {
-      if (c.name == "carbon") { c.z_gradient_enabled = (val == "true" || val == "1"); break; }
-    }
+  for (FlatKeyHandler handler : k_flat_key_handlers) {
+    if (handler(cfg, key, val)) return;
   }
-  else if (key == "carbon_z_lambda")       {
-    for (auto& c : cfg.chemicals) {
-      if (c.name == "carbon") { c.z_gradient_lambda = parse_real(key, val); break; }
-    }
-  }
-  else if (key == "sos_lysis_prob")    cfg.bacteriocin.sos_lysis_prob = parse_real(key, val);
-  // Receptor Fix tunables
-  else if (key == "kd_b12_btuB")        cfg.receptor.kd_b12_btuB = parse_real(key, val);
-  else if (key == "kd_colicinE_btuB")  cfg.receptor.kd_colicinE_btuB = parse_real(key, val);
-  else if (key == "kd_enterobactin")    cfg.receptor.kd_enterobactin = parse_real(key, val);
-  else if (key == "kd_colicinB_fepA")   cfg.receptor.kd_colicinB_fepA = parse_real(key, val);
-  else if (key == "kd_lin_enterobactin") cfg.receptor.kd_lin_enterobactin = parse_real(key, val);
-  else if (key == "kd_colicinIa_cirA") cfg.receptor.kd_colicinIa_cirA = parse_real(key, val);
-  else if (key == "kill_rate_colicin")  cfg.receptor.kill_rate_colicin = parse_real(key, val);
-  else if (key == "kill_rate_microcin") cfg.receptor.kill_rate_microcin = parse_real(key, val);
-  else if (key == "immunity_factor")    cfg.receptor.immunity_factor = parse_real(key, val);
-  // Conjugation Fix tunables
-  else if (key == "pili_length")        cfg.conjugation.pili_length = parse_real(key, val);
-  else if (key == "base_transfer_rate") cfg.conjugation.base_transfer_rate = parse_real(key, val);
-  else if (key == "shear_critical")     cfg.conjugation.shear_critical = parse_real(key, val);
-  else if (key == "plasmid_copy_cost")  cfg.conjugation.plasmid_copy_cost = parse_real(key, val);
-  else if (key == "pili_heterogeneity") cfg.conjugation.pili_heterogeneity = (val == "true" || val == "1");
-  else if (key == "pili_length_min")    cfg.conjugation.pili_length_min = parse_real(key, val);
-  else if (key == "pili_length_max")    cfg.conjugation.pili_length_max = parse_real(key, val);
-  // Mutation Fix tunables
-  else if (key == "bi_duplication_rate")    cfg.mutation.bi_duplication_rate = parse_real(key, val);
-  else if (key == "bi_recombination_rate")  cfg.mutation.bi_recombination_rate = parse_real(key, val);
-  else if (key == "receptor_mutation_rate") cfg.mutation.receptor_mutation_rate = parse_real(key, val);
-  else if (key == "super_killer_rate")      cfg.mutation.super_killer_rate = parse_real(key, val);
-  else if (key == "partial_resistance_rate") cfg.mutation.partial_resistance_rate = parse_real(key, val);
-  else if (key == "receptor_reduction")     cfg.mutation.receptor_reduction = parse_real(key, val);
-  else if (key == "max_bi_loci")            cfg.mutation.max_bi_loci = parse_int(key, val);
-  else if (key == "immunity_escape_prob")   cfg.mutation.immunity_escape_prob = parse_real(key, val);
-  else if (key == "escape_affinity_lo")     cfg.mutation.escape_affinity_lo = parse_real(key, val);
-  else if (key == "escape_affinity_hi")     cfg.mutation.escape_affinity_hi = parse_real(key, val);
-  else if (key == "compensatory_rate")      cfg.mutation.compensatory_rate = parse_real(key, val);
-  else if (key == "compensatory_reduction") cfg.mutation.compensatory_reduction = parse_real(key, val);
-  else if (key == "crypts_enabled")     cfg.advection.crypts_enabled = (val == "true" || val == "1");
-  else if (key == "crypt_depth")       cfg.advection.crypt_depth = parse_real(key, val);
-  else if (key == "crypt_exit_rate")   cfg.advection.crypt_exit_rate = parse_real(key, val);
-  else if (key == "crypt_entry_rate")  cfg.advection.crypt_entry_rate = parse_real(key, val);
-  else if (key == "crypt_carrying_capacity") cfg.advection.crypt_carrying_capacity = parse_int(key, val);
-  else if (key == "hdf5_file") {
-    validate_path_syntax(val);
-    cfg.hdf5.filename = val;
-  }
-  else if (key == "hdf5_every")        cfg.hdf5.dump_every = parse_int(key, val);
-  else if (key == "checkpoint_file") {
-    validate_path_syntax(val);
-    cfg.checkpoint.file = val;
-  }
-  else if (key == "checkpoint_step")   cfg.checkpoint.step = val;
-  else if (key == "adaptive_dt_enabled") cfg.adaptive_dt_enabled = (val == "true" || val == "1");
-  else if (key == "dt_min")            cfg.dt_min = parse_real(key, val);
-  else if (key == "dt_max")            cfg.dt_max = parse_real(key, val);
-  else if (key == "dt_safety")         cfg.dt_safety = parse_real(key, val);
-  else if (key == "dt_growth_limit")   cfg.dt_growth_limit = parse_real(key, val);
-  else if (key == "gpu_enabled")       cfg.gpu.enabled = (val == "true" || val == "1");
-  else if (key == "gpu_device_id")     cfg.gpu.device_id = parse_int(key, val);
-  else if (key == "profile_steps")   cfg.profile_steps = (val == "true" || val == "1");
 }
 
 SimulationConfig InputParser::parse(const std::string& filename) {
@@ -194,35 +365,7 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     return cfg;
   }
 
-  // Legacy line-oriented fallback for non-JSON configs.
-  std::istringstream lines(content);
-  std::string line;
-  while (std::getline(lines, line)) {
-    line = trim(line);
-    if (line.empty() || line[0] == '#' || line[0] == '/' || line[0] == '{' || line[0] == '}')
-      continue;
-
-    auto colon = line.find(':');
-    if (colon == std::string::npos) continue;
-
-    std::string key = trim(line.substr(0, colon));
-    std::string val = trim(line.substr(colon + 1));
-
-    if (!key.empty() && key.front() == '_') continue;
-
-    if (key.size() >= 2 && key.front() == '"' && key.back() == '"') {
-      key = key.substr(1, key.size() - 2);
-      if (!key.empty() && key.front() == '_') continue;
-    }
-
-    if (!val.empty() && val.back() == ',') val.pop_back();
-    val = trim(val);
-    if (val.size() >= 2 && val.front() == '"' && val.back() == '"') {
-      val = val.substr(1, val.size() - 2);
-    }
-
-    apply_flat_key(cfg, key, val);
-  }
+  parse_legacy_flat_keys(content, cfg);
 
   if (auto strains = ConfigJson::parse_initial_strains(content); strains.found) {
     cfg.initial_strains = std::move(strains.strains);
@@ -236,58 +379,15 @@ SimulationConfig InputParser::parse(const std::string& filename) {
 }
 
 std::string InputParser::trim(std::string_view s) {
-  auto start = s.find_first_not_of(" \t\r\n");
-  if (start == std::string_view::npos) return "";
-  auto end = s.find_last_not_of(" \t\r\n");
-  return std::string(s.substr(start, end - start + 1));
+  return trim_config(s);
 }
 
 Real InputParser::parse_real(const std::string& key, const std::string& val) {
-  const std::string trimmed = trim(val);
-  if (trimmed.empty()) {
-    warn_parse_failure("numeric", key, val);
-    return 0.0;
-  }
-
-  try {
-    size_t consumed = 0;
-    const Real result = std::stod(trimmed, &consumed);
-    if (consumed != trimmed.size()) {
-      warn_parse_failure("numeric", key, val);
-      return 0.0;
-    }
-    return result;
-  } catch (const std::invalid_argument&) {
-    warn_parse_failure("numeric", key, val);
-    return 0.0;
-  } catch (const std::out_of_range&) {
-    warn_parse_failure("numeric", key, val);
-    return 0.0;
-  }
+  return parse_config_real(key, val);
 }
 
 Int InputParser::parse_int(const std::string& key, const std::string& val) {
-  const std::string trimmed = trim(val);
-  if (trimmed.empty()) {
-    warn_parse_failure("integer", key, val);
-    return 0;
-  }
-
-  try {
-    size_t consumed = 0;
-    const Int result = std::stoi(trimmed, &consumed);
-    if (consumed != trimmed.size()) {
-      warn_parse_failure("integer", key, val);
-      return 0;
-    }
-    return result;
-  } catch (const std::invalid_argument&) {
-    warn_parse_failure("integer", key, val);
-    return 0;
-  } catch (const std::out_of_range&) {
-    warn_parse_failure("integer", key, val);
-    return 0;
-  }
+  return parse_config_int(key, val);
 }
 
 }  // namespace gutibm

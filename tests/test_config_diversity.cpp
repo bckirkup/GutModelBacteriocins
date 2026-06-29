@@ -106,19 +106,28 @@ SimulationConfig growth_baseline(uint64_t seed) {
   return cfg;
 }
 
+void report_duplicate_fingerprints(
+    const std::string& name,
+    uint64_t fp,
+    const std::vector<std::pair<std::string, uint64_t>>& labeled) {
+  std::cerr << "ERROR: duplicate fingerprint for scenario '" << name << "'\n";
+  for (const auto& [other_name, other_fp] : labeled) {
+    if (other_fp != fp) {
+      continue;
+    }
+    std::cerr << "  matches '" << other_name << "'\n";
+  }
+}
+
 void assert_all_distinct(const std::vector<std::pair<std::string, uint64_t>>& labeled) {
   std::set<uint64_t> seen;
   for (const auto& [name, fp] : labeled) {
     auto [it, inserted] = seen.insert(fp);
-    if (!inserted) {
-      std::cerr << "ERROR: duplicate fingerprint for scenario '" << name << "'\n";
-      for (const auto& [other_name, other_fp] : labeled) {
-        if (other_fp == fp) {
-          std::cerr << "  matches '" << other_name << "'\n";
-        }
-      }
-      assert(false && "configurations should produce distinct fingerprints");
+    if (inserted) {
+      continue;
     }
+    report_duplicate_fingerprints(name, fp, labeled);
+    assert(false && "configurations should produce distinct fingerprints");
   }
 }
 

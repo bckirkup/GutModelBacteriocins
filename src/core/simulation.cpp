@@ -33,6 +33,166 @@
 
 namespace gutibm {
 
+namespace {
+
+void assign_plasmids(Agent& agent, const std::vector<std::string>& plasmids, int rank) {
+  for (const auto& pname : plasmids) {
+    const PlasmidEntry* entry = PlasmidLibrary::find(pname);
+    if (!entry) {
+      if (rank == 0) {
+        std::cerr << "Warning: unknown plasmid '" << pname
+                  << "' — agent spawned without BI locus\n";
+      }
+      continue;
+    }
+    agent.genome.bi_loci.push_back(entry->cluster);
+    if (entry->conjugative) {
+      agent.genome.has_conjugative_plasmid = true;
+    }
+  }
+}
+
+void tag_crypt_resident(Agent& agent, const AdvectionField& advection) {
+  if (advection.in_crypt_zone(agent.x[2])) {
+    agent.in_crypt = true;
+  }
+}
+
+std::vector<size_t> build_bi_offsets(const std::vector<Int>& num_bi_loci) {
+  const size_t n = num_bi_loci.size();
+  std::vector<size_t> offsets(n + 1, 0);
+  for (size_t i = 0; i < n; ++i) {
+    offsets[i + 1] = offsets[i] + static_cast<size_t>(num_bi_loci[i]);
+  }
+  return offsets;
+}
+
+void validate_checkpoint_genome(const HDF5CheckpointSnapshot& snap,
+                              const std::vector<size_t>& bi_offsets) {
+  if (!snap.genome.present) return;
+  const size_t expected_bi = bi_offsets.back();
+  if (snap.genome.bi_toxin_id.size() != expected_bi) {
+    throw SimulationError("checkpoint BI locus count mismatch in genome group");
+  }
+}
+
+void restore_receptor_fields(Agent& agent,
+                             const HDF5CheckpointSnapshot& snap,
+                             size_t agent_index) {
+  const auto& gen = snap.genome;
+  Int r = 0;
+  for (Real& expr : agent.genome.receptor_expression) {
+    const size_t idx = agent_index * NUM_RECEPTORS + static_cast<size_t>(r);
+    expr = gen.receptor_expression[idx];
+    agent.genome.toxin_affinity[r] = gen.toxin_affinity[idx];
+    agent.genome.ligand_affinity[r] = gen.ligand_affinity[idx];
+    agent.receptor_expr[r] = gen.receptor_expression[idx];
+    ++r;
+  }
+}
+
+void restore_bi_loci(Agent& agent,
+                     const HDF5CheckpointSnapshot& snap,
+                     size_t agent_index,
+                     const std::vector<size_t>& bi_offsets) {
+  const auto& gen = snap.genome;
+  const auto& lin = snap.lineage;
+  agent.genome.bi_loci.clear();
+  agent.genome.bi_loci.reserve(static_cast<size_t>(lin.num_bi_loci[agent_index]));
+  for (size_t b = bi_offsets[agent_index]; b < bi_offsets[agent_index + 1]; ++b) {
+    BICluster bi;
+    bi.toxin_id = static_cast<uint16_t>(gen.bi_toxin_id[b]);
+    bi.immunity_id = static_cast<uint16_t>(gen.bi_immunity_id[b]);
+    bi.target = static_cast<ReceptorType>(gen.bi_target[b]);
+    bi.bclass = static_cast<BacteriocinClass>(gen.bi_bclass[b]);
+    bi.pI = gen.bi_pI[b];
+    bi.diff_coeff = gen.bi_diff_coeff[b];
+    bi.retardation = gen.bi_retardation[b];
+    bi.molecular_weight = gen.bi_molecular_weight[b];
+    bi.immunity_binding_affinity = gen.bi_immunity_binding_affinity[b];
+    agent.genome.bi_loci.push_back(bi);
+  }
+}
+
+void restore_legacy_genome(Agent& agent, const HDF5CheckpointSnapshot& snap, size_t agent_index) {
+  Int r = 0;
+  for (Real& expr : agent.genome.receptor_expression) {
+    expr = agent.receptor_expr[r++];
+  }
+  agent.genome.bi_loci.clear();
+  agent.genome.bi_loci.resize(static_cast<size_t>(snap.lineage.num_bi_loci[agent_index]));
+}
+
+void restore_checkpoint_grid(ChemicalField& chem,
+                             const Domain& domain,
+                             const HDF5CheckpointSnapshot& snap) {
+  for (const auto& [name, values] : snap.grid.species) {
+    Int spec = chem.find(name);
+    if (spec < 0) {
+      if (domain.rank() == 0) {
+        std::cerr << "Warning: checkpoint grid species '" << name
+                  << "' not in simulation config — skipped\n";
+      }
+      continue;
+    }
+    if (static_cast<Int>(values.size()) != chem.ncells()) {
+      throw SimulationError("checkpoint grid size mismatch for species: " + name);
+    }
+    Int c = 0;
+    for (const Real val : values) {
+      chem.conc(spec, c++) = val;
+    }
+  }
+}
+
+void schedule_output_from_time(Real time, Real interval, Real& next_output, Real& next_snapshot) {
+  if (time <= 0.0) {
+    next_output = 0.0;
+    next_snapshot = 0.0;
+    return;
+  }
+  next_output = (std::floor(time / interval) + 1.0) * interval;
+  next_snapshot = next_output;
+}
+
+bool try_exit_crypt(Agent& agent, Real dt, Real crypt_z, Real epsilon,
+                    Real exit_rate, RNG& rng, Int& crypt_pop) {
+  if (!agent.in_crypt) return false;
+  Real p_exit = 1.0 - std::exp(-exit_rate * dt);
+  if (!rng.bernoulli(p_exit)) return false;
+  agent.x[2] = crypt_z + epsilon;
+  agent.in_crypt = false;
+  --crypt_pop;
+  return true;
+}
+
+bool try_enter_crypt(Agent& agent, Real dt, Real crypt_z, Real crypt_depth,
+                     Real lo_z, Real entry_rate, Int carrying_capacity,
+                     RNG& rng, Int& crypt_pop) {
+  if (agent.in_crypt) return false;
+  if (agent.x[2] >= crypt_z + crypt_depth) return false;
+  if (crypt_pop >= carrying_capacity) return false;
+  Real p_entry = 1.0 - std::exp(-entry_rate * dt);
+  if (!rng.bernoulli(p_entry)) return false;
+  agent.x[2] = rng.uniform(lo_z, crypt_z);
+  agent.in_crypt = true;
+  ++crypt_pop;
+  return true;
+}
+
+enum class MigrateSide { None, Lo, Hi };
+
+MigrateSide classify_migration(const Agent& agent, Int my_rank, Int axis,
+                               const Domain& domain) {
+  Int dest = domain.owner_rank(agent.x);
+  if (dest == my_rank) return MigrateSide::None;
+  if (dest == domain.rank_lo()) return MigrateSide::Lo;
+  if (dest == domain.rank_hi()) return MigrateSide::Hi;
+  return (agent.x[axis] < domain.local_lo_x()) ? MigrateSide::Lo : MigrateSide::Hi;
+}
+
+}  // namespace
+
 void Simulation::init(const SimulationConfig& cfg) {
   cfg_ = cfg;
   rng_.seed(cfg.seed);
@@ -139,24 +299,8 @@ void Simulation::init_population(const SimulationConfig& cfg) {
                                        pos, strain.mu_max);
       a.owner_rank = domain_.rank();
 
-      // Assign plasmids (canonical names + legacy aliases via PlasmidLibrary::find)
-      for (const auto& pname : strain.plasmids) {
-        const PlasmidEntry* entry = PlasmidLibrary::find(pname);
-        if (entry) {
-          a.genome.bi_loci.push_back(entry->cluster);
-          if (entry->conjugative) {
-            a.genome.has_conjugative_plasmid = true;
-          }
-        } else if (domain_.rank() == 0) {
-          std::cerr << "Warning: unknown plasmid '" << pname
-                    << "' — agent spawned without BI locus\n";
-        }
-      }
-
-      // Tag agents spawned inside the crypt zone
-      if (advection_.in_crypt_zone(a.x[2])) {
-        a.in_crypt = true;
-      }
+      assign_plasmids(a, strain.plasmids, domain_.rank());
+      tag_crypt_resident(a, advection_);
 
       agents_.push_back(std::move(a));
     }
@@ -224,26 +368,17 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
   TagID max_tag = 0;
   agents_.reserve(static_cast<Int>(n));
 
-  // Prefix sum of BI locus counts for flat genome arrays.
-  std::vector<size_t> bi_offsets(n + 1, 0);
-  bi_offsets[0] = 0;
-  size_t i = 0;
-  for (Int num_bi : lin.num_bi_loci) {
-    bi_offsets[i + 1] = bi_offsets[i] + static_cast<size_t>(num_bi);
-    ++i;
-  }
-  if (gen.present) {
-    size_t expected_bi = bi_offsets[n];
-    if (gen.bi_toxin_id.size() != expected_bi) {
-      throw SimulationError("checkpoint BI locus count mismatch in genome group");
-    }
-  }
+  const std::vector<size_t> bi_offsets = build_bi_offsets(lin.num_bi_loci);
+  validate_checkpoint_genome(snap, bi_offsets);
 
-  i = 0;
+  size_t i = 0;
   for (int64_t id : atoms.id) {
     (void)id;
     Vec3 pos = {atoms.x[i], atoms.y[i], atoms.z[i]};
-    if (!domain_.is_local(pos)) continue;
+    if (!domain_.is_local(pos)) {
+      ++i;
+      continue;
+    }
 
     Real mu_guess = std::max(atoms.mu[i], 1.0e-8);
     Agent a = Agent::create_default(static_cast<TagID>(atoms.id[i]),
@@ -267,44 +402,13 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
       a.genome.mutations = static_cast<uint32_t>(gen.mutations[i]);
       a.genome.has_conjugative_plasmid = (gen.has_conjugative_plasmid[i] != 0);
       a.genome.plasmid_cost_amelioration = gen.plasmid_cost_amelioration[i];
-      Int r = 0;
-      for (Real& expr : a.genome.receptor_expression) {
-        const size_t idx = i * NUM_RECEPTORS + static_cast<size_t>(r);
-        expr = gen.receptor_expression[idx];
-        a.genome.toxin_affinity[r] = gen.toxin_affinity[idx];
-        a.genome.ligand_affinity[r] = gen.ligand_affinity[idx];
-        a.receptor_expr[r] = gen.receptor_expression[idx];
-        ++r;
-      }
-
-      a.genome.bi_loci.clear();
-      a.genome.bi_loci.reserve(static_cast<size_t>(lin.num_bi_loci[i]));
-      for (size_t b = bi_offsets[i]; b < bi_offsets[i + 1]; ++b) {
-        BICluster bi;
-        bi.toxin_id = static_cast<uint16_t>(gen.bi_toxin_id[b]);
-        bi.immunity_id = static_cast<uint16_t>(gen.bi_immunity_id[b]);
-        bi.target = static_cast<ReceptorType>(gen.bi_target[b]);
-        bi.bclass = static_cast<BacteriocinClass>(gen.bi_bclass[b]);
-        bi.pI = gen.bi_pI[b];
-        bi.diff_coeff = gen.bi_diff_coeff[b];
-        bi.retardation = gen.bi_retardation[b];
-        bi.molecular_weight = gen.bi_molecular_weight[b];
-        bi.immunity_binding_affinity = gen.bi_immunity_binding_affinity[b];
-        a.genome.bi_loci.push_back(bi);
-      }
+      restore_receptor_fields(a, snap, i);
+      restore_bi_loci(a, snap, i, bi_offsets);
     } else {
-      Int r = 0;
-      for (Real& expr : a.genome.receptor_expression) {
-        expr = a.receptor_expr[r++];
-      }
-      // Legacy snapshots: preserve locus count only (empty BICluster entries).
-      a.genome.bi_loci.clear();
-      a.genome.bi_loci.resize(static_cast<size_t>(lin.num_bi_loci[i]));
+      restore_legacy_genome(a, snap, i);
     }
 
-    if (advection_.in_crypt_zone(a.x[2])) {
-      a.in_crypt = true;
-    }
+    tag_crypt_resident(a, advection_);
 
     max_tag = std::max(max_tag, static_cast<TagID>(atoms.id[i]));
     agents_.push_back(std::move(a));
@@ -315,35 +419,11 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
       AgentPool::next_tag_after_max(max_tag, domain_.rank(), domain_.nprocs()),
       AgentPool::tag_stride(domain_.nprocs()));
 
-  for (const auto& [name, values] : snap.grid.species) {
-    Int spec = chem_.find(name);
-    if (spec < 0) {
-      if (domain_.rank() == 0) {
-        std::cerr << "Warning: checkpoint grid species '" << name
-                  << "' not in simulation config — skipped\n";
-      }
-      continue;
-    }
-    if (static_cast<Int>(values.size()) != chem_.ncells()) {
-      throw SimulationError("checkpoint grid size mismatch for species: " + name);
-    }
-    Int c = 0;
-    for (const Real val : values) {
-      chem_.conc(spec, c++) = val;
-    }
-  }
+  restore_checkpoint_grid(chem_, domain_, snap);
 
   time_       = snap.metadata.time;
   step_count_ = snap.metadata.step;
-
-  if (time_ <= 0.0) {
-    next_output_   = 0.0;
-    next_snapshot_ = 0.0;
-  } else {
-    const Real interval = cfg_.output_interval;
-    next_output_   = (std::floor(time_ / interval) + 1.0) * interval;
-    next_snapshot_ = next_output_;
-  }
+  schedule_output_from_time(time_, cfg_.output_interval, next_output_, next_snapshot_);
 }
 
 std::vector<std::string> Simulation::fix_names() const {
@@ -730,26 +810,13 @@ void Simulation::crypt_migration(Real dt) {
   for (Agent& a : agents_) {
     if (a.state == PhenoState::DEAD) continue;
 
-    if (a.in_crypt) {
-      // Stochastic exit from crypt
-      Real p_exit = 1.0 - std::exp(-cfg_.advection.crypt_exit_rate * dt);
-      if (rng_.bernoulli(p_exit)) {
-        a.x[2] = crypt_z + epsilon;
-        a.in_crypt = false;
-        --crypt_pop;
-      }
-    } else {
-      // Only agents near the crypt boundary can enter
-      if (a.x[2] < crypt_z + cfg_.advection.crypt_depth) {
-        if (crypt_pop >= cfg_.advection.crypt_carrying_capacity) continue;
-        Real p_entry = 1.0 - std::exp(-cfg_.advection.crypt_entry_rate * dt);
-        if (rng_.bernoulli(p_entry)) {
-          a.x[2] = rng_.uniform(lo_z, crypt_z);
-          a.in_crypt = true;
-          ++crypt_pop;
-        }
-      }
+    if (try_exit_crypt(a, dt, crypt_z, epsilon, cfg_.advection.crypt_exit_rate,
+                       rng_, crypt_pop)) {
+      continue;
     }
+    try_enter_crypt(a, dt, crypt_z, cfg_.advection.crypt_depth, lo_z,
+                    cfg_.advection.crypt_entry_rate,
+                    cfg_.advection.crypt_carrying_capacity, rng_, crypt_pop);
   }
 }
 
@@ -778,85 +845,100 @@ void Simulation::take_lineage_snapshot() {
 #ifdef GUTIBM_MPI
 namespace {
 
-void mpi_exchange_sizes_distinct(Int rank_lo, Int rank_hi,
-                                 int sz_send_lo, int sz_send_hi,
-                                 int& sz_recv_lo, int& sz_recv_hi,
-                                 int tag_lo_send, int tag_lo_recv,
-                                 int tag_hi_send, int tag_hi_recv) {
-  if (rank_lo >= 0) {
-    MPI_Sendrecv(&sz_send_lo, 1, MPI_INT, rank_lo, tag_lo_send,
-                 &sz_recv_lo, 1, MPI_INT, rank_lo, tag_lo_recv,
+struct MpiSlabPeers {
+  Int rank_lo = -1;
+  Int rank_hi = -1;
+};
+
+struct MpiDistinctTags {
+  int lo_send = 0;
+  int lo_recv = 0;
+  int hi_send = 0;
+  int hi_recv = 0;
+};
+
+struct MpiPayloadSizes {
+  int send_lo = 0;
+  int send_hi = 0;
+  int recv_lo = 0;
+  int recv_hi = 0;
+};
+
+struct MpiBufferXfer {
+  const std::vector<char>* send_lo = nullptr;
+  const std::vector<char>* send_hi = nullptr;
+  std::vector<char>* recv_lo = nullptr;
+  std::vector<char>* recv_hi = nullptr;
+  int recv_lo_size = 0;
+  int recv_hi_size = 0;
+};
+
+void mpi_exchange_sizes_distinct(const MpiSlabPeers& peers,
+                                 const MpiDistinctTags& tags,
+                                 MpiPayloadSizes& sizes) {
+  if (peers.rank_lo >= 0) {
+    MPI_Sendrecv(&sizes.send_lo, 1, MPI_INT, peers.rank_lo, tags.lo_send,
+                 &sizes.recv_lo, 1, MPI_INT, peers.rank_lo, tags.lo_recv,
                  MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   }
-  if (rank_hi >= 0) {
-    MPI_Sendrecv(&sz_send_hi, 1, MPI_INT, rank_hi, tag_hi_send,
-                 &sz_recv_hi, 1, MPI_INT, rank_hi, tag_hi_recv,
+  if (peers.rank_hi >= 0) {
+    MPI_Sendrecv(&sizes.send_hi, 1, MPI_INT, peers.rank_hi, tags.hi_send,
+                 &sizes.recv_hi, 1, MPI_INT, peers.rank_hi, tags.hi_recv,
                  MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   }
 }
 
-void mpi_exchange_buffers_distinct(Int rank_lo, Int rank_hi,
-                                   const std::vector<char>& buf_send_lo,
-                                   const std::vector<char>& buf_send_hi,
-                                   std::vector<char>& buf_recv_lo,
-                                   std::vector<char>& buf_recv_hi,
-                                   int sz_recv_lo, int sz_recv_hi,
-                                   int tag_lo_send, int tag_lo_recv,
-                                   int tag_hi_send, int tag_hi_recv) {
-  if (rank_lo >= 0) {
-    MPI_Sendrecv(buf_send_lo.data(), static_cast<int>(buf_send_lo.size()), MPI_CHAR,
-                 rank_lo, tag_lo_send,
-                 buf_recv_lo.data(), sz_recv_lo, MPI_CHAR,
-                 rank_lo, tag_lo_recv,
+void mpi_exchange_buffers_distinct(const MpiSlabPeers& peers,
+                                   const MpiDistinctTags& tags,
+                                   const MpiBufferXfer& xfer) {
+  if (peers.rank_lo >= 0) {
+    MPI_Sendrecv(xfer.send_lo->data(), static_cast<int>(xfer.send_lo->size()), MPI_CHAR,
+                 peers.rank_lo, tags.lo_send,
+                 xfer.recv_lo->data(), xfer.recv_lo_size, MPI_CHAR,
+                 peers.rank_lo, tags.lo_recv,
                  MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   }
-  if (rank_hi >= 0) {
-    MPI_Sendrecv(buf_send_hi.data(), static_cast<int>(buf_send_hi.size()), MPI_CHAR,
-                 rank_hi, tag_hi_send,
-                 buf_recv_hi.data(), sz_recv_hi, MPI_CHAR,
-                 rank_hi, tag_hi_recv,
+  if (peers.rank_hi >= 0) {
+    MPI_Sendrecv(xfer.send_hi->data(), static_cast<int>(xfer.send_hi->size()), MPI_CHAR,
+                 peers.rank_hi, tags.hi_send,
+                 xfer.recv_hi->data(), xfer.recv_hi_size, MPI_CHAR,
+                 peers.rank_hi, tags.hi_recv,
                  MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   }
 }
 
-void mpi_exchange_sizes_collapsed(Int neighbor, int tag,
-                                  int sz_send_lo, int sz_send_hi,
-                                  int& sz_recv_lo, int& sz_recv_hi) {
-  std::array<int, 2> sizes_send = {sz_send_lo, sz_send_hi};
+void mpi_exchange_sizes_collapsed(Int neighbor, int tag, MpiPayloadSizes& sizes) {
+  std::array<int, 2> sizes_send = {sizes.send_lo, sizes.send_hi};
   std::array<int, 2> sizes_recv = {0, 0};
   MPI_Sendrecv(sizes_send.data(), 2, MPI_INT, neighbor, tag,
                sizes_recv.data(), 2, MPI_INT, neighbor, tag,
                MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  sz_recv_lo = sizes_recv[0];
-  sz_recv_hi = sizes_recv[1];
+  sizes.recv_lo = sizes_recv[0];
+  sizes.recv_hi = sizes_recv[1];
 }
 
 void mpi_exchange_buffers_collapsed(Int neighbor, int tag,
-                                    const std::vector<char>& buf_send_lo,
-                                    const std::vector<char>& buf_send_hi,
-                                    std::vector<char>& buf_recv_lo,
-                                    std::vector<char>& buf_recv_hi,
-                                    int sz_recv_lo, int sz_recv_hi) {
+                                    const MpiBufferXfer& xfer) {
   std::vector<char> send_buf;
-  send_buf.reserve(buf_send_lo.size() + buf_send_hi.size());
-  send_buf.insert(send_buf.end(), buf_send_lo.begin(), buf_send_lo.end());
-  send_buf.insert(send_buf.end(), buf_send_hi.begin(), buf_send_hi.end());
+  send_buf.reserve(xfer.send_lo->size() + xfer.send_hi->size());
+  send_buf.insert(send_buf.end(), xfer.send_lo->begin(), xfer.send_lo->end());
+  send_buf.insert(send_buf.end(), xfer.send_hi->begin(), xfer.send_hi->end());
 
-  buf_recv_lo.resize(static_cast<size_t>(sz_recv_lo));
-  buf_recv_hi.resize(static_cast<size_t>(sz_recv_hi));
-  std::vector<char> recv_buf(static_cast<size_t>(sz_recv_lo + sz_recv_hi));
+  xfer.recv_lo->resize(static_cast<size_t>(xfer.recv_lo_size));
+  xfer.recv_hi->resize(static_cast<size_t>(xfer.recv_hi_size));
+  std::vector<char> recv_buf(static_cast<size_t>(xfer.recv_lo_size + xfer.recv_hi_size));
 
   MPI_Sendrecv(send_buf.data(), static_cast<int>(send_buf.size()), MPI_CHAR, neighbor, tag,
                recv_buf.data(), static_cast<int>(recv_buf.size()), MPI_CHAR, neighbor, tag,
                MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-  if (sz_recv_lo > 0) {
-    std::memcpy(buf_recv_lo.data(), recv_buf.data(),
-                static_cast<size_t>(sz_recv_lo));
+  if (xfer.recv_lo_size > 0) {
+    std::memcpy(xfer.recv_lo->data(), recv_buf.data(),
+                static_cast<size_t>(xfer.recv_lo_size));
   }
-  if (sz_recv_hi > 0) {
-    std::memcpy(buf_recv_hi.data(), recv_buf.data() + sz_recv_lo,
-                static_cast<size_t>(sz_recv_hi));
+  if (xfer.recv_hi_size > 0) {
+    std::memcpy(xfer.recv_hi->data(), recv_buf.data() + xfer.recv_lo_size,
+                static_cast<size_t>(xfer.recv_hi_size));
   }
 }
 
@@ -882,24 +964,19 @@ void Simulation::migrate_agents() {
       continue;
     }
 
-    Int dest = domain_.owner_rank(a.x);
-    if (dest != my_rank) {
-      a.owner_rank = dest;
-      if (dest == domain_.rank_lo()) {
-        send_lo.push_back(a);
-      } else if (dest == domain_.rank_hi()) {
-        send_hi.push_back(a);
-      } else {
-        // Agent jumped more than one slab (rare, large dt)
-        // Send to whichever neighbor is closer in rank
-        if (a.x[axis] < domain_.local_lo_x()) {
-          send_lo.push_back(a);
-        } else {
-          send_hi.push_back(a);
-        }
-      }
-      to_remove.push_back(i);
+    const MigrateSide side = classify_migration(a, my_rank, axis, domain_);
+    if (side == MigrateSide::None) {
+      ++i;
+      continue;
     }
+
+    a.owner_rank = domain_.owner_rank(a.x);
+    if (side == MigrateSide::Lo) {
+      send_lo.push_back(a);
+    } else {
+      send_hi.push_back(a);
+    }
+    to_remove.push_back(i);
     ++i;
   }
 
@@ -915,38 +992,27 @@ void Simulation::migrate_agents() {
   agent_transfer_serialize(send_lo, buf_send_lo);
   agent_transfer_serialize(send_hi, buf_send_hi);
 
-  // Exchange sizes with neighbors
-  auto sz_send_lo = static_cast<int>(buf_send_lo.size());
-  auto sz_send_hi = static_cast<int>(buf_send_hi.size());
-  int sz_recv_lo = 0;
-  int sz_recv_hi = 0;
+  MpiPayloadSizes sizes;
+  sizes.send_lo = static_cast<int>(buf_send_lo.size());
+  sizes.send_hi = static_cast<int>(buf_send_hi.size());
 
+  const MpiSlabPeers peers{domain_.rank_lo(), domain_.rank_hi()};
   if (domain_.neighbors_collapsed()) {
-    mpi_exchange_sizes_collapsed(domain_.rank_lo(), 0,
-                                 sz_send_lo, sz_send_hi,
-                                 sz_recv_lo, sz_recv_hi);
+    mpi_exchange_sizes_collapsed(domain_.rank_lo(), 0, sizes);
   } else {
-    mpi_exchange_sizes_distinct(domain_.rank_lo(), domain_.rank_hi(),
-                                sz_send_lo, sz_send_hi,
-                                sz_recv_lo, sz_recv_hi,
-                                0, 1, 1, 0);
+    mpi_exchange_sizes_distinct(peers, {0, 1, 1, 0}, sizes);
   }
 
-  // Exchange agent data
-  std::vector<char> buf_recv_lo(sz_recv_lo);
-  std::vector<char> buf_recv_hi(sz_recv_hi);
+  std::vector<char> buf_recv_lo(sizes.recv_lo);
+  std::vector<char> buf_recv_hi(sizes.recv_hi);
+  const MpiBufferXfer xfer{
+      &buf_send_lo, &buf_send_hi, &buf_recv_lo, &buf_recv_hi,
+      sizes.recv_lo, sizes.recv_hi};
 
   if (domain_.neighbors_collapsed()) {
-    mpi_exchange_buffers_collapsed(domain_.rank_lo(), 2,
-                                   buf_send_lo, buf_send_hi,
-                                   buf_recv_lo, buf_recv_hi,
-                                   sz_recv_lo, sz_recv_hi);
+    mpi_exchange_buffers_collapsed(domain_.rank_lo(), 2, xfer);
   } else {
-    mpi_exchange_buffers_distinct(domain_.rank_lo(), domain_.rank_hi(),
-                                  buf_send_lo, buf_send_hi,
-                                  buf_recv_lo, buf_recv_hi,
-                                  sz_recv_lo, sz_recv_hi,
-                                  2, 3, 3, 2);
+    mpi_exchange_buffers_distinct(peers, {2, 3, 3, 2}, xfer);
   }
 
   // Unpack received agents
@@ -993,38 +1059,27 @@ void Simulation::exchange_ghost_agents() {
   agent_transfer_serialize(ghost_lo, buf_send_lo);
   agent_transfer_serialize(ghost_hi, buf_send_hi);
 
-  // Exchange sizes
-  auto sz_send_lo = static_cast<int>(buf_send_lo.size());
-  auto sz_send_hi = static_cast<int>(buf_send_hi.size());
-  int sz_recv_lo = 0;
-  int sz_recv_hi = 0;
+  MpiPayloadSizes sizes;
+  sizes.send_lo = static_cast<int>(buf_send_lo.size());
+  sizes.send_hi = static_cast<int>(buf_send_hi.size());
 
+  const MpiSlabPeers peers{domain_.rank_lo(), domain_.rank_hi()};
   if (domain_.neighbors_collapsed()) {
-    mpi_exchange_sizes_collapsed(domain_.rank_lo(), 10,
-                                 sz_send_lo, sz_send_hi,
-                                 sz_recv_lo, sz_recv_hi);
+    mpi_exchange_sizes_collapsed(domain_.rank_lo(), 10, sizes);
   } else {
-    mpi_exchange_sizes_distinct(domain_.rank_lo(), domain_.rank_hi(),
-                                sz_send_lo, sz_send_hi,
-                                sz_recv_lo, sz_recv_hi,
-                                10, 11, 11, 10);
+    mpi_exchange_sizes_distinct(peers, {10, 11, 11, 10}, sizes);
   }
 
-  // Exchange data
-  std::vector<char> buf_recv_lo(sz_recv_lo);
-  std::vector<char> buf_recv_hi(sz_recv_hi);
+  std::vector<char> buf_recv_lo(sizes.recv_lo);
+  std::vector<char> buf_recv_hi(sizes.recv_hi);
+  const MpiBufferXfer xfer{
+      &buf_send_lo, &buf_send_hi, &buf_recv_lo, &buf_recv_hi,
+      sizes.recv_lo, sizes.recv_hi};
 
   if (domain_.neighbors_collapsed()) {
-    mpi_exchange_buffers_collapsed(domain_.rank_lo(), 12,
-                                   buf_send_lo, buf_send_hi,
-                                   buf_recv_lo, buf_recv_hi,
-                                   sz_recv_lo, sz_recv_hi);
+    mpi_exchange_buffers_collapsed(domain_.rank_lo(), 12, xfer);
   } else {
-    mpi_exchange_buffers_distinct(domain_.rank_lo(), domain_.rank_hi(),
-                                  buf_send_lo, buf_send_hi,
-                                  buf_recv_lo, buf_recv_hi,
-                                  sz_recv_lo, sz_recv_hi,
-                                  12, 13, 13, 12);
+    mpi_exchange_buffers_distinct(peers, {12, 13, 13, 12}, xfer);
   }
 
   // Unpack and add as ghost agents

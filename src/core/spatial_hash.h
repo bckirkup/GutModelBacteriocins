@@ -52,6 +52,7 @@ class SpatialHash {
   };
 
   CellKey pos_to_cell(const Vec3& pos) const;
+  void append_cell_agents(CellKey key, std::vector<Int>& result) const;
 
   Real cell_size_ = 10.0e-6;  // default 10 um
   Vec3 lo_{};

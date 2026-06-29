@@ -148,7 +148,27 @@ void test_smoke_with_immunity_escape() {
     Int escape_bi = 0;
   };
 
-  auto run_scenario = [](bool enable_escape, uint64_t seed) {
+  auto count_outcome = [](const Simulation& sim) {
+    Outcome out;
+    for (const Agent& a : sim.agents()) {
+      if (a.type == 1) {
+        for (const auto& bi : a.genome.bi_loci) {
+          if (bi.immunity_binding_affinity < 1.0) {
+            out.escape_bi++;
+          }
+        }
+      }
+      if (a.state == PhenoState::DEAD) continue;
+      switch (a.type) {
+        case 1: out.producers++; break;
+        case 2: out.immune++; break;
+        default: out.naive++; break;
+      }
+    }
+    return out;
+  };
+
+  auto run_scenario = [&](bool enable_escape, uint64_t seed) {
     SimulationConfig cfg = InputParser::default_config();
     cfg.domain.hi = {100e-6, 100e-6, 50e-6};
     cfg.domain.grid_dx = 5e-6;
@@ -196,24 +216,7 @@ void test_smoke_with_immunity_escape() {
     Simulation sim;
     sim.init(cfg);
     sim.run();
-
-    Outcome out;
-    for (const Agent& a : sim.agents()) {
-      if (a.type == 1) {
-        for (const auto& bi : a.genome.bi_loci) {
-          if (bi.immunity_binding_affinity < 1.0) out.escape_bi++;
-        }
-      }
-      if (a.state == PhenoState::DEAD) continue;
-      if (a.type == 1) {
-        out.producers++;
-      } else if (a.type == 2) {
-        out.immune++;
-      } else {
-        out.naive++;
-      }
-    }
-    return out;
+    return count_outcome(sim);
   };
 
   constexpr uint64_t seed = 12345;
