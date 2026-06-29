@@ -32,8 +32,7 @@ void QSSASolver::solve_bacteriocin_field(
   std::vector<Vec3> sources;
   std::vector<GreensFunctionParams> params;
 
-  for (Int i = 0; i < agents.size(); ++i) {
-    const Agent& a = agents[i];
+  for (const Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
 
     for (const auto& bi : a.genome.bi_loci) {
@@ -69,8 +68,9 @@ void QSSASolver::solve_bacteriocin_field(
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(static)
   #endif
-  for (Int c = 0; c < chem.ncells(); ++c) {
-    chem.conc(toxin_species_idx, c) = toxin_conc[c];
+  size_t c = 0;
+  for (const Real val : toxin_conc) {
+    chem.conc(toxin_species_idx, static_cast<Int>(c++)) = val;
   }
 }
 
@@ -82,17 +82,15 @@ void QSSASolver::solve_bacteriocin_field_fmm(
 
   // Build source strengths for the FMM tree (use source_rate as strength)
   std::vector<Real> strengths(sources.size());
-  for (size_t i = 0; i < sources.size(); ++i)
-    strengths[i] = params[i].source_rate;
-
-  // Source-rate-weighted average kernel parameters for far-field expansion
   GreensFunctionParams avg_params{};
   Real total_s = 0.0;
-  for (size_t i = 0; i < params.size(); ++i) {
-    Real s = strengths[i];
-    avg_params.diff_coeff  += s * params[i].diff_coeff;
-    avg_params.pI          += s * params[i].pI;
-    avg_params.retardation += s * params[i].retardation;
+  size_t i = 0;
+  for (const GreensFunctionParams& p : params) {
+    Real s = p.source_rate;
+    strengths[i++] = s;
+    avg_params.diff_coeff  += s * p.diff_coeff;
+    avg_params.pI          += s * p.pI;
+    avg_params.retardation += s * p.retardation;
     total_s += s;
   }
   if (total_s > 0.0) {
@@ -118,9 +116,9 @@ void QSSASolver::solve_bacteriocin_field_fmm(
   // Near-field: exact evaluation within cutoff via spatial hash approach
   std::vector<Real> toxin_conc(ncells, 0.0);
 
-  for (size_t s = 0; s < sources.size(); ++s) {
-    const Vec3& src = sources[s];
-    const GreensFunctionParams& p = params[s];
+  auto param_it = params.begin();
+  for (const Vec3& src : sources) {
+    const GreensFunctionParams& p = *param_it++;
 
     Int src_ix = 0;
     Int src_iy = 0;
@@ -167,8 +165,9 @@ void QSSASolver::solve_bacteriocin_field_fmm(
     }
   }
 
-  for (Int c = 0; c < ncells; ++c) {
-    chem.conc(toxin_species_idx, c) = toxin_conc[c];
+  size_t c = 0;
+  for (const Real val : toxin_conc) {
+    chem.conc(toxin_species_idx, static_cast<Int>(c++)) = val;
   }
 }
 
@@ -186,8 +185,7 @@ void QSSASolver::solve_nutrient_depletion(
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(dynamic)
   #endif
-  for (Int i = 0; i < agents.size(); ++i) {
-    const Agent& a = agents[i];
+  for (const Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
 
     Int cell = a.grid_cell;
@@ -223,11 +221,13 @@ Real QSSASolver::point_concentration(
     const std::vector<GreensFunctionParams>& params) const {
 
   Real total = 0.0;
-  for (size_t s = 0; s < sources.size(); ++s) {
-    Real d2 = domain_->min_image_dist_sq(sources[s], target);
+  auto param_it = params.begin();
+  for (const Vec3& src : sources) {
+    const GreensFunctionParams& p = *param_it++;
+    Real d2 = domain_->min_image_dist_sq(src, target);
     if (Real cutoff2 = cfg_.toxin_cutoff * cfg_.toxin_cutoff; d2 > cutoff2) continue;
 
-    total += gf_.concentration_bounded(sources[s], target, params[s]);
+    total += gf_.concentration_bounded(src, target, p);
   }
   return total;
 }

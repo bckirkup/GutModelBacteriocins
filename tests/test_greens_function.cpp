@@ -144,12 +144,9 @@ void test_lethal_core_vs_halo() {
   halo_params.retardation  = 1.5;
 
   Vec3 near  = {505e-6, 500e-6, 50e-6};  // 5 um away
-  Vec3 far   = {550e-6, 500e-6, 50e-6};  // 50 um away
 
   Real core_near = gf.concentration(source, near, core_params);
   Real halo_near = gf.concentration(source, near, halo_params);
-  Real core_far  = gf.concentration(source, far, core_params);
-  Real halo_far  = gf.concentration(source, far, halo_params);
 
   // Both should be positive
   assert(core_near > 0.0);

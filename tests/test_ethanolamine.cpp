@@ -154,8 +154,8 @@ void test_smoke_with_ethanolamine() {
   sim.run();
 
   Int alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i)
-    if (sim.agents()[i].state != PhenoState::DEAD) alive++;
+  for (const Agent& a : sim.agents())
+    if (a.state != PhenoState::DEAD) alive++;
 
   assert(alive > 0);
   std::cout << "  test_smoke_with_ethanolamine: PASSED (alive=" << alive << ")\n";

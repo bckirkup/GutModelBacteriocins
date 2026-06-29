@@ -18,6 +18,8 @@ except ImportError:
 
 from .hdf5_reader import GutIBMData
 
+_MATPLOTLIB_REQUIRED = "matplotlib required for visualization"
+
 
 def plot_agent_positions(
     data: GutIBMData,
@@ -27,7 +29,7 @@ def plot_agent_positions(
 ) -> None:
     """Plot agent positions colored by type."""
     if not HAS_MPL:
-        raise ImportError("matplotlib required for visualization")
+        raise ImportError(_MATPLOTLIB_REQUIRED)
 
     agents = data.get_agents(step)
     x, y, z = agents["x"], agents["y"], agents["z"]
@@ -64,7 +66,7 @@ def plot_population_timeseries(
 ) -> None:
     """Plot population size over time."""
     if not HAS_MPL:
-        raise ImportError("matplotlib required for visualization")
+        raise ImportError(_MATPLOTLIB_REQUIRED)
 
     times, counts = data.time_series("num_agents")
 
@@ -88,7 +90,7 @@ def plot_lineage_composition(
 ) -> None:
     """Plot lineage composition (stacked area) over time."""
     if not HAS_MPL:
-        raise ImportError("matplotlib required for visualization")
+        raise ImportError(_MATPLOTLIB_REQUIRED)
 
     steps = data.steps
     times = []

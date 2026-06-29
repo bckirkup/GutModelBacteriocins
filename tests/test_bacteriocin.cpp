@@ -32,7 +32,9 @@ static Agent make_agent_at_center(Simulation& sim, Int type) {
     0.5 * (sim.domain().lo()[2] + sim.domain().hi()[2]),
   };
   Agent a = Agent::create_default(sim.agents().next_tag(), type, center, 5e-4);
-  Int ix, iy, iz;
+  Int ix;
+  Int iy;
+  Int iz;
   sim.domain().pos_to_grid(a.x, ix, iy, iz);
   a.grid_cell = sim.domain().cell_index(ix, iy, iz);
   return a;

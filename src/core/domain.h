@@ -110,7 +110,8 @@ class Domain {
   void decompose();
 
   DomainConfig cfg_;
-  Vec3 lo_{}, hi_{};
+  Vec3 lo_{};
+  Vec3 hi_{};
   Int nx_ = 0;
   Int ny_ = 0;
   Int nz_ = 0;

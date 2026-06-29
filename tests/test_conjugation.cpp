@@ -27,10 +27,12 @@ void test_config_defaults() {
 void test_sampled_radii_vary() {
   // Directly sample from RNG to confirm uniform(1,4) um produces variation
   RNG rng(12345);
-  Real lo = 1.0e-6, hi = 4.0e-6;
+  Real lo = 1.0e-6;
+  Real hi = 4.0e-6;
   const int N = 10000;
   Real sum = 0.0;
-  Real min_val = hi, max_val = lo;
+  Real min_val = hi;
+  Real max_val = lo;
   std::vector<Real> samples(N);
 
   for (int i = 0; i < N; ++i) {

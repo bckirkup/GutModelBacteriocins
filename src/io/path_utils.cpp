@@ -4,6 +4,7 @@
 
 #include "path_utils.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
@@ -27,10 +28,8 @@ bool path_has_null_byte(const std::string& path) {
 }
 
 bool path_has_parent_traversal(const std::string& path) {
-  for (const auto& part : fs::path(path)) {
-    if (part == "..") return true;
-  }
-  return false;
+  const fs::path p(path);
+  return std::find(p.begin(), p.end(), fs::path("..")) != p.end();
 }
 
 bool is_world_writable_directory(const fs::path& dir) {

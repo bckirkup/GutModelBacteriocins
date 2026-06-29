@@ -36,7 +36,9 @@ static Agent make_susceptible_agent(Simulation& sim) {
   // Isolate BtuB-mediated killing for colicin E immunity tests.
   a.receptor_expr[to_underlying(ReceptorType::FepA)] = 0.0;
   a.receptor_expr[to_underlying(ReceptorType::CirA)] = 0.0;
-  Int ix, iy, iz;
+  Int ix;
+  Int iy;
+  Int iz;
   sim.domain().pos_to_grid(a.x, ix, iy, iz);
   a.grid_cell = sim.domain().cell_index(ix, iy, iz);
   return a;

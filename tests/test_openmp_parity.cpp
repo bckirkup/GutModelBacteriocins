@@ -72,8 +72,8 @@ void test_simulation_completes() {
   assert(sim.step_count() > 0);
 
   Int alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (sim.agents()[i].state != PhenoState::DEAD) alive++;
+  for (const Agent& a : sim.agents()) {
+    if (a.state != PhenoState::DEAD) alive++;
   }
   assert(alive > 0);
 
@@ -85,7 +85,7 @@ void test_deterministic_growth() {
   // Run twice with same seed, verify biomass totals match
   Real total_biomass[2] = {0.0, 0.0};
 
-  for (int trial = 0; trial < 2; ++trial) {
+  for (int trial : {0, 1}) {
     SimulationConfig cfg = make_test_config(999);
 
     // Use only non-toxic agents to avoid stochastic kill events
@@ -99,9 +99,9 @@ void test_deterministic_growth() {
     sim.init(cfg);
     sim.run();
 
-    for (Int i = 0; i < sim.agents().size(); ++i) {
-      if (sim.agents()[i].state != PhenoState::DEAD)
-        total_biomass[trial] += sim.agents()[i].biomass;
+    for (const Agent& a : sim.agents()) {
+      if (a.state != PhenoState::DEAD)
+        total_biomass[trial] += a.biomass;
     }
   }
 
@@ -123,7 +123,7 @@ void test_chemical_field_parity() {
   sim.init(cfg);
 
   // Run a few steps
-  for (int s = 0; s < 3; ++s) {
+  for (int s : {0, 1, 2}) {
     sim.step(cfg.bio_dt);
   }
 
@@ -133,8 +133,7 @@ void test_chemical_field_parity() {
 
   if (i_carbon >= 0) {
     Real sum = 0.0;
-    for (Int c = 0; c < chem.ncells(); ++c) {
-      Real val = chem.conc(i_carbon, c);
+    for (Real val : chem.conc_data()[static_cast<size_t>(i_carbon)]) {
       assert(!std::isnan(val));
       assert(!std::isinf(val));
       assert(val >= 0.0);
@@ -145,8 +144,7 @@ void test_chemical_field_parity() {
   }
 
   if (i_iron >= 0) {
-    for (Int c = 0; c < chem.ncells(); ++c) {
-      Real val = chem.conc(i_iron, c);
+    for (Real val : chem.conc_data()[static_cast<size_t>(i_iron)]) {
       assert(!std::isnan(val));
       assert(!std::isinf(val));
       assert(val >= 0.0);
@@ -163,8 +161,7 @@ void test_grid_coupling_consistency() {
   sim.step(cfg.bio_dt);
 
   // Every alive agent should have a valid grid cell
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     if (a.state == PhenoState::DEAD) continue;
     assert(a.grid_cell >= 0);
     assert(a.grid_cell < sim.chemical_field().ncells());

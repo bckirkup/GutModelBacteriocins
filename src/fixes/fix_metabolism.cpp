@@ -50,8 +50,7 @@ void FixMetabolism::compute(Real dt) {
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(static)
   #endif
-  for (Int i = 0; i < agents.size(); ++i) {
-    Agent& a = agents[i];
+  for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
     compute_growth_rate(a);
     grow_agent(a, dt);
@@ -70,9 +69,7 @@ void FixMetabolism::post_step(Real /*dt*/) {
   }
 
   // Division pass (separate to avoid invalidating indices)
-  Int n = agents.size();
-  for (Int i = 0; i < n; ++i) {
-    Agent& a = agents[i];
+  for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
 
     Real initial_mass = sphere_mass(CELL_RADIUS_DEFAULT, CELL_DENSITY_DEFAULT);

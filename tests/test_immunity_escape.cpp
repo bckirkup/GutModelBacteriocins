@@ -117,8 +117,7 @@ void test_create_novel_toxin_with_escape() {
   // Count BI clusters with reduced immunity_binding_affinity
   int escape_count = 0;
   int total_bi = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     for (const auto& bi : a.genome.bi_loci) {
       total_bi++;
       if (bi.immunity_binding_affinity < 1.0) {
@@ -199,8 +198,7 @@ void test_smoke_with_immunity_escape() {
     sim.run();
 
     Outcome out;
-    for (Int i = 0; i < sim.agents().size(); ++i) {
-      const Agent& a = sim.agents()[i];
+    for (const Agent& a : sim.agents()) {
       if (a.type == 1) {
         for (const auto& bi : a.genome.bi_loci) {
           if (bi.immunity_binding_affinity < 1.0) out.escape_bi++;

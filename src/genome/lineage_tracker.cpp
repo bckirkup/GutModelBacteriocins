@@ -15,34 +15,32 @@ void LineageTracker::init(Real snapshot_interval) {
 
 void LineageTracker::record_birth(TagID tag, TagID parent,
                                     TagID lineage, const Vec3& pos) {
-  events_.emplace_back(LineageEvent{LineageEvent::BIRTH, 0.0, tag, lineage, pos,
-                     "parent=" + std::to_string(parent)});
+  events_.emplace_back(LineageEvent::BIRTH, 0.0, tag, lineage, pos,
+                       "parent=" + std::to_string(parent));
 }
 
 void LineageTracker::record_death(TagID tag, TagID lineage, const Vec3& pos) {
-  events_.emplace_back(LineageEvent{LineageEvent::DEATH, 0.0, tag, lineage, pos, ""});
+  events_.emplace_back(LineageEvent::DEATH, 0.0, tag, lineage, pos, "");
 }
 
 void LineageTracker::record_lysis(TagID tag, const Vec3& pos, TagID lineage) {
-  events_.emplace_back(LineageEvent{LineageEvent::LYSIS, 0.0, tag, lineage, pos, ""});
+  events_.emplace_back(LineageEvent::LYSIS, 0.0, tag, lineage, pos, "");
 }
 
 void LineageTracker::record_mutation(TagID tag, const std::string& type,
                                        TagID lineage) {
-  events_.emplace_back(LineageEvent{LineageEvent::MUTATION, 0.0, tag, lineage,
-                     {0, 0, 0}, type});
+  events_.emplace_back(LineageEvent::MUTATION, 0.0, tag, lineage, Vec3{0, 0, 0}, type);
 }
 
 void LineageTracker::record_hgt(TagID donor, TagID recipient,
                                   uint16_t toxin_id) {
-  events_.emplace_back(LineageEvent{LineageEvent::HGT, 0.0, recipient, 0,
-                     {0, 0, 0},
-                     "donor=" + std::to_string(donor) +
-                     " toxin=" + std::to_string(toxin_id)});
+  events_.emplace_back(LineageEvent::HGT, 0.0, recipient, 0, Vec3{0, 0, 0},
+                       "donor=" + std::to_string(donor) +
+                           " toxin=" + std::to_string(toxin_id));
 }
 
 void LineageTracker::record_washout(TagID tag, TagID lineage, const Vec3& pos) {
-  events_.emplace_back(LineageEvent{LineageEvent::WASHOUT, 0.0, tag, lineage, pos, ""});
+  events_.emplace_back(LineageEvent::WASHOUT, 0.0, tag, lineage, pos, "");
 }
 
 void LineageTracker::take_snapshot(

@@ -226,8 +226,11 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 
   // Prefix sum of BI locus counts for flat genome arrays.
   std::vector<size_t> bi_offsets(n + 1, 0);
-  for (size_t i = 0; i < n; ++i) {
-    bi_offsets[i + 1] = bi_offsets[i] + static_cast<size_t>(lin.num_bi_loci[i]);
+  bi_offsets[0] = 0;
+  size_t i = 0;
+  for (Int num_bi : lin.num_bi_loci) {
+    bi_offsets[i + 1] = bi_offsets[i] + static_cast<size_t>(num_bi);
+    ++i;
   }
   if (gen.present) {
     size_t expected_bi = bi_offsets[n];
@@ -236,7 +239,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     }
   }
 
-  for (size_t i = 0; i < n; ++i) {
+  i = 0;
+  for (int64_t id : atoms.id) {
+    (void)id;
     Vec3 pos = {atoms.x[i], atoms.y[i], atoms.z[i]};
     if (!domain_.is_local(pos)) continue;
 
@@ -262,12 +267,14 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
       a.genome.mutations = static_cast<uint32_t>(gen.mutations[i]);
       a.genome.has_conjugative_plasmid = (gen.has_conjugative_plasmid[i] != 0);
       a.genome.plasmid_cost_amelioration = gen.plasmid_cost_amelioration[i];
-      for (Int r = 0; r < NUM_RECEPTORS; ++r) {
+      Int r = 0;
+      for (Real& expr : a.genome.receptor_expression) {
         const size_t idx = i * NUM_RECEPTORS + static_cast<size_t>(r);
-        a.genome.receptor_expression[r] = gen.receptor_expression[idx];
+        expr = gen.receptor_expression[idx];
         a.genome.toxin_affinity[r] = gen.toxin_affinity[idx];
         a.genome.ligand_affinity[r] = gen.ligand_affinity[idx];
         a.receptor_expr[r] = gen.receptor_expression[idx];
+        ++r;
       }
 
       a.genome.bi_loci.clear();
@@ -286,8 +293,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
         a.genome.bi_loci.push_back(bi);
       }
     } else {
-      for (Int r = 0; r < NUM_RECEPTORS; ++r) {
-        a.genome.receptor_expression[r] = a.receptor_expr[r];
+      Int r = 0;
+      for (Real& expr : a.genome.receptor_expression) {
+        expr = a.receptor_expr[r++];
       }
       // Legacy snapshots: preserve locus count only (empty BICluster entries).
       a.genome.bi_loci.clear();
@@ -300,6 +308,7 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 
     max_tag = std::max(max_tag, static_cast<TagID>(atoms.id[i]));
     agents_.push_back(std::move(a));
+    ++i;
   }
 
   agents_.configure_tags(
@@ -318,8 +327,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     if (static_cast<Int>(values.size()) != chem_.ncells()) {
       throw SimulationError("checkpoint grid size mismatch for species: " + name);
     }
-    for (Int c = 0; c < chem_.ncells(); ++c) {
-      chem_.conc(spec, c) = values[static_cast<size_t>(c)];
+    Int c = 0;
+    for (const Real val : values) {
+      chem_.conc(spec, c++) = val;
     }
   }
 
@@ -353,10 +363,10 @@ Real Simulation::compute_adaptive_dt() const {
   // Growth rate constraint: mu_max * dt < growth_limit
   Real max_mu = 0.0;
   Int sos_count = 0;
-  for (Int i = 0; i < agents_.size(); ++i) {
-    if (agents_[i].state == PhenoState::DEAD) continue;
-    max_mu = std::max(max_mu, std::abs(agents_[i].mu_realized));
-    if (agents_[i].state == PhenoState::SOS_INDUCED) sos_count++;
+  for (const Agent& a : agents_) {
+    if (a.state == PhenoState::DEAD) continue;
+    max_mu = std::max(max_mu, std::abs(a.mu_realized));
+    if (a.state == PhenoState::SOS_INDUCED) sos_count++;
   }
   if (max_mu > 0) dt = std::min(dt, cfg_.dt_growth_limit / max_mu);
 
@@ -595,7 +605,9 @@ void Simulation::module_chemistry(Real dt) {
     return;
   }
 
-  for (Int s = 0; s < chem_.num_species(); ++s) {
+  Int s = 0;
+  for (const auto& conc_row : chem_.conc_data()) {
+    (void)conc_row;
     #ifdef GUTIBM_OPENMP
     #pragma omp parallel for schedule(static)
     #endif
@@ -603,6 +615,7 @@ void Simulation::module_chemistry(Real dt) {
       chem_.conc(s, c) += chem_.reac(s, c) * dt;
       chem_.conc(s, c) = std::max(chem_.conc(s, c), 0.0);
     }
+    ++s;
   }
 
   // Boundary conditions
@@ -617,8 +630,7 @@ void Simulation::module_physics(Real dt) {
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(static)
   #endif
-  for (Int i = 0; i < agents_.size(); ++i) {
-    Agent& a = agents_[i];
+  for (Agent& a : agents_) {
     if (a.state == PhenoState::DEAD) continue;
 
     // Advection: mucus flow carries agent
@@ -651,10 +663,12 @@ void Simulation::module_physics(Real dt) {
 
 void Simulation::rebuild_spatial_hash() {
   domain_.spatial_hash().clear();
-  for (Int i = 0; i < agents_.size(); ++i) {
-    if (agents_[i].state != PhenoState::DEAD) {
-      domain_.spatial_hash().insert(i, agents_[i].x);
+  Int i = 0;
+  for (const Agent& a : agents_) {
+    if (a.state != PhenoState::DEAD) {
+      domain_.spatial_hash().insert(i, a.x);
     }
+    ++i;
   }
 }
 
@@ -662,8 +676,7 @@ void Simulation::update_grid_coupling() {
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(static)
   #endif
-  for (Int i = 0; i < agents_.size(); ++i) {
-    Agent& a = agents_[i];
+  for (Agent& a : agents_) {
     if (a.state == PhenoState::DEAD) continue;
 
     Int ix = 0;
@@ -679,8 +692,7 @@ void Simulation::check_washout() {
   // (z > domain_hi) are "washed out"
   Real z_max = domain_.hi()[2];
 
-  for (Int i = 0; i < agents_.size(); ++i) {
-    Agent& a = agents_[i];
+  for (Agent& a : agents_) {
     if (a.state == PhenoState::DEAD) continue;
 
     // Agents in crypt refugia bypass washout entirely
@@ -710,13 +722,12 @@ void Simulation::crypt_migration(Real dt) {
 
   // Count agents currently in the crypt for carrying-capacity enforcement
   Int crypt_pop = 0;
-  for (Int i = 0; i < agents_.size(); ++i) {
-    if (agents_[i].state != PhenoState::DEAD && agents_[i].in_crypt)
+  for (const Agent& a : agents_) {
+    if (a.state != PhenoState::DEAD && a.in_crypt)
       ++crypt_pop;
   }
 
-  for (Int i = 0; i < agents_.size(); ++i) {
-    Agent& a = agents_[i];
+  for (Agent& a : agents_) {
     if (a.state == PhenoState::DEAD) continue;
 
     if (a.in_crypt) {
@@ -752,8 +763,7 @@ void Simulation::remove_dead_agents() {
 
 void Simulation::take_lineage_snapshot() {
   std::vector<std::pair<TagID, TagID>> lineages;
-  for (Int i = 0; i < agents_.size(); ++i) {
-    const Agent& a = agents_[i];
+  for (const Agent& a : agents_) {
     if (a.state != PhenoState::DEAD) {
       lineages.emplace_back(a.tag, a.genome.lineage_id);
     }
@@ -865,9 +875,12 @@ void Simulation::migrate_agents() {
   std::vector<Agent> send_hi;
   std::vector<Int> to_remove;
 
-  for (Int i = 0; i < agents_.size(); ++i) {
-    Agent& a = agents_[i];
-    if (a.state == PhenoState::DEAD) continue;
+  Int i = 0;
+  for (Agent& a : agents_) {
+    if (a.state == PhenoState::DEAD) {
+      ++i;
+      continue;
+    }
 
     Int dest = domain_.owner_rank(a.x);
     if (dest != my_rank) {
@@ -887,6 +900,7 @@ void Simulation::migrate_agents() {
       }
       to_remove.push_back(i);
     }
+    ++i;
   }
 
   // Remove migrated agents (reverse order)
@@ -961,8 +975,7 @@ void Simulation::exchange_ghost_agents() {
   std::vector<Agent> ghost_lo;
   std::vector<Agent> ghost_hi;
 
-  for (Int i = 0; i < agents_.size(); ++i) {
-    const Agent& a = agents_[i];
+  for (const Agent& a : agents_) {
     if (a.state == PhenoState::DEAD) continue;
 
     Real pos_ax = a.x[axis];
@@ -1051,10 +1064,10 @@ void Simulation::allreduce_global_stats() {
   // Compute local stats
   Int local_count = 0;
   Real local_mu_sum = 0.0;
-  for (Int i = 0; i < agents_.size(); ++i) {
-    if (agents_[i].state != PhenoState::DEAD) {
+  for (const Agent& a : agents_) {
+    if (a.state != PhenoState::DEAD) {
       local_count++;
-      local_mu_sum += agents_[i].mu_realized;
+      local_mu_sum += a.mu_realized;
     }
   }
 

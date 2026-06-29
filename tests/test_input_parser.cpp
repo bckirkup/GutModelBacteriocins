@@ -115,8 +115,8 @@ void test_strain_spawn_integration() {
   sim.init(cfg);
 
   Int with_bi = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (!sim.agents()[i].genome.bi_loci.empty()) ++with_bi;
+  for (const Agent& a : sim.agents()) {
+    if (!a.genome.bi_loci.empty()) ++with_bi;
   }
   assert(with_bi > 0);
   std::cout << "  test_strain_spawn_integration: PASSED\n";
