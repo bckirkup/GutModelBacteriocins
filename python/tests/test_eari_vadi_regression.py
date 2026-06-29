@@ -91,8 +91,8 @@ def test_fish_targets_reference_vadi() -> None:
 
 def test_evaluate_fish_metrics_sample_hdf5(sample_hdf5: Path) -> None:
     metrics = evaluate_fish_metrics(sample_hdf5)
-    assert metrics["immunity_hipr_detectable"] == 0.0
-    assert metrics["immunity_hcr_detectable"] == 1.0
+    assert metrics["immunity_hipr_detectable"] == pytest.approx(0.0)
+    assert metrics["immunity_hcr_detectable"] == pytest.approx(1.0)
     assert metrics["plasmid_dna_fish_detection_fraction"] > 0.5
     failures = check_fish_targets(metrics)
     assert failures == []
