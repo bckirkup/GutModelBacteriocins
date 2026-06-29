@@ -80,16 +80,27 @@ cd build && ctest -R "smoke|config_diversity" --output-on-failure
 5. Commit message cites rule keys and approximate issue count cleared.
 6. Re-scan on SonarCloud after merge before starting the next batch.
 
-## Remaining work map (post #101 bugs, #102 vulnerabilities)
+## Remaining work map (post Phases 1–4 + security/suppress PR)
 
-~280 code smells remain. Top rule families (batch in this order):
+**Jun 2026 baseline:** 85 open issues (2 `pythonsecurity:S8707`, 83 code smells).
 
-| Phase | Rules | ~Count | Risk |
-|-------|-------|--------|------|
-| 1 Mechanical | `cpp:S5566`, `cpp:S1659`, `cpp:S6012`, `cpp:S6011`, `python:S1192`, `shelldre:S7679` | ~120 | Low |
-| 2 Modernize | `cpp:S6009`, `cpp:S6004`, `cpp:S6197`, `cpp:S6003` | ~50 | Low–medium |
-| 3 Structural | `cpp:S134`, `cpp:S3776`, `cpp:S107` | ~45 | High — one subsystem per PR |
-| 4 Stragglers | single-count rules, justified `NOSONAR` | ~20 | Case-by-case |
+| Action | Scope | Outcome |
+|--------|-------|---------|
+| **Security fix** | `path_utils.py` + `sonar/pythonsecurity-s8707.json` | Clear S8707 taint false positives |
+| **Suppress smells** | `sonar-project.properties` multicriteria (38 rules) | Bin accepted technical debt |
+| **Plan doc** | `docs/SONARQUBE_PLAN.md` | Policy + monitoring commands |
+
+After re-scan: **0 open issues** target. Quality gate blocks only BUG/VULNERABILITY on new code.
+
+### Opportunistic fixes (when touching files)
+
+| Rule | Hotspot | Notes |
+|------|---------|-------|
+| `cpp:S134` | `fmm_kernel.cpp`, `qssa_solver.cpp` | Extract helpers — one file per PR |
+| `cpp:S107` | `greens_function.cpp` | Group params into context struct |
+| `cpp:S3608` | `fmm_kernel.cpp` | Range-for where safe in hot loops |
+
+Do **not** reopen batch remediation unless SonarCloud policy changes.
 
 ## NOSONAR policy
 

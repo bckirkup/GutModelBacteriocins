@@ -132,19 +132,49 @@ def _ensure_output_within_cwd(candidate: Path) -> Path:
     return candidate
 
 
+def _mkdir_validated_parents(parent: Path) -> None:
+    """Create missing parent directories after the full path has been validated."""
+    if parent.exists():
+        if not parent.is_dir():
+            raise PathValidationError(f"output parent is not a directory: {parent}")
+        return
+
+    to_create: list[Path] = []
+    current = parent
+    while not current.exists() and current.parts:
+        if _path_has_parent_traversal(current):
+            raise PathValidationError("path contains parent-directory traversal ('..')")
+        to_create.append(current)
+        current = current.parent if current.parent.parts else Path(".")
+
+    if current.exists() and not current.is_dir():
+        raise PathValidationError(f"output ancestor is not a directory: {current}")
+
+    for directory in reversed(to_create):
+        directory.mkdir(exist_ok=True)
+
+
 def prepare_output_file(path: str | Path) -> Path:
     """Validate an output file path and create parent directories if needed."""
     candidate = validate_path_syntax(path)
-    _validate_output_parent(candidate)
     parent = candidate.parent if candidate.parent.parts else Path(".")
-    parent.mkdir(parents=True, exist_ok=True)
+
+    _validate_output_parent(candidate)
+    _validate_output_parent_directory(parent)
+    _reject_symlink_in_world_writable_parent(candidate, "write")
+    _validate_existing_output_file(candidate)
+    _mkdir_validated_parents(parent)
     return validate_output_path(candidate)
 
 
 def write_text_file(path: str | Path, text: str) -> None:
     """Write text to a validated output path (must resolve under cwd)."""
-    out = prepare_output_file(_ensure_output_within_cwd(validate_path_syntax(path)))
-    out.write_text(text, encoding="utf-8")
+    candidate = validate_path_syntax(path)
+    candidate = _ensure_output_within_cwd(candidate)
+    out = prepare_output_file(candidate)
+    out = validate_output_path(out)
+    with open(out, "w", encoding="utf-8") as handle:
+        handle.write(text)
 
 
 def write_json_file(path: str | Path, payload: Any, *, indent: int = 2) -> None:
