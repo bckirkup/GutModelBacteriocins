@@ -57,7 +57,8 @@ int main() {
   }
 
   Real cutoff = 80e-6;
-  std::vector<Real> cpu_grid, gpu_grid;
+  std::vector<Real> cpu_grid;
+  std::vector<Real> gpu_grid;
 
 #ifndef GUTIBM_CUDA
   std::cout << "  test_gpu_gf_parity: SKIPPED (CUDA not compiled in)\n";

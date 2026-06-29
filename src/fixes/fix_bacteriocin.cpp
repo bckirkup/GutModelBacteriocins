@@ -16,8 +16,7 @@ void FixBacteriocin::init() { /* no-op: configuration is read at construction */
 void FixBacteriocin::compute(Real dt) {
   auto& agents = sim_.agents();
 
-  for (Int i = 0; i < agents.size(); ++i) {
-    Agent& a = agents[i];
+  for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
 
     // Microcin continuous secretion: small peptides are exported without lysis.
@@ -33,8 +32,7 @@ void FixBacteriocin::post_step(Real dt) { // NOLINT(readability-make-member-func
   // Process SOS-induced cells: they lyse and release toxin burst
   auto& agents = sim_.agents();
 
-  for (Int i = 0; i < agents.size(); ++i) {
-    Agent& a = agents[i];
+  for (Agent& a : agents) {
     if (a.state == PhenoState::SOS_INDUCED) {
       a.sos_timer -= dt;
       if (a.sos_timer <= 0.0) {

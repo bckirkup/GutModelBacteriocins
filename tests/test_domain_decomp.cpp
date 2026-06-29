@@ -126,8 +126,8 @@ void test_init_population_local_only() {
   assert(sim.agents().size() == 20);
 
   // All agents should have owner_rank = 0
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    assert(sim.agents()[i].owner_rank == 0);
+  for (const Agent& a : sim.agents()) {
+    assert(a.owner_rank == 0);
   }
 
   // Global count should equal local count
@@ -179,8 +179,8 @@ void test_single_rank_simulation_unchanged() {
   assert(sim.step_count() > 0);
 
   Int alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (sim.agents()[i].state != PhenoState::DEAD) alive++;
+  for (const Agent& a : sim.agents()) {
+    if (a.state != PhenoState::DEAD) alive++;
   }
   assert(alive > 0);
 
@@ -241,8 +241,8 @@ void test_migration_noop_single_rank() {
 
   // Count alive agents
   Int alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (sim.agents()[i].state != PhenoState::DEAD) alive++;
+  for (const Agent& a : sim.agents()) {
+    if (a.state != PhenoState::DEAD) alive++;
   }
 
   // We should still have agents

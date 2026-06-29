@@ -44,7 +44,7 @@ void test_carbon_z_gradient_init() {
   ChemicalField chem;
   chem.init(domain, {carbon});
 
-  Int nx = domain.nx(), ny = domain.ny(), nz = domain.nz();
+  Int nz = domain.nz();
 
   // Verify concentration at each z-layer matches C0 * exp(-z_rel / lambda)
   for (Int iz = 0; iz < nz; ++iz) {
@@ -205,7 +205,6 @@ void test_vbf_coupling_z_gradient() {
   vbf.apply_nutrient_coupling(chem, domain, 60.0);
 
   // Carbon reaction rate near z=0 should be > rate near z=max
-  Int nx = domain.nx();
   Int bottom_cell = domain.cell_index(0, 0, 0);
   Int top_cell = domain.cell_index(0, 0, domain.nz() - 1);
   assert(chem.reac(0, bottom_cell) > chem.reac(0, top_cell));

@@ -60,7 +60,6 @@ void test_overlapping_agents_pushed_apart() {
 
   // Run mechanics fix
   Real dt = 1.0;  // 1 second timestep
-  for (auto& fix : std::vector<std::unique_ptr<Fix>>{}) {} // unused
   // Directly construct and call the fix
   FixMechanics fix(sim, mcfg);
   fix.compute(dt);

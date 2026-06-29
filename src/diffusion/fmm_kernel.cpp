@@ -160,7 +160,8 @@ KernelTaylorCoeffs kernel_taylor_at_source(
   if (max_order < 1) return out;
 
   for (int d = 0; d < 3; ++d) {
-    Vec3 sp = source, sm = source;
+    Vec3 sp = source;
+    Vec3 sm = source;
     sp[d] += h;
     sm[d] -= h;
     Real dG = (eval(sp) - eval(sm)) / (2.0 * h);
@@ -175,12 +176,16 @@ KernelTaylorCoeffs kernel_taylor_at_source(
     for (int d2 = d1; d2 < 3; ++d2) {
       Real val;
       if (d1 == d2) {
-        Vec3 sp = source, sm = source;
+        Vec3 sp = source;
+        Vec3 sm = source;
         sp[d1] += h;
         sm[d1] -= h;
         val = (eval(sp) - 2.0 * eval(source) + eval(sm)) / (h * h);
       } else {
-        Vec3 pp = source, pm = source, mp = source, mm = source;
+        Vec3 pp = source;
+        Vec3 pm = source;
+        Vec3 mp = source;
+        Vec3 mm = source;
         pp[d1] += h; pp[d2] += h;
         pm[d1] += h; pm[d2] -= h;
         mp[d1] -= h; mp[d2] += h;
@@ -198,10 +203,12 @@ KernelTaylorCoeffs kernel_taylor_at_source(
   if (max_order < 3) return out;
 
   for (int d = 0; d < 3; ++d) {
-    Vec3 sp = source, sm = source;
+    Vec3 sp = source;
+    Vec3 sm = source;
     sp[d] += 2.0 * h;
     sm[d] -= 2.0 * h;
-    Vec3 sp1 = source, sm1 = source;
+    Vec3 sp1 = source;
+    Vec3 sm1 = source;
     sp1[d] += h;
     sm1[d] -= h;
     Real val = (eval(sp) - 2.0 * eval(sp1) + 2.0 * eval(sm1) - eval(sm))
@@ -248,7 +255,8 @@ std::vector<Real> multipole_to_local(
   if (order < 1) return local;
 
   for (int d = 0; d < 3; ++d) {
-    Vec3 tp = target_center, tm = target_center;
+    Vec3 tp = target_center;
+    Vec3 tm = target_center;
     tp[d] += h;
     tm[d] -= h;
     Real deriv = (multipole_field(tp) - multipole_field(tm)) / (2.0 * h);
@@ -263,13 +271,17 @@ std::vector<Real> multipole_to_local(
     for (int d2 = d1; d2 < 3; ++d2) {
       Real val;
       if (d1 == d2) {
-        Vec3 tp = target_center, tm = target_center;
+        Vec3 tp = target_center;
+        Vec3 tm = target_center;
         tp[d1] += h;
         tm[d1] -= h;
         val = (multipole_field(tp) - 2.0 * multipole_field(target_center)
                + multipole_field(tm)) / (h * h);
       } else {
-        Vec3 pp = target_center, pm = target_center, mp = target_center, mm = target_center;
+        Vec3 pp = target_center;
+        Vec3 pm = target_center;
+        Vec3 mp = target_center;
+        Vec3 mm = target_center;
         pp[d1] += h; pp[d2] += h;
         pm[d1] += h; pm[d2] -= h;
         mp[d1] -= h; mp[d2] += h;
@@ -288,10 +300,12 @@ std::vector<Real> multipole_to_local(
   if (order < 3) return local;
 
   for (int d = 0; d < 3; ++d) {
-    Vec3 tp = target_center, tm = target_center;
+    Vec3 tp = target_center;
+    Vec3 tm = target_center;
     tp[d] += 2.0 * h;
     tm[d] -= 2.0 * h;
-    Vec3 tp1 = target_center, tm1 = target_center;
+    Vec3 tp1 = target_center;
+    Vec3 tm1 = target_center;
     tp1[d] += h;
     tm1[d] -= h;
     Real val = (multipole_field(tp) - 2.0 * multipole_field(tp1)

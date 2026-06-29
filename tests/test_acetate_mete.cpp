@@ -95,34 +95,34 @@ void test_acetate_increases_penalty() {
 
   Simulation sim_low;
   sim_low.init(cfg_low);
-  Int n_low_init = sim_low.agents().size();
-  for (Int i = 0; i < n_low_init; ++i) {
-    sim_low.agents()[i].receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
+  for (Agent& a : sim_low.agents()) {
+    a.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
   }
 
   Simulation sim_high;
   sim_high.init(cfg_high);
-  Int n_high_init = sim_high.agents().size();
-  for (Int i = 0; i < n_high_init; ++i) {
-    sim_high.agents()[i].receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
+  for (Agent& a : sim_high.agents()) {
+    a.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
   }
 
   // Record initial biomass
-  Real bm_low_before = 0.0, bm_high_before = 0.0;
-  for (Int i = 0; i < sim_low.agents().size(); ++i)
-    bm_low_before += sim_low.agents()[i].biomass;
-  for (Int i = 0; i < sim_high.agents().size(); ++i)
-    bm_high_before += sim_high.agents()[i].biomass;
+  Real bm_low_before = 0.0;
+  Real bm_high_before = 0.0;
+  for (const Agent& a : sim_low.agents())
+    bm_low_before += a.biomass;
+  for (const Agent& a : sim_high.agents())
+    bm_high_before += a.biomass;
 
   sim_low.step(60.0);
   sim_high.step(60.0);
 
   // Collect total biomass after step (surviving agents)
-  Real bm_low_after = 0.0, bm_high_after = 0.0;
-  for (Int i = 0; i < sim_low.agents().size(); ++i)
-    bm_low_after += sim_low.agents()[i].biomass;
-  for (Int i = 0; i < sim_high.agents().size(); ++i)
-    bm_high_after += sim_high.agents()[i].biomass;
+  Real bm_low_after = 0.0;
+  Real bm_high_after = 0.0;
+  for (const Agent& a : sim_low.agents())
+    bm_low_after += a.biomass;
+  for (const Agent& a : sim_high.agents())
+    bm_high_after += a.biomass;
 
   Real growth_low  = bm_low_after - bm_low_before;
   Real growth_high = bm_high_after - bm_high_before;
@@ -193,8 +193,8 @@ void test_smoke_with_acetate() {
   assert(sim.step_count() > 0);
 
   Int alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (sim.agents()[i].state != PhenoState::DEAD) alive++;
+  for (const Agent& a : sim.agents()) {
+    if (a.state != PhenoState::DEAD) alive++;
   }
   assert(alive > 0);
 

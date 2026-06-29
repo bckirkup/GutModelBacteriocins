@@ -80,8 +80,8 @@ void test_mini_simulation() {
 
   // Plasmids must be assigned (ColE1 / ColB)
   Int with_plasmid = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (!sim.agents()[i].genome.bi_loci.empty()) ++with_plasmid;
+  for (const Agent& a : sim.agents()) {
+    if (!a.genome.bi_loci.empty()) ++with_plasmid;
   }
   assert(with_plasmid == 35);  // 30 ColE1 + 5 ColB
 
@@ -94,8 +94,8 @@ void test_mini_simulation() {
 
   // Should still have some agents alive
   Int alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (sim.agents()[i].state != PhenoState::DEAD) alive++;
+  for (const Agent& a : sim.agents()) {
+    if (a.state != PhenoState::DEAD) alive++;
   }
   assert(alive > 0);
 
@@ -134,8 +134,8 @@ void test_metabolism_integration() {
   sim.init(cfg);
 
   Real initial_biomass = 0.0;
-  for (Int i = 0; i < sim.agents().size(); ++i)
-    initial_biomass += sim.agents()[i].biomass;
+  for (const Agent& a : sim.agents())
+    initial_biomass += a.biomass;
 
   sim.run();
 
@@ -143,8 +143,7 @@ void test_metabolism_integration() {
   Int alive = 0;
   Real default_biomass = sphere_mass(CELL_RADIUS_DEFAULT, CELL_DENSITY_DEFAULT);
   bool any_growth = false;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     if (a.state == PhenoState::DEAD) continue;
     alive++;
     final_biomass += a.biomass;
@@ -185,20 +184,25 @@ void test_advection_moves_agents() {
 
   // Record initial positions
   std::vector<Vec3> initial_pos;
-  for (Int i = 0; i < sim.agents().size(); ++i)
-    initial_pos.push_back(sim.agents()[i].x);
+  for (const Agent& a : sim.agents())
+    initial_pos.push_back(a.x);
 
   sim.step(60.0);
 
   // At least some agents should have moved
   bool any_moved = false;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (sim.agents()[i].state == PhenoState::DEAD) continue;
+  auto pos_it = initial_pos.begin();
+  for (const Agent& a : sim.agents()) {
+    if (a.state == PhenoState::DEAD) {
+      ++pos_it;
+      continue;
+    }
     Vec3 delta;
-    for (int d = 0; d < 3; ++d)
-      delta[d] = sim.agents()[i].x[d] - initial_pos[i][d];
+    for (int d : {0, 1, 2})
+      delta[d] = a.x[d] - (*pos_it)[d];
     Real dist = std::sqrt(delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2]);
     if (dist > 1e-15) any_moved = true;
+    ++pos_it;
   }
   assert(any_moved);
 
@@ -237,9 +241,9 @@ void test_receptor_killing() {
   sim.run();
 
   // Count survivors by type
-  Int type1_alive = 0, type2_alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  Int type1_alive = 0;
+  Int type2_alive = 0;
+  for (const Agent& a : sim.agents()) {
     if (a.state == PhenoState::DEAD) continue;
     if (a.type == 1) type1_alive++;
     else type2_alive++;
@@ -291,8 +295,7 @@ void test_crypt_agents_survive_washout() {
   sim.init(cfg);
 
   // Force all agents to negative mu_realized (metabolically crippled)
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    Agent& a = sim.agents()[i];
+  for (Agent& a : sim.agents()) {
     a.mu_realized = -1.0;          // strongly negative
     a.x[2] = 5e-6;                 // inside crypt
     a.in_crypt = true;
@@ -305,8 +308,8 @@ void test_crypt_agents_survive_washout() {
 
   // All crypt agents should survive despite negative mu_realized
   Int alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (sim.agents()[i].state != PhenoState::DEAD) alive++;
+  for (const Agent& a : sim.agents()) {
+    if (a.state != PhenoState::DEAD) alive++;
   }
   assert(alive == initial_count);
 
@@ -356,9 +359,11 @@ void test_metabolic_washout_trap() {
   assert(gamma > 0.0);
 
   // Receptor-downregulated immigrant scenario: metabolism yields mu << gamma
-  for (int k = 0; k < NUM_RECEPTORS; ++k) {
-    a.receptor_expr[k] = 0.01;
-    a.genome.receptor_expression[k] = 0.01;
+  for (Real& expr : a.receptor_expr) {
+    expr = 0.01;
+  }
+  for (Real& expr : a.genome.receptor_expression) {
+    expr = 0.01;
   }
   a.mu_max = 1e-6;
   a.km_carbon = 500.0;
@@ -484,17 +489,16 @@ void test_crypt_migration_in_out() {
   sim.init(cfg);
 
   // Place all agents just above the crypt zone so they can enter
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    sim.agents()[i].x[2] = 12e-6;
-    sim.agents()[i].in_crypt = false;
+  for (Agent& a : sim.agents()) {
+    a.x[2] = 12e-6;
+    a.in_crypt = false;
   }
 
   sim.run();
 
   // With high migration rates, agents should leave their initial z-plane.
   bool any_relocated = false;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     if (a.state == PhenoState::DEAD) continue;
     if (a.in_crypt || std::abs(a.x[2] - 12e-6) > 1e-7) {
       any_relocated = true;
@@ -546,8 +550,7 @@ void test_partial_resistance_survival() {
 
   // Apply partial resistance to type-3 agents (BtuB toxin_affinity reduced)
   int btuB = to_underlying(ReceptorType::BtuB);
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    Agent& a = sim.agents()[i];
+  for (Agent& a : sim.agents()) {
     if (a.type == 3) {
       a.genome.toxin_affinity[btuB] = 0.05;   // 20x reduced toxin binding
       a.genome.ligand_affinity[btuB] = 0.85;   // near wild-type ligand uptake
@@ -559,9 +562,9 @@ void test_partial_resistance_survival() {
   sim.run();
 
   // Count survivors by type
-  Int type2_alive = 0, type3_alive = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  Int type2_alive = 0;
+  Int type3_alive = 0;
+  for (const Agent& a : sim.agents()) {
     if (a.state == PhenoState::DEAD) continue;
     if (a.type == 2) type2_alive++;
     if (a.type == 3) type3_alive++;

@@ -58,8 +58,7 @@ std::vector<TagID> gather_live_tags_flat(const Simulation& sim) {
   MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
 
   std::vector<TagID> local;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     if (a.state != PhenoState::DEAD) {
       local.push_back(a.tag);
     }
@@ -71,9 +70,10 @@ std::vector<TagID> gather_live_tags_flat(const Simulation& sim) {
 
   int total = 0;
   std::vector<int> displ(nprocs, 0);
-  for (int r = 0; r < nprocs; ++r) {
-    displ[r] = total;
-    total += counts[r];
+  size_t r = 0;
+  for (int count : counts) {
+    displ[r++] = total;
+    total += count;
   }
 
   std::vector<TagID> all(static_cast<size_t>(total));
@@ -179,8 +179,7 @@ void test_init_population_partitioned() {
 
   assert(sim.global_agent_count() == 40);
 
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     assert(sim.domain().is_local(a.x));
     assert(a.owner_rank == sim.domain().rank());
   }
@@ -212,8 +211,7 @@ void test_migration_preserves_global_count() {
 
   Real moved_x = 0.0;
   if (rank == 0) {
-    for (Int i = 0; i < sim.agents().size(); ++i) {
-      Agent& a = sim.agents()[i];
+    for (Agent& a : sim.agents()) {
       if (a.state != PhenoState::DEAD) {
         moved_x = sim.domain().local_hi_x() + 10e-6;
         a.x[0] = moved_x;
@@ -234,8 +232,7 @@ void test_migration_preserves_global_count() {
 
   int found_on_rank1 = 0;
   if (rank == 1) {
-    for (Int i = 0; i < sim.agents().size(); ++i) {
-      const Agent& a = sim.agents()[i];
+    for (const Agent& a : sim.agents()) {
       if (a.state != PhenoState::DEAD &&
           std::abs(a.x[0] - moved_x) < 2e-6) {
         found_on_rank1 = 1;
@@ -263,8 +260,7 @@ void test_boundary_ghost_exchange_runs() {
   sim.init(cfg);
 
   const Real gw = sim.domain().ghost_width();
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    Agent& a = sim.agents()[i];
+  for (Agent& a : sim.agents()) {
     if (a.state == PhenoState::DEAD) continue;
     if (rank == 0) {
       a.x[0] = sim.domain().local_hi_x() - gw * 0.5;
@@ -304,8 +300,7 @@ void test_periodic_x_ghost_and_migration() {
   const Real gw = sim.domain().ghost_width();
   Real moved_x = 0.0;
   if (rank == 0) {
-    for (Int i = 0; i < sim.agents().size(); ++i) {
-      Agent& a = sim.agents()[i];
+    for (Agent& a : sim.agents()) {
       if (a.state == PhenoState::DEAD) continue;
       a.x[0] = sim.domain().local_hi_x() - gw * 0.5;
       moved_x = sim.domain().local_hi_x() + 5e-6;
@@ -313,8 +308,7 @@ void test_periodic_x_ghost_and_migration() {
       break;
     }
   } else {
-    for (Int i = 0; i < sim.agents().size(); ++i) {
-      Agent& a = sim.agents()[i];
+    for (Agent& a : sim.agents()) {
       if (a.state == PhenoState::DEAD) continue;
       a.x[0] = sim.domain().local_lo_x() + gw * 0.5;
       break;
@@ -322,8 +316,7 @@ void test_periodic_x_ghost_and_migration() {
   }
 
   // Crypt refugia bypass washout so this test isolates periodic MPI exchange.
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    Agent& a = sim.agents()[i];
+  for (Agent& a : sim.agents()) {
     if (a.state != PhenoState::DEAD) {
       a.in_crypt = true;
     }
@@ -335,8 +328,7 @@ void test_periodic_x_ghost_and_migration() {
 
   if (rank == 0) {
     moved_x = sim.domain().local_hi_x() + 5e-6;
-    for (Int i = 0; i < sim.agents().size(); ++i) {
-      Agent& a = sim.agents()[i];
+    for (Agent& a : sim.agents()) {
       if (a.state != PhenoState::DEAD) {
         a.x[0] = moved_x;
         a.x[1] = 50e-6;

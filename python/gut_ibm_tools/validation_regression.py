@@ -24,32 +24,36 @@ from .validation import validate_genomic_signatures, validate_spatial_signatures
 
 # Documented validation targets (full-length simulations).
 # Short CI runs use golden-file comparison instead of these thresholds.
+REF_VADI_75 = "VADI §75"
+REF_README_VALIDATION = "README validation targets"
+REF_ISSUE_25 = "issue #25"
+
 VALIDATION_TARGETS: dict[str, dict[str, Any]] = {
     "monochromatic_score": {
         "min": 0.7,
         "description": "HiPR-FISH monochromatic patchiness",
-        "references": ["VADI §75", "README validation targets"],
+        "references": [REF_VADI_75, REF_README_VALIDATION],
     },
     "comet_tail_ratio": {
         "min": 1.5,
         "description": "Advective comet-tail asymmetry (downstream/upstream toxin)",
-        "references": ["EARI comet-tail", "VADI §35", "README validation targets"],
+        "references": ["EARI comet-tail", "VADI §35", REF_README_VALIDATION],
     },
     "comet_tail_asymmetry": {
         "min": 1.0,
         "description": "Concentration-weighted downstream elongation",
-        "references": ["VADI §75", "docs/MECHANISMS.md"],
+        "references": [REF_VADI_75, "docs/MECHANISMS.md"],
     },
     "hopkins_statistic": {
         "min": 0.7,
         "description": "Significant spatial clustering",
-        "references": ["VADI §75"],
+        "references": [REF_VADI_75],
     },
     "resident_retention": {
         "min": 0.70,
         "max": 0.80,
         "description": "Longitudinal resident lineage retention",
-        "references": ["EARI longitudinal metagenomics", "README validation targets"],
+        "references": ["EARI longitudinal metagenomics", REF_README_VALIDATION],
     },
     "resident_mean_bi_loci": {
         "min": 0.0,
@@ -92,22 +96,22 @@ FISH_TARGETS: dict[str, dict[str, Any]] = {
     "immunity_hipr_detectable": {
         "max": 0.5,
         "description": "Immunity mRNA below HiPR-FISH detection (single-digit copies)",
-        "references": ["VADI §75", "issue #25"],
+        "references": [REF_VADI_75, REF_ISSUE_25],
     },
     "immunity_hcr_detectable": {
         "min": 0.5,
         "description": "HCR-FISH amplification rescues low-copy immunity mRNA",
-        "references": ["VADI §75", "issue #25"],
+        "references": [REF_VADI_75, REF_ISSUE_25],
     },
     "plasmid_dna_fish_detection_fraction": {
         "min": 0.5,
         "description": "Multicopy plasmid DNA-FISH detects colicin carriers",
-        "references": ["docs/MECHANISMS.md", "issue #25"],
+        "references": ["docs/MECHANISMS.md", REF_ISSUE_25],
     },
     "rrna_phylogroup_detection_fraction": {
         "min": 0.9,
         "description": "Multicopy rRNA operons detectable by DNA-FISH",
-        "references": ["VADI §75", "issue #25"],
+        "references": [REF_VADI_75, REF_ISSUE_25],
     },
 }
 

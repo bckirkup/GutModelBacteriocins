@@ -31,8 +31,7 @@ inline uint64_t simulation_fingerprint(const Simulation& sim) {
 
   const auto& agents = sim.agents();
   h = hash_combine(h, static_cast<uint64_t>(agents.size()));
-  for (Int i = 0; i < agents.size(); ++i) {
-    const Agent& a = agents[i];
+  for (const Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
     h = hash_combine(h, static_cast<uint64_t>(a.tag));
     h = hash_combine(h, static_cast<uint64_t>(a.type));
@@ -44,10 +43,10 @@ inline uint64_t simulation_fingerprint(const Simulation& sim) {
   }
 
   const auto& chem = sim.chemical_field();
-  for (Int sp = 0; sp < chem.num_species(); ++sp) {
+  for (const auto& row : chem.conc_data()) {
     Real sum = 0.0;
-    for (Int c = 0; c < chem.ncells(); ++c) {
-      sum += chem.conc(sp, c);
+    for (Real val : row) {
+      sum += val;
     }
     h = hash_combine(h, static_cast<uint64_t>(quantize(sum)));
   }

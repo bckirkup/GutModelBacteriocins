@@ -9,11 +9,13 @@ export CC=gcc
 export CXX=g++
 
 common_cmake() {
-  cmake -B "$1" \
+  local build_dir="$1"
+  local cuda_flag="$2"
+  cmake -B "$build_dir" \
     -DCMAKE_BUILD_TYPE=Release \
     -DGUTIBM_USE_MPI=ON \
     -DGUTIBM_USE_HDF5=ON \
-    -DGUTIBM_USE_CUDA="$2"
+    -DGUTIBM_USE_CUDA="$cuda_flag"
 }
 
 echo "=== Building CPU reference (CUDA OFF) ==="

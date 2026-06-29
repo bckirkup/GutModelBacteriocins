@@ -79,8 +79,7 @@ struct AgentSnapshot {
 std::vector<AgentSnapshot> collect_agents(const Simulation& sim) {
   std::vector<AgentSnapshot> out;
   out.reserve(sim.agents().size());
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     out.push_back(AgentSnapshot{
       a.tag,
       a.type,
@@ -102,12 +101,15 @@ std::vector<AgentSnapshot> collect_agents(const Simulation& sim) {
 std::vector<AgentSnapshot> snapshot_from_hdf5(const HDF5CheckpointAgents& atoms) {
   const size_t n = atoms.id.size();
   std::vector<AgentSnapshot> out(n);
-  for (size_t i = 0; i < n; ++i) {
+  size_t i = 0;
+  for (int64_t id : atoms.id) {
+    (void)id;
     out[i] = AgentSnapshot{
       atoms.id[i], atoms.type[i], atoms.state[i],
       atoms.x[i], atoms.y[i], atoms.z[i],
       atoms.radius[i], atoms.biomass[i], atoms.mu[i], atoms.lineage[i],
     };
+    ++i;
   }
   std::sort(out.begin(), out.end(),
             [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
@@ -119,25 +121,26 @@ std::vector<AgentSnapshot> snapshot_from_hdf5(const HDF5CheckpointAgents& atoms)
 void compare_snapshots(const std::vector<AgentSnapshot>& expected,
                        const std::vector<AgentSnapshot>& actual) {
   assert(expected.size() == actual.size());
-  for (size_t i = 0; i < expected.size(); ++i) {
-    assert(expected[i].id == actual[i].id);
-    assert(expected[i].type == actual[i].type);
-    assert(expected[i].state == actual[i].state);
-    assert(std::abs(expected[i].x - actual[i].x) < kTol);
-    assert(std::abs(expected[i].y - actual[i].y) < kTol);
-    assert(std::abs(expected[i].z - actual[i].z) < kTol);
-    assert(std::abs(expected[i].radius - actual[i].radius) < kTol);
-    assert(std::abs(expected[i].biomass - actual[i].biomass) < kTol);
-    assert(std::abs(expected[i].mu - actual[i].mu) < kTol);
-    assert(expected[i].lineage == actual[i].lineage);
+  auto it_actual = actual.begin();
+  for (const AgentSnapshot& exp : expected) {
+    const AgentSnapshot& act = *it_actual++;
+    assert(exp.id == act.id);
+    assert(exp.type == act.type);
+    assert(exp.state == act.state);
+    assert(std::abs(exp.x - act.x) < kTol);
+    assert(std::abs(exp.y - act.y) < kTol);
+    assert(std::abs(exp.z - act.z) < kTol);
+    assert(std::abs(exp.radius - act.radius) < kTol);
+    assert(std::abs(exp.biomass - act.biomass) < kTol);
+    assert(std::abs(exp.mu - act.mu) < kTol);
+    assert(exp.lineage == act.lineage);
   }
 }
 
 void assert_genome_bi_identity(const Simulation& sim) {
   const BICluster ref = PlasmidLibrary::colicin_E1();
   int with_bi = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     if (a.genome.bi_loci.empty()) continue;
     ++with_bi;
     assert(a.genome.bi_loci.size() > 0);
@@ -158,13 +161,15 @@ void assert_genome_matches_snapshot(const Simulation& sim,
   assert(snap.genome.present);
   const size_t n = snap.agents.id.size();
   std::vector<size_t> bi_offsets(n + 1, 0);
-  for (size_t i = 0; i < n; ++i) {
-    bi_offsets[i + 1] = bi_offsets[i] + static_cast<size_t>(snap.lineage.num_bi_loci[i]);
+  bi_offsets[0] = 0;
+  size_t i = 0;
+  for (Int num_bi : snap.lineage.num_bi_loci) {
+    bi_offsets[i + 1] = bi_offsets[i] + static_cast<size_t>(num_bi);
+    ++i;
   }
 
   int matched = 0;
-  for (Int li = 0; li < sim.agents().size(); ++li) {
-    const Agent& a = sim.agents()[li];
+  for (const Agent& a : sim.agents()) {
     size_t gi = 0;
     for (; gi < n; ++gi) {
       if (static_cast<TagID>(snap.agents.id[gi]) == a.tag) break;
@@ -180,9 +185,8 @@ void assert_genome_matches_snapshot(const Simulation& sim,
                     snap.genome.plasmid_cost_amelioration[gi]) < kTol);
     assert(static_cast<Int>(a.genome.bi_loci.size()) == snap.lineage.num_bi_loci[gi]);
 
-    for (size_t b = 0; b < a.genome.bi_loci.size(); ++b) {
-      const size_t flat = bi_offsets[gi] + b;
-      const BICluster& bi = a.genome.bi_loci[b];
+    for (const BICluster& bi : a.genome.bi_loci) {
+      const size_t flat = bi_offsets[gi] + (&bi - a.genome.bi_loci.data());
       assert(bi.toxin_id == static_cast<uint16_t>(snap.genome.bi_toxin_id[flat]));
       assert(bi.immunity_id == static_cast<uint16_t>(snap.genome.bi_immunity_id[flat]));
       assert(static_cast<int32_t>(bi.target) == snap.genome.bi_target[flat]);

@@ -18,8 +18,7 @@ void FixMutation::compute(Real dt) {
   // We check recently-divided agents (age ~0).
   auto& agents = sim_.agents();
 
-  for (Int i = 0; i < agents.size(); ++i) {
-    Agent& a = agents[i];
+  for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
     if (a.age > dt) continue;  // only newly divided cells
 

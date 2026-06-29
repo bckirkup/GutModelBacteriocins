@@ -117,8 +117,7 @@ struct AgentSnapshot {
 std::vector<AgentSnapshot> collect_all_agents(const Simulation& sim) {
   std::vector<AgentSnapshot> out;
   out.reserve(sim.agents().size());
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     out.push_back(AgentSnapshot{
       a.tag,
       a.type,
@@ -162,12 +161,15 @@ std::vector<AgentSnapshot> read_agent_snapshots(hid_t file, const std::string& s
   assert(lineages.size() == n);
 
   std::vector<AgentSnapshot> out(n);
-  for (size_t i = 0; i < n; ++i) {
+  size_t i = 0;
+  for (int64_t id : ids) {
+    (void)id;
     out[i] = AgentSnapshot{
       ids[i], types[i], states[i],
       xs[i], ys[i], zs[i],
       radii[i], biomass[i], mus[i], lineages[i],
     };
+    ++i;
   }
   std::sort(out.begin(), out.end(),
             [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
@@ -204,17 +206,19 @@ void assert_schema(hid_t file, const std::string& step) {
 void compare_agent_snapshots(const std::vector<AgentSnapshot>& expected,
                              const std::vector<AgentSnapshot>& actual) {
   assert(expected.size() == actual.size());
-  for (size_t i = 0; i < expected.size(); ++i) {
-    assert(expected[i].id == actual[i].id);
-    assert(expected[i].type == actual[i].type);
-    assert(expected[i].state == actual[i].state);
-    assert(std::abs(expected[i].x - actual[i].x) < kTol);
-    assert(std::abs(expected[i].y - actual[i].y) < kTol);
-    assert(std::abs(expected[i].z - actual[i].z) < kTol);
-    assert(std::abs(expected[i].radius - actual[i].radius) < kTol);
-    assert(std::abs(expected[i].biomass - actual[i].biomass) < kTol);
-    assert(std::abs(expected[i].mu - actual[i].mu) < kTol);
-    assert(expected[i].lineage == actual[i].lineage);
+  auto it_actual = actual.begin();
+  for (const AgentSnapshot& exp : expected) {
+    const AgentSnapshot& act = *it_actual++;
+    assert(exp.id == act.id);
+    assert(exp.type == act.type);
+    assert(exp.state == act.state);
+    assert(std::abs(exp.x - act.x) < kTol);
+    assert(std::abs(exp.y - act.y) < kTol);
+    assert(std::abs(exp.z - act.z) < kTol);
+    assert(std::abs(exp.radius - act.radius) < kTol);
+    assert(std::abs(exp.biomass - act.biomass) < kTol);
+    assert(std::abs(exp.mu - act.mu) < kTol);
+    assert(exp.lineage == act.lineage);
   }
 }
 
@@ -283,8 +287,7 @@ void validate_step_genome(hid_t /*file*/, const std::string& /*step*/,
                           const Simulation& sim) {
   const BICluster ref = PlasmidLibrary::colicin_E1();
   int with_bi = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     if (a.genome.bi_loci.empty()) continue;
     ++with_bi;
     const BICluster& bi = a.genome.bi_loci[0];
@@ -328,8 +331,7 @@ void validate_parallel_roundtrip(const Simulation& sim, const std::string& filen
   assert(grid_it != snap.grid.species.end());
   assert(grid_it->second.size() == static_cast<size_t>(sim.chemical_field().ncells()));
 
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    const Agent& a = sim.agents()[i];
+  for (const Agent& a : sim.agents()) {
     size_t j = 0;
     for (; j < snap.agents.id.size(); ++j) {
       if (snap.agents.id[j] == a.tag) break;
@@ -340,8 +342,8 @@ void validate_parallel_roundtrip(const Simulation& sim, const std::string& filen
 
 #ifdef GUTIBM_MPI
   int with_bi = 0;
-  for (Int i = 0; i < sim.agents().size(); ++i) {
-    if (!sim.agents()[i].genome.bi_loci.empty()) ++with_bi;
+  for (const Agent& a : sim.agents()) {
+    if (!a.genome.bi_loci.empty()) ++with_bi;
   }
   int global_with_bi = 0;
   MPI_Allreduce(&with_bi, &global_with_bi, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);

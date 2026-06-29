@@ -13,6 +13,7 @@
 
 #include "types.h"
 #include <string>
+#include <utility>
 #include <vector>
 #include <unordered_map>
 
@@ -26,6 +27,15 @@ struct LineageEvent {
   TagID lineage_id;
   Vec3 position;
   std::string detail;
+
+  LineageEvent(Type event_type, Real event_time, TagID tag, TagID lineage,
+               Vec3 pos, std::string event_detail = "")
+      : type(event_type),
+        time(event_time),
+        agent_tag(tag),
+        lineage_id(lineage),
+        position(pos),
+        detail(std::move(event_detail)) {}
 };
 
 struct LineageSnapshot {

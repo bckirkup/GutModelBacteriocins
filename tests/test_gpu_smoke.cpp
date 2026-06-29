@@ -13,8 +13,7 @@ using namespace gutibm;
 static Real fingerprint(const Simulation& sim) {
   Real fp = 0.0;
   const auto& agents = sim.agents();
-  for (Int i = 0; i < agents.size(); ++i) {
-    const Agent& a = agents[i];
+  for (const Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
     fp += a.biomass + a.mu_realized * 1e3 + a.x[0] * 1e6;
   }
