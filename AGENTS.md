@@ -13,7 +13,8 @@ framework philosophy with MPI domain decomposition and HDF5 I/O.
 
 1. Read `.agents/skills/gut-ibm/SKILL.md` for build commands, test inventory, config keys, and Fix registration workflow.
 2. Skim `docs/MECHANISMS.md` before editing any Fix module.
-3. Check **Known Bugs & Landmines** below before debugging unexpected behavior.
+3. Before editing I/O, tests, or randomness, read `.agents/skills/sonarqube-gutibm/SKILL.md` (and the C++/Python sub-skills as needed).
+4. Check **Known Bugs & Landmines** below before debugging unexpected behavior.
 
 ## Setup
 
@@ -82,6 +83,9 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/` |
 | `tests/` | 30 CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
+| `.agents/skills/sonarqube-gutibm/SKILL.md` | SonarQube remediation workflow |
+| `.agents/skills/sonarqube-cpp/SKILL.md` | C++ SonarQube patterns |
+| `.agents/skills/sonarqube-python/SKILL.md` | Python SonarQube patterns |
 
 ## Key Concepts
 
