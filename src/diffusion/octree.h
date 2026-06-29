@@ -17,6 +17,7 @@
 
 #include "types.h"
 #include "greens_function.h"
+#include <array>
 #include <vector>
 
 namespace gutibm {
@@ -29,7 +30,7 @@ struct OctreeNode {
   Real half_size;                  // half the side length
   Real total_source_strength;      // sum of source rates in subtree
   Vec3 center_of_source;           // source-weighted centroid
-  int children[8];                 // child indices (-1 = no child)
+  std::array<int, 8> children;     // child indices (-1 = no child)
   std::vector<int> sources;        // leaf source indices
   bool is_leaf;
 };

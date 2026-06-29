@@ -90,7 +90,7 @@ def spatial_clustering_index(
         tree = KDTree(pts)
 
         # Sample m random points
-        _rng = rng if rng is not None else np.random.default_rng()
+        _rng = rng if rng is not None else np.random.default_rng(42)
         m = min(n // 2, 100)
         indices = _rng.choice(n, m, replace=False)
         sample = pts[indices]
@@ -180,7 +180,7 @@ def hopkins_statistic(
 
     tree = KDTree(positions)
 
-    _rng = rng if rng is not None else np.random.default_rng()
+    _rng = rng if rng is not None else np.random.default_rng(42)
     indices = _rng.choice(n, m, replace=False)
     sample = positions[indices]
     dists_data, _ = tree.query(sample, k=2)

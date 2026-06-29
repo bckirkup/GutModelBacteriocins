@@ -32,7 +32,9 @@ class SpatialHash {
 
  private:
   struct CellKey {
-    Int ix, iy, iz;
+    Int ix;
+    Int iy;
+    Int iz;
     bool operator==(const CellKey& o) const {
       return ix == o.ix && iy == o.iy && iz == o.iz;
     }
@@ -52,7 +54,8 @@ class SpatialHash {
   CellKey pos_to_cell(const Vec3& pos) const;
 
   Real cell_size_ = 10.0e-6;  // default 10 um
-  Vec3 lo_{}, hi_{};
+  Vec3 lo_{};
+  Vec3 hi_{};
   std::unordered_map<CellKey, std::vector<Int>, CellKeyHash> cells_;
 };
 

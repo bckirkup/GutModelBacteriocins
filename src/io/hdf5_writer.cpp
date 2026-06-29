@@ -16,6 +16,7 @@ extern "C" {
 #include <mpi.h>
 #endif
 
+#include <array>
 #include <vector>
 #include <string>
 #include <sstream>
@@ -101,9 +102,9 @@ ParSlice compute_par_slice(hsize_t local_count, const HDF5Config& cfg) {
   slice.count = local_count;
 #ifdef GUTIBM_MPI
   if (mpi_multi_rank()) {
-    int local_n = static_cast<int>(local_count);
-    int nprocs = mpi_nprocs_world();
-    int my_rank = mpi_rank_world();
+    auto local_n = static_cast<int>(local_count);
+    auto nprocs = mpi_nprocs_world();
+    auto my_rank = mpi_rank_world();
     std::vector<int> counts(static_cast<size_t>(nprocs));
     MPI_Allgather(&local_n, 1, MPI_INT, counts.data(), 1, MPI_INT,
                   MPI_COMM_WORLD);
@@ -130,7 +131,7 @@ void write_dataset_1d(hid_t fid, const std::string& path, hid_t h5_type,
     int rank = mpi_rank_world();
     int nprocs = mpi_nprocs_world();
 
-    const int local_n = static_cast<int>(local_len);
+    const auto local_n = static_cast<int>(local_len);
     std::vector<int> counts(static_cast<size_t>(nprocs));
     std::vector<int> displs(static_cast<size_t>(nprocs));
     MPI_Allgather(&local_n, 1, MPI_INT, counts.data(), 1, MPI_INT,
@@ -154,8 +155,8 @@ void write_dataset_1d(hid_t fid, const std::string& path, hid_t h5_type,
                 MPI_BYTE, 0, MPI_COMM_WORLD);
 
     if (rank == 0) {
-      hsize_t dims[1] = {slice.total};
-      hid_t space = H5Screate_simple(1, dims, nullptr);
+      std::array<hsize_t, 1> dims = {slice.total};
+      hid_t space = H5Screate_simple(1, dims.data(), nullptr);
       hid_t ds = H5Dcreate2(fid, path.c_str(), h5_type, space,
                             H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
       if (ds < 0) {
@@ -173,8 +174,8 @@ void write_dataset_1d(hid_t fid, const std::string& path, hid_t h5_type,
   }
 #endif
 
-  hsize_t dims[1] = {slice.total};
-  hid_t space = H5Screate_simple(1, dims, nullptr);
+  std::array<hsize_t, 1> dims = {slice.total};
+  hid_t space = H5Screate_simple(1, dims.data(), nullptr);
   hid_t ds = H5Dcreate2(fid, path.c_str(), h5_type, space,
                         H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   H5Dwrite(ds, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, local_data);
@@ -229,7 +230,7 @@ void HDF5Writer::write_step(const Simulation& sim, Int step, Real time) {
   if (!enabled_) return;
   if (step % cfg_.dump_every != 0) return;
 
-  hid_t fid = static_cast<hid_t>(file_id_);
+  auto fid = static_cast<hid_t>(file_id_);
 
   std::ostringstream oss;
   oss << "step_" << std::setw(6) << std::setfill('0') << step;
@@ -258,9 +259,9 @@ void HDF5Writer::write_step(const Simulation& sim, Int step, Real time) {
 #endif
 }
 
-void HDF5Writer::write_agents(const Simulation& sim, const std::string& group) {
+void HDF5Writer::write_agents(const Simulation& sim, const std::string& group) const {
 #ifdef GUTIBM_HDF5
-  hid_t fid = static_cast<hid_t>(file_id_);
+  auto fid = static_cast<hid_t>(file_id_);
   std::string agroup = group + "/atoms";
   ensure_group(fid, agroup, cfg_);
 
@@ -282,7 +283,7 @@ void HDF5Writer::write_agents(const Simulation& sim, const std::string& group) {
     const Agent& a = agents[i];
     ids[static_cast<size_t>(i)]     = a.tag;
     types[static_cast<size_t>(i)]   = a.type;
-    states[static_cast<size_t>(i)]  = static_cast<int32_t>(a.state);
+    states[static_cast<size_t>(i)]  = static_cast<int32_t>(to_underlying(a.state));
     x[static_cast<size_t>(i)]       = a.x[0];
     y[static_cast<size_t>(i)]       = a.x[1];
     z[static_cast<size_t>(i)]       = a.x[2];
@@ -292,7 +293,7 @@ void HDF5Writer::write_agents(const Simulation& sim, const std::string& group) {
     lineage[static_cast<size_t>(i)] = a.genome.lineage_id;
   }
 
-  const hsize_t local_n = static_cast<hsize_t>(n);
+  const auto local_n = static_cast<hsize_t>(n);
   write_dataset_1d(fid, agroup + "/id",       H5T_NATIVE_INT64,  ids.data(), local_n, cfg_);
   write_dataset_1d(fid, agroup + "/type",     H5T_NATIVE_INT32,  types.data(), local_n, cfg_);
   write_dataset_1d(fid, agroup + "/state",    H5T_NATIVE_INT32,  states.data(), local_n, cfg_);
@@ -308,20 +309,20 @@ void HDF5Writer::write_agents(const Simulation& sim, const std::string& group) {
 #endif
 }
 
-void HDF5Writer::write_grid(const Simulation& sim, const std::string& group) {
+void HDF5Writer::write_grid(const Simulation& sim, const std::string& group) const {
 #ifdef GUTIBM_HDF5
-  hid_t fid = static_cast<hid_t>(file_id_);
+  auto fid = static_cast<hid_t>(file_id_);
   std::string ggroup = group + "/grid";
   ensure_group(fid, ggroup, cfg_);
 
   if (io_rank(cfg_) == 0 && fid >= 0) {
     const auto& chem = sim.chemical_field();
     Int ncells = chem.ncells();
-    hsize_t dims[1] = {static_cast<hsize_t>(ncells)};
-    hid_t space = H5Screate_simple(1, dims, nullptr);
+    std::array<hsize_t, 1> dims = {static_cast<hsize_t>(ncells)};
+    hid_t space = H5Screate_simple(1, dims.data(), nullptr);
 
     for (Int s = 0; s < chem.num_species(); ++s) {
-      std::string dsname = ggroup + "/" + chem.spec(s).name;
+      auto dsname = ggroup + "/" + chem.spec(s).name;
       hid_t ds = H5Dcreate2(fid, dsname.c_str(), H5T_NATIVE_DOUBLE, space,
                             H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
       if (ds < 0) {
@@ -342,9 +343,9 @@ void HDF5Writer::write_grid(const Simulation& sim, const std::string& group) {
 }
 
 void HDF5Writer::write_metadata(const Simulation& sim, const std::string& group,
-                                  Int step, Real time) {
+                                  Int step, Real time) const {
 #ifdef GUTIBM_HDF5
-  hid_t fid = static_cast<hid_t>(file_id_);
+  auto fid = static_cast<hid_t>(file_id_);
   std::string mgroup = group + "/metadata";
   ensure_group(fid, mgroup, cfg_);
 
@@ -352,12 +353,12 @@ void HDF5Writer::write_metadata(const Simulation& sim, const std::string& group,
     hsize_t one = 1;
     hid_t scalar = H5Screate_simple(1, &one, nullptr);
 
-    double t = time;
-    int32_t n_agents = static_cast<int32_t>(sim.global_agent_count());
-    int32_t n_lin    = static_cast<int32_t>(
+    auto t = static_cast<double>(time);
+    auto n_agents = static_cast<int32_t>(sim.global_agent_count());
+    auto n_lin    = static_cast<int32_t>(
         sim.lineage_tracker().snapshots().empty() ? 0
         : sim.lineage_tracker().snapshots().back().num_lineages);
-    int32_t s = step;
+    auto s = static_cast<int32_t>(step);
 
     auto write_scalar = [&](const char* name, hid_t type, const void* val) {
       std::string dsname = mgroup + "/" + name;
@@ -384,9 +385,9 @@ void HDF5Writer::write_metadata(const Simulation& sim, const std::string& group,
 #endif
 }
 
-void HDF5Writer::write_lineage(const Simulation& sim, const std::string& group) {
+void HDF5Writer::write_lineage(const Simulation& sim, const std::string& group) const {
 #ifdef GUTIBM_HDF5
-  hid_t fid = static_cast<hid_t>(file_id_);
+  auto fid = static_cast<hid_t>(file_id_);
   std::string lgroup = group + "/lineage";
   ensure_group(fid, lgroup, cfg_);
 
@@ -406,7 +407,7 @@ void HDF5Writer::write_lineage(const Simulation& sim, const std::string& group) 
     generation[static_cast<size_t>(i)] = static_cast<int32_t>(a.genome.generation);
   }
 
-  const hsize_t local_n = static_cast<hsize_t>(n);
+  const auto local_n = static_cast<hsize_t>(n);
   write_dataset_1d(fid, lgroup + "/btuB_expression", H5T_NATIVE_DOUBLE,
                     btuB_expr.data(), local_n, cfg_);
   write_dataset_1d(fid, lgroup + "/fepA_expression", H5T_NATIVE_DOUBLE,
@@ -420,15 +421,15 @@ void HDF5Writer::write_lineage(const Simulation& sim, const std::string& group) 
 #endif
 }
 
-void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) {
+void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) const {
 #ifdef GUTIBM_HDF5
-  hid_t fid = static_cast<hid_t>(file_id_);
+  auto fid = static_cast<hid_t>(file_id_);
   std::string ggroup = group + "/genome";
   ensure_group(fid, ggroup, cfg_);
 
   const auto& agents = sim.agents();
   Int n = agents.size();
-  const hsize_t local_n = static_cast<hsize_t>(n);
+  const auto local_n = static_cast<hsize_t>(n);
 
   std::vector<int64_t> parent_id(static_cast<size_t>(n));
   std::vector<int32_t> mutations(static_cast<size_t>(n));
@@ -450,7 +451,7 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) {
 
   for (Int i = 0; i < n; ++i) {
     const Agent& a = agents[i];
-    const size_t idx = static_cast<size_t>(i);
+    const auto idx = static_cast<size_t>(i);
     parent_id[idx] = a.genome.parent_id;
     mutations[idx] = static_cast<int32_t>(a.genome.mutations);
     has_conjugative[idx] = a.genome.has_conjugative_plasmid ? 1 : 0;
@@ -466,8 +467,8 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) {
     for (const auto& bi : a.genome.bi_loci) {
       bi_toxin_id.push_back(static_cast<int32_t>(bi.toxin_id));
       bi_immunity_id.push_back(static_cast<int32_t>(bi.immunity_id));
-      bi_target.push_back(static_cast<int32_t>(bi.target));
-      bi_bclass.push_back(static_cast<int32_t>(bi.bclass));
+      bi_target.push_back(static_cast<int32_t>(to_underlying(bi.target)));
+      bi_bclass.push_back(static_cast<int32_t>(to_underlying(bi.bclass)));
       bi_pI.push_back(bi.pI);
       bi_diff.push_back(bi.diff_coeff);
       bi_ret.push_back(bi.retardation);
@@ -491,7 +492,7 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) {
   write_dataset_1d(fid, ggroup + "/ligand_affinity", H5T_NATIVE_DOUBLE,
                    ligand_aff.data(), local_n * NUM_RECEPTORS, cfg_);
 
-  const hsize_t local_bi = static_cast<hsize_t>(bi_toxin_id.size());
+  const auto local_bi = static_cast<hsize_t>(bi_toxin_id.size());
   write_dataset_1d(fid, ggroup + "/bi_toxin_id", H5T_NATIVE_INT32,
                    bi_toxin_id.data(), local_bi, cfg_);
   write_dataset_1d(fid, ggroup + "/bi_immunity_id", H5T_NATIVE_INT32,

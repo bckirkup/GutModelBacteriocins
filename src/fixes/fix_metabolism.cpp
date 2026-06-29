@@ -16,7 +16,7 @@ namespace gutibm {
 FixMetabolism::FixMetabolism(Simulation& sim, const MetabolismConfig& cfg)
     : Fix("metabolism", sim), cfg_(cfg) {}
 
-void FixMetabolism::init() {}
+void FixMetabolism::init() { /* no-op: parameters set via cfg_ at construction */ }
 
 void FixMetabolism::compute(Real dt) {
   auto& agents = sim_.agents();
@@ -25,7 +25,7 @@ void FixMetabolism::compute(Real dt) {
     auto& ag = sim_.agents_gpu();
     auto& cg = sim_.chem_gpu();
     ag.sync_from_host(agents);
-    auto& chem = sim_.chemical_field();
+    const auto& chem = sim_.chemical_field();
     Int i_carbon = chem.find("carbon");
     Int i_iron = chem.find("iron");
     Int i_b12 = chem.find("b12");
@@ -58,7 +58,7 @@ void FixMetabolism::compute(Real dt) {
   }
 }
 
-void FixMetabolism::post_step(Real dt) {
+void FixMetabolism::post_step(Real /*dt*/) {
   // Division and death checks after growth
   auto& agents = sim_.agents();
   std::vector<Agent> new_agents;
@@ -184,8 +184,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   // + concentration-dependent ethanolamine utilization loss
   if (expr_btuB < 0.5) {
     Real metE_eff = cfg_.metE_penalty;
-    Int i_acetate = chem.find("acetate");
-    if (i_acetate >= 0) {
+    if (Int i_acetate = chem.find("acetate"); i_acetate >= 0) {
       Real acetate_conc = chem.conc(i_acetate, cell);
       Real acetate_factor = 1.0
           + (cfg_.metE_acetate_max_factor - 1.0)
@@ -193,8 +192,8 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
       metE_eff *= acetate_factor;
     }
     Real eut_conc = 0.0;
-    Int i_eut = chem.find("ethanolamine");
-    if (i_eut >= 0) eut_conc = chem.conc(i_eut, cell);
+    if (Int i_eut = chem.find("ethanolamine"); i_eut >= 0)
+      eut_conc = chem.conc(i_eut, cell);
     Real eut_effect = cfg_.eut_max_penalty * eut_conc / (cfg_.eut_km + eut_conc);
     mu *= (1.0 - metE_eff - eut_effect);
   }

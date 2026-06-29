@@ -58,7 +58,7 @@ int Octree::build_recursive(const std::vector<Vec3>& positions,
                             const std::vector<Real>& strengths,
                             const std::vector<int>& indices,
                             const Vec3& center, Real half_size) {
-  int node_idx = static_cast<int>(nodes_.size());
+  auto node_idx = static_cast<int>(nodes_.size());
   nodes_.emplace_back();
   OctreeNode& node = nodes_[node_idx];
 
@@ -93,7 +93,7 @@ int Octree::build_recursive(const std::vector<Vec3>& positions,
   node.is_leaf = false;
 
   // Partition into 8 octants
-  std::vector<int> child_indices[8];
+  std::array<std::vector<int>, 8> child_indices;
   for (int idx : indices) {
     int oct = octant(positions[idx], center);
     child_indices[oct].push_back(idx);

@@ -33,7 +33,7 @@ bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents, Int num_agents,
       i_b12 >= 0 ? chem_gpu.reac_device(i_b12) : nullptr,
       i_carbon >= 0 ? chem_gpu.reac_device(i_carbon) : nullptr,
       num_agents,
-      i_iron >= 0, i_b12 >= 0, i_carbon >= 0, 0);
+      i_iron >= 0, i_b12 >= 0, i_carbon >= 0, nullptr);
 
   cudaDeviceSynchronize();
   gpu_check_error("nutrient_depletion_kernel");

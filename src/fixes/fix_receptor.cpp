@@ -46,7 +46,7 @@ void FixReceptor::compute(Real dt) {
 }
 
 Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
-  auto& chem = sim_.chemical_field();
+  const auto& chem = sim_.chemical_field();
   Int cell = agent.grid_cell;
   if (cell < 0) return 0.0;
 
@@ -64,7 +64,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
     int ri = to_underlying(ReceptorType::BtuB);
     Real expr = agent.receptor_expr[ri];
     Int i_b12 = chem.find("b12");
-    Real ligand = (i_b12 >= 0) ? chem.conc(i_b12, cell) : 0.0;
+    auto ligand = (i_b12 >= 0) ? chem.conc(i_b12, cell) : 0.0;
 
     Real occ = toxin_occupancy(tox_conc, ligand,
                                 cfg_.kd_colicinE_btuB,

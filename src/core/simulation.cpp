@@ -16,6 +16,7 @@
 
 #include <iostream>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <numeric>
@@ -70,7 +71,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   fixes_ = FixRegistry::create_all(*this, cfg);
 
   // Initialize fixes
-  for (auto& fix : fixes_) {
+  for (const auto& fix : fixes_) {
     fix->init();
   }
 
@@ -176,7 +177,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   lineage_.init(cfg.output_interval);
   hdf5_.init(cfg.hdf5);
   fixes_ = FixRegistry::create_all(*this, cfg);
-  for (auto& fix : fixes_) {
+  for (const auto& fix : fixes_) {
     fix->init();
   }
 
@@ -365,8 +366,7 @@ Real Simulation::compute_adaptive_dt() const {
 
   // Agent density constraint
   Vec3 sz = domain_.size();
-  Real volume = sz[0] * sz[1] * sz[2];
-  if (volume > 0.0) {
+  if (Real volume = sz[0] * sz[1] * sz[2]; volume > 0.0) {
     Real density = static_cast<Real>(agents_.size()) / volume;
     if (density > 1e15) dt = std::min(dt, 10.0);
   }
@@ -492,7 +492,7 @@ void Simulation::step(Real dt) {
         agents_gpu_.grid_cell(), agents_gpu_.state(),
         domain_.lo()[0], domain_.lo()[1], domain_.lo()[2], domain_.dx(),
         domain_.nx(), domain_.ny(), domain_.nz(),
-        agents_.size(), 0);
+        agents_.size(), nullptr);
     cudaDeviceSynchronize();
     gpu_check_error("grid_coupling_kernel");
     agents_gpu_.sync_to_host(agents_);
@@ -506,7 +506,7 @@ void Simulation::step(Real dt) {
   update_grid_coupling();
   profiler.lap(step_profile_.spatial_hash_s);
 
-  for (auto& fix : fixes_) {
+  for (const auto& fix : fixes_) {
     fix->pre_step(dt);
   }
 
@@ -526,7 +526,7 @@ void Simulation::step(Real dt) {
   profiler.lap(step_profile_.physics_s);
 
   // Post-step
-  for (auto& fix : fixes_) {
+  for (const auto& fix : fixes_) {
     fix->post_step(dt);
   }
 
@@ -555,15 +555,14 @@ void Simulation::step(Real dt) {
 }
 
 void Simulation::module_biology(Real dt) {
-  for (auto& fix : fixes_) {
+  for (const auto& fix : fixes_) {
     fix->compute(dt);
   }
 }
 
 void Simulation::module_chemistry(Real dt) {
   // QSSA: compute steady-state toxin field via Green's functions
-  Int i_tox = chem_.find("bacteriocin");
-  if (i_tox >= 0) {
+  if (Int i_tox = chem_.find("bacteriocin"); i_tox >= 0) {
     qssa_.solve_bacteriocin_field(agents_, chem_, i_tox);
     if (gpu_active_) {
       chem_gpu_.sync_to_device(chem_);
@@ -642,7 +641,7 @@ void Simulation::module_physics(Real dt) {
   }
 
   // Mechanical repulsion handled by FixMechanics (registered as a fix)
-  for (auto& fix : fixes_) {
+  for (const auto& fix : fixes_) {
     if (fix->name() == "mechanics") {
       fix->compute(dt);
       break;
@@ -813,10 +812,10 @@ void mpi_exchange_buffers_distinct(Int rank_lo, Int rank_hi,
 void mpi_exchange_sizes_collapsed(Int neighbor, int tag,
                                   int sz_send_lo, int sz_send_hi,
                                   int& sz_recv_lo, int& sz_recv_hi) {
-  int sizes_send[2] = {sz_send_lo, sz_send_hi};
-  int sizes_recv[2] = {0, 0};
-  MPI_Sendrecv(sizes_send, 2, MPI_INT, neighbor, tag,
-               sizes_recv, 2, MPI_INT, neighbor, tag,
+  std::array<int, 2> sizes_send = {sz_send_lo, sz_send_hi};
+  std::array<int, 2> sizes_recv = {0, 0};
+  MPI_Sendrecv(sizes_send.data(), 2, MPI_INT, neighbor, tag,
+               sizes_recv.data(), 2, MPI_INT, neighbor, tag,
                MPI_COMM_WORLD, MPI_STATUS_IGNORE);
   sz_recv_lo = sizes_recv[0];
   sz_recv_hi = sizes_recv[1];
@@ -903,8 +902,8 @@ void Simulation::migrate_agents() {
   agent_transfer_serialize(send_hi, buf_send_hi);
 
   // Exchange sizes with neighbors
-  int sz_send_lo = static_cast<int>(buf_send_lo.size());
-  int sz_send_hi = static_cast<int>(buf_send_hi.size());
+  auto sz_send_lo = static_cast<int>(buf_send_lo.size());
+  auto sz_send_hi = static_cast<int>(buf_send_hi.size());
   int sz_recv_lo = 0;
   int sz_recv_hi = 0;
 
@@ -982,8 +981,8 @@ void Simulation::exchange_ghost_agents() {
   agent_transfer_serialize(ghost_hi, buf_send_hi);
 
   // Exchange sizes
-  int sz_send_lo = static_cast<int>(buf_send_lo.size());
-  int sz_send_hi = static_cast<int>(buf_send_hi.size());
+  auto sz_send_lo = static_cast<int>(buf_send_lo.size());
+  auto sz_send_hi = static_cast<int>(buf_send_hi.size());
   int sz_recv_lo = 0;
   int sz_recv_hi = 0;
 

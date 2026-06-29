@@ -6,6 +6,7 @@
 #include "fmm_kernel.h"
 #include "domain.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <numeric>
 
@@ -70,7 +71,7 @@ int FMM::build_recursive(const std::vector<Vec3>& positions,
                            const std::vector<Real>& strengths,
                            const std::vector<int>& indices,
                            const Vec3& center, Real half_size) {
-  int node_idx = static_cast<int>(nodes_.size());
+  auto node_idx = static_cast<int>(nodes_.size());
   nodes_.emplace_back();
   FMMNode& node = nodes_[node_idx];
 
@@ -106,7 +107,7 @@ int FMM::build_recursive(const std::vector<Vec3>& positions,
 
   node.is_leaf = false;
 
-  std::vector<int> child_indices[8];
+  std::array<std::vector<int>, 8> child_indices;
   for (int idx : indices) {
     int oct = octant(positions[idx], center);
     child_indices[oct].push_back(idx);
@@ -133,7 +134,7 @@ int FMM::build_recursive(const std::vector<Vec3>& positions,
 void FMM::upward_pass(const std::vector<Vec3>& positions,
                       const std::vector<Real>& strengths) {
   // Post-order traversal: leaves first, then internal nodes.
-  for (int i = static_cast<int>(nodes_.size()) - 1; i >= 0; --i) {
+  for (auto i = static_cast<int>(nodes_.size()) - 1; i >= 0; --i) {
     FMMNode& node = nodes_[i];
     std::fill(node.multipole.begin(), node.multipole.end(), 0.0);
 
@@ -203,7 +204,7 @@ void FMM::compute_local_expansions(Real theta,
     std::fill(node.local.begin(), node.local.end(), 0.0);
 
   // M2L at every node, then L2L from root downward.
-  for (int i = 0; i < static_cast<int>(nodes_.size()); ++i)
+  for (auto i = 0; i < static_cast<int>(nodes_.size()); ++i)
     m2l_at_node(i, theta, gf, avg_params);
 
   l2l_downward(0);
@@ -222,8 +223,8 @@ int FMM::find_containing_node(const Vec3& target) const {
 }
 
 Real FMM::evaluate_local_at(const Vec3& target,
-                            const GreensFunction& gf,
-                            const GreensFunctionParams& avg_params) const {
+                            const GreensFunction& /*gf*/,
+                            const GreensFunctionParams& /*avg_params*/) const {
   if (!locals_ready_ || nodes_.empty()) return 0.0;
 
   int leaf = find_containing_node(target);
@@ -249,8 +250,8 @@ void FMM::traverse_far(int node_idx,
   Real dist = std::sqrt(dist2);
   if (dist + diag < std::sqrt(near_cutoff2)) return;
 
-  Real cell_size = 2.0 * node.half_size;
-  if (!node.is_leaf && (cell_size / std::max(dist, 1e-30)) >= theta) {
+  if (Real cell_size = 2.0 * node.half_size;
+      !node.is_leaf && (cell_size / std::max(dist, 1e-30)) >= theta) {
     for (int c = 0; c < 8; ++c) {
       if (node.children[c] >= 0) {
         traverse_far(node.children[c], target, theta, near_cutoff2,

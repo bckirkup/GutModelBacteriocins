@@ -13,8 +13,8 @@ FixConjugation::FixConjugation(Simulation& sim, const ConjugationConfig& cfg)
 
 void FixConjugation::compute(Real dt) {
   auto& agents = sim_.agents();
-  auto& hash   = sim_.domain().spatial_hash();
-  auto& adv    = sim_.advection();
+  const auto& hash   = sim_.domain().spatial_hash();
+  const auto& adv    = sim_.advection();
   auto& rng    = sim_.rng();
 
   for (Int i = 0; i < agents.size(); ++i) {
@@ -38,8 +38,8 @@ void FixConjugation::compute(Real dt) {
       if (recipient.state == PhenoState::DEAD) continue;
 
       // Check distance against sampled pilus length
-      Real d2 = sim_.domain().min_image_dist_sq(donor.x, recipient.x);
-      if (d2 > effective_radius * effective_radius) continue;
+      if (Real d2 = sim_.domain().min_image_dist_sq(donor.x, recipient.x);
+          d2 > effective_radius * effective_radius) continue;
 
       // Local shear rate
       Real shear = adv.shear_rate(donor.x);
@@ -55,9 +55,8 @@ void FixConjugation::attempt_transfer(Agent& donor, Agent& recipient,
 
   // MPS probability: inversely proportional to shear
   Real p_mps = std::exp(-shear / cfg_.shear_critical);
-  Real p_transfer = cfg_.base_transfer_rate * p_mps * dt;
-
-  if (!rng.bernoulli(p_transfer)) return;
+  if (Real p_transfer = cfg_.base_transfer_rate * p_mps * dt;
+      !rng.bernoulli(p_transfer)) return;
 
   // Transfer a random BI cluster from donor to recipient
   if (donor.genome.bi_loci.empty()) return;

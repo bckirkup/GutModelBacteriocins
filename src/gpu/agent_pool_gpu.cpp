@@ -58,7 +58,7 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
     y[i] = a.x[1];
     z[i] = a.x[2];
     grid_cell[i] = a.grid_cell;
-    state[i] = static_cast<int>(a.state);
+    state[i] = static_cast<int>(to_underlying(a.state));
     mu_realized[i] = a.mu_realized;
     biomass[i] = a.biomass;
     radius[i] = a.radius;
@@ -158,7 +158,7 @@ bool AgentPoolGpu::run_metabolism(
       cfg.km_iron_primary, cfg.km_iron_iroN, cfg.km_iron_iutA, cfg.km_iron_fiu,
       cfg.maintenance_rate, cfg.metE_penalty, cfg.metE_acetate_max_factor,
       cfg.metE_acetate_km, cfg.eut_max_penalty, cfg.eut_km,
-      cfg.yield_carbon, cfg.yield_iron, cfg.yield_b12, 0);
+      cfg.yield_carbon, cfg.yield_iron, cfg.yield_b12, nullptr);
 
   cudaDeviceSynchronize();
   gpu_check_error("metabolism_kernel");

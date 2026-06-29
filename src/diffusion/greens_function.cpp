@@ -114,10 +114,10 @@ void GreensFunction::superpose_to_grid(
     Real cutoff_radius) const {
   require_init();
 
-  Int nx = domain_->nx();
-  Int ny = domain_->ny();
-  Int nz = domain_->nz();
-  Int ncells = domain_->ncells();
+  const Int nx = domain_->nx();
+  const Int ny = domain_->ny();
+  const Int nz = domain_->nz();
+  const Int ncells = domain_->ncells();
 
   grid_conc.assign(ncells, 0.0);
 
@@ -144,7 +144,7 @@ void GreensFunction::superpose_to_grid(
       Int src_iz = 0;
       domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
 
-      Int span = static_cast<Int>(std::ceil(cutoff_radius / domain_->dx()));
+      auto span = static_cast<Int>(std::ceil(cutoff_radius / domain_->dx()));
 
       for (Int dz = -span; dz <= span; ++dz) {
         Int iz = src_iz + dz;
@@ -186,7 +186,7 @@ void GreensFunction::superpose_to_grid(
     Int src_iz = 0;
     domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
 
-    Int span = static_cast<Int>(std::ceil(cutoff_radius / domain_->dx()));
+    auto span = static_cast<Int>(std::ceil(cutoff_radius / domain_->dx()));
 
     for (Int dz = -span; dz <= span; ++dz) {
       Int iz = src_iz + dz;
@@ -205,7 +205,7 @@ void GreensFunction::superpose_to_grid(
 
           Vec3 tgt = domain_->cell_center(ix, iy, iz);
           Real c = concentration_bounded(src, tgt, p);
-          Int idx = domain_->cell_index(ix, iy, iz);
+          auto idx = domain_->cell_index(ix, iy, iz);
           grid_conc[idx] += c;
         }
       }

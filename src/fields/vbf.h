@@ -43,7 +43,7 @@ class VBF {
   Vec3 drag_force(const Vec3& agent_vel) const;
 
   // Local carrying capacity at a grid cell
-  Real local_capacity(Int cell_idx) const { return carrying_cap_; }
+  Real local_capacity(Int /*cell_idx*/) const { return carrying_cap_; }
 
   // Effective viscosity at position (for conjugation shear calc)
   Real viscosity() const { return cfg_.viscosity; }

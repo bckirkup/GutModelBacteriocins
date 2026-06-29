@@ -23,11 +23,13 @@ Real VBF::mucin_rate(Real z_rel) const {
 }
 
 void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
-                                   Real dt) const {
+                                   Real /*dt*/) const {
   Int i_carbon = chem.find("carbon");
   Int i_iron   = chem.find("iron");
 
-  Int nx = domain.nx(), ny = domain.ny(), nz = domain.nz();
+  const Int nx = domain.nx();
+  const Int ny = domain.ny();
+  const Int nz = domain.nz();
 
   for (Int iz = 0; iz < nz; ++iz) {
     Real z_rel = (iz + 0.5) * domain.dx();

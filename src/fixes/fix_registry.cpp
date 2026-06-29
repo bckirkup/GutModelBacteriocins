@@ -23,15 +23,14 @@ std::vector<std::pair<std::string, FixRegistry::Factory>>& FixRegistry::entries(
 
 void FixRegistry::register_fix(const std::string& name, Factory factory) {
   auto& reg = entries();
-  for (const auto& e : reg) {
-    if (e.first == name) return;  // first registration wins
+  for (const auto& entry : reg) {
+    if (entry.first == name) return;  // first registration wins
   }
   reg.emplace_back(name, std::move(factory));
 }
 
 void FixRegistry::register_defaults() {
-  auto& reg = entries();
-  if (!reg.empty()) return;
+  if (const auto& reg = entries(); !reg.empty()) return;
 
   register_fix("metabolism",
     [](Simulation& sim, const SimulationConfig& cfg) {
@@ -91,8 +90,8 @@ std::vector<std::string> FixRegistry::default_fix_names() {
   register_defaults();
   std::vector<std::string> names;
   names.reserve(entries().size());
-  for (const auto& e : entries()) {
-    names.push_back(e.first);
+  for (const auto& [name, factory] : entries()) {
+    names.push_back(name);
   }
   return names;
 }
@@ -101,8 +100,8 @@ std::vector<std::string> FixRegistry::registered_names() {
   register_defaults();
   std::vector<std::string> names;
   names.reserve(entries().size());
-  for (const auto& e : entries()) {
-    names.push_back(e.first);
+  for (const auto& [name, factory] : entries()) {
+    names.push_back(name);
   }
   return names;
 }

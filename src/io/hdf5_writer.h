@@ -40,12 +40,12 @@ class HDF5Writer {
   bool is_enabled() const { return enabled_; }
 
  private:
-  void write_agents(const Simulation& sim, const std::string& group);
-  void write_grid(const Simulation& sim, const std::string& group);
+  void write_agents(const Simulation& sim, const std::string& group) const;
+  void write_grid(const Simulation& sim, const std::string& group) const;
   void write_metadata(const Simulation& sim, const std::string& group,
-                       Int step, Real time);
-  void write_lineage(const Simulation& sim, const std::string& group);
-  void write_genome(const Simulation& sim, const std::string& group);
+                       Int step, Real time) const;
+  void write_lineage(const Simulation& sim, const std::string& group) const;
+  void write_genome(const Simulation& sim, const std::string& group) const;
 
   HDF5Config cfg_;
   bool enabled_ = false;

@@ -12,7 +12,7 @@ namespace gutibm {
 
 void FixMechanics::compute(Real dt) {
   auto& agents = sim_.agents();
-  auto& hash = sim_.domain().spatial_hash();
+  const auto& hash = sim_.domain().spatial_hash();
 
   for (Int i = 0; i < agents.size(); ++i) {
     Agent& ai = agents[i];

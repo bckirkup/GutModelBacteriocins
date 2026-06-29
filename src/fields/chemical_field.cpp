@@ -23,7 +23,9 @@ void ChemicalField::init(const Domain& domain,
     reac_[s].assign(ncells_, 0.0);
 
     if (specs_[s].z_gradient_enabled) {
-      Int nx = domain.nx(), ny = domain.ny(), nz = domain.nz();
+      const Int nx = domain.nx();
+      const Int ny = domain.ny();
+      const Int nz = domain.nz();
       for (Int iz = 0; iz < nz; ++iz) {
         Real z_rel = (iz + 0.5) * domain.dx();
         Real factor = std::exp(-z_rel / specs_[s].z_gradient_lambda);
@@ -45,7 +47,9 @@ void ChemicalField::zero_reactions() {
 }
 
 void ChemicalField::apply_boundaries(const Domain& domain) {
-  Int nx = domain.nx(), ny = domain.ny(), nz = domain.nz();
+  const Int nx = domain.nx();
+  const Int ny = domain.ny();
+  const Int nz = domain.nz();
 
   for (Int s = 0; s < nspec_; ++s) {
     Real bc = specs_[s].boundary_conc;

@@ -37,8 +37,7 @@ std::vector<T> read_dataset_1d(hid_t file, const std::string& path, hid_t h5_typ
   }
 
   hid_t space = H5Dget_space(dset);
-  int ndims = H5Sget_simple_extent_ndims(space);
-  if (ndims != 1) {
+  if (int ndims = H5Sget_simple_extent_ndims(space); ndims != 1) {
     H5Sclose(space);
     H5Dclose(dset);
     throw HDF5Error("expected 1D dataset: " + path);
@@ -78,9 +77,8 @@ struct StepListData {
 herr_t collect_step_link(hid_t /*group*/, const char* name, const H5L_info_t* /*info*/,
                          void* op_data) {
   auto* data = static_cast<StepListData*>(op_data);
-  std::string link(name);
-  if (link.rfind("step_", 0) == 0) {
-    data->steps->push_back(link);
+  if (std::string link(name); link.rfind("step_", 0) == 0) {
+    data->steps->push_back(std::move(link));
   }
   return 0;
 }
@@ -91,9 +89,9 @@ std::vector<std::string> list_step_groups(hid_t file) {
   data.steps = &steps;
   H5Literate(file, H5_INDEX_NAME, H5_ITER_INC, nullptr, collect_step_link, &data);
   std::sort(steps.begin(), steps.end(),
-            [](const std::string& a, const std::string& b) {
-              const int na = std::stoi(a.substr(5));
-              const int nb = std::stoi(b.substr(5));
+            [](const std::string& sa, const std::string& sb) {
+              const auto na = std::stoi(sa.substr(5));
+              const auto nb = std::stoi(sb.substr(5));
               return na < nb;
             });
   return steps;
@@ -113,7 +111,7 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
   out.mu       = read_dataset_1d<double>(file, prefix + "mu",      H5T_NATIVE_DOUBLE);
   out.lineage  = read_dataset_1d<int64_t>(file, prefix + "lineage", H5T_NATIVE_INT64);
 
-  const size_t n = out.id.size();
+  const auto n = out.id.size();
   if (out.type.size() != n || out.state.size() != n || out.x.size() != n ||
       out.y.size() != n || out.z.size() != n || out.radius.size() != n ||
       out.biomass.size() != n || out.mu.size() != n || out.lineage.size() != n) {
@@ -134,7 +132,7 @@ HDF5CheckpointLineage read_lineage(hid_t file, const std::string& step) {
   out.generation      = read_dataset_1d<int32_t>(file, prefix + "generation",
                                                  H5T_NATIVE_INT32);
 
-  const size_t n = out.btuB_expression.size();
+  const auto n = out.btuB_expression.size();
   if (out.fepA_expression.size() != n || out.num_bi_loci.size() != n ||
       out.generation.size() != n) {
     throw HDF5Error("inconsistent lineage dataset lengths in " + step);
@@ -183,7 +181,7 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       read_dataset_1d<double>(file, prefix + "bi_immunity_binding_affinity",
                               H5T_NATIVE_DOUBLE);
 
-  const size_t n = out.parent_id.size();
+  const auto n = out.parent_id.size();
   if (out.mutations.size() != n || out.has_conjugative_plasmid.size() != n ||
       out.plasmid_cost_amelioration.size() != n ||
       out.receptor_expression.size() != n * NUM_RECEPTORS ||
@@ -192,7 +190,7 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
     throw HDF5Error("inconsistent genome per-agent dataset lengths in " + step);
   }
 
-  const size_t n_bi = out.bi_toxin_id.size();
+  const auto n_bi = out.bi_toxin_id.size();
   if (out.bi_immunity_id.size() != n_bi || out.bi_target.size() != n_bi ||
       out.bi_bclass.size() != n_bi || out.bi_pI.size() != n_bi ||
       out.bi_diff_coeff.size() != n_bi || out.bi_retardation.size() != n_bi ||

@@ -14,8 +14,8 @@ struct AgentTransferData {
   int64_t  tag;
   int32_t  type;
   int32_t  owner_rank;
-  double   x[3];
-  double   v[3];
+  std::array<double, 3> x;
+  std::array<double, 3> v;
   double   radius;
   double   mass;
   double   outer_radius;
@@ -23,7 +23,7 @@ struct AgentTransferData {
   double   mu_realized;
   double   biomass;
   double   maintenance;
-  double   receptor_expr[NUM_RECEPTORS];
+  std::array<double, NUM_RECEPTORS> receptor_expr;
   double   km_iron;
   double   km_b12;
   double   km_carbon;
@@ -38,9 +38,9 @@ struct AgentTransferData {
   uint32_t mutations;
   int32_t  has_conjugative_plasmid;
   double   plasmid_cost_amelioration;
-  double   genome_receptor_expr[NUM_RECEPTORS];
-  double   toxin_affinity[NUM_RECEPTORS];
-  double   ligand_affinity[NUM_RECEPTORS];
+  std::array<double, NUM_RECEPTORS> genome_receptor_expr;
+  std::array<double, NUM_RECEPTORS> toxin_affinity;
+  std::array<double, NUM_RECEPTORS> ligand_affinity;
   int32_t  num_bi_loci;
 };
 
@@ -76,7 +76,7 @@ void pack_agent(const Agent& a, AgentTransferData& d) {
   d.km_iron = a.km_iron;
   d.km_b12 = a.km_b12;
   d.km_carbon = a.km_carbon;
-  d.state = static_cast<int32_t>(a.state);
+  d.state = static_cast<int32_t>(to_underlying(a.state));
   d.age = a.age;
   d.sos_timer = a.sos_timer;
   d.grid_cell = a.grid_cell;
@@ -98,8 +98,8 @@ void pack_agent(const Agent& a, AgentTransferData& d) {
 void pack_bi_cluster(const BICluster& c, BIClusterTransferData& d) {
   d.toxin_id = c.toxin_id;
   d.immunity_id = c.immunity_id;
-  d.target = static_cast<int32_t>(c.target);
-  d.bclass = static_cast<int32_t>(c.bclass);
+  d.target = static_cast<int32_t>(to_underlying(c.target));
+  d.bclass = static_cast<int32_t>(to_underlying(c.bclass));
   d.pI = c.pI;
   d.diff_coeff = c.diff_coeff;
   d.retardation = c.retardation;
@@ -160,7 +160,7 @@ Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_d
 void agent_transfer_serialize(const std::vector<Agent>& agents,
                               std::vector<char>& buf) {
   buf.clear();
-  int32_t count = static_cast<int32_t>(agents.size());
+  auto count = static_cast<int32_t>(agents.size());
   buf.insert(buf.end(), reinterpret_cast<const char*>(&count),
              reinterpret_cast<const char*>(&count) + sizeof(count));
   for (const auto& a : agents) {
