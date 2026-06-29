@@ -16,77 +16,67 @@
 
 namespace gutibm {
 
-void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
-                       const AdvectionField& adv) {
-  cfg_    = cfg;
-  domain_ = &domain;
-  gf_.init(domain, adv);
+namespace {
+
+bool in_periodic_grid(Int& idx, Int count, bool periodic) {
+  if (periodic) {
+    idx = ((idx % count) + count) % count;
+    return true;
+  }
+  return idx >= 0 && idx < count;
 }
 
-void QSSASolver::solve_bacteriocin_field(
-    const AgentPool& agents,
-    ChemicalField& chem,
-    Int toxin_species_idx) const {
+void accumulate_near_field(const Domain& domain,
+                           const GreensFunction& gf,
+                           const std::vector<Vec3>& sources,
+                           const std::vector<GreensFunctionParams>& params,
+                           Real cutoff_radius,
+                           Int nx, Int ny, Int nz,
+                           std::vector<Real>& toxin_conc) {
+  const auto span = static_cast<Int>(std::ceil(cutoff_radius / domain.dx()));
+  const bool periodic_x = domain.config().periodic[0];
+  const bool periodic_y = domain.config().periodic[1];
 
-  // Collect all active toxin sources (lysed cells and microcin producers)
-  std::vector<Vec3> sources;
-  std::vector<GreensFunctionParams> params;
+  auto param_it = params.begin();
+  for (const Vec3& src : sources) {
+    const GreensFunctionParams& p = *param_it++;
 
-  for (const Agent& a : agents) {
-    if (a.state == PhenoState::DEAD) continue;
+    Int src_ix = 0;
+    Int src_iy = 0;
+    Int src_iz = 0;
+    domain.pos_to_grid(src, src_ix, src_iy, src_iz);
 
-    for (const auto& bi : a.genome.bi_loci) {
-      GreensFunctionParams gfp;
-      gfp.diff_coeff   = bi.diff_coeff;
-      gfp.retardation  = bi.retardation;
-      gfp.pI           = bi.pI;
+    for (Int dz = -span; dz <= span; ++dz) {
+      Int iz = src_iz + dz;
+      if (iz < 0 || iz >= nz) continue;
 
-      // SOS-lysed cells release a burst; living producers secrete continuously
-      if (a.state == PhenoState::SOS_INDUCED) {
-        gfp.source_rate = cfg_.colicin_release_rate;
-      } else {
-        gfp.source_rate = cfg_.microcin_secretion;
+      for (Int dy = -span; dy <= span; ++dy) {
+        Int iy = src_iy + dy;
+        if (!in_periodic_grid(iy, ny, periodic_y)) continue;
+
+        for (Int dx = -span; dx <= span; ++dx) {
+          Int ix = src_ix + dx;
+          if (!in_periodic_grid(ix, nx, periodic_x)) continue;
+
+          const Vec3 tgt = domain.cell_center(ix, iy, iz);
+          const Real c = gf.concentration_bounded(src, tgt, p);
+          const Int idx = domain.cell_index(ix, iy, iz);
+          toxin_conc[idx] += c;
+        }
       }
-
-      sources.push_back(a.x);
-      params.push_back(gfp);
     }
   }
-
-  if (sources.empty()) return;
-
-  if (cfg_.use_fmm) {
-    solve_bacteriocin_field_fmm(sources, params, chem, toxin_species_idx);
-    return;
-  }
-
-  // Superpose onto grid
-  std::vector<Real> toxin_conc;
-  gf_.superpose_to_grid(sources, params, toxin_conc, cfg_.toxin_cutoff);
-
-  // Deposit onto chemical field
-  #ifdef GUTIBM_OPENMP
-  #pragma omp parallel for schedule(static)
-  #endif
-  size_t c = 0;
-  for (const Real val : toxin_conc) {
-    chem.conc(toxin_species_idx, static_cast<Int>(c++)) = val;
-  }
 }
 
-void QSSASolver::solve_bacteriocin_field_fmm(
-    const std::vector<Vec3>& sources,
+GreensFunctionParams weighted_avg_params(
     const std::vector<GreensFunctionParams>& params,
-    ChemicalField& chem,
-    Int toxin_species_idx) const {
-
-  // Build source strengths for the FMM tree (use source_rate as strength)
-  std::vector<Real> strengths(sources.size());
+    std::vector<Real>& strengths) {
+  strengths.resize(params.size());
   GreensFunctionParams avg_params{};
   Real total_s = 0.0;
   size_t i = 0;
   for (const GreensFunctionParams& p : params) {
-    Real s = p.source_rate;
+    const Real s = p.source_rate;
     strengths[i++] = s;
     avg_params.diff_coeff  += s * p.diff_coeff;
     avg_params.pI          += s * p.pI;
@@ -103,6 +93,99 @@ void QSSASolver::solve_bacteriocin_field_fmm(
     avg_params.retardation = 5.0;
   }
   avg_params.source_rate = 0.0;
+  return avg_params;
+}
+
+void accumulate_far_field(FMM& fmm,
+                          const Domain& domain,
+                          Real fmm_theta,
+                          const GreensFunction& gf,
+                          const GreensFunctionParams& avg_params,
+                          Int nx, Int ny, Int nz,
+                          std::vector<Real>& toxin_conc) {
+  for (Int iz = 0; iz < nz; ++iz) {
+    for (Int iy = 0; iy < ny; ++iy) {
+      for (Int ix = 0; ix < nx; ++ix) {
+        const Vec3 tgt = domain.cell_center(ix, iy, iz);
+        const Int idx = domain.cell_index(ix, iy, iz);
+        const Real total = fmm.evaluate_total_field(tgt, fmm_theta, gf, avg_params);
+        const Real far = std::max(0.0, total - toxin_conc[idx]);
+        toxin_conc[idx] += far;
+      }
+    }
+  }
+}
+
+void deposit_to_chemical_field(ChemicalField& chem,
+                               Int toxin_species_idx,
+                               const std::vector<Real>& concentrations) {
+  #ifdef GUTIBM_OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
+  for (size_t c = 0; c < concentrations.size(); ++c) {
+    chem.conc(toxin_species_idx, static_cast<Int>(c)) = concentrations[c];
+  }
+}
+
+void collect_toxin_sources(const AgentPool& agents,
+                           const QSSAConfig& cfg,
+                           std::vector<Vec3>& sources,
+                           std::vector<GreensFunctionParams>& params) {
+  for (const Agent& a : agents) {
+    if (a.state == PhenoState::DEAD) continue;
+
+    for (const auto& bi : a.genome.bi_loci) {
+      GreensFunctionParams gfp;
+      gfp.diff_coeff   = bi.diff_coeff;
+      gfp.retardation  = bi.retardation;
+      gfp.pI           = bi.pI;
+      gfp.source_rate = (a.state == PhenoState::SOS_INDUCED)
+                        ? cfg.colicin_release_rate
+                        : cfg.microcin_secretion;
+
+      sources.push_back(a.x);
+      params.push_back(gfp);
+    }
+  }
+}
+
+}  // namespace
+
+void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
+                       const AdvectionField& adv) {
+  cfg_    = cfg;
+  domain_ = &domain;
+  gf_.init(domain, adv);
+}
+
+void QSSASolver::solve_bacteriocin_field(
+    const AgentPool& agents,
+    ChemicalField& chem,
+    Int toxin_species_idx) const {
+
+  std::vector<Vec3> sources;
+  std::vector<GreensFunctionParams> params;
+  collect_toxin_sources(agents, cfg_, sources, params);
+  if (sources.empty()) return;
+
+  if (cfg_.use_fmm) {
+    solve_bacteriocin_field_fmm(sources, params, chem, toxin_species_idx);
+    return;
+  }
+
+  std::vector<Real> toxin_conc;
+  gf_.superpose_to_grid(sources, params, toxin_conc, cfg_.toxin_cutoff);
+  deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
+}
+
+void QSSASolver::solve_bacteriocin_field_fmm(
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    ChemicalField& chem,
+    Int toxin_species_idx) const {
+
+  std::vector<Real> strengths;
+  const GreensFunctionParams avg_params = weighted_avg_params(params, strengths);
 
   FMM fmm;
   fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
@@ -113,62 +196,12 @@ void QSSASolver::solve_bacteriocin_field_fmm(
   const Int nz = domain_->nz();
   const Int ncells = domain_->ncells();
 
-  // Near-field: exact evaluation within cutoff via spatial hash approach
   std::vector<Real> toxin_conc(ncells, 0.0);
-
-  auto param_it = params.begin();
-  for (const Vec3& src : sources) {
-    const GreensFunctionParams& p = *param_it++;
-
-    Int src_ix = 0;
-    Int src_iy = 0;
-    Int src_iz = 0;
-    domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
-
-    auto span = static_cast<Int>(std::ceil(cfg_.toxin_cutoff / domain_->dx()));
-
-    for (Int dz = -span; dz <= span; ++dz) {
-      Int iz = src_iz + dz;
-      if (iz < 0 || iz >= nz) continue;
-      for (Int dy = -span; dy <= span; ++dy) {
-        Int iy = src_iy + dy;
-        if (domain_->config().periodic[1]) {
-          iy = ((iy % ny) + ny) % ny;
-        } else if (iy < 0 || iy >= ny) continue;
-
-        for (Int dx = -span; dx <= span; ++dx) {
-          Int ix = src_ix + dx;
-          if (domain_->config().periodic[0]) {
-            ix = ((ix % nx) + nx) % nx;
-          } else if (ix < 0 || ix >= nx) continue;
-
-          Vec3 tgt = domain_->cell_center(ix, iy, iz);
-          Real c = gf_.concentration_bounded(src, tgt, p);
-          Int idx = domain_->cell_index(ix, iy, iz);
-          toxin_conc[idx] += c;
-        }
-      }
-    }
-  }
-
-  // Far-field: FMM multipole for each grid cell.  When local expansions are
-  // precomputed, use total - near to avoid double-counting near sources.
-  for (Int iz = 0; iz < nz; ++iz) {
-    for (Int iy = 0; iy < ny; ++iy) {
-      for (Int ix = 0; ix < nx; ++ix) {
-        Vec3 tgt = domain_->cell_center(ix, iy, iz);
-        Int idx = domain_->cell_index(ix, iy, iz);
-        Real total = fmm.evaluate_total_field(tgt, cfg_.fmm_theta, gf_, avg_params);
-        Real far = std::max(0.0, total - toxin_conc[idx]);
-        toxin_conc[idx] += far;
-      }
-    }
-  }
-
-  size_t c = 0;
-  for (const Real val : toxin_conc) {
-    chem.conc(toxin_species_idx, static_cast<Int>(c++)) = val;
-  }
+  accumulate_near_field(*domain_, gf_, sources, params, cfg_.toxin_cutoff,
+                      nx, ny, nz, toxin_conc);
+  accumulate_far_field(fmm, *domain_, cfg_.fmm_theta, gf_, avg_params,
+                       nx, ny, nz, toxin_conc);
+  deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
 }
 
 void QSSASolver::solve_nutrient_depletion(

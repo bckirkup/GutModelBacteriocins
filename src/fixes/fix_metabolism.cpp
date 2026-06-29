@@ -18,35 +18,44 @@ FixMetabolism::FixMetabolism(Simulation& sim, const MetabolismConfig& cfg)
 
 void FixMetabolism::init() { /* no-op: parameters set via cfg_ at construction */ }
 
-void FixMetabolism::compute(Real dt) {
-  auto& agents = sim_.agents();
+namespace {
 
-  if (sim_.gpu_active()) {
-    auto& ag = sim_.agents_gpu();
-    auto& cg = sim_.chem_gpu();
-    ag.sync_from_host(agents);
-    const auto& chem = sim_.chemical_field();
-    Int i_carbon = chem.find("carbon");
-    Int i_iron = chem.find("iron");
-    Int i_b12 = chem.find("b12");
-    Int i_acetate = chem.find("acetate");
-    Int i_eut = chem.find("ethanolamine");
-    if (ag.run_metabolism(
-            sim_.domain(), cfg_,
-            i_carbon >= 0 ? cg.conc_device(i_carbon) : nullptr,
-            i_iron >= 0 ? cg.conc_device(i_iron) : nullptr,
-            i_b12 >= 0 ? cg.conc_device(i_b12) : nullptr,
-            i_acetate >= 0 ? cg.conc_device(i_acetate) : nullptr,
-            i_eut >= 0 ? cg.conc_device(i_eut) : nullptr,
-            i_carbon >= 0 ? cg.reac_device(i_carbon) : nullptr,
-            i_iron >= 0 ? cg.reac_device(i_iron) : nullptr,
-            i_b12 >= 0 ? cg.reac_device(i_b12) : nullptr,
-            dt)) {
-      ag.sync_to_host(agents);
-      return;
-    }
+bool try_gpu_metabolism(Simulation& sim, MetabolismConfig& cfg, Real dt) {
+  if (!sim.gpu_active()) return false;
+
+  auto& agents = sim.agents();
+  auto& ag = sim.agents_gpu();
+  auto& cg = sim.chem_gpu();
+  ag.sync_from_host(agents);
+  const auto& chem = sim.chemical_field();
+  Int i_carbon = chem.find("carbon");
+  Int i_iron = chem.find("iron");
+  Int i_b12 = chem.find("b12");
+  Int i_acetate = chem.find("acetate");
+  Int i_eut = chem.find("ethanolamine");
+  if (!ag.run_metabolism(
+          sim.domain(), cfg,
+          i_carbon >= 0 ? cg.conc_device(i_carbon) : nullptr,
+          i_iron >= 0 ? cg.conc_device(i_iron) : nullptr,
+          i_b12 >= 0 ? cg.conc_device(i_b12) : nullptr,
+          i_acetate >= 0 ? cg.conc_device(i_acetate) : nullptr,
+          i_eut >= 0 ? cg.conc_device(i_eut) : nullptr,
+          i_carbon >= 0 ? cg.reac_device(i_carbon) : nullptr,
+          i_iron >= 0 ? cg.reac_device(i_iron) : nullptr,
+          i_b12 >= 0 ? cg.reac_device(i_b12) : nullptr,
+          dt)) {
+    return false;
   }
+  ag.sync_to_host(agents);
+  return true;
+}
 
+}  // namespace
+
+void FixMetabolism::compute(Real dt) {
+  if (try_gpu_metabolism(sim_, cfg_, dt)) return;
+
+  auto& agents = sim_.agents();
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(static)
   #endif

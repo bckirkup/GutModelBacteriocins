@@ -32,6 +32,12 @@ SpatialHash::CellKey SpatialHash::pos_to_cell(const Vec3& pos) const {
   };
 }
 
+void SpatialHash::append_cell_agents(CellKey key, std::vector<Int>& result) const {
+  auto it = cells_.find(key);
+  if (it == cells_.end()) return;
+  result.insert(result.end(), it->second.begin(), it->second.end());
+}
+
 std::vector<Int> SpatialHash::query_radius(const Vec3& pos, Real radius) const {
   std::vector<Int> result;
 
@@ -41,12 +47,7 @@ std::vector<Int> SpatialHash::query_radius(const Vec3& pos, Real radius) const {
   for (Int dz = -cells_span; dz <= cells_span; ++dz) {
     for (Int dy = -cells_span; dy <= cells_span; ++dy) {
       for (Int dx = -cells_span; dx <= cells_span; ++dx) {
-        CellKey key{center.ix + dx, center.iy + dy, center.iz + dz};
-        auto it = cells_.find(key);
-        if (it == cells_.end()) continue;
-        for (Int idx : it->second) {
-          result.push_back(idx);
-        }
+        append_cell_agents({center.ix + dx, center.iy + dy, center.iz + dz}, result);
       }
     }
   }
@@ -60,12 +61,7 @@ std::vector<Int> SpatialHash::query_neighbors(const Vec3& pos) const {
   for (Int dz = -1; dz <= 1; ++dz) {
     for (Int dy = -1; dy <= 1; ++dy) {
       for (Int dx = -1; dx <= 1; ++dx) {
-        CellKey key{center.ix + dx, center.iy + dy, center.iz + dz};
-        auto it = cells_.find(key);
-        if (it == cells_.end()) continue;
-        for (Int idx : it->second) {
-          result.push_back(idx);
-        }
+        append_cell_agents({center.ix + dx, center.iy + dy, center.iz + dz}, result);
       }
     }
   }

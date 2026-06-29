@@ -9,6 +9,21 @@
 
 namespace gutibm {
 
+namespace {
+
+void apply_cell_nutrient_coupling(ChemicalField& chem, Int cell,
+                                Real liberation, Real iron_sink_rate,
+                                Int i_carbon, Int i_iron) {
+  if (i_carbon >= 0) {
+    chem.reac(i_carbon, cell) += liberation;
+  }
+  if (i_iron >= 0) {
+    chem.reac(i_iron, cell) -= iron_sink_rate * chem.conc(i_iron, cell);
+  }
+}
+
+}  // namespace
+
 void VBF::init(const VBFConfig& cfg, const Domain& domain) {
   cfg_          = cfg;
   ncells_       = domain.ncells();
@@ -38,13 +53,8 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
         Int c = domain.cell_index(ix, iy, iz);
-
-        if (i_carbon >= 0) {
-          chem.reac(i_carbon, c) += liberation;
-        }
-        if (i_iron >= 0) {
-          chem.reac(i_iron, c) -= cfg_.nutrient_sink * chem.conc(i_iron, c);
-        }
+        apply_cell_nutrient_coupling(chem, c, liberation, cfg_.nutrient_sink,
+                                     i_carbon, i_iron);
       }
     }
   }

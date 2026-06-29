@@ -25,6 +25,107 @@
 
 namespace gutibm {
 
+namespace {
+
+bool in_periodic_grid(Int& idx, Int count, bool periodic) {
+  if (periodic) {
+    idx = ((idx % count) + count) % count;
+    return true;
+  }
+  return idx >= 0 && idx < count;
+}
+
+void accumulate_source_cutoff(const Domain& domain,
+                              const GreensFunction& gf,
+                              const Vec3& src,
+                              const GreensFunctionParams& p,
+                              Int span,
+                              Int nx, Int ny, Int nz,
+                              std::vector<Real>& grid_conc) {
+  Int src_ix = 0;
+  Int src_iy = 0;
+  Int src_iz = 0;
+  domain.pos_to_grid(src, src_ix, src_iy, src_iz);
+  const bool periodic_x = domain.config().periodic[0];
+  const bool periodic_y = domain.config().periodic[1];
+
+  for (Int dz = -span; dz <= span; ++dz) {
+    Int iz = src_iz + dz;
+    if (iz < 0 || iz >= nz) continue;
+
+    for (Int dy = -span; dy <= span; ++dy) {
+      Int iy = src_iy + dy;
+      if (!in_periodic_grid(iy, ny, periodic_y)) continue;
+
+      for (Int dx = -span; dx <= span; ++dx) {
+        Int ix = src_ix + dx;
+        if (!in_periodic_grid(ix, nx, periodic_x)) continue;
+
+        const Vec3 tgt = domain.cell_center(ix, iy, iz);
+        const Real c = gf.concentration_bounded(src, tgt, p);
+        const auto idx = domain.cell_index(ix, iy, iz);
+        grid_conc[idx] += c;
+      }
+    }
+  }
+}
+
+#ifdef GUTIBM_CUDA
+bool try_gpu_superpose(const Domain& domain,
+                       const AdvectionField& adv,
+                       const std::vector<Vec3>& sources,
+                       const std::vector<GreensFunctionParams>& params,
+                       std::vector<Real>& grid_conc,
+                       Real cutoff_radius) {
+  if (!gpu_runtime_enabled()) return false;
+  return gpu_superpose_to_grid(domain, adv, sources, params, grid_conc, cutoff_radius);
+}
+#endif
+
+void superpose_sources_serial(const Domain& domain,
+                              const GreensFunction& gf,
+                              const std::vector<Vec3>& sources,
+                              const std::vector<GreensFunctionParams>& params,
+                              Real cutoff_radius,
+                              Int nx, Int ny, Int nz,
+                              std::vector<Real>& grid_conc) {
+  const auto span = static_cast<Int>(std::ceil(cutoff_radius / domain.dx()));
+  for (size_t s = 0; s < sources.size(); ++s) {
+    accumulate_source_cutoff(domain, gf, sources[s], params[s],
+                             span, nx, ny, nz, grid_conc);
+  }
+}
+
+#ifdef GUTIBM_OPENMP
+void superpose_sources_openmp(const Domain& domain,
+                              const GreensFunction& gf,
+                              const std::vector<Vec3>& sources,
+                              const std::vector<GreensFunctionParams>& params,
+                              Real cutoff_radius,
+                              Int nx, Int ny, Int nz,
+                              Int ncells,
+                              std::vector<Real>& grid_conc) {
+  const auto span = static_cast<Int>(std::ceil(cutoff_radius / domain.dx()));
+  #pragma omp parallel
+  {
+    std::vector<Real> local_conc(ncells, 0.0);
+    #pragma omp for schedule(dynamic)
+    for (size_t s = 0; s < sources.size(); ++s) {
+      accumulate_source_cutoff(domain, gf, sources[s], params[s],
+                               span, nx, ny, nz, local_conc);
+    }
+    #pragma omp critical
+    {
+      for (Int c = 0; c < ncells; ++c) {
+        grid_conc[c] += local_conc[c];
+      }
+    }
+  }
+}
+#endif
+
+}  // namespace
+
 void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   domain_ = &domain;
   adv_    = &adv;
@@ -122,95 +223,18 @@ void GreensFunction::superpose_to_grid(
   grid_conc.assign(ncells, 0.0);
 
 #ifdef GUTIBM_CUDA
-  if (gpu_runtime_enabled() && adv_ && domain_) {
-    if (gpu_superpose_to_grid(*domain_, *adv_, sources, params, grid_conc, cutoff_radius)) {
-      return;
-    }
+  if (adv_ && domain_ && try_gpu_superpose(*domain_, *adv_, sources, params,
+                                           grid_conc, cutoff_radius)) {
+    return;
   }
 #endif
 
-  // For each source, only contribute to grid cells within cutoff
 #ifdef GUTIBM_OPENMP
-  #pragma omp parallel
-  {
-    std::vector<Real> local_conc(ncells, 0.0);
-    #pragma omp for schedule(dynamic)
-    for (size_t s = 0; s < sources.size(); ++s) {
-      const Vec3& src = sources[s];
-      const GreensFunctionParams& p = params[s];
-
-      Int src_ix = 0;
-      Int src_iy = 0;
-      Int src_iz = 0;
-      domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
-
-      auto span = static_cast<Int>(std::ceil(cutoff_radius / domain_->dx()));
-
-      for (Int dz = -span; dz <= span; ++dz) {
-        Int iz = src_iz + dz;
-        if (iz < 0 || iz >= nz) continue;
-        for (Int dy = -span; dy <= span; ++dy) {
-          Int iy = src_iy + dy;
-          if (domain_->config().periodic[1]) {
-            iy = ((iy % ny) + ny) % ny;
-          } else if (iy < 0 || iy >= ny) continue;
-
-          for (Int dx = -span; dx <= span; ++dx) {
-            Int ix = src_ix + dx;
-            if (domain_->config().periodic[0]) {
-              ix = ((ix % nx) + nx) % nx;
-            } else if (ix < 0 || ix >= nx) continue;
-
-            Vec3 tgt = domain_->cell_center(ix, iy, iz);
-            Real c = concentration_bounded(src, tgt, p);
-            auto idx = domain_->cell_index(ix, iy, iz);
-            local_conc[idx] += c;
-          }
-        }
-      }
-    }
-    #pragma omp critical
-    {
-      for (Int c = 0; c < ncells; ++c) {
-        grid_conc[c] += local_conc[c];
-      }
-    }
-  }
+  superpose_sources_openmp(*domain_, *this, sources, params, cutoff_radius,
+                           nx, ny, nz, ncells, grid_conc);
 #else
-  for (size_t s = 0; s < sources.size(); ++s) {
-    const Vec3& src = sources[s];
-    const GreensFunctionParams& p = params[s];
-
-    Int src_ix = 0;
-    Int src_iy = 0;
-    Int src_iz = 0;
-    domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
-
-    auto span = static_cast<Int>(std::ceil(cutoff_radius / domain_->dx()));
-
-    for (Int dz = -span; dz <= span; ++dz) {
-      Int iz = src_iz + dz;
-      if (iz < 0 || iz >= nz) continue;
-      for (Int dy = -span; dy <= span; ++dy) {
-        Int iy = src_iy + dy;
-        if (domain_->config().periodic[1]) {
-          iy = ((iy % ny) + ny) % ny;
-        } else if (iy < 0 || iy >= ny) continue;
-
-        for (Int dx = -span; dx <= span; ++dx) {
-          Int ix = src_ix + dx;
-          if (domain_->config().periodic[0]) {
-            ix = ((ix % nx) + nx) % nx;
-          } else if (ix < 0 || ix >= nx) continue;
-
-          Vec3 tgt = domain_->cell_center(ix, iy, iz);
-          Real c = concentration_bounded(src, tgt, p);
-          auto idx = domain_->cell_index(ix, iy, iz);
-          grid_conc[idx] += c;
-        }
-      }
-    }
-  }
+  superpose_sources_serial(*domain_, *this, sources, params, cutoff_radius,
+                           nx, ny, nz, grid_conc);
 #endif
 }
 

@@ -69,27 +69,39 @@ def validate_input_path(path: str | Path) -> Path:
     return candidate.resolve()
 
 
-def _validate_output_parent(candidate: Path) -> None:
-    parent = candidate.parent if candidate.parent.parts else Path(".")
+def _output_parent_directory(parent: Path) -> Path:
+    return parent if parent.parts else Path(".")
+
+
+def _validate_output_parent_directory(parent: Path) -> None:
     if parent.exists():
         if not parent.is_dir():
             raise PathValidationError(f"output parent is not a directory: {parent}")
-    else:
-        ancestor = parent
-        while not ancestor.exists() and ancestor.parts:
-            ancestor = ancestor.parent if ancestor.parent.parts else Path(".")
-        if ancestor.exists() and not ancestor.is_dir():
-            raise PathValidationError(f"output ancestor is not a directory: {ancestor}")
+        return
 
+    ancestor = parent
+    while not ancestor.exists() and ancestor.parts:
+        ancestor = _output_parent_directory(ancestor.parent)
+    if ancestor.exists() and not ancestor.is_dir():
+        raise PathValidationError(f"output ancestor is not a directory: {ancestor}")
+
+
+def _validate_existing_output_file(candidate: Path) -> None:
+    if not candidate.exists():
+        return
+    if candidate.is_symlink():
+        raise PathValidationError(f"refusing to overwrite symlink: {candidate}")
+    if not candidate.is_file():
+        raise PathValidationError(
+            f"output path exists and is not a regular file: {candidate}"
+        )
+
+
+def _validate_output_parent(candidate: Path) -> None:
+    parent = _output_parent_directory(candidate.parent)
+    _validate_output_parent_directory(parent)
     _reject_symlink_in_world_writable_parent(candidate, "write")
-
-    if candidate.exists():
-        if candidate.is_symlink():
-            raise PathValidationError(f"refusing to overwrite symlink: {candidate}")
-        if not candidate.is_file():
-            raise PathValidationError(
-                f"output path exists and is not a regular file: {candidate}"
-            )
+    _validate_existing_output_file(candidate)
 
 
 def validate_output_path(path: str | Path) -> Path:

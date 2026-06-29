@@ -10,6 +10,28 @@
 
 namespace gutibm {
 
+namespace {
+
+void apply_z_gradient(std::vector<Real>& conc_row,
+                      const ChemicalSpec& spec,
+                      const Domain& domain) {
+  const Int nx = domain.nx();
+  const Int ny = domain.ny();
+  const Int nz = domain.nz();
+  for (Int iz = 0; iz < nz; ++iz) {
+    Real z_rel = (iz + 0.5) * domain.dx();
+    Real factor = std::exp(-z_rel / spec.z_gradient_lambda);
+    Real conc = spec.initial_conc * factor;
+    for (Int iy = 0; iy < ny; ++iy) {
+      for (Int ix = 0; ix < nx; ++ix) {
+        conc_row[domain.cell_index(ix, iy, iz)] = conc;
+      }
+    }
+  }
+}
+
+}  // namespace
+
 void ChemicalField::init(const Domain& domain,
                           const std::vector<ChemicalSpec>& specs) {
   specs_  = specs;
@@ -23,19 +45,7 @@ void ChemicalField::init(const Domain& domain,
     reac_[s].assign(ncells_, 0.0);
 
     if (specs_[s].z_gradient_enabled) {
-      const Int nx = domain.nx();
-      const Int ny = domain.ny();
-      const Int nz = domain.nz();
-      for (Int iz = 0; iz < nz; ++iz) {
-        Real z_rel = (iz + 0.5) * domain.dx();
-        Real factor = std::exp(-z_rel / specs_[s].z_gradient_lambda);
-        for (Int iy = 0; iy < ny; ++iy) {
-          for (Int ix = 0; ix < nx; ++ix) {
-            Int cell = domain.cell_index(ix, iy, iz);
-            conc_[s][cell] = specs_[s].initial_conc * factor;
-          }
-        }
-      }
+      apply_z_gradient(conc_[s], specs_[s], domain);
     }
   }
 }
