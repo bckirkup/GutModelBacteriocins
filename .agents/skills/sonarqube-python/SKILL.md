@@ -41,31 +41,10 @@ Use `gut_ibm_tools.path_utils`:
 | `validate_path_syntax()` | Reject `..`, null bytes, empty paths |
 | `validate_input_path()` | Read existing files; returns resolved path |
 | `validate_output_path()` | Write when parent already exists |
-| `prepare_output_file()` | Validate then `mkdir -p` then re-validate — **use for new output files** |
+| `prepare_output_file()` | Validate then create parent dirs — **all checks before mkdir** |
+| `write_text_file()` / `write_json_file()` | Validated CLI output (cwd-bound) |
 
-```python
-from gut_ibm_tools.path_utils import prepare_output_file, validate_input_path
-
-def write_golden(metrics: dict, path: str | Path) -> None:
-    out = prepare_output_file(path)          # validates BEFORE mkdir
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(metrics, f)
-
-def load_golden(path: str | Path) -> dict:
-    safe_path = validate_input_path(path)
-    with open(safe_path, encoding="utf-8") as f:
-        return json.load(f)
-```
-
-**Anti-pattern** (triggers S8707):
-
-```python
-out = validate_path_syntax(path)
-out.parent.mkdir(parents=True, exist_ok=True)  # sink before full validation
-validate_output_path(out)
-```
-
-Reference: `python/gut_ibm_tools/validation_regression.py` (`write_golden`, `write_fish_golden`).
+Sonar S8707 validators are registered in `sonar/pythonsecurity-s8707.json` — see `docs/SONARQUBE_PLAN.md`.
 
 Tests: `python/tests/test_path_utils.py`.
 

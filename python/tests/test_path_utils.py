@@ -12,6 +12,7 @@ from gut_ibm_tools.path_utils import (
     validate_input_path,
     validate_output_path,
     validate_path_syntax,
+    write_text_file,
 )
 
 
@@ -64,3 +65,15 @@ def test_prepare_output_file_creates_parent_and_validates(tmp_path: Path) -> Non
     assert out.parent.is_dir()
     out.write_text("{}", encoding="utf-8")
     assert validate_output_path(out) == out
+
+
+def test_write_text_file_rejects_parent_traversal(tmp_path: Path) -> None:
+    with pytest.raises(PathValidationError, match="traversal"):
+        write_text_file(tmp_path / ".." / "escape.txt", "data")
+
+
+def test_write_text_file_writes_validated_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "out" / "result.txt"
+    write_text_file(target, "hello")
+    assert target.read_text(encoding="utf-8") == "hello"
