@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from gut_ibm_tools import GutIBMData
 
@@ -36,7 +37,7 @@ def test_get_grid_and_metadata(sample_hdf5: Path) -> None:
         assert len(grid["bacteriocin"]) == 20
 
         meta = data.get_metadata("step_000000")
-        assert meta["time"] == 0.0
+        assert meta["time"] == pytest.approx(0.0)
         assert meta["num_agents"] == 12
 
 

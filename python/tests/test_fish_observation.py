@@ -152,8 +152,8 @@ def test_validate_fish_observability_from_hdf5(sample_hdf5: Path) -> None:
 
     assert "technique_comparison" in result
     assert result["plasmid_dna_fish_detection_fraction"] > 0.5
-    assert result["immunity_hipr_detectable"] == 0.0
-    assert result["immunity_hcr_detectable"] == 1.0
+    assert result["immunity_hipr_detectable"] == pytest.approx(0.0)
+    assert result["immunity_hcr_detectable"] == pytest.approx(1.0)
     assert result["monochromatic_score_detected"] > 0.5
 
 
@@ -176,9 +176,9 @@ def test_flatten_fish_metrics_roundtrip() -> None:
         "immunity_hipr_detectable": 0.0,
     }
     flat = flatten_fish_metrics(raw)
-    assert flat["immunity_mrna_detection_fraction"] == 0.1
-    assert flat["colicin_plasmid_detection_fraction"] == 0.9
-    assert flat["plasmid_dna_fish_detection_fraction"] == 0.9
+    assert flat["immunity_mrna_detection_fraction"] == pytest.approx(0.1)
+    assert flat["colicin_plasmid_detection_fraction"] == pytest.approx(0.9)
+    assert flat["plasmid_dna_fish_detection_fraction"] == pytest.approx(0.9)
 
 
 def test_fish_probe_validation_errors() -> None:

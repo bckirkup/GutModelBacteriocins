@@ -87,7 +87,8 @@ void test_is_local_trivial() {
   dom.init(cfg);
 
   // Spots at various points
-  for (double frac = 0.0; frac < 1.0; frac += 0.1) {
+  for (int i = 0; i < 10; ++i) {
+    const double frac = static_cast<double>(i) * 0.1;
     Vec3 pos = {frac * 100.0e-6, 50.0e-6, 25.0e-6};
     assert(dom.is_local(pos));
   }
