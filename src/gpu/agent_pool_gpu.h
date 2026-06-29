@@ -53,11 +53,23 @@ class AgentPoolGpu {
 
  private:
   Int size_ = 0;
-  DeviceBuffer<double> d_x_, d_y_, d_z_;
-  DeviceBuffer<int> d_grid_cell_, d_state_, d_bi_loci_count_;
-  DeviceBuffer<double> d_mu_realized_, d_biomass_, d_radius_, d_mass_, d_age_;
-  DeviceBuffer<double> d_mu_max_, d_km_b12_, d_km_carbon_;
-  DeviceBuffer<double> d_receptor_expr_, d_ligand_affinity_, d_plasmid_amelioration_;
+  DeviceBuffer<double> d_x_;
+  DeviceBuffer<double> d_y_;
+  DeviceBuffer<double> d_z_;
+  DeviceBuffer<int> d_grid_cell_;
+  DeviceBuffer<int> d_state_;
+  DeviceBuffer<int> d_bi_loci_count_;
+  DeviceBuffer<double> d_mu_realized_;
+  DeviceBuffer<double> d_biomass_;
+  DeviceBuffer<double> d_radius_;
+  DeviceBuffer<double> d_mass_;
+  DeviceBuffer<double> d_age_;
+  DeviceBuffer<double> d_mu_max_;
+  DeviceBuffer<double> d_km_b12_;
+  DeviceBuffer<double> d_km_carbon_;
+  DeviceBuffer<double> d_receptor_expr_;
+  DeviceBuffer<double> d_ligand_affinity_;
+  DeviceBuffer<double> d_plasmid_amelioration_;
 };
 
 }  // namespace gutibm

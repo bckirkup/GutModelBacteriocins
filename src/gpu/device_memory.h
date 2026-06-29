@@ -13,8 +13,7 @@ namespace gutibm {
 
 inline void gpu_check_error(const char* what) {
 #ifdef GUTIBM_CUDA
-  cudaError_t err = cudaGetLastError();
-  if (err != cudaSuccess) {
+  if (cudaError_t err = cudaGetLastError(); err != cudaSuccess) {
     throw Error(std::string(what) + ": " + cudaGetErrorString(err));
   }
 #endif

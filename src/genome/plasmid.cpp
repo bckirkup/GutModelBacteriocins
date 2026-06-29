@@ -122,8 +122,7 @@ const PlasmidEntry* PlasmidLibrary::find(const std::string& name) {
   };
 
   std::string key = name;
-  auto it = aliases.find(name);
-  if (it != aliases.end()) key = it->second;
+  if (auto it = aliases.find(name); it != aliases.end()) key = it->second;
 
   for (const auto& entry : entries()) {
     if (entry.name == key) return &entry;

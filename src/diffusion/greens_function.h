@@ -82,7 +82,8 @@ class GreensFunction {
   const AdvectionField* adv_ = nullptr;
 
   // Method of Images parameters
-  Real z_lo_ = 0.0, z_hi_ = 100.0e-6;
+  Real z_lo_ = 0.0;
+  Real z_hi_ = 100.0e-6;
   static constexpr int N_IMAGES = 3;  // number of image pairs
 };
 

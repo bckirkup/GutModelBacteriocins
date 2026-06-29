@@ -111,7 +111,9 @@ class Domain {
 
   DomainConfig cfg_;
   Vec3 lo_{}, hi_{};
-  Int nx_ = 0, ny_ = 0, nz_ = 0;
+  Int nx_ = 0;
+  Int ny_ = 0;
+  Int nz_ = 0;
   Real dx_ = 2.0e-6;
 
   std::array<bool, 3> periodic_{};

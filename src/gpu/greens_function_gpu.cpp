@@ -80,7 +80,9 @@ bool gpu_superpose_to_grid(
   Int ncells = domain.ncells();
   grid_conc.assign(ncells, 0.0);
 
-  std::vector<double> sx(sources.size()), sy(sources.size()), sz(sources.size());
+  std::vector<double> sx(sources.size());
+  std::vector<double> sy(sources.size());
+  std::vector<double> sz(sources.size());
   std::vector<gpu::GfSourceParams> sp(params.size());
   for (size_t i = 0; i < sources.size(); ++i) {
     sx[i] = sources[i][0];
@@ -91,7 +93,9 @@ bool gpu_superpose_to_grid(
     sp[i].retardation = params[i].retardation;
   }
 
-  DeviceBuffer<double> d_sx, d_sy, d_sz;
+  DeviceBuffer<double> d_sx;
+  DeviceBuffer<double> d_sy;
+  DeviceBuffer<double> d_sz;
   DeviceBuffer<gpu::GfSourceParams> d_params;
   DeviceBuffer<double> d_grid;
   d_sx.upload(sx);
@@ -101,13 +105,13 @@ bool gpu_superpose_to_grid(
   d_grid.allocate(static_cast<size_t>(ncells));
   cudaMemset(d_grid.data(), 0, static_cast<size_t>(ncells) * sizeof(double));
 
-  int span = static_cast<int>(std::ceil(cutoff_radius / domain.dx()));
+  auto span = static_cast<int>(std::ceil(cutoff_radius / domain.dx()));
   auto dom = make_domain_params(domain);
   auto adv_p = make_advection_params(adv);
 
   gpu::launch_superpose_kernel(
       d_sx.data(), d_sy.data(), d_sz.data(), d_params.data(), d_grid.data(),
-      dom, adv_p, static_cast<int>(sources.size()), span, 0);
+      dom, adv_p, static_cast<int>(sources.size()), span, nullptr);
 
   cudaDeviceSynchronize();
   gpu_check_error("superpose_kernel");

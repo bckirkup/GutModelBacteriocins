@@ -5,11 +5,14 @@ namespace gutibm {
 namespace gpu {
 
 struct DomainParams {
-  int nx, ny, nz;
+  int nx;
+  int ny;
+  int nz;
   double dx;
-  double lo[3];
-  bool periodic[3];
-  double z_lo, z_hi;
+  double lo[3];       // NOLINT(modernize-avoid-c-arrays) — passed to CUDA kernels
+  bool periodic[3];   // NOLINT(modernize-avoid-c-arrays) — passed to CUDA kernels
+  double z_lo;
+  double z_hi;
 };
 
 struct AdvectionParams {

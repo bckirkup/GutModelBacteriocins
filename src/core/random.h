@@ -23,12 +23,12 @@ class RNG {
   }
 
   Real gaussian(Real mean, Real stddev) {
-    std::normal_distribution<Real> d(mean, stddev);
+    std::normal_distribution d(mean, stddev);
     return d(gen_);
   }
 
   Int randint(Int lo, Int hi) {
-    std::uniform_int_distribution<Int> d(lo, hi);
+    std::uniform_int_distribution d(lo, hi);
     return d(gen_);
   }
 
@@ -37,13 +37,13 @@ class RNG {
   }
 
   Real exponential(Real lambda) {
-    std::exponential_distribution<Real> d(lambda);
+    std::exponential_distribution d(lambda);
     return d(gen_);
   }
 
   // Poisson-distributed random variate
   Int poisson(Real mean) {
-    std::poisson_distribution<Int> d(mean);
+    std::poisson_distribution d(mean);
     return d(gen_);
   }
 

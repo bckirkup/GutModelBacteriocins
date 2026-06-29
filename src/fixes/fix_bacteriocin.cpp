@@ -11,7 +11,7 @@ namespace gutibm {
 FixBacteriocin::FixBacteriocin(Simulation& sim, const BacteriocinConfig& cfg)
     : Fix("bacteriocin", sim), cfg_(cfg) {}
 
-void FixBacteriocin::init() {}
+void FixBacteriocin::init() { /* no-op: configuration is read at construction */ }
 
 void FixBacteriocin::compute(Real dt) {
   auto& agents = sim_.agents();
@@ -29,7 +29,7 @@ void FixBacteriocin::compute(Real dt) {
   }
 }
 
-void FixBacteriocin::post_step(Real dt) {
+void FixBacteriocin::post_step(Real dt) { // NOLINT(readability-make-member-function-const)
   // Process SOS-induced cells: they lyse and release toxin burst
   auto& agents = sim_.agents();
 
@@ -44,7 +44,7 @@ void FixBacteriocin::post_step(Real dt) {
   }
 }
 
-void FixBacteriocin::apply_microcin_secretion(Agent& agent, Real dt) {
+void FixBacteriocin::apply_microcin_secretion(Agent& agent, Real /*dt*/) {
   if (agent.genome.bi_loci.empty()) return;
   if (agent.state != PhenoState::NORMAL) return;
 

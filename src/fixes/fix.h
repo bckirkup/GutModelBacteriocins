@@ -20,16 +20,16 @@ class Fix {
   virtual ~Fix() = default;
 
   // Called once at simulation start
-  virtual void init() {}
+  virtual void init() { /* default: no initialization needed */ }
 
   // Called at the start of each biological timestep
-  virtual void pre_step(Real dt) {}
+  virtual void pre_step(Real /*dt*/) { /* default: no pre-step action */ }
 
   // Main computation
   virtual void compute(Real dt) = 0;
 
   // Called at end of each biological timestep (post-processing)
-  virtual void post_step(Real dt) {}
+  virtual void post_step(Real /*dt*/) { /* default: no post-step action */ }
 
   const std::string& name() const { return name_; }
 

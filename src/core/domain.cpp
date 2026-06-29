@@ -124,7 +124,7 @@ Int Domain::owner_rank(const Vec3& pos) const {
   Real total_len = hi_[axis] - global_lo;
   Real slab_width = total_len / nprocs_;
 
-  Int r = static_cast<Int>(std::floor((pos[axis] - global_lo) / slab_width));
+  auto r = static_cast<Int>(std::floor((pos[axis] - global_lo) / slab_width));
   return std::clamp(r, 0, nprocs_ - 1);
 }
 

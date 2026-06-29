@@ -41,7 +41,7 @@ bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
       agents.x(), agents.y(), agents.z(), agents.state(),
       out.cell_keys.data(), out.sorted_agent_indices.data(), num_agents,
       lo[0], lo[1], lo[2], cell_size,
-      out.num_cells_x, out.num_cells_y, out.num_cells_z, 0);
+      out.num_cells_x, out.num_cells_y, out.num_cells_z, nullptr);
   cudaDeviceSynchronize();
   gpu_check_error("spatial_hash_build_kernel");
 

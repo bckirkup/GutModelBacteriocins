@@ -110,10 +110,10 @@ void QSSASolver::solve_bacteriocin_field_fmm(
   fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
   fmm.compute_local_expansions(cfg_.fmm_theta, gf_, avg_params);
 
-  Int nx = domain_->nx();
-  Int ny = domain_->ny();
-  Int nz = domain_->nz();
-  Int ncells = domain_->ncells();
+  const Int nx = domain_->nx();
+  const Int ny = domain_->ny();
+  const Int nz = domain_->nz();
+  const Int ncells = domain_->ncells();
 
   // Near-field: exact evaluation within cutoff via spatial hash approach
   std::vector<Real> toxin_conc(ncells, 0.0);
@@ -127,7 +127,7 @@ void QSSASolver::solve_bacteriocin_field_fmm(
     Int src_iz = 0;
     domain_->pos_to_grid(src, src_ix, src_iy, src_iz);
 
-    Int span = static_cast<Int>(std::ceil(cfg_.toxin_cutoff / domain_->dx()));
+    auto span = static_cast<Int>(std::ceil(cfg_.toxin_cutoff / domain_->dx()));
 
     for (Int dz = -span; dz <= span; ++dz) {
       Int iz = src_iz + dz;
@@ -225,8 +225,7 @@ Real QSSASolver::point_concentration(
   Real total = 0.0;
   for (size_t s = 0; s < sources.size(); ++s) {
     Real d2 = domain_->min_image_dist_sq(sources[s], target);
-    Real cutoff2 = cfg_.toxin_cutoff * cfg_.toxin_cutoff;
-    if (d2 > cutoff2) continue;
+    if (Real cutoff2 = cfg_.toxin_cutoff * cfg_.toxin_cutoff; d2 > cutoff2) continue;
 
     total += gf_.concentration_bounded(sources[s], target, params[s]);
   }

@@ -20,6 +20,7 @@
 
 #include "types.h"
 #include "greens_function.h"
+#include <array>
 #include <vector>
 
 namespace gutibm {
@@ -31,7 +32,7 @@ struct FMMNode {
   Real half_size;
   Real total_source_strength;
   Vec3 center_of_source;
-  int children[8];
+  std::array<int, 8> children;
   std::vector<int> sources;
   bool is_leaf;
 

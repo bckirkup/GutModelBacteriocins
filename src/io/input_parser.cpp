@@ -10,6 +10,7 @@
 #include <algorithm>
 #include "error.h"
 #include <sstream>
+#include <stdexcept>
 #include <cstdlib>
 
 namespace gutibm {
@@ -223,13 +224,11 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     apply_flat_key(cfg, key, val);
   }
 
-  InitialStrainsParseResult strains = ConfigJson::parse_initial_strains(content);
-  if (strains.found) {
+  if (auto strains = ConfigJson::parse_initial_strains(content); strains.found) {
     cfg.initial_strains = std::move(strains.strains);
   }
 
-  EnabledFixesParseResult fixes = ConfigJson::parse_enabled_fixes(content);
-  if (fixes.found) {
+  if (auto fixes = ConfigJson::parse_enabled_fixes(content); fixes.found) {
     cfg.enabled_fixes = std::move(fixes.names);
   }
 
@@ -258,7 +257,10 @@ Real InputParser::parse_real(const std::string& key, const std::string& val) {
       return 0.0;
     }
     return result;
-  } catch (const std::exception&) {
+  } catch (const std::invalid_argument&) {
+    warn_parse_failure("numeric", key, val);
+    return 0.0;
+  } catch (const std::out_of_range&) {
     warn_parse_failure("numeric", key, val);
     return 0.0;
   }
@@ -279,7 +281,10 @@ Int InputParser::parse_int(const std::string& key, const std::string& val) {
       return 0;
     }
     return result;
-  } catch (const std::exception&) {
+  } catch (const std::invalid_argument&) {
+    warn_parse_failure("integer", key, val);
+    return 0;
+  } catch (const std::out_of_range&) {
     warn_parse_failure("integer", key, val);
     return 0;
   }

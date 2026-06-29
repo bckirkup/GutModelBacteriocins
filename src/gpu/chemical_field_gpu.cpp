@@ -82,7 +82,7 @@ bool ChemicalFieldGpu::apply_reactions(double dt, const Domain& domain) {
     gpu::launch_field_update_kernel(
         d_conc_[static_cast<size_t>(s)].data(),
         d_reac_[static_cast<size_t>(s)].data(),
-        ncells_, 1, dt, 0);
+        ncells_, 1, dt, nullptr);
   }
   cudaDeviceSynchronize();
   gpu_check_error("field_update_kernel");
@@ -106,7 +106,7 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
     gpu::launch_apply_boundaries_kernel(
         d_conc_[static_cast<size_t>(s)].data(),
         domain.nx(), domain.ny(), domain.nz(), 1,
-        d_bc.data(), 0);
+        d_bc.data(), nullptr);
   }
   cudaDeviceSynchronize();
   gpu_check_error("apply_boundaries_kernel");

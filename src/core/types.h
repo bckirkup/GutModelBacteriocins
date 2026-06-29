@@ -42,8 +42,6 @@ enum class ReceptorType : uint8_t {
   NUM_RECEPTOR_TYPES
 };
 
-static constexpr int NUM_RECEPTORS = static_cast<int>(ReceptorType::NUM_RECEPTOR_TYPES);
-
 // Bacteriocin classification by isoelectric point
 enum class BacteriocinClass : uint8_t {
   LETHAL_CORE = 0,   // pI > 8.5 → binds mucin → concentrated near producer
@@ -58,6 +56,14 @@ enum class PhenoState : uint8_t {
   SOS_INDUCED  = 2,   // about to lyse
   DEAD         = 3
 };
+
+// C++17 polyfill for std::to_underlying (C++23)
+template <typename E>
+constexpr auto to_underlying(E e) noexcept {
+  return static_cast<std::underlying_type_t<E>>(e);  // NOSONAR — this IS the C++17 polyfill for std::to_underlying
+}
+
+static constexpr int NUM_RECEPTORS = static_cast<int>(to_underlying(ReceptorType::NUM_RECEPTOR_TYPES));
 
 // Plasmid / BI-locus representation
 struct BICluster {
@@ -96,12 +102,6 @@ inline Real sphere_volume(Real radius) {
 
 inline Real sphere_mass(Real radius, Real density) {
   return sphere_volume(radius) * density;
-}
-
-// C++17 polyfill for std::to_underlying (C++23)
-template <typename E>
-constexpr auto to_underlying(E e) noexcept {
-  return static_cast<std::underlying_type_t<E>>(e);
 }
 
 }  // namespace gutibm

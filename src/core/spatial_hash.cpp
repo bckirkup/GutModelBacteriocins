@@ -34,9 +34,8 @@ SpatialHash::CellKey SpatialHash::pos_to_cell(const Vec3& pos) const {
 
 std::vector<Int> SpatialHash::query_radius(const Vec3& pos, Real radius) const {
   std::vector<Int> result;
-  Real r2 = radius * radius;
 
-  Int cells_span = static_cast<Int>(std::ceil(radius / cell_size_));
+  auto cells_span = static_cast<Int>(std::ceil(radius / cell_size_));
   CellKey center = pos_to_cell(pos);
 
   for (Int dz = -cells_span; dz <= cells_span; ++dz) {

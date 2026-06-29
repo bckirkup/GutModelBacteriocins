@@ -20,6 +20,9 @@ export CXX="${CXX:-g++}"
 
 MPIRUN=(mpirun --allow-run-as-root)
 
+# Helper: convert seconds to milliseconds with 3 decimal places
+sec_to_ms() { awk -v s="${1:-0}" 'BEGIN { printf "%.3f", s * 1000 }'; }
+
 timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
 csv="$OUT_DIR/scaling_${timestamp}.csv"
 mkdir -p "$OUT_DIR"
@@ -103,10 +106,10 @@ for agents in $AGENT_COUNTS; do
     hash_ms="$(echo "$profile_line" | sed -n 's/.* hash_s=\([^ ]*\).*/\1/p')"
 
     if [[ -n "$step_ms" ]]; then
-      step_ms="$(awk -v s="$step_ms" 'BEGIN { printf "%.3f", s * 1000 }')"
-      chemistry_ms="$(awk -v s="${chemistry_ms:-0}" 'BEGIN { printf "%.3f", s * 1000 }')"
-      biology_ms="$(awk -v s="${biology_ms:-0}" 'BEGIN { printf "%.3f", s * 1000 }')"
-      hash_ms="$(awk -v s="${hash_ms:-0}" 'BEGIN { printf "%.3f", s * 1000 }')"
+      step_ms="$(sec_to_ms "$step_ms")"
+      chemistry_ms="$(sec_to_ms "${chemistry_ms:-0}")"
+      biology_ms="$(sec_to_ms "${biology_ms:-0}")"
+      hash_ms="$(sec_to_ms "${hash_ms:-0}")"
     else
       step_ms="$(awk -v w="$wall_s" -v n="$STEPS" 'BEGIN { if (n > 0) printf "%.3f", (w/n)*1000; else print 0 }')"
       chemistry_ms=""
