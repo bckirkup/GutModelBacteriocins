@@ -47,10 +47,10 @@ class RNG {
     return d(gen_);
   }
 
-  std::mt19937_64& engine() { return gen_; }
+  std::mt19937_64& engine() { return gen_; }  // NOSONAR cpp:S2245 — simulation PRNG, not cryptography
 
  private:
-  std::mt19937_64 gen_;
+  std::mt19937_64 gen_;  // NOSONAR cpp:S2245 — reproducible IbM stochasticity via explicit seed
   std::uniform_real_distribution<Real> udist_{0.0, 1.0};
 };
 

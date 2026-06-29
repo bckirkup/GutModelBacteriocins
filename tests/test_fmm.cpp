@@ -10,11 +10,11 @@
 #include "qssa_solver.h"
 #include "domain.h"
 #include "advection.h"
+#include "random.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>
 #include <vector>
-#include <random>
 
 using namespace gutibm;
 
@@ -33,19 +33,17 @@ static void make_test_domain(Domain& domain, AdvectionField& adv) {
   adv.init(acfg, domain);
 }
 
-static void make_random_sources(int N, std::mt19937& rng,
+static void make_random_sources(int N, RNG& rng,
                                 std::vector<Vec3>& positions,
                                 std::vector<GreensFunctionParams>& params,
                                 std::vector<Real>& strengths) {
-  std::uniform_real_distribution<double> dist_xy(100e-6, 900e-6);
-  std::uniform_real_distribution<double> dist_z(10e-6, 90e-6);
-
   positions.resize(N);
   params.resize(N);
   strengths.resize(N);
 
   for (int i = 0; i < N; ++i) {
-    positions[i] = {dist_xy(rng), dist_xy(rng), dist_z(rng)};
+    positions[i] = {rng.uniform(100e-6, 900e-6), rng.uniform(100e-6, 900e-6),
+                    rng.uniform(10e-6, 90e-6)};
     params[i].diff_coeff  = 4e-11;
     params[i].source_rate = 1e-18;
     params[i].pI          = 7.0;
@@ -67,7 +65,7 @@ void test_fmm_build_and_moments() {
   AdvectionField adv;
   make_test_domain(domain, adv);
 
-  std::mt19937 rng(7);
+  RNG rng(7);
   std::vector<Vec3> positions;
   std::vector<GreensFunctionParams> params;
   std::vector<Real> strengths;
@@ -94,7 +92,7 @@ void test_fmm_accuracy_order2_vs_exact() {
   GreensFunction gf;
   gf.init(domain, adv);
 
-  std::mt19937 rng(321);
+  RNG rng(321);
   std::vector<Vec3> positions;
   std::vector<GreensFunctionParams> params;
   std::vector<Real> strengths;
@@ -143,7 +141,7 @@ void test_fmm_higher_order_more_accurate_than_monopole() {
   GreensFunction gf;
   gf.init(domain, adv);
 
-  std::mt19937 rng(999);
+  RNG rng(999);
   std::vector<Vec3> positions;
   std::vector<GreensFunctionParams> params;
   std::vector<Real> strengths;
@@ -194,7 +192,7 @@ void test_fmm_local_expansion_nonnegative() {
   GreensFunction gf;
   gf.init(domain, adv);
 
-  std::mt19937 rng(55);
+  RNG rng(55);
   std::vector<Vec3> positions;
   std::vector<GreensFunctionParams> params;
   std::vector<Real> strengths;

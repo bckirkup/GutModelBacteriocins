@@ -18,7 +18,7 @@ from typing import Any
 import numpy as np
 
 from .fish_observation import flatten_fish_metrics, validate_fish_observability
-from .path_utils import validate_input_path, validate_output_path, validate_path_syntax
+from .path_utils import prepare_output_file, validate_input_path
 from .hdf5_reader import GutIBMData
 from .validation import validate_genomic_signatures, validate_spatial_signatures
 
@@ -237,9 +237,7 @@ def write_fish_golden(metrics: dict[str, float], path: str | Path, *, scenario: 
         "scenario": scenario,
         "metrics": {k: float(v) for k, v in metrics.items() if k in FISH_GOLDEN_METRICS},
     }
-    out = validate_path_syntax(path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    validate_output_path(out)
+    out = prepare_output_file(path)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
         f.write("\n")
@@ -284,9 +282,7 @@ def write_golden(metrics: dict[str, float], path: str | Path, *, scenario: str) 
         "scenario": scenario,
         "metrics": {k: float(v) for k, v in metrics.items() if k in GOLDEN_METRICS},
     }
-    out = validate_path_syntax(path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    validate_output_path(out)
+    out = prepare_output_file(path)
     with open(out, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
         f.write("\n")

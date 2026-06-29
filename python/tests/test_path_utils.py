@@ -8,6 +8,7 @@ import pytest
 
 from gut_ibm_tools.path_utils import (
     PathValidationError,
+    prepare_output_file,
     validate_input_path,
     validate_output_path,
     validate_path_syntax,
@@ -53,4 +54,13 @@ def test_validate_output_path_rejects_symlink_in_world_writable_parent(
 def test_validate_output_path_allows_private_temp_dir(tmp_path: Path) -> None:
     out = tmp_path / "nested" / "output.h5"
     out.parent.mkdir(parents=True)
+    assert validate_output_path(out) == out
+
+
+def test_prepare_output_file_creates_parent_and_validates(tmp_path: Path) -> None:
+    out = tmp_path / "nested" / "golden.json"
+    prepared = prepare_output_file(out)
+    assert prepared == out
+    assert out.parent.is_dir()
+    out.write_text("{}", encoding="utf-8")
     assert validate_output_path(out) == out
