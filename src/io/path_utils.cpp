@@ -40,6 +40,31 @@ bool is_world_writable_directory(const fs::path& dir) {
   return (st.st_mode & S_IWOTH) != 0;
 }
 
+bool has_sticky_bit(const fs::path& dir) {
+  struct stat st {};
+  if (stat(dir.c_str(), &st) != 0) return false;
+  return (st.st_mode & S_ISVTX) != 0;
+}
+
+std::string validate_temp_directory(const fs::path& dir) {
+  validate_path_syntax(dir.string());
+  if (!fs::exists(dir) || !fs::is_directory(dir)) {
+    throw PathError("temporary directory is not a directory: " + dir.string());
+  }
+  if (fs::is_symlink(fs::symlink_status(dir))) {
+    throw PathError("refusing to use symlinked temporary directory: " +
+                    dir.string());
+  }
+
+  const fs::path canon = fs::weakly_canonical(dir);
+  if (is_world_writable_directory(canon) && !has_sticky_bit(canon)) {
+    throw PathError(
+        "world-writable temporary directory lacks sticky bit: " +
+        canon.string());
+  }
+  return canon.string();
+}
+
 fs::path parent_directory_for(const fs::path& path) {
   if (path.has_parent_path()) return path.parent_path();
   return fs::path(".");
@@ -67,15 +92,13 @@ void reject_symlink_in_world_writable_parent(const fs::path& path,
 }
 
 std::string temp_directory() {
+  fs::path dir;
   if (const char* tmpdir = std::getenv("TMPDIR"); tmpdir && tmpdir[0] != '\0') {
-    validate_path_syntax(tmpdir);
-    fs::path dir(tmpdir);
-    if (!fs::exists(dir) || !fs::is_directory(dir)) {
-      throw PathError("TMPDIR is not a directory: " + dir.string());
-    }
-    return dir.string();
+    dir = fs::path(tmpdir);
+  } else {
+    dir = fs::temp_directory_path();
   }
-  return fs::temp_directory_path().string();
+  return validate_temp_directory(dir);
 }
 
 }  // namespace

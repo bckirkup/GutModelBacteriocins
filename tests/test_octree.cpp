@@ -8,11 +8,11 @@
 #include "qssa_solver.h"
 #include "domain.h"
 #include "advection.h"
+#include "random.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>
 #include <vector>
-#include <random>
 
 using namespace gutibm;
 
@@ -100,15 +100,13 @@ void test_octree_construction() {
   AdvectionField adv;
   make_test_domain(domain, adv);
 
-  std::mt19937 rng(42);
-  std::uniform_real_distribution<double> dist_xy(0.0, 1e-3);
-  std::uniform_real_distribution<double> dist_z(0.0, 100e-6);
-
+  RNG rng(42);
   int N = 100;
   std::vector<Vec3> positions(N);
   std::vector<Real> strengths(N, 1e-18);
   for (int i = 0; i < N; ++i) {
-    positions[i] = {dist_xy(rng), dist_xy(rng), dist_z(rng)};
+    positions[i] = {rng.uniform(0.0, 1e-3), rng.uniform(0.0, 1e-3),
+                    rng.uniform(0.0, 100e-6)};
   }
 
   Octree tree;
@@ -137,17 +135,15 @@ void test_accuracy_vs_exact() {
   GreensFunction gf;
   gf.init(domain, adv);
 
-  std::mt19937 rng(123);
-  std::uniform_real_distribution<double> dist_xy(100e-6, 900e-6);
-  std::uniform_real_distribution<double> dist_z(10e-6, 90e-6);
-
+  RNG rng(123);
   int N = 50;
   std::vector<Vec3> positions(N);
   std::vector<GreensFunctionParams> params(N);
   std::vector<Real> strengths(N);
 
   for (int i = 0; i < N; ++i) {
-    positions[i] = {dist_xy(rng), dist_xy(rng), dist_z(rng)};
+    positions[i] = {rng.uniform(100e-6, 900e-6), rng.uniform(100e-6, 900e-6),
+                    rng.uniform(10e-6, 90e-6)};
     params[i].diff_coeff  = 4e-11;
     params[i].source_rate = 1e-18;
     params[i].pI          = 7.0;
@@ -210,15 +206,13 @@ void test_far_field_only() {
   GreensFunction gf;
   gf.init(domain, adv);
 
-  std::mt19937 rng(456);
-  std::uniform_real_distribution<double> dist_xy(100e-6, 900e-6);
-  std::uniform_real_distribution<double> dist_z(10e-6, 90e-6);
-
+  RNG rng(456);
   int N = 30;
   std::vector<Vec3> positions(N);
   std::vector<Real> strengths(N, 1e-18);
   for (int i = 0; i < N; ++i) {
-    positions[i] = {dist_xy(rng), dist_xy(rng), dist_z(rng)};
+    positions[i] = {rng.uniform(100e-6, 900e-6), rng.uniform(100e-6, 900e-6),
+                    rng.uniform(10e-6, 90e-6)};
   }
 
   GreensFunctionParams avg;

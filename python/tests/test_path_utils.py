@@ -8,6 +8,7 @@ import pytest
 
 from gut_ibm_tools.path_utils import (
     PathValidationError,
+    prepare_output_file,
     validate_input_path,
     validate_output_path,
     validate_path_syntax,

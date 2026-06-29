@@ -69,15 +69,17 @@ def validate_input_path(path: str | Path) -> Path:
     return candidate.resolve()
 
 
-def validate_output_path(path: str | Path) -> Path:
-    """Validate a writable file path before creating or overwriting it."""
-    candidate = validate_path_syntax(path)
+def _validate_output_parent(candidate: Path) -> None:
     parent = candidate.parent if candidate.parent.parts else Path(".")
-
-    if not parent.exists():
-        raise PathValidationError(f"output directory does not exist: {parent}")
-    if not parent.is_dir():
-        raise PathValidationError(f"output parent is not a directory: {parent}")
+    if parent.exists():
+        if not parent.is_dir():
+            raise PathValidationError(f"output parent is not a directory: {parent}")
+    else:
+        ancestor = parent
+        while not ancestor.exists() and ancestor.parts:
+            ancestor = ancestor.parent if ancestor.parent.parts else Path(".")
+        if ancestor.exists() and not ancestor.is_dir():
+            raise PathValidationError(f"output ancestor is not a directory: {ancestor}")
 
     _reject_symlink_in_world_writable_parent(candidate, "write")
 
@@ -89,4 +91,25 @@ def validate_output_path(path: str | Path) -> Path:
                 f"output path exists and is not a regular file: {candidate}"
             )
 
+
+def validate_output_path(path: str | Path) -> Path:
+    """Validate a writable file path before creating or overwriting it."""
+    candidate = validate_path_syntax(path)
+    parent = candidate.parent if candidate.parent.parts else Path(".")
+
+    if not parent.exists():
+        raise PathValidationError(f"output directory does not exist: {parent}")
+    if not parent.is_dir():
+        raise PathValidationError(f"output parent is not a directory: {parent}")
+
+    _validate_output_parent(candidate)
     return candidate
+
+
+def prepare_output_file(path: str | Path) -> Path:
+    """Validate an output file path and create parent directories if needed."""
+    candidate = validate_path_syntax(path)
+    _validate_output_parent(candidate)
+    parent = candidate.parent if candidate.parent.parts else Path(".")
+    parent.mkdir(parents=True, exist_ok=True)
+    return validate_output_path(candidate)
