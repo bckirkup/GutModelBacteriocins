@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "path_utils.h"
+#include "error.h"
 
 #include <cassert>
 #include <cstdio>
@@ -19,7 +20,7 @@ void expect_throw(void (*fn)(), const char* label) {
   bool threw = false;
   try {
     fn();
-  } catch (const std::runtime_error&) {
+  } catch (const PathError&) {
     threw = true;
   }
   assert(threw);

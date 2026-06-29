@@ -64,7 +64,7 @@ std::vector<TagID> gather_live_tags_flat(const Simulation& sim) {
     }
   }
 
-  int local_n = static_cast<int>(local.size());
+  auto local_n = static_cast<int>(local.size());
   std::vector<int> counts(nprocs, 0);
   MPI_Allgather(&local_n, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
 

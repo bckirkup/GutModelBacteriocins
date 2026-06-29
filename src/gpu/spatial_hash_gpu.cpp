@@ -65,7 +65,7 @@ bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
 #endif
 }
 
-void SpatialHashGpu::build(const AgentPoolGpu& agents, Int num_agents) {
+void SpatialHashGpu::build(const AgentPoolGpu& agents, Int num_agents) const {
   (void)agents;
   (void)num_agents;
 }

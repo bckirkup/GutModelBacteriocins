@@ -13,7 +13,7 @@
 namespace gutibm {
 
 bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents, Int num_agents,
-                                  ChemicalFieldGpu& chem_gpu, ChemicalField& chem) {
+                                  ChemicalFieldGpu& chem_gpu, const ChemicalField& chem) {
 #ifndef GUTIBM_CUDA
   (void)agents;
   (void)num_agents;

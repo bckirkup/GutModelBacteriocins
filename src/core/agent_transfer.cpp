@@ -4,7 +4,9 @@
 
 #include "agent_transfer.h"
 #include "types.h"
+#include <cstddef>
 #include <cstring>
+#include <span>
 
 namespace gutibm {
 
@@ -157,22 +159,31 @@ Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_d
 
 }  // namespace
 
+namespace {
+
+template <typename T>
+void append_bytes(std::vector<char>& buf, const T& value) {
+  const auto bytes = std::as_bytes(std::span<const T, 1>(&value, 1));
+  buf.insert(buf.end(),
+             reinterpret_cast<const char*>(bytes.data()),
+             reinterpret_cast<const char*>(bytes.data() + bytes.size()));
+}
+
+}  // namespace
+
 void agent_transfer_serialize(const std::vector<Agent>& agents,
                               std::vector<char>& buf) {
   buf.clear();
   auto count = static_cast<int32_t>(agents.size());
-  buf.insert(buf.end(), reinterpret_cast<const char*>(&count),
-             reinterpret_cast<const char*>(&count) + sizeof(count));
+  append_bytes(buf, count);
   for (const auto& a : agents) {
     AgentTransferData d;
     pack_agent(a, d);
-    buf.insert(buf.end(), reinterpret_cast<const char*>(&d),
-               reinterpret_cast<const char*>(&d) + sizeof(d));
+    append_bytes(buf, d);
     for (const auto& c : a.genome.bi_loci) {
       BIClusterTransferData bd;
       pack_bi_cluster(c, bd);
-      buf.insert(buf.end(), reinterpret_cast<const char*>(&bd),
-                 reinterpret_cast<const char*>(&bd) + sizeof(bd));
+      append_bytes(buf, bd);
     }
   }
 }

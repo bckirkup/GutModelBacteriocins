@@ -122,7 +122,7 @@ std::vector<AgentSnapshot> collect_all_agents(const Simulation& sim) {
     out.emplace_back(
       a.tag,
       a.type,
-      static_cast<int32_t>(a.state),
+      static_cast<int32_t>(to_underlying(a.state)),
       a.x[0], a.x[1], a.x[2],
       a.radius,
       a.biomass,

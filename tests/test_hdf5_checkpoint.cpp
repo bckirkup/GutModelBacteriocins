@@ -7,6 +7,7 @@
 #include "hdf5_reader.h"
 #include "path_utils.h"
 #include "plasmid.h"
+#include "error.h"
 
 #include <algorithm>
 #include <cassert>
@@ -84,7 +85,7 @@ std::vector<AgentSnapshot> collect_agents(const Simulation& sim) {
     out.emplace_back(
       a.tag,
       a.type,
-      static_cast<int32_t>(a.state),
+      static_cast<int32_t>(to_underlying(a.state)),
       a.x[0], a.x[1], a.x[2],
       a.radius,
       a.biomass,
@@ -201,7 +202,7 @@ void assert_genome_matches_snapshot(const Simulation& sim,
 void test_hdf5_reader_api(const std::string& filename) {
   HDF5Reader reader;
   if (!reader.open(filename)) {
-    throw std::runtime_error("HDF5Reader::open failed for " + filename);
+    throw HDF5Error("HDF5Reader::open failed for " + filename);
   }
 
   auto steps = reader.list_steps();

@@ -45,9 +45,10 @@ class AgentPoolGpu {
   int*    bi_loci_count() { return d_bi_loci_count_.data(); }
   double* plasmid_amelioration() { return d_plasmid_amelioration_.data(); }
 
-  bool run_metabolism(const Domain& domain, MetabolismConfig& cfg,
-                      double* d_conc_carbon, double* d_conc_iron, double* d_conc_b12,
-                      double* d_conc_acetate, double* d_conc_eut,
+  bool run_metabolism(const Domain& domain, const MetabolismConfig& cfg,
+                      const double* d_conc_carbon, const double* d_conc_iron,
+                      const double* d_conc_b12, const double* d_conc_acetate,
+                      const double* d_conc_eut,
                       double* d_reac_carbon, double* d_reac_iron, double* d_reac_b12,
                       double dt);
 

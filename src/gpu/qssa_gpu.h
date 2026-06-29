@@ -10,7 +10,7 @@ class ChemicalFieldGpu;
 class ChemicalField;
 
 bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents, Int num_agents,
-                                  ChemicalFieldGpu& chem_gpu, ChemicalField& chem);
+                                  ChemicalFieldGpu& chem_gpu, const ChemicalField& chem);
 
 }  // namespace gutibm
 

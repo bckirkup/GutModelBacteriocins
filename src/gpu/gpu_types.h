@@ -1,6 +1,8 @@
 #ifndef GUTIBM_GPU_TYPES_H
 #define GUTIBM_GPU_TYPES_H
 
+#include <array>
+
 namespace gutibm {
 namespace gpu {
 
@@ -9,8 +11,8 @@ struct DomainParams {
   int ny;
   int nz;
   double dx;
-  double lo[3];       // NOLINT(modernize-avoid-c-arrays) — passed to CUDA kernels
-  bool periodic[3];   // NOLINT(modernize-avoid-c-arrays) — passed to CUDA kernels
+  std::array<double, 3> lo;
+  std::array<bool, 3> periodic;
   double z_lo;
   double z_hi;
 };

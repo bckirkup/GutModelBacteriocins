@@ -24,6 +24,8 @@ from scipy.ndimage import gaussian_filter
 from .analysis import monochromatic_patch_score
 from .hdf5_reader import GutIBMData
 
+DEFAULT_FISH_RNG_SEED = 0
+
 # Typical multicopy targets in Enterobacteriaceae (literature order-of-magnitude).
 DEFAULT_PLASMID_COPY_NUMBER = 25.0
 DEFAULT_RRNA_OPERON_COPIES = 7.0
@@ -251,7 +253,7 @@ def render_synthetic_image(
     and autofluorescence are added.
     """
     if rng is None:
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(DEFAULT_FISH_RNG_SEED)
 
     ax0, ax1 = _projection_axes(config.projection)
     coords = positions[:, [ax0, ax1]]
@@ -306,7 +308,7 @@ def simulate_fish_observation(
     Full forward model: copy numbers → hybridization → SNR → detection → image.
     """
     if rng is None:
-        rng = np.random.default_rng()
+        rng = np.random.default_rng(DEFAULT_FISH_RNG_SEED)
     if microscopy is None:
         microscopy = MicroscopyConfig.optical(projection="xy")
 
