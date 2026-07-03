@@ -1,0 +1,20 @@
+{
+  "validators": [
+    {
+      "methodId": "gut_ibm_tools.path_utils.validate_path_syntax",
+      "args": [1]
+    },
+    {
+      "methodId": "gut_ibm_tools.path_utils.validate_output_path",
+      "args": [1]
+    },
+    {
+      "methodId": "gut_ibm_tools.path_utils.prepare_output_file",
+      "args": [1]
+    },
+    {
+      "methodId": "gut_ibm_tools.path_utils._ensure_output_within_cwd",
+      "args": [1]
+    }
+  ]
+}
