@@ -4,6 +4,7 @@
 
 #include "fmm_kernel.h"
 #include <cmath>
+#include <limits>
 
 namespace gutibm {
 
@@ -11,6 +12,35 @@ namespace fmm_detail {
 
 int coeff_index(int ox, int oy, int oz, int order);
 Real binomial(int n, int k);
+
+// Central finite-difference step for a k-th order derivative, scaled to the
+// problem's characteristic length. The total error of a 2nd-order central
+// stencil for the k-th derivative is ~ (h/L)^2 (truncation) + eps*(L/h)^k
+// (round-off), minimized at h ≈ L * eps^{1/(k+2)}. A single tiny step (the
+// former 1.0e-9) makes the order-3 stencil divide by ~2h^3 = 2e-27, so
+// round-off is amplified ~1e11 — catastrophic cancellation. (Spec 0 §3.)
+Real fd_step(int deriv_order, Real length_scale) {
+  const Real eps = std::numeric_limits<Real>::epsilon();
+  Real rel = std::cbrt(eps);  // order 1: eps^(1/3)
+  if (deriv_order == 2) {
+    rel = std::pow(eps, 0.25);  // eps^(1/4)
+  } else if (deriv_order >= 3) {
+    rel = std::pow(eps, 0.2);  // eps^(1/5)
+  }
+  const Real L = (length_scale > 0.0) ? length_scale : 1.0;
+  return L * rel;
+}
+
+Real separation_length(const Vec3& a, const Vec3& b) {
+  const Real dx = a[0] - b[0];
+  const Real dy = a[1] - b[1];
+  const Real dz = a[2] - b[2];
+  const Real r = std::sqrt(dx * dx + dy * dy + dz * dz);
+  // Floor keeps the step positive for the degenerate (coincident) case, which
+  // the well-separated FMM never actually evaluates.
+  constexpr Real kMinLength = 1.0e-9;
+  return (r > kMinLength) ? r : kMinLength;
+}
 
 template<typename Fn>
 void for_each_multi_index(int order, Fn&& fn) {
@@ -268,6 +298,25 @@ void add_shifted_moments(std::vector<Real>& parent,
 
 }  // namespace fmm_detail
 
+Real fd_axis_derivative(const std::function<Real(const Vec3&)>& field,
+                        const Vec3& center, int axis, int order,
+                        Real length_scale) {
+  const Real h = fmm_detail::fd_step(order, length_scale);
+  const auto at = [&field, &center, axis](Real offset) {
+    Vec3 p = center;
+    p[axis] += offset;
+    return field(p);
+  };
+  if (order == 1) {
+    return (at(h) - at(-h)) / (2.0 * h);
+  }
+  if (order == 2) {
+    return (at(h) - 2.0 * field(center) + at(-h)) / (h * h);
+  }
+  // order 3 (five-point antisymmetric stencil)
+  return (at(2.0 * h) - 2.0 * at(h) + 2.0 * at(-h) - at(-2.0 * h)) / (2.0 * h * h * h);
+}
+
 KernelTaylorCoeffs kernel_taylor_at_source(
     const GreensFunction& gf,
     const Vec3& source,
@@ -281,7 +330,7 @@ KernelTaylorCoeffs kernel_taylor_at_source(
   GreensFunctionParams unit = params;
   unit.source_rate = 1.0;
 
-  const Real h = 1.0e-9;
+  const Real L = fmm_detail::separation_length(source, target);
   const auto eval = [&gf, &unit, target](const Vec3& src) {
     return gf.concentration_bounded(src, target, unit);
   };
@@ -289,13 +338,13 @@ KernelTaylorCoeffs kernel_taylor_at_source(
   out.values[0] = eval(source);
   if (max_order < 1) return out;
 
-  fmm_detail::fill_first_derivatives(out.values, max_order, source, h, eval);
+  fmm_detail::fill_first_derivatives(out.values, max_order, source, fmm_detail::fd_step(1, L), eval);
   if (max_order < 2) return out;
 
-  fmm_detail::fill_second_derivatives(out.values, max_order, source, h, eval);
+  fmm_detail::fill_second_derivatives(out.values, max_order, source, fmm_detail::fd_step(2, L), eval);
   if (max_order < 3) return out;
 
-  fmm_detail::fill_third_derivatives(out.values, max_order, source, h, eval);
+  fmm_detail::fill_third_derivatives(out.values, max_order, source, fmm_detail::fd_step(3, L), eval);
   return out;
 }
 
@@ -318,7 +367,7 @@ std::vector<Real> multipole_to_local(
   const int n = fmm_detail::num_coefficients(order);
   std::vector<Real> local(n, 0.0);
 
-  const Real h = 1.0e-9;
+  const Real L = fmm_detail::separation_length(source_center, target_center);
   const auto multipole_field = [&gf, &moments, order, source_center, avg_params](const Vec3& eval_target) {
     KernelTaylorCoeffs k = kernel_taylor_at_source(
         gf, source_center, eval_target, avg_params, order);
@@ -328,13 +377,13 @@ std::vector<Real> multipole_to_local(
   local[0] = multipole_field(target_center);
   if (order < 1) return local;
 
-  fmm_detail::fill_first_derivatives(local, order, target_center, h, multipole_field);
+  fmm_detail::fill_first_derivatives(local, order, target_center, fmm_detail::fd_step(1, L), multipole_field);
   if (order < 2) return local;
 
-  fmm_detail::fill_second_derivatives(local, order, target_center, h, multipole_field, 0.5);
+  fmm_detail::fill_second_derivatives(local, order, target_center, fmm_detail::fd_step(2, L), multipole_field, 0.5);
   if (order < 3) return local;
 
-  fmm_detail::fill_third_derivatives(local, order, target_center, h, multipole_field, 1.0 / 6.0);
+  fmm_detail::fill_third_derivatives(local, order, target_center, fmm_detail::fd_step(3, L), multipole_field, 1.0 / 6.0);
   return local;
 }
 

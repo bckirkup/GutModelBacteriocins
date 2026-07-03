@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "input_parser.h"
+#include "species_names.h"
 #include "config_json.h"
 #include "path_utils.h"
 #include "plasmid.h"
@@ -98,13 +99,13 @@ SimulationConfig InputParser::default_config() {
   // Default chemical species
   // Carbon gets z-gradient enabled (mucin-derived monosaccharides peak at epithelium)
   cfg.chemicals = {
-    {"carbon",      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0, true,  25.0e-6},
-    {"iron",        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0, false, 25.0e-6},
-    {"b12",         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0, false, 25.0e-6},
-    {"bacteriocin", 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4, false, 25.0e-6},
-    {"nuclease_toxin", 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
-    {"acetate",     1.2e-9,  1.0,  80.0,   80.0,    0.0, false, 25.0e-6},
-    {"ethanolamine", 1.0e-9, 1.0, 0.5e-3, 0.5e-3, 0.0, false, 25.0e-6},
+    {species::CARBON,      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0, true,  25.0e-6},
+    {species::IRON,        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0, false, 25.0e-6},
+    {species::B12,         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0, false, 25.0e-6},
+    {species::BACTERIOCIN, 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4, false, 25.0e-6},
+    {species::NUCLEASE_TOXIN, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
+    {species::ACETATE,     1.2e-9,  1.0,  80.0,   80.0,    0.0, false, 25.0e-6},
+    {species::ETHANOLAMINE, 1.0e-9, 1.0, 0.5e-3, 0.5e-3, 0.0, false, 25.0e-6},
   };
 
   // VBF mucin z-gradient enabled by default (consistent with carbon gradient)
@@ -150,18 +151,18 @@ bool parse_bool_config(std::string_view val) {
 void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
 
-  if (cfg.chem_env.oxygen.enabled && find_chemical_spec(cfg.chemicals, "oxygen") < 0) {
+  if (cfg.chem_env.oxygen.enabled && find_chemical_spec(cfg.chemicals, species::OXYGEN) < 0) {
     cfg.chemicals.emplace_back(
-        "oxygen", cfg.chem_env.oxygen.D_free, 1.0,
+        species::OXYGEN, cfg.chem_env.oxygen.D_free, 1.0,
         cfg.chem_env.oxygen.epithelial_conc, cfg.chem_env.oxygen.epithelial_conc,
         0.0, true, k_z_lambda);
   }
 
   if (cfg.chem_env.acetate.enabled) {
-    Int idx = find_chemical_spec(cfg.chemicals, "acetate");
+    Int idx = find_chemical_spec(cfg.chemicals, species::ACETATE);
     if (idx < 0) {
       cfg.chemicals.emplace_back(
-          "acetate", cfg.chem_env.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda);
+          species::ACETATE, cfg.chem_env.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda);
     } else {
       auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
       spec.diff_coeff = cfg.chem_env.acetate.D_free;
@@ -171,9 +172,9 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
   }
 
   if (cfg.chem_env.mucin.enabled) {
-    if (find_chemical_spec(cfg.chemicals, "mucin") < 0) {
+    if (find_chemical_spec(cfg.chemicals, species::MUCIN) < 0) {
       cfg.chemicals.emplace_back(
-          "mucin", cfg.chem_env.mucin.D_free, cfg.chem_env.mucin.retardation,
+          species::MUCIN, cfg.chem_env.mucin.D_free, cfg.chem_env.mucin.retardation,
           cfg.chem_env.mucin.initial_conc, cfg.chem_env.mucin.initial_conc,
           0.0, false, k_z_lambda);
     }
@@ -198,6 +199,8 @@ bool apply_domain_key(SimulationConfig& cfg, const std::string& key, const std::
   if (key == "domain_x")             { cfg.domain.hi[0] = parse_config_real(key, val); return true; }
   if (key == "domain_y")             { cfg.domain.hi[1] = parse_config_real(key, val); return true; }
   if (key == "domain_z")             { cfg.domain.hi[2] = parse_config_real(key, val); return true; }
+  if (key == "hash_cell_size")       { cfg.domain.hash_cell_size = parse_config_real(key, val); return true; }
+  if (key == "ghost_width")          { cfg.domain.ghost_width = parse_config_real(key, val); return true; }
   return false;
 }
 
@@ -205,6 +208,9 @@ bool apply_advection_key(SimulationConfig& cfg, const std::string& key, const st
   if (key == "mucus_thickness")      { cfg.advection.mucus_thickness = parse_config_real(key, val); return true; }
   if (key == "radial_turnover")      { cfg.advection.radial_turnover = parse_config_real(key, val); return true; }
   if (key == "distal_transit")       { cfg.advection.distal_transit_time = parse_config_real(key, val); return true; }
+  if (key == "distal_length")        { cfg.advection.distal_length = parse_config_real(key, val); return true; }
+  if (key == "profile_alpha")        { cfg.advection.profile_alpha = parse_config_real(key, val); return true; }
+  if (key == "taylor_aris_enabled")  { cfg.advection.taylor_aris_enabled = parse_bool_config(val); return true; }
   if (key == "peristaltic_enabled")  { cfg.advection.peristaltic_enabled = (val == "true" || val == "1"); return true; }
   if (key == "peristaltic_period")   { cfg.advection.peristaltic_period = parse_config_real(key, val); return true; }
   if (key == "peristaltic_amplitude") { cfg.advection.peristaltic_amplitude = parse_config_real(key, val); return true; }
@@ -220,6 +226,8 @@ bool apply_advection_key(SimulationConfig& cfg, const std::string& key, const st
 bool apply_qssa_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "toxin_cutoff")         { cfg.qssa.toxin_cutoff = parse_config_real(key, val); return true; }
   if (key == "nutrient_cutoff")      { cfg.qssa.nutrient_cutoff = parse_config_real(key, val); return true; }
+  if (key == "colicin_release_rate") { cfg.qssa.colicin_release_rate = parse_config_real(key, val); return true; }
+  if (key == "microcin_secretion")   { cfg.qssa.microcin_secretion = parse_config_real(key, val); return true; }
   if (key == "use_fmm")              { cfg.qssa.use_fmm = (val == "true" || val == "1"); return true; }
   if (key == "fmm_theta")            { cfg.qssa.fmm_theta = parse_config_real(key, val); return true; }
   if (key == "fmm_expansion_order")  { cfg.qssa.fmm_expansion_order = parse_config_int(key, val); return true; }
@@ -229,6 +237,10 @@ bool apply_qssa_key(SimulationConfig& cfg, const std::string& key, const std::st
 bool apply_vbf_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "vbf_density")          { cfg.vbf.density = parse_config_real(key, val); return true; }
   if (key == "vbf_viscosity")        { cfg.vbf.viscosity = parse_config_real(key, val); return true; }
+  if (key == "vbf_drag_coeff")       { cfg.vbf.drag_coeff = parse_config_real(key, val); return true; }
+  if (key == "vbf_nutrient_sink")    { cfg.vbf.nutrient_sink = parse_config_real(key, val); return true; }
+  if (key == "vbf_mucin_liberation") { cfg.vbf.mucin_liberation = parse_config_real(key, val); return true; }
+  if (key == "vbf_carrying_cap")     { cfg.vbf.carrying_cap = parse_config_real(key, val); return true; }
   if (key == "vbf_mucin_z_gradient") { cfg.vbf.mucin_z_gradient_enabled = (val == "true" || val == "1"); return true; }
   if (key == "vbf_mucin_z_lambda")   { cfg.vbf.mucin_z_gradient_lambda = parse_config_real(key, val); return true; }
   return false;
@@ -237,13 +249,13 @@ bool apply_vbf_key(SimulationConfig& cfg, const std::string& key, const std::str
 bool apply_chemical_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "carbon_z_gradient") {
     for (auto& c : cfg.chemicals) {
-      if (c.name == "carbon") { c.z_gradient_enabled = (val == "true" || val == "1"); return true; }
+      if (c.name == species::CARBON) { c.z_gradient_enabled = (val == "true" || val == "1"); return true; }
     }
     return true;
   }
   if (key == "carbon_z_lambda") {
     for (auto& c : cfg.chemicals) {
-      if (c.name == "carbon") { c.z_gradient_lambda = parse_config_real(key, val); return true; }
+      if (c.name == species::CARBON) { c.z_gradient_lambda = parse_config_real(key, val); return true; }
     }
     return true;
   }
@@ -253,6 +265,12 @@ bool apply_chemical_key(SimulationConfig& cfg, const std::string& key, const std
     cfg.fixes.bacteriocin.sos_cross_induction_rate = parse_config_real(key, val);
     return true;
   }
+  if (key == "retardation_basic")    { cfg.fixes.bacteriocin.retardation_basic = parse_config_real(key, val); return true; }
+  if (key == "retardation_acidic")   { cfg.fixes.bacteriocin.retardation_acidic = parse_config_real(key, val); return true; }
+  if (key == "retardation_neutral")  { cfg.fixes.bacteriocin.retardation_neutral = parse_config_real(key, val); return true; }
+  if (key == "D_free_colicin")       { cfg.fixes.bacteriocin.D_free_colicin = parse_config_real(key, val); return true; }
+  if (key == "burst_molecules")      { cfg.fixes.bacteriocin.burst_molecules = parse_config_real(key, val); return true; }
+  if (key == "microcin_mu_penalty")  { cfg.fixes.bacteriocin.microcin_mu_penalty = parse_config_real(key, val); return true; }
   return false;
 }
 
@@ -318,6 +336,30 @@ bool apply_dt_key(SimulationConfig& cfg, const std::string& key, const std::stri
   if (key == "dt_max")               { cfg.adaptive_dt.max = parse_config_real(key, val); return true; }
   if (key == "dt_safety")            { cfg.adaptive_dt.safety = parse_config_real(key, val); return true; }
   if (key == "dt_growth_limit")      { cfg.adaptive_dt.growth_limit = parse_config_real(key, val); return true; }
+  return false;
+}
+
+bool apply_metabolism_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "division_threshold")      { cfg.fixes.metabolism.division_threshold = parse_config_real(key, val); return true; }
+  if (key == "maintenance_rate")        { cfg.fixes.metabolism.maintenance_rate = parse_config_real(key, val); return true; }
+  if (key == "metE_penalty")            { cfg.fixes.metabolism.metE_penalty = parse_config_real(key, val); return true; }
+  if (key == "metE_acetate_km")         { cfg.fixes.metabolism.metE_acetate_km = parse_config_real(key, val); return true; }
+  if (key == "metE_acetate_max_factor") { cfg.fixes.metabolism.metE_acetate_max_factor = parse_config_real(key, val); return true; }
+  if (key == "eut_km")                  { cfg.fixes.metabolism.eut_km = parse_config_real(key, val); return true; }
+  if (key == "eut_max_penalty")         { cfg.fixes.metabolism.eut_max_penalty = parse_config_real(key, val); return true; }
+  if (key == "km_iron_primary")         { cfg.fixes.metabolism.km_iron_primary = parse_config_real(key, val); return true; }
+  if (key == "km_iron_iroN")            { cfg.fixes.metabolism.km_iron_iroN = parse_config_real(key, val); return true; }
+  if (key == "km_iron_iutA")            { cfg.fixes.metabolism.km_iron_iutA = parse_config_real(key, val); return true; }
+  if (key == "km_iron_fiu")             { cfg.fixes.metabolism.km_iron_fiu = parse_config_real(key, val); return true; }
+  return false;
+}
+
+bool apply_mechanics_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "hertz_k")            { cfg.fixes.mechanics.hertz_k = parse_config_real(key, val); return true; }
+  if (key == "hertzian_enabled")   { cfg.fixes.mechanics.hertzian_enabled = parse_bool_config(val); return true; }
+  if (key == "adhesion_enabled")   { cfg.fixes.mechanics.adhesion_enabled = parse_bool_config(val); return true; }
+  if (key == "adhesion_strength")  { cfg.fixes.mechanics.adhesion_strength = parse_config_real(key, val); return true; }
+  if (key == "adhesion_range")     { cfg.fixes.mechanics.adhesion_range = parse_config_real(key, val); return true; }
   return false;
 }
 
@@ -488,16 +530,18 @@ bool apply_motility_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 19> k_flat_key_handlers = {
+constexpr std::array<FlatKeyHandler, 21> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_advection_key,
   apply_qssa_key,
   apply_vbf_key,
   apply_chemical_key,
+  apply_metabolism_key,
   apply_receptor_key,
   apply_conjugation_key,
   apply_mutation_key,
+  apply_mechanics_key,
   apply_io_key,
   apply_dt_key,
   apply_misc_key,
@@ -549,18 +593,21 @@ void parse_legacy_flat_keys(const std::string& content, SimulationConfig& cfg) {
     std::string key;
     std::string val;
     if (!parse_legacy_key_value(line, key, val)) continue;
-    InputParser::apply_flat_key(cfg, key, val);
+    if (!InputParser::apply_flat_key(cfg, key, val)) {
+      std::cerr << "Warning: unknown config key '" << key << "' ignored\n";
+    }
   }
 }
 
 }  // namespace
 
-void InputParser::apply_flat_key(SimulationConfig& cfg,
+bool InputParser::apply_flat_key(SimulationConfig& cfg,
                                  const std::string& key,
                                  const std::string& val) {
   for (FlatKeyHandler handler : k_flat_key_handlers) {
-    if (handler(cfg, key, val)) return;
+    if (handler(cfg, key, val)) return true;
   }
+  return false;
 }
 
 SimulationConfig InputParser::parse(const std::string& filename) {

@@ -64,6 +64,7 @@ gutibm_add_test(agent test_agent.cpp LABELS "unit")
 gutibm_add_test(iron_fallback test_iron_fallback.cpp LABELS "unit")
 gutibm_add_test(octree test_octree.cpp LABELS "unit")
 gutibm_add_test(fmm test_fmm.cpp LABELS "unit")
+gutibm_add_test(qssa_stoichiometry test_qssa_stoichiometry.cpp LABELS "unit")
 gutibm_add_test(conjugation test_conjugation.cpp LABELS "unit")
 gutibm_add_test(z_gradient test_z_gradient.cpp LABELS "unit")
 gutibm_add_test(domain_decomp test_domain_decomp.cpp LABELS "unit")
@@ -79,6 +80,9 @@ gutibm_add_test(agent_transfer test_agent_transfer.cpp LABELS "unit")
 gutibm_add_test(fix_registry test_fix_registry.cpp LABELS "unit")
 gutibm_add_test(path_utils test_path_utils.cpp LABELS "unit")
 gutibm_add_test(input_parser test_input_parser.cpp
+  LABELS "unit"
+  COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gutibm_add_test(config_ingestion test_config_ingestion.cpp
   LABELS "unit"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(bacteriocin test_bacteriocin.cpp LABELS "unit")

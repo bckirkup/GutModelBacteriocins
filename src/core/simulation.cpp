@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "species_names.h"
 #include "agent_transfer.h"
 #include "fix_registry.h"
 #include "fix_motility.h"
@@ -117,6 +118,9 @@ void restore_bi_loci(Agent& agent,
   }
 }
 
+#ifdef GUTIBM_LEGACY_CHECKPOINTS
+// Restore genome fields from pre-genome-group checkpoints (no /genome dataset).
+// Disabled by default; build with -DGUTIBM_LEGACY_CHECKPOINTS to enable.
 void restore_legacy_genome(Agent& agent, const HDF5CheckpointSnapshot& snap, size_t agent_index) {
   Int r = 0;
   for (Real& expr : agent.genome.receptor_expression) {
@@ -125,6 +129,7 @@ void restore_legacy_genome(Agent& agent, const HDF5CheckpointSnapshot& snap, siz
   agent.genome.bi_loci.clear();
   agent.genome.bi_loci.resize(static_cast<size_t>(snap.lineage.num_bi_loci[agent_index]));
 }
+#endif  // GUTIBM_LEGACY_CHECKPOINTS
 
 void restore_checkpoint_grid(ChemicalField& chem,
                              const Domain& domain,
@@ -427,7 +432,13 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
         a.genome.cdi_immunity = static_cast<uint16_t>(gen.cdi_immunity[i]);
       }
     } else {
+#ifdef GUTIBM_LEGACY_CHECKPOINTS
       restore_legacy_genome(a, snap, i);
+#else
+      throw SimulationError(
+          "checkpoint has no genome group (legacy format); rebuild with "
+          "-DGUTIBM_LEGACY_CHECKPOINTS to load pre-genome snapshots");
+#endif
     }
 
     tag_crypt_resident(a, advection_);
@@ -681,7 +692,7 @@ void Simulation::module_chemistry(Real dt) {
   prune_toxin_bursts(clock_.time);
 
   // QSSA: compute steady-state toxin field via Green's functions
-  if (Int i_tox = chem_.find("bacteriocin"); i_tox >= 0) {
+  if (Int i_tox = chem_.find(species::BACTERIOCIN); i_tox >= 0) {
     qssa_.solve_bacteriocin_field(agents_, toxin_bursts_, clock_.time,
                                     cfg_.chem_env.protease, advection_, chem_, i_tox);
     if (gpu_active_) {
@@ -689,7 +700,7 @@ void Simulation::module_chemistry(Real dt) {
     }
   }
 
-  if (Int i_nuc = chem_.find("nuclease_toxin"); i_nuc >= 0) {
+  if (Int i_nuc = chem_.find(species::NUCLEASE_TOXIN); i_nuc >= 0) {
     qssa_.solve_nuclease_toxin_field(agents_, toxin_bursts_, clock_.time,
                                       cfg_.chem_env.protease, advection_, chem_, i_nuc);
     if (gpu_active_) {
@@ -1199,7 +1210,7 @@ void Simulation::allreduce_global_stats() {
 
 Real Simulation::local_O2(const Agent& agent) const {
   if (!cfg_.chem_env.oxygen.enabled) return 0.0;
-  Int i_o2 = chem_.find("oxygen");
+  Int i_o2 = chem_.find(species::OXYGEN);
   if (i_o2 < 0 || agent.grid_cell < 0) return 0.0;
   return chem_.conc(i_o2, agent.grid_cell);
 }
@@ -1210,7 +1221,7 @@ Real Simulation::ros_induction_rate(const Agent& agent) const {
 }
 
 Real Simulation::local_nuclease_toxin(const Agent& agent) const {
-  Int i_nuc = chem_.find("nuclease_toxin");
+  Int i_nuc = chem_.find(species::NUCLEASE_TOXIN);
   if (i_nuc < 0 || agent.grid_cell < 0) return 0.0;
   return chem_.conc(i_nuc, agent.grid_cell);
 }

@@ -1,4 +1,5 @@
 #include "qssa_gpu.h"
+#include "species_names.h"
 #include "agent_pool_gpu.h"
 #include "chemical_field_gpu.h"
 #include "chemical_field.h"
@@ -23,9 +24,9 @@ bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents, Int num_agents,
 #else
   if (!gpu_runtime_enabled() || num_agents <= 0) return false;
 
-  Int i_iron = chem.find("iron");
-  Int i_b12 = chem.find("b12");
-  Int i_carbon = chem.find("carbon");
+  Int i_iron = chem.find(species::IRON);
+  Int i_b12 = chem.find(species::B12);
+  Int i_carbon = chem.find(species::CARBON);
 
   gpu::launch_nutrient_depletion_kernel(
       agents.grid_cell(), agents.mu_realized(), agents.biomass(), agents.state(),

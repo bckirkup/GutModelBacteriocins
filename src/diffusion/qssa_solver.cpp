@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "qssa_solver.h"
+#include "species_names.h"
 #include "fmm.h"
 #include "domain.h"
 #include "advection.h"
@@ -124,6 +125,7 @@ NearFieldGridContext make_near_field_grid(const Domain& domain, Real cutoff_radi
 GreensFunctionParams weighted_avg_params(
     const std::vector<GreensFunctionParams>& params,
     const std::vector<Real>& strength_factors,
+    const QSSAConfig& cfg,
     std::vector<Real>& strengths) {
   strengths.resize(params.size());
   GreensFunctionParams avg_params{};
@@ -141,9 +143,9 @@ GreensFunctionParams weighted_avg_params(
     avg_params.pI          /= total_s;
     avg_params.retardation /= total_s;
   } else {
-    avg_params.diff_coeff  = 4e-11;
-    avg_params.pI          = 7.0;
-    avg_params.retardation = 5.0;
+    avg_params.diff_coeff  = cfg.fallback_diff_coeff;
+    avg_params.pI          = cfg.fallback_pI;
+    avg_params.retardation = cfg.fallback_retardation;
   }
   avg_params.source_rate = 0.0;
   return avg_params;
@@ -320,7 +322,7 @@ void QSSASolver::solve_bacteriocin_field_fmm(
 
   std::vector<Real> strengths;
   const GreensFunctionParams avg_params =
-      weighted_avg_params(params, strength_factors, strengths);
+      weighted_avg_params(params, strength_factors, cfg_, strengths);
 
   FMM fmm;
   fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
@@ -384,10 +386,10 @@ void QSSASolver::solve_nutrient_depletion(
     ChemicalField& chem,
     const OxygenConfig& oxygen) const {
 
-  Int i_iron   = chem.find("iron");
-  Int i_b12    = chem.find("b12");
-  Int i_carbon = chem.find("carbon");
-  Int i_oxygen = chem.find("oxygen");
+  Int i_iron   = chem.find(species::IRON);
+  Int i_b12    = chem.find(species::B12);
+  Int i_carbon = chem.find(species::CARBON);
+  Int i_oxygen = chem.find(species::OXYGEN);
 
   const Real cell_vol = domain_->dx() * domain_->dx() * domain_->dx();
 
@@ -406,19 +408,19 @@ void QSSASolver::solve_nutrient_depletion(
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif
-      chem.reac(i_iron, cell) -= consumption * 1.0e-6;
+      chem.reac(i_iron, cell) -= consumption * cfg_.iron_stoichiometry;
     }
     if (i_b12 >= 0) {
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif
-      chem.reac(i_b12, cell) -= consumption * 1.0e-9;
+      chem.reac(i_b12, cell) -= consumption * cfg_.b12_stoichiometry;
     }
     if (i_carbon >= 0) {
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif
-      chem.reac(i_carbon, cell) -= consumption * 0.5;
+      chem.reac(i_carbon, cell) -= consumption * cfg_.carbon_stoichiometry;
     }
     if (oxygen.enabled && i_oxygen >= 0 && cell_vol > 0.0) {
       const Real o2_use = oxygen.q_consumption * std::max(a.mu_realized, 0.0);

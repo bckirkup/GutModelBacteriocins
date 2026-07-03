@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "fix_motility.h"
+#include "species_names.h"
 #include "simulation.h"
 #include <algorithm>
 #include <cmath>
@@ -72,8 +73,8 @@ void FixMotility::update_agent(Agent& agent, Real dt) {
   if (mot.run_timer > 0.0) {
     if (cfg_.chemotaxis_enabled && agent.grid_cell >= 0 && dt > 0.0) {
       auto& chem = sim_.chemical_field();
-      Int i_carbon = chem.find("carbon");
-      Int i_oxygen = chem.find("oxygen");
+      Int i_carbon = chem.find(species::CARBON);
+      Int i_oxygen = chem.find(species::OXYGEN);
       Real carbon = (i_carbon >= 0) ? chem.conc(i_carbon, agent.grid_cell) : 0.0;
       Real oxygen = (i_oxygen >= 0) ? chem.conc(i_oxygen, agent.grid_cell) : 0.0;
       const Real d_carbon = (carbon - mot.prev_carbon) / dt;
@@ -103,8 +104,8 @@ void FixMotility::update_agent(Agent& agent, Real dt) {
 
   if (cfg_.chemotaxis_enabled && agent.grid_cell >= 0) {
     auto& chem = sim_.chemical_field();
-    Int i_carbon = chem.find("carbon");
-    Int i_oxygen = chem.find("oxygen");
+    Int i_carbon = chem.find(species::CARBON);
+    Int i_oxygen = chem.find(species::OXYGEN);
     Real carbon = (i_carbon >= 0) ? chem.conc(i_carbon, agent.grid_cell) : 0.0;
     Real oxygen = (i_oxygen >= 0) ? chem.conc(i_oxygen, agent.grid_cell) : 0.0;
     mot.prev_carbon = carbon;

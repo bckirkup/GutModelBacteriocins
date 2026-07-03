@@ -246,7 +246,7 @@ class Fix {
 
 | Fix | Config struct | Key parameters |
 |-----|--------------|----------------|
-| `FixMetabolism` | `MetabolismConfig` | `mu_max_default`, `division_threshold`, `metE_penalty`, `eut_penalty`, `maintenance_rate`, `km_iron_primary`, `km_iron_iroN`, `km_iron_iutA`, `km_iron_fiu` |
+| `FixMetabolism` | `MetabolismConfig` | `division_threshold`, `metE_penalty`, `metE_acetate_km`, `metE_acetate_max_factor`, `eut_km`, `eut_max_penalty`, `maintenance_rate`, `km_iron_primary`, `km_iron_iroN`, `km_iron_iutA`, `km_iron_fiu` |
 | `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `retardation_basic/acidic/neutral`, `D_free_colicin`, `burst_molecules`, `microcin_mu_penalty` |
 | `FixReceptor` | `ReceptorConfig` | `kd_*` binding affinities, `kill_rate_colicin/microcin`, `immunity_factor` |
 | `FixConjugation` | `ConjugationConfig` | `base_transfer_prob`, `contact_radius`, `shear_crit` |

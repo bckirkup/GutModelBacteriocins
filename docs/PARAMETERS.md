@@ -75,7 +75,11 @@ When disabled (`adaptive_dt_enabled = false`), the fixed `bio_dt` is used as bef
 **Taylor-Aris:** Enhances effective longitudinal diffusion via:
 `D_eff = D_mol + U(z)^2 * h^2 / (210 * D_mol)`
 
-This captures shear-enhanced spreading of toxins in the mucus flow.
+This captures shear-enhanced spreading of toxins in the mucus flow. The
+constant `210` is the classical result for fully-developed parabolic
+(Poiseuille) flow (`profile_alpha = 2`); for other profile exponents the
+prefactor differs, so with the default `profile_alpha = 1.5` this is an
+order-of-magnitude approximation rather than an exact coefficient.
 
 ### Peristaltic Mixing (VADI §77)
 
@@ -131,7 +135,7 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 |-----------|---------|-------|-------------|
 | `vbf.density` | 1e11 | #/m^3 | Anaerobic background density |
 | `vbf.drag_coeff` | 1e-9 | N·s/m | Stokes drag coefficient |
-| `vbf.nutrient_sink` | 1e-4 | mol/m^3/s | Background nutrient consumption |
+| `vbf.nutrient_sink` | 1e-4 | 1/s | First-order iron uptake rate constant (sink is `-nutrient_sink · [iron]`, concentration-dependent — **not** a zero-order mol/m³/s removal) |
 | `vbf.mucin_liberation` | 5e-5 | mol/m^3/s | Peak monosaccharide release (at z=0) |
 | `vbf.carrying_cap` | 1e12 | #/m^3 | Local carrying capacity |
 | `vbf.viscosity` | 0.01 | Pa·s | Effective viscosity (~10× water) |
@@ -225,7 +229,6 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `metabolism.mu_max_default` | 5e-4 | 1/s | Default max growth rate |
 | `metabolism.division_threshold` | 2.0 | — | Biomass ratio for division |
 | `metabolism.metE_penalty` | 0.05 | — | MetE pathway base cost (BtuB loss) |
 | `metabolism.metE_acetate_km` | 40.0 | mol/m³ | Half-saturation for acetate inhibition of MetE |
@@ -486,13 +489,15 @@ human-readable notes — see [CONFIG_FORMAT.md](CONFIG_FORMAT.md).
 
 Each strain in `initial_strains` has:
 
-| Field | Description |
-|-------|-------------|
-| `type` | Integer strain identifier |
-| `count` | Number of initial agents |
-| `mu_max` | Maximum growth rate |
-| `plasmids` | List of plasmid names (from PlasmidLibrary) |
-| `conjugative` | Whether the strain can conjugate |
+| Field | Default | Description |
+|-------|---------|-------------|
+| `type` | — | Integer strain identifier |
+| `count` | — | Number of initial agents |
+| `mu_max` | `5e-4` | Maximum specific growth rate (1/s) for the strain's agents. This is the **only** place the max growth rate is configured — it is a per-strain property (`Agent::mu_max`), scaled each step by the Monod terms in `FixMetabolism` (`mu = mu_max · monod_carbon · monod_iron · monod_b12`). There is no global `metabolism` default growth rate. |
+| `plasmids` | `[]` | List of plasmid names (from `PlasmidLibrary`) |
+| `conjugative` | `false` | Whether the strain can initiate conjugation (HGT) |
+| `cdi_type` | `0` | CDI system identifier delivered by this strain (`0` = none); see [Contact-Dependent Inhibition](#contact-dependent-inhibition-spec-3) |
+| `cdi_immunity` | `0` | CDI immunity identifier this strain carries (`0` = none) |
 
 Example:
 ```json
