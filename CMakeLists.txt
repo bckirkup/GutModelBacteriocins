@@ -31,6 +31,8 @@ endif()
 # ── CUDA ─────────────────────────────────────────────────────────────────
 if(GUTIBM_USE_CUDA)
   enable_language(CUDA)
+  # std::array::operator[] in __device__ code (gpu_common.cuh) needs relaxed constexpr.
+  string(APPEND CMAKE_CUDA_FLAGS " --expt-relaxed-constexpr")
   set(CMAKE_CUDA_STANDARD 17)
   set(CMAKE_CUDA_STANDARD_REQUIRED ON)
   if(NOT CMAKE_CUDA_ARCHITECTURES)

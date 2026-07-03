@@ -150,8 +150,6 @@ void collect_microcin_sources(const AgentPool& agents,
     if (a.state == PhenoState::DEAD || a.state == PhenoState::SOS_INDUCED) continue;
 
     for (const auto& bi : a.genome.bi_loci) {
-      if (bi.molecular_weight >= 10000.0) continue;
-
       GreensFunctionParams gfp;
       gfp.diff_coeff   = bi.diff_coeff;
       gfp.retardation  = bi.retardation;
