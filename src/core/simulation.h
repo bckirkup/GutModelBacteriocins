@@ -145,7 +145,7 @@ class Simulation {
   void take_lineage_snapshot();
 
   // Module execution (NUFEB-inspired)
-  void module_biology(Real dt);
+  void module_biology(Real dt) const;
   void module_chemistry(Real dt);
   void module_physics(Real dt);
 
@@ -171,8 +171,8 @@ class Simulation {
   HDF5Writer      hdf5_;
   RNG             rng_;
 
-  // Fix modules
-  std::vector<std::unique_ptr<Fix>> fixes_;
+  // Fix modules (mutable: compute() updates simulation state via sim_ reference)
+  mutable std::vector<std::unique_ptr<Fix>> fixes_;
 
   // Config
   SimulationConfig cfg_;

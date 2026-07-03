@@ -21,7 +21,7 @@ void FixMetabolism::init() { /* no-op: parameters set via cfg_ at construction *
 
 namespace {
 
-bool try_gpu_metabolism(Simulation& sim, MetabolismConfig& cfg, Real dt) {
+bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   if (!sim.gpu_active()) return false;
   if (sim.config().fur.enabled) return false;
 
@@ -34,17 +34,19 @@ bool try_gpu_metabolism(Simulation& sim, MetabolismConfig& cfg, Real dt) {
   Int i_iron = chem.find("iron");
   Int i_b12 = chem.find("b12");
   Int i_acetate = chem.find("acetate");
-  Int i_eut = chem.find("ethanolamine");
-  if (!ag.run_metabolism(
+  if (Int i_eut = chem.find("ethanolamine");
+      !ag.run_metabolism(
           sim.domain(), cfg,
-          i_carbon >= 0 ? cg.conc_device(i_carbon) : nullptr,
-          i_iron >= 0 ? cg.conc_device(i_iron) : nullptr,
-          i_b12 >= 0 ? cg.conc_device(i_b12) : nullptr,
-          i_acetate >= 0 ? cg.conc_device(i_acetate) : nullptr,
-          i_eut >= 0 ? cg.conc_device(i_eut) : nullptr,
-          i_carbon >= 0 ? cg.reac_device(i_carbon) : nullptr,
-          i_iron >= 0 ? cg.reac_device(i_iron) : nullptr,
-          i_b12 >= 0 ? cg.reac_device(i_b12) : nullptr,
+          {
+            i_carbon >= 0 ? cg.conc_device(i_carbon) : nullptr,
+            i_iron >= 0 ? cg.conc_device(i_iron) : nullptr,
+            i_b12 >= 0 ? cg.conc_device(i_b12) : nullptr,
+            i_acetate >= 0 ? cg.conc_device(i_acetate) : nullptr,
+            i_eut >= 0 ? cg.conc_device(i_eut) : nullptr,
+            i_carbon >= 0 ? cg.reac_device(i_carbon) : nullptr,
+            i_iron >= 0 ? cg.reac_device(i_iron) : nullptr,
+            i_b12 >= 0 ? cg.reac_device(i_b12) : nullptr,
+          },
           dt)) {
     return false;
   }
@@ -155,8 +157,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   Real S_iron   = (i_iron >= 0)   ? chem.conc(i_iron, cell)   : 1.0;
   Real S_b12    = (i_b12 >= 0)    ? chem.conc(i_b12, cell)    : 1.0;
 
-  const auto& fur_cfg = sim_.config().fur;
-  if (fur_cfg.enabled) {
+  if (const auto& fur_cfg = sim_.config().fur; fur_cfg.enabled) {
     const Real fur_factor = 1.0 + fur_cfg.upregulation_max * fur_cfg.Km
         / (fur_cfg.Km + S_iron);
     for (int r = 0; r < NUM_RECEPTORS; ++r) {
@@ -211,8 +212,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
 
   Real mu = agent.mu_max * monod_carbon * monod_iron * monod_b12;
 
-  const auto& o2cfg = sim_.config().oxygen;
-  if (o2cfg.enabled) {
+  if (const auto& o2cfg = sim_.config().oxygen; o2cfg.enabled) {
     if (Int i_o2 = chem.find("oxygen"); i_o2 >= 0) {
       const Real s_o2 = chem.conc(i_o2, cell);
       const Real monod_o2_boost =
@@ -320,7 +320,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   }
 }
 
-void FixMetabolism::check_death(Agent& agent) {
+void FixMetabolism::check_death(Agent& agent) const {
   if (agent.mu_realized < cfg_.death_threshold && agent.age > 3600.0) {
     agent.state = PhenoState::DEAD;
   }

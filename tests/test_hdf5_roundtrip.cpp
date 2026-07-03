@@ -312,7 +312,7 @@ void validate_step(hid_t file,
                    Real expected_time) {
   validate_step_schema(file, step);
   validate_step_metadata(file, step, expected_step, expected_time,
-                         static_cast<Int>(sim.global_agent_count()));
+                         sim.global_agent_count());
   validate_step_agents_match_sim(file, step, sim);
   validate_step_genome(file, step, sim);
 }

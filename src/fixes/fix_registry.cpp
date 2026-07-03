@@ -14,6 +14,7 @@
 #include "simulation.h"
 
 #include <iostream>
+#include <string_view>
 #include <unordered_map>
 
 namespace gutibm {
@@ -25,8 +26,8 @@ std::vector<std::pair<std::string, FixRegistry::Factory>>& FixRegistry::entries(
 
 void FixRegistry::register_fix(const std::string& name, Factory factory) {
   auto& reg = entries();
-  for (const auto& entry : reg) {
-    if (entry.first == name) return;  // first registration wins
+  for (const auto& [entry_name, factory] : reg) {
+    if (entry_name == name) return;  // first registration wins
   }
   reg.emplace_back(name, std::move(factory));
 }
@@ -68,6 +69,17 @@ void FixRegistry::register_defaults() {
     });
 }
 
+namespace {
+
+struct TransparentStringHash {
+  using is_transparent = void;
+  [[nodiscard]] size_t operator()(std::string_view sv) const noexcept {
+    return std::hash<std::string_view>{}(sv);
+  }
+};
+
+}  // namespace
+
 std::vector<std::unique_ptr<Fix>> FixRegistry::create_all(Simulation& sim,
                                                           const SimulationConfig& cfg) {
   register_defaults();
@@ -77,10 +89,10 @@ std::vector<std::unique_ptr<Fix>> FixRegistry::create_all(Simulation& sim,
     order = default_fix_names();
   }
 
-  std::unordered_map<std::string, Factory> factories;
+  std::unordered_map<std::string, Factory, TransparentStringHash, std::equal_to<>> factories;
   factories.reserve(entries().size());
   for (auto& [name, factory] : entries()) {
-    factories.emplace(name, factory);
+    factories.try_emplace(name, factory);
   }
 
   std::vector<std::unique_ptr<Fix>> fixes;

@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <string>
 #include <sys/stat.h>
@@ -16,7 +17,7 @@ using namespace gutibm;
 
 namespace {
 
-void expect_throw(void (*fn)(), const char* label) {
+void expect_throw(const std::function<void()>& fn, const char* label) {
   bool threw = false;
   try {
     fn();

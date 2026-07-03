@@ -30,7 +30,7 @@ bool path_has_null_byte(const std::string_view path) {
 
 bool path_has_parent_traversal(const std::string& path) {
   const fs::path p(path);
-  return std::find(p.begin(), p.end(), fs::path("..")) != p.end();
+  return std::ranges::find(p, fs::path("..")) != p.end();
 }
 
 bool is_world_writable_directory(const fs::path& dir) {

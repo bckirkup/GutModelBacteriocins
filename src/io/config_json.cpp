@@ -25,8 +25,6 @@ class JsonCursor {
     }
   }
 
-  bool eof() const { return pos_ >= text_.size(); }
-
   bool match(char expected) {
     skip_ws();
     if (pos_ < text_.size() && text_[pos_] == expected) {

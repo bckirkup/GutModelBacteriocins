@@ -62,7 +62,8 @@ struct Agent {
     Real stop_timer = 0.0;
     Real prev_carbon = 0.0;
     Real prev_oxygen = 0.0;
-  } motility;
+  };
+  MotilityState motility;
 
   // ── Crypt state ──────────────────────────────────────────────────────
   bool   in_crypt = false; // true when agent resides in a crypt refugium

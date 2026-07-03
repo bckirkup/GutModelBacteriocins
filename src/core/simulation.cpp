@@ -161,23 +161,28 @@ void schedule_output_from_time(Real time, Real interval, Real& next_output, Real
 bool try_exit_crypt(Agent& agent, Real dt, Real crypt_z, Real epsilon,
                     Real exit_rate, RNG& rng, Int& crypt_pop) {
   if (!agent.in_crypt) return false;
-  Real p_exit = 1.0 - std::exp(-exit_rate * dt);
-  if (!rng.bernoulli(p_exit)) return false;
+  if (Real p_exit = 1.0 - std::exp(-exit_rate * dt); !rng.bernoulli(p_exit)) return false;
   agent.x[2] = crypt_z + epsilon;
   agent.in_crypt = false;
   --crypt_pop;
   return true;
 }
 
-bool try_enter_crypt(Agent& agent, Real dt, Real crypt_z, Real crypt_depth,
-                     Real lo_z, Real entry_rate, Int carrying_capacity,
+struct CryptEntryParams {
+  Real crypt_z;
+  Real crypt_depth;
+  Real lo_z;
+  Real entry_rate;
+  Int carrying_capacity;
+};
+
+bool try_enter_crypt(Agent& agent, Real dt, const CryptEntryParams& params,
                      RNG& rng, Int& crypt_pop) {
   if (agent.in_crypt) return false;
-  if (agent.x[2] >= crypt_z + crypt_depth) return false;
-  if (crypt_pop >= carrying_capacity) return false;
-  Real p_entry = 1.0 - std::exp(-entry_rate * dt);
-  if (!rng.bernoulli(p_entry)) return false;
-  agent.x[2] = rng.uniform(lo_z, crypt_z);
+  if (agent.x[2] >= params.crypt_z + params.crypt_depth) return false;
+  if (crypt_pop >= params.carrying_capacity) return false;
+  if (Real p_entry = 1.0 - std::exp(-params.entry_rate * dt); !rng.bernoulli(p_entry)) return false;
+  agent.x[2] = rng.uniform(params.lo_z, params.crypt_z);
   agent.in_crypt = true;
   ++crypt_pop;
   return true;
@@ -187,14 +192,15 @@ enum class MigrateSide { None, Lo, Hi };
 
 MigrateSide classify_migration(const Agent& agent, Int my_rank, Int axis,
                                const Domain& domain) {
+  using enum MigrateSide;
   if (const Int dest = domain.owner_rank(agent.x); dest == my_rank) {
-    return MigrateSide::None;
+    return None;
   } else if (dest == domain.rank_lo()) {
-    return MigrateSide::Lo;
+    return Lo;
   } else if (dest == domain.rank_hi()) {
-    return MigrateSide::Hi;
+    return Hi;
   }
-  return (agent.x[axis] < domain.local_lo_x()) ? MigrateSide::Lo : MigrateSide::Hi;
+  return (agent.x[axis] < domain.local_lo_x()) ? Lo : Hi;
 }
 
 }  // namespace
@@ -665,7 +671,7 @@ void Simulation::step(Real dt) {
   step_count_++;
 }
 
-void Simulation::module_biology(Real dt) {
+void Simulation::module_biology(Real dt) const {
   for (const auto& fix : fixes_) {
     fix->compute(dt);
   }
@@ -785,9 +791,9 @@ void Simulation::rebuild_spatial_hash() {
   Int i = 0;
   for (const Agent& a : agents_) {
     const bool live = a.state != PhenoState::DEAD;
-    const bool corpse = cfg_.cdi.enabled && a.death_time >= 0.0
-        && (time_ - a.death_time) < cfg_.cdi.corpse_persistence;
-    if (live || corpse) {
+    if (const bool corpse = cfg_.cdi.enabled && a.death_time >= 0.0
+            && (time_ - a.death_time) < cfg_.cdi.corpse_persistence;
+        live || corpse) {
       domain_.spatial_hash().insert(i, a.x);
     }
     ++i;
@@ -856,9 +862,11 @@ void Simulation::crypt_migration(Real dt) {
                        rng_, crypt_pop)) {
       continue;
     }
-    try_enter_crypt(a, dt, crypt_z, cfg_.advection.crypt_depth, lo_z,
-                    cfg_.advection.crypt_entry_rate,
-                    cfg_.advection.crypt_carrying_capacity, rng_, crypt_pop);
+    const CryptEntryParams entry_params{
+      crypt_z, cfg_.advection.crypt_depth, lo_z,
+      cfg_.advection.crypt_entry_rate, cfg_.advection.crypt_carrying_capacity,
+    };
+    try_enter_crypt(a, dt, entry_params, rng_, crypt_pop);
   }
 }
 

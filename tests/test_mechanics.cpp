@@ -16,7 +16,7 @@ using namespace gutibm;
 
 // Helper: create a minimal simulation with two overlapping agents
 static Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
-                                     MechanicsConfig mcfg = {}) {
+                                     const MechanicsConfig& mcfg = {}) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.initial_strains.clear();
   cfg.domain.hi = {100e-6, 100e-6, 100e-6};

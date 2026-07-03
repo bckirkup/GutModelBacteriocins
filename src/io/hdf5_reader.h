@@ -67,7 +67,7 @@ struct HDF5CheckpointGenome {
 };
 
 struct HDF5CheckpointGrid {
-  std::map<std::string, std::vector<double>> species;
+  std::map<std::string, std::vector<double>, std::less<>> species;
 };
 
 struct HDF5CheckpointSnapshot {

@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "sim_fingerprint.h"
+#include <array>
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -86,7 +87,7 @@ void test_simulation_completes() {
 
 void test_deterministic_growth() {
   // Run twice with same seed, verify biomass totals match
-  Real total_biomass[2] = {0.0, 0.0};
+  std::array<Real, 2> total_biomass = {0.0, 0.0};
 
   for (int trial : {0, 1}) {
     SimulationConfig cfg = make_test_config(999);
@@ -126,11 +127,11 @@ void test_chemical_field_parity() {
   sim.init(cfg);
 
   // Run a few steps
-  for (int s : {0, 1, 2}) {
+  for (int step = 0; step < 3; ++step) {
     sim.step(cfg.bio_dt);
   }
 
-  auto& chem = sim.chemical_field();
+  const auto& chem = sim.chemical_field();
   Int i_carbon = chem.find("carbon");
   Int i_iron = chem.find("iron");
 

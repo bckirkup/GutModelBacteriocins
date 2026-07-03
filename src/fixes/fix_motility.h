@@ -18,7 +18,7 @@ class FixMotility : public Fix {
 
   void init() override;
   void pre_step(Real dt) override;
-  void compute(Real /*dt*/) override {}
+  void compute(Real /*dt*/) override { /* motility runs in pre_step only */ }
 
   static void init_agent_motility(Agent& agent, const MotilityConfig& cfg, RNG& rng);
 

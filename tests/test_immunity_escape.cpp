@@ -151,16 +151,21 @@ void test_smoke_with_immunity_escape() {
     Int escape_bi = 0;
   };
 
-  auto count_outcome = [](const Simulation& sim) {
+  auto count_escape_bi = [](const Agent& a) {
+    Int count = 0;
+    if (a.type != 1) return count;
+    for (const auto& bi : a.genome.bi_loci) {
+      if (bi.immunity_binding_affinity < 1.0) {
+        ++count;
+      }
+    }
+    return count;
+  };
+
+  auto count_outcome = [&](const Simulation& sim) {
     Outcome out;
     for (const Agent& a : sim.agents()) {
-      if (a.type == 1) {
-        for (const auto& bi : a.genome.bi_loci) {
-          if (bi.immunity_binding_affinity < 1.0) {
-            out.escape_bi++;
-          }
-        }
-      }
+      out.escape_bi += count_escape_bi(a);
       if (a.state == PhenoState::DEAD) continue;
       switch (a.type) {
         case 1: out.producers++; break;

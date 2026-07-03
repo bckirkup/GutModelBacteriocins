@@ -17,6 +17,7 @@ FixReceptor::FixReceptor(Simulation& sim, const ReceptorConfig& cfg)
     : Fix("receptor", sim), cfg_(cfg) {}
 
 void FixReceptor::compute(Real dt) {
+  using enum PhenoState;
   auto& agents = sim_.agents();
   auto& rng    = sim_.rng();
   Int n = agents.size();
@@ -28,7 +29,7 @@ void FixReceptor::compute(Real dt) {
   #endif
   for (Int i = 0; i < n; ++i) {
     const Agent& a = agents[i];
-    if (a.state == PhenoState::DEAD || a.state == PhenoState::SOS_INDUCED)
+    if (a.state == DEAD || a.state == SOS_INDUCED)
       continue;
     kill_probs[i] = compute_kill_prob(a, dt);
   }
@@ -36,11 +37,11 @@ void FixReceptor::compute(Real dt) {
   // Apply kills serially (RNG is not thread-safe)
   for (Int i = 0; i < n; ++i) {
     Agent& a = agents[i];
-    if (a.state == PhenoState::DEAD || a.state == PhenoState::SOS_INDUCED)
+    if (a.state == DEAD || a.state == SOS_INDUCED)
       continue;
 
     if (kill_probs[i] > 0.0 && rng.bernoulli(kill_probs[i])) {
-      a.state = PhenoState::DEAD;
+      a.state = DEAD;
     }
   }
 }

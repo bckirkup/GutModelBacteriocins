@@ -5,13 +5,15 @@
 #include "fix_bacteriocin.h"
 #include "simulation.h"
 #include "qssa_solver.h"
+#include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace gutibm {
 
 namespace {
 
-constexpr Real k_ln2 = 0.6931471805599453;
+constexpr Real k_ln2 = std::numbers::ln2;
 constexpr Real k_sos_lysis_delay_s = 300.0;
 constexpr Real k_phage_lysis_delay_s = 60.0;
 
@@ -23,10 +25,8 @@ FixBacteriocin::FixBacteriocin(Simulation& sim, const BacteriocinConfig& cfg)
 void FixBacteriocin::init() { /* no-op: configuration is read at construction */ }
 
 bool FixBacteriocin::has_release_mode(const Agent& agent, ReleaseMode mode) const {
-  for (const auto& bi : agent.genome.bi_loci) {
-    if (bi.release_mode == mode) return true;
-  }
-  return false;
+  return std::ranges::any_of(agent.genome.bi_loci,
+                             [mode](const BICluster& bi) { return bi.release_mode == mode; });
 }
 
 void FixBacteriocin::compute(Real dt) {
@@ -67,7 +67,7 @@ void FixBacteriocin::post_step(Real dt) { // NOLINT(readability-make-member-func
   }
 }
 
-void FixBacteriocin::apply_microcin_secretion(Agent& agent, Real /*dt*/) {
+void FixBacteriocin::apply_microcin_secretion(Agent& agent, Real /*dt*/) const {
   if (agent.state != PhenoState::NORMAL) return;
   if (agent.microcin_penalty_applied) return;
 

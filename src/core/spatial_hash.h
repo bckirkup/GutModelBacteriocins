@@ -35,9 +35,7 @@ class SpatialHash {
     Int ix;
     Int iy;
     Int iz;
-    bool operator==(const CellKey& o) const {
-      return ix == o.ix && iy == o.iy && iz == o.iz;
-    }
+    bool operator==(const CellKey& o) const = default;
   };
 
   struct CellKeyHash {

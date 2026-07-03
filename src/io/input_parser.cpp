@@ -11,7 +11,9 @@
 #include "error.h"
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
 #include <cstdlib>
+#include <array>
 
 namespace gutibm {
 
@@ -139,7 +141,7 @@ Int find_chemical_spec(std::vector<ChemicalSpec>& chemicals, std::string_view na
   return -1;
 }
 
-bool parse_bool_config(const std::string& val) {
+bool parse_bool_config(std::string_view val) {
   return val == "true" || val == "1";
 }
 
@@ -148,19 +150,17 @@ bool parse_bool_config(const std::string& val) {
 void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
 
-  if (cfg.oxygen.enabled) {
-    if (find_chemical_spec(cfg.chemicals, "oxygen") < 0) {
-      const Real c0 = cfg.oxygen.epithelial_conc;
-      cfg.chemicals.push_back({
-          "oxygen", cfg.oxygen.D_free, 1.0, c0, c0, 0.0, true, k_z_lambda});
-    }
+  if (cfg.oxygen.enabled && find_chemical_spec(cfg.chemicals, "oxygen") < 0) {
+    const Real c0 = cfg.oxygen.epithelial_conc;
+      cfg.chemicals.emplace_back(
+          ChemicalSpec{"oxygen", cfg.oxygen.D_free, 1.0, c0, c0, 0.0, true, k_z_lambda});
   }
 
   if (cfg.acetate.enabled) {
     Int idx = find_chemical_spec(cfg.chemicals, "acetate");
     if (idx < 0) {
-      cfg.chemicals.push_back({
-          "acetate", cfg.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda});
+      cfg.chemicals.emplace_back(
+          ChemicalSpec{"acetate", cfg.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda});
     } else {
       auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
       spec.diff_coeff = cfg.acetate.D_free;
@@ -172,9 +172,9 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
   if (cfg.mucin.enabled) {
     if (find_chemical_spec(cfg.chemicals, "mucin") < 0) {
       const Real c0 = cfg.mucin.initial_conc;
-      cfg.chemicals.push_back({
-          "mucin", cfg.mucin.D_free, cfg.mucin.retardation,
-          c0, c0, 0.0, false, k_z_lambda});
+      cfg.chemicals.emplace_back(
+          ChemicalSpec{"mucin", cfg.mucin.D_free, cfg.mucin.retardation,
+                       c0, c0, 0.0, false, k_z_lambda});
     }
     cfg.vbf.use_dynamic_mucin = true;
   }
@@ -487,7 +487,7 @@ bool apply_motility_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
-constexpr FlatKeyHandler k_flat_key_handlers[] = {
+constexpr std::array<FlatKeyHandler, 19> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_advection_key,
@@ -521,8 +521,8 @@ bool parse_legacy_key_value(const std::string& line,
   auto colon = trimmed.find(':');
   if (colon == std::string::npos) return false;
 
-  std::string key = trim_config(trimmed.substr(0, colon));
-  std::string val = trim_config(trimmed.substr(colon + 1));
+  std::string key = trim_config(std::string_view(trimmed).substr(0, colon));
+  std::string val = trim_config(std::string_view(trimmed).substr(colon + 1));
   if (key.empty() || key.front() == '_') return false;
 
   if (key.size() >= 2 && key.front() == '"' && key.back() == '"') {
