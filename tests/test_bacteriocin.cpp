@@ -6,9 +6,14 @@
 #include "plasmid.h"
 #include "simulation.h"
 #include "input_parser.h"
+#include "qssa_solver.h"
+#include "domain.h"
+#include "advection.h"
+#include "chemical_field.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 using namespace gutibm;
 
@@ -116,6 +121,79 @@ void test_sos_induction_high_basal_rate() {
   assert(sim.agents()[0].timers.sos_timer > 0.0);
 
   std::cout << "  test_sos_induction_high_basal_rate: PASSED\n";
+}
+
+void test_steady_state_qssa_source() {
+  // A continuously-secreted microcin (MccV, ReleaseMode::CONTINUOUS) must show up
+  // as a steady-state QSSA source at its producer, while a lysis-only colicin
+  // (ColE1, ReleaseMode::SOS_LYSIS) contributes NO continuous source without a
+  // lysis burst — colicins reach the field via ToxinBurstSource (see the SOS
+  // lysis / burst tests), not via collect_microcin_sources.
+  const BICluster mcc_v = PlasmidLibrary::microcin_V();
+  assert(mcc_v.release_mode == ReleaseMode::CONTINUOUS);
+
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {100e-6, 100e-6, 50e-6};
+  dcfg.grid_dx = 5e-6;
+  Domain domain;
+  domain.init(dcfg);
+
+  AdvectionConfig acfg;
+  acfg.mucus_thickness = 50e-6;
+  AdvectionField adv;
+  adv.init(acfg, domain);
+
+  QSSAConfig qcfg;
+  qcfg.toxin_cutoff = 80e-6;
+  qcfg.microcin_secretion = 1.0e-20;
+  QSSASolver qssa;
+  qssa.init(qcfg, domain, adv);
+
+  ChemicalSpec toxin;
+  toxin.name = "bacteriocin";
+  toxin.diff_coeff = 4.0e-11;
+  toxin.retardation = 10.0;
+
+  const Vec3 pos = {50e-6, 50e-6, 25e-6};
+  Int ix = 0;
+  Int iy = 0;
+  Int iz = 0;
+  domain.pos_to_grid(pos, ix, iy, iz);
+  const Int idx = domain.cell_index(ix, iy, iz);
+
+  ProteaseConfig protease;
+  protease.enabled = false;
+  const std::vector<ToxinBurstSource> no_bursts;
+
+  // Continuous microcin secretor → nonzero steady-state field.
+  {
+    ChemicalField chem;
+    chem.init(domain, {toxin});
+    AgentPool agents;
+    Agent producer = Agent::create_default(1, 1, pos, 5e-4);
+    producer.genome.bi_loci.push_back(mcc_v);
+    agents.push_back(std::move(producer));
+    qssa.solve_bacteriocin_field(agents, no_bursts, 0.0, protease, adv, chem, 0);
+    assert(chem.conc(0, idx) > 0.0);
+    std::cout << "  test_steady_state_qssa_source: microcin c=" << chem.conc(0, idx) << "\n";
+  }
+
+  // Lysis-only colicin (no burst) → no continuous source.
+  {
+    const BICluster col_e1 = PlasmidLibrary::colicin_E1();
+    assert(col_e1.release_mode == ReleaseMode::SOS_LYSIS);
+    ChemicalField chem;
+    chem.init(domain, {toxin});
+    AgentPool agents;
+    Agent producer = Agent::create_default(2, 1, pos, 5e-4);
+    producer.genome.bi_loci.push_back(col_e1);
+    agents.push_back(std::move(producer));
+    qssa.solve_bacteriocin_field(agents, no_bursts, 0.0, protease, adv, chem, 0);
+    assert(chem.conc(0, idx) == 0.0);
+  }
+
+  std::cout << "  test_steady_state_qssa_source: PASSED\n";
 }
 
 void test_sos_induction_on_division() {
@@ -282,6 +360,7 @@ int main() {
   test_microcin_mu_penalty();
   test_sos_induction_requires_bi_loci();
   test_sos_induction_high_basal_rate();
+  test_steady_state_qssa_source();
   test_sos_induction_on_division();
   test_no_sos_without_division();
   test_phage_induction();

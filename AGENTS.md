@@ -81,7 +81,7 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/` |
-| `tests/` | 30 CTest targets (see test map below) |
+| `tests/` | 41 CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 | `.agents/skills/sonarqube-gutibm/SKILL.md` | SonarQube remediation workflow |
 | `.agents/skills/sonarqube-cpp/SKILL.md` | C++ SonarQube patterns |
@@ -113,9 +113,9 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 ## Test Coverage Map
 
-### C++ (CTest — 30 targets)
+### C++ (CTest — 41 targets)
 
-**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), bacteriocin, receptor, mutation.
+**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), qssa stoichiometry, bacteriocin, receptor, mutation.
 
 **Slow unit:** mechanics, immunity escape.
 
@@ -253,7 +253,7 @@ for building/running/testing in this environment.
   `CC=gcc CXX=g++` (gcc-13, which has full dev libs and matches CI):
   `CC=gcc CXX=g++ cmake .. -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON`. Standard
   build/test/run commands are in `.agents/skills/gut-ibm/SKILL.md`.
-- **All 39 CTest targets pass here.** The `libhwloc`/MPI "preexisting failures"
+- **All 41 CTest targets pass here.** The `libhwloc`/MPI "preexisting failures"
   table in `.agents/skills/testing-gutibm/SKILL.md` describes a *different* (Devin)
   VM; on Cursor Cloud MPI/HDF5 init works and the full suite (incl. `mpi_multi_rank`,
   `hdf5_*`, `scaling_benchmark`) passes.
