@@ -5,6 +5,7 @@
    ----------------------------------------------------------------------- */
 
 #include "fmm.h"
+#include "fmm_kernel.h"
 #include "octree.h"
 #include "greens_function.h"
 #include "qssa_solver.h"
@@ -14,6 +15,7 @@
 #include <cassert>
 #include <iostream>
 #include <cmath>
+#include <functional>
 #include <vector>
 
 using namespace gutibm;
@@ -215,6 +217,61 @@ void test_fmm_local_expansion_nonnegative() {
   std::cout << "  test_fmm_local_expansion_nonnegative: PASSED\n";
 }
 
+// Spec 0 §3: the finite-difference derivative machinery must be numerically
+// stable up to order 3. Validate against the analytic 1/r kernel, whose
+// single-axis derivatives have closed form. A tiny fixed step (the former
+// 1e-9) makes the order-3 stencil (÷2h^3) lose all precision; the order- and
+// length-scaled step keeps every order accurate.
+void test_fmm_kernel_derivative_accuracy() {
+  const Vec3 x0 = {0.0, 0.0, 0.0};
+  const auto phi = [&x0](const Vec3& p) {
+    const Real dx = p[0] - x0[0];
+    const Real dy = p[1] - x0[1];
+    const Real dz = p[2] - x0[2];
+    return 1.0 / std::sqrt(dx * dx + dy * dy + dz * dz);
+  };
+
+  const Vec3 c = {3.0e-5, 1.0e-5, 2.0e-5};
+  const Real dx = c[0] - x0[0];
+  const Real r2 = c[0] * c[0] + c[1] * c[1] + c[2] * c[2];
+  const Real r = std::sqrt(r2);
+
+  // Analytic single-axis (x) derivatives of 1/r.
+  const Real d1 = -dx / (r2 * r);                                  // φ_x
+  const Real d2 = (3.0 * dx * dx - r2) / (r2 * r2 * r);            // φ_xx
+  const Real d3 = 9.0 * dx / (r2 * r2 * r)                         // φ_xxx
+                  - 15.0 * dx * dx * dx / (r2 * r2 * r2 * r);
+
+  const Real fd1 = fd_axis_derivative(phi, c, 0, 1, r);
+  const Real fd2 = fd_axis_derivative(phi, c, 0, 2, r);
+  const Real fd3 = fd_axis_derivative(phi, c, 0, 3, r);
+
+  const Real e1 = std::abs(fd1 - d1) / std::abs(d1);
+  const Real e2 = std::abs(fd2 - d2) / std::abs(d2);
+  const Real e3 = std::abs(fd3 - d3) / std::abs(d3);
+  std::cout << "    1/r derivative rel_err: order1=" << e1
+            << " order2=" << e2 << " order3=" << e3 << std::endl;
+
+  // Order 1/2 reach ~1e-8 or better; order 3 (÷h^3) is near the double-
+  // precision floor for a central difference of 1/r (~1e-5) but is now
+  // accurate, vs O(1e-3) with the former fixed 1e-9 step at this micron scale.
+  assert(e1 < 1e-6);
+  assert(e2 < 1e-6);
+  assert(e3 < 1e-4);
+
+  // Demonstrate the fix: the former fixed 1e-9 step is far less accurate for
+  // the order-3 derivative at this micron length scale (measured ~200x worse).
+  const Real h_old = 1.0e-9;
+  const auto at = [&phi, &c](Real off) { Vec3 p = c; p[0] += off; return phi(p); };
+  const Real fd3_old = (at(2 * h_old) - 2 * at(h_old) + 2 * at(-h_old) - at(-2 * h_old))
+                       / (2 * h_old * h_old * h_old);
+  const Real e3_old = std::abs(fd3_old - d3) / std::abs(d3);
+  std::cout << "    order3 rel_err with old fixed h=1e-9: " << e3_old << std::endl;
+  assert(e3_old > e3 * 10.0);  // length-scaled step is >10x more accurate
+
+  std::cout << "  test_fmm_kernel_derivative_accuracy: PASSED\n";
+}
+
 void test_fmm_config_defaults() {
   QSSAConfig cfg;
   assert(cfg.fmm_expansion_order == 2);
@@ -228,6 +285,7 @@ int main() {
   test_fmm_accuracy_order2_vs_exact();
   test_fmm_higher_order_more_accurate_than_monopole();
   test_fmm_local_expansion_nonnegative();
+  test_fmm_kernel_derivative_accuracy();
   test_fmm_config_defaults();
   std::cout << "All FMM tests passed.\n";
   return 0;
