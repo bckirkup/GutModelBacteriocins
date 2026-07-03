@@ -1,4 +1,5 @@
 build/
+build-release/
 build-openmp-off/
 build-openmp-on/
 *.o
