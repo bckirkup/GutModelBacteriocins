@@ -17,13 +17,13 @@ static Simulation make_motility_sim(bool chemotaxis = false) {
   cfg.hdf5.enabled = false;
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.motility.enabled = true;
-  cfg.motility.swim_speed = 7.76e-6;
-  cfg.motility.run_mean_duration = 5.0;
-  cfg.motility.stop_probability = 0.0;
-  cfg.motility.chemotaxis_enabled = chemotaxis;
-  cfg.motility.chi_carbon = 1.0;
-  cfg.motility.chi_oxygen = 0.0;
+  cfg.cell_bio.motility.enabled = true;
+  cfg.cell_bio.motility.swim_speed = 7.76e-6;
+  cfg.cell_bio.motility.run_mean_duration = 5.0;
+  cfg.cell_bio.motility.stop_probability = 0.0;
+  cfg.cell_bio.motility.chemotaxis_enabled = chemotaxis;
+  cfg.cell_bio.motility.chi_carbon = 1.0;
+  cfg.cell_bio.motility.chi_oxygen = 0.0;
 
   Simulation sim;
   sim.init(cfg);
@@ -37,7 +37,7 @@ static Agent make_motile_agent(Simulation& sim) {
     0.5 * (sim.domain().lo()[2] + sim.domain().hi()[2]),
   };
   Agent a = Agent::create_default(sim.agents().next_tag(), 1, center, 5e-4);
-  FixMotility::init_agent_motility(a, sim.config().motility, sim.rng());
+  FixMotility::init_agent_motility(a, sim.config().cell_bio.motility, sim.rng());
   a.motility.swim_direction = {1.0, 0.0, 0.0};
   a.motility.is_stopped = false;
   a.motility.run_timer = 100.0;
@@ -68,7 +68,7 @@ void test_motility_displacement() {
   static_cfg.hdf5.enabled = false;
   static_cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   static_cfg.domain.grid_dx = 5e-6;
-  static_cfg.motility.enabled = false;
+  static_cfg.cell_bio.motility.enabled = false;
   sim_static.init(static_cfg);
   Agent still = make_motile_agent(sim_static);
   Vec3 still_start = still.x;
@@ -76,13 +76,13 @@ void test_motility_displacement() {
 
   const Real dt = 1.0;
   const int steps = 20;
-  FixMotility mot_fix(sim_motile, sim_motile.config().motility);
+  FixMotility mot_fix(sim_motile, sim_motile.config().cell_bio.motility);
   for (int i = 0; i < steps; ++i) {
     mot_fix.pre_step(dt);
     Agent& a = sim_motile.agents()[0];
-    a.x[0] += a.motility.swim_direction[0] * sim_motile.config().motility.swim_speed * dt;
-    a.x[1] += a.motility.swim_direction[1] * sim_motile.config().motility.swim_speed * dt;
-    a.x[2] += a.motility.swim_direction[2] * sim_motile.config().motility.swim_speed * dt;
+    a.x[0] += a.motility.swim_direction[0] * sim_motile.config().cell_bio.motility.swim_speed * dt;
+    a.x[1] += a.motility.swim_direction[1] * sim_motile.config().cell_bio.motility.swim_speed * dt;
+    a.x[2] += a.motility.swim_direction[2] * sim_motile.config().cell_bio.motility.swim_speed * dt;
   }
 
   const Real motile_disp = displacement(start, sim_motile.agents()[0].x);
@@ -104,7 +104,7 @@ void test_chemotaxis_bias() {
   sim.chemical_field().conc(i_carbon, cell) = 0.0;
   sim.agents().push_back(std::move(a));
 
-  FixMotility fix(sim, sim.config().motility);
+  FixMotility fix(sim, sim.config().cell_bio.motility);
   const Real dt = 1.0;
   fix.pre_step(dt);
   const Real run_timer_after_low = sim.agents()[0].motility.run_timer;

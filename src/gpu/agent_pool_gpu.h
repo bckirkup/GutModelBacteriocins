@@ -12,6 +12,17 @@ class AgentPool;
 class Domain;
 struct MetabolismConfig;
 
+struct GpuMetabolismBuffers {
+  const double* d_conc_carbon = nullptr;
+  const double* d_conc_iron = nullptr;
+  const double* d_conc_b12 = nullptr;
+  const double* d_conc_acetate = nullptr;
+  const double* d_conc_eut = nullptr;
+  double* d_reac_carbon = nullptr;
+  double* d_reac_iron = nullptr;
+  double* d_reac_b12 = nullptr;
+};
+
 class AgentPoolGpu {
  public:
   void resize(Int n);
@@ -46,11 +57,7 @@ class AgentPoolGpu {
   double* plasmid_amelioration() { return d_plasmid_amelioration_.data(); }
 
   bool run_metabolism(const Domain& domain, const MetabolismConfig& cfg,
-                      const double* d_conc_carbon, const double* d_conc_iron,
-                      const double* d_conc_b12, const double* d_conc_acetate,
-                      const double* d_conc_eut,
-                      double* d_reac_carbon, double* d_reac_iron, double* d_reac_b12,
-                      double dt);
+                      const GpuMetabolismBuffers& buffers, double dt);
 
  private:
   Int size_ = 0;

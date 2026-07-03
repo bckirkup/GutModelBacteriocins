@@ -68,7 +68,7 @@ void test_mucin_liberation_scales_with_density() {
 
 void test_mucin_species_registered() {
   SimulationConfig cfg = InputParser::default_config();
-  cfg.mucin.enabled = true;
+  cfg.chem_env.mucin.enabled = true;
   InputParser::finalize_config(cfg);
 
   bool found_mucin = false;

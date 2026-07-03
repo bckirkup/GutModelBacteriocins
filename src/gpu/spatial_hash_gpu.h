@@ -10,6 +10,8 @@ namespace gutibm {
 class AgentPoolGpu;
 
 struct SpatialHashGpu {
+  bool active_ = false;
+
   Int num_cells_x = 0;
   Int num_cells_y = 0;
   Int num_cells_z = 0;
@@ -24,9 +26,6 @@ struct SpatialHashGpu {
   void build(const AgentPoolGpu& agents, Int num_agents) const;
   void set_active(bool v) { active_ = v; }
   bool active() const { return active_; }
-
- private:
-  bool active_ = false;
 };
 
 bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,

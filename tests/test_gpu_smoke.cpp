@@ -25,8 +25,8 @@ int main() {
   std::cout << "=== GPU Smoke Test ===\n";
 
   SimulationConfig cfg = InputParser::default_config();
-  cfg.total_time = 300.0;
-  cfg.bio_dt = 60.0;
+  cfg.time.total_time = 300.0;
+  cfg.time.bio_dt = 60.0;
   cfg.hdf5.enabled = false;
   cfg.initial_strains.clear();
 

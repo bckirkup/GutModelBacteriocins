@@ -20,7 +20,7 @@ void FixMutation::compute(Real dt) {
 
   for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
-    if (a.age > dt) continue;  // only newly divided cells
+    if (a.timers.age > dt) continue;  // only newly divided cells
 
     mutate_on_division(a);
   }
@@ -69,7 +69,7 @@ void FixMutation::duplicate_bi_locus(Agent& agent) {
   agent.genome.bi_loci.push_back(agent.genome.bi_loci[idx]);
   agent.genome.mutations++;
 
-  sim_.lineage_tracker().record_mutation(agent.tag, "bi_duplication",
+  sim_.lineage_tracker().record_mutation(agent.identity.tag, "bi_duplication",
                                           agent.genome.lineage_id);
 }
 
@@ -86,7 +86,7 @@ void FixMutation::recombine_bi_locus(Agent& agent) {
             agent.genome.bi_loci[i2].immunity_id);
   agent.genome.mutations++;
 
-  sim_.lineage_tracker().record_mutation(agent.tag, "bi_recombination",
+  sim_.lineage_tracker().record_mutation(agent.identity.tag, "bi_recombination",
                                           agent.genome.lineage_id);
 }
 
@@ -97,7 +97,7 @@ void FixMutation::mutate_receptor(Agent& agent) {
   agent.receptor_expr_base[receptor] =
       std::max(0.0, agent.receptor_expr_base[receptor] - cfg_.receptor_reduction);
   agent.genome.receptor_expression[receptor] = agent.receptor_expr_base[receptor];
-  if (!sim_.config().fur.enabled) {
+  if (!sim_.config().cell_bio.fur.enabled) {
     agent.receptor_expr[receptor] = agent.receptor_expr_base[receptor];
   }
   agent.genome.mutations++;
@@ -107,7 +107,7 @@ void FixMutation::mutate_receptor(Agent& agent) {
     agent.state = PhenoState::RESISTANT;
   }
 
-  sim_.lineage_tracker().record_mutation(agent.tag, "receptor_downreg",
+  sim_.lineage_tracker().record_mutation(agent.identity.tag, "receptor_downreg",
                                           agent.genome.lineage_id);
 }
 
@@ -124,7 +124,7 @@ void FixMutation::partial_resistance_mutation(Agent& agent) {
   // Receptor expression is NOT changed (distinct from full downregulation)
   agent.genome.mutations++;
 
-  sim_.lineage_tracker().record_mutation(agent.tag, "partial_resistance",
+  sim_.lineage_tracker().record_mutation(agent.identity.tag, "partial_resistance",
                                           agent.genome.lineage_id);
 }
 
@@ -144,7 +144,7 @@ void FixMutation::generate_super_killer(Agent& agent) {
   const char* label = (novel.immunity_binding_affinity < 1.0)
                           ? "super_killer_escape"
                           : "super_killer";
-  sim_.lineage_tracker().record_mutation(agent.tag, label,
+  sim_.lineage_tracker().record_mutation(agent.identity.tag, label,
                                           agent.genome.lineage_id);
 }
 
@@ -160,7 +160,7 @@ void FixMutation::compensatory_mutation(Agent& agent) {
       std::min(agent.genome.plasmid_cost_amelioration, 0.015);
   agent.genome.mutations++;
 
-  sim_.lineage_tracker().record_mutation(agent.tag, "compensatory",
+  sim_.lineage_tracker().record_mutation(agent.identity.tag, "compensatory",
                                           agent.genome.lineage_id);
 }
 

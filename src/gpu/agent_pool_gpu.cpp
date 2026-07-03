@@ -63,10 +63,10 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
     biomass[i] = a.biomass;
     radius[i] = a.radius;
     mass[i] = a.mass;
-    age[i] = a.age;
+    age[i] = a.timers.age;
     mu_max[i] = a.mu_max;
-    km_b12[i] = a.km_b12;
-    km_carbon[i] = a.km_carbon;
+    km_b12[i] = a.km.km_b12;
+    km_carbon[i] = a.km.km_carbon;
     bi_loci_count[i] = static_cast<int>(a.genome.bi_loci.size());
     plasmid_amelioration[i] = a.genome.plasmid_cost_amelioration;
     for (int r = 0; r < NUM_RECEPTORS; ++r) {
@@ -117,37 +117,28 @@ void AgentPoolGpu::sync_to_host(AgentPool& pool) const {
     a.biomass = biomass[i];
     a.radius = radius[i];
     a.mass = mass[i];
-    a.age = age[i];
+    a.timers.age = age[i];
     a.grid_cell = grid_cell[i];
   }
 }
 
 bool AgentPoolGpu::run_metabolism(
     const Domain& domain, const MetabolismConfig& cfg,
-    const double* d_conc_carbon, const double* d_conc_iron, const double* d_conc_b12,
-    const double* d_conc_acetate, const double* d_conc_eut,
-    double* d_reac_carbon, double* d_reac_iron, double* d_reac_b12,
-    double dt) {
+    const GpuMetabolismBuffers& buffers, double dt) {
 
 #ifndef GUTIBM_CUDA
   (void)domain;
   (void)cfg;
-  (void)d_conc_carbon;
-  (void)d_conc_iron;
-  (void)d_conc_b12;
-  (void)d_conc_acetate;
-  (void)d_conc_eut;
-  (void)d_reac_carbon;
-  (void)d_reac_iron;
-  (void)d_reac_b12;
+  (void)buffers;
   (void)dt;
   return false;
 #else
   if (!gpu_runtime_enabled() || size_ <= 0) return false;
 
   gpu::launch_metabolism_kernel(
-      d_conc_carbon, d_conc_iron, d_conc_b12, d_conc_acetate, d_conc_eut,
-      d_reac_carbon, d_reac_iron, d_reac_b12,
+      buffers.d_conc_carbon, buffers.d_conc_iron, buffers.d_conc_b12,
+      buffers.d_conc_acetate, buffers.d_conc_eut,
+      buffers.d_reac_carbon, buffers.d_reac_iron, buffers.d_reac_b12,
       d_mu_realized_.data(), d_biomass_.data(), d_radius_.data(),
       d_mass_.data(), d_age_.data(),
       d_grid_cell_.data(), d_state_.data(),

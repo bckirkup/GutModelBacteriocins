@@ -3,14 +3,27 @@
    ----------------------------------------------------------------------- */
 
 #include "plasmid.h"
+#include <string_view>
 #include <unordered_map>
 
 namespace gutibm {
 
+namespace {
+
+struct TransparentStringHash {
+  using is_transparent = void;
+  [[nodiscard]] size_t operator()(std::string_view sv) const noexcept {
+    return std::hash<std::string_view>{}(sv);
+  }
+};
+
+}  // namespace
+
 BacteriocinClass classify_by_pI(Real pI) {
-  if (pI > 8.5) return BacteriocinClass::LETHAL_CORE;
-  if (pI < 7.0) return BacteriocinClass::LETHAL_HALO;
-  return BacteriocinClass::NEUTRAL;
+  using enum BacteriocinClass;
+  if (pI > 8.5) return LETHAL_CORE;
+  if (pI < 7.0) return LETHAL_HALO;
+  return NEUTRAL;
 }
 
 BICluster PlasmidLibrary::colicin_E1() {
@@ -134,7 +147,8 @@ const std::vector<PlasmidEntry>& PlasmidLibrary::entries() {
 }
 
 const PlasmidEntry* PlasmidLibrary::find(const std::string& name) {
-  static const std::unordered_map<std::string, std::string> aliases = {
+  static const std::unordered_map<std::string, std::string,
+                                  TransparentStringHash, std::equal_to<>> aliases = {
     {"colicin_E1", "ColE1"},
     {"colicin_E2", "ColE2"},
     {"colicin_B",  "ColB"},

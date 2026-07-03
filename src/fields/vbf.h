@@ -28,7 +28,7 @@ struct VBFConfig {
   Real carrying_cap     = 1.0e12;   // local carrying capacity (#/m^3)
   Real viscosity        = 0.01;     // effective viscosity (Pa·s), ~10x water
 
-  // z-dependent mucin liberation: rate(z) = mucin_liberation * exp(-z_rel / lambda)
+  // Optional z-dependent mucin liberation scaling with epithelial distance
   bool mucin_z_gradient_enabled = false;
   Real mucin_z_gradient_lambda  = 25.0e-6;  // characteristic decay length (m)
 

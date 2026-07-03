@@ -34,7 +34,7 @@ class HDF5Writer {
   HDF5Writer() = default;
 
   void init(const HDF5Config& cfg);
-  void write_step(const Simulation& sim, Int step, Real time);
+  void write_step(const Simulation& sim, Int step, Real time) const;
   void finalize();
 
   bool is_enabled() const { return enabled_; }

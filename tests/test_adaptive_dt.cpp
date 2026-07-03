@@ -20,9 +20,9 @@ static SimulationConfig make_adaptive_cfg() {
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
 
-  cfg.total_time      = 120.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 120.0;
+  cfg.time.total_time      = 120.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 120.0;
   cfg.seed            = 7777;
   cfg.hdf5.enabled    = false;
 
@@ -33,11 +33,11 @@ static SimulationConfig make_adaptive_cfg() {
   cfg.qssa.toxin_cutoff    = 50e-6;
   cfg.qssa.nutrient_cutoff = 25e-6;
 
-  cfg.adaptive_dt_enabled = true;
-  cfg.dt_min           = 1.0;
-  cfg.dt_max           = 300.0;
-  cfg.dt_safety        = 0.8;
-  cfg.dt_growth_limit  = 0.1;
+  cfg.adaptive_dt.enabled = true;
+  cfg.adaptive_dt.min           = 1.0;
+  cfg.adaptive_dt.max           = 300.0;
+  cfg.adaptive_dt.safety        = 0.8;
+  cfg.adaptive_dt.growth_limit  = 0.1;
 
   cfg.initial_strains.clear();
   return cfg;
@@ -45,7 +45,7 @@ static SimulationConfig make_adaptive_cfg() {
 
 void test_disabled_returns_fixed_dt() {
   SimulationConfig cfg = make_adaptive_cfg();
-  cfg.adaptive_dt_enabled = false;
+  cfg.adaptive_dt.enabled = false;
 
   SimulationConfig::InitialStrain s;
   s.type = 1; s.count = 5; s.mu_max = 5e-4;
@@ -56,15 +56,15 @@ void test_disabled_returns_fixed_dt() {
   sim.init(cfg);
 
   Real dt = sim.compute_adaptive_dt();
-  assert(std::abs(dt - cfg.bio_dt) < 1e-12);
+  assert(std::abs(dt - cfg.time.bio_dt) < 1e-12);
 
   std::cout << "  test_disabled_returns_fixed_dt: PASSED (dt=" << dt << ")\n";
 }
 
 void test_bounds_respected() {
   SimulationConfig cfg = make_adaptive_cfg();
-  cfg.dt_min = 5.0;
-  cfg.dt_max = 100.0;
+  cfg.adaptive_dt.min = 5.0;
+  cfg.adaptive_dt.max = 100.0;
 
   SimulationConfig::InitialStrain s;
   s.type = 1; s.count = 10; s.mu_max = 5e-4;
@@ -75,11 +75,11 @@ void test_bounds_respected() {
   sim.init(cfg);
 
   Real dt = sim.compute_adaptive_dt();
-  assert(dt >= cfg.dt_min);
-  assert(dt <= cfg.dt_max);
+  assert(dt >= cfg.adaptive_dt.min);
+  assert(dt <= cfg.adaptive_dt.max);
 
   std::cout << "  test_bounds_respected: PASSED (dt=" << dt
-            << " in [" << cfg.dt_min << "," << cfg.dt_max << "])\n";
+            << " in [" << cfg.adaptive_dt.min << "," << cfg.adaptive_dt.max << "])\n";
 }
 
 void test_high_growth_reduces_dt() {
@@ -100,8 +100,8 @@ void test_high_growth_reduces_dt() {
 
   Real dt = sim.compute_adaptive_dt();
   // dt should be well below dt_max
-  assert(dt < cfg.dt_max);
-  assert(dt >= cfg.dt_min);
+  assert(dt < cfg.adaptive_dt.max);
+  assert(dt >= cfg.adaptive_dt.min);
 
   // Also verify it's substantially smaller than a quiescent run
   SimulationConfig cfg2 = make_adaptive_cfg();
@@ -124,7 +124,7 @@ void test_high_growth_reduces_dt() {
 void test_quiescent_uses_large_dt() {
   // Very slow growth, few agents -> dt should be near dt_max
   SimulationConfig cfg = make_adaptive_cfg();
-  cfg.dt_safety = 1.0;  // no safety reduction for cleaner test
+  cfg.adaptive_dt.safety = 1.0;  // no safety reduction for cleaner test
 
   SimulationConfig::InitialStrain s;
   s.type = 1; s.count = 2; s.mu_max = 1e-8;  // extremely slow
@@ -136,14 +136,14 @@ void test_quiescent_uses_large_dt() {
 
   Real dt = sim.compute_adaptive_dt();
   // growth_limit / mu = 0.1 / 1e-8 = 1e7, clamped to dt_max=300
-  assert(std::abs(dt - cfg.dt_max) < 1e-6);
+  assert(std::abs(dt - cfg.adaptive_dt.max) < 1e-6);
 
   std::cout << "  test_quiescent_uses_large_dt: PASSED (dt=" << dt << ")\n";
 }
 
 void test_safety_factor_applied() {
   SimulationConfig cfg = make_adaptive_cfg();
-  cfg.dt_safety = 0.5;
+  cfg.adaptive_dt.safety = 0.5;
 
   SimulationConfig::InitialStrain s;
   s.type = 1; s.count = 2; s.mu_max = 1e-8;
@@ -162,7 +162,7 @@ void test_safety_factor_applied() {
 
 void test_adaptive_run_completes() {
   SimulationConfig cfg = make_adaptive_cfg();
-  cfg.total_time = 300.0;
+  cfg.time.total_time = 300.0;
 
   SimulationConfig::InitialStrain resident;
   resident.type = 1; resident.count = 20; resident.mu_max = 5e-4;
@@ -179,7 +179,7 @@ void test_adaptive_run_completes() {
   sim.run();
 
   // Should reach total_time
-  assert(std::abs(sim.time() - cfg.total_time) < 1e-6);
+  assert(std::abs(sim.time() - cfg.time.total_time) < 1e-6);
   assert(sim.step_count() > 0);
 
   // With adaptive dt the step count won't be ceil(total_time/bio_dt)
@@ -192,9 +192,9 @@ void test_adaptive_run_completes() {
 void test_fixed_dt_run_still_works() {
   // Verify the refactored run() loop still works with fixed dt
   SimulationConfig cfg = make_adaptive_cfg();
-  cfg.adaptive_dt_enabled = false;
-  cfg.total_time = 180.0;
-  cfg.bio_dt = 60.0;
+  cfg.adaptive_dt.enabled = false;
+  cfg.time.total_time = 180.0;
+  cfg.time.bio_dt = 60.0;
 
   SimulationConfig::InitialStrain s;
   s.type = 1; s.count = 10; s.mu_max = 5e-4;

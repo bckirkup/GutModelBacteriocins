@@ -10,12 +10,13 @@
 namespace gutibm {
 
 inline bool is_iron_receptor(int r) {
-  return r == to_underlying(ReceptorType::FepA)
-      || r == to_underlying(ReceptorType::FhuA)
-      || r == to_underlying(ReceptorType::IroN)
-      || r == to_underlying(ReceptorType::IutA)
-      || r == to_underlying(ReceptorType::Fiu)
-      || r == to_underlying(ReceptorType::CirA);
+  using enum ReceptorType;
+  return r == to_underlying(FepA)
+      || r == to_underlying(FhuA)
+      || r == to_underlying(IroN)
+      || r == to_underlying(IutA)
+      || r == to_underlying(Fiu)
+      || r == to_underlying(CirA);
 }
 
 }  // namespace gutibm

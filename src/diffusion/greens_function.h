@@ -39,9 +39,10 @@ struct GreensFunctionParams {
   //   pI > 8.5 → lethal core (high retardation, small D_eff)
   //   pI < 6.0 → lethal halo (low retardation, large D_eff)
   BacteriocinClass classify() const {
-    if (pI > 8.5) return BacteriocinClass::LETHAL_CORE;
-    if (pI < 6.0) return BacteriocinClass::LETHAL_HALO;
-    return BacteriocinClass::NEUTRAL;
+    using enum BacteriocinClass;
+    if (pI > 8.5) return LETHAL_CORE;
+    if (pI < 6.0) return LETHAL_HALO;
+    return NEUTRAL;
   }
 };
 

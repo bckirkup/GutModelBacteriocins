@@ -246,9 +246,9 @@ void test_smoke_with_z_gradient() {
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
 
-  cfg.total_time = 120.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 120.0;
+  cfg.time.total_time = 120.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 120.0;
   cfg.seed = 314;
   cfg.hdf5.enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
