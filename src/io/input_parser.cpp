@@ -418,6 +418,75 @@ bool apply_protease_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
+bool apply_fur_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "fur.enabled" || key == "fur_enabled") {
+    cfg.fur.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "fur.Km" || key == "fur_Km") {
+    cfg.fur.Km = parse_config_real(key, val); return true;
+  }
+  if (key == "fur.upregulation_max" || key == "fur_upregulation_max") {
+    cfg.fur.upregulation_max = parse_config_real(key, val); return true;
+  }
+  if (key == "fur.receptor_max" || key == "fur_receptor_max") {
+    cfg.fur.receptor_max = parse_config_real(key, val); return true;
+  }
+  return false;
+}
+
+bool apply_cdi_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "cdi.enabled" || key == "cdi_enabled") {
+    cfg.cdi.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "cdi.kill_rate" || key == "cdi_kill_rate") {
+    cfg.cdi.kill_rate = parse_config_real(key, val); return true;
+  }
+  if (key == "cdi.contact_radius" || key == "cdi_contact_radius") {
+    cfg.cdi.contact_radius = parse_config_real(key, val); return true;
+  }
+  if (key == "cdi.corpse_persistence" || key == "cdi_corpse_persistence") {
+    cfg.cdi.corpse_persistence = parse_config_real(key, val); return true;
+  }
+  return false;
+}
+
+bool apply_motility_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "motility.enabled" || key == "motility_enabled") {
+    cfg.motility.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "motility.swim_speed" || key == "motility_swim_speed") {
+    cfg.motility.swim_speed = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.run_mean_duration" || key == "motility_run_mean_duration") {
+    cfg.motility.run_mean_duration = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.stop_probability" || key == "motility_stop_probability") {
+    cfg.motility.stop_probability = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.stop_duration" || key == "motility_stop_duration") {
+    cfg.motility.stop_duration = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.chemotaxis_enabled" || key == "motility_chemotaxis_enabled") {
+    cfg.motility.chemotaxis_enabled = parse_bool_config(val); return true;
+  }
+  if (key == "motility.chi_carbon" || key == "motility_chi_carbon") {
+    cfg.motility.chi_carbon = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.chi_oxygen" || key == "motility_chi_oxygen") {
+    cfg.motility.chi_oxygen = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.cluster_suppress_radius" || key == "motility_cluster_suppress_radius") {
+    cfg.motility.cluster_suppress_radius = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.cluster_suppress_threshold" || key == "motility_cluster_suppress_threshold") {
+    cfg.motility.cluster_suppress_threshold = parse_config_int(key, val); return true;
+  }
+  if (key == "motility.cluster_tumble_factor" || key == "motility_cluster_tumble_factor") {
+    cfg.motility.cluster_tumble_factor = parse_config_real(key, val); return true;
+  }
+  return false;
+}
+
 constexpr FlatKeyHandler k_flat_key_handlers[] = {
   apply_time_key,
   apply_domain_key,
@@ -435,6 +504,9 @@ constexpr FlatKeyHandler k_flat_key_handlers[] = {
   apply_acetate_dyn_key,
   apply_mucin_key,
   apply_protease_key,
+  apply_fur_key,
+  apply_cdi_key,
+  apply_motility_key,
 };
 
 bool parse_legacy_key_value(const std::string& line,

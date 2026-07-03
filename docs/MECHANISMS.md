@@ -237,7 +237,42 @@ Chromosomal mutations that ameliorate plasmid metabolic cost. Reduces per-locus 
 
 ---
 
-## 6. fix_mechanics — Soft-Sphere Mechanical Repulsion
+---
+
+## 7. fix_motility — Active Cell Swimming (Spec 3)
+
+**Biological basis:** E. coli in colonic mucus swims at ~7.76 µm/s using a mucus-adapted run-and-reverse pattern (not classic run-and-tumble). Flagellar activity increases near mucin-producing cells.
+
+**Model:** `FixMotility::pre_step()` updates run/stop timers and direction; swim displacement is applied in `module_physics()` after advection:
+```
+x += swim_direction * swim_speed * dt
+```
+Optional chemotaxis extends run duration when moving toward increasing attractant (carbon, O₂). Cluster suppression reduces reorientation rate when neighbor density exceeds threshold.
+
+---
+
+## 8. fix_cdi — Contact-Dependent Inhibition (Spec 3)
+
+**Biological basis:** CDI (CdiA/CdiB) systems deliver toxic effectors upon direct cell-cell contact. Strain-specific immunity protects cognate partners. Corpse barriers at colony interfaces self-limit killing.
+
+**Logic:** For each CDI+ agent, neighbors within `contact_radius` without matching immunity are killed with `P = 1 - exp(-kill_rate * dt)`. CDI kills record `death_time`; corpses persist as mechanical obstacles for `corpse_persistence` seconds and block line-of-sight CDI to cells behind them.
+
+---
+
+## 9. Fur-Regulated Receptor Expression (Spec 3)
+
+**Biological basis:** The Ferric Uptake Regulator (Fur) represses iron-uptake genes when iron is abundant and derepresses them under starvation — the "Vulnerability Paradox" where iron-depleted zones have higher colicin susceptibility.
+
+**Implementation:** In `fix_metabolism`, before graded iron Monod:
+```
+fur_factor = 1 + upregulation_max * Km / (Km + [iron])
+receptor_expr[r] = min(receptor_expr_base[r] * fur_factor, receptor_max)
+```
+for iron-related receptors only. Mutations modify `receptor_expr_base`.
+
+---
+
+## 10. fix_mechanics — Soft-Sphere Mechanical Repulsion
 
 **Biological basis:** Bacterial cells are deformable spheres with an elastic modulus of ~0.1–1 MPa (measured by AFM). When two cells overlap due to growth or flow, they exert a repulsive contact force following Hertzian contact mechanics.
 

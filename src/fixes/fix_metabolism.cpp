@@ -4,6 +4,7 @@
 
 #include "fix_metabolism.h"
 #include "simulation.h"
+#include "receptor_utils.h"
 #include <cmath>
 #include <algorithm>
 #ifdef GUTIBM_OPENMP
@@ -22,6 +23,7 @@ namespace {
 
 bool try_gpu_metabolism(Simulation& sim, MetabolismConfig& cfg, Real dt) {
   if (!sim.gpu_active()) return false;
+  if (sim.config().fur.enabled) return false;
 
   auto& agents = sim.agents();
   auto& ag = sim.agents_gpu();
@@ -120,6 +122,9 @@ void FixMetabolism::perform_divisions() {
 
       daughter.age = 0.0;
       a.age = 0.0;
+      daughter.receptor_expr_base = a.receptor_expr_base;
+      daughter.genome.receptor_expression = a.genome.receptor_expression;
+      daughter.motility = a.motility;
 
       a.just_divided = true;
       daughter.just_divided = true;
@@ -149,6 +154,20 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   Real S_carbon = (i_carbon >= 0) ? chem.conc(i_carbon, cell) : 1.0;
   Real S_iron   = (i_iron >= 0)   ? chem.conc(i_iron, cell)   : 1.0;
   Real S_b12    = (i_b12 >= 0)    ? chem.conc(i_b12, cell)    : 1.0;
+
+  const auto& fur_cfg = sim_.config().fur;
+  if (fur_cfg.enabled) {
+    const Real fur_factor = 1.0 + fur_cfg.upregulation_max * fur_cfg.Km
+        / (fur_cfg.Km + S_iron);
+    for (int r = 0; r < NUM_RECEPTORS; ++r) {
+      if (!is_iron_receptor(r)) {
+        agent.receptor_expr[r] = agent.receptor_expr_base[r];
+        continue;
+      }
+      agent.receptor_expr[r] = std::min(
+          agent.receptor_expr_base[r] * fur_factor, fur_cfg.receptor_max);
+    }
+  }
 
   // Receptor-modified Km values
   // When receptor expression drops, effective Km increases (worse affinity)

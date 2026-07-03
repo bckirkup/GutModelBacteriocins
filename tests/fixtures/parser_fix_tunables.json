@@ -24,6 +24,9 @@
   "max_bi_loci": 6,
   "immunity_escape_prob": 0.75,
 
+  "fur.enabled": true,
+  "fur.Km": 1e-6,
+
   "initial_strains": [
     {
       "type": 1,

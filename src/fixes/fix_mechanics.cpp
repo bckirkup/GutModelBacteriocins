@@ -12,6 +12,17 @@ namespace gutibm {
 
 namespace {
 
+bool participates_in_mechanics(const Agent& a, Real sim_time,
+                               const SimulationConfig& cfg) {
+  if (a.state != PhenoState::DEAD) return true;
+  return cfg.cdi.enabled && a.death_time >= 0.0
+      && (sim_time - a.death_time) < cfg.cdi.corpse_persistence;
+}
+
+bool is_active_corpse(const Agent& a) {
+  return a.state == PhenoState::DEAD;
+}
+
 struct PairGeometry {
   Vec3 n;
   Real d;
@@ -60,6 +71,7 @@ void apply_repulsion(Agent& ai, Agent& aj, const PairGeometry& geom,
 void apply_adhesion(Agent& ai, Agent& aj, const PairGeometry& geom,
                     const MechanicsConfig& cfg, Real dt) {
   if (!cfg.adhesion_enabled) return;
+  if (is_active_corpse(ai) || is_active_corpse(aj)) return;
 
   Real gap = geom.d - geom.sum_r;
   if (gap <= 0.0 || gap >= cfg.adhesion_range) return;
@@ -99,16 +111,18 @@ void resolve_agent_pair(Agent& ai, Agent& aj, const Domain& domain,
 void FixMechanics::compute(Real dt) {
   auto& agents = sim_.agents();
   const auto& hash = sim_.domain().spatial_hash();
+  const Real sim_time = sim_.time();
+  const auto& sim_cfg = sim_.config();
 
   for (Int i = 0; i < agents.size(); ++i) {
     Agent& ai = agents[i];
-    if (ai.state == PhenoState::DEAD) continue;
+    if (!participates_in_mechanics(ai, sim_time, sim_cfg)) continue;
 
     auto neighbors = hash.query_neighbors(ai.x);
     for (Int j : neighbors) {
       if (j <= i) continue;
       Agent& aj = agents[j];
-      if (aj.state == PhenoState::DEAD) continue;
+      if (!participates_in_mechanics(aj, sim_time, sim_cfg)) continue;
       resolve_agent_pair(ai, aj, sim_.domain(), cfg_, dt);
     }
   }

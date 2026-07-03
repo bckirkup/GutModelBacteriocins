@@ -252,6 +252,50 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 
 ---
 
+## Fur-Regulated Receptors (Spec 3)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `fur.enabled` | true | — | Enable Fur-regulated dynamic receptor expression |
+| `fur.Km` | 1e-5 | mol/m³ | Iron concentration for half-max Fur repression |
+| `fur.upregulation_max` | 4.0 | — | Max fold-upregulation under iron starvation |
+| `fur.receptor_max` | 5.0 | — | Cap on effective receptor expression |
+
+When enabled, iron-uptake receptors (FepA, FhuA, IroN, IutA, Fiu, CirA) are upregulated under low local iron, increasing colicin susceptibility (Vulnerability Paradox). Mutations modify `receptor_expr_base`; Fur scales effective `receptor_expr` each metabolism step. GPU metabolism fast-path is disabled when Fur is enabled.
+
+---
+
+## Contact-Dependent Inhibition (Spec 3)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `cdi.enabled` | true | — | Enable CDI contact killing |
+| `cdi.kill_rate` | 5e-4 | 1/s | Killing rate per contact pair |
+| `cdi.contact_radius` | 1e-6 | m | Max CDI delivery distance |
+| `cdi.corpse_persistence` | 300 | s | Dead-cell obstacle lifetime |
+
+Per-strain JSON keys: `cdi_type`, `cdi_immunity` on `initial_strains` entries. CDI kills set `death_time` for delayed corpse removal; other death paths remove agents immediately.
+
+---
+
+## Active Motility (Spec 3)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `motility.enabled` | true | — | Enable active swimming |
+| `motility.swim_speed` | 7.76e-6 | m/s | Mean swimming speed in mucus |
+| `motility.run_mean_duration` | 1.0 | s | Mean run duration |
+| `motility.stop_probability` | 0.3 | — | P(stop) per reorientation |
+| `motility.stop_duration` | 0.5 | s | Mean stop duration |
+| `motility.chemotaxis_enabled` | false | — | Enable chemotactic bias |
+| `motility.chi_carbon` | 0.1 | — | Carbon chemotaxis sensitivity |
+| `motility.chi_oxygen` | 0.1 | — | O₂ chemotaxis sensitivity |
+| `motility.cluster_suppress_radius` | 10e-6 | m | Cluster detection radius |
+| `motility.cluster_suppress_threshold` | 5 | — | Neighbors to suppress tumbling |
+| `motility.cluster_tumble_factor` | 0.2 | — | Tumble rate multiplier in cluster center |
+
+---
+
 ## Receptor Binding
 
 | Parameter | Config key | Default | Units | Description |

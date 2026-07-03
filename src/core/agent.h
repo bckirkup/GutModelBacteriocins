@@ -32,7 +32,9 @@ struct Agent {
   Real   maintenance;      // maintenance energy coefficient
 
   // ── Receptor state ────────────────────────────────────────────────────
-  //  expression level 0.0 (fully downregulated) → 1.0 (wild-type)
+  //  receptor_expr_base: genetic baseline (mutations modify this)
+  //  receptor_expr: effective expression (Fur-regulated when enabled)
+  std::array<Real, NUM_RECEPTORS> receptor_expr_base;
   std::array<Real, NUM_RECEPTORS> receptor_expr;
 
   // Km values (modified by receptor expression)
@@ -49,6 +51,18 @@ struct Agent {
   // ── Stochastic timers ─────────────────────────────────────────────────
   Real   age;              // time since last division (s)
   Real   sos_timer;        // SOS response countdown (s), <0 = inactive
+  Real   death_time = -1.0; // simulation time of death; -1 = alive or immediate removal
+
+  // ── Motility (Spec 3) ───────────────────────────────────────────────
+  struct MotilityState {
+    Vec3 swim_direction = {1.0, 0.0, 0.0};
+    Real swim_speed = 0.0;
+    Real run_timer = 0.0;
+    bool is_stopped = false;
+    Real stop_timer = 0.0;
+    Real prev_carbon = 0.0;
+    Real prev_oxygen = 0.0;
+  } motility;
 
   // ── Crypt state ──────────────────────────────────────────────────────
   bool   in_crypt = false; // true when agent resides in a crypt refugium

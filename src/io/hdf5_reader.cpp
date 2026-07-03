@@ -154,6 +154,11 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       read_dataset_1d<int32_t>(file, prefix + "has_conjugative_plasmid", H5T_NATIVE_INT32);
   out.plasmid_cost_amelioration =
       read_dataset_1d<double>(file, prefix + "plasmid_cost_amelioration", H5T_NATIVE_DOUBLE);
+  if (link_exists(file, prefix + "cdi_type")) {
+    out.cdi_type = read_dataset_1d<int32_t>(file, prefix + "cdi_type", H5T_NATIVE_INT32);
+    out.cdi_immunity =
+        read_dataset_1d<int32_t>(file, prefix + "cdi_immunity", H5T_NATIVE_INT32);
+  }
   out.receptor_expression =
       read_dataset_1d<double>(file, prefix + "receptor_expression", H5T_NATIVE_DOUBLE);
   out.toxin_affinity =

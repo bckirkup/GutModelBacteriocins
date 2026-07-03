@@ -28,6 +28,9 @@ static Real measure_mu(Real eut_initial_conc) {
   cfg.output_interval = 60.0;
   cfg.seed            = 42;
   cfg.hdf5.enabled    = false;
+  cfg.fur.enabled     = false;
+  cfg.cdi.enabled     = false;
+  cfg.motility.enabled = false;
 
   cfg.advection.mucus_thickness     = 10e-6;
   cfg.advection.distal_length       = 20e-6;

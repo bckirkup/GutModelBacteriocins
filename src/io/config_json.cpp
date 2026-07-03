@@ -182,6 +182,10 @@ class JsonCursor {
         strain.plasmids = parse_string_array();
       } else if (key == "conjugative") {
         strain.conjugative = parse_bool();
+      } else if (key == "cdi_type") {
+        strain.cdi_type = static_cast<uint16_t>(parse_number());
+      } else if (key == "cdi_immunity") {
+        strain.cdi_immunity = static_cast<uint16_t>(parse_number());
       } else {
         skip_value();
       }

@@ -435,6 +435,8 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) c
   std::vector<int32_t> mutations(static_cast<size_t>(n));
   std::vector<int32_t> has_conjugative(static_cast<size_t>(n));
   std::vector<double> plasmid_amel(static_cast<size_t>(n));
+  std::vector<int32_t> cdi_type(static_cast<size_t>(n));
+  std::vector<int32_t> cdi_immunity(static_cast<size_t>(n));
   std::vector<double> receptor_expr(static_cast<size_t>(n) * NUM_RECEPTORS);
   std::vector<double> toxin_aff(static_cast<size_t>(n) * NUM_RECEPTORS);
   std::vector<double> ligand_aff(static_cast<size_t>(n) * NUM_RECEPTORS);
@@ -456,6 +458,8 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) c
     mutations[idx] = static_cast<int32_t>(a.genome.mutations);
     has_conjugative[idx] = a.genome.has_conjugative_plasmid ? 1 : 0;
     plasmid_amel[idx] = a.genome.plasmid_cost_amelioration;
+    cdi_type[idx] = static_cast<int32_t>(a.genome.cdi_type);
+    cdi_immunity[idx] = static_cast<int32_t>(a.genome.cdi_immunity);
     for (Int r = 0; r < NUM_RECEPTORS; ++r) {
       receptor_expr[idx * NUM_RECEPTORS + static_cast<size_t>(r)] =
           a.genome.receptor_expression[r];
@@ -485,6 +489,10 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) c
                    has_conjugative.data(), local_n, cfg_);
   write_dataset_1d(fid, ggroup + "/plasmid_cost_amelioration", H5T_NATIVE_DOUBLE,
                    plasmid_amel.data(), local_n, cfg_);
+  write_dataset_1d(fid, ggroup + "/cdi_type", H5T_NATIVE_INT32,
+                   cdi_type.data(), local_n, cfg_);
+  write_dataset_1d(fid, ggroup + "/cdi_immunity", H5T_NATIVE_INT32,
+                   cdi_immunity.data(), local_n, cfg_);
   write_dataset_1d(fid, ggroup + "/receptor_expression", H5T_NATIVE_DOUBLE,
                    receptor_expr.data(), local_n * NUM_RECEPTORS, cfg_);
   write_dataset_1d(fid, ggroup + "/toxin_affinity", H5T_NATIVE_DOUBLE,

@@ -96,6 +96,9 @@ void test_create_novel_toxin_with_escape() {
   cfg.advection.distal_length = 50e-6;
   cfg.qssa.toxin_cutoff = 25e-6;
   cfg.qssa.nutrient_cutoff = 15e-6;
+  cfg.fur.enabled = false;
+  cfg.cdi.enabled = false;
+  cfg.motility.enabled = false;
 
   // Boost super-killer rate dramatically so we get events in a small sim
   cfg.mutation.super_killer_rate = 0.5;  // 50% per division
@@ -181,6 +184,9 @@ void test_smoke_with_immunity_escape() {
     cfg.advection.distal_length = 100e-6;
     cfg.qssa.toxin_cutoff = 50e-6;
     cfg.qssa.nutrient_cutoff = 25e-6;
+    cfg.fur.enabled = false;
+    cfg.cdi.enabled = false;
+    cfg.motility.enabled = false;
 
     if (enable_escape) {
       cfg.mutation.super_killer_rate = 0.5;

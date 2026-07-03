@@ -200,6 +200,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | Barnes-Hut FMM | `use_fmm`, `fmm_theta`, `fmm_expansion_order` in input JSON |
 | Peristaltic mixing | `peristaltic_*` keys in input JSON |
 | Chemical environment (Spec 1) | `oxygen.enabled`, `acetate.enabled`, `mucin.enabled`, `protease.enabled` + nested keys in `docs/PARAMETERS.md` |
+| Cell biology (Spec 3) | `fur.enabled`, `cdi.enabled`, `motility.enabled` + nested keys; per-strain `cdi_type`, `cdi_immunity` |
 | GPU | `gpu_enabled` in input JSON (CUDA build required) |
 
 Full parameter docs: `docs/PARAMETERS.md`.

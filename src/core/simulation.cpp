@@ -5,6 +5,7 @@
 #include "simulation.h"
 #include "agent_transfer.h"
 #include "fix_registry.h"
+#include "fix_motility.h"
 #include "plasmid.h"
 #include "dispatch.h"
 #include "qssa_gpu.h"
@@ -88,6 +89,7 @@ void restore_receptor_fields(Agent& agent,
     agent.genome.toxin_affinity[r] = gen.toxin_affinity[idx];
     agent.genome.ligand_affinity[r] = gen.ligand_affinity[idx];
     agent.receptor_expr[r] = gen.receptor_expression[idx];
+    agent.receptor_expr_base[r] = gen.receptor_expression[idx];
     ++r;
   }
 }
@@ -304,7 +306,12 @@ void Simulation::init_population(const SimulationConfig& cfg) {
       a.owner_rank = domain_.rank();
 
       assign_plasmids(a, strain.plasmids, domain_.rank());
+      a.genome.cdi_type = strain.cdi_type;
+      a.genome.cdi_immunity = strain.cdi_immunity;
       tag_crypt_resident(a, advection_);
+      if (cfg_.motility.enabled) {
+        FixMotility::init_agent_motility(a, cfg_.motility, rng_);
+      }
 
       agents_.push_back(std::move(a));
     }
@@ -409,6 +416,10 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
       a.genome.plasmid_cost_amelioration = gen.plasmid_cost_amelioration[i];
       restore_receptor_fields(a, snap, i);
       restore_bi_loci(a, snap, i, bi_offsets);
+      if (!gen.cdi_type.empty()) {
+        a.genome.cdi_type = static_cast<uint16_t>(gen.cdi_type[i]);
+        a.genome.cdi_immunity = static_cast<uint16_t>(gen.cdi_immunity[i]);
+      }
     } else {
       restore_legacy_genome(a, snap, i);
     }
@@ -750,6 +761,12 @@ void Simulation::module_physics(Real dt) {
     a.x[1] += a.v[1] * dt;
     a.x[2] += a.v[2] * dt;
 
+    if (cfg_.motility.enabled && !a.motility.is_stopped) {
+      a.x[0] += a.motility.swim_direction[0] * cfg_.motility.swim_speed * dt;
+      a.x[1] += a.motility.swim_direction[1] * cfg_.motility.swim_speed * dt;
+      a.x[2] += a.motility.swim_direction[2] * cfg_.motility.swim_speed * dt;
+    }
+
     // PBC / boundary
     domain_.apply_pbc(a.x);
   }
@@ -767,7 +784,10 @@ void Simulation::rebuild_spatial_hash() {
   domain_.spatial_hash().clear();
   Int i = 0;
   for (const Agent& a : agents_) {
-    if (a.state != PhenoState::DEAD) {
+    const bool live = a.state != PhenoState::DEAD;
+    const bool corpse = cfg_.cdi.enabled && a.death_time >= 0.0
+        && (time_ - a.death_time) < cfg_.cdi.corpse_persistence;
+    if (live || corpse) {
       domain_.spatial_hash().insert(i, a.x);
     }
     ++i;
@@ -844,9 +864,12 @@ void Simulation::crypt_migration(Real dt) {
 
 void Simulation::remove_dead_agents() {
   for (Int i = agents_.size() - 1; i >= 0; --i) {
-    if (agents_[i].state == PhenoState::DEAD) {
-      agents_.remove(i);
+    if (agents_[i].state != PhenoState::DEAD) continue;
+    if (cfg_.cdi.enabled && agents_[i].death_time >= 0.0
+        && (time_ - agents_[i].death_time) < cfg_.cdi.corpse_persistence) {
+      continue;
     }
+    agents_.remove(i);
   }
 }
 
