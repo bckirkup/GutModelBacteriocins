@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "fix_metabolism.h"
+#include "species_names.h"
 #include "simulation.h"
 #include "receptor_utils.h"
 #include <cmath>
@@ -30,11 +31,11 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   auto& cg = sim.chem_gpu();
   ag.sync_from_host(agents);
   const auto& chem = sim.chemical_field();
-  Int i_carbon = chem.find("carbon");
-  Int i_iron = chem.find("iron");
-  Int i_b12 = chem.find("b12");
-  Int i_acetate = chem.find("acetate");
-  if (Int i_eut = chem.find("ethanolamine");
+  Int i_carbon = chem.find(species::CARBON);
+  Int i_iron = chem.find(species::IRON);
+  Int i_b12 = chem.find(species::B12);
+  Int i_acetate = chem.find(species::ACETATE);
+  if (Int i_eut = chem.find(species::ETHANOLAMINE);
       !ag.run_metabolism(
           sim.domain(), cfg,
           {
@@ -149,9 +150,9 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   }
 
   // Get local concentrations
-  Int i_carbon = chem.find("carbon");
-  Int i_iron   = chem.find("iron");
-  Int i_b12    = chem.find("b12");
+  Int i_carbon = chem.find(species::CARBON);
+  Int i_iron   = chem.find(species::IRON);
+  Int i_b12    = chem.find(species::B12);
 
   Real S_carbon = (i_carbon >= 0) ? chem.conc(i_carbon, cell) : 1.0;
   Real S_iron   = (i_iron >= 0)   ? chem.conc(i_iron, cell)   : 1.0;
@@ -213,7 +214,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   Real mu = agent.mu_max * monod_carbon * monod_iron * monod_b12;
 
   if (const auto& o2cfg = sim_.config().chem_env.oxygen; o2cfg.enabled) {
-    if (Int i_o2 = chem.find("oxygen"); i_o2 >= 0) {
+    if (Int i_o2 = chem.find(species::OXYGEN); i_o2 >= 0) {
       const Real s_o2 = chem.conc(i_o2, cell);
       const Real monod_o2_boost =
           1.0 + o2cfg.boost_max * s_o2 / (o2cfg.Km + s_o2);
@@ -227,7 +228,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   // + concentration-dependent ethanolamine utilization loss
   if (expr_btuB < 0.5) {
     Real metE_eff = cfg_.metE_penalty;
-    if (Int i_acetate = chem.find("acetate"); i_acetate >= 0) {
+    if (Int i_acetate = chem.find(species::ACETATE); i_acetate >= 0) {
       Real acetate_conc = chem.conc(i_acetate, cell);
       Real acetate_factor = 1.0
           + (cfg_.metE_acetate_max_factor - 1.0)
@@ -235,7 +236,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
       metE_eff *= acetate_factor;
     }
     Real eut_conc = 0.0;
-    if (Int i_eut = chem.find("ethanolamine"); i_eut >= 0)
+    if (Int i_eut = chem.find(species::ETHANOLAMINE); i_eut >= 0)
       eut_conc = chem.conc(i_eut, cell);
     Real eut_effect = cfg_.eut_max_penalty * eut_conc / (cfg_.eut_km + eut_conc);
     mu *= (1.0 - metE_eff - eut_effect);
@@ -272,10 +273,10 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   Int cell = agent.grid_cell;
   if (cell < 0 || d_biomass <= 0.0) return;
 
-  Int i_carbon = chem.find("carbon");
-  Int i_iron   = chem.find("iron");
-  Int i_b12    = chem.find("b12");
-  Int i_acetate = chem.find("acetate");
+  Int i_carbon = chem.find(species::CARBON);
+  Int i_iron   = chem.find(species::IRON);
+  Int i_b12    = chem.find(species::B12);
+  Int i_acetate = chem.find(species::ACETATE);
 
   Real cell_vol = sim_.domain().dx() * sim_.domain().dx() * sim_.domain().dx();
 

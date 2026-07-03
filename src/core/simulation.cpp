@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "species_names.h"
 #include "agent_transfer.h"
 #include "fix_registry.h"
 #include "fix_motility.h"
@@ -681,7 +682,7 @@ void Simulation::module_chemistry(Real dt) {
   prune_toxin_bursts(clock_.time);
 
   // QSSA: compute steady-state toxin field via Green's functions
-  if (Int i_tox = chem_.find("bacteriocin"); i_tox >= 0) {
+  if (Int i_tox = chem_.find(species::BACTERIOCIN); i_tox >= 0) {
     qssa_.solve_bacteriocin_field(agents_, toxin_bursts_, clock_.time,
                                     cfg_.chem_env.protease, advection_, chem_, i_tox);
     if (gpu_active_) {
@@ -689,7 +690,7 @@ void Simulation::module_chemistry(Real dt) {
     }
   }
 
-  if (Int i_nuc = chem_.find("nuclease_toxin"); i_nuc >= 0) {
+  if (Int i_nuc = chem_.find(species::NUCLEASE_TOXIN); i_nuc >= 0) {
     qssa_.solve_nuclease_toxin_field(agents_, toxin_bursts_, clock_.time,
                                       cfg_.chem_env.protease, advection_, chem_, i_nuc);
     if (gpu_active_) {
@@ -1199,7 +1200,7 @@ void Simulation::allreduce_global_stats() {
 
 Real Simulation::local_O2(const Agent& agent) const {
   if (!cfg_.chem_env.oxygen.enabled) return 0.0;
-  Int i_o2 = chem_.find("oxygen");
+  Int i_o2 = chem_.find(species::OXYGEN);
   if (i_o2 < 0 || agent.grid_cell < 0) return 0.0;
   return chem_.conc(i_o2, agent.grid_cell);
 }
@@ -1210,7 +1211,7 @@ Real Simulation::ros_induction_rate(const Agent& agent) const {
 }
 
 Real Simulation::local_nuclease_toxin(const Agent& agent) const {
-  Int i_nuc = chem_.find("nuclease_toxin");
+  Int i_nuc = chem_.find(species::NUCLEASE_TOXIN);
   if (i_nuc < 0 || agent.grid_cell < 0) return 0.0;
   return chem_.conc(i_nuc, agent.grid_cell);
 }

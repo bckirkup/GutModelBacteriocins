@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "qssa_solver.h"
+#include "species_names.h"
 #include "fmm.h"
 #include "domain.h"
 #include "advection.h"
@@ -384,10 +385,10 @@ void QSSASolver::solve_nutrient_depletion(
     ChemicalField& chem,
     const OxygenConfig& oxygen) const {
 
-  Int i_iron   = chem.find("iron");
-  Int i_b12    = chem.find("b12");
-  Int i_carbon = chem.find("carbon");
-  Int i_oxygen = chem.find("oxygen");
+  Int i_iron   = chem.find(species::IRON);
+  Int i_b12    = chem.find(species::B12);
+  Int i_carbon = chem.find(species::CARBON);
+  Int i_oxygen = chem.find(species::OXYGEN);
 
   const Real cell_vol = domain_->dx() * domain_->dx() * domain_->dx();
 

@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "input_parser.h"
+#include "species_names.h"
 #include "config_json.h"
 #include "path_utils.h"
 #include "plasmid.h"
@@ -98,13 +99,13 @@ SimulationConfig InputParser::default_config() {
   // Default chemical species
   // Carbon gets z-gradient enabled (mucin-derived monosaccharides peak at epithelium)
   cfg.chemicals = {
-    {"carbon",      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0, true,  25.0e-6},
-    {"iron",        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0, false, 25.0e-6},
-    {"b12",         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0, false, 25.0e-6},
-    {"bacteriocin", 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4, false, 25.0e-6},
-    {"nuclease_toxin", 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
-    {"acetate",     1.2e-9,  1.0,  80.0,   80.0,    0.0, false, 25.0e-6},
-    {"ethanolamine", 1.0e-9, 1.0, 0.5e-3, 0.5e-3, 0.0, false, 25.0e-6},
+    {species::CARBON,      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0, true,  25.0e-6},
+    {species::IRON,        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0, false, 25.0e-6},
+    {species::B12,         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0, false, 25.0e-6},
+    {species::BACTERIOCIN, 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4, false, 25.0e-6},
+    {species::NUCLEASE_TOXIN, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
+    {species::ACETATE,     1.2e-9,  1.0,  80.0,   80.0,    0.0, false, 25.0e-6},
+    {species::ETHANOLAMINE, 1.0e-9, 1.0, 0.5e-3, 0.5e-3, 0.0, false, 25.0e-6},
   };
 
   // VBF mucin z-gradient enabled by default (consistent with carbon gradient)
@@ -150,17 +151,17 @@ bool parse_bool_config(std::string_view val) {
 void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
 
-  if (cfg.chem_env.oxygen.enabled && find_chemical_spec(cfg.chemicals, "oxygen") < 0) {
+  if (cfg.chem_env.oxygen.enabled && find_chemical_spec(cfg.chemicals, species::OXYGEN) < 0) {
     const Real c0 = cfg.chem_env.oxygen.epithelial_conc;
       cfg.chemicals.emplace_back(
-          ChemicalSpec{"oxygen", cfg.chem_env.oxygen.D_free, 1.0, c0, c0, 0.0, true, k_z_lambda});
+          ChemicalSpec{species::OXYGEN, cfg.chem_env.oxygen.D_free, 1.0, c0, c0, 0.0, true, k_z_lambda});
   }
 
   if (cfg.chem_env.acetate.enabled) {
-    Int idx = find_chemical_spec(cfg.chemicals, "acetate");
+    Int idx = find_chemical_spec(cfg.chemicals, species::ACETATE);
     if (idx < 0) {
       cfg.chemicals.emplace_back(
-          ChemicalSpec{"acetate", cfg.chem_env.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda});
+          ChemicalSpec{species::ACETATE, cfg.chem_env.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda});
     } else {
       auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
       spec.diff_coeff = cfg.chem_env.acetate.D_free;
@@ -170,10 +171,10 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
   }
 
   if (cfg.chem_env.mucin.enabled) {
-    if (find_chemical_spec(cfg.chemicals, "mucin") < 0) {
+    if (find_chemical_spec(cfg.chemicals, species::MUCIN) < 0) {
       const Real c0 = cfg.chem_env.mucin.initial_conc;
       cfg.chemicals.emplace_back(
-          ChemicalSpec{"mucin", cfg.chem_env.mucin.D_free, cfg.chem_env.mucin.retardation,
+          ChemicalSpec{species::MUCIN, cfg.chem_env.mucin.D_free, cfg.chem_env.mucin.retardation,
                        c0, c0, 0.0, false, k_z_lambda});
     }
     cfg.vbf.use_dynamic_mucin = true;
@@ -247,13 +248,13 @@ bool apply_vbf_key(SimulationConfig& cfg, const std::string& key, const std::str
 bool apply_chemical_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "carbon_z_gradient") {
     for (auto& c : cfg.chemicals) {
-      if (c.name == "carbon") { c.z_gradient_enabled = (val == "true" || val == "1"); return true; }
+      if (c.name == species::CARBON) { c.z_gradient_enabled = (val == "true" || val == "1"); return true; }
     }
     return true;
   }
   if (key == "carbon_z_lambda") {
     for (auto& c : cfg.chemicals) {
-      if (c.name == "carbon") { c.z_gradient_lambda = parse_config_real(key, val); return true; }
+      if (c.name == species::CARBON) { c.z_gradient_lambda = parse_config_real(key, val); return true; }
     }
     return true;
   }
