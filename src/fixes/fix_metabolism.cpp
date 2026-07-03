@@ -184,6 +184,16 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
 
   Real mu = agent.mu_max * monod_carbon * monod_iron * monod_b12;
 
+  const auto& o2cfg = sim_.config().oxygen;
+  if (o2cfg.enabled) {
+    if (Int i_o2 = chem.find("oxygen"); i_o2 >= 0) {
+      const Real s_o2 = chem.conc(i_o2, cell);
+      const Real monod_o2_boost =
+          1.0 + o2cfg.boost_max * s_o2 / (o2cfg.Km + s_o2);
+      mu *= monod_o2_boost;
+    }
+  }
+
   // Metabolic penalties for receptor downregulation
   // BtuB loss → MetE pathway required (proteome cost)
   // Acetate inhibits MetE, scaling the penalty with local [acetate]
@@ -238,6 +248,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   Int i_carbon = chem.find("carbon");
   Int i_iron   = chem.find("iron");
   Int i_b12    = chem.find("b12");
+  Int i_acetate = chem.find("acetate");
 
   Real cell_vol = sim_.domain().dx() * sim_.domain().dx() * sim_.domain().dx();
 
@@ -261,6 +272,24 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
     #pragma omp atomic
     #endif
     chem.reac(i_b12, cell) -= delta_b12;
+  }
+
+  const auto& acfg = sim_.config().acetate;
+  if (acfg.enabled && i_acetate >= 0 && cell_vol > 0.0) {
+    const Real acetate_conc = chem.conc(i_acetate, cell);
+    if (agent.mu_realized > acfg.overflow_threshold) {
+      #ifdef GUTIBM_OPENMP
+      #pragma omp atomic
+      #endif
+      chem.reac(i_acetate, cell) +=
+          acfg.overflow_rate * agent.biomass / cell_vol;
+    }
+    const Real scavenge = acfg.scavenge_rate * acetate_conc
+        / (acfg.scavenge_Km + acetate_conc) * agent.biomass / cell_vol;
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    chem.reac(i_acetate, cell) -= scavenge;
   }
 }
 

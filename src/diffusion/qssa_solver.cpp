@@ -18,6 +18,8 @@ namespace gutibm {
 
 namespace {
 
+constexpr Real k_ln2 = 0.6931471805599453;
+
 bool in_periodic_grid(Int& idx, Int count, bool periodic) {
   if (periodic) {
     idx = ((idx % count) + count) % count;
@@ -30,6 +32,7 @@ void accumulate_near_field(const Domain& domain,
                            const GreensFunction& gf,
                            const std::vector<Vec3>& sources,
                            const std::vector<GreensFunctionParams>& params,
+                           const std::vector<Real>& strength_factors,
                            Real cutoff_radius,
                            Int nx, Int ny, Int nz,
                            std::vector<Real>& toxin_conc) {
@@ -37,9 +40,10 @@ void accumulate_near_field(const Domain& domain,
   const bool periodic_x = domain.config().periodic[0];
   const bool periodic_y = domain.config().periodic[1];
 
-  auto param_it = params.begin();
-  for (const Vec3& src : sources) {
-    const GreensFunctionParams& p = *param_it++;
+  for (size_t s = 0; s < sources.size(); ++s) {
+    const Vec3& src = sources[s];
+    GreensFunctionParams p = params[s];
+    p.source_rate *= strength_factors[s];
 
     Int src_ix = 0;
     Int src_iy = 0;
@@ -70,17 +74,17 @@ void accumulate_near_field(const Domain& domain,
 
 GreensFunctionParams weighted_avg_params(
     const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors,
     std::vector<Real>& strengths) {
   strengths.resize(params.size());
   GreensFunctionParams avg_params{};
   Real total_s = 0.0;
-  size_t i = 0;
-  for (const GreensFunctionParams& p : params) {
-    const Real s = p.source_rate;
-    strengths[i++] = s;
-    avg_params.diff_coeff  += s * p.diff_coeff;
-    avg_params.pI          += s * p.pI;
-    avg_params.retardation += s * p.retardation;
+  for (size_t i = 0; i < params.size(); ++i) {
+    const Real s = params[i].source_rate * strength_factors[i];
+    strengths[i] = s;
+    avg_params.diff_coeff  += s * params[i].diff_coeff;
+    avg_params.pI          += s * params[i].pI;
+    avg_params.retardation += s * params[i].retardation;
     total_s += s;
   }
   if (total_s > 0.0) {
@@ -127,25 +131,64 @@ void deposit_to_chemical_field(ChemicalField& chem,
   }
 }
 
-void collect_toxin_sources(const AgentPool& agents,
-                           const QSSAConfig& cfg,
-                           std::vector<Vec3>& sources,
-                           std::vector<GreensFunctionParams>& params) {
+Real microcin_steady_decay_factor(Real decay_rate,
+                                  Real washout,
+                                  Real fallback_dilution) {
+  const Real k_dilution = std::max(washout, fallback_dilution);
+  if (decay_rate <= 0.0) return 1.0;
+  return 1.0 / (1.0 + decay_rate / k_dilution);
+}
+
+void collect_microcin_sources(const AgentPool& agents,
+                              const QSSAConfig& cfg,
+                              const ProteaseConfig& protease,
+                              const AdvectionField& adv,
+                              std::vector<Vec3>& sources,
+                              std::vector<GreensFunctionParams>& params,
+                              std::vector<Real>& strength_factors) {
   for (const Agent& a : agents) {
-    if (a.state == PhenoState::DEAD) continue;
+    if (a.state == PhenoState::DEAD || a.state == PhenoState::SOS_INDUCED) continue;
 
     for (const auto& bi : a.genome.bi_loci) {
+      if (bi.molecular_weight >= 10000.0) continue;
+
       GreensFunctionParams gfp;
       gfp.diff_coeff   = bi.diff_coeff;
       gfp.retardation  = bi.retardation;
       gfp.pI           = bi.pI;
-      gfp.source_rate = (a.state == PhenoState::SOS_INDUCED)
-                        ? cfg.colicin_release_rate
-                        : cfg.microcin_secretion;
+      gfp.source_rate  = cfg.microcin_secretion;
+
+      Real factor = 1.0;
+      if (protease.enabled && bi.protease_half_life > 0.0) {
+        const Real decay_rate = k_ln2 / bi.protease_half_life;
+        factor = microcin_steady_decay_factor(
+            decay_rate, adv.washout_rate(a.x[2]), protease.dilution_rate);
+      }
 
       sources.push_back(a.x);
       params.push_back(gfp);
+      strength_factors.push_back(factor);
     }
+  }
+}
+
+void append_burst_sources(const std::vector<ToxinBurstSource>& bursts,
+                          Real current_time,
+                          const ProteaseConfig& protease,
+                          std::vector<Vec3>& sources,
+                          std::vector<GreensFunctionParams>& params,
+                          std::vector<Real>& strength_factors) {
+  for (const ToxinBurstSource& burst : bursts) {
+    Real factor = 1.0;
+    if (protease.enabled && burst.decay_rate > 0.0) {
+      const Real age = std::max(0.0, current_time - burst.creation_time);
+      factor = std::exp(-burst.decay_rate * age);
+      if (factor < 1.0e-12) continue;
+    }
+
+    sources.push_back(burst.pos);
+    params.push_back(burst.params);
+    strength_factors.push_back(factor);
   }
 }
 
@@ -155,37 +198,63 @@ void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
                        const AdvectionField& adv) {
   cfg_    = cfg;
   domain_ = &domain;
+  adv_    = &adv;
   gf_.init(domain, adv);
 }
 
 void QSSASolver::solve_bacteriocin_field(
     const AgentPool& agents,
+    const std::vector<ToxinBurstSource>& bursts,
+    Real current_time,
+    const ProteaseConfig& protease,
+    const AdvectionField& adv,
     ChemicalField& chem,
     Int toxin_species_idx) const {
 
   std::vector<Vec3> sources;
   std::vector<GreensFunctionParams> params;
-  collect_toxin_sources(agents, cfg_, sources, params);
-  if (sources.empty()) return;
+  std::vector<Real> strength_factors;
 
-  if (cfg_.use_fmm) {
-    solve_bacteriocin_field_fmm(sources, params, chem, toxin_species_idx);
+  collect_microcin_sources(agents, cfg_, protease, adv,
+                           sources, params, strength_factors);
+  append_burst_sources(bursts, current_time, protease,
+                       sources, params, strength_factors);
+
+  if (sources.empty()) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp parallel for schedule(static)
+    #endif
+    for (Int c = 0; c < chem.ncells(); ++c) {
+      chem.conc(toxin_species_idx, c) = 0.0;
+    }
     return;
   }
 
-  std::vector<Real> toxin_conc;
-  gf_.superpose_to_grid(sources, params, toxin_conc, cfg_.toxin_cutoff);
+  if (cfg_.use_fmm) {
+    solve_bacteriocin_field_fmm(sources, params, strength_factors,
+                                chem, toxin_species_idx);
+    return;
+  }
+
+  std::vector<Real> toxin_conc(domain_->ncells(), 0.0);
+  const Int nx = domain_->nx();
+  const Int ny = domain_->ny();
+  const Int nz = domain_->nz();
+  accumulate_near_field(*domain_, gf_, sources, params, strength_factors,
+                        cfg_.toxin_cutoff, nx, ny, nz, toxin_conc);
   deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
 }
 
 void QSSASolver::solve_bacteriocin_field_fmm(
     const std::vector<Vec3>& sources,
     const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors,
     ChemicalField& chem,
     Int toxin_species_idx) const {
 
   std::vector<Real> strengths;
-  const GreensFunctionParams avg_params = weighted_avg_params(params, strengths);
+  const GreensFunctionParams avg_params =
+      weighted_avg_params(params, strength_factors, strengths);
 
   FMM fmm;
   fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
@@ -197,8 +266,8 @@ void QSSASolver::solve_bacteriocin_field_fmm(
   const Int ncells = domain_->ncells();
 
   std::vector<Real> toxin_conc(ncells, 0.0);
-  accumulate_near_field(*domain_, gf_, sources, params, cfg_.toxin_cutoff,
-                      nx, ny, nz, toxin_conc);
+  accumulate_near_field(*domain_, gf_, sources, params, strength_factors,
+                        cfg_.toxin_cutoff, nx, ny, nz, toxin_conc);
   accumulate_far_field(fmm, *domain_, cfg_.fmm_theta, gf_, avg_params,
                        nx, ny, nz, toxin_conc);
   deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
@@ -206,14 +275,15 @@ void QSSASolver::solve_bacteriocin_field_fmm(
 
 void QSSASolver::solve_nutrient_depletion(
     const AgentPool& agents,
-    ChemicalField& chem) const {
+    ChemicalField& chem,
+    const OxygenConfig& oxygen) const {
 
-  // Each living agent consumes nutrients from its grid cell
-  // This is handled in fix_metabolism; here we just compute the
-  // steady-state depletion halo around dense colonies
   Int i_iron   = chem.find("iron");
   Int i_b12    = chem.find("b12");
   Int i_carbon = chem.find("carbon");
+  Int i_oxygen = chem.find("oxygen");
+
+  const Real cell_vol = domain_->dx() * domain_->dx() * domain_->dx();
 
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(dynamic)
@@ -224,26 +294,32 @@ void QSSASolver::solve_nutrient_depletion(
     Int cell = a.grid_cell;
     if (cell < 0) continue;
 
-    // Localized consumption based on biomass and growth rate
     Real consumption = a.mu_realized * a.biomass;
 
     if (i_iron >= 0) {
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif
-      chem.reac(i_iron, cell) -= consumption * 1.0e-6;  // iron stoichiometry
+      chem.reac(i_iron, cell) -= consumption * 1.0e-6;
     }
     if (i_b12 >= 0) {
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif
-      chem.reac(i_b12, cell) -= consumption * 1.0e-9;   // B12 stoichiometry
+      chem.reac(i_b12, cell) -= consumption * 1.0e-9;
     }
     if (i_carbon >= 0) {
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif
-      chem.reac(i_carbon, cell) -= consumption * 0.5;    // carbon stoichiometry
+      chem.reac(i_carbon, cell) -= consumption * 0.5;
+    }
+    if (oxygen.enabled && i_oxygen >= 0 && cell_vol > 0.0) {
+      const Real o2_use = oxygen.q_consumption * std::max(a.mu_realized, 0.0);
+      #ifdef GUTIBM_OPENMP
+      #pragma omp atomic
+      #endif
+      chem.reac(i_oxygen, cell) -= o2_use / cell_vol;
     }
   }
 }
@@ -251,16 +327,16 @@ void QSSASolver::solve_nutrient_depletion(
 Real QSSASolver::point_concentration(
     const Vec3& target,
     const std::vector<Vec3>& sources,
-    const std::vector<GreensFunctionParams>& params) const {
+    const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors) const {
 
   Real total = 0.0;
-  auto param_it = params.begin();
-  for (const Vec3& src : sources) {
-    const GreensFunctionParams& p = *param_it++;
-    Real d2 = domain_->min_image_dist_sq(src, target);
+  for (size_t s = 0; s < sources.size(); ++s) {
+    GreensFunctionParams p = params[s];
+    p.source_rate *= strength_factors[s];
+    Real d2 = domain_->min_image_dist_sq(sources[s], target);
     if (Real cutoff2 = cfg_.toxin_cutoff * cfg_.toxin_cutoff; d2 > cutoff2) continue;
-
-    total += gf_.concentration_bounded(src, target, p);
+    total += gf_.concentration_bounded(sources[s], target, p);
   }
   return total;
 }

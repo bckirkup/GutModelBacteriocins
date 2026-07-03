@@ -207,6 +207,55 @@ void test_smoke_with_acetate() {
             << " steps=" << sim.step_count() << ")\n";
 }
 
+void test_acetate_mete_dynamic() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_strains.clear();
+  cfg.hdf5.enabled = false;
+  cfg.total_time = 120.0;
+  cfg.bio_dt = 60.0;
+  cfg.domain.hi = {40e-6, 40e-6, 40e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.acetate.enabled = true;
+  cfg.acetate.overflow_rate = 1.0e-12;
+  cfg.acetate.overflow_threshold = 0.0;
+  InputParser::finalize_config(cfg);
+
+  SimulationConfig::InitialStrain strain;
+  strain.type = 1;
+  strain.count = 3;
+  strain.mu_max = 8e-4;
+  strain.plasmids = {};
+  cfg.initial_strains.push_back(strain);
+
+  Simulation sim;
+  sim.init(cfg);
+
+  Int i_acetate = sim.chemical_field().find("acetate");
+  assert(i_acetate >= 0);
+
+  Real acetate_before = 0.0;
+  for (const Agent& a : sim.agents()) {
+    if (a.grid_cell >= 0) {
+      acetate_before += sim.chemical_field().conc(i_acetate, a.grid_cell);
+    }
+  }
+
+  sim.step(60.0);
+
+  Real acetate_after = 0.0;
+  for (const Agent& a : sim.agents()) {
+    if (a.grid_cell >= 0) {
+      acetate_after += sim.chemical_field().conc(i_acetate, a.grid_cell);
+    }
+  }
+
+  assert(acetate_after >= acetate_before);
+
+  std::cout << "  test_acetate_mete_dynamic: PASSED"
+            << " (before=" << acetate_before
+            << " after=" << acetate_after << ")\n";
+}
+
 int main() {
   std::cout << "=== Acetate MetE Inhibition Tests ===\n";
   test_acetate_species_present();
@@ -214,6 +263,7 @@ int main() {
   test_acetate_penalty_scaling();
   test_acetate_increases_penalty();
   test_smoke_with_acetate();
+  test_acetate_mete_dynamic();
   std::cout << "All acetate MetE tests passed.\n";
   return 0;
 }

@@ -4,6 +4,7 @@
 
 #include "fix_bacteriocin.h"
 #include "simulation.h"
+#include "qssa_solver.h"
 #include <cmath>
 
 namespace gutibm {
@@ -82,14 +83,30 @@ void FixBacteriocin::check_sos_induction(Agent& agent, Real dt) {
 }
 
 void FixBacteriocin::lyse_agent(Agent& agent) {
-  // Cell dies and releases toxin burst
+  const Real release_rate = sim_.config().qssa.colicin_release_rate;
+  const Real creation_time = sim_.time();
+  constexpr Real k_ln2 = 0.6931471805599453;
+
+  for (const auto& bi : agent.genome.bi_loci) {
+    if (bi.molecular_weight < 10000.0) continue;
+
+    ToxinBurstSource burst;
+    burst.pos = agent.x;
+    burst.params.diff_coeff = bi.diff_coeff;
+    burst.params.retardation = bi.retardation;
+    burst.params.pI = bi.pI;
+    burst.params.source_rate = release_rate;
+    burst.creation_time = creation_time;
+    burst.decay_rate = (bi.protease_half_life > 0.0)
+        ? k_ln2 / bi.protease_half_life : 0.0;
+    if (!sim_.config().protease.enabled) {
+      burst.decay_rate = 0.0;
+    }
+    sim_.add_toxin_burst(burst);
+  }
+
   agent.state = PhenoState::DEAD;
 
-  // The toxin release is handled implicitly:
-  // QSSA solver picks up agents with SOS_INDUCED state as burst sources
-  // The burst is a large point source at the agent's position
-
-  // Record lysis event for lineage tracking
   sim_.lineage_tracker().record_lysis(agent.tag, agent.x,
                                        agent.genome.lineage_id);
 }

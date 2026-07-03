@@ -39,12 +39,19 @@ The QSSA solver and advection field operate between fix passes (chemistry and ph
 
 ## 1. fix_metabolism — Triple Monod Growth
 
-**Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics.
+**Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics. When `oxygen.enabled`, an optional aerobic boost applies near the epithelium.
 
 **Equation:**
 ```
 mu = mu_max * [C]/(Km_C + [C]) * monod_iron * [B12]/(Km_B12 + [B12])
 ```
+
+**Aerobic boost (Spec 1, when `oxygen.enabled`):**
+```
+monod_O2_boost = 1 + boost_max * [O2] / (Km_O2 + [O2])
+mu *= monod_O2_boost
+```
+Agents consume O₂ proportional to `mu_realized`. `Simulation::local_O2()` and `ros_induction_rate()` expose local O₂ for Spec 2 SOS coupling.
 
 **Graded iron uptake (Issue #10):** Rather than relying solely on FepA, iron acquisition uses four receptor systems in parallel with different affinities:
 
@@ -94,8 +101,8 @@ This replaces the previous binary FepA-dependent penalty (`Km_Fe / expr_FepA`). 
 Large-protein colicins (30–80 kDa) are released only upon cell death:
 - Spontaneous SOS induction at basal rate (`sos_basal_rate`, default 10^-6 /s)
 - After induction, 5-minute delay (`sos_timer`), then lysis
-- Burst release of ~10^4 toxin molecules as instantaneous point source
-- The QSSA solver treats lysed cells as burst sources for Green's function superposition
+- Burst release of ~10^4 toxin molecules as instantaneous point source registered in `Simulation::toxin_bursts_`
+- The QSSA solver superposes burst sources with exponential protease decay: `C ∝ exp(-k_decay * age)` where `k_decay = ln(2) / protease_half_life` per BI cluster
 
 ### b) Continuous microcin secretion (new)
 Small peptide microcins (<10 kDa, e.g. MccV) are exported without lysis:

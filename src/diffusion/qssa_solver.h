@@ -20,6 +20,7 @@
 #include "types.h"
 #include "greens_function.h"
 #include "fmm.h"
+#include "chem_environment_config.h"
 #include <vector>
 
 namespace gutibm {
@@ -45,6 +46,14 @@ struct QSSAConfig {
   int  fmm_expansion_order = 2;  // 1=monopole, 2=dipole+quadrupole, 3=octupole
 };
 
+// Persistent burst from SOS lysis (Spec 1 protease decay)
+struct ToxinBurstSource {
+  Vec3 pos;
+  GreensFunctionParams params;
+  Real creation_time = 0.0;
+  Real decay_rate = 0.0;   // ln(2) / protease_half_life (1/s)
+};
+
 class QSSASolver {
  public:
   QSSASolver() = default;
@@ -56,33 +65,40 @@ class QSSASolver {
   // and deposit onto chemical field grid
   void solve_bacteriocin_field(
       const AgentPool& agents,
+      const std::vector<ToxinBurstSource>& bursts,
+      Real current_time,
+      const ProteaseConfig& protease,
+      const AdvectionField& adv,
       ChemicalField& chem,
       Int toxin_species_idx) const;
 
   // Compute nutrient depletion zones around colonies
   void solve_nutrient_depletion(
       const AgentPool& agents,
-      ChemicalField& chem) const;
+      ChemicalField& chem,
+      const OxygenConfig& oxygen) const;
 
   // Concentration at a specific point from all nearby sources
   Real point_concentration(
       const Vec3& target,
       const std::vector<Vec3>& sources,
-      const std::vector<GreensFunctionParams>& params) const;
+      const std::vector<GreensFunctionParams>& params,
+      const std::vector<Real>& strength_factors) const;
 
   const GreensFunction& gf() const { return gf_; }
 
  private:
-  // Build FMM tree from sources and evaluate grid using multipole expansions
   void solve_bacteriocin_field_fmm(
       const std::vector<Vec3>& sources,
       const std::vector<GreensFunctionParams>& params,
+      const std::vector<Real>& strength_factors,
       ChemicalField& chem,
       Int toxin_species_idx) const;
 
   QSSAConfig cfg_;
   GreensFunction gf_;
   const Domain* domain_ = nullptr;
+  const AdvectionField* adv_ = nullptr;
 };
 
 }  // namespace gutibm

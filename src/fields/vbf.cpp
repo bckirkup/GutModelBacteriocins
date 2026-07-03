@@ -5,21 +5,18 @@
 #include "vbf.h"
 #include "domain.h"
 #include "chemical_field.h"
+#include "chem_environment_config.h"
 #include <cmath>
 
 namespace gutibm {
 
 namespace {
 
-void apply_cell_nutrient_coupling(ChemicalField& chem, Int cell,
-                                Real liberation, Real iron_sink_rate,
-                                Int i_carbon, Int i_iron) {
-  if (i_carbon >= 0) {
-    chem.reac(i_carbon, cell) += liberation;
-  }
-  if (i_iron >= 0) {
-    chem.reac(i_iron, cell) -= iron_sink_rate * chem.conc(i_iron, cell);
-  }
+Real dynamic_mucin_liberation(Real mucin_conc,
+                              const VBFConfig& vbf_cfg,
+                              const MucinConfig& mucin_cfg) {
+  const Real substrate = mucin_conc / (mucin_cfg.Km_degradation + mucin_conc);
+  return mucin_cfg.k_liberation * vbf_cfg.density * substrate;
 }
 
 }  // namespace
@@ -38,9 +35,15 @@ Real VBF::mucin_rate(Real z_rel) const {
 }
 
 void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
-                                   Real /*dt*/) const {
+                                   Real /*dt*/,
+                                   const OxygenConfig& oxygen,
+                                   const AcetateConfig& acetate,
+                                   const MucinConfig& mucin) const {
   Int i_carbon = chem.find("carbon");
   Int i_iron   = chem.find("iron");
+  Int i_oxygen = chem.find("oxygen");
+  Int i_acetate = chem.find("acetate");
+  Int i_mucin  = chem.find("mucin");
 
   const Int nx = domain.nx();
   const Int ny = domain.ny();
@@ -48,13 +51,46 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
 
   for (Int iz = 0; iz < nz; ++iz) {
     Real z_rel = (iz + 0.5) * domain.dx();
-    Real liberation = mucin_rate(z_rel);
+    Real z_weight = cfg_.mucin_z_gradient_enabled
+        ? std::exp(-z_rel / cfg_.mucin_z_gradient_lambda)
+        : 1.0;
+
+    const Real static_liberation = cfg_.use_dynamic_mucin ? 0.0 : mucin_rate(z_rel);
 
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
         Int c = domain.cell_index(ix, iy, iz);
-        apply_cell_nutrient_coupling(chem, c, liberation, cfg_.nutrient_sink,
-                                     i_carbon, i_iron);
+
+        if (cfg_.use_dynamic_mucin && mucin.enabled && i_mucin >= 0) {
+          const Real liberation =
+              dynamic_mucin_liberation(chem.conc(i_mucin, c), cfg_, mucin);
+          chem.reac(i_mucin, c) -= liberation;
+          if (i_carbon >= 0) {
+            chem.reac(i_carbon, c) += liberation;
+          }
+        } else if (i_carbon >= 0) {
+          chem.reac(i_carbon, c) += static_liberation;
+        }
+
+        if (i_iron >= 0) {
+          chem.reac(i_iron, c) -= cfg_.nutrient_sink * chem.conc(i_iron, c);
+        }
+
+        if (oxygen.enabled && i_oxygen >= 0) {
+          chem.reac(i_oxygen, c) -= oxygen.vbf_sink;
+        }
+
+        if (acetate.enabled && i_acetate >= 0) {
+          chem.reac(i_acetate, c) += acetate.vbf_production * z_weight;
+          chem.reac(i_acetate, c) -= acetate.vbf_consumption;
+          if (iz == 0) {
+            chem.reac(i_acetate, c) -= acetate.epithelial_uptake;
+          }
+        }
+
+        if (mucin.enabled && i_mucin >= 0 && iz == 0) {
+          chem.reac(i_mucin, c) += mucin.secretion_rate;
+        }
       }
     }
   }

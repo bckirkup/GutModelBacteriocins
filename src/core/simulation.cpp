@@ -199,13 +199,14 @@ MigrateSide classify_migration(const Agent& agent, Int my_rank, Int axis,
 
 void Simulation::init(const SimulationConfig& cfg) {
   cfg_ = cfg;
-  rng_.seed(cfg.seed);
+  InputParser::finalize_config(cfg_);
+  rng_.seed(cfg_.seed);
 
   // Domain
   domain_.init(cfg.domain);
 
   // Chemical fields
-  chem_.init(domain_, cfg.chemicals);
+  chem_.init(domain_, cfg_.chemicals);
 
   // Advection
   advection_.init(cfg.advection, domain_);
@@ -314,10 +315,11 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
                                       const std::string& h5_file,
                                       const std::string& step) {
   cfg_ = cfg;
-  rng_.seed(cfg.seed);
+  InputParser::finalize_config(cfg_);
+  rng_.seed(cfg_.seed);
 
-  domain_.init(cfg.domain);
-  chem_.init(domain_, cfg.chemicals);
+  domain_.init(cfg_.domain);
+  chem_.init(domain_, cfg_.chemicals);
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
   qssa_.init(cfg.qssa, domain_, advection_);
@@ -654,9 +656,12 @@ void Simulation::module_biology(Real dt) {
 }
 
 void Simulation::module_chemistry(Real dt) {
+  prune_toxin_bursts(time_);
+
   // QSSA: compute steady-state toxin field via Green's functions
   if (Int i_tox = chem_.find("bacteriocin"); i_tox >= 0) {
-    qssa_.solve_bacteriocin_field(agents_, chem_, i_tox);
+    qssa_.solve_bacteriocin_field(agents_, toxin_bursts_, time_,
+                                    cfg_.protease, advection_, chem_, i_tox);
     if (gpu_active_) {
       chem_gpu_.sync_to_device(chem_);
     }
@@ -666,17 +671,18 @@ void Simulation::module_chemistry(Real dt) {
   if (gpu_active_) {
     agents_gpu_.sync_from_host(agents_);
     if (!gpu_solve_nutrient_depletion(agents_gpu_, agents_.size(), chem_gpu_, chem_)) {
-      qssa_.solve_nutrient_depletion(agents_, chem_);
+      qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.oxygen);
     }
   } else {
-    qssa_.solve_nutrient_depletion(agents_, chem_);
+    qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.oxygen);
   }
 
   // VBF coupling (nutrient sink/source) — CPU path updates host reac_
   if (gpu_active_) {
     chem_gpu_.sync_to_host(chem_);
   }
-  vbf_.apply_nutrient_coupling(chem_, domain_, dt);
+  vbf_.apply_nutrient_coupling(chem_, domain_, dt,
+                                cfg_.oxygen, cfg_.acetate, cfg_.mucin);
   if (gpu_active_) {
     chem_gpu_.sync_to_device(chem_);
   }
@@ -1145,6 +1151,43 @@ void Simulation::allreduce_global_stats() {
 
   global_agent_count_ = local_count;
   global_mu_avg_ = local_count > 0 ? local_mu_sum / local_count : 0.0;
+}
+
+Real Simulation::local_O2(const Agent& agent) const {
+  if (!cfg_.oxygen.enabled) return 0.0;
+  Int i_o2 = chem_.find("oxygen");
+  if (i_o2 < 0 || agent.grid_cell < 0) return 0.0;
+  return chem_.conc(i_o2, agent.grid_cell);
+}
+
+Real Simulation::ros_induction_rate(const Agent& agent) const {
+  if (!cfg_.oxygen.enabled) return 0.0;
+  return cfg_.oxygen.k_ROS * local_O2(agent) * std::max(agent.mu_realized, 0.0);
+}
+
+void Simulation::add_toxin_burst(const ToxinBurstSource& burst) {
+  toxin_bursts_.push_back(burst);
+}
+
+void Simulation::prune_toxin_bursts(Real current_time) {
+  if (toxin_bursts_.empty()) return;
+
+  std::vector<ToxinBurstSource> kept;
+  kept.reserve(toxin_bursts_.size());
+
+  for (const ToxinBurstSource& burst : toxin_bursts_) {
+    if (!cfg_.protease.enabled || burst.decay_rate <= 0.0) {
+      kept.push_back(burst);
+      continue;
+    }
+    const Real age = std::max(0.0, current_time - burst.creation_time);
+    const Real max_age = 5.0 / burst.decay_rate;
+    if (age <= max_age) {
+      kept.push_back(burst);
+    }
+  }
+
+  toxin_bursts_.swap(kept);
 }
 
 }  // namespace gutibm
