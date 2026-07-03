@@ -94,13 +94,16 @@ void FixMutation::mutate_receptor(Agent& agent) {
   auto& rng = sim_.rng();
   Int receptor = rng.randint(0, NUM_RECEPTORS - 1);
 
-  agent.receptor_expr[receptor] =
-      std::max(0.0, agent.receptor_expr[receptor] - cfg_.receptor_reduction);
-  agent.genome.receptor_expression[receptor] = agent.receptor_expr[receptor];
+  agent.receptor_expr_base[receptor] =
+      std::max(0.0, agent.receptor_expr_base[receptor] - cfg_.receptor_reduction);
+  agent.genome.receptor_expression[receptor] = agent.receptor_expr_base[receptor];
+  if (!sim_.config().fur.enabled) {
+    agent.receptor_expr[receptor] = agent.receptor_expr_base[receptor];
+  }
   agent.genome.mutations++;
 
   // If expression is very low, mark as resistant
-  if (agent.receptor_expr[receptor] < 0.2) {
+  if (agent.receptor_expr_base[receptor] < 0.2) {
     agent.state = PhenoState::RESISTANT;
   }
 

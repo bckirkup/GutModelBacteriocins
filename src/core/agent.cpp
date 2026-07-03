@@ -45,7 +45,8 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
   a.biomass       = a.mass;
   a.maintenance   = 0.0;
 
-  a.receptor_expr.fill(1.0);  // wild-type: all receptors fully expressed
+  a.receptor_expr_base.fill(1.0);  // wild-type: all receptors fully expressed
+  a.receptor_expr = a.receptor_expr_base;
 
   a.km_iron   = 1.0e-6;   // 1 uM baseline
   a.km_b12    = 1.0e-9;   // 1 nM baseline

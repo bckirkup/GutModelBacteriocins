@@ -84,6 +84,9 @@ gutibm_add_test(input_parser test_input_parser.cpp
 gutibm_add_test(bacteriocin test_bacteriocin.cpp LABELS "unit")
 gutibm_add_test(receptor test_receptor.cpp LABELS "unit")
 gutibm_add_test(mutation test_mutation.cpp LABELS "unit")
+gutibm_add_test(fur test_fur.cpp LABELS "unit")
+gutibm_add_test(cdi test_cdi.cpp LABELS "unit")
+gutibm_add_test(motility test_motility.cpp LABELS "unit")
 
 # Scaling benchmark smoke (issue #55) — modest agent counts for CI.
 gutibm_add_test(scaling_benchmark test_scaling_benchmark.cpp LABELS "benchmark;slow")

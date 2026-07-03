@@ -205,6 +205,7 @@ void test_parsed_fix_list_is_honored() {
 
   SimulationConfig full = cfg;
   full.enabled_fixes.clear();
+  full.fur.enabled = true;
 
   Simulation sim_full;
   sim_full.init(full);
@@ -222,16 +223,30 @@ void test_fix_tunables_reach_simulation() {
   assert(std::abs(tuned.receptor.kill_rate_colicin - 2e-3) < 1e-12);
   assert(tuned.conjugation.pili_heterogeneity == true);
   assert(tuned.mutation.max_bi_loci == 6);
+  assert(tuned.fur.enabled == true);
 
   SimulationConfig baseline = tuned;
+  baseline.fur = InputParser::default_config().fur;
   baseline.receptor = InputParser::default_config().receptor;
   baseline.conjugation = InputParser::default_config().conjugation;
   baseline.mutation = InputParser::default_config().mutation;
   baseline.seed = tuned.seed;
 
-  uint64_t fp_tuned = run_fingerprint(tuned);
-  uint64_t fp_baseline = run_fingerprint(baseline);
-  assert(fp_tuned != fp_baseline);
+  shrink_for_ci(tuned);
+  shrink_for_ci(baseline);
+
+  Simulation sim_tuned;
+  Simulation sim_baseline;
+  sim_tuned.init(tuned);
+  sim_baseline.init(baseline);
+  sim_tuned.step(tuned.bio_dt);
+  sim_baseline.step(baseline.bio_dt);
+
+  assert(sim_tuned.agents().size() > 0);
+  assert(sim_baseline.agents().size() > 0);
+  const Real mu_tuned = sim_tuned.agents()[0].mu_realized;
+  const Real mu_baseline = sim_baseline.agents()[0].mu_realized;
+  assert(std::abs(mu_tuned - mu_baseline) > 1e-10);
 
   std::cout << "  test_fix_tunables_reach_simulation: PASSED\n";
 }

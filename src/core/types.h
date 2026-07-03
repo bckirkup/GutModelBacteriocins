@@ -95,6 +95,9 @@ struct Genome {
   // while retaining sufficient affinity for native ligands (VADI §78, §101)
   std::array<Real, NUM_RECEPTORS> toxin_affinity;   // 1.0 = wild-type, 0.01 = 100x reduced toxin binding
   std::array<Real, NUM_RECEPTORS> ligand_affinity;  // 1.0 = wild-type, should stay > 0.5 for partial resistance
+
+  uint16_t cdi_type = 0;
+  uint16_t cdi_immunity = 0;
 };
 
 inline Real sphere_volume(Real radius) {

@@ -6,7 +6,9 @@
 #include "fix_metabolism.h"
 #include "fix_bacteriocin.h"
 #include "fix_receptor.h"
+#include "fix_motility.h"
 #include "fix_conjugation.h"
+#include "fix_cdi.h"
 #include "fix_mutation.h"
 #include "fix_mechanics.h"
 #include "simulation.h"
@@ -44,9 +46,17 @@ void FixRegistry::register_defaults() {
     [](Simulation& sim, const SimulationConfig& cfg) {
       return std::make_unique<FixReceptor>(sim, cfg.receptor);
     });
+  register_fix("motility",
+    [](Simulation& sim, const SimulationConfig& cfg) {
+      return std::make_unique<FixMotility>(sim, cfg.motility);
+    });
   register_fix("conjugation",
     [](Simulation& sim, const SimulationConfig& cfg) {
       return std::make_unique<FixConjugation>(sim, cfg.conjugation);
+    });
+  register_fix("cdi",
+    [](Simulation& sim, const SimulationConfig& cfg) {
+      return std::make_unique<FixCdi>(sim, cfg.cdi);
     });
   register_fix("mutation",
     [](Simulation& sim, const SimulationConfig& cfg) {

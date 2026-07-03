@@ -11,6 +11,9 @@
 #include "vbf.h"
 #include "chemical_field.h"
 #include "chem_environment_config.h"
+#include "fur_config.h"
+#include "cdi_config.h"
+#include "motility_config.h"
 #include "qssa_solver.h"
 #include "fix_metabolism.h"
 #include "fix_receptor.h"
@@ -80,6 +83,8 @@ struct SimulationConfig {
     Real mu_max;
     std::vector<std::string> plasmids;
     bool conjugative;
+    uint16_t cdi_type = 0;
+    uint16_t cdi_immunity = 0;
   };
   std::vector<InitialStrain> initial_strains;
 
@@ -97,6 +102,11 @@ struct SimulationConfig {
   AcetateConfig acetate;
   MucinConfig mucin;
   ProteaseConfig protease;
+
+  // Cell biology expansion (Spec 3)
+  FurConfig fur;
+  CdiConfig cdi;
+  MotilityConfig motility;
 
   // Per-step wall-clock profiling (rank 0 prints summary at end of run)
   bool profile_steps = false;
