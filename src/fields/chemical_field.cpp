@@ -57,6 +57,16 @@ void ChemicalField::zero_reactions() {
 }
 
 void ChemicalField::apply_boundaries(const Domain& domain) {
+  // Only the z-axis carries physical grid boundary conditions (Dirichlet at the
+  // epithelium z=0, zero-gradient Neumann at the lumen z=nz-1).
+  //
+  // x and y are periodic (DomainConfig::periodic), but the chemical grid needs
+  // no explicit periodic copy: there is no finite-difference diffusion stencil
+  // on this grid. Diffusion is solved analytically by the QSSA Green's function
+  // (which wraps x/y via in_periodic_grid during near-field superposition), and
+  // reactions are applied purely locally (conc += reac * dt in Simulation).
+  // So lateral periodicity is already enforced where the spatial coupling
+  // actually happens, not here.
   const Int nx = domain.nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();

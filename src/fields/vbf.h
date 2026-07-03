@@ -23,7 +23,12 @@ struct MucinConfig;
 struct VBFConfig {
   Real density          = 1.0e11;   // background cell density (#/m^3)
   Real drag_coeff       = 1.0e-9;   // Stokes-like drag (N·s/m)
-  Real nutrient_sink    = 1.0e-4;   // volumetric consumption rate (mol/m^3/s)
+  // First-order iron uptake RATE CONSTANT (1/s): the sink applied by the VBF is
+  // concentration-dependent, reac -= nutrient_sink * [iron] (unsaturated /
+  // Monod-at-low-concentration limit), not a constant zero-order mol/m^3/s
+  // removal. At the default iron scale (~1e-4 mol/m^3) a zero-order 1e-4
+  // mol/m^3/s would deplete iron in ~1 s, which is unphysical.
+  Real nutrient_sink    = 1.0e-4;   // first-order iron uptake rate constant (1/s)
   Real mucin_liberation = 5.0e-5;   // monosaccharide release from mucin (mol/m^3/s)
   Real carrying_cap     = 1.0e12;   // local carrying capacity (#/m^3)
   Real viscosity        = 0.01;     // effective viscosity (Pa·s), ~10x water

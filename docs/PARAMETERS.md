@@ -75,7 +75,11 @@ When disabled (`adaptive_dt_enabled = false`), the fixed `bio_dt` is used as bef
 **Taylor-Aris:** Enhances effective longitudinal diffusion via:
 `D_eff = D_mol + U(z)^2 * h^2 / (210 * D_mol)`
 
-This captures shear-enhanced spreading of toxins in the mucus flow.
+This captures shear-enhanced spreading of toxins in the mucus flow. The
+constant `210` is the classical result for fully-developed parabolic
+(Poiseuille) flow (`profile_alpha = 2`); for other profile exponents the
+prefactor differs, so with the default `profile_alpha = 1.5` this is an
+order-of-magnitude approximation rather than an exact coefficient.
 
 ### Peristaltic Mixing (VADI §77)
 
@@ -131,7 +135,7 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 |-----------|---------|-------|-------------|
 | `vbf.density` | 1e11 | #/m^3 | Anaerobic background density |
 | `vbf.drag_coeff` | 1e-9 | N·s/m | Stokes drag coefficient |
-| `vbf.nutrient_sink` | 1e-4 | mol/m^3/s | Background nutrient consumption |
+| `vbf.nutrient_sink` | 1e-4 | 1/s | First-order iron uptake rate constant (sink is `-nutrient_sink · [iron]`, concentration-dependent — **not** a zero-order mol/m³/s removal) |
 | `vbf.mucin_liberation` | 5e-5 | mol/m^3/s | Peak monosaccharide release (at z=0) |
 | `vbf.carrying_cap` | 1e12 | #/m^3 | Local carrying capacity |
 | `vbf.viscosity` | 0.01 | Pa·s | Effective viscosity (~10× water) |
