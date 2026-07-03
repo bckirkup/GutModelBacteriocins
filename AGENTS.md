@@ -239,3 +239,26 @@ Recently closed critical path: #40–#43, #56, #75–#81, #25 (FISH models), #29
 Remaining long-horizon: #33 (GPU production path), larger-scale MPI/HPC validation.
 
 **Project board:** [docs/PROJECT_BOARD.md](docs/PROJECT_BOARD.md) — kanban layout, PR bundles, merge order. Run `./scripts/setup_project_board.sh` to create GitHub labels, milestones, and a Projects v2 board.
+
+## Cursor Cloud specific instructions
+
+System deps (`cmake`, `build-essential`, MPI, parallel HDF5) and Python deps are
+provisioned by the startup update script; the notes below are non-obvious caveats
+for building/running/testing in this environment.
+
+- **Build with GCC, not the default `c++`.** The default `cc`/`c++` on this VM is
+  Clang 18, which selects the gcc-14 toolchain but there is no `libstdc++-14-dev`,
+  so any Clang link fails with `cannot find -lstdc++`. Always configure with
+  `CC=gcc CXX=g++` (gcc-13, which has full dev libs and matches CI):
+  `CC=gcc CXX=g++ cmake .. -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON`. Standard
+  build/test/run commands are in `.agents/skills/gut-ibm/SKILL.md`.
+- **All 39 CTest targets pass here.** The `libhwloc`/MPI "preexisting failures"
+  table in `.agents/skills/testing-gutibm/SKILL.md` describes a *different* (Devin)
+  VM; on Cursor Cloud MPI/HDF5 init works and the full suite (incl. `mpi_multi_rank`,
+  `hdf5_*`, `scaling_benchmark`) passes.
+- **`ruff`/`pytest` install to `~/.local/bin`**, which is not on `PATH` by default —
+  prefix with `PATH="$HOME/.local/bin:$PATH"` or add it, or call `python3 -m pytest`.
+- **Running the simulation:** binary is `build/gut_ibm <config.json>`. For
+  `mpirun -np N` with N greater than the available cores, add `--oversubscribe`.
+  The full `examples/single_colony/input.json` (86400 s / 1440 steps) is compute-
+  heavy and writes a very large HDF5; use a short/small config for quick checks.
