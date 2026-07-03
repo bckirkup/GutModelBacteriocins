@@ -1,5 +1,13 @@
 /* -----------------------------------------------------------------------
-   GutIBM – Thread-safe random number generation
+   GutIBM – Deterministic (seeded) random number generation
+
+   THREAD SAFETY: RNG wraps a single std::mt19937_64 and is NOT safe for
+   concurrent calls from multiple threads — doing so would corrupt the engine
+   state and destroy run-to-run reproducibility. Under OpenMP, use one RNG per
+   thread (seeded distinctly, e.g. seed + thread_id) or draw all random variates
+   serially. Fix modules follow the latter pattern: e.g. fix_receptor computes
+   kill probabilities in parallel but applies the RNG draws / kills serially.
+   (A per-thread RNG pool is tracked as future work — Spec 0 §9.)
    ----------------------------------------------------------------------- */
 
 #ifndef GUTIBM_RANDOM_H
