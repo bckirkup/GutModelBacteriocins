@@ -104,6 +104,7 @@ class Simulation {
   // Spec 1: local oxygen and ROS induction hook (Spec 2)
   Real local_O2(const Agent& agent) const;
   Real ros_induction_rate(const Agent& agent) const;
+  Real local_nuclease_toxin(const Agent& agent) const;
 
   // Persistent SOS lysis burst sources (protease decay)
   void add_toxin_burst(const ToxinBurstSource& burst);

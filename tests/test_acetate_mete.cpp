@@ -24,6 +24,9 @@ static SimulationConfig make_acetate_cfg(Real acetate_conc) {
   cfg.output_interval = 120.0;
   cfg.seed            = 42;
   cfg.hdf5.enabled    = false;
+  cfg.fur.enabled     = false;
+  cfg.cdi.enabled     = false;
+  cfg.motility.enabled = false;
 
   cfg.advection.mucus_thickness    = 25e-6;
   cfg.advection.distal_length      = 50e-6;

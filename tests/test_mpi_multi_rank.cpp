@@ -33,6 +33,9 @@ SimulationConfig make_mpi_config() {
   cfg.output_interval = 300.0;
   cfg.seed = 4242;
   cfg.hdf5.enabled = false;
+  cfg.fur.enabled = false;
+  cfg.cdi.enabled = false;
+  cfg.motility.enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
   cfg.advection.distal_length = 100e-6;
   cfg.advection.radial_turnover = 5400.0;

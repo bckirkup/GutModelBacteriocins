@@ -67,6 +67,13 @@ struct BIClusterTransferData {
   double   retardation;
   double   molecular_weight;
   double   immunity_binding_affinity;
+  double   protease_half_life;
+  int32_t  release_mode;
+  int32_t  is_nuclease;
+  double   burst_size;
+  double   phage_induction_rate;
+  double   phage_burst_size;
+  double   phage_lysogeny_rate;
 };
 
 void pack_agent(const Agent& a, AgentTransferData& d) {
@@ -131,6 +138,13 @@ void pack_bi_cluster(const BICluster& c, BIClusterTransferData& d) {
   d.retardation = c.retardation;
   d.molecular_weight = c.molecular_weight;
   d.immunity_binding_affinity = c.immunity_binding_affinity;
+  d.protease_half_life = c.protease_half_life;
+  d.release_mode = static_cast<int32_t>(to_underlying(c.release_mode));
+  d.is_nuclease = c.is_nuclease ? 1 : 0;
+  d.burst_size = c.burst_size;
+  d.phage_induction_rate = c.phage_induction_rate;
+  d.phage_burst_size = c.phage_burst_size;
+  d.phage_lysogeny_rate = c.phage_lysogeny_rate;
 }
 
 Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_data) {
@@ -190,6 +204,14 @@ Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_d
     a.genome.bi_loci[k].retardation = bd.retardation;
     a.genome.bi_loci[k].molecular_weight = bd.molecular_weight;
     a.genome.bi_loci[k].immunity_binding_affinity = bd.immunity_binding_affinity;
+    a.genome.bi_loci[k].protease_half_life = bd.protease_half_life;
+    a.genome.bi_loci[k].release_mode =
+        static_cast<ReleaseMode>(bd.release_mode);
+    a.genome.bi_loci[k].is_nuclease = (bd.is_nuclease != 0);
+    a.genome.bi_loci[k].burst_size = bd.burst_size;
+    a.genome.bi_loci[k].phage_induction_rate = bd.phage_induction_rate;
+    a.genome.bi_loci[k].phage_burst_size = bd.phage_burst_size;
+    a.genome.bi_loci[k].phage_lysogeny_rate = bd.phage_lysogeny_rate;
   }
   return a;
 }

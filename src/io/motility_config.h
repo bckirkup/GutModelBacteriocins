@@ -10,7 +10,7 @@
 namespace gutibm {
 
 struct MotilityConfig {
-  bool enabled = false;
+  bool enabled = true;
   Real swim_speed = 7.76e-6;              // m/s
   Real run_mean_duration = 1.0;           // s
   Real stop_probability = 0.3;

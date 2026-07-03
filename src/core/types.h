@@ -65,6 +65,13 @@ constexpr auto to_underlying(E e) noexcept {
 
 static constexpr int NUM_RECEPTORS = static_cast<int>(to_underlying(ReceptorType::NUM_RECEPTOR_TYPES));
 
+// Bacteriocin release pathway (Spec 2)
+enum class ReleaseMode : uint8_t {
+  SOS_LYSIS   = 0,   // Group A: SOS-triggered suicide lysis
+  PHAGE_LYSIS = 1,   // Group B: temperate phage-mediated
+  CONTINUOUS  = 2    // Microcins: secreted without lysis
+};
+
 // Plasmid / BI-locus representation
 struct BICluster {
   uint16_t toxin_id;        // bacteriocin identity
@@ -77,6 +84,12 @@ struct BICluster {
   Real molecular_weight;    // Da
   Real immunity_binding_affinity = 1.0;  // 1.0 = full cognate protection, 0.0 = none
   Real protease_half_life = 1800.0;        // intestinal protease decay (s)
+  ReleaseMode release_mode = ReleaseMode::SOS_LYSIS;
+  bool is_nuclease = false;
+  Real burst_size = 1.0e4;
+  Real phage_induction_rate = 0.0;   // per generation (PHAGE_LYSIS only)
+  Real phage_burst_size = 0.0;
+  Real phage_lysogeny_rate = 0.0;    // reserved for future HGT pathway
 };
 
 // Agent genome (compact representation for 10^7 agents)

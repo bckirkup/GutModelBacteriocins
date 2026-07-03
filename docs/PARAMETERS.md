@@ -256,7 +256,7 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `fur.enabled` | false | — | Enable Fur-regulated dynamic receptor expression |
+| `fur.enabled` | true | — | Enable Fur-regulated dynamic receptor expression |
 | `fur.Km` | 1e-5 | mol/m³ | Iron concentration for half-max Fur repression |
 | `fur.upregulation_max` | 4.0 | — | Max fold-upregulation under iron starvation |
 | `fur.receptor_max` | 5.0 | — | Cap on effective receptor expression |
@@ -269,7 +269,7 @@ When enabled, iron-uptake receptors (FepA, FhuA, IroN, IutA, Fiu, CirA) are upre
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `cdi.enabled` | false | — | Enable CDI contact killing |
+| `cdi.enabled` | true | — | Enable CDI contact killing |
 | `cdi.kill_rate` | 5e-4 | 1/s | Killing rate per contact pair |
 | `cdi.contact_radius` | 1e-6 | m | Max CDI delivery distance |
 | `cdi.corpse_persistence` | 300 | s | Dead-cell obstacle lifetime |
@@ -282,7 +282,7 @@ Per-strain JSON keys: `cdi_type`, `cdi_immunity` on `initial_strains` entries. C
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `motility.enabled` | false | — | Enable active swimming |
+| `motility.enabled` | true | — | Enable active swimming |
 | `motility.swim_speed` | 7.76e-6 | m/s | Mean swimming speed in mucus |
 | `motility.run_mean_duration` | 1.0 | s | Mean run duration |
 | `motility.stop_probability` | 0.3 | — | P(stop) per reorientation |
@@ -316,14 +316,19 @@ Per-strain JSON keys: `cdi_type`, `cdi_immunity` on `initial_strains` entries. C
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `bacteriocin.sos_lysis_prob` | 0.01 | — | SOS induction per division |
+| `bacteriocin.sos_lysis_prob` | 0.01 | — | SOS induction probability per division (active when `just_divided`) |
 | `bacteriocin.sos_basal_rate` | 1e-6 | 1/s | Spontaneous SOS rate |
+| `bacteriocin.sos_cross_induction_rate` | 1e3 | 1/s per mol/m³ | Nuclease toxin provoker rate (reads `nuclease_toxin` field) |
 | `bacteriocin.retardation_basic` | 50.0 | — | R for pI > 8.5 (Lethal Core) |
 | `bacteriocin.retardation_acidic` | 1.5 | — | R for pI < 7.0 (Lethal Halo) |
 | `bacteriocin.retardation_neutral` | 5.0 | — | R for 7.0–8.5 |
 | `bacteriocin.D_free_colicin` | 4e-11 | m^2/s | Free diffusion (~50kDa protein) |
-| `bacteriocin.burst_molecules` | 1e4 | — | Molecules per lysis burst |
+| `bacteriocin.burst_molecules` | 1e4 | — | Reference burst size for scaling per-BI `burst_size` |
 | `bacteriocin.microcin_mu_penalty` | 0.03 | — | Growth cost of microcin secretion |
+
+Per-plasmid defaults in `PlasmidLibrary`: `release_mode`, `is_nuclease`, `burst_size`, `phage_induction_rate` (ColB/ColIa: 1e-4 /generation).
+
+Chemical species `nuclease_toxin` (default grid) holds nuclease-only QSSA field for cross-induction; total `bacteriocin` field is used by `fix_receptor`.
 
 ---
 

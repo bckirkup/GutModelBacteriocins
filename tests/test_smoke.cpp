@@ -119,6 +119,9 @@ void test_metabolism_integration() {
   cfg.output_interval = 120.0;
   cfg.seed = 456;
   cfg.hdf5.enabled = false;
+  cfg.fur.enabled = false;
+  cfg.cdi.enabled = false;
+  cfg.motility.enabled = false;
   cfg.advection.mucus_thickness = 25e-6;
   cfg.advection.distal_length = 50e-6;
   cfg.qssa.toxin_cutoff = 25e-6;
@@ -221,6 +224,8 @@ void test_receptor_killing() {
   cfg.output_interval = 600.0;
   cfg.seed = 999;
   cfg.hdf5.enabled = false;
+  cfg.motility.enabled = false;
+  cfg.cdi.enabled = false;
   cfg.advection.mucus_thickness = 25e-6;
   cfg.advection.distal_length = 50e-6;
   cfg.qssa.toxin_cutoff = 25e-6;

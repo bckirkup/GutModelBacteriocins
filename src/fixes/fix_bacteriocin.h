@@ -40,6 +40,9 @@ struct BacteriocinConfig {
 
   // Microcin continuous secretion penalty on mu_max
   Real microcin_mu_penalty  = 0.03;    // 3%
+
+  // Nuclease colicin cross-induction (provoker mechanism)
+  Real sos_cross_induction_rate = 1.0e3;  // 1/s per mol/m³ nuclease toxin
 };
 
 class FixBacteriocin : public Fix {
@@ -52,9 +55,11 @@ class FixBacteriocin : public Fix {
 
  private:
   void check_sos_induction(Agent& agent, Real dt);
+  void check_phage_induction(Agent& agent, const BICluster& bi, Real dt);
   void apply_microcin_secretion(Agent& agent, Real dt);
   void lyse_agent(Agent& agent);
   Real retardation_for_pI(Real pI) const;
+  bool has_release_mode(const Agent& agent, ReleaseMode mode) const;
 
   BacteriocinConfig cfg_;
 };

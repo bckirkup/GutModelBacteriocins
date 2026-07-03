@@ -10,7 +10,7 @@
 namespace gutibm {
 
 struct CdiConfig {
-  bool enabled = false;
+  bool enabled = true;
   Real kill_rate = 5.0e-4;           // 1/s per contact pair
   Real contact_radius = 1.0e-6;      // m
   Real corpse_persistence = 300.0;   // s

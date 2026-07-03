@@ -67,6 +67,12 @@ struct Agent {
   // ── Crypt state ──────────────────────────────────────────────────────
   bool   in_crypt = false; // true when agent resides in a crypt refugium
 
+  // ── Division flag (Spec 2: replication-coupled SOS induction) ────────
+  bool   just_divided = false;
+
+  // Transient: microcin mu_max penalty applied this step (avoid compounding)
+  bool   microcin_penalty_applied = false;
+
   // ── Grid coupling ─────────────────────────────────────────────────────
   Int    grid_cell;        // index into the chemical field grid
 

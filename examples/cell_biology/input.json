@@ -1,5 +1,5 @@
 {
-  "_comment": "Spec 3 cell biology example — features disabled by default",
+  "_comment": "Spec 3 cell biology example — Fur, CDI, and motility enabled by default",
   "total_time": 3600,
   "bio_dt": 60,
   "domain_x": 50e-6,
@@ -7,17 +7,6 @@
   "domain_z": 25e-6,
   "grid_dx": 5e-6,
   "hdf5_every": 600,
-  "fur.enabled": false,
-  "fur.Km": 1e-5,
-  "fur.upregulation_max": 4.0,
-  "fur.receptor_max": 5.0,
-  "cdi.enabled": false,
-  "cdi.kill_rate": 5e-4,
-  "cdi.contact_radius": 1e-6,
-  "cdi.corpse_persistence": 300,
-  "motility.enabled": false,
-  "motility.swim_speed": 7.76e-6,
-  "motility.run_mean_duration": 1.0,
   "motility.chemotaxis_enabled": false,
   "initial_strains": [
     {

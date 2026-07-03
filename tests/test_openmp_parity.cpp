@@ -35,6 +35,9 @@ static SimulationConfig make_test_config(int seed) {
   cfg.qssa.toxin_cutoff = 50e-6;
   cfg.qssa.nutrient_cutoff = 25e-6;
   cfg.hdf5.enabled = false;
+  cfg.fur.enabled = false;
+  cfg.cdi.enabled = false;
+  cfg.motility.enabled = false;
 
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain s1;
@@ -187,6 +190,9 @@ void test_cross_build_fingerprint() {
   cfg.advection.distal_length   = 80e-6;
   cfg.qssa.toxin_cutoff = 40e-6;
   cfg.qssa.nutrient_cutoff = 20e-6;
+  cfg.fur.enabled = false;
+  cfg.cdi.enabled = false;
+  cfg.motility.enabled = false;
 
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain s;

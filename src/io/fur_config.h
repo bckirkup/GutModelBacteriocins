@@ -10,7 +10,7 @@
 namespace gutibm {
 
 struct FurConfig {
-  bool enabled = false;
+  bool enabled = true;
   Real Km = 1.0e-5;              // mol/m³ — half-max Fur repression iron
   Real upregulation_max = 4.0;   // max fold-upregulation under starvation
   Real receptor_max = 5.0;       // cap on effective expression
