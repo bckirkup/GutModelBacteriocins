@@ -592,18 +592,21 @@ void parse_legacy_flat_keys(const std::string& content, SimulationConfig& cfg) {
     std::string key;
     std::string val;
     if (!parse_legacy_key_value(line, key, val)) continue;
-    InputParser::apply_flat_key(cfg, key, val);
+    if (!InputParser::apply_flat_key(cfg, key, val)) {
+      std::cerr << "Warning: unknown config key '" << key << "' ignored\n";
+    }
   }
 }
 
 }  // namespace
 
-void InputParser::apply_flat_key(SimulationConfig& cfg,
+bool InputParser::apply_flat_key(SimulationConfig& cfg,
                                  const std::string& key,
                                  const std::string& val) {
   for (FlatKeyHandler handler : k_flat_key_handlers) {
-    if (handler(cfg, key, val)) return;
+    if (handler(cfg, key, val)) return true;
   }
+  return false;
 }
 
 SimulationConfig InputParser::parse(const std::string& filename) {

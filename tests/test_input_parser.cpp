@@ -229,6 +229,61 @@ void test_fix_tunables_fixture() {
   std::cout << "  test_fix_tunables_fixture: PASSED\n";
 }
 
+void test_unknown_key_warning_json() {
+  const std::string json = R"({
+    "_comment": "unknown key warning test",
+    "total_time": 100,
+    "bogus_key_xyz": 5,
+    "another.unknown_key": true
+  })";
+
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/_unknown_key_doc.json";
+  {
+    std::ofstream out(path);
+    out << json;
+  }
+
+  std::stringstream err;
+  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
+  SimulationConfig cfg = InputParser::parse(path);
+  std::cerr.rdbuf(old_err);
+  std::remove(path.c_str());
+
+  // Known key still applied.
+  assert(std::abs(cfg.time.total_time - 100.0) < 1e-6);
+
+  const std::string warnings = err.str();
+  // Unknown keys are surfaced.
+  assert(warnings.find("bogus_key_xyz") != std::string::npos);
+  assert(warnings.find("another.unknown_key") != std::string::npos);
+  // Comment keys and recognized keys are not flagged.
+  assert(warnings.find("_comment") == std::string::npos);
+  assert(warnings.find("'total_time'") == std::string::npos);
+  std::cout << "  test_unknown_key_warning_json: PASSED\n";
+}
+
+void test_unknown_key_warning_legacy() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/_unknown_key.legacy";
+  {
+    std::ofstream out(path);
+    out << "total_time: 200\n";
+    out << "made_up_key: 3\n";
+    out << "_comment: ignore me\n";
+  }
+
+  std::stringstream err;
+  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
+  SimulationConfig cfg = InputParser::parse(path);
+  std::cerr.rdbuf(old_err);
+  std::remove(path.c_str());
+
+  assert(std::abs(cfg.time.total_time - 200.0) < 1e-6);
+  const std::string warnings = err.str();
+  assert(warnings.find("made_up_key") != std::string::npos);
+  assert(warnings.find("_comment") == std::string::npos);
+  std::cout << "  test_unknown_key_warning_legacy: PASSED\n";
+}
+
 void test_strict_config_aborts_on_bad_numeric() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.json";
 
@@ -268,6 +323,8 @@ int main() {
   test_json_document_parser();
   test_malformed_numeric_warnings_json();
   test_malformed_numeric_warnings_legacy();
+  test_unknown_key_warning_json();
+  test_unknown_key_warning_legacy();
   test_strict_config_aborts_on_bad_numeric();
   std::cout << "All input parser example tests passed.\n";
   return 0;

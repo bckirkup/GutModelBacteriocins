@@ -118,7 +118,8 @@ class InputParser {
   static void finalize_config(SimulationConfig& cfg);
 
   // Apply a single flat config key (used by JSON and legacy line parsers).
-  static void apply_flat_key(SimulationConfig& cfg,
+  // Returns true if the key was recognized and applied, false otherwise.
+  static bool apply_flat_key(SimulationConfig& cfg,
                              const std::string& key,
                              const std::string& val);
 
