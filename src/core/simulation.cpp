@@ -118,6 +118,9 @@ void restore_bi_loci(Agent& agent,
   }
 }
 
+#ifdef GUTIBM_LEGACY_CHECKPOINTS
+// Restore genome fields from pre-genome-group checkpoints (no /genome dataset).
+// Disabled by default; build with -DGUTIBM_LEGACY_CHECKPOINTS to enable.
 void restore_legacy_genome(Agent& agent, const HDF5CheckpointSnapshot& snap, size_t agent_index) {
   Int r = 0;
   for (Real& expr : agent.genome.receptor_expression) {
@@ -126,6 +129,7 @@ void restore_legacy_genome(Agent& agent, const HDF5CheckpointSnapshot& snap, siz
   agent.genome.bi_loci.clear();
   agent.genome.bi_loci.resize(static_cast<size_t>(snap.lineage.num_bi_loci[agent_index]));
 }
+#endif  // GUTIBM_LEGACY_CHECKPOINTS
 
 void restore_checkpoint_grid(ChemicalField& chem,
                              const Domain& domain,
@@ -428,7 +432,13 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
         a.genome.cdi_immunity = static_cast<uint16_t>(gen.cdi_immunity[i]);
       }
     } else {
+#ifdef GUTIBM_LEGACY_CHECKPOINTS
       restore_legacy_genome(a, snap, i);
+#else
+      throw SimulationError(
+          "checkpoint has no genome group (legacy format); rebuild with "
+          "-DGUTIBM_LEGACY_CHECKPOINTS to load pre-genome snapshots");
+#endif
     }
 
     tag_crypt_resident(a, advection_);
