@@ -64,20 +64,26 @@ void FixMetabolism::compute(Real dt) {
     compute_growth_rate(a);
     grow_agent(a, dt);
   }
+
+  // Division must run in compute (not post_step) so fix_bacteriocin in the same
+  // biology pass can observe just_divided during the division timestep.
+  perform_divisions();
 }
 
 void FixMetabolism::post_step(Real /*dt*/) {
-  // Division and death checks after growth
   auto& agents = sim_.agents();
-  std::vector<Agent> new_agents;
 
   for (Int i = agents.size() - 1; i >= 0; --i) {
     Agent& a = agents[i];
     if (a.state == PhenoState::DEAD) continue;
     check_death(a);
   }
+}
 
-  // Division pass (separate to avoid invalidating indices)
+void FixMetabolism::perform_divisions() {
+  auto& agents = sim_.agents();
+  std::vector<Agent> new_agents;
+
   for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
 
@@ -115,11 +121,13 @@ void FixMetabolism::post_step(Real /*dt*/) {
       daughter.age = 0.0;
       a.age = 0.0;
 
+      a.just_divided = true;
+      daughter.just_divided = true;
+
       new_agents.push_back(std::move(daughter));
     }
   }
 
-  // Add new agents
   for (auto& na : new_agents) {
     agents.push_back(std::move(na));
   }

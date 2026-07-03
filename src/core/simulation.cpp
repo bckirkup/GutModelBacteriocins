@@ -564,6 +564,11 @@ void Simulation::step(Real dt) {
   StepProfiler profiler(cfg_.profile_steps);
   profiler.start();
 
+  for (Agent& a : agents_) {
+    a.just_divided = false;
+    a.microcin_penalty_applied = false;
+  }
+
   // Update advection time for peristaltic oscillation
   advection_.set_time(time_);
 
@@ -662,6 +667,14 @@ void Simulation::module_chemistry(Real dt) {
   if (Int i_tox = chem_.find("bacteriocin"); i_tox >= 0) {
     qssa_.solve_bacteriocin_field(agents_, toxin_bursts_, time_,
                                     cfg_.protease, advection_, chem_, i_tox);
+    if (gpu_active_) {
+      chem_gpu_.sync_to_device(chem_);
+    }
+  }
+
+  if (Int i_nuc = chem_.find("nuclease_toxin"); i_nuc >= 0) {
+    qssa_.solve_nuclease_toxin_field(agents_, toxin_bursts_, time_,
+                                      cfg_.protease, advection_, chem_, i_nuc);
     if (gpu_active_) {
       chem_gpu_.sync_to_device(chem_);
     }
@@ -1163,6 +1176,12 @@ Real Simulation::local_O2(const Agent& agent) const {
 Real Simulation::ros_induction_rate(const Agent& agent) const {
   if (!cfg_.oxygen.enabled) return 0.0;
   return cfg_.oxygen.k_ROS * local_O2(agent) * std::max(agent.mu_realized, 0.0);
+}
+
+Real Simulation::local_nuclease_toxin(const Agent& agent) const {
+  Int i_nuc = chem_.find("nuclease_toxin");
+  if (i_nuc < 0 || agent.grid_cell < 0) return 0.0;
+  return chem_.conc(i_nuc, agent.grid_cell);
 }
 
 void Simulation::add_toxin_burst(const ToxinBurstSource& burst) {

@@ -12,12 +12,14 @@
 
   "fixes": ["metabolism", "mechanics"],
 
+  "sos_basal_rate": 1.0,
+
   "initial_strains": [
     {
       "type": 1,
       "count": 10,
       "mu_max": 5.0e-4,
-      "plasmids": [],
+      "plasmids": ["ColE1"],
       "conjugative": false
     }
   ]

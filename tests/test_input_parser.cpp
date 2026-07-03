@@ -219,6 +219,7 @@ void test_fix_tunables_fixture() {
   assert(std::abs(cfg.receptor.kill_rate_colicin - 2e-3) < 1e-12);
   assert(std::abs(cfg.receptor.immunity_factor - 0.0005) < 1e-12);
   assert(std::abs(cfg.conjugation.base_transfer_rate - 2e-4) < 1e-12);
+  assert(std::abs(cfg.conjugation.plasmid_copy_cost - 0.15) < 1e-12);
   assert(cfg.conjugation.pili_heterogeneity == true);
   assert(std::abs(cfg.conjugation.pili_length_min - 2e-6) < 1e-15);
   assert(std::abs(cfg.conjugation.pili_length_max - 3e-6) < 1e-15);
