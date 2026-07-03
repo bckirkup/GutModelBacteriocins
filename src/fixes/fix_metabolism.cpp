@@ -115,6 +115,9 @@ void FixMetabolism::post_step(Real /*dt*/) {
       daughter.age = 0.0;
       a.age = 0.0;
 
+      a.just_divided = true;
+      daughter.just_divided = true;
+
       new_agents.push_back(std::move(daughter));
     }
   }

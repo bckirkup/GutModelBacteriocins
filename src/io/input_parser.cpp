@@ -100,6 +100,7 @@ SimulationConfig InputParser::default_config() {
     {"iron",        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0, false, 25.0e-6},
     {"b12",         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0, false, 25.0e-6},
     {"bacteriocin", 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4, false, 25.0e-6},
+    {"nuclease_toxin", 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
     {"acetate",     1.2e-9,  1.0,  80.0,   80.0,    0.0, false, 25.0e-6},
     {"ethanolamine", 1.0e-9, 1.0, 0.5e-3, 0.5e-3, 0.0, false, 25.0e-6},
   };
@@ -246,6 +247,11 @@ bool apply_chemical_key(SimulationConfig& cfg, const std::string& key, const std
     return true;
   }
   if (key == "sos_lysis_prob")       { cfg.bacteriocin.sos_lysis_prob = parse_config_real(key, val); return true; }
+  if (key == "sos_basal_rate")       { cfg.bacteriocin.sos_basal_rate = parse_config_real(key, val); return true; }
+  if (key == "sos_cross_induction_rate") {
+    cfg.bacteriocin.sos_cross_induction_rate = parse_config_real(key, val);
+    return true;
+  }
   return false;
 }
 

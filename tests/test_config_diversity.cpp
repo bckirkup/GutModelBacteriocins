@@ -198,7 +198,7 @@ void test_parsed_fix_list_is_honored() {
   assert(names[0] == "metabolism");
   assert(names[1] == "mechanics");
 
-  for (int step = 0; step < 3; ++step) {
+  for (int step = 0; step < 6; ++step) {
     sim_subset.step(cfg.bio_dt);
   }
   uint64_t fp_subset = test_util::simulation_fingerprint(sim_subset);
@@ -208,7 +208,7 @@ void test_parsed_fix_list_is_honored() {
 
   Simulation sim_full;
   sim_full.init(full);
-  for (int step = 0; step < 3; ++step) {
+  for (int step = 0; step < 6; ++step) {
     sim_full.step(full.bio_dt);
   }
   uint64_t fp_full = test_util::simulation_fingerprint(sim_full);
@@ -223,15 +223,34 @@ void test_fix_tunables_reach_simulation() {
   assert(tuned.conjugation.pili_heterogeneity == true);
   assert(tuned.mutation.max_bi_loci == 6);
 
-  SimulationConfig baseline = tuned;
-  baseline.receptor = InputParser::default_config().receptor;
-  baseline.conjugation = InputParser::default_config().conjugation;
-  baseline.mutation = InputParser::default_config().mutation;
-  baseline.seed = tuned.seed;
+  auto count_bi_loci = [](SimulationConfig cfg) {
+    shrink_for_ci(cfg);
+    cfg.enabled_fixes = {"metabolism", "mutation"};
+    cfg.initial_strains[0].count = 4;
+    Simulation sim;
+    sim.init(cfg);
+    for (int step = 0; step < 10; ++step) {
+      sim.step(cfg.bio_dt);
+    }
+    int total = 0;
+    for (const Agent& a : sim.agents()) {
+      if (a.state == PhenoState::DEAD) continue;
+      total += static_cast<int>(a.genome.bi_loci.size());
+    }
+    return total;
+  };
 
-  uint64_t fp_tuned = run_fingerprint(tuned);
-  uint64_t fp_baseline = run_fingerprint(baseline);
-  assert(fp_tuned != fp_baseline);
+  SimulationConfig high_dup = tuned;
+  high_dup.mutation.bi_duplication_rate = 0.5;
+  high_dup.seed = 8801;
+
+  SimulationConfig no_dup = tuned;
+  no_dup.mutation.bi_duplication_rate = 0.0;
+  no_dup.seed = 8801;
+
+  const int bi_high = count_bi_loci(high_dup);
+  const int bi_none = count_bi_loci(no_dup);
+  assert(bi_high > bi_none);
 
   std::cout << "  test_fix_tunables_reach_simulation: PASSED\n";
 }

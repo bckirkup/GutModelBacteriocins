@@ -272,14 +272,19 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `bacteriocin.sos_lysis_prob` | 0.01 | — | SOS induction per division |
+| `bacteriocin.sos_lysis_prob` | 0.01 | — | SOS induction probability per division (active when `just_divided`) |
 | `bacteriocin.sos_basal_rate` | 1e-6 | 1/s | Spontaneous SOS rate |
+| `bacteriocin.sos_cross_induction_rate` | 1e3 | 1/s per mol/m³ | Nuclease toxin provoker rate (reads `nuclease_toxin` field) |
 | `bacteriocin.retardation_basic` | 50.0 | — | R for pI > 8.5 (Lethal Core) |
 | `bacteriocin.retardation_acidic` | 1.5 | — | R for pI < 7.0 (Lethal Halo) |
 | `bacteriocin.retardation_neutral` | 5.0 | — | R for 7.0–8.5 |
 | `bacteriocin.D_free_colicin` | 4e-11 | m^2/s | Free diffusion (~50kDa protein) |
-| `bacteriocin.burst_molecules` | 1e4 | — | Molecules per lysis burst |
+| `bacteriocin.burst_molecules` | 1e4 | — | Reference burst size for scaling per-BI `burst_size` |
 | `bacteriocin.microcin_mu_penalty` | 0.03 | — | Growth cost of microcin secretion |
+
+Per-plasmid defaults in `PlasmidLibrary`: `release_mode`, `is_nuclease`, `burst_size`, `phage_induction_rate` (ColB/ColIa: 1e-4 /generation).
+
+Chemical species `nuclease_toxin` (default grid) holds nuclease-only QSSA field for cross-induction; total `bacteriocin` field is used by `fix_receptor`.
 
 ---
 

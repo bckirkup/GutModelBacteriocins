@@ -93,22 +93,51 @@ This replaces the previous binary FepA-dependent penalty (`Km_Fe / expr_FepA`). 
 
 ---
 
-## 2. fix_bacteriocin — Toxin Release
+## 2. fix_bacteriocin — Toxin Release (Spec 2)
 
-**Two pathways implemented:**
+**Three release modes** (`ReleaseMode` on each `BICluster`):
 
-### a) SOS-mediated lysis (colicins)
-Large-protein colicins (30–80 kDa) are released only upon cell death:
-- Spontaneous SOS induction at basal rate (`sos_basal_rate`, default 10^-6 /s)
-- After induction, 5-minute delay (`sos_timer`), then lysis
-- Burst release of ~10^4 toxin molecules as instantaneous point source registered in `Simulation::toxin_bursts_`
-- The QSSA solver superposes burst sources with exponential protease decay: `C ∝ exp(-k_decay * age)` where `k_decay = ln(2) / protease_half_life` per BI cluster
+| Mode | Plasmids | Mechanism |
+|------|----------|-----------|
+| `SOS_LYSIS` | ColE1, ColE2, ColM | LexA-regulated suicide lysis |
+| `PHAGE_LYSIS` | ColB, ColIa | Temperate prophage induction |
+| `CONTINUOUS` | MccV | Secretion without lysis |
 
-### b) Continuous microcin secretion (new)
-Small peptide microcins (<10 kDa, e.g. MccV) are exported without lysis:
-- Applies a growth rate penalty (`microcin_mu_penalty`, default 3%) to producing cells
-- Contributes steady-state continuous sources to the toxin field
-- Per EARI model Section 51: microcins impose 2–5% mu_max cost
+### a) Multi-trigger SOS induction (Group A colicins)
+
+SOS probability per biological timestep:
+
+```
+rate_total = sos_basal_rate
+           + (just_divided ? sos_lysis_prob / bio_dt : 0)
+           + sos_cross_induction_rate * [nuclease_toxin]
+           + k_ROS * [O2] * mu_realized   (when oxygen.enabled)
+p_sos = 1 - exp(-rate_total * dt)
+```
+
+- `just_divided` is set on parent and daughter during division in `fix_metabolism`, cleared at the start of each `Simulation::step()`
+- Cross-induction uses the `nuclease_toxin` chemical field (ColE2 and other `is_nuclease` sources only)
+- After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`
+
+### b) Phage-mediated lysis (Group B colicins)
+
+ColB and ColIa use prophage induction, not SOS suicide:
+
+```
+rate_per_s = phage_induction_rate / (ln(2) / mu_realized)
+```
+
+On induction: `sos_timer = 60 s` (shorter lytic cycle), then burst release.
+
+### c) Continuous microcin secretion
+
+MccV (`CONTINUOUS` mode) exports peptide without lysis:
+- Applies a one-per-step growth penalty (`microcin_mu_penalty`, default 3%)
+- Contributes steady-state QSSA point sources
+
+**Per-colicin burst sizes** (default library): ColE1 1e5, ColE2 5e4, ColB/ColIa 1e4, ColM 2e5.
+
+Burst sources scale `qssa.colicin_release_rate` by `burst_size / burst_molecules`.
 
 **pI-dependent diffusion classification:**
 | Class | pI range | Retardation | Behavior |
