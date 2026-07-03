@@ -26,7 +26,7 @@ std::vector<std::pair<std::string, FixRegistry::Factory>>& FixRegistry::entries(
 
 void FixRegistry::register_fix(const std::string& name, Factory factory) {
   auto& reg = entries();
-  for (const auto& [entry_name, factory] : reg) {
+  for (const auto& [entry_name, entry_factory] : reg) {
     if (entry_name == name) return;  // first registration wins
   }
   reg.emplace_back(name, std::move(factory));

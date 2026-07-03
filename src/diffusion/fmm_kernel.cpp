@@ -135,7 +135,7 @@ void fill_second_derivatives(std::vector<Real>& values,
                              int order,
                              const Vec3& center,
                              Real h,
-                             FieldFn&& field,
+                             const FieldFn& field,
                              Real scale = 1.0) {
   for (int d1 = 0; d1 < 3; ++d1) {
     for (int d2 = d1; d2 < 3; ++d2) {
