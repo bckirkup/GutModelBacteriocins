@@ -489,13 +489,15 @@ human-readable notes — see [CONFIG_FORMAT.md](CONFIG_FORMAT.md).
 
 Each strain in `initial_strains` has:
 
-| Field | Description |
-|-------|-------------|
-| `type` | Integer strain identifier |
-| `count` | Number of initial agents |
-| `mu_max` | Maximum growth rate |
-| `plasmids` | List of plasmid names (from PlasmidLibrary) |
-| `conjugative` | Whether the strain can conjugate |
+| Field | Default | Description |
+|-------|---------|-------------|
+| `type` | — | Integer strain identifier |
+| `count` | — | Number of initial agents |
+| `mu_max` | `5e-4` | Maximum specific growth rate (1/s) for the strain's agents. This is the **only** place the max growth rate is configured — it is a per-strain property (`Agent::mu_max`), scaled each step by the Monod terms in `FixMetabolism` (`mu = mu_max · monod_carbon · monod_iron · monod_b12`). There is no global `metabolism` default growth rate. |
+| `plasmids` | `[]` | List of plasmid names (from `PlasmidLibrary`) |
+| `conjugative` | `false` | Whether the strain can initiate conjugation (HGT) |
+| `cdi_type` | `0` | CDI system identifier delivered by this strain (`0` = none); see [Contact-Dependent Inhibition](#contact-dependent-inhibition-spec-3) |
+| `cdi_immunity` | `0` | CDI immunity identifier this strain carries (`0` = none) |
 
 Example:
 ```json
