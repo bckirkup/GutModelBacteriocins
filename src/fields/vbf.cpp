@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "vbf.h"
+#include "species_names.h"
 #include "domain.h"
 #include "chemical_field.h"
 #include "chem_environment_config.h"
@@ -87,11 +88,11 @@ void apply_vbf_at_cell(ChemicalField& chem, Int cell, const VbfCellContext& ctx)
 
 VbfSpeciesIndices find_vbf_species(const ChemicalField& chem) {
   return {
-    chem.find("carbon"),
-    chem.find("iron"),
-    chem.find("oxygen"),
-    chem.find("acetate"),
-    chem.find("mucin"),
+    chem.find(species::CARBON),
+    chem.find(species::IRON),
+    chem.find(species::OXYGEN),
+    chem.find(species::ACETATE),
+    chem.find(species::MUCIN),
   };
 }
 

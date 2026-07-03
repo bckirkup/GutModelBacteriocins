@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "fix_receptor.h"
+#include "species_names.h"
 #include "simulation.h"
 #include <cmath>
 #include <algorithm>
@@ -52,7 +53,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
   if (cell < 0) return 0.0;
 
   // Get local toxin concentration
-  Int i_toxin = chem.find("bacteriocin");
+  Int i_toxin = chem.find(species::BACTERIOCIN);
   if (i_toxin < 0) return 0.0;
 
   Real tox_conc = chem.conc(i_toxin, cell);
@@ -64,7 +65,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
   {
     int ri = to_underlying(ReceptorType::BtuB);
     Real expr = agent.receptor_expr[ri];
-    Int i_b12 = chem.find("b12");
+    Int i_b12 = chem.find(species::B12);
     auto ligand = (i_b12 >= 0) ? chem.conc(i_b12, cell) : 0.0;
 
     Real occ = toxin_occupancy(tox_conc, ligand,
@@ -90,7 +91,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
   {
     int ri = to_underlying(ReceptorType::FepA);
     Real expr = agent.receptor_expr[ri];
-    Int i_iron = chem.find("iron");
+    Int i_iron = chem.find(species::IRON);
     Real ligand = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
 
     Real occ = toxin_occupancy(tox_conc, ligand,
@@ -114,7 +115,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
     int ri = to_underlying(ReceptorType::CirA);
     Real expr = agent.receptor_expr[ri];
     // CirA transports linearized enterobactin — use iron field as proxy
-    Int i_iron = chem.find("iron");
+    Int i_iron = chem.find(species::IRON);
     Real ligand = (i_iron >= 0) ? chem.conc(i_iron, cell) * 0.1 : 0.0;
 
     Real occ = toxin_occupancy(tox_conc, ligand,
