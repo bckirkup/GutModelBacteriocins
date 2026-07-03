@@ -44,6 +44,17 @@ struct QSSAConfig {
   bool use_fmm  = false;   // enable octree far-field acceleration
   Real fmm_theta = 0.5;    // opening angle (0→exact, 1→fast/approximate)
   int  fmm_expansion_order = 2;  // 1=monopole, 2=dipole+quadrupole, 3=octupole
+
+  // Nutrient-depletion stoichiometry: mol consumed per unit (mu*biomass).
+  Real iron_stoichiometry   = 1.0e-6;
+  Real b12_stoichiometry    = 1.0e-9;
+  Real carbon_stoichiometry = 0.5;
+
+  // Fallback averaged Green's function params used when there are toxin
+  // sources but their total weighted strength is zero (degenerate case).
+  Real fallback_diff_coeff  = 4.0e-11;
+  Real fallback_pI          = 7.0;
+  Real fallback_retardation = 5.0;
 };
 
 // Persistent burst from SOS lysis (Spec 1 protease decay)
