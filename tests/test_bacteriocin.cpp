@@ -6,9 +6,14 @@
 #include "plasmid.h"
 #include "simulation.h"
 #include "input_parser.h"
+#include "qssa_solver.h"
+#include "domain.h"
+#include "advection.h"
+#include "chemical_field.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 using namespace gutibm;
 
@@ -107,6 +112,58 @@ void test_sos_induction_high_basal_rate() {
   std::cout << "  test_sos_induction_high_basal_rate: PASSED\n";
 }
 
+void test_colicin_steady_state_qssa_source() {
+  // Regression: ColE1/ColB (MW >= 10 kDa) must contribute continuous QSSA sources.
+  const BICluster col_e1 = PlasmidLibrary::colicin_E1();
+  assert(col_e1.molecular_weight >= 10000.0);
+
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {100e-6, 100e-6, 50e-6};
+  dcfg.grid_dx = 5e-6;
+  Domain domain;
+  domain.init(dcfg);
+
+  AdvectionConfig acfg;
+  acfg.mucus_thickness = 50e-6;
+  AdvectionField adv;
+  adv.init(acfg, domain);
+
+  QSSAConfig qcfg;
+  qcfg.toxin_cutoff = 80e-6;
+  qcfg.microcin_secretion = 1.0e-20;
+  QSSASolver qssa;
+  qssa.init(qcfg, domain, adv);
+
+  ChemicalSpec toxin;
+  toxin.name = "bacteriocin";
+  toxin.diff_coeff = 4.0e-11;
+  toxin.retardation = 10.0;
+  ChemicalField chem;
+  chem.init(domain, {toxin});
+
+  const Vec3 pos = {50e-6, 50e-6, 25e-6};
+  AgentPool agents;
+  Agent producer = Agent::create_default(1, 1, pos, 5e-4);
+  producer.genome.bi_loci.push_back(col_e1);
+  agents.push_back(std::move(producer));
+
+  ProteaseConfig protease;
+  protease.enabled = false;
+  std::vector<ToxinBurstSource> bursts;
+  qssa.solve_bacteriocin_field(agents, bursts, 0.0, protease, adv, chem, 0);
+
+  Int ix = 0;
+  Int iy = 0;
+  Int iz = 0;
+  domain.pos_to_grid(pos, ix, iy, iz);
+  const Int idx = domain.cell_index(ix, iy, iz);
+  assert(chem.conc(0, idx) > 0.0);
+
+  std::cout << "  test_colicin_steady_state_qssa_source: PASSED (c="
+            << chem.conc(0, idx) << ")\n";
+}
+
 void test_sos_lysis_post_step() {
   BacteriocinConfig cfg;
 
@@ -131,6 +188,7 @@ int main() {
   test_microcin_mu_penalty();
   test_sos_induction_requires_bi_loci();
   test_sos_induction_high_basal_rate();
+  test_colicin_steady_state_qssa_source();
   test_sos_lysis_post_step();
   std::cout << "All bacteriocin fix tests passed.\n";
   return 0;

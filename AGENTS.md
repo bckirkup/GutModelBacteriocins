@@ -81,7 +81,7 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/` |
-| `tests/` | 30 CTest targets (see test map below) |
+| `tests/` | 36 CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 | `.agents/skills/sonarqube-gutibm/SKILL.md` | SonarQube remediation workflow |
 | `.agents/skills/sonarqube-cpp/SKILL.md` | C++ SonarQube patterns |
@@ -113,9 +113,9 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 ## Test Coverage Map
 
-### C++ (CTest — 30 targets)
+### C++ (CTest — 36 targets)
 
-**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, bacteriocin, receptor, mutation.
+**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, bacteriocin, receptor, mutation.
 
 **Slow unit:** mechanics, immunity escape.
 

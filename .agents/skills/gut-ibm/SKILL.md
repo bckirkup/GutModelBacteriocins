@@ -63,7 +63,7 @@ ctest -L 'integration|slow|benchmark' -LE gpu   # integration job
 ctest -L gpu                                     # CUDA job only
 ```
 
-30 CTest targets (2-rank MPI tests included; no `mpirun -np 4+` gate yet):
+36 CTest targets (2-rank MPI tests included; no `mpirun -np 4+` gate yet):
 
 | Test | File | Focus |
 |------|------|-------|
@@ -79,6 +79,10 @@ ctest -L gpu                                     # CUDA job only
 | `z_gradient` | `test_z_gradient.cpp` | Z-dependent nutrient gradients |
 | `domain_decomp` | `test_domain_decomp.cpp` | Slab logic (single rank) |
 | `acetate_mete` | `test_acetate_mete.cpp` | Acetate inhibition of MetE |
+| `protease_decay` | `test_protease_decay.cpp` | Protease half-life decay on burst sources |
+| `oxygen_gradient` | `test_oxygen_gradient.cpp` | O₂ species registration and z-gradient |
+| `O2_growth_boost` | `test_O2_growth_boost.cpp` | Aerobic metabolism boost near epithelium |
+| `mucin_liberation` | `test_mucin_liberation.cpp` | Dynamic mucin → carbon liberation |
 | `advection_peristaltic` | `test_advection_peristaltic.cpp` | Peristaltic velocity modulation |
 | `immunity_escape` | `test_immunity_escape.cpp` | Affinity-neutralization matrix |
 | `mechanics` | `test_mechanics.cpp` | Hertzian contact, adhesion |
@@ -207,6 +211,10 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `bi_duplication_rate`, `max_bi_loci`, … | Mutation Fix tunables |
 | `use_fmm`, `fmm_theta`, `fmm_expansion_order` | Barnes-Hut FMM |
 | `peristaltic_enabled`, `peristaltic_period`, … | Peristaltic advection |
+| `oxygen.enabled`, `oxygen.epithelial_conc`, … | O₂ field and aerobic boost (Spec 1) |
+| `acetate.enabled`, `acetate.vbf_production`, … | Dynamic acetate (Spec 1) |
+| `mucin.enabled`, `mucin.initial_conc`, … | Mucin polymer field (Spec 1) |
+| `protease.enabled`, `protease.default_half_life`, … | Protease toxin decay (Spec 1) |
 | `gpu_enabled` | GPU acceleration (CUDA build) |
 
 Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts. Unknown keys are ignored.

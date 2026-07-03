@@ -212,6 +212,47 @@ void test_malformed_numeric_warnings_legacy() {
   std::cout << "  test_malformed_numeric_warnings_legacy: PASSED\n";
 }
 
+void test_chem_env_fixture() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_chem_env.json";
+  SimulationConfig cfg = InputParser::parse(path);
+
+  assert(cfg.oxygen.enabled == true);
+  assert(std::abs(cfg.oxygen.epithelial_conc - 60e-6) < 1e-15);
+  assert(std::abs(cfg.oxygen.boost_max - 1.8) < 1e-12);
+
+  assert(cfg.acetate.enabled == true);
+  assert(std::abs(cfg.acetate.vbf_production - 2e-3) < 1e-12);
+  assert(std::abs(cfg.acetate.overflow_rate - 2e-15) < 1e-18);
+
+  assert(cfg.mucin.enabled == true);
+  assert(std::abs(cfg.mucin.initial_conc - 2e-2) < 1e-12);
+  assert(std::abs(cfg.mucin.k_liberation - 2e-4) < 1e-12);
+
+  assert(cfg.protease.enabled == false);
+  assert(std::abs(cfg.protease.default_half_life - 1200.0) < 1e-6);
+  assert(std::abs(cfg.protease.dilution_rate - 2e-4) < 1e-12);
+
+  bool has_oxygen = false;
+  bool has_acetate = false;
+  bool has_mucin = false;
+  for (const auto& spec : cfg.chemicals) {
+    if (spec.name == "oxygen") {
+      has_oxygen = true;
+      assert(std::abs(spec.boundary_conc - 60e-6) < 1e-15);
+    } else if (spec.name == "acetate") {
+      has_acetate = true;
+    } else if (spec.name == "mucin") {
+      has_mucin = true;
+      assert(std::abs(spec.initial_conc - 2e-2) < 1e-12);
+    }
+  }
+  assert(has_oxygen);
+  assert(has_acetate);
+  assert(has_mucin);
+
+  std::cout << "  test_chem_env_fixture: PASSED\n";
+}
+
 void test_fix_tunables_fixture() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_fix_tunables.json";
   SimulationConfig cfg = InputParser::parse(path);
@@ -263,6 +304,7 @@ int main() {
   test_diversity_paradox_strains();
   test_strain_spawn_integration();
   test_fixes_fixture();
+  test_chem_env_fixture();
   test_fix_tunables_fixture();
   test_json_document_parser();
   test_malformed_numeric_warnings_json();
