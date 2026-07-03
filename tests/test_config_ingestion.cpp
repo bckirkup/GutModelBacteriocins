@@ -152,11 +152,16 @@ std::vector<Probe> build_probes() {
   v.push_back(R("domain_x", [](const SimulationConfig& c) { return c.domain.hi[0]; }));
   v.push_back(R("domain_y", [](const SimulationConfig& c) { return c.domain.hi[1]; }));
   v.push_back(R("domain_z", [](const SimulationConfig& c) { return c.domain.hi[2]; }));
+  v.push_back(R("hash_cell_size", [](const SimulationConfig& c) { return c.domain.hash_cell_size; }));
+  v.push_back(R("ghost_width", [](const SimulationConfig& c) { return c.domain.ghost_width; }));
 
   // ── Advection / crypts / peristalsis ──────────────────────────────────────
   v.push_back(R("mucus_thickness", [](const SimulationConfig& c) { return c.advection.mucus_thickness; }));
   v.push_back(R("radial_turnover", [](const SimulationConfig& c) { return c.advection.radial_turnover; }));
   v.push_back(R("distal_transit", [](const SimulationConfig& c) { return c.advection.distal_transit_time; }));
+  v.push_back(R("distal_length", [](const SimulationConfig& c) { return c.advection.distal_length; }));
+  v.push_back(R("profile_alpha", [](const SimulationConfig& c) { return c.advection.profile_alpha; }));
+  v.push_back(B("taylor_aris_enabled", [](const SimulationConfig& c) { return c.advection.taylor_aris_enabled; }));
   v.push_back(B("peristaltic_enabled", [](const SimulationConfig& c) { return c.advection.peristaltic_enabled; }));
   v.push_back(R("peristaltic_period", [](const SimulationConfig& c) { return c.advection.peristaltic_period; }));
   v.push_back(R("peristaltic_amplitude", [](const SimulationConfig& c) { return c.advection.peristaltic_amplitude; }));
@@ -170,6 +175,8 @@ std::vector<Probe> build_probes() {
   // ── QSSA / FMM ────────────────────────────────────────────────────────────
   v.push_back(R("toxin_cutoff", [](const SimulationConfig& c) { return c.qssa.toxin_cutoff; }));
   v.push_back(R("nutrient_cutoff", [](const SimulationConfig& c) { return c.qssa.nutrient_cutoff; }));
+  v.push_back(R("colicin_release_rate", [](const SimulationConfig& c) { return c.qssa.colicin_release_rate; }));
+  v.push_back(R("microcin_secretion", [](const SimulationConfig& c) { return c.qssa.microcin_secretion; }));
   v.push_back(B("use_fmm", [](const SimulationConfig& c) { return c.qssa.use_fmm; }));
   v.push_back(R("fmm_theta", [](const SimulationConfig& c) { return c.qssa.fmm_theta; }));
   v.push_back(I("fmm_expansion_order", [](const SimulationConfig& c) { return static_cast<long long>(c.qssa.fmm_expansion_order); }));
@@ -177,6 +184,10 @@ std::vector<Probe> build_probes() {
   // ── VBF ───────────────────────────────────────────────────────────────────
   v.push_back(R("vbf_density", [](const SimulationConfig& c) { return c.vbf.density; }));
   v.push_back(R("vbf_viscosity", [](const SimulationConfig& c) { return c.vbf.viscosity; }));
+  v.push_back(R("vbf_drag_coeff", [](const SimulationConfig& c) { return c.vbf.drag_coeff; }));
+  v.push_back(R("vbf_nutrient_sink", [](const SimulationConfig& c) { return c.vbf.nutrient_sink; }));
+  v.push_back(R("vbf_mucin_liberation", [](const SimulationConfig& c) { return c.vbf.mucin_liberation; }));
+  v.push_back(R("vbf_carrying_cap", [](const SimulationConfig& c) { return c.vbf.carrying_cap; }));
   v.push_back(B("vbf_mucin_z_gradient", [](const SimulationConfig& c) { return c.vbf.mucin_z_gradient_enabled; }));
   v.push_back(R("vbf_mucin_z_lambda", [](const SimulationConfig& c) { return c.vbf.mucin_z_gradient_lambda; }));
 
@@ -186,6 +197,32 @@ std::vector<Probe> build_probes() {
   v.push_back(R("sos_lysis_prob", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_lysis_prob; }));
   v.push_back(R("sos_basal_rate", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_basal_rate; }));
   v.push_back(R("sos_cross_induction_rate", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_cross_induction_rate; }));
+  v.push_back(R("retardation_basic", [](const SimulationConfig& c) { return c.fixes.bacteriocin.retardation_basic; }));
+  v.push_back(R("retardation_acidic", [](const SimulationConfig& c) { return c.fixes.bacteriocin.retardation_acidic; }));
+  v.push_back(R("retardation_neutral", [](const SimulationConfig& c) { return c.fixes.bacteriocin.retardation_neutral; }));
+  v.push_back(R("D_free_colicin", [](const SimulationConfig& c) { return c.fixes.bacteriocin.D_free_colicin; }));
+  v.push_back(R("burst_molecules", [](const SimulationConfig& c) { return c.fixes.bacteriocin.burst_molecules; }));
+  v.push_back(R("microcin_mu_penalty", [](const SimulationConfig& c) { return c.fixes.bacteriocin.microcin_mu_penalty; }));
+
+  // ── Metabolism Fix tunables ───────────────────────────────────────────────
+  v.push_back(R("division_threshold", [](const SimulationConfig& c) { return c.fixes.metabolism.division_threshold; }));
+  v.push_back(R("maintenance_rate", [](const SimulationConfig& c) { return c.fixes.metabolism.maintenance_rate; }));
+  v.push_back(R("metE_penalty", [](const SimulationConfig& c) { return c.fixes.metabolism.metE_penalty; }));
+  v.push_back(R("metE_acetate_km", [](const SimulationConfig& c) { return c.fixes.metabolism.metE_acetate_km; }));
+  v.push_back(R("metE_acetate_max_factor", [](const SimulationConfig& c) { return c.fixes.metabolism.metE_acetate_max_factor; }));
+  v.push_back(R("eut_km", [](const SimulationConfig& c) { return c.fixes.metabolism.eut_km; }));
+  v.push_back(R("eut_max_penalty", [](const SimulationConfig& c) { return c.fixes.metabolism.eut_max_penalty; }));
+  v.push_back(R("km_iron_primary", [](const SimulationConfig& c) { return c.fixes.metabolism.km_iron_primary; }));
+  v.push_back(R("km_iron_iroN", [](const SimulationConfig& c) { return c.fixes.metabolism.km_iron_iroN; }));
+  v.push_back(R("km_iron_iutA", [](const SimulationConfig& c) { return c.fixes.metabolism.km_iron_iutA; }));
+  v.push_back(R("km_iron_fiu", [](const SimulationConfig& c) { return c.fixes.metabolism.km_iron_fiu; }));
+
+  // ── Mechanics Fix tunables ────────────────────────────────────────────────
+  v.push_back(R("hertz_k", [](const SimulationConfig& c) { return c.fixes.mechanics.hertz_k; }));
+  v.push_back(B("hertzian_enabled", [](const SimulationConfig& c) { return c.fixes.mechanics.hertzian_enabled; }));
+  v.push_back(B("adhesion_enabled", [](const SimulationConfig& c) { return c.fixes.mechanics.adhesion_enabled; }));
+  v.push_back(R("adhesion_strength", [](const SimulationConfig& c) { return c.fixes.mechanics.adhesion_strength; }));
+  v.push_back(R("adhesion_range", [](const SimulationConfig& c) { return c.fixes.mechanics.adhesion_range; }));
 
   // ── Receptor Fix tunables ─────────────────────────────────────────────────
   v.push_back(R("kd_b12_btuB", [](const SimulationConfig& c) { return c.fixes.receptor.kd_b12_btuB; }));
