@@ -369,10 +369,10 @@ void HDF5Writer::write_metadata(const Simulation& sim, const std::string& group,
       H5Dclose(ds);
     };
 
-    write_scalar("time",         H5T_NATIVE_DOUBLE, &t);
-    write_scalar("step",         H5T_NATIVE_INT32,  &s);
-    write_scalar("num_agents",   H5T_NATIVE_INT32,  &n_agents);
-    write_scalar("num_lineages", H5T_NATIVE_INT32,  &n_lin);
+    write_scalar("time",         H5T_NATIVE_DOUBLE, t);
+    write_scalar("step",         H5T_NATIVE_INT32,  s);
+    write_scalar("num_agents",   H5T_NATIVE_INT32,  n_agents);
+    write_scalar("num_lineages", H5T_NATIVE_INT32,  n_lin);
 
     H5Sclose(scalar);
   }
