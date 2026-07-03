@@ -12,6 +12,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <numbers>
 #include <vector>
 
 using namespace gutibm;
@@ -53,7 +54,7 @@ void test_burst_halflife_decay() {
 
   const BICluster bi = PlasmidLibrary::colicin_E1();
   const Real half_life = bi.protease_half_life;
-  const Real decay_rate = 0.6931471805599453 / half_life;
+  const Real decay_rate = std::numbers::ln2 / half_life;
 
   Vec3 source = {50e-6, 50e-6, 25e-6};
   Vec3 target = {55e-6, 50e-6, 25e-6};
@@ -98,8 +99,8 @@ void test_per_colicin_decay_rates() {
   assert(col_b.protease_half_life < mcc.protease_half_life);
 
   const Real age = 1800.0;
-  const Real decay_b = std::exp(-0.6931471805599453 / col_b.protease_half_life * age);
-  const Real decay_mcc = std::exp(-0.6931471805599453 / mcc.protease_half_life * age);
+  const Real decay_b = std::exp(-std::numbers::ln2 / col_b.protease_half_life * age);
+  const Real decay_mcc = std::exp(-std::numbers::ln2 / mcc.protease_half_life * age);
   assert(decay_b < decay_mcc);
 
   std::cout << "  test_per_colicin_decay_rates: PASSED"
@@ -125,7 +126,7 @@ void test_lysis_registers_burst() {
   FixBacteriocin fix(sim, bcfg);
   fix.compute(60.0);
   sim.agents()[0].state = PhenoState::SOS_INDUCED;
-  sim.agents()[0].sos_timer = 0.0;
+  sim.agents()[0].timers.sos_timer = 0.0;
   fix.post_step(60.0);
 
   assert(sim.toxin_bursts().size() == 1);

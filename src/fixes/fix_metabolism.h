@@ -65,7 +65,7 @@ class FixMetabolism : public Fix {
   void compute_growth_rate(Agent& agent);
   void grow_agent(Agent& agent, Real dt);
   void perform_divisions();
-  void check_death(Agent& agent);
+  void check_death(Agent& agent) const;
 
   MetabolismConfig cfg_;
 };

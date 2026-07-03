@@ -191,14 +191,14 @@ void test_uninitialized_throws() {
     }
   };
 
-  expect_init_error([&]() { (void)gf.concentration(source, target, params); });
-  expect_init_error([&]() { (void)gf.concentration_bounded(source, target, params); });
-  expect_init_error([&]() { (void)gf.peclet(source, 4e-11, 50e-6); });
+  expect_init_error([&gf, &source, &target, &params]() { (void)gf.concentration(source, target, params); });
+  expect_init_error([&gf, &source, &target, &params]() { (void)gf.concentration_bounded(source, target, params); });
+  expect_init_error([&gf, &source]() { (void)gf.peclet(source, 4e-11, 50e-6); });
 
   std::vector<Vec3> sources = {source};
   std::vector<GreensFunctionParams> params_vec = {params};
   std::vector<Real> grid;
-  expect_init_error([&]() { gf.superpose_to_grid(sources, params_vec, grid, 50e-6); });
+  expect_init_error([&gf, &sources, &params_vec, &grid]() { gf.superpose_to_grid(sources, params_vec, grid, 50e-6); });
 
   std::cout << "  test_uninitialized_throws: PASSED\n";
 }

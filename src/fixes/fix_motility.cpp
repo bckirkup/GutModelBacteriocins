@@ -90,9 +90,9 @@ void FixMotility::update_agent(Agent& agent, Real dt) {
 
   Real reorient_prob = 1.0;
   const auto& hash = sim_.domain().spatial_hash();
-  Int neighbor_count = static_cast<Int>(hash.query_radius(
-      agent.x, cfg_.cluster_suppress_radius).size());
-  if (neighbor_count >= cfg_.cluster_suppress_threshold) {
+  if (auto neighbor_count = static_cast<Int>(hash.query_radius(
+          agent.x, cfg_.cluster_suppress_radius).size());
+      neighbor_count >= cfg_.cluster_suppress_threshold) {
     reorient_prob *= cfg_.cluster_tumble_factor;
   }
 

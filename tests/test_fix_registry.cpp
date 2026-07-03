@@ -44,7 +44,7 @@ void test_subset_fixes() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.hdf5.enabled = false;
-  cfg.total_time = 120.0;
+  cfg.time.total_time = 120.0;
   cfg.initial_strains.clear();
 
   SimulationConfig::InitialStrain strain;

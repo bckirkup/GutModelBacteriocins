@@ -113,7 +113,7 @@ void test_sos_induction_high_basal_rate() {
   fix.compute(60.0);
 
   assert(sim.agents()[0].state == PhenoState::SOS_INDUCED);
-  assert(sim.agents()[0].sos_timer > 0.0);
+  assert(sim.agents()[0].timers.sos_timer > 0.0);
 
   std::cout << "  test_sos_induction_high_basal_rate: PASSED\n";
 }
@@ -126,7 +126,7 @@ void test_sos_induction_on_division() {
   auto sim = make_empty_sim(3003);
   Agent a = make_agent_at_center(sim, 1);
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
-  a.just_divided = true;
+  a.flags.just_divided = true;
   sim.agents().push_back(std::move(a));
 
   FixBacteriocin fix(sim, cfg);
@@ -145,7 +145,7 @@ void test_no_sos_without_division() {
   auto sim = make_empty_sim(4004);
   Agent a = make_agent_at_center(sim, 1);
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
-  a.just_divided = false;
+  a.flags.just_divided = false;
   sim.agents().push_back(std::move(a));
 
   FixBacteriocin fix(sim, cfg);
@@ -244,7 +244,7 @@ void test_per_colicin_burst_size() {
   assert(e1.burst_size == 1.0e5);
   a.genome.bi_loci.push_back(e1);
   a.state = PhenoState::SOS_INDUCED;
-  a.sos_timer = 1.0;
+  a.timers.sos_timer = 1.0;
   sim.agents().push_back(std::move(a));
 
   FixBacteriocin fix(sim, cfg);
@@ -265,7 +265,7 @@ void test_sos_lysis_post_step() {
   Agent a = make_agent_at_center(sim, 1);
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
   a.state = PhenoState::SOS_INDUCED;
-  a.sos_timer = 30.0;
+  a.timers.sos_timer = 30.0;
   sim.agents().push_back(std::move(a));
 
   FixBacteriocin fix(sim, cfg);

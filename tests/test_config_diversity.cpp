@@ -30,9 +30,9 @@ std::string fixture_path(const char* name) {
 
 // Keep CI runs short while preserving config-specific fields.
 void shrink_for_ci(SimulationConfig& cfg) {
-  cfg.total_time = std::min(cfg.total_time, 180.0);
-  cfg.output_interval = cfg.total_time;
-  cfg.bio_dt = 60.0;
+  cfg.time.total_time = std::min(cfg.time.total_time, 180.0);
+  cfg.time.output_interval = cfg.time.total_time;
+  cfg.time.bio_dt = 60.0;
   cfg.hdf5.enabled = false;
   cfg.profile_steps = false;
   cfg.checkpoint.file.clear();
@@ -199,7 +199,7 @@ void test_parsed_fix_list_is_honored() {
   assert(names[1] == "mechanics");
 
   for (int step = 0; step < 6; ++step) {
-    sim_subset.step(cfg.bio_dt);
+    sim_subset.step(cfg.time.bio_dt);
   }
   uint64_t fp_subset = test_util::simulation_fingerprint(sim_subset);
 
@@ -209,7 +209,7 @@ void test_parsed_fix_list_is_honored() {
   Simulation sim_full;
   sim_full.init(full);
   for (int step = 0; step < 6; ++step) {
-    sim_full.step(full.bio_dt);
+    sim_full.step(full.time.bio_dt);
   }
   uint64_t fp_full = test_util::simulation_fingerprint(sim_full);
   assert(fp_subset != fp_full);
@@ -219,16 +219,16 @@ void test_parsed_fix_list_is_honored() {
 
 void test_fix_tunables_reach_simulation() {
   SimulationConfig tuned = InputParser::parse(fixture_path("parser_fix_tunables.json"));
-  assert(std::abs(tuned.receptor.kill_rate_colicin - 2e-3) < 1e-12);
-  assert(tuned.conjugation.pili_heterogeneity == true);
-  assert(tuned.mutation.max_bi_loci == 6);
-  assert(tuned.fur.enabled == true);
+  assert(std::abs(tuned.fixes.receptor.kill_rate_colicin - 2e-3) < 1e-12);
+  assert(tuned.fixes.conjugation.pili_heterogeneity == true);
+  assert(tuned.fixes.mutation.max_bi_loci == 6);
+  assert(tuned.cell_bio.fur.enabled == true);
 
   SimulationConfig baseline = tuned;
-  baseline.fur.Km = InputParser::default_config().fur.Km;
-  baseline.receptor = InputParser::default_config().receptor;
-  baseline.conjugation = InputParser::default_config().conjugation;
-  baseline.mutation = InputParser::default_config().mutation;
+  baseline.cell_bio.fur.Km = InputParser::default_config().cell_bio.fur.Km;
+  baseline.fixes.receptor = InputParser::default_config().fixes.receptor;
+  baseline.fixes.conjugation = InputParser::default_config().fixes.conjugation;
+  baseline.fixes.mutation = InputParser::default_config().fixes.mutation;
   baseline.seed = tuned.seed;
 
   shrink_for_ci(tuned);
@@ -238,8 +238,8 @@ void test_fix_tunables_reach_simulation() {
   Simulation sim_baseline;
   sim_tuned.init(tuned);
   sim_baseline.init(baseline);
-  sim_tuned.step(tuned.bio_dt);
-  sim_baseline.step(baseline.bio_dt);
+  sim_tuned.step(tuned.time.bio_dt);
+  sim_baseline.step(baseline.time.bio_dt);
 
   assert(sim_tuned.agents().size() > 0);
   assert(sim_baseline.agents().size() > 0);
@@ -254,7 +254,7 @@ void test_fix_tunables_reach_simulation() {
     Simulation sim;
     sim.init(cfg);
     for (int step = 0; step < 10; ++step) {
-      sim.step(cfg.bio_dt);
+      sim.step(cfg.time.bio_dt);
     }
     int total = 0;
     for (const Agent& a : sim.agents()) {
@@ -265,11 +265,11 @@ void test_fix_tunables_reach_simulation() {
   };
 
   SimulationConfig high_dup = tuned;
-  high_dup.mutation.bi_duplication_rate = 0.5;
+  high_dup.fixes.mutation.bi_duplication_rate = 0.5;
   high_dup.seed = 8801;
 
   SimulationConfig no_dup = tuned;
-  no_dup.mutation.bi_duplication_rate = 0.0;
+  no_dup.fixes.mutation.bi_duplication_rate = 0.0;
   no_dup.seed = 8801;
 
   const int bi_high = count_bi_loci(high_dup);

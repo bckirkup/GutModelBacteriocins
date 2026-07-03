@@ -103,9 +103,9 @@ void test_init_population_local_only() {
   cfg.domain.hi = {100e-6, 100e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time = 60.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 60.0;
+  cfg.time.total_time = 60.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 60.0;
   cfg.seed = 42;
   cfg.hdf5.enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
@@ -127,7 +127,7 @@ void test_init_population_local_only() {
 
   // All agents should have owner_rank = 0
   for (const Agent& a : sim.agents()) {
-    assert(a.owner_rank == 0);
+    assert(a.identity.owner_rank == 0);
   }
 
   // Global count should equal local count
@@ -143,9 +143,9 @@ void test_single_rank_simulation_unchanged() {
   cfg.domain.hi = {100e-6, 100e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time = 300.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 300.0;
+  cfg.time.total_time = 300.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 300.0;
   cfg.seed = 123;
   cfg.hdf5.enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
@@ -215,9 +215,9 @@ void test_migration_noop_single_rank() {
   cfg.domain.hi = {100e-6, 100e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time = 60.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 60.0;
+  cfg.time.total_time = 60.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 60.0;
   cfg.seed = 42;
   cfg.hdf5.enabled = false;
   cfg.advection.mucus_thickness = 50e-6;

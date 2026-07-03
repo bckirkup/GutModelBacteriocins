@@ -4,6 +4,7 @@
 
 #include "lineage_tracker.h"
 #include <algorithm>
+#include <format>
 
 namespace gutibm {
 
@@ -15,32 +16,31 @@ void LineageTracker::init(Real snapshot_interval) {
 
 void LineageTracker::record_birth(TagID tag, TagID parent,
                                     TagID lineage, const Vec3& pos) {
-  events_.emplace_back(LineageEvent::BIRTH, 0.0, tag, lineage, pos,
-                       "parent=" + std::to_string(parent));
+  events_.emplace_back(LineageEvent::Type::BIRTH, 0.0, tag, lineage, pos,
+                       std::format("parent={}", parent));
 }
 
 void LineageTracker::record_death(TagID tag, TagID lineage, const Vec3& pos) {
-  events_.emplace_back(LineageEvent::DEATH, 0.0, tag, lineage, pos, "");
+  events_.emplace_back(LineageEvent::Type::DEATH, 0.0, tag, lineage, pos, "");
 }
 
 void LineageTracker::record_lysis(TagID tag, const Vec3& pos, TagID lineage) {
-  events_.emplace_back(LineageEvent::LYSIS, 0.0, tag, lineage, pos, "");
+  events_.emplace_back(LineageEvent::Type::LYSIS, 0.0, tag, lineage, pos, "");
 }
 
 void LineageTracker::record_mutation(TagID tag, const std::string& type,
                                        TagID lineage) {
-  events_.emplace_back(LineageEvent::MUTATION, 0.0, tag, lineage, Vec3{0, 0, 0}, type);
+  events_.emplace_back(LineageEvent::Type::MUTATION, 0.0, tag, lineage, Vec3{0, 0, 0}, type);
 }
 
 void LineageTracker::record_hgt(TagID donor, TagID recipient,
                                   uint16_t toxin_id) {
-  events_.emplace_back(LineageEvent::HGT, 0.0, recipient, 0, Vec3{0, 0, 0},
-                       "donor=" + std::to_string(donor) +
-                           " toxin=" + std::to_string(toxin_id));
+  events_.emplace_back(LineageEvent::Type::HGT, 0.0, recipient, 0, Vec3{0, 0, 0},
+                       std::format("donor={} toxin={}", donor, toxin_id));
 }
 
 void LineageTracker::record_washout(TagID tag, TagID lineage, const Vec3& pos) {
-  events_.emplace_back(LineageEvent::WASHOUT, 0.0, tag, lineage, pos, "");
+  events_.emplace_back(LineageEvent::Type::WASHOUT, 0.0, tag, lineage, pos, "");
 }
 
 void LineageTracker::take_snapshot(
@@ -80,7 +80,7 @@ Real LineageTracker::resident_retention(Real time_window) const {
   // Count how many original lineages are still present
   Int retained = 0;
   for (const auto& [lin, cnt] : first.lineage_counts) {
-    if (last.lineage_counts.count(lin) > 0) {
+    if (last.lineage_counts.contains(lin)) {
       retained++;
     }
   }

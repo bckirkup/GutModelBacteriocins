@@ -130,11 +130,11 @@ def validate_genomic_signatures(data: GutIBMData) -> dict[str, float]:
         transient_bi = 0.0
 
     # Receptor expression of transients
-    btuB_expr = last_lin.get("btuB_expression", np.array([]))
-    if len(btuB_expr) > 0:
+    btub_expr = last_lin.get("btuB_expression", np.array([]))
+    if len(btub_expr) > 0:
         last_lineage_ids = last_agents.get("lineage", np.array([]))
         transient_mask = ~np.isin(last_lineage_ids, list(retained))
-        transient_expr = float(np.mean(btuB_expr[transient_mask])) if np.any(transient_mask) else 1.0
+        transient_expr = float(np.mean(btub_expr[transient_mask])) if np.any(transient_mask) else 1.0
     else:
         transient_expr = 1.0
 

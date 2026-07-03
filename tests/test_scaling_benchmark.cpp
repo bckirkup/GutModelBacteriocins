@@ -63,10 +63,10 @@ long read_vmrss_kb() {
 SimulationConfig bench_config(int agent_count, bool use_fmm) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.hdf5.enabled = false;
-  cfg.total_time = 120.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 1.0e9;
-  cfg.adaptive_dt_enabled = false;
+  cfg.time.total_time = 120.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 1.0e9;
+  cfg.adaptive_dt.enabled = false;
   cfg.profile_steps = true;
   // Compact domain keeps CI runtime low while preserving scaling trends.
   cfg.domain.hi = {200.0e-6, 200.0e-6, 100.0e-6};
@@ -110,7 +110,7 @@ BenchRow run_case(int agent_count, bool use_fmm, int n_steps) {
   using Clock = std::chrono::steady_clock;
   const auto t0 = Clock::now();
   for (int s = 0; s < n_steps; ++s) {
-    sim.step(cfg.bio_dt);
+    sim.step(cfg.time.bio_dt);
   }
   const auto t1 = Clock::now();
   const double wall_s =

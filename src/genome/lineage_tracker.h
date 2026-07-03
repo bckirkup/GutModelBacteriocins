@@ -20,7 +20,7 @@
 namespace gutibm {
 
 struct LineageEvent {
-  enum Type { BIRTH, DEATH, LYSIS, MUTATION, HGT, WASHOUT };
+  enum class Type { BIRTH, DEATH, LYSIS, MUTATION, HGT, WASHOUT };
   Type type;
   Real time;
   TagID agent_tag;

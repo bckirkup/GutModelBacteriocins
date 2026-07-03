@@ -3,8 +3,8 @@
    Stores nutrient and toxin concentrations on an Eulerian grid.
    ----------------------------------------------------------------------- */
 
-#ifndef GUTIBM_CHEMICAL_FIELD_H
-#define GUTIBM_CHEMICAL_FIELD_H
+#ifndef GUTIBM_CHEMICAL_microcin_penalty_applied_H
+#define GUTIBM_CHEMICAL_microcin_penalty_applied_H
 
 #include "types.h"
 #include <string>
@@ -70,4 +70,4 @@ class ChemicalField {
 
 }  // namespace gutibm
 
-#endif  // GUTIBM_CHEMICAL_FIELD_H
+#endif  // GUTIBM_CHEMICAL_microcin_penalty_applied_H

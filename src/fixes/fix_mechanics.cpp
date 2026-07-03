@@ -15,8 +15,8 @@ namespace {
 bool participates_in_mechanics(const Agent& a, Real sim_time,
                                const SimulationConfig& cfg) {
   if (a.state != PhenoState::DEAD) return true;
-  return cfg.cdi.enabled && a.death_time >= 0.0
-      && (sim_time - a.death_time) < cfg.cdi.corpse_persistence;
+  return cfg.cell_bio.cdi.enabled && a.timers.death_time >= 0.0
+      && (sim_time - a.timers.death_time) < cfg.cell_bio.cdi.corpse_persistence;
 }
 
 bool is_active_corpse(const Agent& a) {

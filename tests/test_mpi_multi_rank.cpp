@@ -28,14 +28,14 @@ SimulationConfig make_mpi_config() {
   cfg.domain.ghost_width = 10e-6;
   // Non-periodic x decomp: distinct lo/hi neighbors with 2 ranks.
   cfg.domain.periodic = {false, true, false};
-  cfg.total_time = 300.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 300.0;
+  cfg.time.total_time = 300.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 300.0;
   cfg.seed = 4242;
   cfg.hdf5.enabled = false;
-  cfg.fur.enabled = false;
-  cfg.cdi.enabled = false;
-  cfg.motility.enabled = false;
+  cfg.cell_bio.fur.enabled = false;
+  cfg.cell_bio.cdi.enabled = false;
+  cfg.cell_bio.motility.enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
   cfg.advection.distal_length = 100e-6;
   cfg.advection.radial_turnover = 5400.0;
@@ -63,7 +63,7 @@ std::vector<TagID> gather_live_tags_flat(const Simulation& sim) {
   std::vector<TagID> local;
   for (const Agent& a : sim.agents()) {
     if (a.state != PhenoState::DEAD) {
-      local.push_back(a.tag);
+      local.push_back(a.identity.tag);
     }
   }
 
@@ -184,7 +184,7 @@ void test_init_population_partitioned() {
 
   for (const Agent& a : sim.agents()) {
     assert(sim.domain().is_local(a.x));
-    assert(a.owner_rank == sim.domain().rank());
+    assert(a.identity.owner_rank == sim.domain().rank());
   }
 
   auto tags = gather_live_tags_flat(sim);
@@ -228,7 +228,7 @@ void test_migration_preserves_global_count() {
   MPI_Bcast(&moved_x, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
   assert(moved_x > 0.0);
 
-  sim.step(cfg.bio_dt);
+  sim.step(cfg.time.bio_dt);
 
   auto tags = gather_live_tags_flat(sim);
   assert_unique_tags(tags);
@@ -274,7 +274,7 @@ void test_boundary_ghost_exchange_runs() {
   }
 
   const Int before = sim.global_agent_count();
-  sim.step(cfg.bio_dt);
+  sim.step(cfg.time.bio_dt);
   assert(sim.global_agent_count() > 0);
   assert(sim.global_agent_count() <= before);
 
@@ -321,11 +321,11 @@ void test_periodic_x_ghost_and_migration() {
   // Crypt refugia bypass washout so this test isolates periodic MPI exchange.
   for (Agent& a : sim.agents()) {
     if (a.state != PhenoState::DEAD) {
-      a.in_crypt = true;
+      a.flags.in_crypt = true;
     }
   }
 
-  sim.step(cfg.bio_dt);
+  sim.step(cfg.time.bio_dt);
   assert(sim.global_agent_count() == 40);
   assert_unique_tags(gather_live_tags_flat(sim));
 
@@ -343,7 +343,7 @@ void test_periodic_x_ghost_and_migration() {
   }
   MPI_Bcast(&moved_x, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
-  sim.step(cfg.bio_dt);
+  sim.step(cfg.time.bio_dt);
   assert(sim.global_agent_count() == 40);
   assert_unique_tags(gather_live_tags_flat(sim));
 
@@ -359,7 +359,7 @@ void test_multirank_simulation_steps() {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   SimulationConfig cfg = make_mpi_config();
-  cfg.total_time = 120.0;
+  cfg.time.total_time = 120.0;
   Simulation sim;
   sim.init(cfg);
 

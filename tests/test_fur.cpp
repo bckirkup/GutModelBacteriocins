@@ -18,10 +18,10 @@ static Simulation make_fur_sim(uint64_t seed = 42) {
   cfg.hdf5.enabled = false;
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.fur.enabled = true;
-  cfg.fur.Km = 1.0e-5;
-  cfg.fur.upregulation_max = 4.0;
-  cfg.fur.receptor_max = 5.0;
+  cfg.cell_bio.fur.enabled = true;
+  cfg.cell_bio.fur.Km = 1.0e-5;
+  cfg.cell_bio.fur.upregulation_max = 4.0;
+  cfg.cell_bio.fur.receptor_max = 5.0;
   cfg.seed = seed;
 
   Simulation sim;
@@ -56,7 +56,7 @@ void test_fur_upregulation() {
   set_iron(sim, a.grid_cell, 0.0);
   sim.agents().push_back(std::move(a));
 
-  FixMetabolism fix(sim, sim.config().metabolism);
+  FixMetabolism fix(sim, sim.config().fixes.metabolism);
   fix.compute(1.0);
 
   const int ri = to_underlying(ReceptorType::FepA);
@@ -72,7 +72,7 @@ void test_fur_repression() {
   set_iron(sim, a.grid_cell, 1.0);
   sim.agents().push_back(std::move(a));
 
-  FixMetabolism fix(sim, sim.config().metabolism);
+  FixMetabolism fix(sim, sim.config().fixes.metabolism);
   fix.compute(1.0);
 
   const int ri = to_underlying(ReceptorType::FepA);
@@ -115,8 +115,8 @@ void test_fur_increases_susceptibility() {
     sim_high.chemical_field().conc(i_b12, cell_high) = 0.0;
     sim_high.agents().push_back(std::move(high_iron));
 
-    FixMetabolism metab_low(sim_low, sim_low.config().metabolism);
-    FixMetabolism metab_high(sim_high, sim_high.config().metabolism);
+    FixMetabolism metab_low(sim_low, sim_low.config().fixes.metabolism);
+    FixMetabolism metab_high(sim_high, sim_high.config().fixes.metabolism);
     metab_low.compute(1.0);
     metab_high.compute(1.0);
 
