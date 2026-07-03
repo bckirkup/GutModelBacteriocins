@@ -22,7 +22,8 @@ BICluster PlasmidLibrary::colicin_E1() {
     .pI              = 9.0,
     .diff_coeff      = 4.0e-11,    // ~50 kDa protein
     .retardation     = 50.0,       // basic → binds mucin strongly
-    .molecular_weight = 57000.0
+    .molecular_weight = 57000.0,
+    .protease_half_life = 1800.0
   };
 }
 
@@ -37,7 +38,8 @@ BICluster PlasmidLibrary::colicin_E2() {
     .pI              = 6.5,        // complex pI (corrected per VADI review)
     .diff_coeff      = 3.5e-11,
     .retardation     = 3.0,        // modest retardation
-    .molecular_weight = 61500.0    // toxin + immunity complex
+    .molecular_weight = 61500.0,    // toxin + immunity complex
+    .protease_half_life = 1800.0
   };
 }
 
@@ -50,7 +52,8 @@ BICluster PlasmidLibrary::colicin_B() {
     .pI              = 5.4,
     .diff_coeff      = 4.0e-11,
     .retardation     = 1.5,        // acidic → repelled by mucin
-    .molecular_weight = 54800.0
+    .molecular_weight = 54800.0,
+    .protease_half_life = 900.0
   };
 }
 
@@ -63,7 +66,8 @@ BICluster PlasmidLibrary::colicin_Ia() {
     .pI              = 7.2,
     .diff_coeff      = 4.0e-11,
     .retardation     = 5.0,
-    .molecular_weight = 69400.0
+    .molecular_weight = 69400.0,
+    .protease_half_life = 2400.0
   };
 }
 
@@ -76,7 +80,8 @@ BICluster PlasmidLibrary::colicin_M() {
     .pI              = 9.3,
     .diff_coeff      = 5.0e-11,
     .retardation     = 60.0,
-    .molecular_weight = 29500.0
+    .molecular_weight = 29500.0,
+    .protease_half_life = 900.0
   };
 }
 
@@ -89,7 +94,8 @@ BICluster PlasmidLibrary::microcin_V() {
     .pI              = 5.0,
     .diff_coeff      = 1.0e-10,    // small peptide → faster diffusion
     .retardation     = 1.2,
-    .molecular_weight = 8900.0
+    .molecular_weight = 8900.0,
+    .protease_half_life = 7200.0
   };
 }
 

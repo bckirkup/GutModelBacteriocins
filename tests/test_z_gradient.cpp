@@ -202,7 +202,10 @@ void test_vbf_coupling_z_gradient() {
   vbf.init(vcfg, domain);
 
   chem.zero_reactions();
-  vbf.apply_nutrient_coupling(chem, domain, 60.0);
+  OxygenConfig oxygen;
+  AcetateConfig acetate;
+  MucinConfig mucin;
+  vbf.apply_nutrient_coupling(chem, domain, 60.0, oxygen, acetate, mucin);
 
   // Carbon reaction rate near z=0 should be > rate near z=max
   Int bottom_cell = domain.cell_index(0, 0, 0);

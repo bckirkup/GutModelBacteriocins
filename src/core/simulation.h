@@ -99,6 +99,17 @@ class Simulation {
   Real                   time()      const { return time_; }
   Int                    step_count() const { return step_count_; }
 
+  const SimulationConfig& config() const { return cfg_; }
+
+  // Spec 1: local oxygen and ROS induction hook (Spec 2)
+  Real local_O2(const Agent& agent) const;
+  Real ros_induction_rate(const Agent& agent) const;
+
+  // Persistent SOS lysis burst sources (protease decay)
+  void add_toxin_burst(const ToxinBurstSource& burst);
+  void prune_toxin_bursts(Real current_time);
+  const std::vector<ToxinBurstSource>& toxin_bursts() const { return toxin_bursts_; }
+
   // Active Fix plugin names in execution order
   std::vector<std::string> fix_names() const;
 
@@ -179,6 +190,8 @@ class Simulation {
   ChemicalFieldGpu chem_gpu_;
   AgentPoolGpu agents_gpu_;
   SpatialHashGpu spatial_hash_gpu_;
+
+  std::vector<ToxinBurstSource> toxin_bursts_;
 };
 
 }  // namespace gutibm

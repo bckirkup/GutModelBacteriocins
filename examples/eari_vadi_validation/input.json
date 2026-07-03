@@ -26,6 +26,7 @@
 
   "toxin_cutoff": 100e-6,
   "nutrient_cutoff": 50e-6,
+  "protease.enabled": false,
 
   "initial_strains": [
     {

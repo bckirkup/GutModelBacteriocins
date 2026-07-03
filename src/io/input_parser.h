@@ -10,6 +10,7 @@
 #include "advection.h"
 #include "vbf.h"
 #include "chemical_field.h"
+#include "chem_environment_config.h"
 #include "qssa_solver.h"
 #include "fix_metabolism.h"
 #include "fix_receptor.h"
@@ -91,6 +92,12 @@ struct SimulationConfig {
   // GPU acceleration (requires CUDA build)
   GpuConfig gpu;
 
+  // Chemical environment expansion (Spec 1)
+  OxygenConfig oxygen;
+  AcetateConfig acetate;
+  MucinConfig mucin;
+  ProteaseConfig protease;
+
   // Per-step wall-clock profiling (rank 0 prints summary at end of run)
   bool profile_steps = false;
 };
@@ -102,6 +109,9 @@ class InputParser {
 
   // Create default config with standard gut parameters
   static SimulationConfig default_config();
+
+  // Register optional chemical species and apply feature-flag side effects
+  static void finalize_config(SimulationConfig& cfg);
 
   // Apply a single flat config key (used by JSON and legacy line parsers).
   static void apply_flat_key(SimulationConfig& cfg,

@@ -16,6 +16,10 @@ namespace gutibm {
 class Domain;
 class ChemicalField;
 
+struct OxygenConfig;
+struct AcetateConfig;
+struct MucinConfig;
+
 struct VBFConfig {
   Real density          = 1.0e11;   // background cell density (#/m^3)
   Real drag_coeff       = 1.0e-9;   // Stokes-like drag (N·s/m)
@@ -27,6 +31,9 @@ struct VBFConfig {
   // z-dependent mucin liberation: rate(z) = mucin_liberation * exp(-z_rel / lambda)
   bool mucin_z_gradient_enabled = false;
   Real mucin_z_gradient_lambda  = 25.0e-6;  // characteristic decay length (m)
+
+  // When true, carbon source comes from dynamic mucin degradation (Spec 1)
+  bool use_dynamic_mucin = false;
 };
 
 class VBF {
@@ -37,7 +44,10 @@ class VBF {
 
   // Apply VBF nutrient sink/source to chemical field
   void apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
-                                Real dt) const;
+                                Real dt,
+                                const OxygenConfig& oxygen,
+                                const AcetateConfig& acetate,
+                                const MucinConfig& mucin) const;
 
   // Compute drag force on an agent at position with velocity
   Vec3 drag_force(const Vec3& agent_vel) const;

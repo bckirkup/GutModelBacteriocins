@@ -125,7 +125,58 @@ SimulationConfig InputParser::default_config() {
 
   cfg.initial_strains = {resident, immigrant};
 
+  finalize_config(cfg);
   return cfg;
+}
+
+namespace {
+
+Int find_chemical_spec(std::vector<ChemicalSpec>& chemicals, std::string_view name) {
+  for (Int i = 0; i < static_cast<Int>(chemicals.size()); ++i) {
+    if (chemicals[static_cast<size_t>(i)].name == name) return i;
+  }
+  return -1;
+}
+
+bool parse_bool_config(const std::string& val) {
+  return val == "true" || val == "1";
+}
+
+}  // namespace
+
+void InputParser::finalize_config(SimulationConfig& cfg) {
+  constexpr Real k_z_lambda = 25.0e-6;
+
+  if (cfg.oxygen.enabled) {
+    if (find_chemical_spec(cfg.chemicals, "oxygen") < 0) {
+      const Real c0 = cfg.oxygen.epithelial_conc;
+      cfg.chemicals.push_back({
+          "oxygen", cfg.oxygen.D_free, 1.0, c0, c0, 0.0, true, k_z_lambda});
+    }
+  }
+
+  if (cfg.acetate.enabled) {
+    Int idx = find_chemical_spec(cfg.chemicals, "acetate");
+    if (idx < 0) {
+      cfg.chemicals.push_back({
+          "acetate", cfg.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda});
+    } else {
+      auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
+      spec.diff_coeff = cfg.acetate.D_free;
+      spec.initial_conc = 0.0;
+      spec.boundary_conc = 0.0;
+    }
+  }
+
+  if (cfg.mucin.enabled) {
+    if (find_chemical_spec(cfg.chemicals, "mucin") < 0) {
+      const Real c0 = cfg.mucin.initial_conc;
+      cfg.chemicals.push_back({
+          "mucin", cfg.mucin.D_free, cfg.mucin.retardation,
+          c0, c0, 0.0, false, k_z_lambda});
+    }
+    cfg.vbf.use_dynamic_mucin = true;
+  }
 }
 
 namespace {
@@ -270,6 +321,97 @@ bool apply_misc_key(SimulationConfig& cfg, const std::string& key, const std::st
   return false;
 }
 
+bool apply_oxygen_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "oxygen.enabled" || key == "oxygen_enabled") {
+    cfg.oxygen.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "oxygen.epithelial_conc" || key == "oxygen_epithelial_conc") {
+    cfg.oxygen.epithelial_conc = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.D_free" || key == "oxygen_D_free") {
+    cfg.oxygen.D_free = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.Km" || key == "oxygen_Km") {
+    cfg.oxygen.Km = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.boost_max" || key == "oxygen_boost_max") {
+    cfg.oxygen.boost_max = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.q_consumption" || key == "oxygen_q_consumption") {
+    cfg.oxygen.q_consumption = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.vbf_sink" || key == "oxygen_vbf_sink") {
+    cfg.oxygen.vbf_sink = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.k_ROS" || key == "oxygen_k_ROS") {
+    cfg.oxygen.k_ROS = parse_config_real(key, val); return true;
+  }
+  return false;
+}
+
+bool apply_acetate_dyn_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "acetate.enabled" || key == "acetate_enabled") {
+    cfg.acetate.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "acetate.D_free" || key == "acetate_D_free") {
+    cfg.acetate.D_free = parse_config_real(key, val); return true;
+  }
+  if (key == "acetate.vbf_production" || key == "acetate_vbf_production") {
+    cfg.acetate.vbf_production = parse_config_real(key, val); return true;
+  }
+  if (key == "acetate.vbf_consumption" || key == "acetate_vbf_consumption") {
+    cfg.acetate.vbf_consumption = parse_config_real(key, val); return true;
+  }
+  if (key == "acetate.overflow_threshold" || key == "acetate_overflow_threshold") {
+    cfg.acetate.overflow_threshold = parse_config_real(key, val); return true;
+  }
+  if (key == "acetate.overflow_rate" || key == "acetate_overflow_rate") {
+    cfg.acetate.overflow_rate = parse_config_real(key, val); return true;
+  }
+  if (key == "acetate.scavenge_Km" || key == "acetate_scavenge_Km") {
+    cfg.acetate.scavenge_Km = parse_config_real(key, val); return true;
+  }
+  if (key == "acetate.scavenge_rate" || key == "acetate_scavenge_rate") {
+    cfg.acetate.scavenge_rate = parse_config_real(key, val); return true;
+  }
+  if (key == "acetate.epithelial_uptake" || key == "acetate_epithelial_uptake") {
+    cfg.acetate.epithelial_uptake = parse_config_real(key, val); return true;
+  }
+  return false;
+}
+
+bool apply_mucin_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "mucin.enabled" || key == "mucin_enabled") {
+    cfg.mucin.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "mucin.secretion_rate" || key == "mucin_secretion_rate") {
+    cfg.mucin.secretion_rate = parse_config_real(key, val); return true;
+  }
+  if (key == "mucin.Km_degradation" || key == "mucin_Km_degradation") {
+    cfg.mucin.Km_degradation = parse_config_real(key, val); return true;
+  }
+  if (key == "mucin.k_liberation" || key == "mucin_k_liberation") {
+    cfg.mucin.k_liberation = parse_config_real(key, val); return true;
+  }
+  if (key == "mucin.initial_conc" || key == "mucin_initial_conc") {
+    cfg.mucin.initial_conc = parse_config_real(key, val); return true;
+  }
+  return false;
+}
+
+bool apply_protease_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "protease.enabled" || key == "protease_enabled") {
+    cfg.protease.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "protease.default_half_life" || key == "protease_default_half_life") {
+    cfg.protease.default_half_life = parse_config_real(key, val); return true;
+  }
+  if (key == "protease.dilution_rate" || key == "protease_dilution_rate") {
+    cfg.protease.dilution_rate = parse_config_real(key, val); return true;
+  }
+  return false;
+}
+
 constexpr FlatKeyHandler k_flat_key_handlers[] = {
   apply_time_key,
   apply_domain_key,
@@ -283,6 +425,10 @@ constexpr FlatKeyHandler k_flat_key_handlers[] = {
   apply_io_key,
   apply_dt_key,
   apply_misc_key,
+  apply_oxygen_key,
+  apply_acetate_dyn_key,
+  apply_mucin_key,
+  apply_protease_key,
 };
 
 bool parse_legacy_key_value(const std::string& line,
@@ -362,6 +508,7 @@ SimulationConfig InputParser::parse(const std::string& filename) {
   const std::string content = content_stream.str();
 
   if (ConfigJson::parse_document(cfg, content)) {
+    finalize_config(cfg);
     return cfg;
   }
 
@@ -375,6 +522,7 @@ SimulationConfig InputParser::parse(const std::string& filename) {
     cfg.enabled_fixes = std::move(fixes.names);
   }
 
+  finalize_config(cfg);
   return cfg;
 }
 

@@ -166,6 +166,61 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 
 ---
 
+## Protease Degradation (Spec 1)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `protease.enabled` | true | — | Apply first-order protease decay to toxin QSSA sources |
+| `protease.default_half_life` | 1800 | s | Default colicin half-life when not set on BI cluster |
+| `protease.dilution_rate` | 1e-4 | 1/s | Fallback dilution for steady-state microcin decay |
+
+Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid library (ColE1/E2: 1800 s, ColB/M: 900 s, ColIa: 2400 s, MccV: 7200 s).
+
+---
+
+## Oxygen (Spec 1)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `oxygen.enabled` | false | — | Enable oxygen chemical species and aerobic growth boost |
+| `oxygen.epithelial_conc` | 55e-6 | mol/m³ | Dirichlet O₂ at epithelium (~42 mmHg) |
+| `oxygen.D_free` | 2.1e-9 | m²/s | O₂ diffusion coefficient |
+| `oxygen.Km` | 1e-6 | mol/m³ | Monod half-saturation for aerobic boost |
+| `oxygen.boost_max` | 2.0 | — | Max growth multiplier above fermentation baseline |
+| `oxygen.q_consumption` | 1e-14 | mol/s/cell | Agent O₂ consumption rate |
+| `oxygen.vbf_sink` | 1e-6 | mol/m³/s | VBF background O₂ sink |
+| `oxygen.k_ROS` | 1e2 | — | ROS induction rate coefficient (Spec 2 hook) |
+
+---
+
+## Dynamic Acetate (Spec 1)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `acetate.enabled` | false | — | Enable dynamic acetate production/consumption (static 80 mM when false) |
+| `acetate.D_free` | 1.2e-9 | m²/s | Acetate diffusion coefficient |
+| `acetate.vbf_production` | 1e-3 | mol/m³/s | VBF fermentation acetate source |
+| `acetate.vbf_consumption` | 2e-4 | mol/m³/s | VBF cross-feeding sink |
+| `acetate.overflow_threshold` | 3e-4 | 1/s | Growth rate above which agents overflow acetate |
+| `acetate.overflow_rate` | 1e-15 | mol/s/cell | Overflow secretion per agent |
+| `acetate.scavenge_rate` | 1e-15 | mol/s/cell | Max acetate scavenging per agent |
+| `acetate.scavenge_Km` | 5.0 | mol/m³ | Half-saturation for scavenging |
+| `acetate.epithelial_uptake` | 5e-4 | mol/m³/s | Colonocyte uptake at z=0 |
+
+---
+
+## Dynamic Mucin (Spec 1)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `mucin.enabled` | false | — | Track mucin polymer field and dynamic liberation |
+| `mucin.initial_conc` | 1e-2 | mol/m³ | Initial mucin concentration |
+| `mucin.secretion_rate` | 1e-4 | mol/m³/s | Goblet cell secretion at epithelium |
+| `mucin.Km_degradation` | 1e-3 | mol/m³ | Half-saturation for VBF mucin degradation |
+| `mucin.k_liberation` | 1e-4 | 1/s | Rate constant for mucin → monosaccharide conversion |
+
+---
+
 ## Metabolism
 
 | Parameter | Default | Units | Description |
