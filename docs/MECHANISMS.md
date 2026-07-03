@@ -386,7 +386,7 @@ rate(z) = mucin_liberation * exp(-z_rel / mucin_z_gradient_lambda)
 ```
 This couples the ongoing carbon source term to the same spatial gradient, maintaining the profile during simulation.
 
-### Biological consequences
+**Spec 1 extensions:** When `mucin.enabled`, liberation follows `k_liberation * vbf_density * [mucin] / (Km + [mucin])` with goblet secretion at z=0. When `acetate.enabled`, VBF adds z-weighted acetate production and epithelial uptake. When `oxygen.enabled`, VBF applies a constant O₂ sink.
 - Agents near the epithelium (z ~ 0) have access to more carbon, leading to faster Monod growth.
 - Agents further from the epithelium face carbon limitation, reducing their competitive fitness.
 - Combined with the advective washout trap (flow increases with z), this creates a strong spatial advantage for epithelium-attached colonies: high nutrients, low flow.
