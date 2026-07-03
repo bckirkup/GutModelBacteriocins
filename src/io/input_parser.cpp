@@ -152,16 +152,17 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
 
   if (cfg.chem_env.oxygen.enabled && find_chemical_spec(cfg.chemicals, species::OXYGEN) < 0) {
-    const Real c0 = cfg.chem_env.oxygen.epithelial_conc;
-      cfg.chemicals.emplace_back(
-          ChemicalSpec{species::OXYGEN, cfg.chem_env.oxygen.D_free, 1.0, c0, c0, 0.0, true, k_z_lambda});
+    cfg.chemicals.emplace_back(
+        species::OXYGEN, cfg.chem_env.oxygen.D_free, 1.0,
+        cfg.chem_env.oxygen.epithelial_conc, cfg.chem_env.oxygen.epithelial_conc,
+        0.0, true, k_z_lambda);
   }
 
   if (cfg.chem_env.acetate.enabled) {
     Int idx = find_chemical_spec(cfg.chemicals, species::ACETATE);
     if (idx < 0) {
       cfg.chemicals.emplace_back(
-          ChemicalSpec{species::ACETATE, cfg.chem_env.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda});
+          species::ACETATE, cfg.chem_env.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda);
     } else {
       auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
       spec.diff_coeff = cfg.chem_env.acetate.D_free;
@@ -172,10 +173,10 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
 
   if (cfg.chem_env.mucin.enabled) {
     if (find_chemical_spec(cfg.chemicals, species::MUCIN) < 0) {
-      const Real c0 = cfg.chem_env.mucin.initial_conc;
       cfg.chemicals.emplace_back(
-          ChemicalSpec{species::MUCIN, cfg.chem_env.mucin.D_free, cfg.chem_env.mucin.retardation,
-                       c0, c0, 0.0, false, k_z_lambda});
+          species::MUCIN, cfg.chem_env.mucin.D_free, cfg.chem_env.mucin.retardation,
+          cfg.chem_env.mucin.initial_conc, cfg.chem_env.mucin.initial_conc,
+          0.0, false, k_z_lambda);
     }
     cfg.vbf.use_dynamic_mucin = true;
   }

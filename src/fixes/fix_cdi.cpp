@@ -4,6 +4,7 @@
 
 #include "fix_cdi.h"
 #include "simulation.h"
+#include <algorithm>
 #include <cmath>
 
 namespace gutibm {
@@ -22,14 +23,12 @@ bool corpse_blocks_cdi(const Agent& attacker, const Agent& victim,
                        const AgentPool& agents, const Domain& domain,
                        Real sim_time, const CdiConfig& cfg) {
   const Real dist_av2 = domain.min_image_dist_sq(attacker.x, victim.x);
-  for (const Agent& corpse : agents) {
-    if (!is_active_corpse(corpse, sim_time, cfg.corpse_persistence)) continue;
+  return std::ranges::any_of(agents, [&](const Agent& corpse) {
+    if (!is_active_corpse(corpse, sim_time, cfg.corpse_persistence)) return false;
     const Real dist_ac2 = domain.min_image_dist_sq(attacker.x, corpse.x);
-    if (dist_ac2 >= dist_av2) continue;
-    if (dist_ac2 > cfg.contact_radius * cfg.contact_radius) continue;
-    return true;
-  }
-  return false;
+    if (dist_ac2 >= dist_av2) return false;
+    return dist_ac2 <= cfg.contact_radius * cfg.contact_radius;
+  });
 }
 
 bool victim_eligible_for_cdi(const Agent& attacker, const Agent& victim,
