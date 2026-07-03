@@ -115,7 +115,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 ### C++ (CTest — 30 targets)
 
-**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, bacteriocin, receptor, mutation.
+**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), bacteriocin, receptor, mutation.
 
 **Slow unit:** mechanics, immunity escape.
 
@@ -180,6 +180,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 ### New config keys
 - Add to `InputParser::apply_flat_key()` and/or `config_json.cpp`
 - Add parser fixture under `tests/fixtures/` + assertion in `test_input_parser.cpp`
+- **Add an ingestion probe in `tests/test_config_ingestion.cpp`** (`build_probes()` for flat keys, `array_and_strain_keys()` for `config_json.cpp` array/object keys). This test tracks *every* parser key: its completeness guard scans the parser sources for `key == "..."` literals and fails CI if any parsed key lacks a probe (or a probe references a key no longer parsed).
 - Extend `test_config_diversity.cpp` if the key should change simulation outcomes
 
 ## Configuration Quick Reference

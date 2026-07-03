@@ -225,7 +225,6 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `metabolism.mu_max_default` | 5e-4 | 1/s | Default max growth rate |
 | `metabolism.division_threshold` | 2.0 | — | Biomass ratio for division |
 | `metabolism.metE_penalty` | 0.05 | — | MetE pathway base cost (BtuB loss) |
 | `metabolism.metE_acetate_km` | 40.0 | mol/m³ | Half-saturation for acetate inhibition of MetE |
