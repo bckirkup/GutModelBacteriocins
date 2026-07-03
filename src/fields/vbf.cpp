@@ -55,6 +55,9 @@ void apply_carbon_source(ChemicalField& chem, Int cell, const VbfCellContext& ct
 
 void apply_iron_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
   if (ctx.idx.iron < 0) return;
+  // First-order (concentration-dependent) uptake: nutrient_sink is a rate
+  // constant (1/s). See VBFConfig::nutrient_sink for why this is not a
+  // zero-order mol/m^3/s removal.
   chem.reac(ctx.idx.iron, cell) -= ctx.cfg.nutrient_sink * chem.conc(ctx.idx.iron, cell);
 }
 
