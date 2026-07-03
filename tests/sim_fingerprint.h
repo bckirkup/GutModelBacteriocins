@@ -31,8 +31,8 @@ inline uint64_t simulation_fingerprint(const Simulation& sim) {
   h = hash_combine(h, static_cast<uint64_t>(agents.size()));
   for (const Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
-    h = hash_combine(h, static_cast<uint64_t>(a.tag));
-    h = hash_combine(h, static_cast<uint64_t>(a.type));
+    h = hash_combine(h, static_cast<uint64_t>(a.identity.tag));
+    h = hash_combine(h, static_cast<uint64_t>(a.identity.type));
     h = hash_combine(h, static_cast<uint64_t>(quantize(a.x[0])));
     h = hash_combine(h, static_cast<uint64_t>(quantize(a.x[1])));
     h = hash_combine(h, static_cast<uint64_t>(quantize(a.x[2])));

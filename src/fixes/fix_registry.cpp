@@ -37,35 +37,35 @@ void FixRegistry::register_defaults() {
 
   register_fix("metabolism",
     [](Simulation& sim, const SimulationConfig& cfg) {
-      return std::make_unique<FixMetabolism>(sim, cfg.metabolism);
+      return std::make_unique<FixMetabolism>(sim, cfg.fixes.metabolism);
     });
   register_fix("bacteriocin",
     [](Simulation& sim, const SimulationConfig& cfg) {
-      return std::make_unique<FixBacteriocin>(sim, cfg.bacteriocin);
+      return std::make_unique<FixBacteriocin>(sim, cfg.fixes.bacteriocin);
     });
   register_fix("receptor",
     [](Simulation& sim, const SimulationConfig& cfg) {
-      return std::make_unique<FixReceptor>(sim, cfg.receptor);
+      return std::make_unique<FixReceptor>(sim, cfg.fixes.receptor);
     });
   register_fix("motility",
     [](Simulation& sim, const SimulationConfig& cfg) {
-      return std::make_unique<FixMotility>(sim, cfg.motility);
+      return std::make_unique<FixMotility>(sim, cfg.cell_bio.motility);
     });
   register_fix("conjugation",
     [](Simulation& sim, const SimulationConfig& cfg) {
-      return std::make_unique<FixConjugation>(sim, cfg.conjugation);
+      return std::make_unique<FixConjugation>(sim, cfg.fixes.conjugation);
     });
   register_fix("cdi",
     [](Simulation& sim, const SimulationConfig& cfg) {
-      return std::make_unique<FixCdi>(sim, cfg.cdi);
+      return std::make_unique<FixCdi>(sim, cfg.cell_bio.cdi);
     });
   register_fix("mutation",
     [](Simulation& sim, const SimulationConfig& cfg) {
-      return std::make_unique<FixMutation>(sim, cfg.mutation);
+      return std::make_unique<FixMutation>(sim, cfg.fixes.mutation);
     });
   register_fix("mechanics",
     [](Simulation& sim, const SimulationConfig& cfg) {
-      return std::make_unique<FixMechanics>(sim, cfg.mechanics);
+      return std::make_unique<FixMechanics>(sim, cfg.fixes.mechanics);
     });
 }
 

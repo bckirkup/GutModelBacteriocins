@@ -69,9 +69,9 @@ SimulationConfig make_roundtrip_config(std::string_view filename, bool parallel)
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.total_time = 120.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 60.0;
+  cfg.time.total_time = 120.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 60.0;
   cfg.seed = 24680;
   cfg.hdf5.enabled = true;
   cfg.hdf5.filename = filename;
@@ -120,8 +120,8 @@ std::vector<AgentSnapshot> collect_all_agents(const Simulation& sim) {
   out.reserve(sim.agents().size());
   for (const Agent& a : sim.agents()) {
     out.emplace_back(
-      a.tag,
-      a.type,
+      a.identity.tag,
+      a.identity.type,
       static_cast<int32_t>(to_underlying(a.state)),
       a.x[0], a.x[1], a.x[2],
       a.radius,
@@ -332,7 +332,7 @@ void validate_parallel_roundtrip(const Simulation& sim, const std::string& filen
   for (const Agent& a : sim.agents()) {
     size_t j = 0;
     for (; j < snap.agents.id.size(); ++j) {
-      if (snap.agents.id[j] == a.tag) break;
+      if (snap.agents.id[j] == a.identity.tag) break;
     }
     assert(j < snap.agents.id.size());
     assert(std::abs(snap.agents.x[j] - a.x[0]) < kTol);

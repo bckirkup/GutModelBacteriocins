@@ -71,9 +71,9 @@ void test_heterogeneity_integration() {
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
 
-  cfg.total_time      = 300.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 300.0;
+  cfg.time.total_time      = 300.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 300.0;
   cfg.seed            = 54321;
   cfg.hdf5.enabled    = false;
 
@@ -85,9 +85,9 @@ void test_heterogeneity_integration() {
   cfg.qssa.nutrient_cutoff = 15e-6;
 
   // Enable pili heterogeneity
-  cfg.conjugation.pili_heterogeneity = true;
-  cfg.conjugation.pili_length_min    = 1.0e-6;
-  cfg.conjugation.pili_length_max    = 4.0e-6;
+  cfg.fixes.conjugation.pili_heterogeneity = true;
+  cfg.fixes.conjugation.pili_length_min    = 1.0e-6;
+  cfg.fixes.conjugation.pili_length_max    = 4.0e-6;
 
   cfg.initial_strains.clear();
 
@@ -130,9 +130,9 @@ void test_heterogeneity_disabled_uses_fixed() {
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
 
-  cfg.total_time      = 120.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 120.0;
+  cfg.time.total_time      = 120.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 120.0;
   cfg.seed            = 99999;
   cfg.hdf5.enabled    = false;
 
@@ -142,7 +142,7 @@ void test_heterogeneity_disabled_uses_fixed() {
   cfg.qssa.nutrient_cutoff = 15e-6;
 
   // Ensure heterogeneity is OFF (default)
-  assert(!cfg.conjugation.pili_heterogeneity);
+  assert(!cfg.fixes.conjugation.pili_heterogeneity);
 
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain s;

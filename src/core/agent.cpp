@@ -32,9 +32,9 @@ void AgentPool::configure_tags(TagID first_tag, TagID stride) {
 
 Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
   Agent a{};
-  a.tag           = id;
-  a.type          = type;
-  a.owner_rank    = 0;
+  a.identity.tag        = id;
+  a.identity.type       = type;
+  a.identity.owner_rank = 0;
   a.x             = pos;
   a.v             = {0.0, 0.0, 0.0};
   a.radius        = CELL_RADIUS_DEFAULT;
@@ -45,12 +45,12 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
   a.biomass       = a.mass;
   a.maintenance   = 0.0;
 
-  a.receptor_expr_base.fill(1.0);  // wild-type: all receptors fully expressed
+  a.receptor_expr_base.fill(1.0);
   a.receptor_expr = a.receptor_expr_base;
 
-  a.km_iron   = 1.0e-6;   // 1 uM baseline
-  a.km_b12    = 1.0e-9;   // 1 nM baseline
-  a.km_carbon = 5.0e-3;   // 5 mM baseline
+  a.km.km_iron   = 1.0e-6;
+  a.km.km_b12    = 1.0e-9;
+  a.km.km_carbon = 5.0e-3;
 
   a.state = PhenoState::NORMAL;
 
@@ -64,9 +64,9 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
   a.genome.toxin_affinity.fill(1.0);
   a.genome.ligand_affinity.fill(1.0);
 
-  a.age       = 0.0;
-  a.sos_timer = -1.0;
-  a.in_crypt  = false;
+  a.timers.age       = 0.0;
+  a.timers.sos_timer = -1.0;
+  a.flags.in_crypt   = false;
   a.grid_cell = -1;
 
   return a;
@@ -74,7 +74,6 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
 
 void AgentPool::remove(Int idx) {
   if (idx < 0 || idx >= size()) return;
-  // swap with last element for O(1) removal
   if (idx < size() - 1) {
     agents_[idx] = std::move(agents_.back());
   }

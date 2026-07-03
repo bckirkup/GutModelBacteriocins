@@ -32,9 +32,9 @@ SimulationConfig make_checkpoint_config(std::string_view filename) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.total_time = 180.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 60.0;
+  cfg.time.total_time = 180.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 60.0;
   cfg.seed = 13579;
   cfg.hdf5.enabled = true;
   cfg.hdf5.filename = filename;
@@ -83,8 +83,8 @@ std::vector<AgentSnapshot> collect_agents(const Simulation& sim) {
   out.reserve(sim.agents().size());
   for (const Agent& a : sim.agents()) {
     out.emplace_back(
-      a.tag,
-      a.type,
+      a.identity.tag,
+      a.identity.type,
       static_cast<int32_t>(to_underlying(a.state)),
       a.x[0], a.x[1], a.x[2],
       a.radius,
@@ -171,7 +171,7 @@ void assert_genome_matches_snapshot(const Simulation& sim,
   for (const Agent& a : sim.agents()) {
     size_t gi = 0;
     for (; gi < n; ++gi) {
-      if (static_cast<TagID>(snap.agents.id[gi]) == a.tag) break;
+      if (static_cast<TagID>(snap.agents.id[gi]) == a.identity.tag) break;
     }
     assert(gi < n);
     ++matched;
@@ -238,7 +238,7 @@ void test_checkpoint_restart(const std::string& filename) {
 
   SimulationConfig resume_cfg = run_cfg;
   resume_cfg.hdf5.enabled = false;
-  resume_cfg.total_time = ckpt.metadata.time + 120.0;
+  resume_cfg.time.total_time = ckpt.metadata.time + 120.0;
   resume_cfg.initial_strains.clear();
 
   Simulation resumed;
@@ -262,7 +262,7 @@ void test_checkpoint_restart(const std::string& filename) {
 
 void test_split_run_matches_uninterrupted(const std::string& filename) {
   SimulationConfig split_cfg = make_checkpoint_config(filename + ".split.h5");
-  split_cfg.total_time = 60.0;
+  split_cfg.time.total_time = 60.0;
   Simulation first;
   first.init(split_cfg);
   first.run();
@@ -275,7 +275,7 @@ void test_split_run_matches_uninterrupted(const std::string& filename) {
 
   SimulationConfig resume_cfg = split_cfg;
   resume_cfg.hdf5.enabled = false;
-  resume_cfg.total_time = 120.0;
+  resume_cfg.time.total_time = 120.0;
   resume_cfg.initial_strains.clear();
 
   Simulation resumed;

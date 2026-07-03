@@ -33,7 +33,7 @@ static Agent make_dividing_agent(Simulation& sim) {
     0.5 * (sim.domain().lo()[2] + sim.domain().hi()[2]),
   };
   Agent a = Agent::create_default(sim.agents().next_tag(), 1, center, 5e-4);
-  a.age = 0.0;
+  a.timers.age = 0.0;
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_B());
   return a;
@@ -139,7 +139,7 @@ void test_mutation_skips_aged_agents() {
 
   auto sim = make_empty_sim(9011);
   Agent a = make_dividing_agent(sim);
-  a.age = 120.0;
+  a.timers.age = 120.0;
   auto n_before = static_cast<Int>(a.genome.bi_loci.size());
   sim.agents().push_back(std::move(a));
 

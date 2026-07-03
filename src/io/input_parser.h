@@ -34,49 +34,60 @@
 
 namespace gutibm {
 
-struct SimulationConfig {
-  // Time control
-  Real total_time        = 86400.0;    // 24 h default
-  Real bio_dt            = 60.0;       // 1 min biological timestep
-  Real output_interval   = 3600.0;     // hourly output
+struct TimeControlConfig {
+  Real total_time = 86400.0;
+  Real bio_dt = 60.0;
+  Real output_interval = 3600.0;
+};
 
-  // Adaptive timestep (CFL-like)
-  bool adaptive_dt_enabled = false;
-  Real dt_min            = 1.0;        // minimum timestep (s)
-  Real dt_max            = 300.0;      // maximum timestep (s)
-  Real dt_safety         = 0.8;        // CFL safety factor
-  Real dt_growth_limit   = 0.1;        // max mu*dt allowed
+struct AdaptiveTimestepConfig {
+  bool enabled = false;
+  Real min = 1.0;
+  Real max = 300.0;
+  Real safety = 0.8;
+  Real growth_limit = 0.1;
+};
 
-  // Domain
-  DomainConfig domain;
+struct ChemicalEnvironmentConfig {
+  OxygenConfig oxygen;
+  AcetateConfig acetate;
+  MucinConfig mucin;
+  ProteaseConfig protease;
+};
 
-  // Fields
-  AdvectionConfig advection;
-  VBFConfig vbf;
-  std::vector<ChemicalSpec> chemicals;
+struct CellBiologyConfig {
+  FurConfig fur;
+  CdiConfig cdi;
+  MotilityConfig motility;
+};
 
-  // QSSA
-  QSSAConfig qssa;
-
-  // Fixes
+struct FixPluginsConfig {
   MetabolismConfig metabolism;
   ReceptorConfig receptor;
   BacteriocinConfig bacteriocin;
   ConjugationConfig conjugation;
   MutationConfig mutation;
   MechanicsConfig mechanics;
+};
 
-  // Output
+struct SimulationConfig {
+  TimeControlConfig time;
+  AdaptiveTimestepConfig adaptive_dt;
+
+  DomainConfig domain;
+  AdvectionConfig advection;
+  VBFConfig vbf;
+  std::vector<ChemicalSpec> chemicals;
+  QSSAConfig qssa;
+  FixPluginsConfig fixes;
   HDF5Config hdf5;
 
-  // Checkpoint restart (non-empty file → resume instead of initial_strains)
   struct CheckpointConfig {
-    std::string file;  // HDF5 snapshot to load
-    std::string step;  // step group name; empty = latest
+    std::string file;
+    std::string step;
   };
   CheckpointConfig checkpoint;
 
-  // Initial population
   struct InitialStrain {
     Int type;
     Int count;
@@ -87,28 +98,11 @@ struct SimulationConfig {
     uint16_t cdi_immunity = 0;
   };
   std::vector<InitialStrain> initial_strains;
-
-  // Fix plugins to instantiate (empty = all registered defaults in order)
   std::vector<std::string> enabled_fixes;
-
-  // Random seed
   uint64_t seed = 42;
-
-  // GPU acceleration (requires CUDA build)
   GpuConfig gpu;
-
-  // Chemical environment expansion (Spec 1)
-  OxygenConfig oxygen;
-  AcetateConfig acetate;
-  MucinConfig mucin;
-  ProteaseConfig protease;
-
-  // Cell biology expansion (Spec 3)
-  FurConfig fur;
-  CdiConfig cdi;
-  MotilityConfig motility;
-
-  // Per-step wall-clock profiling (rank 0 prints summary at end of run)
+  ChemicalEnvironmentConfig chem_env;
+  CellBiologyConfig cell_bio;
   bool profile_steps = false;
 };
 

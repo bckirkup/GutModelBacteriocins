@@ -17,7 +17,7 @@ static Simulation make_o2_sim() {
   cfg.hdf5.enabled = false;
   cfg.domain.hi = {40e-6, 40e-6, 80e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.oxygen.enabled = true;
+  cfg.chem_env.oxygen.enabled = true;
   InputParser::finalize_config(cfg);
 
   Simulation sim;
@@ -69,7 +69,7 @@ void test_local_o2_accessor() {
   sim.agents().push_back(a);
   const Real o2 = sim.local_O2(sim.agents()[0]);
   assert(o2 > 0.0);
-  assert(o2 <= sim.config().oxygen.epithelial_conc * 1.01);
+  assert(o2 <= sim.config().chem_env.oxygen.epithelial_conc * 1.01);
 
   std::cout << "  test_local_o2_accessor: PASSED (O2=" << o2 << ")\n";
 }

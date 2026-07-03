@@ -23,7 +23,7 @@ namespace {
 
 bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   if (!sim.gpu_active()) return false;
-  if (sim.config().fur.enabled) return false;
+  if (sim.config().cell_bio.fur.enabled) return false;
 
   auto& agents = sim.agents();
   auto& ag = sim.agents_gpu();
@@ -95,8 +95,8 @@ void FixMetabolism::perform_divisions() {
     if (a.biomass >= cfg_.division_threshold * initial_mass) {
       // Create daughter cell
       Agent daughter = a;
-      daughter.tag = agents.next_tag();
-      daughter.genome.parent_id = a.tag;
+      daughter.identity.tag = agents.next_tag();
+      daughter.genome.parent_id = a.identity.tag;
       daughter.genome.generation = a.genome.generation + 1;
       daughter.genome.lineage_id = a.genome.lineage_id;
 
@@ -122,14 +122,14 @@ void FixMetabolism::perform_divisions() {
 
       sim_.domain().apply_pbc(daughter.x);
 
-      daughter.age = 0.0;
-      a.age = 0.0;
+      daughter.timers.age = 0.0;
+      a.timers.age = 0.0;
       daughter.receptor_expr_base = a.receptor_expr_base;
       daughter.genome.receptor_expression = a.genome.receptor_expression;
       daughter.motility = a.motility;
 
-      a.just_divided = true;
-      daughter.just_divided = true;
+      a.flags.just_divided = true;
+      daughter.flags.just_divided = true;
 
       new_agents.push_back(std::move(daughter));
     }
@@ -157,7 +157,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   Real S_iron   = (i_iron >= 0)   ? chem.conc(i_iron, cell)   : 1.0;
   Real S_b12    = (i_b12 >= 0)    ? chem.conc(i_b12, cell)    : 1.0;
 
-  if (const auto& fur_cfg = sim_.config().fur; fur_cfg.enabled) {
+  if (const auto& fur_cfg = sim_.config().cell_bio.fur; fur_cfg.enabled) {
     const Real fur_factor = 1.0 + fur_cfg.upregulation_max * fur_cfg.Km
         / (fur_cfg.Km + S_iron);
     for (int r = 0; r < NUM_RECEPTORS; ++r) {
@@ -203,8 +203,8 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   iron_uptake += expr_fiu  * lig_aff_fiu  * S_iron / (cfg_.km_iron_fiu  + S_iron);
   Real monod_iron = iron_uptake / (1.0 + expr_iroN + expr_iutA + expr_fiu);
 
-  Real Km_b12  = agent.km_b12  / (expr_btuB * lig_aff_btuB);
-  Real Km_carb = agent.km_carbon;
+  Real Km_b12  = agent.km.km_b12  / (expr_btuB * lig_aff_btuB);
+  Real Km_carb = agent.km.km_carbon;
 
   // Triple Monod kinetics (uncoupled)
   Real monod_carbon = S_carbon / (Km_carb + S_carbon);
@@ -212,7 +212,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
 
   Real mu = agent.mu_max * monod_carbon * monod_iron * monod_b12;
 
-  if (const auto& o2cfg = sim_.config().oxygen; o2cfg.enabled) {
+  if (const auto& o2cfg = sim_.config().chem_env.oxygen; o2cfg.enabled) {
     if (Int i_o2 = chem.find("oxygen"); i_o2 >= 0) {
       const Real s_o2 = chem.conc(i_o2, cell);
       const Real monod_o2_boost =
@@ -265,7 +265,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   Real vol = agent.biomass / CELL_DENSITY_DEFAULT;
   agent.radius = std::cbrt(3.0 * vol / (4.0 * PI));
   agent.mass   = agent.biomass;
-  agent.age   += dt;
+  agent.timers.age   += dt;
 
   // Nutrient consumption from grid
   auto& chem = sim_.chemical_field();
@@ -301,7 +301,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
     chem.reac(i_b12, cell) -= delta_b12;
   }
 
-  const auto& acfg = sim_.config().acetate;
+  const auto& acfg = sim_.config().chem_env.acetate;
   if (acfg.enabled && i_acetate >= 0 && cell_vol > 0.0) {
     const Real acetate_conc = chem.conc(i_acetate, cell);
     if (agent.mu_realized > acfg.overflow_threshold) {
@@ -321,7 +321,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
 }
 
 void FixMetabolism::check_death(Agent& agent) const {
-  if (agent.mu_realized < cfg_.death_threshold && agent.age > 3600.0) {
+  if (agent.mu_realized < cfg_.death_threshold && agent.timers.age > 3600.0) {
     agent.state = PhenoState::DEAD;
   }
 }

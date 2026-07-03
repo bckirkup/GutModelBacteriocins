@@ -14,8 +14,8 @@ FixCdi::FixCdi(Simulation& sim, const CdiConfig& cfg)
 namespace {
 
 bool is_active_corpse(const Agent& a, Real sim_time, Real corpse_persistence) {
-  return a.state == PhenoState::DEAD && a.death_time >= 0.0
-      && (sim_time - a.death_time) < corpse_persistence;
+  return a.state == PhenoState::DEAD && a.timers.death_time >= 0.0
+      && (sim_time - a.timers.death_time) < corpse_persistence;
 }
 
 bool corpse_blocks_cdi(const Agent& attacker, const Agent& victim,
@@ -50,7 +50,7 @@ bool victim_eligible_for_cdi(const Agent& attacker, const Agent& victim,
 void try_cdi_kill(Agent& victim, Real kill_prob, Real sim_time, RNG& rng) {
   if (!rng.bernoulli(kill_prob)) return;
   victim.state = PhenoState::DEAD;
-  victim.death_time = sim_time;
+  victim.timers.death_time = sim_time;
 }
 
 void process_cdi_neighbors(const Agent& attacker, Int attacker_idx,

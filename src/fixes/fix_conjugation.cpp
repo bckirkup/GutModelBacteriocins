@@ -76,7 +76,7 @@ void FixConjugation::attempt_transfer(Agent& donor, Agent& recipient,
   recipient.genome.has_conjugative_plasmid = true;
 
   // Record HGT event
-  sim_.lineage_tracker().record_hgt(donor.tag, recipient.tag,
+  sim_.lineage_tracker().record_hgt(donor.identity.tag, recipient.identity.tag,
                                      cluster.toxin_id);
 }
 

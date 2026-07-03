@@ -150,30 +150,30 @@ bool parse_bool_config(std::string_view val) {
 void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
 
-  if (cfg.oxygen.enabled && find_chemical_spec(cfg.chemicals, "oxygen") < 0) {
-    const Real c0 = cfg.oxygen.epithelial_conc;
+  if (cfg.chem_env.oxygen.enabled && find_chemical_spec(cfg.chemicals, "oxygen") < 0) {
+    const Real c0 = cfg.chem_env.oxygen.epithelial_conc;
       cfg.chemicals.emplace_back(
-          ChemicalSpec{"oxygen", cfg.oxygen.D_free, 1.0, c0, c0, 0.0, true, k_z_lambda});
+          ChemicalSpec{"oxygen", cfg.chem_env.oxygen.D_free, 1.0, c0, c0, 0.0, true, k_z_lambda});
   }
 
-  if (cfg.acetate.enabled) {
+  if (cfg.chem_env.acetate.enabled) {
     Int idx = find_chemical_spec(cfg.chemicals, "acetate");
     if (idx < 0) {
       cfg.chemicals.emplace_back(
-          ChemicalSpec{"acetate", cfg.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda});
+          ChemicalSpec{"acetate", cfg.chem_env.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda});
     } else {
       auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
-      spec.diff_coeff = cfg.acetate.D_free;
+      spec.diff_coeff = cfg.chem_env.acetate.D_free;
       spec.initial_conc = 0.0;
       spec.boundary_conc = 0.0;
     }
   }
 
-  if (cfg.mucin.enabled) {
+  if (cfg.chem_env.mucin.enabled) {
     if (find_chemical_spec(cfg.chemicals, "mucin") < 0) {
-      const Real c0 = cfg.mucin.initial_conc;
+      const Real c0 = cfg.chem_env.mucin.initial_conc;
       cfg.chemicals.emplace_back(
-          ChemicalSpec{"mucin", cfg.mucin.D_free, cfg.mucin.retardation,
+          ChemicalSpec{"mucin", cfg.chem_env.mucin.D_free, cfg.chem_env.mucin.retardation,
                        c0, c0, 0.0, false, k_z_lambda});
     }
     cfg.vbf.use_dynamic_mucin = true;
@@ -185,9 +185,9 @@ namespace {
 using FlatKeyHandler = bool (*)(SimulationConfig&, const std::string&, const std::string&);
 
 bool apply_time_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
-  if (key == "total_time")           { cfg.total_time = parse_config_real(key, val); return true; }
-  if (key == "bio_dt")               { cfg.bio_dt = parse_config_real(key, val); return true; }
-  if (key == "output_interval")      { cfg.output_interval = parse_config_real(key, val); return true; }
+  if (key == "total_time")           { cfg.time.total_time = parse_config_real(key, val); return true; }
+  if (key == "bio_dt")               { cfg.time.bio_dt = parse_config_real(key, val); return true; }
+  if (key == "output_interval")      { cfg.time.output_interval = parse_config_real(key, val); return true; }
   if (key == "seed")                 { cfg.seed = static_cast<uint64_t>(parse_config_int(key, val)); return true; }
   return false;
 }
@@ -246,52 +246,52 @@ bool apply_chemical_key(SimulationConfig& cfg, const std::string& key, const std
     }
     return true;
   }
-  if (key == "sos_lysis_prob")       { cfg.bacteriocin.sos_lysis_prob = parse_config_real(key, val); return true; }
-  if (key == "sos_basal_rate")       { cfg.bacteriocin.sos_basal_rate = parse_config_real(key, val); return true; }
+  if (key == "sos_lysis_prob")       { cfg.fixes.bacteriocin.sos_lysis_prob = parse_config_real(key, val); return true; }
+  if (key == "sos_basal_rate")       { cfg.fixes.bacteriocin.sos_basal_rate = parse_config_real(key, val); return true; }
   if (key == "sos_cross_induction_rate") {
-    cfg.bacteriocin.sos_cross_induction_rate = parse_config_real(key, val);
+    cfg.fixes.bacteriocin.sos_cross_induction_rate = parse_config_real(key, val);
     return true;
   }
   return false;
 }
 
 bool apply_receptor_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
-  if (key == "kd_b12_btuB")          { cfg.receptor.kd_b12_btuB = parse_config_real(key, val); return true; }
-  if (key == "kd_colicinE_btuB")     { cfg.receptor.kd_colicinE_btuB = parse_config_real(key, val); return true; }
-  if (key == "kd_enterobactin")       { cfg.receptor.kd_enterobactin = parse_config_real(key, val); return true; }
-  if (key == "kd_colicinB_fepA")      { cfg.receptor.kd_colicinB_fepA = parse_config_real(key, val); return true; }
-  if (key == "kd_lin_enterobactin")   { cfg.receptor.kd_lin_enterobactin = parse_config_real(key, val); return true; }
-  if (key == "kd_colicinIa_cirA")    { cfg.receptor.kd_colicinIa_cirA = parse_config_real(key, val); return true; }
-  if (key == "kill_rate_colicin")     { cfg.receptor.kill_rate_colicin = parse_config_real(key, val); return true; }
-  if (key == "kill_rate_microcin")    { cfg.receptor.kill_rate_microcin = parse_config_real(key, val); return true; }
-  if (key == "immunity_factor")       { cfg.receptor.immunity_factor = parse_config_real(key, val); return true; }
+  if (key == "kd_b12_btuB")          { cfg.fixes.receptor.kd_b12_btuB = parse_config_real(key, val); return true; }
+  if (key == "kd_colicinE_btuB")     { cfg.fixes.receptor.kd_colicinE_btuB = parse_config_real(key, val); return true; }
+  if (key == "kd_enterobactin")       { cfg.fixes.receptor.kd_enterobactin = parse_config_real(key, val); return true; }
+  if (key == "kd_colicinB_fepA")      { cfg.fixes.receptor.kd_colicinB_fepA = parse_config_real(key, val); return true; }
+  if (key == "kd_lin_enterobactin")   { cfg.fixes.receptor.kd_lin_enterobactin = parse_config_real(key, val); return true; }
+  if (key == "kd_colicinIa_cirA")    { cfg.fixes.receptor.kd_colicinIa_cirA = parse_config_real(key, val); return true; }
+  if (key == "kill_rate_colicin")     { cfg.fixes.receptor.kill_rate_colicin = parse_config_real(key, val); return true; }
+  if (key == "kill_rate_microcin")    { cfg.fixes.receptor.kill_rate_microcin = parse_config_real(key, val); return true; }
+  if (key == "immunity_factor")       { cfg.fixes.receptor.immunity_factor = parse_config_real(key, val); return true; }
   return false;
 }
 
 bool apply_conjugation_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
-  if (key == "pili_length")           { cfg.conjugation.pili_length = parse_config_real(key, val); return true; }
-  if (key == "base_transfer_rate")    { cfg.conjugation.base_transfer_rate = parse_config_real(key, val); return true; }
-  if (key == "shear_critical")          { cfg.conjugation.shear_critical = parse_config_real(key, val); return true; }
-  if (key == "plasmid_copy_cost")     { cfg.conjugation.plasmid_copy_cost = parse_config_real(key, val); return true; }
-  if (key == "pili_heterogeneity")    { cfg.conjugation.pili_heterogeneity = (val == "true" || val == "1"); return true; }
-  if (key == "pili_length_min")       { cfg.conjugation.pili_length_min = parse_config_real(key, val); return true; }
-  if (key == "pili_length_max")       { cfg.conjugation.pili_length_max = parse_config_real(key, val); return true; }
+  if (key == "pili_length")           { cfg.fixes.conjugation.pili_length = parse_config_real(key, val); return true; }
+  if (key == "base_transfer_rate")    { cfg.fixes.conjugation.base_transfer_rate = parse_config_real(key, val); return true; }
+  if (key == "shear_critical")          { cfg.fixes.conjugation.shear_critical = parse_config_real(key, val); return true; }
+  if (key == "plasmid_copy_cost")     { cfg.fixes.conjugation.plasmid_copy_cost = parse_config_real(key, val); return true; }
+  if (key == "pili_heterogeneity")    { cfg.fixes.conjugation.pili_heterogeneity = (val == "true" || val == "1"); return true; }
+  if (key == "pili_length_min")       { cfg.fixes.conjugation.pili_length_min = parse_config_real(key, val); return true; }
+  if (key == "pili_length_max")       { cfg.fixes.conjugation.pili_length_max = parse_config_real(key, val); return true; }
   return false;
 }
 
 bool apply_mutation_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
-  if (key == "bi_duplication_rate")     { cfg.mutation.bi_duplication_rate = parse_config_real(key, val); return true; }
-  if (key == "bi_recombination_rate")   { cfg.mutation.bi_recombination_rate = parse_config_real(key, val); return true; }
-  if (key == "receptor_mutation_rate")  { cfg.mutation.receptor_mutation_rate = parse_config_real(key, val); return true; }
-  if (key == "super_killer_rate")       { cfg.mutation.super_killer_rate = parse_config_real(key, val); return true; }
-  if (key == "partial_resistance_rate") { cfg.mutation.partial_resistance_rate = parse_config_real(key, val); return true; }
-  if (key == "receptor_reduction")      { cfg.mutation.receptor_reduction = parse_config_real(key, val); return true; }
-  if (key == "max_bi_loci")             { cfg.mutation.max_bi_loci = parse_config_int(key, val); return true; }
-  if (key == "immunity_escape_prob")    { cfg.mutation.immunity_escape_prob = parse_config_real(key, val); return true; }
-  if (key == "escape_affinity_lo")      { cfg.mutation.escape_affinity_lo = parse_config_real(key, val); return true; }
-  if (key == "escape_affinity_hi")      { cfg.mutation.escape_affinity_hi = parse_config_real(key, val); return true; }
-  if (key == "compensatory_rate")       { cfg.mutation.compensatory_rate = parse_config_real(key, val); return true; }
-  if (key == "compensatory_reduction")  { cfg.mutation.compensatory_reduction = parse_config_real(key, val); return true; }
+  if (key == "bi_duplication_rate")     { cfg.fixes.mutation.bi_duplication_rate = parse_config_real(key, val); return true; }
+  if (key == "bi_recombination_rate")   { cfg.fixes.mutation.bi_recombination_rate = parse_config_real(key, val); return true; }
+  if (key == "receptor_mutation_rate")  { cfg.fixes.mutation.receptor_mutation_rate = parse_config_real(key, val); return true; }
+  if (key == "super_killer_rate")       { cfg.fixes.mutation.super_killer_rate = parse_config_real(key, val); return true; }
+  if (key == "partial_resistance_rate") { cfg.fixes.mutation.partial_resistance_rate = parse_config_real(key, val); return true; }
+  if (key == "receptor_reduction")      { cfg.fixes.mutation.receptor_reduction = parse_config_real(key, val); return true; }
+  if (key == "max_bi_loci")             { cfg.fixes.mutation.max_bi_loci = parse_config_int(key, val); return true; }
+  if (key == "immunity_escape_prob")    { cfg.fixes.mutation.immunity_escape_prob = parse_config_real(key, val); return true; }
+  if (key == "escape_affinity_lo")      { cfg.fixes.mutation.escape_affinity_lo = parse_config_real(key, val); return true; }
+  if (key == "escape_affinity_hi")      { cfg.fixes.mutation.escape_affinity_hi = parse_config_real(key, val); return true; }
+  if (key == "compensatory_rate")       { cfg.fixes.mutation.compensatory_rate = parse_config_real(key, val); return true; }
+  if (key == "compensatory_reduction")  { cfg.fixes.mutation.compensatory_reduction = parse_config_real(key, val); return true; }
   return false;
 }
 
@@ -312,11 +312,11 @@ bool apply_io_key(SimulationConfig& cfg, const std::string& key, const std::stri
 }
 
 bool apply_dt_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
-  if (key == "adaptive_dt_enabled")  { cfg.adaptive_dt_enabled = (val == "true" || val == "1"); return true; }
-  if (key == "dt_min")               { cfg.dt_min = parse_config_real(key, val); return true; }
-  if (key == "dt_max")               { cfg.dt_max = parse_config_real(key, val); return true; }
-  if (key == "dt_safety")            { cfg.dt_safety = parse_config_real(key, val); return true; }
-  if (key == "dt_growth_limit")      { cfg.dt_growth_limit = parse_config_real(key, val); return true; }
+  if (key == "adaptive_dt_enabled")  { cfg.adaptive_dt.enabled = (val == "true" || val == "1"); return true; }
+  if (key == "dt_min")               { cfg.adaptive_dt.min = parse_config_real(key, val); return true; }
+  if (key == "dt_max")               { cfg.adaptive_dt.max = parse_config_real(key, val); return true; }
+  if (key == "dt_safety")            { cfg.adaptive_dt.safety = parse_config_real(key, val); return true; }
+  if (key == "dt_growth_limit")      { cfg.adaptive_dt.growth_limit = parse_config_real(key, val); return true; }
   return false;
 }
 
@@ -329,160 +329,160 @@ bool apply_misc_key(SimulationConfig& cfg, const std::string& key, const std::st
 
 bool apply_oxygen_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "oxygen.enabled" || key == "oxygen_enabled") {
-    cfg.oxygen.enabled = parse_bool_config(val); return true;
+    cfg.chem_env.oxygen.enabled = parse_bool_config(val); return true;
   }
   if (key == "oxygen.epithelial_conc" || key == "oxygen_epithelial_conc") {
-    cfg.oxygen.epithelial_conc = parse_config_real(key, val); return true;
+    cfg.chem_env.oxygen.epithelial_conc = parse_config_real(key, val); return true;
   }
   if (key == "oxygen.D_free" || key == "oxygen_D_free") {
-    cfg.oxygen.D_free = parse_config_real(key, val); return true;
+    cfg.chem_env.oxygen.D_free = parse_config_real(key, val); return true;
   }
   if (key == "oxygen.Km" || key == "oxygen_Km") {
-    cfg.oxygen.Km = parse_config_real(key, val); return true;
+    cfg.chem_env.oxygen.Km = parse_config_real(key, val); return true;
   }
   if (key == "oxygen.boost_max" || key == "oxygen_boost_max") {
-    cfg.oxygen.boost_max = parse_config_real(key, val); return true;
+    cfg.chem_env.oxygen.boost_max = parse_config_real(key, val); return true;
   }
   if (key == "oxygen.q_consumption" || key == "oxygen_q_consumption") {
-    cfg.oxygen.q_consumption = parse_config_real(key, val); return true;
+    cfg.chem_env.oxygen.q_consumption = parse_config_real(key, val); return true;
   }
   if (key == "oxygen.vbf_sink" || key == "oxygen_vbf_sink") {
-    cfg.oxygen.vbf_sink = parse_config_real(key, val); return true;
+    cfg.chem_env.oxygen.vbf_sink = parse_config_real(key, val); return true;
   }
   if (key == "oxygen.k_ROS" || key == "oxygen_k_ROS") {
-    cfg.oxygen.k_ROS = parse_config_real(key, val); return true;
+    cfg.chem_env.oxygen.k_ROS = parse_config_real(key, val); return true;
   }
   return false;
 }
 
 bool apply_acetate_dyn_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "acetate.enabled" || key == "acetate_enabled") {
-    cfg.acetate.enabled = parse_bool_config(val); return true;
+    cfg.chem_env.acetate.enabled = parse_bool_config(val); return true;
   }
   if (key == "acetate.D_free" || key == "acetate_D_free") {
-    cfg.acetate.D_free = parse_config_real(key, val); return true;
+    cfg.chem_env.acetate.D_free = parse_config_real(key, val); return true;
   }
   if (key == "acetate.vbf_production" || key == "acetate_vbf_production") {
-    cfg.acetate.vbf_production = parse_config_real(key, val); return true;
+    cfg.chem_env.acetate.vbf_production = parse_config_real(key, val); return true;
   }
   if (key == "acetate.vbf_consumption" || key == "acetate_vbf_consumption") {
-    cfg.acetate.vbf_consumption = parse_config_real(key, val); return true;
+    cfg.chem_env.acetate.vbf_consumption = parse_config_real(key, val); return true;
   }
   if (key == "acetate.overflow_threshold" || key == "acetate_overflow_threshold") {
-    cfg.acetate.overflow_threshold = parse_config_real(key, val); return true;
+    cfg.chem_env.acetate.overflow_threshold = parse_config_real(key, val); return true;
   }
   if (key == "acetate.overflow_rate" || key == "acetate_overflow_rate") {
-    cfg.acetate.overflow_rate = parse_config_real(key, val); return true;
+    cfg.chem_env.acetate.overflow_rate = parse_config_real(key, val); return true;
   }
   if (key == "acetate.scavenge_Km" || key == "acetate_scavenge_Km") {
-    cfg.acetate.scavenge_Km = parse_config_real(key, val); return true;
+    cfg.chem_env.acetate.scavenge_Km = parse_config_real(key, val); return true;
   }
   if (key == "acetate.scavenge_rate" || key == "acetate_scavenge_rate") {
-    cfg.acetate.scavenge_rate = parse_config_real(key, val); return true;
+    cfg.chem_env.acetate.scavenge_rate = parse_config_real(key, val); return true;
   }
   if (key == "acetate.epithelial_uptake" || key == "acetate_epithelial_uptake") {
-    cfg.acetate.epithelial_uptake = parse_config_real(key, val); return true;
+    cfg.chem_env.acetate.epithelial_uptake = parse_config_real(key, val); return true;
   }
   return false;
 }
 
 bool apply_mucin_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "mucin.enabled" || key == "mucin_enabled") {
-    cfg.mucin.enabled = parse_bool_config(val); return true;
+    cfg.chem_env.mucin.enabled = parse_bool_config(val); return true;
   }
   if (key == "mucin.secretion_rate" || key == "mucin_secretion_rate") {
-    cfg.mucin.secretion_rate = parse_config_real(key, val); return true;
+    cfg.chem_env.mucin.secretion_rate = parse_config_real(key, val); return true;
   }
   if (key == "mucin.Km_degradation" || key == "mucin_Km_degradation") {
-    cfg.mucin.Km_degradation = parse_config_real(key, val); return true;
+    cfg.chem_env.mucin.Km_degradation = parse_config_real(key, val); return true;
   }
   if (key == "mucin.k_liberation" || key == "mucin_k_liberation") {
-    cfg.mucin.k_liberation = parse_config_real(key, val); return true;
+    cfg.chem_env.mucin.k_liberation = parse_config_real(key, val); return true;
   }
   if (key == "mucin.initial_conc" || key == "mucin_initial_conc") {
-    cfg.mucin.initial_conc = parse_config_real(key, val); return true;
+    cfg.chem_env.mucin.initial_conc = parse_config_real(key, val); return true;
   }
   return false;
 }
 
 bool apply_protease_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "protease.enabled" || key == "protease_enabled") {
-    cfg.protease.enabled = parse_bool_config(val); return true;
+    cfg.chem_env.protease.enabled = parse_bool_config(val); return true;
   }
   if (key == "protease.default_half_life" || key == "protease_default_half_life") {
-    cfg.protease.default_half_life = parse_config_real(key, val); return true;
+    cfg.chem_env.protease.default_half_life = parse_config_real(key, val); return true;
   }
   if (key == "protease.dilution_rate" || key == "protease_dilution_rate") {
-    cfg.protease.dilution_rate = parse_config_real(key, val); return true;
+    cfg.chem_env.protease.dilution_rate = parse_config_real(key, val); return true;
   }
   return false;
 }
 
 bool apply_fur_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "fur.enabled" || key == "fur_enabled") {
-    cfg.fur.enabled = parse_bool_config(val); return true;
+    cfg.cell_bio.fur.enabled = parse_bool_config(val); return true;
   }
   if (key == "fur.Km" || key == "fur_Km") {
-    cfg.fur.Km = parse_config_real(key, val); return true;
+    cfg.cell_bio.fur.Km = parse_config_real(key, val); return true;
   }
   if (key == "fur.upregulation_max" || key == "fur_upregulation_max") {
-    cfg.fur.upregulation_max = parse_config_real(key, val); return true;
+    cfg.cell_bio.fur.upregulation_max = parse_config_real(key, val); return true;
   }
   if (key == "fur.receptor_max" || key == "fur_receptor_max") {
-    cfg.fur.receptor_max = parse_config_real(key, val); return true;
+    cfg.cell_bio.fur.receptor_max = parse_config_real(key, val); return true;
   }
   return false;
 }
 
 bool apply_cdi_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "cdi.enabled" || key == "cdi_enabled") {
-    cfg.cdi.enabled = parse_bool_config(val); return true;
+    cfg.cell_bio.cdi.enabled = parse_bool_config(val); return true;
   }
   if (key == "cdi.kill_rate" || key == "cdi_kill_rate") {
-    cfg.cdi.kill_rate = parse_config_real(key, val); return true;
+    cfg.cell_bio.cdi.kill_rate = parse_config_real(key, val); return true;
   }
   if (key == "cdi.contact_radius" || key == "cdi_contact_radius") {
-    cfg.cdi.contact_radius = parse_config_real(key, val); return true;
+    cfg.cell_bio.cdi.contact_radius = parse_config_real(key, val); return true;
   }
   if (key == "cdi.corpse_persistence" || key == "cdi_corpse_persistence") {
-    cfg.cdi.corpse_persistence = parse_config_real(key, val); return true;
+    cfg.cell_bio.cdi.corpse_persistence = parse_config_real(key, val); return true;
   }
   return false;
 }
 
 bool apply_motility_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "motility.enabled" || key == "motility_enabled") {
-    cfg.motility.enabled = parse_bool_config(val); return true;
+    cfg.cell_bio.motility.enabled = parse_bool_config(val); return true;
   }
   if (key == "motility.swim_speed" || key == "motility_swim_speed") {
-    cfg.motility.swim_speed = parse_config_real(key, val); return true;
+    cfg.cell_bio.motility.swim_speed = parse_config_real(key, val); return true;
   }
   if (key == "motility.run_mean_duration" || key == "motility_run_mean_duration") {
-    cfg.motility.run_mean_duration = parse_config_real(key, val); return true;
+    cfg.cell_bio.motility.run_mean_duration = parse_config_real(key, val); return true;
   }
   if (key == "motility.stop_probability" || key == "motility_stop_probability") {
-    cfg.motility.stop_probability = parse_config_real(key, val); return true;
+    cfg.cell_bio.motility.stop_probability = parse_config_real(key, val); return true;
   }
   if (key == "motility.stop_duration" || key == "motility_stop_duration") {
-    cfg.motility.stop_duration = parse_config_real(key, val); return true;
+    cfg.cell_bio.motility.stop_duration = parse_config_real(key, val); return true;
   }
   if (key == "motility.chemotaxis_enabled" || key == "motility_chemotaxis_enabled") {
-    cfg.motility.chemotaxis_enabled = parse_bool_config(val); return true;
+    cfg.cell_bio.motility.chemotaxis_enabled = parse_bool_config(val); return true;
   }
   if (key == "motility.chi_carbon" || key == "motility_chi_carbon") {
-    cfg.motility.chi_carbon = parse_config_real(key, val); return true;
+    cfg.cell_bio.motility.chi_carbon = parse_config_real(key, val); return true;
   }
   if (key == "motility.chi_oxygen" || key == "motility_chi_oxygen") {
-    cfg.motility.chi_oxygen = parse_config_real(key, val); return true;
+    cfg.cell_bio.motility.chi_oxygen = parse_config_real(key, val); return true;
   }
   if (key == "motility.cluster_suppress_radius" || key == "motility_cluster_suppress_radius") {
-    cfg.motility.cluster_suppress_radius = parse_config_real(key, val); return true;
+    cfg.cell_bio.motility.cluster_suppress_radius = parse_config_real(key, val); return true;
   }
   if (key == "motility.cluster_suppress_threshold" || key == "motility_cluster_suppress_threshold") {
-    cfg.motility.cluster_suppress_threshold = parse_config_int(key, val); return true;
+    cfg.cell_bio.motility.cluster_suppress_threshold = parse_config_int(key, val); return true;
   }
   if (key == "motility.cluster_tumble_factor" || key == "motility_cluster_tumble_factor") {
-    cfg.motility.cluster_tumble_factor = parse_config_real(key, val); return true;
+    cfg.cell_bio.motility.cluster_tumble_factor = parse_config_real(key, val); return true;
   }
   return false;
 }

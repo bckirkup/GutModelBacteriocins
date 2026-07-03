@@ -22,7 +22,7 @@ static Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
   cfg.domain.hi = {100e-6, 100e-6, 100e-6};
   cfg.domain.grid_dx = 10e-6;
   cfg.domain.hash_cell_size = 20e-6;
-  cfg.mechanics = mcfg;
+  cfg.fixes.mechanics = mcfg;
   cfg.hdf5.enabled = false;
 
   Simulation sim;

@@ -63,10 +63,10 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
     biomass[i] = a.biomass;
     radius[i] = a.radius;
     mass[i] = a.mass;
-    age[i] = a.age;
+    age[i] = a.timers.age;
     mu_max[i] = a.mu_max;
-    km_b12[i] = a.km_b12;
-    km_carbon[i] = a.km_carbon;
+    km_b12[i] = a.km.km_b12;
+    km_carbon[i] = a.km.km_carbon;
     bi_loci_count[i] = static_cast<int>(a.genome.bi_loci.size());
     plasmid_amelioration[i] = a.genome.plasmid_cost_amelioration;
     for (int r = 0; r < NUM_RECEPTORS; ++r) {
@@ -117,7 +117,7 @@ void AgentPoolGpu::sync_to_host(AgentPool& pool) const {
     a.biomass = biomass[i];
     a.radius = radius[i];
     a.mass = mass[i];
-    a.age = age[i];
+    a.timers.age = age[i];
     a.grid_cell = grid_cell[i];
   }
 }

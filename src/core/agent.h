@@ -12,11 +12,33 @@
 
 namespace gutibm {
 
+struct AgentIdentity {
+  TagID tag = 0;
+  Int type = 0;
+  Int owner_rank = 0;
+};
+
+struct AgentKm {
+  Real km_iron = 0;
+  Real km_b12 = 0;
+  Real km_carbon = 0;
+};
+
+struct AgentTimers {
+  Real age = 0;
+  Real sos_timer = 0;
+  Real death_time = -1.0;
+};
+
+struct AgentFlags {
+  bool in_crypt = false;
+  bool just_divided = false;
+  bool microcin_penalty_applied = false;
+};
+
 struct Agent {
   // ── Identity ──────────────────────────────────────────────────────────
-  TagID  tag;              // globally unique identifier
-  Int    type;             // species / phylogroup index (1-based)
-  Int    owner_rank;       // MPI rank owning this agent
+  AgentIdentity identity;
 
   // ── Spatial ───────────────────────────────────────────────────────────
   Vec3   x;                // position (m)
@@ -32,15 +54,10 @@ struct Agent {
   Real   maintenance;      // maintenance energy coefficient
 
   // ── Receptor state ────────────────────────────────────────────────────
-  //  receptor_expr_base: genetic baseline (mutations modify this)
-  //  receptor_expr: effective expression (Fur-regulated when enabled)
   std::array<Real, NUM_RECEPTORS> receptor_expr_base;
   std::array<Real, NUM_RECEPTORS> receptor_expr;
 
-  // Km values (modified by receptor expression)
-  Real   km_iron;          // iron half-saturation (mol/m^3)
-  Real   km_b12;           // B12 half-saturation (mol/m^3)
-  Real   km_carbon;        // carbon half-saturation (mol/m^3)
+  AgentKm km;
 
   // ── Phenotype ─────────────────────────────────────────────────────────
   PhenoState state;
@@ -48,10 +65,7 @@ struct Agent {
   // ── Genome ────────────────────────────────────────────────────────────
   Genome genome;
 
-  // ── Stochastic timers ─────────────────────────────────────────────────
-  Real   age;              // time since last division (s)
-  Real   sos_timer;        // SOS response countdown (s), <0 = inactive
-  Real   death_time = -1.0; // simulation time of death; -1 = alive or immediate removal
+  AgentTimers timers;
 
   // ── Motility (Spec 3) ───────────────────────────────────────────────
   struct MotilityState {
@@ -65,14 +79,7 @@ struct Agent {
   };
   MotilityState motility;
 
-  // ── Crypt state ──────────────────────────────────────────────────────
-  bool   in_crypt = false; // true when agent resides in a crypt refugium
-
-  // ── Division flag (Spec 2: replication-coupled SOS induction) ────────
-  bool   just_divided = false;
-
-  // Transient: microcin mu_max penalty applied this step (avoid compounding)
-  bool   microcin_penalty_applied = false;
+  AgentFlags flags;
 
   // ── Grid coupling ─────────────────────────────────────────────────────
   Int    grid_cell;        // index into the chemical field grid

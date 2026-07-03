@@ -25,9 +25,9 @@ static SimulationConfig make_test_config(int seed) {
   cfg.domain.hi  = {100e-6, 100e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time      = 300.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 300.0;
+  cfg.time.total_time      = 300.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 300.0;
   cfg.seed            = seed;
   cfg.advection.mucus_thickness = 50e-6;
   cfg.advection.distal_length   = 100e-6;
@@ -36,9 +36,9 @@ static SimulationConfig make_test_config(int seed) {
   cfg.qssa.toxin_cutoff = 50e-6;
   cfg.qssa.nutrient_cutoff = 25e-6;
   cfg.hdf5.enabled = false;
-  cfg.fur.enabled = false;
-  cfg.cdi.enabled = false;
-  cfg.motility.enabled = false;
+  cfg.cell_bio.fur.enabled = false;
+  cfg.cell_bio.cdi.enabled = false;
+  cfg.cell_bio.motility.enabled = false;
 
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain s1;
@@ -128,7 +128,7 @@ void test_chemical_field_parity() {
 
   // Run a few steps
   for (int step = 0; step < 3; ++step) {
-    sim.step(cfg.bio_dt);
+    sim.step(cfg.time.bio_dt);
   }
 
   const auto& chem = sim.chemical_field();
@@ -162,7 +162,7 @@ void test_grid_coupling_consistency() {
   SimulationConfig cfg = make_test_config(777);
   Simulation sim;
   sim.init(cfg);
-  sim.step(cfg.bio_dt);
+  sim.step(cfg.time.bio_dt);
 
   // Every alive agent should have a valid grid cell
   for (const Agent& a : sim.agents()) {
@@ -182,18 +182,18 @@ void test_cross_build_fingerprint() {
   cfg.domain.hi  = {80e-6, 80e-6, 40e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time      = 180.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 180.0;
+  cfg.time.total_time      = 180.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 180.0;
   cfg.seed            = 31415;
   cfg.hdf5.enabled    = false;
   cfg.advection.mucus_thickness = 40e-6;
   cfg.advection.distal_length   = 80e-6;
   cfg.qssa.toxin_cutoff = 40e-6;
   cfg.qssa.nutrient_cutoff = 20e-6;
-  cfg.fur.enabled = false;
-  cfg.cdi.enabled = false;
-  cfg.motility.enabled = false;
+  cfg.cell_bio.fur.enabled = false;
+  cfg.cell_bio.cdi.enabled = false;
+  cfg.cell_bio.motility.enabled = false;
 
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain s;

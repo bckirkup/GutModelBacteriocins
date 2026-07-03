@@ -59,8 +59,8 @@ void FixBacteriocin::post_step(Real dt) { // NOLINT(readability-make-member-func
 
   for (Agent& a : agents) {
     if (a.state == PhenoState::SOS_INDUCED) {
-      a.sos_timer -= dt;
-      if (a.sos_timer <= 0.0) {
+      a.timers.sos_timer -= dt;
+      if (a.timers.sos_timer <= 0.0) {
         lyse_agent(a);
       }
     }
@@ -69,19 +69,19 @@ void FixBacteriocin::post_step(Real dt) { // NOLINT(readability-make-member-func
 
 void FixBacteriocin::apply_microcin_secretion(Agent& agent, Real /*dt*/) const {
   if (agent.state != PhenoState::NORMAL) return;
-  if (agent.microcin_penalty_applied) return;
+  if (agent.flags.microcin_penalty_applied) return;
 
   agent.mu_max *= (1.0 - cfg_.microcin_mu_penalty);
-  agent.microcin_penalty_applied = true;
+  agent.flags.microcin_penalty_applied = true;
 }
 
 void FixBacteriocin::check_sos_induction(Agent& agent, Real dt) {
   if (agent.state == PhenoState::SOS_INDUCED) return;
 
-  const Real bio_dt = sim_.config().bio_dt;
+  const Real bio_dt = sim_.config().time.bio_dt;
   Real rate_total = cfg_.sos_basal_rate;
 
-  if (agent.just_divided && bio_dt > 0.0) {
+  if (agent.flags.just_divided && bio_dt > 0.0) {
     rate_total += cfg_.sos_lysis_prob / bio_dt;
   }
 
@@ -94,7 +94,7 @@ void FixBacteriocin::check_sos_induction(Agent& agent, Real dt) {
 
   if (sim_.rng().bernoulli(p_sos)) {
     agent.state     = PhenoState::SOS_INDUCED;
-    agent.sos_timer = k_sos_lysis_delay_s;
+    agent.timers.sos_timer = k_sos_lysis_delay_s;
   }
 }
 
@@ -109,7 +109,7 @@ void FixBacteriocin::check_phage_induction(Agent& agent, const BICluster& bi, Re
 
   if (sim_.rng().bernoulli(p_induction)) {
     agent.state     = PhenoState::SOS_INDUCED;
-    agent.sos_timer = k_phage_lysis_delay_s;
+    agent.timers.sos_timer = k_phage_lysis_delay_s;
   }
 }
 
@@ -134,7 +134,7 @@ void FixBacteriocin::lyse_agent(Agent& agent) {
     burst.is_nuclease = bi.is_nuclease;
     burst.decay_rate = (bi.protease_half_life > 0.0)
         ? k_ln2 / bi.protease_half_life : 0.0;
-    if (!sim_.config().protease.enabled) {
+    if (!sim_.config().chem_env.protease.enabled) {
       burst.decay_rate = 0.0;
     }
     sim_.add_toxin_burst(burst);
@@ -142,7 +142,7 @@ void FixBacteriocin::lyse_agent(Agent& agent) {
 
   agent.state = PhenoState::DEAD;
 
-  sim_.lineage_tracker().record_lysis(agent.tag, agent.x,
+  sim_.lineage_tracker().record_lysis(agent.identity.tag, agent.x,
                                        agent.genome.lineage_id);
 }
 

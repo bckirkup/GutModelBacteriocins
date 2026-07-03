@@ -278,8 +278,8 @@ void HDF5Writer::write_agents(const Simulation& sim, const std::string& group) c
 
   for (Int i = 0; i < n; ++i) {
     const Agent& a = agents[i];
-    ids[static_cast<size_t>(i)]     = a.tag;
-    types[static_cast<size_t>(i)]   = a.type;
+    ids[static_cast<size_t>(i)]     = a.identity.tag;
+    types[static_cast<size_t>(i)]   = a.identity.type;
     states[static_cast<size_t>(i)]  = static_cast<int32_t>(to_underlying(a.state));
     x[static_cast<size_t>(i)]       = a.x[0];
     y[static_cast<size_t>(i)]       = a.x[1];

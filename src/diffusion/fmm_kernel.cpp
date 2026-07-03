@@ -71,7 +71,7 @@ Real accumulate_shift_sum(const std::vector<Real>& coeffs,
                           int aix, int aiy, int aiz,
                           const Vec3& delta) {
   Real sum = 0.0;
-  for_b_multi_index(atotal, [&](int bix, int biy, int biz) {
+  for_b_multi_index(atotal, [&sum, &coeffs, order, aix, aiy, aiz, delta](int bix, int biy, int biz) {
     sum += shift_term_contribution(coeffs, order, aix, aiy, aiz,
                                    bix, biy, biz, delta);
   });

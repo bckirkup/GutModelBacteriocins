@@ -126,7 +126,7 @@ void test_lysis_registers_burst() {
   FixBacteriocin fix(sim, bcfg);
   fix.compute(60.0);
   sim.agents()[0].state = PhenoState::SOS_INDUCED;
-  sim.agents()[0].sos_timer = 0.0;
+  sim.agents()[0].timers.sos_timer = 0.0;
   fix.post_step(60.0);
 
   assert(sim.toxin_bursts().size() == 1);
