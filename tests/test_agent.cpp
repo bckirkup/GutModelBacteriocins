@@ -14,8 +14,8 @@ using namespace gutibm;
 void test_agent_creation() {
   Agent a = Agent::create_default(1, 1, {100e-6, 100e-6, 50e-6}, 5e-4);
 
-  assert(a.tag == 1);
-  assert(a.type == 1);
+  assert(a.identity.tag == 1);
+  assert(a.identity.type == 1);
   assert(std::abs(a.radius - CELL_RADIUS_DEFAULT) < 1e-12);
   assert(a.mu_max > 0.0);
   assert(a.state == PhenoState::NORMAL);

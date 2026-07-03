@@ -8,12 +8,10 @@
 #include "simulation.h"
 #include <cmath>
 #include <cstdint>
-#include <iomanip>
-#include <sstream>
+#include <format>
 #include <string>
 
-namespace gutibm {
-namespace test_util {
+namespace gutibm::test_util {
 
 inline uint64_t hash_combine(uint64_t h, uint64_t v) {
   return h ^ (v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2));
@@ -33,8 +31,8 @@ inline uint64_t simulation_fingerprint(const Simulation& sim) {
   h = hash_combine(h, static_cast<uint64_t>(agents.size()));
   for (const Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
-    h = hash_combine(h, static_cast<uint64_t>(a.tag));
-    h = hash_combine(h, static_cast<uint64_t>(a.type));
+    h = hash_combine(h, static_cast<uint64_t>(a.identity.tag));
+    h = hash_combine(h, static_cast<uint64_t>(a.identity.type));
     h = hash_combine(h, static_cast<uint64_t>(quantize(a.x[0])));
     h = hash_combine(h, static_cast<uint64_t>(quantize(a.x[1])));
     h = hash_combine(h, static_cast<uint64_t>(quantize(a.x[2])));
@@ -55,13 +53,9 @@ inline uint64_t simulation_fingerprint(const Simulation& sim) {
 }
 
 inline std::string fingerprint_hex(const Simulation& sim) {
-  std::ostringstream oss;
-  oss << std::hex << std::setw(16) << std::setfill('0')
-      << simulation_fingerprint(sim);
-  return oss.str();
+  return std::format("{:016x}", simulation_fingerprint(sim));
 }
 
-}  // namespace test_util
-}  // namespace gutibm
+}  // namespace gutibm::test_util
 
 #endif  // GUTIBM_TEST_SIM_FINGERPRINT_H

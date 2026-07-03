@@ -35,39 +35,73 @@ bool in_periodic_grid(Int& idx, Int count, bool periodic) {
   return idx >= 0 && idx < count;
 }
 
+struct SuperposeGridContext {
+  Int nx;
+  Int ny;
+  Int nz;
+  Int span;
+  bool periodic_x;
+  bool periodic_y;
+};
+
+void accumulate_cutoff_cell(const Domain& domain,
+                            const GreensFunction& gf,
+                            const Vec3& src,
+                            const GreensFunctionParams& p,
+                            Int ix, Int iy, Int iz,
+                            std::vector<Real>& grid_conc) {
+  const Vec3 tgt = domain.cell_center(ix, iy, iz);
+  const Real c = gf.concentration_bounded(src, tgt, p);
+  const auto idx = domain.cell_index(ix, iy, iz);
+  grid_conc[idx] += c;
+}
+
+void accumulate_cutoff_row(const Domain& domain,
+                           const GreensFunction& gf,
+                           const Vec3& src,
+                           const GreensFunctionParams& p,
+                           Int src_ix, Int iy, Int iz,
+                           const SuperposeGridContext& grid,
+                           std::vector<Real>& grid_conc) {
+  for (Int dx = -grid.span; dx <= grid.span; ++dx) {
+    Int ix = src_ix + dx;
+    if (!in_periodic_grid(ix, grid.nx, grid.periodic_x)) continue;
+    accumulate_cutoff_cell(domain, gf, src, p, ix, iy, iz, grid_conc);
+  }
+}
+
 void accumulate_source_cutoff(const Domain& domain,
                               const GreensFunction& gf,
                               const Vec3& src,
                               const GreensFunctionParams& p,
-                              Int span,
-                              Int nx, Int ny, Int nz,
+                              const SuperposeGridContext& grid,
                               std::vector<Real>& grid_conc) {
   Int src_ix = 0;
   Int src_iy = 0;
   Int src_iz = 0;
   domain.pos_to_grid(src, src_ix, src_iy, src_iz);
-  const bool periodic_x = domain.config().periodic[0];
-  const bool periodic_y = domain.config().periodic[1];
 
-  for (Int dz = -span; dz <= span; ++dz) {
+  for (Int dz = -grid.span; dz <= grid.span; ++dz) {
     Int iz = src_iz + dz;
-    if (iz < 0 || iz >= nz) continue;
+    if (iz < 0 || iz >= grid.nz) continue;
 
-    for (Int dy = -span; dy <= span; ++dy) {
+    for (Int dy = -grid.span; dy <= grid.span; ++dy) {
       Int iy = src_iy + dy;
-      if (!in_periodic_grid(iy, ny, periodic_y)) continue;
-
-      for (Int dx = -span; dx <= span; ++dx) {
-        Int ix = src_ix + dx;
-        if (!in_periodic_grid(ix, nx, periodic_x)) continue;
-
-        const Vec3 tgt = domain.cell_center(ix, iy, iz);
-        const Real c = gf.concentration_bounded(src, tgt, p);
-        const auto idx = domain.cell_index(ix, iy, iz);
-        grid_conc[idx] += c;
-      }
+      if (!in_periodic_grid(iy, grid.ny, grid.periodic_y)) continue;
+      accumulate_cutoff_row(domain, gf, src, p, src_ix, iy, iz, grid, grid_conc);
     }
   }
+}
+
+SuperposeGridContext make_superpose_grid(const Domain& domain, Real cutoff_radius) {
+  return {
+    domain.nx(),
+    domain.ny(),
+    domain.nz(),
+    static_cast<Int>(std::ceil(cutoff_radius / domain.dx())),
+    domain.config().periodic[0],
+    domain.config().periodic[1],
+  };
 }
 
 #ifdef GUTIBM_CUDA
@@ -82,41 +116,46 @@ bool try_gpu_superpose(const Domain& domain,
 }
 #endif
 
-void superpose_sources_serial(const Domain& domain,
-                              const GreensFunction& gf,
-                              const std::vector<Vec3>& sources,
+struct SuperposeSourcesContext {
+  const Domain& domain;
+  const GreensFunction& gf;
+  Real cutoff_radius;
+  SuperposeGridContext grid;
+};
+
+#ifndef GUTIBM_OPENMP
+void superpose_sources_serial(const std::vector<Vec3>& sources,
                               const std::vector<GreensFunctionParams>& params,
-                              Real cutoff_radius,
-                              Int nx, Int ny, Int nz,
+                              const SuperposeSourcesContext& ctx,
                               std::vector<Real>& grid_conc) {
-  const auto span = static_cast<Int>(std::ceil(cutoff_radius / domain.dx()));
   for (size_t s = 0; s < sources.size(); ++s) {
-    accumulate_source_cutoff(domain, gf, sources[s], params[s],
-                             span, nx, ny, nz, grid_conc);
+    accumulate_source_cutoff(ctx.domain, ctx.gf, sources[s], params[s],
+                             ctx.grid, grid_conc);
   }
 }
+#endif
 
 #ifdef GUTIBM_OPENMP
-void superpose_sources_openmp(const Domain& domain,
-                              const GreensFunction& gf,
-                              const std::vector<Vec3>& sources,
+struct SuperposeOpenmpContext {
+  SuperposeSourcesContext sources;
+  Int ncells;
+};
+
+void superpose_sources_openmp(const std::vector<Vec3>& sources,
                               const std::vector<GreensFunctionParams>& params,
-                              Real cutoff_radius,
-                              Int nx, Int ny, Int nz,
-                              Int ncells,
+                              const SuperposeOpenmpContext& ctx,
                               std::vector<Real>& grid_conc) {
-  const auto span = static_cast<Int>(std::ceil(cutoff_radius / domain.dx()));
   #pragma omp parallel
   {
-    std::vector<Real> local_conc(ncells, 0.0);
+    std::vector<Real> local_conc(ctx.ncells, 0.0);
     #pragma omp for schedule(dynamic)
     for (size_t s = 0; s < sources.size(); ++s) {
-      accumulate_source_cutoff(domain, gf, sources[s], params[s],
-                               span, nx, ny, nz, local_conc);
+      accumulate_source_cutoff(ctx.sources.domain, ctx.sources.gf,
+                               sources[s], params[s], ctx.sources.grid, local_conc);
     }
     #pragma omp critical
     {
-      for (Int c = 0; c < ncells; ++c) {
+      for (Int c = 0; c < ctx.ncells; ++c) {
         grid_conc[c] += local_conc[c];
       }
     }
@@ -215,11 +254,7 @@ void GreensFunction::superpose_to_grid(
     Real cutoff_radius) const {
   require_init();
 
-  const Int nx = domain_->nx();
-  const Int ny = domain_->ny();
-  const Int nz = domain_->nz();
   const Int ncells = domain_->ncells();
-
   grid_conc.assign(ncells, 0.0);
 
 #ifdef GUTIBM_CUDA
@@ -229,12 +264,14 @@ void GreensFunction::superpose_to_grid(
   }
 #endif
 
+  const SuperposeGridContext grid = make_superpose_grid(*domain_, cutoff_radius);
+  const SuperposeSourcesContext serial_ctx{*domain_, *this, cutoff_radius, grid};
+
 #ifdef GUTIBM_OPENMP
-  superpose_sources_openmp(*domain_, *this, sources, params, cutoff_radius,
-                           nx, ny, nz, ncells, grid_conc);
+  const SuperposeOpenmpContext omp_ctx{serial_ctx, ncells};
+  superpose_sources_openmp(sources, params, omp_ctx, grid_conc);
 #else
-  superpose_sources_serial(*domain_, *this, sources, params, cutoff_radius,
-                           nx, ny, nz, grid_conc);
+  superpose_sources_serial(sources, params, serial_ctx, grid_conc);
 #endif
 }
 

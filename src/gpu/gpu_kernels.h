@@ -9,8 +9,7 @@
 using cudaStream_t = void*;
 #endif
 
-namespace gutibm {
-namespace gpu {
+namespace gutibm::gpu {
 
 void launch_superpose_kernel(
     const double* src_x, const double* src_y, const double* src_z,
@@ -59,7 +58,6 @@ void launch_spatial_hash_build_kernel(
     double lo0, double lo1, double lo2, double cell_size,
     int nx_cells, int ny_cells, int nz_cells, cudaStream_t stream);
 
-}  // namespace gpu
-}  // namespace gutibm
+}  // namespace gutibm::gpu
 
 #endif  // GUTIBM_GPU_KERNELS_H

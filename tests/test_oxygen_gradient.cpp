@@ -13,7 +13,7 @@ using namespace gutibm;
 
 void test_oxygen_species_registered() {
   SimulationConfig cfg = InputParser::default_config();
-  cfg.oxygen.enabled = true;
+  cfg.chem_env.oxygen.enabled = true;
   InputParser::finalize_config(cfg);
 
   bool found = false;
@@ -21,7 +21,7 @@ void test_oxygen_species_registered() {
     if (spec.name == "oxygen") {
       found = true;
       assert(spec.z_gradient_enabled);
-      assert(std::abs(spec.boundary_conc - cfg.oxygen.epithelial_conc) < 1e-15);
+      assert(std::abs(spec.boundary_conc - cfg.chem_env.oxygen.epithelial_conc) < 1e-15);
     }
   }
   assert(found);
@@ -65,11 +65,11 @@ void test_oxygen_z_gradient_init() {
 
 void test_oxygen_config_sensitivity() {
   SimulationConfig cfg_off = InputParser::default_config();
-  cfg_off.oxygen.enabled = false;
+  cfg_off.chem_env.oxygen.enabled = false;
   InputParser::finalize_config(cfg_off);
 
   SimulationConfig cfg_on = InputParser::default_config();
-  cfg_on.oxygen.enabled = true;
+  cfg_on.chem_env.oxygen.enabled = true;
   InputParser::finalize_config(cfg_on);
 
   Int count_off = 0;

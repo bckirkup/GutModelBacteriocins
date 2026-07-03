@@ -44,6 +44,17 @@ struct QSSAConfig {
   bool use_fmm  = false;   // enable octree far-field acceleration
   Real fmm_theta = 0.5;    // opening angle (0→exact, 1→fast/approximate)
   int  fmm_expansion_order = 2;  // 1=monopole, 2=dipole+quadrupole, 3=octupole
+
+  // Nutrient-depletion stoichiometry: mol consumed per unit (mu*biomass).
+  Real iron_stoichiometry   = 1.0e-6;
+  Real b12_stoichiometry    = 1.0e-9;
+  Real carbon_stoichiometry = 0.5;
+
+  // Fallback averaged Green's function params used when there are toxin
+  // sources but their total weighted strength is zero (degenerate case).
+  Real fallback_diff_coeff  = 4.0e-11;
+  Real fallback_pI          = 7.0;
+  Real fallback_retardation = 5.0;
 };
 
 // Persistent burst from SOS lysis (Spec 1 protease decay)
@@ -52,6 +63,7 @@ struct ToxinBurstSource {
   GreensFunctionParams params;
   Real creation_time = 0.0;
   Real decay_rate = 0.0;   // ln(2) / protease_half_life (1/s)
+  bool is_nuclease = false;
 };
 
 class QSSASolver {
@@ -71,6 +83,16 @@ class QSSASolver {
       const AdvectionField& adv,
       ChemicalField& chem,
       Int toxin_species_idx) const;
+
+  // Nuclease-only subset of toxin sources (Spec 2 cross-induction)
+  void solve_nuclease_toxin_field(
+      const AgentPool& agents,
+      const std::vector<ToxinBurstSource>& bursts,
+      Real current_time,
+      const ProteaseConfig& protease,
+      const AdvectionField& adv,
+      ChemicalField& chem,
+      Int nuclease_species_idx) const;
 
   // Compute nutrient depletion zones around colonies
   void solve_nutrient_depletion(

@@ -19,8 +19,7 @@ extern "C" {
 #include <array>
 #include <vector>
 #include <string>
-#include <sstream>
-#include <iomanip>
+#include <format>
 #include <numeric>
 #include "error.h"
 
@@ -225,16 +224,14 @@ void HDF5Writer::init(const HDF5Config& cfg) {
 #endif
 }
 
-void HDF5Writer::write_step(const Simulation& sim, Int step, Real time) {
+void HDF5Writer::write_step(const Simulation& sim, Int step, Real time) const {
 #ifdef GUTIBM_HDF5
   if (!enabled_) return;
   if (step % cfg_.dump_every != 0) return;
 
   auto fid = static_cast<hid_t>(file_id_);
 
-  std::ostringstream oss;
-  oss << "step_" << std::setw(6) << std::setfill('0') << step;
-  std::string gname = oss.str();
+  const std::string gname = std::format("step_{:06}", step);
 
   int skip = 0;
   if (io_rank(cfg_) == 0 && fid >= 0) {
@@ -281,8 +278,8 @@ void HDF5Writer::write_agents(const Simulation& sim, const std::string& group) c
 
   for (Int i = 0; i < n; ++i) {
     const Agent& a = agents[i];
-    ids[static_cast<size_t>(i)]     = a.tag;
-    types[static_cast<size_t>(i)]   = a.type;
+    ids[static_cast<size_t>(i)]     = a.identity.tag;
+    types[static_cast<size_t>(i)]   = a.identity.type;
     states[static_cast<size_t>(i)]  = static_cast<int32_t>(to_underlying(a.state));
     x[static_cast<size_t>(i)]       = a.x[0];
     y[static_cast<size_t>(i)]       = a.x[1];
@@ -360,7 +357,7 @@ void HDF5Writer::write_metadata(const Simulation& sim, const std::string& group,
         : sim.lineage_tracker().snapshots().back().num_lineages);
     auto s = static_cast<int32_t>(step);
 
-    auto write_scalar = [&](const char* name, hid_t type, const void* val) {
+    auto write_scalar = [&]<typename T>(const char* name, hid_t type, const T& val) {
       std::string dsname = mgroup + "/" + name;
       hid_t ds = H5Dcreate2(fid, dsname.c_str(), type, scalar,
                             H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -368,14 +365,14 @@ void HDF5Writer::write_metadata(const Simulation& sim, const std::string& group,
         H5Eclear2(H5E_DEFAULT);
         ds = H5Dopen2(fid, dsname.c_str(), H5P_DEFAULT);
       }
-      H5Dwrite(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, val);
+      H5Dwrite(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, &val);
       H5Dclose(ds);
     };
 
-    write_scalar("time",         H5T_NATIVE_DOUBLE, &t);
-    write_scalar("step",         H5T_NATIVE_INT32,  &s);
-    write_scalar("num_agents",   H5T_NATIVE_INT32,  &n_agents);
-    write_scalar("num_lineages", H5T_NATIVE_INT32,  &n_lin);
+    write_scalar("time",         H5T_NATIVE_DOUBLE, t);
+    write_scalar("step",         H5T_NATIVE_INT32,  s);
+    write_scalar("num_agents",   H5T_NATIVE_INT32,  n_agents);
+    write_scalar("num_lineages", H5T_NATIVE_INT32,  n_lin);
 
     H5Sclose(scalar);
   }
@@ -435,6 +432,8 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) c
   std::vector<int32_t> mutations(static_cast<size_t>(n));
   std::vector<int32_t> has_conjugative(static_cast<size_t>(n));
   std::vector<double> plasmid_amel(static_cast<size_t>(n));
+  std::vector<int32_t> cdi_type(static_cast<size_t>(n));
+  std::vector<int32_t> cdi_immunity(static_cast<size_t>(n));
   std::vector<double> receptor_expr(static_cast<size_t>(n) * NUM_RECEPTORS);
   std::vector<double> toxin_aff(static_cast<size_t>(n) * NUM_RECEPTORS);
   std::vector<double> ligand_aff(static_cast<size_t>(n) * NUM_RECEPTORS);
@@ -456,6 +455,8 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) c
     mutations[idx] = static_cast<int32_t>(a.genome.mutations);
     has_conjugative[idx] = a.genome.has_conjugative_plasmid ? 1 : 0;
     plasmid_amel[idx] = a.genome.plasmid_cost_amelioration;
+    cdi_type[idx] = static_cast<int32_t>(a.genome.cdi_type);
+    cdi_immunity[idx] = static_cast<int32_t>(a.genome.cdi_immunity);
     for (Int r = 0; r < NUM_RECEPTORS; ++r) {
       receptor_expr[idx * NUM_RECEPTORS + static_cast<size_t>(r)] =
           a.genome.receptor_expression[r];
@@ -485,6 +486,10 @@ void HDF5Writer::write_genome(const Simulation& sim, const std::string& group) c
                    has_conjugative.data(), local_n, cfg_);
   write_dataset_1d(fid, ggroup + "/plasmid_cost_amelioration", H5T_NATIVE_DOUBLE,
                    plasmid_amel.data(), local_n, cfg_);
+  write_dataset_1d(fid, ggroup + "/cdi_type", H5T_NATIVE_INT32,
+                   cdi_type.data(), local_n, cfg_);
+  write_dataset_1d(fid, ggroup + "/cdi_immunity", H5T_NATIVE_INT32,
+                   cdi_immunity.data(), local_n, cfg_);
   write_dataset_1d(fid, ggroup + "/receptor_expression", H5T_NATIVE_DOUBLE,
                    receptor_expr.data(), local_n * NUM_RECEPTORS, cfg_);
   write_dataset_1d(fid, ggroup + "/toxin_affinity", H5T_NATIVE_DOUBLE,

@@ -24,9 +24,9 @@ void test_mini_simulation() {
   cfg.domain.hash_cell_size = 10e-6;
 
   // Quick run
-  cfg.total_time      = 600.0;   // 10 minutes
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 300.0;
+  cfg.time.total_time      = 600.0;   // 10 minutes
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 300.0;
   cfg.seed            = 123;
 
   // Advection
@@ -114,11 +114,14 @@ void test_metabolism_integration() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.total_time = 120.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 120.0;
+  cfg.time.total_time = 120.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 120.0;
   cfg.seed = 456;
   cfg.hdf5.enabled = false;
+  cfg.cell_bio.fur.enabled = false;
+  cfg.cell_bio.cdi.enabled = false;
+  cfg.cell_bio.motility.enabled = false;
   cfg.advection.mucus_thickness = 25e-6;
   cfg.advection.distal_length = 50e-6;
   cfg.qssa.toxin_cutoff = 25e-6;
@@ -163,9 +166,9 @@ void test_advection_moves_agents() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {100e-6, 100e-6, 50e-6};
   cfg.domain.grid_dx = 10e-6;
-  cfg.total_time = 60.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 60.0;
+  cfg.time.total_time = 60.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 60.0;
   cfg.seed = 789;
   cfg.hdf5.enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
@@ -216,11 +219,13 @@ void test_receptor_killing() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.total_time = 600.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 600.0;
+  cfg.time.total_time = 600.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 600.0;
   cfg.seed = 999;
   cfg.hdf5.enabled = false;
+  cfg.cell_bio.motility.enabled = false;
+  cfg.cell_bio.cdi.enabled = false;
   cfg.advection.mucus_thickness = 25e-6;
   cfg.advection.distal_length = 50e-6;
   cfg.qssa.toxin_cutoff = 25e-6;
@@ -247,7 +252,7 @@ void test_receptor_killing() {
   Int type2_alive = 0;
   for (const Agent& a : sim.agents()) {
     if (a.state == PhenoState::DEAD) continue;
-    if (a.type == 1) type1_alive++;
+    if (a.identity.type == 1) type1_alive++;
     else type2_alive++;
   }
 
@@ -268,9 +273,9 @@ void test_crypt_agents_survive_washout() {
   cfg.domain.hi  = {50e-6, 50e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time      = 600.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 600.0;
+  cfg.time.total_time      = 600.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 600.0;
   cfg.seed            = 7777;
   cfg.hdf5.enabled    = false;
 
@@ -300,7 +305,7 @@ void test_crypt_agents_survive_washout() {
   for (Agent& a : sim.agents()) {
     a.mu_realized = -1.0;          // strongly negative
     a.x[2] = 5e-6;                 // inside crypt
-    a.in_crypt = true;
+    a.flags.in_crypt = true;
   }
   Int initial_count = sim.agents().size();
   assert(initial_count > 0);
@@ -326,9 +331,9 @@ void test_metabolic_washout_trap() {
   cfg.domain.hi  = {50e-6, 50e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time      = 60.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 60.0;
+  cfg.time.total_time      = 60.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 60.0;
   cfg.seed            = 4242;
   cfg.hdf5.enabled    = false;
   cfg.advection.crypts_enabled = false;
@@ -355,7 +360,7 @@ void test_metabolic_washout_trap() {
   Agent& a = sim.agents()[0];
   Real z = 45e-6;
   a.x[2] = z;
-  a.in_crypt = false;
+  a.flags.in_crypt = false;
 
   Real gamma = sim.advection().washout_rate(z);
   assert(gamma > 0.0);
@@ -368,7 +373,7 @@ void test_metabolic_washout_trap() {
     expr = 0.01;
   }
   a.mu_max = 1e-6;
-  a.km_carbon = 500.0;
+  a.km.km_carbon = 500.0;
 
   sim.step(60.0);
   assert(a.mu_realized < gamma);
@@ -384,9 +389,9 @@ void test_metabolic_washout_survives_above_threshold() {
   cfg.domain.hi  = {50e-6, 50e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time      = 60.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 60.0;
+  cfg.time.total_time      = 60.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 60.0;
   cfg.seed            = 4343;
   cfg.hdf5.enabled    = false;
   cfg.advection.crypts_enabled = false;
@@ -409,7 +414,7 @@ void test_metabolic_washout_survives_above_threshold() {
   sim.init(cfg);
   Agent& a = sim.agents()[0];
   a.x[2] = 5e-6;  // low-flow zone near epithelium
-  a.in_crypt = false;
+  a.flags.in_crypt = false;
 
   Real gamma = sim.advection().washout_rate(a.x[2]);
   sim.step(60.0);
@@ -463,9 +468,9 @@ void test_crypt_migration_in_out() {
   cfg.domain.hi  = {50e-6, 50e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time      = 600.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 600.0;
+  cfg.time.total_time      = 600.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 600.0;
   cfg.seed            = 8888;
   cfg.hdf5.enabled    = false;
   cfg.advection.mucus_thickness = 50e-6;
@@ -493,7 +498,7 @@ void test_crypt_migration_in_out() {
   // Place all agents just above the crypt zone so they can enter
   for (Agent& a : sim.agents()) {
     a.x[2] = 12e-6;
-    a.in_crypt = false;
+    a.flags.in_crypt = false;
   }
 
   sim.run();
@@ -502,7 +507,7 @@ void test_crypt_migration_in_out() {
   bool any_relocated = false;
   for (const Agent& a : sim.agents()) {
     if (a.state == PhenoState::DEAD) continue;
-    if (a.in_crypt || std::abs(a.x[2] - 12e-6) > 1e-7) {
+    if (a.flags.in_crypt || std::abs(a.x[2] - 12e-6) > 1e-7) {
       any_relocated = true;
       break;
     }
@@ -518,9 +523,9 @@ void test_partial_resistance_survival() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.total_time = 600.0;
-  cfg.bio_dt = 60.0;
-  cfg.output_interval = 600.0;
+  cfg.time.total_time = 600.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 600.0;
   cfg.seed = 1337;
   cfg.hdf5.enabled = false;
   cfg.advection.mucus_thickness = 25e-6;
@@ -553,7 +558,7 @@ void test_partial_resistance_survival() {
   // Apply partial resistance to type-3 agents (BtuB toxin_affinity reduced)
   int btuB = to_underlying(ReceptorType::BtuB);
   for (Agent& a : sim.agents()) {
-    if (a.type == 3) {
+    if (a.identity.type == 3) {
       a.genome.toxin_affinity[btuB] = 0.05;   // 20x reduced toxin binding
       a.genome.ligand_affinity[btuB] = 0.85;   // near wild-type ligand uptake
     }
@@ -568,8 +573,8 @@ void test_partial_resistance_survival() {
   Int type3_alive = 0;
   for (const Agent& a : sim.agents()) {
     if (a.state == PhenoState::DEAD) continue;
-    if (a.type == 2) type2_alive++;
-    if (a.type == 3) type3_alive++;
+    if (a.identity.type == 2) type2_alive++;
+    if (a.identity.type == 3) type3_alive++;
   }
 
   // Partially resistant agents (type 3) should survive at least as well

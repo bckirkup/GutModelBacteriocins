@@ -23,11 +23,14 @@ static Real measure_mu(Real eut_initial_conc) {
   cfg.domain.grid_dx = 10e-6;
   cfg.domain.hash_cell_size = 10e-6;
 
-  cfg.total_time      = 60.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 60.0;
+  cfg.time.total_time      = 60.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 60.0;
   cfg.seed            = 42;
   cfg.hdf5.enabled    = false;
+  cfg.cell_bio.fur.enabled     = false;
+  cfg.cell_bio.cdi.enabled     = false;
+  cfg.cell_bio.motility.enabled = false;
 
   cfg.advection.mucus_thickness     = 10e-6;
   cfg.advection.distal_length       = 20e-6;
@@ -62,7 +65,7 @@ static Real measure_mu(Real eut_initial_conc) {
   a.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
 
   // Run one biological timestep
-  sim.step(cfg.bio_dt);
+  sim.step(cfg.time.bio_dt);
 
   return sim.agents()[0].mu_realized;
 }
@@ -121,9 +124,9 @@ void test_smoke_with_ethanolamine() {
   cfg.domain.hi  = {100e-6, 100e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
-  cfg.total_time      = 300.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 300.0;
+  cfg.time.total_time      = 300.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 300.0;
   cfg.seed            = 321;
   cfg.hdf5.enabled    = false;
   cfg.advection.mucus_thickness     = 50e-6;

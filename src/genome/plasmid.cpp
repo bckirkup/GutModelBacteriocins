@@ -3,14 +3,27 @@
    ----------------------------------------------------------------------- */
 
 #include "plasmid.h"
+#include <string_view>
 #include <unordered_map>
 
 namespace gutibm {
 
+namespace {
+
+struct TransparentStringHash {
+  using is_transparent = void;
+  [[nodiscard]] size_t operator()(std::string_view sv) const noexcept {
+    return std::hash<std::string_view>{}(sv);
+  }
+};
+
+}  // namespace
+
 BacteriocinClass classify_by_pI(Real pI) {
-  if (pI > 8.5) return BacteriocinClass::LETHAL_CORE;
-  if (pI < 7.0) return BacteriocinClass::LETHAL_HALO;
-  return BacteriocinClass::NEUTRAL;
+  using enum BacteriocinClass;
+  if (pI > 8.5) return LETHAL_CORE;
+  if (pI < 7.0) return LETHAL_HALO;
+  return NEUTRAL;
 }
 
 BICluster PlasmidLibrary::colicin_E1() {
@@ -23,7 +36,10 @@ BICluster PlasmidLibrary::colicin_E1() {
     .diff_coeff      = 4.0e-11,    // ~50 kDa protein
     .retardation     = 50.0,       // basic → binds mucin strongly
     .molecular_weight = 57000.0,
-    .protease_half_life = 1800.0
+    .protease_half_life = 1800.0,
+    .release_mode    = ReleaseMode::SOS_LYSIS,
+    .is_nuclease     = false,
+    .burst_size      = 1.0e5,
   };
 }
 
@@ -39,7 +55,10 @@ BICluster PlasmidLibrary::colicin_E2() {
     .diff_coeff      = 3.5e-11,
     .retardation     = 3.0,        // modest retardation
     .molecular_weight = 61500.0,    // toxin + immunity complex
-    .protease_half_life = 1800.0
+    .protease_half_life = 1800.0,
+    .release_mode    = ReleaseMode::SOS_LYSIS,
+    .is_nuclease     = true,
+    .burst_size      = 5.0e4,
   };
 }
 
@@ -53,7 +72,10 @@ BICluster PlasmidLibrary::colicin_B() {
     .diff_coeff      = 4.0e-11,
     .retardation     = 1.5,        // acidic → repelled by mucin
     .molecular_weight = 54800.0,
-    .protease_half_life = 900.0
+    .protease_half_life = 900.0,
+    .release_mode    = ReleaseMode::PHAGE_LYSIS,
+    .burst_size      = 1.0e4,
+    .phage_induction_rate = 1.0e-4,
   };
 }
 
@@ -67,7 +89,10 @@ BICluster PlasmidLibrary::colicin_Ia() {
     .diff_coeff      = 4.0e-11,
     .retardation     = 5.0,
     .molecular_weight = 69400.0,
-    .protease_half_life = 2400.0
+    .protease_half_life = 2400.0,
+    .release_mode    = ReleaseMode::PHAGE_LYSIS,
+    .burst_size      = 1.0e4,
+    .phage_induction_rate = 1.0e-4,
   };
 }
 
@@ -81,7 +106,9 @@ BICluster PlasmidLibrary::colicin_M() {
     .diff_coeff      = 5.0e-11,
     .retardation     = 60.0,
     .molecular_weight = 29500.0,
-    .protease_half_life = 900.0
+    .protease_half_life = 900.0,
+    .release_mode    = ReleaseMode::SOS_LYSIS,
+    .burst_size      = 2.0e5,
   };
 }
 
@@ -95,7 +122,9 @@ BICluster PlasmidLibrary::microcin_V() {
     .diff_coeff      = 1.0e-10,    // small peptide → faster diffusion
     .retardation     = 1.2,
     .molecular_weight = 8900.0,
-    .protease_half_life = 7200.0
+    .protease_half_life = 7200.0,
+    .release_mode    = ReleaseMode::CONTINUOUS,
+    .burst_size      = 0.0,
   };
 }
 
@@ -118,7 +147,8 @@ const std::vector<PlasmidEntry>& PlasmidLibrary::entries() {
 }
 
 const PlasmidEntry* PlasmidLibrary::find(const std::string& name) {
-  static const std::unordered_map<std::string, std::string> aliases = {
+  static const std::unordered_map<std::string, std::string,
+                                  TransparentStringHash, std::equal_to<>> aliases = {
     {"colicin_E1", "ColE1"},
     {"colicin_E2", "ColE2"},
     {"colicin_B",  "ColB"},

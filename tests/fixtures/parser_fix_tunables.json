@@ -15,6 +15,7 @@
   "immunity_factor": 0.0005,
 
   "base_transfer_rate": 2e-4,
+  "plasmid_copy_cost": 0.15,
   "pili_heterogeneity": true,
   "pili_length_min": 2e-6,
   "pili_length_max": 3e-6,
@@ -23,13 +24,16 @@
   "max_bi_loci": 6,
   "immunity_escape_prob": 0.75,
 
+  "fur.enabled": true,
+  "fur.Km": 1e-6,
+
   "initial_strains": [
     {
       "type": 1,
       "count": 10,
       "mu_max": 5e-4,
-      "plasmids": ["ColE1"],
-      "conjugative": false
+      "plasmids": ["ColB"],
+      "conjugative": true
     }
   ],
 

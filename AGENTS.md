@@ -81,7 +81,7 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/` |
-| `tests/` | 36 CTest targets (see test map below) |
+| `tests/` | 41 CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 | `.agents/skills/sonarqube-gutibm/SKILL.md` | SonarQube remediation workflow |
 | `.agents/skills/sonarqube-cpp/SKILL.md` | C++ SonarQube patterns |
@@ -113,9 +113,9 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 ## Test Coverage Map
 
-### C++ (CTest — 36 targets)
+### C++ (CTest — 41 targets)
 
-**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, bacteriocin, receptor, mutation.
+**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), qssa stoichiometry, bacteriocin, receptor, mutation.
 
 **Slow unit:** mechanics, immunity escape.
 
@@ -180,6 +180,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 ### New config keys
 - Add to `InputParser::apply_flat_key()` and/or `config_json.cpp`
 - Add parser fixture under `tests/fixtures/` + assertion in `test_input_parser.cpp`
+- **Add an ingestion probe in `tests/test_config_ingestion.cpp`** (`build_probes()` for flat keys, `array_and_strain_keys()` for `config_json.cpp` array/object keys). This test tracks *every* parser key: its completeness guard scans the parser sources for `key == "..."` literals and fails CI if any parsed key lacks a probe (or a probe references a key no longer parsed).
 - Extend `test_config_diversity.cpp` if the key should change simulation outcomes
 
 ## Configuration Quick Reference
@@ -200,6 +201,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | Barnes-Hut FMM | `use_fmm`, `fmm_theta`, `fmm_expansion_order` in input JSON |
 | Peristaltic mixing | `peristaltic_*` keys in input JSON |
 | Chemical environment (Spec 1) | `oxygen.enabled`, `acetate.enabled`, `mucin.enabled`, `protease.enabled` + nested keys in `docs/PARAMETERS.md` |
+| Cell biology (Spec 3) | `fur.enabled`, `cdi.enabled`, `motility.enabled` + nested keys; per-strain `cdi_type`, `cdi_immunity` |
 | GPU | `gpu_enabled` in input JSON (CUDA build required) |
 
 Full parameter docs: `docs/PARAMETERS.md`.
@@ -238,3 +240,26 @@ Recently closed critical path: #40–#43, #56, #75–#81, #25 (FISH models), #29
 Remaining long-horizon: #33 (GPU production path), larger-scale MPI/HPC validation.
 
 **Project board:** [docs/PROJECT_BOARD.md](docs/PROJECT_BOARD.md) — kanban layout, PR bundles, merge order. Run `./scripts/setup_project_board.sh` to create GitHub labels, milestones, and a Projects v2 board.
+
+## Cursor Cloud specific instructions
+
+System deps (`cmake`, `build-essential`, MPI, parallel HDF5) and Python deps are
+provisioned by the startup update script; the notes below are non-obvious caveats
+for building/running/testing in this environment.
+
+- **Build with GCC, not the default `c++`.** The default `cc`/`c++` on this VM is
+  Clang 18, which selects the gcc-14 toolchain but there is no `libstdc++-14-dev`,
+  so any Clang link fails with `cannot find -lstdc++`. Always configure with
+  `CC=gcc CXX=g++` (gcc-13, which has full dev libs and matches CI):
+  `CC=gcc CXX=g++ cmake .. -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON`. Standard
+  build/test/run commands are in `.agents/skills/gut-ibm/SKILL.md`.
+- **All 41 CTest targets pass here.** The `libhwloc`/MPI "preexisting failures"
+  table in `.agents/skills/testing-gutibm/SKILL.md` describes a *different* (Devin)
+  VM; on Cursor Cloud MPI/HDF5 init works and the full suite (incl. `mpi_multi_rank`,
+  `hdf5_*`, `scaling_benchmark`) passes.
+- **`ruff`/`pytest` install to `~/.local/bin`**, which is not on `PATH` by default —
+  prefix with `PATH="$HOME/.local/bin:$PATH"` or add it, or call `python3 -m pytest`.
+- **Running the simulation:** binary is `build/gut_ibm <config.json>`. For
+  `mpirun -np N` with N greater than the available cores, add `--oversubscribe`.
+  The full `examples/single_colony/input.json` (86400 s / 1440 steps) is compute-
+  heavy and writes a very large HDF5; use a short/small config for quick checks.

@@ -3,8 +3,7 @@
 
 #include <array>
 
-namespace gutibm {
-namespace gpu {
+namespace gutibm::gpu {
 
 struct DomainParams {
   int nx;
@@ -38,7 +37,6 @@ struct GfSourceParams {
   double retardation;
 };
 
-}  // namespace gpu
-}  // namespace gutibm
+}  // namespace gutibm::gpu
 
 #endif  // GUTIBM_GPU_TYPES_H

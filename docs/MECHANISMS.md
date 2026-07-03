@@ -93,22 +93,51 @@ This replaces the previous binary FepA-dependent penalty (`Km_Fe / expr_FepA`). 
 
 ---
 
-## 2. fix_bacteriocin — Toxin Release
+## 2. fix_bacteriocin — Toxin Release (Spec 2)
 
-**Two pathways implemented:**
+**Three release modes** (`ReleaseMode` on each `BICluster`):
 
-### a) SOS-mediated lysis (colicins)
-Large-protein colicins (30–80 kDa) are released only upon cell death:
-- Spontaneous SOS induction at basal rate (`sos_basal_rate`, default 10^-6 /s)
-- After induction, 5-minute delay (`sos_timer`), then lysis
-- Burst release of ~10^4 toxin molecules as instantaneous point source registered in `Simulation::toxin_bursts_`
-- The QSSA solver superposes burst sources with exponential protease decay: `C ∝ exp(-k_decay * age)` where `k_decay = ln(2) / protease_half_life` per BI cluster
+| Mode | Plasmids | Mechanism |
+|------|----------|-----------|
+| `SOS_LYSIS` | ColE1, ColE2, ColM | LexA-regulated suicide lysis |
+| `PHAGE_LYSIS` | ColB, ColIa | Temperate prophage induction |
+| `CONTINUOUS` | MccV | Secretion without lysis |
 
-### b) Continuous microcin secretion (new)
-Small peptide microcins (<10 kDa, e.g. MccV) are exported without lysis:
-- Applies a growth rate penalty (`microcin_mu_penalty`, default 3%) to producing cells
-- Contributes steady-state continuous sources to the toxin field
-- Per EARI model Section 51: microcins impose 2–5% mu_max cost
+### a) Multi-trigger SOS induction (Group A colicins)
+
+SOS probability per biological timestep:
+
+```
+rate_total = sos_basal_rate
+           + (just_divided ? sos_lysis_prob / bio_dt : 0)
+           + sos_cross_induction_rate * [nuclease_toxin]
+           + k_ROS * [O2] * mu_realized   (when oxygen.enabled)
+p_sos = 1 - exp(-rate_total * dt)
+```
+
+- `just_divided` is set on parent and daughter during division in `fix_metabolism`, cleared at the start of each `Simulation::step()`
+- Cross-induction uses the `nuclease_toxin` chemical field (ColE2 and other `is_nuclease` sources only)
+- After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`
+
+### b) Phage-mediated lysis (Group B colicins)
+
+ColB and ColIa use prophage induction, not SOS suicide:
+
+```
+rate_per_s = phage_induction_rate / (ln(2) / mu_realized)
+```
+
+On induction: `sos_timer = 60 s` (shorter lytic cycle), then burst release.
+
+### c) Continuous microcin secretion
+
+MccV (`CONTINUOUS` mode) exports peptide without lysis:
+- Applies a one-per-step growth penalty (`microcin_mu_penalty`, default 3%)
+- Contributes steady-state QSSA point sources
+
+**Per-colicin burst sizes** (default library): ColE1 1e5, ColE2 5e4, ColB/ColIa 1e4, ColM 2e5.
+
+Burst sources scale `qssa.colicin_release_rate` by `burst_size / burst_molecules`.
 
 **pI-dependent diffusion classification:**
 | Class | pI range | Retardation | Behavior |
@@ -208,7 +237,42 @@ Chromosomal mutations that ameliorate plasmid metabolic cost. Reduces per-locus 
 
 ---
 
-## 6. fix_mechanics — Soft-Sphere Mechanical Repulsion
+---
+
+## 7. fix_motility — Active Cell Swimming (Spec 3)
+
+**Biological basis:** E. coli in colonic mucus swims at ~7.76 µm/s using a mucus-adapted run-and-reverse pattern (not classic run-and-tumble). Flagellar activity increases near mucin-producing cells.
+
+**Model:** `FixMotility::pre_step()` updates run/stop timers and direction; swim displacement is applied in `module_physics()` after advection:
+```
+x += swim_direction * swim_speed * dt
+```
+Optional chemotaxis extends run duration when moving toward increasing attractant (carbon, O₂). Cluster suppression reduces reorientation rate when neighbor density exceeds threshold.
+
+---
+
+## 8. fix_cdi — Contact-Dependent Inhibition (Spec 3)
+
+**Biological basis:** CDI (CdiA/CdiB) systems deliver toxic effectors upon direct cell-cell contact. Strain-specific immunity protects cognate partners. Corpse barriers at colony interfaces self-limit killing.
+
+**Logic:** For each CDI+ agent, neighbors within `contact_radius` without matching immunity are killed with `P = 1 - exp(-kill_rate * dt)`. CDI kills record `death_time`; corpses persist as mechanical obstacles for `corpse_persistence` seconds and block line-of-sight CDI to cells behind them.
+
+---
+
+## 9. Fur-Regulated Receptor Expression (Spec 3)
+
+**Biological basis:** The Ferric Uptake Regulator (Fur) represses iron-uptake genes when iron is abundant and derepresses them under starvation — the "Vulnerability Paradox" where iron-depleted zones have higher colicin susceptibility.
+
+**Implementation:** In `fix_metabolism`, before graded iron Monod:
+```
+fur_factor = 1 + upregulation_max * Km / (Km + [iron])
+receptor_expr[r] = min(receptor_expr_base[r] * fur_factor, receptor_max)
+```
+for iron-related receptors only. Mutations modify `receptor_expr_base`.
+
+---
+
+## 10. fix_mechanics — Soft-Sphere Mechanical Repulsion
 
 **Biological basis:** Bacterial cells are deformable spheres with an elastic modulus of ~0.1–1 MPa (measured by AFM). When two cells overlap due to growth or flow, they exert a repulsive contact force following Hertzian contact mechanics.
 

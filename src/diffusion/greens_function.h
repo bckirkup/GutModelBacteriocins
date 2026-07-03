@@ -35,14 +35,10 @@ struct GreensFunctionParams {
   Real pI;               // isoelectric point (determines retardation)
   Real retardation;      // mucin retardation factor
 
-  // Derived from pI:
-  //   pI > 8.5 → lethal core (high retardation, small D_eff)
-  //   pI < 6.0 → lethal halo (low retardation, large D_eff)
-  BacteriocinClass classify() const {
-    if (pI > 8.5) return BacteriocinClass::LETHAL_CORE;
-    if (pI < 6.0) return BacteriocinClass::LETHAL_HALO;
-    return BacteriocinClass::NEUTRAL;
-  }
+  // NOTE: bacteriocin pI classification lives in a single source of truth,
+  // `classify_by_pI()` in src/genome/plasmid.h (pI > 8.5 → CORE, pI < 7.0 →
+  // HALO, else NEUTRAL). The Green's function / QSSA code consumes the
+  // pre-computed `BICluster.bclass` and must never re-classify from pI here.
 };
 
 class GreensFunction {

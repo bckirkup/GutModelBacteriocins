@@ -96,14 +96,15 @@ class Simulation {
 
   RNG&                   rng()             { return rng_; }
 
-  Real                   time()      const { return time_; }
-  Int                    step_count() const { return step_count_; }
+  Real                   time()      const { return clock_.time; }
+  Int                    step_count() const { return clock_.step_count; }
 
   const SimulationConfig& config() const { return cfg_; }
 
   // Spec 1: local oxygen and ROS induction hook (Spec 2)
   Real local_O2(const Agent& agent) const;
   Real ros_induction_rate(const Agent& agent) const;
+  Real local_nuclease_toxin(const Agent& agent) const;
 
   // Persistent SOS lysis burst sources (protease decay)
   void add_toxin_burst(const ToxinBurstSource& burst);
@@ -114,8 +115,8 @@ class Simulation {
   std::vector<std::string> fix_names() const;
 
   // MPI global statistics (valid after allreduce)
-  Int  global_agent_count() const { return global_agent_count_; }
-  Real global_mu_avg()      const { return global_mu_avg_; }
+  Int  global_agent_count() const { return mpi_stats_.global_agent_count; }
+  Real global_mu_avg()      const { return mpi_stats_.global_mu_avg; }
 
   // Adaptive timestep computation
   Real compute_adaptive_dt() const;
@@ -144,7 +145,7 @@ class Simulation {
   void take_lineage_snapshot();
 
   // Module execution (NUFEB-inspired)
-  void module_biology(Real dt);
+  void module_biology(Real dt) const;
   void module_chemistry(Real dt);
   void module_physics(Real dt);
 
@@ -154,10 +155,23 @@ class Simulation {
   void clear_ghost_agents();
   void allreduce_global_stats();
 
+  // MPI global statistics (valid after allreduce)
+  struct MpiStats {
+    Int global_agent_count = 0;
+    Real global_mu_avg = 0.0;
+  };
+
+  // Timestep clock and output scheduling
+  struct Clock {
+    Real time = 0.0;
+    Int step_count = 0;
+    Real next_output = 0.0;
+    Real next_snapshot = 0.0;
+  };
+
   // Ghost agent tracking
   std::vector<Int> ghost_indices_;  // indices of ghost agents in the pool
-  Int global_agent_count_ = 0;      // total agents across all ranks
-  Real global_mu_avg_ = 0.0;        // global average growth rate
+  MpiStats mpi_stats_;
 
   // State
   AgentPool       agents_;
@@ -170,17 +184,14 @@ class Simulation {
   HDF5Writer      hdf5_;
   RNG             rng_;
 
-  // Fix modules
-  std::vector<std::unique_ptr<Fix>> fixes_;
+  // Fix modules (mutable: compute() updates simulation state via sim_ reference)
+  mutable std::vector<std::unique_ptr<Fix>> fixes_;
 
   // Config
   SimulationConfig cfg_;
 
   // Timers
-  Real time_       = 0.0;
-  Int  step_count_ = 0;
-  Real next_output_ = 0.0;
-  Real next_snapshot_ = 0.0;
+  Clock clock_;
 
   // Step profiling
   StepProfile step_profile_;

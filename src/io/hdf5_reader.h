@@ -48,6 +48,8 @@ struct HDF5CheckpointGenome {
   std::vector<int32_t> mutations;
   std::vector<int32_t> has_conjugative_plasmid;
   std::vector<double>  plasmid_cost_amelioration;
+  std::vector<int32_t> cdi_type;
+  std::vector<int32_t> cdi_immunity;
   std::vector<double>  receptor_expression;  // N * NUM_RECEPTORS, row-major
   std::vector<double>  toxin_affinity;
   std::vector<double>  ligand_affinity;
@@ -65,7 +67,7 @@ struct HDF5CheckpointGenome {
 };
 
 struct HDF5CheckpointGrid {
-  std::map<std::string, std::vector<double>> species;
+  std::map<std::string, std::vector<double>, std::less<>> species;
 };
 
 struct HDF5CheckpointSnapshot {

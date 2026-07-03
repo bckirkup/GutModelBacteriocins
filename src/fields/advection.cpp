@@ -83,8 +83,15 @@ Real AdvectionField::taylor_aris_D_eff(Real z, Real D_mol) const {
   // Local velocity magnitude
   Real U = distal_velocity(z);
 
-  // Taylor-Aris dispersion: D_eff = D_mol + U² h² / (210 D_mol)
-  // This captures shear-enhanced longitudinal spreading in the mucus layer
+  // Taylor-Aris dispersion: D_eff = D_mol + U² h² / (210 D_mol).
+  //
+  // The constant 210 is the classical Taylor-Aris result for fully-developed
+  // parabolic (Poiseuille) flow, i.e. profile_alpha == 2. For other profile
+  // exponents the dispersion prefactor differs (a general profile gives
+  // K ∝ ∫U(z)² dz), so this is an approximation when profile_alpha != 2.
+  // The default profile (profile_alpha = 1.5) is intentionally non-parabolic,
+  // so treat the enhancement as an order-of-magnitude estimate rather than an
+  // exact coefficient. See docs/PARAMETERS.md (Advection).
   Real D_taylor = (U * U * h_ * h_) / (210.0 * D_mol);
   return D_mol + D_taylor;
 }

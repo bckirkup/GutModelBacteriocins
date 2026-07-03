@@ -25,8 +25,6 @@ class JsonCursor {
     }
   }
 
-  bool eof() const { return pos_ >= text_.size(); }
-
   bool match(char expected) {
     skip_ws();
     if (pos_ < text_.size() && text_[pos_] == expected) {
@@ -182,6 +180,10 @@ class JsonCursor {
         strain.plasmids = parse_string_array();
       } else if (key == "conjugative") {
         strain.conjugative = parse_bool();
+      } else if (key == "cdi_type") {
+        strain.cdi_type = static_cast<uint16_t>(parse_number());
+      } else if (key == "cdi_immunity") {
+        strain.cdi_immunity = static_cast<uint16_t>(parse_number());
       } else {
         skip_value();
       }
@@ -226,17 +228,25 @@ class JsonCursor {
 
 void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor& cursor) {
   const char c = cursor.peek();
+  bool handled = false;
   if (c == '"') {
-    InputParser::apply_flat_key(cfg, key, cursor.parse_string());
+    handled = InputParser::apply_flat_key(cfg, key, cursor.parse_string());
   } else if (c == 't' || c == 'f') {
-    InputParser::apply_flat_key(cfg, key, cursor.parse_bool() ? "true" : "false");
+    handled = InputParser::apply_flat_key(cfg, key, cursor.parse_bool() ? "true" : "false");
   } else if (std::isdigit(static_cast<unsigned char>(c)) || c == '-' || c == '+') {
     const Real value = cursor.parse_number();
     std::ostringstream oss;
     oss << value;
-    InputParser::apply_flat_key(cfg, key, oss.str());
+    handled = InputParser::apply_flat_key(cfg, key, oss.str());
   } else {
     cursor.skip_value();
+    return;
+  }
+  // Keys beginning with '_' are documented as comments and handled by the
+  // caller; every other scalar key that no handler recognized is a typo or a
+  // version mismatch, so surface it instead of silently ignoring it.
+  if (!handled && !key.empty() && key.front() != '_') {
+    std::cerr << "Warning: unknown config key '" << key << "' ignored\n";
   }
 }
 

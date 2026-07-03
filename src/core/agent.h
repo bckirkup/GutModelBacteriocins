@@ -12,11 +12,33 @@
 
 namespace gutibm {
 
+struct AgentIdentity {
+  TagID tag = 0;
+  Int type = 0;
+  Int owner_rank = 0;
+};
+
+struct AgentKm {
+  Real km_iron = 0;
+  Real km_b12 = 0;
+  Real km_carbon = 0;
+};
+
+struct AgentTimers {
+  Real age = 0;
+  Real sos_timer = 0;
+  Real death_time = -1.0;
+};
+
+struct AgentFlags {
+  bool in_crypt = false;
+  bool just_divided = false;
+  bool microcin_penalty_applied = false;
+};
+
 struct Agent {
   // ── Identity ──────────────────────────────────────────────────────────
-  TagID  tag;              // globally unique identifier
-  Int    type;             // species / phylogroup index (1-based)
-  Int    owner_rank;       // MPI rank owning this agent
+  AgentIdentity identity;
 
   // ── Spatial ───────────────────────────────────────────────────────────
   Vec3   x;                // position (m)
@@ -32,13 +54,10 @@ struct Agent {
   Real   maintenance;      // maintenance energy coefficient
 
   // ── Receptor state ────────────────────────────────────────────────────
-  //  expression level 0.0 (fully downregulated) → 1.0 (wild-type)
+  std::array<Real, NUM_RECEPTORS> receptor_expr_base;
   std::array<Real, NUM_RECEPTORS> receptor_expr;
 
-  // Km values (modified by receptor expression)
-  Real   km_iron;          // iron half-saturation (mol/m^3)
-  Real   km_b12;           // B12 half-saturation (mol/m^3)
-  Real   km_carbon;        // carbon half-saturation (mol/m^3)
+  AgentKm km;
 
   // ── Phenotype ─────────────────────────────────────────────────────────
   PhenoState state;
@@ -46,12 +65,21 @@ struct Agent {
   // ── Genome ────────────────────────────────────────────────────────────
   Genome genome;
 
-  // ── Stochastic timers ─────────────────────────────────────────────────
-  Real   age;              // time since last division (s)
-  Real   sos_timer;        // SOS response countdown (s), <0 = inactive
+  AgentTimers timers;
 
-  // ── Crypt state ──────────────────────────────────────────────────────
-  bool   in_crypt = false; // true when agent resides in a crypt refugium
+  // ── Motility (Spec 3) ───────────────────────────────────────────────
+  struct MotilityState {
+    Vec3 swim_direction = {1.0, 0.0, 0.0};
+    Real swim_speed = 0.0;
+    Real run_timer = 0.0;
+    bool is_stopped = false;
+    Real stop_timer = 0.0;
+    Real prev_carbon = 0.0;
+    Real prev_oxygen = 0.0;
+  };
+  MotilityState motility;
+
+  AgentFlags flags;
 
   // ── Grid coupling ─────────────────────────────────────────────────────
   Int    grid_cell;        // index into the chemical field grid

@@ -23,10 +23,12 @@
   "vbf_viscosity": 0.01,
 
   "sos_lysis_prob": 0.01,
+  "sos_basal_rate": 1.0e-4,
 
   "toxin_cutoff": 100e-6,
   "nutrient_cutoff": 50e-6,
   "protease.enabled": false,
+  "motility.enabled": false,
 
   "initial_strains": [
     {

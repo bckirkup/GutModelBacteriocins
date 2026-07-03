@@ -3,8 +3,10 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "species_names.h"
 #include "agent_transfer.h"
 #include "fix_registry.h"
+#include "fix_motility.h"
 #include "plasmid.h"
 #include "dispatch.h"
 #include "qssa_gpu.h"
@@ -55,7 +57,7 @@ void assign_plasmids(Agent& agent, const std::vector<std::string>& plasmids, int
 
 void tag_crypt_resident(Agent& agent, const AdvectionField& advection) {
   if (advection.in_crypt_zone(agent.x[2])) {
-    agent.in_crypt = true;
+    agent.flags.in_crypt = true;
   }
 }
 
@@ -88,6 +90,7 @@ void restore_receptor_fields(Agent& agent,
     agent.genome.toxin_affinity[r] = gen.toxin_affinity[idx];
     agent.genome.ligand_affinity[r] = gen.ligand_affinity[idx];
     agent.receptor_expr[r] = gen.receptor_expression[idx];
+    agent.receptor_expr_base[r] = gen.receptor_expression[idx];
     ++r;
   }
 }
@@ -115,6 +118,9 @@ void restore_bi_loci(Agent& agent,
   }
 }
 
+#ifdef GUTIBM_LEGACY_CHECKPOINTS
+// Restore genome fields from pre-genome-group checkpoints (no /genome dataset).
+// Disabled by default; build with -DGUTIBM_LEGACY_CHECKPOINTS to enable.
 void restore_legacy_genome(Agent& agent, const HDF5CheckpointSnapshot& snap, size_t agent_index) {
   Int r = 0;
   for (Real& expr : agent.genome.receptor_expression) {
@@ -123,6 +129,7 @@ void restore_legacy_genome(Agent& agent, const HDF5CheckpointSnapshot& snap, siz
   agent.genome.bi_loci.clear();
   agent.genome.bi_loci.resize(static_cast<size_t>(snap.lineage.num_bi_loci[agent_index]));
 }
+#endif  // GUTIBM_LEGACY_CHECKPOINTS
 
 void restore_checkpoint_grid(ChemicalField& chem,
                              const Domain& domain,
@@ -158,25 +165,30 @@ void schedule_output_from_time(Real time, Real interval, Real& next_output, Real
 
 bool try_exit_crypt(Agent& agent, Real dt, Real crypt_z, Real epsilon,
                     Real exit_rate, RNG& rng, Int& crypt_pop) {
-  if (!agent.in_crypt) return false;
-  Real p_exit = 1.0 - std::exp(-exit_rate * dt);
-  if (!rng.bernoulli(p_exit)) return false;
+  if (!agent.flags.in_crypt) return false;
+  if (Real p_exit = 1.0 - std::exp(-exit_rate * dt); !rng.bernoulli(p_exit)) return false;
   agent.x[2] = crypt_z + epsilon;
-  agent.in_crypt = false;
+  agent.flags.in_crypt = false;
   --crypt_pop;
   return true;
 }
 
-bool try_enter_crypt(Agent& agent, Real dt, Real crypt_z, Real crypt_depth,
-                     Real lo_z, Real entry_rate, Int carrying_capacity,
+struct CryptEntryParams {
+  Real crypt_z;
+  Real crypt_depth;
+  Real lo_z;
+  Real entry_rate;
+  Int carrying_capacity;
+};
+
+bool try_enter_crypt(Agent& agent, Real dt, const CryptEntryParams& params,
                      RNG& rng, Int& crypt_pop) {
-  if (agent.in_crypt) return false;
-  if (agent.x[2] >= crypt_z + crypt_depth) return false;
-  if (crypt_pop >= carrying_capacity) return false;
-  Real p_entry = 1.0 - std::exp(-entry_rate * dt);
-  if (!rng.bernoulli(p_entry)) return false;
-  agent.x[2] = rng.uniform(lo_z, crypt_z);
-  agent.in_crypt = true;
+  if (agent.flags.in_crypt) return false;
+  if (agent.x[2] >= params.crypt_z + params.crypt_depth) return false;
+  if (crypt_pop >= params.carrying_capacity) return false;
+  if (Real p_entry = 1.0 - std::exp(-params.entry_rate * dt); !rng.bernoulli(p_entry)) return false;
+  agent.x[2] = rng.uniform(params.lo_z, params.crypt_z);
+  agent.flags.in_crypt = true;
   ++crypt_pop;
   return true;
 }
@@ -185,14 +197,15 @@ enum class MigrateSide { None, Lo, Hi };
 
 MigrateSide classify_migration(const Agent& agent, Int my_rank, Int axis,
                                const Domain& domain) {
+  using enum MigrateSide;
   if (const Int dest = domain.owner_rank(agent.x); dest == my_rank) {
-    return MigrateSide::None;
+    return None;
   } else if (dest == domain.rank_lo()) {
-    return MigrateSide::Lo;
+    return Lo;
   } else if (dest == domain.rank_hi()) {
-    return MigrateSide::Hi;
+    return Hi;
   }
-  return (agent.x[axis] < domain.local_lo_x()) ? MigrateSide::Lo : MigrateSide::Hi;
+  return (agent.x[axis] < domain.local_lo_x()) ? Lo : Hi;
 }
 
 }  // namespace
@@ -218,7 +231,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   qssa_.init(cfg.qssa, domain_, advection_);
 
   // Lineage tracker
-  lineage_.init(cfg.output_interval);
+  lineage_.init(cfg.time.output_interval);
 
   // HDF5 output
   hdf5_.init(cfg.hdf5);
@@ -251,10 +264,10 @@ void Simulation::init(const SimulationConfig& cfg) {
   allreduce_global_stats();
 
   // Timers
-  time_          = 0.0;
-  step_count_    = 0;
-  next_output_   = 0.0;
-  next_snapshot_ = 0.0;
+  clock_.time          = 0.0;
+  clock_.step_count    = 0;
+  clock_.next_output   = 0.0;
+  clock_.next_snapshot = 0.0;
 
   int rank = domain_.rank();
   if (rank == 0) {
@@ -266,15 +279,15 @@ void Simulation::init(const SimulationConfig& cfg) {
               << "  Slab [" << domain_.local_lo_x() << ", "
               << domain_.local_hi_x() << ") m\n"
               << "  Local agents: " << agents_.size()
-              << "  Global agents: " << global_agent_count_ << "\n"
+              << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
               << "  Chemical species: " << chem_.num_species() << "\n"
-              << "  Bio dt: " << cfg.bio_dt << " s\n"
-              << "  Adaptive dt: " << (cfg.adaptive_dt_enabled ? "ON" : "OFF")
-              << (cfg.adaptive_dt_enabled
-                    ? std::format(" [{}s, {}s]", cfg.dt_min, cfg.dt_max)
+              << "  Bio dt: " << cfg.time.bio_dt << " s\n"
+              << "  Adaptive dt: " << (cfg.adaptive_dt.enabled ? "ON" : "OFF")
+              << (cfg.adaptive_dt.enabled
+                    ? std::format(" [{}s, {}s]", cfg.adaptive_dt.min, cfg.adaptive_dt.max)
                     : "")
               << "\n"
-              << "  Total time: " << cfg.total_time << " s\n"
+              << "  Total time: " << cfg.time.total_time << " s\n"
               << "  GPU: " << (gpu_active_ ? "ON" : "OFF")
               << (gpu_active_
                     ? std::format(" (device {})", gpu_device().device_id())
@@ -301,10 +314,15 @@ void Simulation::init_population(const SimulationConfig& cfg) {
 
       Agent a = Agent::create_default(agents_.next_tag(), strain.type,
                                        pos, strain.mu_max);
-      a.owner_rank = domain_.rank();
+      a.identity.owner_rank = domain_.rank();
 
       assign_plasmids(a, strain.plasmids, domain_.rank());
+      a.genome.cdi_type = strain.cdi_type;
+      a.genome.cdi_immunity = strain.cdi_immunity;
       tag_crypt_resident(a, advection_);
+      if (cfg_.cell_bio.motility.enabled) {
+        FixMotility::init_agent_motility(a, cfg_.cell_bio.motility, rng_);
+      }
 
       agents_.push_back(std::move(a));
     }
@@ -323,7 +341,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
   qssa_.init(cfg.qssa, domain_, advection_);
-  lineage_.init(cfg.output_interval);
+  lineage_.init(cfg.time.output_interval);
   hdf5_.init(cfg.hdf5);
   fixes_ = FixRegistry::create_all(*this, cfg);
   for (const auto& fix : fixes_) {
@@ -355,9 +373,9 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
     std::cout << "GutIBM restored from checkpoint:\n"
               << "  File: " << h5_file << "\n"
               << "  Step group: " << snap.step_name << "\n"
-              << "  Restored time: " << time_ << " s\n"
-              << "  Restored step: " << step_count_ << "\n"
-              << "  Global agents: " << global_agent_count_ << "\n"
+              << "  Restored time: " << clock_.time << " s\n"
+              << "  Restored step: " << clock_.step_count << "\n"
+              << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
               << "  Local agents: " << agents_.size() << "\n"
               << std::flush;
   }
@@ -388,7 +406,7 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     Real mu_guess = std::max(atoms.mu[i], 1.0e-8);
     Agent a = Agent::create_default(static_cast<TagID>(atoms.id[i]),
                                     atoms.type[i], pos, mu_guess);
-    a.owner_rank   = domain_.rank();
+    a.identity.owner_rank   = domain_.rank();
     a.state        = static_cast<PhenoState>(atoms.state[i]);
     a.radius       = atoms.radius[i];
     a.outer_radius = atoms.radius[i] * 1.05;
@@ -409,8 +427,18 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
       a.genome.plasmid_cost_amelioration = gen.plasmid_cost_amelioration[i];
       restore_receptor_fields(a, snap, i);
       restore_bi_loci(a, snap, i, bi_offsets);
+      if (!gen.cdi_type.empty()) {
+        a.genome.cdi_type = static_cast<uint16_t>(gen.cdi_type[i]);
+        a.genome.cdi_immunity = static_cast<uint16_t>(gen.cdi_immunity[i]);
+      }
     } else {
+#ifdef GUTIBM_LEGACY_CHECKPOINTS
       restore_legacy_genome(a, snap, i);
+#else
+      throw SimulationError(
+          "checkpoint has no genome group (legacy format); rebuild with "
+          "-DGUTIBM_LEGACY_CHECKPOINTS to load pre-genome snapshots");
+#endif
     }
 
     tag_crypt_resident(a, advection_);
@@ -426,9 +454,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 
   restore_checkpoint_grid(chem_, domain_, snap);
 
-  time_       = snap.metadata.time;
-  step_count_ = snap.metadata.step;
-  schedule_output_from_time(time_, cfg_.output_interval, next_output_, next_snapshot_);
+  clock_.time       = snap.metadata.time;
+  clock_.step_count = snap.metadata.step;
+  schedule_output_from_time(clock_.time, cfg_.time.output_interval, clock_.next_output, clock_.next_snapshot);
 }
 
 std::vector<std::string> Simulation::fix_names() const {
@@ -441,9 +469,9 @@ std::vector<std::string> Simulation::fix_names() const {
 }
 
 Real Simulation::compute_adaptive_dt() const {
-  if (!cfg_.adaptive_dt_enabled) return cfg_.bio_dt;
+  if (!cfg_.adaptive_dt.enabled) return cfg_.time.bio_dt;
 
-  Real dt = cfg_.dt_max;
+  Real dt = cfg_.adaptive_dt.max;
 
   // Growth rate constraint: mu_max * dt < growth_limit
   Real max_mu = 0.0;
@@ -453,7 +481,7 @@ Real Simulation::compute_adaptive_dt() const {
     max_mu = std::max(max_mu, std::abs(a.mu_realized));
     if (a.state == PhenoState::SOS_INDUCED) sos_count++;
   }
-  if (max_mu > 0) dt = std::min(dt, cfg_.dt_growth_limit / max_mu);
+  if (max_mu > 0) dt = std::min(dt, cfg_.adaptive_dt.growth_limit / max_mu);
 
   // SOS cascade constraint: reduce dt during active lysis
   if (sos_count > 5)  dt = std::min(dt, 10.0);
@@ -467,8 +495,8 @@ Real Simulation::compute_adaptive_dt() const {
   }
 
   // Apply safety factor and bounds
-  dt *= cfg_.dt_safety;
-  dt = std::clamp(dt, cfg_.dt_min, cfg_.dt_max);
+  dt *= cfg_.adaptive_dt.safety;
+  dt = std::clamp(dt, cfg_.adaptive_dt.min, cfg_.adaptive_dt.max);
   return dt;
 }
 
@@ -497,7 +525,7 @@ void Simulation::print_step_profile() const {
             << " mpi_s=" << step_profile_.mpi_migrate_s * inv
             << " cleanup_s=" << step_profile_.cleanup_s * inv
             << " total_s=" << total
-            << " agents=" << global_agent_count_
+            << " agents=" << mpi_stats_.global_agent_count
             << " ranks=" << domain_.nprocs()
             << "\n"
             << std::flush;
@@ -512,45 +540,45 @@ void Simulation::run() {
     take_lineage_snapshot();
   }
 
-  while (time_ < cfg_.total_time) {
+  while (clock_.time < cfg_.time.total_time) {
     Real dt = compute_adaptive_dt();
 
     // Clamp so we don't overshoot total_time
-    if (time_ + dt > cfg_.total_time) dt = cfg_.total_time - time_;
+    if (clock_.time + dt > cfg_.time.total_time) dt = cfg_.time.total_time - clock_.time;
 
     step(dt);
 
     // Periodic output
-    if (time_ >= next_output_) {
-      hdf5_.write_step(*this, step_count_, time_);
+    if (clock_.time >= clock_.next_output) {
+      hdf5_.write_step(*this, clock_.step_count, clock_.time);
       if (rank == 0) {
-        std::cout << "Step " << step_count_
-                  << "  t=" << time_ << "s"
+        std::cout << "Step " << clock_.step_count
+                  << "  t=" << clock_.time << "s"
                   << "  dt=" << std::setprecision(3) << dt << "s"
-                  << "  global_agents=" << global_agent_count_
+                  << "  global_agents=" << mpi_stats_.global_agent_count
                   << "  local_agents=" << agents_.size()
-                  << "  mu_avg=" << global_mu_avg_
+                  << "  mu_avg=" << mpi_stats_.global_mu_avg
                   << "\n" << std::flush;
       }
-      next_output_ += cfg_.output_interval;
+      clock_.next_output += cfg_.time.output_interval;
     }
 
     // Lineage snapshots
-    if (time_ >= next_snapshot_) {
+    if (clock_.time >= clock_.next_snapshot) {
       take_lineage_snapshot();
-      next_snapshot_ += cfg_.output_interval;
+      clock_.next_snapshot += cfg_.time.output_interval;
     }
   }
 
   // Final output
-  hdf5_.write_step(*this, step_count_, time_);
+  hdf5_.write_step(*this, clock_.step_count, clock_.time);
   hdf5_.finalize();
 
   if (rank == 0) {
-    Real retention = lineage_.resident_retention(cfg_.total_time * 0.5);
+    Real retention = lineage_.resident_retention(cfg_.time.total_time * 0.5);
     std::cout << "\nSimulation complete.\n"
-              << "  Final global agents: " << global_agent_count_ << "\n"
-              << "  Steps taken: " << step_count_ << "\n"
+              << "  Final global agents: " << mpi_stats_.global_agent_count << "\n"
+              << "  Steps taken: " << clock_.step_count << "\n"
               << "  Resident retention: " << retention * 100.0 << "%\n"
               << "  Dominant lineage: " << lineage_.dominant_lineage() << "\n"
               << std::flush;
@@ -564,8 +592,13 @@ void Simulation::step(Real dt) {
   StepProfiler profiler(cfg_.profile_steps);
   profiler.start();
 
+  for (Agent& a : agents_) {
+    a.flags.just_divided = false;
+    a.flags.microcin_penalty_applied = false;
+  }
+
   // Update advection time for peristaltic oscillation
-  advection_.set_time(time_);
+  advection_.set_time(clock_.time);
 
   // Pre-step: clear ghosts from previous step
   clear_ghost_agents();
@@ -645,23 +678,31 @@ void Simulation::step(Real dt) {
     step_profile_.step_count++;
   }
 
-  time_ += dt;
-  step_count_++;
+  clock_.time += dt;
+  clock_.step_count++;
 }
 
-void Simulation::module_biology(Real dt) {
+void Simulation::module_biology(Real dt) const {
   for (const auto& fix : fixes_) {
     fix->compute(dt);
   }
 }
 
 void Simulation::module_chemistry(Real dt) {
-  prune_toxin_bursts(time_);
+  prune_toxin_bursts(clock_.time);
 
   // QSSA: compute steady-state toxin field via Green's functions
-  if (Int i_tox = chem_.find("bacteriocin"); i_tox >= 0) {
-    qssa_.solve_bacteriocin_field(agents_, toxin_bursts_, time_,
-                                    cfg_.protease, advection_, chem_, i_tox);
+  if (Int i_tox = chem_.find(species::BACTERIOCIN); i_tox >= 0) {
+    qssa_.solve_bacteriocin_field(agents_, toxin_bursts_, clock_.time,
+                                    cfg_.chem_env.protease, advection_, chem_, i_tox);
+    if (gpu_active_) {
+      chem_gpu_.sync_to_device(chem_);
+    }
+  }
+
+  if (Int i_nuc = chem_.find(species::NUCLEASE_TOXIN); i_nuc >= 0) {
+    qssa_.solve_nuclease_toxin_field(agents_, toxin_bursts_, clock_.time,
+                                      cfg_.chem_env.protease, advection_, chem_, i_nuc);
     if (gpu_active_) {
       chem_gpu_.sync_to_device(chem_);
     }
@@ -671,10 +712,10 @@ void Simulation::module_chemistry(Real dt) {
   if (gpu_active_) {
     agents_gpu_.sync_from_host(agents_);
     if (!gpu_solve_nutrient_depletion(agents_gpu_, agents_.size(), chem_gpu_, chem_)) {
-      qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.oxygen);
+      qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.chem_env.oxygen);
     }
   } else {
-    qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.oxygen);
+    qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.chem_env.oxygen);
   }
 
   // VBF coupling (nutrient sink/source) — CPU path updates host reac_
@@ -682,7 +723,7 @@ void Simulation::module_chemistry(Real dt) {
     chem_gpu_.sync_to_host(chem_);
   }
   vbf_.apply_nutrient_coupling(chem_, domain_, dt,
-                                cfg_.oxygen, cfg_.acetate, cfg_.mucin);
+                                cfg_.chem_env.oxygen, cfg_.chem_env.acetate, cfg_.chem_env.mucin);
   if (gpu_active_) {
     chem_gpu_.sync_to_device(chem_);
   }
@@ -737,6 +778,12 @@ void Simulation::module_physics(Real dt) {
     a.x[1] += a.v[1] * dt;
     a.x[2] += a.v[2] * dt;
 
+    if (cfg_.cell_bio.motility.enabled && !a.motility.is_stopped) {
+      a.x[0] += a.motility.swim_direction[0] * cfg_.cell_bio.motility.swim_speed * dt;
+      a.x[1] += a.motility.swim_direction[1] * cfg_.cell_bio.motility.swim_speed * dt;
+      a.x[2] += a.motility.swim_direction[2] * cfg_.cell_bio.motility.swim_speed * dt;
+    }
+
     // PBC / boundary
     domain_.apply_pbc(a.x);
   }
@@ -754,7 +801,10 @@ void Simulation::rebuild_spatial_hash() {
   domain_.spatial_hash().clear();
   Int i = 0;
   for (const Agent& a : agents_) {
-    if (a.state != PhenoState::DEAD) {
+    const bool live = a.state != PhenoState::DEAD;
+    if (const bool corpse = cfg_.cell_bio.cdi.enabled && a.timers.death_time >= 0.0
+            && (clock_.time - a.timers.death_time) < cfg_.cell_bio.cdi.corpse_persistence;
+        live || corpse) {
       domain_.spatial_hash().insert(i, a.x);
     }
     ++i;
@@ -785,11 +835,11 @@ void Simulation::check_washout() {
     if (a.state == PhenoState::DEAD) continue;
 
     // Agents in crypt refugia bypass washout entirely
-    if (a.in_crypt) continue;
+    if (a.flags.in_crypt) continue;
 
     if (a.x[2] >= z_max) {
       a.state = PhenoState::DEAD;
-      lineage_.record_washout(a.tag, a.genome.lineage_id, a.x);
+      lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
       continue;
     }
 
@@ -797,7 +847,7 @@ void Simulation::check_washout() {
     Real gamma = advection_.washout_rate(a.x[2]);
     if (a.mu_realized < gamma) {
       a.state = PhenoState::DEAD;
-      lineage_.record_washout(a.tag, a.genome.lineage_id, a.x);
+      lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
     }
   }
 }
@@ -812,7 +862,7 @@ void Simulation::crypt_migration(Real dt) {
   // Count agents currently in the crypt for carrying-capacity enforcement
   Int crypt_pop = 0;
   for (const Agent& a : agents_) {
-    if (a.state != PhenoState::DEAD && a.in_crypt)
+    if (a.state != PhenoState::DEAD && a.flags.in_crypt)
       ++crypt_pop;
   }
 
@@ -823,17 +873,22 @@ void Simulation::crypt_migration(Real dt) {
                        rng_, crypt_pop)) {
       continue;
     }
-    try_enter_crypt(a, dt, crypt_z, cfg_.advection.crypt_depth, lo_z,
-                    cfg_.advection.crypt_entry_rate,
-                    cfg_.advection.crypt_carrying_capacity, rng_, crypt_pop);
+    const CryptEntryParams entry_params{
+      crypt_z, cfg_.advection.crypt_depth, lo_z,
+      cfg_.advection.crypt_entry_rate, cfg_.advection.crypt_carrying_capacity,
+    };
+    try_enter_crypt(a, dt, entry_params, rng_, crypt_pop);
   }
 }
 
 void Simulation::remove_dead_agents() {
   for (Int i = agents_.size() - 1; i >= 0; --i) {
-    if (agents_[i].state == PhenoState::DEAD) {
-      agents_.remove(i);
+    if (agents_[i].state != PhenoState::DEAD) continue;
+    if (cfg_.cell_bio.cdi.enabled && agents_[i].timers.death_time >= 0.0
+        && (clock_.time - agents_[i].timers.death_time) < cfg_.cell_bio.cdi.corpse_persistence) {
+      continue;
     }
+    agents_.remove(i);
   }
 }
 
@@ -841,10 +896,10 @@ void Simulation::take_lineage_snapshot() {
   std::vector<std::pair<TagID, TagID>> lineages;
   for (const Agent& a : agents_) {
     if (a.state != PhenoState::DEAD) {
-      lineages.emplace_back(a.tag, a.genome.lineage_id);
+      lineages.emplace_back(a.identity.tag, a.genome.lineage_id);
     }
   }
-  lineage_.take_snapshot(time_, lineages);
+  lineage_.take_snapshot(clock_.time, lineages);
 }
 
 // ---------------------------------------------------------------------------
@@ -979,7 +1034,7 @@ void Simulation::migrate_agents() {
       continue;
     }
 
-    a.owner_rank = domain_.owner_rank(a.x);
+    a.identity.owner_rank = domain_.owner_rank(a.x);
     if (side == MigrateSide::Lo) {
       send_lo.push_back(a);
     } else {
@@ -1029,11 +1084,11 @@ void Simulation::migrate_agents() {
   auto recv_hi = agent_transfer_deserialize(buf_recv_hi);
 
   for (auto& a : recv_lo) {
-    a.owner_rank = my_rank;
+    a.identity.owner_rank = my_rank;
     agents_.push_back(std::move(a));
   }
   for (auto& a : recv_hi) {
-    a.owner_rank = my_rank;
+    a.identity.owner_rank = my_rank;
     agents_.push_back(std::move(a));
   }
 #endif
@@ -1143,26 +1198,32 @@ void Simulation::allreduce_global_stats() {
                   MPI_COMM_WORLD);
     MPI_Allreduce(&local_mu_sum, &global_mu_sum, 1, MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
-    global_agent_count_ = global_count;
-    global_mu_avg_ = global_count > 0 ? global_mu_sum / global_count : 0.0;
+    mpi_stats_.global_agent_count = global_count;
+    mpi_stats_.global_mu_avg = global_count > 0 ? global_mu_sum / global_count : 0.0;
     return;
   }
 #endif
 
-  global_agent_count_ = local_count;
-  global_mu_avg_ = local_count > 0 ? local_mu_sum / local_count : 0.0;
+  mpi_stats_.global_agent_count = local_count;
+  mpi_stats_.global_mu_avg = local_count > 0 ? local_mu_sum / local_count : 0.0;
 }
 
 Real Simulation::local_O2(const Agent& agent) const {
-  if (!cfg_.oxygen.enabled) return 0.0;
-  Int i_o2 = chem_.find("oxygen");
+  if (!cfg_.chem_env.oxygen.enabled) return 0.0;
+  Int i_o2 = chem_.find(species::OXYGEN);
   if (i_o2 < 0 || agent.grid_cell < 0) return 0.0;
   return chem_.conc(i_o2, agent.grid_cell);
 }
 
 Real Simulation::ros_induction_rate(const Agent& agent) const {
-  if (!cfg_.oxygen.enabled) return 0.0;
-  return cfg_.oxygen.k_ROS * local_O2(agent) * std::max(agent.mu_realized, 0.0);
+  if (!cfg_.chem_env.oxygen.enabled) return 0.0;
+  return cfg_.chem_env.oxygen.k_ROS * local_O2(agent) * std::max(agent.mu_realized, 0.0);
+}
+
+Real Simulation::local_nuclease_toxin(const Agent& agent) const {
+  Int i_nuc = chem_.find(species::NUCLEASE_TOXIN);
+  if (i_nuc < 0 || agent.grid_cell < 0) return 0.0;
+  return chem_.conc(i_nuc, agent.grid_cell);
 }
 
 void Simulation::add_toxin_burst(const ToxinBurstSource& burst) {
@@ -1176,7 +1237,7 @@ void Simulation::prune_toxin_bursts(Real current_time) {
   kept.reserve(toxin_bursts_.size());
 
   for (const ToxinBurstSource& burst : toxin_bursts_) {
-    if (!cfg_.protease.enabled || burst.decay_rate <= 0.0) {
+    if (!cfg_.chem_env.protease.enabled || burst.decay_rate <= 0.0) {
       kept.push_back(burst);
       continue;
     }

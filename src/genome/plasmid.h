@@ -20,7 +20,9 @@ struct PlasmidEntry {
 };
 
 // Classify bacteriocin by isoelectric point.
-// Thresholds: pI > 8.5 → CORE, pI < 7.0 → HALO, else NEUTRAL.
+// Thresholds: pI > 8.5 → CORE, pI < 7.0 → HALO, else NEUTRAL (VADI §74).
+// SINGLE SOURCE OF TRUTH for pI → BacteriocinClass. All other code must use
+// the pre-computed BICluster.bclass rather than re-classifying from pI.
 BacteriocinClass classify_by_pI(Real pI);
 
 // Library of well-characterized E. coli bacteriocin systems

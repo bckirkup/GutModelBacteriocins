@@ -12,7 +12,7 @@ using namespace gutibm;
 
 void test_round_trip_preserves_state() {
   Agent a = Agent::create_default(42, 3, {10e-6, 20e-6, 30e-6}, 4e-4);
-  a.in_crypt = true;
+  a.flags.in_crypt = true;
   a.mu_realized = 1.2e-5;
   a.genome.toxin_affinity[to_underlying(ReceptorType::BtuB)] = 0.05;
   a.genome.ligand_affinity[to_underlying(ReceptorType::FepA)] = 0.75;
@@ -34,8 +34,8 @@ void test_round_trip_preserves_state() {
   assert(out.size() == 1);
   const Agent& b = out[0];
 
-  assert(b.tag == a.tag);
-  assert(b.in_crypt == true);
+  assert(b.identity.tag == a.identity.tag);
+  assert(b.flags.in_crypt == true);
   assert(std::abs(b.mu_realized - a.mu_realized) < 1e-20);
   assert(b.genome.has_conjugative_plasmid == true);
   assert(std::abs(b.genome.toxin_affinity[to_underlying(ReceptorType::BtuB)] - 0.05) < 1e-12);
@@ -51,7 +51,7 @@ void test_round_trip_multiple_agents() {
   std::vector<Agent> in;
   for (int i = 0; i < 5; ++i) {
     Agent a = Agent::create_default(i + 1, 1, {i * 5e-6, 0, 10e-6}, 5e-4);
-    a.in_crypt = (i % 2 == 0);
+    a.flags.in_crypt = (i % 2 == 0);
     in.push_back(a);
   }
 
@@ -60,8 +60,8 @@ void test_round_trip_multiple_agents() {
   auto out = agent_transfer_deserialize(buf);
   assert(out.size() == in.size());
   for (size_t i = 0; i < in.size(); ++i) {
-    assert(out[i].tag == in[i].tag);
-    assert(out[i].in_crypt == in[i].in_crypt);
+    assert(out[i].identity.tag == in[i].identity.tag);
+    assert(out[i].flags.in_crypt == in[i].flags.in_crypt);
   }
 
   std::cout << "  test_round_trip_multiple_agents: PASSED\n";

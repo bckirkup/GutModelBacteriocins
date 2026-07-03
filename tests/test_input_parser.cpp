@@ -24,8 +24,8 @@ using namespace gutibm;
 void test_single_colony_example() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/examples/single_colony/input.json";
   SimulationConfig cfg = InputParser::parse(path);
-  assert(std::abs(cfg.total_time - 86400.0) < 1e-6);
-  assert(std::abs(cfg.bio_dt - 60.0) < 1e-6);
+  assert(std::abs(cfg.time.total_time - 86400.0) < 1e-6);
+  assert(std::abs(cfg.time.bio_dt - 60.0) < 1e-6);
   assert(cfg.seed == 12345);
   assert(std::abs(cfg.domain.hi[0] - 0.001) < 1e-12);
   assert(cfg.hdf5.filename == "single_colony_output.h5");
@@ -36,7 +36,7 @@ void test_single_colony_example() {
 void test_diversity_paradox_example() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/examples/diversity_paradox/input.json";
   SimulationConfig cfg = InputParser::parse(path);
-  assert(std::abs(cfg.total_time - 604800.0) < 1e-6);
+  assert(std::abs(cfg.time.total_time - 604800.0) < 1e-6);
   assert(cfg.seed == 42);
   assert(std::abs(cfg.domain.hi[0] - 0.002) < 1e-12);
   assert(cfg.hdf5.filename == "diversity_paradox_output.h5");
@@ -60,7 +60,7 @@ void test_single_colony_peristaltic_keys() {
 void test_fmm_peristaltic_fixture() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_fmm_peristaltic.json";
   SimulationConfig cfg = InputParser::parse(path);
-  assert(std::abs(cfg.total_time - 3600.0) < 1e-6);
+  assert(std::abs(cfg.time.total_time - 3600.0) < 1e-6);
   assert(cfg.seed == 99);
   assert(cfg.advection.peristaltic_enabled == true);
   assert(std::abs(cfg.advection.peristaltic_period - 15.0) < 1e-12);
@@ -110,7 +110,7 @@ void test_strain_spawn_integration() {
   SimulationConfig cfg = InputParser::parse(path);
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.hdf5.enabled = false;
-  cfg.total_time = 1.0;
+  cfg.time.total_time = 1.0;
 
   Simulation sim;
   sim.init(cfg);
@@ -161,7 +161,7 @@ void test_json_document_parser() {
   }
 
   SimulationConfig cfg = InputParser::parse(path);
-  assert(std::abs(cfg.total_time - 1234.0) < 1e-6);
+  assert(std::abs(cfg.time.total_time - 1234.0) < 1e-6);
   assert(cfg.seed == 99);
   assert(cfg.advection.peristaltic_enabled == true);
   assert(cfg.initial_strains.size() == 1);
@@ -216,21 +216,21 @@ void test_chem_env_fixture() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_chem_env.json";
   SimulationConfig cfg = InputParser::parse(path);
 
-  assert(cfg.oxygen.enabled == true);
-  assert(std::abs(cfg.oxygen.epithelial_conc - 60e-6) < 1e-15);
-  assert(std::abs(cfg.oxygen.boost_max - 1.8) < 1e-12);
+  assert(cfg.chem_env.oxygen.enabled == true);
+  assert(std::abs(cfg.chem_env.oxygen.epithelial_conc - 60e-6) < 1e-15);
+  assert(std::abs(cfg.chem_env.oxygen.boost_max - 1.8) < 1e-12);
 
-  assert(cfg.acetate.enabled == true);
-  assert(std::abs(cfg.acetate.vbf_production - 2e-3) < 1e-12);
-  assert(std::abs(cfg.acetate.overflow_rate - 2e-15) < 1e-18);
+  assert(cfg.chem_env.acetate.enabled == true);
+  assert(std::abs(cfg.chem_env.acetate.vbf_production - 2e-3) < 1e-12);
+  assert(std::abs(cfg.chem_env.acetate.overflow_rate - 2e-15) < 1e-18);
 
-  assert(cfg.mucin.enabled == true);
-  assert(std::abs(cfg.mucin.initial_conc - 2e-2) < 1e-12);
-  assert(std::abs(cfg.mucin.k_liberation - 2e-4) < 1e-12);
+  assert(cfg.chem_env.mucin.enabled == true);
+  assert(std::abs(cfg.chem_env.mucin.initial_conc - 2e-2) < 1e-12);
+  assert(std::abs(cfg.chem_env.mucin.k_liberation - 2e-4) < 1e-12);
 
-  assert(cfg.protease.enabled == false);
-  assert(std::abs(cfg.protease.default_half_life - 1200.0) < 1e-6);
-  assert(std::abs(cfg.protease.dilution_rate - 2e-4) < 1e-12);
+  assert(cfg.chem_env.protease.enabled == false);
+  assert(std::abs(cfg.chem_env.protease.default_half_life - 1200.0) < 1e-6);
+  assert(std::abs(cfg.chem_env.protease.dilution_rate - 2e-4) < 1e-12);
 
   bool has_oxygen = false;
   bool has_acetate = false;
@@ -256,17 +256,73 @@ void test_chem_env_fixture() {
 void test_fix_tunables_fixture() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_fix_tunables.json";
   SimulationConfig cfg = InputParser::parse(path);
-  assert(std::abs(cfg.receptor.kd_colicinE_btuB - 1e-9) < 1e-15);
-  assert(std::abs(cfg.receptor.kill_rate_colicin - 2e-3) < 1e-12);
-  assert(std::abs(cfg.receptor.immunity_factor - 0.0005) < 1e-12);
-  assert(std::abs(cfg.conjugation.base_transfer_rate - 2e-4) < 1e-12);
-  assert(cfg.conjugation.pili_heterogeneity == true);
-  assert(std::abs(cfg.conjugation.pili_length_min - 2e-6) < 1e-15);
-  assert(std::abs(cfg.conjugation.pili_length_max - 3e-6) < 1e-15);
-  assert(std::abs(cfg.mutation.bi_duplication_rate - 1e-4) < 1e-12);
-  assert(cfg.mutation.max_bi_loci == 6);
-  assert(std::abs(cfg.mutation.immunity_escape_prob - 0.75) < 1e-12);
+  assert(std::abs(cfg.fixes.receptor.kd_colicinE_btuB - 1e-9) < 1e-15);
+  assert(std::abs(cfg.fixes.receptor.kill_rate_colicin - 2e-3) < 1e-12);
+  assert(std::abs(cfg.fixes.receptor.immunity_factor - 0.0005) < 1e-12);
+  assert(std::abs(cfg.fixes.conjugation.base_transfer_rate - 2e-4) < 1e-12);
+  assert(std::abs(cfg.fixes.conjugation.plasmid_copy_cost - 0.15) < 1e-12);
+  assert(cfg.fixes.conjugation.pili_heterogeneity == true);
+  assert(std::abs(cfg.fixes.conjugation.pili_length_min - 2e-6) < 1e-15);
+  assert(std::abs(cfg.fixes.conjugation.pili_length_max - 3e-6) < 1e-15);
+  assert(std::abs(cfg.fixes.mutation.bi_duplication_rate - 1e-4) < 1e-12);
+  assert(cfg.fixes.mutation.max_bi_loci == 6);
+  assert(std::abs(cfg.fixes.mutation.immunity_escape_prob - 0.75) < 1e-12);
   std::cout << "  test_fix_tunables_fixture: PASSED\n";
+}
+
+void test_unknown_key_warning_json() {
+  const std::string json = R"({
+    "_comment": "unknown key warning test",
+    "total_time": 100,
+    "bogus_key_xyz": 5,
+    "another.unknown_key": true
+  })";
+
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/_unknown_key_doc.json";
+  {
+    std::ofstream out(path);
+    out << json;
+  }
+
+  std::stringstream err;
+  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
+  SimulationConfig cfg = InputParser::parse(path);
+  std::cerr.rdbuf(old_err);
+  std::remove(path.c_str());
+
+  // Known key still applied.
+  assert(std::abs(cfg.time.total_time - 100.0) < 1e-6);
+
+  const std::string warnings = err.str();
+  // Unknown keys are surfaced.
+  assert(warnings.find("bogus_key_xyz") != std::string::npos);
+  assert(warnings.find("another.unknown_key") != std::string::npos);
+  // Comment keys and recognized keys are not flagged.
+  assert(warnings.find("_comment") == std::string::npos);
+  assert(warnings.find("'total_time'") == std::string::npos);
+  std::cout << "  test_unknown_key_warning_json: PASSED\n";
+}
+
+void test_unknown_key_warning_legacy() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/_unknown_key.legacy";
+  {
+    std::ofstream out(path);
+    out << "total_time: 200\n";
+    out << "made_up_key: 3\n";
+    out << "_comment: ignore me\n";
+  }
+
+  std::stringstream err;
+  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
+  SimulationConfig cfg = InputParser::parse(path);
+  std::cerr.rdbuf(old_err);
+  std::remove(path.c_str());
+
+  assert(std::abs(cfg.time.total_time - 200.0) < 1e-6);
+  const std::string warnings = err.str();
+  assert(warnings.find("made_up_key") != std::string::npos);
+  assert(warnings.find("_comment") == std::string::npos);
+  std::cout << "  test_unknown_key_warning_legacy: PASSED\n";
 }
 
 void test_strict_config_aborts_on_bad_numeric() {
@@ -309,6 +365,8 @@ int main() {
   test_json_document_parser();
   test_malformed_numeric_warnings_json();
   test_malformed_numeric_warnings_legacy();
+  test_unknown_key_warning_json();
+  test_unknown_key_warning_legacy();
   test_strict_config_aborts_on_bad_numeric();
   std::cout << "All input parser example tests passed.\n";
   return 0;

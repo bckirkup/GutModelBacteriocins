@@ -4,7 +4,7 @@
 
 #include "fmm_kernel.h"
 #include <cmath>
-#include <functional>
+#include <limits>
 
 namespace gutibm {
 
@@ -12,6 +12,35 @@ namespace fmm_detail {
 
 int coeff_index(int ox, int oy, int oz, int order);
 Real binomial(int n, int k);
+
+// Central finite-difference step for a k-th order derivative, scaled to the
+// problem's characteristic length. The total error of a 2nd-order central
+// stencil for the k-th derivative is ~ (h/L)^2 (truncation) + eps*(L/h)^k
+// (round-off), minimized at h ≈ L * eps^{1/(k+2)}. A single tiny step (the
+// former 1.0e-9) makes the order-3 stencil divide by ~2h^3 = 2e-27, so
+// round-off is amplified ~1e11 — catastrophic cancellation. (Spec 0 §3.)
+Real fd_step(int deriv_order, Real length_scale) {
+  const Real eps = std::numeric_limits<Real>::epsilon();
+  Real rel = std::cbrt(eps);  // order 1: eps^(1/3)
+  if (deriv_order == 2) {
+    rel = std::pow(eps, 0.25);  // eps^(1/4)
+  } else if (deriv_order >= 3) {
+    rel = std::pow(eps, 0.2);  // eps^(1/5)
+  }
+  const Real L = (length_scale > 0.0) ? length_scale : 1.0;
+  return L * rel;
+}
+
+Real separation_length(const Vec3& a, const Vec3& b) {
+  const Real dx = a[0] - b[0];
+  const Real dy = a[1] - b[1];
+  const Real dz = a[2] - b[2];
+  const Real r = std::sqrt(dx * dx + dy * dy + dz * dz);
+  // Floor keeps the step positive for the degenerate (coincident) case, which
+  // the well-separated FMM never actually evaluates.
+  constexpr Real kMinLength = 1.0e-9;
+  return (r > kMinLength) ? r : kMinLength;
+}
 
 template<typename Fn>
 void for_each_multi_index(int order, Fn&& fn) {
@@ -42,24 +71,40 @@ Real delta_power(int exp_x, int exp_y, int exp_z, const Vec3& delta) {
   return pow;
 }
 
+Real shift_term_contribution(const std::vector<Real>& coeffs,
+                             int order,
+                             int aix, int aiy, int aiz,
+                             int bix, int biy, int biz,
+                             const Vec3& delta) {
+  if (bix > aix || biy > aiy || biz > aiz) return 0.0;
+  const int bidx = coeff_index(bix, biy, biz, order);
+  const Real coeff = binomial(aix, bix) * binomial(aiy, biy) * binomial(aiz, biz);
+  const Real pow = delta_power(aix - bix, aiy - biy, aiz - biz, delta);
+  return coeff * coeffs[bidx] * pow;
+}
+
+template<typename Fn>
+void for_b_multi_index(int atotal, Fn&& fn) {
+  for (int btotal = 0; btotal <= atotal; ++btotal) {
+    for (int biz = 0; biz <= btotal; ++biz) {
+      for (int biy = 0; biy <= btotal - biz; ++biy) {
+        const int bix = btotal - biy - biz;
+        fn(bix, biy, biz);
+      }
+    }
+  }
+}
+
 Real accumulate_shift_sum(const std::vector<Real>& coeffs,
                           int order,
                           int atotal,
                           int aix, int aiy, int aiz,
                           const Vec3& delta) {
   Real sum = 0.0;
-  for (int btotal = 0; btotal <= atotal; ++btotal) {
-    for (int biz = 0; biz <= btotal; ++biz) {
-      for (int biy = 0; biy <= btotal - biz; ++biy) {
-        const int bix = btotal - biy - biz;
-        if (bix > aix || biy > aiy || biz > aiz) continue;
-        const int bidx = coeff_index(bix, biy, biz, order);
-        const Real coeff = binomial(aix, bix) * binomial(aiy, biy) * binomial(aiz, biz);
-        const Real pow = delta_power(aix - bix, aiy - biy, aiz - biz, delta);
-        sum += coeff * coeffs[bidx] * pow;
-      }
-    }
-  }
+  for_b_multi_index(atotal, [&sum, &coeffs, order, aix, aiy, aiz, delta](int bix, int biy, int biz) {
+    sum += shift_term_contribution(coeffs, order, aix, aiy, aiz,
+                                   bix, biy, biz, delta);
+  });
   return sum;
 }
 
@@ -67,17 +112,18 @@ void shift_expansion(std::vector<Real>& out,
                      const std::vector<Real>& in,
                      int order,
                      const Vec3& delta) {
-  for_each_multi_index(order, [&](int aix, int aiy, int aiz, int aidx) {
+  for_each_multi_index(order, [&out, order, &in, delta](int aix, int aiy, int aiz, int aidx) {
     out[aidx] = accumulate_shift_sum(in, order, aix + aiy + aiz,
                                      aix, aiy, aiz, delta);
   });
 }
 
+template <typename FieldFn>
 void fill_first_derivatives(std::vector<Real>& values,
                             int order,
                             const Vec3& center,
                             Real h,
-                            const std::function<Real(const Vec3&)>& field) {
+                            FieldFn&& field) {
   for (int d = 0; d < 3; ++d) {
     Vec3 plus = center;
     Vec3 minus = center;
@@ -90,10 +136,11 @@ void fill_first_derivatives(std::vector<Real>& values,
   }
 }
 
+template <typename FieldFn>
 Real second_derivative(int d1, int d2,
                        const Vec3& center,
                        Real h,
-                       const std::function<Real(const Vec3&)>& field) {
+                       FieldFn&& field) {
   if (d1 == d2) {
     Vec3 plus = center;
     Vec3 minus = center;
@@ -113,11 +160,12 @@ Real second_derivative(int d1, int d2,
   return (field(pp) - field(pm) - field(mp) + field(mm)) / (4.0 * h * h);
 }
 
+template <typename FieldFn>
 void fill_second_derivatives(std::vector<Real>& values,
                              int order,
                              const Vec3& center,
                              Real h,
-                             const std::function<Real(const Vec3&)>& field,
+                             FieldFn&& field,
                              Real scale = 1.0) {
   for (int d1 = 0; d1 < 3; ++d1) {
     for (int d2 = d1; d2 < 3; ++d2) {
@@ -131,11 +179,12 @@ void fill_second_derivatives(std::vector<Real>& values,
   }
 }
 
+template <typename FieldFn>
 void fill_third_derivatives(std::vector<Real>& values,
                             int order,
                             const Vec3& center,
                             Real h,
-                            const std::function<Real(const Vec3&)>& field,
+                            FieldFn&& field,
                             Real scale = 1.0) {
   for (int d = 0; d < 3; ++d) {
     Vec3 plus2 = center;
@@ -165,7 +214,7 @@ int num_coefficients(int order) {
 int coeff_index(int ox, int oy, int oz, int order) {
   int result = 0;
   bool found = false;
-  for_each_multi_index(order, [&](int ix, int iy, int iz, int idx) {
+  for_each_multi_index(order, [&result, ox, oy, oz, &found, order](int ix, int iy, int iz, int idx) {
     if (found) return;
     if (ix == ox && iy == oy && iz == oz) {
       result = idx;
@@ -178,7 +227,7 @@ int coeff_index(int ox, int oy, int oz, int order) {
 void multi_index(int idx, int order, int& ox, int& oy, int& oz) {
   int cursor = 0;
   bool found = false;
-  for_each_multi_index(order, [&](int ix, int iy, int iz, int /*idx*/) {
+  for_each_multi_index(order, [&ox, &oy, &oz, &cursor, &found, order, idx](int ix, int iy, int iz, int /*coeff_idx*/) {
     if (found) return;
     if (cursor == idx) {
       ox = ix;
@@ -188,7 +237,11 @@ void multi_index(int idx, int order, int& ox, int& oy, int& oz) {
     }
     cursor++;
   });
-  if (!found) ox = oy = oz = 0;
+  if (!found) {
+    ox = 0;
+    oy = 0;
+    oz = 0;
+  }
 }
 
 static Real factorial(int n) {
@@ -215,7 +268,7 @@ void add_particle(std::vector<Real>& moments,
                    position[1] - center[1],
                    position[2] - center[2]};
 
-  for_each_multi_index(order, [&](int ix, int iy, int iz, int idx) {
+  for_each_multi_index(order, [&moments, order, charge, dr](int ix, int iy, int iz, int idx) {
     moments[idx] += dr_monomial(charge, ix, iy, iz, dr);
   });
 }
@@ -245,6 +298,25 @@ void add_shifted_moments(std::vector<Real>& parent,
 
 }  // namespace fmm_detail
 
+Real fd_axis_derivative(const std::function<Real(const Vec3&)>& field,
+                        const Vec3& center, int axis, int order,
+                        Real length_scale) {
+  const Real h = fmm_detail::fd_step(order, length_scale);
+  const auto at = [&field, &center, axis](Real offset) {
+    Vec3 p = center;
+    p[axis] += offset;
+    return field(p);
+  };
+  if (order == 1) {
+    return (at(h) - at(-h)) / (2.0 * h);
+  }
+  if (order == 2) {
+    return (at(h) - 2.0 * field(center) + at(-h)) / (h * h);
+  }
+  // order 3 (five-point antisymmetric stencil)
+  return (at(2.0 * h) - 2.0 * at(h) + 2.0 * at(-h) - at(-2.0 * h)) / (2.0 * h * h * h);
+}
+
 KernelTaylorCoeffs kernel_taylor_at_source(
     const GreensFunction& gf,
     const Vec3& source,
@@ -258,21 +330,21 @@ KernelTaylorCoeffs kernel_taylor_at_source(
   GreensFunctionParams unit = params;
   unit.source_rate = 1.0;
 
-  const Real h = 1.0e-9;
-  const auto eval = [&](const Vec3& src) {
+  const Real L = fmm_detail::separation_length(source, target);
+  const auto eval = [&gf, &unit, target](const Vec3& src) {
     return gf.concentration_bounded(src, target, unit);
   };
 
   out.values[0] = eval(source);
   if (max_order < 1) return out;
 
-  fmm_detail::fill_first_derivatives(out.values, max_order, source, h, eval);
+  fmm_detail::fill_first_derivatives(out.values, max_order, source, fmm_detail::fd_step(1, L), eval);
   if (max_order < 2) return out;
 
-  fmm_detail::fill_second_derivatives(out.values, max_order, source, h, eval);
+  fmm_detail::fill_second_derivatives(out.values, max_order, source, fmm_detail::fd_step(2, L), eval);
   if (max_order < 3) return out;
 
-  fmm_detail::fill_third_derivatives(out.values, max_order, source, h, eval);
+  fmm_detail::fill_third_derivatives(out.values, max_order, source, fmm_detail::fd_step(3, L), eval);
   return out;
 }
 
@@ -295,8 +367,8 @@ std::vector<Real> multipole_to_local(
   const int n = fmm_detail::num_coefficients(order);
   std::vector<Real> local(n, 0.0);
 
-  const Real h = 1.0e-9;
-  const auto multipole_field = [&](const Vec3& eval_target) {
+  const Real L = fmm_detail::separation_length(source_center, target_center);
+  const auto multipole_field = [&gf, &moments, order, source_center, avg_params](const Vec3& eval_target) {
     KernelTaylorCoeffs k = kernel_taylor_at_source(
         gf, source_center, eval_target, avg_params, order);
     return evaluate_multipole(moments, order, k);
@@ -305,13 +377,13 @@ std::vector<Real> multipole_to_local(
   local[0] = multipole_field(target_center);
   if (order < 1) return local;
 
-  fmm_detail::fill_first_derivatives(local, order, target_center, h, multipole_field);
+  fmm_detail::fill_first_derivatives(local, order, target_center, fmm_detail::fd_step(1, L), multipole_field);
   if (order < 2) return local;
 
-  fmm_detail::fill_second_derivatives(local, order, target_center, h, multipole_field, 0.5);
+  fmm_detail::fill_second_derivatives(local, order, target_center, fmm_detail::fd_step(2, L), multipole_field, 0.5);
   if (order < 3) return local;
 
-  fmm_detail::fill_third_derivatives(local, order, target_center, h, multipole_field, 1.0 / 6.0);
+  fmm_detail::fill_third_derivatives(local, order, target_center, fmm_detail::fd_step(3, L), multipole_field, 1.0 / 6.0);
   return local;
 }
 
@@ -338,7 +410,7 @@ Real evaluate_local(const std::vector<Real>& local,
                    target[2] - center[2]};
 
   Real sum = 0.0;
-  fmm_detail::for_each_multi_index(order, [&](int ix, int iy, int iz, int idx) {
+  fmm_detail::for_each_multi_index(order, [&sum, order, &local, dr](int ix, int iy, int iz, int idx) {
     sum += fmm_detail::dr_monomial(local[idx], ix, iy, iz, dr);
   });
   return sum;

@@ -33,7 +33,7 @@ static Agent make_dividing_agent(Simulation& sim) {
     0.5 * (sim.domain().lo()[2] + sim.domain().hi()[2]),
   };
   Agent a = Agent::create_default(sim.agents().next_tag(), 1, center, 5e-4);
-  a.age = 0.0;
+  a.timers.age = 0.0;
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_B());
   return a;
@@ -65,7 +65,7 @@ void test_receptor_downregulation_reduces_expression() {
 
   auto sim = make_empty_sim(8008);
   Agent a = make_dividing_agent(sim);
-  std::array<Real, NUM_RECEPTORS> expr_before = a.receptor_expr;
+  std::array<Real, NUM_RECEPTORS> expr_before = a.receptor_expr_base;
   sim.agents().push_back(std::move(a));
 
   FixMutation fix(sim, cfg);
@@ -75,7 +75,7 @@ void test_receptor_downregulation_reduces_expression() {
   Real total_after = 0.0;
   for (int ri = 0; ri < NUM_RECEPTORS; ++ri) {
     total_before += expr_before[ri];
-    total_after += sim.agents()[0].receptor_expr[ri];
+    total_after += sim.agents()[0].receptor_expr_base[ri];
   }
   assert(total_after < total_before);
   assert(std::abs(total_after - (total_before - cfg.receptor_reduction)) < 1e-12);
@@ -139,7 +139,7 @@ void test_mutation_skips_aged_agents() {
 
   auto sim = make_empty_sim(9011);
   Agent a = make_dividing_agent(sim);
-  a.age = 120.0;
+  a.timers.age = 120.0;
   auto n_before = static_cast<Int>(a.genome.bi_loci.size());
   sim.agents().push_back(std::move(a));
 

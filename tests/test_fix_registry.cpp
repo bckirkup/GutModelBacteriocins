@@ -12,13 +12,15 @@ using namespace gutibm;
 
 void test_default_fix_order() {
   auto names = FixRegistry::registered_names();
-  assert(names.size() == 6);
+  assert(names.size() == 8);
   assert(names[0] == "metabolism");
   assert(names[1] == "bacteriocin");
   assert(names[2] == "receptor");
-  assert(names[3] == "conjugation");
-  assert(names[4] == "mutation");
-  assert(names[5] == "mechanics");
+  assert(names[3] == "motility");
+  assert(names[4] == "conjugation");
+  assert(names[5] == "cdi");
+  assert(names[6] == "mutation");
+  assert(names[7] == "mechanics");
   std::cout << "  test_default_fix_order: PASSED\n";
 }
 
@@ -32,9 +34,9 @@ void test_create_all_fixes() {
   sim.init(cfg);
 
   auto names = sim.fix_names();
-  assert(names.size() == 6);
+  assert(names.size() == 8);
   assert(names[0] == "metabolism");
-  assert(names[5] == "mechanics");
+  assert(names[7] == "mechanics");
   std::cout << "  test_create_all_fixes: PASSED\n";
 }
 
@@ -42,7 +44,7 @@ void test_subset_fixes() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.hdf5.enabled = false;
-  cfg.total_time = 120.0;
+  cfg.time.total_time = 120.0;
   cfg.initial_strains.clear();
 
   SimulationConfig::InitialStrain strain;

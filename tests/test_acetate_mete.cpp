@@ -19,11 +19,14 @@ static SimulationConfig make_acetate_cfg(Real acetate_conc) {
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
 
-  cfg.total_time      = 120.0;
-  cfg.bio_dt          = 60.0;
-  cfg.output_interval = 120.0;
+  cfg.time.total_time      = 120.0;
+  cfg.time.bio_dt          = 60.0;
+  cfg.time.output_interval = 120.0;
   cfg.seed            = 42;
   cfg.hdf5.enabled    = false;
+  cfg.cell_bio.fur.enabled     = false;
+  cfg.cell_bio.cdi.enabled     = false;
+  cfg.cell_bio.motility.enabled = false;
 
   cfg.advection.mucus_thickness    = 25e-6;
   cfg.advection.distal_length      = 50e-6;
@@ -173,8 +176,8 @@ void test_acetate_penalty_scaling() {
 void test_smoke_with_acetate() {
   // Full mini simulation with acetate species present
   SimulationConfig cfg = make_acetate_cfg(80.0);
-  cfg.total_time = 600.0;
-  cfg.output_interval = 300.0;
+  cfg.time.total_time = 600.0;
+  cfg.time.output_interval = 300.0;
 
   // Add a producer strain too
   SimulationConfig::InitialStrain producer;
@@ -211,13 +214,13 @@ void test_acetate_mete_dynamic() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.initial_strains.clear();
   cfg.hdf5.enabled = false;
-  cfg.total_time = 120.0;
-  cfg.bio_dt = 60.0;
+  cfg.time.total_time = 120.0;
+  cfg.time.bio_dt = 60.0;
   cfg.domain.hi = {40e-6, 40e-6, 40e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.acetate.enabled = true;
-  cfg.acetate.overflow_rate = 1.0e-12;
-  cfg.acetate.overflow_threshold = 0.0;
+  cfg.chem_env.acetate.enabled = true;
+  cfg.chem_env.acetate.overflow_rate = 1.0e-12;
+  cfg.chem_env.acetate.overflow_threshold = 0.0;
   InputParser::finalize_config(cfg);
 
   SimulationConfig::InitialStrain strain;

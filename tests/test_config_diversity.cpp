@@ -30,9 +30,9 @@ std::string fixture_path(const char* name) {
 
 // Keep CI runs short while preserving config-specific fields.
 void shrink_for_ci(SimulationConfig& cfg) {
-  cfg.total_time = std::min(cfg.total_time, 180.0);
-  cfg.output_interval = cfg.total_time;
-  cfg.bio_dt = 60.0;
+  cfg.time.total_time = std::min(cfg.time.total_time, 180.0);
+  cfg.time.output_interval = cfg.time.total_time;
+  cfg.time.bio_dt = 60.0;
   cfg.hdf5.enabled = false;
   cfg.profile_steps = false;
   cfg.checkpoint.file.clear();
@@ -198,8 +198,8 @@ void test_parsed_fix_list_is_honored() {
   assert(names[0] == "metabolism");
   assert(names[1] == "mechanics");
 
-  for (int step = 0; step < 3; ++step) {
-    sim_subset.step(cfg.bio_dt);
+  for (int step = 0; step < 6; ++step) {
+    sim_subset.step(cfg.time.bio_dt);
   }
   uint64_t fp_subset = test_util::simulation_fingerprint(sim_subset);
 
@@ -208,8 +208,8 @@ void test_parsed_fix_list_is_honored() {
 
   Simulation sim_full;
   sim_full.init(full);
-  for (int step = 0; step < 3; ++step) {
-    sim_full.step(full.bio_dt);
+  for (int step = 0; step < 6; ++step) {
+    sim_full.step(full.time.bio_dt);
   }
   uint64_t fp_full = test_util::simulation_fingerprint(sim_full);
   assert(fp_subset != fp_full);
@@ -219,19 +219,62 @@ void test_parsed_fix_list_is_honored() {
 
 void test_fix_tunables_reach_simulation() {
   SimulationConfig tuned = InputParser::parse(fixture_path("parser_fix_tunables.json"));
-  assert(std::abs(tuned.receptor.kill_rate_colicin - 2e-3) < 1e-12);
-  assert(tuned.conjugation.pili_heterogeneity == true);
-  assert(tuned.mutation.max_bi_loci == 6);
+  assert(std::abs(tuned.fixes.receptor.kill_rate_colicin - 2e-3) < 1e-12);
+  assert(tuned.fixes.conjugation.pili_heterogeneity == true);
+  assert(tuned.fixes.mutation.max_bi_loci == 6);
+  assert(tuned.cell_bio.fur.enabled == true);
 
   SimulationConfig baseline = tuned;
-  baseline.receptor = InputParser::default_config().receptor;
-  baseline.conjugation = InputParser::default_config().conjugation;
-  baseline.mutation = InputParser::default_config().mutation;
+  baseline.cell_bio.fur.Km = InputParser::default_config().cell_bio.fur.Km;
+  baseline.fixes.receptor = InputParser::default_config().fixes.receptor;
+  baseline.fixes.conjugation = InputParser::default_config().fixes.conjugation;
+  baseline.fixes.mutation = InputParser::default_config().fixes.mutation;
   baseline.seed = tuned.seed;
 
-  uint64_t fp_tuned = run_fingerprint(tuned);
-  uint64_t fp_baseline = run_fingerprint(baseline);
-  assert(fp_tuned != fp_baseline);
+  shrink_for_ci(tuned);
+  shrink_for_ci(baseline);
+
+  Simulation sim_tuned;
+  Simulation sim_baseline;
+  sim_tuned.init(tuned);
+  sim_baseline.init(baseline);
+  sim_tuned.step(tuned.time.bio_dt);
+  sim_baseline.step(baseline.time.bio_dt);
+
+  assert(sim_tuned.agents().size() > 0);
+  assert(sim_baseline.agents().size() > 0);
+  const Real mu_tuned = sim_tuned.agents()[0].mu_realized;
+  const Real mu_baseline = sim_baseline.agents()[0].mu_realized;
+  assert(std::abs(mu_tuned - mu_baseline) > 1e-10);
+
+  auto count_bi_loci = [](SimulationConfig cfg) {
+    shrink_for_ci(cfg);
+    cfg.enabled_fixes = {"metabolism", "mutation"};
+    cfg.initial_strains[0].count = 4;
+    Simulation sim;
+    sim.init(cfg);
+    for (int step = 0; step < 10; ++step) {
+      sim.step(cfg.time.bio_dt);
+    }
+    int total = 0;
+    for (const Agent& a : sim.agents()) {
+      if (a.state == PhenoState::DEAD) continue;
+      total += static_cast<int>(a.genome.bi_loci.size());
+    }
+    return total;
+  };
+
+  SimulationConfig high_dup = tuned;
+  high_dup.fixes.mutation.bi_duplication_rate = 0.5;
+  high_dup.seed = 8801;
+
+  SimulationConfig no_dup = tuned;
+  no_dup.fixes.mutation.bi_duplication_rate = 0.0;
+  no_dup.seed = 8801;
+
+  const int bi_high = count_bi_loci(high_dup);
+  const int bi_none = count_bi_loci(no_dup);
+  assert(bi_high > bi_none);
 
   std::cout << "  test_fix_tunables_reach_simulation: PASSED\n";
 }

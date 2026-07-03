@@ -10,6 +10,7 @@
 
 #include "types.h"
 #include "greens_function.h"
+#include <functional>
 #include <vector>
 
 namespace gutibm {
@@ -55,11 +56,22 @@ Real evaluate_local(const std::vector<Real>& local,
                     const Vec3& center,
                     const Vec3& target);
 
+// Pure single-axis central finite-difference derivative (order 1-3) of a
+// scalar field, using the same order/length-scaled steps as the FMM kernel.
+// Returns the raw derivative d^order f / d(axis)^order at `center`. Exposed for
+// numerical-accuracy testing against analytic kernels (Spec 0 §3).
+Real fd_axis_derivative(const std::function<Real(const Vec3&)>& field,
+                        const Vec3& center, int axis, int order,
+                        Real length_scale);
+
 namespace fmm_detail {
 
 int num_coefficients(int order);
 int coeff_index(int ox, int oy, int oz, int order);
 void multi_index(int idx, int order, int& ox, int& oy, int& oz);
+
+// Order/length-scaled central finite-difference step (see fmm_kernel.cpp).
+Real fd_step(int deriv_order, Real length_scale);
 
 // P2M: accumulate particle charge at position into moments about center.
 void add_particle(std::vector<Real>& moments,

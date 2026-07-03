@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------
-   GutIBM – Unit tests for fix_bacteriocin
+   GutIBM – Unit tests for fix_bacteriocin (Spec 2)
    ----------------------------------------------------------------------- */
 
 #include "fix_bacteriocin.h"
@@ -47,14 +47,24 @@ static Agent make_agent_at_center(Simulation& sim, Int type) {
 
 void test_pi_diffusion_classes() {
   auto e1 = PlasmidLibrary::colicin_E1();
+  auto e2 = PlasmidLibrary::colicin_E2();
   auto col_b = PlasmidLibrary::colicin_B();
   auto mcc = PlasmidLibrary::microcin_V();
 
   assert(e1.bclass == BacteriocinClass::LETHAL_CORE);
   assert(e1.pI > 8.5);
+  assert(e1.release_mode == ReleaseMode::SOS_LYSIS);
+  assert(e1.burst_size == 1.0e5);
+
+  assert(e2.is_nuclease);
+  assert(e2.release_mode == ReleaseMode::SOS_LYSIS);
+
   assert(col_b.bclass == BacteriocinClass::LETHAL_HALO);
   assert(col_b.pI < 7.0);
+  assert(col_b.release_mode == ReleaseMode::PHAGE_LYSIS);
+
   assert(mcc.molecular_weight < 10000.0);
+  assert(mcc.release_mode == ReleaseMode::CONTINUOUS);
 
   std::cout << "  test_pi_diffusion_classes: PASSED\n";
 }
@@ -70,6 +80,7 @@ void test_microcin_mu_penalty() {
   sim.agents().push_back(std::move(a));
 
   FixBacteriocin fix(sim, cfg);
+  fix.compute(60.0);
   fix.compute(60.0);
 
   Real mu_after = sim.agents()[0].mu_max;
@@ -107,15 +118,19 @@ void test_sos_induction_high_basal_rate() {
   fix.compute(60.0);
 
   assert(sim.agents()[0].state == PhenoState::SOS_INDUCED);
-  assert(sim.agents()[0].sos_timer > 0.0);
+  assert(sim.agents()[0].timers.sos_timer > 0.0);
 
   std::cout << "  test_sos_induction_high_basal_rate: PASSED\n";
 }
 
-void test_colicin_steady_state_qssa_source() {
-  // Regression: ColE1/ColB (MW >= 10 kDa) must contribute continuous QSSA sources.
-  const BICluster col_e1 = PlasmidLibrary::colicin_E1();
-  assert(col_e1.molecular_weight >= 10000.0);
+void test_steady_state_qssa_source() {
+  // A continuously-secreted microcin (MccV, ReleaseMode::CONTINUOUS) must show up
+  // as a steady-state QSSA source at its producer, while a lysis-only colicin
+  // (ColE1, ReleaseMode::SOS_LYSIS) contributes NO continuous source without a
+  // lysis burst — colicins reach the field via ToxinBurstSource (see the SOS
+  // lysis / burst tests), not via collect_microcin_sources.
+  const BICluster mcc_v = PlasmidLibrary::microcin_V();
+  assert(mcc_v.release_mode == ReleaseMode::CONTINUOUS);
 
   DomainConfig dcfg;
   dcfg.lo = {0, 0, 0};
@@ -139,29 +154,186 @@ void test_colicin_steady_state_qssa_source() {
   toxin.name = "bacteriocin";
   toxin.diff_coeff = 4.0e-11;
   toxin.retardation = 10.0;
-  ChemicalField chem;
-  chem.init(domain, {toxin});
 
   const Vec3 pos = {50e-6, 50e-6, 25e-6};
-  AgentPool agents;
-  Agent producer = Agent::create_default(1, 1, pos, 5e-4);
-  producer.genome.bi_loci.push_back(col_e1);
-  agents.push_back(std::move(producer));
-
-  ProteaseConfig protease;
-  protease.enabled = false;
-  std::vector<ToxinBurstSource> bursts;
-  qssa.solve_bacteriocin_field(agents, bursts, 0.0, protease, adv, chem, 0);
-
   Int ix = 0;
   Int iy = 0;
   Int iz = 0;
   domain.pos_to_grid(pos, ix, iy, iz);
   const Int idx = domain.cell_index(ix, iy, iz);
-  assert(chem.conc(0, idx) > 0.0);
 
-  std::cout << "  test_colicin_steady_state_qssa_source: PASSED (c="
-            << chem.conc(0, idx) << ")\n";
+  ProteaseConfig protease;
+  protease.enabled = false;
+  const std::vector<ToxinBurstSource> no_bursts;
+
+  // Continuous microcin secretor → nonzero steady-state field.
+  {
+    ChemicalField chem;
+    chem.init(domain, {toxin});
+    AgentPool agents;
+    Agent producer = Agent::create_default(1, 1, pos, 5e-4);
+    producer.genome.bi_loci.push_back(mcc_v);
+    agents.push_back(std::move(producer));
+    qssa.solve_bacteriocin_field(agents, no_bursts, 0.0, protease, adv, chem, 0);
+    assert(chem.conc(0, idx) > 0.0);
+    std::cout << "  test_steady_state_qssa_source: microcin c=" << chem.conc(0, idx) << "\n";
+  }
+
+  // Lysis-only colicin (no burst) → no continuous source.
+  {
+    const BICluster col_e1 = PlasmidLibrary::colicin_E1();
+    assert(col_e1.release_mode == ReleaseMode::SOS_LYSIS);
+    ChemicalField chem;
+    chem.init(domain, {toxin});
+    AgentPool agents;
+    Agent producer = Agent::create_default(2, 1, pos, 5e-4);
+    producer.genome.bi_loci.push_back(col_e1);
+    agents.push_back(std::move(producer));
+    qssa.solve_bacteriocin_field(agents, no_bursts, 0.0, protease, adv, chem, 0);
+    assert(chem.conc(0, idx) == 0.0);
+  }
+
+  std::cout << "  test_steady_state_qssa_source: PASSED\n";
+}
+
+void test_sos_induction_on_division() {
+  BacteriocinConfig cfg;
+  cfg.sos_basal_rate = 0.0;
+  cfg.sos_lysis_prob = 1.0;
+
+  auto sim = make_empty_sim(3003);
+  Agent a = make_agent_at_center(sim, 1);
+  a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
+  a.flags.just_divided = true;
+  sim.agents().push_back(std::move(a));
+
+  FixBacteriocin fix(sim, cfg);
+  fix.compute(60.0);
+
+  assert(sim.agents()[0].state == PhenoState::SOS_INDUCED);
+
+  std::cout << "  test_sos_induction_on_division: PASSED\n";
+}
+
+void test_no_sos_without_division() {
+  BacteriocinConfig cfg;
+  cfg.sos_basal_rate = 0.0;
+  cfg.sos_lysis_prob = 1.0;
+
+  auto sim = make_empty_sim(4004);
+  Agent a = make_agent_at_center(sim, 1);
+  a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
+  a.flags.just_divided = false;
+  sim.agents().push_back(std::move(a));
+
+  FixBacteriocin fix(sim, cfg);
+  fix.compute(60.0);
+
+  assert(sim.agents()[0].state == PhenoState::NORMAL);
+
+  std::cout << "  test_no_sos_without_division: PASSED\n";
+}
+
+void test_phage_induction() {
+  BacteriocinConfig cfg;
+
+  auto sim = make_empty_sim(5005);
+  Agent a = make_agent_at_center(sim, 1);
+  BICluster col_b = PlasmidLibrary::colicin_B();
+  col_b.phage_induction_rate = 100.0;
+  a.genome.bi_loci.push_back(col_b);
+  a.mu_realized = 5.0e-4;
+  sim.agents().push_back(std::move(a));
+
+  FixBacteriocin fix(sim, cfg);
+  fix.compute(60.0);
+
+  assert(sim.agents()[0].state == PhenoState::SOS_INDUCED);
+
+  std::cout << "  test_phage_induction: PASSED\n";
+}
+
+void test_phage_does_not_trigger_sos_path() {
+  BacteriocinConfig cfg;
+  cfg.sos_basal_rate = 1.0;
+
+  auto sim = make_empty_sim(6006);
+  Agent a = make_agent_at_center(sim, 1);
+  BICluster col_b = PlasmidLibrary::colicin_B();
+  col_b.phage_induction_rate = 0.0;
+  a.genome.bi_loci.push_back(col_b);
+  sim.agents().push_back(std::move(a));
+
+  FixBacteriocin fix(sim, cfg);
+  fix.compute(60.0);
+
+  assert(sim.agents()[0].state == PhenoState::NORMAL);
+
+  std::cout << "  test_phage_does_not_trigger_sos_path: PASSED\n";
+}
+
+void test_microcin_no_lysis() {
+  BacteriocinConfig cfg;
+  cfg.sos_basal_rate = 1.0;
+
+  auto sim = make_empty_sim(7007);
+  Agent a = make_agent_at_center(sim, 1);
+  a.genome.bi_loci.push_back(PlasmidLibrary::microcin_V());
+  sim.agents().push_back(std::move(a));
+
+  FixBacteriocin fix(sim, cfg);
+  fix.compute(60.0);
+
+  assert(sim.agents()[0].state == PhenoState::NORMAL);
+
+  std::cout << "  test_microcin_no_lysis: PASSED\n";
+}
+
+void test_cross_induction() {
+  BacteriocinConfig cfg;
+  cfg.sos_basal_rate = 0.0;
+  cfg.sos_lysis_prob = 0.0;
+  cfg.sos_cross_induction_rate = 1.0e3;
+
+  auto sim = make_empty_sim(8008);
+  Agent a = make_agent_at_center(sim, 1);
+  a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
+  sim.agents().push_back(std::move(a));
+
+  Int i_nuc = sim.chemical_field().find("nuclease_toxin");
+  assert(i_nuc >= 0);
+  sim.chemical_field().conc(i_nuc, sim.agents()[0].grid_cell) = 1.0e-3;
+
+  FixBacteriocin fix(sim, cfg);
+  fix.compute(60.0);
+
+  assert(sim.agents()[0].state == PhenoState::SOS_INDUCED);
+
+  std::cout << "  test_cross_induction: PASSED\n";
+}
+
+void test_per_colicin_burst_size() {
+  BacteriocinConfig cfg;
+  cfg.burst_molecules = 1.0e4;
+
+  auto sim = make_empty_sim();
+  Agent a = make_agent_at_center(sim, 1);
+  BICluster e1 = PlasmidLibrary::colicin_E1();
+  assert(e1.burst_size == 1.0e5);
+  a.genome.bi_loci.push_back(e1);
+  a.state = PhenoState::SOS_INDUCED;
+  a.timers.sos_timer = 1.0;
+  sim.agents().push_back(std::move(a));
+
+  FixBacteriocin fix(sim, cfg);
+  fix.post_step(2.0);
+
+  assert(sim.toxin_bursts().size() == 1);
+  const Real expected = sim.config().qssa.colicin_release_rate * (1.0e5 / 1.0e4);
+  assert(std::abs(sim.toxin_bursts()[0].params.source_rate - expected) < 1e-30);
+  assert(sim.toxin_bursts()[0].is_nuclease == false);
+
+  std::cout << "  test_per_colicin_burst_size: PASSED\n";
 }
 
 void test_sos_lysis_post_step() {
@@ -171,7 +343,7 @@ void test_sos_lysis_post_step() {
   Agent a = make_agent_at_center(sim, 1);
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
   a.state = PhenoState::SOS_INDUCED;
-  a.sos_timer = 30.0;
+  a.timers.sos_timer = 30.0;
   sim.agents().push_back(std::move(a));
 
   FixBacteriocin fix(sim, cfg);
@@ -188,7 +360,14 @@ int main() {
   test_microcin_mu_penalty();
   test_sos_induction_requires_bi_loci();
   test_sos_induction_high_basal_rate();
-  test_colicin_steady_state_qssa_source();
+  test_steady_state_qssa_source();
+  test_sos_induction_on_division();
+  test_no_sos_without_division();
+  test_phage_induction();
+  test_phage_does_not_trigger_sos_path();
+  test_microcin_no_lysis();
+  test_cross_induction();
+  test_per_colicin_burst_size();
   test_sos_lysis_post_step();
   std::cout << "All bacteriocin fix tests passed.\n";
   return 0;

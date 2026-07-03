@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "vbf.h"
+#include "species_names.h"
 #include "domain.h"
 #include "chemical_field.h"
 #include "chem_environment_config.h"
@@ -17,6 +18,85 @@ Real dynamic_mucin_liberation(Real mucin_conc,
                               const MucinConfig& mucin_cfg) {
   const Real substrate = mucin_conc / (mucin_cfg.Km_degradation + mucin_conc);
   return mucin_cfg.k_liberation * vbf_cfg.density * substrate;
+}
+
+struct VbfSpeciesIndices {
+  Int carbon = -1;
+  Int iron = -1;
+  Int oxygen = -1;
+  Int acetate = -1;
+  Int mucin = -1;
+};
+
+struct VbfCellContext {
+  const VBFConfig& cfg;
+  const OxygenConfig& oxygen;
+  const AcetateConfig& acetate;
+  const MucinConfig& mucin;
+  VbfSpeciesIndices idx;
+  Real static_liberation;
+  Real z_weight;
+  Int iz;
+};
+
+void apply_carbon_source(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+  if (ctx.cfg.use_dynamic_mucin && ctx.mucin.enabled && ctx.idx.mucin >= 0) {
+    const Real liberation =
+        dynamic_mucin_liberation(chem.conc(ctx.idx.mucin, cell), ctx.cfg, ctx.mucin);
+    chem.reac(ctx.idx.mucin, cell) -= liberation;
+    if (ctx.idx.carbon >= 0) {
+      chem.reac(ctx.idx.carbon, cell) += liberation;
+    }
+    return;
+  }
+  if (ctx.idx.carbon >= 0) {
+    chem.reac(ctx.idx.carbon, cell) += ctx.static_liberation;
+  }
+}
+
+void apply_iron_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+  if (ctx.idx.iron < 0) return;
+  // First-order (concentration-dependent) uptake: nutrient_sink is a rate
+  // constant (1/s). See VBFConfig::nutrient_sink for why this is not a
+  // zero-order mol/m^3/s removal.
+  chem.reac(ctx.idx.iron, cell) -= ctx.cfg.nutrient_sink * chem.conc(ctx.idx.iron, cell);
+}
+
+void apply_oxygen_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+  if (!ctx.oxygen.enabled || ctx.idx.oxygen < 0) return;
+  chem.reac(ctx.idx.oxygen, cell) -= ctx.oxygen.vbf_sink;
+}
+
+void apply_acetate_coupling(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+  if (!ctx.acetate.enabled || ctx.idx.acetate < 0) return;
+  chem.reac(ctx.idx.acetate, cell) += ctx.acetate.vbf_production * ctx.z_weight;
+  chem.reac(ctx.idx.acetate, cell) -= ctx.acetate.vbf_consumption;
+  if (ctx.iz == 0) {
+    chem.reac(ctx.idx.acetate, cell) -= ctx.acetate.epithelial_uptake;
+  }
+}
+
+void apply_mucin_secretion(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+  if (!ctx.mucin.enabled || ctx.idx.mucin < 0 || ctx.iz != 0) return;
+  chem.reac(ctx.idx.mucin, cell) += ctx.mucin.secretion_rate;
+}
+
+void apply_vbf_at_cell(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+  apply_carbon_source(chem, cell, ctx);
+  apply_iron_sink(chem, cell, ctx);
+  apply_oxygen_sink(chem, cell, ctx);
+  apply_acetate_coupling(chem, cell, ctx);
+  apply_mucin_secretion(chem, cell, ctx);
+}
+
+VbfSpeciesIndices find_vbf_species(const ChemicalField& chem) {
+  return {
+    chem.find(species::CARBON),
+    chem.find(species::IRON),
+    chem.find(species::OXYGEN),
+    chem.find(species::ACETATE),
+    chem.find(species::MUCIN),
+  };
 }
 
 }  // namespace
@@ -39,58 +119,25 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
                                    const OxygenConfig& oxygen,
                                    const AcetateConfig& acetate,
                                    const MucinConfig& mucin) const {
-  Int i_carbon = chem.find("carbon");
-  Int i_iron   = chem.find("iron");
-  Int i_oxygen = chem.find("oxygen");
-  Int i_acetate = chem.find("acetate");
-  Int i_mucin  = chem.find("mucin");
+  const VbfSpeciesIndices idx = find_vbf_species(chem);
 
   const Int nx = domain.nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
 
   for (Int iz = 0; iz < nz; ++iz) {
-    Real z_rel = (iz + 0.5) * domain.dx();
-    Real z_weight = cfg_.mucin_z_gradient_enabled
+    const Real z_rel = (iz + 0.5) * domain.dx();
+    const Real z_weight = cfg_.mucin_z_gradient_enabled
         ? std::exp(-z_rel / cfg_.mucin_z_gradient_lambda)
         : 1.0;
-
     const Real static_liberation = cfg_.use_dynamic_mucin ? 0.0 : mucin_rate(z_rel);
+
+    const VbfCellContext ctx{cfg_, oxygen, acetate, mucin, idx,
+                             static_liberation, z_weight, iz};
 
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
-        Int c = domain.cell_index(ix, iy, iz);
-
-        if (cfg_.use_dynamic_mucin && mucin.enabled && i_mucin >= 0) {
-          const Real liberation =
-              dynamic_mucin_liberation(chem.conc(i_mucin, c), cfg_, mucin);
-          chem.reac(i_mucin, c) -= liberation;
-          if (i_carbon >= 0) {
-            chem.reac(i_carbon, c) += liberation;
-          }
-        } else if (i_carbon >= 0) {
-          chem.reac(i_carbon, c) += static_liberation;
-        }
-
-        if (i_iron >= 0) {
-          chem.reac(i_iron, c) -= cfg_.nutrient_sink * chem.conc(i_iron, c);
-        }
-
-        if (oxygen.enabled && i_oxygen >= 0) {
-          chem.reac(i_oxygen, c) -= oxygen.vbf_sink;
-        }
-
-        if (acetate.enabled && i_acetate >= 0) {
-          chem.reac(i_acetate, c) += acetate.vbf_production * z_weight;
-          chem.reac(i_acetate, c) -= acetate.vbf_consumption;
-          if (iz == 0) {
-            chem.reac(i_acetate, c) -= acetate.epithelial_uptake;
-          }
-        }
-
-        if (mucin.enabled && i_mucin >= 0 && iz == 0) {
-          chem.reac(i_mucin, c) += mucin.secretion_rate;
-        }
+        apply_vbf_at_cell(chem, domain.cell_index(ix, iy, iz), ctx);
       }
     }
   }

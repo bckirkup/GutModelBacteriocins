@@ -1,0 +1,31 @@
+{
+  "_comment": "Spec 3 cell biology example — Fur, CDI, and motility enabled by default",
+  "total_time": 3600,
+  "bio_dt": 60,
+  "domain_x": 50e-6,
+  "domain_y": 50e-6,
+  "domain_z": 25e-6,
+  "grid_dx": 5e-6,
+  "hdf5_every": 600,
+  "motility.chemotaxis_enabled": false,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 100,
+      "mu_max": 5.5e-4,
+      "plasmids": ["ColE1", "ColB"],
+      "conjugative": true,
+      "cdi_type": 1,
+      "cdi_immunity": 1
+    },
+    {
+      "type": 2,
+      "count": 50,
+      "mu_max": 5.0e-4,
+      "plasmids": [],
+      "conjugative": false,
+      "cdi_type": 0,
+      "cdi_immunity": 0
+    }
+  ]
+}
