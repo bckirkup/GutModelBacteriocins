@@ -289,6 +289,48 @@ Always assert mechanism outcomes when testing biology (e.g. `bi_loci.size() > 0`
 
 For config keys and parser fixtures, extend `test_config_diversity.cpp` so distinct settings produce distinct simulation fingerprints — this catches silent overrides to `default_config()`.
 
+## Batch runs
+
+Resumable parameter scans use the Python batch runner (`gut_ibm_tools.batch_runner`). Each job gets its own directory under `{output_dir}/jobs/{job_id}/` with `input.json`, `output.h5`, and `run.log`. Progress is tracked in `{output_dir}/batch_manifest.json` so `Ctrl+C` does not lose completed outputs.
+
+```bash
+cd python && pip install -e ".[dev]"
+python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json --dry-run
+python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json
+python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json --resume
+python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json --status
+```
+
+**Cartesian sweep** (`sweep` keys are multiplied):
+
+```json
+{
+  "output_dir": "batch_results/eari_kd_seed",
+  "base_config": "examples/eari_vadi_validation/input.json",
+  "binary": "build/gut_ibm",
+  "sweep": {
+    "seed": [4092, 4093, 4094],
+    "kd_colicinE_btuB": [2e-10, 8e-10]
+  }
+}
+```
+
+**Explicit run list**:
+
+```json
+{
+  "output_dir": "batch_results/custom",
+  "base_config": "examples/diversity_paradox/input.json",
+  "binary": "build/gut_ibm",
+  "runs": [
+    { "id": "baseline", "overrides": {} },
+    { "id": "short", "overrides": { "total_time": 3600 } }
+  ]
+}
+```
+
+Overrides support dot paths for nested fields (e.g. `"initial_strains.0.count": 200`). Optional `validate` block runs `validation_regression` after each successful simulation. See `examples/batch_scan/batch.json` for a starter manifest.
+
 ## Spec Documents
 
 - `EARI.md` — Eco-Advective Receptor Interference (advective double-bind)

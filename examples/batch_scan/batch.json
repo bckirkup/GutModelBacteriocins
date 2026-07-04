@@ -1,0 +1,16 @@
+{
+  "_comment": [
+    "Short parameter scan starter based on the CI validation scenario.",
+    "Run from repo root after building: python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json"
+  ],
+  "output_dir": "batch_results/batch_scan",
+  "base_config": "examples/eari_vadi_validation/input.json",
+  "binary": "build/gut_ibm",
+  "mpi_ranks": 1,
+  "mpirun_args": ["--allow-run-as-root"],
+  "on_fail": "continue",
+  "sweep": {
+    "seed": [4092, 4093],
+    "total_time": [300, 600]
+  }
+}
