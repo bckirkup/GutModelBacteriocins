@@ -291,7 +291,7 @@ For config keys and parser fixtures, extend `test_config_diversity.cpp` so disti
 
 ## Batch runs
 
-Resumable parameter scans use the Python batch runner (`gut_ibm_tools.batch_runner`). Each job gets its own directory under `{output_dir}/jobs/{job_id}/` with `input.json`, `output.h5`, and `run.log`. Progress is tracked in `{output_dir}/batch_manifest.json` so `Ctrl+C` does not lose completed outputs.
+Resumable parameter scans: see [docs/BATCH_RUNNER.md](../../docs/BATCH_RUNNER.md). Quick commands:
 
 ```bash
 cd python && pip install -e ".[dev]"
@@ -329,7 +329,7 @@ python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json --status
 }
 ```
 
-Overrides support dot paths for nested fields (e.g. `"initial_strains.0.count": 200`). Optional `validate` block runs `validation_regression` after each successful simulation. See `examples/batch_scan/batch.json` for a starter manifest.
+Overrides support dot paths for nested fields (e.g. `"initial_strains.0.count": 200`). Optional `validate` block runs `validation_regression` after each successful simulation. See `examples/batch_scan/batch.json` for a starter manifest; `examples/batch_scan/batch_ci.json` is the single-job smoke used in CI (`scripts/smoke_batch_runner.sh`).
 
 ## Spec Documents
 

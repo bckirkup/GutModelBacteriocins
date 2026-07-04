@@ -80,7 +80,7 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | `src/io/hdf5_writer.cpp` | Parallel HDF5 output + genome checkpoint groups |
 | `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
-| `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/` |
+| `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `batch_scan/`, `scaling_benchmark/` |
 | `tests/` | 41 CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 | `.agents/skills/sonarqube-gutibm/SKILL.md` | SonarQube remediation workflow |
@@ -140,11 +140,11 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | Job | What it exercises |
 |-----|-------------------|
 | `unit-tests` | Fast CTest unit shard |
-| `integration-tests` | Smoke, config diversity, HDF5, slow/benchmark tests |
+| `integration-tests` | Smoke, config diversity, HDF5, slow/benchmark tests, batch runner smoke |
 | `openmp-parity` | Serial vs OpenMP build fingerprints |
-| `cuda-compile` | GPU build + parity script |
+| `cuda-compile` | CUDA compile + GPU test targets (single arch, no duplicate parity rebuild) |
 | `eari-vadi-validation` | Short EARI/VADI + FISH golden regression (#56, #25) |
-| `python-lint` | JSON syntax, ruff, pytest (fast) |
+| `python-lint` | JSON syntax, ruff, pytest (fast), batch runner dry-run |
 
 ### Gaps (add tests when touching these areas)
 
@@ -212,6 +212,8 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `VADI.md` — Viscous Advective-Diffusion Interference framework
 - `docs/MECHANISMS.md` — per-Fix biological mechanisms
 - `docs/API.md` — class reference
+- `docs/CONFIG_FORMAT.md` — strict JSON input format
+- `docs/BATCH_RUNNER.md` — resumable parameter-scan CLI
 - `docs/PARAMETERS.md` — configurable parameters
 - `docs/SCALING.md` — agent-count benchmarks and profiling
 

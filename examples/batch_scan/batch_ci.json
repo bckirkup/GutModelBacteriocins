@@ -1,0 +1,18 @@
+{
+  "_comment": "Single-job batch smoke for CI (60 s sim, no HDF5).",
+  "output_dir": "batch_results/batch_ci",
+  "base_config": "examples/eari_vadi_validation/input.json",
+  "binary": "build/gut_ibm",
+  "mpi_ranks": 1,
+  "mpirun_args": ["--allow-run-as-root"],
+  "on_fail": "abort",
+  "runs": [
+    {
+      "id": "ci_smoke",
+      "overrides": {
+        "total_time": 60,
+        "hdf5_every": 0
+      }
+    }
+  ]
+}
