@@ -131,6 +131,7 @@ void launch_metabolism_kernel(
     double metE_acetate_km, double eut_max_penalty, double eut_km,
     double yield_carbon, double yield_iron, double yield_b12,
     cudaStream_t stream) {
+  if (num_agents <= 0) return;
   int block = 256;
   int grid = (num_agents + block - 1) / block;
   metabolism_kernel<<<grid, block, 0, stream>>>(

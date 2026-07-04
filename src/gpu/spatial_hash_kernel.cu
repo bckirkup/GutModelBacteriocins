@@ -31,6 +31,7 @@ void launch_spatial_hash_build_kernel(
     int* cell_keys, int* sorted_indices, int num_agents,
     double lo0, double lo1, double lo2, double cell_size,
     int nx_cells, int ny_cells, int nz_cells, cudaStream_t stream) {
+  if (num_agents <= 0) return;
   int block = 256;
   int grid = (num_agents + block - 1) / block;
   compute_cell_keys_kernel<<<grid, block, 0, stream>>>(
