@@ -103,6 +103,7 @@ void launch_nutrient_depletion_kernel(
     const int* state, double* reac_iron, double* reac_b12, double* reac_carbon,
     int num_agents, bool has_iron, bool has_b12, bool has_carbon,
     cudaStream_t stream) {
+  if (num_agents <= 0) return;
   int block = 256;
   int grid = (num_agents + block - 1) / block;
   nutrient_depletion_kernel<<<grid, block, 0, stream>>>(
@@ -115,6 +116,7 @@ void launch_grid_coupling_kernel(
     const double* x, const double* y, const double* z, int* grid_cell,
     const int* state, double lo0, double lo1, double lo2, double dx,
     int nx, int ny, int nz, int num_agents, cudaStream_t stream) {
+  if (num_agents <= 0) return;
   int block = 256;
   int grid = (num_agents + block - 1) / block;
   grid_coupling_kernel<<<grid, block, 0, stream>>>(
