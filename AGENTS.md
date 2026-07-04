@@ -140,11 +140,11 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | Job | What it exercises |
 |-----|-------------------|
 | `unit-tests` | Fast CTest unit shard |
-| `integration-tests` | Smoke, config diversity, HDF5, slow/benchmark tests |
+| `integration-tests` | Smoke, config diversity, HDF5, slow/benchmark tests, batch runner smoke |
 | `openmp-parity` | Serial vs OpenMP build fingerprints |
-| `cuda-compile` | GPU build + parity script |
+| `cuda-compile` | CUDA compile + GPU test targets (single arch, no duplicate parity rebuild) |
 | `eari-vadi-validation` | Short EARI/VADI + FISH golden regression (#56, #25) |
-| `python-lint` | JSON syntax, ruff, pytest (fast) |
+| `python-lint` | JSON syntax, ruff, pytest (fast), batch runner dry-run |
 
 ### Gaps (add tests when touching these areas)
 

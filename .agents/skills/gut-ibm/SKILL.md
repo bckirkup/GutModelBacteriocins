@@ -329,7 +329,7 @@ python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json --status
 }
 ```
 
-Overrides support dot paths for nested fields (e.g. `"initial_strains.0.count": 200`). Optional `validate` block runs `validation_regression` after each successful simulation. See `examples/batch_scan/batch.json` for a starter manifest.
+Overrides support dot paths for nested fields (e.g. `"initial_strains.0.count": 200`). Optional `validate` block runs `validation_regression` after each successful simulation. See `examples/batch_scan/batch.json` for a starter manifest; `examples/batch_scan/batch_ci.json` is the single-job smoke used in CI (`scripts/smoke_batch_runner.sh`).
 
 ## Spec Documents
 

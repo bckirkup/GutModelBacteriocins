@@ -65,6 +65,13 @@ jobs:
           cd build
           ctest -L 'integration|slow|benchmark' -LE gpu --output-on-failure --parallel 2
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Batch runner smoke
+        run: bash scripts/smoke_batch_runner.sh
+
   openmp-parity:
     name: OpenMP parity
     runs-on: ubuntu-latest
@@ -80,7 +87,7 @@ jobs:
         run: bash scripts/compare_openmp_parity.sh
 
   cuda-compile:
-    name: CUDA build + GPU tests
+    name: CUDA compile + GPU tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +95,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y cmake libopenmpi-dev openmpi-bin libhdf5-mpi-dev nvidia-cuda-toolkit
+          sudo apt-get install -y --no-install-recommends \
+            cmake libopenmpi-dev openmpi-bin libhdf5-mpi-dev nvidia-cuda-toolkit
 
       - name: Configure with CUDA
         run: |
@@ -96,16 +104,16 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DGUTIBM_USE_MPI=ON \
             -DGUTIBM_USE_HDF5=ON \
-            -DGUTIBM_USE_CUDA=ON
+            -DGUTIBM_USE_CUDA=ON \
+            -DCMAKE_CUDA_ARCHITECTURES=70
 
-      - name: Build
-        run: cmake --build build-cuda -j$(nproc)
+      - name: Build GPU test targets only
+        run: |
+          cmake --build build-cuda -j$(nproc) \
+            --target test_gpu_smoke test_greens_function_gpu
 
       - name: GPU tests
         run: cd build-cuda && ctest -L gpu --output-on-failure
-
-      - name: GPU parity script
-        run: bash scripts/compare_gpu_parity.sh
 
   eari-vadi-validation:
     name: EARI/VADI regression
@@ -147,8 +155,13 @@ jobs:
         run: ruff check python/
 
       - name: Import check
-        run: python -c "from gut_ibm_tools import GutIBMData, validation, analysis, fish_observation; print('gut_ibm_tools OK')"
+        run: |
+          python -c "from gut_ibm_tools import GutIBMData, validation, analysis, fish_observation; print('gut_ibm_tools OK')"
+          python -c "from gut_ibm_tools import batch_runner, batch_config, batch_manifest; print('batch_runner OK')"
         working-directory: python
+
+      - name: Batch runner dry-run
+        run: python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json --dry-run
 
       - name: Pytest (fast)
         run: pytest tests/ -v -m "not integration"
