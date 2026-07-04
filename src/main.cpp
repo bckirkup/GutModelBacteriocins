@@ -12,12 +12,39 @@
 #include <iostream>
 #include <string>
 
+#ifdef GUTIBM_CUDA
+#include <cuda_runtime.h>
+#endif
+
 #ifdef GUTIBM_MPI
 #include <mpi.h>
 #include "error.h"
 #endif
 
+namespace {
+
+// OpenMPI on some stacks (notably WSL2) probes CUDA after MPI_Init and can leave
+// the runtime without a visible device unless the driver is touched first.
+// gpu_smoke avoids this because it never calls MPI_Init.
+void cuda_runtime_probe_before_mpi() {
+#ifdef GUTIBM_CUDA
+  int count = 0;
+  if (cudaError_t err = cudaGetDeviceCount(&count); err != cudaSuccess) {
+    std::cerr << "Warning: CUDA probe before MPI_Init failed: "
+              << cudaGetErrorString(err) << "\n";
+    return;
+  }
+  if (count > 0) {
+    (void)cudaFree(nullptr);
+  }
+#endif
+}
+
+}  // namespace
+
 int main(int argc, char** argv) {
+  cuda_runtime_probe_before_mpi();
+
 #ifdef GUTIBM_MPI
   MPI_Init(&argc, &argv);
 #endif
