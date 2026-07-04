@@ -83,12 +83,15 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
       }
     }
 
-    // z=nz-1 (luminal surface): open boundary (zero-gradient Neumann)
-    for (Int iy = 0; iy < ny; ++iy) {
-      for (Int ix = 0; ix < nx; ++ix) {
-        Int top = domain.cell_index(ix, iy, nz - 1);
-        Int below = domain.cell_index(ix, iy, nz - 2);
-        conc_[s][top] = conc_[s][below];
+    // z=nz-1 (luminal surface): open boundary (zero-gradient Neumann).
+    // Skip when nz < 2: the epithelial Dirichlet layer is the only z-slab.
+    if (nz >= 2) {
+      for (Int iy = 0; iy < ny; ++iy) {
+        for (Int ix = 0; ix < nx; ++ix) {
+          Int top = domain.cell_index(ix, iy, nz - 1);
+          Int below = domain.cell_index(ix, iy, nz - 2);
+          conc_[s][top] = conc_[s][below];
+        }
       }
     }
   }

@@ -39,7 +39,7 @@ __global__ void apply_boundaries_kernel(double* conc, int nx, int ny, int nz,
   if (face == 0) {
     int cidx = iz_cell_index(ix, iy, 0, nx, ny);
     conc[base + cidx] = boundary_conc[spec];
-  } else {
+  } else if (nz >= 2) {
     int top = iz_cell_index(ix, iy, nz - 1, nx, ny);
     int below = iz_cell_index(ix, iy, nz - 2, nx, ny);
     conc[base + top] = conc[base + below];

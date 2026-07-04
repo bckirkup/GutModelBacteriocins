@@ -644,6 +644,8 @@ void Simulation::step(Real dt) {
 
   // Clear ghosts before physics to avoid moving them
   clear_ghost_agents();
+  rebuild_spatial_hash();
+  update_grid_coupling();
 
   // 2. Chemistry module (QSSA, instantaneous)
   module_chemistry(dt);
