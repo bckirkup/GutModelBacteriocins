@@ -96,6 +96,7 @@ endif()
 
 if(GUTIBM_USE_CUDA)
   target_link_libraries(gut_ibm PRIVATE CUDA::cudart)
+  target_compile_definitions(gut_ibm PRIVATE GUTIBM_CUDA)
   set_target_properties(gut_ibm PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 endif()
 

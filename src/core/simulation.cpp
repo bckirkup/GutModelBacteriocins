@@ -11,6 +11,7 @@
 #include "dispatch.h"
 #include "qssa_gpu.h"
 #ifdef GUTIBM_CUDA
+#include "device.h"
 #include "gpu_kernels.h"
 #include "device_memory.h"
 #include <cuda_runtime.h>
@@ -208,6 +209,20 @@ MigrateSide classify_migration(const Agent& agent, Int my_rank, Int axis,
   return (agent.x[axis] < domain.local_lo_x()) ? Lo : Hi;
 }
 
+std::string gpu_fallback_reason(const GpuConfig& gpu) {
+  if (!gpu.enabled) return {};
+#ifndef GUTIBM_CUDA
+  return "binary built without CUDA (cmake .. -DGUTIBM_USE_CUDA=ON && make gut_ibm)";
+#else
+  if (DeviceContext::device_count() <= 0) {
+    const std::string err = DeviceContext::last_error();
+    return err.empty() ? "no CUDA devices visible (check nvidia-smi)" : err;
+  }
+  const std::string err = DeviceContext::last_error();
+  return err.empty() ? "cudaSetDevice failed" : err;
+#endif
+}
+
 }  // namespace
 
 void Simulation::init(const SimulationConfig& cfg) {
@@ -292,8 +307,12 @@ void Simulation::init(const SimulationConfig& cfg) {
               << (gpu_active_
                     ? std::format(" (device {})", gpu_device().device_id())
                     : "")
-              << "\n"
-              << std::flush;
+              << "\n";
+    if (!gpu_active_ && cfg.gpu.enabled) {
+      std::cerr << "  GPU requested (gpu_enabled) but inactive: "
+                << gpu_fallback_reason(cfg.gpu) << "\n";
+    }
+    std::cout << std::flush;
   }
 }
 
