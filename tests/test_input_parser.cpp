@@ -325,6 +325,14 @@ void test_unknown_key_warning_legacy() {
   std::cout << "  test_unknown_key_warning_legacy: PASSED\n";
 }
 
+void test_gpu_enabled_fixture() {
+  std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_gpu.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.gpu.enabled == true);
+  assert(cfg.gpu.device_id == 0);
+  std::cout << "  test_gpu_enabled_fixture: PASSED\n";
+}
+
 void test_strict_config_aborts_on_bad_numeric() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.json";
 
@@ -367,6 +375,7 @@ int main() {
   test_malformed_numeric_warnings_legacy();
   test_unknown_key_warning_json();
   test_unknown_key_warning_legacy();
+  test_gpu_enabled_fixture();
   test_strict_config_aborts_on_bad_numeric();
   std::cout << "All input parser example tests passed.\n";
   return 0;

@@ -1,0 +1,15 @@
+{
+  "total_time": 60,
+  "bio_dt": 60,
+  "hdf5_every": 0,
+  "gpu_enabled": true,
+  "gpu_device_id": 0,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 5,
+      "mu_max": 5e-4,
+      "plasmids": ["ColE1"]
+    }
+  ]
+}

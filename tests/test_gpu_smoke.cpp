@@ -5,6 +5,7 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "dispatch.h"
+#include "device.h"
 #include <cmath>
 #include <iostream>
 
@@ -60,8 +61,12 @@ int main() {
   Simulation sim_gpu;
   sim_gpu.init(cfg);
   if (!sim_gpu.gpu_active()) {
-    std::cout << "  test_gpu_smoke: SKIPPED (GPU init failed)\n";
-    return 0;
+    std::cerr << "  test_gpu_smoke: FAILED (GPU init failed";
+#ifdef GUTIBM_CUDA
+    std::cerr << ": " << DeviceContext::last_error();
+#endif
+    std::cerr << ")\n";
+    return 1;
   }
   sim_gpu.run();
   Real fp_gpu = fingerprint(sim_gpu);

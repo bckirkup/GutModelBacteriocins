@@ -15,6 +15,7 @@
 #include <string_view>
 #include <cstdlib>
 #include <array>
+#include <cctype>
 
 namespace gutibm {
 
@@ -143,7 +144,14 @@ Int find_chemical_spec(std::vector<ChemicalSpec>& chemicals, std::string_view na
 }
 
 bool parse_bool_config(std::string_view val) {
-  return val == "true" || val == "1";
+  if (val == "1") return true;
+  if (val == "0") return false;
+  std::string lower;
+  lower.reserve(val.size());
+  for (char c : val) {
+    lower.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
+  }
+  return lower == "true" || lower == "yes" || lower == "on";
 }
 
 }  // namespace
@@ -364,7 +372,7 @@ bool apply_mechanics_key(SimulationConfig& cfg, const std::string& key, const st
 }
 
 bool apply_misc_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
-  if (key == "gpu_enabled")          { cfg.gpu.enabled = (val == "true" || val == "1"); return true; }
+  if (key == "gpu_enabled")          { cfg.gpu.enabled = parse_bool_config(val); return true; }
   if (key == "gpu_device_id")        { cfg.gpu.device_id = parse_config_int(key, val); return true; }
   if (key == "profile_steps")        { cfg.profile_steps = (val == "true" || val == "1"); return true; }
   return false;
