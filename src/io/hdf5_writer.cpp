@@ -190,7 +190,7 @@ void write_dataset_1d(hid_t fid, const std::string& path, hid_t h5_type,
 void HDF5Writer::init(const HDF5Config& cfg) {
   cfg_ = cfg;
 
-  if (!cfg_.enabled) {
+  if (!cfg_.enabled || cfg_.dump_every <= 0) {
     enabled_ = false;
     return;
   }
@@ -228,6 +228,7 @@ void HDF5Writer::init(const HDF5Config& cfg) {
 void HDF5Writer::write_step(const Simulation& sim, Int step, Real time) const {
 #ifdef GUTIBM_HDF5
   if (!enabled_) return;
+  if (cfg_.dump_every <= 0) return;
   if (step % cfg_.dump_every != 0) return;
 
   auto fid = static_cast<hid_t>(file_id_);
