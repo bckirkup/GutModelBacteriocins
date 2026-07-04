@@ -291,7 +291,7 @@ For config keys and parser fixtures, extend `test_config_diversity.cpp` so disti
 
 ## Batch runs
 
-Resumable parameter scans use the Python batch runner (`gut_ibm_tools.batch_runner`). Each job gets its own directory under `{output_dir}/jobs/{job_id}/` with `input.json`, `output.h5`, and `run.log`. Progress is tracked in `{output_dir}/batch_manifest.json` so `Ctrl+C` does not lose completed outputs.
+Resumable parameter scans: see [docs/BATCH_RUNNER.md](../../docs/BATCH_RUNNER.md). Quick commands:
 
 ```bash
 cd python && pip install -e ".[dev]"

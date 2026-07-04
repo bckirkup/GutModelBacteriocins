@@ -448,3 +448,27 @@ Compare simulation output to empirical targets using exclusion-radius clustering
 
 ### `visualization`
 Plot agent distributions, chemical fields, lineage time-series.
+
+### `validation_regression`
+Golden-file and threshold regression for CI (`python -m gut_ibm_tools.validation_regression`).
+
+| Function | Description |
+|----------|-------------|
+| `evaluate_metrics(h5_path)` | Spatial + genomic metric dict |
+| `evaluate_fish_metrics(h5_path)` | FISH observability metrics (issue #25) |
+| `run_validation(h5_path, golden_path=..., ...)` | Full check → `(metrics, fish_metrics, failures)` |
+| `check_thresholds(metrics)` | EARI/VADI biological invariants |
+| `check_fish_targets(metrics)` | FISH detection invariants |
+
+### `fish_observation`
+Simulated HiPR-FISH / DNA-FISH observation models for plasmid and immunity transcripts.
+
+### `batch_runner` / `batch_config` / `batch_manifest`
+Resumable parameter-scan CLI. See [BATCH_RUNNER.md](BATCH_RUNNER.md).
+
+| Entry point | Description |
+|-------------|-------------|
+| `python -m gut_ibm_tools.batch_runner manifest.json` | Run or resume batch |
+| `gut-ibm-batch` | Console script (after `pip install`) |
+| `batch_config.parse_batch_config(path)` | Expand sweep / runs into job list |
+| `batch_manifest.load_manifest(output_dir)` | Read `batch_manifest.json` |

@@ -80,7 +80,7 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | `src/io/hdf5_writer.cpp` | Parallel HDF5 output + genome checkpoint groups |
 | `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
-| `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/` |
+| `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `batch_scan/`, `scaling_benchmark/` |
 | `tests/` | 41 CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 | `.agents/skills/sonarqube-gutibm/SKILL.md` | SonarQube remediation workflow |
@@ -212,6 +212,8 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `VADI.md` — Viscous Advective-Diffusion Interference framework
 - `docs/MECHANISMS.md` — per-Fix biological mechanisms
 - `docs/API.md` — class reference
+- `docs/CONFIG_FORMAT.md` — strict JSON input format
+- `docs/BATCH_RUNNER.md` — resumable parameter-scan CLI
 - `docs/PARAMETERS.md` — configurable parameters
 - `docs/SCALING.md` — agent-count benchmarks and profiling
 

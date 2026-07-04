@@ -25,15 +25,18 @@ The `run()` loop uses `while (time < total_time)` with the adaptive dt, clamping
 
 ## Fix Architecture (NUFEB-inspired)
 
-Each biological rule is encapsulated as a **Fix** — a modular computation unit called once per biological timestep. Fixes are executed in order:
+Each biological rule is encapsulated as a **Fix** — a modular computation unit called once per biological timestep. Default registration order:
 
-1. `fix_metabolism` — Monod growth, division, death
-2. `fix_bacteriocin` — SOS lysis, microcin secretion, toxin release
+1. `fix_metabolism` — Monod growth, Fur iron regulation, division, death
+2. `fix_bacteriocin` — SOS/phage/microcin release (Spec 2)
 3. `fix_receptor` — Competitive binding at TBDTs, toxin-mediated killing
-4. `fix_conjugation` — Horizontal gene transfer via F-pili
-5. `fix_mutation` — Stochastic BI locus evolution, receptor downregulation
+4. `fix_motility` — Run-and-reverse swimming, chemotaxis (Spec 3)
+5. `fix_conjugation` — Horizontal gene transfer via F-pili
+6. `fix_cdi` — Contact-dependent inhibition (Spec 3)
+7. `fix_mutation` — BI locus evolution, receptor downregulation, super-killers
+8. `fix_mechanics` — Hertzian repulsion, optional EPS adhesion
 
-The QSSA solver and advection field operate between fix passes (chemistry and physics modules respectively).
+The QSSA solver and advection field operate between fix passes (chemistry and physics modules respectively). Motility displacement is applied in `module_physics()` after advection.
 
 ---
 

@@ -27,8 +27,10 @@ as a "super-killer" array) compete against naive immigrant strains.
 # Full-scale (requires HPC)
 mpirun -np 16 gut_ibm input.json
 
-# Quick test (reduce domain and time)
+# Quick test (reduce domain and time in JSON, or use eari_vadi_validation)
 gut_ibm input.json
+
+# Large runs (10⁶+ agents): enable use_fmm in input.json — see docs/SCALING.md
 ```
 
 ## Analysis

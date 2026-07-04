@@ -2,6 +2,8 @@
 
 All configurable parameters for the GutIBM simulation, with defaults and biological justification.
 
+For **batch runner** manifests (multi-run sweeps), see [BATCH_RUNNER.md](BATCH_RUNNER.md).
+
 ---
 
 ## Time Control
