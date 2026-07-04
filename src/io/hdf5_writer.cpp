@@ -21,6 +21,7 @@ extern "C" {
 #include <string>
 #include <format>
 #include <numeric>
+#include <iostream>
 #include "error.h"
 
 namespace gutibm {
