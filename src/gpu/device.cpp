@@ -18,9 +18,11 @@ std::string DeviceContext::last_error() { return last_error_storage(); }
 int DeviceContext::device_count() {
 #ifdef GUTIBM_CUDA
   int count = 0;
-  if (cudaGetDeviceCount(&count) != cudaSuccess) {
+  if (cudaError_t err = cudaGetDeviceCount(&count); err != cudaSuccess) {
+    last_error_storage() = cudaGetErrorString(err);
     return 0;
   }
+  last_error_storage().clear();
   return count;
 #else
   return 0;
@@ -31,7 +33,9 @@ bool DeviceContext::init(int device_id) {
 #ifdef GUTIBM_CUDA
   int count = device_count();
   if (count <= 0) {
-    last_error_storage() = "No CUDA devices found";
+    if (last_error_storage().empty()) {
+      last_error_storage() = "No CUDA devices found";
+    }
     active_ = false;
     return false;
   }
