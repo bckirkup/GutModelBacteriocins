@@ -1,0 +1,12 @@
+{
+  "_comment": "Test fixture: 2 seeds x 2 KD values = 4 jobs",
+  "output_dir": "batch_out",
+  "base_config": "base_config.json",
+  "binary": "gut_ibm",
+  "mpi_ranks": 1,
+  "on_fail": "continue",
+  "sweep": {
+    "seed": [100, 200],
+    "kd_colicinE_btuB": [1e-10, 5e-10]
+  }
+}

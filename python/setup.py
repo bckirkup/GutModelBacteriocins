@@ -15,4 +15,9 @@ setup(
         "viz": ["matplotlib>=3.5"],
         "dev": ["pytest>=7.0", "ruff>=0.1"],
     },
+    entry_points={
+        "console_scripts": [
+            "gut-ibm-batch=gut_ibm_tools.batch_runner:main",
+        ],
+    },
 )
