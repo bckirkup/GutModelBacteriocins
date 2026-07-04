@@ -39,6 +39,11 @@ static Real measure_mu(Real eut_initial_conc) {
   cfg.qssa.toxin_cutoff    = 10e-6;
   cfg.qssa.nutrient_cutoff = 10e-6;
 
+  // Isolate metabolism/eut penalty from VADI washout trap removal (issue #40).
+  // Heavy BtuB downregulation can make mu_realized < gamma_flow; the sole test
+  // agent would be removed before measure_mu reads mu_realized (GCC 15+ aborts).
+  cfg.advection.distal_transit_time = 1e12;
+
   // Override ethanolamine concentration in the chemical spec
   for (auto& cs : cfg.chemicals) {
     if (cs.name == "ethanolamine") {
@@ -63,10 +68,13 @@ static Real measure_mu(Real eut_initial_conc) {
   // Downregulate BtuB so the eut penalty path fires (expr < 0.5)
   Agent& a = sim.agents()[0];
   a.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.1;
+  a.flags.in_crypt = true;
 
   // Run one biological timestep
   sim.step(cfg.time.bio_dt);
 
+  assert(sim.agents().size() == 1);
+  assert(sim.agents()[0].state != PhenoState::DEAD);
   return sim.agents()[0].mu_realized;
 }
 
