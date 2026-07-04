@@ -306,7 +306,9 @@ void Simulation::init(const SimulationConfig& cfg) {
               << "  GPU: " << (gpu_active_ ? "ON" : "OFF")
               << (gpu_active_
                     ? std::format(" (device {})", gpu_device().device_id())
-                    : "")
+                    : std::format(" (gpu_enabled={}, device_id={})",
+                                  cfg.gpu.enabled ? "true" : "false",
+                                  cfg.gpu.device_id))
               << "\n";
     if (!gpu_active_ && cfg.gpu.enabled) {
       std::cerr << "  GPU requested (gpu_enabled) but inactive: "
