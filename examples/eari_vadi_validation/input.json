@@ -52,7 +52,8 @@
     "schedule": {
       "summary": 5,
       "agents": 5,
-      "grid": 0,
+      "grid": 5,
+      "grid_species": ["all"],
       "lineage": 5,
       "genome": 5
     }
