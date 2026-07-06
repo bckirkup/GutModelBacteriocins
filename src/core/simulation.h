@@ -35,6 +35,7 @@
 #include "qssa_solver.h"
 #include "lineage_tracker.h"
 #include "hdf5_writer.h"
+#include "step_events.h"
 #include "hdf5_reader.h"
 #include "input_parser.h"
 #include "fix.h"
@@ -100,6 +101,10 @@ class Simulation {
   Int                    step_count() const { return clock_.step_count; }
 
   const SimulationConfig& config() const { return cfg_; }
+
+  const StepEvents& step_events() const { return step_events_; }
+  StepEvents&       step_events()       { return step_events_; }
+  void reset_step_events_after_summary() { step_events_.reset(); }
 
   // Spec 1: local oxygen and ROS induction hook (Spec 2)
   Real local_O2(const Agent& agent) const;
@@ -203,6 +208,7 @@ class Simulation {
   SpatialHashGpu spatial_hash_gpu_;
 
   std::vector<ToxinBurstSource> toxin_bursts_;
+  StepEvents step_events_;
 };
 
 }  // namespace gutibm

@@ -4,6 +4,7 @@
 
 #include "fix_cdi.h"
 #include "simulation.h"
+#include "step_events.h"
 #include <algorithm>
 #include <cmath>
 
@@ -46,10 +47,12 @@ bool victim_eligible_for_cdi(const Agent& attacker, const Agent& victim,
   return true;
 }
 
-void try_cdi_kill(Agent& victim, Real kill_prob, Real sim_time, RNG& rng) {
+void try_cdi_kill(Agent& victim, Real kill_prob, Real sim_time, RNG& rng,
+                  StepEvents& events) {
   if (!rng.bernoulli(kill_prob)) return;
   victim.state = PhenoState::DEAD;
   victim.timers.death_time = sim_time;
+  events.cdi_kills++;
 }
 
 void process_cdi_neighbors(const Agent& attacker, Int attacker_idx,
@@ -63,7 +66,7 @@ void process_cdi_neighbors(const Agent& attacker, Int attacker_idx,
                                  sim_time, cfg)) {
       continue;
     }
-    try_cdi_kill(victim, kill_prob, sim_time, sim.rng());
+    try_cdi_kill(victim, kill_prob, sim_time, sim.rng(), sim.step_events());
   }
 }
 

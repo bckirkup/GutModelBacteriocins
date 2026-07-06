@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "stop_signal.h"
 #include "species_names.h"
 #include "agent_transfer.h"
 #include "fix_registry.h"
@@ -249,7 +250,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   lineage_.init(cfg.time.output_interval);
 
   // HDF5 output
-  hdf5_.init(cfg.hdf5);
+  hdf5_.init(cfg.hdf5, domain_);
 
   // GPU acceleration
   gpu_set_config(cfg.gpu);
@@ -363,7 +364,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   vbf_.init(cfg.vbf, domain_);
   qssa_.init(cfg.qssa, domain_, advection_);
   lineage_.init(cfg.time.output_interval);
-  hdf5_.init(cfg.hdf5);
+  hdf5_.init(cfg.hdf5, domain_);
   fixes_ = FixRegistry::create_all(*this, cfg);
   for (const auto& fix : fixes_) {
     fix->init();
@@ -554,15 +555,19 @@ void Simulation::print_step_profile() const {
 
 void Simulation::run() {
   int rank = domain_.rank();
+  Real last_dt = cfg_.time.bio_dt;
 
   // Initial output
-  hdf5_.write_step(*this, 0, 0.0);
+  hdf5_.write_step(*this, 0, 0.0, last_dt);
   if (rank == 0) {
     take_lineage_snapshot();
   }
 
   while (clock_.time < cfg_.time.total_time) {
+    if (gutibm_stop_requested()) break;
+
     Real dt = compute_adaptive_dt();
+    last_dt = dt;
 
     // Clamp so we don't overshoot total_time
     if (clock_.time + dt > cfg_.time.total_time) dt = cfg_.time.total_time - clock_.time;
@@ -571,7 +576,7 @@ void Simulation::run() {
 
     // Periodic output
     if (clock_.time >= clock_.next_output) {
-      hdf5_.write_step(*this, clock_.step_count, clock_.time);
+      hdf5_.write_step(*this, clock_.step_count, clock_.time, last_dt);
       if (rank == 0) {
         std::cout << "Step " << clock_.step_count
                   << "  t=" << clock_.time << "s"
@@ -592,7 +597,7 @@ void Simulation::run() {
   }
 
   // Final output
-  hdf5_.write_step(*this, clock_.step_count, clock_.time);
+  hdf5_.write_step(*this, clock_.step_count, clock_.time, last_dt);
   hdf5_.finalize();
 
   if (rank == 0) {
@@ -714,21 +719,11 @@ void Simulation::module_biology(Real dt) const {
 void Simulation::module_chemistry(Real dt) {
   prune_toxin_bursts(clock_.time);
 
-  // QSSA: compute steady-state toxin field via Green's functions
-  if (Int i_tox = chem_.find(species::BACTERIOCIN); i_tox >= 0) {
-    qssa_.solve_bacteriocin_field(agents_, toxin_bursts_, clock_.time,
-                                    cfg_.chem_env.protease, advection_, chem_, i_tox);
-    if (gpu_active_) {
-      chem_gpu_.sync_to_device(chem_);
-    }
-  }
-
-  if (Int i_nuc = chem_.find(species::NUCLEASE_TOXIN); i_nuc >= 0) {
-    qssa_.solve_nuclease_toxin_field(agents_, toxin_bursts_, clock_.time,
-                                      cfg_.chem_env.protease, advection_, chem_, i_nuc);
-    if (gpu_active_) {
-      chem_gpu_.sync_to_device(chem_);
-    }
+  // QSSA: compute steady-state per-receptor toxin fields via Green's functions
+  qssa_.solve_all_bacteriocin_fields(agents_, toxin_bursts_, clock_.time,
+                                      cfg_.chem_env.protease, advection_, chem_);
+  if (gpu_active_) {
+    chem_gpu_.sync_to_device(chem_);
   }
 
   // Nutrient depletion
@@ -862,6 +857,7 @@ void Simulation::check_washout() {
 
     if (a.x[2] >= z_max) {
       a.state = PhenoState::DEAD;
+      step_events_.boundary_deaths++;
       lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
       continue;
     }
@@ -870,6 +866,7 @@ void Simulation::check_washout() {
     Real gamma = advection_.washout_rate(a.x[2]);
     if (a.mu_realized < gamma) {
       a.state = PhenoState::DEAD;
+      step_events_.washout_deaths++;
       lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
     }
   }
@@ -1244,9 +1241,9 @@ Real Simulation::ros_induction_rate(const Agent& agent) const {
 }
 
 Real Simulation::local_nuclease_toxin(const Agent& agent) const {
-  Int i_nuc = chem_.find(species::NUCLEASE_TOXIN);
-  if (i_nuc < 0 || agent.grid_cell < 0) return 0.0;
-  return chem_.conc(i_nuc, agent.grid_cell);
+  Int i_btuB = chem_.find(species::BACTERIOCIN_BTUB);
+  if (i_btuB < 0 || agent.grid_cell < 0) return 0.0;
+  return chem_.conc(i_btuB, agent.grid_cell);
 }
 
 void Simulation::add_toxin_burst(const ToxinBurstSource& burst) {

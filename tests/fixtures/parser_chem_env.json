@@ -37,5 +37,13 @@
   ],
 
   "hdf5_file": "chem_env_parser_test.h5",
-  "hdf5_every": 50
+  "hdf5": {
+    "schedule": {
+      "summary": 50,
+      "agents": 50,
+      "grid": 0,
+      "lineage": 50,
+      "genome": 50
+    }
+  }
 }

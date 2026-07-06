@@ -113,7 +113,15 @@ Full parameter lists: [PARAMETERS.md](PARAMETERS.md).
   ],
 
   "hdf5_file": "output.h5",
-  "hdf5_every": 60
+  "hdf5": {
+    "schedule": {
+      "summary": 60,
+      "agents": 60,
+      "grid": 0,
+      "lineage": 100,
+      "genome": 100
+    }
+  }
 }
 ```
 

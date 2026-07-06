@@ -132,6 +132,7 @@ void FixMetabolism::perform_divisions() {
       a.flags.just_divided = true;
       daughter.flags.just_divided = true;
 
+      sim_.step_events().divisions++;
       new_agents.push_back(std::move(daughter));
     }
   }
@@ -268,10 +269,10 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   agent.mass   = agent.biomass;
   agent.timers.age   += dt;
 
-  // Nutrient consumption from grid
+  // Nutrient consumption and siderophore coupling from grid
   auto& chem = sim_.chemical_field();
   Int cell = agent.grid_cell;
-  if (cell < 0 || d_biomass <= 0.0) return;
+  if (cell < 0) return;
 
   Int i_carbon = chem.find(species::CARBON);
   Int i_iron   = chem.find(species::IRON);
@@ -279,6 +280,41 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   Int i_acetate = chem.find(species::ACETATE);
 
   Real cell_vol = sim_.domain().dx() * sim_.domain().dx() * sim_.domain().dx();
+
+  const auto& sid_cfg = sim_.config().chem_env.siderophore;
+  if (sid_cfg.enabled && cell_vol > 0.0) {
+    Int i_sid = chem.find(species::SIDEROPHORE);
+    if (i_sid >= 0) {
+      const Real s_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
+      Real fur_Km = 1.0e-6;
+      if (sim_.config().cell_bio.fur.enabled) {
+        fur_Km = sim_.config().cell_bio.fur.Km;
+      }
+      const Real fur_activity = 1.0 - s_iron / (fur_Km + s_iron);
+      const Real sid_rate = sid_cfg.secretion_rate * std::max(0.0, fur_activity)
+          * agent.biomass / cell_vol;
+      chem.reac(i_sid, cell) += sid_rate;
+
+      const Real s_sid = chem.conc(i_sid, cell);
+      const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
+      if (i_iron >= 0) {
+        chem.reac(i_iron, cell) -= chelation;
+      }
+      chem.reac(i_sid, cell) -= chelation;
+      if (i_iron >= 0) {
+        chem.reac(i_iron, cell) += sid_rate * sid_cfg.recapture_fraction;
+      }
+
+      const Real expr_fepA = agent.receptor_expr[to_underlying(ReceptorType::FepA)];
+      if (i_iron >= 0 && expr_fepA > 0.0) {
+        const Real reimport = expr_fepA * s_sid / (sid_cfg.Km_reimport + s_sid)
+            * agent.biomass / cell_vol;
+        chem.reac(i_iron, cell) += reimport;
+      }
+    }
+  }
+
+  if (d_biomass <= 0.0) return;
 
   if (i_carbon >= 0 && cell_vol > 0.0) {
     Real delta_c = d_biomass * cfg_.yield_carbon / cell_vol;
@@ -321,9 +357,10 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   }
 }
 
-void FixMetabolism::check_death(Agent& agent) const {
+void FixMetabolism::check_death(Agent& agent) {
   if (agent.mu_realized < cfg_.death_threshold && agent.timers.age > 3600.0) {
     agent.state = PhenoState::DEAD;
+    sim_.step_events().starvation_deaths++;
   }
 }
 

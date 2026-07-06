@@ -6,6 +6,7 @@
 #include "fix_receptor.h"
 #include "simulation.h"
 #include "input_parser.h"
+#include "species_names.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -98,7 +99,7 @@ void test_fur_increases_susceptibility() {
     low_iron.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.0;
     Int cell_low = low_iron.grid_cell;
     set_iron(sim_low, cell_low, 0.0);
-    Int i_tox = sim_low.chemical_field().find("bacteriocin");
+    Int i_tox = sim_low.chemical_field().find(species::BACTERIOCIN_FEPA);
     Int i_b12 = sim_low.chemical_field().find("b12");
     sim_low.chemical_field().conc(i_tox, cell_low) = 1.0e-4;
     sim_low.chemical_field().conc(i_b12, cell_low) = 0.0;

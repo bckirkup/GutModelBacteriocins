@@ -67,7 +67,9 @@ write_config() {
     }
   ],
   "hdf5_file": "scaling_bench.h5",
-  "hdf5_every": 0
+  "hdf5": {
+    "enabled": false
+  }
 }
 EOF
 }

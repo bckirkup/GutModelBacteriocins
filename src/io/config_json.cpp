@@ -15,6 +15,10 @@ namespace gutibm {
 
 namespace {
 
+class JsonCursor;
+
+void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor& cursor);
+
 class JsonCursor {
  public:
   explicit JsonCursor(std::string text) : text_(std::move(text)) {}
@@ -222,6 +226,44 @@ class JsonCursor {
     }
   }
 
+  void parse_hdf5_schedule(SimulationConfig& cfg) {
+    if (!match('{')) throw ConfigError("expected JSON object for hdf5.schedule");
+    skip_ws();
+    if (match('}')) return;
+    while (true) {
+      std::string key = parse_string();
+      if (!match(':')) throw ConfigError("expected ':' in JSON object");
+      if (key == "grid_species") {
+        cfg.hdf5.schedule.grid_species = parse_string_array();
+      } else {
+        const std::string flat_key = "hdf5.schedule." + key;
+        apply_json_scalar(cfg, flat_key, *this);
+      }
+      skip_ws();
+      if (match('}')) break;
+      if (!match(',')) throw ConfigError("expected ',' in JSON object");
+    }
+  }
+
+  void parse_hdf5_object(SimulationConfig& cfg) {
+    if (!match('{')) throw ConfigError("expected JSON object for hdf5");
+    skip_ws();
+    if (match('}')) return;
+    while (true) {
+      std::string key = parse_string();
+      if (!match(':')) throw ConfigError("expected ':' in JSON object");
+      if (key == "schedule") {
+        parse_hdf5_schedule(cfg);
+      } else {
+        const std::string flat_key = "hdf5." + key;
+        apply_json_scalar(cfg, flat_key, *this);
+      }
+      skip_ws();
+      if (match('}')) break;
+      if (!match(',')) throw ConfigError("expected ',' in JSON object");
+    }
+  }
+
   std::string text_;
   size_t pos_ = 0;
 };
@@ -363,6 +405,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         cfg.initial_strains = cursor.parse_strain_array();
       } else if (key == "fixes") {
         cfg.enabled_fixes = cursor.parse_string_array();
+      } else if (key == "hdf5") {
+        cursor.parse_hdf5_object(cfg);
       } else {
         apply_json_scalar(cfg, key, cursor);
       }

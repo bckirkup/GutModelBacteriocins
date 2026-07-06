@@ -11,7 +11,7 @@
       "id": "ci_smoke",
       "overrides": {
         "total_time": 60,
-        "hdf5_every": 0
+        "hdf5.enabled": false
       }
     }
   ]

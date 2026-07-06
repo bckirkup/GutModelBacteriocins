@@ -260,7 +260,21 @@ std::vector<Probe> build_probes() {
 
   // ── Output / checkpoint ───────────────────────────────────────────────────
   v.push_back(S("hdf5_file", [](const SimulationConfig& c) { return c.hdf5.filename; }, "probe_output.h5"));
-  v.push_back(I("hdf5_every", [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.dump_every); }));
+  v.push_back(S("hdf5.file", [](const SimulationConfig& c) { return c.hdf5.filename; }, "probe_output.h5"));
+  add_ns_int(v, "hdf5.schedule.summary", "hdf5_schedule_summary",
+             [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.schedule.summary); });
+  add_ns_int(v, "hdf5.schedule.agents", "hdf5_schedule_agents",
+             [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.schedule.agents); });
+  add_ns_int(v, "hdf5.schedule.grid", "hdf5_schedule_grid",
+             [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.schedule.grid); });
+  add_ns_int(v, "hdf5.schedule.lineage", "hdf5_schedule_lineage",
+             [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.schedule.lineage); });
+  add_ns_int(v, "hdf5.schedule.genome", "hdf5_schedule_genome",
+             [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.schedule.genome); });
+  add_ns_bool(v, "hdf5.enabled", "hdf5_enabled", [](const SimulationConfig& c) { return c.hdf5.enabled; });
+  v.push_back(S("hdf5.compression", [](const SimulationConfig& c) { return c.hdf5.compression; }, "gzip"));
+  add_ns_int(v, "hdf5.compression_level", "hdf5_compression_level",
+             [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.compression_level); });
   v.push_back(S("checkpoint_file", [](const SimulationConfig& c) { return c.checkpoint.file; }, "probe_checkpoint.h5"));
   v.push_back(S("checkpoint_step", [](const SimulationConfig& c) { return c.checkpoint.step; }, "step_000007"));
 
@@ -309,6 +323,14 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "protease.default_half_life", "protease_default_half_life", [](const SimulationConfig& c) { return c.chem_env.protease.default_half_life; });
   add_ns_real(v, "protease.dilution_rate", "protease_dilution_rate", [](const SimulationConfig& c) { return c.chem_env.protease.dilution_rate; });
 
+  // ── Siderophore (Spec 4) ───────────────────────────────────────────────────
+  add_ns_bool(v, "siderophore.enabled", "siderophore_enabled", [](const SimulationConfig& c) { return c.chem_env.siderophore.enabled; });
+  add_ns_real(v, "siderophore.secretion_rate", "siderophore_secretion_rate", [](const SimulationConfig& c) { return c.chem_env.siderophore.secretion_rate; });
+  add_ns_real(v, "siderophore.D_free", "siderophore_D_free", [](const SimulationConfig& c) { return c.chem_env.siderophore.D_free; });
+  add_ns_real(v, "siderophore.chelation_rate", "siderophore_chelation_rate", [](const SimulationConfig& c) { return c.chem_env.siderophore.chelation_rate; });
+  add_ns_real(v, "siderophore.Km_reimport", "siderophore_Km_reimport", [](const SimulationConfig& c) { return c.chem_env.siderophore.Km_reimport; });
+  add_ns_real(v, "siderophore.recapture_fraction", "siderophore_recapture_fraction", [](const SimulationConfig& c) { return c.chem_env.siderophore.recapture_fraction; });
+
   // ── Fur (Spec 3) ──────────────────────────────────────────────────────────
   add_ns_bool(v, "fur.enabled", "fur_enabled", [](const SimulationConfig& c) { return c.cell_bio.fur.enabled; });
   add_ns_real(v, "fur.Km", "fur_Km", [](const SimulationConfig& c) { return c.cell_bio.fur.Km; });
@@ -342,7 +364,8 @@ std::vector<Probe> build_probes() {
 // completeness guard treats them as covered.
 const std::set<std::string>& array_and_strain_keys() {
   static const std::set<std::string> keys = {
-      "initial_strains", "fixes",  "type",         "count",
+      "initial_strains", "fixes", "hdf5", "schedule", "grid_species",
+      "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity"};
   return keys;

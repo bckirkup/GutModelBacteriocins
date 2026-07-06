@@ -53,5 +53,13 @@
   ],
 
   "hdf5_file": "diversity_paradox_output.h5",
-  "hdf5_every": 60
+  "hdf5": {
+    "schedule": {
+      "summary": 60,
+      "agents": 60,
+      "grid": 0,
+      "lineage": 60,
+      "genome": 60
+    }
+  }
 }

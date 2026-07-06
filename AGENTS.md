@@ -193,7 +193,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | Fix selection | `fixes` JSON array or `cfg.enabled_fixes` (empty = all registered) |
 | Fix tunables | Flat keys (`kd_colicinE_btuB`, `bi_duplication_rate`, …) — see `docs/PARAMETERS.md` |
 | Plasmid names | `ColE1`, `ColE2`, `ColB`, `ColIa`, `ColM`, `MccV` |
-| HDF5 interval | `hdf5_every` (input file) or `cfg.hdf5.dump_every` (code) |
+| HDF5 schedule | Nested `hdf5.schedule.*` in input JSON or `cfg.hdf5.schedule` (summary/agents/grid/lineage/genome intervals) |
 | Checkpoint restart | `checkpoint_file` + optional `checkpoint_step` in input JSON |
 | Disable HDF5 in tests | `cfg.hdf5.enabled = false` |
 | Strict config | `GUTIBM_STRICT_CONFIG=1` aborts on invalid numerics |

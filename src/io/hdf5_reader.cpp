@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------
-   GutIBM – HDF5 reader implementation
+   GutIBM – HDF5 reader implementation (Spec 4 layered schema)
    ----------------------------------------------------------------------- */
 
 #include "hdf5_reader.h"
@@ -84,11 +84,17 @@ herr_t collect_step_link(hid_t /*group*/, const char* name, const H5L_info_t* /*
   return 0;
 }
 
-std::vector<std::string> list_step_groups(hid_t file) {
+std::vector<std::string> list_step_groups(hid_t file, const char* layer) {
   StepListData data;
   std::vector<std::string> steps;
   data.steps = &steps;
-  H5Literate(file, H5_INDEX_NAME, H5_ITER_INC, nullptr, collect_step_link, &data);
+  if (!link_exists(file, layer)) {
+    return steps;
+  }
+  hid_t grp = H5Gopen2(file, layer, H5P_DEFAULT);
+  if (grp < 0) return steps;
+  H5Literate(grp, H5_INDEX_NAME, H5_ITER_INC, nullptr, collect_step_link, &data);
+  H5Gclose(grp);
   std::ranges::sort(steps, [](std::string_view sa, std::string_view sb) {
               const auto na = std::stoi(std::string(sa.substr(5)));
               const auto nb = std::stoi(std::string(sb.substr(5)));
@@ -97,8 +103,17 @@ std::vector<std::string> list_step_groups(hid_t file) {
   return steps;
 }
 
+int32_t read_file_attr_int(hid_t file, const char* name) {
+  if (H5Aexists(file, name) <= 0) return 0;
+  hid_t attr = H5Aopen(file, name, H5P_DEFAULT);
+  int32_t value = 0;
+  H5Aread(attr, H5T_NATIVE_INT32, &value);
+  H5Aclose(attr);
+  return value;
+}
+
 HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
-  const std::string prefix = step + "/atoms/";
+  const std::string prefix = "agents/" + step + "/";
   HDF5CheckpointAgents out;
   out.id       = read_dataset_1d<int64_t>(file, prefix + "id",      H5T_NATIVE_INT64);
   out.type     = read_dataset_1d<int32_t>(file, prefix + "type",    H5T_NATIVE_INT32);
@@ -108,20 +123,26 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
   out.z        = read_dataset_1d<double>(file, prefix + "z",       H5T_NATIVE_DOUBLE);
   out.radius   = read_dataset_1d<double>(file, prefix + "radius",   H5T_NATIVE_DOUBLE);
   out.biomass  = read_dataset_1d<double>(file, prefix + "biomass", H5T_NATIVE_DOUBLE);
-  out.mu       = read_dataset_1d<double>(file, prefix + "mu",      H5T_NATIVE_DOUBLE);
-  out.lineage  = read_dataset_1d<int64_t>(file, prefix + "lineage", H5T_NATIVE_INT64);
+
+  const std::string mu_path = link_exists(file, prefix + "mu_realized")
+      ? prefix + "mu_realized" : prefix + "mu";
+  out.mu = read_dataset_1d<double>(file, mu_path, H5T_NATIVE_DOUBLE);
+
+  const std::string lineage_path = link_exists(file, prefix + "lineage_id")
+      ? prefix + "lineage_id" : prefix + "lineage";
+  out.lineage = read_dataset_1d<int64_t>(file, lineage_path, H5T_NATIVE_INT64);
 
   if (const auto n = out.id.size();
       out.type.size() != n || out.state.size() != n || out.x.size() != n ||
       out.y.size() != n || out.z.size() != n || out.radius.size() != n ||
       out.biomass.size() != n || out.mu.size() != n || out.lineage.size() != n) {
-    throw HDF5Error("inconsistent agent dataset lengths in " + step);
+    throw HDF5Error("inconsistent agent dataset lengths in agents/" + step);
   }
   return out;
 }
 
 HDF5CheckpointLineage read_lineage(hid_t file, const std::string& step) {
-  const std::string prefix = step + "/lineage/";
+  const std::string prefix = "lineage/" + step + "/";
   HDF5CheckpointLineage out;
   out.btuB_expression = read_dataset_1d<double>(file, prefix + "btuB_expression",
                                                 H5T_NATIVE_DOUBLE);
@@ -135,15 +156,15 @@ HDF5CheckpointLineage read_lineage(hid_t file, const std::string& step) {
   if (const auto n = out.btuB_expression.size();
       out.fepA_expression.size() != n || out.num_bi_loci.size() != n ||
       out.generation.size() != n) {
-    throw HDF5Error("inconsistent lineage dataset lengths in " + step);
+    throw HDF5Error("inconsistent lineage dataset lengths in lineage/" + step);
   }
   return out;
 }
 
 HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
   HDF5CheckpointGenome out;
-  const std::string prefix = step + "/genome/";
-  if (!link_exists(file, step + "/genome")) {
+  const std::string prefix = "genome/" + step + "/";
+  if (!link_exists(file, "genome/" + step)) {
     return out;
   }
 
@@ -192,7 +213,7 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       out.receptor_expression.size() != n * NUM_RECEPTORS ||
       out.toxin_affinity.size() != n * NUM_RECEPTORS ||
       out.ligand_affinity.size() != n * NUM_RECEPTORS) {
-    throw HDF5Error("inconsistent genome per-agent dataset lengths in " + step);
+    throw HDF5Error("inconsistent genome per-agent dataset lengths in genome/" + step);
   }
 
   if (const auto n_bi = out.bi_toxin_id.size();
@@ -201,19 +222,25 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       out.bi_diff_coeff.size() != n_bi || out.bi_retardation.size() != n_bi ||
       out.bi_molecular_weight.size() != n_bi ||
       out.bi_immunity_binding_affinity.size() != n_bi) {
-    throw HDF5Error("inconsistent BI locus dataset lengths in " + step);
+    throw HDF5Error("inconsistent BI locus dataset lengths in genome/" + step);
   }
 
   return out;
 }
 
 HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
-  const std::string prefix = step + "/metadata/";
+  const std::string prefix = "summary/" + step + "/";
   HDF5CheckpointMetadata meta;
-  meta.time         = read_scalar<double>(file, prefix + "time", H5T_NATIVE_DOUBLE);
-  meta.step         = read_scalar<int32_t>(file, prefix + "step", H5T_NATIVE_INT32);
-  meta.num_agents   = read_scalar<int32_t>(file, prefix + "num_agents", H5T_NATIVE_INT32);
-  meta.num_lineages = read_scalar<int32_t>(file, prefix + "num_lineages", H5T_NATIVE_INT32);
+  meta.time = read_scalar<double>(file, prefix + "time", H5T_NATIVE_DOUBLE);
+  meta.step = read_scalar<int32_t>(file, prefix + "step", H5T_NATIVE_INT32);
+  if (link_exists(file, prefix + "num_agents")) {
+    meta.num_agents = read_scalar<int32_t>(file, prefix + "num_agents", H5T_NATIVE_INT32);
+  } else {
+    meta.num_agents = read_scalar<int32_t>(file, prefix + "n_total", H5T_NATIVE_INT32);
+  }
+  if (link_exists(file, prefix + "num_lineages")) {
+    meta.num_lineages = read_scalar<int32_t>(file, prefix + "num_lineages", H5T_NATIVE_INT32);
+  }
   return meta;
 }
 
@@ -228,25 +255,60 @@ herr_t collect_link_name(hid_t /*group*/, const char* name, const H5L_info_t* /*
 }
 
 HDF5CheckpointGrid read_grid(hid_t file, const std::string& step) {
-  const std::string grid_path = step + "/grid";
+  const std::string grid_path = "grid/" + step;
+  HDF5CheckpointGrid grid;
   if (!link_exists(file, grid_path)) {
-    throw HDF5Error("missing grid group: " + grid_path);
+    return grid;
   }
+
+  const int32_t nx = read_file_attr_int(file, "nx");
+  const int32_t ny = read_file_attr_int(file, "ny");
+  const int32_t nz = read_file_attr_int(file, "nz");
+  const size_t flat_cells = static_cast<size_t>(nx) * static_cast<size_t>(ny)
+      * static_cast<size_t>(nz);
 
   hid_t grid_group = H5Gopen2(file, grid_path.c_str(), H5P_DEFAULT);
   if (grid_group < 0) {
     throw HDF5Error("failed to open grid group: " + grid_path);
   }
 
-  HDF5CheckpointGrid grid;
   std::vector<std::string> datasets;
   LinkNameCollector collector{&datasets};
   H5Literate(grid_group, H5_INDEX_NAME, H5_ITER_INC, nullptr, collect_link_name, &collector);
   H5Gclose(grid_group);
 
   for (const auto& ds_name : datasets) {
-    std::string path = grid_path + "/" + ds_name;
-    grid.species[ds_name] = read_dataset_1d<double>(file, path, H5T_NATIVE_DOUBLE);
+    const std::string path = grid_path + "/" + ds_name;
+    hid_t dset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
+    if (dset < 0) continue;
+
+    hid_t space = H5Dget_space(dset);
+    const int ndims = H5Sget_simple_extent_ndims(space);
+    hsize_t dims[3] = {0, 0, 0};
+    H5Sget_simple_extent_dims(space, dims, nullptr);
+
+    std::vector<double> values;
+    if (ndims == 3) {
+      const size_t total = static_cast<size_t>(dims[0]) * static_cast<size_t>(dims[1])
+          * static_cast<size_t>(dims[2]);
+      values.resize(total);
+      H5Dread(dset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, values.data());
+      if (flat_cells > 0 && values.size() != flat_cells) {
+        H5Sclose(space);
+        H5Dclose(dset);
+        throw HDF5Error("grid dataset size mismatch for species: " + ds_name);
+      }
+    } else if (ndims == 1) {
+      values = read_dataset_1d<double>(file, path, H5T_NATIVE_DOUBLE);
+    } else {
+      H5Sclose(space);
+      H5Dclose(dset);
+      throw HDF5Error("unsupported grid dataset rank for species: " + ds_name);
+    }
+
+    H5Sclose(space);
+    H5Dclose(dset);
+    grid.species[ds_name] = std::move(values);
   }
   return grid;
 }
@@ -271,7 +333,6 @@ bool HDF5Reader::open(const std::string& filename) {
   }
 
 #ifdef GUTIBM_HDF5
-  // Clear stale HDF5 errors (e.g. from writer duplicate-group warnings).
   H5Eclear2(H5E_DEFAULT);
 
   hid_t fid = H5Fopen(filename_.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
@@ -303,7 +364,11 @@ void HDF5Reader::close() {
 std::vector<std::string> HDF5Reader::list_steps() const {
 #ifdef GUTIBM_HDF5
   if (!open_) return {};
-  return list_step_groups(static_cast<hid_t>(file_id_));
+  auto steps = list_step_groups(static_cast<hid_t>(file_id_), "summary");
+  if (steps.empty()) {
+    steps = list_step_groups(static_cast<hid_t>(file_id_), "agents");
+  }
+  return steps;
 #else
   return {};
 #endif
@@ -320,7 +385,10 @@ HDF5CheckpointSnapshot HDF5Reader::load_step(const std::string& step_name) const
   if (!open_) {
     throw HDF5Error("HDF5Reader is not open");
   }
-  if (!link_exists(static_cast<hid_t>(file_id_), step_name)) {
+
+  const bool has_agents = link_exists(static_cast<hid_t>(file_id_), "agents/" + step_name);
+  const bool has_summary = link_exists(static_cast<hid_t>(file_id_), "summary/" + step_name);
+  if (!has_agents && !has_summary) {
     throw HDF5Error("missing step group: " + step_name);
   }
 
@@ -333,7 +401,7 @@ HDF5CheckpointSnapshot HDF5Reader::load_step(const std::string& step_name) const
   snap.grid     = read_grid(static_cast<hid_t>(file_id_), step_name);
 
   if (snap.metadata.num_agents != static_cast<Int>(snap.agents.id.size())) {
-    throw HDF5Error("metadata num_agents does not match atoms dataset");
+    throw HDF5Error("metadata num_agents does not match agents dataset");
   }
   if (snap.metadata.num_agents != static_cast<Int>(snap.lineage.generation.size())) {
     throw HDF5Error("metadata num_agents does not match lineage dataset");

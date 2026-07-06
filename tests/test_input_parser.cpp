@@ -29,7 +29,7 @@ void test_single_colony_example() {
   assert(cfg.seed == 12345);
   assert(std::abs(cfg.domain.hi[0] - 0.001) < 1e-12);
   assert(cfg.hdf5.filename == "single_colony_output.h5");
-  assert(cfg.hdf5.dump_every == 60);
+  assert(cfg.hdf5.schedule.agents == 60);
   std::cout << "  test_single_colony_example: PASSED\n";
 }
 
@@ -182,15 +182,12 @@ void test_malformed_numeric_warnings_json() {
 
   assert(std::abs(cfg.domain.hi[0]) < 1e-15);
   assert(cfg.seed == 0);
-  assert(cfg.hdf5.dump_every == 0);
 
   const std::string warnings = err.str();
   assert(warnings.find("domain_x") != std::string::npos);
   assert(warnings.find("1mm") != std::string::npos);
   assert(warnings.find("seed") != std::string::npos);
   assert(warnings.find("not_a_number") != std::string::npos);
-  assert(warnings.find("hdf5_every") != std::string::npos);
-  assert(warnings.find("12steps") != std::string::npos);
   std::cout << "  test_malformed_numeric_warnings_json: PASSED\n";
 }
 
@@ -204,7 +201,6 @@ void test_malformed_numeric_warnings_legacy() {
 
   assert(std::abs(cfg.domain.hi[0]) < 1e-15);
   assert(cfg.seed == 0);
-  assert(cfg.hdf5.dump_every == 0);
 
   const std::string warnings = err.str();
   assert(warnings.find("domain_x") != std::string::npos);

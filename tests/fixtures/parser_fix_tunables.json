@@ -38,5 +38,13 @@
   ],
 
   "hdf5_file": "fix_tunables_test.h5",
-  "hdf5_every": 100
+  "hdf5": {
+    "schedule": {
+      "summary": 100,
+      "agents": 100,
+      "grid": 0,
+      "lineage": 100,
+      "genome": 100
+    }
+  }
 }

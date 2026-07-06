@@ -11,17 +11,37 @@
 #ifndef GUTIBM_SPECIES_NAMES_H
 #define GUTIBM_SPECIES_NAMES_H
 
+#include "types.h"
+#include <array>
+
 namespace gutibm::species {
 
-inline constexpr const char* CARBON         = "carbon";
-inline constexpr const char* IRON           = "iron";
-inline constexpr const char* B12            = "b12";
-inline constexpr const char* BACTERIOCIN    = "bacteriocin";
-inline constexpr const char* NUCLEASE_TOXIN = "nuclease_toxin";
-inline constexpr const char* ACETATE        = "acetate";
-inline constexpr const char* ETHANOLAMINE   = "ethanolamine";
-inline constexpr const char* OXYGEN         = "oxygen";
-inline constexpr const char* MUCIN          = "mucin";
+inline constexpr const char* CARBON            = "carbon";
+inline constexpr const char* IRON              = "iron";
+inline constexpr const char* B12               = "b12";
+inline constexpr const char* BACTERIOCIN_BTUB  = "bacteriocin_BtuB";
+inline constexpr const char* BACTERIOCIN_FEPA  = "bacteriocin_FepA";
+inline constexpr const char* BACTERIOCIN_CIRA  = "bacteriocin_CirA";
+inline constexpr const char* BACTERIOCIN_FHUA  = "bacteriocin_FhuA";
+inline constexpr const char* ACETATE            = "acetate";
+inline constexpr const char* ETHANOLAMINE       = "ethanolamine";
+inline constexpr const char* OXYGEN             = "oxygen";
+inline constexpr const char* MUCIN              = "mucin";
+inline constexpr const char* SIDEROPHORE         = "siderophore";
+
+// Per-receptor toxin field for a TonB-dependent transporter target.
+inline const char* bacteriocin_species_for(ReceptorType target) {
+  switch (target) {
+    case ReceptorType::BtuB: return BACTERIOCIN_BTUB;
+    case ReceptorType::FepA: return BACTERIOCIN_FEPA;
+    case ReceptorType::CirA: return BACTERIOCIN_CIRA;
+    case ReceptorType::FhuA: return BACTERIOCIN_FHUA;
+    default: return nullptr;
+  }
+}
+
+inline constexpr std::array<ReceptorType, 4> BACTERIOCIN_RECEPTOR_TARGETS = {
+    ReceptorType::BtuB, ReceptorType::FepA, ReceptorType::CirA, ReceptorType::FhuA};
 
 }  // namespace gutibm::species
 

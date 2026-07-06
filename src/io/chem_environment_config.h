@@ -48,6 +48,15 @@ struct ProteaseConfig {
   Real dilution_rate = 1.0e-4;        // 1/s fallback when advection washout negligible
 };
 
+struct SiderophoreConfig {
+  bool enabled = false;
+  Real secretion_rate = 1.0e-15;      // mol/s/cell
+  Real D_free = 1.0e-10;              // m^2/s
+  Real chelation_rate = 1.0e3;        // m^3/(mol·s) effective second-order
+  Real Km_reimport = 1.0e-9;          // mol/m^3 for FepA-mediated iron recapture
+  Real recapture_fraction = 0.5;      // fraction of secreted siderophore iron returned locally
+};
+
 }  // namespace gutibm
 
 #endif  // GUTIBM_CHEM_ENVIRONMENT_CONFIG_H

@@ -103,8 +103,10 @@ SimulationConfig InputParser::default_config() {
     {species::CARBON,      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0, true,  25.0e-6},
     {species::IRON,        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0, false, 25.0e-6},
     {species::B12,         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0, false, 25.0e-6},
-    {species::BACTERIOCIN, 4.0e-11, 10.0, 0.0,    0.0,     1.0e-4, false, 25.0e-6},
-    {species::NUCLEASE_TOXIN, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
+    {species::BACTERIOCIN_BTUB, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
+    {species::BACTERIOCIN_FEPA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
+    {species::BACTERIOCIN_CIRA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
+    {species::BACTERIOCIN_FHUA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
     {species::ACETATE,     1.2e-9,  1.0,  80.0,   80.0,    0.0, false, 25.0e-6},
     {species::ETHANOLAMINE, 1.0e-9, 1.0, 0.5e-3, 0.5e-3, 0.0, false, 25.0e-6},
   };
@@ -129,6 +131,12 @@ SimulationConfig InputParser::default_config() {
   immigrant.conjugative = false;
 
   cfg.initial_strains = {resident, immigrant};
+
+  cfg.hdf5.schedule.summary = 1;
+  cfg.hdf5.schedule.agents = 5;
+  cfg.hdf5.schedule.grid = 0;
+  cfg.hdf5.schedule.lineage = 100;
+  cfg.hdf5.schedule.genome = 100;
 
   finalize_config(cfg);
   return cfg;
@@ -187,6 +195,14 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
           0.0, false, k_z_lambda);
     }
     cfg.vbf.use_dynamic_mucin = true;
+  }
+
+  if (cfg.chem_env.siderophore.enabled) {
+    if (find_chemical_spec(cfg.chemicals, species::SIDEROPHORE) < 0) {
+      cfg.chemicals.emplace_back(
+          species::SIDEROPHORE, cfg.chem_env.siderophore.D_free, 1.0,
+          0.0, 0.0, 0.0, false, k_z_lambda);
+    }
   }
 }
 
@@ -323,18 +339,67 @@ bool apply_mutation_key(SimulationConfig& cfg, const std::string& key, const std
 }
 
 bool apply_io_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
-  if (key == "hdf5_file") {
+  if (key == "hdf5_file" || key == "hdf5.file") {
     validate_path_syntax(val);
     cfg.hdf5.filename = val;
     return true;
   }
-  if (key == "hdf5_every")           { cfg.hdf5.dump_every = parse_config_int(key, val); return true; }
   if (key == "checkpoint_file") {
     validate_path_syntax(val);
     cfg.checkpoint.file = val;
     return true;
   }
   if (key == "checkpoint_step")        { cfg.checkpoint.step = val; return true; }
+  return false;
+}
+
+bool apply_hdf5_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "hdf5.enabled" || key == "hdf5_enabled") {
+    cfg.hdf5.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "hdf5.compression") {
+    cfg.hdf5.compression = val; return true;
+  }
+  if (key == "hdf5.compression_level" || key == "hdf5_compression_level") {
+    cfg.hdf5.compression_level = parse_config_int(key, val); return true;
+  }
+  if (key == "hdf5.schedule.summary" || key == "hdf5_schedule_summary") {
+    cfg.hdf5.schedule.summary = parse_config_int(key, val); return true;
+  }
+  if (key == "hdf5.schedule.agents" || key == "hdf5_schedule_agents") {
+    cfg.hdf5.schedule.agents = parse_config_int(key, val); return true;
+  }
+  if (key == "hdf5.schedule.grid" || key == "hdf5_schedule_grid") {
+    cfg.hdf5.schedule.grid = parse_config_int(key, val); return true;
+  }
+  if (key == "hdf5.schedule.lineage" || key == "hdf5_schedule_lineage") {
+    cfg.hdf5.schedule.lineage = parse_config_int(key, val); return true;
+  }
+  if (key == "hdf5.schedule.genome" || key == "hdf5_schedule_genome") {
+    cfg.hdf5.schedule.genome = parse_config_int(key, val); return true;
+  }
+  return false;
+}
+
+bool apply_siderophore_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+  if (key == "siderophore.enabled" || key == "siderophore_enabled") {
+    cfg.chem_env.siderophore.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "siderophore.secretion_rate" || key == "siderophore_secretion_rate") {
+    cfg.chem_env.siderophore.secretion_rate = parse_config_real(key, val); return true;
+  }
+  if (key == "siderophore.D_free" || key == "siderophore_D_free") {
+    cfg.chem_env.siderophore.D_free = parse_config_real(key, val); return true;
+  }
+  if (key == "siderophore.chelation_rate" || key == "siderophore_chelation_rate") {
+    cfg.chem_env.siderophore.chelation_rate = parse_config_real(key, val); return true;
+  }
+  if (key == "siderophore.Km_reimport" || key == "siderophore_Km_reimport") {
+    cfg.chem_env.siderophore.Km_reimport = parse_config_real(key, val); return true;
+  }
+  if (key == "siderophore.recapture_fraction" || key == "siderophore_recapture_fraction") {
+    cfg.chem_env.siderophore.recapture_fraction = parse_config_real(key, val); return true;
+  }
   return false;
 }
 
@@ -538,7 +603,7 @@ bool apply_motility_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 21> k_flat_key_handlers = {
+constexpr std::array<FlatKeyHandler, 23> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_advection_key,
@@ -551,12 +616,14 @@ constexpr std::array<FlatKeyHandler, 21> k_flat_key_handlers = {
   apply_mutation_key,
   apply_mechanics_key,
   apply_io_key,
+  apply_hdf5_key,
   apply_dt_key,
   apply_misc_key,
   apply_oxygen_key,
   apply_acetate_dyn_key,
   apply_mucin_key,
   apply_protease_key,
+  apply_siderophore_key,
   apply_fur_key,
   apply_cdi_key,
   apply_motility_key,

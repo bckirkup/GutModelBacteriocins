@@ -200,7 +200,8 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `carbon_z_gradient`, `carbon_z_lambda` | Carbon z-gradient |
 | `sos_lysis_prob` | Bacteriocin Fix |
 | `crypts_enabled`, `crypt_depth`, `crypt_exit_rate`, `crypt_entry_rate`, `crypt_carrying_capacity` | Crypt refugia |
-| `hdf5_file`, `hdf5_every` | HDF5 output |
+| `hdf5_file`, `hdf5.schedule.*`, `hdf5.compression` | HDF5 output (Spec 4 layered schema) |
+| `siderophore.enabled`, `siderophore.secretion_rate`, … | Siderophore dynamics (Spec 4) |
 | `profile_steps` | Per-step profiling (`docs/SCALING.md`) |
 | `checkpoint_file`, `checkpoint_step` | Checkpoint restart |
 | `adaptive_dt_enabled`, `dt_min`, `dt_max`, `dt_safety`, `dt_growth_limit` | Adaptive timestep |

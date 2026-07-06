@@ -47,8 +47,9 @@ def _write_base_config(path: Path) -> None:
                 "conjugative": True,
             }
         ],
-        "hdf5_file": "ignored.h5",
-        "hdf5_every": 0,
+        "hdf5": {
+            "enabled": False
+        },
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
 

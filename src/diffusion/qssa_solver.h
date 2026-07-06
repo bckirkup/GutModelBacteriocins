@@ -64,6 +64,7 @@ struct ToxinBurstSource {
   Real creation_time = 0.0;
   Real decay_rate = 0.0;   // ln(2) / protease_half_life (1/s)
   bool is_nuclease = false;
+  ReceptorType target = ReceptorType::BtuB;
 };
 
 class QSSASolver {
@@ -82,17 +83,17 @@ class QSSASolver {
       const ProteaseConfig& protease,
       const AdvectionField& adv,
       ChemicalField& chem,
-      Int toxin_species_idx) const;
+      Int toxin_species_idx,
+      ReceptorType target) const;
 
-  // Nuclease-only subset of toxin sources (Spec 2 cross-induction)
-  void solve_nuclease_toxin_field(
+  // Solve all four per-receptor bacteriocin fields.
+  void solve_all_bacteriocin_fields(
       const AgentPool& agents,
       const std::vector<ToxinBurstSource>& bursts,
       Real current_time,
       const ProteaseConfig& protease,
       const AdvectionField& adv,
-      ChemicalField& chem,
-      Int nuclease_species_idx) const;
+      ChemicalField& chem) const;
 
   // Compute nutrient depletion zones around colonies
   void solve_nutrient_depletion(

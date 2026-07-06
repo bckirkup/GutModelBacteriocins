@@ -46,7 +46,12 @@ def validate_spatial_signatures(
     # --- retained metrics ------------------------------------------------
     mono_score = monochromatic_patch_score(positions, types)
 
-    bacteriocin = grid.get("bacteriocin", np.zeros(1))
+    bacteriocin_keys = [k for k in grid if k.startswith("bacteriocin_")]
+    if bacteriocin_keys:
+        bacteriocin = sum(np.asarray(grid[k]).ravel() for k in bacteriocin_keys)
+    else:
+        bacteriocin = grid.get("bacteriocin_BtuB", np.zeros(1))
+        bacteriocin = np.asarray(bacteriocin).ravel()
     n = len(bacteriocin)
     grid_pos = np.column_stack([
         np.linspace(0, 1e-3, n),

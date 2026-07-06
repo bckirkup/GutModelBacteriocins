@@ -33,8 +33,8 @@ def test_get_agents_schema(sample_hdf5: Path) -> None:
 def test_get_grid_and_metadata(sample_hdf5: Path) -> None:
     with GutIBMData(sample_hdf5) as data:
         grid = data.get_grid("step_000000")
-        assert "bacteriocin" in grid
-        assert len(grid["bacteriocin"]) == 20
+        assert "bacteriocin_BtuB" in grid
+        assert len(grid["bacteriocin_BtuB"]) == 20
 
         meta = data.get_metadata("step_000000")
         assert meta["time"] == pytest.approx(0.0)
