@@ -113,13 +113,13 @@ SOS probability per biological timestep:
 ```
 rate_total = sos_basal_rate
            + (just_divided ? sos_lysis_prob / bio_dt : 0)
-           + sos_cross_induction_rate * [nuclease_toxin]
+           + sos_cross_induction_rate * [bacteriocin_BtuB]
            + k_ROS * [O2] * mu_realized   (when oxygen.enabled)
 p_sos = 1 - exp(-rate_total * dt)
 ```
 
 - `just_divided` is set on parent and daughter during division in `fix_metabolism`, cleared at the start of each `Simulation::step()`
-- Cross-induction uses the `nuclease_toxin` chemical field (ColE2 and other `is_nuclease` sources only)
+- Cross-induction uses the `bacteriocin_BtuB` chemical field (nuclease colicin bursts route to BtuB-target field)
 - After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`
 
 ### b) Phage-mediated lysis (Group B colicins)
@@ -159,13 +159,16 @@ The effective diffusion coefficient: `D_eff = D_free / R`
 
 **The Double-Bind hypothesis:** TonB-dependent transporters serve dual roles as nutrient importers AND bacteriocin receptors. Cells cannot selectively block toxins without also losing nutrient uptake.
 
-**Three receptor systems modeled:**
+**Four receptor systems modeled** (each reads its own QSSA toxin field):
 
-| Receptor | Nutrient ligand | Toxin ligand | Kd_nutrient | Kd_toxin |
-|----------|----------------|--------------|-------------|----------|
-| BtuB | Vitamin B12 | Colicin E1/E2/E5/E7/E8/E9/K | 1 nM | 0.5 nM |
-| FepA | Enterobactin-Fe | Colicin B/D | 10 nM | 2 nM |
-| CirA | Linearized enterobactin | Colicin Ia, Microcin V | 50 nM | 3 nM |
+| Receptor | Nutrient ligand | Toxin field | Toxin ligand | Kd_nutrient | Kd_toxin |
+|----------|----------------|-------------|--------------|-------------|----------|
+| BtuB | Vitamin B12 | `bacteriocin_BtuB` | Colicin E1/E2/E5/E7/E8/E9/K | 1 nM | 0.5 nM |
+| FepA | Enterobactin-Fe | `bacteriocin_FepA` | Colicin B/D | 10 nM | 2 nM |
+| CirA | Linearized siderophore | `bacteriocin_CirA` | Colicin Ia, Microcin V | 50 nM | 3 nM |
+| FhuA | Ferrichrome | `bacteriocin_FhuA` | Colicin M | 10 nM | 2.5 nM |
+
+CirA ligand is `cirA_linearized_fraction × [siderophore]` when `siderophore.enabled`; otherwise zero.
 
 **Competitive binding model (Michaelis-Menten with competitive inhibition):**
 ```

@@ -87,6 +87,8 @@ gutibm_add_test(config_ingestion test_config_ingestion.cpp
   LABELS "unit"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(bacteriocin test_bacteriocin.cpp LABELS "unit")
+gutibm_add_test(per_receptor_toxin test_per_receptor_toxin.cpp LABELS "unit")
+gutibm_add_test(siderophore_depletion test_siderophore_depletion.cpp LABELS "unit")
 gutibm_add_test(receptor test_receptor.cpp LABELS "unit")
 gutibm_add_test(mutation test_mutation.cpp LABELS "unit")
 gutibm_add_test(fur test_fur.cpp LABELS "unit")
@@ -110,6 +112,10 @@ gutibm_add_test(openmp_parity test_openmp_parity.cpp LABELS "openmp")
 if(GUTIBM_USE_HDF5)
   gutibm_add_test(hdf5_roundtrip test_hdf5_roundtrip.cpp LABELS "integration;hdf5")
   gutibm_add_test(hdf5_checkpoint test_hdf5_checkpoint.cpp LABELS "integration;hdf5")
+  gutibm_add_test(hdf5_schedule test_hdf5_schedule.cpp LABELS "integration;hdf5")
+  gutibm_add_test(hdf5_compression test_hdf5_compression.cpp LABELS "integration;hdf5")
+  gutibm_add_test(summary_events test_summary_events.cpp LABELS "integration;hdf5")
+  gutibm_add_test(hdf5_graceful_shutdown test_hdf5_graceful_shutdown.cpp LABELS "integration;hdf5")
 
   if(GUTIBM_USE_MPI)
     add_test(

@@ -2,5 +2,5 @@
   "_comment": "Malformed numeric string values for parser warning tests",
   "domain_x": "1mm",
   "seed": "not_a_number",
-  "hdf5_every": "12steps"
+  "hdf5.schedule.summary": "12steps"
 }

@@ -129,12 +129,12 @@ At 10⁶ agents, plan for **≥ 2 GB** device memory with default grid.
 |---------------|-----------|-------------|----------------|-----------|-------|
 | ≤ 10⁴ | `false` | — | 200 µm | 1 | Brute-force QSSA is fine |
 | 10⁵ | `true` | 0.5 | 200 µm | 1–2 | Enable FMM before chemistry dominates |
-| 10⁶ | `true` | 0.5 | 200 µm | 4–8 | Disable HDF5 (`hdf5_every 0`) while tuning |
+| 10⁶ | `true` | 0.5 | 200 µm | 4–8 | Disable HDF5 (`hdf5.enabled: false`) while tuning |
 | 10⁷ | `true` | 0.3–0.5 | 150–200 µm | 16+ | May need coarser `grid_dx` or smaller domain |
 
 Additional tuning:
 
-- Set `hdf5_every 0` or `cfg.hdf5.enabled = false` during performance runs.
+- Set `hdf5.enabled: false` or all `hdf5.schedule.*` intervals to 0 during performance runs.
 - `adaptive_dt_enabled false` gives stable step times for benchmarking.
 - `profile_steps true` for hotspot identification; adds minor timer overhead.
 - Barnes-Hut FMM is the supported far-field path; true higher-order FMM (#29) is

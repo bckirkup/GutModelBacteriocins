@@ -6,7 +6,9 @@
   "domain_y": 50e-6,
   "domain_z": 25e-6,
   "grid_dx": 5e-6,
-  "hdf5_every": 600,
+  "hdf5": {
+    "enabled": false
+  },
   "motility.chemotaxis_enabled": false,
   "initial_strains": [
     {

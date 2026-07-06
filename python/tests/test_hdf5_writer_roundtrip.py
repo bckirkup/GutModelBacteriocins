@@ -49,9 +49,9 @@ def test_python_reader_roundtrip_schema(writer_snapshot: Path) -> None:
         assert meta2["time"] == pytest.approx(120.0)
 
         grid2 = data.get_grid("step_000002")
-        assert "bacteriocin" in grid2
+        assert "bacteriocin_BtuB" in grid2
         assert "carbon" in grid2
-        assert len(grid2["bacteriocin"]) > 0
+        assert len(grid2["bacteriocin_BtuB"]) > 0
 
         lineage2 = data.get_lineage("step_000002")
         assert len(lineage2["num_bi_loci"]) == len(agents2["x"])

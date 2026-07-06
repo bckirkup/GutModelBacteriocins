@@ -6,6 +6,7 @@
 #include "plasmid.h"
 #include "simulation.h"
 #include "input_parser.h"
+#include "species_names.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -47,7 +48,7 @@ static Agent make_susceptible_agent(Simulation& sim) {
 static void set_local_chemistry(Simulation& sim, Int cell,
                                 Real tox_conc, Real b12_conc) {
   auto& chem = sim.chemical_field();
-  Int i_tox = chem.find("bacteriocin");
+  Int i_tox = chem.find(species::BACTERIOCIN_BTUB);
   Int i_b12 = chem.find("b12");
   assert(i_tox >= 0 && i_b12 >= 0);
   chem.conc(i_tox, cell) = tox_conc;
@@ -152,12 +153,51 @@ void test_partial_resistance_reduces_lethality() {
   std::cout << "  test_partial_resistance_reduces_lethality: PASSED\n";
 }
 
+void test_cira_uses_siderophore_ligand() {
+  ReceptorConfig rcfg;
+  rcfg.kill_rate_microcin = 1.0;
+
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_strains.clear();
+  cfg.hdf5.enabled = false;
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.seed = 7010;
+  cfg.chem_env.siderophore.enabled = true;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+
+  Agent victim = make_susceptible_agent(sim);
+  victim.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.0;
+  victim.receptor_expr[to_underlying(ReceptorType::FepA)] = 0.0;
+  victim.receptor_expr[to_underlying(ReceptorType::CirA)] = 1.0;
+  victim.receptor_expr[to_underlying(ReceptorType::FhuA)] = 0.0;
+  Int cell = victim.grid_cell;
+
+  auto& chem = sim.chemical_field();
+  Int i_cira = chem.find(species::BACTERIOCIN_CIRA);
+  Int i_sid = chem.find(species::SIDEROPHORE);
+  assert(i_cira >= 0 && i_sid >= 0);
+  chem.conc(i_cira, cell) = 1.0e-4;
+  chem.conc(i_sid, cell) = 1.0e-3;
+  sim.agents().push_back(std::move(victim));
+
+  FixReceptor fix(sim, rcfg);
+  fix.compute(60.0);
+  assert(sim.agents()[0].state == PhenoState::DEAD);
+
+  std::cout << "  test_cira_uses_siderophore_ligand: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Receptor Fix Tests ===\n";
   test_high_toxin_kills_susceptible();
   test_immunity_reduces_lethality();
   test_ligand_competition_reduces_kill();
   test_partial_resistance_reduces_lethality();
+  test_cira_uses_siderophore_ligand();
   std::cout << "All receptor fix tests passed.\n";
   return 0;
 }

@@ -1,7 +1,9 @@
 {
   "total_time": 60,
   "bio_dt": 60,
-  "hdf5_every": 0,
+  "hdf5": {
+    "enabled": false
+  },
   "gpu_enabled": true,
   "gpu_device_id": 0,
   "initial_strains": [

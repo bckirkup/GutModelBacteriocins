@@ -53,6 +53,7 @@ struct MicrocinSourceBuffers {
   std::vector<GreensFunctionParams>& params;
   std::vector<Real>& strength_factors;
   std::vector<bool>& is_nuclease;
+  std::vector<ReceptorType>& targets;
 };
 
 void accumulate_near_field_cell(const Domain& domain,
@@ -220,6 +221,7 @@ void collect_microcin_sources(const AgentPool& agents,
       out.params.push_back(gfp);
       out.strength_factors.push_back(factor);
       out.is_nuclease.push_back(bi.is_nuclease);
+      out.targets.push_back(bi.target);
     }
   }
 }
@@ -240,18 +242,20 @@ void append_burst_sources(const std::vector<ToxinBurstSource>& bursts,
     out.params.push_back(burst.params);
     out.strength_factors.push_back(factor);
     out.is_nuclease.push_back(burst.is_nuclease);
+    out.targets.push_back(burst.target);
   }
 }
 
-void filter_nuclease_sources(const std::vector<Vec3>& sources,
-                             const std::vector<GreensFunctionParams>& params,
-                             const std::vector<Real>& strength_factors,
-                             const std::vector<bool>& is_nuclease,
-                             std::vector<Vec3>& out_sources,
-                             std::vector<GreensFunctionParams>& out_params,
-                             std::vector<Real>& out_strengths) {
+void filter_sources_by_target(const std::vector<Vec3>& sources,
+                              const std::vector<GreensFunctionParams>& params,
+                              const std::vector<Real>& strength_factors,
+                              const std::vector<ReceptorType>& targets,
+                              ReceptorType target,
+                              std::vector<Vec3>& out_sources,
+                              std::vector<GreensFunctionParams>& out_params,
+                              std::vector<Real>& out_strengths) {
   for (size_t i = 0; i < sources.size(); ++i) {
-    if (!is_nuclease[i]) continue;
+    if (targets[i] != target) continue;
     out_sources.push_back(sources[i]);
     out_params.push_back(params[i]);
     out_strengths.push_back(strength_factors[i]);
@@ -284,16 +288,24 @@ void QSSASolver::solve_bacteriocin_field(
     const ProteaseConfig& protease,
     const AdvectionField& adv,
     ChemicalField& chem,
-    Int toxin_species_idx) const {
+    Int toxin_species_idx,
+    ReceptorType target) const {
+
+  std::vector<Vec3> all_sources;
+  std::vector<GreensFunctionParams> all_params;
+  std::vector<Real> all_strengths;
+  std::vector<bool> is_nuclease;
+  std::vector<ReceptorType> all_targets;
+  MicrocinSourceBuffers buffers{all_sources, all_params, all_strengths, is_nuclease, all_targets};
+
+  collect_microcin_sources(agents, cfg_, protease, adv, buffers);
+  append_burst_sources(bursts, current_time, protease, buffers);
 
   std::vector<Vec3> sources;
   std::vector<GreensFunctionParams> params;
   std::vector<Real> strength_factors;
-  std::vector<bool> is_nuclease;
-  MicrocinSourceBuffers buffers{sources, params, strength_factors, is_nuclease};
-
-  collect_microcin_sources(agents, cfg_, protease, adv, buffers);
-  append_burst_sources(bursts, current_time, protease, buffers);
+  filter_sources_by_target(all_sources, all_params, all_strengths, all_targets, target,
+                           sources, params, strength_factors);
 
   if (sources.empty()) {
     zero_species_field(chem, toxin_species_idx);
@@ -311,6 +323,22 @@ void QSSASolver::solve_bacteriocin_field(
   accumulate_near_field(*domain_, gf_, sources, params, strength_factors,
                         grid, toxin_conc);
   deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
+}
+
+void QSSASolver::solve_all_bacteriocin_fields(
+    const AgentPool& agents,
+    const std::vector<ToxinBurstSource>& bursts,
+    Real current_time,
+    const ProteaseConfig& protease,
+    const AdvectionField& adv,
+    ChemicalField& chem) const {
+  for (ReceptorType target : species::BACTERIOCIN_RECEPTOR_TARGETS) {
+    const char* name = species::bacteriocin_species_for(target);
+    if (name == nullptr) continue;
+    Int idx = chem.find(name);
+    if (idx < 0) continue;
+    solve_bacteriocin_field(agents, bursts, current_time, protease, adv, chem, idx, target);
+  }
 }
 
 void QSSASolver::solve_bacteriocin_field_fmm(
@@ -337,48 +365,6 @@ void QSSASolver::solve_bacteriocin_field_fmm(
                         near_grid, toxin_conc);
   accumulate_far_field(fmm, gf_, avg_params, far_grid, toxin_conc);
   deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
-}
-
-void QSSASolver::solve_nuclease_toxin_field(
-    const AgentPool& agents,
-    const std::vector<ToxinBurstSource>& bursts,
-    Real current_time,
-    const ProteaseConfig& protease,
-    const AdvectionField& adv,
-    ChemicalField& chem,
-    Int nuclease_species_idx) const {
-
-  std::vector<Vec3> sources;
-  std::vector<GreensFunctionParams> params;
-  std::vector<Real> strength_factors;
-  std::vector<bool> is_nuclease;
-  MicrocinSourceBuffers buffers{sources, params, strength_factors, is_nuclease};
-
-  collect_microcin_sources(agents, cfg_, protease, adv, buffers);
-  append_burst_sources(bursts, current_time, protease, buffers);
-
-  std::vector<Vec3> nuc_sources;
-  std::vector<GreensFunctionParams> nuc_params;
-  std::vector<Real> nuc_strengths;
-  filter_nuclease_sources(sources, params, strength_factors, is_nuclease,
-                          nuc_sources, nuc_params, nuc_strengths);
-
-  if (nuc_sources.empty()) {
-    zero_species_field(chem, nuclease_species_idx);
-    return;
-  }
-
-  if (cfg_.use_fmm) {
-    solve_bacteriocin_field_fmm(nuc_sources, nuc_params, nuc_strengths,
-                                chem, nuclease_species_idx);
-    return;
-  }
-
-  std::vector<Real> toxin_conc(domain_->ncells(), 0.0);
-  const NearFieldGridContext grid = make_near_field_grid(*domain_, cfg_.toxin_cutoff);
-  accumulate_near_field(*domain_, gf_, nuc_sources, nuc_params, nuc_strengths,
-                        grid, toxin_conc);
-  deposit_to_chemical_field(chem, nuclease_species_idx, toxin_conc);
 }
 
 void QSSASolver::solve_nutrient_depletion(

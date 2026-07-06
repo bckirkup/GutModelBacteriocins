@@ -12,7 +12,7 @@ For **batch runner** manifests (multi-run sweeps), see [BATCH_RUNNER.md](BATCH_R
 |-----------|---------|-------|-------------|
 | `total_time` | 86400 | s | Simulation duration (24 h) |
 | `bio_dt` | 60 | s | Biological timestep |
-| `output_interval` | 3600 | s | HDF5 dump interval |
+| `output_interval` | 3600 | s | Console progress interval (seconds) |
 | `seed` | 42 | — | Random number generator seed |
 
 **Guidance:** `bio_dt` should be ≤ 60 s for accurate growth dynamics. Larger values speed up simulation but may miss fast-timescale events (SOS induction, toxin killing).
@@ -313,7 +313,7 @@ Per-strain JSON keys: `cdi_type`, `cdi_immunity` on `initial_strains` entries. C
 | `receptor.kd_colicinIa_cirA` | `kd_colicinIa_cirA` | 3e-9 | mol/m^3 | Colicin Ia affinity for CirA |
 | `receptor.kill_rate_colicin` | `kill_rate_colicin` | 1e-3 | 1/s | Single-hit colicin kill rate |
 | `receptor.kill_rate_microcin` | `kill_rate_microcin` | 5e-4 | 1/s | Microcin kill rate (slower) |
-| `receptor.immunity_factor` | `immunity_factor` | 0.001 | — | 1000× immunity protection |
+| `receptor.cirA_linearized_fraction` | `cirA_linearized_fraction` | 0.3 | — | Fraction of siderophore as CirA ligand |
 
 ---
 
@@ -323,7 +323,7 @@ Per-strain JSON keys: `cdi_type`, `cdi_immunity` on `initial_strains` entries. C
 |-----------|---------|-------|-------------|
 | `bacteriocin.sos_lysis_prob` | 0.01 | — | SOS induction probability per division (active when `just_divided`) |
 | `bacteriocin.sos_basal_rate` | 1e-6 | 1/s | Spontaneous SOS rate |
-| `bacteriocin.sos_cross_induction_rate` | 1e3 | 1/s per mol/m³ | Nuclease toxin provoker rate (reads `nuclease_toxin` field) |
+| `bacteriocin.sos_cross_induction_rate` | 1e3 | 1/s per mol/m³ | Nuclease provoker rate (reads `bacteriocin_BtuB` field) |
 | `bacteriocin.retardation_basic` | 50.0 | — | R for pI > 8.5 (Lethal Core) |
 | `bacteriocin.retardation_acidic` | 1.5 | — | R for pI < 7.0 (Lethal Halo) |
 | `bacteriocin.retardation_neutral` | 5.0 | — | R for 7.0–8.5 |
@@ -333,7 +333,22 @@ Per-strain JSON keys: `cdi_type`, `cdi_immunity` on `initial_strains` entries. C
 
 Per-plasmid defaults in `PlasmidLibrary`: `release_mode`, `is_nuclease`, `burst_size`, `phage_induction_rate` (ColB/ColIa: 1e-4 /generation).
 
-Chemical species `nuclease_toxin` (default grid) holds nuclease-only QSSA field for cross-induction; total `bacteriocin` field is used by `fix_receptor`.
+QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteriocin_FepA`, `bacteriocin_CirA`, `bacteriocin_FhuA`). Nuclease colicin bursts deposit into `bacteriocin_BtuB` for cross-induction. `fix_receptor` reads only the field matching each receptor target.
+
+---
+
+## Siderophore (Spec 4)
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `siderophore.enabled` | false | — | Register `siderophore` species and secretion/chelation in metabolism |
+| `siderophore.secretion_rate` | 1e-15 | mol/s per biomass | Enterobactin secretion scaled by Fur activity |
+| `siderophore.D_free` | 4e-11 | m²/s | Free siderophore diffusion |
+| `siderophore.chelation_rate` | 1e3 | m³/mol/s | Iron–siderophore chelation sink |
+| `siderophore.Km_reimport` | 1e-6 | mol/m³ | FepA-mediated siderophore–iron reimport |
+| `siderophore.recapture_fraction` | 0.1 | — | Local iron recapture near producer |
+
+`receptor.cirA_linearized_fraction` (default 0.3) scales siderophore concentration as the CirA nutrient ligand when siderophore is enabled.
 
 ---
 
@@ -408,7 +423,7 @@ export OMP_SCHEDULE=dynamic  # override schedule policy
 
 **Parallelized regions:**
 - Green's function superposition (`superpose_to_grid`): thread-local accumulation with dynamic scheduling
-- QSSA bacteriocin field deposition: static schedule over grid cells
+- QSSA per-receptor bacteriocin field deposition (`bacteriocin_BtuB/FepA/CirA/FhuA`): static schedule over grid cells
 - QSSA nutrient depletion: dynamic schedule over agents with atomic grid updates
 - Agent metabolism (growth rate + biomass): static schedule, atomic nutrient consumption
 - Receptor kill probability: static schedule (precomputed in parallel, applied serially)
@@ -449,14 +464,38 @@ gpu_device_id 0
 
 ---
 
-## HDF5 Output
+## HDF5 Output (Spec 4 layered schema)
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `hdf5.filename` | `gut_ibm_output.h5` | — | Output file path |
-| `hdf5.dump_every` | 100 | steps | Steps between dumps |
-| `hdf5.parallel` | false | — | MPI-parallel I/O (each rank writes its agents via collective hyperslab) |
-| `hdf5.enabled` | true | — | Set false to suppress output |
+| `hdf5.filename` / `hdf5_file` | `gut_ibm_output.h5` | — | Output file path |
+| `hdf5.enabled` | true | — | Master switch (also off when all schedule intervals are 0) |
+| `hdf5.schedule.summary` | 1 | steps | Per-step summary stats + event counters |
+| `hdf5.schedule.agents` | 5 | steps | Lightweight agent arrays |
+| `hdf5.schedule.grid` | 0 | steps | 3D chemical grids (0 = disabled) |
+| `hdf5.schedule.lineage` | 100 | steps | Lineage tracker arrays |
+| `hdf5.schedule.genome` | 100 | steps | Full genome / BI locus tables |
+| `hdf5.compression` | `none` | — | Grid compression: `none` or `gzip` |
+| `hdf5.compression_level` | 4 | — | gzip level (0–9) when compression is `gzip` |
+| `hdf5.parallel` | false | — | MPI-parallel agent gather on rank 0 |
+
+Nested JSON example:
+
+```json
+"hdf5": {
+  "file": "output.h5",
+  "compression": "gzip",
+  "schedule": {
+    "summary": 1,
+    "agents": 5,
+    "grid": 0,
+    "lineage": 100,
+    "genome": 100
+  }
+}
+```
+
+File layout: `/summary/step_NNNNNN/`, `/agents/step_NNNNNN/`, `/grid/step_NNNNNN/` (3D, optional gzip), `/lineage/`, `/genome/`. File attributes include `gutibm_version=4`, `nx`, `ny`, `nz`, `grid_dx`.
 
 ---
 

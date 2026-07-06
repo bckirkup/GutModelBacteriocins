@@ -10,6 +10,7 @@
 #include "domain.h"
 #include "advection.h"
 #include "chemical_field.h"
+#include "species_names.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -151,7 +152,7 @@ void test_steady_state_qssa_source() {
   qssa.init(qcfg, domain, adv);
 
   ChemicalSpec toxin;
-  toxin.name = "bacteriocin";
+  toxin.name = species::BACTERIOCIN_CIRA;
   toxin.diff_coeff = 4.0e-11;
   toxin.retardation = 10.0;
 
@@ -174,7 +175,8 @@ void test_steady_state_qssa_source() {
     Agent producer = Agent::create_default(1, 1, pos, 5e-4);
     producer.genome.bi_loci.push_back(mcc_v);
     agents.push_back(std::move(producer));
-    qssa.solve_bacteriocin_field(agents, no_bursts, 0.0, protease, adv, chem, 0);
+    qssa.solve_bacteriocin_field(agents, no_bursts, 0.0, protease, adv, chem, 0,
+                                 ReceptorType::CirA);
     assert(chem.conc(0, idx) > 0.0);
     std::cout << "  test_steady_state_qssa_source: microcin c=" << chem.conc(0, idx) << "\n";
   }
@@ -189,7 +191,8 @@ void test_steady_state_qssa_source() {
     Agent producer = Agent::create_default(2, 1, pos, 5e-4);
     producer.genome.bi_loci.push_back(col_e1);
     agents.push_back(std::move(producer));
-    qssa.solve_bacteriocin_field(agents, no_bursts, 0.0, protease, adv, chem, 0);
+    qssa.solve_bacteriocin_field(agents, no_bursts, 0.0, protease, adv, chem, 0,
+                                 ReceptorType::CirA);
     assert(chem.conc(0, idx) == 0.0);
   }
 
@@ -300,9 +303,9 @@ void test_cross_induction() {
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
   sim.agents().push_back(std::move(a));
 
-  Int i_nuc = sim.chemical_field().find("nuclease_toxin");
-  assert(i_nuc >= 0);
-  sim.chemical_field().conc(i_nuc, sim.agents()[0].grid_cell) = 1.0e-3;
+  Int i_btuB = sim.chemical_field().find(species::BACTERIOCIN_BTUB);
+  assert(i_btuB >= 0);
+  sim.chemical_field().conc(i_btuB, sim.agents()[0].grid_cell) = 1.0e-3;
 
   FixBacteriocin fix(sim, cfg);
   fix.compute(60.0);

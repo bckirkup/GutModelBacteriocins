@@ -19,6 +19,7 @@
 
 #include "fix.h"
 #include "agent.h"
+#include "chemical_field.h"
 
 namespace gutibm {
 
@@ -30,6 +31,11 @@ struct ReceptorConfig {
   Real kd_colicinB_fepA   = 2.0e-9;   // Colicin B affinity for FepA
   Real kd_lin_enterobactin = 5.0e-8;  // linearized enterobactin for CirA
   Real kd_colicinIa_cirA  = 3.0e-9;   // Colicin Ia affinity for CirA
+  Real kd_colicinM_fhuA   = 2.5e-9;   // Colicin M affinity for FhuA
+  Real kd_ferrichrome     = 1.0e-8;   // ferrichrome affinity for FhuA
+
+  // CirA ligand: fraction of siderophore pool that is linearized enterobactin
+  Real cirA_linearized_fraction = 0.3;
 
   // Kill rate constants (1/s per occupied receptor)
   Real kill_rate_colicin  = 1.0e-3;   // single-hit kill rate
@@ -48,6 +54,9 @@ class FixReceptor : public Fix {
  private:
   // Evaluate kill probability for one agent from local toxin field
   Real compute_kill_prob(const Agent& agent, Real dt) const;
+
+  Real local_toxin_conc(const ChemicalField& chem, Int cell,
+                        const char* species_name) const;
 
   // Competitive binding fraction: toxin occupancy given ligand competition
   // toxin_aff / ligand_aff scale the respective Kd values for partial resistance

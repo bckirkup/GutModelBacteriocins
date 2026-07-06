@@ -95,6 +95,7 @@ void FixBacteriocin::check_sos_induction(Agent& agent, Real dt) {
   if (sim_.rng().bernoulli(p_sos)) {
     agent.state     = PhenoState::SOS_INDUCED;
     agent.timers.sos_timer = k_sos_lysis_delay_s;
+    sim_.step_events().sos_inductions++;
   }
 }
 
@@ -110,6 +111,7 @@ void FixBacteriocin::check_phage_induction(Agent& agent, const BICluster& bi, Re
   if (sim_.rng().bernoulli(p_induction)) {
     agent.state     = PhenoState::SOS_INDUCED;
     agent.timers.sos_timer = k_phage_lysis_delay_s;
+    sim_.step_events().phage_inductions++;
   }
 }
 
@@ -132,6 +134,7 @@ void FixBacteriocin::lyse_agent(Agent& agent) {
     burst.params.source_rate = base_release * scale;
     burst.creation_time = creation_time;
     burst.is_nuclease = bi.is_nuclease;
+    burst.target = bi.target;
     burst.decay_rate = (bi.protease_half_life > 0.0)
         ? k_ln2 / bi.protease_half_life : 0.0;
     if (!sim_.config().chem_env.protease.enabled) {

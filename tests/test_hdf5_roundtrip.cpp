@@ -75,7 +75,12 @@ SimulationConfig make_roundtrip_config(std::string_view filename, bool parallel)
   cfg.seed = 24680;
   cfg.hdf5.enabled = true;
   cfg.hdf5.filename = filename;
-  cfg.hdf5.dump_every = 1;
+  cfg.hdf5.schedule.summary = 1;
+  cfg.hdf5.schedule.agents = 1;
+  cfg.hdf5.schedule.grid = 1;
+  cfg.hdf5.schedule.lineage = 1;
+  cfg.hdf5.schedule.genome = 1;
+  cfg.hdf5.schedule.grid_species = {"all"};
   cfg.hdf5.parallel = parallel;
   cfg.advection.mucus_thickness = 25e-6;
   cfg.advection.distal_length = 50e-6;
@@ -136,7 +141,7 @@ std::vector<AgentSnapshot> collect_all_agents(const Simulation& sim) {
 }
 
 std::vector<AgentSnapshot> read_agent_snapshots(hid_t file, const std::string& step) {
-  const std::string prefix = step + "/atoms/";
+  const std::string prefix = "agents/" + step + "/";
   auto ids      = read_dataset_1d<int64_t>(file, prefix + "id",      H5T_NATIVE_INT64);
   auto types    = read_dataset_1d<int32_t>(file, prefix + "type",    H5T_NATIVE_INT32);
   auto states   = read_dataset_1d<int32_t>(file, prefix + "state",   H5T_NATIVE_INT32);
@@ -145,8 +150,8 @@ std::vector<AgentSnapshot> read_agent_snapshots(hid_t file, const std::string& s
   auto zs       = read_dataset_1d<double>(file, prefix + "z",        H5T_NATIVE_DOUBLE);
   auto radii    = read_dataset_1d<double>(file, prefix + "radius",   H5T_NATIVE_DOUBLE);
   auto biomass  = read_dataset_1d<double>(file, prefix + "biomass",  H5T_NATIVE_DOUBLE);
-  auto mus      = read_dataset_1d<double>(file, prefix + "mu",       H5T_NATIVE_DOUBLE);
-  auto lineages = read_dataset_1d<int64_t>(file, prefix + "lineage", H5T_NATIVE_INT64);
+  auto mus      = read_dataset_1d<double>(file, prefix + "mu_realized", H5T_NATIVE_DOUBLE);
+  auto lineages = read_dataset_1d<int64_t>(file, prefix + "lineage_id", H5T_NATIVE_INT64);
 
   const size_t n = ids.size();
   assert(types.size() == n);
@@ -177,28 +182,28 @@ std::vector<AgentSnapshot> read_agent_snapshots(hid_t file, const std::string& s
 }
 
 void assert_schema(hid_t file, const std::string& step) {
-  assert(dataset_exists(file, step + "/atoms/id"));
-  assert(dataset_exists(file, step + "/atoms/type"));
-  assert(dataset_exists(file, step + "/atoms/state"));
-  assert(dataset_exists(file, step + "/atoms/x"));
-  assert(dataset_exists(file, step + "/atoms/y"));
-  assert(dataset_exists(file, step + "/atoms/z"));
-  assert(dataset_exists(file, step + "/atoms/radius"));
-  assert(dataset_exists(file, step + "/atoms/biomass"));
-  assert(dataset_exists(file, step + "/atoms/mu"));
-  assert(dataset_exists(file, step + "/atoms/lineage"));
+  assert(dataset_exists(file, "agents/" + step + "/id"));
+  assert(dataset_exists(file, "agents/" + step + "/type"));
+  assert(dataset_exists(file, "agents/" + step + "/state"));
+  assert(dataset_exists(file, "agents/" + step + "/x"));
+  assert(dataset_exists(file, "agents/" + step + "/y"));
+  assert(dataset_exists(file, "agents/" + step + "/z"));
+  assert(dataset_exists(file, "agents/" + step + "/radius"));
+  assert(dataset_exists(file, "agents/" + step + "/biomass"));
+  assert(dataset_exists(file, "agents/" + step + "/mu_realized"));
+  assert(dataset_exists(file, "agents/" + step + "/lineage_id"));
 
-  assert(dataset_exists(file, step + "/grid/bacteriocin"));
-  assert(dataset_exists(file, step + "/grid/carbon"));
-  assert(dataset_exists(file, step + "/metadata/time"));
-  assert(dataset_exists(file, step + "/metadata/step"));
-  assert(dataset_exists(file, step + "/metadata/num_agents"));
-  assert(dataset_exists(file, step + "/metadata/num_lineages"));
-  assert(dataset_exists(file, step + "/lineage/btuB_expression"));
-  assert(dataset_exists(file, step + "/lineage/num_bi_loci"));
-  assert(dataset_exists(file, step + "/genome/parent_id"));
-  assert(dataset_exists(file, step + "/genome/bi_toxin_id"));
-  assert(dataset_exists(file, step + "/genome/bi_pI"));
+  assert(dataset_exists(file, "grid/" + step + "/bacteriocin_BtuB"));
+  assert(dataset_exists(file, "grid/" + step + "/carbon"));
+  assert(dataset_exists(file, "summary/" + step + "/time"));
+  assert(dataset_exists(file, "summary/" + step + "/step"));
+  assert(dataset_exists(file, "summary/" + step + "/num_agents"));
+  assert(dataset_exists(file, "summary/" + step + "/num_lineages"));
+  assert(dataset_exists(file, "lineage/" + step + "/btuB_expression"));
+  assert(dataset_exists(file, "lineage/" + step + "/num_bi_loci"));
+  assert(dataset_exists(file, "genome/" + step + "/parent_id"));
+  assert(dataset_exists(file, "genome/" + step + "/bi_toxin_id"));
+  assert(dataset_exists(file, "genome/" + step + "/bi_pI"));
 }
 
 void compare_agent_snapshots(const std::vector<AgentSnapshot>& expected,
@@ -229,11 +234,11 @@ void validate_step_metadata(hid_t file,
                           Int expected_step,
                           Real expected_time,
                           Int expected_agents) {
-  auto meta_agents = read_scalar<int32_t>(file, step + "/metadata/num_agents",
+  auto meta_agents = read_scalar<int32_t>(file, "summary/" + step + "/num_agents",
                                           H5T_NATIVE_INT32);
-  auto meta_step   = read_scalar<int32_t>(file, step + "/metadata/step",
+  auto meta_step   = read_scalar<int32_t>(file, "summary/" + step + "/step",
                                           H5T_NATIVE_INT32);
-  auto meta_time   = read_scalar<double>(file, step + "/metadata/time",
+  auto meta_time   = read_scalar<double>(file, "summary/" + step + "/time",
                                          H5T_NATIVE_DOUBLE);
 
   assert(meta_step == expected_step);
@@ -249,7 +254,7 @@ void validate_step_agents_match_sim(hid_t file,
                                     const Simulation& sim) {
   assert_schema(file, step);
 
-  auto meta_agents = read_scalar<int32_t>(file, step + "/metadata/num_agents",
+  auto meta_agents = read_scalar<int32_t>(file, "summary/" + step + "/num_agents",
                                           H5T_NATIVE_INT32);
   assert(meta_agents == static_cast<int32_t>(sim.global_agent_count()));
 
@@ -275,10 +280,16 @@ void validate_step_agents_match_sim(hid_t file,
   compare_agent_snapshots(local_agents, file_agents);
 #endif
 
-  auto grid_bacteriocin = read_dataset_1d<double>(
-      file, step + "/grid/bacteriocin", H5T_NATIVE_DOUBLE);
-  assert(grid_bacteriocin.size() ==
-         static_cast<size_t>(sim.chemical_field().ncells()));
+  auto grid_btuB_dset = H5Dopen2(file, ("grid/" + step + "/bacteriocin_BtuB").c_str(), H5P_DEFAULT);
+  assert(grid_btuB_dset >= 0);
+  hid_t grid_space = H5Dget_space(grid_btuB_dset);
+  hsize_t dims[3] = {0, 0, 0};
+  H5Sget_simple_extent_dims(grid_space, dims, nullptr);
+  const size_t grid_elems = static_cast<size_t>(dims[0]) * static_cast<size_t>(dims[1])
+      * static_cast<size_t>(dims[2]);
+  H5Sclose(grid_space);
+  H5Dclose(grid_btuB_dset);
+  assert(grid_elems == static_cast<size_t>(sim.chemical_field().ncells()));
 }
 
 void validate_step_genome(hid_t /*file*/, const std::string& /*step*/,
@@ -325,7 +336,7 @@ void validate_parallel_roundtrip(const Simulation& sim, const std::string& filen
   assert(snap.metadata.num_agents == sim.global_agent_count());
   assert(static_cast<Int>(snap.agents.id.size()) == sim.global_agent_count());
 
-  auto grid_it = snap.grid.species.find("bacteriocin");
+  auto grid_it = snap.grid.species.find("bacteriocin_BtuB");
   assert(grid_it != snap.grid.species.end());
   assert(grid_it->second.size() == static_cast<size_t>(sim.chemical_field().ncells()));
 

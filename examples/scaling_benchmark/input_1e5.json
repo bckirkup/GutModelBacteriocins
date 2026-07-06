@@ -31,5 +31,7 @@
   ],
 
   "hdf5_file": "scaling_benchmark_1e5.h5",
-  "hdf5_every": 0
+  "hdf5": {
+    "enabled": false
+  }
 }

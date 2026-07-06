@@ -8,6 +8,7 @@
 
 #include "simulation.h"
 #include "input_parser.h"
+#include "stop_signal.h"
 
 #include <iostream>
 #include <string>
@@ -57,6 +58,8 @@ int main(int argc, char** argv) {
   } else {
     cfg = gutibm::InputParser::default_config();
   }
+
+  gutibm::install_stop_signal_handlers();
 
   gutibm::Simulation sim;
   if (!cfg.checkpoint.file.empty()) {

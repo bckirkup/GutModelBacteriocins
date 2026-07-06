@@ -40,5 +40,13 @@
   ],
 
   "hdf5_file": "single_colony_output.h5",
-  "hdf5_every": 60
+  "hdf5": {
+    "schedule": {
+      "summary": 1,
+      "agents": 60,
+      "grid": 0,
+      "lineage": 100,
+      "genome": 100
+    }
+  }
 }

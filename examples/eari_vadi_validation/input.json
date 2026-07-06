@@ -48,5 +48,13 @@
   ],
 
   "hdf5_file": "eari_vadi_validation.h5",
-  "hdf5_every": 5
+  "hdf5": {
+    "schedule": {
+      "summary": 5,
+      "agents": 5,
+      "grid": 0,
+      "lineage": 5,
+      "genome": 5
+    }
+  }
 }

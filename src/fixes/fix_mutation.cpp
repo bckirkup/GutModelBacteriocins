@@ -68,6 +68,7 @@ void FixMutation::duplicate_bi_locus(Agent& agent) {
   Int idx = rng.randint(0, static_cast<Int>(agent.genome.bi_loci.size()) - 1);
   agent.genome.bi_loci.push_back(agent.genome.bi_loci[idx]);
   agent.genome.mutations++;
+  sim_.step_events().mutations++;
 
   sim_.lineage_tracker().record_mutation(agent.identity.tag, "bi_duplication",
                                           agent.genome.lineage_id);
@@ -85,6 +86,7 @@ void FixMutation::recombine_bi_locus(Agent& agent) {
   std::swap(agent.genome.bi_loci[i1].immunity_id,
             agent.genome.bi_loci[i2].immunity_id);
   agent.genome.mutations++;
+  sim_.step_events().mutations++;
 
   sim_.lineage_tracker().record_mutation(agent.identity.tag, "bi_recombination",
                                           agent.genome.lineage_id);
@@ -101,6 +103,7 @@ void FixMutation::mutate_receptor(Agent& agent) {
     agent.receptor_expr[receptor] = agent.receptor_expr_base[receptor];
   }
   agent.genome.mutations++;
+  sim_.step_events().mutations++;
 
   // If expression is very low, mark as resistant
   if (agent.receptor_expr_base[receptor] < 0.2) {
@@ -123,6 +126,7 @@ void FixMutation::partial_resistance_mutation(Agent& agent) {
 
   // Receptor expression is NOT changed (distinct from full downregulation)
   agent.genome.mutations++;
+  sim_.step_events().mutations++;
 
   sim_.lineage_tracker().record_mutation(agent.identity.tag, "partial_resistance",
                                           agent.genome.lineage_id);
@@ -140,6 +144,7 @@ void FixMutation::generate_super_killer(Agent& agent) {
     agent.genome.bi_loci.push_back(novel);
   }
   agent.genome.mutations++;
+  sim_.step_events().mutations++;
 
   const char* label = (novel.immunity_binding_affinity < 1.0)
                           ? "super_killer_escape"
@@ -159,6 +164,7 @@ void FixMutation::compensatory_mutation(Agent& agent) {
   agent.genome.plasmid_cost_amelioration =
       std::min(agent.genome.plasmid_cost_amelioration, 0.015);
   agent.genome.mutations++;
+  sim_.step_events().mutations++;
 
   sim_.lineage_tracker().record_mutation(agent.identity.tag, "compensatory",
                                           agent.genome.lineage_id);

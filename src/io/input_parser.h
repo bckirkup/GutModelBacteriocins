@@ -53,6 +53,7 @@ struct ChemicalEnvironmentConfig {
   AcetateConfig acetate;
   MucinConfig mucin;
   ProteaseConfig protease;
+  SiderophoreConfig siderophore;
 };
 
 struct CellBiologyConfig {

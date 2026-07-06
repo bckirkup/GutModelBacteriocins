@@ -38,7 +38,12 @@ SimulationConfig make_checkpoint_config(std::string_view filename) {
   cfg.seed = 13579;
   cfg.hdf5.enabled = true;
   cfg.hdf5.filename = filename;
-  cfg.hdf5.dump_every = 1;
+  cfg.hdf5.schedule.summary = 1;
+  cfg.hdf5.schedule.agents = 1;
+  cfg.hdf5.schedule.grid = 1;
+  cfg.hdf5.schedule.lineage = 1;
+  cfg.hdf5.schedule.genome = 1;
+  cfg.hdf5.schedule.grid_species = {"all"};
   cfg.hdf5.parallel = false;
   cfg.advection.mucus_thickness = 25e-6;
   cfg.advection.distal_length = 50e-6;
