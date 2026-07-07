@@ -193,7 +193,7 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 
 | Key | Maps to |
 |-----|---------|
-| `total_time`, `bio_dt`, `output_interval`, `seed` | Time control |
+| `total_time`, `bio_dt`, `output_interval` (console/lineage only), `seed` | Time control |
 | `domain_x`, `domain_y`, `domain_z`, `grid_dx` | Domain size / resolution |
 | `mucus_thickness`, `radial_turnover`, `distal_transit` | Advection |
 | `vbf_density`, `vbf_viscosity`, `vbf_mucin_z_gradient`, `vbf_mucin_z_lambda` | VBF |

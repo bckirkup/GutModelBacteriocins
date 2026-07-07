@@ -63,6 +63,8 @@ int main() {
   hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   assert(file >= 0);
   assert(dataset_exists(file, "summary/step_000000/time"));
+  assert(dataset_exists(file, "summary/step_000001/time"));
+  assert(dataset_exists(file, "summary/step_000002/time"));
   assert(!dataset_exists(file, "agents/step_000000/id"));
   assert(!dataset_exists(file, "grid/step_000000/carbon"));
   H5Fclose(file);
