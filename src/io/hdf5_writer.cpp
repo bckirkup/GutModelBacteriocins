@@ -21,6 +21,7 @@ extern "C" {
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <format>
 #include <iostream>
 #include <limits>
@@ -85,11 +86,11 @@ void mpi_barrier(const HDF5Config& cfg) {
 
 void ensure_group(hid_t fid, const std::string& path, const HDF5Config& cfg) {
   if (io_rank(cfg) == 0 && fid >= 0) {
-    hid_t g = H5Gcreate2(fid, path.c_str(), H5P_DEFAULT,
-                          H5P_DEFAULT, H5P_DEFAULT);
-    if (g < 0) {
-      H5Eclear2(H5E_DEFAULT);
+    hid_t g = -1;
+    if (H5Lexists(fid, path.c_str(), H5P_DEFAULT) > 0) {
       g = H5Gopen2(fid, path.c_str(), H5P_DEFAULT);
+    } else {
+      g = H5Gcreate2(fid, path.c_str(), H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     }
     if (g >= 0) H5Gclose(g);
   }
@@ -314,14 +315,38 @@ void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
   }
 
   if (enabled_ && io_rank(cfg_) == 0) {
-    hid_t fcpl = H5Pcreate(H5P_FILE_CREATE);
-    H5Pset_libver_bounds(fcpl, H5F_LIBVER_V18, H5F_LIBVER_LATEST);
+    // Parallel HDF5 builds can return invalid FILE_CREATE property lists from
+    // H5Pcreate on some platforms; H5P_DEFAULT is reliable for rank-0 serial I/O.
+    hid_t fcpl = H5P_DEFAULT;
+    hid_t created_fcpl = H5Pcreate(H5P_FILE_CREATE);
+    if (created_fcpl >= 0 && H5Iis_valid(created_fcpl) &&
+        H5Pget_class(created_fcpl) == H5P_FILE_CREATE) {
+      if (H5Pset_libver_bounds(created_fcpl, H5F_LIBVER_V18, H5F_LIBVER_LATEST) >= 0) {
+        fcpl = created_fcpl;
+        created_fcpl = H5I_INVALID_HID;
+      } else {
+        H5Eclear2(H5E_DEFAULT);
+      }
+    }
+    if (created_fcpl >= 0 && H5Iis_valid(created_fcpl)) {
+      H5Pclose(created_fcpl);
+    }
+
     file_id_ = static_cast<int64_t>(
         H5Fcreate(cfg_.filename.c_str(), H5F_ACC_TRUNC, fcpl, H5P_DEFAULT));
-    H5Pclose(fcpl);
+    if (fcpl != H5P_DEFAULT && fcpl >= 0 && H5Iis_valid(fcpl)) {
+      H5Pclose(fcpl);
+    }
 
-    if (file_id_ < 0) {
+    if (file_id_ < 0 || !H5Iis_valid(static_cast<hid_t>(file_id_)) ||
+        H5Fis_hdf5(cfg_.filename.c_str()) <= 0) {
+      H5Eclear2(H5E_DEFAULT);
+      if (file_id_ >= 0 && H5Iis_valid(static_cast<hid_t>(file_id_))) {
+        H5Fclose(static_cast<hid_t>(file_id_));
+      }
+      file_id_ = -1;
       enabled_ = false;
+      std::remove(cfg_.filename.c_str());
     } else {
       auto fid = static_cast<hid_t>(file_id_);
       const int32_t nx_attr = nx_;
