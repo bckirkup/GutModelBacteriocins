@@ -35,9 +35,10 @@ step(dt):
   1. Pre-step: clear ghosts, zero reactions
   2. Exchange ghost agents (MPI boundary layers)
   3. Rebuild spatial hash, update grid coupling
-  4. module_biology(dt)   — execute all Fix modules (uses ghosts for neighbor queries)
+  4. module_biology(dt)   — execute Fix modules; QSSA bacteriocin deposition runs
+                              immediately before fix_receptor (same-step toxin field)
   5. Clear ghost agents
-  6. module_chemistry()   — QSSA steady-state fields
+  6. module_chemistry()   — QSSA steady-state fields (nutrients, VBF, reactions)
   7. module_physics(dt)   — crypt migration, advection, drag, repulsion
   8. Post-step: fix post-processing (division, lysis completion)
   9. Migrate agents that crossed slab boundaries (MPI_Sendrecv)
