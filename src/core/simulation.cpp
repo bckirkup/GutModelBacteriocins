@@ -553,9 +553,14 @@ void Simulation::print_step_profile() const {
             << std::flush;
 }
 
+namespace {
+constexpr Int kPopulationStopThreshold = 1;
+}  // namespace
+
 void Simulation::run() {
   int rank = domain_.rank();
   Real last_dt = cfg_.time.bio_dt;
+  bool stopped_for_population = false;
 
   // Initial snapshot (step 0, pre-biology)
   if (hdf5_.is_enabled()) {
@@ -565,7 +570,16 @@ void Simulation::run() {
     take_lineage_snapshot();
   }
 
-  while (clock_.time < cfg_.time.total_time) {
+  if (mpi_stats_.global_agent_count <= kPopulationStopThreshold) {
+    stopped_for_population = true;
+    if (rank == 0) {
+      std::cout << "Population stop: " << mpi_stats_.global_agent_count
+                << " cell(s) — ending simulation.\n"
+                << std::flush;
+    }
+  }
+
+  while (!stopped_for_population && clock_.time < cfg_.time.total_time) {
     if (gutibm_stop_requested()) break;
 
     Real dt = compute_adaptive_dt();
@@ -599,6 +613,16 @@ void Simulation::run() {
     if (clock_.time >= clock_.next_snapshot) {
       take_lineage_snapshot();
       clock_.next_snapshot += cfg_.time.output_interval;
+    }
+
+    if (mpi_stats_.global_agent_count <= kPopulationStopThreshold) {
+      stopped_for_population = true;
+      if (rank == 0) {
+        std::cout << "Population stop: " << mpi_stats_.global_agent_count
+                  << " cell(s) — ending simulation.\n"
+                  << std::flush;
+      }
+      break;
     }
   }
 

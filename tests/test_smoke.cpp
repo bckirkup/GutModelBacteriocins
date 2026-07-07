@@ -587,6 +587,92 @@ void test_partial_resistance_survival() {
             << " partial_res=" << type3_alive << ")\n";
 }
 
+void test_population_stop_at_init() {
+  // Single-cell initial state: simulation should end without stepping.
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {50e-6, 50e-6, 50e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.time.total_time = 3600.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 3600.0;
+  cfg.seed = 5151;
+  cfg.hdf5.enabled = false;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain s;
+  s.type = 1;
+  s.count = 1;
+  s.mu_max = 5e-4;
+  s.plasmids = {};
+  s.conjugative = false;
+  cfg.initial_strains.push_back(s);
+
+  Simulation sim;
+  sim.init(cfg);
+  assert(sim.global_agent_count() == 1);
+
+  sim.run();
+
+  assert(sim.step_count() == 0);
+  assert(sim.time() == 0.0);
+  assert(sim.global_agent_count() == 1);
+
+  std::cout << "  test_population_stop_at_init: PASSED\n";
+}
+
+void test_population_stop_after_extinction() {
+  // Two cells in washout trap: after one step population <= 1, run ends early.
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo = {0, 0, 0};
+  cfg.domain.hi = {50e-6, 50e-6, 50e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.time.total_time = 600.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 600.0;
+  cfg.seed = 5252;
+  cfg.hdf5.enabled = false;
+  cfg.advection.crypts_enabled = false;
+  cfg.advection.mucus_thickness = 50e-6;
+  cfg.advection.radial_turnover = 5400.0;
+  cfg.advection.distal_length = 50e-6;
+  cfg.advection.distal_transit_time = 43200.0;
+  cfg.qssa.toxin_cutoff = 25e-6;
+  cfg.qssa.nutrient_cutoff = 15e-6;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain s;
+  s.type = 1;
+  s.count = 2;
+  s.mu_max = 5e-4;
+  s.plasmids = {};
+  s.conjugative = false;
+  cfg.initial_strains.push_back(s);
+
+  Simulation sim;
+  sim.init(cfg);
+  assert(sim.global_agent_count() == 2);
+
+  for (Agent& a : sim.agents()) {
+    a.x[2] = 45e-6;
+    a.flags.in_crypt = false;
+    for (Real& expr : a.receptor_expr) expr = 0.01;
+    for (Real& expr : a.genome.receptor_expression) expr = 0.01;
+    a.mu_max = 1e-6;
+    a.km.km_carbon = 500.0;
+  }
+
+  sim.run();
+
+  assert(sim.global_agent_count() <= 1);
+  assert(sim.step_count() == 1);
+  assert(sim.time() == 60.0);
+
+  std::cout << "  test_population_stop_after_extinction: PASSED"
+            << " (global_agents=" << sim.global_agent_count()
+            << " steps=" << sim.step_count() << ")\n";
+}
+
 int main() {
   std::cout << "=== Smoke Tests ===\n";
   test_mini_simulation();
@@ -599,6 +685,8 @@ int main() {
   test_crypt_zero_velocity();
   test_crypt_migration_in_out();
   test_partial_resistance_survival();
+  test_population_stop_at_init();
+  test_population_stop_after_extinction();
   std::cout << "All smoke tests passed.\n";
   return 0;
 }
