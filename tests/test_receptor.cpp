@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "species_names.h"
+#include "qssa_solver.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -191,6 +192,50 @@ void test_cira_uses_siderophore_ligand() {
   std::cout << "  test_cira_uses_siderophore_ligand: PASSED\n";
 }
 
+void test_burst_kills_same_step() {
+  // Regression: fix_receptor must see toxin deposited by QSSA in the same step.
+  // Before the fix, module_biology ran receptor before module_chemistry, so a
+  // newly added burst left the grid at zero during killing.
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_strains.clear();
+  cfg.hdf5.enabled = false;
+  cfg.enabled_fixes = {"receptor"};
+  cfg.fixes.receptor.kill_rate_colicin = 10.0;
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.seed = 6060;
+
+  Simulation sim;
+  sim.init(cfg);
+
+  Agent victim = make_susceptible_agent(sim);
+  const Vec3 pos = victim.x;
+  const Int cell = victim.grid_cell;
+  sim.agents().push_back(std::move(victim));
+
+  const BICluster col_e1 = PlasmidLibrary::colicin_E1();
+  ToxinBurstSource burst;
+  burst.pos = pos;
+  burst.params.diff_coeff = col_e1.diff_coeff;
+  burst.params.retardation = col_e1.retardation;
+  burst.params.pI = col_e1.pI;
+  burst.params.source_rate = sim.config().qssa.colicin_release_rate;
+  burst.creation_time = sim.time();
+  burst.is_nuclease = col_e1.is_nuclease;
+  burst.target = col_e1.target;
+  sim.add_toxin_burst(burst);
+
+  Int i_tox = sim.chemical_field().find(species::BACTERIOCIN_BTUB);
+  assert(i_tox >= 0);
+  assert(sim.chemical_field().conc(i_tox, cell) == 0.0);
+
+  sim.step(60.0);
+
+  assert(sim.agents()[0].state == PhenoState::DEAD);
+
+  std::cout << "  test_burst_kills_same_step: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Receptor Fix Tests ===\n";
   test_high_toxin_kills_susceptible();
@@ -198,6 +243,7 @@ int main() {
   test_ligand_competition_reduces_kill();
   test_partial_resistance_reduces_lethality();
   test_cira_uses_siderophore_ligand();
+  test_burst_kills_same_step();
   std::cout << "All receptor fix tests passed.\n";
   return 0;
 }

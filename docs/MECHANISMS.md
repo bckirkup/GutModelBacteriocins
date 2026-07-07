@@ -36,7 +36,7 @@ Each biological rule is encapsulated as a **Fix** — a modular computation unit
 7. `fix_mutation` — BI locus evolution, receptor downregulation, super-killers
 8. `fix_mechanics` — Hertzian repulsion, optional EPS adhesion
 
-The QSSA solver and advection field operate between fix passes (chemistry and physics modules respectively). Motility displacement is applied in `module_physics()` after advection.
+The QSSA solver deposits bacteriocin fields immediately before `fix_receptor` (so killing sees the current step's toxin sources), then runs the full chemistry pass (nutrients, VBF, reactions) after biology. Advection operates in the physics module. Motility displacement is applied in `module_physics()` after advection.
 
 ---
 

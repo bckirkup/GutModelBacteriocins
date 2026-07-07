@@ -714,13 +714,7 @@ void Simulation::step(Real dt) {
   clock_.step_count++;
 }
 
-void Simulation::module_biology(Real dt) const {
-  for (const auto& fix : fixes_) {
-    fix->compute(dt);
-  }
-}
-
-void Simulation::module_chemistry(Real dt) {
+void Simulation::update_bacteriocin_fields() {
   prune_toxin_bursts(clock_.time);
 
   // QSSA: compute steady-state per-receptor toxin fields via Green's functions
@@ -729,6 +723,21 @@ void Simulation::module_chemistry(Real dt) {
   if (gpu_active_) {
     chem_gpu_.sync_to_device(chem_);
   }
+}
+
+void Simulation::module_biology(Real dt) {
+  for (const auto& fix : fixes_) {
+    // Receptor killing reads the chemical grid; deposit current-step toxin
+    // sources (microcin producers + active bursts) before fix_receptor runs.
+    if (fix->name() == "receptor") {
+      update_bacteriocin_fields();
+    }
+    fix->compute(dt);
+  }
+}
+
+void Simulation::module_chemistry(Real dt) {
+  update_bacteriocin_fields();
 
   // Nutrient depletion
   if (gpu_active_) {

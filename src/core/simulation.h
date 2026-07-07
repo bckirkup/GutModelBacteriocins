@@ -5,10 +5,11 @@
    
    1. Biology module (bio_dt ~60s):
       - Metabolism (Monod growth, division, death)
-      - Mutation (stochastic BI locus changes)
-      - Bacteriocin (SOS lysis, toxin release)
+      - Bacteriocin (SOS lysis scheduling, toxin release)
+      - [QSSA bacteriocin deposition before receptor]
       - Receptor (competitive binding, killing)
       - Conjugation (HGT between neighbors)
+      - Mutation (stochastic BI locus changes)
    
    2. Chemistry module (instantaneous via QSSA):
       - Green's function superposition for toxin fields
@@ -150,9 +151,10 @@ class Simulation {
   void take_lineage_snapshot();
 
   // Module execution (NUFEB-inspired)
-  void module_biology(Real dt) const;
+  void module_biology(Real dt);
   void module_chemistry(Real dt);
   void module_physics(Real dt);
+  void update_bacteriocin_fields();
 
   // MPI domain decomposition
   void migrate_agents();
