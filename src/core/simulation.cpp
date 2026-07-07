@@ -557,8 +557,10 @@ void Simulation::run() {
   int rank = domain_.rank();
   Real last_dt = cfg_.time.bio_dt;
 
-  // Initial output
-  hdf5_.write_step(*this, 0, 0.0, last_dt);
+  // Initial snapshot (step 0, pre-biology)
+  if (hdf5_.is_enabled()) {
+    hdf5_.write_step(*this, 0, 0.0, last_dt);
+  }
   if (rank == 0) {
     take_lineage_snapshot();
   }
@@ -574,9 +576,13 @@ void Simulation::run() {
 
     step(dt);
 
-    // Periodic output
-    if (clock_.time >= clock_.next_output) {
+    // HDF5 cadence is controlled solely by hdf5.schedule.* (per-layer intervals).
+    if (hdf5_.is_enabled()) {
       hdf5_.write_step(*this, clock_.step_count, clock_.time, last_dt);
+    }
+
+    // Console progress and in-memory lineage snapshots use output_interval (seconds).
+    if (clock_.time >= clock_.next_output) {
       if (rank == 0) {
         std::cout << "Step " << clock_.step_count
                   << "  t=" << clock_.time << "s"
@@ -596,8 +602,6 @@ void Simulation::run() {
     }
   }
 
-  // Final output
-  hdf5_.write_step(*this, clock_.step_count, clock_.time, last_dt);
   hdf5_.finalize();
 
   if (rank == 0) {

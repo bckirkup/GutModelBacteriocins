@@ -12,7 +12,7 @@ For **batch runner** manifests (multi-run sweeps), see [BATCH_RUNNER.md](BATCH_R
 |-----------|---------|-------|-------------|
 | `total_time` | 86400 | s | Simulation duration (24 h) |
 | `bio_dt` | 60 | s | Biological timestep |
-| `output_interval` | 3600 | s | Console progress interval (seconds) |
+| `output_interval` | 3600 | s | Console progress + in-memory lineage snapshot interval (not HDF5) |
 | `seed` | 42 | — | Random number generator seed |
 
 **Guidance:** `bio_dt` should be ≤ 60 s for accurate growth dynamics. Larger values speed up simulation but may miss fast-timescale events (SOS induction, toxin killing).
