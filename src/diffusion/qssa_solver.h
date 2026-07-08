@@ -45,10 +45,10 @@ struct QSSAConfig {
   Real fmm_theta = 0.5;    // opening angle (0→exact, 1→fast/approximate)
   int  fmm_expansion_order = 2;  // 1=monopole, 2=dipole+quadrupole, 3=octupole
 
-  // Nutrient-depletion stoichiometry: mol consumed per unit (mu*biomass).
-  Real iron_stoichiometry   = 1.0e-6;
-  Real b12_stoichiometry    = 1.0e-9;
-  Real carbon_stoichiometry = 0.5;
+  // Spec 6 — per-agent carbon/iron/B12 depletion is now owned solely by the
+  // metabolism Fix (yield-based uptake). The former iron/b12/carbon
+  // stoichiometry knobs, which drove the removed QSSA nutrient terms, no longer
+  // exist. solve_nutrient_depletion applies only agent O2 respiration.
 
   // Fallback averaged Green's function params used when there are toxin
   // sources but their total weighted strength is zero (degenerate case).

@@ -192,7 +192,6 @@ std::vector<Probe> build_probes() {
   v.push_back(R("vbf_mucin_z_lambda", [](const SimulationConfig& c) { return c.vbf.mucin_z_gradient_lambda; }));
   v.push_back(R("vbf_carbon_sink_vmax", [](const SimulationConfig& c) { return c.vbf.carbon_sink_vmax; }));
   v.push_back(R("vbf_carbon_sink_km", [](const SimulationConfig& c) { return c.vbf.carbon_sink_km; }));
-  v.push_back(R("vbf_b12_production", [](const SimulationConfig& c) { return c.vbf.b12_production; }));
 
   // ── Carbon z-gradient + bacteriocin SOS ───────────────────────────────────
   v.push_back(B("carbon_z_gradient", [](const SimulationConfig& c) { return carbon_spec(c).z_gradient_enabled; }));
@@ -229,6 +228,9 @@ std::vector<Probe> build_probes() {
 
   // ── Receptor Fix tunables ─────────────────────────────────────────────────
   v.push_back(R("kd_b12_btuB", [](const SimulationConfig& c) { return c.fixes.receptor.kd_b12_btuB; }));
+  // Alias for kd_b12_btuB (writes the same field); non-primary so it does not
+  // collide with kd_b12_btuB in the combined full-document JSON test.
+  v.push_back(R("kd_corrinoid_btuB", [](const SimulationConfig& c) { return c.fixes.receptor.kd_b12_btuB; }, false));
   v.push_back(R("kd_colicinE_btuB", [](const SimulationConfig& c) { return c.fixes.receptor.kd_colicinE_btuB; }));
   v.push_back(R("kd_enterobactin", [](const SimulationConfig& c) { return c.fixes.receptor.kd_enterobactin; }));
   v.push_back(R("kd_colicinB_fepA", [](const SimulationConfig& c) { return c.fixes.receptor.kd_colicinB_fepA; }));

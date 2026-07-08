@@ -46,21 +46,6 @@ __global__ void apply_boundaries_kernel(double* conc, int nx, int ny, int nz,
   }
 }
 
-__global__ void nutrient_depletion_kernel(
-    const int* grid_cell, const double* mu_realized, const double* biomass,
-    const int* state, double* reac_iron, double* reac_b12, double* reac_carbon,
-    int num_agents, bool has_iron, bool has_b12, bool has_carbon) {
-  int i = blockIdx.x * blockDim.x + threadIdx.x;
-  if (i >= num_agents) return;
-  if (state[i] == 3) return;  // DEAD
-  int cell = grid_cell[i];
-  if (cell < 0) return;
-  double consumption = mu_realized[i] * biomass[i];
-  if (has_iron) atomicAdd(&reac_iron[cell], -consumption * 1.0e-6);
-  if (has_b12) atomicAdd(&reac_b12[cell], -consumption * 1.0e-9);
-  if (has_carbon) atomicAdd(&reac_carbon[cell], -consumption * 0.5);
-}
-
 __global__ void grid_coupling_kernel(
     const double* x, const double* y, const double* z, int* grid_cell,
     const int* state, double lo0, double lo1, double lo2, double dx,
@@ -96,20 +81,6 @@ void launch_apply_boundaries_kernel(double* conc, int nx, int ny, int nz,
   int grid = (total + block - 1) / block;
   apply_boundaries_kernel<<<grid, block, 0, stream>>>(
       conc, nx, ny, nz, num_species, boundary_conc);
-}
-
-void launch_nutrient_depletion_kernel(
-    const int* grid_cell, const double* mu_realized, const double* biomass,
-    const int* state, double* reac_iron, double* reac_b12, double* reac_carbon,
-    int num_agents, bool has_iron, bool has_b12, bool has_carbon,
-    cudaStream_t stream) {
-  if (num_agents <= 0) return;
-  int block = 256;
-  int grid = (num_agents + block - 1) / block;
-  nutrient_depletion_kernel<<<grid, block, 0, stream>>>(
-      grid_cell, mu_realized, biomass, state,
-      reac_iron, reac_b12, reac_carbon,
-      num_agents, has_iron, has_b12, has_carbon);
 }
 
 void launch_grid_coupling_kernel(

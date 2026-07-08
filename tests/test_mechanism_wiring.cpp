@@ -187,45 +187,6 @@ void test_carbon_sink_sensitivity() {
             << " (off=" << r_off << " lo=" << r_lo << " hi=" << r_hi << ")\n";
 }
 
-// ── Spec 5 §3 — B12 has consumers but no producer, so it drains to zero. The
-// VBF B12 source must be a positive, magnitude-sensitive reaction term. ─────
-void test_b12_source_directional() {
-  Domain domain = make_domain();
-
-  ChemicalSpec b12;
-  b12.name = species::B12;
-  b12.initial_conc = 0.0;
-
-  OxygenConfig oxy;
-  AcetateConfig ace;
-  MucinConfig muc;
-
-  auto b12_reac = [&](Real production) {
-    VBFConfig cfg;
-    cfg.mucin_liberation = 0.0;
-    cfg.mucin_z_gradient_enabled = false;
-    cfg.b12_production = production;
-    ChemicalField chem;
-    chem.init(domain, {b12});
-    VBF vbf;
-    vbf.init(cfg, domain);
-    chem.zero_reactions();
-    vbf.apply_nutrient_coupling(chem, domain, 60.0, oxy, ace, muc);
-    return chem.reac(chem.find(species::B12), domain.cell_index(0, 0, 0));
-  };
-
-  const Real r_off = b12_reac(0.0);
-  const Real r_lo = b12_reac(1.0e-13);
-  const Real r_hi = b12_reac(1.0e-12);
-
-  expect(r_off == 0.0, "B12 production disabled (0) must not touch B12");
-  expect(r_lo > 0.0 && r_hi > 0.0, "B12 production must be a positive source term");
-  expect(r_hi > r_lo, "larger B12 production rate must add more B12 (monotonic)");
-
-  std::cout << "  test_b12_source_directional: PASSED"
-            << " (off=" << r_off << " lo=" << r_lo << " hi=" << r_hi << ")\n";
-}
-
 // Build a small integration config with a chosen number of agents. ──────────
 SimulationConfig make_integration_cfg(int n_agents, uint64_t seed) {
   SimulationConfig cfg = InputParser::default_config();
@@ -298,6 +259,43 @@ void test_o2_consumption_wired() {
             << " epithelial=" << epithelial << ")\n";
 }
 
+// ── Spec 6 §3 — corrinoid (B12) is a constant bioavailable pool, NOT a
+// depletable field. The anaerobic majority produces total corrinoids (~1 uM)
+// far faster than E. coli consumes them, so neither the VBF nor the agents may
+// add or remove B12: the field must stay pinned at its 1 uM initial/boundary
+// value across a full multi-step run. (Replaces the Spec 5 §3 VBF-B12-source
+// test, which is obsolete now that B12 is neither produced nor consumed.) ────
+void test_corrinoid_field_constant() {
+  SimulationConfig cfg = make_integration_cfg(60, 4242);
+  cfg.chem_env.oxygen.enabled = true;  // exercise the full nutrient path
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+
+  const ChemicalField& chem = sim.chemical_field();
+  const Int ib12 = chem.find(species::B12);
+  expect(ib12 >= 0, "B12/corrinoid species must be registered");
+  if (ib12 < 0) return;
+
+  const Real expected = 1.0e-6;  // 1 uM total corrinoid (Spec 6 §3)
+  const Real tol = 1.0e-12;      // constant field: no drift permitted
+
+  Real max_dev = 0.0;
+  for (int i = 0; i < 10; ++i) {
+    sim.step(60.0);
+    for (Int c = 0; c < chem.ncells(); ++c) {
+      max_dev = std::max(max_dev, std::fabs(chem.conc(ib12, c) - expected));
+    }
+  }
+
+  expect(max_dev < tol,
+         "corrinoid field must stay pinned at 1 uM (no production, no depletion)");
+
+  std::cout << "  test_corrinoid_field_constant: PASSED"
+            << " (expected=" << expected << " max_dev=" << max_dev << ")\n";
+}
+
 // ── Spec 5 §4 — the dysbiosis safety net must halt a run once density leaves
 // the calibrated regime, and must be inert when disabled. ───────────────────
 void test_dysbiosis_halt() {
@@ -326,15 +324,15 @@ void test_dysbiosis_halt() {
             << " halt_steps=" << sim_halt.step_count() << ")\n";
 }
 
-// ── Overarching mass-balance guard: with oxygen, the carbon sink and the B12
-// source all active, no coupled species may go NaN, negative, or blow up over
-// a multi-step run. This is the "everything wired together stays sane" net. ─
+// ── Overarching mass-balance guard: with oxygen and the carbon sink active
+// (and B12 a constant pool), no coupled species may go NaN, negative, or blow
+// up over a multi-step run. This is the "everything wired together stays sane"
+// net. ──────────────────────────────────────────────────────────────────────
 void test_all_species_bounded_steady_state() {
   SimulationConfig cfg = make_integration_cfg(40, 909);
   cfg.chem_env.oxygen.enabled = true;
   cfg.vbf.carbon_sink_vmax = 1.0e-3;
   cfg.vbf.carbon_sink_km = 1.0e-3;
-  cfg.vbf.b12_production = 1.0e-13;
   InputParser::finalize_config(cfg);
 
   Simulation sim;
@@ -376,8 +374,8 @@ int main() {
   std::cout << "=== Mechanism Wiring Tests ===\n";
   test_carbon_sink_bounds_accumulation();
   test_carbon_sink_sensitivity();
-  test_b12_source_directional();
   test_o2_consumption_wired();
+  test_corrinoid_field_constant();
   test_dysbiosis_halt();
   test_all_species_bounded_steady_state();
 

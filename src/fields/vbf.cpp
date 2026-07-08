@@ -26,7 +26,6 @@ struct VbfSpeciesIndices {
   Int oxygen = -1;
   Int acetate = -1;
   Int mucin = -1;
-  Int b12 = -1;
 };
 
 struct VbfCellContext {
@@ -64,14 +63,6 @@ void apply_carbon_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx)
       ctx.cfg.carbon_sink_vmax * c / (ctx.cfg.carbon_sink_km + c);
 }
 
-// Spec 5 §3 — VBF B12 production. Constant low-rate source representing
-// cobalamin synthesis by the anaerobic community, maintaining a homeostatic
-// steady state against agent consumption.
-void apply_b12_source(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
-  if (ctx.cfg.b12_production <= 0.0 || ctx.idx.b12 < 0) return;
-  chem.reac(ctx.idx.b12, cell) += ctx.cfg.b12_production;
-}
-
 void apply_iron_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
   if (ctx.idx.iron < 0) return;
   // First-order (concentration-dependent) uptake: nutrient_sink is a rate
@@ -106,7 +97,6 @@ void apply_vbf_at_cell(ChemicalField& chem, Int cell, const VbfCellContext& ctx)
   apply_oxygen_sink(chem, cell, ctx);
   apply_acetate_coupling(chem, cell, ctx);
   apply_mucin_secretion(chem, cell, ctx);
-  apply_b12_source(chem, cell, ctx);
 }
 
 VbfSpeciesIndices find_vbf_species(const ChemicalField& chem) {
@@ -116,7 +106,6 @@ VbfSpeciesIndices find_vbf_species(const ChemicalField& chem) {
     chem.find(species::OXYGEN),
     chem.find(species::ACETATE),
     chem.find(species::MUCIN),
-    chem.find(species::B12),
   };
 }
 

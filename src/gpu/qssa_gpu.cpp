@@ -13,32 +13,23 @@
 
 namespace gutibm {
 
+// Spec 6 — carbon/iron uptake is applied by the GPU metabolism kernel
+// (mirroring FixMetabolism::grow_agent), and B12/corrinoid is no longer
+// depleted. The chemistry-phase nutrient-depletion kernel that previously
+// re-applied carbon/iron/B12 here duplicated that uptake (double-counting) and
+// has been removed. Returning true signals "handled" so the CPU fallback is
+// not run on the GPU path. (Agent O2 respiration is CPU-only; on the GPU path
+// it is not applied, matching prior behavior.)
 bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents, Int num_agents,
                                   ChemicalFieldGpu& chem_gpu, const ChemicalField& chem) {
-#ifndef GUTIBM_CUDA
   (void)agents;
   (void)num_agents;
   (void)chem_gpu;
   (void)chem;
+#ifndef GUTIBM_CUDA
   return false;
 #else
-  if (!gpu_runtime_enabled() || num_agents <= 0) return false;
-
-  Int i_iron = chem.find(species::IRON);
-  Int i_b12 = chem.find(species::B12);
-  Int i_carbon = chem.find(species::CARBON);
-
-  gpu::launch_nutrient_depletion_kernel(
-      agents.grid_cell(), agents.mu_realized(), agents.biomass(), agents.state(),
-      i_iron >= 0 ? chem_gpu.reac_device(i_iron) : nullptr,
-      i_b12 >= 0 ? chem_gpu.reac_device(i_b12) : nullptr,
-      i_carbon >= 0 ? chem_gpu.reac_device(i_carbon) : nullptr,
-      num_agents,
-      i_iron >= 0, i_b12 >= 0, i_carbon >= 0, nullptr);
-
-  cudaDeviceSynchronize();
-  gpu_check_error("nutrient_depletion_kernel");
-  return true;
+  return gpu_runtime_enabled();
 #endif
 }
 

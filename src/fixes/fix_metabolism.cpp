@@ -276,7 +276,6 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
 
   Int i_carbon = chem.find(species::CARBON);
   Int i_iron   = chem.find(species::IRON);
-  Int i_b12    = chem.find(species::B12);
   Int i_acetate = chem.find(species::ACETATE);
 
   Real cell_vol = sim_.domain().dx() * sim_.domain().dx() * sim_.domain().dx();
@@ -330,13 +329,11 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
     #endif
     chem.reac(i_iron, cell) -= delta_fe;
   }
-  if (i_b12 >= 0 && cell_vol > 0.0) {
-    Real delta_b12 = d_biomass * cfg_.yield_b12 / cell_vol;
-    #ifdef GUTIBM_OPENMP
-    #pragma omp atomic
-    #endif
-    chem.reac(i_b12, cell) -= delta_b12;
-  }
+  // Spec 6 §3 — the B12/corrinoid field is NOT depleted. It represents the
+  // total bioavailable corrinoid pool (~1 uM), produced by the anaerobic
+  // majority at rates far exceeding E. coli demand; the pool is effectively
+  // constant relative to the modeled population. (cfg_.yield_b12 retained for
+  // config compatibility but no longer removes corrinoid from the field.)
 
   const auto& acfg = sim_.config().chem_env.acetate;
   if (acfg.enabled && i_acetate >= 0 && cell_vol > 0.0) {

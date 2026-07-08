@@ -25,12 +25,6 @@ void launch_apply_boundaries_kernel(
     double* conc, int nx, int ny, int nz, int num_species,
     const double* boundary_conc, cudaStream_t stream);
 
-void launch_nutrient_depletion_kernel(
-    const int* grid_cell, const double* mu_realized, const double* biomass,
-    const int* state, double* reac_iron, double* reac_b12, double* reac_carbon,
-    int num_agents, bool has_iron, bool has_b12, bool has_carbon,
-    cudaStream_t stream);
-
 void launch_grid_coupling_kernel(
     const double* x, const double* y, const double* z, int* grid_cell,
     const int* state, double lo0, double lo1, double lo2, double dx,

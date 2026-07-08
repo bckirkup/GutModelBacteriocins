@@ -40,21 +40,16 @@ struct VBFConfig {
   // When true, carbon source comes from dynamic mucin degradation (Spec 1)
   bool use_dynamic_mucin = false;
 
-  // Spec 5 §1 — VBF carbon sink. The anaerobic majority consumes most of the
-  // liberated monosaccharides ("Restaurant Hypothesis"); E. coli scavenges the
-  // leftovers. Modeled as a Monod-saturating first-order-at-low-conc sink so
-  // carbon reaches a bounded steady state instead of accumulating without
-  // bound. Disabled by default (vmax = 0) to preserve legacy behavior; set
-  // vbf_carbon_sink_vmax > 0 to activate.
-  Real carbon_sink_vmax = 0.0;      // mol/m^3/s max VBF carbon consumption
-  Real carbon_sink_km   = 1.0e-3;   // mol/m^3 half-saturation
-
-  // Spec 5 §3 — VBF B12 (cobalamin) production. B12 is consumed by E. coli but
-  // has no source, so it drains to zero and forces all cells onto the MetE
-  // pathway (a drift artifact, not biology). The anaerobic community produces
-  // B12 at a low constant rate that maintains a homeostatic steady state.
-  // Disabled by default (0) to preserve legacy behavior.
-  Real b12_production = 0.0;         // mol/m^3/s constant B12 source
+  // Spec 5 §1 / Spec 6 §1 — VBF carbon sink. The anaerobic majority consumes
+  // most of the liberated monosaccharides ("Restaurant Hypothesis"); E. coli
+  // scavenges the leftovers. Modeled as a Monod-saturating first-order-at-low-
+  // conc sink so carbon reaches a bounded steady state instead of accumulating
+  // without bound. Spec 6 activates this by default: vmax is set just above the
+  // mucin liberation rate (5e-5) so bulk carbon settles to a ~1 mM equilibrium
+  // (moderate carbon limitation for E. coli). Set vbf_carbon_sink_vmax = 0 to
+  // restore the pre-Spec-6 unbounded-accumulation behavior.
+  Real carbon_sink_vmax = 5.5e-5;   // mol/m^3/s max VBF carbon consumption
+  Real carbon_sink_km   = 1.0e-4;   // mol/m^3 half-saturation
 };
 
 class VBF {

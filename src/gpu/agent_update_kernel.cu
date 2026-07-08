@@ -111,9 +111,10 @@ __global__ void metabolism_kernel(
   if (reac_iron) {
     atomicAdd(&reac_iron[cell], -d_biomass * yield_iron / cell_vol);
   }
-  if (reac_b12) {
-    atomicAdd(&reac_b12[cell], -d_biomass * yield_b12 / cell_vol);
-  }
+  // Spec 6 §3 — B12/corrinoid is not depleted (constant bioavailable pool).
+  // reac_b12 / yield_b12 retained in the signature for ABI stability but unused.
+  (void)reac_b12;
+  (void)yield_b12;
 }
 
 void launch_metabolism_kernel(
