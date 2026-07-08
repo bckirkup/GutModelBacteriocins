@@ -1,8 +1,14 @@
 /* -----------------------------------------------------------------------
-   GutIBM – QSSA nutrient stoichiometry config tests (Spec 0 §6)
-   Verifies the formerly-hardcoded nutrient consumption stoichiometries are
-   now driven by QSSAConfig and reach the reaction field (golden value +
-   configuration sensitivity).
+   GutIBM – QSSA nutrient-depletion (O2 respiration) tests
+
+   Spec 6 removed the carbon/iron/B12 terms from QSSASolver::solve_nutrient_
+   depletion — per-agent uptake of those nutrients is now owned solely by the
+   metabolism Fix (yield-based), eliminating the double-count. The only
+   per-agent term this function still applies is aerobic O2 respiration
+   (q_consumption * mu_realized / cell_vol), which has no counterpart in the
+   metabolism Fix. These tests pin that term with a golden value and a
+   configuration-sensitivity check, and confirm carbon/iron/B12 are NOT touched
+   here anymore.
    ----------------------------------------------------------------------- */
 
 #include "qssa_solver.h"
@@ -10,6 +16,8 @@
 #include "domain.h"
 #include "advection.h"
 #include "agent.h"
+#include "chem_environment_config.h"
+#include "species_names.h"
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -30,19 +38,31 @@ Domain make_domain() {
 }
 
 ChemicalField make_chem(const Domain& domain) {
-  ChemicalSpec carbon; carbon.name = "carbon"; carbon.diff_coeff = 1e-9;
+  ChemicalSpec carbon; carbon.name = species::CARBON; carbon.diff_coeff = 1e-9;
   carbon.retardation = 1.0; carbon.initial_conc = 5e-3; carbon.boundary_conc = 5e-3;
-  ChemicalSpec iron = carbon; iron.name = "iron";
-  ChemicalSpec b12 = carbon; b12.name = "b12";
+  ChemicalSpec iron = carbon; iron.name = species::IRON;
+  ChemicalSpec b12 = carbon; b12.name = species::B12;
+  ChemicalSpec oxygen = carbon; oxygen.name = species::OXYGEN;
+  oxygen.initial_conc = 55e-6; oxygen.boundary_conc = 55e-6;
   ChemicalField chem;
-  chem.init(domain, {carbon, iron, b12});
+  chem.init(domain, {carbon, iron, b12, oxygen});
   return chem;
 }
 
-// Run one nutrient-depletion pass for a single agent and return the carbon
-// reaction rate deposited at the agent's cell.
-Real carbon_reac_for_stoich(const Domain& domain, Real carbon_stoich,
-                            Real& out_consumption, Int& out_cell) {
+// Run one nutrient-depletion pass for a single agent. Returns the O2 reaction
+// rate deposited at the agent's cell; also reports carbon/iron/B12 reac so the
+// caller can assert they are untouched.
+struct DepletionResult {
+  Real reac_o2 = 0.0;
+  Real reac_carbon = 0.0;
+  Real reac_iron = 0.0;
+  Real reac_b12 = 0.0;
+  Real consumption = 0.0;  // mu_realized (O2 term scales with this)
+  Real cell_vol = 0.0;
+};
+
+DepletionResult run_depletion(const Domain& domain, Real q_consumption,
+                              bool oxygen_enabled) {
   AdvectionField adv;
   AdvectionConfig acfg;
   acfg.radial_turnover = 1e20;
@@ -50,7 +70,6 @@ Real carbon_reac_for_stoich(const Domain& domain, Real carbon_stoich,
   adv.init(acfg, domain);
 
   QSSAConfig cfg;
-  cfg.carbon_stoichiometry = carbon_stoich;
   QSSASolver solver;
   solver.init(cfg, domain, adv);
 
@@ -64,61 +83,69 @@ Real carbon_reac_for_stoich(const Domain& domain, Real carbon_stoich,
   Int ix = 0, iy = 0, iz = 0;
   domain.pos_to_grid(a.x, ix, iy, iz);
   a.grid_cell = domain.cell_index(ix, iy, iz);
-  out_cell = a.grid_cell;
-  out_consumption = a.mu_realized * a.biomass;
 
   AgentPool agents;
   agents.push_back(a);
 
   OxygenConfig oxygen;
+  oxygen.enabled = oxygen_enabled;
+  oxygen.q_consumption = q_consumption;
   solver.solve_nutrient_depletion(agents, chem, oxygen);
 
-  const Int i_carbon = chem.find("carbon");
-  assert(i_carbon >= 0);
-  return chem.reac(i_carbon, out_cell);
+  DepletionResult r;
+  r.consumption = std::max(a.mu_realized, 0.0);
+  r.cell_vol = domain.dx() * domain.dx() * domain.dx();
+  r.reac_o2 = chem.reac(chem.find(species::OXYGEN), a.grid_cell);
+  r.reac_carbon = chem.reac(chem.find(species::CARBON), a.grid_cell);
+  r.reac_iron = chem.reac(chem.find(species::IRON), a.grid_cell);
+  r.reac_b12 = chem.reac(chem.find(species::B12), a.grid_cell);
+  return r;
 }
 
 }  // namespace
 
-void test_carbon_stoichiometry_golden_and_sensitivity() {
+void test_o2_respiration_golden_and_sensitivity() {
   const Domain domain = make_domain();
 
-  // Golden: default carbon stoichiometry (0.5) → reac = -consumption * 0.5.
-  Real consumption = 0.0;
-  Int cell = -1;
-  const Real reac_default = carbon_reac_for_stoich(domain, 0.5, consumption, cell);
-  assert(consumption > 0.0);
-  assert(std::abs(reac_default - (-consumption * 0.5)) <= 1e-12 * std::abs(consumption));
+  // Golden: reac_o2 = -q_consumption * mu_realized / cell_vol.
+  const Real q1 = 1.0e-14;
+  const DepletionResult r1 = run_depletion(domain, q1, /*oxygen_enabled=*/true);
+  const Real expected1 = -q1 * r1.consumption / r1.cell_vol;
+  assert(r1.consumption > 0.0);
+  assert(std::abs(r1.reac_o2 - expected1) <= 1e-9 * std::abs(expected1));
+  assert(r1.reac_o2 < 0.0);
 
-  // Sensitivity: doubling the stoichiometry doubles the deposited consumption.
-  Real c2 = 0.0; Int cell2 = -1;
-  const Real reac_double = carbon_reac_for_stoich(domain, 1.0, c2, cell2);
-  assert(std::abs(reac_double - (-consumption * 1.0)) <= 1e-12 * std::abs(consumption));
-  assert(std::abs(reac_double - 2.0 * reac_default) <= 1e-12 * std::abs(reac_default));
+  // Sensitivity: doubling q_consumption doubles the O2 draw.
+  const DepletionResult r2 = run_depletion(domain, 2.0 * q1, true);
+  const Real expected2 = -2.0 * q1 * r2.consumption / r2.cell_vol;
+  assert(std::abs(r2.reac_o2 - expected2) <= 1e-9 * std::abs(expected2));
+  assert(std::abs(r2.reac_o2 - 2.0 * r1.reac_o2) <= 1e-9 * std::abs(r1.reac_o2));
 
-  // Zeroing the stoichiometry removes carbon consumption entirely.
-  Real c3 = 0.0; Int cell3 = -1;
-  const Real reac_zero = carbon_reac_for_stoich(domain, 0.0, c3, cell3);
-  assert(std::abs(reac_zero) <= 1e-30);
+  // Disabled oxygen removes the term entirely.
+  const DepletionResult r0 = run_depletion(domain, q1, /*oxygen_enabled=*/false);
+  assert(std::abs(r0.reac_o2) <= 1e-30);
 
-  std::cout << "  test_carbon_stoichiometry_golden_and_sensitivity: PASSED\n";
+  std::cout << "  test_o2_respiration_golden_and_sensitivity: PASSED\n";
 }
 
-void test_qssa_fallback_defaults() {
-  QSSAConfig cfg;
-  assert(std::abs(cfg.iron_stoichiometry - 1e-6) < 1e-18);
-  assert(std::abs(cfg.b12_stoichiometry - 1e-9) < 1e-21);
-  assert(std::abs(cfg.carbon_stoichiometry - 0.5) < 1e-15);
-  assert(std::abs(cfg.fallback_diff_coeff - 4e-11) < 1e-23);
-  assert(std::abs(cfg.fallback_pI - 7.0) < 1e-12);
-  assert(std::abs(cfg.fallback_retardation - 5.0) < 1e-12);
-  std::cout << "  test_qssa_fallback_defaults: PASSED\n";
+void test_carbon_iron_b12_not_depleted_by_qssa() {
+  const Domain domain = make_domain();
+  const DepletionResult r = run_depletion(domain, 1.0e-14, /*oxygen_enabled=*/true);
+
+  // Spec 6: solve_nutrient_depletion must not touch carbon/iron/B12 — those are
+  // consumed only by the metabolism Fix. Only O2 is deposited here.
+  assert(std::abs(r.reac_carbon) <= 1e-30);
+  assert(std::abs(r.reac_iron) <= 1e-30);
+  assert(std::abs(r.reac_b12) <= 1e-30);
+  assert(r.reac_o2 < 0.0);
+
+  std::cout << "  test_carbon_iron_b12_not_depleted_by_qssa: PASSED\n";
 }
 
 int main() {
-  std::cout << "=== QSSA Stoichiometry Tests ===\n";
-  test_carbon_stoichiometry_golden_and_sensitivity();
-  test_qssa_fallback_defaults();
-  std::cout << "All QSSA stoichiometry tests passed.\n";
+  std::cout << "=== QSSA Nutrient-Depletion (O2) Tests ===\n";
+  test_o2_respiration_golden_and_sensitivity();
+  test_carbon_iron_b12_not_depleted_by_qssa();
+  std::cout << "All QSSA nutrient-depletion tests passed.\n";
   return 0;
 }

@@ -22,10 +22,10 @@ that parses but never changes an outcome is *dead wiring*.
 
 | Species | Source(s) | Sink(s) | Loop closed? | Notes |
 |---------|-----------|---------|--------------|-------|
-| **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z-gradient boundary | Agent uptake `fix_metabolism.cpp grow_agent` + `qssa_solver.cpp solve_nutrient_depletion`; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1, added) | **Now yes** (was source-only) | Before Spec 5 §1 the only sink was the sparse agent population, so carbon accumulated without bound. The Monod VBF sink closes it. Disabled by default (`vbf_carbon_sink_vmax=0`). |
-| **b12** | **VBF B12 production** `vbf.cpp apply_b12_source` (Spec 5 §3, added) | Agent uptake `grow_agent` + `solve_nutrient_depletion` | **Now yes** (was sink-only) | Before Spec 5 §3, B12 had an initial pool but no source → drained to zero → all cells forced onto MetE. Constant source restores homeostasis. Disabled by default (`vbf_b12_production=0`). |
-| **iron** | z-gradient boundary; siderophore liberation | VBF first-order sink `apply_iron_sink`; agent uptake | Yes | Closed pre-Spec-5. |
-| **oxygen** | Epithelial Dirichlet boundary `chemical_field.cpp apply_boundaries`; z-gradient | **Agent consumption** `qssa_solver.cpp solve_nutrient_depletion:411` (Spec 1); VBF background sink `apply_oxygen_sink` | Yes | **Spec 5 §2 is already implemented** — see §3 below. |
+| **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z-gradient boundary | **Agent uptake `fix_metabolism.cpp grow_agent` (canonical, Spec 6)**; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1) | Yes | Spec 6 makes the metabolism Fix the single per-agent uptake site (the duplicate `solve_nutrient_depletion` term was removed). Monod VBF sink now **active by default** (`vbf_carbon_sink_vmax=5.5e-5`) → bounded ~1 mM equilibrium. |
+| **b12 / corrinoid** | none (constant field) | **none — not consumed (Spec 6 §3)** | N/A (constant pool) | Spec 6: the B12 field represents the total bioavailable corrinoid pool (~1 µM), produced by the anaerobic majority far faster than E. coli demand. Neither produced nor depleted; pinned at `1e-6`. Replaces the Spec 5 `vbf_b12_production` source (removed). |
+| **iron** | z-gradient boundary; siderophore liberation | VBF first-order sink `apply_iron_sink`; **agent uptake `grow_agent` (canonical, Spec 6)** | Yes | Spec 6: uptake consolidated to the metabolism Fix (duplicate `solve_nutrient_depletion` term removed). |
+| **oxygen** | Epithelial Dirichlet boundary `chemical_field.cpp apply_boundaries`; z-gradient | **Agent consumption** `qssa_solver.cpp solve_nutrient_depletion` (Spec 1; the sole remaining per-agent term there after Spec 6); VBF background sink `apply_oxygen_sink` | Yes | Already wired in Spec 1 — see §3 below. |
 | **acetate** | VBF fermentation `apply_acetate_coupling`; agent overflow | VBF cross-feeding; MetE uptake | Yes | Closed. |
 | **mucin** | Goblet secretion `apply_mucin_secretion` | VBF degradation → carbon | Yes | Closed. |
 | **bacteriocins** (btuB/fepA/cirA/fhuA) | Producer burst `fix_bacteriocin` → QSSA deposition | First-order decay; diffusion out | Yes | QSSA analytic field, recomputed each step. |
@@ -36,10 +36,10 @@ that parses but never changes an outcome is *dead wiring*.
 
 | Coupling | Producer module | Consumer module | Wired at | Guarded by |
 |----------|-----------------|-----------------|----------|------------|
-| Agent growth → nutrient depletion | metabolism Fix | ChemicalField reac | `grow_agent`, `solve_nutrient_depletion` | `test_mechanism_wiring` (O2), `smoke` |
+| Agent growth → carbon/iron depletion | metabolism Fix | ChemicalField reac | `grow_agent` (yield-based, canonical) | `test_mechanism_wiring`, `smoke` |
 | O₂ field → aerobic growth boost | ChemicalField | metabolism Fix | `fix_metabolism` O2 Monod boost | `test_O2_growth_boost` |
-| Agents → O₂ depletion | metabolism/QSSA | ChemicalField | `solve_nutrient_depletion:411` | `test_mechanism_wiring::test_o2_consumption_wired` |
-| VBF continuum → carbon/iron/O₂/acetate/mucin/B12 | VBF | ChemicalField | `apply_nutrient_coupling` | `test_mucin_liberation`, `test_mechanism_wiring` |
+| Agents → O₂ depletion | QSSA | ChemicalField | `solve_nutrient_depletion` | `test_mechanism_wiring::test_o2_consumption_wired`, `test_qssa_stoichiometry` |
+| VBF continuum → carbon/iron/O₂/acetate/mucin | VBF | ChemicalField | `apply_nutrient_coupling` | `test_mucin_liberation`, `test_mechanism_wiring` |
 | Toxin field → receptor killing | QSSA bacteriocin | receptor Fix | `fix_receptor` | `test_receptor`, `smoke::test_receptor_killing` |
 | Fur (iron) → receptor expression → toxin susceptibility | cell-bio Fur | receptor Fix | `fix_fur`, `fix_receptor` | `test_fur` |
 | μ_realized < γ_flow → washout (VADI) | metabolism + advection | Simulation washout | `simulation.cpp check_washout` | `smoke::test_metabolic_washout_*` |
@@ -49,44 +49,47 @@ that parses but never changes an outcome is *dead wiring*.
 
 ## 3. Findings
 
-### 3.1 Spec 5 gaps addressed
-- **§1 Carbon sink** — implemented as a Monod-saturating VBF sink
-  (`vbf_carbon_sink_vmax`, `vbf_carbon_sink_km`). Off by default.
-- **§3 B12 source** — implemented as a constant VBF production term
-  (`vbf_b12_production`). Off by default.
-- **§4 Dysbiosis threshold** — implemented as a density-based run halt
-  (`dysbiosis_threshold`, cells/mL). Off by default.
+### 3.1 Spec 5 gaps addressed (updated by Spec 6)
+- **§1 Carbon sink** — Monod-saturating VBF sink (`vbf_carbon_sink_vmax`,
+  `vbf_carbon_sink_km`). Spec 6 **activates it by default** (`5.5e-5`, just
+  above mucin liberation) → carbon reaches a bounded ~1 mM equilibrium.
+- **§3 B12 source** — **removed by Spec 6**. The corrinoid field is now a
+  constant ~1 µM pool (neither produced nor consumed), so a source term is no
+  longer meaningful; `vbf_b12_production` was deleted.
+- **§4 Dysbiosis threshold** — density-based run halt (`dysbiosis_threshold`,
+  cells/mL). Off by default.
 
-Defaults keep every new term **disabled** so existing golden/fingerprint tests
-(`config_diversity`, `eari-vadi`) are unchanged. To run the biologically
-"closed" configuration Spec 5 intends, set the three keys to positive values
-(see `docs/PARAMETERS.md`). Recommendation: promote these to non-zero defaults
-in a follow-up once the golden references are re-baselined.
+Spec 6 re-baselined the `eari-vadi` golden references (see
+`python/tests/fixtures/eari_vadi_ci*_golden.json`) because activating the carbon
+sink and correcting the corrinoid pool shift the reference metrics.
 
 ### 3.2 Spec 5 §2 (O₂ consumption) was already wired
 Spec 5 describes O₂ as "read for the growth boost but never consumed." That is
 **stale** — agent O₂ consumption was added in Spec 1 and lives in
-`src/diffusion/qssa_solver.cpp:411-417` (`o2_use = q_consumption · max(μ,0)`,
-deposited as `-o2_use/cell_vol`). `test_o2_consumption_wired` now proves it is
-live (more agents ⇒ lower O₂ field). No code change needed; flagged here so the
-spec can be annotated.
+`src/diffusion/qssa_solver.cpp` `solve_nutrient_depletion` (`o2_use =
+q_consumption · max(μ,0)`, deposited as `-o2_use/cell_vol`). After Spec 6 this
+is the **only** per-agent term in that function. `test_o2_consumption_wired`
+proves it is live (more agents ⇒ lower O₂ field).
 
-### 3.3 ⚠ Open question for the maintainer — possible double-counting of nutrient uptake
-Carbon, iron and B12 are each consumed in **two** places every CPU step:
+### 3.3 ✅ Resolved by Spec 6 — the nutrient double-count
+Carbon, iron and B12 were previously consumed in **two** places every CPU step:
 
 1. `src/fixes/fix_metabolism.cpp` `grow_agent()` — `Δ = d_biomass · yield_x / cell_vol`
    (per-volume, includes `dt` through `d_biomass`).
 2. `src/diffusion/qssa_solver.cpp` `solve_nutrient_depletion()` — `Δ = μ·biomass · x_stoichiometry`
    (no `cell_vol` division, no `dt`).
 
-The default `yield_*` and `*_stoichiometry` values are equal (carbon 0.5, iron
-1e-6, B12 1e-9), so this looks like the **same** uptake applied twice, with
-**inconsistent units** between the two paths (only the O₂ term in
-`solve_nutrient_depletion` divides by `cell_vol`). This is not obviously wrong —
-they could model distinct processes — but it is the kind of coupling that
-"doesn't make logical sense" on its face. **I did not change this**, because
-either fix (removing one path, or reconciling units) materially changes core
-dynamics and every golden fingerprint. It needs a maintainer decision.
+Because the two paths used **inconsistent units** (the metabolism term is
+`≈ dt/cell_vol ≈ 5e17×` larger), the metabolism Fix term dominated and the QSSA
+nutrient terms were numerically negligible — the same uptake applied twice.
+
+**Spec 6 resolution:** the **metabolism Fix is the single canonical per-agent
+uptake site** for carbon and iron. The carbon/iron/B12 terms in
+`solve_nutrient_depletion` (and the GPU `nutrient_depletion_kernel`) were
+removed; only the dimensionally-clean O₂ respiration term remains there. B12 is
+no longer consumed anywhere (constant corrinoid pool, §3.1). The former
+`iron/b12/carbon_stoichiometry` knobs on `QSSAConfig` were deleted. See
+`docs/PARAMETERS.md` → "Nutrient Cycle (Spec 6)".
 
 ---
 

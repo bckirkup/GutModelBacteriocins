@@ -102,7 +102,7 @@ SimulationConfig InputParser::default_config() {
   cfg.chemicals = {
     {species::CARBON,      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0, true,  25.0e-6},
     {species::IRON,        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0, false, 25.0e-6},
-    {species::B12,         1.0e-9, 1.0,  1.0e-9, 1.0e-9,  0.0, false, 25.0e-6},
+    {species::B12,         1.0e-9, 1.0,  1.0e-6, 1.0e-6,  0.0, false, 25.0e-6},
     {species::BACTERIOCIN_BTUB, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
     {species::BACTERIOCIN_FEPA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
     {species::BACTERIOCIN_CIRA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
@@ -269,7 +269,6 @@ bool apply_vbf_key(SimulationConfig& cfg, const std::string& key, const std::str
   if (key == "vbf_mucin_z_lambda")   { cfg.vbf.mucin_z_gradient_lambda = parse_config_real(key, val); return true; }
   if (key == "vbf_carbon_sink_vmax") { cfg.vbf.carbon_sink_vmax = parse_config_real(key, val); return true; }
   if (key == "vbf_carbon_sink_km")   { cfg.vbf.carbon_sink_km = parse_config_real(key, val); return true; }
-  if (key == "vbf_b12_production")   { cfg.vbf.b12_production = parse_config_real(key, val); return true; }
   return false;
 }
 
@@ -303,6 +302,9 @@ bool apply_chemical_key(SimulationConfig& cfg, const std::string& key, const std
 
 bool apply_receptor_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
   if (key == "kd_b12_btuB")          { cfg.fixes.receptor.kd_b12_btuB = parse_config_real(key, val); return true; }
+  // Alias — Spec 6 / Receptor Ligand Parameterization: the BtuB ligand is the
+  // dominant corrinoid analog, not true cobalamin. Same underlying Kd field.
+  if (key == "kd_corrinoid_btuB")    { cfg.fixes.receptor.kd_b12_btuB = parse_config_real(key, val); return true; }
   if (key == "kd_colicinE_btuB")     { cfg.fixes.receptor.kd_colicinE_btuB = parse_config_real(key, val); return true; }
   if (key == "kd_enterobactin")       { cfg.fixes.receptor.kd_enterobactin = parse_config_real(key, val); return true; }
   if (key == "kd_colicinB_fepA")      { cfg.fixes.receptor.kd_colicinB_fepA = parse_config_real(key, val); return true; }

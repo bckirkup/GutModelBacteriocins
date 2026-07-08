@@ -25,9 +25,14 @@ namespace gutibm {
 
 struct ReceptorConfig {
   // Binding affinities (Kd, mol/m^3)
-  Real kd_b12_btuB        = 1.0e-9;   // B12 affinity for BtuB
+  // Spec 6 / Receptor Ligand Parameterization: kd_b12_btuB is the BtuB affinity
+  // for the dominant corrinoid analog (aka kd_corrinoid_btuB), the key unknown
+  // governing colicin-E competition against the ~1 uM corrinoid pool.
+  Real kd_b12_btuB        = 1.0e-9;   // corrinoid affinity for BtuB (1 nM)
   Real kd_colicinE_btuB   = 5.0e-10;  // Colicin E affinity for BtuB
-  Real kd_enterobactin    = 1.0e-8;   // enterobactin affinity for FepA
+  // Spec 6 §4.1 — FepA affinity for ferric enterobactin tightened 10 nM -> 1 nM
+  // to match measured high-affinity siderophore uptake.
+  Real kd_enterobactin    = 1.0e-9;   // enterobactin affinity for FepA (1 nM)
   Real kd_colicinB_fepA   = 2.0e-9;   // Colicin B affinity for FepA
   Real kd_lin_enterobactin = 5.0e-8;  // linearized enterobactin for CirA
   Real kd_colicinIa_cirA  = 3.0e-9;   // Colicin Ia affinity for CirA

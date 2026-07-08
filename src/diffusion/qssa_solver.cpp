@@ -372,9 +372,6 @@ void QSSASolver::solve_nutrient_depletion(
     ChemicalField& chem,
     const OxygenConfig& oxygen) const {
 
-  Int i_iron   = chem.find(species::IRON);
-  Int i_b12    = chem.find(species::B12);
-  Int i_carbon = chem.find(species::CARBON);
   Int i_oxygen = chem.find(species::OXYGEN);
 
   const Real cell_vol = domain_->dx() * domain_->dx() * domain_->dx();
@@ -388,26 +385,12 @@ void QSSASolver::solve_nutrient_depletion(
     Int cell = a.grid_cell;
     if (cell < 0) continue;
 
-    Real consumption = a.mu_realized * a.biomass;
-
-    if (i_iron >= 0) {
-      #ifdef GUTIBM_OPENMP
-      #pragma omp atomic
-      #endif
-      chem.reac(i_iron, cell) -= consumption * cfg_.iron_stoichiometry;
-    }
-    if (i_b12 >= 0) {
-      #ifdef GUTIBM_OPENMP
-      #pragma omp atomic
-      #endif
-      chem.reac(i_b12, cell) -= consumption * cfg_.b12_stoichiometry;
-    }
-    if (i_carbon >= 0) {
-      #ifdef GUTIBM_OPENMP
-      #pragma omp atomic
-      #endif
-      chem.reac(i_carbon, cell) -= consumption * cfg_.carbon_stoichiometry;
-    }
+    // Spec 6 — per-agent carbon/iron/B12 depletion is handled solely by the
+    // metabolism Fix (yield-based uptake in FixMetabolism::grow_agent). The
+    // carbon/iron/B12 terms formerly applied here duplicated that uptake
+    // (double-counting); they have been removed. Corrinoid (B12) is no longer
+    // depleted at all. This function now applies only agent O2 respiration,
+    // which has no counterpart in the metabolism Fix.
     if (oxygen.enabled && i_oxygen >= 0 && cell_vol > 0.0) {
       const Real o2_use = oxygen.q_consumption * std::max(a.mu_realized, 0.0);
       #ifdef GUTIBM_OPENMP

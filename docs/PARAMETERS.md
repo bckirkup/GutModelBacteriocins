@@ -132,6 +132,45 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 
 ---
 
+## Nutrient Cycle (Spec 6)
+
+Spec 6 makes the **metabolism Fix the single canonical site for per-agent
+nutrient uptake**, resolving a double-count in which carbon/iron/B12 were
+consumed both by `FixMetabolism::grow_agent` (yield-based, `reac -= d_biomass *
+yield_X / cell_vol`) and again by `QSSASolver::solve_nutrient_depletion`
+(stoichiometry-based). The QSSA carbon/iron/B12 terms and the GPU
+`nutrient_depletion_kernel` have been removed; `solve_nutrient_depletion` now
+applies **only** aerobic O₂ respiration (which has no counterpart in the
+metabolism Fix).
+
+| Nutrient | Uptake site | Field behavior |
+|----------|-------------|----------------|
+| Carbon | metabolism Fix (`yield_carbon`) | Sourced by VBF mucin liberation, bounded by the VBF Monod carbon sink (now active by default, ~1 mM equilibrium) |
+| Iron | metabolism Fix (`yield_iron`) + siderophore coupling | VBF first-order sink; Fur-regulated receptor uptake |
+| O₂ | `solve_nutrient_depletion` (`oxygen.q_consumption × μ_realized / cell_vol`) | Supplied at the epithelial boundary; growth-scaled agent respiration + VBF background sink |
+| Corrinoid (B12) | **not consumed** | Constant field pinned at 1 µM (see below) |
+
+**Corrinoid (B12) is a constant pool, not a depletable field (Spec 6 §3).** The
+B12 species now represents the *total bioavailable corrinoid pool* (~1 µM,
+`initial_conc = boundary_conc = 1e-6`), the great majority of which are
+non-cobalamin analogs produced by the anaerobic majority at rates far exceeding
+E. coli demand. It is neither produced nor consumed in the model, so the field
+stays pinned at 1 µM. (This replaces the Spec 5 `vbf_b12_production` source,
+which has been removed; `yield_b12` is retained in config for compatibility but
+no longer removes corrinoid from the field.)
+
+**Competitive binding & colicin E (Receptor Ligand Parameterization).** BtuB is
+both the corrinoid importer and the colicin-E receptor, so ambient corrinoid
+competitively blocks colicin E: `apparent_Kd = kd_colicinE_btuB × (1 + [corrinoid] / kd_corrinoid_btuB)`.
+Raising the corrinoid field from 1 nM to 1 µM increases this competitive factor
+by ~1000×, making colicin E markedly less potent — the single most consequential
+downstream effect of the nutrient-cycle rework. `kd_corrinoid_btuB`
+(alias of `kd_b12_btuB`, default 1 nM) is flagged as the **key unknown**; a
+sweep over `{1e-9 … 1e-6}` is recommended future work (out of scope for this
+change).
+
+---
+
 ## VBF (Viscoelastic Background Field)
 
 | Parameter | Default | Units | Description |
@@ -144,9 +183,8 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 | `vbf.viscosity` | 0.01 | Pa·s | Effective viscosity (~10× water) |
 | `vbf.mucin_z_gradient_enabled` | true | — | z-dependent mucin liberation rate |
 | `vbf.mucin_z_gradient_lambda` | 25e-6 | m | Liberation decay length from epithelium |
-| `vbf_carbon_sink_vmax` | 0 | mol/m³/s | Monod carbon consumption by the anaerobic majority (Spec 5 §1). `0` disables; set `>0` so liberated carbon reaches a bounded steady state instead of accumulating |
-| `vbf_carbon_sink_km` | 1e-3 | mol/m³ | Half-saturation for the VBF carbon sink |
-| `vbf_b12_production` | 0 | mol/m³/s | Constant B12 (cobalamin) source from the anaerobic community (Spec 5 §3). `0` disables; set `>0` to keep B12 from draining to zero |
+| `vbf_carbon_sink_vmax` | 5.5e-5 | mol/m³/s | Monod carbon consumption by the anaerobic majority (Spec 5 §1 / Spec 6 §1). Activated by default: set just above the mucin liberation rate (5e-5) so bulk carbon settles to a ~1 mM equilibrium instead of accumulating without bound. `0` restores pre-Spec-6 unbounded accumulation |
+| `vbf_carbon_sink_km` | 1e-4 | mol/m³ | Half-saturation for the VBF carbon sink |
 
 **Mucin liberation profile:** When `mucin_z_gradient_enabled`, the liberation rate varies as:
 `rate(z) = mucin_liberation * exp(-z_rel / mucin_z_gradient_lambda)`
@@ -267,7 +305,7 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 |-----------|---------|-------|-------------|
 | `fur.enabled` | true | — | Enable Fur-regulated dynamic receptor expression |
 | `fur.Km` | 1e-5 | mol/m³ | Iron concentration for half-max Fur repression |
-| `fur.upregulation_max` | 4.0 | — | Max fold-upregulation under iron starvation |
+| `fur.upregulation_max` | 10.0 | — | Max fold-upregulation under iron starvation (Spec 6 §4.2; raised 4→10, still conservative vs measured 35–56× Fur-regulon induction; capped by `receptor_max`) |
 | `fur.receptor_max` | 5.0 | — | Cap on effective receptor expression |
 
 When enabled, iron-uptake receptors (FepA, FhuA, IroN, IutA, Fiu, CirA) are upregulated under low local iron, increasing colicin susceptibility (Vulnerability Paradox). Mutations modify `receptor_expr_base`; Fur scales effective `receptor_expr` each metabolism step. GPU metabolism fast-path is disabled when Fur is enabled.
@@ -309,9 +347,9 @@ Per-strain JSON keys: `cdi_type`, `cdi_immunity` on `initial_strains` entries. C
 
 | Parameter | Config key | Default | Units | Description |
 |-----------|------------|---------|-------|-------------|
-| `receptor.kd_b12_btuB` | `kd_b12_btuB` | 1e-9 | mol/m^3 | B12 affinity for BtuB |
+| `receptor.kd_b12_btuB` | `kd_b12_btuB` / `kd_corrinoid_btuB` | 1e-9 | mol/m^3 | BtuB affinity for the dominant corrinoid analog (Spec 6 / Receptor Ligand Parameterization). **Key unknown**: with the corrinoid pool at ~1 µM this Kd governs how strongly corrinoid competitively blocks colicin E at BtuB (see note below). `kd_corrinoid_btuB` is an alias for the same field |
 | `receptor.kd_colicinE_btuB` | `kd_colicinE_btuB` | 5e-10 | mol/m^3 | Colicin E affinity for BtuB |
-| `receptor.kd_enterobactin` | `kd_enterobactin` | 1e-8 | mol/m^3 | Enterobactin affinity for FepA |
+| `receptor.kd_enterobactin` | `kd_enterobactin` | 1e-9 | mol/m^3 | FepA affinity for ferric enterobactin (Spec 6 §4.1; tightened 10 nM → 1 nM to match measured high-affinity siderophore uptake) |
 | `receptor.kd_colicinB_fepA` | `kd_colicinB_fepA` | 2e-9 | mol/m^3 | Colicin B affinity for FepA |
 | `receptor.kd_lin_enterobactin` | `kd_lin_enterobactin` | 5e-8 | mol/m^3 | Linearized enterobactin for CirA |
 | `receptor.kd_colicinIa_cirA` | `kd_colicinIa_cirA` | 3e-9 | mol/m^3 | Colicin Ia affinity for CirA |
