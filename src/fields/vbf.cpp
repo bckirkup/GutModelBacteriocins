@@ -26,6 +26,7 @@ struct VbfSpeciesIndices {
   Int oxygen = -1;
   Int acetate = -1;
   Int mucin = -1;
+  Int b12 = -1;
 };
 
 struct VbfCellContext {
@@ -52,6 +53,23 @@ void apply_carbon_source(ChemicalField& chem, Int cell, const VbfCellContext& ct
   if (ctx.idx.carbon >= 0) {
     chem.reac(ctx.idx.carbon, cell) += ctx.static_liberation;
   }
+}
+
+// Spec 5 §1 — VBF carbon consumption (Restaurant Hypothesis). Monod-saturating
+// sink: near-complete uptake at high [C], leaving a thin residual at low [C].
+void apply_carbon_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+  if (ctx.cfg.carbon_sink_vmax <= 0.0 || ctx.idx.carbon < 0) return;
+  const Real c = chem.conc(ctx.idx.carbon, cell);
+  chem.reac(ctx.idx.carbon, cell) -=
+      ctx.cfg.carbon_sink_vmax * c / (ctx.cfg.carbon_sink_km + c);
+}
+
+// Spec 5 §3 — VBF B12 production. Constant low-rate source representing
+// cobalamin synthesis by the anaerobic community, maintaining a homeostatic
+// steady state against agent consumption.
+void apply_b12_source(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+  if (ctx.cfg.b12_production <= 0.0 || ctx.idx.b12 < 0) return;
+  chem.reac(ctx.idx.b12, cell) += ctx.cfg.b12_production;
 }
 
 void apply_iron_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
@@ -83,10 +101,12 @@ void apply_mucin_secretion(ChemicalField& chem, Int cell, const VbfCellContext& 
 
 void apply_vbf_at_cell(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
   apply_carbon_source(chem, cell, ctx);
+  apply_carbon_sink(chem, cell, ctx);
   apply_iron_sink(chem, cell, ctx);
   apply_oxygen_sink(chem, cell, ctx);
   apply_acetate_coupling(chem, cell, ctx);
   apply_mucin_secretion(chem, cell, ctx);
+  apply_b12_source(chem, cell, ctx);
 }
 
 VbfSpeciesIndices find_vbf_species(const ChemicalField& chem) {
@@ -96,6 +116,7 @@ VbfSpeciesIndices find_vbf_species(const ChemicalField& chem) {
     chem.find(species::OXYGEN),
     chem.find(species::ACETATE),
     chem.find(species::MUCIN),
+    chem.find(species::B12),
   };
 }
 

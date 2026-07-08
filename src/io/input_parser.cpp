@@ -267,6 +267,9 @@ bool apply_vbf_key(SimulationConfig& cfg, const std::string& key, const std::str
   if (key == "vbf_carrying_cap")     { cfg.vbf.carrying_cap = parse_config_real(key, val); return true; }
   if (key == "vbf_mucin_z_gradient") { cfg.vbf.mucin_z_gradient_enabled = (val == "true" || val == "1"); return true; }
   if (key == "vbf_mucin_z_lambda")   { cfg.vbf.mucin_z_gradient_lambda = parse_config_real(key, val); return true; }
+  if (key == "vbf_carbon_sink_vmax") { cfg.vbf.carbon_sink_vmax = parse_config_real(key, val); return true; }
+  if (key == "vbf_carbon_sink_km")   { cfg.vbf.carbon_sink_km = parse_config_real(key, val); return true; }
+  if (key == "vbf_b12_production")   { cfg.vbf.b12_production = parse_config_real(key, val); return true; }
   return false;
 }
 
@@ -440,6 +443,7 @@ bool apply_misc_key(SimulationConfig& cfg, const std::string& key, const std::st
   if (key == "gpu_enabled")          { cfg.gpu.enabled = parse_bool_config(val); return true; }
   if (key == "gpu_device_id")        { cfg.gpu.device_id = parse_config_int(key, val); return true; }
   if (key == "profile_steps")        { cfg.profile_steps = (val == "true" || val == "1"); return true; }
+  if (key == "dysbiosis_threshold")  { cfg.dysbiosis_threshold = parse_config_real(key, val); return true; }
   return false;
 }
 

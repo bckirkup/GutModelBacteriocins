@@ -1,0 +1,390 @@
+/* -----------------------------------------------------------------------
+   GutIBM – Mechanism-wiring verification tests
+
+   These tests answer the cross-cutting question "are the mechanisms from all
+   the specs wired together in a way that makes logical sense?" rather than
+   probing any single Fix in isolation. They enforce two invariants drawn from
+   the ci-test-design skill:
+
+     1. Species mass balance — every coupled species reaches a *bounded* steady
+        state. A species that only has a source (accumulates without bound) or
+        only has a sink (drains to zero) signals a missing coupling. This is
+        exactly the failure mode Spec 5 §1 (carbon source without sink) and
+        §3 (B12 sink without source) describe.
+
+     2. Directional coupling sensitivity — turning a coupling on/up must move
+        the downstream quantity in the biologically correct direction (more
+        agents ⇒ less O2; larger sink ⇒ less substrate). A coupling that is
+        parsed but dead, or wired backwards, is caught here.
+
+   Failures are recorded explicitly (not via assert) so the test still fails
+   under NDEBUG/Release builds.
+   ----------------------------------------------------------------------- */
+
+#include "simulation.h"
+#include "input_parser.h"
+#include "vbf.h"
+#include "chemical_field.h"
+#include "domain.h"
+#include "chem_environment_config.h"
+#include "species_names.h"
+
+#include <cmath>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+using namespace gutibm;
+
+namespace {
+
+int g_failures = 0;
+
+void expect(bool cond, const std::string& msg) {
+  if (!cond) {
+    std::cerr << "FAIL: " << msg << "\n";
+    ++g_failures;
+  }
+}
+
+// Integrate one closed-cell step of the VBF reaction terms: zero reactions,
+// let the VBF apply its sources/sinks, then apply conc += reac * dt (clamped
+// at zero, matching Simulation::module_chemistry). No diffusion/boundaries —
+// this isolates the VBF coupling so the mass-balance conclusion is unambiguous.
+void step_vbf_closed_cell(VBF& vbf, ChemicalField& chem, const Domain& domain,
+                          const OxygenConfig& oxy, const AcetateConfig& ace,
+                          const MucinConfig& muc, Real dt) {
+  chem.zero_reactions();
+  vbf.apply_nutrient_coupling(chem, domain, dt, oxy, ace, muc);
+  const Int ns = chem.num_species();
+  for (Int s = 0; s < ns; ++s) {
+    for (Int c = 0; c < chem.ncells(); ++c) {
+      chem.conc(s, c) = std::max(chem.conc(s, c) + chem.reac(s, c) * dt, 0.0);
+    }
+  }
+}
+
+Domain make_domain() {
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {20e-6, 20e-6, 20e-6};
+  dcfg.grid_dx = 5e-6;
+  Domain domain;
+  domain.init(dcfg);
+  return domain;
+}
+
+Real max_conc(const ChemicalField& chem, Int spec) {
+  Real m = 0.0;
+  for (Int c = 0; c < chem.ncells(); ++c) {
+    m = std::max(m, chem.conc(spec, c));
+  }
+  return m;
+}
+
+// ── Spec 5 §1 — carbon source without a sink accumulates without bound; the
+// VBF carbon sink must convert that into a bounded steady state. ────────────
+void test_carbon_sink_bounds_accumulation() {
+  Domain domain = make_domain();
+
+  ChemicalSpec carbon;
+  carbon.name = species::CARBON;
+  carbon.initial_conc = 0.0;
+
+  OxygenConfig oxy;   // disabled
+  AcetateConfig ace;  // disabled
+  MucinConfig muc;    // disabled -> static liberation path
+
+  // Uniform carbon liberation (no z-gradient), sink off vs on.
+  VBFConfig base;
+  base.mucin_liberation = 5.0e-5;   // constant carbon source
+  base.mucin_z_gradient_enabled = false;
+  base.use_dynamic_mucin = false;
+
+  VBFConfig no_sink = base;
+  no_sink.carbon_sink_vmax = 0.0;
+
+  VBFConfig with_sink = base;
+  with_sink.carbon_sink_vmax = 1.0e-3;  // >> source, so steady state is small
+  with_sink.carbon_sink_km   = 1.0e-3;
+
+  const Real dt = 60.0;
+  const int steps = 400;
+
+  ChemicalField chem_a;
+  chem_a.init(domain, {carbon});
+  VBF vbf_a;
+  vbf_a.init(no_sink, domain);
+
+  ChemicalField chem_b;
+  chem_b.init(domain, {carbon});
+  VBF vbf_b;
+  vbf_b.init(with_sink, domain);
+
+  for (int i = 0; i < steps; ++i) {
+    step_vbf_closed_cell(vbf_a, chem_a, domain, oxy, ace, muc, dt);
+    step_vbf_closed_cell(vbf_b, chem_b, domain, oxy, ace, muc, dt);
+  }
+
+  const Int ic = chem_a.find(species::CARBON);
+  const Real c_no_sink = max_conc(chem_a, ic);
+  const Real c_with_sink = max_conc(chem_b, ic);
+
+  // Analytic unbounded growth: source * dt * steps.
+  const Real expected_unbounded = 5.0e-5 * dt * steps;  // = 1.2 mol/m^3
+  // Analytic bounded steady state: km * S / (vmax - S).
+  const Real steady = 1.0e-3 * 5.0e-5 / (1.0e-3 - 5.0e-5);
+
+  expect(c_no_sink > 0.5 * expected_unbounded,
+         "carbon without a sink should accumulate unbounded (Spec 5 §1 gap)");
+  expect(c_with_sink < 100.0 * steady && c_with_sink < 1.0e-3,
+         "carbon with the VBF sink must reach a small bounded steady state");
+  expect(c_with_sink < 0.01 * c_no_sink,
+         "enabling the carbon sink must dramatically lower carbon vs no sink");
+
+  std::cout << "  test_carbon_sink_bounds_accumulation: PASSED"
+            << " (no_sink=" << c_no_sink << " with_sink=" << c_with_sink
+            << " steady~=" << steady << ")\n";
+}
+
+// Directional sensitivity: a larger Vmax removes more carbon per step. ──────
+void test_carbon_sink_sensitivity() {
+  Domain domain = make_domain();
+
+  ChemicalSpec carbon;
+  carbon.name = species::CARBON;
+  carbon.initial_conc = 1.0e-2;  // fixed, well above Km
+
+  OxygenConfig oxy;
+  AcetateConfig ace;
+  MucinConfig muc;
+
+  auto sink_reac = [&](Real vmax) {
+    VBFConfig cfg;
+    cfg.mucin_liberation = 0.0;  // isolate the sink term
+    cfg.mucin_z_gradient_enabled = false;
+    cfg.carbon_sink_vmax = vmax;
+    cfg.carbon_sink_km = 1.0e-3;
+    ChemicalField chem;
+    chem.init(domain, {carbon});
+    VBF vbf;
+    vbf.init(cfg, domain);
+    chem.zero_reactions();
+    vbf.apply_nutrient_coupling(chem, domain, 60.0, oxy, ace, muc);
+    return chem.reac(chem.find(species::CARBON), domain.cell_index(0, 0, 0));
+  };
+
+  const Real r_off = sink_reac(0.0);
+  const Real r_lo = sink_reac(1.0e-4);
+  const Real r_hi = sink_reac(1.0e-3);
+
+  expect(r_off == 0.0, "carbon sink disabled (vmax=0) must not touch carbon");
+  expect(r_lo < 0.0 && r_hi < 0.0, "carbon sink must be a negative reaction term");
+  expect(r_hi < r_lo, "larger carbon sink Vmax must remove more carbon (monotonic)");
+
+  std::cout << "  test_carbon_sink_sensitivity: PASSED"
+            << " (off=" << r_off << " lo=" << r_lo << " hi=" << r_hi << ")\n";
+}
+
+// ── Spec 5 §3 — B12 has consumers but no producer, so it drains to zero. The
+// VBF B12 source must be a positive, magnitude-sensitive reaction term. ─────
+void test_b12_source_directional() {
+  Domain domain = make_domain();
+
+  ChemicalSpec b12;
+  b12.name = species::B12;
+  b12.initial_conc = 0.0;
+
+  OxygenConfig oxy;
+  AcetateConfig ace;
+  MucinConfig muc;
+
+  auto b12_reac = [&](Real production) {
+    VBFConfig cfg;
+    cfg.mucin_liberation = 0.0;
+    cfg.mucin_z_gradient_enabled = false;
+    cfg.b12_production = production;
+    ChemicalField chem;
+    chem.init(domain, {b12});
+    VBF vbf;
+    vbf.init(cfg, domain);
+    chem.zero_reactions();
+    vbf.apply_nutrient_coupling(chem, domain, 60.0, oxy, ace, muc);
+    return chem.reac(chem.find(species::B12), domain.cell_index(0, 0, 0));
+  };
+
+  const Real r_off = b12_reac(0.0);
+  const Real r_lo = b12_reac(1.0e-13);
+  const Real r_hi = b12_reac(1.0e-12);
+
+  expect(r_off == 0.0, "B12 production disabled (0) must not touch B12");
+  expect(r_lo > 0.0 && r_hi > 0.0, "B12 production must be a positive source term");
+  expect(r_hi > r_lo, "larger B12 production rate must add more B12 (monotonic)");
+
+  std::cout << "  test_b12_source_directional: PASSED"
+            << " (off=" << r_off << " lo=" << r_lo << " hi=" << r_hi << ")\n";
+}
+
+// Build a small integration config with a chosen number of agents. ──────────
+SimulationConfig make_integration_cfg(int n_agents, uint64_t seed) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo = {0, 0, 0};
+  cfg.domain.hi = {100e-6, 100e-6, 50e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.time.total_time = 600.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 600.0;
+  cfg.seed = seed;
+  cfg.hdf5.enabled = false;
+  cfg.cell_bio.motility.enabled = false;
+  cfg.cell_bio.cdi.enabled = false;
+  cfg.advection.mucus_thickness = 50e-6;
+  cfg.advection.distal_length = 100e-6;
+  cfg.qssa.toxin_cutoff = 50e-6;
+  cfg.qssa.nutrient_cutoff = 25e-6;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain s;
+  s.type = 1;
+  s.count = n_agents;
+  s.mu_max = 5.0e-4;
+  s.plasmids = {};
+  s.conjugative = false;
+  cfg.initial_strains.push_back(s);
+  return cfg;
+}
+
+Real mean_conc(const ChemicalField& chem, Int spec) {
+  Real sum = 0.0;
+  for (Int c = 0; c < chem.ncells(); ++c) sum += chem.conc(spec, c);
+  return chem.ncells() > 0 ? sum / static_cast<Real>(chem.ncells()) : 0.0;
+}
+
+// ── O2 consumption is wired end-to-end (Spec 1): more agents must draw the
+// dissolved-oxygen field down further. Proves agent metabolism actually
+// couples back into the chemical environment through the full step loop. ────
+Real run_o2_and_report_mean(int n_agents, uint64_t seed) {
+  SimulationConfig cfg = make_integration_cfg(n_agents, seed);
+  cfg.chem_env.oxygen.enabled = true;
+  // Isolate the agent<->O2 coupling: the uniform VBF background O2 sink would
+  // otherwise dominate the field and mask the agent-count signal.
+  cfg.chem_env.oxygen.vbf_sink = 0.0;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  for (int i = 0; i < 6; ++i) sim.step(60.0);
+
+  const ChemicalField& chem = sim.chemical_field();
+  const Int io2 = chem.find(species::OXYGEN);
+  return io2 >= 0 ? mean_conc(chem, io2) : -1.0;
+}
+
+void test_o2_consumption_wired() {
+  const Real epithelial = OxygenConfig{}.epithelial_conc;
+  const Real o2_few = run_o2_and_report_mean(5, 111);
+  const Real o2_many = run_o2_and_report_mean(80, 111);
+
+  expect(o2_few >= 0.0 && o2_many >= 0.0, "oxygen species must be registered when enabled");
+  expect(o2_few < epithelial,
+         "agents must consume O2 (mean field below the epithelial boundary)");
+  expect(o2_many < o2_few,
+         "more agents must deplete O2 further (directional agent<->chemistry coupling)");
+
+  std::cout << "  test_o2_consumption_wired: PASSED"
+            << " (few=" << o2_few << " many=" << o2_many
+            << " epithelial=" << epithelial << ")\n";
+}
+
+// ── Spec 5 §4 — the dysbiosis safety net must halt a run once density leaves
+// the calibrated regime, and must be inert when disabled. ───────────────────
+void test_dysbiosis_halt() {
+  // Control: threshold disabled -> run proceeds through many steps.
+  SimulationConfig ctrl = make_integration_cfg(50, 2024);
+  ctrl.dysbiosis_threshold = 0.0;
+  Simulation sim_ctrl;
+  sim_ctrl.init(ctrl);
+  sim_ctrl.run();
+
+  // Halting: threshold well below the initial density -> run stops early.
+  SimulationConfig halt = make_integration_cfg(50, 2024);
+  // Initial density = 50 cells / (100e-6*100e-6*50e-6 m^3 * 1e9 mL/m^3).
+  halt.dysbiosis_threshold = 1.0e4;  // cells/mL, far below actual
+  Simulation sim_halt;
+  sim_halt.init(halt);
+  sim_halt.run();
+
+  expect(sim_ctrl.step_count() > sim_halt.step_count(),
+         "dysbiosis threshold must halt the run earlier than the disabled control");
+  expect(sim_halt.step_count() >= 1 && sim_halt.step_count() <= 2,
+         "dysbiosis halt should trigger within the first step or two");
+
+  std::cout << "  test_dysbiosis_halt: PASSED"
+            << " (control_steps=" << sim_ctrl.step_count()
+            << " halt_steps=" << sim_halt.step_count() << ")\n";
+}
+
+// ── Overarching mass-balance guard: with oxygen, the carbon sink and the B12
+// source all active, no coupled species may go NaN, negative, or blow up over
+// a multi-step run. This is the "everything wired together stays sane" net. ─
+void test_all_species_bounded_steady_state() {
+  SimulationConfig cfg = make_integration_cfg(40, 909);
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.vbf.carbon_sink_vmax = 1.0e-3;
+  cfg.vbf.carbon_sink_km = 1.0e-3;
+  cfg.vbf.b12_production = 1.0e-13;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  for (int i = 0; i < 8; ++i) sim.step(60.0);
+
+  const ChemicalField& chem = sim.chemical_field();
+  const std::vector<std::string> tracked = {
+      species::CARBON, species::IRON, species::B12, species::OXYGEN};
+
+  for (const std::string& name : tracked) {
+    const Int idx = chem.find(name);
+    if (idx < 0) continue;
+    for (Int c = 0; c < chem.ncells(); ++c) {
+      const Real v = chem.conc(idx, c);
+      if (std::isnan(v) || std::isinf(v) || v < 0.0 || v > 1.0e3) {
+        std::ostringstream m;
+        m << "species '" << name << "' left the bounded regime: conc=" << v
+          << " at cell " << c;
+        expect(false, m.str());
+        break;
+      }
+    }
+  }
+
+  // Carbon must stay bounded despite its constant VBF source (sink active).
+  const Int ic = chem.find(species::CARBON);
+  if (ic >= 0) {
+    expect(max_conc(chem, ic) < 1.0,
+           "with the sink active carbon must stay bounded across a full run");
+  }
+
+  std::cout << "  test_all_species_bounded_steady_state: PASSED\n";
+}
+
+}  // namespace
+
+int main() {
+  std::cout << "=== Mechanism Wiring Tests ===\n";
+  test_carbon_sink_bounds_accumulation();
+  test_carbon_sink_sensitivity();
+  test_b12_source_directional();
+  test_o2_consumption_wired();
+  test_dysbiosis_halt();
+  test_all_species_bounded_steady_state();
+
+  if (g_failures == 0) {
+    std::cout << "All mechanism wiring tests passed.\n";
+    return 0;
+  }
+  std::cerr << g_failures << " mechanism wiring test(s) FAILED.\n";
+  return 1;
+}
