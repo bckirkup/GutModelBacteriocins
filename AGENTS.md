@@ -119,7 +119,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 **Slow unit:** mechanics, immunity escape.
 
-**Integration (`ctest -L integration`):** smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), HDF5 round-trip, HDF5 checkpoint restart.
+**Integration (`ctest -L integration`):** smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), mechanism wiring (cross-spec mass-balance + directional coupling; see `docs/WIRING_AUDIT.md`), HDF5 round-trip, HDF5 checkpoint restart.
 
 **MPI:** `mpi_multi_rank` (`mpirun -np 2`), `hdf5_roundtrip_parallel`.
 
@@ -211,6 +211,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `EARI.md` — Eco-Advective Receptor Interference framework
 - `VADI.md` — Viscous Advective-Diffusion Interference framework
 - `docs/MECHANISMS.md` — per-Fix biological mechanisms
+- `docs/WIRING_AUDIT.md` — cross-spec mechanism wiring map (species mass balance, coupling points, open questions) + wiring test strategy
 - `docs/API.md` — class reference
 - `docs/CONFIG_FORMAT.md` — strict JSON input format
 - `docs/BATCH_RUNNER.md` — resumable parameter-scan CLI

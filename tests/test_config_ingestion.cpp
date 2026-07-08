@@ -190,6 +190,9 @@ std::vector<Probe> build_probes() {
   v.push_back(R("vbf_carrying_cap", [](const SimulationConfig& c) { return c.vbf.carrying_cap; }));
   v.push_back(B("vbf_mucin_z_gradient", [](const SimulationConfig& c) { return c.vbf.mucin_z_gradient_enabled; }));
   v.push_back(R("vbf_mucin_z_lambda", [](const SimulationConfig& c) { return c.vbf.mucin_z_gradient_lambda; }));
+  v.push_back(R("vbf_carbon_sink_vmax", [](const SimulationConfig& c) { return c.vbf.carbon_sink_vmax; }));
+  v.push_back(R("vbf_carbon_sink_km", [](const SimulationConfig& c) { return c.vbf.carbon_sink_km; }));
+  v.push_back(R("vbf_b12_production", [](const SimulationConfig& c) { return c.vbf.b12_production; }));
 
   // ── Carbon z-gradient + bacteriocin SOS ───────────────────────────────────
   v.push_back(B("carbon_z_gradient", [](const SimulationConfig& c) { return carbon_spec(c).z_gradient_enabled; }));
@@ -289,6 +292,7 @@ std::vector<Probe> build_probes() {
   v.push_back(B("gpu_enabled", [](const SimulationConfig& c) { return c.gpu.enabled; }));
   v.push_back(I("gpu_device_id", [](const SimulationConfig& c) { return static_cast<long long>(c.gpu.device_id); }));
   v.push_back(B("profile_steps", [](const SimulationConfig& c) { return c.profile_steps; }));
+  v.push_back(R("dysbiosis_threshold", [](const SimulationConfig& c) { return c.dysbiosis_threshold; }));
 
   // ── Oxygen (Spec 1) ───────────────────────────────────────────────────────
   add_ns_bool(v, "oxygen.enabled", "oxygen_enabled", [](const SimulationConfig& c) { return c.chem_env.oxygen.enabled; });

@@ -624,6 +624,28 @@ void Simulation::run() {
       }
       break;
     }
+
+    // Spec 5 §4 — Dysbiosis safety net: halt if density leaves the homeostatic
+    // regime the model is calibrated for.
+    if (cfg_.dysbiosis_threshold > 0.0) {
+      const Vec3 lo = domain_.lo();
+      const Vec3 hi = domain_.hi();
+      const Real vol_m3 = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]);
+      const Real vol_mL = vol_m3 * 1.0e9;  // 1 m^3 = 1e9 mL
+      if (const Real density = vol_mL > 0.0
+              ? static_cast<Real>(mpi_stats_.global_agent_count) / vol_mL
+              : 0.0;
+          density > cfg_.dysbiosis_threshold) {
+        stopped_for_population = true;
+        if (rank == 0) {
+          std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: " << density
+                    << " cells/mL > " << cfg_.dysbiosis_threshold
+                    << " cells/mL — halting simulation.\n"
+                    << std::flush;
+        }
+        break;
+      }
+    }
   }
 
   hdf5_.finalize();
