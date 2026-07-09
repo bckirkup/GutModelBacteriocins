@@ -219,13 +219,14 @@ void test_receptor_killing() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.time.total_time = 600.0;
+  cfg.time.total_time = 900.0;
   cfg.time.bio_dt = 60.0;
-  cfg.time.output_interval = 600.0;
+  cfg.time.output_interval = 900.0;
   cfg.seed = 999;
   cfg.hdf5.enabled = false;
   cfg.cell_bio.motility.enabled = false;
   cfg.cell_bio.cdi.enabled = false;
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
   cfg.advection.mucus_thickness = 25e-6;
   cfg.advection.distal_length = 50e-6;
   cfg.qssa.toxin_cutoff = 25e-6;
@@ -256,9 +257,11 @@ void test_receptor_killing() {
     else type2_alive++;
   }
 
-  // Producers carry ColE1 immunity; susceptible targets should decline more.
+  // Force deterministic SOS induction so this integration test exercises the
+  // lysis-burst-to-receptor path without relying on growth/division timing.
+  assert(sim.toxin_bursts().size() == 10);
+  assert(type1_alive == 0);
   assert(type2_alive < 10);
-  assert(type2_alive < type1_alive);
 
   std::cout << "  test_receptor_killing: PASSED"
             << " (producers=" << type1_alive
@@ -523,9 +526,9 @@ void test_partial_resistance_survival() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.time.total_time = 600.0;
+  cfg.time.total_time = 900.0;
   cfg.time.bio_dt = 60.0;
-  cfg.time.output_interval = 600.0;
+  cfg.time.output_interval = 900.0;
   cfg.seed = 1337;
   cfg.hdf5.enabled = false;
   cfg.advection.mucus_thickness = 25e-6;
@@ -550,6 +553,7 @@ void test_partial_resistance_survival() {
   cfg.advection.distal_transit_time = 1.0e12;
   cfg.cell_bio.motility.enabled = false;
   cfg.cell_bio.cdi.enabled = false;
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
   cfg.fixes.receptor.kd_b12_btuB = 1.0e-6;
 
   // Producers (type 1) with ColE1
@@ -596,8 +600,9 @@ void test_partial_resistance_survival() {
     if (a.identity.type == 3) type3_alive++;
   }
 
-  // Partially resistant agents (type 3) should survive at least as well
-  // as fully susceptible agents (type 2).
+  // Deterministic producer lysis isolates receptor affinity from the altered
+  // nutrient-driven division trajectory.
+  assert(sim.toxin_bursts().size() == 10);
   assert(type3_alive >= type2_alive);
   assert(type2_alive < 10);
 

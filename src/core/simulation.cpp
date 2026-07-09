@@ -767,7 +767,9 @@ void Simulation::update_bacteriocin_fields() {
   qssa_.solve_all_bacteriocin_fields(agents_, toxin_bursts_, clock_.time,
                                       cfg_.chem_env.protease, advection_, chem_);
   if (gpu_active_) {
-    chem_gpu_.sync_to_device(chem_);
+    // QSSA updates concentrations only; preserve metabolism reactions already
+    // accumulated on the device during the biology module.
+    chem_gpu_.sync_concentrations_to_device(chem_);
   }
 }
 
@@ -785,48 +787,54 @@ void Simulation::module_biology(Real dt) {
 void Simulation::module_chemistry(Real dt) {
   update_bacteriocin_fields();
 
-  // Nutrient depletion
+  // GPU metabolism writes carbon/iron reactions on the device. Bring only
+  // those rates back; concentration fields already match after QSSA sync.
   if (gpu_active_) {
-    agents_gpu_.sync_from_host(agents_);
-    if (!gpu_solve_nutrient_depletion(agents_gpu_, agents_.size(), chem_gpu_, chem_)) {
-      qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.chem_env.oxygen);
-    }
-  } else {
-    qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.chem_env.oxygen);
+    chem_gpu_.sync_reactions_to_host(chem_);
   }
 
-  // VBF coupling (nutrient sink/source) — CPU path updates host reac_
-  if (gpu_active_) {
-    chem_gpu_.sync_to_host(chem_);
-  }
+  // Agent O2 respiration is applied on the host for both CPU and GPU runs.
+  qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.chem_env.oxygen);
+
+  // Every rank holds the full chemical grid but only its local agents. Sum the
+  // rank-local agent reaction fields before adding the identical global VBF.
+  chem_.sum_reactions_across_ranks();
   vbf_.apply_nutrient_coupling(chem_, domain_, dt,
-                                cfg_.chem_env.oxygen, cfg_.chem_env.acetate, cfg_.chem_env.mucin);
+                                cfg_.chem_env.oxygen, cfg_.chem_env.acetate,
+                                cfg_.chem_env.mucin);
+
+  bool applied_on_gpu = false;
   if (gpu_active_) {
-    chem_gpu_.sync_to_device(chem_);
-  }
-
-  // Apply reactions to concentrations
-  if (gpu_active_ && chem_gpu_.apply_reactions(dt, domain_)) {
-    chem_gpu_.apply_boundaries(domain_, chem_);
-    chem_gpu_.sync_to_host(chem_);
-    return;
-  }
-
-  Int s = 0;
-  for (const auto& conc_row : chem_.conc_data()) {
-    (void)conc_row;
-    #ifdef GUTIBM_OPENMP
-    #pragma omp parallel for schedule(static)
-    #endif
-    for (Int c = 0; c < chem_.ncells(); ++c) {
-      chem_.conc(s, c) += chem_.reac(s, c) * dt;
-      chem_.conc(s, c) = std::max(chem_.conc(s, c), 0.0);
+    chem_gpu_.sync_reactions_to_device(chem_);
+    applied_on_gpu = chem_gpu_.apply_reactions(dt, domain_);
+    if (applied_on_gpu) {
+      chem_gpu_.sync_concentrations_to_host(chem_);
     }
-    ++s;
   }
 
-  // Boundary conditions
+  if (!applied_on_gpu) {
+    Int s = 0;
+    for (const auto& conc_row : chem_.conc_data()) {
+      (void)conc_row;
+      #ifdef GUTIBM_OPENMP
+      #pragma omp parallel for schedule(static)
+      #endif
+      for (Int c = 0; c < chem_.ncells(); ++c) {
+        chem_.conc(s, c) += chem_.reac(s, c) * dt;
+        chem_.conc(s, c) = std::max(chem_.conc(s, c), 0.0);
+      }
+      ++s;
+    }
+  }
+
+  // Nutrient diffusion is much faster than the biological timestep. The
+  // stable implicit solve smooths local reaction changes without CFL substeps.
+  chem_.apply_diffusion(domain_, dt);
   chem_.apply_boundaries(domain_);
+
+  if (gpu_active_) {
+    chem_gpu_.sync_concentrations_to_device(chem_);
+  }
 }
 
 void Simulation::module_physics(Real dt) {

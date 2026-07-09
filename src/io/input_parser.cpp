@@ -97,18 +97,18 @@ Int parse_config_int(const std::string& key, const std::string& val) {
 SimulationConfig InputParser::default_config() {
   SimulationConfig cfg;
 
-  // Default chemical species
-  // Carbon gets z-gradient enabled (mucin-derived monosaccharides peak at epithelium)
+  // Default chemical species. Nutrients and small molecules use stable
+  // implicit diffusion; bacteriocins remain on the QSSA Green's-function path.
   cfg.chemicals = {
-    {species::CARBON,      1.0e-9, 1.0,  5.0e-3, 5.0e-3,  0.0, true,  25.0e-6},
-    {species::IRON,        1.0e-9, 1.0,  1.0e-4, 1.0e-4,  0.0, false, 25.0e-6},
-    {species::B12,         1.0e-9, 1.0,  1.0e-6, 1.0e-6,  0.0, false, 25.0e-6},
-    {species::BACTERIOCIN_BTUB, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
-    {species::BACTERIOCIN_FEPA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
-    {species::BACTERIOCIN_CIRA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
-    {species::BACTERIOCIN_FHUA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6},
-    {species::ACETATE,     1.2e-9,  1.0,  80.0,   80.0,    0.0, false, 25.0e-6},
-    {species::ETHANOLAMINE, 1.0e-9, 1.0, 0.5e-3, 0.5e-3, 0.0, false, 25.0e-6},
+    {species::CARBON,      5.0e-10, 1.0, 5.0e-3, 5.0e-3, 0.0, true,  25.0e-6, true},
+    {species::IRON,        7.0e-10, 1.0, 1.0e-4, 1.0e-4, 0.0, false, 25.0e-6, true},
+    {species::B12,         5.0e-10, 1.0, 1.0e-6, 1.0e-6, 0.0, false, 25.0e-6, true},
+    {species::BACTERIOCIN_BTUB, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
+    {species::BACTERIOCIN_FEPA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
+    {species::BACTERIOCIN_CIRA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
+    {species::BACTERIOCIN_FHUA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
+    {species::ACETATE,     1.2e-9, 1.0, 80.0,   80.0,   0.0, false, 25.0e-6, true},
+    {species::ETHANOLAMINE, 1.0e-9, 1.0, 0.5e-3, 0.5e-3, 0.0, false, 25.0e-6, true},
   };
 
   // VBF mucin z-gradient enabled by default (consistent with carbon gradient)
@@ -167,23 +167,32 @@ bool parse_bool_config(std::string_view val) {
 void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
 
-  if (cfg.chem_env.oxygen.enabled && find_chemical_spec(cfg.chemicals, species::OXYGEN) < 0) {
-    cfg.chemicals.emplace_back(
-        species::OXYGEN, cfg.chem_env.oxygen.D_free, 1.0,
-        cfg.chem_env.oxygen.epithelial_conc, cfg.chem_env.oxygen.epithelial_conc,
-        0.0, true, k_z_lambda);
+  if (cfg.chem_env.oxygen.enabled) {
+    const Int idx = find_chemical_spec(cfg.chemicals, species::OXYGEN);
+    if (idx < 0) {
+      cfg.chemicals.emplace_back(
+          species::OXYGEN, cfg.chem_env.oxygen.D_free, 1.0,
+          cfg.chem_env.oxygen.epithelial_conc, cfg.chem_env.oxygen.epithelial_conc,
+          0.0, true, k_z_lambda, true);
+    } else {
+      auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
+      spec.diff_coeff = cfg.chem_env.oxygen.D_free;
+      spec.diffusion_enabled = true;
+    }
   }
 
   if (cfg.chem_env.acetate.enabled) {
     Int idx = find_chemical_spec(cfg.chemicals, species::ACETATE);
     if (idx < 0) {
       cfg.chemicals.emplace_back(
-          species::ACETATE, cfg.chem_env.acetate.D_free, 1.0, 0.0, 0.0, 0.0, false, k_z_lambda);
+          species::ACETATE, cfg.chem_env.acetate.D_free, 1.0,
+          0.0, 0.0, 0.0, false, k_z_lambda, true);
     } else {
       auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
       spec.diff_coeff = cfg.chem_env.acetate.D_free;
       spec.initial_conc = 0.0;
       spec.boundary_conc = 0.0;
+      spec.diffusion_enabled = true;
     }
   }
 
@@ -192,7 +201,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
       cfg.chemicals.emplace_back(
           species::MUCIN, cfg.chem_env.mucin.D_free, cfg.chem_env.mucin.retardation,
           cfg.chem_env.mucin.initial_conc, cfg.chem_env.mucin.initial_conc,
-          0.0, false, k_z_lambda);
+          0.0, false, k_z_lambda, false);
     }
     cfg.vbf.use_dynamic_mucin = true;
   }
@@ -201,7 +210,12 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
     if (find_chemical_spec(cfg.chemicals, species::SIDEROPHORE) < 0) {
       cfg.chemicals.emplace_back(
           species::SIDEROPHORE, cfg.chem_env.siderophore.D_free, 1.0,
-          0.0, 0.0, 0.0, false, k_z_lambda);
+          0.0, 0.0, 0.0, false, k_z_lambda, true);
+    } else {
+      auto& spec = cfg.chemicals[static_cast<size_t>(
+          find_chemical_spec(cfg.chemicals, species::SIDEROPHORE))];
+      spec.diff_coeff = cfg.chem_env.siderophore.D_free;
+      spec.diffusion_enabled = true;
     }
   }
 }

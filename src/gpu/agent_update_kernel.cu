@@ -101,15 +101,15 @@ __global__ void metabolism_kernel(
   mass[i] = biomass[i];
   age[i] += dt;
 
-  if (d_biomass <= 0.0) return;
+  if (d_biomass <= 0.0 || dt <= 0.0) return;
   double cell_vol = dx * dx * dx;
   if (cell_vol <= 0.0) return;
 
   if (reac_carbon) {
-    atomicAdd(&reac_carbon[cell], -d_biomass * yield_carbon / cell_vol);
+    atomicAdd(&reac_carbon[cell], -d_biomass * yield_carbon / (cell_vol * dt));
   }
   if (reac_iron) {
-    atomicAdd(&reac_iron[cell], -d_biomass * yield_iron / cell_vol);
+    atomicAdd(&reac_iron[cell], -d_biomass * yield_iron / (cell_vol * dt));
   }
   // Spec 6 §3 — B12/corrinoid is not depleted (constant bioavailable pool).
   // reac_b12 / yield_b12 retained in the signature for ABI stability but unused.

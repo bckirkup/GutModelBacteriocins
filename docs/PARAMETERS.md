@@ -130,6 +130,24 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 
 **Biological basis:** Mucin-derived monosaccharides are liberated primarily at the epithelial surface where host goblet cells secrete mucin glycoproteins. The anaerobic background degrades mucin locally, so the concentration of free monosaccharides is highest near z=0 and decays exponentially into the lumen. A characteristic length of ~25 μm places most carbon within the inner mucus layer.
 
+### Nutrient Diffusion (Spec 7)
+
+Nutrients and small molecules use backward-Euler directional splitting in `ChemicalField::apply_diffusion`. Each x/y line is solved with periodic boundaries; z uses a fixed epithelial concentration at z=0 and zero flux at the luminal face. The solve is L-stable and concentrations are clamped nonnegative, so it runs once per biological timestep without explicit CFL substeps. When `z_gradient_enabled` is true, the configured exponential profile is treated as a prescribed environmental background and diffusion smooths departures from that profile.
+
+| Species | Effective configuration | Diffusion enabled |
+|---------|-------------------------|-------------------|
+| Carbon | `D_free = 5e-10 m²/s` | yes |
+| Iron | `D_free = 7e-10 m²/s` | yes |
+| Corrinoid (B12) | `D_free = 5e-10 m²/s` | yes |
+| Oxygen | `oxygen.D_free` (default `2.1e-9 m²/s`) | when oxygen is enabled |
+| Acetate | `acetate.D_free` (default `1.2e-9 m²/s`) | yes |
+| Ethanolamine | `D_free = 1e-9 m²/s` | yes |
+| Siderophore | `siderophore.D_free` (default `5e-10 m²/s`) | when siderophore is enabled |
+| Mucin | immobile polymer field | no |
+| Bacteriocins | analytical QSSA Green's functions | no grid diffusion |
+
+`ChemicalSpec.diffusion_enabled` is currently a programmatic species property rather than an input-file key. Reactions from rank-local agents are summed with `MPI_Allreduce` before the shared VBF coupling and diffusion solve. CUDA runs apply diffusion on the host and synchronize the resulting concentrations back to the device.
+
 ---
 
 ## Nutrient Cycle (Spec 6)
@@ -137,7 +155,7 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 Spec 6 makes the **metabolism Fix the single canonical site for per-agent
 nutrient uptake**, resolving a double-count in which carbon/iron/B12 were
 consumed both by `FixMetabolism::grow_agent` (yield-based, `reac -= d_biomass *
-yield_X / cell_vol`) and again by `QSSASolver::solve_nutrient_depletion`
+yield_X / (cell_vol * dt)`) and again by `QSSASolver::solve_nutrient_depletion`
 (stoichiometry-based). The QSSA carbon/iron/B12 terms and the GPU
 `nutrient_depletion_kernel` have been removed; `solve_nutrient_depletion` now
 applies **only** aerobic O₂ respiration (which has no counterpart in the

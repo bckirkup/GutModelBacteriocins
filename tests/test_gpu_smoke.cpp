@@ -6,11 +6,14 @@
 #include "input_parser.h"
 #include "dispatch.h"
 #include "device.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 using namespace gutibm;
 
+#ifdef GUTIBM_CUDA
 static Real fingerprint(const Simulation& sim) {
   Real fp = 0.0;
   const auto& agents = sim.agents();
@@ -21,6 +24,23 @@ static Real fingerprint(const Simulation& sim) {
   fp += static_cast<Real>(sim.global_agent_count());
   return fp;
 }
+
+static std::vector<Real> chemical_fingerprints(const Simulation& sim) {
+  const auto& chem = sim.chemical_field();
+  std::vector<Real> fingerprints;
+  fingerprints.reserve(static_cast<size_t>(chem.num_species()));
+  const Real cells = static_cast<Real>(chem.ncells());
+  for (const auto& species : chem.conc_data()) {
+    Real fp = 0.0;
+    for (Int cell = 0; cell < chem.ncells(); ++cell) {
+      fp += species[static_cast<size_t>(cell)]
+          * static_cast<Real>(cell + 1);
+    }
+    fingerprints.push_back(fp / (cells * cells));
+  }
+  return fingerprints;
+}
+#endif
 
 int main() {
   std::cout << "=== GPU Smoke Test ===\n";
@@ -49,6 +69,7 @@ int main() {
   sim_cpu.init(cfg);
   sim_cpu.run();
   Real fp_cpu = fingerprint(sim_cpu);
+  const auto chem_fp_cpu = chemical_fingerprints(sim_cpu);
 
   if (DeviceContext::device_count() <= 0) {
     std::cout << "  test_gpu_smoke: SKIPPED (no CUDA device)\n";
@@ -70,15 +91,23 @@ int main() {
   }
   sim_gpu.run();
   Real fp_gpu = fingerprint(sim_gpu);
+  const auto chem_fp_gpu = chemical_fingerprints(sim_gpu);
 
   Real rel = std::abs(fp_cpu - fp_gpu) / std::max(std::abs(fp_cpu), 1e-30);
-  if (rel > 0.05) {
-    std::cerr << "  test_gpu_smoke: FAILED (rel=" << rel
-              << " cpu=" << fp_cpu << " gpu=" << fp_gpu << ")\n";
+  Real chem_rel = 0.0;
+  for (size_t species = 0; species < chem_fp_cpu.size(); ++species) {
+    const Real species_rel = std::abs(chem_fp_cpu[species] - chem_fp_gpu[species])
+        / std::max(std::abs(chem_fp_cpu[species]), 1e-30);
+    chem_rel = std::max(chem_rel, species_rel);
+  }
+  if (rel > 0.05 || chem_rel > 0.05) {
+    std::cerr << "  test_gpu_smoke: FAILED (agent_rel=" << rel
+              << " chem_rel=" << chem_rel << ")\n";
     return 1;
   }
 
-  std::cout << "  test_gpu_smoke: PASSED (rel=" << rel << ")\n";
+  std::cout << "  test_gpu_smoke: PASSED (agent_rel=" << rel
+            << " chem_rel=" << chem_rel << ")\n";
   std::cout << "All GPU smoke tests passed.\n";
   return 0;
 #endif

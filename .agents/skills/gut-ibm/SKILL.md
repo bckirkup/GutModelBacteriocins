@@ -63,7 +63,7 @@ ctest -L 'integration|slow|benchmark' -LE gpu   # integration job
 ctest -L gpu                                     # CUDA job only
 ```
 
-36 CTest targets (2-rank MPI tests included; no `mpirun -np 4+` gate yet):
+CTest targets (2-rank MPI tests included; no `mpirun -np 4+` gate yet):
 
 | Test | File | Focus |
 |------|------|-------|
@@ -77,6 +77,7 @@ ctest -L gpu                                     # CUDA job only
 | `smoke` | `test_smoke.cpp` | End-to-end mini simulation |
 | `config_diversity` | `test_config_diversity.cpp` | Distinct fingerprints across configs |
 | `z_gradient` | `test_z_gradient.cpp` | Z-dependent nutrient gradients |
+| `nutrient_diffusion` | `test_nutrient_diffusion.cpp` | Implicit profile golden, stability, boundaries, sensitivity |
 | `domain_decomp` | `test_domain_decomp.cpp` | Slab logic (single rank) |
 | `acetate_mete` | `test_acetate_mete.cpp` | Acetate inhibition of MetE |
 | `protease_decay` | `test_protease_decay.cpp` | Protease half-life decay on burst sources |
@@ -145,13 +146,13 @@ Each biological step in `Simulation::step()`:
 4. Fix `pre_step(dt)` hooks
 5. **Biology** — all Fixes `compute(dt)` (metabolism, bacteriocin, receptor, conjugation, mutation, mechanics)
 6. Clear ghosts
-7. **Chemistry** — QSSA bacteriocin field, nutrient depletion, VBF coupling, grid update
+7. **Chemistry** — QSSA bacteriocin field, rank-summed nutrient reactions, VBF coupling, grid update, implicit nutrient diffusion, boundaries
 8. **Physics** — mucus advection, VBF drag, mechanics repulsion
 9. Fix `post_step(dt)` hooks
 10. `migrate_agents()` — MPI cross-rank transfer
 11. `check_washout()`, `remove_dead_agents()`, `allreduce_global_stats()`
 
-Chemistry is instantaneous (QSSA); bio timestep (`bio_dt`, default 60 s) is decoupled.
+Toxin transport is instantaneous QSSA. Nutrient and small-molecule transport uses L-stable backward-Euler directional diffusion once per `bio_dt` (default 60 s), with no explicit CFL substeps.
 
 ## Adding a New Fix Module
 
@@ -176,11 +177,11 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 
 ## Adding a New Diffusion Kernel
 
-1. Add kernel logic in `src/diffusion/` (see `greens_function.cpp`, `octree.cpp`)
-2. Use Method of Images for boundary conditions; must be QSSA-compatible (steady-state, no explicit dt)
-3. Wire into `QSSASolver` (`src/diffusion/qssa_solver.cpp`) or field update in `src/fields/`
-4. Add unit test in `tests/` comparing against analytical solution
-5. For large N, consider Barnes-Hut FMM (`QSSAConfig::use_fmm`, `fmm_theta`)
+1. Bacteriocins: add QSSA Green's-function logic in `src/diffusion/` and wire it through `QSSASolver`; use Method of Images and consider FMM for large source counts.
+2. Nutrients/small molecules: add stable implicit field logic in `src/fields/chemical_field.cpp`; do not use an explicit stencil at `bio_dt`.
+3. Preserve periodic x/y, epithelial Dirichlet z=0, and luminal zero-flux z boundaries.
+4. Sum rank-local reaction grids before global VBF coupling and diffusion.
+5. Add a quantitative golden profile plus enable/coefficient sensitivity, positivity, MPI-equality, and CPU/GPU parity coverage.
 
 ## Configuration
 

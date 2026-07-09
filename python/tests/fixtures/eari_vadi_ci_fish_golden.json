@@ -1,16 +1,16 @@
 {
   "scenario": "eari_vadi_ci_fish",
   "metrics": {
-    "plasmid_dna_fish_detection_fraction": 1.0,
-    "plasmid_dna_fish_mean_snr": 103.35432751971817,
+    "plasmid_dna_fish_detection_fraction": 0.8518518518518519,
+    "plasmid_dna_fish_mean_snr": 80.89487677826666,
     "immunity_hipr_detectable": 0.0,
     "immunity_hcr_detectable": 1.0,
-    "n_detected": 15.0,
-    "detection_fraction": 1.0,
+    "n_detected": 69.0,
+    "detection_fraction": 0.8518518518518519,
     "monochromatic_score_detected": 0.0,
-    "immunity_mrna_detection_fraction": 0.3333333333333333,
-    "immunity_mrna_hcr_detection_fraction": 0.9333333333333333,
-    "colicin_plasmid_detection_fraction": 1.0,
+    "immunity_mrna_detection_fraction": 0.20987654320987653,
+    "immunity_mrna_hcr_detection_fraction": 0.9876543209876543,
+    "colicin_plasmid_detection_fraction": 0.8518518518518519,
     "rrna_phylogroup_detection_fraction": 1.0
   }
 }

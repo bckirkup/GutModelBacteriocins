@@ -51,7 +51,7 @@ cd python && pytest tests/ -v -m "not integration"
 ## Architecture Rules
 
 - **NUFEB-2 Fix architecture** — biological rules are modular Fix plugins (`FixRegistry` in `src/fixes/fix_registry.cpp`)
-- **QSSA for chemistry** — no explicit PDE solvers; analytical Green's function kernels
+- **Hybrid chemical transport** — analytical QSSA Green's functions for bacteriocins; stable implicit directional diffusion for nutrients and small molecules
 - **VBF for anaerobes** — 99% of background flora is a continuum field, not discrete agents
 - **Spatial hashing** — O(N) neighbor lookups, not O(N²)
 - **MPI domain decomposition** — 1D slab along x-axis; ghost exchange + agent migration
@@ -60,10 +60,10 @@ cd python && pytest tests/ -v -m "not integration"
 ### Timestep modules (do not reorder casually)
 
 ```
-pre_step → biology (all Fixes compute) → chemistry (QSSA) → physics (advection + mechanics) → post_step → MPI migrate → washout → cleanup
+pre_step → biology (all Fixes compute) → chemistry (QSSA toxins + implicit nutrient diffusion) → physics (advection + mechanics) → post_step → MPI migrate → washout → cleanup
 ```
 
-Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled from chemistry.
+Chemical transport is applied once per biological step. Toxins use instantaneous QSSA; nutrient reactions are followed by L-stable backward-Euler directional diffusion at `bio_dt` (60 s default).
 
 ## Key Files
 
@@ -81,7 +81,7 @@ Chemistry is instantaneous. Bio timestep (`bio_dt` = 60 s default) is decoupled 
 | `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `batch_scan/`, `scaling_benchmark/` |
-| `tests/` | 41 CTest targets (see test map below) |
+| `tests/` | CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 | `.agents/skills/sonarqube-gutibm/SKILL.md` | SonarQube remediation workflow |
 | `.agents/skills/sonarqube-cpp/SKILL.md` | C++ SonarQube patterns |
@@ -113,9 +113,9 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 ## Test Coverage Map
 
-### C++ (CTest — 41 targets)
+### C++ (CTest)
 
-**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), qssa stoichiometry, bacteriocin, receptor, mutation.
+**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, nutrient diffusion, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), qssa stoichiometry, bacteriocin, receptor, mutation.
 
 **Slow unit:** mechanics, immunity escape.
 
@@ -163,9 +163,10 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 5. Update `docs/MECHANISMS.md` if biological behavior changes
 
 ### New diffusion / QSSA kernel
-1. `src/diffusion/` — QSSA-compatible, Method of Images
-2. Wire through `QSSASolver`
-3. Analytical verification test
+1. Bacteriocins: add QSSA-compatible Green's-function logic in `src/diffusion/` and wire through `QSSASolver`
+2. Nutrients/small molecules: add stable implicit field logic in `src/fields/chemical_field.cpp`; never add an explicit biological-timestep stencil
+3. Preserve periodic x/y, epithelial Dirichlet z=0, and luminal zero-flux z boundary conditions
+4. Add golden-profile, coefficient/enable sensitivity, positivity, MPI, and GPU-parity tests
 
 ### MPI-sensitive changes
 - Guard all MPI calls with rank checks
