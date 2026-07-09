@@ -147,7 +147,7 @@ metabolism Fix).
 |----------|-------------|----------------|
 | Carbon | metabolism Fix (`yield_carbon`) | Sourced by VBF mucin liberation, bounded by the VBF Monod carbon sink (now active by default, ~1 mM equilibrium) |
 | Iron | metabolism Fix (`yield_iron`) + siderophore coupling | VBF first-order sink; Fur-regulated receptor uptake |
-| O₂ | `solve_nutrient_depletion` (`oxygen.q_consumption × μ_realized / cell_vol`) | Supplied at the epithelial boundary; growth-scaled agent respiration + VBF background sink |
+| O₂ | `solve_nutrient_depletion` — Pirt respiration `(q_consumption × μ_realized + q_maintenance) / cell_vol` | Supplied at the epithelial boundary; per-agent respiration (growth-associated **+ density-coupled maintenance**) + first-order VBF background sink |
 | Corrinoid (B12) | **not consumed** | Constant field pinned at 1 µM (see below) |
 
 **Corrinoid (B12) is a constant pool, not a depletable field (Spec 6 §3).** The
@@ -235,8 +235,9 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | `oxygen.D_free` | 2.1e-9 | m²/s | O₂ diffusion coefficient |
 | `oxygen.Km` | 1e-6 | mol/m³ | Monod half-saturation for aerobic boost |
 | `oxygen.boost_max` | 2.0 | — | Max growth multiplier above fermentation baseline |
-| `oxygen.q_consumption` | 1e-14 | mol/s/cell | Agent O₂ consumption rate |
-| `oxygen.vbf_sink` | 1e-6 | mol/m³/s | VBF background O₂ sink |
+| `oxygen.q_consumption` | 1e-14 | mol/cell | Growth-associated agent O₂ consumption (× μ_realized) |
+| `oxygen.q_maintenance` | 1e-18 | mol/s/cell | Basal (density-coupled) agent O₂ respiration, applied per living cell regardless of growth so the field tracks agent density |
+| `oxygen.vbf_sink` | 1e-3 | 1/s | VBF background O₂ uptake — **first-order** rate constant (`reac −= vbf_sink × [O₂]`), not a zero-order removal |
 | `oxygen.k_ROS` | 1e2 | — | ROS induction rate coefficient (Spec 2 hook) |
 
 ---

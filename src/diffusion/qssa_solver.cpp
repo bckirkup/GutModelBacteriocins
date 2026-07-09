@@ -392,7 +392,11 @@ void QSSASolver::solve_nutrient_depletion(
     // depleted at all. This function now applies only agent O2 respiration,
     // which has no counterpart in the metabolism Fix.
     if (oxygen.enabled && i_oxygen >= 0 && cell_vol > 0.0) {
-      const Real o2_use = oxygen.q_consumption * std::max(a.mu_realized, 0.0);
+      // Pirt respiration: growth-associated + basal maintenance. The
+      // maintenance term is applied per living cell regardless of growth, so
+      // the O2 field tracks agent density (a non-growing cell still respires).
+      const Real o2_use = oxygen.q_consumption * std::max(a.mu_realized, 0.0)
+                        + oxygen.q_maintenance;
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif

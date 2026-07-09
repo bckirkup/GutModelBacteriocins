@@ -25,7 +25,7 @@ that parses but never changes an outcome is *dead wiring*.
 | **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z-gradient boundary | **Agent uptake `fix_metabolism.cpp grow_agent` (canonical, Spec 6)**; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1) | Yes | Spec 6 makes the metabolism Fix the single per-agent uptake site (the duplicate `solve_nutrient_depletion` term was removed). Monod VBF sink now **active by default** (`vbf_carbon_sink_vmax=5.5e-5`) → bounded ~1 mM equilibrium. |
 | **b12 / corrinoid** | none (constant field) | **none — not consumed (Spec 6 §3)** | N/A (constant pool) | Spec 6: the B12 field represents the total bioavailable corrinoid pool (~1 µM), produced by the anaerobic majority far faster than E. coli demand. Neither produced nor depleted; pinned at `1e-6`. Replaces the Spec 5 `vbf_b12_production` source (removed). |
 | **iron** | z-gradient boundary; siderophore liberation | VBF first-order sink `apply_iron_sink`; **agent uptake `grow_agent` (canonical, Spec 6)** | Yes | Spec 6: uptake consolidated to the metabolism Fix (duplicate `solve_nutrient_depletion` term removed). |
-| **oxygen** | Epithelial Dirichlet boundary `chemical_field.cpp apply_boundaries`; z-gradient | **Agent consumption** `qssa_solver.cpp solve_nutrient_depletion` (Spec 1; the sole remaining per-agent term there after Spec 6); VBF background sink `apply_oxygen_sink` | Yes | Already wired in Spec 1 — see §3 below. |
+| **oxygen** | Epithelial Dirichlet boundary `chemical_field.cpp apply_boundaries`; z-gradient | **Agent Pirt respiration** `qssa_solver.cpp solve_nutrient_depletion` (growth-associated + density-coupled maintenance; sole per-agent term after Spec 6); first-order VBF background sink `apply_oxygen_sink` | Yes | Made density-tracking — see §3.2 below. |
 | **acetate** | VBF fermentation `apply_acetate_coupling`; agent overflow | VBF cross-feeding; MetE uptake | Yes | Closed. |
 | **mucin** | Goblet secretion `apply_mucin_secretion` | VBF degradation → carbon | Yes | Closed. |
 | **bacteriocins** (btuB/fepA/cirA/fhuA) | Producer burst `fix_bacteriocin` → QSSA deposition | First-order decay; diffusion out | Yes | QSSA analytic field, recomputed each step. |
@@ -63,13 +63,34 @@ Spec 6 re-baselined the `eari-vadi` golden references (see
 `python/tests/fixtures/eari_vadi_ci*_golden.json`) because activating the carbon
 sink and correcting the corrinoid pool shift the reference metrics.
 
-### 3.2 Spec 5 §2 (O₂ consumption) was already wired
-Spec 5 describes O₂ as "read for the growth boost but never consumed." That is
-**stale** — agent O₂ consumption was added in Spec 1 and lives in
-`src/diffusion/qssa_solver.cpp` `solve_nutrient_depletion` (`o2_use =
-q_consumption · max(μ,0)`, deposited as `-o2_use/cell_vol`). After Spec 6 this
-is the **only** per-agent term in that function. `test_o2_consumption_wired`
-proves it is live (more agents ⇒ lower O₂ field).
+### 3.2 O₂ consumption — wired in Spec 1, made density-tracking post-Spec 6
+Agent O₂ consumption lives in `src/diffusion/qssa_solver.cpp`
+`solve_nutrient_depletion` and after Spec 6 is the **only** per-agent term there.
+Two defects made it fail to track agent *density* (present-but-non-growing cells
+still respire), which surfaced once the population began collapsing (6→3→1
+cells) yet O₂ stayed pinned:
+
+1. **Growth-only respiration.** The term was `o2_use = q_consumption · max(μ,0)`,
+   so a non-growing cell (μ→0, e.g. washing out) consumed ~zero O₂ and the field
+   stopped tracking cell count. Fixed with a **Pirt** model: `o2_use =
+   q_consumption · max(μ,0) + q_maintenance`, where `q_maintenance` is a basal,
+   density-coupled term applied per living cell regardless of growth.
+
+2. **Zero-order VBF background sink.** `apply_oxygen_sink` removed a constant
+   `vbf_sink` (mol/m³/s) independent of `[O₂]`. At the default scale that
+   removes more O₂ than is present in one 60 s bio step, hard-zeroing the entire
+   interior and pinning the mean at the epithelial Dirichlet layer — so the
+   background sink alone dictated the field and per-agent respiration was masked
+   entirely. Fixed by making it **first-order** (`reac −= vbf_sink · [O₂]`,
+   `vbf_sink` now a 1/s rate constant), mirroring the iron sink; the sink is now
+   self-limiting so a smooth gradient survives and agent respiration is visible
+   on top of it.
+
+`test_o2_consumption_wired` proves agent respiration is live with the background
+sink off; `test_o2_tracks_density_over_background` proves the mean O₂ still falls
+with agent count with the (first-order) background sink **on**;
+`test_qssa_stoichiometry::test_o2_maintenance_tracks_density` proves a
+non-growing cell respires and N cells draw N× the maintenance flux.
 
 ### 3.3 ✅ Resolved by Spec 6 — the nutrient double-count
 Carbon, iron and B12 were previously consumed in **two** places every CPU step:

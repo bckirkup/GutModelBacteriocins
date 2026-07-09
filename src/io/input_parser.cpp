@@ -468,6 +468,9 @@ bool apply_oxygen_key(SimulationConfig& cfg, const std::string& key, const std::
   if (key == "oxygen.q_consumption" || key == "oxygen_q_consumption") {
     cfg.chem_env.oxygen.q_consumption = parse_config_real(key, val); return true;
   }
+  if (key == "oxygen.q_maintenance" || key == "oxygen_q_maintenance") {
+    cfg.chem_env.oxygen.q_maintenance = parse_config_real(key, val); return true;
+  }
   if (key == "oxygen.vbf_sink" || key == "oxygen_vbf_sink") {
     cfg.chem_env.oxygen.vbf_sink = parse_config_real(key, val); return true;
   }

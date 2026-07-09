@@ -73,7 +73,15 @@ void apply_iron_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
 
 void apply_oxygen_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
   if (!ctx.oxygen.enabled || ctx.idx.oxygen < 0) return;
-  chem.reac(ctx.idx.oxygen, cell) -= ctx.oxygen.vbf_sink;
+  // First-order background O2 consumption by the anaerobic majority:
+  // reac -= vbf_sink * [O2] (1/s rate constant), mirroring the iron sink. A
+  // zero-order (constant mol/m^3/s) removal removes O2 that may not be present,
+  // driving the interior to a hard zero in a single bio step and masking the
+  // per-agent respiration signal entirely — the density-tracking bug Edison
+  // reported. A first-order sink is self-limiting: it scales with the local O2
+  // it can actually consume, so a smooth gradient survives and agent
+  // respiration remains visible on top of it.
+  chem.reac(ctx.idx.oxygen, cell) -= ctx.oxygen.vbf_sink * chem.conc(ctx.idx.oxygen, cell);
 }
 
 void apply_acetate_coupling(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
