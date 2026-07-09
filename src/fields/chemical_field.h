@@ -26,6 +26,10 @@ struct ChemicalSpec {
   // z-dependent gradient: C(z) = C_max * exp(-z_rel / z_gradient_lambda)
   bool z_gradient_enabled = false;
   Real z_gradient_lambda  = 25.0e-6;  // characteristic decay length (m)
+
+  // Stable backward-Euler directional diffusion for nutrients/small molecules.
+  // Toxin fields remain false because QSSA Green's functions handle them.
+  bool diffusion_enabled = false;
 };
 
 class ChemicalField {
@@ -48,8 +52,14 @@ class ChemicalField {
   // Reset reaction rates to zero each timestep
   void zero_reactions();
 
+  // Apply stable implicit diffusion for enabled nutrient species.
+  void apply_diffusion(const Domain& domain, Real dt);
+
   // Apply boundary conditions
   void apply_boundaries(const Domain& domain);
+
+  // Sum rank-local agent reaction fields before spatial diffusion.
+  void sum_reactions_across_ranks();
 
   // Get species index by name
   Int find(std::string_view name) const;

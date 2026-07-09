@@ -14,8 +14,12 @@ class Domain;
 class ChemicalFieldGpu {
  public:
   void init(ChemicalField& field);
-  void sync_to_device(ChemicalField& field);
+  void sync_to_device(const ChemicalField& field);
   void sync_to_host(ChemicalField& field);
+  void sync_concentrations_to_device(const ChemicalField& field);
+  void sync_reactions_to_device(const ChemicalField& field);
+  void sync_concentrations_to_host(ChemicalField& field);
+  void sync_reactions_to_host(ChemicalField& field);
   void zero_reactions_on_device();
 
   bool apply_reactions(double dt, const Domain& domain);

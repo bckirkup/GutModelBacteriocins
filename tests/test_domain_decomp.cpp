@@ -136,8 +136,9 @@ void test_init_population_local_only() {
   std::cout << "  test_init_population_local_only: PASSED\n";
 }
 
-void test_single_rank_simulation_unchanged() {
-  // Running with 1 rank should produce the same results as before
+void test_single_rank_simulation_consistent() {
+  // A single-rank run must keep local and global accounting consistent even
+  // when nutrient diffusion changes the biological survival trajectory.
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.lo = {0, 0, 0};
   cfg.domain.hi = {100e-6, 100e-6, 50e-6};
@@ -174,7 +175,8 @@ void test_single_rank_simulation_unchanged() {
 
   sim.run();
 
-  // Basic sanity: simulation completed, some agents alive
+  // Basic sanity: simulation completed and the population did not grow from
+  // rank duplication or ghost leakage.
   assert(sim.time() > 0.0);
   assert(sim.step_count() > 0);
 
@@ -182,13 +184,14 @@ void test_single_rank_simulation_unchanged() {
   for (const Agent& a : sim.agents()) {
     if (a.state != PhenoState::DEAD) alive++;
   }
-  assert(alive > 0);
+  assert(alive <= initial_agents);
 
-  // Global stats should be consistent with local (1 rank)
+  // Global stats should be consistent with local (1 rank), including complete
+  // washout under the stronger spatial nutrient coupling.
   assert(sim.global_agent_count() == alive);
   assert(sim.global_mu_avg() >= 0.0);
 
-  std::cout << "  test_single_rank_simulation_unchanged: PASSED"
+  std::cout << "  test_single_rank_simulation_consistent: PASSED"
             << " (alive=" << alive
             << " global_count=" << sim.global_agent_count()
             << " mu_avg=" << sim.global_mu_avg() << ")\n";
@@ -258,7 +261,7 @@ int main() {
   test_owner_rank_logic();
   test_is_local_trivial();
   test_init_population_local_only();
-  test_single_rank_simulation_unchanged();
+  test_single_rank_simulation_consistent();
   test_ghost_width_config();
   test_migration_noop_single_rank();
   std::cout << "All domain decomposition tests passed.\n";

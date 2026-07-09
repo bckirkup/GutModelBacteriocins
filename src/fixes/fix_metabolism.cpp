@@ -313,17 +313,17 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
     }
   }
 
-  if (d_biomass <= 0.0) return;
+  if (d_biomass <= 0.0 || dt <= 0.0) return;
 
   if (i_carbon >= 0 && cell_vol > 0.0) {
-    Real delta_c = d_biomass * cfg_.yield_carbon / cell_vol;
+    Real delta_c = d_biomass * cfg_.yield_carbon / (cell_vol * dt);
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif
     chem.reac(i_carbon, cell) -= delta_c;
   }
   if (i_iron >= 0 && cell_vol > 0.0) {
-    Real delta_fe = d_biomass * cfg_.yield_iron / cell_vol;
+    Real delta_fe = d_biomass * cfg_.yield_iron / (cell_vol * dt);
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif

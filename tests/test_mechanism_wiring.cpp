@@ -26,6 +26,7 @@
 #include "vbf.h"
 #include "chemical_field.h"
 #include "domain.h"
+#include "fix_metabolism.h"
 #include "chem_environment_config.h"
 #include "species_names.h"
 
@@ -352,6 +353,36 @@ void test_dysbiosis_halt() {
             << " halt_steps=" << sim_halt.step_count() << ")\n";
 }
 
+void test_metabolism_uptake_has_rate_units() {
+  SimulationConfig cfg = make_integration_cfg(1, 707);
+  cfg.time.total_time = 60.0;
+
+  Simulation sim;
+  sim.init(cfg);
+  ChemicalField& chem = sim.chemical_field();
+  chem.zero_reactions();
+
+  const Real dt = 60.0;
+  const Real biomass_before = sim.agents()[0].biomass;
+  FixMetabolism metabolism(sim, cfg.fixes.metabolism);
+  metabolism.compute(dt);
+
+  const Agent& agent = sim.agents()[0];
+  const Real biomass_gain = agent.biomass - biomass_before;
+  const Real cell_volume = sim.domain().dx() * sim.domain().dx()
+      * sim.domain().dx();
+  const Int carbon = chem.find(species::CARBON);
+  const Real expected_rate = biomass_gain * cfg.fixes.metabolism.yield_carbon
+      / (cell_volume * dt);
+  const Real actual_rate = -chem.reac(carbon, agent.grid_cell);
+  const Real tolerance = std::max(1.0e-15, std::abs(expected_rate) * 1.0e-12);
+
+  expect(std::abs(actual_rate - expected_rate) <= tolerance,
+         "metabolism uptake must be a concentration rate, not a per-step amount");
+  std::cout << "  test_metabolism_uptake_has_rate_units: PASSED"
+            << " (rate=" << actual_rate << ")\n";
+}
+
 // ── Overarching mass-balance guard: with oxygen and the carbon sink active
 // (and B12 a constant pool), no coupled species may go NaN, negative, or blow
 // up over a multi-step run. This is the "everything wired together stays sane"
@@ -406,6 +437,7 @@ int main() {
   test_o2_tracks_density_over_background();
   test_corrinoid_field_constant();
   test_dysbiosis_halt();
+  test_metabolism_uptake_has_rate_units();
   test_all_species_bounded_steady_state();
 
   if (g_failures == 0) {

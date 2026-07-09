@@ -318,9 +318,17 @@ The adhesion force decays linearly to zero at `adhesion_range`, preventing long-
 
 ---
 
-## QSSA Solver — Quasi-Steady-State Diffusion
+## Chemical Transport — Implicit Nutrients and QSSA Toxins
 
-**Why not FTCS?** At 1 um grid resolution, the CFL stability criterion forces sub-millisecond timesteps for explicit diffusion. Since small-molecule diffusion equilibrates in microseconds-to-minutes while cell biology operates on hour timescales, we exploit this separation via QSSA.
+### Nutrient and small-molecule diffusion
+
+An explicit 3-D stencil is unusable at the biological timestep: for O₂ at `D = 2.1e-9 m²/s`, `dt = 60 s`, and `dx = 5 µm`, the diffusion number is `D·dt/dx² = 5040`, versus the explicit stability limit `1/6`. GutIBM therefore uses backward-Euler directional splitting for enabled nutrient fields.
+
+Each directional pass solves a tridiagonal system in O(cells): x and y are periodic, z=0 is a fixed epithelial concentration, and the luminal z face has zero flux. The method is L-stable; concentrations are clamped nonnegative after the solve, so no diffusion substeps are required. For species with a configured exponential z-gradient, diffusion acts on departures from that prescribed background profile rather than erasing it. The chemistry order is rank-local agent reactions → MPI sum → global VBF coupling → concentration update → implicit diffusion → boundary enforcement. CUDA metabolism reactions are transferred to the host for this solve, then concentrations are synchronized back to the device.
+
+### Bacteriocin QSSA solver
+
+Bacteriocins remain on the analytical QSSA path because they are point-source bursts or continuous producer sources with receptor-specific Green's-function fields.
 
 **Method:** At each biological timestep:
 1. Collect all active toxin sources (SOS-lysed cells as bursts, microcin producers as steady sources)

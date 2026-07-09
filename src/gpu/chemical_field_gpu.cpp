@@ -32,19 +32,36 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   sync_to_device(field);
 }
 
-void ChemicalFieldGpu::sync_to_device(ChemicalField& field) {
-  if (!active_) return;
-  for (Int s = 0; s < nspec_; ++s) {
-    d_conc_[static_cast<size_t>(s)].upload(field.conc_data()[static_cast<size_t>(s)]);
-    std::vector<double> reac_host(static_cast<size_t>(ncells_));
-    for (Int c = 0; c < ncells_; ++c) {
-      reac_host[static_cast<size_t>(c)] = field.reac(s, c);
-    }
-    d_reac_[static_cast<size_t>(s)].upload(reac_host);
-  }
+void ChemicalFieldGpu::sync_to_device(const ChemicalField& field) {
+  sync_concentrations_to_device(field);
+  sync_reactions_to_device(field);
 }
 
 void ChemicalFieldGpu::sync_to_host(ChemicalField& field) {
+  sync_concentrations_to_host(field);
+  sync_reactions_to_host(field);
+}
+
+void ChemicalFieldGpu::sync_concentrations_to_device(const ChemicalField& field) {
+  if (!active_) return;
+  for (Int s = 0; s < nspec_; ++s) {
+    d_conc_[static_cast<size_t>(s)].upload(
+        field.conc_data()[static_cast<size_t>(s)]);
+  }
+}
+
+void ChemicalFieldGpu::sync_reactions_to_device(const ChemicalField& field) {
+  if (!active_) return;
+  for (Int s = 0; s < nspec_; ++s) {
+    std::vector<double> host(static_cast<size_t>(ncells_));
+    for (Int c = 0; c < ncells_; ++c) {
+      host[static_cast<size_t>(c)] = field.reac(s, c);
+    }
+    d_reac_[static_cast<size_t>(s)].upload(host);
+  }
+}
+
+void ChemicalFieldGpu::sync_concentrations_to_host(ChemicalField& field) {
   if (!active_) return;
   for (Int s = 0; s < nspec_; ++s) {
     std::vector<double> host(static_cast<size_t>(ncells_));
@@ -52,6 +69,13 @@ void ChemicalFieldGpu::sync_to_host(ChemicalField& field) {
     for (Int c = 0; c < ncells_; ++c) {
       field.conc(s, c) = host[static_cast<size_t>(c)];
     }
+  }
+}
+
+void ChemicalFieldGpu::sync_reactions_to_host(ChemicalField& field) {
+  if (!active_) return;
+  for (Int s = 0; s < nspec_; ++s) {
+    std::vector<double> host(static_cast<size_t>(ncells_));
     d_reac_[static_cast<size_t>(s)].download(host);
     for (Int c = 0; c < ncells_; ++c) {
       field.reac(s, c) = host[static_cast<size_t>(c)];

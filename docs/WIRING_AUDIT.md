@@ -1,6 +1,6 @@
 # Mechanism Wiring Audit
 
-**Question this answers:** *Are the mechanisms from all the specs (1–5, EARI,
+**Question this answers:** *Are the mechanisms from all the specs (1–7, EARI,
 VADI) wired together in a way that makes logical sense, and how do we build
 tests to be sure?*
 
@@ -22,10 +22,10 @@ that parses but never changes an outcome is *dead wiring*.
 
 | Species | Source(s) | Sink(s) | Loop closed? | Notes |
 |---------|-----------|---------|--------------|-------|
-| **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z-gradient boundary | **Agent uptake `fix_metabolism.cpp grow_agent` (canonical, Spec 6)**; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1) | Yes | Spec 6 makes the metabolism Fix the single per-agent uptake site (the duplicate `solve_nutrient_depletion` term was removed). Monod VBF sink now **active by default** (`vbf_carbon_sink_vmax=5.5e-5`) → bounded ~1 mM equilibrium. |
-| **b12 / corrinoid** | none (constant field) | **none — not consumed (Spec 6 §3)** | N/A (constant pool) | Spec 6: the B12 field represents the total bioavailable corrinoid pool (~1 µM), produced by the anaerobic majority far faster than E. coli demand. Neither produced nor depleted; pinned at `1e-6`. Replaces the Spec 5 `vbf_b12_production` source (removed). |
-| **iron** | z-gradient boundary; siderophore liberation | VBF first-order sink `apply_iron_sink`; **agent uptake `grow_agent` (canonical, Spec 6)** | Yes | Spec 6: uptake consolidated to the metabolism Fix (duplicate `solve_nutrient_depletion` term removed). |
-| **oxygen** | Epithelial Dirichlet boundary `chemical_field.cpp apply_boundaries`; z-gradient | **Agent Pirt respiration** `qssa_solver.cpp solve_nutrient_depletion` (growth-associated + density-coupled maintenance; sole per-agent term after Spec 6); first-order VBF background sink `apply_oxygen_sink` | Yes | Made density-tracking — see §3.2 below. |
+| **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z=0 boundary | **Agent uptake `fix_metabolism.cpp grow_agent` (canonical, Spec 6)**; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1) | Yes | Implicit diffusion transports local source/sink changes with `D=5e-10 m²/s`; the metabolism Fix is the single per-agent uptake site. |
+| **b12 / corrinoid** | z=0 boundary | **none — not consumed (Spec 6 §3)** | N/A (constant pool) | The ~1 µM bioavailable pool remains spatially uniform under implicit diffusion (`D=5e-10 m²/s`). |
+| **iron** | z=0 boundary; siderophore liberation | VBF first-order sink `apply_iron_sink`; **agent uptake `grow_agent` (canonical, Spec 6)** | Yes | Implicit diffusion (`D=7e-10 m²/s`) couples local depletion to the epithelial supply. |
+| **oxygen** | Epithelial Dirichlet boundary `chemical_field.cpp apply_boundaries` | **Agent Pirt respiration** `qssa_solver.cpp solve_nutrient_depletion`; first-order VBF background sink `apply_oxygen_sink` | Yes | Implicit diffusion (`D=2.1e-9 m²/s`) replaces checkerboard-prone local-only updates and preserves a smooth boundary-fed gradient. |
 | **acetate** | VBF fermentation `apply_acetate_coupling`; agent overflow | VBF cross-feeding; MetE uptake | Yes | Closed. |
 | **mucin** | Goblet secretion `apply_mucin_secretion` | VBF degradation → carbon | Yes | Closed. |
 | **bacteriocins** (btuB/fepA/cirA/fhuA) | Producer burst `fix_bacteriocin` → QSSA deposition | First-order decay; diffusion out | Yes | QSSA analytic field, recomputed each step. |
@@ -44,6 +44,7 @@ that parses but never changes an outcome is *dead wiring*.
 | Fur (iron) → receptor expression → toxin susceptibility | cell-bio Fur | receptor Fix | `fix_fur`, `fix_receptor` | `test_fur` |
 | μ_realized < γ_flow → washout (VADI) | metabolism + advection | Simulation washout | `simulation.cpp check_washout` | `smoke::test_metabolic_washout_*` |
 | Density blow-up → halt (Spec 5 §4) | Simulation | run loop | `simulation.cpp run()` dysbiosis check | `test_mechanism_wiring::test_dysbiosis_halt` |
+| Local nutrient reactions → neighboring grid cells (Spec 7) | metabolism/QSSA/VBF | ChemicalField | `sum_reactions_across_ranks` → `apply_diffusion` | `test_nutrient_diffusion`, `test_mpi_multi_rank`, `gpu_smoke` |
 
 ---
 
@@ -92,11 +93,16 @@ with agent count with the (first-order) background sink **on**;
 `test_qssa_stoichiometry::test_o2_maintenance_tracks_density` proves a
 non-growing cell respires and N cells draw N× the maintenance flux.
 
-### 3.3 ✅ Resolved by Spec 6 — the nutrient double-count
+### 3.3 Spec 7 nutrient transport — implicit and rank-consistent
+
+The Spec 7 explicit-stencil proposal used an incorrect CFL estimate. At the model defaults, O₂ has `D·dt/dx² = 5040`, not `0.005`; a stable 3-D explicit solve would require roughly 30,000 substeps per 60 s biological step. Nutrient transport therefore uses backward-Euler directional splitting: periodic x/y cyclic tridiagonal solves, epithelial Dirichlet z=0, and a luminal zero-flux z face. This is L-stable and O(cells) per species; concentrations are clamped nonnegative after the solve. Configured exponential z-gradients remain prescribed background profiles while diffusion smooths local departures from them.
+
+Every rank stores the full chemical grid but contributes reactions from only its local agents. `ChemicalField::sum_reactions_across_ranks` performs an `MPI_Allreduce` before the identical global VBF terms are added, so all ranks diffuse the same global field without double-counting VBF. CUDA keeps metabolism on device, transfers reaction grids to the host for rank summation and diffusion, then synchronizes concentrations back.
+
+### 3.4 ✅ Resolved by Spec 6 — the nutrient double-count
 Carbon, iron and B12 were previously consumed in **two** places every CPU step:
 
-1. `src/fixes/fix_metabolism.cpp` `grow_agent()` — `Δ = d_biomass · yield_x / cell_vol`
-   (per-volume, includes `dt` through `d_biomass`).
+1. `src/fixes/fix_metabolism.cpp` `grow_agent()` — `rate = d_biomass · yield_x / (cell_vol · dt)`.
 2. `src/diffusion/qssa_solver.cpp` `solve_nutrient_depletion()` — `Δ = μ·biomass · x_stoichiometry`
    (no `cell_vol` division, no `dt`).
 
@@ -124,17 +130,23 @@ Two invariants, applied to the couplings above:
      reaches the analytic Monod steady state `km·S/(vmax−S)`. Catches the
      "source without sink" class directly.
    - `test_all_species_bounded_steady_state`: full `Simulation` run with O₂,
-     carbon sink and B12 source active — asserts no tracked species goes NaN,
-     negative, or explodes.
+     the carbon sink, and the constant corrinoid pool active — asserts no
+     tracked species goes NaN, negative, or explodes.
 
 2. **Directional coupling sensitivity.**
-   - `test_carbon_sink_sensitivity`, `test_b12_source_directional`: larger
-     Vmax removes more carbon; larger production adds more B12; the term is
-     exactly zero when the key is zero (dead-wiring guard).
+   - `test_carbon_sink_sensitivity`: larger Vmax removes more carbon and the
+     term is exactly zero when the key is zero (dead-wiring guard).
+   - `test_corrinoid_field_constant`: agent metabolism leaves the prescribed
+     ~1 µM corrinoid pool unchanged.
    - `test_o2_consumption_wired`: more agents ⇒ lower mean O₂ field (agent
      metabolism actually feeds back into chemistry through the full step loop).
    - `test_dysbiosis_halt`: the threshold halts the run early and is inert when
      `0` (compared against a control run).
+
+3. **Transport regression and execution parity.**
+   - `test_nutrient_diffusion` checks a quantitative point-source golden profile, uniform-field and configured-gradient invariance, boundary gradients, nonnegativity at `dt=300 s`, and enable/coefficient sensitivity.
+   - `test_mpi_multi_rank` checks that rank-local reactions sum to one identical diffused field on both ranks.
+   - `gpu_smoke` includes chemical concentrations in the CPU/GPU fingerprint, guarding the host-diffusion fallback.
 
 Every new config key also has an ingestion probe in
 `tests/test_config_ingestion.cpp`, whose completeness guard fails CI if any

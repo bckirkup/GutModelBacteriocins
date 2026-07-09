@@ -104,6 +104,53 @@ void require_two_ranks() {
   assert(nprocs == 2);
 }
 
+void test_reaction_sum_and_diffusion_are_rank_identical() {
+  require_two_ranks();
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  DomainConfig domain_cfg;
+  domain_cfg.lo = {0.0, 0.0, 0.0};
+  domain_cfg.hi = {20e-6, 15e-6, 15e-6};
+  domain_cfg.grid_dx = 5e-6;
+  domain_cfg.periodic = {true, true, false};
+  Domain domain;
+  domain.init(domain_cfg);
+
+  ChemicalSpec oxygen;
+  oxygen.name = "oxygen";
+  oxygen.diff_coeff = 2.1e-9;
+  oxygen.retardation = 1.0;
+  oxygen.initial_conc = 0.0;
+  oxygen.boundary_conc = 1.0;
+  oxygen.diffusion_enabled = true;
+  ChemicalField chem;
+  chem.init(domain, {oxygen});
+
+  const Int reaction_cell = domain.cell_index(1, 1, 1);
+  chem.reac(0, reaction_cell) = static_cast<Real>(rank + 1);
+  chem.sum_reactions_across_ranks();
+  assert(std::abs(chem.reac(0, reaction_cell) - 3.0) < 1e-15);
+
+  chem.conc(0, reaction_cell) += chem.reac(0, reaction_cell);
+  chem.apply_diffusion(domain, 60.0);
+
+  Real checksum = 0.0;
+  for (Int cell = 0; cell < chem.ncells(); ++cell) {
+    checksum += chem.conc(0, cell) * static_cast<Real>(cell + 1);
+  }
+  Real minimum = 0.0;
+  Real maximum = 0.0;
+  MPI_Allreduce(&checksum, &minimum, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(&checksum, &maximum, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  assert(std::abs(maximum - minimum) < 1e-12);
+
+  if (rank == 0) {
+    std::cout << "  test_reaction_sum_and_diffusion_are_rank_identical: PASSED\n";
+  }
+}
+
 void test_slab_decomposition() {
   require_two_ranks();
 
@@ -390,6 +437,7 @@ int main(int argc, char** argv) {
     std::cout << "=== MPI Multi-Rank Tests (np=2) ===\n";
   }
 
+  test_reaction_sum_and_diffusion_are_rank_identical();
   test_slab_decomposition();
   test_slab_decomposition_periodic_x();
   test_init_population_partitioned();
