@@ -226,12 +226,14 @@ Real mean_conc(const ChemicalField& chem, Int spec) {
 // ── O2 consumption is wired end-to-end (Spec 1): more agents must draw the
 // dissolved-oxygen field down further. Proves agent metabolism actually
 // couples back into the chemical environment through the full step loop. ────
-Real run_o2_and_report_mean(int n_agents, uint64_t seed) {
+Real run_o2_and_report_mean(int n_agents, uint64_t seed, bool keep_background) {
   SimulationConfig cfg = make_integration_cfg(n_agents, seed);
   cfg.chem_env.oxygen.enabled = true;
-  // Isolate the agent<->O2 coupling: the uniform VBF background O2 sink would
-  // otherwise dominate the field and mask the agent-count signal.
-  cfg.chem_env.oxygen.vbf_sink = 0.0;
+  if (!keep_background) {
+    // Isolate the agent<->O2 coupling: the uniform VBF background O2 sink would
+    // otherwise dominate the field and mask the agent-count signal.
+    cfg.chem_env.oxygen.vbf_sink = 0.0;
+  }
   InputParser::finalize_config(cfg);
 
   Simulation sim;
@@ -245,8 +247,8 @@ Real run_o2_and_report_mean(int n_agents, uint64_t seed) {
 
 void test_o2_consumption_wired() {
   const Real epithelial = OxygenConfig{}.epithelial_conc;
-  const Real o2_few = run_o2_and_report_mean(5, 111);
-  const Real o2_many = run_o2_and_report_mean(80, 111);
+  const Real o2_few = run_o2_and_report_mean(5, 111, /*keep_background=*/false);
+  const Real o2_many = run_o2_and_report_mean(80, 111, /*keep_background=*/false);
 
   expect(o2_few >= 0.0 && o2_many >= 0.0, "oxygen species must be registered when enabled");
   expect(o2_few < epithelial,
@@ -257,6 +259,32 @@ void test_o2_consumption_wired() {
   std::cout << "  test_o2_consumption_wired: PASSED"
             << " (few=" << o2_few << " many=" << o2_many
             << " epithelial=" << epithelial << ")\n";
+}
+
+// ── Regression for Edison's observation: with the VBF background O2 sink ON
+// (the realistic config), the field must still track agent *density* — not
+// just settle at the background-sink equilibrium. This failed for two reasons
+// that this test now guards against together:
+//   1. the background sink was zero-order, removing more O2 than present and
+//      hard-zeroing the interior in one step (masking any agent signal);
+//   2. respiration was purely growth-coupled, so non-growing cells drew no O2.
+// With the first-order sink + Pirt maintenance term, denser agent populations
+// must pull the mean O2 progressively below the agent-free baseline. ─────────
+void test_o2_tracks_density_over_background() {
+  const Real o2_none = run_o2_and_report_mean(0, 222, /*keep_background=*/true);
+  const Real o2_few = run_o2_and_report_mean(10, 222, /*keep_background=*/true);
+  const Real o2_many = run_o2_and_report_mean(80, 222, /*keep_background=*/true);
+
+  expect(o2_none > 0.0, "background-only O2 equilibrium must be positive");
+  expect(o2_few < o2_none,
+         "agents must draw O2 below the background-sink equilibrium");
+  expect(o2_many < o2_few,
+         "denser agent population must deplete O2 further, even with the "
+         "VBF background sink active (density tracking, not just equilibrium)");
+
+  std::cout << "  test_o2_tracks_density_over_background: PASSED"
+            << " (none=" << o2_none << " few=" << o2_few
+            << " many=" << o2_many << ")\n";
 }
 
 // ── Spec 6 §3 — corrinoid (B12) is a constant bioavailable pool, NOT a
@@ -375,6 +403,7 @@ int main() {
   test_carbon_sink_bounds_accumulation();
   test_carbon_sink_sensitivity();
   test_o2_consumption_wired();
+  test_o2_tracks_density_over_background();
   test_corrinoid_field_constant();
   test_dysbiosis_halt();
   test_all_species_bounded_steady_state();

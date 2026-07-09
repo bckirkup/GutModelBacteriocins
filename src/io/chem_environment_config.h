@@ -15,8 +15,17 @@ struct OxygenConfig {
   Real D_free = 2.1e-9;             // m^2/s
   Real Km = 1.0e-6;                 // mol/m^3 Monod half-saturation
   Real boost_max = 2.0;             // max aerobic growth multiplier - 1
-  Real q_consumption = 1.0e-14;     // mol/s/cell
-  Real vbf_sink = 1.0e-6;           // mol/m^3/s background consumption
+  // Pirt-style respiration: OUR_cell = q_consumption * mu_realized (growth-
+  // associated) + q_maintenance (basal, density-coupled). The maintenance term
+  // is what makes the O2 field track cell *density* rather than only growth:
+  // a present-but-non-growing cell (e.g. washing out, mu->0) still respires.
+  Real q_consumption = 1.0e-14;     // mol/cell (growth-associated O2 per unit mu)
+  Real q_maintenance = 1.0e-18;     // mol/s/cell basal respiration (density-coupled)
+  // First-order background O2 uptake RATE CONSTANT (1/s) by the anaerobic
+  // majority: reac -= vbf_sink * [O2] (see apply_oxygen_sink). NOT a zero-order
+  // mol/m^3/s removal — that form removes O2 that isn't there, hard-zeroing the
+  // interior in one bio step and masking per-agent respiration.
+  Real vbf_sink = 1.0e-3;           // 1/s first-order background O2 uptake rate
   Real k_ROS = 1.0e2;               // ROS-driven SOS rate coefficient
 };
 

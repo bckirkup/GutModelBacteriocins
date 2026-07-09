@@ -303,6 +303,7 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "oxygen.Km", "oxygen_Km", [](const SimulationConfig& c) { return c.chem_env.oxygen.Km; });
   add_ns_real(v, "oxygen.boost_max", "oxygen_boost_max", [](const SimulationConfig& c) { return c.chem_env.oxygen.boost_max; });
   add_ns_real(v, "oxygen.q_consumption", "oxygen_q_consumption", [](const SimulationConfig& c) { return c.chem_env.oxygen.q_consumption; });
+  add_ns_real(v, "oxygen.q_maintenance", "oxygen_q_maintenance", [](const SimulationConfig& c) { return c.chem_env.oxygen.q_maintenance; });
   add_ns_real(v, "oxygen.vbf_sink", "oxygen_vbf_sink", [](const SimulationConfig& c) { return c.chem_env.oxygen.vbf_sink; });
   add_ns_real(v, "oxygen.k_ROS", "oxygen_k_ROS", [](const SimulationConfig& c) { return c.chem_env.oxygen.k_ROS; });
 
