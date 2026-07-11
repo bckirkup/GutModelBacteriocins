@@ -42,7 +42,7 @@ Use `gut_ibm_tools.path_utils`:
 | `validate_input_path()` | Read existing files; returns resolved path |
 | `validate_output_path()` | Write when parent already exists |
 | `prepare_output_file()` | Validate then create parent dirs — **all checks before mkdir** |
-| `write_text_file()` / `write_json_file()` | Validated CLI output (cwd-bound) |
+| `write_text_file()` / `write_json_file()` | Validated CLI output (cwd-bound + segment allowlist) |
 
 Sonar S8707 validators are registered in `sonar/pythonsecurity-s8707.json` — see `docs/SONARQUBE_PLAN.md`.
 
