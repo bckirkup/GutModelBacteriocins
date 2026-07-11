@@ -122,6 +122,24 @@ void AgentPoolGpu::sync_to_host(AgentPool& pool) const {
   }
 }
 
+void AgentPoolGpu::sync_positions_to_host(AgentPool& pool) const {
+  Int n = pool.size();
+  if (n <= 0 || n != size_) return;
+
+  std::vector<double> x(n);
+  std::vector<double> y(n);
+  std::vector<double> z(n);
+  d_x_.download(x);
+  d_y_.download(y);
+  d_z_.download(z);
+
+  for (Int i = 0; i < n; ++i) {
+    pool[i].x[0] = x[i];
+    pool[i].x[1] = y[i];
+    pool[i].x[2] = z[i];
+  }
+}
+
 bool AgentPoolGpu::run_metabolism(
     const Domain& domain, const MetabolismConfig& cfg,
     const GpuMetabolismBuffers& buffers, double dt) {

@@ -52,7 +52,7 @@ class FMM {
              const Domain& domain,
              int expansion_order);
 
-  // Run M2L at the root and L2L downward to populate local expansions.
+  // Tree-walk M2L at every node, then L2L downward to populate local expansions.
   // Call once per solve before batch far-field evaluation.
   void compute_local_expansions(Real theta,
                                 const GreensFunction& gf,
@@ -105,6 +105,12 @@ class FMM {
                    Real theta,
                    const GreensFunction& gf,
                    const GreensFunctionParams& avg_params);
+
+  void m2l_traverse_into_target(int target_idx,
+                                int src_idx,
+                                Real theta,
+                                const GreensFunction& gf,
+                                const GreensFunctionParams& avg_params);
 
   void l2l_downward(int node_idx);
 

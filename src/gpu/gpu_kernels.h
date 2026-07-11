@@ -112,6 +112,20 @@ void launch_fmm_far_local_kernel(
     int nx, int ny,
     cudaStream_t stream);
 
+void launch_mechanics_clear_kernel(double* dx, double* dy, double* dz,
+                                   int num_agents, cudaStream_t stream);
+void launch_mechanics_forces_kernel(
+    const double* x, const double* y, const double* z,
+    const double* radius, const double* mass, const int* state,
+    const int* cell_offsets, const int* sorted_indices,
+    double* dx, double* dy, double* dz,
+    int num_agents, const MechanicsLaunchParams& params,
+    cudaStream_t stream);
+void launch_mechanics_apply_kernel(
+    double* x, double* y, double* z,
+    const double* dx, const double* dy, const double* dz,
+    int num_agents, cudaStream_t stream);
+
 void launch_receptor_kill_prob_kernel(
     const int* grid_cell,
     const int* state,

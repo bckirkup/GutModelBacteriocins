@@ -106,7 +106,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **#42 Plasmid names** | Fixed | `PlasmidLibrary::find()` + aliases; warn on unknown names |
 | **#43 Multi-rank tests** | Fixed | `mpi_multi_rank` + `hdf5_roundtrip_parallel` CTest targets |
 | **#78 parse_real() silent zero** | Fixed | Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts |
-| GPU portability | Open | Production chemistry path on GPU (Spec 9 PR5); FMM/Fur/mechanics still CPU; multi-GPU NCCL not wired |
+| GPU portability | Open | Production chemistry + mechanics on GPU; FMM M2L tree-walk on CPU; multi-GPU NCCL not wired |
 | Large-scale MPI scaling | Partial | `mpi_four_rank` CTest (`mpirun -np 4`); manual `mpirun -np 8+` on HPC |
 
 When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colicin_E1` aliases still resolve) and assert `agent.genome.bi_loci.size() > 0`.

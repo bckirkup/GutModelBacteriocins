@@ -4,6 +4,9 @@
 
 #include "fix_mechanics.h"
 #include "simulation.h"
+#include "mechanics_gpu.h"
+#include "spatial_hash_gpu.h"
+#include "dispatch.h"
 
 #include <cmath>
 #include <algorithm>
@@ -106,9 +109,36 @@ void resolve_agent_pair(Agent& ai, Agent& aj, const Domain& domain,
   apply_adhesion(ai, aj, geom, cfg, dt);
 }
 
+bool try_gpu_mechanics(Simulation& sim, const MechanicsConfig& cfg, Real dt) {
+  if (!sim.gpu_active()) return false;
+
+  auto& agents = sim.agents();
+  const Int n = agents.size();
+  if (n <= 0) return false;
+
+  auto& ag = sim.agents_gpu();
+  ag.sync_from_host(agents);
+
+  SpatialHashGpu hash;
+  const auto& dom = sim.domain();
+  if (!gpu_build_spatial_hash(
+          ag, n, dom.lo(), dom.hi(), dom.spatial_hash().cell_size(), hash)) {
+    return false;
+  }
+
+  if (!gpu_run_mechanics(ag, n, hash, dom, cfg, dt)) {
+    return false;
+  }
+
+  ag.sync_positions_to_host(agents);
+  return true;
+}
+
 }  // namespace
 
 void FixMechanics::compute(Real dt) {
+  if (try_gpu_mechanics(sim_, cfg_, dt)) return;
+
   auto& agents = sim_.agents();
   const auto& hash = sim_.domain().spatial_hash();
   const Real sim_time = sim_.time();
