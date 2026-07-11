@@ -106,6 +106,7 @@ gutibm_add_test(immunity_escape test_immunity_escape.cpp LABELS "unit;slow")
 
 # ── Integration tests (simulation / I/O; separate CI job) ────────────────
 gutibm_add_test(smoke test_smoke.cpp LABELS "integration")
+gutibm_add_test(feature_combinations test_feature_combinations.cpp LABELS "integration")
 gutibm_add_test(config_diversity test_config_diversity.cpp
   LABELS "integration"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
