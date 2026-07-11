@@ -42,13 +42,12 @@ _None_
 
 | Bundle | Issues | Track | Notes |
 |--------|--------|-------|-------|
-| **Science regressions** | #160 + #161 | `track:science`, `track:ci` | Washout trap + OpenMP stochastic parity (independent) |
+| **Science regressions** | #161 | `track:ci` | OpenMP stochastic parity |
 
 ### Backlog
 
 | Issue | Title | Track | Priority |
 |-------|-------|-------|----------|
-| #160 | Metabolic washout trap long-horizon regression | `track:science` | medium |
 | #161 | OpenMP parity on stochastic toxin-kill | `track:ci` | low |
 | — | MPI/HPC validation `mpirun -np 8+` | `track:mpi` | low (manual HPC) |
 | — | GPU FMM octree traversal on device | `track:gpu` | low |
@@ -64,6 +63,7 @@ _None_
 | #156 | CUDA-aware MPI reaction reduce | #163 |
 | #157 | GPU mechanics force kernel | #164 |
 | #159 | Sub-quadratic FMM M2L | #164 |
+| #160 | Metabolic washout trap long-horizon regression | (PR pending) |
 
 ### Done (Jun 2026 wave — reference)
 
@@ -82,8 +82,7 @@ _None_
 
 ## Merge order (remaining)
 
-1. **#160** — metabolic washout trap regression (long-horizon)
-2. **#161** — OpenMP stochastic parity (independent)
+1. **#161** — OpenMP stochastic parity
 
 ---
 
@@ -100,7 +99,7 @@ _None_
 
 | Milestone | Issues |
 |-----------|--------|
-| P6 — HPC & GPU phase 2 | #154–#159 (done); #160–#161 (backlog) |
+| P6 — HPC & GPU phase 2 | #154–#160 (done); #161 (backlog) |
 
 Create via `./scripts/setup_project_board.sh`.
 

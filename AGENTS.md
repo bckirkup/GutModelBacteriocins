@@ -119,7 +119,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 **Slow unit:** mechanics, immunity escape.
 
-**Integration (`ctest -L integration`):** smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), mechanism wiring (cross-spec mass-balance + directional coupling; see `docs/WIRING_AUDIT.md`), HDF5 round-trip, HDF5 checkpoint restart.
+**Integration (`ctest -L integration`):** smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), mechanism wiring (cross-spec mass-balance + directional coupling; see `docs/WIRING_AUDIT.md`), HDF5 round-trip, HDF5 checkpoint restart, washout trap long-horizon regression (`washout_trap`, issue #160).
 
 **MPI:** `mpi_multi_rank` (`mpirun -np 2`), `mpi_four_rank` (`mpirun -np 4`), `mpi_gpu_multi_rank` (2-rank + `gpu_enabled`), `cuda_aware_mpi_reaction` (CUDA-aware device Allreduce when available), `hdf5_roundtrip_parallel`.
 
@@ -151,7 +151,6 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 - Multi-rank MPI beyond 4 processes (`mpirun -np 8+` on HPC)
 - Multi-GPU NCCL
-- Metabolic washout trap as a dedicated long-horizon regression
 - OpenMP equivalence on stochastic (toxin-kill) scenarios
 
 ## Adding Features — Agent Checklist
@@ -250,7 +249,7 @@ Jun 2026 queue closed (#40–#81, #25, #29, #33, #55). Post–GPU ROI backlog **
 | #157 | GPU mechanics force kernel | Done (#164) |
 | #158 | GPU parity CI | Done (#162) |
 | #159 | Sub-quadratic FMM M2L | Done (#164) |
-| #160 | Metabolic washout trap regression | Backlog |
+| #160 | Metabolic washout trap regression | Done (`washout_trap` CTest) |
 | #161 | OpenMP stochastic parity | Backlog |
 
 Remaining long-horizon: `mpirun -np 8+` on HPC, GPU FMM octree traversal, Fur on device.

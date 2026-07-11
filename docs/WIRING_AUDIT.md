@@ -42,7 +42,7 @@ that parses but never changes an outcome is *dead wiring*.
 | VBF continuum → carbon/iron/O₂/acetate/mucin | VBF | ChemicalField | `apply_nutrient_coupling` | `test_mucin_liberation`, `test_mechanism_wiring` |
 | Toxin field → receptor killing | QSSA bacteriocin | receptor Fix | `fix_receptor` | `test_receptor`, `smoke::test_receptor_killing` |
 | Fur (iron) → receptor expression → toxin susceptibility | cell-bio Fur | receptor Fix | `fix_fur`, `fix_receptor` | `test_fur` |
-| μ_realized < γ_flow → washout (VADI) | metabolism + advection | Simulation washout | `simulation.cpp check_washout` | `smoke::test_metabolic_washout_*` |
+| μ_realized < γ_flow → washout (VADI) | metabolism + advection | Simulation washout | `simulation.cpp check_washout` | `smoke::test_metabolic_washout_*` | `washout_trap` (issue #160) |
 | Density blow-up → halt (Spec 5 §4) | Simulation | run loop | `simulation.cpp run()` dysbiosis check | `test_mechanism_wiring::test_dysbiosis_halt` |
 | Local nutrient reactions → neighboring grid cells (Spec 7) | metabolism/QSSA/VBF | ChemicalField | `sum_reactions_across_ranks` → `apply_diffusion` | `test_nutrient_diffusion`, `test_mpi_multi_rank`, `gpu_smoke` |
 
