@@ -65,6 +65,8 @@ class AgentPoolGpu {
   bool run_metabolism(const Domain& domain, const MetabolismConfig& cfg,
                       const GpuMetabolismBuffers& buffers, double dt);
 
+  void sync_positions_to_host(AgentPool& pool) const;
+
  private:
   Int size_ = 0;
   DeviceBuffer<double> d_x_;

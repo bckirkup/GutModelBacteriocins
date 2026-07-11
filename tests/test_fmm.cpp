@@ -272,6 +272,52 @@ void test_fmm_kernel_derivative_accuracy() {
   std::cout << "  test_fmm_kernel_derivative_accuracy: PASSED\n";
 }
 
+void test_fmm_large_tree_locals_ready() {
+  Domain domain;
+  AdvectionField adv;
+  make_test_domain(domain, adv);
+
+  GreensFunction gf;
+  gf.init(domain, adv);
+
+  RNG rng(2024);
+  std::vector<Vec3> positions;
+  std::vector<GreensFunctionParams> params;
+  std::vector<Real> strengths;
+  make_random_sources(500, rng, positions, params, strengths);
+
+  GreensFunctionParams avg;
+  avg.diff_coeff  = 4e-11;
+  avg.pI          = 7.0;
+  avg.retardation = 5.0;
+  avg.source_rate = 0.0;
+
+  Real cutoff = 200e-6;
+  Real theta = 0.5;
+  Vec3 target = {400e-6, 600e-6, 35e-6};
+
+  FMM fmm;
+  fmm.build(positions, strengths, domain, 2);
+  assert(fmm.num_nodes() > 256);
+  fmm.compute_local_expansions(theta, gf, avg);
+  assert(fmm.locals_ready());
+
+  Real exact = 0.0;
+  for (size_t i = 0; i < positions.size(); ++i) {
+    exact += gf.concentration_bounded(positions[i], target, params[i]);
+  }
+
+  Real approx = fmm.evaluate_field(target, theta, cutoff, gf,
+                                 positions, params, avg);
+  Real rel_err = (exact > 1e-30) ? std::abs(approx - exact) / exact
+                                 : std::abs(approx - exact);
+  std::cout << "    large_tree nodes=" << fmm.num_nodes()
+            << " rel_err=" << rel_err << "\n";
+  assert(rel_err < 0.5);
+
+  std::cout << "  test_fmm_large_tree_locals_ready: PASSED\n";
+}
+
 void test_fmm_config_defaults() {
   QSSAConfig cfg;
   assert(cfg.fmm_expansion_order == 2);
@@ -286,6 +332,7 @@ int main() {
   test_fmm_higher_order_more_accurate_than_monopole();
   test_fmm_local_expansion_nonnegative();
   test_fmm_kernel_derivative_accuracy();
+  test_fmm_large_tree_locals_ready();
   test_fmm_config_defaults();
   std::cout << "All FMM tests passed.\n";
   return 0;

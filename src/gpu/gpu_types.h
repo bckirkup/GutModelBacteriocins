@@ -62,6 +62,28 @@ struct VbfLaunchParams {
   double mucin_k_liberation = 0.0;
 };
 
+struct MechanicsLaunchParams {
+  double hertz_k = 0.0;
+  int hertzian_enabled = 0;
+  int adhesion_enabled = 0;
+  double adhesion_strength = 0.0;
+  double adhesion_range = 0.0;
+  double dt = 0.0;
+  double lo0 = 0.0;
+  double lo1 = 0.0;
+  double lo2 = 0.0;
+  double hi0 = 0.0;
+  double hi1 = 0.0;
+  double hi2 = 0.0;
+  int periodic_x = 0;
+  int periodic_y = 0;
+  int periodic_z = 0;
+  double cell_size = 0.0;
+  int nx_cells = 0;
+  int ny_cells = 0;
+  int nz_cells = 0;
+};
+
 }  // namespace gutibm::gpu
 
 #endif  // GUTIBM_GPU_TYPES_H

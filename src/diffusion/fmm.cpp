@@ -179,6 +179,52 @@ void FMM::m2l_at_node(int node_idx,
   }
 }
 
+void FMM::m2l_traverse_into_target(int target_idx,
+                                   int src_idx,
+                                   Real theta,
+                                   const GreensFunction& gf,
+                                   const GreensFunctionParams& avg_params) {
+  if (src_idx < 0) return;
+
+  const FMMNode& source = nodes_[src_idx];
+  FMMNode& target = nodes_[target_idx];
+
+  if (source.total_source_strength <= 0.0) return;
+
+  if (src_idx == target_idx) {
+    if (!source.is_leaf) {
+      for (int c = 0; c < 8; ++c) {
+        if (source.children[c] >= 0) {
+          m2l_traverse_into_target(target_idx, source.children[c],
+                                   theta, gf, avg_params);
+        }
+      }
+    }
+    return;
+  }
+
+  if (well_separated(source, target, theta)) {
+    std::vector<Real> contrib = multipole_to_local(
+        source.multipole, expansion_order_,
+        source.center_of_source, target.center,
+        gf, avg_params);
+
+    for (size_t k = 0; k < target.local.size(); ++k) {
+      target.local[k] += contrib[k];
+    }
+    return;
+  }
+
+  if (source.is_leaf) return;
+
+  for (int c = 0; c < 8; ++c) {
+    if (source.children[c] >= 0) {
+      m2l_traverse_into_target(target_idx, source.children[c],
+                               theta, gf, avg_params);
+    }
+  }
+}
+
 void FMM::l2l_downward(int node_idx) {
   FMMNode& node = nodes_[node_idx];
 
@@ -203,16 +249,10 @@ void FMM::compute_local_expansions(Real theta,
   for (auto& node : nodes_)
     std::ranges::fill(node.local, 0.0);
 
-  // M2L at every node, then L2L from root downward.
-  // Dense M2L is O(N_nodes^2); fall back to per-target traverse_far for large trees.
-  static constexpr int kDenseM2LNodeLimit = 256;
-  if (static_cast<int>(nodes_.size()) > kDenseM2LNodeLimit) {
-    locals_ready_ = false;
-    return;
+  // M2L at every node via tree walk (O(N log N)), then L2L from root downward.
+  for (auto i = 0; i < static_cast<int>(nodes_.size()); ++i) {
+    m2l_traverse_into_target(i, 0, theta, gf, avg_params);
   }
-
-  for (auto i = 0; i < static_cast<int>(nodes_.size()); ++i)
-    m2l_at_node(i, theta, gf, avg_params);
 
   l2l_downward(0);
   locals_ready_ = true;

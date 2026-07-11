@@ -14,8 +14,9 @@ CUDA GPU acceleration for GutIBM (issue #33). OpenMP remains the CPU shared-memo
 | `diffusion_kernel.cu` | PCR tridiagonal solver for backward-Euler directional diffusion (x/y periodic, z bounded) |
 | `fmm_far_kernel.cu` | FMM local-expansion far-field grid deposit (when M2L locals ready) |
 | `receptor_kernel.cu` | Receptor competitive-binding kill probability on device |
+| `mechanics_kernel.cu` | Hertzian repulsion + EPS adhesion via CSR neighbor lists |
 
-Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `greens_function_gpu.cpp`, `chemical_field_gpu.cpp`, `agent_pool_gpu.cpp`, `spatial_hash_gpu.cpp`, `fmm_gpu.cpp`, `receptor_gpu.cpp`, `qssa_gpu.cpp`, `vbf_gpu.cpp`, `diffusion_gpu.cpp`, `gpu_profile.cpp`.
+Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `greens_function_gpu.cpp`, `chemical_field_gpu.cpp`, `agent_pool_gpu.cpp`, `spatial_hash_gpu.cpp`, `fmm_gpu.cpp`, `receptor_gpu.cpp`, `mechanics_gpu.cpp`, `qssa_gpu.cpp`, `vbf_gpu.cpp`, `diffusion_gpu.cpp`, `gpu_profile.cpp`.
 
 ### Production chemistry path (Spec 9 PR5)
 
@@ -42,7 +43,7 @@ When `GUTIBM_CUDA_AWARE_MPI=1` **and** the linked MPI library reports CUDA buffe
 
 Validation: `mpirun -np 2 ./test_cuda_aware_mpi_reaction` (device parity runs only when CUDA-aware MPI is detected). Broader MPI smoke: `bash scripts/run_mpi_scaling_smoke.sh`.
 
-Parity and production smoke: `test_gpu_smoke`, `test_qssa_gpu_parity`, `test_gpu_scaling_benchmark`, `test_spatial_hash_gpu_csr`, `test_gpu_feature_combinations`, `test_gpu_production_path`, `test_mpi_gpu_multi_rank`, `test_cuda_aware_mpi_reaction`, `scripts/compare_gpu_parity.sh`.
+Parity and production smoke: `test_gpu_smoke`, `test_qssa_gpu_parity`, `test_gpu_scaling_benchmark`, `test_spatial_hash_gpu_csr`, `test_mechanics_gpu_parity`, `test_gpu_feature_combinations`, `test_gpu_production_path`, `test_mpi_gpu_multi_rank`, `test_cuda_aware_mpi_reaction`, `scripts/compare_gpu_parity.sh`.
 
 ## Build
 
@@ -81,11 +82,11 @@ Simulation::step()
   ├─ GPU: QSSA bacteriocin near-field (`gpu_superpose_to_device`); FMM far-field GPU when locals ready
   ├─ GPU: chemistry_pipeline (O₂, VBF, reactions, diffusion)
   ├─ GPU: receptor kill-prob kernel (Bernoulli kills on host)
-  ├─ CPU: mechanics (spatial_hash_gpu CSR built for future GPU forces)
+  ├─ GPU: mechanics (Hertzian + adhesion via spatial_hash_gpu CSR)
   └─ GPU: sync agents to device before MPI migration
 ```
 
-Agent genomes (`bi_loci` variable length) remain on the host; SoA device buffers carry scalars and `bi_loci_count` for metabolism penalties.
+Agent genomes (`bi_loci` variable length) remain on the host; SoA device buffers carry scalars and `bi_loci_count` for metabolism penalties. CDI corpse mechanics still use the CPU path when enabled.
 
 ## Memory
 
@@ -120,9 +121,10 @@ The existing OpenMP/serial CPU implementations are used unchanged.
 
 ## Not Yet on GPU
 
-- Barnes-Hut FMM octree traversal (`use_fmm=true` far-field stays on CPU)
+- Barnes-Hut FMM octree traversal (`use_fmm=true` far-field M2L is CPU tree-walk; L-eval on GPU when locals ready)
 - Fur iron regulation (`fur.enabled` disables GPU metabolism)
-- Mechanics, conjugation, mutation, receptor kill RNG
+- CDI corpse mechanics participation
+- Conjugation, mutation, receptor kill RNG
 - HDF5 checkpoint I/O
 - Multi-GPU NCCL
 - OpenCL / HIP portability
