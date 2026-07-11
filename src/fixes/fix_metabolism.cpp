@@ -22,9 +22,37 @@ void FixMetabolism::init() { /* no-op: parameters set via cfg_ at construction *
 
 namespace {
 
+void apply_fur_receptor_expr(Simulation& sim) {
+  const auto& fur_cfg = sim.config().cell_bio.fur;
+  if (!fur_cfg.enabled) return;
+
+  auto& agents = sim.agents();
+  auto& chem = sim.chemical_field();
+  Int i_iron = chem.find(species::IRON);
+
+  for (Agent& agent : agents) {
+    if (agent.state == PhenoState::DEAD) continue;
+    Int cell = agent.grid_cell;
+    if (cell < 0) continue;
+
+    Real S_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
+    const Real fur_factor = 1.0 + fur_cfg.upregulation_max * fur_cfg.Km
+        / (fur_cfg.Km + S_iron);
+    for (int r = 0; r < NUM_RECEPTORS; ++r) {
+      if (!is_iron_receptor(r)) {
+        agent.receptor_expr[r] = agent.receptor_expr_base[r];
+        continue;
+      }
+      agent.receptor_expr[r] = std::min(
+          agent.receptor_expr_base[r] * fur_factor, fur_cfg.receptor_max);
+    }
+  }
+}
+
 bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   if (!sim.gpu_active()) return false;
-  if (sim.config().cell_bio.fur.enabled) return false;
+
+  apply_fur_receptor_expr(sim);
 
   auto& agents = sim.agents();
   auto& ag = sim.agents_gpu();
@@ -35,8 +63,10 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   Int i_iron = chem.find(species::IRON);
   Int i_b12 = chem.find(species::B12);
   Int i_acetate = chem.find(species::ACETATE);
-  if (Int i_eut = chem.find(species::ETHANOLAMINE);
-      !ag.run_metabolism(
+  Int i_eut = chem.find(species::ETHANOLAMINE);
+  Int i_o2 = chem.find(species::OXYGEN);
+  const auto& o2cfg = sim.config().chem_env.oxygen;
+  if (!ag.run_metabolism(
           sim.domain(), cfg,
           {
             i_carbon >= 0 ? cg.conc_device(i_carbon) : nullptr,
@@ -44,9 +74,13 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
             i_b12 >= 0 ? cg.conc_device(i_b12) : nullptr,
             i_acetate >= 0 ? cg.conc_device(i_acetate) : nullptr,
             i_eut >= 0 ? cg.conc_device(i_eut) : nullptr,
+            o2cfg.enabled && i_o2 >= 0 ? cg.conc_device(i_o2) : nullptr,
             i_carbon >= 0 ? cg.reac_device(i_carbon) : nullptr,
             i_iron >= 0 ? cg.reac_device(i_iron) : nullptr,
             i_b12 >= 0 ? cg.reac_device(i_b12) : nullptr,
+            o2cfg.enabled ? 1 : 0,
+            o2cfg.boost_max,
+            o2cfg.Km,
           },
           dt)) {
     return false;

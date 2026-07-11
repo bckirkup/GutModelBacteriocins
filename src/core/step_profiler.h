@@ -17,13 +17,18 @@ struct StepProfile {
   double physics_s = 0.0;
   double mpi_migrate_s = 0.0;
   double cleanup_s = 0.0;
+  double gpu_h2d_s = 0.0;
+  double gpu_d2h_s = 0.0;
+  double mpi_reaction_reduce_s = 0.0;
+  double hdf5_s = 0.0;
   int step_count = 0;
 
   void reset() { *this = StepProfile{}; }
 
   double total_s() const {
     return ghost_exchange_s + spatial_hash_s + biology_s + chemistry_s +
-           physics_s + mpi_migrate_s + cleanup_s;
+           physics_s + mpi_migrate_s + cleanup_s + gpu_h2d_s + gpu_d2h_s +
+           mpi_reaction_reduce_s + hdf5_s;
   }
 };
 

@@ -112,7 +112,7 @@ bool try_gpu_superpose(const Domain& domain,
                        std::vector<Real>& grid_conc,
                        Real cutoff_radius) {
   if (!gpu_runtime_enabled()) return false;
-  return gpu_superpose_to_grid(domain, adv, sources, params, grid_conc, cutoff_radius);
+  return gpu_superpose_to_grid(domain, adv, sources, params, {}, grid_conc, cutoff_radius);
 }
 #endif
 

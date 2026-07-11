@@ -2,13 +2,18 @@
 #include "chemical_field.h"
 #include "diffusion_gpu.h"
 #include "domain.h"
-#include "chemical_field_gpu.h"
 #include "dispatch.h"
 #include "gpu_kernels.h"
 #include "device_memory.h"
 
+#include <cstdlib>
+
 #ifdef GUTIBM_CUDA
 #include <cuda_runtime.h>
+#endif
+
+#ifdef GUTIBM_MPI
+#include <mpi.h>
 #endif
 
 namespace gutibm {
@@ -83,6 +88,23 @@ void ChemicalFieldGpu::sync_reactions_to_host(ChemicalField& field) {
       field.reac(s, c) = host[static_cast<size_t>(c)];
     }
   }
+}
+
+void ChemicalFieldGpu::sync_species_concentrations_to_host(ChemicalField& field,
+                                                           Int spec) {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  std::vector<double> host(static_cast<size_t>(ncells_));
+  d_conc_[static_cast<size_t>(spec)].download(host);
+  for (Int c = 0; c < ncells_; ++c) {
+    field.conc(spec, c) = host[static_cast<size_t>(c)];
+  }
+}
+
+void ChemicalFieldGpu::sync_species_concentrations_to_device(
+    const ChemicalField& field, Int spec) {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  d_conc_[static_cast<size_t>(spec)].upload(
+      field.conc_data()[static_cast<size_t>(spec)]);
 }
 
 void ChemicalFieldGpu::zero_reactions_on_device() {
@@ -178,9 +200,57 @@ double* ChemicalFieldGpu::conc_device(Int spec) {
   return d_conc_[static_cast<size_t>(spec)].data();
 }
 
+const double* ChemicalFieldGpu::conc_device(Int spec) const {
+  if (!active_ || spec < 0 || spec >= nspec_) return nullptr;
+  return d_conc_[static_cast<size_t>(spec)].data();
+}
+
 double* ChemicalFieldGpu::reac_device(Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return nullptr;
   return d_reac_[static_cast<size_t>(spec)].data();
+}
+
+const double* ChemicalFieldGpu::reac_device(Int spec) const {
+  if (!active_ || spec < 0 || spec >= nspec_) return nullptr;
+  return d_reac_[static_cast<size_t>(spec)].data();
+}
+
+bool ChemicalFieldGpu::try_sum_reactions_on_device(ChemicalField& field) {
+#ifndef GUTIBM_CUDA
+  (void)field;
+  return false;
+#else
+  if (!active_) return false;
+
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) return false;
+
+  int ranks = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+  if (ranks <= 1) return false;
+#endif
+
+  const char* env = std::getenv("GUTIBM_CUDA_AWARE_MPI");
+  if (env == nullptr || (env[0] != '1' && env[0] != 't' && env[0] != 'T')) {
+    return false;
+  }
+
+  for (Int s = 0; s < nspec_; ++s) {
+    double* d_reac = reac_device(s);
+    if (d_reac == nullptr) return false;
+#ifdef GUTIBM_MPI
+    MPI_Allreduce(MPI_IN_PLACE, d_reac, ncells_, MPI_DOUBLE, MPI_SUM,
+                  MPI_COMM_WORLD);
+#endif
+  }
+
+  sync_reactions_to_host(field);
+  return true;
+#endif
 }
 
 }  // namespace gutibm

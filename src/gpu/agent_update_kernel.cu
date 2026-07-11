@@ -23,7 +23,9 @@ __global__ void metabolism_kernel(
     double km_iron_primary, double km_iron_iroN, double km_iron_iutA, double km_iron_fiu,
     double maintenance_rate, double metE_penalty, double metE_acetate_max_factor,
     double metE_acetate_km, double eut_max_penalty, double eut_km,
-    double yield_carbon, double yield_iron, double yield_b12) {
+    double yield_carbon, double yield_iron, double yield_b12,
+    int o2_enabled, double o2_boost_max, double o2_Km,
+    const double* conc_oxygen) {
 
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
@@ -67,6 +69,13 @@ __global__ void metabolism_kernel(
   double monod_b12    = S_b12 / (Km_b12 + S_b12);
 
   double mu = mu_max[i] * monod_carbon * monod_iron * monod_b12;
+
+  if (o2_enabled && conc_oxygen) {
+    const double s_o2 = conc_oxygen[cell];
+    const double monod_o2_boost =
+        1.0 + o2_boost_max * s_o2 / (o2_Km + s_o2);
+    mu *= monod_o2_boost;
+  }
 
   if (expr_btuB < 0.5) {
     double metE_eff = metE_penalty;
@@ -131,6 +140,8 @@ void launch_metabolism_kernel(
     double maintenance_rate, double metE_penalty, double metE_acetate_max_factor,
     double metE_acetate_km, double eut_max_penalty, double eut_km,
     double yield_carbon, double yield_iron, double yield_b12,
+    int o2_enabled, double o2_boost_max, double o2_Km,
+    const double* conc_oxygen,
     cudaStream_t stream) {
   if (num_agents <= 0) return;
   int block = 256;
@@ -145,7 +156,8 @@ void launch_metabolism_kernel(
       km_iron_primary, km_iron_iroN, km_iron_iutA, km_iron_fiu,
       maintenance_rate, metE_penalty, metE_acetate_max_factor,
       metE_acetate_km, eut_max_penalty, eut_km,
-      yield_carbon, yield_iron, yield_b12);
+      yield_carbon, yield_iron, yield_b12,
+      o2_enabled, o2_boost_max, o2_Km, conc_oxygen);
 }
 
 }  // namespace gpu

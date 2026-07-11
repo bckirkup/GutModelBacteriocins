@@ -53,32 +53,19 @@ gpu::AdvectionParams make_advection_params(const AdvectionField& adv) {
   p.v_distal_max = cfg.distal_length / cfg.distal_transit_time;
   return p;
 }
-#endif
 
-}  // namespace
-
-bool gpu_superpose_to_grid(
-    const Domain& domain,
-    const AdvectionField& adv,
-    const std::vector<Vec3>& sources,
-    const std::vector<GreensFunctionParams>& params,
-    std::vector<Real>& grid_conc,
-    Real cutoff_radius) {
-
-#ifndef GUTIBM_CUDA
-  (void)domain;
-  (void)adv;
-  (void)sources;
-  (void)params;
-  (void)grid_conc;
-  (void)cutoff_radius;
-  return false;
-#else
-  if (!gpu_runtime_enabled()) return false;
-  if (sources.empty()) return true;
+bool launch_superpose(const Domain& domain,
+                      const AdvectionField& adv,
+                      const std::vector<Vec3>& sources,
+                      const std::vector<GreensFunctionParams>& params,
+                      const std::vector<Real>& strength_factors,
+                      double* d_grid,
+                      Real cutoff_radius) {
+  if (!gpu_runtime_enabled() || sources.empty()) return false;
+  if (d_grid == nullptr) return false;
 
   Int ncells = domain.ncells();
-  grid_conc.assign(ncells, 0.0);
+  cudaMemset(d_grid, 0, static_cast<size_t>(ncells) * sizeof(double));
 
   std::vector<double> sx(sources.size());
   std::vector<double> sy(sources.size());
@@ -88,8 +75,9 @@ bool gpu_superpose_to_grid(
     sx[i] = sources[i][0];
     sy[i] = sources[i][1];
     sz[i] = sources[i][2];
+    Real scale = (i < strength_factors.size()) ? strength_factors[i] : 1.0;
     sp[i].diff_coeff = params[i].diff_coeff;
-    sp[i].source_rate = params[i].source_rate;
+    sp[i].source_rate = params[i].source_rate * scale;
     sp[i].retardation = params[i].retardation;
   }
 
@@ -97,27 +85,90 @@ bool gpu_superpose_to_grid(
   DeviceBuffer<double> d_sy;
   DeviceBuffer<double> d_sz;
   DeviceBuffer<gpu::GfSourceParams> d_params;
-  DeviceBuffer<double> d_grid;
   d_sx.upload(sx);
   d_sy.upload(sy);
   d_sz.upload(sz);
   d_params.upload(sp);
-  d_grid.allocate(static_cast<size_t>(ncells));
-  cudaMemset(d_grid.data(), 0, static_cast<size_t>(ncells) * sizeof(double));
 
-  auto span = static_cast<int>(std::ceil(cutoff_radius / domain.dx()));
-  auto dom = make_domain_params(domain);
-  auto adv_p = make_advection_params(adv);
+  const int span = static_cast<int>(std::ceil(cutoff_radius / domain.dx()));
+  const auto dom = make_domain_params(domain);
+  const auto adv_p = make_advection_params(adv);
 
   gpu::launch_superpose_kernel(
-      d_sx.data(), d_sy.data(), d_sz.data(), d_params.data(), d_grid.data(),
+      d_sx.data(), d_sy.data(), d_sz.data(), d_params.data(), d_grid,
       dom, adv_p, static_cast<int>(sources.size()), span, gpu_compute_stream());
 
   gpu_sync_compute();
   gpu_check_error("superpose_kernel");
+  return true;
+}
+#endif
 
+}  // namespace
+
+bool gpu_superpose_to_grid(
+    const Domain& domain,
+    const AdvectionField& adv,
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors,
+    std::vector<Real>& grid_conc,
+    Real cutoff_radius) {
+
+#ifndef GUTIBM_CUDA
+  (void)domain;
+  (void)adv;
+  (void)sources;
+  (void)params;
+  (void)strength_factors;
+  (void)grid_conc;
+  (void)cutoff_radius;
+  return false;
+#else
+  if (sources.empty()) {
+    grid_conc.assign(domain.ncells(), 0.0);
+    return true;
+  }
+
+  DeviceBuffer<double> d_grid;
+  d_grid.allocate(static_cast<size_t>(domain.ncells()));
+  if (!launch_superpose(domain, adv, sources, params, strength_factors,
+                        d_grid.data(), cutoff_radius)) {
+    return false;
+  }
   d_grid.download(grid_conc);
   return true;
+#endif
+}
+
+bool gpu_superpose_to_device(
+    const Domain& domain,
+    const AdvectionField& adv,
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors,
+    double* d_grid_conc,
+    Real cutoff_radius) {
+
+#ifndef GUTIBM_CUDA
+  (void)domain;
+  (void)adv;
+  (void)sources;
+  (void)params;
+  (void)strength_factors;
+  (void)d_grid_conc;
+  (void)cutoff_radius;
+  return false;
+#else
+  if (sources.empty()) {
+    if (d_grid_conc != nullptr) {
+      cudaMemset(d_grid_conc, 0,
+                 static_cast<size_t>(domain.ncells()) * sizeof(double));
+    }
+    return true;
+  }
+  return launch_superpose(domain, adv, sources, params, strength_factors,
+                          d_grid_conc, cutoff_radius);
 #endif
 }
 

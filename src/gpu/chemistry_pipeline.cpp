@@ -3,12 +3,37 @@
 #include "chemical_field.h"
 #include "chemical_field_gpu.h"
 #include "dispatch.h"
+#include "step_profiler.h"
 #include "qssa_gpu.h"
 #include "qssa_solver.h"
 #include "vbf.h"
 #include "vbf_gpu.h"
 
+#include <chrono>
+
 namespace gutibm {
+
+namespace {
+
+void sum_reactions_with_optional_device(ChemistryPipelineInput& in) {
+  const auto t0 = std::chrono::steady_clock::now();
+  if (in.gpu_active && in.chem_gpu.try_sum_reactions_on_device(in.chem)) {
+    if (in.step_profile != nullptr) {
+      const auto t1 = std::chrono::steady_clock::now();
+      in.step_profile->mpi_reaction_reduce_s +=
+          std::chrono::duration<double>(t1 - t0).count();
+    }
+    return;
+  }
+  in.chem.sum_reactions_across_ranks();
+  if (in.step_profile != nullptr) {
+    const auto t1 = std::chrono::steady_clock::now();
+    in.step_profile->mpi_reaction_reduce_s +=
+        std::chrono::duration<double>(t1 - t0).count();
+  }
+}
+
+}  // namespace
 
 ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real dt) {
   ChemistryPipelineResult result;
@@ -31,7 +56,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
 
   // Every rank holds the full chemical grid but only its local agents. Sum the
   // rank-local agent reaction fields before adding the identical global VBF.
-  in.chem.sum_reactions_across_ranks();
+  sum_reactions_with_optional_device(in);
 
   bool reactions_on_device = false;
   bool applied_vbf_on_gpu = false;

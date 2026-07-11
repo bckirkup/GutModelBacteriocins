@@ -81,6 +81,7 @@ class FMM {
                       const GreensFunctionParams& avg_params) const;
 
   int num_nodes() const { return static_cast<int>(nodes_.size()); }
+  bool locals_ready() const { return locals_ready_; }
   bool empty() const { return nodes_.empty(); }
   const FMMNode& node(int i) const { return nodes_[i]; }
   int expansion_order() const { return expansion_order_; }

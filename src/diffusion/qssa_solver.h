@@ -28,6 +28,7 @@ namespace gutibm {
 class Domain;
 class AdvectionField;
 class ChemicalField;
+class ChemicalFieldGpu;
 class AgentPool;
 
 struct QSSAConfig {
@@ -84,7 +85,8 @@ class QSSASolver {
       const AdvectionField& adv,
       ChemicalField& chem,
       Int toxin_species_idx,
-      ReceptorType target) const;
+      ReceptorType target,
+      ChemicalFieldGpu* chem_gpu = nullptr) const;
 
   // Solve all four per-receptor bacteriocin fields.
   void solve_all_bacteriocin_fields(
@@ -93,7 +95,8 @@ class QSSASolver {
       Real current_time,
       const ProteaseConfig& protease,
       const AdvectionField& adv,
-      ChemicalField& chem) const;
+      ChemicalField& chem,
+      ChemicalFieldGpu* chem_gpu = nullptr) const;
 
   // Compute nutrient depletion zones around colonies
   void solve_nutrient_depletion(
@@ -115,8 +118,10 @@ class QSSASolver {
       const std::vector<Vec3>& sources,
       const std::vector<GreensFunctionParams>& params,
       const std::vector<Real>& strength_factors,
+      const AdvectionField& adv,
       ChemicalField& chem,
-      Int toxin_species_idx) const;
+      Int toxin_species_idx,
+      ChemicalFieldGpu* chem_gpu = nullptr) const;
 
   QSSAConfig cfg_;
   GreensFunction gf_;

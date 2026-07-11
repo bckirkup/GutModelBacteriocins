@@ -5,6 +5,7 @@
 #include "fix_receptor.h"
 #include "species_names.h"
 #include "simulation.h"
+#include "receptor_gpu.h"
 #include <cmath>
 #include <algorithm>
 #include <vector>
@@ -23,16 +24,33 @@ void FixReceptor::compute(Real dt) {
   auto& rng    = sim_.rng();
   Int n = agents.size();
 
-  // Precompute kill probabilities in parallel (read-only on chem/agent)
   std::vector<Real> kill_probs(n, 0.0);
-  #ifdef GUTIBM_OPENMP
-  #pragma omp parallel for schedule(static)
-  #endif
-  for (Int i = 0; i < n; ++i) {
-    const Agent& a = agents[i];
-    if (a.state == DEAD || a.state == SOS_INDUCED)
-      continue;
-    kill_probs[i] = compute_kill_prob(a, dt);
+
+  bool gpu_ok = false;
+  if (sim_.gpu_active()) {
+    auto& ag = sim_.agents_gpu();
+    ag.sync_from_host(agents);
+    std::vector<double> gpu_probs;
+    if (gpu_compute_receptor_kill_probs_host_packed(
+            ag, agents, sim_.chem_gpu(), sim_.chemical_field(), cfg_, dt,
+            gpu_probs)) {
+      for (Int i = 0; i < n; ++i) {
+        kill_probs[i] = gpu_probs[static_cast<size_t>(i)];
+      }
+      gpu_ok = true;
+    }
+  }
+
+  if (!gpu_ok) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp parallel for schedule(static)
+    #endif
+    for (Int i = 0; i < n; ++i) {
+      const Agent& a = agents[i];
+      if (a.state == DEAD || a.state == SOS_INDUCED)
+        continue;
+      kill_probs[i] = compute_kill_prob(a, dt);
+    }
   }
 
   // Apply kills serially (RNG is not thread-safe)

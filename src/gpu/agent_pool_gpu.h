@@ -18,9 +18,13 @@ struct GpuMetabolismBuffers {
   const double* d_conc_b12 = nullptr;
   const double* d_conc_acetate = nullptr;
   const double* d_conc_eut = nullptr;
+  const double* d_conc_oxygen = nullptr;
   double* d_reac_carbon = nullptr;
   double* d_reac_iron = nullptr;
   double* d_reac_b12 = nullptr;
+  int o2_enabled = 0;
+  double o2_boost_max = 0.0;
+  double o2_Km = 0.0;
 };
 
 class AgentPoolGpu {
@@ -52,7 +56,9 @@ class AgentPoolGpu {
   double* km_b12() { return d_km_b12_.data(); }
   double* km_carbon() { return d_km_carbon_.data(); }
   double* receptor_expr() { return d_receptor_expr_.data(); }
+  const double* receptor_expr() const { return d_receptor_expr_.data(); }
   double* ligand_affinity() { return d_ligand_affinity_.data(); }
+  const double* ligand_affinity() const { return d_ligand_affinity_.data(); }
   int*    bi_loci_count() { return d_bi_loci_count_.data(); }
   double* plasmid_amelioration() { return d_plasmid_amelioration_.data(); }
 
