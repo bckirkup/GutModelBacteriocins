@@ -1,5 +1,5 @@
-#ifndef GUTIBM_CHEMICAL_microcin_penalty_applied_GPU_H
-#define GUTIBM_CHEMICAL_microcin_penalty_applied_GPU_H
+#ifndef GUTIBM_CHEMICAL_FIELD_GPU_H
+#define GUTIBM_CHEMICAL_FIELD_GPU_H
 
 #include "types.h"
 #include "device_memory.h"
@@ -41,4 +41,4 @@ class ChemicalFieldGpu {
 
 }  // namespace gutibm
 
-#endif  // GUTIBM_CHEMICAL_microcin_penalty_applied_GPU_H
+#endif  // GUTIBM_CHEMICAL_FIELD_GPU_H

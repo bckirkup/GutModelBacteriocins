@@ -52,6 +52,29 @@ void launch_spatial_hash_build_kernel(
     double lo0, double lo1, double lo2, double cell_size,
     int nx_cells, int ny_cells, int nz_cells, cudaStream_t stream);
 
+void launch_diffuse_x_periodic(double* conc, int nx, int ny, int nz,
+                               double alpha, double gamma, double corner,
+                               double denominator, const double* correction,
+                               cudaStream_t stream);
+void launch_diffuse_y_periodic(double* conc, int nx, int ny, int nz,
+                               double alpha, double gamma, double corner,
+                               double denominator, const double* correction,
+                               cudaStream_t stream);
+void launch_diffuse_z_bounded(double* conc, int nx, int ny, int nz,
+                              double alpha, double boundary_conc,
+                              cudaStream_t stream);
+void launch_set_epithelial_boundary(double* conc, int nx, int ny,
+                                    double boundary_conc, cudaStream_t stream);
+void launch_set_luminal_neumann(double* conc, int nx, int ny, int nz,
+                                cudaStream_t stream);
+void launch_shift_z_gradient(double* conc, int nx, int ny, int nz, double dx,
+                             double initial_conc, double lambda,
+                             double boundary_conc, double scale,
+                             cudaStream_t stream);
+void launch_clamp_nonneg(double* conc, int ncells, cudaStream_t stream);
+
+int diffusion_max_line_length();
+
 }  // namespace gutibm::gpu
 
 #endif  // GUTIBM_GPU_KERNELS_H
