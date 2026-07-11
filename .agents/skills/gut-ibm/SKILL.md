@@ -63,7 +63,7 @@ ctest -L 'integration|slow|benchmark' -LE gpu   # integration job
 ctest -L gpu                                     # CUDA job only
 ```
 
-CTest targets (2-rank MPI tests included; no `mpirun -np 4+` gate yet):
+CTest targets (2- and 4-rank MPI tests included):
 
 | Test | File | Focus |
 |------|------|-------|
@@ -99,6 +99,8 @@ CTest targets (2-rank MPI tests included; no `mpirun -np 4+` gate yet):
 | `hdf5_roundtrip` | `test_hdf5_roundtrip.cpp` | Writer/reader schema parity |
 | `hdf5_checkpoint` | `test_hdf5_checkpoint.cpp` | Checkpoint restart |
 | `mpi_multi_rank` | `test_mpi_multi_rank.cpp` | 2-rank agent migration |
+| `mpi_four_rank` | `test_mpi_four_rank.cpp` | 4-rank slab, reaction sum, migration |
+| `cuda_aware_mpi_reaction` | `test_cuda_aware_mpi_reaction.cpp` | CUDA-aware device reaction reduce (#156) |
 | `scaling_benchmark` | `test_scaling_benchmark.cpp` | Agent-count timing smoke |
 | `greens_function_gpu` | `test_greens_function_gpu.cpp` | GPU vs CPU GF parity (CUDA build) |
 | `gpu_diffusion` | `test_gpu_diffusion.cpp` | GPU vs CPU nutrient diffusion parity (max diff < 1e-10) |

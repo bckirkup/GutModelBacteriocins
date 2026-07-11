@@ -29,9 +29,20 @@ Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `gree
 
 A dedicated `cudaStream_t` from `gpu_compute_stream()` serializes chemistry kernels without per-kernel device-wide syncs. QSSA near-field superposition runs on GPU via `gpu_superpose_to_device`; FMM far-field uses `fmm_far_kernel.cu` when dense M2L locals are ready (trees with >256 nodes fall back to CPU `traverse_far`).
 
-`StepProfile` records `gpu_h2d_s`, `gpu_d2h_s`, `mpi_reaction_reduce_s`, and `hdf5_s` when `profile_steps` is enabled. Use `scripts/run_gpu_scaling_benchmark.sh` for CPU vs GPU sweeps. Optional CUDA-aware MPI reaction reduce: `GUTIBM_CUDA_AWARE_MPI=1`.
+`StepProfile` records `gpu_h2d_s`, `gpu_d2h_s`, `mpi_reaction_reduce_s`, and `hdf5_s` when `profile_steps` is enabled. Use `scripts/run_gpu_scaling_benchmark.sh` for CPU vs GPU sweeps.
 
-Parity and production smoke: `test_gpu_smoke`, `test_qssa_gpu_parity`, `test_gpu_scaling_benchmark`, `test_spatial_hash_gpu_csr`, `test_gpu_feature_combinations`, `test_gpu_production_path`, `test_mpi_gpu_multi_rank`, `scripts/compare_gpu_parity.sh`.
+### CUDA-aware MPI reaction reduce (#156)
+
+When `GUTIBM_CUDA_AWARE_MPI=1` **and** the linked MPI library reports CUDA buffer support (`MPIX_Query_cuda_support` on Open MPI), `ChemicalFieldGpu::try_sum_reactions_on_device()` performs `MPI_Allreduce` on device reaction buffers and skips the host round-trip. Without CUDA-aware MPI, the chemistry pipeline falls back to host `sum_reactions_across_ranks()` automatically.
+
+| Variable | When to set |
+|----------|-------------|
+| `GUTIBM_CUDA_AWARE_MPI=1` | Opt in on clusters with CUDA-aware Open MPI / MVAPICH2-GDR |
+| `GUTIBM_CUDA_AWARE_MPI_FORCE=1` | Manual override when auto-detection is unavailable but buffers are known CUDA-aware |
+
+Validation: `mpirun -np 2 ./test_cuda_aware_mpi_reaction` (device parity runs only when CUDA-aware MPI is detected). Broader MPI smoke: `bash scripts/run_mpi_scaling_smoke.sh`.
+
+Parity and production smoke: `test_gpu_smoke`, `test_qssa_gpu_parity`, `test_gpu_scaling_benchmark`, `test_spatial_hash_gpu_csr`, `test_gpu_feature_combinations`, `test_gpu_production_path`, `test_mpi_gpu_multi_rank`, `test_cuda_aware_mpi_reaction`, `scripts/compare_gpu_parity.sh`.
 
 ## Build
 
@@ -89,7 +100,10 @@ Production example (`diversity_paradox` scale, 2 mm × 2 µm): nx=1000 fits the 
 ```bash
 cd build && ctest -R 'greens_function_gpu|gpu_diffusion|gpu_chemical_field|gpu_feature_combinations|gpu_production_path|gpu_smoke' --output-on-failure
 mpirun -np 2 ./test_mpi_gpu_multi_rank   # MPI + GPU chemistry checksum
+mpirun -np 2 ./test_cuda_aware_mpi_reaction  # CUDA-aware MPI reaction reduce (#156)
+mpirun -np 4 --oversubscribe ./test_mpi_four_rank  # 4-rank MPI smoke (#154)
 bash scripts/compare_gpu_parity.sh
+bash scripts/run_mpi_scaling_smoke.sh
 ```
 
 Tests skip the GPU execution path when no CUDA device is present (compile-only CI still builds all kernels).
@@ -110,5 +124,5 @@ The existing OpenMP/serial CPU implementations are used unchanged.
 - Fur iron regulation (`fur.enabled` disables GPU metabolism)
 - Mechanics, conjugation, mutation, receptor kill RNG
 - HDF5 checkpoint I/O
-- Multi-GPU NCCL / device-side MPI reaction reduction
+- Multi-GPU NCCL
 - OpenCL / HIP portability

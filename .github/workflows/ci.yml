@@ -132,7 +132,7 @@ jobs:
       - name: Build GPU test targets only
         run: |
           cmake --build build-cuda -j$(nproc) \
-            --target test_gpu_smoke test_greens_function_gpu test_gpu_diffusion test_gpu_chemical_field test_gpu_feature_combinations test_gpu_production_path test_mpi_gpu_multi_rank test_gpu_scaling_benchmark test_qssa_gpu_parity test_spatial_hash_gpu_csr
+            --target test_gpu_smoke test_greens_function_gpu test_gpu_diffusion test_gpu_chemical_field test_gpu_feature_combinations test_gpu_production_path test_mpi_gpu_multi_rank test_mpi_four_rank test_cuda_aware_mpi_reaction test_gpu_scaling_benchmark test_qssa_gpu_parity test_spatial_hash_gpu_csr
 
       - name: GPU tests
         run: cd build-cuda && ctest -L gpu --output-on-failure

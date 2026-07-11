@@ -148,6 +148,20 @@ if(GUTIBM_USE_MPI)
     RESOURCE_LOCK mpi
   )
 
+  add_executable(test_mpi_four_rank test_mpi_four_rank.cpp)
+  target_link_libraries(test_mpi_four_rank PRIVATE gutibm)
+  add_test(
+    NAME mpi_four_rank
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 4
+            --oversubscribe
+            ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_four_rank> ${MPIEXEC_POSTFLAGS}
+  )
+  set_tests_properties(mpi_four_rank PROPERTIES
+    LABELS "integration;mpi"
+    PASS_REGULAR_EXPRESSION "All MPI four-rank tests passed"
+    RESOURCE_LOCK mpi
+  )
+
   add_executable(test_mpi_gpu_multi_rank test_mpi_gpu_multi_rank.cpp)
   target_link_libraries(test_mpi_gpu_multi_rank PRIVATE gutibm)
   add_test(
@@ -158,6 +172,20 @@ if(GUTIBM_USE_MPI)
   set_tests_properties(mpi_gpu_multi_rank PROPERTIES
     LABELS "integration;mpi;gpu"
     PASS_REGULAR_EXPRESSION "All MPI GPU multi-rank tests passed"
+    RESOURCE_LOCK mpi
+  )
+
+  add_executable(test_cuda_aware_mpi_reaction test_cuda_aware_mpi_reaction.cpp)
+  target_link_libraries(test_cuda_aware_mpi_reaction PRIVATE gutibm)
+  add_test(
+    NAME cuda_aware_mpi_reaction
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+            --oversubscribe
+            ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_cuda_aware_mpi_reaction> ${MPIEXEC_POSTFLAGS}
+  )
+  set_tests_properties(cuda_aware_mpi_reaction PROPERTIES
+    LABELS "integration;mpi;gpu"
+    PASS_REGULAR_EXPRESSION "All CUDA-aware MPI reaction tests passed"
     RESOURCE_LOCK mpi
   )
 endif()

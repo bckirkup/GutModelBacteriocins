@@ -1,5 +1,6 @@
 #include "chemical_field_gpu.h"
 #include "chemical_field.h"
+#include "cuda_aware_mpi.h"
 #include "diffusion_gpu.h"
 #include "domain.h"
 #include "dispatch.h"
@@ -236,6 +237,9 @@ bool ChemicalFieldGpu::try_sum_reactions_on_device(ChemicalField& field) {
 
   const char* env = std::getenv("GUTIBM_CUDA_AWARE_MPI");
   if (env == nullptr || (env[0] != '1' && env[0] != 't' && env[0] != 'T')) {
+    return false;
+  }
+  if (!cuda_aware_mpi_runtime_available()) {
     return false;
   }
 
