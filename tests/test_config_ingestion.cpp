@@ -42,14 +42,18 @@ using namespace gutibm;
 
 namespace {
 
-// CI builds in Release (NDEBUG), which compiles out assert(). This test must
-// still fail CI when a config key is untracked or fails to ingest, so failures
-// are recorded explicitly and main() returns non-zero — independent of NDEBUG.
-int g_failures = 0;
+struct FailureCounter {
+  int value = 0;
+};
+
+FailureCounter& failure_counter() {
+  static FailureCounter counter;
+  return counter;
+}
 
 void record_failure(const std::string& msg) {
   std::cerr << "FAIL: " << msg << "\n";
-  ++g_failures;
+  ++failure_counter().value;
 }
 
 void expect(bool cond, const std::string& msg) {
@@ -115,17 +119,17 @@ Probe S(std::string key, StrGet g, std::string sentinel, bool primary = true) {
 // Namespaced keys (Spec 1 / Spec 3) accept both a dotted and an underscore
 // spelling that map to the same field. Track both; only the dotted form is
 // "primary" for the combined-document test to avoid writing a field twice.
-void add_ns_real(std::vector<Probe>& v, const char* dotted, const char* under, RealGet g) {
+void add_ns_real(std::vector<Probe>& v, const char* dotted, const char* under, const RealGet& g) {
   v.push_back(R(dotted, g, true));
   v.push_back(R(under, g, false));
 }
 
-void add_ns_bool(std::vector<Probe>& v, const char* dotted, const char* under, BoolGet g) {
+void add_ns_bool(std::vector<Probe>& v, const char* dotted, const char* under, const BoolGet& g) {
   v.push_back(B(dotted, g, true));
   v.push_back(B(under, g, false));
 }
 
-void add_ns_int(std::vector<Probe>& v, const char* dotted, const char* under, IntGet g) {
+void add_ns_int(std::vector<Probe>& v, const char* dotted, const char* under, const IntGet& g) {
   v.push_back(I(dotted, g, true));
   v.push_back(I(under, g, false));
 }
@@ -369,8 +373,8 @@ std::vector<Probe> build_probes() {
 // Strain-object and top-level array keys handled in config_json.cpp. These are
 // verified end-to-end in test_strain_and_array_keys(); listed here so the
 // completeness guard treats them as covered.
-const std::set<std::string>& array_and_strain_keys() {
-  static const std::set<std::string> keys = {
+const std::set<std::string, std::less<>>& array_and_strain_keys() {
+  static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
@@ -418,8 +422,8 @@ std::string sentinel_scalar(const Probe& p, const SimulationConfig& def) {
 void check_ingested(const Probe& p, const SimulationConfig& def, const SimulationConfig& got) {
   switch (p.kind) {
     case Kind::Real: {
-      const double s = real_sentinel(p.gr(def));
-      if (!close(p.gr(got), s) || close(p.gr(got), p.gr(def))) {
+      if (const double s = real_sentinel(p.gr(def));
+          !close(p.gr(got), s) || close(p.gr(got), p.gr(def))) {
         std::ostringstream m;
         m << "real key '" << p.key << "' got=" << p.gr(got) << " expected=" << s
           << " default=" << p.gr(def) << " (did not ingest into SimulationConfig)";
@@ -428,8 +432,7 @@ void check_ingested(const Probe& p, const SimulationConfig& def, const Simulatio
       break;
     }
     case Kind::Int: {
-      const long long s = p.gi(def) + 7;
-      if (p.gi(got) != s || p.gi(got) == p.gi(def)) {
+      if (const long long s = p.gi(def) + 7; p.gi(got) != s || p.gi(got) == p.gi(def)) {
         std::ostringstream m;
         m << "int key '" << p.key << "' got=" << p.gi(got) << " expected=" << s
           << " default=" << p.gi(def) << " (did not ingest into SimulationConfig)";
@@ -438,8 +441,7 @@ void check_ingested(const Probe& p, const SimulationConfig& def, const Simulatio
       break;
     }
     case Kind::Bool: {
-      const bool s = !p.gb(def);
-      if (p.gb(got) != s) {
+      if (const bool s = !p.gb(def); p.gb(got) != s) {
         std::ostringstream m;
         m << "bool key '" << p.key << "' got=" << p.gb(got) << " expected=" << s
           << " (did not ingest into SimulationConfig)";
@@ -469,7 +471,7 @@ std::string read_file(const std::string& path) {
 // Extract every `key == "LITERAL"` string literal from parser source. Value
 // comparisons in the parser use `val == ...`, so this pattern captures only
 // config keys.
-void scan_source_keys(const std::string& path, std::set<std::string>& out) {
+void scan_source_keys(const std::string& path, std::set<std::string, std::less<>>& out) {
   const std::string src = read_file(path);
   const std::string tok = "key == \"";
   size_t pos = 0;
@@ -589,22 +591,22 @@ void test_strain_and_array_keys() {
 // of keys tracked here. Adding a parser key without a probe (or removing a
 // probe for a still-parsed key) fails CI.
 void test_all_parser_keys_are_tracked() {
-  std::set<std::string> source_keys;
+  std::set<std::string, std::less<>> source_keys;
   scan_source_keys(source_path("src/io/input_parser.cpp"), source_keys);
   scan_source_keys(source_path("src/io/config_json.cpp"), source_keys);
   expect(!source_keys.empty(), "failed to scan parser sources for config keys");
 
-  std::set<std::string> covered;
+  std::set<std::string, std::less<>> covered;
   for (const Probe& p : build_probes()) covered.insert(p.key);
   for (const std::string& k : array_and_strain_keys()) covered.insert(k);
 
   std::vector<std::string> untracked;   // parsed but no probe
   std::vector<std::string> stale;       // probe but no longer parsed
   for (const std::string& k : source_keys) {
-    if (covered.find(k) == covered.end()) untracked.push_back(k);
+    if (!covered.contains(k)) untracked.push_back(k);
   }
   for (const std::string& k : covered) {
-    if (source_keys.find(k) == source_keys.end()) stale.push_back(k);
+    if (!source_keys.contains(k)) stale.push_back(k);
   }
 
   if (!untracked.empty()) {
@@ -630,8 +632,8 @@ int main() {
   test_every_flat_key_ingests_via_json_document();
   test_strain_and_array_keys();
   test_all_parser_keys_are_tracked();
-  if (g_failures != 0) {
-    std::cerr << g_failures << " config ingestion check(s) FAILED.\n";
+  if (failure_counter().value != 0) {
+    std::cerr << failure_counter().value << " config ingestion check(s) FAILED.\n";
     return 1;
   }
   std::cout << "All config ingestion tracking tests passed.\n";

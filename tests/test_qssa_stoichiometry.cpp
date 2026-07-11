@@ -84,7 +84,9 @@ DepletionResult run_depletion(const Domain& domain, Real q_consumption,
   proto.state = PhenoState::NORMAL;
   proto.mu_realized = mu_realized;
   proto.biomass = 2e-16;
-  Int ix = 0, iy = 0, iz = 0;
+  Int ix = 0;
+  Int iy = 0;
+  Int iz = 0;
   domain.pos_to_grid(proto.x, ix, iy, iz);
   proto.grid_cell = domain.cell_index(ix, iy, iz);
 

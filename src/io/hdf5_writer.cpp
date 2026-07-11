@@ -26,6 +26,7 @@ extern "C" {
 #include <iostream>
 #include <limits>
 #include <numeric>
+#include <ranges>
 #include <set>
 #include <string>
 #include <vector>
@@ -237,7 +238,7 @@ hid_t make_dataset_plist(const HDF5Config& cfg, const hsize_t* chunk_dims,
   hid_t plist = H5Pcreate(H5P_DATASET_CREATE);
   if (cfg.compression == "gzip") {
     H5Pset_chunk(plist, rank, chunk_dims);
-    const unsigned level = static_cast<unsigned>(
+    const auto level = static_cast<unsigned>(
         std::clamp(cfg.compression_level, 0, 9));
     H5Pset_deflate(plist, level);
   }
@@ -278,12 +279,10 @@ bool HDF5Writer::layer_due(Int interval, Int step) const {
 }
 
 bool HDF5Writer::should_write_species(const std::string& name) const {
-  if (cfg_.schedule.grid_species.empty()) return false;
-  for (const auto& s : cfg_.schedule.grid_species) {
-    if (s == "all") return true;
-    if (s == name) return true;
-  }
-  return false;
+  const auto& species = cfg_.schedule.grid_species;
+  if (species.empty()) return false;
+  return std::ranges::find(species, std::string("all")) != species.end()
+      || std::ranges::find(species, name) != species.end();
 }
 
 void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
@@ -435,14 +434,14 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   const double t = time;
   const double dt_val = dt;
   const int32_t step_val = step;
-  const int32_t n_total = static_cast<int32_t>(sim.global_agent_count());
+  const auto n_total = static_cast<int32_t>(sim.global_agent_count());
 
   std::set<int64_t> unique_lineages;
   for (const Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
     unique_lineages.insert(static_cast<int64_t>(a.genome.lineage_id));
   }
-  const int32_t num_lineages = static_cast<int32_t>(unique_lineages.size());
+  const auto num_lineages = static_cast<int32_t>(unique_lineages.size());
 
   write_scalar_dataset(fid, group + "/time", H5T_NATIVE_DOUBLE, &t);
   write_scalar_dataset(fid, group + "/dt", H5T_NATIVE_DOUBLE, &dt_val);
@@ -471,11 +470,11 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
     n_by_state[static_cast<size_t>(sidx)]++;
   }
 
-  for (Int t = 0; t < k_max_types; ++t) {
-    if (count_by_type[static_cast<size_t>(t)] > 0) {
-      const Real inv = 1.0 / static_cast<Real>(count_by_type[static_cast<size_t>(t)]);
-      mean_z[static_cast<size_t>(t)] *= inv;
-      mean_mu[static_cast<size_t>(t)] *= inv;
+  for (Int type_idx = 0; type_idx < k_max_types; ++type_idx) {
+    if (count_by_type[static_cast<size_t>(type_idx)] > 0) {
+      const Real inv = 1.0 / static_cast<Real>(count_by_type[static_cast<size_t>(type_idx)]);
+      mean_z[static_cast<size_t>(type_idx)] *= inv;
+      mean_mu[static_cast<size_t>(type_idx)] *= inv;
     }
   }
 

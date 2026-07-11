@@ -167,18 +167,14 @@ def prepare_output_file(path: str | Path) -> Path:
     return validate_output_path(candidate)
 
 
-def _validated_output_path(path: str | Path) -> Path:
-    """Return a cwd-bound output path after full validation (S8707 sink guard)."""
-    candidate = validate_path_syntax(path)
-    candidate = _ensure_output_within_cwd(candidate)
-    prepared = prepare_output_file(candidate)
-    return validate_output_path(prepared)
-
-
 def write_text_file(path: str | Path, text: str) -> None:
     """Write text to a validated output path (must resolve under cwd)."""
-    out = _validated_output_path(path)
-    with out.open("w", encoding="utf-8") as handle:
+    candidate = validate_path_syntax(path)
+    candidate = _ensure_output_within_cwd(candidate)
+    candidate = prepare_output_file(candidate)
+    # Re-validate immediately before filesystem access (pythonsecurity:S8707).
+    safe_path = validate_output_path(candidate)
+    with safe_path.open("w", encoding="utf-8") as handle:
         handle.write(text)
 
 

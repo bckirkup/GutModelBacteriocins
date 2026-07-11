@@ -2,8 +2,12 @@
 
 **Project:** [bckirkup_GutModelBacteriocins](https://sonarcloud.io/project/overview?id=bckirkup_GutModelBacteriocins)
 
-**Status (Jun 2026):** Phases 1–4 cleared ~200 findings (bugs, vulns, mechanical, structural).
-**Remaining after this PR:** target **0 open issues** — 2 security fixes + 83 smells suppressed.
+**Status (Jul 2026):** 88 open issues on SonarCloud automatic analysis (multicriteria
+suppressions in `sonar-project.properties` apply to scanner runs; SonarCloud automatic
+analysis may still surface suppressed rules until re-scan or UI false-positive marking).
+
+**Remediation PR (`cursor/sonar-debt-cleanup-9b40`):** fixes blocking BUG/VULN,
+~40 mechanical smells in code, and extends suppressions for accepted complexity debt.
 
 ## Policy
 
@@ -11,8 +15,7 @@
 |----------|--------|
 | **BUG** | Fix immediately — blocks merge |
 | **VULNERABILITY** | Fix immediately — blocks merge |
-| **CODE_SMELL** | Accepted technical debt — suppressed via `sonar-project.properties` |
-| **New smells on changed lines** | Fix opportunistically when touching the file |
+| **New smells on changed lines** | Fix opportunistically when touching the file (S1238 const-ref, S5827 auto, S5566 ranges) |
 
 The quality gate should pass on **reliability + security** only. Maintainability smells in
 diffusion kernels, GPU headers, and legacy Fix modules are not worth batch-refactoring for

@@ -151,7 +151,7 @@ def _maybe_validate(
         golden_path=Path(golden) if golden else None,
         fish_golden_path=Path(fish_golden) if fish_golden else None,
         check_targets=settings.validate.check_targets,
-        check_fish_targets=settings.validate.check_fish_targets,
+        enforce_fish_targets=settings.validate.check_fish_targets,
     )
     return [str(failure) for failure in failures]
 

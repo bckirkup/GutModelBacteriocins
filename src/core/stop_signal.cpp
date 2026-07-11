@@ -10,7 +10,8 @@ namespace gutibm {
 
 namespace {
 
-volatile std::sig_atomic_t g_stop_requested = 0;
+// Signal handlers require a mutable file-scope flag (POSIX sig_atomic_t).
+volatile std::sig_atomic_t g_stop_requested = 0;  // NOSONAR cpp:S5421
 
 void on_stop_signal(int /*sig*/) { g_stop_requested = 1; }
 

@@ -80,9 +80,14 @@ PeriodicPcrCoeffs build_periodic_coeffs(int n, double alpha) {
 }
 
 bool line_lengths_supported(const Domain& domain) {
+#ifdef GUTIBM_CUDA
   const int max_line = gpu::diffusion_max_line_length();
   return domain.nx() <= max_line && domain.ny() <= max_line
       && (domain.nz() - 1) <= max_line;
+#else
+  (void)domain;
+  return false;
+#endif
 }
 
 }  // namespace

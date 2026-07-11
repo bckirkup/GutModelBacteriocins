@@ -214,7 +214,7 @@ int num_coefficients(int order) {
 int coeff_index(int ox, int oy, int oz, int order) {
   int result = 0;
   bool found = false;
-  for_each_multi_index(order, [&result, ox, oy, oz, &found, order](int ix, int iy, int iz, int idx) {
+  for_each_multi_index(order, [&result, ox, oy, oz, &found](int ix, int iy, int iz, int idx) {
     if (found) return;
     if (ix == ox && iy == oy && iz == oz) {
       result = idx;
@@ -227,7 +227,7 @@ int coeff_index(int ox, int oy, int oz, int order) {
 void multi_index(int idx, int order, int& ox, int& oy, int& oz) {
   int cursor = 0;
   bool found = false;
-  for_each_multi_index(order, [&ox, &oy, &oz, &cursor, &found, order, idx](int ix, int iy, int iz, int /*coeff_idx*/) {
+  for_each_multi_index(order, [&ox, &oy, &oz, &cursor, &found, idx](int ix, int iy, int iz, int /*coeff_idx*/) {
     if (found) return;
     if (cursor == idx) {
       ox = ix;
@@ -268,7 +268,7 @@ void add_particle(std::vector<Real>& moments,
                    position[1] - center[1],
                    position[2] - center[2]};
 
-  for_each_multi_index(order, [&moments, order, charge, dr](int ix, int iy, int iz, int idx) {
+  for_each_multi_index(order, [&moments, charge, dr](int ix, int iy, int iz, int idx) {
     moments[idx] += dr_monomial(charge, ix, iy, iz, dr);
   });
 }
@@ -410,7 +410,7 @@ Real evaluate_local(const std::vector<Real>& local,
                    target[2] - center[2]};
 
   Real sum = 0.0;
-  fmm_detail::for_each_multi_index(order, [&sum, order, &local, dr](int ix, int iy, int iz, int idx) {
+  fmm_detail::for_each_multi_index(order, [&sum, &local, dr](int ix, int iy, int iz, int idx) {
     sum += fmm_detail::dr_monomial(local[idx], ix, iy, iz, dr);
   });
   return sum;

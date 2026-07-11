@@ -29,7 +29,7 @@ static std::vector<Real> chemical_fingerprints(const Simulation& sim) {
   const auto& chem = sim.chemical_field();
   std::vector<Real> fingerprints;
   fingerprints.reserve(static_cast<size_t>(chem.num_species()));
-  const Real cells = static_cast<Real>(chem.ncells());
+  const auto cells = static_cast<Real>(chem.ncells());
   for (const auto& species : chem.conc_data()) {
     Real fp = 0.0;
     for (Int cell = 0; cell < chem.ncells(); ++cell) {
