@@ -75,9 +75,9 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
       i_acetate >= 0 ? chem_gpu.reac_device(i_acetate) : nullptr,
       i_mucin >= 0 ? chem_gpu.reac_device(i_mucin) : nullptr,
       i_mucin >= 0 ? chem_gpu.conc_device(i_mucin) : nullptr,
-      nullptr);
+      gpu_compute_stream());
 
-  cudaDeviceSynchronize();
+  gpu_sync_compute();
   gpu_check_error("gpu_apply_vbf_coupling");
   return true;
 #endif

@@ -2,6 +2,7 @@
 #include "chemical_field.h"
 #include "diffusion_gpu.h"
 #include "domain.h"
+#include "chemical_field_gpu.h"
 #include "dispatch.h"
 #include "gpu_kernels.h"
 #include "device_memory.h"
@@ -107,9 +108,9 @@ bool ChemicalFieldGpu::apply_reactions(double dt, const Domain& domain) {
     gpu::launch_field_update_kernel(
         d_conc_[static_cast<size_t>(s)].data(),
         d_reac_[static_cast<size_t>(s)].data(),
-        ncells_, 1, dt, nullptr);
+        ncells_, 1, dt, gpu_compute_stream());
   }
-  cudaDeviceSynchronize();
+  gpu_sync_compute();
   gpu_check_error("field_update_kernel");
   return true;
 #endif
@@ -136,7 +137,7 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   }
 
   if (applied) {
-    cudaDeviceSynchronize();
+    gpu_sync_compute();
     gpu_check_error("ChemicalFieldGpu::apply_diffusion");
   }
   return applied;
@@ -160,13 +161,13 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
     const ChemicalSpec& spec = field.spec(s);
     double* d_conc = d_conc_[static_cast<size_t>(s)].data();
     gpu::launch_set_epithelial_boundary(
-        d_conc, nx, ny, spec.boundary_conc, nullptr);
+        d_conc, nx, ny, spec.boundary_conc, gpu_compute_stream());
     if (!spec.diffusion_enabled && nz >= 2) {
-      gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, nullptr);
+      gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, gpu_compute_stream());
     }
   }
 
-  cudaDeviceSynchronize();
+  gpu_sync_compute();
   gpu_check_error("ChemicalFieldGpu::apply_boundaries");
   return true;
 #endif

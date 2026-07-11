@@ -103,13 +103,13 @@ bool apply_species_diffusion_on_device(const Domain& domain,
   double diffusion_boundary = spec.boundary_conc;
 
   gpu::launch_set_epithelial_boundary(
-      d_conc, nx, ny, spec.boundary_conc, nullptr);
+      d_conc, nx, ny, spec.boundary_conc, gpu_compute_stream());
 
   if (preserve_gradient) {
-    gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, nullptr);
+    gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, gpu_compute_stream());
     gpu::launch_shift_z_gradient(
         d_conc, nx, ny, nz, domain.dx(), spec.initial_conc,
-        spec.z_gradient_lambda, spec.boundary_conc, -1.0, nullptr);
+        spec.z_gradient_lambda, spec.boundary_conc, -1.0, gpu_compute_stream());
     diffusion_boundary = 0.0;
   }
 
@@ -123,24 +123,24 @@ bool apply_species_diffusion_on_device(const Domain& domain,
   gpu::launch_diffuse_x_periodic(
       d_conc, nx, ny, nz, alpha,
       x_coeffs.gamma, x_coeffs.corner, x_coeffs.denominator,
-      d_corr_x.data(), nullptr);
+      d_corr_x.data(), gpu_compute_stream());
   gpu::launch_diffuse_y_periodic(
       d_conc, nx, ny, nz, alpha,
       y_coeffs.gamma, y_coeffs.corner, y_coeffs.denominator,
-      d_corr_y.data(), nullptr);
+      d_corr_y.data(), gpu_compute_stream());
   gpu::launch_diffuse_z_bounded(
-      d_conc, nx, ny, nz, alpha, diffusion_boundary, nullptr);
+      d_conc, nx, ny, nz, alpha, diffusion_boundary, gpu_compute_stream());
 
   if (preserve_gradient) {
     gpu::launch_shift_z_gradient(
         d_conc, nx, ny, nz, domain.dx(), spec.initial_conc,
-        spec.z_gradient_lambda, spec.boundary_conc, 1.0, nullptr);
-    gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, nullptr);
+        spec.z_gradient_lambda, spec.boundary_conc, 1.0, gpu_compute_stream());
+    gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, gpu_compute_stream());
   }
 
-  gpu::launch_clamp_nonneg(d_conc, ncells, nullptr);
+  gpu::launch_clamp_nonneg(d_conc, ncells, gpu_compute_stream());
   gpu::launch_set_epithelial_boundary(
-      d_conc, nx, ny, spec.boundary_conc, nullptr);
+      d_conc, nx, ny, spec.boundary_conc, gpu_compute_stream());
   return true;
 }
 #endif
@@ -200,7 +200,7 @@ bool gpu_apply_species_diffusion(const Domain& domain,
     return false;
   }
 
-  cudaDeviceSynchronize();
+  gpu_sync_compute();
   gpu_check_error("gpu_apply_species_diffusion");
 
   d_conc.download(concentration.data(), static_cast<size_t>(ncells));

@@ -51,9 +51,9 @@ bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents,
       oxygen.q_consumption,
       oxygen.q_maintenance,
       1.0 / cell_vol,
-      nullptr);
+      gpu_compute_stream());
 
-  cudaDeviceSynchronize();
+  gpu_sync_compute();
   gpu_check_error("gpu_solve_nutrient_depletion");
   return true;
 #endif

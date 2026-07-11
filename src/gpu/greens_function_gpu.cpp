@@ -111,9 +111,9 @@ bool gpu_superpose_to_grid(
 
   gpu::launch_superpose_kernel(
       d_sx.data(), d_sy.data(), d_sz.data(), d_params.data(), d_grid.data(),
-      dom, adv_p, static_cast<int>(sources.size()), span, nullptr);
+      dom, adv_p, static_cast<int>(sources.size()), span, gpu_compute_stream());
 
-  cudaDeviceSynchronize();
+  gpu_sync_compute();
   gpu_check_error("superpose_kernel");
 
   d_grid.download(grid_conc);

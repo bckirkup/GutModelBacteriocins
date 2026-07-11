@@ -104,7 +104,9 @@ CTest targets (2-rank MPI tests included; no `mpirun -np 4+` gate yet):
 | `gpu_diffusion` | `test_gpu_diffusion.cpp` | GPU vs CPU nutrient diffusion parity (max diff < 1e-10) |
 | `gpu_chemical_field` | `test_gpu_chemical_field.cpp` | ChemicalFieldGpu facade vs CPU (diffusion + boundaries) |
 | `gpu_feature_combinations` | `test_gpu_feature_combinations.cpp` | Spec 8 combo scenarios with GPU enabled |
+| `gpu_production_path` | `test_gpu_production_path.cpp` | FMM hybrid + production-scale domain on GPU |
 | `gpu_smoke` | `test_gpu_smoke.cpp` | Short CPU vs GPU simulation fingerprint |
+| `mpi_gpu_multi_rank` | `test_mpi_gpu_multi_rank.cpp` | 2-rank MPI + GPU chemistry checksum parity |
 
 ## Run Simulation
 
