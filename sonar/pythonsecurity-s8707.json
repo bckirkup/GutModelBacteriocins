@@ -10,6 +10,14 @@
         "args": [1]
       },
       {
+        "methodId": "gut_ibm_tools.path_utils._sanitize_path_segment",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils._trusted_output_path",
+        "args": [1]
+      },
+      {
         "methodId": "gut_ibm_tools.path_utils.prepare_output_file",
         "args": [1]
       },

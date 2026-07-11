@@ -33,7 +33,9 @@ validation.
 
 1. **Code** (`python/gut_ibm_tools/path_utils.py`):
    - Run full parent/output validation **before** any `mkdir`
-   - Use `open()` with a re-validated path instead of `Path.write_text`
+   - `_trusted_output_path()` rebuilds cwd-relative paths from regex-sanitized
+     segments (breaks S8707 taint from CLI args on SonarCloud automatic analysis)
+   - Use `open()` on the trusted path instead of passing user input through
    - `_mkdir_validated_parents()` creates only pre-checked directory segments
 
 2. **SAST config** (`sonar/pythonsecurity-s8707.json` + `sonar-project.properties`):

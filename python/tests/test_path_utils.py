@@ -72,6 +72,12 @@ def test_write_text_file_rejects_parent_traversal(tmp_path: Path) -> None:
         write_text_file(tmp_path / ".." / "escape.txt", "data")
 
 
+def test_write_text_file_rejects_unsafe_segment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(PathValidationError, match="unsafe path segment"):
+        write_text_file("unsafe dir/out.txt", "data")
+
+
 def test_write_text_file_writes_validated_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     target = tmp_path / "out" / "result.txt"

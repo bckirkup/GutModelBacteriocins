@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import stat
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,9 @@ from typing import Any
 
 class PathValidationError(ValueError):
     """Raised when a constructed path fails safety checks."""
+
+
+_SAFE_PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def _path_has_parent_traversal(path: Path) -> bool:
@@ -123,13 +127,39 @@ def validate_output_path(path: str | Path) -> Path:
 def _ensure_output_within_cwd(candidate: Path) -> Path:
     """Reject output paths that resolve outside the current working directory."""
     cwd = Path.cwd().resolve()
-    try:
-        candidate.resolve().relative_to(cwd)
-    except ValueError as exc:
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(cwd):
         raise PathValidationError(
             f"output path must resolve under the working directory: {candidate}"
-        ) from exc
+        )
     return candidate
+
+
+def _sanitize_path_segment(segment: str) -> str:
+    """Allowlist a single path component to break S8707 taint from CLI arguments."""
+    if segment in {".", ".."}:
+        raise PathValidationError("path contains parent-directory traversal ('..')")
+    if not _SAFE_PATH_SEGMENT_RE.fullmatch(segment):
+        raise PathValidationError(f"unsafe path segment: {segment!r}")
+    return segment
+
+
+def _trusted_output_path(candidate: Path) -> Path:
+    """Rebuild an output path from cwd + sanitized segments (pythonsecurity:S8707)."""
+    cwd = Path.cwd().resolve()
+    resolved = candidate.resolve()
+    if not resolved.is_relative_to(cwd):
+        raise PathValidationError(
+            f"output path must resolve under the working directory: {candidate}"
+        )
+
+    trusted = cwd
+    for segment in resolved.relative_to(cwd).parts:
+        trusted = trusted / _sanitize_path_segment(segment)
+
+    if trusted.resolve() != resolved:
+        raise PathValidationError(f"output path failed trust rebuild: {candidate}")
+    return trusted
 
 
 def _mkdir_validated_parents(parent: Path) -> None:
@@ -172,9 +202,9 @@ def write_text_file(path: str | Path, text: str) -> None:
     candidate = validate_path_syntax(path)
     candidate = _ensure_output_within_cwd(candidate)
     candidate = prepare_output_file(candidate)
-    # Re-validate immediately before filesystem access (pythonsecurity:S8707).
-    safe_path = validate_output_path(candidate)
-    with safe_path.open("w", encoding="utf-8") as handle:
+    trusted_path = _trusted_output_path(candidate)
+    _validate_output_parent(trusted_path)
+    with trusted_path.open("w", encoding="utf-8") as handle:
         handle.write(text)
 
 
