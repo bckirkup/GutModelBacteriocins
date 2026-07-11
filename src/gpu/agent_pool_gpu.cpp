@@ -149,7 +149,9 @@ bool AgentPoolGpu::run_metabolism(
       cfg.km_iron_primary, cfg.km_iron_iroN, cfg.km_iron_iutA, cfg.km_iron_fiu,
       cfg.maintenance_rate, cfg.metE_penalty, cfg.metE_acetate_max_factor,
       cfg.metE_acetate_km, cfg.eut_max_penalty, cfg.eut_km,
-      cfg.yield_carbon, cfg.yield_iron, cfg.yield_b12, gpu_compute_stream());
+      cfg.yield_carbon, cfg.yield_iron, cfg.yield_b12,
+      buffers.o2_enabled, buffers.o2_boost_max, buffers.o2_Km,
+      buffers.d_conc_oxygen, gpu_compute_stream());
 
   gpu_sync_compute();
   gpu_check_error("metabolism_kernel");

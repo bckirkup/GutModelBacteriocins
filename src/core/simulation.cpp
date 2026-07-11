@@ -11,6 +11,7 @@
 #include "plasmid.h"
 #include "dispatch.h"
 #include "chemistry_pipeline.h"
+#include "gpu_profile.h"
 #ifdef GUTIBM_CUDA
 #include "device.h"
 #include "gpu_kernels.h"
@@ -536,6 +537,10 @@ void Simulation::print_step_profile() const {
             << "  physics=" << step_profile_.physics_s * inv << "\n"
             << "  mpi_migrate=" << step_profile_.mpi_migrate_s * inv << "\n"
             << "  cleanup=" << step_profile_.cleanup_s * inv << "\n"
+            << "  gpu_h2d=" << step_profile_.gpu_h2d_s * inv << "\n"
+            << "  gpu_d2h=" << step_profile_.gpu_d2h_s * inv << "\n"
+            << "  mpi_reaction_reduce=" << step_profile_.mpi_reaction_reduce_s * inv << "\n"
+            << "  hdf5=" << step_profile_.hdf5_s * inv << "\n"
             << "  total=" << total << "\n"
             << "PROFILE_CSV steps=" << n
             << " ghost_s=" << step_profile_.ghost_exchange_s * inv
@@ -545,6 +550,10 @@ void Simulation::print_step_profile() const {
             << " physics_s=" << step_profile_.physics_s * inv
             << " mpi_s=" << step_profile_.mpi_migrate_s * inv
             << " cleanup_s=" << step_profile_.cleanup_s * inv
+            << " gpu_h2d_s=" << step_profile_.gpu_h2d_s * inv
+            << " gpu_d2h_s=" << step_profile_.gpu_d2h_s * inv
+            << " mpi_reaction_reduce_s=" << step_profile_.mpi_reaction_reduce_s * inv
+            << " hdf5_s=" << step_profile_.hdf5_s * inv
             << " total_s=" << total
             << " agents=" << mpi_stats_.global_agent_count
             << " ranks=" << domain_.nprocs()
@@ -591,7 +600,12 @@ void Simulation::run() {
 
     // HDF5 cadence is controlled solely by hdf5.schedule.* (per-layer intervals).
     if (hdf5_.is_enabled()) {
+      const auto hdf5_t0 = std::chrono::steady_clock::now();
       hdf5_.write_step(*this, clock_.step_count, clock_.time, last_dt);
+      if (cfg_.profile_steps) {
+        const auto hdf5_t1 = std::chrono::steady_clock::now();
+        step_profile_.hdf5_s += std::chrono::duration<double>(hdf5_t1 - hdf5_t0).count();
+      }
     }
 
     // Console progress and in-memory lineage snapshots use output_interval (seconds).
@@ -664,6 +678,11 @@ void Simulation::run() {
 }
 
 void Simulation::step(Real dt) {
+  bacteriocin_fields_current_ = false;
+  if (cfg_.profile_steps) {
+    gpu_transfer_profile_set_enabled(gpu_active_);
+  }
+
   StepProfiler profiler(cfg_.profile_steps);
   profiler.start();
 
@@ -750,6 +769,10 @@ void Simulation::step(Real dt) {
 
   if (cfg_.profile_steps) {
     step_profile_.step_count++;
+    const GpuTransferProfile xfer = gpu_transfer_profile_snapshot();
+    step_profile_.gpu_h2d_s += xfer.h2d_s;
+    step_profile_.gpu_d2h_s += xfer.d2h_s;
+    gpu_transfer_profile_reset();
   }
 
   clock_.time += dt;
@@ -757,16 +780,15 @@ void Simulation::step(Real dt) {
 }
 
 void Simulation::update_bacteriocin_fields() {
+  if (bacteriocin_fields_current_) return;
+
   prune_toxin_bursts(clock_.time);
 
-  // QSSA: compute steady-state per-receptor toxin fields via Green's functions
+  ChemicalFieldGpu* chem_gpu_ptr = gpu_active_ ? &chem_gpu_ : nullptr;
   qssa_.solve_all_bacteriocin_fields(agents_, toxin_bursts_, clock_.time,
-                                      cfg_.chem_env.protease, advection_, chem_);
-  if (gpu_active_) {
-    // QSSA updates concentrations only; preserve metabolism reactions already
-    // accumulated on the device during the biology module.
-    chem_gpu_.sync_concentrations_to_device(chem_);
-  }
+                                      cfg_.chem_env.protease, advection_, chem_,
+                                      chem_gpu_ptr);
+  bacteriocin_fields_current_ = true;
 }
 
 void Simulation::module_biology(Real dt) {
@@ -796,6 +818,7 @@ void Simulation::module_chemistry(Real dt) {
       .acetate = cfg_.chem_env.acetate,
       .mucin = cfg_.chem_env.mucin,
       .num_agents = static_cast<Int>(agents_.size()),
+      .step_profile = cfg_.profile_steps ? &step_profile_ : nullptr,
   };
   (void)run_chemistry_pipeline(pipeline, dt);
 }

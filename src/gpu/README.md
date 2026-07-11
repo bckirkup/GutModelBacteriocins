@@ -10,10 +10,12 @@ CUDA GPU acceleration for GutIBM (issue #33). OpenMP remains the CPU shared-memo
 | `field_update_kernel.cu` | Reaction integration, boundaries, nutrient depletion, grid coupling |
 | `agent_update_kernel.cu` | Metabolism Monod growth + biomass update |
 | `chemistry_kernel.cu` | Agent O₂ respiration + VBF nutrient coupling |
-| `spatial_hash_kernel.cu` | Parallel cell-key assignment (reserved; host hash used in production path) |
+| `spatial_hash_kernel.cu` | Parallel cell-key assignment + CSR neighbor lists |
 | `diffusion_kernel.cu` | PCR tridiagonal solver for backward-Euler directional diffusion (x/y periodic, z bounded) |
+| `fmm_far_kernel.cu` | FMM local-expansion far-field grid deposit (when M2L locals ready) |
+| `receptor_kernel.cu` | Receptor competitive-binding kill probability on device |
 
-Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `greens_function_gpu.cpp`, `chemical_field_gpu.cpp`, `agent_pool_gpu.cpp`, `spatial_hash_gpu.cpp`, `qssa_gpu.cpp`, `vbf_gpu.cpp`, `diffusion_gpu.cpp`.
+Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `greens_function_gpu.cpp`, `chemical_field_gpu.cpp`, `agent_pool_gpu.cpp`, `spatial_hash_gpu.cpp`, `fmm_gpu.cpp`, `receptor_gpu.cpp`, `qssa_gpu.cpp`, `vbf_gpu.cpp`, `diffusion_gpu.cpp`, `gpu_profile.cpp`.
 
 ### Production chemistry path (Spec 9 PR5)
 
@@ -25,9 +27,11 @@ Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `gree
 4. Reaction integration, implicit diffusion, and boundaries on device
 5. One concentration sync back to host (or CPU fallback)
 
-A dedicated `cudaStream_t` from `gpu_compute_stream()` serializes chemistry kernels without per-kernel device-wide syncs. Barnes-Hut FMM (`use_fmm=true`) still evaluates the bacteriocin far-field on CPU while the rest of the chemistry stack runs on GPU.
+A dedicated `cudaStream_t` from `gpu_compute_stream()` serializes chemistry kernels without per-kernel device-wide syncs. QSSA near-field superposition runs on GPU via `gpu_superpose_to_device`; FMM far-field uses `fmm_far_kernel.cu` when dense M2L locals are ready (trees with >256 nodes fall back to CPU `traverse_far`).
 
-Parity and production smoke: `test_gpu_smoke`, `test_gpu_feature_combinations`, `test_gpu_production_path`, `test_mpi_gpu_multi_rank`, `scripts/compare_gpu_parity.sh`.
+`StepProfile` records `gpu_h2d_s`, `gpu_d2h_s`, `mpi_reaction_reduce_s`, and `hdf5_s` when `profile_steps` is enabled. Use `scripts/run_gpu_scaling_benchmark.sh` for CPU vs GPU sweeps. Optional CUDA-aware MPI reaction reduce: `GUTIBM_CUDA_AWARE_MPI=1`.
+
+Parity and production smoke: `test_gpu_smoke`, `test_qssa_gpu_parity`, `test_gpu_scaling_benchmark`, `test_spatial_hash_gpu_csr`, `test_gpu_feature_combinations`, `test_gpu_production_path`, `test_mpi_gpu_multi_rank`, `scripts/compare_gpu_parity.sh`.
 
 ## Build
 
@@ -62,10 +66,11 @@ Simulation::step()
   ├─ GPU: sync agents/fields to device after MPI ghost exchange
   ├─ GPU: grid coupling (async stream)
   ├─ CPU: spatial hash rebuild (host)
-  ├─ GPU: FixMetabolism compute (Monod + biomass) when fur disabled
-  ├─ CPU: QSSA bacteriocin (GF brute-force on GPU; FMM far-field on CPU)
+  ├─ GPU: FixMetabolism compute (Monod + biomass + O₂ boost; Fur pre-pass on host)
+  ├─ GPU: QSSA bacteriocin near-field (`gpu_superpose_to_device`); FMM far-field GPU when locals ready
   ├─ GPU: chemistry_pipeline (O₂, VBF, reactions, diffusion)
-  ├─ CPU: mechanics, conjugation, mutation, receptor RNG
+  ├─ GPU: receptor kill-prob kernel (Bernoulli kills on host)
+  ├─ CPU: mechanics (spatial_hash_gpu CSR built for future GPU forces)
   └─ GPU: sync agents to device before MPI migration
 ```
 

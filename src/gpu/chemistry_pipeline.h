@@ -7,6 +7,8 @@
 
 namespace gutibm {
 
+struct StepProfile;
+
 class AgentPool;
 
 class AgentPoolGpu;
@@ -29,6 +31,7 @@ struct ChemistryPipelineInput {
   const AcetateConfig& acetate;
   const MucinConfig& mucin;
   Int num_agents = 0;
+  StepProfile* step_profile = nullptr;
 };
 
 struct ChemistryPipelineResult {

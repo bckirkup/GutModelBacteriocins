@@ -209,6 +209,7 @@ class Simulation {
 
   std::vector<ToxinBurstSource> toxin_bursts_;
   StepEvents step_events_;
+  bool bacteriocin_fields_current_ = false;
 };
 
 }  // namespace gutibm

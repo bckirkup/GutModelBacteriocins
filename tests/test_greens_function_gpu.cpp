@@ -85,7 +85,8 @@ int main() {
   gpu_set_config(gcfg);
   gpu_init_for_rank(0, 1);
 
-  if (!gpu_superpose_to_grid(domain, adv, sources, params, gpu_grid, cutoff)) {
+  std::vector<Real> strengths(sources.size(), 1.0);
+  if (!gpu_superpose_to_grid(domain, adv, sources, params, strengths, gpu_grid, cutoff)) {
     std::cerr << "  test_gpu_gf_parity: FAILED (GPU kernel returned false)\n";
     return 1;
   }

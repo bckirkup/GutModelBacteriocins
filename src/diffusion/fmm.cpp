@@ -204,6 +204,13 @@ void FMM::compute_local_expansions(Real theta,
     std::ranges::fill(node.local, 0.0);
 
   // M2L at every node, then L2L from root downward.
+  // Dense M2L is O(N_nodes^2); fall back to per-target traverse_far for large trees.
+  static constexpr int kDenseM2LNodeLimit = 256;
+  if (static_cast<int>(nodes_.size()) > kDenseM2LNodeLimit) {
+    locals_ready_ = false;
+    return;
+  }
+
   for (auto i = 0; i < static_cast<int>(nodes_.size()); ++i)
     m2l_at_node(i, theta, gf, avg_params);
 

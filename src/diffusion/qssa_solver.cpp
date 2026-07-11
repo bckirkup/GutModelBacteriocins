@@ -5,9 +5,13 @@
 #include "qssa_solver.h"
 #include "species_names.h"
 #include "fmm.h"
+#include "fmm_gpu.h"
 #include "domain.h"
 #include "advection.h"
 #include "chemical_field.h"
+#include "chemical_field_gpu.h"
+#include "greens_function_gpu.h"
+#include "dispatch.h"
 #include "agent.h"
 #include <cmath>
 #include <numbers>
@@ -156,15 +160,24 @@ void accumulate_far_field(const FMM& fmm,
                           const GreensFunction& gf,
                           const GreensFunctionParams& avg_params,
                           const FarFieldGridContext& grid,
-                          std::vector<Real>& toxin_conc) {
+                          std::vector<Real>& toxin_conc,
+                          Real toxin_cutoff,
+                          bool near_field_on_device) {
   for (Int iz = 0; iz < grid.nz; ++iz) {
     for (Int iy = 0; iy < grid.ny; ++iy) {
       for (Int ix = 0; ix < grid.nx; ++ix) {
         const Vec3 tgt = grid.domain.cell_center(ix, iy, iz);
         const Int idx = grid.domain.cell_index(ix, iy, iz);
-        const Real total = fmm.evaluate_total_field(tgt, grid.fmm_theta, gf, avg_params);
-        const Real far = std::max(0.0, total - toxin_conc[idx]);
-        toxin_conc[idx] += far;
+        Real contribution = 0.0;
+        if (near_field_on_device) {
+          contribution = fmm.evaluate_far_field(
+              tgt, grid.fmm_theta, toxin_cutoff, gf, avg_params);
+        } else {
+          const Real total = fmm.evaluate_total_field(
+              tgt, grid.fmm_theta, gf, avg_params);
+          contribution = std::max(0.0, total - toxin_conc[idx]);
+        }
+        toxin_conc[idx] += contribution;
       }
     }
   }
@@ -183,6 +196,52 @@ void deposit_to_chemical_field(ChemicalField& chem,
   for (size_t c = 0; c < concentrations.size(); ++c) {
     chem.conc(toxin_species_idx, static_cast<Int>(c)) = concentrations[c];
   }
+}
+
+bool try_gpu_near_field(const Domain& domain,
+                        const AdvectionField& adv,
+                        const std::vector<Vec3>& sources,
+                        const std::vector<GreensFunctionParams>& params,
+                        const std::vector<Real>& strength_factors,
+                        Real cutoff_radius,
+                        ChemicalField& chem,
+                        Int toxin_species_idx,
+                        ChemicalFieldGpu* chem_gpu,
+                        bool defer_host_sync) {
+  if (chem_gpu == nullptr || !chem_gpu->active()) return false;
+  double* d_conc = chem_gpu->conc_device(toxin_species_idx);
+  if (d_conc == nullptr) return false;
+  if (!gpu_superpose_to_device(domain, adv, sources, params, strength_factors,
+                               d_conc, cutoff_radius)) {
+    return false;
+  }
+  if (!defer_host_sync) {
+    chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
+  }
+  return true;
+}
+
+bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
+                                      const GreensFunction& gf,
+                                      const AdvectionField& adv,
+                                      const std::vector<Vec3>& sources,
+                                      const std::vector<GreensFunctionParams>& params,
+                                      const std::vector<Real>& strength_factors,
+                                      Real cutoff_radius,
+                                      const NearFieldGridContext& grid,
+                                      std::vector<Real>& toxin_conc,
+                                      ChemicalField& chem,
+                                      Int toxin_species_idx,
+                                      ChemicalFieldGpu* chem_gpu,
+                                      bool defer_host_sync) {
+  if (try_gpu_near_field(domain, adv, sources, params, strength_factors,
+                         cutoff_radius, chem, toxin_species_idx, chem_gpu,
+                         defer_host_sync)) {
+    return true;
+  }
+  accumulate_near_field(domain, gf, sources, params, strength_factors,
+                        grid, toxin_conc);
+  return false;
 }
 
 Real microcin_steady_decay_factor(Real decay_rate,
@@ -289,7 +348,8 @@ void QSSASolver::solve_bacteriocin_field(
     const AdvectionField& adv,
     ChemicalField& chem,
     Int toxin_species_idx,
-    ReceptorType target) const {
+    ReceptorType target,
+    ChemicalFieldGpu* chem_gpu) const {
 
   std::vector<Vec3> all_sources;
   std::vector<GreensFunctionParams> all_params;
@@ -313,16 +373,20 @@ void QSSASolver::solve_bacteriocin_field(
   }
 
   if (cfg_.use_fmm) {
-    solve_bacteriocin_field_fmm(sources, params, strength_factors,
-                                chem, toxin_species_idx);
+    solve_bacteriocin_field_fmm(sources, params, strength_factors, adv,
+                                chem, toxin_species_idx, chem_gpu);
     return;
   }
 
   std::vector<Real> toxin_conc(domain_->ncells(), 0.0);
   const NearFieldGridContext grid = make_near_field_grid(*domain_, cfg_.toxin_cutoff);
-  accumulate_near_field(*domain_, gf_, sources, params, strength_factors,
-                        grid, toxin_conc);
-  deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
+  const bool defer_sync = chem_gpu != nullptr && chem_gpu->active();
+  if (!accumulate_near_field_gpu_or_cpu(*domain_, gf_, adv, sources, params,
+                                      strength_factors, cfg_.toxin_cutoff, grid,
+                                      toxin_conc, chem, toxin_species_idx,
+                                      chem_gpu, defer_sync)) {
+    deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
+  }
 }
 
 void QSSASolver::solve_all_bacteriocin_fields(
@@ -331,13 +395,27 @@ void QSSASolver::solve_all_bacteriocin_fields(
     Real current_time,
     const ProteaseConfig& protease,
     const AdvectionField& adv,
-    ChemicalField& chem) const {
+    ChemicalField& chem,
+    ChemicalFieldGpu* chem_gpu) const {
+  std::vector<Int> solved_indices;
+  solved_indices.reserve(species::BACTERIOCIN_RECEPTOR_TARGETS.size());
+
   for (ReceptorType target : species::BACTERIOCIN_RECEPTOR_TARGETS) {
     const char* name = species::bacteriocin_species_for(target);
     if (name == nullptr) continue;
     Int idx = chem.find(name);
     if (idx < 0) continue;
-    solve_bacteriocin_field(agents, bursts, current_time, protease, adv, chem, idx, target);
+    solve_bacteriocin_field(agents, bursts, current_time, protease, adv, chem,
+                              idx, target, chem_gpu);
+    if (chem_gpu != nullptr && chem_gpu->active()) {
+      solved_indices.push_back(idx);
+    }
+  }
+
+  if (chem_gpu != nullptr && chem_gpu->active()) {
+    for (Int spec : solved_indices) {
+      chem_gpu->sync_species_concentrations_to_host(chem, spec);
+    }
   }
 }
 
@@ -345,8 +423,10 @@ void QSSASolver::solve_bacteriocin_field_fmm(
     const std::vector<Vec3>& sources,
     const std::vector<GreensFunctionParams>& params,
     const std::vector<Real>& strength_factors,
+    const AdvectionField& adv,
     ChemicalField& chem,
-    Int toxin_species_idx) const {
+    Int toxin_species_idx,
+    ChemicalFieldGpu* chem_gpu) const {
 
   std::vector<Real> strengths;
   const GreensFunctionParams avg_params =
@@ -361,10 +441,28 @@ void QSSASolver::solve_bacteriocin_field_fmm(
   const FarFieldGridContext far_grid = make_far_field_grid(*domain_, cfg_.fmm_theta);
 
   std::vector<Real> toxin_conc(ncells, 0.0);
-  accumulate_near_field(*domain_, gf_, sources, params, strength_factors,
-                        near_grid, toxin_conc);
-  accumulate_far_field(fmm, gf_, avg_params, far_grid, toxin_conc);
+  const bool defer_sync = chem_gpu != nullptr && chem_gpu->active();
+  const bool near_on_gpu = accumulate_near_field_gpu_or_cpu(
+      *domain_, gf_, adv, sources, params, strength_factors, cfg_.toxin_cutoff,
+      near_grid, toxin_conc, chem, toxin_species_idx, chem_gpu, defer_sync);
+  if (near_on_gpu) {
+    chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
+    for (Int c = 0; c < ncells; ++c) {
+      toxin_conc[static_cast<size_t>(c)] = chem.conc(toxin_species_idx, c);
+    }
+  }
+  if (fmm.locals_ready()
+      && gpu_accumulate_far_field_local(
+          fmm, *domain_, cfg_.fmm_expansion_order, toxin_conc, toxin_conc)) {
+    // GPU far-field deposit complete.
+  } else {
+    accumulate_far_field(fmm, gf_, avg_params, far_grid, toxin_conc,
+                         cfg_.toxin_cutoff, false);
+  }
   deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
+  if (chem_gpu != nullptr && chem_gpu->active()) {
+    chem_gpu->sync_species_concentrations_to_device(chem, toxin_species_idx);
+  }
 }
 
 void QSSASolver::solve_nutrient_depletion(
