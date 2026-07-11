@@ -1,5 +1,6 @@
 #include "chemical_field_gpu.h"
 #include "chemical_field.h"
+#include "diffusion_gpu.h"
 #include "domain.h"
 #include "dispatch.h"
 #include "gpu_kernels.h"
@@ -114,6 +115,34 @@ bool ChemicalFieldGpu::apply_reactions(double dt, const Domain& domain) {
 #endif
 }
 
+bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
+                                       const ChemicalField& field,
+                                       Real dt) {
+#ifndef GUTIBM_CUDA
+  (void)domain;
+  (void)field;
+  (void)dt;
+  return false;
+#else
+  if (!active_) return false;
+  if (!gpu_diffusion_line_lengths_supported(domain)) return false;
+
+  bool applied = false;
+  for (Int s = 0; s < nspec_; ++s) {
+    if (gpu_apply_species_diffusion_device(
+            domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(), dt)) {
+      applied = true;
+    }
+  }
+
+  if (applied) {
+    cudaDeviceSynchronize();
+    gpu_check_error("ChemicalFieldGpu::apply_diffusion");
+  }
+  return applied;
+#endif
+}
+
 bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
                                         const ChemicalField& field) {
 #ifndef GUTIBM_CUDA
@@ -122,18 +151,23 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
   return false;
 #else
   if (!active_) return false;
+
+  const int nx = domain.nx();
+  const int ny = domain.ny();
+  const int nz = domain.nz();
+
   for (Int s = 0; s < nspec_; ++s) {
-    double bc = field.spec(s).boundary_conc;
-    double bc_host = bc;
-    DeviceBuffer<double> d_bc;
-    d_bc.upload(&bc_host, 1);
-    gpu::launch_apply_boundaries_kernel(
-        d_conc_[static_cast<size_t>(s)].data(),
-        domain.nx(), domain.ny(), domain.nz(), 1,
-        d_bc.data(), nullptr);
+    const ChemicalSpec& spec = field.spec(s);
+    double* d_conc = d_conc_[static_cast<size_t>(s)].data();
+    gpu::launch_set_epithelial_boundary(
+        d_conc, nx, ny, spec.boundary_conc, nullptr);
+    if (!spec.diffusion_enabled && nz >= 2) {
+      gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, nullptr);
+    }
   }
+
   cudaDeviceSynchronize();
-  gpu_check_error("apply_boundaries_kernel");
+  gpu_check_error("ChemicalFieldGpu::apply_boundaries");
   return true;
 #endif
 }

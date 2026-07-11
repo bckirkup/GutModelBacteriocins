@@ -79,7 +79,75 @@ PeriodicPcrCoeffs build_periodic_coeffs(int n, double alpha) {
   return out;
 }
 
-bool line_lengths_supported(const Domain& domain) {
+bool species_diffusion_eligible(const ChemicalSpec& spec, Real dt,
+                                const Domain& domain) {
+  return dt > 0.0 && domain.dx() > 0.0 && spec.diffusion_enabled
+      && spec.diff_coeff > 0.0 && spec.retardation > 0.0;
+}
+
+#ifdef GUTIBM_CUDA
+bool apply_species_diffusion_on_device(const Domain& domain,
+                                       const ChemicalSpec& spec,
+                                       double* d_conc,
+                                       Real dt) {
+  const int nx = domain.nx();
+  const int ny = domain.ny();
+  const int nz = domain.nz();
+  const int ncells = domain.ncells();
+  if (ncells <= 0 || d_conc == nullptr) return false;
+
+  const Real dx2 = domain.dx() * domain.dx();
+  const Real alpha = (spec.diff_coeff / spec.retardation) * dt / dx2;
+  const bool preserve_gradient =
+      spec.z_gradient_enabled && spec.z_gradient_lambda > 0.0;
+  double diffusion_boundary = spec.boundary_conc;
+
+  gpu::launch_set_epithelial_boundary(
+      d_conc, nx, ny, spec.boundary_conc, nullptr);
+
+  if (preserve_gradient) {
+    gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, nullptr);
+    gpu::launch_shift_z_gradient(
+        d_conc, nx, ny, nz, domain.dx(), spec.initial_conc,
+        spec.z_gradient_lambda, spec.boundary_conc, -1.0, nullptr);
+    diffusion_boundary = 0.0;
+  }
+
+  const PeriodicPcrCoeffs x_coeffs = build_periodic_coeffs(nx, alpha);
+  const PeriodicPcrCoeffs y_coeffs = build_periodic_coeffs(ny, alpha);
+  DeviceBuffer<double> d_corr_x;
+  DeviceBuffer<double> d_corr_y;
+  d_corr_x.upload(x_coeffs.correction);
+  d_corr_y.upload(y_coeffs.correction);
+
+  gpu::launch_diffuse_x_periodic(
+      d_conc, nx, ny, nz, alpha,
+      x_coeffs.gamma, x_coeffs.corner, x_coeffs.denominator,
+      d_corr_x.data(), nullptr);
+  gpu::launch_diffuse_y_periodic(
+      d_conc, nx, ny, nz, alpha,
+      y_coeffs.gamma, y_coeffs.corner, y_coeffs.denominator,
+      d_corr_y.data(), nullptr);
+  gpu::launch_diffuse_z_bounded(
+      d_conc, nx, ny, nz, alpha, diffusion_boundary, nullptr);
+
+  if (preserve_gradient) {
+    gpu::launch_shift_z_gradient(
+        d_conc, nx, ny, nz, domain.dx(), spec.initial_conc,
+        spec.z_gradient_lambda, spec.boundary_conc, 1.0, nullptr);
+    gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, nullptr);
+  }
+
+  gpu::launch_clamp_nonneg(d_conc, ncells, nullptr);
+  gpu::launch_set_epithelial_boundary(
+      d_conc, nx, ny, spec.boundary_conc, nullptr);
+  return true;
+}
+#endif
+
+}  // namespace
+
+bool gpu_diffusion_line_lengths_supported(const Domain& domain) {
 #ifdef GUTIBM_CUDA
   const int max_line = gpu::diffusion_max_line_length();
   return domain.nx() <= max_line && domain.ny() <= max_line
@@ -90,7 +158,23 @@ bool line_lengths_supported(const Domain& domain) {
 #endif
 }
 
-}  // namespace
+bool gpu_apply_species_diffusion_device(const Domain& domain,
+                                        const ChemicalSpec& spec,
+                                        double* d_conc,
+                                        Real dt) {
+#ifndef GUTIBM_CUDA
+  (void)domain;
+  (void)spec;
+  (void)d_conc;
+  (void)dt;
+  return false;
+#else
+  if (!gpu_runtime_enabled()) return false;
+  if (!species_diffusion_eligible(spec, dt, domain)) return false;
+  if (!gpu_diffusion_line_lengths_supported(domain)) return false;
+  return apply_species_diffusion_on_device(domain, spec, d_conc, dt);
+#endif
+}
 
 bool gpu_apply_species_diffusion(const Domain& domain,
                                  const ChemicalSpec& spec,
@@ -104,67 +188,17 @@ bool gpu_apply_species_diffusion(const Domain& domain,
   return false;
 #else
   if (!gpu_runtime_enabled()) return false;
-  if (dt <= 0.0 || domain.dx() <= 0.0) return false;
-  if (!spec.diffusion_enabled || spec.diff_coeff <= 0.0
-      || spec.retardation <= 0.0) {
-    return false;
-  }
-  if (!line_lengths_supported(domain)) return false;
+  if (!species_diffusion_eligible(spec, dt, domain)) return false;
+  if (!gpu_diffusion_line_lengths_supported(domain)) return false;
 
-  const int nx = domain.nx();
-  const int ny = domain.ny();
-  const int nz = domain.nz();
   const int ncells = domain.ncells();
   if (ncells <= 0 || static_cast<int>(concentration.size()) < ncells) return false;
 
-  const Real dx2 = domain.dx() * domain.dx();
-  const Real alpha = (spec.diff_coeff / spec.retardation) * dt / dx2;
-  const bool preserve_gradient =
-      spec.z_gradient_enabled && spec.z_gradient_lambda > 0.0;
-  double diffusion_boundary = spec.boundary_conc;
-
   DeviceBuffer<double> d_conc;
   d_conc.upload(concentration);
-
-  gpu::launch_set_epithelial_boundary(
-      d_conc.data(), nx, ny, spec.boundary_conc, nullptr);
-
-  if (preserve_gradient) {
-    gpu::launch_set_luminal_neumann(d_conc.data(), nx, ny, nz, nullptr);
-    gpu::launch_shift_z_gradient(
-        d_conc.data(), nx, ny, nz, domain.dx(), spec.initial_conc,
-        spec.z_gradient_lambda, spec.boundary_conc, -1.0, nullptr);
-    diffusion_boundary = 0.0;
+  if (!apply_species_diffusion_on_device(domain, spec, d_conc.data(), dt)) {
+    return false;
   }
-
-  const PeriodicPcrCoeffs x_coeffs = build_periodic_coeffs(nx, alpha);
-  const PeriodicPcrCoeffs y_coeffs = build_periodic_coeffs(ny, alpha);
-  DeviceBuffer<double> d_corr_x;
-  DeviceBuffer<double> d_corr_y;
-  d_corr_x.upload(x_coeffs.correction);
-  d_corr_y.upload(y_coeffs.correction);
-
-  gpu::launch_diffuse_x_periodic(
-      d_conc.data(), nx, ny, nz, alpha,
-      x_coeffs.gamma, x_coeffs.corner, x_coeffs.denominator,
-      d_corr_x.data(), nullptr);
-  gpu::launch_diffuse_y_periodic(
-      d_conc.data(), nx, ny, nz, alpha,
-      y_coeffs.gamma, y_coeffs.corner, y_coeffs.denominator,
-      d_corr_y.data(), nullptr);
-  gpu::launch_diffuse_z_bounded(
-      d_conc.data(), nx, ny, nz, alpha, diffusion_boundary, nullptr);
-
-  if (preserve_gradient) {
-    gpu::launch_shift_z_gradient(
-        d_conc.data(), nx, ny, nz, domain.dx(), spec.initial_conc,
-        spec.z_gradient_lambda, spec.boundary_conc, 1.0, nullptr);
-    gpu::launch_set_luminal_neumann(d_conc.data(), nx, ny, nz, nullptr);
-  }
-
-  gpu::launch_clamp_nonneg(d_conc.data(), ncells, nullptr);
-  gpu::launch_set_epithelial_boundary(
-      d_conc.data(), nx, ny, spec.boundary_conc, nullptr);
 
   cudaDeviceSynchronize();
   gpu_check_error("gpu_apply_species_diffusion");
