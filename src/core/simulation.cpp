@@ -10,8 +10,7 @@
 #include "fix_motility.h"
 #include "plasmid.h"
 #include "dispatch.h"
-#include "qssa_gpu.h"
-#include "vbf_gpu.h"
+#include "chemistry_pipeline.h"
 #ifdef GUTIBM_CUDA
 #include "device.h"
 #include "gpu_kernels.h"
@@ -696,14 +695,11 @@ void Simulation::step(Real dt) {
         agents_gpu_.grid_cell(), agents_gpu_.state(),
         domain_.lo()[0], domain_.lo()[1], domain_.lo()[2], domain_.dx(),
         domain_.nx(), domain_.ny(), domain_.nz(),
-        agents_.size(), nullptr);
-    cudaDeviceSynchronize();
+        agents_.size(), gpu_compute_stream());
+    gpu_sync_compute();
     gpu_check_error("grid_coupling_kernel");
     agents_gpu_.sync_to_host(agents_);
 #endif
-    gpu_build_spatial_hash(
-        agents_gpu_, agents_.size(), domain_.lo(), domain_.hi(),
-        domain_.spatial_hash().cell_size(), spatial_hash_gpu_);
   }
 
   rebuild_spatial_hash();
@@ -787,84 +783,21 @@ void Simulation::module_biology(Real dt) {
 void Simulation::module_chemistry(Real dt) {
   update_bacteriocin_fields();
 
-  bool applied_o2_on_gpu = false;
-  if (gpu_active_) {
-    applied_o2_on_gpu = gpu_solve_nutrient_depletion(
-        agents_gpu_, static_cast<Int>(agents_.size()), chem_gpu_, chem_,
-        cfg_.chem_env.oxygen, domain_);
-  }
-
-  if (!applied_o2_on_gpu) {
-    if (gpu_active_) {
-      chem_gpu_.sync_reactions_to_host(chem_);
-    }
-    qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.chem_env.oxygen);
-  } else {
-    chem_gpu_.sync_reactions_to_host(chem_);
-  }
-
-  // Every rank holds the full chemical grid but only its local agents. Sum the
-  // rank-local agent reaction fields before adding the identical global VBF.
-  chem_.sum_reactions_across_ranks();
-
-  bool applied_vbf_on_gpu = false;
-  if (gpu_active_ && applied_o2_on_gpu) {
-    chem_gpu_.sync_reactions_to_device(chem_);
-    applied_vbf_on_gpu = gpu_apply_vbf_coupling(
-        chem_gpu_, chem_, domain_, vbf_,
-        cfg_.chem_env.oxygen, cfg_.chem_env.acetate, cfg_.chem_env.mucin);
-  }
-  if (!applied_vbf_on_gpu) {
-    vbf_.apply_nutrient_coupling(chem_, domain_, dt,
-                                 cfg_.chem_env.oxygen, cfg_.chem_env.acetate,
-                                 cfg_.chem_env.mucin);
-    if (gpu_active_) {
-      chem_gpu_.sync_reactions_to_device(chem_);
-    }
-  }
-
-  bool applied_reactions_on_gpu = false;
-  bool applied_diffusion_on_gpu = false;
-  if (gpu_active_) {
-    chem_gpu_.sync_reactions_to_device(chem_);
-    applied_reactions_on_gpu = chem_gpu_.apply_reactions(dt, domain_);
-  }
-
-  if (!applied_reactions_on_gpu) {
-    Int s = 0;
-    for (const auto& conc_row : chem_.conc_data()) {
-      (void)conc_row;
-      #ifdef GUTIBM_OPENMP
-      #pragma omp parallel for schedule(static)
-      #endif
-      for (Int c = 0; c < chem_.ncells(); ++c) {
-        chem_.conc(s, c) += chem_.reac(s, c) * dt;
-        chem_.conc(s, c) = std::max(chem_.conc(s, c), 0.0);
-      }
-      ++s;
-    }
-  }
-
-  // Nutrient diffusion is much faster than the biological timestep. The
-  // stable implicit solve smooths local reaction changes without CFL substeps.
-  if (gpu_active_ && applied_reactions_on_gpu) {
-    applied_diffusion_on_gpu = chem_gpu_.apply_diffusion(domain_, chem_, dt);
-    if (applied_diffusion_on_gpu) {
-      chem_gpu_.apply_boundaries(domain_, chem_);
-      chem_gpu_.sync_concentrations_to_host(chem_);
-    }
-  }
-
-  if (!applied_diffusion_on_gpu) {
-    if (gpu_active_ && applied_reactions_on_gpu) {
-      chem_gpu_.sync_concentrations_to_host(chem_);
-    }
-    chem_.apply_diffusion(domain_, dt);
-    chem_.apply_boundaries(domain_);
-    if (gpu_active_) {
-      chem_gpu_.sync_concentrations_to_device(chem_);
-    }
-  }
+  ChemistryPipelineInput pipeline{
+      .gpu_active = gpu_active_,
+      .agents_gpu = agents_gpu_,
+      .chem_gpu = chem_gpu_,
+      .chem = chem_,
+      .domain = domain_,
+      .vbf = vbf_,
+      .qssa = qssa_,
+      .agents = agents_,
+      .oxygen = cfg_.chem_env.oxygen,
+      .acetate = cfg_.chem_env.acetate,
+      .mucin = cfg_.chem_env.mucin,
+      .num_agents = static_cast<Int>(agents_.size()),
+  };
+  (void)run_chemistry_pipeline(pipeline, dt);
 }
 
 void Simulation::module_physics(Real dt) {

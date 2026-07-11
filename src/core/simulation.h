@@ -42,7 +42,6 @@
 #include "fix.h"
 #include "chemical_field_gpu.h"
 #include "agent_pool_gpu.h"
-#include "spatial_hash_gpu.h"
 #include "dispatch.h"
 #include "gpu_kernels.h"
 
@@ -207,7 +206,6 @@ class Simulation {
   bool gpu_active_ = false;
   ChemicalFieldGpu chem_gpu_;
   AgentPoolGpu agents_gpu_;
-  SpatialHashGpu spatial_hash_gpu_;
 
   std::vector<ToxinBurstSource> toxin_bursts_;
   StepEvents step_events_;

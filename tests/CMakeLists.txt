@@ -147,6 +147,19 @@ if(GUTIBM_USE_MPI)
     PASS_REGULAR_EXPRESSION "All MPI multi-rank tests passed"
     RESOURCE_LOCK mpi
   )
+
+  add_executable(test_mpi_gpu_multi_rank test_mpi_gpu_multi_rank.cpp)
+  target_link_libraries(test_mpi_gpu_multi_rank PRIVATE gutibm)
+  add_test(
+    NAME mpi_gpu_multi_rank
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+            ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_gpu_multi_rank> ${MPIEXEC_POSTFLAGS}
+  )
+  set_tests_properties(mpi_gpu_multi_rank PROPERTIES
+    LABELS "integration;mpi;gpu"
+    PASS_REGULAR_EXPRESSION "All MPI GPU multi-rank tests passed"
+    RESOURCE_LOCK mpi
+  )
 endif()
 
 # ── GPU tests (CUDA CI job only) ─────────────────────────────────────────
@@ -154,4 +167,5 @@ gutibm_add_test(greens_function_gpu test_greens_function_gpu.cpp LABELS "gpu")
 gutibm_add_test(gpu_diffusion test_gpu_diffusion.cpp LABELS "gpu")
 gutibm_add_test(gpu_chemical_field test_gpu_chemical_field.cpp LABELS "gpu")
 gutibm_add_test(gpu_feature_combinations test_gpu_feature_combinations.cpp LABELS "gpu;integration")
+gutibm_add_test(gpu_production_path test_gpu_production_path.cpp LABELS "gpu;integration")
 gutibm_add_test(gpu_smoke test_gpu_smoke.cpp LABELS "gpu")
