@@ -75,6 +75,7 @@ CTest targets (2- and 4-rank MPI tests included):
 | `fmm` | `test_fmm.cpp` | Higher-order FMM accuracy |
 | `conjugation` | `test_conjugation.cpp` | Pili length heterogeneity |
 | `smoke` | `test_smoke.cpp` | End-to-end mini simulation |
+| `washout_trap` | `test_washout_trap.cpp` | Long-horizon VADI metabolic washout regression (#160) |
 | `config_diversity` | `test_config_diversity.cpp` | Distinct fingerprints across configs |
 | `z_gradient` | `test_z_gradient.cpp` | Z-dependent nutrient gradients |
 | `nutrient_diffusion` | `test_nutrient_diffusion.cpp` | Implicit profile golden, stability, boundaries, sensitivity |
