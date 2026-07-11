@@ -8,9 +8,16 @@ namespace gutibm {
 class AgentPoolGpu;
 class ChemicalFieldGpu;
 class ChemicalField;
+class Domain;
 
-bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents, Int num_agents,
-                                  ChemicalFieldGpu& chem_gpu, const ChemicalField& chem);
+struct OxygenConfig;
+
+bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents,
+                                  Int num_agents,
+                                  ChemicalFieldGpu& chem_gpu,
+                                  const ChemicalField& chem,
+                                  const OxygenConfig& oxygen,
+                                  const Domain& domain);
 
 }  // namespace gutibm
 

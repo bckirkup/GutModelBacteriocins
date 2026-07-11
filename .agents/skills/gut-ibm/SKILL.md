@@ -103,6 +103,7 @@ CTest targets (2-rank MPI tests included; no `mpirun -np 4+` gate yet):
 | `greens_function_gpu` | `test_greens_function_gpu.cpp` | GPU vs CPU GF parity (CUDA build) |
 | `gpu_diffusion` | `test_gpu_diffusion.cpp` | GPU vs CPU nutrient diffusion parity (max diff < 1e-10) |
 | `gpu_chemical_field` | `test_gpu_chemical_field.cpp` | ChemicalFieldGpu facade vs CPU (diffusion + boundaries) |
+| `gpu_feature_combinations` | `test_gpu_feature_combinations.cpp` | Spec 8 combo scenarios with GPU enabled |
 | `gpu_smoke` | `test_gpu_smoke.cpp` | Short CPU vs GPU simulation fingerprint |
 
 ## Run Simulation
