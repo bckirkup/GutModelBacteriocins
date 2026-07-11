@@ -18,8 +18,10 @@ Host-side facades: `device.cpp`, `dispatch.cpp`, `greens_function_gpu.cpp`, `che
 
 `gpu_apply_species_diffusion()` mirrors `ChemicalField::apply_diffusion` for a single species:
 periodic x/y via Sherman–Morrison PCR, epithelial Dirichlet + luminal Neumann z boundaries,
-optional z-gradient background shift, and non-negativity clamp. Not yet wired into
-`Simulation::module_chemistry()` (PR3); parity is validated by `test_gpu_diffusion` (max diff < 1e-10).
+optional z-gradient background shift, and non-negativity clamp. `ChemicalFieldGpu::apply_diffusion`
+and `apply_boundaries` call the device-resident kernels directly (PR2). Not yet wired into
+`Simulation::module_chemistry()` (PR3); parity is validated by `test_gpu_diffusion` and
+`test_gpu_chemical_field` (max diff < 1e-10).
 
 ## Build
 
@@ -70,7 +72,7 @@ Default 1 mm × 1 mm × 100 µm grid at 2 µm resolution:
 ## Tests
 
 ```bash
-cd build && ctest -R 'greens_function_gpu|gpu_diffusion|gpu_smoke' --output-on-failure
+cd build && ctest -R 'greens_function_gpu|gpu_diffusion|gpu_chemical_field|gpu_smoke' --output-on-failure
 bash scripts/compare_gpu_parity.sh
 ```
 
