@@ -238,11 +238,22 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - Update `examples/` if adding user-facing config
 - Update this file and `SKILL.md` if changing architecture, config keys, or known bugs
 
-## Open Issue Tracker (Jun 2026)
+## Open Issue Tracker (Jul 2026)
 
-Recently closed critical path: #40–#43, #56, #75–#81, #25 (FISH models), #29 (higher-order FMM), #55 (scaling benchmarks).
+Jun 2026 queue closed (#40–#81, #25, #29, #33, #55). Post–GPU ROI backlog **#154–#161** largely landed via #162–#164.
 
-Remaining long-horizon: larger-scale MPI/HPC validation (`mpirun -np 8+`), GPU FMM octree, Fur on device.
+| Issue | Topic | Status |
+|-------|-------|--------|
+| #154 | MPI four-rank validation | Done (#163) |
+| #155 | Python integration pytest in CI | Done (#162) |
+| #156 | CUDA-aware MPI reaction reduce | Done (#163) |
+| #157 | GPU mechanics force kernel | Done (#164) |
+| #158 | GPU parity CI | Done (#162) |
+| #159 | Sub-quadratic FMM M2L | Done (#164) |
+| #160 | Metabolic washout trap regression | Backlog |
+| #161 | OpenMP stochastic parity | Backlog |
+
+Remaining long-horizon: `mpirun -np 8+` on HPC, GPU FMM octree traversal, Fur on device.
 
 **Project board:** [docs/PROJECT_BOARD.md](docs/PROJECT_BOARD.md) — kanban layout, PR bundles, merge order. Run `./scripts/setup_project_board.sh` to create GitHub labels, milestones, and a Projects v2 board.
 

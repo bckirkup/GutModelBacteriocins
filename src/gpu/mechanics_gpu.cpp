@@ -16,9 +16,16 @@ namespace gutibm {
 namespace {
 
 #ifdef GUTIBM_CUDA
-DeviceBuffer<double> g_mechanics_dx;
-DeviceBuffer<double> g_mechanics_dy;
-DeviceBuffer<double> g_mechanics_dz;
+struct MechanicsDeviceScratch {
+  DeviceBuffer<double> dx;
+  DeviceBuffer<double> dy;
+  DeviceBuffer<double> dz;
+};
+
+MechanicsDeviceScratch& mechanics_device_scratch() {
+  static MechanicsDeviceScratch scratch;
+  return scratch;
+}
 #endif
 
 }  // namespace
@@ -40,9 +47,10 @@ bool gpu_run_mechanics(AgentPoolGpu& agents, Int num_agents,
     return false;
   }
 
-  g_mechanics_dx.allocate(static_cast<size_t>(num_agents));
-  g_mechanics_dy.allocate(static_cast<size_t>(num_agents));
-  g_mechanics_dz.allocate(static_cast<size_t>(num_agents));
+  auto& scratch = mechanics_device_scratch();
+  scratch.dx.allocate(static_cast<size_t>(num_agents));
+  scratch.dy.allocate(static_cast<size_t>(num_agents));
+  scratch.dz.allocate(static_cast<size_t>(num_agents));
 
   gpu::MechanicsLaunchParams params{};
   params.hertz_k = cfg.hertz_k;
@@ -67,17 +75,17 @@ bool gpu_run_mechanics(AgentPoolGpu& agents, Int num_agents,
 
   cudaStream_t stream = gpu_compute_stream();
   gpu::launch_mechanics_clear_kernel(
-      g_mechanics_dx.data(), g_mechanics_dy.data(), g_mechanics_dz.data(),
+      scratch.dx.data(), scratch.dy.data(), scratch.dz.data(),
       num_agents, stream);
   gpu::launch_mechanics_forces_kernel(
       agents.x(), agents.y(), agents.z(),
       agents.radius(), agents.mass(), agents.state(),
       hash.cell_offsets.data(), hash.sorted_agent_indices.data(),
-      g_mechanics_dx.data(), g_mechanics_dy.data(), g_mechanics_dz.data(),
+      scratch.dx.data(), scratch.dy.data(), scratch.dz.data(),
       num_agents, params, stream);
   gpu::launch_mechanics_apply_kernel(
       agents.x(), agents.y(), agents.z(),
-      g_mechanics_dx.data(), g_mechanics_dy.data(), g_mechanics_dz.data(),
+      scratch.dx.data(), scratch.dy.data(), scratch.dz.data(),
       num_agents, stream);
 
   gpu_sync_compute();

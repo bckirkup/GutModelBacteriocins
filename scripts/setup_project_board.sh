@@ -7,6 +7,7 @@ set -euo pipefail
 
 REPO="${REPO:-bckirkup/GutModelBacteriocins}"
 OWNER="${REPO%%/*}"
+MILESTONE_P6='P6 — HPC & GPU phase 2'
 DRY_RUN=false
 if [[ "${1:-}" == "--dry-run" ]]; then
   DRY_RUN=true
@@ -30,6 +31,8 @@ declare -A LABELS=(
   ["track:docs"]="6f42c1|Documentation and agent guides"
   ["track:scale"]="8250df|Scaling benchmarks and profiling"
   ["track:science"]="bf3989|Experimental validation and algorithms"
+  ["track:ci"]="1d76db|CI coverage and parity gates"
+  ["track:gpu"]="5319e7|CUDA GPU acceleration"
   ["board:ready"]="ededed|On project board — ready column"
   ["board:backlog"]="d4d4d4|On project board — backlog column"
 )
@@ -42,11 +45,7 @@ done
 
 # ── Milestones ──────────────────────────────────────────────────────────
 declare -A MILESTONES=(
-  ["P1 — Docs & hygiene"]="#76 AGENTS.md refresh. Land last or per-PR doc edits.|2026-07-15"
-  ["P2 — HDF5 checkpoint complete"]="#80 genome restart + #81 parallel round-trip (single PR).|2026-07-31"
-  ["P3 — Config surface expansion"]="#79 Fix tunables in input JSON.|2026-08-15"
-  ["P4 — Scale & profiling"]="#55 10^6–10^7 agent benchmarks.|2026-09-01"
-  ["P5 — Research enhancements"]="#25 HCR-FISH, #29 true FMM — independent tracks.|"
+  ["${MILESTONE_P6}"]="Post-#152: MPI np4+, GPU CI parity, mechanics/FMM GPU, science regressions.|2026-09-30"
 )
 
 for title in "${!MILESTONES[@]}"; do
@@ -71,14 +70,15 @@ assign_issue() {
 }
 
 echo ""
-echo "=== Tagging open issues ==="
-assign_issue 76 "track:docs,board:ready" "P1 — Docs & hygiene"
-assign_issue 79 "track:config,board:ready" "P3 — Config surface expansion"
-assign_issue 80 "track:hdf5,board:ready" "P2 — HDF5 checkpoint complete"
-assign_issue 81 "track:hdf5,board:ready" "P2 — HDF5 checkpoint complete"
-assign_issue 55 "track:scale,board:backlog" "P4 — Scale & profiling"
-assign_issue 25 "track:science,board:backlog" "P5 — Research enhancements"
-assign_issue 29 "track:science,board:backlog" "P5 — Research enhancements"
+echo "=== Tagging open issues (Jul 2026 backlog) ==="
+assign_issue 154 "track:mpi,board:ready" "${MILESTONE_P6}"
+assign_issue 156 "track:mpi,board:ready" "${MILESTONE_P6}"
+assign_issue 158 "track:ci,board:ready" "${MILESTONE_P6}"
+assign_issue 155 "track:ci,board:ready" "${MILESTONE_P6}"
+assign_issue 157 "track:gpu,board:backlog" "${MILESTONE_P6}"
+assign_issue 159 "track:science,board:backlog" "${MILESTONE_P6}"
+assign_issue 160 "track:science,board:backlog" "${MILESTONE_P6}"
+assign_issue 161 "track:ci,board:backlog" "${MILESTONE_P6}"
 
 # ── GitHub Project (v2) ─────────────────────────────────────────────────
 echo ""
@@ -104,7 +104,7 @@ else
 
   if [[ -n "$PROJECT_NUM" ]]; then
   run gh project link "$PROJECT_NUM" --owner "$OWNER" --repo "$REPO"
-  for num in 76 79 80 81 55 25 29; do
+  for num in 154 155 156 157 158 159 160 161; do
     run gh project item-add "$PROJECT_NUM" --owner "$OWNER" --url "https://github.com/${REPO}/issues/${num}" 2>/dev/null \
       || echo "  could not add issue #${num} to project"
   done

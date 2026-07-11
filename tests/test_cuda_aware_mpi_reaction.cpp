@@ -139,7 +139,7 @@ void test_device_reduce_matches_host_when_available() {
   chem_gpu.init(device_field);
 
   const Int reaction_cell = domain.cell_index(1, 1, 1);
-  const Real local_value = static_cast<Real>(rank + 1);
+  const auto local_value = static_cast<Real>(rank + 1);
   host_ref.reac(0, reaction_cell) = local_value;
   device_field.reac(0, reaction_cell) = local_value;
   chem_gpu.sync_reactions_to_device(device_field);
