@@ -262,7 +262,10 @@ def test_integration_single_job_batch(
             "binary": str(binary.resolve()),
             "mpi_ranks": 1,
             "mpirun_args": ["--allow-run-as-root"],
-            "runs": [{"id": "smoke", "overrides": {"total_time": 60}}],
+            "runs": [{"id": "smoke", "overrides": {
+                "total_time": 60,
+                "hdf5": {"enabled": True},
+            }}],
         },
     )
     rc = batch_main([str(batch_path)])
