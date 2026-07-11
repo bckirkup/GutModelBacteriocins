@@ -7,40 +7,16 @@
 #include "input_parser.h"
 #include "dispatch.h"
 #include "device.h"
+#include "mechanics_test_helpers.h"
 
 #include <cassert>
 #include <cmath>
 #include <iostream>
 
 using namespace gutibm;
+using gutibm::test::make_two_agent_sim;
 
 namespace {
-
-Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
-                              const MechanicsConfig& mcfg,
-                              bool gpu_enabled) {
-  SimulationConfig cfg = InputParser::default_config();
-  cfg.initial_strains.clear();
-  cfg.domain.hi = {100e-6, 100e-6, 100e-6};
-  cfg.domain.grid_dx = 10e-6;
-  cfg.domain.hash_cell_size = 20e-6;
-  cfg.fixes.mechanics = mcfg;
-  cfg.hdf5.enabled = false;
-  cfg.gpu.enabled = gpu_enabled;
-
-  Simulation sim;
-  sim.init(cfg);
-
-  Agent a = Agent::create_default(sim.agents().next_tag(), 1, pos_a, 5e-4);
-  Agent b = Agent::create_default(sim.agents().next_tag(), 1, pos_b, 5e-4);
-  sim.agents().push_back(std::move(a));
-  sim.agents().push_back(std::move(b));
-
-  sim.domain().spatial_hash().clear();
-  sim.domain().spatial_hash().insert(0, sim.agents()[0].x);
-  sim.domain().spatial_hash().insert(1, sim.agents()[1].x);
-  return sim;
-}
 
 void test_gpu_overlapping_agents_match_cpu() {
 #ifndef GUTIBM_CUDA
@@ -71,7 +47,7 @@ void test_gpu_overlapping_agents_match_cpu() {
   FixMechanics fix_cpu(sim_cpu, mcfg);
   fix_cpu.compute(1.0);
 
-  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true);
+  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true, true);
   assert(sim_gpu.gpu_active());
   FixMechanics fix_gpu(sim_gpu, mcfg);
   fix_gpu.compute(1.0);
@@ -118,7 +94,7 @@ void test_gpu_adhesion_match_cpu() {
   FixMechanics fix_cpu(sim_cpu, mcfg);
   fix_cpu.compute(1.0);
 
-  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true);
+  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true, true);
   assert(sim_gpu.gpu_active());
   FixMechanics fix_gpu(sim_gpu, mcfg);
   fix_gpu.compute(1.0);

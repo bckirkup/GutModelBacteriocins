@@ -101,11 +101,6 @@ class FMM {
   void upward_pass(const std::vector<Vec3>& positions,
                    const std::vector<Real>& strengths);
 
-  void m2l_at_node(int node_idx,
-                   Real theta,
-                   const GreensFunction& gf,
-                   const GreensFunctionParams& avg_params);
-
   void m2l_traverse_into_target(int target_idx,
                                 int src_idx,
                                 Real theta,

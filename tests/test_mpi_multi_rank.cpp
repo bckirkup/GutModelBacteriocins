@@ -5,107 +5,34 @@
 
 #include "simulation.h"
 #include "input_parser.h"
+#include "mpi_test_helpers.h"
 
-#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
-#include <vector>
 
 #ifdef GUTIBM_MPI
 #include <mpi.h>
 #endif
 
 using namespace gutibm;
+using gutibm::test::assert_unique_tags;
+using gutibm::test::gather_live_tags_flat;
+using gutibm::test::make_mpi_config;
+using gutibm::test::require_mpi_ranks;
 
 namespace {
 
-SimulationConfig make_mpi_config() {
-  SimulationConfig cfg = InputParser::default_config();
-  cfg.domain.hi = {100e-6, 100e-6, 50e-6};
-  cfg.domain.grid_dx = 5e-6;
-  cfg.domain.hash_cell_size = 10e-6;
-  cfg.domain.ghost_width = 10e-6;
-  // Non-periodic x decomp: distinct lo/hi neighbors with 2 ranks.
-  cfg.domain.periodic = {false, true, false};
-  cfg.time.total_time = 300.0;
-  cfg.time.bio_dt = 60.0;
-  cfg.time.output_interval = 300.0;
-  cfg.seed = 4242;
-  cfg.hdf5.enabled = false;
-  cfg.cell_bio.fur.enabled = false;
-  cfg.cell_bio.cdi.enabled = false;
-  cfg.cell_bio.motility.enabled = false;
-  cfg.advection.mucus_thickness = 50e-6;
-  cfg.advection.distal_length = 100e-6;
-  cfg.advection.radial_turnover = 5400.0;
-  cfg.advection.distal_transit_time = 43200.0;
-  cfg.qssa.toxin_cutoff = 50e-6;
-  cfg.qssa.nutrient_cutoff = 25e-6;
-
-  cfg.initial_strains.clear();
-  SimulationConfig::InitialStrain s;
-  s.type = 1;
-  s.count = 40;
-  s.mu_max = 5e-4;
-  s.plasmids = {};
-  s.conjugative = false;
-  cfg.initial_strains.push_back(s);
-  return cfg;
-}
-
 #ifdef GUTIBM_MPI
 
-std::vector<TagID> gather_live_tags_flat(const Simulation& sim) {
-  int nprocs = 1;
-  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-
-  std::vector<TagID> local;
-  for (const Agent& a : sim.agents()) {
-    if (a.state != PhenoState::DEAD) {
-      local.push_back(a.identity.tag);
-    }
-  }
-
-  auto local_n = static_cast<int>(local.size());
-  std::vector<int> counts(nprocs, 0);
-  MPI_Allgather(&local_n, 1, MPI_INT, counts.data(), 1, MPI_INT, MPI_COMM_WORLD);
-
-  int total = 0;
-  std::vector<int> displ(nprocs, 0);
-  size_t r = 0;
-  for (int count : counts) {
-    displ[r++] = total;
-    total += count;
-  }
-
-  std::vector<TagID> all(static_cast<size_t>(total));
-  MPI_Allgatherv(local.data(), local_n, MPI_INT64_T,
-                  all.data(), counts.data(), displ.data(), MPI_INT64_T,
-                  MPI_COMM_WORLD);
-  return all;
-}
-
-void assert_unique_tags(const std::vector<TagID>& tags) {
-  std::vector<TagID> sorted = tags;
-  std::ranges::sort(sorted);
-  assert(std::adjacent_find(sorted.begin(), sorted.end()) == sorted.end());
-}
-
 SimulationConfig make_mpi_periodic_config() {
-  SimulationConfig cfg = make_mpi_config();
+  SimulationConfig cfg = make_mpi_config(4242, 40);
   cfg.domain.periodic = {true, true, false};
   return cfg;
 }
 
-void require_two_ranks() {
-  int nprocs = 1;
-  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-  assert(nprocs == 2);
-}
-
 void test_reaction_sum_and_diffusion_are_rank_identical() {
-  require_two_ranks();
+  require_mpi_ranks(2);
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -152,7 +79,7 @@ void test_reaction_sum_and_diffusion_are_rank_identical() {
 }
 
 void test_slab_decomposition() {
-  require_two_ranks();
+  require_mpi_ranks(2);
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -191,7 +118,7 @@ void test_slab_decomposition() {
 }
 
 void test_slab_decomposition_periodic_x() {
-  require_two_ranks();
+  require_mpi_ranks(2);
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -221,9 +148,9 @@ void test_slab_decomposition_periodic_x() {
 }
 
 void test_init_population_partitioned() {
-  require_two_ranks();
+  require_mpi_ranks(2);
 
-  SimulationConfig cfg = make_mpi_config();
+  SimulationConfig cfg = make_mpi_config(4242, 40);
   Simulation sim;
   sim.init(cfg);
 
@@ -246,12 +173,12 @@ void test_init_population_partitioned() {
 }
 
 void test_migration_preserves_global_count() {
-  require_two_ranks();
+  require_mpi_ranks(2);
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  SimulationConfig cfg = make_mpi_config();
+  SimulationConfig cfg = make_mpi_config(4242, 40);
   cfg.advection.distal_transit_time = 1e12;
   Simulation sim;
   sim.init(cfg);
@@ -300,12 +227,12 @@ void test_migration_preserves_global_count() {
 }
 
 void test_boundary_ghost_exchange_runs() {
-  require_two_ranks();
+  require_mpi_ranks(2);
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  SimulationConfig cfg = make_mpi_config();
+  SimulationConfig cfg = make_mpi_config(4242, 40);
   Simulation sim;
   sim.init(cfg);
 
@@ -331,7 +258,7 @@ void test_boundary_ghost_exchange_runs() {
 }
 
 void test_periodic_x_ghost_and_migration() {
-  require_two_ranks();
+  require_mpi_ranks(2);
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -400,12 +327,12 @@ void test_periodic_x_ghost_and_migration() {
 }
 
 void test_multirank_simulation_steps() {
-  require_two_ranks();
+  require_mpi_ranks(2);
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  SimulationConfig cfg = make_mpi_config();
+  SimulationConfig cfg = make_mpi_config(4242, 40);
   cfg.time.total_time = 120.0;
   Simulation sim;
   sim.init(cfg);
