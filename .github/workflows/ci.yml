@@ -72,6 +72,13 @@ jobs:
       - name: Batch runner smoke
         run: bash scripts/smoke_batch_runner.sh
 
+      - name: Python integration pytest (#155)
+        env:
+          GUTIBM_BUILD_DIR: ${{ github.workspace }}/build
+        run: |
+          pip install -e "python/.[dev,viz]" pytest
+          cd python && pytest tests/ -v -m integration
+
   openmp-parity:
     name: OpenMP parity
     runs-on: ubuntu-latest
@@ -85,6 +92,21 @@ jobs:
 
       - name: Compare serial vs OpenMP fingerprints
         run: bash scripts/compare_openmp_parity.sh
+
+  gpu-parity:
+    name: GPU parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake libopenmpi-dev openmpi-bin libhdf5-mpi-dev nvidia-cuda-toolkit
+
+      - name: Compare CPU vs GPU fingerprints
+        run: bash scripts/compare_gpu_parity.sh
 
   cuda-compile:
     name: CUDA compile + GPU tests

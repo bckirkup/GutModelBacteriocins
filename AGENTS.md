@@ -140,7 +140,8 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | Job | What it exercises |
 |-----|-------------------|
 | `unit-tests` | Fast CTest unit shard |
-| `integration-tests` | Smoke, config diversity, HDF5, slow/benchmark tests, batch runner smoke |
+| `integration-tests` | Smoke, config diversity, HDF5, batch runner smoke, Python integration pytest (#155) |
+| `gpu-parity` | CPU vs GPU fingerprint check via `compare_gpu_parity.sh` (#158) |
 | `openmp-parity` | Serial vs OpenMP build fingerprints |
 | `cuda-compile` | CUDA compile + GPU test targets (single arch, no duplicate parity rebuild) |
 | `eari-vadi-validation` | Short EARI/VADI + FISH golden regression (#56, #25) |
@@ -149,7 +150,6 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 ### Gaps (add tests when touching these areas)
 
 - Multi-GPU NCCL / device-side MPI reaction reduction beyond 2-rank smoke
-- Python integration pytest in CI (marked `integration` today)
 - Metabolic washout trap as a dedicated long-horizon regression
 - OpenMP equivalence on stochastic (toxin-kill) scenarios
 
