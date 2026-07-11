@@ -24,6 +24,8 @@ class FixMotility : public Fix {
 
  private:
   void update_agent(Agent& agent, Real dt);
+  Real advance_stopped_interval(Agent::MotilityState& motility, Real remaining);
+  Real advance_running_interval(Agent& agent, Real remaining);
   void update_chemotaxis(Agent& agent, Real dt);
   void complete_run(Agent& agent);
   void start_run(Agent::MotilityState& motility);
