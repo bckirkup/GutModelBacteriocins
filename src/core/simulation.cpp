@@ -802,16 +802,14 @@ void Simulation::module_chemistry(Real dt) {
                                 cfg_.chem_env.oxygen, cfg_.chem_env.acetate,
                                 cfg_.chem_env.mucin);
 
-  bool applied_on_gpu = false;
+  bool applied_reactions_on_gpu = false;
+  bool applied_diffusion_on_gpu = false;
   if (gpu_active_) {
     chem_gpu_.sync_reactions_to_device(chem_);
-    applied_on_gpu = chem_gpu_.apply_reactions(dt, domain_);
-    if (applied_on_gpu) {
-      chem_gpu_.sync_concentrations_to_host(chem_);
-    }
+    applied_reactions_on_gpu = chem_gpu_.apply_reactions(dt, domain_);
   }
 
-  if (!applied_on_gpu) {
+  if (!applied_reactions_on_gpu) {
     Int s = 0;
     for (const auto& conc_row : chem_.conc_data()) {
       (void)conc_row;
@@ -828,11 +826,23 @@ void Simulation::module_chemistry(Real dt) {
 
   // Nutrient diffusion is much faster than the biological timestep. The
   // stable implicit solve smooths local reaction changes without CFL substeps.
-  chem_.apply_diffusion(domain_, dt);
-  chem_.apply_boundaries(domain_);
+  if (gpu_active_ && applied_reactions_on_gpu) {
+    applied_diffusion_on_gpu = chem_gpu_.apply_diffusion(domain_, chem_, dt);
+    if (applied_diffusion_on_gpu) {
+      chem_gpu_.apply_boundaries(domain_, chem_);
+      chem_gpu_.sync_concentrations_to_host(chem_);
+    }
+  }
 
-  if (gpu_active_) {
-    chem_gpu_.sync_concentrations_to_device(chem_);
+  if (!applied_diffusion_on_gpu) {
+    if (gpu_active_ && applied_reactions_on_gpu) {
+      chem_gpu_.sync_concentrations_to_host(chem_);
+    }
+    chem_.apply_diffusion(domain_, dt);
+    chem_.apply_boundaries(domain_);
+    if (gpu_active_) {
+      chem_gpu_.sync_concentrations_to_device(chem_);
+    }
   }
 }
 

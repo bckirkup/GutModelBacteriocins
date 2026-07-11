@@ -14,14 +14,14 @@ CUDA GPU acceleration for GutIBM (issue #33). OpenMP remains the CPU shared-memo
 
 Host-side facades: `device.cpp`, `dispatch.cpp`, `greens_function_gpu.cpp`, `chemical_field_gpu.cpp`, `agent_pool_gpu.cpp`, `spatial_hash_gpu.cpp`, `qssa_gpu.cpp`, `diffusion_gpu.cpp`.
 
-### GPU diffusion (Spec 9 PR1 — in progress)
+### GPU diffusion (Spec 9)
 
 `gpu_apply_species_diffusion()` mirrors `ChemicalField::apply_diffusion` for a single species:
 periodic x/y via Sherman–Morrison PCR, epithelial Dirichlet + luminal Neumann z boundaries,
 optional z-gradient background shift, and non-negativity clamp. `ChemicalFieldGpu::apply_diffusion`
-and `apply_boundaries` call the device-resident kernels directly (PR2). Not yet wired into
-`Simulation::module_chemistry()` (PR3); parity is validated by `test_gpu_diffusion` and
-`test_gpu_chemical_field` (max diff < 1e-10).
+and `apply_boundaries` run inside `Simulation::module_chemistry()` when GPU reactions succeed.
+Host concentrations sync once after the GPU pass (or after CPU fallback). Parity:
+`test_gpu_diffusion`, `test_gpu_chemical_field`, `test_gpu_smoke`.
 
 ## Build
 
