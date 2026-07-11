@@ -40,12 +40,19 @@ using namespace gutibm;
 
 namespace {
 
-int g_failures = 0;
+struct FailureCounter {
+  int value = 0;
+};
+
+FailureCounter& failure_counter() {
+  static FailureCounter counter;
+  return counter;
+}
 
 void expect(bool cond, const std::string& msg) {
   if (!cond) {
     std::cerr << "FAIL: " << msg << "\n";
-    ++g_failures;
+    ++failure_counter().value;
   }
 }
 
@@ -440,10 +447,10 @@ int main() {
   test_metabolism_uptake_has_rate_units();
   test_all_species_bounded_steady_state();
 
-  if (g_failures == 0) {
+  if (failure_counter().value == 0) {
     std::cout << "All mechanism wiring tests passed.\n";
     return 0;
   }
-  std::cerr << g_failures << " mechanism wiring test(s) FAILED.\n";
+  std::cerr << failure_counter().value << " mechanism wiring test(s) FAILED.\n";
   return 1;
 }

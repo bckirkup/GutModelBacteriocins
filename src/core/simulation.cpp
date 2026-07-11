@@ -296,21 +296,20 @@ void Simulation::init(const SimulationConfig& cfg) {
               << domain_.local_hi_x() << ") m\n"
               << "  Local agents: " << agents_.size()
               << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
-              << "  Chemical species: " << chem_.num_species() << "\n"
-              << "  Bio dt: " << cfg.time.bio_dt << " s\n"
+              << "  Chemical species: " << chem_.num_species() << "\n";
+    const std::string adaptive_dt_status = cfg.adaptive_dt.enabled
+        ? std::format(" [{}s, {}s]", cfg.adaptive_dt.min, cfg.adaptive_dt.max)
+        : "";
+    const std::string gpu_status = gpu_active_
+        ? std::format(" (device {})", gpu_device().device_id())
+        : std::format(" (gpu_enabled={}, device_id={})",
+                      cfg.gpu.enabled ? "true" : "false",
+                      cfg.gpu.device_id);
+    std::cout << "  Bio dt: " << cfg.time.bio_dt << " s\n"
               << "  Adaptive dt: " << (cfg.adaptive_dt.enabled ? "ON" : "OFF")
-              << (cfg.adaptive_dt.enabled
-                    ? std::format(" [{}s, {}s]", cfg.adaptive_dt.min, cfg.adaptive_dt.max)
-                    : "")
-              << "\n"
+              << adaptive_dt_status << "\n"
               << "  Total time: " << cfg.time.total_time << " s\n"
-              << "  GPU: " << (gpu_active_ ? "ON" : "OFF")
-              << (gpu_active_
-                    ? std::format(" (device {})", gpu_device().device_id())
-                    : std::format(" (gpu_enabled={}, device_id={})",
-                                  cfg.gpu.enabled ? "true" : "false",
-                                  cfg.gpu.device_id))
-              << "\n";
+              << "  GPU: " << (gpu_active_ ? "ON" : "OFF") << gpu_status << "\n";
     if (!gpu_active_ && cfg.gpu.enabled) {
       std::cerr << "  GPU requested (gpu_enabled) but inactive: "
                 << gpu_fallback_reason(cfg.gpu) << "\n";

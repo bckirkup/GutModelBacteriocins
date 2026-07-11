@@ -241,9 +241,9 @@ void set_luminal_neumann_boundary(std::vector<Real>& concentration,
   if (domain.nz() < 2) return;
   for (Int iy = 0; iy < domain.ny(); ++iy) {
     for (Int ix = 0; ix < domain.nx(); ++ix) {
-      const size_t top = static_cast<size_t>(
+      const auto top = static_cast<size_t>(
           domain.cell_index(ix, iy, domain.nz() - 1));
-      const size_t below = static_cast<size_t>(
+      const auto below = static_cast<size_t>(
           domain.cell_index(ix, iy, domain.nz() - 2));
       concentration[top] = concentration[below];
     }
@@ -275,7 +275,7 @@ void shift_z_gradient(std::vector<Real>& concentration,
 }
 
 void clamp_nonnegative(std::vector<Real>& concentration) {
-  const Int size = static_cast<Int>(concentration.size());
+  const auto size = static_cast<Int>(concentration.size());
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(static)
   #endif

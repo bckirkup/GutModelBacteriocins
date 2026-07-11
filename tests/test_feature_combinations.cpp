@@ -57,7 +57,7 @@ SimulationConfig make_combo_config(uint64_t seed) {
   return cfg;
 }
 
-Simulation run_combo(SimulationConfig cfg) {
+Simulation run_combo(const SimulationConfig& cfg) {
   Simulation sim;
   sim.init(cfg);
   sim.run();
@@ -268,8 +268,8 @@ void test_adaptive_dt_with_crypts() {
   assert(crypt_count > 0);
 
   const Int steps = sim.step_count();
-  const Int min_steps = static_cast<Int>(cfg.time.total_time / cfg.adaptive_dt.max);
-  const Int max_steps = static_cast<Int>(cfg.time.total_time / cfg.adaptive_dt.min);
+  const auto min_steps = static_cast<Int>(cfg.time.total_time / cfg.adaptive_dt.max);
+  const auto max_steps = static_cast<Int>(cfg.time.total_time / cfg.adaptive_dt.min);
   assert(steps >= min_steps);
   assert(steps <= max_steps);
 
