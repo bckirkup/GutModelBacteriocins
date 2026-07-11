@@ -107,7 +107,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **#43 Multi-rank tests** | Fixed | `mpi_multi_rank` + `hdf5_roundtrip_parallel` CTest targets |
 | **#78 parse_real() silent zero** | Fixed | Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts |
 | GPU portability | Open | Production chemistry path on GPU (Spec 9 PR5); FMM/Fur/mechanics still CPU; multi-GPU NCCL not wired |
-| Large-scale MPI scaling | Open | 2-rank tests only; manual `mpirun -np 4+` for HPC validation |
+| Large-scale MPI scaling | Partial | `mpi_four_rank` CTest (`mpirun -np 4`); manual `mpirun -np 8+` on HPC |
 
 When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colicin_E1` aliases still resolve) and assert `agent.genome.bi_loci.size() > 0`.
 
@@ -121,11 +121,11 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 **Integration (`ctest -L integration`):** smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), mechanism wiring (cross-spec mass-balance + directional coupling; see `docs/WIRING_AUDIT.md`), HDF5 round-trip, HDF5 checkpoint restart.
 
-**MPI:** `mpi_multi_rank` (`mpirun -np 2`), `mpi_gpu_multi_rank` (2-rank + `gpu_enabled`), `hdf5_roundtrip_parallel`.
+**MPI:** `mpi_multi_rank` (`mpirun -np 2`), `mpi_four_rank` (`mpirun -np 4`), `mpi_gpu_multi_rank` (2-rank + `gpu_enabled`), `cuda_aware_mpi_reaction` (CUDA-aware device Allreduce when available), `hdf5_roundtrip_parallel`.
 
 **OpenMP:** `openmp_parity` + `scripts/compare_openmp_parity.sh` (serial vs OpenMP fingerprint).
 
-**GPU (CUDA job):** `greens_function_gpu`, `gpu_diffusion`, `gpu_chemical_field`, `gpu_feature_combinations`, `gpu_production_path`, `gpu_smoke`, `mpi_gpu_multi_rank` + `scripts/compare_gpu_parity.sh`.
+**GPU (CUDA job):** `greens_function_gpu`, `gpu_diffusion`, `gpu_chemical_field`, `gpu_feature_combinations`, `gpu_production_path`, `gpu_smoke`, `mpi_gpu_multi_rank`, `mpi_four_rank`, `cuda_aware_mpi_reaction` + `scripts/compare_gpu_parity.sh`.
 
 **Benchmark:** `scaling_benchmark` (issue #55 smoke counts).
 
@@ -149,7 +149,8 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 ### Gaps (add tests when touching these areas)
 
-- Multi-GPU NCCL / device-side MPI reaction reduction beyond 2-rank smoke
+- Multi-rank MPI beyond 4 processes (`mpirun -np 8+` on HPC)
+- Multi-GPU NCCL
 - Metabolic washout trap as a dedicated long-horizon regression
 - OpenMP equivalence on stochastic (toxin-kill) scenarios
 
@@ -241,7 +242,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 
 Recently closed critical path: #40–#43, #56, #75–#81, #25 (FISH models), #29 (higher-order FMM), #55 (scaling benchmarks).
 
-Remaining long-horizon: larger-scale MPI/HPC validation (`mpirun -np 4+`), GPU FMM octree, Fur on device.
+Remaining long-horizon: larger-scale MPI/HPC validation (`mpirun -np 8+`), GPU FMM octree, Fur on device.
 
 **Project board:** [docs/PROJECT_BOARD.md](docs/PROJECT_BOARD.md) — kanban layout, PR bundles, merge order. Run `./scripts/setup_project_board.sh` to create GitHub labels, milestones, and a Projects v2 board.
 

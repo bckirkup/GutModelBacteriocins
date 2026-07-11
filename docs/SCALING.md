@@ -151,6 +151,29 @@ limits surface-to-volume improvement.
 
 The benchmark script records both dimensions in CSV form for offline plotting.
 
+## MPI validation (#154 / #156)
+
+| Artifact | Purpose |
+|----------|---------|
+| `tests/test_mpi_four_rank.cpp` | 4-rank slab decomposition, reaction sum, migration, short `run()` |
+| `tests/test_cuda_aware_mpi_reaction.cpp` | Env gating + device `MPI_Allreduce` parity when CUDA-aware MPI is available |
+| `scripts/run_mpi_scaling_smoke.sh` | Local/HPC smoke for 2- and 4-rank MPI (+ optional GPU MPI test) |
+
+```bash
+cd build
+ctest -R 'mpi_four_rank|cuda_aware_mpi_reaction' --output-on-failure
+bash scripts/run_mpi_scaling_smoke.sh
+```
+
+On CUDA-aware clusters (Open MPI with `--with-cuda`, MVAPICH2-GDR, etc.):
+
+```bash
+export GUTIBM_CUDA_AWARE_MPI=1
+mpirun -np 4 --oversubscribe ./gut_ibm examples/scaling_benchmark/input_1e5.json
+```
+
+If auto-detection fails but buffers are known CUDA-aware, set `GUTIBM_CUDA_AWARE_MPI_FORCE=1`.
+
 ## CI integration
 
 - **Pull requests:** `scaling_benchmark` CTest (label `benchmark;slow`) runs 500 /
@@ -161,8 +184,8 @@ The benchmark script records both dimensions in CSV form for offline plotting.
 
 ## Known limits (v0.1.0)
 
-- All CTest targets still default to `nprocs=1`; MPI scaling requires
-  `run_scaling_benchmark.sh` or manual `mpirun`.
+- All CTest MPI targets cover `nprocs=2` and `nprocs=4`; larger scaling uses
+  `run_scaling_benchmark.sh`, `run_mpi_scaling_smoke.sh`, or manual `mpirun`.
 - GPU Barnes-Hut FMM is not offloaded — `use_fmm` far-field stays on CPU.
 - Agent memory includes per-agent heap allocations; pool allocators (#future) could
   reduce `bytes_per_agent` by ~30%.
