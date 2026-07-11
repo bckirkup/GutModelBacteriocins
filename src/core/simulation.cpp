@@ -849,10 +849,11 @@ void Simulation::module_physics(Real dt) {
     a.x[1] += a.v[1] * dt;
     a.x[2] += a.v[2] * dt;
 
-    if (cfg_.cell_bio.motility.enabled && !a.motility.is_stopped) {
-      a.x[0] += a.motility.swim_direction[0] * cfg_.cell_bio.motility.swim_speed * dt;
-      a.x[1] += a.motility.swim_direction[1] * cfg_.cell_bio.motility.swim_speed * dt;
-      a.x[2] += a.motility.swim_direction[2] * cfg_.cell_bio.motility.swim_speed * dt;
+    if (cfg_.cell_bio.motility.enabled) {
+      a.x[0] += a.motility.step_displacement[0];
+      a.x[1] += a.motility.step_displacement[1];
+      a.x[2] += a.motility.step_displacement[2];
+      a.motility.step_displacement = {0.0, 0.0, 0.0};
     }
 
     // PBC / boundary

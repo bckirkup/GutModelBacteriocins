@@ -24,6 +24,10 @@ class FixMotility : public Fix {
 
  private:
   void update_agent(Agent& agent, Real dt);
+  void update_chemotaxis(Agent& agent, Real dt);
+  void complete_run(Agent& agent);
+  void start_run(Agent::MotilityState& motility);
+  Real sample_duration(Real mean_duration);
 
   MotilityConfig cfg_;
 };

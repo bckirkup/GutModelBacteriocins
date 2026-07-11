@@ -249,9 +249,16 @@ Chromosomal mutations that ameliorate plasmid metabolic cost. Reduces per-locus 
 
 **Biological basis:** E. coli in colonic mucus swims at ~7.76 µm/s using a mucus-adapted run-and-reverse pattern (not classic run-and-tumble). Flagellar activity increases near mucin-producing cells.
 
-**Model:** `FixMotility::pre_step()` updates run/stop timers and direction; swim displacement is applied in `module_physics()` after advection:
+**Model:** `FixMotility::pre_step()` advances every run/stop transition that
+occurs within the biological timestep and accumulates the corresponding swim
+displacement. `module_physics()` applies that displacement after advection:
 ```
-x += swim_direction * swim_speed * dt
+while remaining_dt > 0:
+    event_dt = min(remaining_dt, current_run_or_stop_timer)
+    if running:
+        displacement += swim_direction * swim_speed * event_dt
+    advance timer and transition state when the event ends
+x += displacement
 ```
 Optional chemotaxis extends run duration when moving toward increasing attractant (carbon, O₂). Cluster suppression reduces reorientation rate when neighbor density exceeds threshold.
 
