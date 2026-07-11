@@ -8,6 +8,7 @@
 #include "path_utils.h"
 #include "plasmid.h"
 #include "error.h"
+#include "hdf5_test_helpers.h"
 
 #include <algorithm>
 #include <cassert>
@@ -23,10 +24,14 @@
 #endif
 
 using namespace gutibm;
+using gutibm::test::agent_snapshots_from_checkpoint;
+using gutibm::test::collect_agent_snapshots;
+using gutibm::test::compare_agent_snapshots;
+using gutibm::test::kAgentSnapshotTol;
 
 namespace {
 
-constexpr Real kTol = 1e-12;
+constexpr Real kTol = kAgentSnapshotTol;
 
 SimulationConfig make_checkpoint_config(std::string_view filename) {
   SimulationConfig cfg = InputParser::default_config();
@@ -68,77 +73,6 @@ SimulationConfig make_checkpoint_config(std::string_view filename) {
   cfg.initial_strains.push_back(immigrant);
 
   return cfg;
-}
-
-struct AgentSnapshot {
-  int64_t id;
-  int32_t type;
-  int32_t state;
-  double x;
-  double y;
-  double z;
-  double radius;
-  double biomass;
-  double mu;
-  int64_t lineage;
-};
-
-std::vector<AgentSnapshot> collect_agents(const Simulation& sim) {
-  std::vector<AgentSnapshot> out;
-  out.reserve(sim.agents().size());
-  for (const Agent& a : sim.agents()) {
-    out.emplace_back(
-      a.identity.tag,
-      a.identity.type,
-      static_cast<int32_t>(to_underlying(a.state)),
-      a.x[0], a.x[1], a.x[2],
-      a.radius,
-      a.biomass,
-      a.mu_realized,
-      a.genome.lineage_id);
-  }
-  std::ranges::sort(out, [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
-              return lhs.id < rhs.id;
-            });
-  return out;
-}
-
-std::vector<AgentSnapshot> snapshot_from_hdf5(const HDF5CheckpointAgents& atoms) {
-  const size_t n = atoms.id.size();
-  std::vector<AgentSnapshot> out(n);
-  size_t i = 0;
-  for (int64_t id : atoms.id) {
-    (void)id;
-    out[i] = AgentSnapshot{
-      atoms.id[i], atoms.type[i], atoms.state[i],
-      atoms.x[i], atoms.y[i], atoms.z[i],
-      atoms.radius[i], atoms.biomass[i], atoms.mu[i], atoms.lineage[i],
-    };
-    ++i;
-  }
-  std::ranges::sort(out, [](const AgentSnapshot& lhs, const AgentSnapshot& rhs) {
-              return lhs.id < rhs.id;
-            });
-  return out;
-}
-
-void compare_snapshots(const std::vector<AgentSnapshot>& expected,
-                       const std::vector<AgentSnapshot>& actual) {
-  assert(expected.size() == actual.size());
-  auto it_actual = actual.begin();
-  for (const AgentSnapshot& exp : expected) {
-    const AgentSnapshot& act = *it_actual++;
-    assert(exp.id == act.id);
-    assert(exp.type == act.type);
-    assert(exp.state == act.state);
-    assert(std::abs(exp.x - act.x) < kTol);
-    assert(std::abs(exp.y - act.y) < kTol);
-    assert(std::abs(exp.z - act.z) < kTol);
-    assert(std::abs(exp.radius - act.radius) < kTol);
-    assert(std::abs(exp.biomass - act.biomass) < kTol);
-    assert(std::abs(exp.mu - act.mu) < kTol);
-    assert(exp.lineage == act.lineage);
-  }
 }
 
 void assert_genome_bi_identity(const Simulation& sim) {
@@ -239,7 +173,7 @@ void test_checkpoint_restart(const std::string& filename) {
 
   HDF5CheckpointSnapshot ckpt = HDF5Reader::load_snapshot(filename, "step_000000");
   assert(ckpt.metadata.num_agents > 0);
-  auto expected_agents = snapshot_from_hdf5(ckpt.agents);
+  auto expected_agents = agent_snapshots_from_checkpoint(ckpt.agents);
 
   SimulationConfig resume_cfg = run_cfg;
   resume_cfg.hdf5.enabled = false;
@@ -254,9 +188,9 @@ void test_checkpoint_restart(const std::string& filename) {
   assert(resumed.global_agent_count() == ckpt.metadata.num_agents);
   assert(resumed.global_agent_count() > 0);
 
-  auto restored_agents = collect_agents(resumed);
+  auto restored_agents = collect_agent_snapshots(resumed);
   assert(static_cast<Int>(restored_agents.size()) == ckpt.metadata.num_agents);
-  compare_snapshots(expected_agents, restored_agents);
+  compare_agent_snapshots(expected_agents, restored_agents);
   assert_genome_bi_identity(resumed);
   assert_genome_matches_snapshot(resumed, ckpt);
 

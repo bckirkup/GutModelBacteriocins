@@ -14,6 +14,7 @@ if(GUTIBM_USE_CUDA)
 endif()
 
 set(TEST_INCLUDE_DIRS
+  ${CMAKE_SOURCE_DIR}/tests
   ${CMAKE_SOURCE_DIR}/src
   ${CMAKE_SOURCE_DIR}/src/core
   ${CMAKE_SOURCE_DIR}/src/fields

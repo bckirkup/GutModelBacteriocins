@@ -157,28 +157,6 @@ void FMM::upward_pass(const std::vector<Vec3>& positions,
   }
 }
 
-void FMM::m2l_at_node(int node_idx,
-                      Real theta,
-                      const GreensFunction& gf,
-                      const GreensFunctionParams& avg_params) {
-  FMMNode& target = nodes_[node_idx];
-
-  for (int src_idx = 0; src_idx < static_cast<int>(nodes_.size()); ++src_idx) {
-    if (src_idx == node_idx) continue;
-    const FMMNode& source = nodes_[src_idx];
-    if (source.total_source_strength <= 0.0) continue;
-    if (!well_separated(source, target, theta)) continue;
-
-    std::vector<Real> contrib = multipole_to_local(
-        source.multipole, expansion_order_,
-        source.center_of_source, target.center,
-        gf, avg_params);
-
-    for (size_t k = 0; k < target.local.size(); ++k)
-      target.local[k] += contrib[k];
-  }
-}
-
 void FMM::m2l_visit_children(int target_idx,
                              int src_idx,
                              Real theta,

@@ -7,34 +7,14 @@
 #include "fix_mechanics.h"
 #include "simulation.h"
 #include "input_parser.h"
+#include "mechanics_test_helpers.h"
 
 #include <cassert>
 #include <iostream>
 #include <cmath>
 
 using namespace gutibm;
-
-// Helper: create a minimal simulation with two overlapping agents
-static Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
-                                     const MechanicsConfig& mcfg = {}) {
-  SimulationConfig cfg = InputParser::default_config();
-  cfg.initial_strains.clear();
-  cfg.domain.hi = {100e-6, 100e-6, 100e-6};
-  cfg.domain.grid_dx = 10e-6;
-  cfg.domain.hash_cell_size = 20e-6;
-  cfg.fixes.mechanics = mcfg;
-  cfg.hdf5.enabled = false;
-
-  Simulation sim;
-  sim.init(cfg);
-
-  Agent a = Agent::create_default(sim.agents().next_tag(), 1, pos_a, 5e-4);
-  Agent b = Agent::create_default(sim.agents().next_tag(), 1, pos_b, 5e-4);
-  sim.agents().push_back(std::move(a));
-  sim.agents().push_back(std::move(b));
-
-  return sim;
-}
+using gutibm::test::make_two_agent_sim;
 
 void test_overlapping_agents_pushed_apart() {
   // Place two cells overlapping by 0.2 um along x-axis
