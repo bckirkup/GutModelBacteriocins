@@ -3,7 +3,9 @@
 #include "agent_pool_gpu.h"
 #include "chemical_field_gpu.h"
 #include "chemical_field.h"
+#include "chem_environment_config.h"
 #include "dispatch.h"
+#include "domain.h"
 #include "gpu_kernels.h"
 #include "device_memory.h"
 
@@ -13,23 +15,47 @@
 
 namespace gutibm {
 
-// Spec 6 — carbon/iron uptake is applied by the GPU metabolism kernel
-// (mirroring FixMetabolism::grow_agent), and B12/corrinoid is no longer
-// depleted. The chemistry-phase nutrient-depletion kernel that previously
-// re-applied carbon/iron/B12 here duplicated that uptake (double-counting) and
-// has been removed. Returning true signals "handled" so the CPU fallback is
-// not run on the GPU path. (Agent O2 respiration is CPU-only; on the GPU path
-// it is not applied, matching prior behavior.)
-bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents, Int num_agents,
-                                  ChemicalFieldGpu& chem_gpu, const ChemicalField& chem) {
+bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents,
+                                  Int num_agents,
+                                  ChemicalFieldGpu& chem_gpu,
+                                  const ChemicalField& chem,
+                                  const OxygenConfig& oxygen,
+                                  const Domain& domain) {
+#ifndef GUTIBM_CUDA
   (void)agents;
   (void)num_agents;
   (void)chem_gpu;
   (void)chem;
-#ifndef GUTIBM_CUDA
+  (void)oxygen;
+  (void)domain;
   return false;
 #else
-  return gpu_runtime_enabled();
+  if (!gpu_runtime_enabled() || !chem_gpu.active()) return false;
+  if (!oxygen.enabled) return true;
+
+  const Int i_oxygen = chem.find(species::OXYGEN);
+  if (i_oxygen < 0) return true;
+
+  const double cell_vol = domain.dx() * domain.dx() * domain.dx();
+  if (cell_vol <= 0.0 || num_agents <= 0) return true;
+
+  double* d_reac_oxygen = chem_gpu.reac_device(i_oxygen);
+  if (d_reac_oxygen == nullptr) return false;
+
+  gpu::launch_o2_depletion_kernel(
+      d_reac_oxygen,
+      agents.mu_realized(),
+      agents.grid_cell(),
+      agents.state(),
+      num_agents,
+      oxygen.q_consumption,
+      oxygen.q_maintenance,
+      1.0 / cell_vol,
+      nullptr);
+
+  cudaDeviceSynchronize();
+  gpu_check_error("gpu_solve_nutrient_depletion");
+  return true;
 #endif
 }
 

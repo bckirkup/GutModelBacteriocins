@@ -11,6 +11,7 @@
 #include "plasmid.h"
 #include "dispatch.h"
 #include "qssa_gpu.h"
+#include "vbf_gpu.h"
 #ifdef GUTIBM_CUDA
 #include "device.h"
 #include "gpu_kernels.h"
@@ -786,21 +787,41 @@ void Simulation::module_biology(Real dt) {
 void Simulation::module_chemistry(Real dt) {
   update_bacteriocin_fields();
 
-  // GPU metabolism writes carbon/iron reactions on the device. Bring only
-  // those rates back; concentration fields already match after QSSA sync.
+  bool applied_o2_on_gpu = false;
   if (gpu_active_) {
-    chem_gpu_.sync_reactions_to_host(chem_);
+    applied_o2_on_gpu = gpu_solve_nutrient_depletion(
+        agents_gpu_, static_cast<Int>(agents_.size()), chem_gpu_, chem_,
+        cfg_.chem_env.oxygen, domain_);
   }
 
-  // Agent O2 respiration is applied on the host for both CPU and GPU runs.
-  qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.chem_env.oxygen);
+  if (!applied_o2_on_gpu) {
+    if (gpu_active_) {
+      chem_gpu_.sync_reactions_to_host(chem_);
+    }
+    qssa_.solve_nutrient_depletion(agents_, chem_, cfg_.chem_env.oxygen);
+  } else {
+    chem_gpu_.sync_reactions_to_host(chem_);
+  }
 
   // Every rank holds the full chemical grid but only its local agents. Sum the
   // rank-local agent reaction fields before adding the identical global VBF.
   chem_.sum_reactions_across_ranks();
-  vbf_.apply_nutrient_coupling(chem_, domain_, dt,
-                                cfg_.chem_env.oxygen, cfg_.chem_env.acetate,
-                                cfg_.chem_env.mucin);
+
+  bool applied_vbf_on_gpu = false;
+  if (gpu_active_ && applied_o2_on_gpu) {
+    chem_gpu_.sync_reactions_to_device(chem_);
+    applied_vbf_on_gpu = gpu_apply_vbf_coupling(
+        chem_gpu_, chem_, domain_, vbf_,
+        cfg_.chem_env.oxygen, cfg_.chem_env.acetate, cfg_.chem_env.mucin);
+  }
+  if (!applied_vbf_on_gpu) {
+    vbf_.apply_nutrient_coupling(chem_, domain_, dt,
+                                 cfg_.chem_env.oxygen, cfg_.chem_env.acetate,
+                                 cfg_.chem_env.mucin);
+    if (gpu_active_) {
+      chem_gpu_.sync_reactions_to_device(chem_);
+    }
+  }
 
   bool applied_reactions_on_gpu = false;
   bool applied_diffusion_on_gpu = false;

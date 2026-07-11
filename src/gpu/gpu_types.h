@@ -37,6 +37,31 @@ struct GfSourceParams {
   double retardation;
 };
 
+struct VbfLaunchParams {
+  int nx = 0;
+  int ny = 0;
+  int nz = 0;
+  double dx = 0.0;
+  double nutrient_sink = 0.0;
+  double carbon_sink_vmax = 0.0;
+  double carbon_sink_km = 0.0;
+  int use_dynamic_mucin = 0;
+  int mucin_z_gradient_enabled = 0;
+  double mucin_z_gradient_lambda = 0.0;
+  double mucin_liberation = 0.0;
+  double vbf_density = 0.0;
+  int oxygen_enabled = 0;
+  double oxygen_vbf_sink = 0.0;
+  int acetate_enabled = 0;
+  double acetate_vbf_production = 0.0;
+  double acetate_vbf_consumption = 0.0;
+  double acetate_epithelial_uptake = 0.0;
+  int mucin_enabled = 0;
+  double mucin_secretion_rate = 0.0;
+  double mucin_Km_degradation = 0.0;
+  double mucin_k_liberation = 0.0;
+};
+
 }  // namespace gutibm::gpu
 
 #endif  // GUTIBM_GPU_TYPES_H

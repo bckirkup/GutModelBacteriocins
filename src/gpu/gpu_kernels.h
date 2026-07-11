@@ -73,6 +73,29 @@ void launch_shift_z_gradient(double* conc, int nx, int ny, int nz, double dx,
                              cudaStream_t stream);
 void launch_clamp_nonneg(double* conc, int ncells, cudaStream_t stream);
 
+void launch_o2_depletion_kernel(double* reac_oxygen,
+                                const double* mu_realized,
+                                const int* grid_cell,
+                                const int* state,
+                                int num_agents,
+                                double q_consumption,
+                                double q_maintenance,
+                                double inv_cell_vol,
+                                cudaStream_t stream);
+
+void launch_vbf_coupling_kernel(int ncells,
+                                const VbfLaunchParams& params,
+                                double* reac_carbon,
+                                const double* conc_carbon,
+                                double* reac_iron,
+                                const double* conc_iron,
+                                double* reac_oxygen,
+                                const double* conc_oxygen,
+                                double* reac_acetate,
+                                double* reac_mucin,
+                                const double* conc_mucin,
+                                cudaStream_t stream);
+
 int diffusion_max_line_length();
 
 }  // namespace gutibm::gpu
