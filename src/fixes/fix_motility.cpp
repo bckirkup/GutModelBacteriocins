@@ -74,26 +74,34 @@ void FixMotility::update_agent(Agent& agent, Real dt) {
 
   Real remaining = dt;
   while (remaining > 0.0) {
-    if (mot.is_stopped) {
-      const Real stopped_time = std::min(std::max(mot.stop_timer, 0.0), remaining);
-      mot.stop_timer -= stopped_time;
-      remaining -= stopped_time;
-      if (mot.stop_timer > 0.0) break;
-      start_run(mot);
-      if (remaining <= 0.0) break;
-      continue;
-    }
-
-    const Real run_time = std::min(std::max(mot.run_timer, 0.0), remaining);
-    for (int d = 0; d < 3; ++d) {
-      mot.step_displacement[d] += mot.swim_direction[d] * mot.swim_speed * run_time;
-    }
-    mot.run_timer -= run_time;
-    remaining -= run_time;
-    if (mot.run_timer > 0.0) break;
-    complete_run(agent);
-    if (remaining <= 0.0) break;
+    remaining = mot.is_stopped
+        ? advance_stopped_interval(mot, remaining)
+        : advance_running_interval(agent, remaining);
   }
+}
+
+Real FixMotility::advance_stopped_interval(
+    Agent::MotilityState& motility, Real remaining) {
+  const Real stopped_time = std::min(
+      std::max(motility.stop_timer, 0.0), remaining);
+  motility.stop_timer -= stopped_time;
+  remaining -= stopped_time;
+  if (motility.stop_timer > 0.0) return 0.0;
+  start_run(motility);
+  return remaining;
+}
+
+Real FixMotility::advance_running_interval(Agent& agent, Real remaining) {
+  auto& mot = agent.motility;
+  const Real run_time = std::min(std::max(mot.run_timer, 0.0), remaining);
+  for (int d = 0; d < 3; ++d) {
+    mot.step_displacement[d] += mot.swim_direction[d] * mot.swim_speed * run_time;
+  }
+  mot.run_timer -= run_time;
+  remaining -= run_time;
+  if (mot.run_timer > 0.0) return 0.0;
+  complete_run(agent);
+  return remaining;
 }
 
 void FixMotility::update_chemotaxis(Agent& agent, Real dt) {
