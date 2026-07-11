@@ -70,6 +70,7 @@ struct Agent {
   // ── Motility (Spec 3) ───────────────────────────────────────────────
   struct MotilityState {
     Vec3 swim_direction = {1.0, 0.0, 0.0};
+    Vec3 step_displacement = {0.0, 0.0, 0.0};
     Real swim_speed = 0.0;
     Real run_timer = 0.0;
     bool is_stopped = false;

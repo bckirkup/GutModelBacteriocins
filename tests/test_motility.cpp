@@ -56,6 +56,54 @@ static Real displacement(const Vec3& start, const Vec3& end) {
   return std::sqrt(dx * dx + dy * dy + dz * dz);
 }
 
+static Real partitioned_displacement(Real swim_speed, int steps) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_strains.clear();
+  cfg.hdf5.enabled = false;
+  cfg.enabled_fixes = {"motility"};
+  cfg.domain.hi = {2.0e-3, 100e-6, 100e-6};
+  cfg.domain.grid_dx = 10e-6;
+  cfg.domain.periodic = {false, false, false};
+  cfg.advection.radial_turnover = 1.0e30;
+  cfg.advection.distal_transit_time = 1.0e30;
+  cfg.cell_bio.motility.enabled = true;
+  cfg.cell_bio.motility.swim_speed = swim_speed;
+  cfg.cell_bio.motility.run_mean_duration = 1.0e9;
+  cfg.cell_bio.motility.stop_probability = 0.0;
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent agent = make_motile_agent(sim);
+  agent.x = {1.0e-3, 50e-6, 50e-6};
+  agent.motility.swim_speed = swim_speed;
+  agent.motility.swim_direction = {1.0, 0.0, 0.0};
+  agent.motility.is_stopped = true;
+  agent.motility.stop_timer = 59.0;
+  agent.motility.run_timer = 0.0;
+  agent.mu_realized = 1.0;
+  const Real start_x = agent.x[0];
+  sim.agents().push_back(std::move(agent));
+
+  const Real dt = 60.0 / static_cast<Real>(steps);
+  for (int step = 0; step < steps; ++step) {
+    sim.step(dt);
+  }
+  return sim.agents()[0].x[0] - start_x;
+}
+
+void test_biological_timestep_subcycling() {
+  constexpr Real swim_speed = 7.76e-6;
+  const Real displacement_coarse = partitioned_displacement(swim_speed, 1);
+  const Real displacement_fine = partitioned_displacement(swim_speed, 60);
+  const Real displacement_fast = partitioned_displacement(2.0 * swim_speed, 1);
+
+  assert(std::abs(displacement_coarse - swim_speed) < 1.0e-12);
+  assert(std::abs(displacement_fine - displacement_coarse) < 1.0e-12);
+  assert(std::abs(displacement_fast - 2.0 * displacement_coarse) < 1.0e-12);
+
+  std::cout << "  test_biological_timestep_subcycling: PASSED\n";
+}
+
 void test_motility_displacement() {
   auto sim_motile = make_motility_sim();
   Agent motile = make_motile_agent(sim_motile);
@@ -80,9 +128,9 @@ void test_motility_displacement() {
   for (int i = 0; i < steps; ++i) {
     mot_fix.pre_step(dt);
     Agent& a = sim_motile.agents()[0];
-    a.x[0] += a.motility.swim_direction[0] * sim_motile.config().cell_bio.motility.swim_speed * dt;
-    a.x[1] += a.motility.swim_direction[1] * sim_motile.config().cell_bio.motility.swim_speed * dt;
-    a.x[2] += a.motility.swim_direction[2] * sim_motile.config().cell_bio.motility.swim_speed * dt;
+    a.x[0] += a.motility.step_displacement[0];
+    a.x[1] += a.motility.step_displacement[1];
+    a.x[2] += a.motility.step_displacement[2];
   }
 
   const Real motile_disp = displacement(start, sim_motile.agents()[0].x);
@@ -118,6 +166,7 @@ void test_chemotaxis_bias() {
 
 int main() {
   std::cout << "=== Motility Tests ===\n";
+  test_biological_timestep_subcycling();
   test_motility_displacement();
   test_chemotaxis_bias();
   std::cout << "All motility tests passed.\n";
