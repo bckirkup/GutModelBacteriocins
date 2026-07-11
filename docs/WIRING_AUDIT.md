@@ -146,7 +146,7 @@ Two invariants, applied to the couplings above:
 3. **Transport regression and execution parity.**
    - `test_nutrient_diffusion` checks a quantitative point-source golden profile, uniform-field and configured-gradient invariance, boundary gradients, nonnegativity at `dt=300 s`, and enable/coefficient sensitivity.
    - `test_mpi_multi_rank` checks that rank-local reactions sum to one identical diffused field on both ranks.
-   - `gpu_smoke` includes chemical concentrations in the CPU/GPU fingerprint, guarding the host-diffusion fallback.
+   - `gpu_smoke` includes chemical concentrations in the CPU/GPU fingerprint, guarding GPU diffusion wiring in `module_chemistry` (CPU fallback when line lengths exceed the PCR limit).
 
 Every new config key also has an ingestion probe in
 `tests/test_config_ingestion.cpp`, whose completeness guard fails CI if any
