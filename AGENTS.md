@@ -123,7 +123,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 **MPI:** `mpi_multi_rank` (`mpirun -np 2`), `mpi_four_rank` (`mpirun -np 4`), `mpi_gpu_multi_rank` (2-rank + `gpu_enabled`), `cuda_aware_mpi_reaction` (CUDA-aware device Allreduce when available), `hdf5_roundtrip_parallel`.
 
-**OpenMP:** `openmp_parity` + `scripts/compare_openmp_parity.sh` (serial vs OpenMP fingerprint).
+**OpenMP:** `openmp_parity` + `scripts/compare_openmp_parity.sh` (serial vs OpenMP deterministic + stochastic toxin-kill fingerprints)
 
 **GPU (CUDA job):** `greens_function_gpu`, `gpu_diffusion`, `gpu_chemical_field`, `gpu_feature_combinations`, `gpu_production_path`, `gpu_smoke`, `mpi_gpu_multi_rank`, `mpi_four_rank`, `cuda_aware_mpi_reaction` + `scripts/compare_gpu_parity.sh`.
 
@@ -142,7 +142,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | `unit-tests` | Fast CTest unit shard |
 | `integration-tests` | Smoke, config diversity, HDF5, batch runner smoke, Python integration pytest (#155) |
 | `gpu-parity` | CPU vs GPU fingerprint check via `compare_gpu_parity.sh` (#158) |
-| `openmp-parity` | Serial vs OpenMP build fingerprints |
+| `openmp-parity` | Serial vs OpenMP deterministic + stochastic toxin-kill fingerprints |
 | `cuda-compile` | CUDA compile + GPU test targets (single arch, no duplicate parity rebuild) |
 | `eari-vadi-validation` | Short EARI/VADI + FISH golden regression (#56, #25) |
 | `python-lint` | JSON syntax, ruff, pytest (fast), batch runner dry-run |
@@ -151,7 +151,6 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 - Multi-rank MPI beyond 4 processes (`mpirun -np 8+` on HPC)
 - Multi-GPU NCCL
-- OpenMP equivalence on stochastic (toxin-kill) scenarios
 
 ## Adding Features — Agent Checklist
 
@@ -239,7 +238,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 
 ## Open Issue Tracker (Jul 2026)
 
-Jun 2026 queue closed (#40–#81, #25, #29, #33, #55). Post–GPU ROI backlog **#154–#161** largely landed via #162–#164.
+Jun 2026 queue closed (#40–#81, #25, #29, #33, #55). Post–GPU ROI backlog **#154–#161** complete via #162–#167.
 
 | Issue | Topic | Status |
 |-------|-------|--------|
@@ -250,7 +249,7 @@ Jun 2026 queue closed (#40–#81, #25, #29, #33, #55). Post–GPU ROI backlog **
 | #158 | GPU parity CI | Done (#162) |
 | #159 | Sub-quadratic FMM M2L | Done (#164) |
 | #160 | Metabolic washout trap regression | Done (`washout_trap` CTest) |
-| #161 | OpenMP stochastic parity | Backlog |
+| #161 | OpenMP stochastic parity | Done (`FINGERPRINT_STOCHASTIC` in openmp parity CI) |
 
 Remaining long-horizon: `mpirun -np 8+` on HPC, GPU FMM octree traversal, Fur on device.
 

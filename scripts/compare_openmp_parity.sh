@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compare OpenMP OFF vs ON simulation fingerprints (issue #50).
+# Compare OpenMP OFF vs ON simulation fingerprints (issues #50, #161).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,13 +28,22 @@ cmake --build "$BUILD_OMP" -j"$(nproc)" --target test_openmp_parity
 
 FP_SERIAL="$("$BUILD_SERIAL/tests/test_openmp_parity" | awk '/^FINGERPRINT=/ {print $1}')"
 FP_OMP="$("$BUILD_OMP/tests/test_openmp_parity" | awk '/^FINGERPRINT=/ {print $1}')"
+FP_STOCH_SERIAL="$("$BUILD_SERIAL/tests/test_openmp_parity" | awk '/^FINGERPRINT_STOCHASTIC=/ {print $1}')"
+FP_STOCH_OMP="$("$BUILD_OMP/tests/test_openmp_parity" | awk '/^FINGERPRINT_STOCHASTIC=/ {print $1}')"
 
 echo "Serial: $FP_SERIAL"
 echo "OpenMP: $FP_OMP"
+echo "Stochastic serial: $FP_STOCH_SERIAL"
+echo "Stochastic OpenMP: $FP_STOCH_OMP"
 
 if [[ "$FP_SERIAL" != "$FP_OMP" ]]; then
   echo "ERROR: OpenMP fingerprint mismatch" >&2
   exit 1
 fi
 
-echo "OpenMP parity check passed."
+if [[ "$FP_STOCH_SERIAL" != "$FP_STOCH_OMP" ]]; then
+  echo "ERROR: OpenMP stochastic toxin-kill fingerprint mismatch" >&2
+  exit 1
+fi
+
+echo "OpenMP parity check passed (deterministic + stochastic toxin-kill)."

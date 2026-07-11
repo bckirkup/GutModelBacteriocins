@@ -9,8 +9,9 @@
 #include "sim_fingerprint.h"
 #include <array>
 #include <cassert>
-#include <iostream>
 #include <cmath>
+#include <format>
+#include <iostream>
 #include <vector>
 
 #ifdef GUTIBM_OPENMP
@@ -52,6 +53,95 @@ static SimulationConfig make_test_config(int seed) {
   cfg.initial_strains.push_back(s2);
 
   return cfg;
+}
+
+static SimulationConfig make_stochastic_toxin_config() {
+  // Colicin E producer/target scenario with SOS lysis and stochastic receptor kills.
+  // Mirrors smoke::test_receptor_killing (issue #161).
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo = {0.0, 0.0, 0.0};
+  cfg.domain.hi = {80e-6, 80e-6, 40e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.time.total_time = 900.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 900.0;
+  cfg.seed = 16101;
+  cfg.hdf5.enabled = false;
+  cfg.advection.mucus_thickness = 40e-6;
+  cfg.advection.distal_length = 80e-6;
+  cfg.advection.radial_turnover = 5400.0;
+  cfg.advection.distal_transit_time = 43200.0;
+  cfg.qssa.toxin_cutoff = 40e-6;
+  cfg.qssa.nutrient_cutoff = 20e-6;
+  cfg.cell_bio.fur.enabled = false;
+  cfg.cell_bio.cdi.enabled = false;
+  cfg.cell_bio.motility.enabled = false;
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
+  cfg.fixes.receptor.kill_rate_colicin = 2.0e-3;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain producer;
+  producer.type = 1;
+  producer.count = 12;
+  producer.mu_max = 5e-4;
+  producer.plasmids = {"ColE1"};
+  producer.conjugative = false;
+  cfg.initial_strains.push_back(producer);
+
+  SimulationConfig::InitialStrain target;
+  target.type = 2;
+  target.count = 12;
+  target.mu_max = 5e-4;
+  target.plasmids = {};
+  target.conjugative = false;
+  cfg.initial_strains.push_back(target);
+
+  return cfg;
+}
+
+static uint64_t run_stochastic_fingerprint() {
+  SimulationConfig cfg = make_stochastic_toxin_config();
+  Simulation sim;
+  sim.init(cfg);
+  sim.run();
+  return test_util::simulation_fingerprint(sim);
+}
+
+void test_stochastic_toxin_reproducible() {
+  const uint64_t fp_a = run_stochastic_fingerprint();
+  const uint64_t fp_b = run_stochastic_fingerprint();
+  assert(fp_a == fp_b);
+
+  std::cout << "  test_stochastic_toxin_reproducible: PASSED (fp="
+            << std::format("{:016x}", fp_a) << ")\n";
+}
+
+void test_stochastic_toxin_outcome() {
+  SimulationConfig cfg = make_stochastic_toxin_config();
+  Simulation sim;
+  sim.init(cfg);
+  sim.run();
+
+  assert(sim.toxin_bursts().size() == 12);
+
+  Int type1_alive = 0;
+  Int type2_alive = 0;
+  for (const Agent& a : sim.agents()) {
+    if (a.state == PhenoState::DEAD) continue;
+    if (a.identity.type == 1) {
+      ++type1_alive;
+    } else if (a.identity.type == 2) {
+      ++type2_alive;
+    }
+  }
+
+  assert(type1_alive == 0);
+  assert(type2_alive > 0);
+  assert(type2_alive < 12);
+
+  std::cout << "  test_stochastic_toxin_outcome: PASSED"
+            << " (targets_alive=" << type2_alive << ")\n";
 }
 
 void test_openmp_compile_flag() {
@@ -215,6 +305,18 @@ void test_cross_build_fingerprint() {
   std::cout << "  test_cross_build_fingerprint: PASSED (fp=" << fp << ")\n";
 }
 
+void test_cross_build_stochastic_fingerprint() {
+  // Stochastic toxin-kill scenario for serial vs OpenMP comparison (issue #161).
+  // Emits FINGERPRINT_STOCHASTIC=<hex> for scripts/compare_openmp_parity.sh
+  const uint64_t fp = run_stochastic_fingerprint();
+  const std::string fp_hex = std::format("{:016x}", fp);
+  std::cout << "FINGERPRINT_STOCHASTIC=" << fp_hex << "\n";
+  assert(!fp_hex.empty());
+
+  std::cout << "  test_cross_build_stochastic_fingerprint: PASSED (fp="
+            << fp_hex << ")\n";
+}
+
 int main() {
   std::cout << "=== OpenMP Parity Tests ===\n";
   test_openmp_compile_flag();
@@ -222,7 +324,10 @@ int main() {
   test_deterministic_growth();
   test_chemical_field_parity();
   test_grid_coupling_consistency();
+  test_stochastic_toxin_reproducible();
+  test_stochastic_toxin_outcome();
   test_cross_build_fingerprint();
+  test_cross_build_stochastic_fingerprint();
   std::cout << "All OpenMP parity tests passed.\n";
   return 0;
 }

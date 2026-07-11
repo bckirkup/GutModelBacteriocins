@@ -32,7 +32,7 @@ This creates GitHub labels, milestones, a Projects v2 board, and links open issu
 
 ## Current board state (Jul 2026)
 
-The Jun 2026 queue (#40–#81, #25, #29, #33, #55) is **closed**. Post–GPU ROI work (#154–#161) is largely complete through PRs #162–#164.
+The Jun 2026 queue (#40–#81, #25, #29, #33, #55) is **closed**. Post–GPU ROI work (#154–#161) is complete through PRs #162–#167.
 
 ### In Review
 
@@ -40,15 +40,12 @@ _None_
 
 ### Ready (recommended next bundles)
 
-| Bundle | Issues | Track | Notes |
-|--------|--------|-------|-------|
-| **Science regressions** | #161 | `track:ci` | OpenMP stochastic parity |
+_None — P6 science/CI backlog cleared._
 
 ### Backlog
 
 | Issue | Title | Track | Priority |
 |-------|-------|-------|----------|
-| #161 | OpenMP parity on stochastic toxin-kill | `track:ci` | low |
 | — | MPI/HPC validation `mpirun -np 8+` | `track:mpi` | low (manual HPC) |
 | — | GPU FMM octree traversal on device | `track:gpu` | low |
 
@@ -63,7 +60,8 @@ _None_
 | #156 | CUDA-aware MPI reaction reduce | #163 |
 | #157 | GPU mechanics force kernel | #164 |
 | #159 | Sub-quadratic FMM M2L | #164 |
-| #160 | Metabolic washout trap long-horizon regression | (PR pending) |
+| #160 | Metabolic washout trap long-horizon regression | #167 |
+| #161 | OpenMP stochastic toxin-kill parity | (PR pending) |
 
 ### Done (Jun 2026 wave — reference)
 
@@ -82,7 +80,7 @@ _None_
 
 ## Merge order (remaining)
 
-1. **#161** — OpenMP stochastic parity
+_No open P6 merge queue._
 
 ---
 
@@ -90,7 +88,7 @@ _None_
 
 | Don't combine | Reason |
 |---------------|--------|
-| #160 + #161 | Different subsystems (biology regression vs OpenMP RNG) |
+| #160 + #161 | Different subsystems (biology regression vs OpenMP RNG) | Resolved (#160 washout_trap, #161 openmp parity) |
 | Functional PRs + doc-only sweeps | Keep review scope narrow |
 
 ---
@@ -99,7 +97,7 @@ _None_
 
 | Milestone | Issues |
 |-----------|--------|
-| P6 — HPC & GPU phase 2 | #154–#160 (done); #161 (backlog) |
+| P6 — HPC & GPU phase 2 | #154–#161 (done) |
 
 Create via `./scripts/setup_project_board.sh`.
 
