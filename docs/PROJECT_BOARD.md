@@ -1,8 +1,8 @@
 # GutIBM Project Board
 
-Living kanban for open work on [GutModelBacteriocins](https://github.com/bckirkup/GutModelBacteriocins). Mirrors the PR-bundling plan from the Jun 2026 issue queue review.
+Living kanban for open work on [GutModelBacteriocins](https://github.com/bckirkup/GutModelBacteriocins).
 
-**Last updated:** 2026-06-24
+**Last updated:** 2026-07-11
 
 ## One-click setup (local)
 
@@ -28,79 +28,62 @@ This creates GitHub labels, milestones, a Projects v2 board, and links open issu
 | **In Progress** | Branch open / agent or human working |
 | **In Review** | PR open, awaiting merge |
 
-```mermaid
-flowchart LR
-  B[Backlog] --> R[Ready]
-  R --> P[In Progress]
-  P --> V[In Review]
-  V --> D[Done]
-```
-
 ---
 
-## Current board state
+## Current board state (Jul 2026)
 
-### Done
-
-| Issue | Title | PR |
-|-------|-------|-----|
-| #75 | MPI periodic-x deadlock (2 ranks) | #87 |
-| #77 | MPI agent tag collisions | #87 |
-| #78 | Parser warn on bad numerics | #85 |
-| #40–#43 | Washout, MPI transfer, plasmids, multi-rank tests | #62, #71 |
-| #44, #52, #59 | HDF5 checkpoint, round-trip, reader | #68–#69 |
-| #56 | EARI/VADI CI validation | #73 |
-| #33 | GPU acceleration | #83 |
-| — | GreensFunction null guard | #84 |
-| — | JsonCursor lifetime fix | #86 |
+The Jun 2026 queue (#40–#81, #25, #29, #33, #55) is **closed**. Post–GPU ROI work (#154–#161) is largely complete through PRs #162–#164.
 
 ### In Review
 
 _None_
 
-### In Progress
-
-_None_
-
-### Ready (recommended PR bundles)
+### Ready (recommended next bundles)
 
 | Bundle | Issues | Track | Notes |
 |--------|--------|-------|-------|
-| **HDF5 checkpoint v2** | #80 + #81 | `track:hdf5` | Writer schema + `mpirun -np 2` round-trip; natural single PR |
-| **Fix tunables** | #79 | `track:config` | Nested JSON keys; land after #78 (merged) |
-| **Docs hygiene** | #76 | `track:docs` | AGENTS.md + SKILL refresh; config diversity CI test |
+| **Science regressions** | #160 + #161 | `track:science`, `track:ci` | Washout trap + OpenMP stochastic parity (independent) |
 
 ### Backlog
 
-| Issue | Title | Track | Depends on |
-|-------|-------|-------|------------|
-| #55 | Scaling benchmarks 10⁶–10⁷ agents | `track:scale` | Stable MPI + HDF5 (#80–#81) |
-| #25 | HCR-FISH / DNA-FISH validation models | `track:science` | Independent (Python) |
-| #29 | True higher-order FMM | `track:science` | Independent (diffusion); large |
+| Issue | Title | Track | Priority |
+|-------|-------|-------|----------|
+| #160 | Metabolic washout trap long-horizon regression | `track:science` | medium |
+| #161 | OpenMP parity on stochastic toxin-kill | `track:ci` | low |
+| — | MPI/HPC validation `mpirun -np 8+` | `track:mpi` | low (manual HPC) |
+| — | GPU FMM octree traversal on device | `track:gpu` | low |
+
+### Done (Jul 2026 wave)
+
+| Issue | Title | PR |
+|-------|-------|-----|
+| #152 | GPU ROI (profiling, QSSA, Fur/O₂, FMM far-field, receptor CSR) | #152 |
+| #155 | Python integration pytest in CI | #162 |
+| #158 | GPU CPU/GPU parity CI | #162 |
+| #154 | MPI four-rank validation | #163 |
+| #156 | CUDA-aware MPI reaction reduce | #163 |
+| #157 | GPU mechanics force kernel | #164 |
+| #159 | Sub-quadratic FMM M2L | #164 |
+
+### Done (Jun 2026 wave — reference)
+
+| Issue | Title | Notes |
+|-------|-------|-------|
+| #40–#43 | Washout, MPI transfer, plasmids, multi-rank tests | |
+| #44, #52, #59, #80, #81 | HDF5 checkpoint + parallel I/O | |
+| #56 | EARI/VADI CI validation | |
+| #55 | Scaling benchmark smoke + driver | |
+| #25 | HCR-FISH / DNA-FISH models | |
+| #29 | Higher-order FMM (CPU) | |
+| #33 | GPU acceleration (phase 1) | Extended by #152 |
+| #75–#79, #76 | MPI/parser/config/docs hygiene | |
 
 ---
 
-## Merge order (critical path)
+## Merge order (remaining)
 
-```mermaid
-flowchart TD
-  D80["#80 + #81 HDF5"]
-  D79["#79 Fix tunables"]
-  D55["#55 benchmarks"]
-  D76["#76 AGENTS.md"]
-  D25["#25 HCR-FISH"]
-  D29["#29 FMM"]
-  D80 --> D55
-  D80 --> D76
-  D79 --> D76
-  D55 --> D76
-```
-
-1. **#80 + #81** — checkpoint correctness + parallel I/O tests  
-2. **#79** — config surface (can parallelize with step 1)  
-3. **#55** — benchmarks once core I/O is stable  
-4. **#76** — doc sweep last (or tiny edits per PR)  
-5. **#25**, **#29** — anytime; separate PRs each  
+1. **#160** — metabolic washout trap regression (long-horizon)
+2. **#161** — OpenMP stochastic parity (independent)
 
 ---
 
@@ -108,45 +91,18 @@ flowchart TD
 
 | Don't combine | Reason |
 |---------------|--------|
-| #76 + functional PRs | Reviewers can't separate behavior from docs |
-| #29 or #25 + bugfix PRs | Unrelated scope; hard to revert |
-| #55 + #29 | Benchmark Barnes-Hut first, not half-finished FMM |
+| #160 + #161 | Different subsystems (biology regression vs OpenMP RNG) |
+| Functional PRs + doc-only sweeps | Keep review scope narrow |
 
 ---
 
-## Milestones (for Issues tab filter)
+## Milestones
 
 | Milestone | Issues |
 |-----------|--------|
-| P1 — Docs & hygiene | #76 |
-| P2 — HDF5 checkpoint complete | #80, #81 |
-| P3 — Config surface expansion | #79 |
-| P4 — Scale & profiling | #55 |
-| P5 — Research enhancements | #25, #29 |
+| P6 — HPC & GPU phase 2 | #154–#159 (done); #160–#161 (backlog) |
 
----
-
-## Custom fields (GitHub Projects v2)
-
-If using Projects v2 table/board view, add:
-
-| Field | Type | Values |
-|-------|------|--------|
-| **Track** | Single select | hdf5, mpi, config, docs, scale, science |
-| **Bundle** | Text | e.g. `hdf5-v2`, `solo` |
-| **Priority** | Single select | high, medium, low |
-
-Suggested priorities:
-
-- **high:** #80, #81, #79  
-- **medium:** #76, #55  
-- **low:** #25, #29  
-
----
-
-## Closed queue reference (#40–#60)
-
-The Jun 2026 review queue is largely complete (#40–#81, #25, #29, #55). Remaining long-horizon: #33 (GPU production path), larger-scale MPI/HPC validation. See [AGENTS.md](../AGENTS.md) for current landmines.
+Create via `./scripts/setup_project_board.sh`.
 
 ---
 
@@ -154,8 +110,8 @@ The Jun 2026 review queue is largely complete (#40–#81, #25, #29, #55). Remain
 
 After each merged PR:
 
-1. Move issue(s) to **Done** and close on GitHub  
-2. Update the **Done** table above (or run setup script in dry-run)  
-3. If #76 is the only open hygiene item, keep it in **Ready** until the HDF5/config wave lands  
+1. Move issue(s) to **Done** and close on GitHub
+2. Update the tables above
+3. Link new PRs in the **In Review** row
 
-When opening a new PR, add the issue number to the PR title (`#80`) and set the project item to **In Review**.
+When opening a new PR, reference the issue (`#160`) in the title or body.

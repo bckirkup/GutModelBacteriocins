@@ -179,6 +179,19 @@ void FMM::m2l_at_node(int node_idx,
   }
 }
 
+void FMM::m2l_visit_children(int target_idx,
+                             int src_idx,
+                             Real theta,
+                             const GreensFunction& gf,
+                             const GreensFunctionParams& avg_params) {
+  const FMMNode& source = nodes_[src_idx];
+  for (int c = 0; c < 8; ++c) {
+    if (source.children[c] < 0) continue;
+    m2l_traverse_into_target(target_idx, source.children[c],
+                             theta, gf, avg_params);
+  }
+}
+
 void FMM::m2l_traverse_into_target(int target_idx,
                                    int src_idx,
                                    Real theta,
@@ -193,12 +206,7 @@ void FMM::m2l_traverse_into_target(int target_idx,
 
   if (src_idx == target_idx) {
     if (!source.is_leaf) {
-      for (int c = 0; c < 8; ++c) {
-        if (source.children[c] >= 0) {
-          m2l_traverse_into_target(target_idx, source.children[c],
-                                   theta, gf, avg_params);
-        }
-      }
+      m2l_visit_children(target_idx, src_idx, theta, gf, avg_params);
     }
     return;
   }
@@ -217,12 +225,7 @@ void FMM::m2l_traverse_into_target(int target_idx,
 
   if (source.is_leaf) return;
 
-  for (int c = 0; c < 8; ++c) {
-    if (source.children[c] >= 0) {
-      m2l_traverse_into_target(target_idx, source.children[c],
-                               theta, gf, avg_params);
-    }
-  }
+  m2l_visit_children(target_idx, src_idx, theta, gf, avg_params);
 }
 
 void FMM::l2l_downward(int node_idx) {

@@ -112,6 +112,12 @@ class FMM {
                                 const GreensFunction& gf,
                                 const GreensFunctionParams& avg_params);
 
+  void m2l_visit_children(int target_idx,
+                          int src_idx,
+                          Real theta,
+                          const GreensFunction& gf,
+                          const GreensFunctionParams& avg_params);
+
   void l2l_downward(int node_idx);
 
   void traverse_far(int node_idx,
