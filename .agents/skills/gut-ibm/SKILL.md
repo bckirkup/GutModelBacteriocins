@@ -89,7 +89,7 @@ CTest targets (2- and 4-rank MPI tests included):
 | `immunity_escape` | `test_immunity_escape.cpp` | Affinity-neutralization matrix |
 | `mechanics` | `test_mechanics.cpp` | Hertzian contact, adhesion |
 | `ethanolamine` | `test_ethanolamine.cpp` | Nutrient-conditional eut penalty |
-| `openmp_parity` | `test_openmp_parity.cpp` | Determinism + cross-build fingerprint |
+| `openmp_parity` | `test_openmp_parity.cpp` | Determinism + cross-build deterministic/stochastic fingerprints |
 | `adaptive_dt` | `test_adaptive_dt.cpp` | Adaptive timestep selection |
 | `agent_transfer` | `test_agent_transfer.cpp` | MPI pack/unpack round-trip |
 | `fix_registry` | `test_fix_registry.cpp` | Default Fix plugin registration |
