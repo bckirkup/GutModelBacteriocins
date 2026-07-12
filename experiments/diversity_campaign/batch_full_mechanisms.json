@@ -1,0 +1,12 @@
+{
+  "_comment": "Full-mechanism runs across three seeds at the default corrinoid Kd.",
+  "base_config": "experiments/diversity_campaign/full_mechanisms.json",
+  "binary": "build/gut_ibm",
+  "mpi_ranks": 4,
+  "mpirun_args": ["--bind-to", "none"],
+  "on_fail": "continue",
+  "output_dir": "batch_results/diversity_campaign/full_mechanisms",
+  "sweep": {
+    "seed": [42, 43, 44]
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "_comment": [
+    "Kd SWEEP: kd_corrinoid_btuB = 1e-6.",
+    "Competitive factor = 2x blocking colicin E at BtuB."
+  ],
+  "seed": 42,
+  "total_time": 604800,
+  "bio_dt": 60,
+  "output_interval": 3600,
+  "adaptive_dt_enabled": true,
+  "dt_min": 1,
+  "dt_max": 300,
+  "dt_safety": 0.8,
+  "dt_growth_limit": 0.1,
+  "domain_x": 0.002,
+  "domain_y": 0.002,
+  "domain_z": 0.0001,
+  "grid_dx": 2e-6,
+  "mucus_thickness": 0.0001,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+  "crypts_enabled": true,
+  "crypt_depth": 1e-5,
+  "crypt_exit_rate": 0.0001,
+  "crypt_entry_rate": 5e-5,
+  "crypt_carrying_capacity": 50,
+  "vbf_density": 1e11,
+  "vbf_viscosity": 0.01,
+  "oxygen.enabled": true,
+  "acetate.enabled": true,
+  "kd_corrinoid_btuB": 1e-6,
+  "toxin_cutoff": 0.0002,
+  "nutrient_cutoff": 5e-5,
+  "use_fmm": true,
+  "fmm_theta": 0.5,
+  "fmm_expansion_order": 2,
+  "sos_lysis_prob": 0.01,
+  "base_transfer_rate": 0.00015,
+  "bi_duplication_rate": 2e-5,
+  "dysbiosis_threshold": 1e12,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 500,
+      "mu_max": 0.00055,
+      "plasmids": ["ColE1", "ColB"],
+      "conjugative": true
+    },
+    {
+      "type": 2,
+      "count": 100,
+      "mu_max": 0.0005,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ],
+  "hdf5_file": "kd_sweep_1e-6.h5",
+  "hdf5": {
+    "schedule": {
+      "summary": 60,
+      "agents": 60,
+      "grid": 0,
+      "lineage": 60,
+      "genome": 60
+    }
+  }
+}
