@@ -2,6 +2,8 @@ build/
 build-release/
 build-openmp-off/
 build-openmp-on/
+batch_results/
+.venv/
 *.o
 *.a
 *.so

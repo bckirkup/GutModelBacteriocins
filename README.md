@@ -116,9 +116,11 @@ Bacteriocin diffusion is calibrated by isoelectric point (pI):
 
 ```bash
 sudo apt-get install cmake libopenmpi-dev openmpi-bin libhdf5-mpi-dev
-# Optional GPU:
-sudo apt-get install nvidia-cuda-toolkit
 ```
+
+For CUDA, use the toolkit version appropriate to the host. WSL2 users must
+follow [`docs/WSL2_SETUP.md`](docs/WSL2_SETUP.md) and install the WSL-specific
+toolkit without a Linux display driver.
 
 ### Compile
 
@@ -137,6 +139,21 @@ cd build
 ctest --output-on-failure          # full suite
 ctest -L unit -LE slow             # fast CI shard
 ```
+
+### Clean rebuild and interactive experiments
+
+From the repository root:
+
+```bash
+./rebuild_and_run.sh
+```
+
+The helper safely removes `build/`, configures MPI/HDF5 with automatic CUDA
+detection, creates or refreshes `.venv`, rebuilds, runs the full CTest suite,
+then prompts for single or batch JSON files in
+[`experiments/`](experiments/README.md). See
+[`docs/WSL2_SETUP.md`](docs/WSL2_SETUP.md) for NVIDIA toolkit, MPI, HDF5, and
+WSL memory guidance.
 
 ## Usage
 
