@@ -1,0 +1,24 @@
+{
+  "_comment": "Small starter experiment for rebuild_and_run.sh.",
+  "total_time": 60,
+  "bio_dt": 60,
+  "output_interval": 1000000000,
+  "seed": 4092,
+  "domain_x": 0.0001,
+  "domain_y": 0.0001,
+  "domain_z": 0.00005,
+  "grid_dx": 0.000005,
+  "gpu_enabled": false,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 20,
+      "mu_max": 0.00055,
+      "plasmids": ["ColE1"],
+      "conjugative": false
+    }
+  ],
+  "hdf5": {
+    "enabled": false
+  }
+}

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Validate GutIBM example and parser fixture configs are strict JSON (#54).
+# Validate GutIBM example, experiment, and parser fixture configs as strict JSON.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 
 mapfile -t FILES < <(
-  find "$ROOT/examples" "$ROOT/tests/fixtures" -name '*.json' -type f | sort
+  find "$ROOT/examples" "$ROOT/experiments" "$ROOT/tests/fixtures" \
+    -name '*.json' -type f | sort
 )
 
 if [[ ${#FILES[@]} -eq 0 ]]; then
