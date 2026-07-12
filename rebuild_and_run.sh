@@ -220,6 +220,11 @@ ensure_python_environment() {
   fi
 
   PYTHON="$VENV_DIR/bin/python"
+  if ! "$PYTHON" -m pip --version >/dev/null 2>&1; then
+    echo "=== Bootstrapping pip in .venv ==="
+    "$PYTHON" -m ensurepip --upgrade ||
+      die "failed to bootstrap pip; install the python3-venv package"
+  fi
   echo "=== Installing GutIBM Python tools in .venv ==="
   "$PYTHON" -m pip install --quiet -e "$ROOT/python/.[dev]"
 }

@@ -86,6 +86,38 @@ PYTHON="$original_python"
 grep -q -- '--dry-run' "$BATCH_RUN_LOG" ||
   fail "batch dry-run did not pass --dry-run to the batch runner"
 
+fake_venv="$temporary_dir/pipless-venv"
+mkdir -p "$fake_venv/bin"
+cat >"$fake_venv/bin/python" <<'EOF'
+#!/usr/bin/env bash
+command_line="$*"
+if [[ "$command_line" == "-m pip --version" ]]; then
+  [[ -f "$PIP_BOOTSTRAP_MARKER" ]]
+elif [[ "$command_line" == "-m ensurepip --upgrade" ]]; then
+  touch "$PIP_BOOTSTRAP_MARKER"
+  echo "$command_line" >>"$PIP_BOOTSTRAP_LOG"
+elif [[ "$command_line" == "-m pip install "* ]]; then
+  [[ -f "$PIP_BOOTSTRAP_MARKER" ]] || exit 2
+  echo "$command_line" >>"$PIP_BOOTSTRAP_LOG"
+else
+  exit 2
+fi
+EOF
+chmod +x "$fake_venv/bin/python"
+export PIP_BOOTSTRAP_MARKER="$temporary_dir/pip-ready"
+export PIP_BOOTSTRAP_LOG="$temporary_dir/pip-bootstrap.log"
+original_venv_dir="$VENV_DIR"
+original_python="$PYTHON"
+VENV_DIR="$fake_venv"
+PYTHON=python3
+ensure_python_environment >/dev/null
+VENV_DIR="$original_venv_dir"
+PYTHON="$original_python"
+grep -q -- '-m ensurepip --upgrade' "$PIP_BOOTSTRAP_LOG" ||
+  fail "pip-less venv did not invoke ensurepip"
+grep -q -- '-m pip install --quiet -e' "$PIP_BOOTSTRAP_LOG" ||
+  fail "package installation did not follow pip bootstrap"
+
 "$ROOT/rebuild_and_run.sh" --help |
   grep -q -- '--mode prompt|single|batch|none' ||
   fail "help output omitted run modes"
