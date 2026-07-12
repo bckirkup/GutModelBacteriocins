@@ -17,11 +17,11 @@ class Domain;
 
 struct ChemicalSpec {
   std::string name;
-  Real diff_coeff;       // diffusion coefficient in free water (m^2/s)
-  Real retardation;      // mucin retardation factor (effective D = D_free / retardation)
-  Real initial_conc;     // initial bulk concentration (mol/m^3)
-  Real boundary_conc;    // Dirichlet boundary (epithelial supply or luminal)
-  Real decay_rate;       // first-order decay (1/s)
+  Real diff_coeff = 0.0;       // diffusion coefficient in free water (m^2/s)
+  Real retardation = 1.0;      // mucin retardation factor (effective D = D_free / retardation)
+  Real initial_conc = 0.0;     // initial bulk concentration (mol/m^3)
+  Real boundary_conc = 0.0;    // Dirichlet boundary (epithelial supply or luminal)
+  Real decay_rate = 0.0;       // first-order decay (1/s)
 
   // z-dependent gradient: C(z) = C_max * exp(-z_rel / z_gradient_lambda)
   bool z_gradient_enabled = false;

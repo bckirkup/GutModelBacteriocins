@@ -90,11 +90,11 @@ struct SimulationConfig {
   CheckpointConfig checkpoint;
 
   struct InitialStrain {
-    Int type;
-    Int count;
-    Real mu_max;
+    Int type = 0;
+    Int count = 0;
+    Real mu_max = 5.0e-4;
     std::vector<std::string> plasmids;
-    bool conjugative;
+    bool conjugative = false;
     uint16_t cdi_type = 0;
     uint16_t cdi_immunity = 0;
   };

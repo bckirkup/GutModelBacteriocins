@@ -89,6 +89,7 @@ gutibm_add_test(input_parser test_input_parser.cpp
 gutibm_add_test(config_ingestion test_config_ingestion.cpp
   LABELS "unit"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gutibm_add_test(data_defaults test_data_defaults.cpp LABELS "unit")
 gutibm_add_test(bacteriocin test_bacteriocin.cpp LABELS "unit")
 gutibm_add_test(per_receptor_toxin test_per_receptor_toxin.cpp LABELS "unit")
 gutibm_add_test(siderophore_depletion test_siderophore_depletion.cpp LABELS "unit")
