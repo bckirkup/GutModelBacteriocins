@@ -14,8 +14,7 @@ namespace test {
 
 inline Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
                                      const MechanicsConfig& mcfg = {},
-                                     bool gpu_enabled = false,
-                                     bool seed_spatial_hash = false) {
+                                     bool gpu_enabled = false) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.initial_strains.clear();
   cfg.domain.hi = {100e-6, 100e-6, 100e-6};
@@ -33,11 +32,9 @@ inline Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
   sim.agents().push_back(std::move(a));
   sim.agents().push_back(std::move(b));
 
-  if (seed_spatial_hash) {
-    sim.domain().spatial_hash().clear();
-    sim.domain().spatial_hash().insert(0, sim.agents()[0].x);
-    sim.domain().spatial_hash().insert(1, sim.agents()[1].x);
-  }
+  sim.domain().spatial_hash().clear();
+  sim.domain().spatial_hash().insert(0, sim.agents()[0].x);
+  sim.domain().spatial_hash().insert(1, sim.agents()[1].x);
 
   return sim;
 }

@@ -76,6 +76,7 @@ __device__ void solve_periodic_line(double* line,
                                     double denominator,
                                     const double* correction,
                                     int tid) {
+  if (n <= 1) return;
   if (n == 2) {
     if (tid == 0) solve_periodic_line_n2(line, alpha);
     return;
