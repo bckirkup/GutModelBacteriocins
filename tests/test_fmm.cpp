@@ -284,7 +284,7 @@ void test_fmm_large_tree_locals_ready() {
   std::vector<Vec3> positions;
   std::vector<GreensFunctionParams> params;
   std::vector<Real> strengths;
-  make_random_sources(500, rng, positions, params, strengths);
+  make_random_sources(1000, rng, positions, params, strengths);
 
   GreensFunctionParams avg;
   avg.diff_coeff  = 4e-11;

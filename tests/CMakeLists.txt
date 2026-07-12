@@ -28,6 +28,21 @@ set(TEST_INCLUDE_DIRS
 # Shared static library — compile core once instead of per-test executable.
 add_library(gutibm STATIC ${LIB_SOURCES} ${LIB_CUDA_SOURCES})
 target_include_directories(gutibm PUBLIC ${TEST_INCLUDE_DIRS})
+
+function(gutibm_enable_test_assertions target)
+  if(MSVC)
+    set(cxx_undefine_ndebug /UNDEBUG)
+  else()
+    set(cxx_undefine_ndebug -UNDEBUG)
+  endif()
+  target_compile_options(${target} PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:${cxx_undefine_ndebug}>
+    $<$<COMPILE_LANGUAGE:CUDA>:-UNDEBUG>
+  )
+endfunction()
+
+gutibm_enable_test_assertions(gutibm)
+
 if(GUTIBM_USE_MPI)
   target_link_libraries(gutibm PUBLIC MPI::MPI_CXX)
 endif()
@@ -49,6 +64,7 @@ function(gutibm_add_test name source)
   cmake_parse_arguments(ARG "" "" "LABELS;COMPILE_DEFINITIONS" ${ARGN})
   set(exe test_${name})
   add_executable(${exe} ${source})
+  gutibm_enable_test_assertions(${exe})
   target_link_libraries(${exe} PRIVATE gutibm)
   if(ARG_COMPILE_DEFINITIONS)
     target_compile_definitions(${exe} PRIVATE ${ARG_COMPILE_DEFINITIONS})
@@ -60,6 +76,7 @@ function(gutibm_add_test name source)
 endfunction()
 
 # ── Fast unit tests (default CI gate) ────────────────────────────────────
+gutibm_add_test(assertions_enabled test_assertions_enabled.cpp LABELS "unit")
 gutibm_add_test(spatial_hash test_spatial_hash.cpp LABELS "unit")
 gutibm_add_test(greens_function test_greens_function.cpp LABELS "unit")
 gutibm_add_test(agent test_agent.cpp LABELS "unit")
@@ -138,6 +155,7 @@ endif()
 
 if(GUTIBM_USE_MPI)
   add_executable(test_mpi_multi_rank test_mpi_multi_rank.cpp)
+  gutibm_enable_test_assertions(test_mpi_multi_rank)
   target_link_libraries(test_mpi_multi_rank PRIVATE gutibm)
   add_test(
     NAME mpi_multi_rank
@@ -151,6 +169,7 @@ if(GUTIBM_USE_MPI)
   )
 
   add_executable(test_mpi_four_rank test_mpi_four_rank.cpp)
+  gutibm_enable_test_assertions(test_mpi_four_rank)
   target_link_libraries(test_mpi_four_rank PRIVATE gutibm)
   add_test(
     NAME mpi_four_rank
@@ -165,6 +184,7 @@ if(GUTIBM_USE_MPI)
   )
 
   add_executable(test_mpi_gpu_multi_rank test_mpi_gpu_multi_rank.cpp)
+  gutibm_enable_test_assertions(test_mpi_gpu_multi_rank)
   target_link_libraries(test_mpi_gpu_multi_rank PRIVATE gutibm)
   add_test(
     NAME mpi_gpu_multi_rank
@@ -178,6 +198,7 @@ if(GUTIBM_USE_MPI)
   )
 
   add_executable(test_cuda_aware_mpi_reaction test_cuda_aware_mpi_reaction.cpp)
+  gutibm_enable_test_assertions(test_cuda_aware_mpi_reaction)
   target_link_libraries(test_cuda_aware_mpi_reaction PRIVATE gutibm)
   add_test(
     NAME cuda_aware_mpi_reaction
