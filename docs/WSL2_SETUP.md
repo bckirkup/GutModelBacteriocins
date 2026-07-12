@@ -73,6 +73,10 @@ source .venv/bin/activate
 python -m pip install -e "python/.[dev]"
 ```
 
+If an existing `.venv` has no `pip` module, the helper bootstraps it with
+`python -m ensurepip --upgrade` before installing the local package. If that
+bootstrap is unavailable, install `python3-venv` and rerun the helper.
+
 If Ubuntu does not provide GCC 13 directly, add the Ubuntu toolchain PPA:
 
 ```bash
