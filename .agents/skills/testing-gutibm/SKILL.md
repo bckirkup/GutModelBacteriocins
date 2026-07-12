@@ -82,6 +82,32 @@ When modifying RNG usage (e.g., switching from `np.random.seed()` to `np.random.
 
 The EARI/VADI golden must match what CI computes. Push the code change first, let CI fail, read the actual value from the CI log, then update the golden file.
 
+## GPU Runtime and Memory Validation
+
+A passing hosted `cuda-compile` job proves CUDA compilation, not physical GPU
+execution. Hosted runners may have the CUDA toolkit without a visible device,
+and GPU tests can return success after their no-device skip.
+
+Before claiming GPU runtime behavior passed:
+
+```bash
+command -v nvcc
+nvidia-smi
+ctest --test-dir build-cuda -L gpu --output-on-failure -V
+```
+
+- Require `nvcc` and a device listed by `nvidia-smi`.
+- Use verbose CTest output or run the executable directly so `SKIPPED` messages
+  are visible.
+- Report CUDA compilation, no-device skips, and physical GPU execution as three
+  separate assertions.
+- For memory-sensitive grid tests, compute
+  `nx × ny × nz × species × 2 × sizeof(double)` for concentration and reaction
+  arrays, then account for simultaneous CPU and GPU field owners.
+- Preserve GPU-specific coverage when shrinking fixtures. For directional
+  diffusion, retain any intentionally long axis while reducing transverse
+  dimensions.
+
 ## Adversarial Tests for Exception/Type Changes
 
 When modifying exception types or enum conversions, verify at runtime, not just at compile time:
