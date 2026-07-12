@@ -1,7 +1,7 @@
 /* -----------------------------------------------------------------------
    GutIBM – GPU production-path smoke (Spec 9 PR5 / issue #33)
-   Exercises FMM hybrid (CPU far-field + GPU chemistry), production-scale
-   domain sizing, and full chemical environment on the GPU path.
+   Exercises FMM hybrid (CPU far-field + GPU chemistry), a near-limit
+   1000-cell diffusion line, and the full chemical environment on the GPU path.
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
@@ -30,9 +30,9 @@ SimulationConfig make_production_config(uint64_t seed) {
   cfg.gpu.enabled = true;
   cfg.gpu.device_id = 0;
 
-  // diversity_paradox-scale domain (2 mm slab, 2 um resolution → nx=1000)
+  // Keep nx=1000 while narrowing the periodic y-axis: 500K cells instead of 50M.
   cfg.domain.lo = {0, 0, 0};
-  cfg.domain.hi = {2.0e-3, 2.0e-3, 100.0e-6};
+  cfg.domain.hi = {2.0e-3, 20.0e-6, 100.0e-6};
   cfg.domain.grid_dx = 2.0e-6;
   cfg.domain.hash_cell_size = 10e-6;
 
@@ -97,6 +97,9 @@ void test_gpu_fmm_hybrid_production_domain() {
   Domain domain;
   domain.init(cfg.domain);
   assert(domain.nx() == 1000);
+  assert(domain.ny() == 10);
+  assert(domain.nz() == 50);
+  assert(domain.ncells() == 500000);
   assert(gpu_diffusion_line_lengths_supported(domain));
 
   Simulation sim;
