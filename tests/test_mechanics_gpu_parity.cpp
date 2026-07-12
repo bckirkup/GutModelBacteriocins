@@ -47,7 +47,7 @@ void test_gpu_overlapping_agents_match_cpu() {
   FixMechanics fix_cpu(sim_cpu, mcfg);
   fix_cpu.compute(1.0);
 
-  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true, true);
+  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true);
   assert(sim_gpu.gpu_active());
   FixMechanics fix_gpu(sim_gpu, mcfg);
   fix_gpu.compute(1.0);
@@ -94,7 +94,7 @@ void test_gpu_adhesion_match_cpu() {
   FixMechanics fix_cpu(sim_cpu, mcfg);
   fix_cpu.compute(1.0);
 
-  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true, true);
+  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true);
   assert(sim_gpu.gpu_active());
   FixMechanics fix_gpu(sim_gpu, mcfg);
   fix_gpu.compute(1.0);

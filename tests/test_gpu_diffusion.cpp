@@ -108,6 +108,29 @@ void test_gpu_point_source_golden_profile() {
             << " (max_diff=" << max_diff << ")\n";
 }
 
+void test_gpu_singleton_periodic_axes() {
+  Domain domain = make_domain(1, 1, 3);
+  ChemicalField chem_cpu;
+  chem_cpu.init(domain, {diffusing_species(1.0e-12, 0.0, 0.0)});
+  chem_cpu.conc(0, domain.cell_index(0, 0, 1)) = 1.0;
+
+  std::vector<Real> conc_gpu;
+  copy_conc(chem_cpu, conc_gpu);
+
+  chem_cpu.apply_diffusion(domain, 2.5);
+  assert(gpu_apply_species_diffusion(
+      domain, chem_cpu.spec(0), conc_gpu, 2.5));
+
+  const Real max_diff = max_abs_diff(chem_cpu.conc_data().front(), conc_gpu);
+  assert(max_diff < 1.0e-10);
+  for (const Real value : conc_gpu) {
+    assert(std::isfinite(value));
+  }
+
+  std::cout << "  test_gpu_singleton_periodic_axes: PASSED"
+            << " (max_diff=" << max_diff << ")\n";
+}
+
 void test_gpu_dirichlet_neumann_boundary() {
   Domain domain = make_domain(4, 4, 8);
   ChemicalField chem_cpu;
@@ -170,6 +193,7 @@ int main() {
 
   test_gpu_uniform_field_fixed_point();
   test_gpu_point_source_golden_profile();
+  test_gpu_singleton_periodic_axes();
   test_gpu_dirichlet_neumann_boundary();
   test_gpu_z_gradient_background_fixed_point();
 

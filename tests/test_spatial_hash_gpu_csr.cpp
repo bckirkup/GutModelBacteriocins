@@ -30,6 +30,11 @@ int main() {
 
   SimulationConfig cfg = InputParser::default_config();
   cfg.hdf5.enabled = false;
+  cfg.gpu.enabled = true;
+  cfg.gpu.device_id = 0;
+  cfg.domain.hi = {100.0e-6, 100.0e-6, 100.0e-6};
+  cfg.domain.grid_dx = 10.0e-6;
+  cfg.domain.hash_cell_size = 10.0e-6;
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain strain;
   strain.type = 1;
@@ -39,6 +44,8 @@ int main() {
 
   Simulation sim;
   sim.init(cfg);
+  assert(sim.gpu_active());
+  assert(sim.domain().ncells() == 1000);
 
   AgentPoolGpu ag;
   ag.sync_from_host(sim.agents());
@@ -47,10 +54,12 @@ int main() {
   const Real cell_size = 10.0e-6;
   const Vec3 lo = sim.domain().lo();
   const Vec3 hi = sim.domain().hi();
-  assert(gpu_build_spatial_hash(ag, ag.size(), lo, hi, cell_size, hash));
+  const bool built =
+      gpu_build_spatial_hash(ag, ag.size(), lo, hi, cell_size, hash);
+  assert(built);
   assert(hash.active());
-  assert(hash.cell_offsets.size() > 0);
-  assert(hash.cell_counts.size() > 0);
+  assert(hash.cell_offsets.size() == 1001);
+  assert(hash.cell_counts.size() == 1000);
   assert(hash.sorted_agent_indices.size() == static_cast<size_t>(ag.size()));
 
   std::cout << "  test_spatial_hash_gpu_csr: PASSED\n";
