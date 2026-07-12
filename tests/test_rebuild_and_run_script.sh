@@ -50,8 +50,23 @@ cat >"$fake_build/gut_ibm" <<'EOF'
 #!/usr/bin/env bash
 exit 0
 EOF
-chmod +x "$fake_bin/mpirun" "$fake_build/gut_ibm"
+cat >"$fake_bin/python" <<'EOF'
+#!/usr/bin/env bash
+argument_1="$1"
+argument_2="${2:-}"
+if [[ "$argument_1" == "-" ]]; then
+  echo "build/gut_ibm"
+elif [[ "$argument_1" == "-m" &&
+        "$argument_2" == "gut_ibm_tools.batch_runner" ]]; then
+  printf '%s\n' "$*" >"$BATCH_RUN_LOG"
+  echo "Batch: 2 jobs"
+else
+  exit 2
+fi
+EOF
+chmod +x "$fake_bin/mpirun" "$fake_bin/python" "$fake_build/gut_ibm"
 export MPIRUN_LOG="$temporary_dir/mpirun.log"
+export BATCH_RUN_LOG="$temporary_dir/batch-run.log"
 original_build_dir="$BUILD_DIR"
 BUILD_DIR="$fake_build"
 PATH="$fake_bin:$PATH" run_single \
@@ -62,9 +77,14 @@ grep -q -- '--bind-to none' "$MPIRUN_LOG" ||
 grep -q -- "-np 2 $fake_build/gut_ibm" "$MPIRUN_LOG" ||
   fail "single-run MPI command was not constructed correctly"
 
+original_python="$PYTHON"
+PYTHON="$fake_bin/python"
 run_batch "$ROOT/experiments/smoke_batch.json" dry-run |
   grep -q 'Batch: 2 jobs' ||
   fail "batch dry-run did not expand two jobs"
+PYTHON="$original_python"
+grep -q -- '--dry-run' "$BATCH_RUN_LOG" ||
+  fail "batch dry-run did not pass --dry-run to the batch runner"
 
 "$ROOT/rebuild_and_run.sh" --help |
   grep -q -- '--mode prompt|single|batch|none' ||
