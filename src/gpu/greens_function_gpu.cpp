@@ -26,6 +26,9 @@ gpu::DomainParams make_domain_params(const Domain& domain) {
   p.lo[0] = domain.lo()[0];
   p.lo[1] = domain.lo()[1];
   p.lo[2] = domain.lo()[2];
+  p.extent[0] = domain.hi()[0] - domain.lo()[0];
+  p.extent[1] = domain.hi()[1] - domain.lo()[1];
+  p.extent[2] = domain.hi()[2] - domain.lo()[2];
   p.periodic[0] = domain.config().periodic[0];
   p.periodic[1] = domain.config().periodic[1];
   p.periodic[2] = domain.config().periodic[2];
