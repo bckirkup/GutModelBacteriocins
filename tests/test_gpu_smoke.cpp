@@ -50,6 +50,8 @@ int main() {
   cfg.time.bio_dt = 60.0;
   cfg.hdf5.enabled = false;
   cfg.initial_strains.clear();
+  cfg.domain.hi = {200.0e-6, 200.0e-6, 100.0e-6};
+  cfg.domain.grid_dx = 4.0e-6;
 
   SimulationConfig::InitialStrain s;
   s.type = 1;
@@ -63,18 +65,27 @@ int main() {
   std::cout << "All GPU smoke tests passed.\n";
   return 0;
 #else
-  // CPU baseline
-  cfg.gpu.enabled = false;
-  Simulation sim_cpu;
-  sim_cpu.init(cfg);
-  sim_cpu.run();
-  Real fp_cpu = fingerprint(sim_cpu);
-  const auto chem_fp_cpu = chemical_fingerprints(sim_cpu);
-
   if (DeviceContext::device_count() <= 0) {
     std::cout << "  test_gpu_smoke: SKIPPED (no CUDA device)\n";
     std::cout << "All GPU smoke tests passed.\n";
     return 0;
+  }
+
+  // CPU baseline
+  cfg.gpu.enabled = false;
+  Real fp_cpu = 0.0;
+  std::vector<Real> chem_fp_cpu;
+  {
+    Simulation sim_cpu;
+    sim_cpu.init(cfg);
+    if (sim_cpu.domain().ncells() != 62500) {
+      std::cerr << "  test_gpu_smoke: FAILED (expected 62500 grid cells, got "
+                << sim_cpu.domain().ncells() << ")\n";
+      return 1;
+    }
+    sim_cpu.run();
+    fp_cpu = fingerprint(sim_cpu);
+    chem_fp_cpu = chemical_fingerprints(sim_cpu);
   }
 
   cfg.gpu.enabled = true;
