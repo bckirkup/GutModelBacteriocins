@@ -17,6 +17,8 @@ Starter files:
 
 - `smoke_single.json` — one small, 60-second CPU simulation.
 - `smoke_batch.json` — two explicit runs based on the smoke config.
+- `diversity_campaign/` — full-scale baseline, mechanism, and corrinoid-Kd
+  experiments with three-seed batch manifests.
 
 To use the GPU, copy a simulation config and set:
 
