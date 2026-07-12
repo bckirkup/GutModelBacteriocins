@@ -162,8 +162,6 @@ class JsonCursor {
     if (!match('{')) throw ConfigError("expected JSON object");
 
     SimulationConfig::InitialStrain strain{};
-    strain.mu_max = 5.0e-4;
-    strain.conjugative = false;
 
     skip_ws();
     if (match('}')) return strain;
