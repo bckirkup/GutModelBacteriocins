@@ -37,12 +37,24 @@ __device__ inline void flow_velocity(const AdvectionParams& adv, double x, doubl
   vz = vr * pf;
 }
 
+__device__ inline double minimum_image_delta(double delta, double span,
+                                             bool periodic) {
+  if (!periodic) return delta;
+  if (delta > 0.5 * span) delta -= span;
+  if (delta < -0.5 * span) delta += span;
+  return delta;
+}
+
 __device__ inline double single_kernel(const double src[3], const double tgt[3],
                                        double D_eff, double Q,
-                                       const double flow[3]) {
-  double dx = tgt[0] - src[0];
-  double dy = tgt[1] - src[1];
-  double dz = tgt[2] - src[2];
+                                       const double flow[3],
+                                       const DomainParams& dom) {
+  double dx = minimum_image_delta(
+      tgt[0] - src[0], dom.extent[0], dom.periodic[0]);
+  double dy = minimum_image_delta(
+      tgt[1] - src[1], dom.extent[1], dom.periodic[1]);
+  double dz = minimum_image_delta(
+      tgt[2] - src[2], dom.extent[2], dom.periodic[2]);
   double r = sqrt(dx * dx + dy * dy + dz * dz);
   if (r < 1.0e-9) return 0.0;
 
@@ -62,7 +74,7 @@ __device__ inline double concentration_bounded(const double src[3], const double
   double flow[3];
   flow_velocity(adv, src[0], src[2], flow[0], flow[1], flow[2]);
   double Q = p.source_rate;
-  double total = single_kernel(src, tgt, D_eff, Q, flow);
+  double total = single_kernel(src, tgt, D_eff, Q, flow, dom);
 
   for (int n = 1; n <= N_IMAGES; ++n) {
     double img[3];
@@ -70,16 +82,16 @@ __device__ inline double concentration_bounded(const double src[3], const double
 
     img[0] = src[0]; img[1] = src[1];
     img[2] = 2.0 * dom.z_lo - src[2] - 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, flow);
+    total += single_kernel(img, tgt, D_eff, Q, flow, dom);
 
     img[2] = 2.0 * dom.z_hi - src[2] + 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, flow);
+    total += single_kernel(img, tgt, D_eff, Q, flow, dom);
 
     img[2] = 2.0 * dom.z_lo - src[2] + 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, flow);
+    total += single_kernel(img, tgt, D_eff, Q, flow, dom);
 
     img[2] = 2.0 * dom.z_hi - src[2] - 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, flow);
+    total += single_kernel(img, tgt, D_eff, Q, flow, dom);
   }
 
   return total > 0.0 ? total : 0.0;

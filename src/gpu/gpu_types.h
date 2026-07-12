@@ -11,6 +11,7 @@ struct DomainParams {
   int nz;
   double dx;
   std::array<double, 3> lo;
+  std::array<double, 3> extent;
   std::array<bool, 3> periodic;
   double z_lo;
   double z_hi;
