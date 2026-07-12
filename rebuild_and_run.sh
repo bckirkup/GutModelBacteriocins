@@ -52,12 +52,15 @@ die() {
 }
 
 require_command() {
-  command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+  local command_name="$1"
+  command -v "$command_name" >/dev/null 2>&1 ||
+    die "required command not found: $command_name"
 }
 
 parse_args() {
   while (($# > 0)); do
-    case "$1" in
+    local argument="$1"
+    case "$argument" in
       --cuda)
         (($# >= 2)) || die "--cuda requires a value"
         CUDA_MODE="$2"
@@ -92,7 +95,7 @@ parse_args() {
         exit 0
         ;;
       *)
-        die "unknown option: $1"
+        die "unknown option: $argument"
         ;;
     esac
   done
@@ -159,6 +162,9 @@ find_cuda_tools() {
       ;;
     off)
       CUDA_ENABLED=OFF
+      ;;
+    *)
+      die "unexpected CUDA mode after validation: $CUDA_MODE"
       ;;
   esac
 }
@@ -286,7 +292,8 @@ clean_configure_build_test() {
 }
 
 json_kind() {
-  "$PYTHON" - "$1" <<'PY'
+  local path="$1"
+  "$PYTHON" - "$path" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -370,6 +377,7 @@ choose_json() {
 
 resolve_config_path() {
   local candidate="$1"
+  local original_candidate="$candidate"
   if [[ -f "$candidate" ]]; then
     candidate="$(realpath "$candidate")"
   elif [[ -f "$ROOT/$candidate" ]]; then
@@ -377,7 +385,7 @@ resolve_config_path() {
   elif [[ -f "$EXPERIMENTS_DIR/$candidate" ]]; then
     candidate="$(realpath "$EXPERIMENTS_DIR/$candidate")"
   else
-    die "JSON config not found: $1"
+    die "JSON config not found: $original_candidate"
   fi
 
   case "$candidate" in
@@ -388,11 +396,15 @@ resolve_config_path() {
 }
 
 validate_ranks() {
-  [[ "$1" =~ ^[1-9][0-9]*$ ]] || die "MPI ranks must be a positive integer"
+  local ranks="$1"
+  [[ "$ranks" =~ ^[1-9][0-9]*$ ]] ||
+    die "MPI ranks must be a positive integer"
 }
 
 gpu_config_value() {
-  "$PYTHON" - "$1" "$2" <<'PY'
+  local config="$1"
+  local key="$2"
+  "$PYTHON" - "$config" "$key" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -583,6 +595,9 @@ main() {
       ;;
     prompt)
       interactive_menu
+      ;;
+    *)
+      die "unexpected run mode after validation: $RUN_MODE"
       ;;
   esac
 }
