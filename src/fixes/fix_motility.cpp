@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------
-   GutIBM – Active cell motility fix implementation
+   GutIBM – Active cell motility fix implementation (Spec 3 / Spec 10v2)
    ----------------------------------------------------------------------- */
 
 #include "fix_motility.h"
@@ -15,6 +15,7 @@ namespace {
 constexpr Real kMinRunTimer = 0.01;
 constexpr Real kMaxRunTimer = 120.0;
 constexpr Real kMinEventDuration = 1.0e-9;
+constexpr Real kMinMuMax = 1.0e-10;
 
 Vec3 random_unit_direction(RNG& rng) {
   const Real theta = rng.uniform(0.0, 2.0 * PI);
@@ -30,10 +31,20 @@ Real sample_exponential_duration(RNG& rng, Real mean_duration) {
       rng.exponential(1.0 / mean_duration), kMinEventDuration);
 }
 
+Real weber_fechner_frac_rate(Real conc, Real prev, Real threshold, Real dt) {
+  if (dt <= 0.0) return 0.0;
+  const Real ref = std::max(conc, threshold);
+  return (conc - prev) / (ref * dt);
+}
+
 }  // namespace
 
 FixMotility::FixMotility(Simulation& sim, const MotilityConfig& cfg)
     : Fix("motility", sim), cfg_(cfg) {}
+
+bool FixMotility::any_taxis_enabled() const {
+  return cfg_.aerotaxis_enabled || cfg_.chemotaxis_enabled;
+}
 
 void FixMotility::init_agent_motility(Agent& agent, const MotilityConfig& cfg,
                                       RNG& rng) {
@@ -91,11 +102,45 @@ Real FixMotility::advance_stopped_interval(
   return remaining;
 }
 
+Real FixMotility::effective_swim_speed(const Agent& agent) const {
+  Real speed = agent.motility.swim_speed;
+
+  if (cfg_.energy_taxis_enabled) {
+    const Real mu_frac = std::clamp(
+        agent.mu_realized / std::max(agent.mu_max, kMinMuMax), 0.0, 1.0);
+    speed *= cfg_.energy_taxis_floor
+        + (1.0 - cfg_.energy_taxis_floor) * mu_frac;
+  }
+
+  if (cfg_.surface_sensing_enabled && cfg_.surface_sensing_depth > 0.0) {
+    const Real lo_z = sim_.domain().lo()[2];
+    const Real z_rel = (agent.x[2] - lo_z) / cfg_.surface_sensing_depth;
+    if (z_rel < 1.0) {
+      speed *= cfg_.surface_sensing_floor
+          + (1.0 - cfg_.surface_sensing_floor) * std::max(z_rel, 0.0);
+    }
+  }
+
+  if (cfg_.mucin_drag_enabled) {
+    auto& chem = sim_.chemical_field();
+    const Int i_mucin = chem.find(species::MUCIN);
+    if (i_mucin >= 0 && agent.grid_cell >= 0) {
+      const Real mucin = chem.conc(i_mucin, agent.grid_cell);
+      speed *= cfg_.mucin_drag_reference
+          / (cfg_.mucin_drag_reference + mucin);
+    }
+  }
+
+  return speed;
+}
+
 Real FixMotility::advance_running_interval(Agent& agent, Real remaining) {
   auto& mot = agent.motility;
   const Real run_time = std::min(std::max(mot.run_timer, 0.0), remaining);
+  const Real effective_speed = effective_swim_speed(agent);
   for (int d = 0; d < 3; ++d) {
-    mot.step_displacement[d] += mot.swim_direction[d] * mot.swim_speed * run_time;
+    mot.step_displacement[d] +=
+        mot.swim_direction[d] * effective_speed * run_time;
   }
   mot.run_timer -= run_time;
   remaining -= run_time;
@@ -106,22 +151,39 @@ Real FixMotility::advance_running_interval(Agent& agent, Real remaining) {
 
 void FixMotility::update_chemotaxis(Agent& agent, Real dt) {
   auto& mot = agent.motility;
-  if (!cfg_.chemotaxis_enabled || mot.is_stopped || agent.grid_cell < 0) return;
+  if (mot.is_stopped || agent.grid_cell < 0) return;
+  if (!any_taxis_enabled()) return;
 
   auto& chem = sim_.chemical_field();
-  const Int i_carbon = chem.find(species::CARBON);
-  const Int i_oxygen = chem.find(species::OXYGEN);
-  const Real carbon = (i_carbon >= 0) ? chem.conc(i_carbon, agent.grid_cell) : 0.0;
-  const Real oxygen = (i_oxygen >= 0) ? chem.conc(i_oxygen, agent.grid_cell) : 0.0;
-  const Real d_carbon = (carbon - mot.prev_carbon) / dt;
-  const Real d_oxygen = (oxygen - mot.prev_oxygen) / dt;
-  const Real modifier = std::clamp(
-      1.0 + cfg_.chi_carbon * d_carbon + cfg_.chi_oxygen * d_oxygen,
-      0.1, 10.0);
+  Real modifier = 1.0;
+
+  // Aerotaxis (Aer receptor — primary signal): Weber–Fechner on O₂
+  if (cfg_.aerotaxis_enabled) {
+    const Int i_o2 = chem.find(species::OXYGEN);
+    if (i_o2 >= 0) {
+      const Real o2 = chem.conc(i_o2, agent.grid_cell);
+      const Real frac_rate = weber_fechner_frac_rate(
+          o2, mot.prev_oxygen, cfg_.chemotaxis_threshold, dt);
+      modifier += cfg_.aerotaxis_sensitivity * frac_rate;
+      mot.prev_oxygen = o2;
+    }
+  }
+
+  // Carbon chemotaxis (Tar/Tsr — secondary signal): Weber–Fechner
+  if (cfg_.chemotaxis_enabled) {
+    const Int i_carbon = chem.find(species::CARBON);
+    if (i_carbon >= 0) {
+      const Real carbon = chem.conc(i_carbon, agent.grid_cell);
+      const Real frac_rate = weber_fechner_frac_rate(
+          carbon, mot.prev_carbon, cfg_.chemotaxis_threshold, dt);
+      modifier += cfg_.chi_carbon * frac_rate;
+      mot.prev_carbon = carbon;
+    }
+  }
+
+  modifier = std::clamp(modifier, 0.1, 10.0);
   mot.run_timer = std::clamp(
       mot.run_timer * modifier, kMinRunTimer, kMaxRunTimer);
-  mot.prev_carbon = carbon;
-  mot.prev_oxygen = oxygen;
 }
 
 void FixMotility::complete_run(Agent& agent) {
@@ -140,14 +202,16 @@ void FixMotility::complete_run(Agent& agent) {
     return;
   }
 
-  if (cfg_.chemotaxis_enabled && agent.grid_cell >= 0) {
+  if (any_taxis_enabled() && agent.grid_cell >= 0) {
     auto& chem = sim_.chemical_field();
-    Int i_carbon = chem.find(species::CARBON);
-    Int i_oxygen = chem.find(species::OXYGEN);
-    Real carbon = (i_carbon >= 0) ? chem.conc(i_carbon, agent.grid_cell) : 0.0;
-    Real oxygen = (i_oxygen >= 0) ? chem.conc(i_oxygen, agent.grid_cell) : 0.0;
-    mot.prev_carbon = carbon;
-    mot.prev_oxygen = oxygen;
+    const Int i_carbon = chem.find(species::CARBON);
+    const Int i_oxygen = chem.find(species::OXYGEN);
+    if (i_carbon >= 0) {
+      mot.prev_carbon = chem.conc(i_carbon, agent.grid_cell);
+    }
+    if (i_oxygen >= 0) {
+      mot.prev_oxygen = chem.conc(i_oxygen, agent.grid_cell);
+    }
   }
 
   if (rng.bernoulli(cfg_.stop_probability)) {

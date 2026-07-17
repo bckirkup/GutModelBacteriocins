@@ -354,7 +354,7 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "cdi.contact_radius", "cdi_contact_radius", [](const SimulationConfig& c) { return c.cell_bio.cdi.contact_radius; });
   add_ns_real(v, "cdi.corpse_persistence", "cdi_corpse_persistence", [](const SimulationConfig& c) { return c.cell_bio.cdi.corpse_persistence; });
 
-  // ── Motility (Spec 3) ─────────────────────────────────────────────────────
+  // ── Motility (Spec 3 / Spec 10v2) ──────────────────────────────────────────
   add_ns_bool(v, "motility.enabled", "motility_enabled", [](const SimulationConfig& c) { return c.cell_bio.motility.enabled; });
   add_ns_real(v, "motility.swim_speed", "motility_swim_speed", [](const SimulationConfig& c) { return c.cell_bio.motility.swim_speed; });
   add_ns_real(v, "motility.run_mean_duration", "motility_run_mean_duration", [](const SimulationConfig& c) { return c.cell_bio.motility.run_mean_duration; });
@@ -362,7 +362,16 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "motility.stop_duration", "motility_stop_duration", [](const SimulationConfig& c) { return c.cell_bio.motility.stop_duration; });
   add_ns_bool(v, "motility.chemotaxis_enabled", "motility_chemotaxis_enabled", [](const SimulationConfig& c) { return c.cell_bio.motility.chemotaxis_enabled; });
   add_ns_real(v, "motility.chi_carbon", "motility_chi_carbon", [](const SimulationConfig& c) { return c.cell_bio.motility.chi_carbon; });
-  add_ns_real(v, "motility.chi_oxygen", "motility_chi_oxygen", [](const SimulationConfig& c) { return c.cell_bio.motility.chi_oxygen; });
+  add_ns_real(v, "motility.chemotaxis_threshold", "motility_chemotaxis_threshold", [](const SimulationConfig& c) { return c.cell_bio.motility.chemotaxis_threshold; });
+  add_ns_bool(v, "motility.aerotaxis_enabled", "motility_aerotaxis_enabled", [](const SimulationConfig& c) { return c.cell_bio.motility.aerotaxis_enabled; });
+  add_ns_real(v, "motility.aerotaxis_sensitivity", "motility_aerotaxis_sensitivity", [](const SimulationConfig& c) { return c.cell_bio.motility.aerotaxis_sensitivity; });
+  add_ns_bool(v, "motility.energy_taxis_enabled", "motility_energy_taxis_enabled", [](const SimulationConfig& c) { return c.cell_bio.motility.energy_taxis_enabled; });
+  add_ns_real(v, "motility.energy_taxis_floor", "motility_energy_taxis_floor", [](const SimulationConfig& c) { return c.cell_bio.motility.energy_taxis_floor; });
+  add_ns_bool(v, "motility.surface_sensing_enabled", "motility_surface_sensing_enabled", [](const SimulationConfig& c) { return c.cell_bio.motility.surface_sensing_enabled; });
+  add_ns_real(v, "motility.surface_sensing_depth", "motility_surface_sensing_depth", [](const SimulationConfig& c) { return c.cell_bio.motility.surface_sensing_depth; });
+  add_ns_real(v, "motility.surface_sensing_floor", "motility_surface_sensing_floor", [](const SimulationConfig& c) { return c.cell_bio.motility.surface_sensing_floor; });
+  add_ns_bool(v, "motility.mucin_drag_enabled", "motility_mucin_drag_enabled", [](const SimulationConfig& c) { return c.cell_bio.motility.mucin_drag_enabled; });
+  add_ns_real(v, "motility.mucin_drag_reference", "motility_mucin_drag_reference", [](const SimulationConfig& c) { return c.cell_bio.motility.mucin_drag_reference; });
   add_ns_real(v, "motility.cluster_suppress_radius", "motility_cluster_suppress_radius", [](const SimulationConfig& c) { return c.cell_bio.motility.cluster_suppress_radius; });
   add_ns_int(v, "motility.cluster_suppress_threshold", "motility_cluster_suppress_threshold", [](const SimulationConfig& c) { return static_cast<long long>(c.cell_bio.motility.cluster_suppress_threshold); });
   add_ns_real(v, "motility.cluster_tumble_factor", "motility_cluster_tumble_factor", [](const SimulationConfig& c) { return c.cell_bio.motility.cluster_tumble_factor; });
