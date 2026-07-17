@@ -7,6 +7,7 @@
 #include "fix_bacteriocin.h"
 #include "fix_receptor.h"
 #include "fix_motility.h"
+#include "fix_quorum_sensing.h"
 #include "fix_conjugation.h"
 #include "fix_cdi.h"
 #include "fix_mutation.h"
@@ -38,6 +39,10 @@ void FixRegistry::register_defaults() {
   register_fix("metabolism",
     [](Simulation& sim, const SimulationConfig& cfg) {
       return std::make_unique<FixMetabolism>(sim, cfg.fixes.metabolism);
+    });
+  register_fix("quorum_sensing",
+    [](Simulation& sim, const SimulationConfig& cfg) {
+      return std::make_unique<FixQuorumSensing>(sim, cfg.quorum_sensing);
     });
   register_fix("bacteriocin",
     [](Simulation& sim, const SimulationConfig& cfg) {

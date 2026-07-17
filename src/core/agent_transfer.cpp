@@ -56,6 +56,7 @@ struct AgentMotilityXfer {
   double stop_timer;
   double prev_carbon;
   double prev_oxygen;
+  double prev_ai2;
 };
 
 struct AgentGenomeXfer {
@@ -137,6 +138,7 @@ void pack_agent(const Agent& a, AgentTransferData& d) {
   d.motility.stop_timer = a.motility.stop_timer;
   d.motility.prev_carbon = a.motility.prev_carbon;
   d.motility.prev_oxygen = a.motility.prev_oxygen;
+  d.motility.prev_ai2 = a.motility.prev_ai2;
   d.genome.lineage_id = a.genome.lineage_id;
   d.genome.parent_id = a.genome.parent_id;
   d.genome.generation = a.genome.generation;
@@ -205,6 +207,7 @@ Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_d
   a.motility.stop_timer = d.motility.stop_timer;
   a.motility.prev_carbon = d.motility.prev_carbon;
   a.motility.prev_oxygen = d.motility.prev_oxygen;
+  a.motility.prev_ai2 = d.motility.prev_ai2;
   a.genome.lineage_id = d.genome.lineage_id;
   a.genome.parent_id = d.genome.parent_id;
   a.genome.generation = d.genome.generation;

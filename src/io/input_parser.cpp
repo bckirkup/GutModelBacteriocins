@@ -218,6 +218,25 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
       spec.diffusion_enabled = true;
     }
   }
+
+  // Spec 11 — AI-2 autoinducer (no z-gradient; agent-produced only)
+  if (cfg.quorum_sensing.enabled) {
+    const Int idx = find_chemical_spec(cfg.chemicals, species::AI2);
+    if (idx < 0) {
+      cfg.chemicals.emplace_back(
+          species::AI2, cfg.quorum_sensing.ai2_D_free, 1.0,
+          0.0, 0.0, cfg.quorum_sensing.ai2_decay_rate,
+          false, k_z_lambda, true);
+    } else {
+      auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
+      spec.diff_coeff = cfg.quorum_sensing.ai2_D_free;
+      spec.decay_rate = cfg.quorum_sensing.ai2_decay_rate;
+      spec.diffusion_enabled = true;
+      spec.z_gradient_enabled = false;
+      spec.initial_conc = 0.0;
+      spec.boundary_conc = 0.0;
+    }
+  }
 }
 
 namespace {
@@ -653,7 +672,41 @@ bool apply_motility_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 23> k_flat_key_handlers = {
+bool apply_quorum_sensing_key(SimulationConfig& cfg, const std::string& key,
+                              const std::string& val) {
+  if (key == "quorum_sensing.enabled" || key == "quorum_sensing_enabled") {
+    cfg.quorum_sensing.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "quorum_sensing.ai2_basal_rate" || key == "quorum_sensing_ai2_basal_rate") {
+    cfg.quorum_sensing.ai2_basal_rate = parse_config_real(key, val); return true;
+  }
+  if (key == "quorum_sensing.ai2_growth_coupled"
+      || key == "quorum_sensing_ai2_growth_coupled") {
+    cfg.quorum_sensing.ai2_growth_coupled = parse_config_real(key, val); return true;
+  }
+  if (key == "quorum_sensing.lsr_vmax" || key == "quorum_sensing_lsr_vmax") {
+    cfg.quorum_sensing.lsr_vmax = parse_config_real(key, val); return true;
+  }
+  if (key == "quorum_sensing.lsr_km" || key == "quorum_sensing_lsr_km") {
+    cfg.quorum_sensing.lsr_km = parse_config_real(key, val); return true;
+  }
+  if (key == "quorum_sensing.ai2_D_free" || key == "quorum_sensing_ai2_D_free") {
+    cfg.quorum_sensing.ai2_D_free = parse_config_real(key, val); return true;
+  }
+  if (key == "quorum_sensing.ai2_decay_rate" || key == "quorum_sensing_ai2_decay_rate") {
+    cfg.quorum_sensing.ai2_decay_rate = parse_config_real(key, val); return true;
+  }
+  // Spec key name is ai2_chemotaxis (maps to ai2_chemotaxis_enabled)
+  if (key == "quorum_sensing.ai2_chemotaxis" || key == "quorum_sensing_ai2_chemotaxis") {
+    cfg.quorum_sensing.ai2_chemotaxis_enabled = parse_bool_config(val); return true;
+  }
+  if (key == "quorum_sensing.chi_ai2" || key == "quorum_sensing_chi_ai2") {
+    cfg.quorum_sensing.chi_ai2 = parse_config_real(key, val); return true;
+  }
+  return false;
+}
+
+constexpr std::array<FlatKeyHandler, 24> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_advection_key,
@@ -677,6 +730,7 @@ constexpr std::array<FlatKeyHandler, 23> k_flat_key_handlers = {
   apply_fur_key,
   apply_cdi_key,
   apply_motility_key,
+  apply_quorum_sensing_key,
 };
 
 bool parse_legacy_key_value(const std::string& line,

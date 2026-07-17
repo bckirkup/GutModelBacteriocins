@@ -378,6 +378,25 @@ drag modulate **swim speed** multiplicatively.
 
 ---
 
+## AI-2 Quorum Sensing (Spec 11)
+
+Opt-in autoinducer-2 field with LuxS production, Lsr import, and optional
+Weber–Fechner chemotaxis (via `fix_motility`).
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `quorum_sensing.enabled` | false | — | Master switch; registers `ai2` species |
+| `quorum_sensing.ai2_basal_rate` | 1e-20 | mol/s/cell | Constitutive LuxS production |
+| `quorum_sensing.ai2_growth_coupled` | 1e-16 | mol/cell | Growth-associated production (`× mu_realized`) |
+| `quorum_sensing.lsr_vmax` | 1e-18 | mol/s/cell | Max Lsr import rate |
+| `quorum_sensing.lsr_km` | 1e-7 | mol/m³ | Lsr half-saturation (~100 nM) |
+| `quorum_sensing.ai2_D_free` | 5e-10 | m²/s | AI-2 free diffusion coefficient |
+| `quorum_sensing.ai2_decay_rate` | 1e-4 | 1/s | Background first-order decay |
+| `quorum_sensing.ai2_chemotaxis` | false | — | Enable AI-2 run-length bias in motility |
+| `quorum_sensing.chi_ai2` | 3.0 | — | Weber–Fechner AI-2 sensitivity |
+
+---
+
 ## Receptor Binding
 
 | Parameter | Config key | Default | Units | Description |

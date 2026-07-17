@@ -202,6 +202,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | Peristaltic mixing | `peristaltic_*` keys in input JSON |
 | Chemical environment (Spec 1) | `oxygen.enabled`, `acetate.enabled`, `mucin.enabled`, `protease.enabled` + nested keys in `docs/PARAMETERS.md` |
 | Cell biology (Spec 3 / 10v2) | `fur.enabled`, `cdi.enabled`, `motility.enabled` + aerotaxis/energy/surface/mucin keys; per-strain `cdi_type`, `cdi_immunity` |
+| Quorum sensing (Spec 11) | `quorum_sensing.enabled` + AI-2 production/import/chemotaxis keys in `docs/PARAMETERS.md` |
 | GPU | `gpu_enabled` in input JSON (CUDA build required) |
 
 Full parameter docs: `docs/PARAMETERS.md`.

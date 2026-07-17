@@ -376,6 +376,26 @@ std::vector<Probe> build_probes() {
   add_ns_int(v, "motility.cluster_suppress_threshold", "motility_cluster_suppress_threshold", [](const SimulationConfig& c) { return static_cast<long long>(c.cell_bio.motility.cluster_suppress_threshold); });
   add_ns_real(v, "motility.cluster_tumble_factor", "motility_cluster_tumble_factor", [](const SimulationConfig& c) { return c.cell_bio.motility.cluster_tumble_factor; });
 
+  // ── Quorum sensing / AI-2 (Spec 11) ───────────────────────────────────────
+  add_ns_bool(v, "quorum_sensing.enabled", "quorum_sensing_enabled",
+              [](const SimulationConfig& c) { return c.quorum_sensing.enabled; });
+  add_ns_real(v, "quorum_sensing.ai2_basal_rate", "quorum_sensing_ai2_basal_rate",
+              [](const SimulationConfig& c) { return c.quorum_sensing.ai2_basal_rate; });
+  add_ns_real(v, "quorum_sensing.ai2_growth_coupled", "quorum_sensing_ai2_growth_coupled",
+              [](const SimulationConfig& c) { return c.quorum_sensing.ai2_growth_coupled; });
+  add_ns_real(v, "quorum_sensing.lsr_vmax", "quorum_sensing_lsr_vmax",
+              [](const SimulationConfig& c) { return c.quorum_sensing.lsr_vmax; });
+  add_ns_real(v, "quorum_sensing.lsr_km", "quorum_sensing_lsr_km",
+              [](const SimulationConfig& c) { return c.quorum_sensing.lsr_km; });
+  add_ns_real(v, "quorum_sensing.ai2_D_free", "quorum_sensing_ai2_D_free",
+              [](const SimulationConfig& c) { return c.quorum_sensing.ai2_D_free; });
+  add_ns_real(v, "quorum_sensing.ai2_decay_rate", "quorum_sensing_ai2_decay_rate",
+              [](const SimulationConfig& c) { return c.quorum_sensing.ai2_decay_rate; });
+  add_ns_bool(v, "quorum_sensing.ai2_chemotaxis", "quorum_sensing_ai2_chemotaxis",
+              [](const SimulationConfig& c) { return c.quorum_sensing.ai2_chemotaxis_enabled; });
+  add_ns_real(v, "quorum_sensing.chi_ai2", "quorum_sensing_chi_ai2",
+              [](const SimulationConfig& c) { return c.quorum_sensing.chi_ai2; });
+
   return v;
 }
 
