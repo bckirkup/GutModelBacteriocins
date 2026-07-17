@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------
-   GutIBM – Active cell motility fix (Spec 3)
+   GutIBM – Active cell motility fix (Spec 3 / Spec 10v2)
    ----------------------------------------------------------------------- */
 
 #ifndef GUTIBM_FIX_MOTILITY_H
@@ -27,9 +27,11 @@ class FixMotility : public Fix {
   Real advance_stopped_interval(Agent::MotilityState& motility, Real remaining);
   Real advance_running_interval(Agent& agent, Real remaining);
   void update_chemotaxis(Agent& agent, Real dt);
+  Real effective_swim_speed(const Agent& agent) const;
   void complete_run(Agent& agent);
   void start_run(Agent::MotilityState& motility);
   Real sample_duration(Real mean_duration);
+  bool any_taxis_enabled() const;
 
   MotilityConfig cfg_;
 };

@@ -611,8 +611,35 @@ bool apply_motility_key(SimulationConfig& cfg, const std::string& key, const std
   if (key == "motility.chi_carbon" || key == "motility_chi_carbon") {
     cfg.cell_bio.motility.chi_carbon = parse_config_real(key, val); return true;
   }
-  if (key == "motility.chi_oxygen" || key == "motility_chi_oxygen") {
-    cfg.cell_bio.motility.chi_oxygen = parse_config_real(key, val); return true;
+  if (key == "motility.chemotaxis_threshold" || key == "motility_chemotaxis_threshold") {
+    cfg.cell_bio.motility.chemotaxis_threshold = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.aerotaxis_enabled" || key == "motility_aerotaxis_enabled") {
+    cfg.cell_bio.motility.aerotaxis_enabled = parse_bool_config(val); return true;
+  }
+  if (key == "motility.aerotaxis_sensitivity" || key == "motility_aerotaxis_sensitivity") {
+    cfg.cell_bio.motility.aerotaxis_sensitivity = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.energy_taxis_enabled" || key == "motility_energy_taxis_enabled") {
+    cfg.cell_bio.motility.energy_taxis_enabled = parse_bool_config(val); return true;
+  }
+  if (key == "motility.energy_taxis_floor" || key == "motility_energy_taxis_floor") {
+    cfg.cell_bio.motility.energy_taxis_floor = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.surface_sensing_enabled" || key == "motility_surface_sensing_enabled") {
+    cfg.cell_bio.motility.surface_sensing_enabled = parse_bool_config(val); return true;
+  }
+  if (key == "motility.surface_sensing_depth" || key == "motility_surface_sensing_depth") {
+    cfg.cell_bio.motility.surface_sensing_depth = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.surface_sensing_floor" || key == "motility_surface_sensing_floor") {
+    cfg.cell_bio.motility.surface_sensing_floor = parse_config_real(key, val); return true;
+  }
+  if (key == "motility.mucin_drag_enabled" || key == "motility_mucin_drag_enabled") {
+    cfg.cell_bio.motility.mucin_drag_enabled = parse_bool_config(val); return true;
+  }
+  if (key == "motility.mucin_drag_reference" || key == "motility_mucin_drag_reference") {
+    cfg.cell_bio.motility.mucin_drag_reference = parse_config_real(key, val); return true;
   }
   if (key == "motility.cluster_suppress_radius" || key == "motility_cluster_suppress_radius") {
     cfg.cell_bio.motility.cluster_suppress_radius = parse_config_real(key, val); return true;

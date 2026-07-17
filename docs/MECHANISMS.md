@@ -245,22 +245,34 @@ Chromosomal mutations that ameliorate plasmid metabolic cost. Reduces per-locus 
 
 ---
 
-## 7. fix_motility — Active Cell Swimming (Spec 3)
+## 7. fix_motility — Active Cell Swimming (Spec 3 / Spec 10v2)
 
-**Biological basis:** E. coli in colonic mucus swims at ~7.76 µm/s using a mucus-adapted run-and-reverse pattern (not classic run-and-tumble). Flagellar activity increases near mucin-producing cells.
+**Biological basis:** E. coli in colonic mucus swims at ~7.76 µm/s using a mucus-adapted run-and-reverse pattern (not classic run-and-tumble). Lazova et al. 2016 showed Aer-mediated aerotaxis is the primary directional cue for colonization through mucus-like hydrogels with vertical O₂ gradients. Carbon chemotaxis (Tar/Tsr), energy taxis, surface sensing, and mucin viscosity further shape spatial distribution.
 
 **Model:** `FixMotility::pre_step()` advances every run/stop transition that
 occurs within the biological timestep and accumulates the corresponding swim
 displacement. `module_physics()` applies that displacement after advection:
 ```
+update_chemotaxis (Weber–Fechner run-timer bias)
 while remaining_dt > 0:
     event_dt = min(remaining_dt, current_run_or_stop_timer)
     if running:
-        displacement += swim_direction * swim_speed * event_dt
+        speed = effective_swim_speed(agent)   # energy × surface × mucin
+        displacement += swim_direction * speed * event_dt
     advance timer and transition state when the event ends
 x += displacement
 ```
-Optional chemotaxis extends run duration when moving toward increasing attractant (carbon, O₂). Cluster suppression reduces reorientation rate when neighbor density exceeds threshold.
+
+**Directional taxis (run-length modulation, additive):**
+- **Aerotaxis** (`aerotaxis_enabled`, default on): Weber–Fechner on the O₂ field; sensitivity `aerotaxis_sensitivity` (default 4.0). Primary cue when oxygen is present.
+- **Carbon chemotaxis** (`chemotaxis_enabled`): Weber–Fechner on carbon; sensitivity `chi_carbon` (default 2.0). Floor `chemotaxis_threshold` avoids division by zero.
+
+**Speed modulation (multiplicative):**
+- **Energy taxis**: `speed *= floor + (1-floor) * mu_realized/mu_max`
+- **Surface sensing** (opt-in): linear ramp from `surface_sensing_floor` at the epithelium to full speed beyond `surface_sensing_depth`
+- **Mucin drag** (opt-in): `speed *= ref / (ref + [mucin])`
+
+Cluster suppression reduces reorientation rate when neighbor density exceeds threshold.
 
 ---
 

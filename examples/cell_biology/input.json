@@ -10,6 +10,9 @@
     "enabled": false
   },
   "motility.chemotaxis_enabled": false,
+  "motility.aerotaxis_enabled": true,
+  "motility.energy_taxis_enabled": true,
+  "oxygen.enabled": true,
   "initial_strains": [
     {
       "type": 1,

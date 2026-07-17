@@ -344,7 +344,12 @@ Per-strain JSON keys: `cdi_type`, `cdi_immunity` on `initial_strains` entries. C
 
 ---
 
-## Active Motility (Spec 3)
+## Active Motility (Spec 3 / Spec 10v2)
+
+Run-and-reverse swimming with modular behavioral modes. Directional taxis
+(aerotaxis, carbon chemotaxis) modulate **run duration** via Weber–Fechner
+fractional sensing (`ΔC/(C·dt)`). Energy taxis, surface sensing, and mucin
+drag modulate **swim speed** multiplicatively.
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
@@ -353,12 +358,23 @@ Per-strain JSON keys: `cdi_type`, `cdi_immunity` on `initial_strains` entries. C
 | `motility.run_mean_duration` | 1.0 | s | Mean run duration |
 | `motility.stop_probability` | 0.3 | — | P(stop) per reorientation |
 | `motility.stop_duration` | 0.5 | s | Mean stop duration |
-| `motility.chemotaxis_enabled` | false | — | Enable chemotactic bias |
-| `motility.chi_carbon` | 0.1 | — | Carbon chemotaxis sensitivity |
-| `motility.chi_oxygen` | 0.1 | — | O₂ chemotaxis sensitivity |
+| `motility.chemotaxis_enabled` | false | — | Enable carbon (Tar/Tsr) chemotaxis |
+| `motility.chi_carbon` | 2.0 | — | Weber–Fechner carbon sensitivity |
+| `motility.chemotaxis_threshold` | 1e-6 | mol/m³ | Floor for fractional sensing |
+| `motility.aerotaxis_enabled` | true | — | Enable Aer-mediated aerotaxis on O₂ |
+| `motility.aerotaxis_sensitivity` | 4.0 | — | Weber–Fechner O₂ sensitivity (primary cue) |
+| `motility.energy_taxis_enabled` | true | — | Reduce speed under metabolic stress |
+| `motility.energy_taxis_floor` | 0.1 | — | Speed fraction at `mu_realized = 0` |
+| `motility.surface_sensing_enabled` | false | — | Reduce speed near epithelium |
+| `motility.surface_sensing_depth` | 10e-6 | m | Depth of surface-sensing zone |
+| `motility.surface_sensing_floor` | 0.3 | — | Speed fraction at z = epithelium |
+| `motility.mucin_drag_enabled` | false | — | Viscosity drag from mucin field |
+| `motility.mucin_drag_reference` | 1e-2 | mol/m³ | Mucin conc at half-speed |
 | `motility.cluster_suppress_radius` | 10e-6 | m | Cluster detection radius |
 | `motility.cluster_suppress_threshold` | 5 | — | Neighbors to suppress tumbling |
 | `motility.cluster_tumble_factor` | 0.2 | — | Tumble rate multiplier in cluster center |
+
+`motility.chi_oxygen` was removed in Spec 10v2; use `motility.aerotaxis_sensitivity`.
 
 ---
 

@@ -63,7 +63,7 @@ Many subsystems use **dot-key toggles** in flat JSON:
 | `protease.enabled` | true | Toxin protease decay in QSSA |
 | `fur.enabled` | false | Fur-regulated iron receptor expression |
 | `cdi.enabled` | false | Contact-dependent inhibition |
-| `motility.enabled` | false | Run-and-reverse swimming |
+| `motility.enabled` | true | Run-and-reverse swimming (Spec 10v2 behavioral modes) |
 | `crypts_enabled` | false | Crypt refugia (zero-flow zones) |
 | `adaptive_dt_enabled` | false | CFL-like adaptive biological timestep |
 | `use_fmm` | false | Barnes–Hut FMM far-field acceleration |
