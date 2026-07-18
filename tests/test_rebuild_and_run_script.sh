@@ -18,6 +18,19 @@ fail() {
 [[ "$(json_kind "$ROOT/experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json")" == batch ]] ||
   fail "stage3 batch_kd_sweep was not classified as batch"
 
+# Stage 3 singles request GPU (50M-cell grids); batches inherit via base_config.
+stage3_gpu_cfg="$ROOT/experiments/diversity_campaign/stage3_campaign/3b_full_mechanisms.json"
+"$PYTHON" - "$stage3_gpu_cfg" <<'PY' || fail "stage3 base missing gpu_enabled"
+import json, sys
+from pathlib import Path
+cfg = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+assert cfg.get("gpu_enabled") is True, cfg.get("gpu_enabled")
+assert cfg.get("gpu_device_id") == -1, cfg.get("gpu_device_id")
+PY
+kd_base="$("$PYTHON" -c "import json; from pathlib import Path; print(json.loads(Path('$ROOT/experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json').read_text())['base_config'])")"
+[[ "$kd_base" == *3b_full_mechanisms.json ]] ||
+  fail "batch_kd_sweep base_config is not 3b_full_mechanisms.json"
+
 temporary_dir="$(mktemp -d)"
 trap 'rm -rf "$temporary_dir"' EXIT
 sensitivity_config="$temporary_dir/classification.json"

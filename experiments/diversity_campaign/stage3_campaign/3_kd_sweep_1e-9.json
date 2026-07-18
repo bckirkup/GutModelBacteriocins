@@ -51,7 +51,8 @@
   },
   "_comment": [
     "CAMPAIGN Kd SWEEP: kd_corrinoid_btuB = 1e-09",
-    "Competitive factor = 1001x blocking colicin E at BtuB."
+    "Competitive factor = 1001x blocking colicin E at BtuB.",
+    "GPU ON (50M-cell Stage 3): requires CUDA-enabled gut_ibm build."
   ],
   "motility.enabled": false,
   "oxygen.enabled": true,
@@ -67,5 +68,7 @@
   "dt_safety": 0.8,
   "dt_growth_limit": 0.1,
   "dysbiosis_threshold": 1000000000000.0,
-  "kd_corrinoid_btuB": 1e-09
+  "kd_corrinoid_btuB": 1e-09,
+  "gpu_enabled": true,
+  "gpu_device_id": -1
 }

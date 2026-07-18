@@ -118,6 +118,23 @@ Stage 3 uses a 2 mm × 2 mm × 100 µm domain at 2 µm grid spacing
 need several GB before agents, HDF5, MPI, or GPU mirrors. On WSL2, see
 `docs/WSL2_SETUP.md` and start with one MPI rank.
 
+**GPU is on by default for Stage 3** (`gpu_enabled: true`, `gpu_device_id: -1`
+in every Stage 3 single-run JSON; batch jobs inherit it from `base_config`).
+Stages 1–2 stay on CPU — the 200k-cell grids are too small for GPU transfer
+overhead to pay off.
+
+Build a CUDA binary before launching Stage 3:
+
+```bash
+./rebuild_and_run.sh --cuda on --reuse-build --mode batch \
+  --config experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json \
+  --batch-action dry-run
+```
+
+If `nvcc` / a GPU is missing, `rebuild_and_run.sh` warns when a config requests
+GPU but the binary was built without CUDA. Set `"gpu_enabled": false` only as a
+CPU fallback.
+
 ## Validation targets (Stage 3)
 
 - Resident retention: 70–80% after seven days

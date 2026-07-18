@@ -50,7 +50,10 @@
     }
   },
   "_comment": [
-    "CAMPAIGN: Baseline. No optional modules, motility OFF."
+    "CAMPAIGN: Baseline. No optional modules, motility OFF.",
+    "GPU ON (50M-cell Stage 3): requires CUDA-enabled gut_ibm build."
   ],
-  "motility.enabled": false
+  "motility.enabled": false,
+  "gpu_enabled": true,
+  "gpu_device_id": -1
 }

@@ -45,7 +45,8 @@ To use the GPU, copy a simulation config and set:
 ```
 
 `gpu_device_id: -1` lets MPI ranks select devices by rank. A CUDA-enabled build
-and visible NVIDIA GPU are still required.
+and visible NVIDIA GPU are still required. Stage 3 campaign configs already
+enable GPU; Stages 1–2 stay on CPU.
 
 Batch manifests resolve `base_config`, `binary`, and `output_dir` from the
 repository root. Keep `"binary": "build/gut_ibm"` when using the helper's

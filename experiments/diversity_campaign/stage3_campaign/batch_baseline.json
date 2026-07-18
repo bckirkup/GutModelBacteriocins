@@ -1,5 +1,5 @@
 {
-  "_comment": "Stage 3A baseline \u00d7 3 seeds.",
+  "_comment": "Stage 3A baseline \u00d7 3 seeds. Requires CUDA build + gpu_enabled in base_config.",
   "output_dir": "batch_results/diversity_campaign/stage3_baseline",
   "base_config": "experiments/diversity_campaign/stage3_campaign/3a_baseline.json",
   "binary": "build/gut_ibm",
