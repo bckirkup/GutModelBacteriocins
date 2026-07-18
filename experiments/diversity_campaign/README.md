@@ -79,23 +79,24 @@ Expected wall time: ~1–5 min each on a laptop.
 
 ```bash
 # Baseline × 3 seeds
-./rebuild_and_run.sh --reuse-build --mode batch \
+./rebuild_and_run.sh --cuda on --reuse-build --mode batch \
   --config experiments/diversity_campaign/stage3_campaign/batch_baseline.json
 
 # Full mechanisms × 3 seeds
-./rebuild_and_run.sh --reuse-build --mode batch \
+./rebuild_and_run.sh --cuda on --reuse-build --mode batch \
   --config experiments/diversity_campaign/stage3_campaign/batch_full_mechanisms.json
 
 # Full mechanisms + motility × 3 seeds (after Stage 1 passes)
-./rebuild_and_run.sh --reuse-build --mode batch \
+./rebuild_and_run.sh --cuda on --reuse-build --mode batch \
   --config experiments/diversity_campaign/stage3_campaign/batch_full_mech_motile.json
 
 # Four Kd values × 3 seeds (12 runs)
-./rebuild_and_run.sh --reuse-build --mode batch \
+./rebuild_and_run.sh --cuda on --reuse-build --mode batch \
   --config experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json \
   --batch-action dry-run
 ```
 
+Stage 3 batches use **1 MPI rank** by default (full-grid memory per rank).
 Outputs land under `batch_results/diversity_campaign/`.
 
 ## Decision points
@@ -114,12 +115,57 @@ After Stage 3:
 ## Resource warning (Stage 3)
 
 Stage 3 uses a 2 mm × 2 mm × 100 µm domain at 2 µm grid spacing
-(`1000 × 1000 × 50 = 50,000,000` cells). Concentration/reaction arrays alone
-need several GB before agents, HDF5, MPI, or GPU mirrors. On WSL2, see
-`docs/WSL2_SETUP.md` and start with one MPI rank.
+(`1000 × 1000 × 50 = 50,000,000` cells) and ~10 chemical species
+(O₂ + acetate + defaults). **Every MPI rank stores the full grid** (no
+slab-local chemistry yet).
 
-**GPU is on by default for Stage 3** (`gpu_enabled: true`, `gpu_device_id: -1`
-in every Stage 3 single-run JSON; batch jobs inherit it from `base_config`).
+### Exact chemistry memory (dominant term)
+
+```
+bytes ≈ ncells × nspecies × 2 (conc+reac) × 8
+      = 50e6 × 10 × 2 × 8
+      = 8.0 GB host   (ChemicalField)
+      + 8.0 GB VRAM   (ChemicalFieldGpu mirrors, when gpu_enabled)
+```
+
+Agents are cheap at campaign scale (~600 start; even 10⁵ is ≪ 1 GB). Transient
+GPU sync copies allocate another ~0.4 GB host temporary per species. FMM/QSSA
+scratch adds ~0.4–1 GB.
+
+| Setup | Host chem | Device chem | Practical minimum |
+|-------|-----------|-------------|-------------------|
+| 1 rank, CPU | ~8 GB (+~3 GB overhead) | — | **≥16 GB** WSL RAM |
+| 1 rank, GPU | ~8 GB (+ overhead/temps) | **8 GB** (+ scratch) | **≥16–24 GB** WSL RAM **and ≥12 GB** VRAM (16 GB safer) |
+| 4 ranks, GPU | ~32 GB+ aggregate | 8 GB × devices | workstation / HPC only |
+
+| GPU VRAM | Full Stage 3 (`dx=2 µm`) |
+|----------|--------------------------|
+| 6–8 GB | **Will not fit** (chem mirrors alone = 8 GB) |
+| 10 GB | Marginal — likely crash after init/early steps |
+| 12 GB | Possible if little else on the GPU |
+| 16 GB+ | Recommended for GPU Stage 3 |
+
+If a run prints `Step 1` (or later) then the terminal/WSL session dies with no
+tidy traceback, treat it as **OOM** (host or VRAM), not a GutIBM logic error.
+Check `dmesg`, WSL logs, and `nvidia-smi` for killed processes / Xid errors.
+
+Batch manifests default to `"mpi_ranks": 1`. Raise the WSL cap in
+`%UserProfile%\.wslconfig` (see `docs/WSL2_SETUP.md`) before trying more ranks.
+
+### Laptop-safe grid (if full Stage 3 OOMs)
+
+Chemistry memory scales as `1/dx³` (and as `L²` in x/y). Same 2 mm domain:
+
+| `grid_dx` | Cells | Host chem | GPU chem |
+|-----------|------:|----------:|---------:|
+| 2 µm (current) | 50.0 M | 8.00 GB | 8.00 GB |
+| 4 µm | 6.2 M | 1.00 GB | 1.00 GB |
+| 5 µm | 3.2 M | 0.51 GB | 0.51 GB |
+
+Or keep `dx=2 µm` but shrink to 1 mm × 1 mm → 12.5 M cells → **2 GB** chem
+each on host/device.
+
+**GPU is on by default for Stage 3** (`gpu_enabled: true`, `gpu_device_id: -1`).
 Stages 1–2 stay on CPU — the 200k-cell grids are too small for GPU transfer
 overhead to pay off.
 
@@ -133,7 +179,7 @@ Build a CUDA binary before launching Stage 3:
 
 If `nvcc` / a GPU is missing, `rebuild_and_run.sh` warns when a config requests
 GPU but the binary was built without CUDA. Set `"gpu_enabled": false` only as a
-CPU fallback.
+CPU fallback (still needs ~8+ GB host RAM at full resolution).
 
 ## Validation targets (Stage 3)
 

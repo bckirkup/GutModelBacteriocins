@@ -1,9 +1,9 @@
 {
-  "_comment": "Stage 3B full mechanisms \u00d7 3 seeds (motility OFF). Requires CUDA build + gpu_enabled in base_config.",
+  "_comment": "Stage 3B full mechanisms \u00d7 3 seeds (motility OFF). Requires CUDA build + gpu_enabled in base_config. mpi_ranks=1 by default: each rank holds the full 50M-cell grid (~8+ GB chem arrays, plus GPU mirrors). np>=2 often OOMs WSL/laptops.",
   "output_dir": "batch_results/diversity_campaign/stage3_full_mechanisms",
   "base_config": "experiments/diversity_campaign/stage3_campaign/3b_full_mechanisms.json",
   "binary": "build/gut_ibm",
-  "mpi_ranks": 4,
+  "mpi_ranks": 1,
   "mpirun_args": [
     "--bind-to",
     "none"

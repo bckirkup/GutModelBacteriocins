@@ -155,6 +155,8 @@ Lower `GUTIBM_BUILD_JOBS` and MPI ranks before increasing the WSL memory cap.
 Do not use more MPI ranks than the processors assigned to WSL unless the run is
 explicitly an oversubscription test. Stage 1–2 campaign configs are safe at
 `mpirun -np 4` after the periodic-x ghost-exchange fix; prefer `--bind-to none`.
+**Stage 3** defaults to 1 rank: each rank mirrors the full 50M-cell grid, so
+GPU + `np=4` often OOMs WSL and can kill the terminal with no traceback.
 
 ## 6. CUDA-aware MPI
 
