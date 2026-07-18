@@ -212,6 +212,39 @@ void test_multirank_simulation_steps_four_ranks() {
   }
 }
 
+// Production configs default to periodic x. With np>2 that forms a neighbor
+// ring; sequential Sendrecv(lo)/Sendrecv(hi) deadlocks. This test guards the
+// non-blocking exchange path used by gut_ibm campaign runs.
+void test_periodic_x_ring_four_ranks() {
+  require_mpi_ranks(4);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  SimulationConfig cfg = make_mpi_config(4404, 80);
+  cfg.domain.periodic = {true, true, false};
+  cfg.time.total_time = 120.0;
+  cfg.advection.distal_transit_time = 1e12;
+  Simulation sim;
+  sim.init(cfg);
+
+  assert(!sim.domain().neighbors_collapsed());
+  assert(sim.domain().rank_lo() == (rank + 3) % 4);
+  assert(sim.domain().rank_hi() == (rank + 1) % 4);
+
+  const Int initial_global = sim.global_agent_count();
+  sim.run();
+
+  assert(sim.global_agent_count() > 0);
+  assert(sim.global_agent_count() <= initial_global);
+  assert_unique_tags(gather_live_tags_flat(sim));
+
+  if (rank == 0) {
+    std::cout << "  test_periodic_x_ring_four_ranks: PASSED"
+              << " (global_agents=" << sim.global_agent_count() << ")\n";
+  }
+}
+
 #endif  // GUTIBM_MPI
 
 }  // namespace
@@ -231,6 +264,7 @@ int main(int argc, char** argv) {
   test_init_population_partitioned_four_ranks();
   test_migration_across_four_ranks();
   test_multirank_simulation_steps_four_ranks();
+  test_periodic_x_ring_four_ranks();
 
   if (rank == 0) {
     std::cout << "All MPI four-rank tests passed.\n";

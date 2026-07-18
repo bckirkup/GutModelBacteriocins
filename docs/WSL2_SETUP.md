@@ -153,7 +153,8 @@ Microsoft reference:
 
 Lower `GUTIBM_BUILD_JOBS` and MPI ranks before increasing the WSL memory cap.
 Do not use more MPI ranks than the processors assigned to WSL unless the run is
-explicitly an oversubscription test.
+explicitly an oversubscription test. Stage 1–2 campaign configs are safe at
+`mpirun -np 4` after the periodic-x ghost-exchange fix; prefer `--bind-to none`.
 
 ## 6. CUDA-aware MPI
 

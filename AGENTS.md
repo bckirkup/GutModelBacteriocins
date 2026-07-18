@@ -107,7 +107,8 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **#43 Multi-rank tests** | Fixed | `mpi_multi_rank` + `hdf5_roundtrip_parallel` CTest targets |
 | **#78 parse_real() silent zero** | Fixed | Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts |
 | GPU portability | Open | Production chemistry + mechanics on GPU; FMM M2L tree-walk on CPU; multi-GPU NCCL not wired |
-| Large-scale MPI scaling | Partial | `mpi_four_rank` CTest (`mpirun -np 4`); manual `mpirun -np 8+` on HPC |
+| Large-scale MPI scaling | Partial | `mpi_four_rank` CTest (`mpirun -np 4`, includes periodic-x ring); manual `mpirun -np 8+` on HPC |
+| **MPI hang np>2 (periodic x)** | Fixed | Ghost/migrate used sequential `Sendrecv(lo)` then `Sendrecv(hi)`, deadlocking the default periodic-x ring for `np>2`. Now non-blocking `Isend`/`Irecv`+`Waitall`. `np=2` used the collapsed path and was unaffected. |
 
 When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colicin_E1` aliases still resolve) and assert `agent.genome.bi_loci.size() > 0`.
 
