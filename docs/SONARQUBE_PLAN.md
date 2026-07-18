@@ -2,12 +2,14 @@
 
 **Project:** [bckirkup_GutModelBacteriocins](https://sonarcloud.io/project/overview?id=bckirkup_GutModelBacteriocins)
 
-**Status (Jul 2026):** 88 open issues on SonarCloud automatic analysis (multicriteria
-suppressions in `sonar-project.properties` apply to scanner runs; SonarCloud automatic
-analysis may still surface suppressed rules until re-scan or UI false-positive marking).
+**Status (Jul 2026):** Quality gate **OK** (0 BUG, 0 VULNERABILITY). Pragmatic
+clear-to-zero:
 
-**Remediation PR (`cursor/sonar-debt-cleanup-9b40`):** fixes blocking BUG/VULN,
-~40 mechanical smells in code, and extends suppressions for accepted complexity debt.
+| Batch | Action | Status |
+|-------|--------|--------|
+| **A** | Mechanical code fixes (~25 smells) | Done (`cursor/sonar-mechanical-cleanup-aead` / PR) |
+| **B** | Won’t Fix accepted complexity/architecture debt (~54) | Script ready — run after merge re-scan |
+| **C** | This doc + skill remaining-work map | Done |
 
 ## Policy
 
@@ -15,11 +17,73 @@ analysis may still surface suppressed rules until re-scan or UI false-positive m
 |----------|--------|
 | **BUG** | Fix immediately — blocks merge |
 | **VULNERABILITY** | Fix immediately — blocks merge |
-| **New smells on changed lines** | Fix opportunistically when touching the file (S1238 const-ref, S5827 auto, S5566 ranges) |
+| **New smells on changed lines** | Fix opportunistically when touching the file |
+| **Accepted debt (Batch B rules)** | Multicriteria for scanner runs + SonarCloud Won’t Fix for auto-analysis dashboard |
 
-The quality gate should pass on **reliability + security** only. Maintainability smells in
-diffusion kernels, GPU headers, and legacy Fix modules are not worth batch-refactoring for
+The quality gate should pass on **reliability + security** (and current
+maintainability-on-new-code conditions). Maintainability smells in diffusion
+kernels, GPU headers, and legacy Fix modules are not worth batch-refactoring for
 a research prototype.
+
+## Why multicriteria alone is not enough
+
+[`sonar-project.properties`](../sonar-project.properties) ignores accepted smell
+families via `sonar.issue.ignore.multicriteria`. **SonarCloud automatic analysis
+does not apply those exclusions**, so ignored rules can still appear as open
+issues on the dashboard. Clearing the dashboard requires either a code fix or a
+SonarCloud **Won’t Fix** (or False Positive) resolution.
+
+## Batch A — Mechanical fixes (done)
+
+Cleared in code (do not re-suppress these rules project-wide):
+
+| Rule | Fix |
+|------|-----|
+| `python:S1192` | Path traversal message constant |
+| `cpp:S6009` | `std::string_view` for flat keys / compression helpers |
+| `cpp:S5566` | `std::ranges::any_of` in QSSA GPU parity test |
+| `cpp:S3358` | Nested ternary split in `simulation.cpp` |
+| `cpp:S1854` | Dead stores to `stopped_for_population` |
+| `cpp:S1905` | Redundant cast removed |
+| `cpp:S125` | Comment reworded (not “commented-out code”) |
+| `cpp:S5827` | Redundant type → `auto` |
+| `cpp:S5421` | Mutable global replaced with function-local counter |
+| `cpp:S1188` | Long test lambdas → named helpers |
+| `cpp:S5812` | Flattened `namespace gutibm::test` |
+| `cpp:S6177` | `using enum` |
+| `cpp:S5945` | C arrays → `std::array` for HDF5 dims |
+| `cpp:S6022` | `std::byte` in agent-transfer append |
+
+## Batch B — Accepted debt (Won’t Fix)
+
+| Rule family | Approx. count | Reason |
+|-------------|---------------|--------|
+| `cpp:S134` nesting | 11 | Hot kernels / receptor / GPU |
+| `cpp:S107` param count | 10 | Diffusion APIs need context-struct redesign |
+| `cpp:S6004` init-if | 10 | Low-value modernization |
+| `cpp:S3776` / `python:S3776` | 11 | Parser, HDF5, GPU, batch CLI |
+| `cpp:S995` const ptr | 4 | GPU buffer mutability |
+| `cpp:S5008` `void*` | 2 | HDF5 C API buffers |
+| `cpp:S1820` / `cpp:S1448` | 3 | `Simulation` / GPU types size |
+| `cpp:S3656` protected | 1 | NUFEB-style `Fix` base |
+| `cpp:S924` nested break | 1 | Coupled to `Simulation::run` |
+| `cpp:S7034` `contains` | 1 | `string_view::contains` is C++23; project is C++20 |
+
+### Clear dashboard after Batch A merges
+
+1. Wait for SonarCloud automatic analysis on `main` (or the PR).
+2. With a token that can **Administer Issues**:
+
+```bash
+export SONAR_TOKEN=...   # SonarCloud user token
+python3 scripts/sonar_wont_fix_debt.py --dry-run   # preview
+python3 scripts/sonar_wont_fix_debt.py             # resolve
+```
+
+3. Or in the UI: Issues → filter by the rules above → Bulk Change → Won’t Fix,
+   comment pointing at this doc.
+4. Keep multicriteria entries in `sonar-project.properties` for CI/scanner runs.
+   Do **not** add new exclusions for rules fixed in Batch A.
 
 ## Security (fixed — do not regress)
 
@@ -52,26 +116,11 @@ validation.
 Already handled in `src/io/path_utils.cpp` with `validate_temp_directory()` + `mkstemp`.
 Approved `NOSONAR` only where env temp dirs are validated before use.
 
-## Suppressed code smells (83 issues, 38 rule families)
+## Suppressed code smells (scanner multicriteria)
 
-Configured in `sonar-project.properties` via `sonar.issue.ignore.multicriteria`.
-Re-scan after merge should close these without code changes.
-
-| Rule family | Count | Why suppressed |
-|-------------|-------|----------------|
-| `cpp:S3608` | 11 | FMM kernel loop style — refactor risk in hot path |
-| `cpp:S107` | 7 | Long parameter lists in diffusion APIs — needs struct grouping per subsystem |
-| `cpp:S134` | 5 | Deep nesting in FMM/QSSA — partial Phase 3 work remains |
-| `cpp:S5817` / `S6177` / `S1820` | 12 | Const-correctness / rule-of-five in core headers |
-| `cpp:S5213` / `S5812` | 6 | GPU header include guards / export macros |
-| `cpp:S6004` / `S995` / `S6022` | 7 | C++17 init-if / cast / emplace — low value |
-| `cpp:S6045` / `S6231` / `S6495` | 7 | Template deduction / structured bindings — compile-risky batch |
-| `cpp:S1121` | 2 | Assignment in sub-expression in FMM |
-| `cpp:S1144` | 2 | Unused private methods — intentional stubs |
-| `cpp:S6185` | 2 | `std::make_unique` vs `new` in lineage tracker |
-| `cpp:S7034` | 1 | `string_view::contains` — C++23, toolchain is C++17 |
-| Single-count stragglers | 17 | One-off style in tests/GPU — fix when file is touched |
-| `python:S117` | 1 | PEP8 naming in `validation.py` CLI helper |
+Configured in `sonar-project.properties` via `sonar.issue.ignore.multicriteria`
+(accepted debt families, including Batch B rules). Re-scan with the scanner
+honors these; automatic analysis still needs Won’t Fix (script above).
 
 ## If a suppressed rule fires on new code
 
@@ -93,10 +142,12 @@ componentKeys=bckirkup_GutModelBacteriocins&resolved=false&facets=types&ps=1" \
   | python3 -m json.tool
 ```
 
-**Target:** 0 open BUG/VULNERABILITY at all times; 0 total open issues after re-scan.
+**Target:** 0 open BUG/VULNERABILITY at all times; 0 total open issues after
+Batch A merge + Batch B Won’t Fix.
 
 ## Related docs
 
 - `.agents/skills/sonarqube-gutibm/SKILL.md` — agent workflow
 - `.agents/skills/sonarqube-cpp/SKILL.md` — C++ patterns
 - `.agents/skills/sonarqube-python/SKILL.md` — Python patterns
+- `scripts/sonar_wont_fix_debt.py` — Batch B dashboard clear
