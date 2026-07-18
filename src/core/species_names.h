@@ -32,11 +32,12 @@ inline constexpr const char* AI2                 = "ai2";
 
 // Per-receptor toxin field for a TonB-dependent transporter target.
 inline const char* bacteriocin_species_for(ReceptorType target) {
+  using enum ReceptorType;
   switch (target) {
-    case ReceptorType::BtuB: return BACTERIOCIN_BTUB;
-    case ReceptorType::FepA: return BACTERIOCIN_FEPA;
-    case ReceptorType::CirA: return BACTERIOCIN_CIRA;
-    case ReceptorType::FhuA: return BACTERIOCIN_FHUA;
+    case BtuB: return BACTERIOCIN_BTUB;
+    case FepA: return BACTERIOCIN_FEPA;
+    case CirA: return BACTERIOCIN_CIRA;
+    case FhuA: return BACTERIOCIN_FHUA;
     default: return nullptr;
   }
 }

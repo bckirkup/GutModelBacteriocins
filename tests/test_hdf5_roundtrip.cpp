@@ -9,6 +9,7 @@
 #include "path_utils.h"
 #include "hdf5_test_helpers.h"
 
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
@@ -166,8 +167,8 @@ void validate_step_agents_match_sim(hid_t file,
   auto grid_btuB_dset = H5Dopen2(file, ("grid/" + step + "/bacteriocin_BtuB").c_str(), H5P_DEFAULT);
   assert(grid_btuB_dset >= 0);
   hid_t grid_space = H5Dget_space(grid_btuB_dset);
-  hsize_t dims[3] = {0, 0, 0};
-  H5Sget_simple_extent_dims(grid_space, dims, nullptr);
+  std::array<hsize_t, 3> dims{0, 0, 0};
+  H5Sget_simple_extent_dims(grid_space, dims.data(), nullptr);
   const size_t grid_elems = static_cast<size_t>(dims[0]) * static_cast<size_t>(dims[1])
       * static_cast<size_t>(dims[2]);
   H5Sclose(grid_space);

@@ -433,14 +433,15 @@ double real_sentinel(double def) { return def * 3.0 + 7.0; }
 
 // Scalar string fed to the parser for a probe (unquoted).
 std::string sentinel_scalar(const Probe& p, const SimulationConfig& def) {
+  using enum Kind;
   switch (p.kind) {
-    case Kind::Real:
+    case Real:
       return fmt_real(real_sentinel(p.gr(def)));
-    case Kind::Int:
+    case Int:
       return std::to_string(p.gi(def) + 7);
-    case Kind::Bool:
+    case Bool:
       return (!p.gb(def)) ? "true" : "false";
-    case Kind::Str:
+    case Str:
       return p.sval;
   }
   return "";
@@ -449,8 +450,9 @@ std::string sentinel_scalar(const Probe& p, const SimulationConfig& def) {
 // Assert the parsed config `got` holds the sentinel for probe `p`, and that the
 // sentinel actually differs from the default (guards against dead wiring).
 void check_ingested(const Probe& p, const SimulationConfig& def, const SimulationConfig& got) {
+  using enum Kind;
   switch (p.kind) {
-    case Kind::Real: {
+    case Real: {
       if (const double s = real_sentinel(p.gr(def));
           !close(p.gr(got), s) || close(p.gr(got), p.gr(def))) {
         std::ostringstream m;
@@ -460,7 +462,7 @@ void check_ingested(const Probe& p, const SimulationConfig& def, const Simulatio
       }
       break;
     }
-    case Kind::Int: {
+    case Int: {
       if (const long long s = p.gi(def) + 7; p.gi(got) != s || p.gi(got) == p.gi(def)) {
         std::ostringstream m;
         m << "int key '" << p.key << "' got=" << p.gi(got) << " expected=" << s
@@ -469,7 +471,7 @@ void check_ingested(const Probe& p, const SimulationConfig& def, const Simulatio
       }
       break;
     }
-    case Kind::Bool: {
+    case Bool: {
       if (const bool s = !p.gb(def); p.gb(got) != s) {
         std::ostringstream m;
         m << "bool key '" << p.key << "' got=" << p.gb(got) << " expected=" << s
@@ -478,7 +480,7 @@ void check_ingested(const Probe& p, const SimulationConfig& def, const Simulatio
       }
       break;
     }
-    case Kind::Str: {
+    case Str: {
       if (p.gs(got) != p.sval || p.gs(got) == p.gs(def)) {
         std::ostringstream m;
         m << "string key '" << p.key << "' got='" << p.gs(got) << "' expected='"

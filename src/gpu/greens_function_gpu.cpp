@@ -93,7 +93,7 @@ bool launch_superpose(const Domain& domain,
   d_sz.upload(sz);
   d_params.upload(sp);
 
-  const int span = static_cast<int>(std::ceil(cutoff_radius / domain.dx()));
+  const auto span = static_cast<int>(std::ceil(cutoff_radius / domain.dx()));
   const auto dom = make_domain_params(domain);
   const auto adv_p = make_advection_params(adv);
 

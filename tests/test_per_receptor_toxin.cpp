@@ -105,16 +105,17 @@ void test_colb_burst_routes_fepA() {
 }
 
 void test_receptor_specific_kill() {
+  using enum ReceptorType;
   ReceptorConfig rcfg;
   rcfg.kill_rate_colicin = 1.0;
 
   auto sim = make_tiny_sim();
   Vec3 pos = {50e-6, 50e-6, 25e-6};
   Agent a = agent_at(sim, pos, 2);
-  a.receptor_expr[to_underlying(ReceptorType::BtuB)] = 1.0;
-  a.receptor_expr[to_underlying(ReceptorType::FepA)] = 0.0;
-  a.receptor_expr[to_underlying(ReceptorType::CirA)] = 0.0;
-  a.receptor_expr[to_underlying(ReceptorType::FhuA)] = 0.0;
+  a.receptor_expr[to_underlying(BtuB)] = 1.0;
+  a.receptor_expr[to_underlying(FepA)] = 0.0;
+  a.receptor_expr[to_underlying(CirA)] = 0.0;
+  a.receptor_expr[to_underlying(FhuA)] = 0.0;
   Int cell = a.grid_cell;
   sim.agents().push_back(std::move(a));
 
@@ -130,10 +131,10 @@ void test_receptor_specific_kill() {
 
   auto sim2 = make_tiny_sim();
   Agent b = agent_at(sim2, pos, 2);
-  b.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.0;
-  b.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
-  b.receptor_expr[to_underlying(ReceptorType::CirA)] = 0.0;
-  b.receptor_expr[to_underlying(ReceptorType::FhuA)] = 0.0;
+  b.receptor_expr[to_underlying(BtuB)] = 0.0;
+  b.receptor_expr[to_underlying(FepA)] = 1.0;
+  b.receptor_expr[to_underlying(CirA)] = 0.0;
+  b.receptor_expr[to_underlying(FhuA)] = 0.0;
   Int cell2 = b.grid_cell;
   sim2.agents().push_back(std::move(b));
   auto& chem2 = sim2.chemical_field();

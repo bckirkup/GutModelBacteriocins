@@ -14,6 +14,7 @@ class PathValidationError(ValueError):
 
 
 _SAFE_PATH_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_PARENT_TRAVERSAL_MSG = "path contains parent-directory traversal ('..')"
 
 
 def _path_has_parent_traversal(path: Path) -> bool:
@@ -29,7 +30,7 @@ def validate_path_syntax(path: str | Path) -> Path:
     if not resolved.parts:
         raise PathValidationError("empty path")
     if _path_has_parent_traversal(resolved):
-        raise PathValidationError("path contains parent-directory traversal ('..')")
+        raise PathValidationError(_PARENT_TRAVERSAL_MSG)
     return resolved
 
 
@@ -138,7 +139,7 @@ def _ensure_output_within_cwd(candidate: Path) -> Path:
 def _sanitize_path_segment(segment: str) -> str:
     """Allowlist a single path component to break S8707 taint from CLI arguments."""
     if segment in {".", ".."}:
-        raise PathValidationError("path contains parent-directory traversal ('..')")
+        raise PathValidationError(_PARENT_TRAVERSAL_MSG)
     if not _SAFE_PATH_SEGMENT_RE.fullmatch(segment):
         raise PathValidationError(f"unsafe path segment: {segment!r}")
     return segment
@@ -173,7 +174,7 @@ def _mkdir_validated_parents(parent: Path) -> None:
     current = parent
     while not current.exists() and current.parts:
         if _path_has_parent_traversal(current):
-            raise PathValidationError("path contains parent-directory traversal ('..')")
+            raise PathValidationError(_PARENT_TRAVERSAL_MSG)
         to_create.append(current)
         current = current.parent if current.parent.parts else Path(".")
 

@@ -128,7 +128,7 @@ class InputParser {
   // Apply a single flat config key (used by JSON and legacy line parsers).
   // Returns true if the key was recognized and applied, false otherwise.
   static bool apply_flat_key(SimulationConfig& cfg,
-                             const std::string& key,
+                             std::string_view key,
                              const std::string& val);
 
  private:

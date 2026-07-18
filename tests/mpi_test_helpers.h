@@ -15,8 +15,7 @@
 #include <mpi.h>
 #endif
 
-namespace gutibm {
-namespace test {
+namespace gutibm::test {
 
 inline SimulationConfig make_mpi_config(unsigned seed, int agent_count) {
   SimulationConfig cfg = InputParser::default_config();
@@ -97,5 +96,4 @@ inline void require_mpi_ranks(int expected) {
 
 #endif  // GUTIBM_MPI
 
-}  // namespace test
-}  // namespace gutibm
+}  // namespace gutibm::test
