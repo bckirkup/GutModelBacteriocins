@@ -37,6 +37,7 @@ from .batch_manifest import (
     save_manifest,
 )
 from .path_utils import PathValidationError, prepare_output_file
+from .hdf5_gzip import maybe_gzip_hdf5_file
 from .validation_regression import run_validation
 
 EXIT_INTERRUPTED = 130
@@ -208,6 +209,8 @@ def _run_single_job(
         job.status = (
             JOB_STATUS_FAILED if job.validation_failures else JOB_STATUS_DONE
         )
+        if job.status == JOB_STATUS_DONE:
+            maybe_gzip_hdf5_file(paths["hdf5_path"])
     else:
         job.status = JOB_STATUS_FAILED
 

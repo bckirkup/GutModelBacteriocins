@@ -231,6 +231,41 @@ def test_status_cli_reports_pending(batch_workspace: Path, capsys: pytest.Captur
     assert "pending" in captured.out
 
 
+def test_batch_run_gzips_hdf5_when_env_set(
+    batch_workspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import gut_ibm_tools.batch_runner as runner
+
+    batch_path = batch_workspace / "batch.json"
+    _write_batch_config(
+        batch_path,
+        {
+            "output_dir": "out",
+            "base_config": "base_config.json",
+            "binary": "gut_ibm",
+            "runs": [{"id": "gzip_me", "overrides": {"hdf5": {"enabled": True}}}],
+        },
+    )
+
+    def _fake_run(settings, config_path, log_path):  # noqa: ANN001
+        del settings, config_path, log_path
+        h5 = batch_workspace / "out" / "jobs" / "gzip_me" / "output.h5"
+        h5.parent.mkdir(parents=True, exist_ok=True)
+        h5.write_bytes(b"HDF5-fake-" + (b"\0" * 2048))
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(runner, "_run_simulation", _fake_run)
+    monkeypatch.setenv("GUTIBM_GZIP_HDF5", "true")
+    assert batch_main([str(batch_path)]) == 0
+    h5 = batch_workspace / "out" / "jobs" / "gzip_me" / "output.h5"
+    gz = Path(str(h5) + ".gz")
+    assert not h5.exists()
+    assert gz.is_file()
+    manifest = load_manifest(batch_workspace / "out")
+    assert manifest.jobs[0].status == JOB_STATUS_DONE
+
+
 def test_fixture_batch_sweep_expands_to_four_jobs(batch_workspace: Path) -> None:
     fixture = json.loads((FIXTURES / "batch_sweep.json").read_text(encoding="utf-8"))
     batch_path = batch_workspace / "batch.json"

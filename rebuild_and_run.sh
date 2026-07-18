@@ -12,6 +12,8 @@ RUN_MODE="${GUTIBM_RUN_MODE:-prompt}"
 CONFIG_PATH="${GUTIBM_CONFIG:-}"
 MPI_RANKS="${GUTIBM_MPI_RANKS:-}"
 BATCH_ACTION="${GUTIBM_BATCH_ACTION:-run}"
+# Post-run whole-file gzip of HDF5 outputs (not HDF5-internal grid compression).
+GZIP_HDF5="${GUTIBM_GZIP_HDF5:-true}"
 REUSE_BUILD=false
 PYTHON="${PYTHON:-python3}"
 CUDA_ENABLED=OFF
@@ -38,13 +40,18 @@ Options:
                             stage directory for --mode stage
   --mpi-ranks N             MPI ranks for a single run or stage run
   --batch-action ACTION     run, dry-run, resume, or status
+  --gzip-hdf5               After each successful run, gzip the HDF5 file
+                            to .h5.gz and remove the uncompressed .h5
+                            (default)
+  --no-gzip-hdf5            Leave HDF5 outputs uncompressed
   --reuse-build             Skip clean/configure/build/CTest
   -h, --help                Show this help
 
 Environment equivalents:
   GUTIBM_BUILD_DIR, GUTIBM_BUILD_TYPE, GUTIBM_BUILD_JOBS,
   GUTIBM_CUDA, GUTIBM_CUDA_ARCHITECTURES, GUTIBM_RUN_MODE,
-  GUTIBM_CONFIG, GUTIBM_MPI_RANKS, GUTIBM_BATCH_ACTION, PYTHON
+  GUTIBM_CONFIG, GUTIBM_MPI_RANKS, GUTIBM_BATCH_ACTION,
+  GUTIBM_GZIP_HDF5, PYTHON
 EOF
 }
 
@@ -88,6 +95,14 @@ parse_args() {
         BATCH_ACTION="$2"
         shift 2
         ;;
+      --gzip-hdf5)
+        GZIP_HDF5=true
+        shift
+        ;;
+      --no-gzip-hdf5)
+        GZIP_HDF5=false
+        shift
+        ;;
       --reuse-build)
         REUSE_BUILD=true
         shift
@@ -121,6 +136,13 @@ validate_options() {
   case "$BATCH_ACTION" in
     run|dry-run|resume|status) ;;
     *) die "batch action must be run, dry-run, resume, or status" ;;
+  esac
+
+  GZIP_HDF5="${GZIP_HDF5,,}"
+  case "$GZIP_HDF5" in
+    true|1|yes|on) GZIP_HDF5=true ;;
+    false|0|no|off) GZIP_HDF5=false ;;
+    *) die "GUTIBM_GZIP_HDF5 / --gzip-hdf5 must be true or false" ;;
   esac
 
   case "$BUILD_DIR" in
@@ -587,11 +609,70 @@ run_single() {
   echo "=== Single experiment ==="
   echo "Config: ${config#"$ROOT"/}"
   echo "Ranks:  $ranks"
+  if [[ "$GZIP_HDF5" == true ]]; then
+    echo "HDF5:   gzip after success"
+  fi
   (
     cd "$ROOT"
     OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}" \
       "${mpirun_args[@]}" -np "$ranks" "$BUILD_DIR/gut_ibm" "$config"
   )
+  maybe_gzip_hdf5_from_config "$config"
+}
+
+# Resolve the simulation HDF5 path from a single-run JSON (empty if disabled).
+hdf5_path_from_config() {
+  local config="$1"
+  local cwd="${2:-$ROOT}"
+  "$PYTHON" - "$config" "$cwd" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+config = Path(sys.argv[1])
+cwd = Path(sys.argv[2])
+payload = json.loads(config.read_text(encoding="utf-8"))
+hdf5 = payload.get("hdf5", {})
+if not isinstance(hdf5, dict):
+    hdf5 = {}
+enabled = hdf5.get("enabled", True)
+if enabled is False or enabled == 0 or enabled == "false":
+    raise SystemExit
+filename = payload.get("hdf5_file") or hdf5.get("file") or "gut_ibm_output.h5"
+path = Path(str(filename))
+if not path.is_absolute():
+    path = cwd / path
+print(path.resolve())
+PY
+}
+
+# Whole-file gzip (replaces path.h5 with path.h5.gz). No-op if missing.
+gzip_hdf5_file() {
+  local hdf5_path="$1"
+  [[ -n "$hdf5_path" ]] || return 0
+  [[ -f "$hdf5_path" ]] || return 0
+  case "$hdf5_path" in
+    *.h5.gz) return 0 ;;
+  esac
+  require_command gzip
+  local before after
+  before="$(wc -c <"$hdf5_path" | tr -d ' ')"
+  echo "=== Gzipping HDF5 ==="
+  echo "Input:  $hdf5_path ($before bytes)"
+  gzip -f -n "$hdf5_path"
+  local gz_path="${hdf5_path}.gz"
+  [[ -f "$gz_path" ]] || die "gzip did not produce $gz_path"
+  after="$(wc -c <"$gz_path" | tr -d ' ')"
+  echo "Output: $gz_path ($after bytes)"
+}
+
+maybe_gzip_hdf5_from_config() {
+  local config="$1"
+  [[ "$GZIP_HDF5" == true ]] || return 0
+  local hdf5_path
+  hdf5_path="$(hdf5_path_from_config "$config" "$ROOT" || true)"
+  [[ -n "$hdf5_path" ]] || return 0
+  gzip_hdf5_file "$hdf5_path"
 }
 
 run_batch() {
@@ -629,8 +710,12 @@ PY
 
   echo "=== Batch experiment ($action) ==="
   echo "Config: ${config#"$ROOT"/}"
+  if [[ "$GZIP_HDF5" == true && ( "$action" == run || "$action" == resume ) ]]; then
+    echo "HDF5:   gzip after each successful job"
+  fi
   (
     cd "$ROOT"
+    export GUTIBM_GZIP_HDF5="$GZIP_HDF5"
     PYTHONPATH="$ROOT/python${PYTHONPATH:+:$PYTHONPATH}" \
       "$PYTHON" -m gut_ibm_tools.batch_runner "$config" "${action_args[@]}"
   )

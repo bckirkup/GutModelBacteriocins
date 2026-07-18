@@ -111,8 +111,28 @@ grep -q -- '--bind-to none' "$MPIRUN_LOG" ||
 grep -q -- "-np 2 $fake_build/gut_ibm" "$MPIRUN_LOG" ||
   fail "single-run MPI command was not constructed correctly"
 
+# Post-run gzip: missing/disabled HDF5 is a no-op; enabled path compresses.
+fake_h5="$temporary_dir/campaign_out.h5"
+printf 'HDF5-fake-%s' "$(printf 'x%.0s' {1..4000})" >"$fake_h5"
+gzip_hdf5_file "$fake_h5"
+[[ ! -f "$fake_h5" ]] || fail "gzip_hdf5_file left uncompressed HDF5"
+[[ -f "${fake_h5}.gz" ]] || fail "gzip_hdf5_file did not create .h5.gz"
+GZIP_HDF5=false
+maybe_gzip_hdf5_from_config "$ROOT/experiments/smoke_single.json" ||
+  fail "maybe_gzip with disabled HDF5 should no-op"
+GZIP_HDF5=true
+# smoke_single has hdf5.enabled=false → empty path / no-op
+maybe_gzip_hdf5_from_config "$ROOT/experiments/smoke_single.json" ||
+  fail "maybe_gzip with hdf5.enabled=false should no-op"
+
+stage1_cfg="$ROOT/experiments/diversity_campaign/stage1_motility_validation/1a_motility_off.json"
+hdf5_from_1a="$(hdf5_path_from_config "$stage1_cfg" "$temporary_dir")"
+[[ "$hdf5_from_1a" == "$temporary_dir/1a_motility_off.h5" ]] ||
+  fail "hdf5_path_from_config did not resolve stage1 filename"
+
 original_python="$PYTHON"
 PYTHON="$fake_bin/python"
+GZIP_HDF5=true
 run_batch "$ROOT/experiments/smoke_batch.json" dry-run |
   grep -q 'Batch: 2 jobs' ||
   fail "batch dry-run did not expand two jobs"
@@ -152,6 +172,9 @@ grep -q -- '-m ensurepip --upgrade' "$PIP_BOOTSTRAP_LOG" ||
 grep -q -- '-m pip install --quiet -e' "$PIP_BOOTSTRAP_LOG" ||
   fail "package installation did not follow pip bootstrap"
 
+"$ROOT/rebuild_and_run.sh" --help |
+  grep -q -- '--gzip-hdf5' ||
+  fail "help output omitted --gzip-hdf5"
 "$ROOT/rebuild_and_run.sh" --help |
   grep -q -- '--mode prompt|single|batch|stage|none' ||
   fail "help output omitted run modes"

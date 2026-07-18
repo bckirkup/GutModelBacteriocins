@@ -17,6 +17,16 @@ The interactive menu groups configs by subdirectory (so
 `diversity_campaign/stage1_*` … `stage3_*` appear in order) and can run an
 entire diversity-campaign stage sequentially.
 
+After each successful single-run or batch job, `rebuild_and_run.sh` **gzip**s
+the HDF5 output to `*.h5.gz` and removes the uncompressed file (default; disable
+with `--no-gzip-hdf5`). This is whole-file gzip — independent of HDF5-internal
+`hdf5.compression: gzip` (which only affects grid layers). Gunzip before
+analysis:
+
+```bash
+gunzip -k path/to/output.h5.gz   # keep .gz, or omit -k to replace
+```
+
 Starter files:
 
 - `smoke_single.json` — one small, 60-second CPU simulation.
