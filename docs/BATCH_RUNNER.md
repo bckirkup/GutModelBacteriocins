@@ -27,8 +27,13 @@ batch_results/my_scan/
     seed=4092_total_time=300/
       input.json               # generated simulation config
       output.h5                # HDF5 output (absolute path in config)
+      # or output.h5.gz when GUTIBM_GZIP_HDF5=true (rebuild_and_run default)
       run.log                    # mpirun + gut_ibm stdout/stderr
 ```
+
+When `GUTIBM_GZIP_HDF5` is true (exported by `rebuild_and_run.sh` unless
+`--no-gzip-hdf5`), each successful job’s `output.h5` is replaced with a
+whole-file `output.h5.gz` after validation. Gunzip before analysis.
 
 ## Batch JSON schema
 
