@@ -1,0 +1,19 @@
+{
+  "_comment": "Stage 3C full mechanisms + motility \u00d7 3 seeds (after Stage 1 validation).",
+  "output_dir": "batch_results/diversity_campaign/stage3_full_mech_motile",
+  "base_config": "experiments/diversity_campaign/stage3_campaign/3c_full_mech_motile.json",
+  "binary": "build/gut_ibm",
+  "mpi_ranks": 4,
+  "mpirun_args": [
+    "--bind-to",
+    "none"
+  ],
+  "on_fail": "continue",
+  "sweep": {
+    "seed": [
+      42,
+      43,
+      44
+    ]
+  }
+}

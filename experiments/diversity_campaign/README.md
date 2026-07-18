@@ -1,108 +1,121 @@
-# Diversity Campaign
+# Diversity Campaign v3 — Three-Stage Experimental Plan
 
-Parameter sweep testing the Advective Double-Bind / Combinatorial Washout Trap
-with all mechanisms engaged.
+Configs live under `experiments/diversity_campaign/` and are discovered by
+`./rebuild_and_run.sh` in stage order (stage1 → stage2 → stage3).
 
-## Conditions
+## Stage overview
 
-| Config | O2 | Acetate | Crypts | Adaptive dt | `kd_corrinoid_btuB` | Purpose |
-|--------|----|---------|--------|-------------|----------------------|---------|
-| `baseline.json` | OFF | OFF | OFF | OFF | default (`1e-9`) | Reference |
-| `full_mechanisms.json` | ON | ON | ON | ON | default (`1e-9`) | Full mechanisms |
-| `kd_sweep_1e-9.json` | ON | ON | ON | ON | `1e-9` | Strong block; colicin E weak |
-| `kd_sweep_1e-8.json` | ON | ON | ON | ON | `1e-8` | Moderate block |
-| `kd_sweep_1e-7.json` | ON | ON | ON | ON | `1e-7` | Weak block |
-| `kd_sweep_1e-6.json` | ON | ON | ON | ON | `1e-6` | Minimal block; colicin E potent |
+| Stage | Folder | Scale | Purpose |
+|-------|--------|-------|---------|
+| 1 | `stage1_motility_validation/` | 500 µm, 1 h, ~100 agents | Validate motility / taxis modes |
+| 2 | `stage2_mechanism_validation/` | 500 µm, 1 h, motility OFF | Validate O₂, acetate, crypts, CDI |
+| 3 | `stage3_campaign/` | 2 mm, 7 d, full grid | Science runs + Kd sweep |
 
-All configs use a 2 mm × 2 mm × 100 µm domain, 2 µm grid spacing, seven days,
-500 residents plus 100 immigrants, FMM-accelerated QSSA, and motility with
-substep integration.
+Run Stages 1 and 2 before Stage 3. Stage 3 configs are production-scale (see
+resource warning below).
 
-## Resource warning
-
-These are production-scale experiments, not smoke tests. The grid contains
-`1000 × 1000 × 50 = 50,000,000` cells. Concentration and reaction arrays alone
-require approximately 7.2 GB for the nine-species baseline and 8.0 GB when
-oxygen adds a tenth species, before agents, HDF5 buffers, MPI, or GPU mirrors.
-On WSL2, review `docs/WSL2_SETUP.md`, keep enough RAM available to Windows, and
-start with one MPI rank before launching the full campaign.
-
-HDF5 schedule values are measured in simulation steps. The baseline's
-60-step schedule is hourly because its timestep is fixed at 60 seconds. Output
-spacing in the adaptive-timestep experiments varies with the selected timestep.
-
-## Batch runs
+## Using `rebuild_and_run.sh`
 
 ```bash
-# Build
-cmake -B build -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON
-cmake --build build -j"${GUTIBM_BUILD_JOBS:-$(nproc)}"
+# Interactive: pick a single config or batch (files grouped by stage folder)
+./rebuild_and_run.sh
 
-# Inspect job expansion without running simulations
-.venv/bin/python -m gut_ibm_tools.batch_runner \
-  experiments/diversity_campaign/batch_kd_sweep.json --dry-run
+# Or after build: reuse and open the experiment menu
+./rebuild_and_run.sh --reuse-build
 
-# Baseline × 3 seeds (3 runs)
-.venv/bin/python -m gut_ibm_tools.batch_runner \
-  experiments/diversity_campaign/batch_baseline.json
+# Menu option "Run a diversity-campaign stage" executes every single-run
+# JSON in that stage folder in sorted order (1a→1f, 2a→2f, …).
 
-# Full mechanisms × 3 seeds (3 runs)
-.venv/bin/python -m gut_ibm_tools.batch_runner \
-  experiments/diversity_campaign/batch_full_mechanisms.json
+# Direct single / batch (non-interactive)
+./rebuild_and_run.sh --reuse-build --mode single \
+  --config experiments/diversity_campaign/stage1_motility_validation/1a_motility_off.json \
+  --mpi-ranks 1
+
+./rebuild_and_run.sh --reuse-build --mode batch \
+  --config experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json \
+  --batch-action dry-run
+```
+
+## Stage 1: Motility validation (1-hour runs, small domain)
+
+| Config | Motility | O₂ | Aerotaxis | Energy taxis | Carbon chemo | AI-2 | Expected |
+|--------|----------|-----|-----------|--------------|--------------|------|----------|
+| `1a_motility_off` | OFF | — | — | — | — | — | Stable population (reference) |
+| `1b_motility_blind` | ON blind | — | OFF | OFF | — | — | Population collapse (~2 agents) |
+| `1c_aerotaxis_only` | ON | ON | ON | OFF | — | — | Directional bias, partial recovery |
+| `1d_aerotaxis_energy` | ON | ON | ON | ON | — | — | Bias + speed reduction → stable |
+| `1e_full_taxis` | ON | ON | ON | ON | ON | — | Strongest epithelial bias |
+| `1f_full_taxis_ai2` | ON | ON | ON | ON | ON | ON | Bias + clustering |
+
+Each run: ~500 µm domain, 100 agents, 1 hour, dt = 60 s, dx = 5 µm.
+Expected wall time: ~1–5 min each on a laptop.
+
+## Stage 2: Mechanism validation (1-hour runs, motility OFF)
+
+| Config | O₂ | Acetate | Crypts | Adaptive dt | CDI | Expected |
+|--------|-----|---------|--------|-------------|-----|----------|
+| `2a_baseline` | — | — | — | — | — | Baseline reference |
+| `2b_o2_only` | ON | — | — | — | — | z-dependent µ (aerobic boost) |
+| `2c_o2_acetate` | ON | ON | — | — | — | MetE penalty for BtuB-low agents |
+| `2d_o2_acetate_crypts` | ON | ON | ON | — | — | Crypt agents survive washout |
+| `2e_full_mechanisms` | ON | ON | ON | ON | — | Adaptive dt varies; population bounded |
+| `2f_full_mech_cdi` | ON | ON | ON | — | types | CDI kills at strain boundaries |
+
+## Stage 3: Full campaign (7-day runs, full domain)
+
+| Config | Description | Motility | Kd |
+|--------|-------------|----------|-----|
+| `3a_baseline` | Baseline | OFF | default (1 nM) |
+| `3b_full_mechanisms` | Full mechanisms | OFF | default (1 nM) |
+| `3c_full_mech_motile` | Full mechanisms + motile | ON (aerotaxis+energy) | default (1 nM) |
+| `3_kd_sweep_1e-9` … `1e-6` | Kd sweep singles | OFF | 1 nM → 1 µM |
+
+### Batch manifests (Stage 3)
+
+```bash
+# Baseline × 3 seeds
+./rebuild_and_run.sh --reuse-build --mode batch \
+  --config experiments/diversity_campaign/stage3_campaign/batch_baseline.json
+
+# Full mechanisms × 3 seeds
+./rebuild_and_run.sh --reuse-build --mode batch \
+  --config experiments/diversity_campaign/stage3_campaign/batch_full_mechanisms.json
+
+# Full mechanisms + motility × 3 seeds (after Stage 1 passes)
+./rebuild_and_run.sh --reuse-build --mode batch \
+  --config experiments/diversity_campaign/stage3_campaign/batch_full_mech_motile.json
 
 # Four Kd values × 3 seeds (12 runs)
-.venv/bin/python -m gut_ibm_tools.batch_runner \
-  experiments/diversity_campaign/batch_kd_sweep.json
+./rebuild_and_run.sh --reuse-build --mode batch \
+  --config experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json \
+  --batch-action dry-run
 ```
 
-Total: 18 runs. The batch manifests write isolated outputs beneath
-`batch_results/diversity_campaign/` and can be selected through
-`./rebuild_and_run.sh`.
+Outputs land under `batch_results/diversity_campaign/`.
 
-## Single run
+## Decision points
 
-```bash
-# From the repository root
-mpirun --bind-to none -np 1 build/gut_ibm \
-  experiments/diversity_campaign/full_mechanisms.json
+After Stage 1:
+- If `1d` sustains a viable population → consider motility ON for Stage 3 (`3c`)
+- If `1d` still collapses → keep motility OFF for Stage 3; investigate parameters
 
-# Or isolate output in a run directory
-mkdir -p runs/full_mechanisms
-cd runs/full_mechanisms
-mpirun --bind-to none -np 1 ../../build/gut_ibm \
-  ../../experiments/diversity_campaign/full_mechanisms.json
-```
+After Stage 2:
+- If `2e` works → proceed to Stage 3 with full mechanisms
+- If any mechanism crashes or yields NaN → fix before Stage 3
 
-Increase MPI ranks only after the one-rank run initializes within the available
-WSL2 memory.
+After Stage 3:
+- Analyze Kd sweep; compare motile vs non-motile (`3c` vs `3b`) if Stage 1 passed
 
-## GPU
+## Resource warning (Stage 3)
 
-To opt into a CUDA-enabled build, add these top-level keys to a copied
-simulation config:
+Stage 3 uses a 2 mm × 2 mm × 100 µm domain at 2 µm grid spacing
+(`1000 × 1000 × 50 = 50,000,000` cells). Concentration/reaction arrays alone
+need several GB before agents, HDF5, MPI, or GPU mirrors. On WSL2, see
+`docs/WSL2_SETUP.md` and start with one MPI rank.
 
-```json
-"gpu_enabled": true,
-"gpu_device_id": -1
-```
-
-`gpu_device_id: -1` lets ranks select devices by local rank. The full grid is
-mirrored on the GPU, so verify both host RAM and VRAM capacity first.
-
-## Analysis
-
-```python
-from gut_ibm_tools import GutIBMData, validation
-
-with GutIBMData("full_mechanisms.h5") as data:
-    spatial = validation.validate_spatial_signatures(data, data.steps[-1])
-    genomic = validation.validate_genomic_signatures(data)
-    print(f"Monochromatic score: {spatial['monochromatic_score']:.3f}")
-    print(f"Resident retention: {genomic['resident_retention']:.1%}")
-```
-
-## Validation targets
+## Validation targets (Stage 3)
 
 - Resident retention: 70–80% after seven days
 - Monochromatic patchiness: greater than 0.7
 - BtuB/FepA-downregulated immigrants wash out (`mu < gamma_flow`)
+- Kd sweep: higher Kd → colicin E more potent → higher resident retention

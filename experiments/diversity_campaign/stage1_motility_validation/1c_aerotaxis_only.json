@@ -1,0 +1,55 @@
+{
+  "total_time": 3600,
+  "bio_dt": 60,
+  "output_interval": 300,
+  "seed": 42,
+  "domain_x": 0.0005,
+  "domain_y": 0.0005,
+  "domain_z": 0.0001,
+  "grid_dx": 5e-06,
+  "mucus_thickness": 0.0001,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+  "vbf_density": 100000000000.0,
+  "vbf_viscosity": 0.01,
+  "sos_lysis_prob": 0.01,
+  "toxin_cutoff": 0.0001,
+  "nutrient_cutoff": 5e-05,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [
+        "ColE1",
+        "ColB"
+      ],
+      "conjugative": true
+    },
+    {
+      "type": 2,
+      "count": 20,
+      "mu_max": 0.0005,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ],
+  "hdf5_file": "1c_aerotaxis_only.h5",
+  "hdf5": {
+    "schedule": {
+      "summary": 1,
+      "agents": 5,
+      "grid": 0,
+      "lineage": 5,
+      "genome": 5
+    }
+  },
+  "_comment": [
+    "STAGE 1C: Motility + O2 + aerotaxis (Aer receptor).",
+    "Expected: agents bias toward epithelium via O2 gradient.",
+    "Energy taxis OFF \u2014 tests directional bias alone."
+  ],
+  "oxygen.enabled": true,
+  "motility.aerotaxis_enabled": true,
+  "motility.energy_taxis_enabled": false
+}

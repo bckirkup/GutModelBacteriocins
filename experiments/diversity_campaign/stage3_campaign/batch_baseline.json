@@ -1,0 +1,19 @@
+{
+  "_comment": "Stage 3A baseline \u00d7 3 seeds.",
+  "output_dir": "batch_results/diversity_campaign/stage3_baseline",
+  "base_config": "experiments/diversity_campaign/stage3_campaign/3a_baseline.json",
+  "binary": "build/gut_ibm",
+  "mpirun_args": [
+    "--bind-to",
+    "none"
+  ],
+  "on_fail": "continue",
+  "sweep": {
+    "seed": [
+      42,
+      43,
+      44
+    ]
+  },
+  "mpi_ranks": 4
+}

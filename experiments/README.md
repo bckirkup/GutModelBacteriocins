@@ -13,12 +13,17 @@ Files are classified by structure:
 - **Batch run:** an object containing `base_config` and exactly one of `sweep`
   or `runs`.
 
+The interactive menu groups configs by subdirectory (so
+`diversity_campaign/stage1_*` … `stage3_*` appear in order) and can run an
+entire diversity-campaign stage sequentially.
+
 Starter files:
 
 - `smoke_single.json` — one small, 60-second CPU simulation.
 - `smoke_batch.json` — two explicit runs based on the smoke config.
-- `diversity_campaign/` — full-scale baseline, mechanism, and corrinoid-Kd
-  experiments with three-seed batch manifests.
+- `diversity_campaign/` — three-stage plan (motility validation → mechanism
+  validation → full 7-day campaign + Kd sweep). See
+  `diversity_campaign/README.md`.
 
 To use the GPU, copy a simulation config and set:
 
