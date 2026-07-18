@@ -14,6 +14,7 @@
 #include "fur_config.h"
 #include "cdi_config.h"
 #include "motility_config.h"
+#include "quorum_sensing_config.h"
 #include "qssa_solver.h"
 #include "fix_metabolism.h"
 #include "fix_receptor.h"
@@ -104,6 +105,7 @@ struct SimulationConfig {
   GpuConfig gpu;
   ChemicalEnvironmentConfig chem_env;
   CellBiologyConfig cell_bio;
+  QuorumSensingConfig quorum_sensing;
   bool profile_steps = false;
 
   // Spec 5 §4 — Dysbiosis safety net. When > 0, the run halts if global agent

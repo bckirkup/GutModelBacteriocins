@@ -43,7 +43,9 @@ FixMotility::FixMotility(Simulation& sim, const MotilityConfig& cfg)
     : Fix("motility", sim), cfg_(cfg) {}
 
 bool FixMotility::any_taxis_enabled() const {
-  return cfg_.aerotaxis_enabled || cfg_.chemotaxis_enabled;
+  const auto& qs = sim_.config().quorum_sensing;
+  return cfg_.aerotaxis_enabled || cfg_.chemotaxis_enabled
+      || (qs.enabled && qs.ai2_chemotaxis_enabled);
 }
 
 void FixMotility::init_agent_motility(Agent& agent, const MotilityConfig& cfg,
@@ -57,6 +59,7 @@ void FixMotility::init_agent_motility(Agent& agent, const MotilityConfig& cfg,
   agent.motility.stop_timer = 0.0;
   agent.motility.prev_carbon = 0.0;
   agent.motility.prev_oxygen = 0.0;
+  agent.motility.prev_ai2 = 0.0;
 }
 
 void FixMotility::init() {
@@ -181,6 +184,19 @@ void FixMotility::update_chemotaxis(Agent& agent, Real dt) {
     }
   }
 
+  // AI-2 chemotaxis (LsrB–Tsr — Spec 11): Weber–Fechner
+  if (const auto& qs = sim_.config().quorum_sensing;
+      qs.enabled && qs.ai2_chemotaxis_enabled) {
+    const Int i_ai2 = chem.find(species::AI2);
+    if (i_ai2 >= 0) {
+      const Real ai2 = chem.conc(i_ai2, agent.grid_cell);
+      const Real frac_rate = weber_fechner_frac_rate(
+          ai2, mot.prev_ai2, cfg_.chemotaxis_threshold, dt);
+      modifier += qs.chi_ai2 * frac_rate;
+      mot.prev_ai2 = ai2;
+    }
+  }
+
   modifier = std::clamp(modifier, 0.1, 10.0);
   mot.run_timer = std::clamp(
       mot.run_timer * modifier, kMinRunTimer, kMaxRunTimer);
@@ -206,11 +222,15 @@ void FixMotility::complete_run(Agent& agent) {
     auto& chem = sim_.chemical_field();
     const Int i_carbon = chem.find(species::CARBON);
     const Int i_oxygen = chem.find(species::OXYGEN);
+    const Int i_ai2 = chem.find(species::AI2);
     if (i_carbon >= 0) {
       mot.prev_carbon = chem.conc(i_carbon, agent.grid_cell);
     }
     if (i_oxygen >= 0) {
       mot.prev_oxygen = chem.conc(i_oxygen, agent.grid_cell);
+    }
+    if (i_ai2 >= 0) {
+      mot.prev_ai2 = chem.conc(i_ai2, agent.grid_cell);
     }
   }
 

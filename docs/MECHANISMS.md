@@ -28,13 +28,14 @@ The `run()` loop uses `while (time < total_time)` with the adaptive dt, clamping
 Each biological rule is encapsulated as a **Fix** — a modular computation unit called once per biological timestep. Default registration order:
 
 1. `fix_metabolism` — Monod growth, Fur iron regulation, division, death
-2. `fix_bacteriocin` — SOS/phage/microcin release (Spec 2)
-3. `fix_receptor` — Competitive binding at TBDTs, toxin-mediated killing
-4. `fix_motility` — Run-and-reverse swimming, chemotaxis (Spec 3)
-5. `fix_conjugation` — Horizontal gene transfer via F-pili
-6. `fix_cdi` — Contact-dependent inhibition (Spec 3)
-7. `fix_mutation` — BI locus evolution, receptor downregulation, super-killers
-8. `fix_mechanics` — Hertzian repulsion, optional EPS adhesion
+2. `fix_quorum_sensing` — AI-2 production / Lsr import (Spec 11)
+3. `fix_bacteriocin` — SOS/phage/microcin release (Spec 2)
+4. `fix_receptor` — Competitive binding at TBDTs, toxin-mediated killing
+5. `fix_motility` — Run-and-reverse swimming, chemotaxis (Spec 3 / 10v2 / 11)
+6. `fix_conjugation` — Horizontal gene transfer via F-pili
+7. `fix_cdi` — Contact-dependent inhibition (Spec 3)
+8. `fix_mutation` — BI locus evolution, receptor downregulation, super-killers
+9. `fix_mechanics` — Hertzian repulsion, optional EPS adhesion
 
 The QSSA solver deposits bacteriocin fields immediately before `fix_receptor` (so killing sees the current step's toxin sources), then runs the full chemistry pass (nutrients, VBF, reactions) after biology. Advection operates in the physics module. Motility displacement is applied in `module_physics()` after advection.
 
@@ -266,6 +267,7 @@ x += displacement
 **Directional taxis (run-length modulation, additive):**
 - **Aerotaxis** (`aerotaxis_enabled`, default on): Weber–Fechner on the O₂ field; sensitivity `aerotaxis_sensitivity` (default 4.0). Primary cue when oxygen is present.
 - **Carbon chemotaxis** (`chemotaxis_enabled`): Weber–Fechner on carbon; sensitivity `chi_carbon` (default 2.0). Floor `chemotaxis_threshold` avoids division by zero.
+- **AI-2 chemotaxis** (`quorum_sensing.ai2_chemotaxis`, Spec 11): Weber–Fechner on the AI-2 field; sensitivity `chi_ai2` (default 3.0). Requires `quorum_sensing.enabled`.
 
 **Speed modulation (multiplicative):**
 - **Energy taxis**: `speed *= floor + (1-floor) * mu_realized/mu_max`
@@ -273,6 +275,22 @@ x += displacement
 - **Mucin drag** (opt-in): `speed *= ref / (ref + [mucin])`
 
 Cluster suppression reduces reorientation rate when neighbor density exceeds threshold.
+
+---
+
+## 7b. fix_quorum_sensing — AI-2 Quorum Sensing (Spec 11)
+
+**Biological basis:** *E. coli* produces autoinducer-2 (AI-2) via LuxS and imports it via the Lsr ABC transporter. LsrB–Tsr chemotaxis toward AI-2 promotes conspecific clustering (Hegde et al. 2011; Laganenka et al. 2025), raising local toxin, CDI, and conjugation encounter rates.
+
+**Model:** When `quorum_sensing.enabled`, the `ai2` chemical species is registered (diffusing small molecule, no z-gradient, zero IC/BC). `FixQuorumSensing::compute()` deposits per-agent reactions:
+
+```
+production = ai2_basal_rate + ai2_growth_coupled * max(mu_realized, 0)
+import     = lsr_vmax * [AI-2] / (lsr_km + [AI-2])
+reac      += production / cell_vol − import / cell_vol − decay_rate * [AI-2]
+```
+
+Chemotaxis is handled by `fix_motility` (Weber–Fechner on AI-2). Characteristic diffusion length √(D/decay) ≈ 70 µm sets the attraction range.
 
 ---
 

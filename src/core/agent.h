@@ -77,6 +77,7 @@ struct Agent {
     Real stop_timer = 0.0;
     Real prev_carbon = 0.0;
     Real prev_oxygen = 0.0;
+    Real prev_ai2 = 0.0;       // Weber–Fechner AI-2 chemotaxis (Spec 11)
   };
   MotilityState motility;
 

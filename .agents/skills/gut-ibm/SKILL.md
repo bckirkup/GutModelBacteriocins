@@ -177,9 +177,12 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | Fix | Config struct | Role |
 |-----|---------------|------|
 | `FixMetabolism` | `MetabolismConfig` | Triple Monod growth, iron fallback, division/death |
+| `FixQuorumSensing` | `QuorumSensingConfig` | AI-2 production / Lsr import (Spec 11) |
 | `FixBacteriocin` | `BacteriocinConfig` | SOS lysis, microcin secretion |
 | `FixReceptor` | `ReceptorConfig` | TBDT competitive binding, toxin killing |
+| `FixMotility` | `MotilityConfig` | Run-and-reverse + Weber–Fechner taxis (Spec 10v2/11) |
 | `FixConjugation` | `ConjugationConfig` | F-pili HGT, shear-dependent MPS |
+| `FixCdi` | `CdiConfig` | Contact-dependent inhibition |
 | `FixMutation` | `MutationConfig` | BI locus evolution, receptor downregulation |
 | `FixMechanics` | `MechanicsConfig` | Hertzian repulsion, EPS adhesion |
 

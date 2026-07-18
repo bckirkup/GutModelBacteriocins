@@ -40,7 +40,7 @@ Keys starting with `_` are ignored by the parser (except as documentation).
 Registered Fix plugins (default execution order when `fixes` is omitted):
 
 ```
-metabolism → bacteriocin → receptor → motility → conjugation → cdi → mutation → mechanics
+metabolism → quorum_sensing → bacteriocin → receptor → motility → conjugation → cdi → mutation → mechanics
 ```
 
 Override with a `fixes` array:
@@ -64,6 +64,7 @@ Many subsystems use **dot-key toggles** in flat JSON:
 | `fur.enabled` | false | Fur-regulated iron receptor expression |
 | `cdi.enabled` | false | Contact-dependent inhibition |
 | `motility.enabled` | true | Run-and-reverse swimming (Spec 10v2 behavioral modes) |
+| `quorum_sensing.enabled` | false | AI-2 production / Lsr import / chemotaxis (Spec 11) |
 | `crypts_enabled` | false | Crypt refugia (zero-flow zones) |
 | `adaptive_dt_enabled` | false | CFL-like adaptive biological timestep |
 | `use_fmm` | false | Barnes–Hut FMM far-field acceleration |
