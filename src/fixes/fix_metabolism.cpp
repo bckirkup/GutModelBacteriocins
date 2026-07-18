@@ -92,7 +92,12 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
 }  // namespace
 
 void FixMetabolism::compute(Real dt) {
-  if (try_gpu_metabolism(sim_, cfg_, dt)) return;
+  if (try_gpu_metabolism(sim_, cfg_, dt)) {
+    // Division stays in compute (same as CPU path) so fix_bacteriocin in this
+    // biology pass can observe just_divided during the division timestep.
+    perform_divisions();
+    return;
+  }
 
   auto& agents = sim_.agents();
   #ifdef GUTIBM_OPENMP
