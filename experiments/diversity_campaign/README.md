@@ -25,6 +25,7 @@ resource warning below).
 
 # Menu option "Run a diversity-campaign stage" executes every single-run
 # JSON in that stage folder in sorted order (1a→1f, 2a→2f, …).
+# Each successful run's HDF5 is gzipped to *.h5.gz by default.
 
 # Direct single / batch (non-interactive)
 ./rebuild_and_run.sh --reuse-build --mode single \
@@ -34,6 +35,10 @@ resource warning below).
 ./rebuild_and_run.sh --reuse-build --mode batch \
   --config experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json \
   --batch-action dry-run
+
+# Leave HDF5 uncompressed (e.g. for immediate analysis)
+./rebuild_and_run.sh --reuse-build --no-gzip-hdf5 --mode stage \
+  --config experiments/diversity_campaign/stage1_motility_validation
 ```
 
 ## Stage 1: Motility validation (1-hour runs, small domain)

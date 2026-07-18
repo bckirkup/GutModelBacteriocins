@@ -116,7 +116,12 @@ GUTIBM_BUILD_JOBS=4 ./rebuild_and_run.sh
 ./rebuild_and_run.sh --mode stage \
   --config experiments/diversity_campaign/stage1_motility_validation \
   --mpi-ranks 1 --reuse-build
+./rebuild_and_run.sh --no-gzip-hdf5 --reuse-build --mode single \
+  --config experiments/smoke_single.json
 ```
+
+Successful runs gzip HDF5 outputs to `*.h5.gz` by default (`--no-gzip-hdf5` to
+leave them uncompressed).
 
 For a CUDA simulation, its JSON must also set `"gpu_enabled": true`. With more
 than one MPI rank and more than one GPU, use `"gpu_device_id": -1` so ranks map
