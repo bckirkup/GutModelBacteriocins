@@ -1010,38 +1010,69 @@ struct MpiBufferXfer {
   int recv_hi_size = 0;
 };
 
+// Non-blocking neighbor exchange. Sequential MPI_Sendrecv(lo) then
+// MPI_Sendrecv(hi) deadlocks on a periodic ring when nprocs > 2: every rank
+// waits on its lo neighbor first, forming a wait cycle. Isend/Irecv + Waitall
+// posts all outstanding ops before blocking.
+void mpi_wait_all(int nreq, MPI_Request* reqs) {
+  if (nreq > 0) {
+    MPI_Waitall(nreq, reqs, MPI_STATUSES_IGNORE);
+  }
+}
+
 void mpi_exchange_sizes_distinct(const MpiSlabPeers& peers,
                                  const MpiDistinctTags& tags,
                                  MpiPayloadSizes& sizes) {
+  MPI_Request reqs[4];
+  int nreq = 0;
   if (peers.rank_lo >= 0) {
-    MPI_Sendrecv(&sizes.send_lo, 1, MPI_INT, peers.rank_lo, tags.lo_send,
-                 &sizes.recv_lo, 1, MPI_INT, peers.rank_lo, tags.lo_recv,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Isend(&sizes.send_lo, 1, MPI_INT, peers.rank_lo, tags.lo_send,
+              MPI_COMM_WORLD, &reqs[nreq++]);
+    MPI_Irecv(&sizes.recv_lo, 1, MPI_INT, peers.rank_lo, tags.lo_recv,
+              MPI_COMM_WORLD, &reqs[nreq++]);
   }
   if (peers.rank_hi >= 0) {
-    MPI_Sendrecv(&sizes.send_hi, 1, MPI_INT, peers.rank_hi, tags.hi_send,
-                 &sizes.recv_hi, 1, MPI_INT, peers.rank_hi, tags.hi_recv,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Isend(&sizes.send_hi, 1, MPI_INT, peers.rank_hi, tags.hi_send,
+              MPI_COMM_WORLD, &reqs[nreq++]);
+    MPI_Irecv(&sizes.recv_hi, 1, MPI_INT, peers.rank_hi, tags.hi_recv,
+              MPI_COMM_WORLD, &reqs[nreq++]);
   }
+  mpi_wait_all(nreq, reqs);
 }
 
 void mpi_exchange_buffers_distinct(const MpiSlabPeers& peers,
                                    const MpiDistinctTags& tags,
                                    const MpiBufferXfer& xfer) {
+  MPI_Request reqs[4];
+  int nreq = 0;
+  // Stable address for zero-count ops (MPI does not dereference count==0).
+  char sink = 0;
+  const void* send_lo_ptr =
+      xfer.send_lo->empty() ? static_cast<const void*>(&sink)
+                            : static_cast<const void*>(xfer.send_lo->data());
+  const void* send_hi_ptr =
+      xfer.send_hi->empty() ? static_cast<const void*>(&sink)
+                            : static_cast<const void*>(xfer.send_hi->data());
+  void* recv_lo_ptr =
+      xfer.recv_lo_size > 0 ? static_cast<void*>(xfer.recv_lo->data())
+                            : static_cast<void*>(&sink);
+  void* recv_hi_ptr =
+      xfer.recv_hi_size > 0 ? static_cast<void*>(xfer.recv_hi->data())
+                            : static_cast<void*>(&sink);
+
   if (peers.rank_lo >= 0) {
-    MPI_Sendrecv(xfer.send_lo->data(), static_cast<int>(xfer.send_lo->size()), MPI_CHAR,
-                 peers.rank_lo, tags.lo_send,
-                 xfer.recv_lo->data(), xfer.recv_lo_size, MPI_CHAR,
-                 peers.rank_lo, tags.lo_recv,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Isend(send_lo_ptr, static_cast<int>(xfer.send_lo->size()), MPI_CHAR,
+              peers.rank_lo, tags.lo_send, MPI_COMM_WORLD, &reqs[nreq++]);
+    MPI_Irecv(recv_lo_ptr, xfer.recv_lo_size, MPI_CHAR, peers.rank_lo,
+              tags.lo_recv, MPI_COMM_WORLD, &reqs[nreq++]);
   }
   if (peers.rank_hi >= 0) {
-    MPI_Sendrecv(xfer.send_hi->data(), static_cast<int>(xfer.send_hi->size()), MPI_CHAR,
-                 peers.rank_hi, tags.hi_send,
-                 xfer.recv_hi->data(), xfer.recv_hi_size, MPI_CHAR,
-                 peers.rank_hi, tags.hi_recv,
-                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Isend(send_hi_ptr, static_cast<int>(xfer.send_hi->size()), MPI_CHAR,
+              peers.rank_hi, tags.hi_send, MPI_COMM_WORLD, &reqs[nreq++]);
+    MPI_Irecv(recv_hi_ptr, xfer.recv_hi_size, MPI_CHAR, peers.rank_hi,
+              tags.hi_recv, MPI_COMM_WORLD, &reqs[nreq++]);
   }
+  mpi_wait_all(nreq, reqs);
 }
 
 void mpi_exchange_sizes_collapsed(Int neighbor, int tag, MpiPayloadSizes& sizes) {
