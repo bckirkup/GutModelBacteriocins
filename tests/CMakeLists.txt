@@ -98,6 +98,7 @@ gutibm_add_test(advection_peristaltic test_advection_peristaltic.cpp LABELS "uni
 gutibm_add_test(ethanolamine test_ethanolamine.cpp LABELS "unit")
 gutibm_add_test(adaptive_dt test_adaptive_dt.cpp LABELS "unit")
 gutibm_add_test(agent_transfer test_agent_transfer.cpp LABELS "unit")
+gutibm_add_test(gpu_receptor_layout test_gpu_receptor_layout.cpp LABELS "unit")
 gutibm_add_test(fix_registry test_fix_registry.cpp LABELS "unit")
 gutibm_add_test(path_utils test_path_utils.cpp LABELS "unit")
 gutibm_add_test(input_parser test_input_parser.cpp

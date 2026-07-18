@@ -70,6 +70,8 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
     bi_loci_count[i] = static_cast<int>(a.genome.bi_loci.size());
     plasmid_amelioration[i] = a.genome.plasmid_cost_amelioration;
     for (int r = 0; r < NUM_RECEPTORS; ++r) {
+      // SoA layout: [receptor][agent]. GPU metabolism/receptor kernels index as
+      // receptor_expr[r * n + i] — do not pack as AoS (i * NUM_RECEPTORS + r).
       receptor_expr[static_cast<size_t>(r) * n + i] = a.receptor_expr[r];
       ligand_affinity[static_cast<size_t>(r) * n + i] = a.genome.ligand_affinity[r];
     }

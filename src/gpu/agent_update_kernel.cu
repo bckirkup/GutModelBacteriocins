@@ -5,7 +5,6 @@
 namespace gutibm {
 namespace gpu {
 
-static constexpr int NUM_RECEPTORS_GPU = 8;
 static constexpr double PI_M = 3.14159265358979323846;
 
 __device__ inline double maxd(double a, double b) { return a > b ? a : b; }
@@ -41,20 +40,19 @@ __global__ void metabolism_kernel(
   double S_iron   = conc_iron ? conc_iron[cell] : 1.0;
   double S_b12    = conc_b12 ? conc_b12[cell] : 1.0;
 
-  const double* rex = receptor_expr + i * NUM_RECEPTORS_GPU;
-  const double* lig = ligand_affinity + i * NUM_RECEPTORS_GPU;
+  // receptor_expr / ligand_affinity are SoA: index = receptor * num_agents + agent
+  // (matches AgentPoolGpu::sync_from_host and receptor_kernel).
+  double expr_fepA = receptor_expr[1 * num_agents + i];
+  double expr_iroN = receptor_expr[4 * num_agents + i];
+  double expr_iutA = receptor_expr[7 * num_agents + i];
+  double expr_fiu  = receptor_expr[5 * num_agents + i];
+  double expr_btuB = maxd(receptor_expr[0 * num_agents + i], 0.01);
 
-  double expr_fepA = rex[1];
-  double expr_iroN = rex[4];
-  double expr_iutA = rex[7];
-  double expr_fiu  = rex[5];
-  double expr_btuB = maxd(rex[0], 0.01);
-
-  double lig_fepA = maxd(lig[1], 0.01);
-  double lig_btuB = maxd(lig[0], 0.01);
-  double lig_iroN = maxd(lig[4], 0.01);
-  double lig_iutA = maxd(lig[7], 0.01);
-  double lig_fiu  = maxd(lig[5], 0.01);
+  double lig_fepA = maxd(ligand_affinity[1 * num_agents + i], 0.01);
+  double lig_btuB = maxd(ligand_affinity[0 * num_agents + i], 0.01);
+  double lig_iroN = maxd(ligand_affinity[4 * num_agents + i], 0.01);
+  double lig_iutA = maxd(ligand_affinity[7 * num_agents + i], 0.01);
+  double lig_fiu  = maxd(ligand_affinity[5 * num_agents + i], 0.01);
 
   double iron_uptake = 0.0;
   iron_uptake += expr_fepA * lig_fepA * S_iron / (km_iron_primary + S_iron);

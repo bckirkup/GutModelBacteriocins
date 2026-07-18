@@ -60,6 +60,10 @@ int main() {
   s.plasmids = {"ColE1"};
   cfg.initial_strains.push_back(s);
 
+  // Default Fur upregulation makes iron receptors differ from BtuB. GPU
+  // metabolism must read receptor_expr as SoA (r * n + i) or agent_rel blows up
+  // while chem_rel stays ~1e-9 (see test_gpu_receptor_layout).
+
 #ifndef GUTIBM_CUDA
   std::cout << "  test_gpu_smoke: SKIPPED (CUDA not compiled in)\n";
   std::cout << "All GPU smoke tests passed.\n";

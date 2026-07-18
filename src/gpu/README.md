@@ -8,7 +8,7 @@ CUDA GPU acceleration for GutIBM (issue #33). OpenMP remains the CPU shared-memo
 |------|------|
 | `greens_kernel.cu` | QSSA Green's function superposition (brute-force path) |
 | `field_update_kernel.cu` | Reaction integration, boundaries, nutrient depletion, grid coupling |
-| `agent_update_kernel.cu` | Metabolism Monod growth + biomass update |
+| `agent_update_kernel.cu` | Metabolism Monod growth + biomass update (`receptor_expr` / `ligand_affinity` are **SoA**: `r * num_agents + i`) |
 | `chemistry_kernel.cu` | Agent O₂ respiration + VBF nutrient coupling |
 | `spatial_hash_kernel.cu` | Parallel cell-key assignment + CSR neighbor lists |
 | `diffusion_kernel.cu` | PCR tridiagonal solver for backward-Euler directional diffusion (x/y periodic, z bounded) |
