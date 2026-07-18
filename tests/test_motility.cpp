@@ -291,36 +291,36 @@ void test_aerotaxis_bias_toward_oxygen() {
 }
 
 // Combined aerotaxis + carbon modifier > either alone (parameter wiring).
-void test_aerotaxis_dominates_carbon() {
-  auto make_timer = [](bool aero, bool carbon, Real aero_s, Real chi) {
-    auto cfg = base_motility_cfg();
-    cfg.chem_env.oxygen.enabled = true;
-    cfg.cell_bio.motility.aerotaxis_enabled = aero;
-    cfg.cell_bio.motility.aerotaxis_sensitivity = aero_s;
-    cfg.cell_bio.motility.chemotaxis_enabled = carbon;
-    cfg.cell_bio.motility.chi_carbon = chi;
-    InputParser::finalize_config(cfg);
-    Simulation sim;
-    sim.init(cfg);
-    const Int i_o2 = sim.chemical_field().find(species::OXYGEN);
-    const Int i_c = sim.chemical_field().find(species::CARBON);
-    assert(i_o2 >= 0 && i_c >= 0);
-    Agent a = make_motile_agent(sim, {25e-6, 25e-6, 20e-6}, {0.0, 0.0, -1.0});
-    const Real o2 = sim.chemical_field().conc(i_o2, a.grid_cell);
-    a.motility.prev_oxygen = o2;
-    a.motility.prev_carbon = 2.0e-3;
-    a.motility.run_timer = 10.0;
-    sim.chemical_field().conc(i_o2, a.grid_cell) = o2 * 1.077;
-    sim.chemical_field().conc(i_c, a.grid_cell) = 2.16e-3;
-    sim.agents().push_back(std::move(a));
-    FixMotility fix(sim, sim.config().cell_bio.motility);
-    fix.pre_step(1.0);
-    return sim.agents()[0].motility.run_timer;
-  };
+Real run_timer_with_taxis(bool aero, bool carbon, Real aero_s, Real chi) {
+  auto cfg = base_motility_cfg();
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.cell_bio.motility.aerotaxis_enabled = aero;
+  cfg.cell_bio.motility.aerotaxis_sensitivity = aero_s;
+  cfg.cell_bio.motility.chemotaxis_enabled = carbon;
+  cfg.cell_bio.motility.chi_carbon = chi;
+  InputParser::finalize_config(cfg);
+  Simulation sim;
+  sim.init(cfg);
+  const Int i_o2 = sim.chemical_field().find(species::OXYGEN);
+  const Int i_c = sim.chemical_field().find(species::CARBON);
+  assert(i_o2 >= 0 && i_c >= 0);
+  Agent a = make_motile_agent(sim, {25e-6, 25e-6, 20e-6}, {0.0, 0.0, -1.0});
+  const Real o2 = sim.chemical_field().conc(i_o2, a.grid_cell);
+  a.motility.prev_oxygen = o2;
+  a.motility.prev_carbon = 2.0e-3;
+  a.motility.run_timer = 10.0;
+  sim.chemical_field().conc(i_o2, a.grid_cell) = o2 * 1.077;
+  sim.chemical_field().conc(i_c, a.grid_cell) = 2.16e-3;
+  sim.agents().push_back(std::move(a));
+  FixMotility fix(sim, sim.config().cell_bio.motility);
+  fix.pre_step(1.0);
+  return sim.agents()[0].motility.run_timer;
+}
 
-  const Real both = make_timer(true, true, 4.0, 2.0);
-  const Real aero_only = make_timer(true, false, 4.0, 2.0);
-  const Real carbon_only = make_timer(false, true, 4.0, 2.0);
+void test_aerotaxis_dominates_carbon() {
+  const Real both = run_timer_with_taxis(true, true, 4.0, 2.0);
+  const Real aero_only = run_timer_with_taxis(true, false, 4.0, 2.0);
+  const Real carbon_only = run_timer_with_taxis(false, true, 4.0, 2.0);
   assert(both > aero_only);
   assert(aero_only > carbon_only);
 

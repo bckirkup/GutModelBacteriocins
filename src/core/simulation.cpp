@@ -301,10 +301,11 @@ void Simulation::init(const SimulationConfig& cfg) {
     const std::string adaptive_dt_status = cfg.adaptive_dt.enabled
         ? std::format(" [{}s, {}s]", cfg.adaptive_dt.min, cfg.adaptive_dt.max)
         : "";
+    const char* gpu_enabled_str = cfg.gpu.enabled ? "true" : "false";
     const std::string gpu_status = gpu_active_
         ? std::format(" (device {})", gpu_device().device_id())
         : std::format(" (gpu_enabled={}, device_id={})",
-                      cfg.gpu.enabled ? "true" : "false",
+                      gpu_enabled_str,
                       cfg.gpu.device_id);
     std::cout << "  Bio dt: " << cfg.time.bio_dt << " s\n"
               << "  Adaptive dt: " << (cfg.adaptive_dt.enabled ? "ON" : "OFF")
@@ -629,7 +630,6 @@ void Simulation::run() {
     }
 
     if (mpi_stats_.global_agent_count <= kPopulationStopThreshold) {
-      stopped_for_population = true;
       if (rank == 0) {
         std::cout << "Population stop: " << mpi_stats_.global_agent_count
                   << " cell(s) — ending simulation.\n"
@@ -649,7 +649,6 @@ void Simulation::run() {
               ? static_cast<Real>(mpi_stats_.global_agent_count) / vol_mL
               : 0.0;
           density > cfg_.dysbiosis_threshold) {
-        stopped_for_population = true;
         if (rank == 0) {
           std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: " << density
                     << " cells/mL > " << cfg_.dysbiosis_threshold
@@ -817,7 +816,7 @@ void Simulation::module_chemistry(Real dt) {
       .oxygen = cfg_.chem_env.oxygen,
       .acetate = cfg_.chem_env.acetate,
       .mucin = cfg_.chem_env.mucin,
-      .num_agents = static_cast<Int>(agents_.size()),
+      .num_agents = agents_.size(),
       .step_profile = cfg_.profile_steps ? &step_profile_ : nullptr,
   };
   (void)run_chemistry_pipeline(pipeline, dt);

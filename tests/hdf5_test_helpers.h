@@ -21,8 +21,7 @@ extern "C" {
 }
 #endif
 
-namespace gutibm {
-namespace test {
+namespace gutibm::test {
 
 constexpr double kAgentSnapshotTol = 1e-12;
 
@@ -177,5 +176,4 @@ inline std::vector<AgentSnapshot> read_agent_snapshots(hid_t file,
 
 #endif  // GUTIBM_HDF5
 
-}  // namespace test
-}  // namespace gutibm
+}  // namespace gutibm::test

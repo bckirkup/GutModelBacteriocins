@@ -6,6 +6,7 @@
 #include "path_utils.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <string_view>
 #include "error.h"
@@ -284,8 +285,8 @@ HDF5CheckpointGrid read_grid(hid_t file, const std::string& step) {
 
     hid_t space = H5Dget_space(dset);
     const int ndims = H5Sget_simple_extent_ndims(space);
-    hsize_t dims[3] = {0, 0, 0};
-    H5Sget_simple_extent_dims(space, dims, nullptr);
+    std::array<hsize_t, 3> dims{0, 0, 0};
+    H5Sget_simple_extent_dims(space, dims.data(), nullptr);
 
     std::vector<double> values;
     if (ndims == 3) {

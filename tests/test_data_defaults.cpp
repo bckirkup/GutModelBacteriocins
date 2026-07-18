@@ -11,12 +11,19 @@ using namespace gutibm;
 
 namespace {
 
-int failures = 0;
+struct FailureCounter {
+  int value = 0;
+};
+
+FailureCounter& failure_counter() {
+  static FailureCounter counter;
+  return counter;
+}
 
 void expect(bool condition, const std::string& message) {
   if (condition) return;
   std::cerr << "FAIL: " << message << "\n";
-  ++failures;
+  ++failure_counter().value;
 }
 
 bool near(Real actual, Real expected) {
@@ -109,8 +116,8 @@ void test_chemical_defaults_and_initial_concentration_sensitivity() {
 int main() {
   test_initial_strain_defaults_and_overrides();
   test_chemical_defaults_and_initial_concentration_sensitivity();
-  if (failures != 0) {
-    std::cerr << failures << " data default check(s) failed\n";
+  if (failure_counter().value != 0) {
+    std::cerr << failure_counter().value << " data default check(s) failed\n";
     return 1;
   }
   std::cout << "All data default tests passed.\n";

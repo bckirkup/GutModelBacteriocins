@@ -9,8 +9,7 @@
 #include "input_parser.h"
 #include "simulation.h"
 
-namespace gutibm {
-namespace test {
+namespace gutibm::test {
 
 inline Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
                                      const MechanicsConfig& mcfg = {},
@@ -39,5 +38,4 @@ inline Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
   return sim;
 }
 
-}  // namespace test
-}  // namespace gutibm
+}  // namespace gutibm::test

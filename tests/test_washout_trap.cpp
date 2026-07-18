@@ -252,47 +252,47 @@ void test_radial_turnover_controls_washout_threshold() {
             << " gamma_slow=" << gamma_slow << ")\n";
 }
 
+Int live_count_for_profile(bool extreme_trap, int count, Real dt) {
+  SimulationConfig cfg = make_washout_horizon_config(16052, dt);
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain strain;
+  strain.type = 2;
+  strain.count = count;
+  strain.mu_max = 5e-4;
+  cfg.initial_strains.push_back(strain);
+
+  Simulation sim;
+  sim.init(cfg);
+  Real idx = 0.0;
+  for (Agent& agent : sim.agents()) {
+    agent.x[0] = 20e-6 + std::fmod(idx * 7e-6, 40e-6);
+    agent.x[1] = 20e-6 + std::fmod(idx * 5e-6, 40e-6);
+    if (extreme_trap) {
+      apply_trap_immigrant_profile(agent, 44e-6);
+    } else {
+      agent.x[2] = 6e-6;
+      agent.flags.in_crypt = false;
+      agent.mu_max = 2e-4;
+      for (Real& expr : agent.receptor_expr) {
+        expr = 0.55;
+      }
+      for (Real& expr : agent.genome.receptor_expression) {
+        expr = 0.55;
+      }
+    }
+    idx += 1.0;
+  }
+
+  sim.step(dt);
+  return count_live_agents(sim);
+}
+
 void test_trap_profile_more_lethal_than_mild_downregulation() {
   constexpr int kCount = 6;
   constexpr Real kDt = 60.0;
 
-  auto run_profile = [&](bool extreme_trap) {
-    SimulationConfig cfg = make_washout_horizon_config(16052, kDt);
-    cfg.initial_strains.clear();
-    SimulationConfig::InitialStrain strain;
-    strain.type = 2;
-    strain.count = kCount;
-    strain.mu_max = 5e-4;
-    cfg.initial_strains.push_back(strain);
-
-    Simulation sim;
-    sim.init(cfg);
-    Real idx = 0.0;
-    for (Agent& agent : sim.agents()) {
-      agent.x[0] = 20e-6 + std::fmod(idx * 7e-6, 40e-6);
-      agent.x[1] = 20e-6 + std::fmod(idx * 5e-6, 40e-6);
-      if (extreme_trap) {
-        apply_trap_immigrant_profile(agent, 44e-6);
-      } else {
-        agent.x[2] = 6e-6;
-        agent.flags.in_crypt = false;
-        agent.mu_max = 2e-4;
-        for (Real& expr : agent.receptor_expr) {
-          expr = 0.55;
-        }
-        for (Real& expr : agent.genome.receptor_expression) {
-          expr = 0.55;
-        }
-      }
-      idx += 1.0;
-    }
-
-    sim.step(kDt);
-    return count_live_agents(sim);
-  };
-
-  const Int live_extreme = run_profile(true);
-  const Int live_mild = run_profile(false);
+  const Int live_extreme = live_count_for_profile(true, kCount, kDt);
+  const Int live_mild = live_count_for_profile(false, kCount, kDt);
   assert(live_extreme == 0);
   assert(live_mild == kCount);
 

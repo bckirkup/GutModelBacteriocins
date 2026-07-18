@@ -28,12 +28,13 @@ bool strict_config_enabled() {
 }
 
 void warn_parse_failure(const char* kind,
-                        const std::string& key,
+                        std::string_view key,
                         const std::string& val) {
   std::cerr << "Warning: config key '" << key << "' has invalid " << kind
             << " value '" << val << "' — using 0\n";
   if (strict_config_enabled()) {
-    throw ConfigError("invalid config value for key '" + key + "'");
+    throw ConfigError(std::string("invalid config value for key '")
+                      + std::string(key) + "'");
   }
 }
 
@@ -44,7 +45,7 @@ std::string trim_config(std::string_view s) {
   return std::string(s.substr(start, end - start + 1));
 }
 
-Real parse_config_real(const std::string& key, const std::string& val) {
+Real parse_config_real(std::string_view key, const std::string& val) {
   const std::string trimmed = trim_config(val);
   if (trimmed.empty()) {
     warn_parse_failure("numeric", key, val);
@@ -68,7 +69,7 @@ Real parse_config_real(const std::string& key, const std::string& val) {
   }
 }
 
-Int parse_config_int(const std::string& key, const std::string& val) {
+Int parse_config_int(std::string_view key, const std::string& val) {
   const std::string trimmed = trim_config(val);
   if (trimmed.empty()) {
     warn_parse_failure("integer", key, val);
@@ -241,9 +242,9 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
 
 namespace {
 
-using FlatKeyHandler = bool (*)(SimulationConfig&, const std::string&, const std::string&);
+using FlatKeyHandler = bool (*)(SimulationConfig&, std::string_view, const std::string&);
 
-bool apply_time_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_time_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "total_time")           { cfg.time.total_time = parse_config_real(key, val); return true; }
   if (key == "bio_dt")               { cfg.time.bio_dt = parse_config_real(key, val); return true; }
   if (key == "output_interval")      { cfg.time.output_interval = parse_config_real(key, val); return true; }
@@ -251,7 +252,7 @@ bool apply_time_key(SimulationConfig& cfg, const std::string& key, const std::st
   return false;
 }
 
-bool apply_domain_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_domain_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "grid_dx")              { cfg.domain.grid_dx = parse_config_real(key, val); return true; }
   if (key == "domain_x")             { cfg.domain.hi[0] = parse_config_real(key, val); return true; }
   if (key == "domain_y")             { cfg.domain.hi[1] = parse_config_real(key, val); return true; }
@@ -261,7 +262,7 @@ bool apply_domain_key(SimulationConfig& cfg, const std::string& key, const std::
   return false;
 }
 
-bool apply_advection_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_advection_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "mucus_thickness")      { cfg.advection.mucus_thickness = parse_config_real(key, val); return true; }
   if (key == "radial_turnover")      { cfg.advection.radial_turnover = parse_config_real(key, val); return true; }
   if (key == "distal_transit")       { cfg.advection.distal_transit_time = parse_config_real(key, val); return true; }
@@ -280,7 +281,7 @@ bool apply_advection_key(SimulationConfig& cfg, const std::string& key, const st
   return false;
 }
 
-bool apply_qssa_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "toxin_cutoff")         { cfg.qssa.toxin_cutoff = parse_config_real(key, val); return true; }
   if (key == "nutrient_cutoff")      { cfg.qssa.nutrient_cutoff = parse_config_real(key, val); return true; }
   if (key == "colicin_release_rate") { cfg.qssa.colicin_release_rate = parse_config_real(key, val); return true; }
@@ -291,7 +292,7 @@ bool apply_qssa_key(SimulationConfig& cfg, const std::string& key, const std::st
   return false;
 }
 
-bool apply_vbf_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_vbf_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "vbf_density")          { cfg.vbf.density = parse_config_real(key, val); return true; }
   if (key == "vbf_viscosity")        { cfg.vbf.viscosity = parse_config_real(key, val); return true; }
   if (key == "vbf_drag_coeff")       { cfg.vbf.drag_coeff = parse_config_real(key, val); return true; }
@@ -305,7 +306,7 @@ bool apply_vbf_key(SimulationConfig& cfg, const std::string& key, const std::str
   return false;
 }
 
-bool apply_chemical_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "carbon_z_gradient") {
     for (auto& c : cfg.chemicals) {
       if (c.name == species::CARBON) { c.z_gradient_enabled = (val == "true" || val == "1"); return true; }
@@ -333,7 +334,7 @@ bool apply_chemical_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
-bool apply_receptor_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_receptor_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "kd_b12_btuB")          { cfg.fixes.receptor.kd_b12_btuB = parse_config_real(key, val); return true; }
   // Alias — Spec 6 / Receptor Ligand Parameterization: the BtuB ligand is the
   // dominant corrinoid analog, not true cobalamin. Same underlying Kd field.
@@ -349,7 +350,7 @@ bool apply_receptor_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
-bool apply_conjugation_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_conjugation_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "pili_length")           { cfg.fixes.conjugation.pili_length = parse_config_real(key, val); return true; }
   if (key == "base_transfer_rate")    { cfg.fixes.conjugation.base_transfer_rate = parse_config_real(key, val); return true; }
   if (key == "shear_critical")          { cfg.fixes.conjugation.shear_critical = parse_config_real(key, val); return true; }
@@ -360,7 +361,7 @@ bool apply_conjugation_key(SimulationConfig& cfg, const std::string& key, const 
   return false;
 }
 
-bool apply_mutation_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_mutation_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "bi_duplication_rate")     { cfg.fixes.mutation.bi_duplication_rate = parse_config_real(key, val); return true; }
   if (key == "bi_recombination_rate")   { cfg.fixes.mutation.bi_recombination_rate = parse_config_real(key, val); return true; }
   if (key == "receptor_mutation_rate")  { cfg.fixes.mutation.receptor_mutation_rate = parse_config_real(key, val); return true; }
@@ -376,7 +377,7 @@ bool apply_mutation_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
-bool apply_io_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_io_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "hdf5_file" || key == "hdf5.file") {
     validate_path_syntax(val);
     cfg.hdf5.filename = val;
@@ -391,7 +392,7 @@ bool apply_io_key(SimulationConfig& cfg, const std::string& key, const std::stri
   return false;
 }
 
-bool apply_hdf5_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_hdf5_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "hdf5.enabled" || key == "hdf5_enabled") {
     cfg.hdf5.enabled = parse_bool_config(val); return true;
   }
@@ -419,7 +420,7 @@ bool apply_hdf5_key(SimulationConfig& cfg, const std::string& key, const std::st
   return false;
 }
 
-bool apply_siderophore_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_siderophore_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "siderophore.enabled" || key == "siderophore_enabled") {
     cfg.chem_env.siderophore.enabled = parse_bool_config(val); return true;
   }
@@ -441,7 +442,7 @@ bool apply_siderophore_key(SimulationConfig& cfg, const std::string& key, const 
   return false;
 }
 
-bool apply_dt_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_dt_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "adaptive_dt_enabled")  { cfg.adaptive_dt.enabled = (val == "true" || val == "1"); return true; }
   if (key == "dt_min")               { cfg.adaptive_dt.min = parse_config_real(key, val); return true; }
   if (key == "dt_max")               { cfg.adaptive_dt.max = parse_config_real(key, val); return true; }
@@ -450,7 +451,7 @@ bool apply_dt_key(SimulationConfig& cfg, const std::string& key, const std::stri
   return false;
 }
 
-bool apply_metabolism_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "division_threshold")      { cfg.fixes.metabolism.division_threshold = parse_config_real(key, val); return true; }
   if (key == "maintenance_rate")        { cfg.fixes.metabolism.maintenance_rate = parse_config_real(key, val); return true; }
   if (key == "metE_penalty")            { cfg.fixes.metabolism.metE_penalty = parse_config_real(key, val); return true; }
@@ -465,7 +466,7 @@ bool apply_metabolism_key(SimulationConfig& cfg, const std::string& key, const s
   return false;
 }
 
-bool apply_mechanics_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_mechanics_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "hertz_k")            { cfg.fixes.mechanics.hertz_k = parse_config_real(key, val); return true; }
   if (key == "hertzian_enabled")   { cfg.fixes.mechanics.hertzian_enabled = parse_bool_config(val); return true; }
   if (key == "adhesion_enabled")   { cfg.fixes.mechanics.adhesion_enabled = parse_bool_config(val); return true; }
@@ -474,7 +475,7 @@ bool apply_mechanics_key(SimulationConfig& cfg, const std::string& key, const st
   return false;
 }
 
-bool apply_misc_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_misc_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "gpu_enabled")          { cfg.gpu.enabled = parse_bool_config(val); return true; }
   if (key == "gpu_device_id")        { cfg.gpu.device_id = parse_config_int(key, val); return true; }
   if (key == "profile_steps")        { cfg.profile_steps = (val == "true" || val == "1"); return true; }
@@ -482,7 +483,7 @@ bool apply_misc_key(SimulationConfig& cfg, const std::string& key, const std::st
   return false;
 }
 
-bool apply_oxygen_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_oxygen_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "oxygen.enabled" || key == "oxygen_enabled") {
     cfg.chem_env.oxygen.enabled = parse_bool_config(val); return true;
   }
@@ -513,7 +514,7 @@ bool apply_oxygen_key(SimulationConfig& cfg, const std::string& key, const std::
   return false;
 }
 
-bool apply_acetate_dyn_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_acetate_dyn_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "acetate.enabled" || key == "acetate_enabled") {
     cfg.chem_env.acetate.enabled = parse_bool_config(val); return true;
   }
@@ -544,7 +545,7 @@ bool apply_acetate_dyn_key(SimulationConfig& cfg, const std::string& key, const 
   return false;
 }
 
-bool apply_mucin_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_mucin_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "mucin.enabled" || key == "mucin_enabled") {
     cfg.chem_env.mucin.enabled = parse_bool_config(val); return true;
   }
@@ -563,7 +564,7 @@ bool apply_mucin_key(SimulationConfig& cfg, const std::string& key, const std::s
   return false;
 }
 
-bool apply_protease_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_protease_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "protease.enabled" || key == "protease_enabled") {
     cfg.chem_env.protease.enabled = parse_bool_config(val); return true;
   }
@@ -576,7 +577,7 @@ bool apply_protease_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
-bool apply_fur_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_fur_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "fur.enabled" || key == "fur_enabled") {
     cfg.cell_bio.fur.enabled = parse_bool_config(val); return true;
   }
@@ -592,7 +593,7 @@ bool apply_fur_key(SimulationConfig& cfg, const std::string& key, const std::str
   return false;
 }
 
-bool apply_cdi_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_cdi_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "cdi.enabled" || key == "cdi_enabled") {
     cfg.cell_bio.cdi.enabled = parse_bool_config(val); return true;
   }
@@ -608,7 +609,7 @@ bool apply_cdi_key(SimulationConfig& cfg, const std::string& key, const std::str
   return false;
 }
 
-bool apply_motility_key(SimulationConfig& cfg, const std::string& key, const std::string& val) {
+bool apply_motility_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "motility.enabled" || key == "motility_enabled") {
     cfg.cell_bio.motility.enabled = parse_bool_config(val); return true;
   }
@@ -672,7 +673,7 @@ bool apply_motility_key(SimulationConfig& cfg, const std::string& key, const std
   return false;
 }
 
-bool apply_quorum_sensing_key(SimulationConfig& cfg, const std::string& key,
+bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
                               const std::string& val) {
   if (key == "quorum_sensing.enabled" || key == "quorum_sensing_enabled") {
     cfg.quorum_sensing.enabled = parse_bool_config(val); return true;
@@ -781,7 +782,7 @@ void parse_legacy_flat_keys(const std::string& content, SimulationConfig& cfg) {
 }  // namespace
 
 bool InputParser::apply_flat_key(SimulationConfig& cfg,
-                                 const std::string& key,
+                                 std::string_view key,
                                  const std::string& val) {
   for (FlatKeyHandler handler : k_flat_key_handlers) {
     if (handler(cfg, key, val)) return true;

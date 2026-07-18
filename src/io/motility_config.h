@@ -34,7 +34,7 @@ struct MotilityConfig {
   Real surface_sensing_depth = 10.0e-6;   // m
   Real surface_sensing_floor = 0.3;
 
-  // Mucin viscosity drag (opt-in; requires mucin.enabled)
+  // Mucin viscosity drag (opt-in; needs the mucin chemical field enabled)
   bool mucin_drag_enabled = false;
   Real mucin_drag_reference = 1.0e-2;     // mol/m³
 

@@ -80,17 +80,18 @@ cd build && ctest -R "smoke|config_diversity" --output-on-failure
 5. Commit message cites rule keys and approximate issue count cleared.
 6. Re-scan on SonarCloud after merge before starting the next batch.
 
-## Remaining work map (post Phases 1–4 + security/suppress PR)
+## Remaining work map (Jul 2026 pragmatic clear-to-zero)
 
-**Jun 2026 baseline:** 85 open issues (2 `pythonsecurity:S8707`, 83 code smells).
+**Baseline before Batch A:** 79 open `CODE_SMELL` (0 BUG / 0 VULN); quality gate OK.
 
-| Action | Scope | Outcome |
-|--------|-------|---------|
-| **Security fix** | `path_utils.py` + `sonar/pythonsecurity-s8707.json` | Clear S8707 taint false positives |
-| **Suppress smells** | `sonar-project.properties` multicriteria (38 rules) | Bin accepted technical debt |
-| **Plan doc** | `docs/SONARQUBE_PLAN.md` | Policy + monitoring commands |
+| Batch | Scope | Outcome |
+|-------|-------|---------|
+| **A (done)** | ~25 mechanical smells (`S1192`, `S6009`, `S5566`, `S3358`, `S1854`, `S1905`, `S125`, `S5827`, `S5421`, `S1188`, `S5812`, `S6177`, `S5945`, `S6022`) | Fixed in code |
+| **B** | ~54 complexity/architecture smells (`S134`, `S107`, `S6004`, `S3776`, `python:S3776`, `S995`, `S5008`, `S1820`, `S1448`, `S3656`, `S924`, `S7034`) | Won’t Fix via `scripts/sonar_wont_fix_debt.py` after merge re-scan (auto-analysis ignores multicriteria) |
+| **C (done)** | `docs/SONARQUBE_PLAN.md` + this map | Policy + monitoring |
 
-After re-scan: **0 open issues** target. Quality gate blocks only BUG/VULNERABILITY on new code.
+**Target:** 0 open issues on the SonarCloud dashboard after A merge + B Won’t Fix.
+Quality gate blocks BUG/VULNERABILITY on new code.
 
 ### Opportunistic fixes (when touching files)
 
@@ -98,9 +99,9 @@ After re-scan: **0 open issues** target. Quality gate blocks only BUG/VULNERABIL
 |------|---------|-------|
 | `cpp:S134` | `fmm_kernel.cpp`, `qssa_solver.cpp` | Extract helpers — one file per PR |
 | `cpp:S107` | `greens_function.cpp` | Group params into context struct |
-| `cpp:S3608` | `fmm_kernel.cpp` | Range-for where safe in hot loops |
+| `cpp:S3776` | `fix_receptor.cpp`, `hdf5_writer.cpp` | Split only when editing that function |
 
-Do **not** reopen batch remediation unless SonarCloud policy changes.
+Do **not** reopen full-repo smell remediation unless SonarCloud policy changes.
 
 ## NOSONAR policy
 

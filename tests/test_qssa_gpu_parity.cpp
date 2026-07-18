@@ -9,8 +9,10 @@
 #include "simulation.h"
 #include "species_names.h"
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <ranges>
 #include <vector>
 
 using namespace gutibm;
@@ -46,13 +48,10 @@ static Simulation make_qssa_sim(bool gpu_enabled, Real microcin_secretion,
 
 static bool has_continuous_cira_source(const Simulation& sim) {
   if (sim.agents().size() == 0) return false;
-  for (const auto& locus : sim.agents()[0].genome.bi_loci) {
-    if (locus.target == ReceptorType::CirA
-        && locus.release_mode == ReleaseMode::CONTINUOUS) {
-      return true;
-    }
-  }
-  return false;
+  return std::ranges::any_of(sim.agents()[0].genome.bi_loci, [](const auto& locus) {
+    return locus.target == ReceptorType::CirA
+        && locus.release_mode == ReleaseMode::CONTINUOUS;
+  });
 }
 
 static bool capture_cpu_field(Real microcin_secretion,
