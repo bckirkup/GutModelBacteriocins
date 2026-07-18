@@ -1,0 +1,19 @@
+{
+  "_comment": "Stage 3B full mechanisms \u00d7 3 seeds (motility OFF).",
+  "output_dir": "batch_results/diversity_campaign/stage3_full_mechanisms",
+  "base_config": "experiments/diversity_campaign/stage3_campaign/3b_full_mechanisms.json",
+  "binary": "build/gut_ibm",
+  "mpi_ranks": 4,
+  "mpirun_args": [
+    "--bind-to",
+    "none"
+  ],
+  "on_fail": "continue",
+  "sweep": {
+    "seed": [
+      42,
+      43,
+      44
+    ]
+  }
+}

@@ -27,14 +27,16 @@ Default workflow:
   2. Configure MPI + HDF5 and auto-detect CUDA
   3. Build GutIBM
   4. Run the complete CTest suite
-  5. Prompt for single or batch JSON files under experiments/
+  5. Prompt for single, batch, or diversity-campaign stage under experiments/
 
 Options:
   --cuda auto|on|off        CUDA build mode (default: auto)
-  --mode prompt|single|batch|none
-                            Run menu, one config, one batch, or stop after CTest
-  --config PATH             JSON file for --mode single or batch
-  --mpi-ranks N             MPI ranks for a single run
+  --mode prompt|single|batch|stage|none
+                            Run menu, one config, one batch, one campaign
+                            stage (all singles in order), or stop after CTest
+  --config PATH             JSON file for --mode single or batch;
+                            stage directory for --mode stage
+  --mpi-ranks N             MPI ranks for a single run or stage run
   --batch-action ACTION     run, dry-run, resume, or status
   --reuse-build             Skip clean/configure/build/CTest
   -h, --help                Show this help
@@ -112,8 +114,8 @@ validate_options() {
   esac
 
   case "$RUN_MODE" in
-    prompt|single|batch|none) ;;
-    *) die "run mode must be prompt, single, batch, or none" ;;
+    prompt|single|batch|stage|none) ;;
+    *) die "run mode must be prompt, single, batch, stage, or none" ;;
   esac
 
   case "$BATCH_ACTION" in
@@ -362,11 +364,20 @@ choose_json() {
     return 1
   fi
 
-  echo "Available $kind JSON files:"
+  echo "Available $kind JSON files (grouped by folder):"
   local index
+  local previous_group=""
   for index in "${!files[@]}"; do
-    printf '  %d) %s\n' "$((index + 1))" "${files[$index]#"$ROOT"/}"
+    local relative="${files[$index]#"$ROOT"/}"
+    local group
+    group="$(dirname "$relative")"
+    if [[ "$group" != "$previous_group" ]]; then
+      printf '\n  [%s]\n' "$group"
+      previous_group="$group"
+    fi
+    printf '  %d) %s\n' "$((index + 1))" "$(basename "$relative")"
   done
+  echo
 
   local choice
   while true; do
@@ -378,6 +389,129 @@ choose_json() {
     fi
     echo "Invalid selection."
   done
+}
+
+collect_campaign_stages() {
+  "$PYTHON" - "$EXPERIMENTS_DIR/diversity_campaign" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+if not root.is_dir():
+    raise SystemExit
+for path in sorted(root.iterdir()):
+    if not path.is_dir():
+        continue
+    if not path.name.startswith("stage"):
+        continue
+    singles = sorted(
+        p for p in path.glob("*.json")
+        if "batch" not in p.name.lower()
+    )
+    if singles:
+        print(path)
+PY
+}
+
+choose_campaign_stage() {
+  local -a stages=()
+  mapfile -t stages < <(collect_campaign_stages)
+  if ((${#stages[@]} == 0)); then
+    echo "No diversity_campaign stage directories found under $EXPERIMENTS_DIR" >&2
+    return 1
+  fi
+
+  echo "Diversity-campaign stages (run singles in sorted order):"
+  local index
+  for index in "${!stages[@]}"; do
+    local relative="${stages[$index]#"$ROOT"/}"
+    local count
+    count="$(find "${stages[$index]}" -maxdepth 1 -name '*.json' ! -iname '*batch*' | wc -l)"
+    printf '  %d) %s (%s single configs)\n' \
+      "$((index + 1))" "$relative" "$count"
+  done
+
+  local choice
+  while true; do
+    read -r -p "Select a stage [1-${#stages[@]}]: " choice
+    if [[ "$choice" =~ ^[1-9][0-9]*$ ]] &&
+       ((choice >= 1 && choice <= ${#stages[@]})); then
+      SELECTED_STAGE="${stages[$((choice - 1))]}"
+      return
+    fi
+    echo "Invalid selection."
+  done
+}
+
+resolve_stage_path() {
+  local candidate="$1"
+  local original_candidate="$candidate"
+  if [[ -d "$candidate" ]]; then
+    candidate="$(realpath "$candidate")"
+  elif [[ -d "$ROOT/$candidate" ]]; then
+    candidate="$(realpath "$ROOT/$candidate")"
+  elif [[ -d "$EXPERIMENTS_DIR/$candidate" ]]; then
+    candidate="$(realpath "$EXPERIMENTS_DIR/$candidate")"
+  else
+    die "stage directory not found: $original_candidate"
+  fi
+
+  case "$candidate" in
+    "$EXPERIMENTS_DIR"/diversity_campaign/stage*) ;;
+    *)
+      die "stage directory must be under $EXPERIMENTS_DIR/diversity_campaign/stage*"
+      ;;
+  esac
+  printf '%s\n' "$candidate"
+}
+
+collect_stage_single_configs() {
+  local stage_dir="$1"
+  "$PYTHON" - "$stage_dir" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+stage = Path(sys.argv[1])
+for path in sorted(stage.glob("*.json")):
+    if "batch" in path.name.lower():
+        continue
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"WARNING: skipping invalid JSON {path}: {exc}", file=sys.stderr)
+        continue
+    if not isinstance(payload, dict):
+        continue
+    is_batch = (
+        "base_config" in payload
+        and (("sweep" in payload) ^ ("runs" in payload))
+    )
+    if not is_batch:
+        print(path)
+PY
+}
+
+run_campaign_stage() {
+  local stage_dir="$1"
+  local ranks="$2"
+  local -a configs=()
+  mapfile -t configs < <(collect_stage_single_configs "$stage_dir")
+  if ((${#configs[@]} == 0)); then
+    die "no single-run JSON files in stage: $stage_dir"
+  fi
+
+  echo "=== Running campaign stage ${stage_dir#"$ROOT"/} (${#configs[@]} configs, $ranks MPI ranks) ==="
+  local config
+  local index=0
+  for config in "${configs[@]}"; do
+    index=$((index + 1))
+    echo
+    echo "--- Stage job $index/${#configs[@]}: ${config#"$ROOT"/} ---"
+    run_single "$config" "$ranks"
+  done
+  echo
+  echo "=== Stage complete: ${stage_dir#"$ROOT"/} ==="
 }
 
 resolve_config_path() {
@@ -534,9 +668,10 @@ interactive_menu() {
     echo "Experiment menu:"
     echo "  1) Run one simulation JSON"
     echo "  2) Run a batch manifest"
-    echo "  3) Exit"
+    echo "  3) Run a diversity-campaign stage (all singles in order)"
+    echo "  4) Exit"
     local choice
-    read -r -p "Select an option [1-3]: " choice
+    read -r -p "Select an option [1-4]: " choice
     case "$choice" in
       1)
         if choose_json single; then
@@ -549,6 +684,11 @@ interactive_menu() {
         fi
         ;;
       3)
+        if choose_campaign_stage; then
+          run_campaign_stage "$SELECTED_STAGE" "$(prompt_ranks)"
+        fi
+        ;;
+      4)
         return
         ;;
       *)
@@ -597,6 +737,11 @@ main() {
       [[ "$(json_kind "$CONFIG_PATH")" == batch ]] ||
         die "selected JSON is not a batch manifest"
       run_batch "$CONFIG_PATH" "$BATCH_ACTION"
+      ;;
+    stage)
+      [[ -n "$CONFIG_PATH" ]] || die "--mode stage requires --config <stage-dir>"
+      CONFIG_PATH="$(resolve_stage_path "$CONFIG_PATH")"
+      run_campaign_stage "$CONFIG_PATH" "${MPI_RANKS:-1}"
       ;;
     prompt)
       interactive_menu

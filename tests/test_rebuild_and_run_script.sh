@@ -13,6 +13,10 @@ fail() {
   fail "smoke_single.json was not classified as single"
 [[ "$(json_kind "$ROOT/experiments/smoke_batch.json")" == batch ]] ||
   fail "smoke_batch.json was not classified as batch"
+[[ "$(json_kind "$ROOT/experiments/diversity_campaign/stage1_motility_validation/1a_motility_off.json")" == single ]] ||
+  fail "stage1 1a was not classified as single"
+[[ "$(json_kind "$ROOT/experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json")" == batch ]] ||
+  fail "stage3 batch_kd_sweep was not classified as batch"
 
 temporary_dir="$(mktemp -d)"
 trap 'rm -rf "$temporary_dir"' EXIT
@@ -35,6 +39,36 @@ printf '%s\n' "${single_configs[@]}" |
 printf '%s\n' "${batch_configs[@]}" |
   grep -qx "$ROOT/experiments/smoke_batch.json" ||
   fail "batch discovery omitted smoke_batch.json"
+printf '%s\n' "${single_configs[@]}" |
+  grep -q "stage1_motility_validation/1a_motility_off.json" ||
+  fail "single discovery omitted stage1 1a"
+printf '%s\n' "${batch_configs[@]}" |
+  grep -q "stage3_campaign/batch_kd_sweep.json" ||
+  fail "batch discovery omitted stage3 kd sweep"
+
+mapfile -t stages < <(collect_campaign_stages)
+((${#stages[@]} == 3)) ||
+  fail "expected 3 campaign stages, found ${#stages[@]}"
+[[ "${stages[0]}" == *stage1_motility_validation ]] ||
+  fail "first campaign stage is not stage1"
+[[ "${stages[1]}" == *stage2_mechanism_validation ]] ||
+  fail "second campaign stage is not stage2"
+[[ "${stages[2]}" == *stage3_campaign ]] ||
+  fail "third campaign stage is not stage3"
+
+mapfile -t stage1_configs < <(
+  collect_stage_single_configs \
+    "$ROOT/experiments/diversity_campaign/stage1_motility_validation"
+)
+((${#stage1_configs[@]} == 6)) ||
+  fail "stage1 should expose 6 single configs, found ${#stage1_configs[@]}"
+[[ "$(basename "${stage1_configs[0]}")" == 1a_motility_off.json ]] ||
+  fail "stage1 singles are not sorted starting at 1a"
+
+stage_path="$(resolve_stage_path \
+  experiments/diversity_campaign/stage2_mechanism_validation)"
+[[ "$stage_path" == "$ROOT/experiments/diversity_campaign/stage2_mechanism_validation" ]] ||
+  fail "resolve_stage_path did not resolve stage2"
 
 [[ "$(printf '2\n' | prompt_batch_action 2>/dev/null)" == dry-run ]] ||
   fail "batch action prompt did not return dry-run"
@@ -119,7 +153,7 @@ grep -q -- '-m pip install --quiet -e' "$PIP_BOOTSTRAP_LOG" ||
   fail "package installation did not follow pip bootstrap"
 
 "$ROOT/rebuild_and_run.sh" --help |
-  grep -q -- '--mode prompt|single|batch|none' ||
+  grep -q -- '--mode prompt|single|batch|stage|none' ||
   fail "help output omitted run modes"
 
 if GUTIBM_BUILD_DIR="$ROOT" "$ROOT/rebuild_and_run.sh" \

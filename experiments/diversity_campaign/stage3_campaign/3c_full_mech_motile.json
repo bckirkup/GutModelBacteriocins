@@ -1,0 +1,68 @@
+{
+  "total_time": 604800,
+  "bio_dt": 60,
+  "output_interval": 3600,
+  "seed": 42,
+  "domain_x": 0.002,
+  "domain_y": 0.002,
+  "domain_z": 0.0001,
+  "grid_dx": 2e-06,
+  "mucus_thickness": 0.0001,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+  "vbf_density": 100000000000.0,
+  "vbf_viscosity": 0.01,
+  "sos_lysis_prob": 0.01,
+  "bi_duplication_rate": 2e-05,
+  "base_transfer_rate": 0.00015,
+  "toxin_cutoff": 0.0002,
+  "nutrient_cutoff": 5e-05,
+  "use_fmm": true,
+  "fmm_theta": 0.5,
+  "fmm_expansion_order": 2,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 500,
+      "mu_max": 0.00055,
+      "plasmids": [
+        "ColE1",
+        "ColB"
+      ],
+      "conjugative": true
+    },
+    {
+      "type": 2,
+      "count": 100,
+      "mu_max": 0.0005,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ],
+  "hdf5_file": "campaign_full_mech_motile.h5",
+  "hdf5": {
+    "schedule": {
+      "summary": 60,
+      "agents": 60,
+      "grid": 0,
+      "lineage": 60,
+      "genome": 60
+    }
+  },
+  "_comment": [
+    "CAMPAIGN: Full mechanisms + motility (aerotaxis + energy taxis)."
+  ],
+  "oxygen.enabled": true,
+  "acetate.enabled": true,
+  "crypts_enabled": true,
+  "crypt_depth": 1e-05,
+  "crypt_entry_rate": 5e-05,
+  "crypt_exit_rate": 0.0001,
+  "crypt_carrying_capacity": 50,
+  "adaptive_dt_enabled": true,
+  "dt_min": 1,
+  "dt_max": 300,
+  "dt_safety": 0.8,
+  "dt_growth_limit": 0.1,
+  "dysbiosis_threshold": 1000000000000.0
+}

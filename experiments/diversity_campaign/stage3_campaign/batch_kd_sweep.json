@@ -1,0 +1,25 @@
+{
+  "_comment": "Stage 3 Kd sweep: four corrinoid Kd values \u00d7 3 seeds (12 runs) on full-mechanisms (motility OFF) base.",
+  "output_dir": "batch_results/diversity_campaign/stage3_kd_sweep",
+  "base_config": "experiments/diversity_campaign/stage3_campaign/3b_full_mechanisms.json",
+  "binary": "build/gut_ibm",
+  "mpi_ranks": 4,
+  "mpirun_args": [
+    "--bind-to",
+    "none"
+  ],
+  "on_fail": "continue",
+  "sweep": {
+    "seed": [
+      42,
+      43,
+      44
+    ],
+    "kd_corrinoid_btuB": [
+      1e-09,
+      1e-08,
+      1e-07,
+      1e-06
+    ]
+  }
+}

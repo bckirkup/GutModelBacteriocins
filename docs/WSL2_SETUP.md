@@ -113,6 +113,9 @@ GUTIBM_BUILD_JOBS=4 ./rebuild_and_run.sh
   --config experiments/smoke_single.json --mpi-ranks 2
 ./rebuild_and_run.sh --mode batch \
   --config experiments/smoke_batch.json --batch-action dry-run --reuse-build
+./rebuild_and_run.sh --mode stage \
+  --config experiments/diversity_campaign/stage1_motility_validation \
+  --mpi-ranks 1 --reuse-build
 ```
 
 For a CUDA simulation, its JSON must also set `"gpu_enabled": true`. With more

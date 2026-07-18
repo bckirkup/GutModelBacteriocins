@@ -1,0 +1,59 @@
+{
+  "total_time": 3600,
+  "bio_dt": 60,
+  "output_interval": 300,
+  "seed": 42,
+  "domain_x": 0.0005,
+  "domain_y": 0.0005,
+  "domain_z": 0.0001,
+  "grid_dx": 5e-06,
+  "mucus_thickness": 0.0001,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+  "vbf_density": 100000000000.0,
+  "vbf_viscosity": 0.01,
+  "sos_lysis_prob": 0.01,
+  "toxin_cutoff": 0.0001,
+  "nutrient_cutoff": 5e-05,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [
+        "ColE1",
+        "ColB"
+      ],
+      "conjugative": true
+    },
+    {
+      "type": 2,
+      "count": 20,
+      "mu_max": 0.0005,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ],
+  "hdf5_file": "2d_o2_acetate_crypts.h5",
+  "hdf5": {
+    "schedule": {
+      "summary": 1,
+      "agents": 5,
+      "grid": 0,
+      "lineage": 5,
+      "genome": 5
+    }
+  },
+  "_comment": [
+    "STAGE 2D: O2 + acetate + crypt refugia. Motility OFF.",
+    "Expected: crypt agents survive washout, persist as reservoir."
+  ],
+  "motility.enabled": false,
+  "oxygen.enabled": true,
+  "acetate.enabled": true,
+  "crypts_enabled": true,
+  "crypt_depth": 1e-05,
+  "crypt_entry_rate": 5e-05,
+  "crypt_exit_rate": 0.0001,
+  "crypt_carrying_capacity": 50
+}
