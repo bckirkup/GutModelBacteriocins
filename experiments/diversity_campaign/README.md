@@ -79,23 +79,24 @@ Expected wall time: ~1–5 min each on a laptop.
 
 ```bash
 # Baseline × 3 seeds
-./rebuild_and_run.sh --reuse-build --mode batch \
+./rebuild_and_run.sh --cuda on --reuse-build --mode batch \
   --config experiments/diversity_campaign/stage3_campaign/batch_baseline.json
 
 # Full mechanisms × 3 seeds
-./rebuild_and_run.sh --reuse-build --mode batch \
+./rebuild_and_run.sh --cuda on --reuse-build --mode batch \
   --config experiments/diversity_campaign/stage3_campaign/batch_full_mechanisms.json
 
 # Full mechanisms + motility × 3 seeds (after Stage 1 passes)
-./rebuild_and_run.sh --reuse-build --mode batch \
+./rebuild_and_run.sh --cuda on --reuse-build --mode batch \
   --config experiments/diversity_campaign/stage3_campaign/batch_full_mech_motile.json
 
 # Four Kd values × 3 seeds (12 runs)
-./rebuild_and_run.sh --reuse-build --mode batch \
+./rebuild_and_run.sh --cuda on --reuse-build --mode batch \
   --config experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json \
   --batch-action dry-run
 ```
 
+Stage 3 batches use **1 MPI rank** by default (full-grid memory per rank).
 Outputs land under `batch_results/diversity_campaign/`.
 
 ## Decision points
@@ -114,9 +115,20 @@ After Stage 3:
 ## Resource warning (Stage 3)
 
 Stage 3 uses a 2 mm × 2 mm × 100 µm domain at 2 µm grid spacing
-(`1000 × 1000 × 50 = 50,000,000` cells). Concentration/reaction arrays alone
-need several GB before agents, HDF5, MPI, or GPU mirrors. On WSL2, see
-`docs/WSL2_SETUP.md` and start with one MPI rank.
+(`1000 × 1000 × 50 = 50,000,000` cells). **Every MPI rank stores the full
+grid**, so memory scales with ranks:
+
+| Setup | Rough chem footprint (order of magnitude) |
+|-------|-------------------------------------------|
+| 1 rank, CPU | ~8–12 GB host |
+| 1 rank, GPU | ~8–12 GB host **+** ~8 GB device (mirrors) |
+| 4 ranks, GPU | ~40–80 GB host aggregate — often kills WSL/terminals |
+
+Batch manifests default to `"mpi_ranks": 1`. If a run prints `Step 1` then the
+terminal/WSL session dies with no tidy traceback, treat it as **OOM** (Windows
+or WSL reclaiming memory), not a GutIBM logic error. Check `dmesg` / WSL logs
+for "Killed process" / `OOM`. Raise the WSL cap in `%UserProfile%\.wslconfig`
+(see `docs/WSL2_SETUP.md`) before trying `mpi_ranks` 2+.
 
 **GPU is on by default for Stage 3** (`gpu_enabled: true`, `gpu_device_id: -1`
 in every Stage 3 single-run JSON; batch jobs inherit it from `base_config`).
