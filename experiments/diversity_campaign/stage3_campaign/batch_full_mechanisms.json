@@ -1,5 +1,5 @@
 {
-  "_comment": "Stage 3B full mechanisms \u00d7 3 seeds (motility OFF).",
+  "_comment": "Stage 3B full mechanisms \u00d7 3 seeds (motility OFF). Requires CUDA build + gpu_enabled in base_config.",
   "output_dir": "batch_results/diversity_campaign/stage3_full_mechanisms",
   "base_config": "experiments/diversity_campaign/stage3_campaign/3b_full_mechanisms.json",
   "binary": "build/gut_ibm",

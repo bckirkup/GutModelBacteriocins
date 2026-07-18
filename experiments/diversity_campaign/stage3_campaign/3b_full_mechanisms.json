@@ -50,7 +50,8 @@
     }
   },
   "_comment": [
-    "CAMPAIGN: Full mechanisms (O2+acetate+crypts+adaptive dt), motility OFF."
+    "CAMPAIGN: Full mechanisms (O2+acetate+crypts+adaptive dt), motility OFF.",
+    "GPU ON (50M-cell Stage 3): requires CUDA-enabled gut_ibm build."
   ],
   "motility.enabled": false,
   "oxygen.enabled": true,
@@ -65,5 +66,7 @@
   "dt_max": 300,
   "dt_safety": 0.8,
   "dt_growth_limit": 0.1,
-  "dysbiosis_threshold": 1000000000000.0
+  "dysbiosis_threshold": 1000000000000.0,
+  "gpu_enabled": true,
+  "gpu_device_id": -1
 }

@@ -50,7 +50,8 @@
     }
   },
   "_comment": [
-    "CAMPAIGN: Full mechanisms + motility (aerotaxis + energy taxis)."
+    "CAMPAIGN: Full mechanisms + motility (aerotaxis + energy taxis).",
+    "GPU ON (50M-cell Stage 3): requires CUDA-enabled gut_ibm build."
   ],
   "oxygen.enabled": true,
   "acetate.enabled": true,
@@ -64,5 +65,7 @@
   "dt_max": 300,
   "dt_safety": 0.8,
   "dt_growth_limit": 0.1,
-  "dysbiosis_threshold": 1000000000000.0
+  "dysbiosis_threshold": 1000000000000.0,
+  "gpu_enabled": true,
+  "gpu_device_id": -1
 }
