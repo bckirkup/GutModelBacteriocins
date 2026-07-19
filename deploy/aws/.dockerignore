@@ -1,0 +1,18 @@
+# Keep build context lean for deploy/aws/Dockerfile
+build/
+build-*/
+batch_results/
+**/batch_results/
+**/*.h5
+**/*.h5.gz
+.git/
+.github/
+python/.pytest_cache/
+**/__pycache__/
+**/*.pyc
+.cursor/
+.agents/
+docs/
+experiments/**/output*
+*.md
+!deploy/aws/README.md

@@ -31,9 +31,13 @@ Starter files:
 
 - `smoke_single.json` — one small, 60-second CPU simulation.
 - `smoke_batch.json` — two explicit runs based on the smoke config.
+- `smoke_gpu.json` — tiny CUDA smoke (`gpu_enabled: true`) for AWS Batch practice.
+- `smoke_gpu_batch.json` — two-seed array practice on that GPU smoke.
 - `diversity_campaign/` — three-stage plan (motility validation → mechanism
   validation → full 7-day campaign + Kd sweep). See
   `diversity_campaign/README.md`.
+
+AWS Batch Spot + CUDA plan: [docs/AWS_BATCH.md](../docs/AWS_BATCH.md).
 
 To use the GPU, copy a simulation config and set:
 

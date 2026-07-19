@@ -112,6 +112,13 @@ After Stage 2:
 After Stage 3:
 - Analyze Kd sweep; compare motile vs non-motile (`3c` vs `3b`) if Stage 1 passed
 
+## Cloud runs (AWS)
+
+Full Stage 3 often exceeds desktop/WSL RAM and wall time. Deployment plan for
+**AWS Batch + Spot GPU + CUDA** (instance sizing, array jobs, checkpoint resume):
+[docs/AWS_BATCH.md](../../docs/AWS_BATCH.md). Draft container bits live under
+`deploy/aws/`.
+
 ## Resource warning (Stage 3)
 
 Stage 3 uses a 2 mm × 2 mm × 100 µm domain at 2 µm grid spacing
