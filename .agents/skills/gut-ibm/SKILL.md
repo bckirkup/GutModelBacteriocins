@@ -304,7 +304,11 @@ For config keys and parser fixtures, extend `test_config_diversity.cpp` so disti
 
 ## Batch runs
 
-Resumable parameter scans: see [docs/BATCH_RUNNER.md](../../docs/BATCH_RUNNER.md). Quick commands:
+Resumable parameter scans: see [docs/BATCH_RUNNER.md](../../docs/BATCH_RUNNER.md).
+For **AWS Batch Spot + CUDA** campaign runs (Stage 3 scale), see
+[docs/AWS_BATCH.md](../../docs/AWS_BATCH.md) and draft bits under `deploy/aws/`.
+
+Quick commands:
 
 ```bash
 cd python && pip install -e ".[dev]"

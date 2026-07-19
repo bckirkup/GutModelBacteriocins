@@ -86,6 +86,8 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | `.agents/skills/sonarqube-gutibm/SKILL.md` | SonarQube remediation workflow |
 | `.agents/skills/sonarqube-cpp/SKILL.md` | C++ SonarQube patterns |
 | `.agents/skills/sonarqube-python/SKILL.md` | Python SonarQube patterns |
+| `docs/AWS_BATCH.md` | AWS Batch + Spot GPU plan for full CUDA campaigns |
+| `deploy/aws/` | Draft Dockerfile / Batch entrypoint for that plan |
 
 ## Key Concepts
 
@@ -219,6 +221,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `docs/BATCH_RUNNER.md` — resumable parameter-scan CLI
 - `docs/PARAMETERS.md` — configurable parameters
 - `docs/SCALING.md` — agent-count benchmarks and profiling
+- `docs/AWS_BATCH.md` — AWS Batch Spot + CUDA deployment plan
 
 ## Code Conventions
 

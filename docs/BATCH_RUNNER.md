@@ -4,6 +4,10 @@ Resumable CLI for parameter scans and experiment grids. Runs multiple `gut_ibm`
 simulations from a single batch JSON manifest, with per-job isolation and
 incremental progress tracking.
 
+For cloud execution of the same manifests on **AWS Batch (Spot GPU)**, see
+[AWS_BATCH.md](AWS_BATCH.md) — v1 maps each sweep job to one Batch array index
+rather than running this CLI as a long-lived Spot process.
+
 ## Quick start
 
 ```bash
