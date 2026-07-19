@@ -3,9 +3,11 @@
 Plan for running production GutIBM jobs on AWS when desktop/WSL cannot finish
 full campaigns (especially Stage 3: 7-day biology, 2 mm domain, GPU chemistry).
 
-**Status:** planning document (Jul 2026). No Terraform/CloudFormation yet.
-**Primary workload:** `experiments/diversity_campaign/stage3_campaign/` batches
-and similar parameter scans via `gut_ibm_tools.batch_runner`.
+**Status:** planning + Phase 1 practice path (Jul 2026).
+**Region (pinned):** `us-east-1` (co-locate ECR, S3, Batch).
+**Primary workload (later):** `experiments/diversity_campaign/stage3_campaign/`.
+**Practice workload (now):** `experiments/smoke_gpu.json` (+ optional
+`smoke_gpu_batch.json`).
 
 ## Goals
 
@@ -16,270 +18,277 @@ and similar parameter scans via `gut_ibm_tools.batch_runner`.
 | CUDA | Production chemistry path with `gpu_enabled: true` |
 | Batch semantics | Many independent sims (seeds × Kd × mechanisms), not one forever-job |
 | Resume | Survive Spot reclaim via HDF5 checkpoint + S3 |
-| Fit existing tools | Reuse `batch_runner`, experiment JSON, gzip HDF5 habit |
+| Fit existing tools | Same local **Docker + AWS CLI → ECR** habit as other projects; reuse `batch_runner` JSON |
 
 Non-goals for v1: multi-node MPI rings, NCCL multi-GPU, interactive login nodes,
-or replacing local Stage 1–2 validation (those stay on laptop/CI).
+Terraform/CDK, or replacing local Stage 1–2 validation.
+
+## Decisions (locked / recommended)
+
+| Topic | Choice | Notes |
+|-------|--------|-------|
+| Region | **`us-east-1`** | Locked |
+| Infra style | **AWS CLI + Docker + checked-in JSON** (no Terraform for v1) | Matches local Crusher→ECR workflow; Batch resources created once via CLI |
+| Scheduler | **AWS Batch** (EC2 GPU), not Fargate | Fargate has **no NVIDIA GPUs**; keep the Docker/ECR muscle memory, change only the compute backend |
+| Practice instance | **`g4dn.xlarge`** (T4, 16 GB VRAM) | Cheapest common GPU Spot class for tiny smokes |
+| Campaign instance | **`g5.2xlarge`** (A10G, 24 GB) | Stage 3 chemistry ~8 GB VRAM + headroom; allow `g4dn.2xlarge` in the same compute env if Spot is thinner on g5 |
+| First jobs | **`experiments/smoke_gpu.json`** then `smoke_gpu_batch.json` | Prove CUDA path before Stage 3 |
+| Image build | **Laptop `docker build` + `aws ecr get-login-password` push** | Same as existing Fargate deploys; GHA→ECR later if desired |
+| First campaign (after smoke) | **`batch_baseline.json`** (3 seeds) | Smaller than the 12-run Kd sweep; validate cost/wall time once |
+
+## Why not Fargate (even though you already use it)
+
+Crusher_to_the_Bridge on Fargate is the right pattern for **CPU** containers:
+build locally → push ECR → run managed tasks.
+
+GutIBM CUDA needs host NVIDIA drivers + GPU device mapping. That is **Batch
+managed EC2** with `ECS_AL2023_NVIDIA` (or equivalent GPU AMI), job definition
+`resourceRequirements: [{type: GPU, value: 1}]`. Workflow stays familiar:
+
+```
+docker build → docker tag → aws ecr … push → aws batch submit-job
+```
+
+instead of `aws ecs run-task` / Fargate.
 
 ## Constraints from the code today
 
-These drive instance and job shape more than AWS product choice.
-
-1. **Chemistry grid is per-rank full domain.** There is no slab-local chemistry
-   yet. Stage 3 at `dx = 2 µm` on 2 mm × 2 mm × 100 µm ≈ **50 M cells** →
-   ~**8 GB host + 8 GB VRAM** for chemistry alone (`experiments/diversity_campaign/README.md`).
-2. **Stage 3 batches default to `mpi_ranks: 1`.** Raising ranks multiplies host
-   RAM without splitting the grid. Prefer **1 GPU process per job** for v1.
-3. **GPU FMM far-field still walks on CPU** for large trees. Expect hybrid
-   CPU+GPU load; do not pick GPU-only tiny instances with starved host RAM.
-4. **Checkpoint restart exists** (`checkpoint_file` / `checkpoint_step` in
-   input JSON; `hdf5_checkpoint` CTest). Use it for Spot reclaim.
-5. **CUDA arches in CMake default to `60;70;80`.** Rebuild image with the
-   compute capability of the chosen instance family (see below).
-6. **Batch runner is local-process oriented.** It launches `mpirun`/`gut_ibm`
-   and writes under `output_dir`. On AWS, either wrap one job per Batch array
-   index, or run `batch_runner --resume` on a long-lived worker that checkpoints
-   to S3. Prefer **one sim per Batch job** for Spot.
+1. **Chemistry grid is per-rank full domain.** Stage 3 at `dx = 2 µm` on
+   2 mm × 2 mm × 100 µm ≈ **50 M cells** → ~**8 GB host + 8 GB VRAM** chem
+   alone (`experiments/diversity_campaign/README.md`).
+2. **Stage 3 batches default to `mpi_ranks: 1`.** Prefer **1 GPU process per
+   job** for v1.
+3. **GPU FMM far-field still walks on CPU** for large trees — need host RAM,
+   not a GPU-only tiny box.
+4. **Checkpoint restart exists** (`checkpoint_file` / `checkpoint_step`).
+5. Build CUDA arches for target GPUs: T4=`75`, A10G=`86` (image defaults to
+   `75;86;89`).
 
 ## Recommended architecture (v1)
 
 ```
-Desktop / CI                  AWS
-─────────────                 ─────────────────────────────────────
-git push ──► build image ──► Amazon ECR
-                              │
-experiment JSON + batch ──► S3://gutibm-inputs/...
-manifest (optional)           │
-                              ▼
-                         AWS Batch
-                         (Spot GPU queue, low priority)
-                              │
-                    Array job: one index = one sim
-                              │
-                    Docker: gut_ibm (+ optional mpirun -np 1)
-                              │
-                    checkpoints + output.h5(.gz) ──► S3://gutibm-outputs/...
-                              │
-                         Athena / local download
-                         + python gut_ibm_tools analysis
+Laptop (AWS CLI + Docker)              AWS us-east-1
+─────────────────────────              ────────────────────────────────
+docker build deploy/aws/Dockerfile ──► ECR  …/gutibm:cuda
+aws s3 cp smoke_gpu.json           ──► S3   gutibm-inputs-…
+aws batch submit-job               ──► Batch Spot/OnDemand GPU queue
+                                         │
+                                    g4dn.xlarge (practice) /
+                                    g5.2xlarge (campaign)
+                                         │
+                                    entry.sh → gut_ibm
+                                         │
+                                    S3 gutibm-outputs-… / CloudWatch Logs
 ```
 
 | Piece | Choice | Why |
 |-------|--------|-----|
-| Scheduler | **AWS Batch** managed queue | Native array jobs, Spot, retries, no cluster daemon to babysit |
-| Compute | **EC2 Spot GPU** via Batch compute environment | “Low priority” = interruptible capacity |
-| Container | **ECR** image: CUDA runtime + OpenMPI + parallel HDF5 + `gut_ibm` | Matches CI stack; portable |
-| Storage | **S3** for inputs, checkpoints, final HDF5 | Cheap, Spot-safe; EFS optional later |
-| Secrets | IAM role on Batch job (no long-lived keys in image) | Least privilege to S3 prefixes |
-| Orchestration glue | Thin `scripts/aws_batch_entry.sh` + optional SubmitJob helper | Keep science configs in `experiments/` |
+| Scheduler | AWS Batch managed CE | GPU + Spot + array jobs; scales to 0 |
+| Compute | EC2 Spot GPU (`SPOT_PRICE_CAPACITY_OPTIMIZED`) | Low priority / cost |
+| Practice CE | Prefer `g4dn.xlarge` (optionally On-Demand for first green run) | Fast feedback, cheap fails |
+| Campaign CE | `g5.2xlarge` + `g4dn.2xlarge` allowed | Stage 3 VRAM/RAM |
+| Container | ECR + `deploy/aws/Dockerfile` | Same push path as Fargate apps |
+| Storage | S3 prefixes in `us-east-1` | Spot-safe artifacts |
+| IAM | Job role scoped to those prefixes | No keys in the image |
+| IaC | None for v1 — CLI once, commit the JSON blobs under `deploy/aws/` | Avoid infra yak-shave before CUDA works |
 
-Defer **ParallelCluster / Slurm** until you need `mpirun -np 8+` across nodes
-or CUDA-aware multi-rank rings. Stage 3’s memory model does not benefit from
-multi-rank today.
+## Instance sizing
 
-## Instance sizing (GPU Spot)
+### Practice / smoke (do this first)
 
-Chemistry VRAM floor (~8 GB) + scratch ⇒ **≥12 GB VRAM practical, 16–24 GB recommended**
-for full Stage 3 (`dx = 2 µm`). Host needs **≥24 GB RAM** comfortable (16 GB is
-tight once temps/HDF5 buffers appear).
+| Instance | GPU | When |
+|----------|-----|------|
+| **`g4dn.xlarge`** | T4 16 GB | **Default for Phase 1–1b** (`smoke_gpu`, Stage 1-sized grids) |
 
-| Instance (typical) | GPU | VRAM | vCPU / RAM | Fit |
-|--------------------|-----|------|------------|-----|
-| `g4dn.xlarge` | T4 | 16 GB | 4 / 16 GB | Marginal host RAM; OK for `dx≥4 µm` or 1 mm domain |
-| `g4dn.2xlarge` | T4 | 16 GB | 8 / 32 GB | Good Stage 3 candidate (T4 = CC 7.5) |
-| `g5.xlarge` | A10G | 24 GB | 4 / 16 GB | VRAM great; host RAM tight |
-| `g5.2xlarge` | A10G | 24 GB | 8 / 32 GB | **Preferred default** for full Stage 3 |
-| `g6.2xlarge` | L4 | 24 GB | 8 / 32 GB | Newer alternative if Spot is cheaper in-region |
+`experiments/smoke_gpu.json` is ~20 agents, 100 µm domain, `dx = 5 µm` — chemistry
+memory is negligible. Goal is “CUDA path ran on Batch,” not science.
 
-**v1 default:** Batch compute environment allowing `g5.2xlarge` + `g4dn.2xlarge`
-(Spot), single GPU, 1 job per instance (or 1 GPU job definition with
-`resourceRequirements: GPU=1`).
+### Full Stage 3 (later)
 
-Build CUDA arch:
+| Instance | GPU | Fit |
+|----------|-----|-----|
+| `g4dn.2xlarge` | T4 16 GB / 32 GB RAM | Usable Stage 3 candidate |
+| **`g5.2xlarge`** | A10G 24 GB / 32 GB RAM | **Campaign default** |
+| `g6.2xlarge` | L4 24 GB | If Spot is cheaper in `us-east-1` |
 
-| Family | `CMAKE_CUDA_ARCHITECTURES` |
-|--------|----------------------------|
-| g4dn (T4) | `75` |
-| g5 (A10G) | `86` |
-| g6 (L4) | `89` |
+Compute environment tip: list **families or several sizes** and let Spot
+allocation pick (`SPOT_PRICE_CAPACITY_OPTIMIZED`). Job definition still asks for
+`GPU=1` + enough memory.
 
-Ship a multi-arch image (`75;86;89`) if you want one ECR tag for all three.
+## Practice path (Phase 1) — concrete
 
-Laptop-safe configs (`grid_dx` 4–5 µm) can use cheaper / smaller Spot if needed;
-keep full-resolution jobs on the 24 GB VRAM class.
+Do **not** start with Stage 3. Order:
 
-## Job model
+1. **Local CUDA binary smoke** (optional if you have a GPU laptop/WSL):
 
-### Prefer: AWS Batch array job = one simulation
+   ```bash
+   ./rebuild_and_run.sh --cuda on --reuse-build --mode single \
+     --config experiments/smoke_gpu.json --mpi-ranks 1
+   ```
 
-Map each `batch_runner` job (e.g. `seed=42_kd_corrinoid_btuB=1e-09`) to one
-array index:
+2. **Build & push image** (same muscle memory as Crusher→ECR):
 
-1. Upload base config + overrides (or a generated `input.json`) to S3.
-2. Submit `gutibm-stage3` array job size = N.
-3. Entry script downloads index-specific JSON, runs
-   `./gut_ibm /tmp/input.json` (or `mpirun -np 1`), uploads `output.h5.gz`
-   and periodic checkpoints.
+   ```bash
+   export AWS_REGION=us-east-1
+   ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+   REPO="${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/gutibm"
+   aws ecr create-repository --repository-name gutibm --region "$AWS_REGION" || true
+   aws ecr get-login-password --region "$AWS_REGION" \
+     | docker login --username AWS --password-stdin "${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+   docker build -f deploy/aws/Dockerfile -t gutibm:cuda \
+     --build-arg CUDA_ARCHS=75;86;89 .
+   docker tag gutibm:cuda "${REPO}:cuda"
+   docker push "${REPO}:cuda"
+   ```
 
-Pros: Spot kill loses one sim, not the whole sweep; natural Batch retries;
-matches `on_fail: continue` semantics.
+3. **One-time Batch GPU stack via CLI** (create once; details/JSON under
+   `deploy/aws/` as they stabilize):
+   - VPC subnets + SG (egress to ECR/S3; no inbound SSH needed)
+   - Instance profile + Spot fleet role + Batch service role
+   - Managed compute environment: `type=SPOT` (or On-Demand for the *first*
+     green run), `ec2Configuration.imageType=ECS_AL2023_NVIDIA`,
+     `instanceTypes=["g4dn.xlarge"]`, `minvCpus=0`
+   - Job queue → that CE
+   - Job definition: image `${REPO}:cuda`, `resourceRequirements` GPU=1,
+     vCPU/memory for `g4dn.xlarge`, job role with S3 access
 
-### Avoid for Spot: one fat EC2 running local `batch_runner` for hours
+4. **Upload smoke config & submit one job**:
 
-Works for On-Demand or a reserved “campaign node,” but a reclaim mid-sweep
-wastes wall time unless every child sim checkpoints and the runner resumes from
-S3. Use only as a v0 smoke path.
+   ```bash
+   aws s3 mb "s3://gutibm-inputs-${ACCOUNT}" --region "$AWS_REGION" || true
+   aws s3 mb "s3://gutibm-outputs-${ACCOUNT}" --region "$AWS_REGION" || true
+   aws s3 cp experiments/smoke_gpu.json \
+     "s3://gutibm-inputs-${ACCOUNT}/practice/smoke_gpu/input.json"
 
-### Bridge from existing manifests
+   aws batch submit-job \
+     --job-name gutibm-smoke-gpu \
+     --job-queue gutibm-gpu-practice \
+     --job-definition gutibm-cuda \
+     --container-overrides "{
+       \"environment\": [
+         {\"name\": \"INPUT_S3_URI\",
+          \"value\": \"s3://gutibm-inputs-${ACCOUNT}/practice/smoke_gpu/input.json\"},
+         {\"name\": \"OUTPUT_S3_URI\",
+          \"value\": \"s3://gutibm-outputs-${ACCOUNT}/practice/smoke_gpu/output.h5.gz\"},
+         {\"name\": \"MPI_RANKS\", \"value\": \"1\"}
+       ]
+     }"
+   ```
 
-Keep authoring sweeps in `experiments/.../batch_*.json`. Add a small exporter
-(future) that expands the Cartesian product to:
+5. **Pass criteria for Phase 1:**
+   - Job `SUCCEEDED`
+   - CloudWatch / run log shows GPU init (not silent CPU fallback)
+   - `output.h5.gz` lands in S3 and gunzips / opens with `gut_ibm_tools`
 
-- `jobs/<job_id>/input.json` objects in S3, and
-- a Batch `arrayProperties.size`,
+6. **Phase 1b — tiny array:** expand `smoke_gpu_batch.json` (2 seeds) to two
+   S3 inputs; submit array size 2. Still on `g4dn.xlarge`.
 
-without teaching AWS about GutIBM’s JSON schema.
+Only after 1b is boring: move CE to include `g5.2xlarge` / Spot-heavy and try
+one Stage 3 baseline seed.
+
+## Job model (campaigns)
+
+Prefer **Batch array index = one simulation** from a `batch_runner` manifest.
+Do **not** run a multi-hour local `batch_runner` loop as one Spot task until
+checkpoint→S3 resume is solid.
 
 ## Spot interruption strategy
 
-1. Enable frequent HDF5 checkpoints in campaign configs (e.g. genome/summary
-   intervals already exist; add an explicit checkpoint schedule / copy to
-   `s3://.../checkpoints/<job_id>/step_XXXXXX.h5` every N steps).
-2. On start, entry script checks S3 for latest checkpoint; if present, set
-   `checkpoint_file` + `checkpoint_step` and continue.
-3. Batch job definition: `retryStrategy` with Spot reclaim as retryable
-   (AWS Batch supports retry on `ExitCode` / status reason patterns — tune once
-   the wrapper’s exit codes are fixed).
-4. Gzip final outputs (`GUTIBM_GZIP_HDF5` / existing helper) before S3 upload to
-   cut egress and storage.
+1. Periodic HDF5 checkpoints → S3 prefix per job id.
+2. `entry.sh` already sketches resume via `CHECKPOINT_S3_PREFIX`.
+3. Batch `retryStrategy` for Spot reclaim once exit codes are stable.
+4. Gzip finals before upload (existing habit).
 
-Until checkpoint-to-S3 is automated, use shorter Stage 3 proxies or On-Demand
-for the first end-to-end validation.
+For Phase 1 smokes, Spot reclaim is unlikely to matter (seconds–minutes). Use
+**On-Demand `g4dn.xlarge` for the first green run** if Spot capacity is flaky;
+flip the CE to Spot afterward.
 
-## Container sketch
+## Container
 
-Base: NVIDIA CUDA devel/runtime matching driver on Batch AMI (Batch GPU AMIs
-provide the driver; image needs matching user-mode libs).
-
-Rough contents (to be added under `deploy/aws/` in an implementation PR):
-
-```dockerfile
-# Conceptual — not production-pinned yet
-FROM nvidia/cuda:12.4.1-devel-ubuntu22.04
-RUN apt-get update && apt-get install -y \
-    cmake g++ openmpi-bin libopenmpi-dev libhdf5-mpi-dev python3 python3-pip
-COPY . /src
-WORKDIR /src
-RUN CC=gcc CXX=g++ cmake -B build \
-      -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON -DGUTIBM_USE_CUDA=ON \
-      -DCMAKE_CUDA_ARCHITECTURES="75;86;89" \
-      -DCMAKE_BUILD_TYPE=Release \
- && cmake --build build -j$(nproc) --target gut_ibm \
- && pip3 install ./python
-ENTRYPOINT ["/src/deploy/aws/entry.sh"]
-```
-
-Runtime image can multi-stage copy `build/gut_ibm` + MPI/HDF5 runtime libs onto
-`nvidia/cuda:*-runtime-*` to shrink pull time.
-
-Validate inside the image before Batch:
-
-```bash
-nvidia-smi
-./build/gut_ibm experiments/smoke_single.json   # with gpu_enabled if GPU present
-ctest -R 'gpu_smoke|hdf5_checkpoint' --output-on-failure   # in devel build
-```
+See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
+`CMAKE_CUDA_ARCHITECTURES=75;86;89` covers practice T4 and campaign A10G/L4.
 
 ## IAM and networking (minimal)
 
-- Job role: `s3:GetObject` / `PutObject` / `ListBucket` on
-  `gutibm-*/inputs/*`, `.../outputs/*`, `.../checkpoints/*` only.
-- No inbound SSH required for v1 (use Batch logs → CloudWatch).
-- Egress: pull ECR, talk to S3 (gateway endpoint in VPC recommended to avoid
-  NAT cost on large HDF5).
-- Region: pick one with deep GPU Spot (often `us-east-1` / `us-west-2`); pin it
-  in docs once chosen so ECR/S3/Batch co-locate.
+- Job role: S3 R/W on `gutibm-inputs-*` / `gutibm-outputs-*` prefixes only.
+- Logs → CloudWatch (no SSH).
+- S3 gateway endpoint in the VPC when HDF5 gets large (Stage 3).
+- Everything in **`us-east-1`**.
 
 ## Cost control knobs
 
 | Knob | Effect |
 |------|--------|
-| Spot + Batch low-priority queue | Primary savings |
-| Array job granularity | Failed index ≠ failed campaign |
-| `grid_dx` / domain size | Dominant chem memory & runtime |
-| HDF5 schedule | Agents/grid dumps dominate I/O and S3 |
-| `profile_steps` off in production | Less log noise |
-| Auto-terminate / no min vCPU | Scale compute env to 0 when idle |
+| Practice on `g4dn.xlarge` first | Failures stay cheap |
+| Spot after first green run | Primary savings |
+| `minvCpus=0` | Scale to zero when idle |
+| Array granularity | One bad seed ≠ whole sweep |
+| HDF5 schedule | Agents/grid dumps dominate S3 |
 | Gzip HDF5 | Storage + transfer |
-
-Budget sanity check: price a **single** Stage 3 seed on `g5.2xlarge` Spot for
-the measured wall time before launching the 12-run Kd sweep.
 
 ## Phased delivery
 
-### Phase 0 — Decide (this doc)
+### Phase 0 — Decide
 
-- [x] Architecture: Batch + Spot GPU + ECR + S3
-- [ ] Pin region + default instance type
-- [ ] Confirm first campaign (e.g. `batch_kd_sweep.json` vs baseline × 3)
+- [x] Architecture: Batch + GPU EC2 + ECR + S3 (not Fargate)
+- [x] Region: `us-east-1`
+- [x] Infra style: CLI + Docker (no Terraform v1)
+- [x] Practice instance: `g4dn.xlarge`
+- [x] Campaign instance: `g5.2xlarge` (CE also allows `g4dn.2xlarge`)
+- [x] Practice configs: `experiments/smoke_gpu.json`, `smoke_gpu_batch.json`
 
-### Phase 1 — Container that runs GPU smoke on Batch
+### Phase 1 — CUDA smoke on Batch (current focus)
 
-- [ ] `deploy/aws/Dockerfile` (+ `.dockerignore`)
-- [ ] `deploy/aws/entry.sh` (download config → run → upload)
-- [ ] Build/push to ECR; submit one On-Demand GPU job with `experiments/smoke`
-  or Stage 1 config
-- [ ] CloudWatch logs show `gpu_enabled` path (no CUDA-absent fallback)
+- [x] Draft `deploy/aws/Dockerfile`, `entry.sh`
+- [ ] Create ECR repo + push `gutibm:cuda` from laptop
+- [ ] Create Batch GPU CE/queue/job definition in `us-east-1` (CLI)
+- [ ] One On-Demand or Spot job with `smoke_gpu.json`
+- [ ] Confirm GPU path in logs + S3 output
+- [ ] Phase 1b: array of 2 from `smoke_gpu_batch.json`
 
-### Phase 2 — S3-backed single Stage 3 job
+### Phase 2 — Single Stage 3 seed on `g5.2xlarge`
 
-- [ ] Upload one Stage 3 `input.json`; run to completion or timed smoke
-- [ ] Upload `output.h5.gz` to S3; download + `gut_ibm_tools` read smoke
-- [ ] Document wall time / Spot price sample in this file’s “Measured” section
+- [ ] One `3a_baseline` / `batch_baseline` seed
+- [ ] Record wall time / $ in Measured section below
 
-### Phase 3 — Array jobs from batch manifests
+### Phase 3 — Array export from batch manifests
 
-- [ ] Script: expand `batch_*.json` → S3 job inputs + `aws batch submit-job`
-- [ ] Map `AWS_BATCH_JOB_ARRAY_INDEX` → job id
-- [ ] Parity with local `batch_runner --dry-run` job list
+- [ ] Helper: `batch_*.json` → S3 job tree + `submit-job`
+- [ ] Parity with `batch_runner --dry-run`
 
 ### Phase 4 — Spot resilience
 
-- [ ] Periodic checkpoint copy to S3
-- [ ] Entry script auto-resume from latest checkpoint
-- [ ] Batch retry policy for Spot reclaim
-- [ ] Flip compute environment to Spot-only (or Spot with On-Demand fallback %)
+- [ ] Checkpoint → S3 + auto-resume
+- [ ] Retry policy; Spot-only (or Spot-with-fallback) CE
 
 ### Phase 5 — Optional later
 
+- [ ] GitHub Actions → ECR
+- [ ] Terraform/CDK if the CLI stack becomes painful to recreate
 - [ ] Multi-rank MPI when chemistry is domain-decomposed
-- [ ] CUDA-aware MPI AMI / custom Batch AMI
-- [ ] ParallelCluster only if multi-node becomes necessary
-- [ ] Cost dashboards + budget alarms
 
-## Open decisions
+## Still open (low urgency)
 
-1. **Region** — where GPU Spot is deepest for your account.
-2. **Default instance** — `g5.2xlarge` vs `g4dn.2xlarge` (price vs VRAM headroom).
-3. **Who builds the image** — GitHub Actions → ECR on tag, vs laptop `docker build`.
-4. **Checkpoint frequency vs S3 PUT cost** for 7-day runs.
-5. **Whether v1 requires Terraform** or click-ops + checked-in JSON job definitions.
+1. **Checkpoint cadence** for 7-day runs (S3 PUT cost vs reclaim loss).
+2. **Whether campaign CE is Spot-only** or 80/20 Spot/On-Demand after smoke.
+3. **Bucket naming** (`gutibm-inputs-<account>` vs a shared research bucket).
 
 ## Relation to existing docs
 
 | Doc | Role |
 |-----|------|
+| `experiments/smoke_gpu.json` | Phase 1 CUDA practice config |
 | `experiments/diversity_campaign/README.md` | Memory floors, Stage 3 batches |
-| `docs/BATCH_RUNNER.md` | Local sweep / resume semantics to mirror |
-| `docs/SCALING.md` | Agent/grid scaling; MPI notes |
-| `docs/WSL2_SETUP.md` | Local GPU; not used on Batch hosts |
-| `src/gpu/README.md` | What actually runs on device |
-| `AGENTS.md` | Build flags (`GUTIBM_USE_CUDA`, `CC=gcc CXX=g++`) |
+| `docs/BATCH_RUNNER.md` | Local sweep semantics to mirror as array jobs |
+| `docs/SCALING.md` | Agent/grid scaling |
+| `src/gpu/README.md` | Device kernels |
+| `deploy/aws/` | Dockerfile / entrypoint drafts |
 
 ## Measured results
 
-_Fill in after Phase 2:_
+_Fill in after Phase 1 / 2:_
 
 | Config | Instance | Spot? | Wall time | $/run | Notes |
 |--------|----------|-------|-----------|-------|-------|
-| | | | | | |
+| `smoke_gpu` | `g4dn.xlarge` | | | | Phase 1 |
+| `3a_baseline` seed | `g5.2xlarge` | | | | Phase 2 |

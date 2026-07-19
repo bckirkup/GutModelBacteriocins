@@ -1,0 +1,23 @@
+{
+  "_comment": "Two tiny CUDA smokes for AWS Batch array practice (docs/AWS_BATCH.md).",
+  "output_dir": "batch_results/experiments_smoke_gpu",
+  "base_config": "experiments/smoke_gpu.json",
+  "binary": "build/gut_ibm",
+  "mpi_ranks": 1,
+  "mpirun_args": ["--bind-to", "none"],
+  "on_fail": "continue",
+  "runs": [
+    {
+      "id": "seed_4092",
+      "overrides": {
+        "seed": 4092
+      }
+    },
+    {
+      "id": "seed_4093",
+      "overrides": {
+        "seed": 4093
+      }
+    }
+  ]
+}

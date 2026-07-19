@@ -46,7 +46,7 @@ _None — P6 science/CI backlog cleared._
 
 | Issue | Title | Track | Priority |
 |-------|-------|-------|----------|
-| — | AWS Batch Spot + CUDA campaign runs ([docs/AWS_BATCH.md](AWS_BATCH.md)) | `track:infra` | high (desktop cannot finish Stage 3) |
+| — | AWS Batch Spot + CUDA (`us-east-1`): smoke on `g4dn.xlarge` then Stage 3 ([docs/AWS_BATCH.md](AWS_BATCH.md)) | `track:infra` | high (practice CUDA smoke first) |
 | — | MPI/HPC validation `mpirun -np 8+` | `track:mpi` | low (manual HPC) |
 | — | GPU FMM octree traversal on device | `track:gpu` | low |
 

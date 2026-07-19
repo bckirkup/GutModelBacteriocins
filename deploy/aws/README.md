@@ -2,14 +2,18 @@
 
 Planning doc: [`docs/AWS_BATCH.md`](../../docs/AWS_BATCH.md).
 
-This directory will hold the container entrypoint and job helpers for
-**Phase 1+** of that plan. Files here are intentionally thin until the region
-and default instance type are pinned.
+**Pinned:** region `us-east-1`. Infra style = laptop **Docker + AWS CLI**
+(same habit as Fargate/ECR deploys). Compute backend is **Batch EC2 GPU**, not
+Fargate (no NVIDIA GPUs on Fargate).
 
 | File | Status |
 |------|--------|
 | `Dockerfile` | Draft multi-stage CUDA + MPI + HDF5 build |
 | `entry.sh` | Draft S3 download → `gut_ibm` → upload |
-| `submit_array_example.sh` | Example `aws batch submit-job` (array) |
+| `submit_array_example.sh` | Example array submit (after smoke works) |
 
-Do not treat these as production until Phase 1 smoke on Batch succeeds.
+## Practice first
+
+Use [`experiments/smoke_gpu.json`](../../experiments/smoke_gpu.json) on
+**`g4dn.xlarge`** before any Stage 3 job. See the Practice path section in
+`docs/AWS_BATCH.md`.
