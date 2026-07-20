@@ -21,10 +21,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       software-properties-common \
  && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
  && apt-get update && apt-get install -y --no-install-recommends \
-      gcc-13 g++-13 \
-      openmpi-bin libopenmpi-dev \
-      libhdf5-mpi-dev \
       ca-certificates \
+      g++-13 \
+      gcc-13 \
+      libhdf5-mpi-dev \
+      libopenmpi-dev \
+      openmpi-bin \
  && rm -rf /var/lib/apt/lists/*
 
 ARG CUDA_ARCHS=75;86;89
@@ -50,12 +52,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       software-properties-common \
  && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
  && apt-get update && apt-get install -y --no-install-recommends \
-      libstdc++6 \
-      openmpi-bin \
-      libhdf5-openmpi-103-1 \
-      python3 \
       awscli \
       ca-certificates \
+      libhdf5-openmpi-103-1 \
+      libstdc++6 \
+      openmpi-bin \
+      python3 \
  && apt-get purge -y software-properties-common \
  && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/* \
