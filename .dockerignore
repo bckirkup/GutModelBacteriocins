@@ -1,0 +1,40 @@
+# Keep the Docker build context to source only. The AWS image (deploy/aws/Dockerfile)
+# does `COPY . .` and configures CMake fresh inside the image, so host build trees,
+# caches, and large artifacts must not be copied in — a stale build/CMakeCache.txt
+# (pointing at a host path) makes the in-image `cmake -B build` fail.
+.git/
+.github/
+
+# CMake / compiled build trees
+build/
+build-*/
+cmake-build*/
+CMakeCache.txt
+CMakeFiles/
+compile_commands.json
+
+# Object / library / binary artifacts
+*.o
+*.a
+*.so
+*.dylib
+gut_ibm
+
+# Simulation outputs and batch results
+*.h5
+*.hdf5
+batch_results/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.cache/
+.pytest_cache/
+.ruff_cache/
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
