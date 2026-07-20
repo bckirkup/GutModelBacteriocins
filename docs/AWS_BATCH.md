@@ -238,20 +238,84 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
 
 ### Phase 2 — Single Stage 3 seed on `g5.2xlarge`
 
-- [ ] One `3a_baseline` / `batch_baseline` seed
+- [x] Campaign CE/queue/job-def sized for `g5.2xlarge` (one GPU per run) via `05_setup_campaign_stack.sh`
+- [ ] One `3a_baseline` / `batch_baseline` seed (submit a single index of `batch_baseline.json`)
 - [ ] Record wall time / $ in Measured section below
 
 ### Phase 3 — Array export from batch manifests
 
-- [ ] Helper: `batch_*.json` → S3 job tree + `submit-job`
-- [ ] Parity with `batch_runner --dry-run`
+- [x] Helper: `batch_*.json` → S3 job tree + `submit-job` (`gut_ibm_tools.aws_batch_export` / `gut-ibm-aws-export`)
+- [x] Parity with `batch_runner --dry-run` (shared `parse_batch_config` / `build_job_config`; unit-tested for `batch_kd_sweep.json` + `batch_baseline.json`)
 
 ### Phase 4 — Spot resilience
 
-- [ ] Checkpoint → S3 + auto-resume
-- [ ] Retry policy; Spot-only (or Spot-with-fallback) CE
+- [x] Checkpoint → S3 + auto-resume (`entry.sh` background sync of `output.h5` → `CHECKPOINT_S3_PREFIX`; resume half already existed)
+- [x] Retry policy; Spot-only (or Spot-with-fallback) CE (`05` Spot CE `SPOT_CAPACITY_OPTIMIZED` + `retryStrategy` retrying `Host EC2*`; set `CAMPAIGN_ONDEMAND_FALLBACK=1` for an On-Demand fallback CE)
 
-### Phase 5 — Optional later
+### Phase 5 — campaign deploy (concrete)
+
+Region `us-east-1`. Assumes the image is already in ECR (`01_push_image.sh`).
+Run from the repo root, one line at a time (paste-safe scripts). To use an
+**existing bucket you own** instead of the derived `gutibm-inputs/outputs-<account>`
+buckets, export `BUCKET` (shared) or `INPUT_BUCKET` / `OUTPUT_BUCKET` before
+sourcing/running — differentiate with key prefixes, e.g.
+`s3://my-bucket/gutibm/jobs`. Existing buckets are never recreated.
+
+1. **Roles + bucket** (re-run `02`; idempotent, creates nothing you already own):
+
+   ```bash
+   bash deploy/aws/02_setup_practice_stack.sh
+   ```
+
+2. **Campaign Spot GPU stack** (CE + queue + job def, one GPU per run):
+
+   ```bash
+   bash deploy/aws/05_setup_campaign_stack.sh
+   ```
+
+   Creates `gutibm-gpu-campaign-spot` (Spot `g5.2xlarge`/`g4dn.2xlarge`,
+   `SPOT_CAPACITY_OPTIMIZED`, `maxvCpus=${CAMPAIGN_MAX_VCPUS:-96}`), queue
+   `gutibm-gpu-campaign`, and job def `gutibm-cuda-campaign` (8 vCPU / 28 GB /
+   `GPU=1`, `retryStrategy` for Spot reclaims).
+
+3. **Dry-run the array export** (no uploads, no submit — verify count + inputs):
+
+   ```bash
+   source deploy/aws/env.sh
+   python -m gut_ibm_tools.aws_batch_export \
+     experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json \
+     --input-prefix "s3://${INPUT_BUCKET}/campaign/kd_sweep/jobs" \
+     --output-prefix "s3://${OUTPUT_BUCKET}/campaign/kd_sweep/out" \
+     --checkpoint-prefix "s3://${OUTPUT_BUCKET}/campaign/kd_sweep/ckpt" \
+     --job-queue "${JOB_QUEUE_CAMPAIGN}" \
+     --job-definition "${JOB_DEFINITION_CAMPAIGN}" \
+     --dry-run
+   ```
+
+4. **Submit** (drop `--dry-run`): uploads per-index `input.json` and submits one
+   array job of size 12 (`gpu_enabled:true`, `MPI_RANKS=1`, prefixes wired to
+   `entry.sh`):
+
+   ```bash
+   python -m gut_ibm_tools.aws_batch_export \
+     experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json \
+     --input-prefix "s3://${INPUT_BUCKET}/campaign/kd_sweep/jobs" \
+     --output-prefix "s3://${OUTPUT_BUCKET}/campaign/kd_sweep/out" \
+     --checkpoint-prefix "s3://${OUTPUT_BUCKET}/campaign/kd_sweep/ckpt" \
+     --job-queue "${JOB_QUEUE_CAMPAIGN}" \
+     --job-definition "${JOB_DEFINITION_CAMPAIGN}"
+   ```
+
+5. **Watch** the printed array `jobId`:
+
+   ```bash
+   bash deploy/aws/04_watch_job.sh <jobId>
+   ```
+
+Outputs land at `s3://${OUTPUT_BUCKET}/campaign/kd_sweep/out/<index>/output.h5.gz`.
+Start smaller with `batch_baseline.json` (3 runs) to measure cost/wall time first.
+
+### Phase 6 — Optional later
 
 - [ ] GitHub Actions → ECR
 - [ ] Terraform/CDK if the CLI stack becomes painful to recreate
