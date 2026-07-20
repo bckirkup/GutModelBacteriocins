@@ -7,6 +7,7 @@
 #   OUTPUT_S3_URI    s3://bucket/path/output.h5.gz (or set OUTPUT_S3_PREFIX)
 #   OUTPUT_S3_PREFIX s3://bucket/path/jobs         → ${PREFIX}/${INDEX}/output.h5.gz
 #   CHECKPOINT_S3_PREFIX  s3://bucket/.../ckpt/    (optional; per-index if ARRAY)
+#   CHECKPOINT_INTERVAL_SECONDS  checkpoint upload cadence (default 300)
 #   GUTIBM_BINARY    path to gut_ibm (default /opt/gutibm/gut_ibm)
 #   MPI_RANKS        default 1
 #   EXTRA_MPIRUN_ARGS  optional extra flags
@@ -18,7 +19,34 @@ BINARY="${GUTIBM_BINARY:-/opt/gutibm/gut_ibm}"
 MPI_RANKS="${MPI_RANKS:-1}"
 WORK="${GUTIBM_WORK_DIR:-/tmp/gutibm_job}"
 INDEX="${AWS_BATCH_JOB_ARRAY_INDEX:-}"
+CHECKPOINT_INTERVAL_SECONDS="${CHECKPOINT_INTERVAL_SECONDS:-300}"
+CHECKPOINT_NAME="checkpoint.h5"
+SYNC_PID=""
 mkdir -p "${WORK}"
+
+# Upload the newest checkpoint (the working output.h5 already holds the step
+# snapshot groups the C++ side writes; init_from_checkpoint restarts from the
+# latest step group). Best-effort: a mid-write copy just misses the newest group.
+upload_checkpoint() {
+  [[ -n "${CHECKPOINT_S3_PREFIX:-}" && -f "${WORK}/output.h5" ]] || return 0
+  aws s3 cp "${WORK}/output.h5" "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}" >/dev/null 2>&1 || true
+}
+
+checkpoint_sync_loop() {
+  while true; do
+    sleep "${CHECKPOINT_INTERVAL_SECONDS}"
+    upload_checkpoint
+  done
+}
+
+stop_checkpoint_sync() {
+  if [[ -n "${SYNC_PID}" ]]; then
+    kill "${SYNC_PID}" 2>/dev/null || true
+    wait "${SYNC_PID}" 2>/dev/null || true
+    SYNC_PID=""
+  fi
+}
+trap stop_checkpoint_sync EXIT
 
 if [[ -z "${INPUT_S3_URI:-}" && -n "${INPUT_S3_PREFIX:-}" && -n "${INDEX}" ]]; then
   INPUT_S3_URI="${INPUT_S3_PREFIX%/}/${INDEX}/input.json"
@@ -65,9 +93,19 @@ cfg.setdefault("gpu_enabled", True)
 (work / "input.json").write_text(json.dumps(cfg, indent=2) + "\n")
 PY
 
+if [[ -n "${CHECKPOINT_S3_PREFIX:-}" ]]; then
+  echo "Checkpoint sync -> ${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME} every ${CHECKPOINT_INTERVAL_SECONDS}s"
+  checkpoint_sync_loop &
+  SYNC_PID=$!
+fi
+
 echo "Running ${BINARY} (mpi_ranks=${MPI_RANKS})"
 # shellcheck disable=SC2086
 mpirun -np "${MPI_RANKS}" ${EXTRA_MPIRUN_ARGS:-} "${BINARY}" "${WORK}/input.json"
+
+stop_checkpoint_sync
+# Final checkpoint push so a retry after a clean-but-incomplete exit can resume.
+upload_checkpoint
 
 if [[ -f "${WORK}/output.h5" ]]; then
   gzip -c "${WORK}/output.h5" > "${WORK}/output.h5.gz"

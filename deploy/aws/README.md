@@ -105,10 +105,47 @@ If the image is already in ECR from your laptop:
 | `02_setup_practice_stack.sh` | S3 + IAM + Batch CE/queue/job def (On-Demand `g4dn.xlarge`) |
 | `03_submit_smoke.sh` | Upload `smoke_gpu.json` + submit one job |
 | `04_watch_job.sh` | Poll until SUCCEEDED/FAILED |
-| `entry.sh` | Container entrypoint (S3 → `gut_ibm` → S3) |
+| `05_setup_campaign_stack.sh` | Spot GPU CE + queue + job def for Stage 3 (`g5.2xlarge`, one GPU/run) |
+| `entry.sh` | Container entrypoint (S3 → `gut_ibm` → S3; checkpoint sync) |
 | `Dockerfile` | CUDA + MPI + HDF5 image |
 | `submit_array_example.sh` | Later: array jobs (after smoke works) |
 | `policies/*.json` | IAM trust documents (no paste required) |
+
+## Use your own S3 bucket (optional)
+
+`env.sh` derives `gutibm-inputs-<account>` / `gutibm-outputs-<account>` by
+default, but you can point at an **existing bucket you own** — it is never
+recreated (the `head-bucket` guard in `02` skips `aws s3 mb`), and the job role
+policy is scoped to whatever these resolve to. Export **before** running the
+scripts:
+
+| Env var | Effect |
+|---------|--------|
+| `BUCKET` | One shared bucket for both inputs and outputs (use key prefixes, e.g. `s3://my-bucket/gutibm/jobs`) |
+| `INPUT_BUCKET` / `OUTPUT_BUCKET` | Set input/output buckets individually |
+
+```bash
+export BUCKET=my-existing-bucket
+bash deploy/aws/02_setup_practice_stack.sh
+```
+
+## Campaign (Stage 3) commands
+
+After the smoke path works, run the campaign stack (details + full export
+commands in [`docs/AWS_BATCH.md`](../../docs/AWS_BATCH.md) “Phase 5”). Region
+`us-east-1`, one GPU instance per run, Spot + checkpoint resilience.
+
+| Step | Command |
+|------|---------|
+| Roles + bucket (idempotent) | `bash deploy/aws/02_setup_practice_stack.sh` |
+| Campaign Spot GPU stack | `bash deploy/aws/05_setup_campaign_stack.sh` |
+| Export dry-run (parity check) | `python -m gut_ibm_tools.aws_batch_export experiments/diversity_campaign/stage3_campaign/batch_kd_sweep.json --input-prefix … --output-prefix … --job-queue "$JOB_QUEUE_CAMPAIGN" --job-definition "$JOB_DEFINITION_CAMPAIGN" --dry-run` |
+| Export + submit array | same command without `--dry-run` (add `--checkpoint-prefix …` for Spot resume) |
+| Watch | `bash deploy/aws/04_watch_job.sh <jobId>` |
+
+Overridable campaign env vars: `CAMPAIGN_MAX_VCPUS` (default 96),
+`CAMPAIGN_ONDEMAND_FALLBACK=1` (add On-Demand fallback CE),
+`COMPUTE_ENV_CAMPAIGN` / `JOB_QUEUE_CAMPAIGN` / `JOB_DEFINITION_CAMPAIGN`.
 
 ## After smoke works
 
