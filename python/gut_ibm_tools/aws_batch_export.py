@@ -57,7 +57,8 @@ class ExportResult:
 
 
 def _default_s3_put(content: str, s3_uri: str) -> None:
-    subprocess.run(  # noqa: S603 - fixed argv, no shell
+    # Fixed argv, no shell; content is uploaded via stdin.
+    subprocess.run(
         [AWS, "s3", "cp", "-", s3_uri],
         input=content,
         text=True,
@@ -66,7 +67,8 @@ def _default_s3_put(content: str, s3_uri: str) -> None:
 
 
 def _default_submit(argv: list[str]) -> str:
-    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+    # Fixed argv (assembled in _submit_argv), no shell.
+    result = subprocess.run(
         argv,
         capture_output=True,
         text=True,

@@ -40,6 +40,11 @@ QUEUE = "gutibm-gpu-campaign"
 JOB_DEF = "gutibm-cuda-campaign"
 
 
+def _argv_flags(argv: list[str]) -> dict[str, str]:
+    """Map each ``--flag`` to the token that follows it (safe, no index math)."""
+    return {flag: value for flag, value in zip(argv, argv[1:]) if flag.startswith("--")}
+
+
 class _Recorder:
     def __init__(self, submit_stdout: str = '{"jobId": "abc-123"}') -> None:
         self.uploads: list[tuple[str, str]] = []
@@ -143,10 +148,9 @@ def test_upload_uris_and_submit_overrides() -> None:
     ]
     assert result.input_uris == [f"{INPUT_PREFIX}/{i}/input.json" for i in range(12)]
     assert len(recorder.submits) == 1
-    argv = recorder.submits[0]
-    assert "--array-properties" in argv
-    assert argv[argv.index("--array-properties") + 1] == "size=12"
-    overrides = json.loads(argv[argv.index("--container-overrides") + 1])
+    flags = _argv_flags(recorder.submits[0])
+    assert flags["--array-properties"] == "size=12"
+    overrides = json.loads(flags["--container-overrides"])
     env = {item["name"]: item["value"] for item in overrides["environment"]}
     assert env[ENV_INPUT_PREFIX] == INPUT_PREFIX
     assert env[ENV_OUTPUT_PREFIX] == OUTPUT_PREFIX
@@ -173,8 +177,8 @@ def test_dry_run_uploads_nothing() -> None:
 def test_checkpoint_prefix_optional() -> None:
     recorder = _Recorder()
     _run(BASELINE, recorder, checkpoint=None)
-    argv = recorder.submits[0]
-    overrides = json.loads(argv[argv.index("--container-overrides") + 1])
+    flags = _argv_flags(recorder.submits[0])
+    overrides = json.loads(flags["--container-overrides"])
     names = {item["name"] for item in overrides["environment"]}
     assert ENV_CHECKPOINT_PREFIX not in names
 
