@@ -33,6 +33,9 @@ while true; do
       echo "Open Batch → Jobs → this job → CloudWatch logs in the AWS Console." >&2
       exit 1
       ;;
+    SUBMITTED|PENDING|RUNNABLE|STARTING|RUNNING|*)
+      # Keep polling for known in-progress statuses and any unexpected value.
+      sleep 20
+      ;;
   esac
-  sleep 20
 done
