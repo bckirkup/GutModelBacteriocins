@@ -126,53 +126,42 @@ Do **not** start with Stage 3. Order:
      --config experiments/smoke_gpu.json --mpi-ranks 1
    ```
 
-2. **Build & push image** (same muscle memory as Crusher→ECR):
+2. **Build & push image** (same muscle memory as Crusher→ECR).
+
+   Prefer the paste-safe script (avoids fragile multi-line CLI / JSON):
+
+   ```bash
+   bash deploy/aws/01_push_image.sh
+   ```
+
+   Manual equivalent (quote `CUDA_ARCHS`; trailing spaces after `\` break pastes):
 
    ```bash
    export AWS_REGION=us-east-1
    ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
    REPO="${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/gutibm"
    aws ecr create-repository --repository-name gutibm --region "$AWS_REGION" || true
-   aws ecr get-login-password --region "$AWS_REGION" \
-     | docker login --username AWS --password-stdin "${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-   docker build -f deploy/aws/Dockerfile -t gutibm:cuda \
-     --build-arg CUDA_ARCHS=75;86;89 .
+   aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+   docker build -f deploy/aws/Dockerfile -t gutibm:cuda --build-arg 'CUDA_ARCHS=75;86;89' .
    docker tag gutibm:cuda "${REPO}:cuda"
    docker push "${REPO}:cuda"
    ```
 
-3. **One-time Batch GPU stack via CLI** (create once; details/JSON under
-   `deploy/aws/` as they stabilize):
-   - VPC subnets + SG (egress to ECR/S3; no inbound SSH needed)
-   - Instance profile + Spot fleet role + Batch service role
-   - Managed compute environment: `type=SPOT` (or On-Demand for the *first*
-     green run), `ec2Configuration.imageType=ECS_AL2023_NVIDIA`,
-     `instanceTypes=["g4dn.xlarge"]`, `minvCpus=0`
-   - Job queue → that CE
-   - Job definition: image `${REPO}:cuda`, `resourceRequirements` GPU=1,
-     vCPU/memory for `g4dn.xlarge`, job role with S3 access
+3. **One-time Batch GPU stack** — prefer:
+
+   ```bash
+   bash deploy/aws/02_setup_practice_stack.sh
+   ```
+
+   That creates S3 buckets, IAM roles, On-Demand `g4dn.xlarge` CE
+   (`ECS_AL2023_NVIDIA`), queue `gutibm-gpu-practice`, and job definition
+   `gutibm-cuda`. Flip the CE to Spot after the first green run if desired.
 
 4. **Upload smoke config & submit one job**:
 
    ```bash
-   aws s3 mb "s3://gutibm-inputs-${ACCOUNT}" --region "$AWS_REGION" || true
-   aws s3 mb "s3://gutibm-outputs-${ACCOUNT}" --region "$AWS_REGION" || true
-   aws s3 cp experiments/smoke_gpu.json \
-     "s3://gutibm-inputs-${ACCOUNT}/practice/smoke_gpu/input.json"
-
-   aws batch submit-job \
-     --job-name gutibm-smoke-gpu \
-     --job-queue gutibm-gpu-practice \
-     --job-definition gutibm-cuda \
-     --container-overrides "{
-       \"environment\": [
-         {\"name\": \"INPUT_S3_URI\",
-          \"value\": \"s3://gutibm-inputs-${ACCOUNT}/practice/smoke_gpu/input.json\"},
-         {\"name\": \"OUTPUT_S3_URI\",
-          \"value\": \"s3://gutibm-outputs-${ACCOUNT}/practice/smoke_gpu/output.h5.gz\"},
-         {\"name\": \"MPI_RANKS\", \"value\": \"1\"}
-       ]
-     }"
+   bash deploy/aws/03_submit_smoke.sh
+   bash deploy/aws/04_watch_job.sh <jobId>
    ```
 
 5. **Pass criteria for Phase 1:**
@@ -240,9 +229,10 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
 ### Phase 1 — CUDA smoke on Batch (current focus)
 
 - [x] Draft `deploy/aws/Dockerfile`, `entry.sh`
-- [ ] Create ECR repo + push `gutibm:cuda` from laptop
-- [ ] Create Batch GPU CE/queue/job definition in `us-east-1` (CLI)
-- [ ] One On-Demand or Spot job with `smoke_gpu.json`
+- [x] Paste-safe practice scripts (`deploy/aws/01`–`04` + README)
+- [ ] Create ECR repo + push `gutibm:cuda` from laptop (`01_push_image.sh`)
+- [ ] Create Batch GPU CE/queue/job definition in `us-east-1` (`02_setup_practice_stack.sh`)
+- [ ] One On-Demand or Spot job with `smoke_gpu.json` (`03` + `04`)
 - [ ] Confirm GPU path in logs + S3 output
 - [ ] Phase 1b: array of 2 from `smoke_gpu_batch.json`
 
@@ -282,7 +272,7 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
 | `docs/BATCH_RUNNER.md` | Local sweep semantics to mirror as array jobs |
 | `docs/SCALING.md` | Agent/grid scaling |
 | `src/gpu/README.md` | Device kernels |
-| `deploy/aws/` | Dockerfile / entrypoint drafts |
+| `deploy/aws/` | Dockerfile, entrypoint, **paste-safe** `01`–`04` practice scripts |
 
 ## Measured results
 
