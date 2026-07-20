@@ -45,6 +45,12 @@ def _argv_flags(argv: list[str]) -> dict[str, str]:
     return {flag: value for flag, value in zip(argv, argv[1:]) if flag.startswith("--")}
 
 
+def _only_submit_flags(recorder: _Recorder) -> dict[str, str]:
+    """Assert exactly one submit and return its ``--flag`` map (no list indexing)."""
+    (argv,) = recorder.submits
+    return _argv_flags(argv)
+
+
 class _Recorder:
     def __init__(self, submit_stdout: str = '{"jobId": "abc-123"}') -> None:
         self.uploads: list[tuple[str, str]] = []
@@ -147,8 +153,7 @@ def test_upload_uris_and_submit_overrides() -> None:
         f"{INPUT_PREFIX}/{i}/input.json" for i in range(12)
     ]
     assert result.input_uris == [f"{INPUT_PREFIX}/{i}/input.json" for i in range(12)]
-    assert len(recorder.submits) == 1
-    flags = _argv_flags(recorder.submits[0])
+    flags = _only_submit_flags(recorder)
     assert flags["--array-properties"] == "size=12"
     overrides = json.loads(flags["--container-overrides"])
     env = {item["name"]: item["value"] for item in overrides["environment"]}
@@ -177,7 +182,7 @@ def test_dry_run_uploads_nothing() -> None:
 def test_checkpoint_prefix_optional() -> None:
     recorder = _Recorder()
     _run(BASELINE, recorder, checkpoint=None)
-    flags = _argv_flags(recorder.submits[0])
+    flags = _only_submit_flags(recorder)
     overrides = json.loads(flags["--container-overrides"])
     names = {item["name"] for item in overrides["environment"]}
     assert ENV_CHECKPOINT_PREFIX not in names
