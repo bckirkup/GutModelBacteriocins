@@ -12,8 +12,16 @@ ARG UBUNTU_VERSION=22.04
 FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build
 
 ENV DEBIAN_FRONTEND=noninteractive
+# The code is C++20 and uses <format>, which needs GCC 13+. The ubuntu 22.04 base
+# ships GCC 11, so pull gcc-13/g++-13 from the toolchain PPA and build with them
+# (CUDA 12.4 supports GCC 13 as host compiler). CI passes because its runner
+# already ships GCC 13.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential cmake g++ \
+      build-essential cmake \
+      software-properties-common \
+ && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
+ && apt-get update && apt-get install -y --no-install-recommends \
+      gcc-13 g++-13 \
       openmpi-bin libopenmpi-dev \
       libhdf5-mpi-dev \
       ca-certificates \
@@ -23,23 +31,33 @@ ARG CUDA_ARCHS=75;86;89
 WORKDIR /src
 COPY . .
 
-RUN CC=gcc CXX=g++ cmake -B build \
+RUN CC=gcc-13 CXX=g++-13 cmake -B build \
       -DGUTIBM_USE_MPI=ON \
       -DGUTIBM_USE_HDF5=ON \
       -DGUTIBM_USE_CUDA=ON \
       -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_CUDA_HOST_COMPILER=g++-13 \
       -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
  && cmake --build build -j"$(nproc)" --target gut_ibm
 
 FROM nvidia/cuda:${CUDA_VERSION}-runtime-ubuntu${UBUNTU_VERSION}
 
 ENV DEBIAN_FRONTEND=noninteractive
+# The binary is built with GCC 13, so the runtime needs GCC 13's libstdc++6
+# (for the GLIBCXX_3.4.3x symbols pulled in by <format>); the 22.04 base ships
+# GCC 11's. Upgrade it from the same toolchain PPA.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+      software-properties-common \
+ && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
+ && apt-get update && apt-get install -y --no-install-recommends \
+      libstdc++6 \
       openmpi-bin \
       libhdf5-openmpi-103-1 \
       python3 \
       awscli \
       ca-certificates \
+ && apt-get purge -y software-properties-common \
+ && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --create-home --uid 1000 --shell /bin/bash gutibm
 
