@@ -40,12 +40,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 \
       awscli \
       ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home --uid 1000 --shell /bin/bash gutibm
 
 WORKDIR /opt/gutibm
-COPY --from=build /src/build/gut_ibm /opt/gutibm/gut_ibm
-COPY deploy/aws/entry.sh /opt/gutibm/entry.sh
+COPY --from=build --chown=gutibm:gutibm /src/build/gut_ibm /opt/gutibm/gut_ibm
+COPY --chown=gutibm:gutibm deploy/aws/entry.sh /opt/gutibm/entry.sh
 RUN chmod +x /opt/gutibm/gut_ibm /opt/gutibm/entry.sh
 
+# Non-root runtime (docker:S6471). Work dir defaults to /tmp which is writable.
+USER gutibm
 ENV GUTIBM_BINARY=/opt/gutibm/gut_ibm
 ENTRYPOINT ["/opt/gutibm/entry.sh"]
