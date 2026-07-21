@@ -26,9 +26,12 @@ $REPO      = "$ACCOUNT.dkr.ecr.$($env:AWS_REGION).amazonaws.com/gutibm"
 $IMAGE_URI = "${REPO}:cuda"
 
 # Bucket resolution: BUCKET (shared) > INPUT_BUCKET/OUTPUT_BUCKET > derived defaults.
+# When BUCKET is set it is authoritative and overrides INPUT_BUCKET/OUTPUT_BUCKET,
+# so re-sourcing in the same PowerShell session after changing BUCKET always wins
+# (a persistent session otherwise keeps the previously-set INPUT_BUCKET/OUTPUT_BUCKET).
 if ($env:BUCKET) {
-  if (-not $env:INPUT_BUCKET)  { $env:INPUT_BUCKET  = $env:BUCKET }
-  if (-not $env:OUTPUT_BUCKET) { $env:OUTPUT_BUCKET = $env:BUCKET }
+  $env:INPUT_BUCKET  = $env:BUCKET
+  $env:OUTPUT_BUCKET = $env:BUCKET
 } else {
   if (-not $env:INPUT_BUCKET)  { $env:INPUT_BUCKET  = "gutibm-inputs-$ACCOUNT" }
   if (-not $env:OUTPUT_BUCKET) { $env:OUTPUT_BUCKET = "gutibm-outputs-$ACCOUNT" }
