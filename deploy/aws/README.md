@@ -26,6 +26,21 @@ Long commands with `\` line continuations fail easily when:
 
 CloudShell is great for AWS CLI, but **cannot build** the CUDA Docker image. Do step 01 on a machine with Docker.
 
+### Windows / PowerShell
+
+If you run on Windows without bash, use the PowerShell ports instead of the `.sh` scripts
+(same behavior, region pinned to `us-east-1`, `$env:BUCKET` respected):
+
+```powershell
+$env:BUCKET = "your-existing-bucket"   # optional
+.\deploy\aws\02_setup_practice_stack.ps1
+.\deploy\aws\05_setup_campaign_stack.ps1
+```
+
+`env.ps1` is the equivalent of `env.sh` (dot-source it to inspect resolved names:
+`. .\deploy\aws\env.ps1`). The image build is just `docker build`/`docker push`
+(see step 01), which is identical on any OS.
+
 ## One-time laptop prep
 
 1. Install Docker Desktop and start it.
