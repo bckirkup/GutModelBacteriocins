@@ -1,0 +1,5 @@
+# Shell scripts must be LF even when checked out on Windows: the AWS image copies
+# deploy/aws/entry.sh in and runs it, and a CRLF shebang (`#!/usr/bin/env bash\r`)
+# makes the container fail with exit 127 ("bash\r: No such file or directory").
+*.sh text eol=lf
+deploy/aws/entry.sh text eol=lf

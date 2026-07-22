@@ -66,7 +66,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /opt/gutibm
 COPY --from=build --chown=gutibm:gutibm /src/build/gut_ibm /opt/gutibm/gut_ibm
 COPY --chown=gutibm:gutibm deploy/aws/entry.sh /opt/gutibm/entry.sh
-RUN chmod +x /opt/gutibm/gut_ibm /opt/gutibm/entry.sh
+# Strip CR in case entry.sh was checked out with Windows CRLF endings: a `\r` in
+# the shebang makes the container exit 127 ("/usr/bin/env: 'bash\r': not found").
+RUN sed -i 's/\r$//' /opt/gutibm/entry.sh \
+ && chmod +x /opt/gutibm/gut_ibm /opt/gutibm/entry.sh
 
 # Non-root runtime (docker:S6471). Work dir defaults to /tmp which is writable.
 USER gutibm
