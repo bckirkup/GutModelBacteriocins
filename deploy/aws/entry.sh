@@ -17,6 +17,8 @@
 #   MEMORY_GUARD             1 (default) = graceful stop when free RAM/VRAM is low
 #   MEMORY_MIN_AVAILABLE_MB  host/cgroup free-RAM threshold to stop (default 2048)
 #   GPU_MIN_FREE_MB          nvidia free-VRAM threshold to stop (default 512; 0=skip)
+#   REQUIRE_GPU              1 = fail the job if the run log has no "GPU: ON" line
+#                            (guards against a silent CUDA→CPU fallback; default 0)
 
 set -euo pipefail
 
@@ -29,6 +31,7 @@ CHECKPOINT_INTERVAL_SECONDS="${CHECKPOINT_INTERVAL_SECONDS:-300}"
 MEMORY_GUARD="${MEMORY_GUARD:-1}"
 MEMORY_MIN_AVAILABLE_MB="${MEMORY_MIN_AVAILABLE_MB:-2048}"
 GPU_MIN_FREE_MB="${GPU_MIN_FREE_MB:-512}"
+REQUIRE_GPU="${REQUIRE_GPU:-0}"
 CHECKPOINT_NAME="checkpoint.h5"
 STATUS_NAME="status.json"
 SYNC_PID=""
@@ -472,6 +475,20 @@ if [[ "${RUN_EXIT_CODE}" -ne 0 ]]; then
   upload_status
   echo "gut_ibm exited with ${RUN_EXIT_CODE}" >&2
   exit "${RUN_EXIT_CODE}"
+fi
+
+# Guard against a silent CUDA→CPU fallback: gut_ibm exits 0 and writes HDF5 even
+# when GPU init fails, so a green Batch job does not by itself prove the GPU path
+# ran. When REQUIRE_GPU=1, insist on the "GPU: ON" banner from simulation.cpp.
+if [[ "${REQUIRE_GPU}" == "1" ]]; then
+  if grep -qE 'GPU: ON' "${RUN_LOG}"; then
+    echo "GPU activation confirmed (REQUIRE_GPU=1)"
+  else
+    write_status_json "failed"
+    upload_status
+    echo "REQUIRE_GPU=1 but no 'GPU: ON' line in run log — CUDA fell back to CPU" >&2
+    exit 42
+  fi
 fi
 
 if [[ -f "${WORK}/output.h5" ]]; then

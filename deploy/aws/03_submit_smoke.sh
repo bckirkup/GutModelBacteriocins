@@ -32,7 +32,8 @@ cat > "${OVERRIDES}" <<EOF
   "environment": [
     {"name": "INPUT_S3_URI", "value": "${INPUT_URI}"},
     {"name": "OUTPUT_S3_URI", "value": "${OUTPUT_URI}"},
-    {"name": "MPI_RANKS", "value": "1"}
+    {"name": "MPI_RANKS", "value": "1"},
+    {"name": "REQUIRE_GPU", "value": "1"}
   ]
 }
 EOF

@@ -54,6 +54,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && apt-get update && apt-get install -y --no-install-recommends \
       awscli \
       ca-certificates \
+      curl \
+      gzip \
       libhdf5-openmpi-103-1 \
       libstdc++6 \
       openmpi-bin \
