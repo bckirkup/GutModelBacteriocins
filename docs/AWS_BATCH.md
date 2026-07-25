@@ -228,6 +228,11 @@ gut-ibm-aws-status <jobId> \
   --checkpoint-prefix "s3://${OUTPUT_BUCKET}/campaign/kd_sweep/ckpt" \
   --array-index 0
 
+# Post-hoc array QA: download outputs, join seeds, assert fingerprints differ
+gut-ibm-aws-qa \
+  --output-prefix "s3://${OUTPUT_BUCKET}/practice/smoke_gpu_batch/out" \
+  --input-prefix  "s3://${INPUT_BUCKET}/practice/smoke_gpu_batch/jobs"
+
 # Watch loop (uses gut-ibm-aws-status when installed)
 CHECKPOINT_S3_PREFIX="s3://${OUTPUT_BUCKET}/campaign/kd_sweep/ckpt/0/" \
   bash deploy/aws/04_watch_job.sh <jobId>
@@ -453,5 +458,5 @@ Start smaller with `batch_baseline.json` (3 runs) to measure cost/wall time firs
 |--------|----------|-------|-----------|-------|-------|
 | `smoke_gpu` (first) | `g4dn.xlarge` | No (OD) | ~3.1 s container; ~4 min queue→done | ~$0.05 (0.1 h OD table) | `1fa5bae6-…`; GPU ON; had JSON legacy fallback before parser fix |
 | `smoke_gpu` (parser fix) | `g4dn.xlarge` | No (OD) | ~3.3 s container | ~$0.05 | `04cc2257-…`; no JSON warning; 20 agents from nested strains; `REQUIRE_GPU=1` |
-| `smoke_gpu_batch` ×2 | `g4dn.xlarge` | No (OD) | ~4–5 s / child | ~$0.05 | Array `f12ed608-…`; both SUCCEEDED; seeds 4092/4093 → final agents 13 vs 12 |
+| `smoke_gpu_batch` ×2 | `g4dn.xlarge` | No (OD) | ~4–5 s / child | ~$0.05 | Array `f12ed608-…`; both SUCCEEDED; seeds 4092/4093 → final agents 13 vs 12; `gut-ibm-aws-qa` fingerprints differ |
 | `3a_baseline` seed | `g5.2xlarge` | | | | Phase 2 |

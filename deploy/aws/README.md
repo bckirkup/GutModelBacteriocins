@@ -145,6 +145,21 @@ gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 --array-size 12
 state. Full triage table: [`docs/AWS_BATCH.md`](../../docs/AWS_BATCH.md)
 “Phase Observability”.
 
+### Array output QA (after SUCCEEDED)
+
+Prove the artifacts are useful, not just green:
+
+```bash
+python -m gut_ibm_tools.aws_batch_qa \
+  --output-prefix "s3://${OUTPUT_BUCKET}/practice/smoke_gpu_batch/out" \
+  --input-prefix  "s3://${INPUT_BUCKET}/practice/smoke_gpu_batch/jobs" \
+  --work-dir batch_qa_work
+```
+
+This downloads each `output.h5.gz`, joins seed from the matching `input.json`,
+prints final agents / death events / a summary fingerprint, and **fails** if
+fingerprints collide (seed-sensitivity gate for Stage 3 arrays).
+
 ## Use your own S3 bucket (optional)
 
 `env.sh` derives `gutibm-inputs-<account>` / `gutibm-outputs-<account>` by
