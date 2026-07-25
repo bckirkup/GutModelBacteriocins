@@ -344,6 +344,9 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
 - [x] `gut-ibm-aws-status` + richer `04_watch_job.sh`
 - [x] `gut-ibm-aws-estimate` checked-in us-east-1 price table
 - [x] Usefulness triage warnings (population / low μ / stale heartbeat / Spot)
+- [x] Memory guard: MemAvailable/cgroup/GPU free in `status.json`; graceful stop before hard OOM
+- [x] Pinned `ruff==0.16.0` + `python/ruff.toml` (known-first-party) so lint CI is deterministic
+- [x] Golden + sensitivity tests for estimate / status / memory helpers
 
 ### Phase 5 — campaign deploy (concrete)
 

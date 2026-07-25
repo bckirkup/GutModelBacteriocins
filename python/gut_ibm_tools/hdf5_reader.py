@@ -34,11 +34,11 @@ class GutIBMData:
             self._file.close()
             self._file = None
 
-    def __enter__(self) -> "GutIBMData":
+    def __enter__(self) -> GutIBMData:
         self.open()
         return self
 
-    def __exit__(self, *args: Any) -> None:
+    def __exit__(self, *args: object) -> None:
         self.close()
 
     @property

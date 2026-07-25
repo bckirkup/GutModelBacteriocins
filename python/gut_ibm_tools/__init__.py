@@ -9,8 +9,8 @@ from .hdf5_reader import GutIBMData
 __version__ = "0.1.0"
 
 __all__ = [
-    "__version__",
     "GutIBMData",
+    "__version__",
     "analysis",
     "fish_observation",
     "validation",

@@ -4,8 +4,6 @@ Visualization utilities for GutIBM output.
 
 from __future__ import annotations
 
-from typing import Optional
-
 import numpy as np
 
 try:
@@ -25,7 +23,7 @@ def plot_agent_positions(
     data: GutIBMData,
     step: str,
     projection: str = "xy",
-    output: Optional[str] = None,
+    output: str | None = None,
 ) -> None:
     """Plot agent positions colored by type."""
     if not HAS_MPL:
@@ -62,7 +60,7 @@ def plot_agent_positions(
 
 def plot_population_timeseries(
     data: GutIBMData,
-    output: Optional[str] = None,
+    output: str | None = None,
 ) -> None:
     """Plot population size over time."""
     if not HAS_MPL:
@@ -86,7 +84,7 @@ def plot_population_timeseries(
 
 def plot_lineage_composition(
     data: GutIBMData,
-    output: Optional[str] = None,
+    output: str | None = None,
 ) -> None:
     """Plot lineage composition (stacked area) over time."""
     if not HAS_MPL:

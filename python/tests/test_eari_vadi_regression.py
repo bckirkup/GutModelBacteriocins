@@ -19,7 +19,6 @@ from gut_ibm_tools.validation_regression import (
     run_validation,
 )
 
-
 FIXTURES = Path(__file__).parent / "fixtures"
 
 

@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import time
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -36,8 +37,8 @@ from .batch_manifest import (
     pending_jobs,
     save_manifest,
 )
-from .path_utils import PathValidationError, prepare_output_file
 from .hdf5_gzip import maybe_gzip_hdf5_file
+from .path_utils import PathValidationError, prepare_output_file
 from .validation_regression import run_validation
 
 EXIT_INTERRUPTED = 130
@@ -181,10 +182,10 @@ def _run_single_job(
     index: int,
     total: int,
 ) -> int:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     def utc_now() -> str:
-        return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        return datetime.now(UTC).replace(microsecond=0).isoformat()
 
     job.status = JOB_STATUS_RUNNING
     job.started_at = utc_now()

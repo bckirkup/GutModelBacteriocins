@@ -18,8 +18,8 @@ from typing import Any
 import numpy as np
 
 from .fish_observation import flatten_fish_metrics, validate_fish_observability
-from .path_utils import validate_input_path, write_json_file
 from .hdf5_reader import GutIBMData
+from .path_utils import validate_input_path, write_json_file
 from .validation import validate_genomic_signatures, validate_spatial_signatures
 
 # Documented validation targets (full-length simulations).

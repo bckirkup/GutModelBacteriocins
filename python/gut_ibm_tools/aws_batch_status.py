@@ -12,9 +12,10 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable
+from datetime import UTC, datetime
+from typing import Any
 
 AWS = "aws"
 STATUS_FILE_NAME = "status.json"
@@ -122,6 +123,98 @@ def resolve_status_uri(
     return None
 
 
+def _warn_population(status: dict[str, Any]) -> UsefulnessWarning | None:
+    agents = status.get("global_agents")
+    if isinstance(agents, (int, float)) and agents <= 1:
+        return UsefulnessWarning(
+            "population_collapse",
+            f"global_agents={agents} — run may have hit the population stop",
+        )
+    return None
+
+
+def _warn_mu(status: dict[str, Any], mu_warn: float) -> UsefulnessWarning | None:
+    mu_avg = status.get("mu_avg")
+    if isinstance(mu_avg, (int, float)) and mu_avg < mu_warn:
+        return UsefulnessWarning(
+            "low_mu",
+            f"mu_avg={mu_avg} below warn threshold {mu_warn} (washout risk)",
+        )
+    return None
+
+
+def _warn_slow_progress(status: dict[str, Any]) -> UsefulnessWarning | None:
+    pct = status.get("pct")
+    wall = status.get("wall_elapsed_s")
+    if (
+        isinstance(pct, (int, float))
+        and isinstance(wall, (int, float))
+        and wall > 3600
+        and pct < 0.5
+    ):
+        return UsefulnessWarning(
+            "slow_progress",
+            f"only {pct}% complete after {wall:.0f}s wall time",
+        )
+    return None
+
+
+def _warn_stale(
+    status: dict[str, Any],
+    stale_heartbeat_s: float,
+    now: datetime | None,
+) -> UsefulnessWarning | None:
+    updated = status.get("updated_at")
+    if not isinstance(updated, str) or not updated:
+        return None
+    try:
+        stamp = datetime.strptime(updated, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+    except ValueError:
+        return None
+    ref = now or datetime.now(UTC)
+    age = (ref - stamp).total_seconds()
+    if age <= stale_heartbeat_s:
+        return None
+    return UsefulnessWarning(
+        "stale_heartbeat",
+        f"status.json age {age:.0f}s > {stale_heartbeat_s:.0f}s "
+        "(process may be hung, OOM-killed, or Spot-killed without flush)",
+    )
+
+
+def _warn_memory(
+    status: dict[str, Any],
+    mem_warn_mb: float,
+    gpu_warn_mb: float,
+) -> list[UsefulnessWarning]:
+    if status.get("memory_pressure"):
+        return [
+            UsefulnessWarning(
+                "memory_pressure",
+                "status.json reports memory_pressure=true "
+                "(graceful stop; resize instance before resume)",
+            )
+        ]
+    out: list[UsefulnessWarning] = []
+    mem_free = status.get("mem_effective_free_mb")
+    if isinstance(mem_free, (int, float)) and mem_free < mem_warn_mb:
+        out.append(
+            UsefulnessWarning(
+                "low_memory",
+                f"mem_effective_free_mb={mem_free} below warn {mem_warn_mb}",
+            )
+        )
+    gpu_free = status.get("gpu_free_mb")
+    if isinstance(gpu_free, (int, float)) and gpu_free < gpu_warn_mb:
+        out.append(
+            UsefulnessWarning(
+                "low_gpu_memory",
+                f"gpu_free_mb={gpu_free} below warn {gpu_warn_mb}",
+            )
+        )
+    return out
+
+
 def evaluate_usefulness(
     status: dict[str, Any] | None,
     *,
@@ -132,62 +225,17 @@ def evaluate_usefulness(
     now: datetime | None = None,
 ) -> list[UsefulnessWarning]:
     """Triage hints only — not auto-cancel criteria."""
-    warnings: list[UsefulnessWarning] = []
     if not status:
-        return warnings
-
-    agents = status.get("global_agents")
-    if isinstance(agents, (int, float)) and agents <= 1:
-        warnings.append(
-            UsefulnessWarning(
-                "population_collapse",
-                f"global_agents={agents} — run may have hit the population stop",
-            )
-        )
-
-    mu_avg = status.get("mu_avg")
-    if isinstance(mu_avg, (int, float)) and mu_avg < mu_warn:
-        warnings.append(
-            UsefulnessWarning(
-                "low_mu",
-                f"mu_avg={mu_avg} below warn threshold {mu_warn} (washout risk)",
-            )
-        )
-
-    pct = status.get("pct")
-    wall = status.get("wall_elapsed_s")
-    if (
-        isinstance(pct, (int, float))
-        and isinstance(wall, (int, float))
-        and wall > 3600
-        and pct < 0.5
+        return []
+    warnings: list[UsefulnessWarning] = []
+    for maybe in (
+        _warn_population(status),
+        _warn_mu(status, mu_warn),
+        _warn_slow_progress(status),
+        _warn_stale(status, stale_heartbeat_s, now),
     ):
-        warnings.append(
-            UsefulnessWarning(
-                "slow_progress",
-                f"only {pct}% complete after {wall:.0f}s wall time",
-            )
-        )
-
-    updated = status.get("updated_at")
-    if isinstance(updated, str) and updated:
-        try:
-            stamp = datetime.strptime(updated, "%Y-%m-%dT%H:%M:%SZ").replace(
-                tzinfo=timezone.utc
-            )
-            ref = now or datetime.now(timezone.utc)
-            age = (ref - stamp).total_seconds()
-            if age > stale_heartbeat_s:
-                warnings.append(
-                    UsefulnessWarning(
-                        "stale_heartbeat",
-                        f"status.json age {age:.0f}s > {stale_heartbeat_s:.0f}s "
-                        "(process may be hung, OOM-killed, or Spot-killed without flush)",
-                    )
-                )
-        except ValueError:
-            pass
-
+        if maybe is not None:
+            warnings.append(maybe)
     if status.get("spot_interruption"):
         warnings.append(
             UsefulnessWarning(
@@ -195,33 +243,7 @@ def evaluate_usefulness(
                 "status.json reports spot_interruption=true",
             )
         )
-
-    if status.get("memory_pressure"):
-        warnings.append(
-            UsefulnessWarning(
-                "memory_pressure",
-                "status.json reports memory_pressure=true "
-                "(graceful stop; resize instance before resume)",
-            )
-        )
-    else:
-        mem_free = status.get("mem_effective_free_mb")
-        if isinstance(mem_free, (int, float)) and mem_free < mem_warn_mb:
-            warnings.append(
-                UsefulnessWarning(
-                    "low_memory",
-                    f"mem_effective_free_mb={mem_free} below warn {mem_warn_mb}",
-                )
-            )
-        gpu_free = status.get("gpu_free_mb")
-        if isinstance(gpu_free, (int, float)) and gpu_free < gpu_warn_mb:
-            warnings.append(
-                UsefulnessWarning(
-                    "low_gpu_memory",
-                    f"gpu_free_mb={gpu_free} below warn {gpu_warn_mb}",
-                )
-            )
-
+    warnings.extend(_warn_memory(status, mem_warn_mb, gpu_warn_mb))
     return warnings
 
 

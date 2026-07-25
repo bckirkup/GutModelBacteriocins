@@ -1,0 +1,19 @@
+# Ruff config for GutIBM Python tools (discovered when linting python/**).
+# CI runs `ruff check python/` from the repo root — keep known-first-party stable.
+target-version = "py311"
+line-length = 100
+
+[lint]
+# Pin the rule set so floating ruff minors do not suddenly enable B/SIM/PLC/etc.
+# I001 (isort) + RUF100 were the rules that failed CI under ruff 0.16 defaults.
+select = [
+    "E4",
+    "E7",
+    "E9",
+    "F",
+    "I",
+    "RUF100",
+]
+
+[lint.isort]
+known-first-party = ["gut_ibm_tools"]

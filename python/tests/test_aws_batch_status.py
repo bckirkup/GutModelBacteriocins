@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -14,7 +14,6 @@ from gut_ibm_tools.aws_batch_status import (
     parse_progress_line,
     resolve_status_uri,
 )
-
 
 PROGRESS_LINE = (
     "Step 10  t=600s  dt=60s  global_agents=50  local_agents=50  "
@@ -61,7 +60,7 @@ def test_evaluate_usefulness_population_and_spot() -> None:
         "spot_interruption": True,
         "updated_at": "2026-01-01T00:00:00Z",
     }
-    now = datetime(2026, 1, 1, 1, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 1, 1, 1, 0, 0, tzinfo=UTC)
     codes = {w.code for w in evaluate_usefulness(status, now=now)}
     assert "population_collapse" in codes
     assert "low_mu" in codes
@@ -94,6 +93,27 @@ def test_evaluate_usefulness_low_memory_soft_warn() -> None:
     assert "low_memory" in codes
     assert "low_gpu_memory" in codes
     assert "memory_pressure" not in codes
+
+
+def test_mem_warn_threshold_sensitivity() -> None:
+    status = {
+        "memory_pressure": False,
+        "mem_effective_free_mb": 3000,
+        "gpu_free_mb": 8000,
+        "updated_at": "2026-07-25T12:00:00Z",
+    }
+    loose = {w.code for w in evaluate_usefulness(status, mem_warn_mb=2000)}
+    tight = {w.code for w in evaluate_usefulness(status, mem_warn_mb=4000)}
+    assert "low_memory" not in loose
+    assert "low_memory" in tight
+
+
+def test_resolve_status_uri_output_prefix_sensitivity() -> None:
+    bare = resolve_status_uri(output_prefix="s3://b/out")
+    indexed = resolve_status_uri(output_prefix="s3://b/out", array_index=2)
+    assert bare == "s3://b/out/status.json"
+    assert indexed == "s3://b/out/2/status.json"
+    assert bare != indexed
 
 def test_fetch_job_status_combines_batch_and_s3() -> None:
     describe = {

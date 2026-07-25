@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="gut-ibm-tools",
@@ -13,7 +13,7 @@ setup(
     ],
     extras_require={
         "viz": ["matplotlib>=3.5"],
-        "dev": ["pytest>=7.0", "ruff>=0.1"],
+        "dev": ["pytest>=7.0", "ruff==0.16.0"],
     },
     entry_points={
         "console_scripts": [

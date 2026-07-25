@@ -167,19 +167,20 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install ruff pytest
+          pip install "ruff==0.16.0" pytest
           pip install -e "python/.[dev,viz]"
 
       - name: Validate config JSON syntax
         run: bash scripts/validate_config_json.sh
 
       - name: Ruff check
-        run: ruff check python/
+        run: ruff check python/ --config python/ruff.toml
 
       - name: Import check
         run: |
           python -c "from gut_ibm_tools import GutIBMData, validation, analysis, fish_observation; print('gut_ibm_tools OK')"
           python -c "from gut_ibm_tools import batch_runner, batch_config, batch_manifest; print('batch_runner OK')"
+          python -c "from gut_ibm_tools import aws_batch_status, aws_batch_estimate, aws_batch_memory; print('aws_batch OK')"
         working-directory: python
 
       - name: Batch runner dry-run
