@@ -27,7 +27,7 @@
     "enabled": true,
     "schedule": {
       "summary": 1,
-      "agents": 0,
+      "agents": 1,
       "grid": 0,
       "lineage": 0,
       "genome": 0

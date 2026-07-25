@@ -312,6 +312,7 @@ Progress / Spot / cost helpers (local clone with AWS profile):
 ```bash
 gut-ibm-aws-status <jobId> --checkpoint-prefix s3://…/ckpt --array-index 0
 gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 --array-size 12
+gut-ibm-aws-qa --output-prefix s3://…/out --input-prefix s3://…/jobs
 ```
 
 Quick commands:

@@ -21,6 +21,7 @@ setup(
             "gut-ibm-aws-export=gut_ibm_tools.aws_batch_export:main",
             "gut-ibm-aws-status=gut_ibm_tools.aws_batch_status:main",
             "gut-ibm-aws-estimate=gut_ibm_tools.aws_batch_estimate:main",
+            "gut-ibm-aws-qa=gut_ibm_tools.aws_batch_qa:main",
         ],
     },
 )
