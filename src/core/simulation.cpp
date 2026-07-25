@@ -23,6 +23,7 @@
 #include <iostream>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <numeric>
@@ -564,12 +565,38 @@ void Simulation::print_step_profile() const {
 
 namespace {
 constexpr Int kPopulationStopThreshold = 1;
+
+// Progress line fields parsed by deploy/aws/entry.sh into status.json.
+void print_progress_line(Int step_count, Real sim_time, Real dt, Int global_agents,
+                         Int local_agents, Real mu_avg, Real total_time,
+                         double wall_elapsed_s) {
+  const Real pct = (total_time > 0.0) ? (100.0 * sim_time / total_time) : 0.0;
+  const double rate = (wall_elapsed_s > 0.0)
+                          ? static_cast<double>(sim_time) / wall_elapsed_s
+                          : 0.0;
+  double eta_s = 0.0;
+  if (rate > 0.0 && total_time > sim_time) {
+    eta_s = static_cast<double>(total_time - sim_time) / rate;
+  }
+  std::cout << "Step " << step_count
+            << "  t=" << sim_time << "s"
+            << "  dt=" << std::setprecision(3) << dt << "s"
+            << "  global_agents=" << global_agents
+            << "  local_agents=" << local_agents
+            << "  mu_avg=" << mu_avg
+            << "  pct=" << std::setprecision(4) << pct
+            << "  rate=" << std::setprecision(4) << rate
+            << "  eta_s=" << std::setprecision(0) << std::fixed << eta_s
+            << "\n" << std::flush;
+  std::cout.unsetf(std::ios_base::floatfield);
+}
 }  // namespace
 
 void Simulation::run() {
   int rank = domain_.rank();
   Real last_dt = cfg_.time.bio_dt;
   bool stopped_for_population = false;
+  const auto wall_start = std::chrono::steady_clock::now();
 
   // Initial snapshot (step 0, pre-biology)
   if (hdf5_.is_enabled()) {
@@ -612,13 +639,13 @@ void Simulation::run() {
     // Console progress and in-memory lineage snapshots use output_interval (seconds).
     if (clock_.time >= clock_.next_output) {
       if (rank == 0) {
-        std::cout << "Step " << clock_.step_count
-                  << "  t=" << clock_.time << "s"
-                  << "  dt=" << std::setprecision(3) << dt << "s"
-                  << "  global_agents=" << mpi_stats_.global_agent_count
-                  << "  local_agents=" << agents_.size()
-                  << "  mu_avg=" << mpi_stats_.global_mu_avg
-                  << "\n" << std::flush;
+        const double wall_elapsed_s = std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - wall_start).count();
+        print_progress_line(clock_.step_count, clock_.time, dt,
+                            mpi_stats_.global_agent_count,
+                            static_cast<Int>(agents_.size()),
+                            mpi_stats_.global_mu_avg,
+                            cfg_.time.total_time, wall_elapsed_s);
       }
       clock_.next_output += cfg_.time.output_interval;
     }

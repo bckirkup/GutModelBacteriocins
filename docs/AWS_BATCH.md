@@ -183,14 +183,98 @@ checkpoint→S3 resume is solid.
 
 ## Spot interruption strategy
 
-1. Periodic HDF5 checkpoints → S3 prefix per job id.
-2. `entry.sh` already sketches resume via `CHECKPOINT_S3_PREFIX`.
-3. Batch `retryStrategy` for Spot reclaim once exit codes are stable.
-4. Gzip finals before upload (existing habit).
+1. Periodic HDF5 checkpoints → S3 prefix per job (`CHECKPOINT_INTERVAL_SECONDS`, default 300).
+2. `entry.sh` uploads `checkpoint.h5` + `status.json` heartbeat; resumes via `checkpoint_file`.
+3. IMDSv2 poll for `spot/instance-action`: on notice, SIGTERM `gut_ibm` (graceful step finish), flush checkpoint/status, exit so Batch can retry.
+4. Campaign job def `retryStrategy` retries `Host EC2*` reclaim reasons.
+5. Gzip finals before upload (existing habit).
 
 For Phase 1 smokes, Spot reclaim is unlikely to matter (seconds–minutes). Use
 **On-Demand `g4dn.xlarge` for the first green run** if Spot capacity is flaky;
 flip the CE to Spot afterward.
+
+**Checkpoint cadence (Stage 3):** 5–15 minutes balances S3 PUT cost vs lost work.
+Default 300 s is a reasonable start; tighten if reclaim is frequent.
+
+## Phase Observability — progress, usefulness, cost
+
+**Run AWS commands from a local clone with an AWS profile.** This cloud agent
+environment does not manage live Batch jobs.
+
+### What you get while a job is RUNNING
+
+| Signal | Where |
+|--------|--------|
+| `pct=` / `rate=` / `eta_s=` | gut_ibm stdout → CloudWatch (each `output_interval`) |
+| `status.json` heartbeat | S3 beside `checkpoint.h5` (or next to output) |
+| Batch state + reclaim reason | `describe-jobs` / `gut-ibm-aws-status` |
+| Usefulness triage hints | Warnings from `gut-ibm-aws-status` (not auto-cancel) |
+
+Progress line shape (parsed by `entry.sh`):
+
+```text
+Step 10  t=600s  dt=60s  global_agents=50  local_agents=50  mu_avg=5e-4  pct=10  rate=1.2  eta_s=4500
+```
+
+For long campaigns, consider `output_interval` 600 s so CloudWatch and heartbeats
+update more often than the default 3600 s.
+
+### Operator commands
+
+```bash
+# One-screen report (Batch + status.json + Spot / usefulness hints)
+gut-ibm-aws-status <jobId> \
+  --checkpoint-prefix "s3://${OUTPUT_BUCKET}/campaign/kd_sweep/ckpt" \
+  --array-index 0
+
+# Watch loop (uses gut-ibm-aws-status when installed)
+CHECKPOINT_S3_PREFIX="s3://${OUTPUT_BUCKET}/campaign/kd_sweep/ckpt/0/" \
+  bash deploy/aws/04_watch_job.sh <jobId>
+
+# Rough $/run before submit (checked-in us-east-1 table)
+gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 --array-size 12
+gut-ibm-aws-estimate --list-prices
+# Optional interrupt sensitivity:
+gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 \
+  --interrupt-every-hours 6 --checkpoint-overhead-hours 0.25
+```
+
+### Spot reclaim vs crash vs biology failure
+
+| Symptom | Likely cause |
+|---------|----------------|
+| Batch `statusReason` starts with `Host EC2*`; `status.json` has `spot_interruption=true` | Spot reclaim (retry should resume from checkpoint) |
+| `status.json` has `memory_pressure=true` / state `memory_pressure` | Graceful stop before OOM; **do not** auto-retry same size — use larger instance / job-def memory, then resume from checkpoint |
+| Job FAILED, stale `status.json` (age ≫ sync interval), no Spot/memory flags | Hang / hard OOM kill without flush |
+| `global_agents≤1` or population-stop in logs; job SUCCEEDED early | Biology collapse (usefulness warning) |
+| `mu_avg` very low for many heartbeats | Washout-risk triage hint |
+| CUDA init missing / silent CPU fallback in logs | Config/image GPU path problem |
+
+### Memory guard (avoid hard OOM kills)
+
+Job definitions already cap container memory (`14000` practice / `28000` campaign MiB)
+and Stage 3 needs ~8 GB host + ~8 GB VRAM (`experiments/diversity_campaign/README.md`).
+That sizing alone does **not** prevent mid-run growth from being OOM-killed.
+
+`entry.sh` also:
+
+1. Samples `MemAvailable`, cgroup free (Batch limit), and `nvidia-smi` free VRAM into `status.json`.
+2. Before start and each sync interval, if effective free RAM &lt; `MEMORY_MIN_AVAILABLE_MB` (default **2048**) or GPU free &lt; `GPU_MIN_FREE_MB` (default **512**), SIGTERM → checkpoint + `memory_pressure` status → exit **without** Batch Spot-style auto-retry (same box would fail again).
+3. Disable with `MEMORY_GUARD=0`; tune floors via env on the job definition / submit overrides.
+
+`gut-ibm-aws-status` warns on `memory_pressure`, or soft `low_memory` / `low_gpu_memory` when free drops below 4 GiB / 1 GiB.
+
+Usefulness warnings from `gut-ibm-aws-status` are **triage hints only** (v1 does
+not auto-cancel jobs for biology signals).
+
+### Filling the Measured results table
+
+After practice / baseline smokes on a machine with credentials:
+
+1. Note instance type, Spot vs On-Demand, wall time from Batch `startedAt`→`stoppedAt`.
+2. Estimate `$` with `gut-ibm-aws-estimate --wall-hours …` (or multiply wall hours × table rate).
+3. Paste into the Measured table below.
+4. Use those wall hours for campaign cost planning before large arrays.
 
 ## Container
 
@@ -251,6 +335,15 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
 
 - [x] Checkpoint → S3 + auto-resume (`entry.sh` background sync of `output.h5` → `CHECKPOINT_S3_PREFIX`; resume half already existed)
 - [x] Retry policy; Spot-only (or Spot-with-fallback) CE (`05` Spot CE `SPOT_CAPACITY_OPTIMIZED` + `retryStrategy` retrying `Host EC2*`; set `CAMPAIGN_ONDEMAND_FALLBACK=1` for an On-Demand fallback CE)
+- [x] IMDSv2 Spot notice → SIGTERM + checkpoint/status flush (`entry.sh`)
+
+### Phase Observability
+
+- [x] Progress lines: `pct` / `rate` / `eta_s` in `simulation.cpp`
+- [x] S3 `status.json` heartbeat from `entry.sh`
+- [x] `gut-ibm-aws-status` + richer `04_watch_job.sh`
+- [x] `gut-ibm-aws-estimate` checked-in us-east-1 price table
+- [x] Usefulness triage warnings (population / low μ / stale heartbeat / Spot)
 
 ### Phase 5 — campaign deploy (concrete)
 
@@ -323,9 +416,10 @@ Start smaller with `batch_baseline.json` (3 runs) to measure cost/wall time firs
 
 ## Still open (low urgency)
 
-1. **Checkpoint cadence** for 7-day runs (S3 PUT cost vs reclaim loss).
-2. **Whether campaign CE is Spot-only** or 80/20 Spot/On-Demand after smoke.
-3. **Bucket naming** (`gutibm-inputs-<account>` vs a shared research bucket).
+1. Whether campaign CE is Spot-only or 80/20 Spot/On-Demand after smoke.
+2. Bucket naming (`gutibm-inputs-<account>` vs a shared research bucket).
+3. CloudWatch custom metrics / dashboards (heartbeat JSON is enough for v1).
+4. Auto-cancel on usefulness warnings (triage-only today).
 
 ## Relation to existing docs
 
