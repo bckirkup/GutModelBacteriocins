@@ -322,7 +322,10 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
       `1fa5bae6-8860-441b-b1bb-9eeb3c8f31af`)
 - [x] Confirm GPU path in logs + S3 output (`GPU: ON (device 0)`,
       `REQUIRE_GPU=1`, `output.h5.gz` opens in `gut_ibm_tools`)
-- [ ] Phase 1b: array of 2 from `smoke_gpu_batch.json`
+- [x] Parser-fix re-smoke after `\uXXXX` support (`04cc2257-33f3-4bac-930c-205a053d9991`;
+      no legacy-fallback warning; nested `initial_strains` applied)
+- [x] Phase 1b: array of 2 from `smoke_gpu_batch.json`
+      (`f12ed608-efea-4e69-954d-5d6a18988ce3`, both children SUCCEEDED)
 
 ### Phase 2 — Single Stage 3 seed on `g5.2xlarge`
 
@@ -429,11 +432,9 @@ Start smaller with `batch_baseline.json` (3 runs) to measure cost/wall time firs
    `gutibm-inputs/outputs-<account>` allowing `gutibm-batch-job-role`. An admin
    should eventually run `02_setup_practice_stack.sh` (or put the matching
    inline role policy) so identity-based access matches the scripts.
-6. **JSON parse warning on Batch:** the first smoke exposed that Python's
-   config rewrite converts non-ASCII comments to valid `\uXXXX` escapes, which
-   the minimal C++ JSON parser did not accept. `ConfigJson` now decodes standard
-   JSON escapes (including Unicode surrogate pairs); rebuild/push the image and
-   repeat the smoke before trusting nested campaign configs.
+6. ~~**JSON parse warning on Batch**~~ — fixed in `ConfigJson` (`\uXXXX` /
+   surrogate pairs). Re-smoke + Phase 1b array after image push showed no
+   legacy-fallback warning and nested keys applied.
 
 ## Relation to existing docs
 
@@ -450,5 +451,7 @@ Start smaller with `batch_baseline.json` (3 runs) to measure cost/wall time firs
 
 | Config | Instance | Spot? | Wall time | $/run | Notes |
 |--------|----------|-------|-----------|-------|-------|
-| `smoke_gpu` | `g4dn.xlarge` | No (OD) | ~3.1 s container; ~4 min queue→done | ~$0.05 (0.1 h OD table) | Job `1fa5bae6-8860-441b-b1bb-9eeb3c8f31af`; `GPU: ON (device 0)`; `REQUIRE_GPU=1`; HDF5 20×20×10, 3 summary steps |
+| `smoke_gpu` (first) | `g4dn.xlarge` | No (OD) | ~3.1 s container; ~4 min queue→done | ~$0.05 (0.1 h OD table) | `1fa5bae6-…`; GPU ON; had JSON legacy fallback before parser fix |
+| `smoke_gpu` (parser fix) | `g4dn.xlarge` | No (OD) | ~3.3 s container | ~$0.05 | `04cc2257-…`; no JSON warning; 20 agents from nested strains; `REQUIRE_GPU=1` |
+| `smoke_gpu_batch` ×2 | `g4dn.xlarge` | No (OD) | ~4–5 s / child | ~$0.05 | Array `f12ed608-…`; both SUCCEEDED; seeds 4092/4093 → final agents 13 vs 12 |
 | `3a_baseline` seed | `g5.2xlarge` | | | | Phase 2 |
