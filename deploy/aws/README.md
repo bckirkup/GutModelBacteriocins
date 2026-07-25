@@ -121,7 +121,7 @@ If the image is already in ECR from your laptop:
 | `03_submit_smoke.sh` | Upload `smoke_gpu.json` + submit one job |
 | `04_watch_job.sh` | Poll until SUCCEEDED/FAILED; prints `gut-ibm-aws-status` when available |
 | `05_setup_campaign_stack.sh` | Spot GPU CE + queue + job def for Stage 3 (`g5.2xlarge`, one GPU/run) |
-| `entry.sh` | Container entrypoint (S3 → `gut_ibm` → S3; checkpoint + `status.json`; Spot IMDS) |
+| `entry.sh` | Container entrypoint (S3 → `gut_ibm` → S3; checkpoint + `status.json`; Spot IMDS; memory guard) |
 | `Dockerfile` | CUDA + MPI + HDF5 image |
 | `submit_array_example.sh` | Later: array jobs (after smoke works) |
 | `policies/*.json` | IAM trust documents (no paste required) |

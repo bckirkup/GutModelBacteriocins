@@ -70,6 +70,31 @@ def test_evaluate_usefulness_population_and_spot() -> None:
     assert "stale_heartbeat" in codes
 
 
+def test_evaluate_usefulness_memory_pressure() -> None:
+    status = {
+        "memory_pressure": True,
+        "mem_effective_free_mb": 100,
+        "gpu_free_mb": 50,
+        "updated_at": "2026-07-25T12:00:00Z",
+    }
+    codes = {w.code for w in evaluate_usefulness(status)}
+    assert "memory_pressure" in codes
+    # Pressure flag supersedes low_memory soft warnings.
+    assert "low_memory" not in codes
+
+
+def test_evaluate_usefulness_low_memory_soft_warn() -> None:
+    status = {
+        "memory_pressure": False,
+        "mem_effective_free_mb": 1500,
+        "gpu_free_mb": 200,
+        "updated_at": "2026-07-25T12:00:00Z",
+    }
+    codes = {w.code for w in evaluate_usefulness(status)}
+    assert "low_memory" in codes
+    assert "low_gpu_memory" in codes
+    assert "memory_pressure" not in codes
+
 def test_fetch_job_status_combines_batch_and_s3() -> None:
     describe = {
         "jobs": [

@@ -21,6 +21,8 @@ STATUS_FILE_NAME = "status.json"
 HOST_EC2_PREFIX = "Host EC2"
 DEFAULT_MU_WARN = 1.0e-5
 DEFAULT_STALE_HEARTBEAT_S = 900.0
+DEFAULT_MEM_WARN_MB = 4096.0
+DEFAULT_GPU_WARN_MB = 1024.0
 
 # Callable: argv -> stdout text (injected in tests).
 AwsRunner = Callable[[list[str]], str]
@@ -125,6 +127,8 @@ def evaluate_usefulness(
     *,
     mu_warn: float = DEFAULT_MU_WARN,
     stale_heartbeat_s: float = DEFAULT_STALE_HEARTBEAT_S,
+    mem_warn_mb: float = DEFAULT_MEM_WARN_MB,
+    gpu_warn_mb: float = DEFAULT_GPU_WARN_MB,
     now: datetime | None = None,
 ) -> list[UsefulnessWarning]:
     """Triage hints only — not auto-cancel criteria."""
@@ -178,7 +182,7 @@ def evaluate_usefulness(
                     UsefulnessWarning(
                         "stale_heartbeat",
                         f"status.json age {age:.0f}s > {stale_heartbeat_s:.0f}s "
-                        "(process may be hung or Spot-killed without flush)",
+                        "(process may be hung, OOM-killed, or Spot-killed without flush)",
                     )
                 )
         except ValueError:
@@ -191,6 +195,32 @@ def evaluate_usefulness(
                 "status.json reports spot_interruption=true",
             )
         )
+
+    if status.get("memory_pressure"):
+        warnings.append(
+            UsefulnessWarning(
+                "memory_pressure",
+                "status.json reports memory_pressure=true "
+                "(graceful stop; resize instance before resume)",
+            )
+        )
+    else:
+        mem_free = status.get("mem_effective_free_mb")
+        if isinstance(mem_free, (int, float)) and mem_free < mem_warn_mb:
+            warnings.append(
+                UsefulnessWarning(
+                    "low_memory",
+                    f"mem_effective_free_mb={mem_free} below warn {mem_warn_mb}",
+                )
+            )
+        gpu_free = status.get("gpu_free_mb")
+        if isinstance(gpu_free, (int, float)) and gpu_free < gpu_warn_mb:
+            warnings.append(
+                UsefulnessWarning(
+                    "low_gpu_memory",
+                    f"gpu_free_mb={gpu_free} below warn {gpu_warn_mb}",
+                )
+            )
 
     return warnings
 
@@ -333,6 +363,9 @@ def format_report(report: JobStatusReport) -> str:
                 f"updated_at:      {sj.get('updated_at')}",
                 f"resume:          {sj.get('resume_from_checkpoint')}",
                 f"spot_flag:       {sj.get('spot_interruption')}",
+                f"mem_free_mb:     {sj.get('mem_effective_free_mb')}",
+                f"gpu_free_mb:     {sj.get('gpu_free_mb')}",
+                f"mem_pressure:    {sj.get('memory_pressure')}",
             ]
         )
     else:

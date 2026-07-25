@@ -244,13 +244,28 @@ gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 \
 | Symptom | Likely cause |
 |---------|----------------|
 | Batch `statusReason` starts with `Host EC2*`; `status.json` has `spot_interruption=true` | Spot reclaim (retry should resume from checkpoint) |
-| Job FAILED, stale `status.json` (age ≫ sync interval), no Spot flag | Hang/OOM/kill without graceful flush |
+| `status.json` has `memory_pressure=true` / state `memory_pressure` | Graceful stop before OOM; **do not** auto-retry same size — use larger instance / job-def memory, then resume from checkpoint |
+| Job FAILED, stale `status.json` (age ≫ sync interval), no Spot/memory flags | Hang / hard OOM kill without flush |
 | `global_agents≤1` or population-stop in logs; job SUCCEEDED early | Biology collapse (usefulness warning) |
 | `mu_avg` very low for many heartbeats | Washout-risk triage hint |
 | CUDA init missing / silent CPU fallback in logs | Config/image GPU path problem |
 
+### Memory guard (avoid hard OOM kills)
+
+Job definitions already cap container memory (`14000` practice / `28000` campaign MiB)
+and Stage 3 needs ~8 GB host + ~8 GB VRAM (`experiments/diversity_campaign/README.md`).
+That sizing alone does **not** prevent mid-run growth from being OOM-killed.
+
+`entry.sh` also:
+
+1. Samples `MemAvailable`, cgroup free (Batch limit), and `nvidia-smi` free VRAM into `status.json`.
+2. Before start and each sync interval, if effective free RAM &lt; `MEMORY_MIN_AVAILABLE_MB` (default **2048**) or GPU free &lt; `GPU_MIN_FREE_MB` (default **512**), SIGTERM → checkpoint + `memory_pressure` status → exit **without** Batch Spot-style auto-retry (same box would fail again).
+3. Disable with `MEMORY_GUARD=0`; tune floors via env on the job definition / submit overrides.
+
+`gut-ibm-aws-status` warns on `memory_pressure`, or soft `low_memory` / `low_gpu_memory` when free drops below 4 GiB / 1 GiB.
+
 Usefulness warnings from `gut-ibm-aws-status` are **triage hints only** (v1 does
-not auto-cancel jobs).
+not auto-cancel jobs for biology signals).
 
 ### Filling the Measured results table
 

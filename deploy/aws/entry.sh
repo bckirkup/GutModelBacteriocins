@@ -14,6 +14,9 @@
 #   EXTRA_MPIRUN_ARGS  optional extra flags
 #   AWS_BATCH_JOB_ARRAY_INDEX  set automatically for array jobs
 #   AWS_BATCH_JOB_ID           set automatically by Batch
+#   MEMORY_GUARD             1 (default) = graceful stop when free RAM/VRAM is low
+#   MEMORY_MIN_AVAILABLE_MB  host/cgroup free-RAM threshold to stop (default 2048)
+#   GPU_MIN_FREE_MB          nvidia free-VRAM threshold to stop (default 512; 0=skip)
 
 set -euo pipefail
 
@@ -23,14 +26,22 @@ WORK="${GUTIBM_WORK_DIR:-/tmp/gutibm_job}"
 INDEX="${AWS_BATCH_JOB_ARRAY_INDEX:-}"
 JOB_ID="${AWS_BATCH_JOB_ID:-}"
 CHECKPOINT_INTERVAL_SECONDS="${CHECKPOINT_INTERVAL_SECONDS:-300}"
+MEMORY_GUARD="${MEMORY_GUARD:-1}"
+MEMORY_MIN_AVAILABLE_MB="${MEMORY_MIN_AVAILABLE_MB:-2048}"
+GPU_MIN_FREE_MB="${GPU_MIN_FREE_MB:-512}"
 CHECKPOINT_NAME="checkpoint.h5"
 STATUS_NAME="status.json"
 SYNC_PID=""
 MPIRUN_PID=""
 SPOT_NOTICED=0
+MEMORY_PRESSURE=0
 RESUME_FROM_CHECKPOINT=0
 RUN_EXIT_CODE=0
 WALL_START_EPOCH="$(date -u +%s)"
+MEM_AVAILABLE_MB=""
+MEM_CGROUP_FREE_MB=""
+MEM_EFFECTIVE_FREE_MB=""
+GPU_FREE_MB=""
 mkdir -p "${WORK}"
 RUN_LOG="${WORK}/run.log"
 : >"${RUN_LOG}"
@@ -107,9 +118,81 @@ parse_progress_from_log() {
   fi
 }
 
+# Sample host MemAvailable, cgroup free (Batch memory limit), and GPU free VRAM.
+sample_memory() {
+  MEM_AVAILABLE_MB=""
+  MEM_CGROUP_FREE_MB=""
+  MEM_EFFECTIVE_FREE_MB=""
+  GPU_FREE_MB=""
+  if [[ -r /proc/meminfo ]]; then
+    local avail_kb
+    avail_kb="$(awk '/^MemAvailable:/ {print $2; exit}' /proc/meminfo 2>/dev/null || true)"
+    if [[ -n "${avail_kb}" ]]; then
+      MEM_AVAILABLE_MB=$((avail_kb / 1024))
+    fi
+  fi
+  # cgroup v2 (ECS/Batch): memory.max / memory.current are bytes.
+  local cg_max="" cg_cur=""
+  if [[ -r /sys/fs/cgroup/memory.max ]]; then
+    cg_max="$(cat /sys/fs/cgroup/memory.max 2>/dev/null || true)"
+    cg_cur="$(cat /sys/fs/cgroup/memory.current 2>/dev/null || true)"
+  elif [[ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]]; then
+    cg_max="$(cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null || true)"
+    cg_cur="$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || true)"
+  fi
+  if [[ -n "${cg_max}" && "${cg_max}" != "max" && "${cg_max}" =~ ^[0-9]+$ \
+        && -n "${cg_cur}" && "${cg_cur}" =~ ^[0-9]+$ ]]; then
+    # Ignore absurdly large "unlimited" legacy limits (often ~2^63).
+    if (( cg_max < 1000000000000 )); then
+      local free_b=$((cg_max - cg_cur))
+      if (( free_b < 0 )); then free_b=0; fi
+      MEM_CGROUP_FREE_MB=$((free_b / 1024 / 1024))
+    fi
+  fi
+  if [[ -n "${MEM_AVAILABLE_MB}" && -n "${MEM_CGROUP_FREE_MB}" ]]; then
+    if (( MEM_CGROUP_FREE_MB < MEM_AVAILABLE_MB )); then
+      MEM_EFFECTIVE_FREE_MB="${MEM_CGROUP_FREE_MB}"
+    else
+      MEM_EFFECTIVE_FREE_MB="${MEM_AVAILABLE_MB}"
+    fi
+  elif [[ -n "${MEM_CGROUP_FREE_MB}" ]]; then
+    MEM_EFFECTIVE_FREE_MB="${MEM_CGROUP_FREE_MB}"
+  else
+    MEM_EFFECTIVE_FREE_MB="${MEM_AVAILABLE_MB}"
+  fi
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    local gpu_raw
+    gpu_raw="$(nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null \
+      | head -n 1 | tr -d '[:space:]' || true)"
+    if [[ "${gpu_raw}" =~ ^[0-9]+$ ]]; then
+      GPU_FREE_MB="${gpu_raw}"
+    fi
+  fi
+  export MEM_AVAILABLE_MB MEM_CGROUP_FREE_MB MEM_EFFECTIVE_FREE_MB GPU_FREE_MB
+}
+
+# Returns 0 when free host/cgroup RAM or GPU VRAM is below configured floors.
+check_memory_pressure() {
+  [[ "${MEMORY_GUARD}" == "1" ]] || return 1
+  sample_memory
+  if [[ -n "${MEM_EFFECTIVE_FREE_MB}" && "${MEM_EFFECTIVE_FREE_MB}" =~ ^[0-9]+$ ]]; then
+    if (( MEM_EFFECTIVE_FREE_MB < MEMORY_MIN_AVAILABLE_MB )); then
+      echo "Memory pressure: effective free ${MEM_EFFECTIVE_FREE_MB} MiB < ${MEMORY_MIN_AVAILABLE_MB} MiB" >&2
+      return 0
+    fi
+  fi
+  if [[ "${GPU_MIN_FREE_MB}" != "0" && -n "${GPU_FREE_MB}" && "${GPU_FREE_MB}" =~ ^[0-9]+$ ]]; then
+    if (( GPU_FREE_MB < GPU_MIN_FREE_MB )); then
+      echo "GPU memory pressure: free ${GPU_FREE_MB} MiB < ${GPU_MIN_FREE_MB} MiB" >&2
+      return 0
+    fi
+  fi
+  return 1
+}
+
 write_status_json() {
   local state="$1"
-  local status_path="${WORK}/${STATUS_NAME}"
+  sample_memory
   parse_progress_from_log
   local wall_now
   wall_now="$(date -u +%s)"
@@ -132,6 +215,13 @@ write_status_json() {
   GUTIBM_RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT}" \
   GUTIBM_SPOT_INTERRUPTION="${SPOT_NOTICED}" \
   GUTIBM_SPOT_ACTION_TIME="${spot_action}" \
+  GUTIBM_MEMORY_PRESSURE="${MEMORY_PRESSURE}" \
+  GUTIBM_MEM_AVAILABLE_MB="${MEM_AVAILABLE_MB}" \
+  GUTIBM_MEM_CGROUP_FREE_MB="${MEM_CGROUP_FREE_MB}" \
+  GUTIBM_MEM_EFFECTIVE_FREE_MB="${MEM_EFFECTIVE_FREE_MB}" \
+  GUTIBM_GPU_FREE_MB="${GPU_FREE_MB}" \
+  GUTIBM_MEMORY_MIN_AVAILABLE_MB="${MEMORY_MIN_AVAILABLE_MB}" \
+  GUTIBM_GPU_MIN_FREE_MB="${GPU_MIN_FREE_MB}" \
   GUTIBM_EXIT_CODE="${RUN_EXIT_CODE}" \
   python3 - <<'PY'
 import json, os
@@ -152,6 +242,7 @@ def num_or_none(raw):
 
 work = Path(os.environ["GUTIBM_WORK_DIR"])
 spot = os.environ.get("GUTIBM_SPOT_INTERRUPTION", "0") == "1"
+mem_pressure = os.environ.get("GUTIBM_MEMORY_PRESSURE", "0") == "1"
 payload = {
     "job_id": os.environ.get("GUTIBM_JOB_ID") or None,
     "array_index": os.environ.get("GUTIBM_ARRAY_INDEX") or None,
@@ -169,6 +260,13 @@ payload = {
     "resume_from_checkpoint": os.environ.get("GUTIBM_RESUME_FROM_CHECKPOINT", "0") == "1",
     "spot_interruption": spot,
     "spot_action_time": os.environ.get("GUTIBM_SPOT_ACTION_TIME") or None,
+    "memory_pressure": mem_pressure,
+    "mem_available_mb": num_or_none(os.environ.get("GUTIBM_MEM_AVAILABLE_MB", "")),
+    "mem_cgroup_free_mb": num_or_none(os.environ.get("GUTIBM_MEM_CGROUP_FREE_MB", "")),
+    "mem_effective_free_mb": num_or_none(os.environ.get("GUTIBM_MEM_EFFECTIVE_FREE_MB", "")),
+    "gpu_free_mb": num_or_none(os.environ.get("GUTIBM_GPU_FREE_MB", "")),
+    "memory_min_available_mb": num_or_none(os.environ.get("GUTIBM_MEMORY_MIN_AVAILABLE_MB", "")),
+    "gpu_min_free_mb": num_or_none(os.environ.get("GUTIBM_GPU_MIN_FREE_MB", "")),
     "exit_code": num_or_none(os.environ.get("GUTIBM_EXIT_CODE", "")),
     "updated_at": __import__("datetime").datetime.now(
         __import__("datetime").timezone.utc
@@ -220,6 +318,16 @@ checkpoint_sync_loop() {
       request_graceful_stop
       upload_checkpoint
       write_status_json "spot_notice"
+      upload_status
+      return 0
+    fi
+    if check_memory_pressure; then
+      MEMORY_PRESSURE=1
+      write_status_json "memory_pressure"
+      upload_status
+      request_graceful_stop
+      upload_checkpoint
+      write_status_json "memory_pressure"
       upload_status
       return 0
     fi
@@ -302,8 +410,18 @@ PY
 write_status_json "starting"
 upload_status
 
+# Fail fast if the container is already below the free-RAM floor (wrong instance /
+# job-def memory for this grid) before burning GPU time.
+if check_memory_pressure; then
+  MEMORY_PRESSURE=1
+  write_status_json "memory_pressure"
+  upload_status
+  echo "Refusing to start: effective free RAM/VRAM below guard thresholds" >&2
+  exit 137
+fi
+
 if [[ -n "${CHECKPOINT_S3_PREFIX:-}" ]] || [[ -n "$(resolve_status_uri)" ]]; then
-  echo "Status/checkpoint sync every ${CHECKPOINT_INTERVAL_SECONDS}s"
+  echo "Status/checkpoint sync every ${CHECKPOINT_INTERVAL_SECONDS}s (memory guard=${MEMORY_GUARD})"
   checkpoint_sync_loop &
   SYNC_PID=$!
 fi
@@ -333,6 +451,19 @@ if [[ "${SPOT_NOTICED}" -eq 1 ]]; then
     local_exit=1
   fi
   echo "Exiting after Spot notice (exit=${local_exit}) so Batch can retry" >&2
+  exit "${local_exit}"
+fi
+
+if [[ "${MEMORY_PRESSURE}" -eq 1 ]]; then
+  write_status_json "memory_pressure"
+  upload_status
+  # Do NOT rely on Batch auto-retry here — same instance size will OOM again.
+  # Checkpoint is on S3; resume manually on a larger CE / higher memory job def.
+  local_exit="${RUN_EXIT_CODE}"
+  if [[ "${local_exit}" -eq 0 ]]; then
+    local_exit=137
+  fi
+  echo "Exiting after memory pressure (exit=${local_exit}); resize instance before resume" >&2
   exit "${local_exit}"
 fi
 
