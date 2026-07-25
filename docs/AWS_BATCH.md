@@ -3,7 +3,7 @@
 Plan for running production GutIBM jobs on AWS when desktop/WSL cannot finish
 full campaigns (especially Stage 3: 7-day biology, 2 mm domain, GPU chemistry).
 
-**Status:** planning + Phase 1 practice path (Jul 2026).
+**Status:** Phase 1 CUDA smoke green on Batch (Jul 2026); campaign path next.
 **Region (pinned):** `us-east-1` (co-locate ECR, S3, Batch).
 **Primary workload (later):** `experiments/diversity_campaign/stage3_campaign/`.
 **Practice workload (now):** `experiments/smoke_gpu.json` (+ optional
@@ -166,7 +166,8 @@ Do **not** start with Stage 3. Order:
 
 5. **Pass criteria for Phase 1:**
    - Job `SUCCEEDED`
-   - CloudWatch / run log shows GPU init (not silent CPU fallback)
+   - CloudWatch / run log shows GPU init (not silent CPU fallback); smoke
+     submits with `REQUIRE_GPU=1` so missing `GPU: ON` fails the job
    - `output.h5.gz` lands in S3 and gunzips / opens with `gut_ibm_tools`
 
 6. **Phase 1b — tiny array:** expand `smoke_gpu_batch.json` (2 seeds) to two
@@ -310,14 +311,17 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
 - [x] Campaign instance: `g5.2xlarge` (CE also allows `g4dn.2xlarge`)
 - [x] Practice configs: `experiments/smoke_gpu.json`, `smoke_gpu_batch.json`
 
-### Phase 1 — CUDA smoke on Batch (current focus)
+### Phase 1 — CUDA smoke on Batch (done Jul 2026)
 
 - [x] Draft `deploy/aws/Dockerfile`, `entry.sh`
 - [x] Paste-safe practice scripts (`deploy/aws/01`–`04` + README)
-- [ ] Create ECR repo + push `gutibm:cuda` from laptop (`01_push_image.sh`)
-- [ ] Create Batch GPU CE/queue/job definition in `us-east-1` (`02_setup_practice_stack.sh`)
-- [ ] One On-Demand or Spot job with `smoke_gpu.json` (`03` + `04`)
-- [ ] Confirm GPU path in logs + S3 output
+- [x] Create ECR repo + push `gutibm:cuda` from laptop (`01_push_image.sh`)
+- [x] Create Batch GPU CE/queue/job definition in `us-east-1` (`02_setup_practice_stack.sh`
+      previously created CE/JD/roles; PowerUser completed missing ECR/S3/queue)
+- [x] One On-Demand job with `smoke_gpu.json` (`03` + watch; job
+      `1fa5bae6-8860-441b-b1bb-9eeb3c8f31af`)
+- [x] Confirm GPU path in logs + S3 output (`GPU: ON (device 0)`,
+      `REQUIRE_GPU=1`, `output.h5.gz` opens in `gut_ibm_tools`)
 - [ ] Phase 1b: array of 2 from `smoke_gpu_batch.json`
 
 ### Phase 2 — Single Stage 3 seed on `g5.2xlarge`
@@ -420,6 +424,16 @@ Start smaller with `batch_baseline.json` (3 runs) to measure cost/wall time firs
 2. Bucket naming (`gutibm-inputs-<account>` vs a shared research bucket).
 3. CloudWatch custom metrics / dashboards (heartbeat JSON is enough for v1).
 4. Auto-cancel on usefulness warnings (triage-only today).
+5. **PowerUser IAM gap:** SSO `PowerUserAccess` cannot `iam:PutRolePolicy`. For the
+   Phase 1 smoke, S3 access was granted with **bucket policies** on
+   `gutibm-inputs/outputs-<account>` allowing `gutibm-batch-job-role`. An admin
+   should eventually run `02_setup_practice_stack.sh` (or put the matching
+   inline role policy) so identity-based access matches the scripts.
+6. **JSON parse warning on Batch:** the first smoke exposed that Python's
+   config rewrite converts non-ASCII comments to valid `\uXXXX` escapes, which
+   the minimal C++ JSON parser did not accept. `ConfigJson` now decodes standard
+   JSON escapes (including Unicode surrogate pairs); rebuild/push the image and
+   repeat the smoke before trusting nested campaign configs.
 
 ## Relation to existing docs
 
@@ -434,9 +448,7 @@ Start smaller with `batch_baseline.json` (3 runs) to measure cost/wall time firs
 
 ## Measured results
 
-_Fill in after Phase 1 / 2:_
-
 | Config | Instance | Spot? | Wall time | $/run | Notes |
 |--------|----------|-------|-----------|-------|-------|
-| `smoke_gpu` | `g4dn.xlarge` | | | | Phase 1 |
+| `smoke_gpu` | `g4dn.xlarge` | No (OD) | ~3.1 s container; ~4 min queue→done | ~$0.05 (0.1 h OD table) | Job `1fa5bae6-8860-441b-b1bb-9eeb3c8f31af`; `GPU: ON (device 0)`; `REQUIRE_GPU=1`; HDF5 20×20×10, 3 summary steps |
 | `3a_baseline` seed | `g5.2xlarge` | | | | Phase 2 |

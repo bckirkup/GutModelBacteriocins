@@ -144,9 +144,10 @@ void test_fixes_fixture() {
 
 void test_json_document_parser() {
   const std::string json = R"({
-    "_comment": "inline JSON document test",
+    "_comment": "inline JSON document test \u2014 batch rewrite \ud83d\ude80",
     "total_time": 1234,
     "seed": 99,
+    "hdf5_file": "batch\u0020output.h5",
     "peristaltic_enabled": true,
     "initial_strains": [
       {"type": 1, "count": 3, "mu_max": 5e-4, "plasmids": ["ColE1"], "conjugative": false}
@@ -163,6 +164,7 @@ void test_json_document_parser() {
   SimulationConfig cfg = InputParser::parse(path);
   assert(std::abs(cfg.time.total_time - 1234.0) < 1e-6);
   assert(cfg.seed == 99);
+  assert(cfg.hdf5.filename == "batch output.h5");
   assert(cfg.advection.peristaltic_enabled == true);
   assert(cfg.initial_strains.size() == 1);
   assert(cfg.initial_strains[0].plasmids[0] == "ColE1");

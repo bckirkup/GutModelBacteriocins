@@ -108,7 +108,9 @@ If the image is already in ECR from your laptop:
 ## Pass checklist
 
 - Batch job status = `SUCCEEDED`
-- CloudWatch logs show the run (GPU path, not a silent CPU fallback)
+- CloudWatch / run log shows `GPU: ON (device …)` (not a silent CPU fallback).
+  Smoke jobs set `REQUIRE_GPU=1` so the entrypoint fails the job (exit 42) if
+  that banner is missing; with that guard, Batch `SUCCEEDED` is enough to trust CUDA.
 - `output.h5.gz` exists under `s3://gutibm-outputs-<account>/practice/...`
 
 ## Scripts in this folder
@@ -118,10 +120,10 @@ If the image is already in ECR from your laptop:
 | `env.sh` | Shared account/region/bucket names (sourced by others) |
 | `01_push_image.sh` | Local Docker build → ECR |
 | `02_setup_practice_stack.sh` | S3 + IAM + Batch CE/queue/job def (On-Demand `g4dn.xlarge`) |
-| `03_submit_smoke.sh` | Upload `smoke_gpu.json` + submit one job |
+| `03_submit_smoke.sh` | Upload `smoke_gpu.json` + submit one job (`REQUIRE_GPU=1`) |
 | `04_watch_job.sh` | Poll until SUCCEEDED/FAILED; prints `gut-ibm-aws-status` when available |
 | `05_setup_campaign_stack.sh` | Spot GPU CE + queue + job def for Stage 3 (`g5.2xlarge`, one GPU/run) |
-| `entry.sh` | Container entrypoint (S3 → `gut_ibm` → S3; checkpoint + `status.json`; Spot IMDS; memory guard) |
+| `entry.sh` | Container entrypoint (S3 → `gut_ibm` → S3; checkpoint + `status.json`; Spot IMDS; memory guard; optional `REQUIRE_GPU`) |
 | `Dockerfile` | CUDA + MPI + HDF5 image |
 | `submit_array_example.sh` | Later: array jobs (after smoke works) |
 | `policies/*.json` | IAM trust documents (no paste required) |

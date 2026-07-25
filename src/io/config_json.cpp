@@ -5,6 +5,7 @@
 #include "config_json.h"
 
 #include <cctype>
+#include <cstdint>
 #include <iostream>
 #include <sstream>
 #include <string_view>
@@ -18,6 +19,31 @@ namespace {
 class JsonCursor;
 
 void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor& cursor);
+
+int hex_value(char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  throw ConfigError("invalid hex digit in JSON unicode escape");
+}
+
+void append_utf8(std::string& out, uint32_t codepoint) {
+  if (codepoint <= 0x7f) {
+    out.push_back(static_cast<char>(codepoint));
+  } else if (codepoint <= 0x7ff) {
+    out.push_back(static_cast<char>(0xc0 | (codepoint >> 6)));
+    out.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+  } else if (codepoint <= 0xffff) {
+    out.push_back(static_cast<char>(0xe0 | (codepoint >> 12)));
+    out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+    out.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+  } else {
+    out.push_back(static_cast<char>(0xf0 | (codepoint >> 18)));
+    out.push_back(static_cast<char>(0x80 | ((codepoint >> 12) & 0x3f)));
+    out.push_back(static_cast<char>(0x80 | ((codepoint >> 6) & 0x3f)));
+    out.push_back(static_cast<char>(0x80 | (codepoint & 0x3f)));
+  }
+}
 
 class JsonCursor {
  public:
@@ -52,14 +78,57 @@ class JsonCursor {
         if (pos_ >= text_.size()) throw ConfigError("truncated JSON escape");
         char esc = text_[pos_++];
         if (esc == '"' || esc == '\\' || esc == '/') out.push_back(esc);
+        else if (esc == 'b') out.push_back('\b');
+        else if (esc == 'f') out.push_back('\f');
         else if (esc == 'n') out.push_back('\n');
+        else if (esc == 'r') out.push_back('\r');
         else if (esc == 't') out.push_back('\t');
+        else if (esc == 'u') append_unicode_escape(out);
         else throw ConfigError("unsupported JSON escape");
       } else {
+        if (static_cast<unsigned char>(c) < 0x20) {
+          throw ConfigError("unescaped control character in JSON string");
+        }
         out.push_back(c);
       }
     }
     throw ConfigError("unterminated JSON string");
+  }
+
+  uint16_t parse_unicode_code_unit() {
+    if (text_.size() - pos_ < 4) {
+      throw ConfigError("truncated JSON unicode escape");
+    }
+    uint16_t code_unit = 0;
+    for (int i = 0; i < 4; ++i) {
+      code_unit = static_cast<uint16_t>(
+          (code_unit << 4) | hex_value(text_[pos_++]));
+    }
+    return code_unit;
+  }
+
+  void append_unicode_escape(std::string& out) {
+    const uint16_t first = parse_unicode_code_unit();
+    if (first >= 0xd800 && first <= 0xdbff) {
+      if (text_.size() - pos_ < 6 || text_[pos_] != '\\' ||
+          text_[pos_ + 1] != 'u') {
+        throw ConfigError("missing low surrogate in JSON unicode escape");
+      }
+      pos_ += 2;
+      const uint16_t second = parse_unicode_code_unit();
+      if (second < 0xdc00 || second > 0xdfff) {
+        throw ConfigError("invalid low surrogate in JSON unicode escape");
+      }
+      const uint32_t codepoint =
+          0x10000u + ((static_cast<uint32_t>(first) - 0xd800u) << 10) +
+          (static_cast<uint32_t>(second) - 0xdc00u);
+      append_utf8(out, codepoint);
+      return;
+    }
+    if (first >= 0xdc00 && first <= 0xdfff) {
+      throw ConfigError("unexpected low surrogate in JSON unicode escape");
+    }
+    append_utf8(out, first);
   }
 
   Real parse_number() {
