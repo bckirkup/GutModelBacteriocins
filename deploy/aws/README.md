@@ -119,12 +119,29 @@ If the image is already in ECR from your laptop:
 | `01_push_image.sh` | Local Docker build → ECR |
 | `02_setup_practice_stack.sh` | S3 + IAM + Batch CE/queue/job def (On-Demand `g4dn.xlarge`) |
 | `03_submit_smoke.sh` | Upload `smoke_gpu.json` + submit one job |
-| `04_watch_job.sh` | Poll until SUCCEEDED/FAILED |
+| `04_watch_job.sh` | Poll until SUCCEEDED/FAILED; prints `gut-ibm-aws-status` when available |
 | `05_setup_campaign_stack.sh` | Spot GPU CE + queue + job def for Stage 3 (`g5.2xlarge`, one GPU/run) |
-| `entry.sh` | Container entrypoint (S3 → `gut_ibm` → S3; checkpoint sync) |
+| `entry.sh` | Container entrypoint (S3 → `gut_ibm` → S3; checkpoint + `status.json`; Spot IMDS) |
 | `Dockerfile` | CUDA + MPI + HDF5 image |
 | `submit_array_example.sh` | Later: array jobs (after smoke works) |
 | `policies/*.json` | IAM trust documents (no paste required) |
+
+## Progress and cost (local clone + AWS profile)
+
+After `pip install -e ./python` (or `.[dev]`):
+
+```bash
+# Live job report (Batch + S3 status.json)
+gut-ibm-aws-status <jobId> --checkpoint-prefix "s3://${OUTPUT_BUCKET}/…/ckpt" --array-index 0
+
+# Rough campaign cost before submit
+gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 --array-size 12
+```
+
+`04_watch_job.sh` also accepts `CHECKPOINT_S3_PREFIX` / `STATUS_S3_URI` /
+`OUTPUT_S3_PREFIX` so each poll shows sim `%` and Spot hints, not only Batch
+state. Full triage table: [`docs/AWS_BATCH.md`](../../docs/AWS_BATCH.md)
+“Phase Observability”.
 
 ## Use your own S3 bucket (optional)
 

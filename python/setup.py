@@ -19,6 +19,8 @@ setup(
         "console_scripts": [
             "gut-ibm-batch=gut_ibm_tools.batch_runner:main",
             "gut-ibm-aws-export=gut_ibm_tools.aws_batch_export:main",
+            "gut-ibm-aws-status=gut_ibm_tools.aws_batch_status:main",
+            "gut-ibm-aws-estimate=gut_ibm_tools.aws_batch_estimate:main",
         ],
     },
 )

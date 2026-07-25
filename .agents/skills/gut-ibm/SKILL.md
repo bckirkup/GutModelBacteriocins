@@ -307,6 +307,12 @@ For config keys and parser fixtures, extend `test_config_diversity.cpp` so disti
 Resumable parameter scans: see [docs/BATCH_RUNNER.md](../../docs/BATCH_RUNNER.md).
 For **AWS Batch Spot + CUDA** campaign runs (Stage 3 scale), see
 [docs/AWS_BATCH.md](../../docs/AWS_BATCH.md) and draft bits under `deploy/aws/`.
+Progress / Spot / cost helpers (local clone with AWS profile):
+
+```bash
+gut-ibm-aws-status <jobId> --checkpoint-prefix s3://…/ckpt --array-index 0
+gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 --array-size 12
+```
 
 Quick commands:
 
