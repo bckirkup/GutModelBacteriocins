@@ -410,7 +410,7 @@ choose_json() {
       SELECTED_JSON="${files[$((choice - 1))]}"
       return
     fi
-    echo "Invalid selection."
+    echo "$INVALID_SELECTION_MSG"
   done
 }
 
@@ -462,7 +462,7 @@ choose_campaign_stage() {
       SELECTED_STAGE="${stages[$((choice - 1))]}"
       return
     fi
-    echo "Invalid selection."
+    echo "$INVALID_SELECTION_MSG"
   done
 }
 
@@ -654,6 +654,7 @@ gzip_hdf5_file() {
   [[ -f "$hdf5_path" ]] || return 0
   case "$hdf5_path" in
     *.h5.gz) return 0 ;;
+    *) ;;
   esac
   require_command gzip
   local before after
@@ -743,7 +744,7 @@ prompt_batch_action() {
       2) echo dry-run; return ;;
       3) echo resume; return ;;
       4) echo status; return ;;
-      *) echo "Invalid selection." >&2 ;;
+      *) echo "$INVALID_SELECTION_MSG" >&2 ;;
     esac
   done
 }
@@ -778,7 +779,7 @@ interactive_menu() {
         return
         ;;
       *)
-        echo "Invalid selection."
+        echo "$INVALID_SELECTION_MSG"
         ;;
     esac
   done
