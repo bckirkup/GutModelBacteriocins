@@ -5,7 +5,7 @@ HDF5 reader for GutIBM output (Spec 4 layered schema).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Self
 
 import h5py
 import numpy as np
@@ -34,7 +34,7 @@ class GutIBMData:
             self._file.close()
             self._file = None
 
-    def __enter__(self) -> GutIBMData:
+    def __enter__(self) -> Self:
         self.open()
         return self
 

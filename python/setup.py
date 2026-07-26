@@ -5,7 +5,7 @@ setup(
     version="0.1.0",
     description="Analysis toolkit for GutIBM Enterobacteriaceae simulation",
     packages=find_packages(),
-    python_requires=">=3.9",
+    python_requires=">=3.11",
     install_requires=[
         "numpy>=1.21",
         "h5py>=3.0",
