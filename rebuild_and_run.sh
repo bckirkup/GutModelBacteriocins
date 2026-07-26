@@ -12,6 +12,7 @@ RUN_MODE="${GUTIBM_RUN_MODE:-prompt}"
 CONFIG_PATH="${GUTIBM_CONFIG:-}"
 MPI_RANKS="${GUTIBM_MPI_RANKS:-}"
 BATCH_ACTION="${GUTIBM_BATCH_ACTION:-run}"
+INVALID_SELECTION_MSG="Invalid selection."
 # Post-run whole-file gzip of HDF5 outputs (not HDF5-internal grid compression).
 GZIP_HDF5="${GUTIBM_GZIP_HDF5:-true}"
 REUSE_BUILD=false

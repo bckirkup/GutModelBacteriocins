@@ -22,7 +22,6 @@ from typing import Any
 
 from .hdf5_reader import GutIBMData
 from .path_utils import (
-    PathValidationError,
     prepare_output_directory,
     prepare_output_file,
     validate_path_syntax,
@@ -300,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
             work_dir=Path(args.work_dir),
             require_distinct=not args.allow_identical,
         )
-    except (AssertionError, FileNotFoundError, PathValidationError, ValueError, OSError) as exc:
+    except (AssertionError, ValueError, OSError) as exc:
         print(f"aws batch qa error: {exc}", file=sys.stderr)
         return 2
     print(format_report(report))

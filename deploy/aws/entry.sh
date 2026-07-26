@@ -41,6 +41,7 @@ CHECKPOINT_NAME="checkpoint.h5"
 LATEST_NAME="latest.json"
 STATUS_NAME="status.json"
 STATUS_FAILED="failed"
+STATUS_MEMORY_PRESSURE="memory_pressure"
 RESTART_DIR="${WORK}/restart"
 SYNC_PID=""
 MPIRUN_PID=""
@@ -256,13 +257,12 @@ sample_memory() {
     cg_cur="$(cat /sys/fs/cgroup/memory/memory.usage_in_bytes 2>/dev/null || true)"
   fi
   if [[ -n "${cg_max}" && "${cg_max}" != "max" && "${cg_max}" =~ ^[0-9]+$ \
-        && -n "${cg_cur}" && "${cg_cur}" =~ ^[0-9]+$ ]]; then
+        && -n "${cg_cur}" && "${cg_cur}" =~ ^[0-9]+$ ]] \
+     && (( cg_max < 1000000000000 )); then
     # Ignore absurdly large "unlimited" legacy limits (often ~2^63).
-    if (( cg_max < 1000000000000 )); then
-      local free_b=$((cg_max - cg_cur))
-      if (( free_b < 0 )); then free_b=0; fi
-      MEM_CGROUP_FREE_MB=$((free_b / 1024 / 1024))
-    fi
+    local free_b=$((cg_max - cg_cur))
+    if (( free_b < 0 )); then free_b=0; fi
+    MEM_CGROUP_FREE_MB=$((free_b / 1024 / 1024))
   fi
   if [[ -n "${MEM_AVAILABLE_MB}" && -n "${MEM_CGROUP_FREE_MB}" ]]; then
     if (( MEM_CGROUP_FREE_MB < MEM_AVAILABLE_MB )); then
@@ -290,17 +290,15 @@ sample_memory() {
 check_memory_pressure() {
   [[ "${MEMORY_GUARD}" == "1" ]] || return 1
   sample_memory
-  if [[ -n "${MEM_EFFECTIVE_FREE_MB}" && "${MEM_EFFECTIVE_FREE_MB}" =~ ^[0-9]+$ ]]; then
-    if (( MEM_EFFECTIVE_FREE_MB < MEMORY_MIN_AVAILABLE_MB )); then
-      echo "Memory pressure: effective free ${MEM_EFFECTIVE_FREE_MB} MiB < ${MEMORY_MIN_AVAILABLE_MB} MiB" >&2
-      return 0
-    fi
+  if [[ -n "${MEM_EFFECTIVE_FREE_MB}" && "${MEM_EFFECTIVE_FREE_MB}" =~ ^[0-9]+$ ]] \
+     && (( MEM_EFFECTIVE_FREE_MB < MEMORY_MIN_AVAILABLE_MB )); then
+    echo "Memory pressure: effective free ${MEM_EFFECTIVE_FREE_MB} MiB < ${MEMORY_MIN_AVAILABLE_MB} MiB" >&2
+    return 0
   fi
-  if [[ "${GPU_MIN_FREE_MB}" != "0" && -n "${GPU_FREE_MB}" && "${GPU_FREE_MB}" =~ ^[0-9]+$ ]]; then
-    if (( GPU_FREE_MB < GPU_MIN_FREE_MB )); then
-      echo "GPU memory pressure: free ${GPU_FREE_MB} MiB < ${GPU_MIN_FREE_MB} MiB" >&2
-      return 0
-    fi
+  if [[ "${GPU_MIN_FREE_MB}" != "0" && -n "${GPU_FREE_MB}" && "${GPU_FREE_MB}" =~ ^[0-9]+$ ]] \
+     && (( GPU_FREE_MB < GPU_MIN_FREE_MB )); then
+    echo "GPU memory pressure: free ${GPU_FREE_MB} MiB < ${GPU_MIN_FREE_MB} MiB" >&2
+    return 0
   fi
   return 1
 }

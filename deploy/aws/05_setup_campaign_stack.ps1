@@ -33,7 +33,7 @@ function Wait-CeValid {
   $status = ""
   for ($i = 0; $i -lt 60; $i++) {
     $status = (aws batch describe-compute-environments --compute-environments $Ce --query 'computeEnvironments[0].status' --output text --region $env:AWS_REGION).Trim()
-    Write-Host "  status=$status"
+    Write-Output "  status=$status"
     if ($status -eq "VALID") { return }
     if ($status -eq "INVALID") {
       aws batch describe-compute-environments --compute-environments $Ce --query 'computeEnvironments[0].statusReason' --output text --region $env:AWS_REGION

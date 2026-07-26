@@ -50,6 +50,7 @@ def lookup_price(
     region: str = DEFAULT_REGION,
     price_table: dict[str, dict[str, float]] | None = None,
 ) -> float:
+    _ = region  # reserved for live regional pricing; table is region-agnostic today
     table = price_table or PRICE_TABLE_USD_PER_HOUR
     if instance_type not in table:
         known = ", ".join(sorted(table))

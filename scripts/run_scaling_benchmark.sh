@@ -41,9 +41,11 @@ write_config() {
   local agents="$1"
   local use_fmm="$2"
   local out="$3"
+  local total_time_s
+  total_time_s="$(awk -v n="$STEPS" 'BEGIN { print n * 60 }')"
   cat >"$out" <<EOF
 {
-  "total_time": $((STEPS * 60)),
+  "total_time": $total_time_s,
   "bio_dt": 60,
   "output_interval": 1.0e9,
   "seed": 55,

@@ -667,7 +667,7 @@ void Simulation::run() {
             std::chrono::steady_clock::now() - wall_start).count();
         print_progress_line(clock_.step_count, clock_.time, dt,
                             mpi_stats_.global_agent_count,
-                            static_cast<Int>(agents_.size()),
+                            agents_.size(),
                             mpi_stats_.global_mu_avg,
                             cfg_.time.total_time, wall_elapsed_s);
       }
@@ -1079,7 +1079,7 @@ void mpi_wait_all(int nreq, MPI_Request* reqs) {
 void mpi_exchange_sizes_distinct(const MpiSlabPeers& peers,
                                  const MpiDistinctTags& tags,
                                  MpiPayloadSizes& sizes) {
-  MPI_Request reqs[4];
+  std::array<MPI_Request, 4> reqs{};
   int nreq = 0;
   if (peers.rank_lo >= 0) {
     MPI_Isend(&sizes.send_lo, 1, MPI_INT, peers.rank_lo, tags.lo_send,
@@ -1093,13 +1093,13 @@ void mpi_exchange_sizes_distinct(const MpiSlabPeers& peers,
     MPI_Irecv(&sizes.recv_hi, 1, MPI_INT, peers.rank_hi, tags.hi_recv,
               MPI_COMM_WORLD, &reqs[nreq++]);
   }
-  mpi_wait_all(nreq, reqs);
+  mpi_wait_all(nreq, reqs.data());
 }
 
 void mpi_exchange_buffers_distinct(const MpiSlabPeers& peers,
                                    const MpiDistinctTags& tags,
                                    const MpiBufferXfer& xfer) {
-  MPI_Request reqs[4];
+  std::array<MPI_Request, 4> reqs{};
   int nreq = 0;
   // Stable address for zero-count ops (MPI does not dereference count==0).
   char sink = 0;
@@ -1128,7 +1128,7 @@ void mpi_exchange_buffers_distinct(const MpiSlabPeers& peers,
     MPI_Irecv(recv_hi_ptr, xfer.recv_hi_size, MPI_CHAR, peers.rank_hi,
               tags.hi_recv, MPI_COMM_WORLD, &reqs[nreq++]);
   }
-  mpi_wait_all(nreq, reqs);
+  mpi_wait_all(nreq, reqs.data());
 }
 
 void mpi_exchange_sizes_collapsed(Int neighbor, int tag, MpiPayloadSizes& sizes) {

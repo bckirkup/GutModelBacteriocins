@@ -43,9 +43,11 @@ write_config() {
   local use_fmm="$2"
   local gpu="$3"
   local out="$4"
+  local total_time_s
+  total_time_s="$(awk -v n="$STEPS" 'BEGIN { print n * 60 }')"
   cat >"$out" <<EOF
 {
-  "total_time": $((STEPS * 60)),
+  "total_time": $total_time_s,
   "bio_dt": 60,
   "output_interval": 1.0e9,
   "seed": 55,
