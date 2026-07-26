@@ -1,0 +1,12 @@
+# Third-party deps for GitHub Actions python-lint / integration pytest.
+# Regenerate lockfile (from repo root, Python 3.11+):
+#   pip-compile --generate-hashes --allow-unsafe \
+#     --output-file=.github/requirements-ci.txt .github/requirements-ci.in
+#
+# Pins stay within the Python 3.11 wheel set used by CI (setup-python 3.11).
+numpy>=1.21,<2.3
+h5py>=3.0,<3.15
+scipy>=1.7,<1.16
+matplotlib>=3.5,<3.11
+pytest>=7.0,<9
+ruff==0.16.0

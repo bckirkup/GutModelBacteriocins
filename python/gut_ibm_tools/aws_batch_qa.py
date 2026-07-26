@@ -21,7 +21,12 @@ from pathlib import Path
 from typing import Any
 
 from .hdf5_reader import GutIBMData
-from .path_utils import PathValidationError, prepare_output_file, validate_path_syntax
+from .path_utils import (
+    PathValidationError,
+    prepare_output_directory,
+    prepare_output_file,
+    validate_path_syntax,
+)
 
 AWS = "aws"
 INPUT_FILE_NAME = "input.json"
@@ -171,8 +176,7 @@ def qa_array(
     """Download array outputs and compare summary fingerprints."""
     out_root = _strip_s3_prefix(output_prefix)
     in_root = _strip_s3_prefix(input_prefix) if input_prefix else None
-    work = validate_path_syntax(work_dir)
-    work.mkdir(parents=True, exist_ok=True)
+    work = prepare_output_directory(work_dir)
 
     resolved = indices if indices is not None else list_array_indices(
         out_root, aws_run=aws_run
@@ -183,8 +187,7 @@ def qa_array(
     rows: list[IndexSummary] = []
     warnings: list[str] = []
     for index in resolved:
-        child = work / str(index)
-        child.mkdir(parents=True, exist_ok=True)
+        child = prepare_output_directory(work / str(index))
         gz_path = child / OUTPUT_FILE_NAME
         h5_path = child / H5_FILE_NAME
         s3_download(f"{out_root}/{index}/{OUTPUT_FILE_NAME}", gz_path)

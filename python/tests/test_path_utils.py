@@ -5,8 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from gut_ibm_tools.path_utils import (
     PathValidationError,
+    prepare_output_directory,
     prepare_output_file,
     validate_input_path,
     validate_output_path,
@@ -64,6 +66,23 @@ def test_prepare_output_file_creates_parent_and_validates(tmp_path: Path) -> Non
     assert out.parent.is_dir()
     out.write_text("{}", encoding="utf-8")
     assert validate_output_path(out) == out
+
+
+def test_prepare_output_directory_creates_nested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    created = prepare_output_directory(Path("qa_work") / "0")
+    assert created.is_dir()
+    assert created.resolve().is_relative_to(tmp_path.resolve())
+
+
+def test_prepare_output_directory_rejects_traversal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(PathValidationError, match="traversal"):
+        prepare_output_directory(Path("..") / "escape")
 
 
 def test_write_text_file_rejects_parent_traversal(tmp_path: Path) -> None:

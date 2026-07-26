@@ -10,6 +10,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
+
 from gut_ibm_tools.aws_batch_qa import (
     format_report,
     list_array_indices,
@@ -94,7 +95,10 @@ def test_summarize_hdf5_fingerprint_changes_with_agents(tmp_path: Path) -> None:
     assert sa.has_agents_layer is False
 
 
-def test_qa_array_distinct_seeds_and_report(tmp_path: Path) -> None:
+def test_qa_array_distinct_seeds_and_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
     store_root = tmp_path / "s3"
     for index, seed, agents, deaths in (
         (0, 4092, 13, 7),
@@ -111,7 +115,7 @@ def test_qa_array_distinct_seeds_and_report(tmp_path: Path) -> None:
         )
 
     store = _FakeStore(store_root)
-    work = tmp_path / "work"
+    work = Path("work")
     report = qa_array(
         output_prefix="s3://bucket/out",
         input_prefix="s3://bucket/jobs",
@@ -129,7 +133,10 @@ def test_qa_array_distinct_seeds_and_report(tmp_path: Path) -> None:
     assert any("summary-only" in w for w in report.warnings)
 
 
-def test_qa_array_fails_when_identical(tmp_path: Path) -> None:
+def test_qa_array_fails_when_identical(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
     store_root = tmp_path / "s3"
     for index in (0, 1):
         child = store_root / str(index)
@@ -144,7 +151,7 @@ def test_qa_array_fails_when_identical(tmp_path: Path) -> None:
         qa_array(
             output_prefix="s3://bucket/out",
             input_prefix="s3://bucket/jobs",
-            work_dir=tmp_path / "work",
+            work_dir=Path("work"),
             aws_run=store.aws_run,
             s3_download=store.s3_download,
         )

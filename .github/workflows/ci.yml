@@ -75,8 +75,9 @@ jobs:
       - name: Python integration pytest (#155)
         env:
           GUTIBM_BUILD_DIR: ${{ github.workspace }}/build
+          PYTHONPATH: ${{ github.workspace }}/python
         run: |
-          pip install -e "python/.[dev,viz]" pytest
+          pip install --only-binary=:all: --require-hashes -r .github/requirements-ci.txt
           cd python && pytest tests/ -v -m integration
 
   openmp-parity:
@@ -167,8 +168,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install "ruff==0.16.0" pytest
-          pip install -e "python/.[dev,viz]"
+          pip install --only-binary=:all: --require-hashes -r .github/requirements-ci.txt
 
       - name: Validate config JSON syntax
         run: bash scripts/validate_config_json.sh
@@ -177,14 +177,20 @@ jobs:
         run: ruff check python/
 
       - name: Import check
+        env:
+          PYTHONPATH: ${{ github.workspace }}/python
         run: |
           python -c "from gut_ibm_tools import GutIBMData, validation, analysis, fish_observation; print('gut_ibm_tools OK')"
           python -c "from gut_ibm_tools import batch_runner, batch_config, batch_manifest; print('batch_runner OK')"
         working-directory: python
 
       - name: Batch runner dry-run
+        env:
+          PYTHONPATH: ${{ github.workspace }}/python
         run: python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json --dry-run
 
       - name: Pytest (fast)
+        env:
+          PYTHONPATH: ${{ github.workspace }}/python
         run: pytest tests/ -v -m "not integration"
         working-directory: python
