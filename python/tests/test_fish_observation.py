@@ -6,13 +6,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from gut_ibm_tools import GutIBMData, fish_observation
 from gut_ibm_tools.fish_observation import (
+    PLASMID_DNA_FISH_PROBE,
     FishProbe,
     FishTechnique,
     MicroscopyConfig,
-    PLASMID_DNA_FISH_PROBE,
     compute_snr,
     detection_mask,
     expected_probe_signal,

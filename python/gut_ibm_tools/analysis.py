@@ -232,7 +232,7 @@ def comet_tail_asymmetry_index(
 def comet_tail_index(
     positions: np.ndarray,
     concentrations: np.ndarray,
-    flow_direction: np.ndarray = np.array([1, 0, 0]),
+    flow_direction: np.ndarray | None = None,
 ) -> float:
     """
     Measure asymmetry of concentration field along flow direction.
@@ -241,6 +241,9 @@ def comet_tail_index(
     """
     if len(positions) == 0 or len(concentrations) == 0:
         return 1.0
+
+    if flow_direction is None:
+        flow_direction = np.array([1, 0, 0])
 
     centroid = np.mean(positions, axis=0)
     projections = np.dot(positions - centroid, flow_direction)

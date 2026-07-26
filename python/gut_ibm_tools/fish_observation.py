@@ -92,11 +92,11 @@ class MicroscopyConfig:
         return 2.355 * self.psf_sigma_m
 
     @classmethod
-    def optical(cls, **kwargs: object) -> "MicroscopyConfig":
+    def optical(cls, **kwargs: object) -> MicroscopyConfig:
         return cls(psf_sigma_m=OPTICAL_PSF_SIGMA_M, **kwargs)
 
     @classmethod
-    def super_resolution(cls, **kwargs: object) -> "MicroscopyConfig":
+    def super_resolution(cls, **kwargs: object) -> MicroscopyConfig:
         return cls(psf_sigma_m=SUPERRES_PSF_SIGMA_M, pixel_size_m=0.1e-6, **kwargs)
 
 
@@ -131,9 +131,7 @@ def _infer_copy_numbers(
             backbone = genome["has_conjugative_plasmid"].astype(np.float64)
             base = np.maximum(base, backbone * probe.copy_number * 0.5)
         copies = base
-    elif probe.target_kind == "rrna":
-        copies = np.full(n_agents, probe.copy_number)
-    elif probe.target_kind == "immunity_mrna":
+    elif probe.target_kind == "rrna" or probe.target_kind == "immunity_mrna":
         copies = np.full(n_agents, probe.copy_number)
     else:
         raise ValueError(f"unknown target_kind: {probe.target_kind}")

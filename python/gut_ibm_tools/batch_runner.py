@@ -36,8 +36,8 @@ from .batch_manifest import (
     pending_jobs,
     save_manifest,
 )
-from .path_utils import PathValidationError, prepare_output_file
 from .hdf5_gzip import maybe_gzip_hdf5_file
+from .path_utils import PathValidationError, prepare_output_file
 from .validation_regression import run_validation
 
 EXIT_INTERRUPTED = 130

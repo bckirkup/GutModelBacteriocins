@@ -10,11 +10,16 @@ import argparse
 import json
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from .batch_config import BatchConfigError, load_simulation_template, strip_metadata_keys
+from .batch_config import (
+    BatchConfigError,
+    load_simulation_template,
+    strip_metadata_keys,
+)
 from .path_utils import PathValidationError, validate_input_path, validate_path_syntax
 
 AWS_CLI = "aws"
@@ -82,7 +87,7 @@ def resolve_restart_uri(
         raise BatchConfigError(f"--from must be an s3:// URI, got: {uri}")
     if uri.endswith(".h5"):
         return uri, None
-    if uri.endswith("latest.json") or uri.endswith("/latest.json"):
+    if uri.endswith(("latest.json", "/latest.json")):
         payload = json.loads(s3_get_text(uri))
         restart_uri = str(payload.get("uri") or "")
         if not restart_uri.startswith(S3_SCHEME):

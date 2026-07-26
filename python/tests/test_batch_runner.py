@@ -8,7 +8,6 @@ import stat
 from pathlib import Path
 
 import pytest
-
 from gut_ibm_tools.batch_config import (
     BatchConfigError,
     apply_overrides,
@@ -248,7 +247,7 @@ def test_batch_run_gzips_hdf5_when_env_set(
         },
     )
 
-    def _fake_run(settings, config_path, log_path):  # noqa: ANN001
+    def _fake_run(settings, config_path, log_path):
         del settings, config_path, log_path
         h5 = batch_workspace / "out" / "jobs" / "gzip_me" / "output.h5"
         h5.parent.mkdir(parents=True, exist_ok=True)
