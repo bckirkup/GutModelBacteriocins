@@ -184,23 +184,48 @@ checkpoint→S3 resume is solid.
 
 ## Spot interruption strategy
 
-1. Periodic HDF5 checkpoints → S3 prefix per job (`CHECKPOINT_INTERVAL_SECONDS`, default 300).
-2. `entry.sh` uploads `checkpoint.h5` + `status.json` heartbeat; resumes via `checkpoint_file`.
-   Uploads freeze `gut_ibm` briefly (`SIGSTOP`), copy + `h5ls` validate (requires `/agents/`),
-   and **refuse** to overwrite a larger remote object with a smaller/corrupt local file.
-   Corrupt downloads are quarantined (`checkpoint.h5.corrupt.<ts>`) and the job exits 3
-   instead of aborting mid-open and clobbering S3 with an empty `H5Fcreate` stub.
-3. IMDSv2 poll for `spot/instance-action`: on notice, SIGTERM `gut_ibm` (graceful step finish), flush checkpoint/status, exit so Batch can retry.
-4. Enable **S3 versioning** on the outputs bucket so a bad upload can still be recovered.
-4. Campaign job def `retryStrategy` retries `Host EC2*` reclaim reasons.
-5. Gzip finals before upload (existing habit).
+Closed **restart artifacts** (not the live analysis `output.h5`) are the Spot/fork
+primitive:
 
-For Phase 1 smokes, Spot reclaim is unlikely to matter (seconds–minutes). Use
-**On-Demand `g4dn.xlarge` for the first green run** if Spot capacity is flaky;
-flip the CE to Spot afterward.
+1. C++ writes `restart/step_NNNNNN.h5` on `restart.interval_steps` (Tier 2: agents +
+   lineage + genome + **grid** + clock), flush+close, atomic rename.
+2. `entry.sh` scans that directory every `CHECKPOINT_INTERVAL_SECONDS` (default 300),
+   uploads each file **immutably** to `CHECKPOINT_S3_PREFIX/step_*.h5`, and updates
+   `latest.json` (uri, size, sha256, fidelity). Never overwrites an existing step object.
+3. Resume reads `latest.json` (or `CHECKPOINT_S3_URI`) → validates with `h5ls`
+   (`/agents/` + `/grid/`) → injects `checkpoint_file`. Corrupt objects are quarantined
+   (`.corrupt.<ts>`) and the job exits 3 — it does **not** clobber S3 with an empty stub.
+4. IMDSv2 Spot notice → SIGTERM → final closed restart upload → non-zero exit so Batch retries.
+5. Enable **S3 versioning** on the outputs bucket as a seatbelt.
+6. Campaign job def `retryStrategy` retries `Host EC2*` reclaim reasons.
 
-**Checkpoint cadence (Stage 3):** 5–15 minutes balances S3 PUT cost vs lost work.
-Default 300 s is a reasonable start; tighten if reclaim is frequent.
+**Science contract:** Tier 2 restores population + chemistry. RNG is **reseeded** from
+the job `seed` (not bit-identical continuation). Document forks as population-state
+branches unless Tier 3 RNG serialize lands later.
+
+**Cadence (Stage 3):** `restart.interval_steps: 60` (~1 h sim at `bio_dt=60`) is a
+good default; entry sync every 300 s uploads whatever closed files appeared.
+
+## Midstream burn-in and forks
+
+Shared colonization is expensive (~$70/seed for a full week). Prefer:
+
+1. Run [`3a_burnin.json`](../experiments/diversity_campaign/stage3_campaign/3a_burnin.json)
+   (2 simulated days) with checkpoints → `s3://…/campaign/burnin_seed1001/ckpt/`.
+2. Fork Kd / motility / ensemble seeds from `latest.json`:
+
+```bash
+gut-ibm-aws-branch \
+  --from "s3://${OUTPUT_BUCKET}/campaign/burnin_seed1001/ckpt/latest.json" \
+  --overlay experiments/diversity_campaign/stage3_campaign/3_kd_sweep_1e-7.json \
+  --seed 2001 --total-time 604800 \
+  --out-prefix "s3://${OUTPUT_BUCKET}/campaign/fork_kd1e-7_seed2001" \
+  --job-queue gutibm-gpu-campaign \
+  --job-definition gutibm-cuda-campaign
+```
+
+Keep a few full-from-scratch seeds as statistical controls so shared-burn-in bias
+stays visible.
 
 ## Phase Observability — progress, usefulness, cost
 
@@ -212,7 +237,7 @@ environment does not manage live Batch jobs.
 | Signal | Where |
 |--------|--------|
 | `pct=` / `rate=` / `eta_s=` | gut_ibm stdout → CloudWatch (each `output_interval`) |
-| `status.json` heartbeat | S3 beside `checkpoint.h5` (or next to output) |
+| `status.json` heartbeat | S3 beside `latest.json` / restart prefix (or next to output) |
 | Batch state + reclaim reason | `describe-jobs` / `gut-ibm-aws-status` |
 | Usefulness triage hints | Warnings from `gut-ibm-aws-status` (not auto-cancel) |
 
@@ -248,15 +273,25 @@ gut-ibm-aws-estimate --list-prices
 # Optional interrupt sensitivity:
 gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 \
   --interrupt-every-hours 6 --checkpoint-overhead-hours 0.25
+
+# Fork from an immutable burn-in restart
+gut-ibm-aws-branch \
+  --from "s3://${OUTPUT_BUCKET}/campaign/burnin_seed1001/ckpt/latest.json" \
+  --overlay experiments/diversity_campaign/stage3_campaign/3_kd_sweep_1e-7.json \
+  --seed 2001 --total-time 604800 \
+  --out-prefix "s3://${OUTPUT_BUCKET}/campaign/fork_kd1e-7_seed2001" \
+  --job-queue gutibm-gpu-campaign \
+  --job-definition gutibm-cuda-campaign \
+  --dry-run
 ```
 
 ### Spot reclaim vs crash vs biology failure
 
 | Symptom | Likely cause |
 |---------|----------------|
-| Batch `statusReason` starts with `Host EC2*`; `status.json` has `spot_interruption=true` | Spot reclaim (retry should resume from checkpoint) |
-| Resume attempt exits 134 / HDF5 "bad object header"; S3 `checkpoint.h5` suddenly tiny | Prior live copy was corrupt **or** failed resume overwrote S3 with empty output — fixed in `entry.sh` (validate + never shrink); quarantine corrupt object and resubmit with a fresh image |
-| `status.json` has `memory_pressure=true` / state `memory_pressure` | Graceful stop before OOM; **do not** auto-retry same size — use larger instance / job-def memory, then resume from checkpoint |
+| Batch `statusReason` starts with `Host EC2*`; `status.json` has `spot_interruption=true` | Spot reclaim (retry should resume from `latest.json`) |
+| Resume attempt exits 134 / HDF5 "bad object header"; S3 object suddenly tiny | Old live-copy path — fixed by closed immutable restarts; quarantine and re-burn-in if needed |
+| `status.json` has `memory_pressure=true` / state `memory_pressure` | Graceful stop before OOM; **do not** auto-retry same size — use larger instance / job-def memory, then resume from `latest.json` |
 | Job FAILED, stale `status.json` (age ≫ sync interval), no Spot/memory flags | Hang / hard OOM kill without flush |
 | `global_agents≤1` or population-stop in logs; job SUCCEEDED early | Biology collapse (usefulness warning) |
 | `mu_avg` very low for many heartbeats | Washout-risk triage hint |
@@ -351,7 +386,8 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
 
 ### Phase 4 — Spot resilience
 
-- [x] Checkpoint → S3 + auto-resume (`entry.sh` background sync of `output.h5` → `CHECKPOINT_S3_PREFIX`; resume half already existed)
+- [x] Checkpoint → S3 + auto-resume (C++ closed `restart/step_*.h5`; `entry.sh` immutable upload + `latest.json`)
+- [x] Midstream branch CLI (`gut-ibm-aws-branch`)
 - [x] Retry policy; Spot-only (or Spot-with-fallback) CE (`05` Spot CE `SPOT_CAPACITY_OPTIMIZED` + `retryStrategy` retrying `Host EC2*`; set `CAMPAIGN_ONDEMAND_FALLBACK=1` for an On-Demand fallback CE)
 - [x] IMDSv2 Spot notice → SIGTERM + checkpoint/status flush (`entry.sh`)
 

@@ -331,6 +331,21 @@ class JsonCursor {
     }
   }
 
+  void parse_restart_object(SimulationConfig& cfg) {
+    if (!match('{')) throw ConfigError("expected JSON object for restart");
+    skip_ws();
+    if (match('}')) return;
+    while (true) {
+      std::string key = parse_string();
+      if (!match(':')) throw ConfigError("expected ':' in JSON object");
+      const std::string flat_key = "restart." + key;
+      apply_json_scalar(cfg, flat_key, *this);
+      skip_ws();
+      if (match('}')) break;
+      if (!match(',')) throw ConfigError("expected ',' in JSON object");
+    }
+  }
+
   std::string text_;
   size_t pos_ = 0;
 };
@@ -474,6 +489,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         cfg.enabled_fixes = cursor.parse_string_array();
       } else if (key == "hdf5") {
         cursor.parse_hdf5_object(cfg);
+      } else if (key == "restart") {
+        cursor.parse_restart_object(cfg);
       } else {
         apply_json_scalar(cfg, key, cursor);
       }

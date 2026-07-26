@@ -34,6 +34,7 @@ Keys starting with `_` are ignored by the parser (except as documentation).
 | `oxygen.enabled`, `acetate.enabled`, … | bool | Nested toggles via dot keys |
 | `checkpoint_file` | string | HDF5 checkpoint for restart |
 | `checkpoint_step` | string | Optional step group name to restore |
+| `restart` | object | Closed midstream restart writer (`enabled`, `directory`, `interval_steps`) |
 
 ## Fix selection
 

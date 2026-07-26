@@ -1,8 +1,8 @@
 {
-  "total_time": 604800,
+  "total_time": 172800,
   "bio_dt": 60,
   "output_interval": 3600,
-  "seed": 42,
+  "seed": 1001,
   "domain_x": 0.002,
   "domain_y": 0.002,
   "domain_z": 0.0001,
@@ -39,7 +39,7 @@
       "conjugative": false
     }
   ],
-  "hdf5_file": "campaign_baseline.h5",
+  "hdf5_file": "campaign_burnin.h5",
   "hdf5": {
     "schedule": {
       "summary": 60,
@@ -55,9 +55,9 @@
     "interval_steps": 60
   },
   "_comment": [
-    "CAMPAIGN: Baseline. No optional modules, motility OFF.",
-    "GPU ON (50M-cell Stage 3): requires CUDA-enabled gut_ibm build.",
-    "Closed restart artifacts every 60 steps enable Spot resume and midstream forks."
+    "CAMPAIGN burn-in: 2 simulated days to a colonized ecology.",
+    "Closed restart/step_*.h5 files (Tier 2: agents+grid) are the fork points.",
+    "Continue with gut-ibm-aws-branch --from s3://.../ckpt/latest.json"
   ],
   "motility.enabled": false,
   "gpu_enabled": true,

@@ -286,6 +286,14 @@ std::vector<Probe> build_probes() {
              [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.compression_level); });
   v.push_back(S("checkpoint_file", [](const SimulationConfig& c) { return c.checkpoint.file; }, "probe_checkpoint.h5"));
   v.push_back(S("checkpoint_step", [](const SimulationConfig& c) { return c.checkpoint.step; }, "step_000007"));
+  add_ns_bool(v, "restart.enabled", "restart_enabled",
+              [](const SimulationConfig& c) { return c.restart.enabled; });
+  v.push_back(S("restart.directory", [](const SimulationConfig& c) { return c.restart.directory; },
+                "probe_restart"));
+  v.push_back(S("restart_directory", [](const SimulationConfig& c) { return c.restart.directory; },
+                "probe_restart"));
+  add_ns_int(v, "restart.interval_steps", "restart_interval_steps",
+             [](const SimulationConfig& c) { return static_cast<long long>(c.restart.interval_steps); });
 
   // ── Adaptive timestep ─────────────────────────────────────────────────────
   v.push_back(B("adaptive_dt_enabled", [](const SimulationConfig& c) { return c.adaptive_dt.enabled; }));
@@ -404,7 +412,7 @@ std::vector<Probe> build_probes() {
 // completeness guard treats them as covered.
 const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
-      "initial_strains", "fixes", "hdf5", "schedule", "grid_species",
+      "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity"};

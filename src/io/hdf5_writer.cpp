@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "species_names.h"
 #include "step_events.h"
+#include "error.h"
 
 #ifdef GUTIBM_HDF5
 extern "C" {
@@ -22,12 +23,14 @@ extern "C" {
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <format>
 #include <iostream>
 #include <limits>
 #include <numeric>
 #include <ranges>
 #include <set>
+#include <system_error>
 #include <string>
 #include <vector>
 #include "error.h"
@@ -834,6 +837,69 @@ void HDF5Writer::finalize() {
   if (mpi_multi_rank()) {
     mpi_barrier_world();
   }
+#endif
+}
+
+bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
+                                      Int step, Real time, Real dt) {
+#ifndef GUTIBM_HDF5
+  (void)sim;
+  (void)path;
+  (void)step;
+  (void)time;
+  (void)dt;
+  return false;
+#else
+  namespace fs = std::filesystem;
+  try {
+    validate_path_syntax(path);
+  } catch (const IOError& ex) {
+    std::cerr << "Warning: invalid restart path '" << path << "': " << ex.what()
+              << "\n";
+    return false;
+  }
+
+  const fs::path out(path);
+  const fs::path tmp = out.string() + ".tmp";
+  if (out.has_parent_path()) {
+    std::error_code ec;
+    fs::create_directories(out.parent_path(), ec);
+    if (ec) {
+      std::cerr << "Warning: cannot create restart directory '"
+                << out.parent_path().string() << "': " << ec.message() << "\n";
+      return false;
+    }
+  }
+
+  HDF5Config cfg;
+  cfg.filename = tmp.string();
+  cfg.enabled = true;
+  cfg.schedule.summary = 1;
+  cfg.schedule.agents = 1;
+  cfg.schedule.grid = 1;
+  cfg.schedule.lineage = 1;
+  cfg.schedule.genome = 1;
+  cfg.schedule.grid_species = {"all"};
+
+  HDF5Writer writer;
+  writer.init(cfg, sim.domain());
+  if (!writer.is_enabled()) {
+    std::error_code ec;
+    fs::remove(tmp, ec);
+    return false;
+  }
+  writer.write_step(sim, step, time, dt);
+  writer.finalize();
+
+  std::error_code rename_ec;
+  fs::rename(tmp, out, rename_ec);
+  if (rename_ec) {
+    std::cerr << "Warning: failed to publish restart '" << path
+              << "': " << rename_ec.message() << "\n";
+    fs::remove(tmp, rename_ec);
+    return false;
+  }
+  return true;
 #endif
 }
 

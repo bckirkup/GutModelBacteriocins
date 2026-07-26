@@ -49,6 +49,12 @@ class HDF5Writer {
 
   bool is_enabled() const { return enabled_; }
 
+  // Write a self-contained closed restart file (create → one full step → close).
+  // Includes summary/agents/lineage/genome/grid (all species). Returns false if
+  // HDF5 is unavailable or the file could not be created.
+  static bool write_closed_restart(Simulation& sim, const std::string& path,
+                                   Int step, Real time, Real dt);
+
  private:
   bool layer_due(Int interval, Int step) const;
   bool should_write_species(const std::string& name) const;

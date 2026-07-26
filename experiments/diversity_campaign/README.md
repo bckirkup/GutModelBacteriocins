@@ -115,9 +115,25 @@ After Stage 3:
 ## Cloud runs (AWS)
 
 Full Stage 3 often exceeds desktop/WSL RAM and wall time. Deployment plan for
-**AWS Batch + Spot GPU + CUDA** (instance sizing, array jobs, checkpoint resume):
-[docs/AWS_BATCH.md](../../docs/AWS_BATCH.md). Draft container bits live under
-`deploy/aws/`.
+**AWS Batch + Spot GPU + CUDA** (instance sizing, array jobs, closed restart
+artifacts, burn-in→fork): [docs/AWS_BATCH.md](../../docs/AWS_BATCH.md).
+
+Burn-in + fork recipe:
+
+```bash
+# 2-day colonization with immutable restart/step_*.h5 uploads
+# (see 3a_burnin.json / batch_burnin.json)
+
+gut-ibm-aws-branch \
+  --from "s3://${OUTPUT_BUCKET}/campaign/burnin_seed1001/ckpt/latest.json" \
+  --overlay experiments/diversity_campaign/stage3_campaign/3_kd_sweep_1e-7.json \
+  --seed 2001 --total-time 604800 \
+  --out-prefix "s3://${OUTPUT_BUCKET}/campaign/fork_kd1e-7_seed2001" \
+  --job-queue gutibm-gpu-campaign \
+  --job-definition gutibm-cuda-campaign
+```
+
+Draft container bits live under `deploy/aws/`.
 
 ## Resource warning (Stage 3)
 

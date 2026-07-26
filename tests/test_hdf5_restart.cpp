@@ -1,0 +1,163 @@
+/* -----------------------------------------------------------------------
+   GutIBM – Closed midstream restart artifacts (Tier 2: agents + grid)
+   ----------------------------------------------------------------------- */
+
+#include "simulation.h"
+#include "input_parser.h"
+#include "hdf5_reader.h"
+#include "hdf5_writer.h"
+#include "path_utils.h"
+#include "error.h"
+
+#include <cassert>
+#include <cmath>
+#include <filesystem>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#ifdef GUTIBM_MPI
+#include <mpi.h>
+#endif
+
+using namespace gutibm;
+
+namespace {
+
+namespace fs = std::filesystem;
+
+SimulationConfig make_restart_config(const std::string& out_h5,
+                                     const std::string& restart_dir) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.time.total_time = 180.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 60.0;
+  cfg.seed = 424242;
+  cfg.hdf5.enabled = true;
+  cfg.hdf5.filename = out_h5;
+  cfg.hdf5.schedule.summary = 1;
+  cfg.hdf5.schedule.agents = 1;
+  cfg.hdf5.schedule.grid = 0;  // analysis trail may omit grid
+  cfg.hdf5.schedule.lineage = 1;
+  cfg.hdf5.schedule.genome = 1;
+  cfg.advection.mucus_thickness = 25e-6;
+  cfg.advection.distal_length = 50e-6;
+  cfg.qssa.toxin_cutoff = 25e-6;
+  cfg.qssa.nutrient_cutoff = 15e-6;
+
+  cfg.restart.enabled = true;
+  cfg.restart.directory = restart_dir;
+  cfg.restart.interval_steps = 2;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain resident;
+  resident.type = 1;
+  resident.count = 6;
+  resident.mu_max = 5e-4;
+  resident.plasmids = {"ColE1"};
+  resident.conjugative = false;
+  cfg.initial_strains.push_back(resident);
+
+  return cfg;
+}
+
+double grid_l2(const HDF5CheckpointGrid& a, const HDF5CheckpointGrid& b) {
+  assert(!a.species.empty());
+  assert(a.species.size() == b.species.size());
+  double sum = 0.0;
+  for (const auto& [name, vals] : a.species) {
+    const auto it = b.species.find(name);
+    assert(it != b.species.end());
+    assert(vals.size() == it->second.size());
+    for (size_t i = 0; i < vals.size(); ++i) {
+      const double d = vals[i] - it->second[i];
+      sum += d * d;
+    }
+  }
+  return std::sqrt(sum);
+}
+
+void test_closed_restart_roundtrip() {
+  const std::string out = resolve_test_h5_path("GUTIBM_TEST_RESTART_H5", "restart_out");
+  const fs::path scratch = fs::path(out).parent_path() / "gutibm_restart_artifacts";
+  const std::string restart_dir = (scratch / "a").string();
+  fs::create_directories(restart_dir);
+
+  SimulationConfig cfg = make_restart_config(out, restart_dir);
+  Simulation sim;
+  sim.init(cfg);
+  sim.run();
+
+  const fs::path step2 = fs::path(restart_dir) / "step_000002.h5";
+  const fs::path step3 = fs::path(restart_dir) / "step_000003.h5";  // final
+  assert(fs::exists(step2));
+  assert(fs::exists(step3));
+  assert(fs::file_size(step2) > 4096);
+
+  HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(step2.string(), "");
+  assert(snap.step_name == "step_000002");
+  assert(std::abs(snap.metadata.time - 120.0) < 1e-9);
+  assert(snap.metadata.step == 2);
+  assert(snap.genome.present);
+  assert(!snap.agents.id.empty());
+  assert(!snap.grid.species.empty());
+
+  const std::string resume_out =
+      resolve_test_h5_path("GUTIBM_TEST_RESTART_RESUME_H5", "restart_resume");
+  SimulationConfig resume_cfg = make_restart_config(resume_out, (scratch / "resume").string());
+  resume_cfg.hdf5.enabled = false;
+  resume_cfg.restart.enabled = false;
+  resume_cfg.time.total_time = 120.0;
+  resume_cfg.checkpoint.file = step2.string();
+
+  Simulation resumed;
+  resumed.init_from_checkpoint(resume_cfg, step2.string(), "");
+  assert(std::abs(resumed.time() - 120.0) < 1e-9);
+  assert(resumed.step_count() == 2);
+  assert(resumed.global_agent_count() == snap.metadata.num_agents);
+
+  HDF5CheckpointSnapshot snap_reload =
+      HDF5Reader::load_snapshot(step2.string(), "step_000002");
+  assert(grid_l2(snap.grid, snap_reload.grid) < 1e-12);
+
+  // Sensitivity: changing restart.interval_steps must change which files exist.
+  const std::string restart_dir_b = (scratch / "b").string();
+  fs::create_directories(restart_dir_b);
+  SimulationConfig cfg_b = make_restart_config(
+      resolve_test_h5_path("GUTIBM_TEST_RESTART_H5_B", "restart_out_b"),
+      restart_dir_b);
+  cfg_b.restart.interval_steps = 3;
+  Simulation sim_b;
+  sim_b.init(cfg_b);
+  sim_b.run();
+  assert(fs::exists(fs::path(restart_dir_b) / "step_000003.h5"));
+  assert(!fs::exists(fs::path(restart_dir_b) / "step_000002.h5"));
+
+  std::cout << "PASS: closed restart round-trip (agents+grid+time)\n";
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+#ifdef GUTIBM_MPI
+  MPI_Init(&argc, &argv);
+#else
+  (void)argc;
+  (void)argv;
+#endif
+  try {
+    test_closed_restart_roundtrip();
+  } catch (const std::exception& ex) {
+    std::cerr << "FAIL: " << ex.what() << "\n";
+#ifdef GUTIBM_MPI
+    MPI_Finalize();
+#endif
+    return 1;
+  }
+#ifdef GUTIBM_MPI
+  MPI_Finalize();
+#endif
+  return 0;
+}
