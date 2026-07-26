@@ -70,6 +70,18 @@ def _default_submit(argv: list[str]) -> str:
     return result.stdout
 
 
+@dataclass(frozen=True)
+class BranchIO:
+    """Injectable S3 + Batch submit hooks (tests override these)."""
+
+    s3_get_text: S3GetText = _default_s3_get_text
+    s3_put: S3Put = _default_s3_put
+    submit: Submit = _default_submit
+
+
+DEFAULT_BRANCH_IO = BranchIO()
+
+
 def _require_s3_uri(label: str, value: str) -> str:
     if not value.startswith(S3_SCHEME):
         raise BatchConfigError(f"{label} must be an s3:// URI, got: {value}")
@@ -183,12 +195,10 @@ def branch_job(
     job_name: str | None = None,
     dry_run: bool = False,
     require_gpu: bool = True,
-    s3_get_text: S3GetText = _default_s3_get_text,
-    s3_put: S3Put = _default_s3_put,
-    submit: Submit = _default_submit,
+    io: BranchIO = DEFAULT_BRANCH_IO,
 ) -> BranchResult:
     """Build + optionally submit a single Batch job forked from a restart URI."""
-    restart_uri, latest = resolve_restart_uri(from_uri, s3_get_text=s3_get_text)
+    restart_uri, latest = resolve_restart_uri(from_uri, s3_get_text=io.s3_get_text)
     out_root = _require_s3_uri("--out-prefix", out_prefix)
     input_uri = f"{out_root}/input.json"
     output_uri = f"{out_root}/output.h5.gz"
@@ -208,7 +218,7 @@ def branch_job(
     config["_branch_provenance"] = provenance
 
     if not dry_run:
-        s3_put(json.dumps(config, indent=2) + "\n", input_uri)
+        io.s3_put(json.dumps(config, indent=2) + "\n", input_uri)
 
     environment = [
         {"name": "INPUT_S3_URI", "value": input_uri},
@@ -237,7 +247,7 @@ def branch_job(
             "--container-overrides",
             json.dumps({"environment": environment}),
         ]
-        job_id = _extract_job_id(submit(argv))
+        job_id = _extract_job_id(io.submit(argv))
 
     return BranchResult(
         input_uri=input_uri,

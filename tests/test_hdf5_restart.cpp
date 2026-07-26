@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef GUTIBM_MPI
@@ -26,8 +27,8 @@ namespace {
 
 namespace fs = std::filesystem;
 
-SimulationConfig make_restart_config(const std::string& out_h5,
-                                     const std::string& restart_dir) {
+SimulationConfig make_restart_config(std::string_view out_h5,
+                                     std::string_view restart_dir) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
@@ -36,7 +37,7 @@ SimulationConfig make_restart_config(const std::string& out_h5,
   cfg.time.output_interval = 60.0;
   cfg.seed = 424242;
   cfg.hdf5.enabled = true;
-  cfg.hdf5.filename = out_h5;
+  cfg.hdf5.filename = std::string(out_h5);
   cfg.hdf5.schedule.summary = 1;
   cfg.hdf5.schedule.agents = 1;
   cfg.hdf5.schedule.grid = 0;  // analysis trail may omit grid
@@ -48,7 +49,7 @@ SimulationConfig make_restart_config(const std::string& out_h5,
   cfg.qssa.nutrient_cutoff = 15e-6;
 
   cfg.restart.enabled = true;
-  cfg.restart.directory = restart_dir;
+  cfg.restart.directory = std::string(restart_dir);
   cfg.restart.interval_steps = 2;
 
   cfg.initial_strains.clear();
@@ -82,16 +83,16 @@ double grid_l2(const HDF5CheckpointGrid& a, const HDF5CheckpointGrid& b) {
 void test_closed_restart_roundtrip() {
   const std::string out = resolve_test_h5_path("GUTIBM_TEST_RESTART_H5", "restart_out");
   const fs::path scratch = fs::path(out).parent_path() / "gutibm_restart_artifacts";
-  const std::string restart_dir = (scratch / "a").string();
+  const fs::path restart_dir = scratch / "a";
   fs::create_directories(restart_dir);
 
-  SimulationConfig cfg = make_restart_config(out, restart_dir);
+  SimulationConfig cfg = make_restart_config(out, restart_dir.string());
   Simulation sim;
   sim.init(cfg);
   sim.run();
 
-  const fs::path step2 = fs::path(restart_dir) / "step_000002.h5";
-  const fs::path step3 = fs::path(restart_dir) / "step_000003.h5";  // final
+  const fs::path step2 = restart_dir / "step_000002.h5";
+  const fs::path step3 = restart_dir / "step_000003.h5";  // final
   assert(fs::exists(step2));
   assert(fs::exists(step3));
   assert(fs::file_size(step2) > 4096);
@@ -106,7 +107,8 @@ void test_closed_restart_roundtrip() {
 
   const std::string resume_out =
       resolve_test_h5_path("GUTIBM_TEST_RESTART_RESUME_H5", "restart_resume");
-  SimulationConfig resume_cfg = make_restart_config(resume_out, (scratch / "resume").string());
+  SimulationConfig resume_cfg =
+      make_restart_config(resume_out, (scratch / "resume").string());
   resume_cfg.hdf5.enabled = false;
   resume_cfg.restart.enabled = false;
   resume_cfg.time.total_time = 120.0;
@@ -123,17 +125,17 @@ void test_closed_restart_roundtrip() {
   assert(grid_l2(snap.grid, snap_reload.grid) < 1e-12);
 
   // Sensitivity: changing restart.interval_steps must change which files exist.
-  const std::string restart_dir_b = (scratch / "b").string();
+  const fs::path restart_dir_b = scratch / "b";
   fs::create_directories(restart_dir_b);
   SimulationConfig cfg_b = make_restart_config(
       resolve_test_h5_path("GUTIBM_TEST_RESTART_H5_B", "restart_out_b"),
-      restart_dir_b);
+      restart_dir_b.string());
   cfg_b.restart.interval_steps = 3;
   Simulation sim_b;
   sim_b.init(cfg_b);
   sim_b.run();
-  assert(fs::exists(fs::path(restart_dir_b) / "step_000003.h5"));
-  assert(!fs::exists(fs::path(restart_dir_b) / "step_000002.h5"));
+  assert(fs::exists(restart_dir_b / "step_000003.h5"));
+  assert(!fs::exists(restart_dir_b / "step_000002.h5"));
 
   std::cout << "PASS: closed restart round-trip (agents+grid+time)\n";
 }

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from gut_ibm_tools.aws_batch_branch import (
+    BranchIO,
     apply_overlay,
     branch_job,
     resolve_restart_uri,
@@ -90,6 +91,11 @@ def test_apply_overlay_sets_seed_and_restart() -> None:
 
 def test_branch_job_dry_run_and_sensitivity(tmp_path: Path) -> None:
     rec = _Recorder()
+    io = BranchIO(
+        s3_get_text=rec.s3_get_text,
+        s3_put=rec.s3_put,
+        submit=rec.submit,
+    )
     result = branch_job(
         from_uri="s3://bucket/burnin/ckpt/latest.json",
         out_prefix="s3://bucket/forks/kd1e7_seed2001",
@@ -100,9 +106,7 @@ def test_branch_job_dry_run_and_sensitivity(tmp_path: Path) -> None:
         seed=2001,
         total_time=604800.0,
         dry_run=True,
-        s3_get_text=rec.s3_get_text,
-        s3_put=rec.s3_put,
-        submit=rec.submit,
+        io=io,
     )
     assert result.job_id is None
     assert not rec.puts
@@ -121,9 +125,7 @@ def test_branch_job_dry_run_and_sensitivity(tmp_path: Path) -> None:
         set_overrides=["kd_corrinoid_btuB=1e-7"],
         seed=2002,
         dry_run=True,
-        s3_get_text=rec.s3_get_text,
-        s3_put=rec.s3_put,
-        submit=rec.submit,
+        io=io,
     )
     assert other.config["seed"] != result.config["seed"]
 
@@ -138,9 +140,11 @@ def test_branch_job_submits_with_checkpoint_uri() -> None:
         overlay_path=KD if KD.exists() else BURNIN,
         seed=3001,
         dry_run=False,
-        s3_get_text=rec.s3_get_text,
-        s3_put=rec.s3_put,
-        submit=rec.submit,
+        io=BranchIO(
+            s3_get_text=rec.s3_get_text,
+            s3_put=rec.s3_put,
+            submit=rec.submit,
+        ),
     )
     assert result.job_id == "branch-job-1"
     assert len(rec.puts) == 1

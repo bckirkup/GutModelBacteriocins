@@ -40,6 +40,7 @@ RESTART_INTERVAL_STEPS="${RESTART_INTERVAL_STEPS:-60}"
 CHECKPOINT_NAME="checkpoint.h5"
 LATEST_NAME="latest.json"
 STATUS_NAME="status.json"
+STATUS_FAILED="failed"
 RESTART_DIR="${WORK}/restart"
 SYNC_PID=""
 MPIRUN_PID=""
@@ -526,26 +527,25 @@ PY
 }
 
 RESUME_URI=""
-if RESUME_URI="$(resolve_resume_uri)"; then
-  if [[ -n "${RESUME_URI}" ]]; then
-    echo "Resuming from restart artifact: ${RESUME_URI}"
-    aws s3 cp "${RESUME_URI}" "${WORK}/checkpoint.h5"
-    if ! hdf5_checkpoint_usable "${WORK}/checkpoint.h5"; then
-      echo "Downloaded restart is unreadable/incomplete; refusing resume" >&2
-      echo "Quarantining S3 object so retries do not loop on a corrupt file" >&2
-      aws s3 mv \
-        "${RESUME_URI}" \
-        "${RESUME_URI}.corrupt.$(date -u +%Y%m%dT%H%M%SZ)" \
-        >/dev/null 2>&1 || true
-      rm -f "${WORK}/checkpoint.h5"
-      write_status_json "failed"
-      upload_status
-      exit 3
-    fi
-    RESUME_FROM_CHECKPOINT=1
-    CHECKPOINT_KEY="$(basename "${RESUME_URI}")"
-    export CHECKPOINT_KEY
-    GUTIBM_WORK_DIR="${WORK}" python3 - <<'PY'
+if RESUME_URI="$(resolve_resume_uri)" && [[ -n "${RESUME_URI}" ]]; then
+  echo "Resuming from restart artifact: ${RESUME_URI}"
+  aws s3 cp "${RESUME_URI}" "${WORK}/checkpoint.h5"
+  if ! hdf5_checkpoint_usable "${WORK}/checkpoint.h5"; then
+    echo "Downloaded restart is unreadable/incomplete; refusing resume" >&2
+    echo "Quarantining S3 object so retries do not loop on a corrupt file" >&2
+    aws s3 mv \
+      "${RESUME_URI}" \
+      "${RESUME_URI}.corrupt.$(date -u +%Y%m%dT%H%M%SZ)" \
+      >/dev/null 2>&1 || true
+    rm -f "${WORK}/checkpoint.h5"
+    write_status_json "${STATUS_FAILED}"
+    upload_status
+    exit 3
+  fi
+  RESUME_FROM_CHECKPOINT=1
+  CHECKPOINT_KEY="$(basename "${RESUME_URI}")"
+  export CHECKPOINT_KEY
+  GUTIBM_WORK_DIR="${WORK}" python3 - <<'PY'
 import json, os
 from pathlib import Path
 work = Path(os.environ["GUTIBM_WORK_DIR"])
@@ -554,7 +554,6 @@ cfg["checkpoint_file"] = str(work / "checkpoint.h5")
 cfg.setdefault("checkpoint_step", "")
 (work / "input.json").write_text(json.dumps(cfg, indent=2) + "\n")
 PY
-  fi
 fi
 
 ENABLE_RESTART=0
@@ -646,7 +645,7 @@ if [[ "${MEMORY_PRESSURE}" -eq 1 ]]; then
 fi
 
 if [[ "${RUN_EXIT_CODE}" -ne 0 ]]; then
-  write_status_json "failed"
+  write_status_json "${STATUS_FAILED}"
   upload_status
   echo "gut_ibm exited with ${RUN_EXIT_CODE}" >&2
   exit "${RUN_EXIT_CODE}"
@@ -659,7 +658,7 @@ if [[ "${REQUIRE_GPU}" == "1" ]]; then
   if grep -qE 'GPU: ON' "${RUN_LOG}"; then
     echo "GPU activation confirmed (REQUIRE_GPU=1)"
   else
-    write_status_json "failed"
+    write_status_json "${STATUS_FAILED}"
     upload_status
     echo "REQUIRE_GPU=1 but no 'GPU: ON' line in run log — CUDA fell back to CPU" >&2
     exit 42
@@ -671,7 +670,7 @@ if [[ -f "${WORK}/output.h5" ]]; then
   echo "Uploading ${OUTPUT_S3_URI}"
   aws s3 cp "${WORK}/output.h5.gz" "${OUTPUT_S3_URI}"
 else
-  write_status_json "failed"
+  write_status_json "${STATUS_FAILED}"
   upload_status
   echo "No output.h5 produced" >&2
   exit 1

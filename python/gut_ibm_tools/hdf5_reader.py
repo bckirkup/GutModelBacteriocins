@@ -9,7 +9,6 @@ from typing import Any
 
 import h5py
 import numpy as np
-from typing_extensions import Self
 
 from .path_utils import validate_input_path
 
@@ -35,7 +34,7 @@ class GutIBMData:
             self._file.close()
             self._file = None
 
-    def __enter__(self) -> Self:
+    def __enter__(self) -> GutIBMData:
         self.open()
         return self
 
