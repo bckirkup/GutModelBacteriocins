@@ -186,7 +186,12 @@ checkpoint→S3 resume is solid.
 
 1. Periodic HDF5 checkpoints → S3 prefix per job (`CHECKPOINT_INTERVAL_SECONDS`, default 300).
 2. `entry.sh` uploads `checkpoint.h5` + `status.json` heartbeat; resumes via `checkpoint_file`.
+   Uploads freeze `gut_ibm` briefly (`SIGSTOP`), copy + `h5ls` validate (requires `/agents/`),
+   and **refuse** to overwrite a larger remote object with a smaller/corrupt local file.
+   Corrupt downloads are quarantined (`checkpoint.h5.corrupt.<ts>`) and the job exits 3
+   instead of aborting mid-open and clobbering S3 with an empty `H5Fcreate` stub.
 3. IMDSv2 poll for `spot/instance-action`: on notice, SIGTERM `gut_ibm` (graceful step finish), flush checkpoint/status, exit so Batch can retry.
+4. Enable **S3 versioning** on the outputs bucket so a bad upload can still be recovered.
 4. Campaign job def `retryStrategy` retries `Host EC2*` reclaim reasons.
 5. Gzip finals before upload (existing habit).
 
@@ -250,6 +255,7 @@ gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 \
 | Symptom | Likely cause |
 |---------|----------------|
 | Batch `statusReason` starts with `Host EC2*`; `status.json` has `spot_interruption=true` | Spot reclaim (retry should resume from checkpoint) |
+| Resume attempt exits 134 / HDF5 "bad object header"; S3 `checkpoint.h5` suddenly tiny | Prior live copy was corrupt **or** failed resume overwrote S3 with empty output — fixed in `entry.sh` (validate + never shrink); quarantine corrupt object and resubmit with a fresh image |
 | `status.json` has `memory_pressure=true` / state `memory_pressure` | Graceful stop before OOM; **do not** auto-retry same size — use larger instance / job-def memory, then resume from checkpoint |
 | Job FAILED, stale `status.json` (age ≫ sync interval), no Spot/memory flags | Hang / hard OOM kill without flush |
 | `global_agents≤1` or population-stop in logs; job SUCCEEDED early | Biology collapse (usefulness warning) |

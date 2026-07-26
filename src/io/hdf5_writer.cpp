@@ -416,6 +416,12 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
     write_genome_layer(sim, path);
   }
 
+  // Flush so a concurrent checkpoint copy (entry.sh SIGSTOP+cp) sees consistent
+  // metadata; without this, mid-write S3 uploads can be unreadable on resume.
+  if (io_rank(cfg_) == 0 && file_id_ >= 0) {
+    H5Fflush(fid, H5F_SCOPE_LOCAL);
+  }
+
   mpi_barrier(cfg_);
 #else
   (void)sim; (void)step; (void)time; (void)dt;

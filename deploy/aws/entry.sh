@@ -36,6 +36,7 @@ CHECKPOINT_NAME="checkpoint.h5"
 STATUS_NAME="status.json"
 SYNC_PID=""
 MPIRUN_PID=""
+FROZEN_PIDS=()
 SPOT_NOTICED=0
 MEMORY_PRESSURE=0
 RESUME_FROM_CHECKPOINT=0
@@ -68,15 +69,117 @@ resolve_status_uri() {
   echo ""
 }
 
-# Upload the newest checkpoint (the working output.h5 already holds the step
-# snapshot groups the C++ side writes; init_from_checkpoint restarts from the
-# latest step group). Best-effort: a mid-write copy just misses the newest group.
+# True if path is a readable HDF5 with at least one agents/step group (resume needs it).
+hdf5_checkpoint_usable() {
+  local f="$1"
+  [[ -f "${f}" ]] || return 1
+  local sz
+  sz="$(stat -c '%s' "${f}" 2>/dev/null || echo 0)"
+  if ! [[ "${sz}" =~ ^[0-9]+$ ]] || (( sz < 4096 )); then
+    return 1
+  fi
+  if command -v h5ls >/dev/null 2>&1; then
+    h5ls -r "${f}" 2>/dev/null | grep -qE '^/agents/' || return 1
+  else
+    # Weak fallback when hdf5-tools is missing: signature only.
+    local magic
+    magic="$(od -An -N8 -tx1 "${f}" 2>/dev/null | tr -d ' \n')"
+    [[ "${magic}" == "894844460d0a1a0a" ]] || return 1
+  fi
+  return 0
+}
+
+s3_object_size_bytes() {
+  local uri="$1"
+  local line size
+  line="$(aws s3 ls "${uri}" 2>/dev/null || true)"
+  [[ -n "${line}" ]] || { echo 0; return 0; }
+  size="$(awk '{print $3}' <<<"${line}" | tail -n 1)"
+  if [[ "${size}" =~ ^[0-9]+$ ]]; then
+    echo "${size}"
+  else
+    echo 0
+  fi
+}
+
+# Freeze mpirun + gut_ibm children so a filesystem copy of output.h5 is consistent.
+freeze_sim_writers() {
+  FROZEN_PIDS=()
+  local p already q
+  if [[ -n "${MPIRUN_PID}" ]]; then
+    while read -r p; do
+      [[ -n "${p}" ]] || continue
+      if kill -STOP "${p}" 2>/dev/null; then
+        FROZEN_PIDS+=("${p}")
+      fi
+    done < <(pgrep -P "${MPIRUN_PID}" 2>/dev/null || true)
+    if kill -STOP "${MPIRUN_PID}" 2>/dev/null; then
+      FROZEN_PIDS+=("${MPIRUN_PID}")
+    fi
+  fi
+  while read -r p; do
+    [[ -n "${p}" ]] || continue
+    already=0
+    for q in "${FROZEN_PIDS[@]+"${FROZEN_PIDS[@]}"}"; do
+      if [[ "${q}" == "${p}" ]]; then
+        already=1
+        break
+      fi
+    done
+    if [[ "${already}" -eq 0 ]] && kill -STOP "${p}" 2>/dev/null; then
+      FROZEN_PIDS+=("${p}")
+    fi
+  done < <(pgrep -f "${BINARY}" 2>/dev/null || true)
+}
+
+thaw_sim_writers() {
+  local p
+  for p in "${FROZEN_PIDS[@]+"${FROZEN_PIDS[@]}"}"; do
+    kill -CONT "${p}" 2>/dev/null || true
+  done
+  FROZEN_PIDS=()
+}
+
+# Upload a validated snapshot of output.h5. Never replace a larger remote
+# checkpoint with a tiny/corrupt local file (failed resume used to do that).
 upload_checkpoint() {
   [[ -n "${CHECKPOINT_S3_PREFIX:-}" && -f "${WORK}/output.h5" ]] || return 0
-  if aws s3 cp "${WORK}/output.h5" "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}" >/dev/null 2>&1; then
+  local staging="${WORK}/checkpoint_staging.h5"
+  local dest="${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}"
+  local uploading="${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}.uploading"
+  local local_sz remote_sz
+
+  freeze_sim_writers
+  if ! cp -f "${WORK}/output.h5" "${staging}"; then
+    thaw_sim_writers
+    return 0
+  fi
+  thaw_sim_writers
+
+  if ! hdf5_checkpoint_usable "${staging}"; then
+    echo "Skipping checkpoint upload: local snapshot not usable for resume" >&2
+    rm -f "${staging}"
+    return 0
+  fi
+
+  local_sz="$(stat -c '%s' "${staging}" 2>/dev/null || echo 0)"
+  remote_sz="$(s3_object_size_bytes "${dest}")"
+  # Guard against overwriting a good multi-MB checkpoint with a stub/partial file.
+  if (( remote_sz > 1048576 && local_sz < remote_sz / 2 )); then
+    echo "Refusing to overwrite remote checkpoint (${remote_sz} B) with smaller local (${local_sz} B)" >&2
+    rm -f "${staging}"
+    return 0
+  fi
+
+  if aws s3 cp "${staging}" "${uploading}" >/dev/null 2>&1 \
+    && aws s3 cp "${uploading}" "${dest}" >/dev/null 2>&1; then
+    aws s3 rm "${uploading}" >/dev/null 2>&1 || true
     CHECKPOINT_UPLOADED_AT="$(iso_now)"
     export CHECKPOINT_UPLOADED_AT
+  else
+    echo "Checkpoint upload failed (left prior S3 object untouched if present)" >&2
   fi
+  rm -f "${staging}"
 }
 
 # Parse the latest gut_ibm progress line from RUN_LOG into env vars for status.json.
@@ -387,6 +490,18 @@ if [[ -n "${CHECKPOINT_S3_PREFIX:-}" ]]; then
   if aws s3 ls "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}" >/dev/null 2>&1; then
     echo "Resuming from checkpoint: ${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}"
     aws s3 cp "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}" "${WORK}/checkpoint.h5"
+    if ! hdf5_checkpoint_usable "${WORK}/checkpoint.h5"; then
+      echo "Downloaded checkpoint is unreadable/incomplete; refusing resume" >&2
+      echo "Quarantining S3 object so retries do not loop on a corrupt file" >&2
+      aws s3 mv \
+        "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}" \
+        "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}.corrupt.$(date -u +%Y%m%dT%H%M%SZ)" \
+        >/dev/null 2>&1 || true
+      rm -f "${WORK}/checkpoint.h5"
+      write_status_json "failed"
+      upload_status
+      exit 3
+    fi
     RESUME_FROM_CHECKPOINT=1
     GUTIBM_WORK_DIR="${WORK}" python3 - <<'PY'
 import json, os

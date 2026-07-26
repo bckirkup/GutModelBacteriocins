@@ -1,0 +1,186 @@
+{
+    "events": [
+        {
+            "timestamp": 1785009893348,
+            "message": "Downloading input: s3://gutibm-inputs-994254241749/campaign/baseline_seed1001/input.json",
+            "ingestionTime": 1785009898023
+        },
+        {
+            "timestamp": 1785009893903,
+            "message": "Completed 1.3 KiB/1.3 KiB (10.1 KiB/s) with 1 file(s) remaining\rdownload: s3://gutibm-inputs-994254241749/campaign/baseline_seed1001/input.json to ../../tmp/gutibm_job/input.json",
+            "ingestionTime": 1785009898023
+        },
+        {
+            "timestamp": 1785009895018,
+            "message": "Status/checkpoint sync every 300s (memory guard=1)",
+            "ingestionTime": 1785009898023
+        },
+        {
+            "timestamp": 1785009895018,
+            "message": "Running /opt/gutibm/gut_ibm (mpi_ranks=1)",
+            "ingestionTime": 1785009898023
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "GutIBM initialized:",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "  Domain: 1000x1000x50 cells (50000000 total)",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "  MPI ranks: 1",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "  Slab [0, 0.002) m",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "  Local agents: 600  Global agents: 600",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "  Chemical species: 9",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "  Bio dt: 60 s",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "  Adaptive dt: OFF",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "  Total time: 604800 s",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009903798,
+            "message": "  GPU: ON (device 0)",
+            "ingestionTime": 1785009908033
+        },
+        {
+            "timestamp": 1785009923106,
+            "message": "Step 1  t=60s  dt=60s  global_agents=485  local_agents=485  mu_avg=0.000103  pct=0.009921  rate=3.108  eta_s=194606",
+            "ingestionTime": 1785009928031
+        },
+        {
+            "timestamp": 1785011173047,
+            "message": "Step 60  t=4e+03s  dt=60s  global_agents=205  local_agents=205  mu_avg=0.000113  pct=0.5952  rate=2.836  eta_s=211965",
+            "ingestionTime": 1785011178033
+        },
+        {
+            "timestamp": 1785013123667,
+            "message": "Step 120  t=7e+03s  dt=60s  global_agents=19  local_agents=19  mu_avg=0.00017  pct=1.19  rate=2.236  eta_s=267249",
+            "ingestionTime": 1785013128034
+        },
+        {
+            "timestamp": 1785015023379,
+            "message": "Step 180  t=1e+04s  dt=60s  global_agents=27  local_agents=27  mu_avg=0.00017  pct=1.786  rate=2.11  eta_s=281577",
+            "ingestionTime": 1785015028034
+        },
+        {
+            "timestamp": 1785016679357,
+            "message": "Step 240  t=1e+04s  dt=60s  global_agents=40  local_agents=40  mu_avg=0.00017  pct=2.381  rate=2.125  eta_s=277798",
+            "ingestionTime": 1785016683033
+        },
+        {
+            "timestamp": 1785018194921,
+            "message": "Step 300  t=2e+04s  dt=60s  global_agents=66  local_agents=66  mu_avg=0.00017  pct=2.976  rate=2.171  eta_s=270291",
+            "ingestionTime": 1785018198038
+        },
+        {
+            "timestamp": 1785019524653,
+            "message": "Step 360  t=2e+04s  dt=60s  global_agents=95  local_agents=95  mu_avg=0.000169  pct=3.571  rate=2.245  eta_s=259763",
+            "ingestionTime": 1785019528035
+        },
+        {
+            "timestamp": 1785020853227,
+            "message": "Step 420  t=3e+04s  dt=60s  global_agents=147  local_agents=147  mu_avg=0.000169  pct=4.167  rate=2.301  eta_s=251837",
+            "ingestionTime": 1785020858032
+        },
+        {
+            "timestamp": 1785022204041,
+            "message": "Step 480  t=3e+04s  dt=60s  global_agents=219  local_agents=219  mu_avg=0.000168  pct=4.762  rate=2.341  eta_s=246005",
+            "ingestionTime": 1785022208037
+        },
+        {
+            "timestamp": 1785023564383,
+            "message": "Step 540  t=3e+04s  dt=60s  global_agents=213  local_agents=213  mu_avg=0.000169  pct=5.357  rate=2.372  eta_s=241337",
+            "ingestionTime": 1785023568047
+        },
+        {
+            "timestamp": 1785024942005,
+            "message": "Step 600  t=4e+04s  dt=60s  global_agents=308  local_agents=308  mu_avg=0.00017  pct=5.952  rate=2.394  eta_s=237604",
+            "ingestionTime": 1785024943032
+        },
+        {
+            "timestamp": 1785026343939,
+            "message": "Step 660  t=4e+04s  dt=60s  global_agents=459  local_agents=459  mu_avg=0.00017  pct=6.548  rate=2.409  eta_s=234646",
+            "ingestionTime": 1785026348034
+        },
+        {
+            "timestamp": 1785027795168,
+            "message": "Step 720  t=4e+04s  dt=60s  global_agents=683  local_agents=683  mu_avg=0.00017  pct=7.143  rate=2.415  eta_s=232588",
+            "ingestionTime": 1785027798033
+        },
+        {
+            "timestamp": 1785029317510,
+            "message": "Step 780  t=5e+04s  dt=60s  global_agents=1030  local_agents=1030  mu_avg=0.00017  pct=7.738  rate=2.411  eta_s=231471",
+            "ingestionTime": 1785029318033
+        },
+        {
+            "timestamp": 1785030892077,
+            "message": "Step 840  t=5e+04s  dt=60s  global_agents=1514  local_agents=1514  mu_avg=0.00017  pct=8.333  rate=2.401  eta_s=230871",
+            "ingestionTime": 1785030893036
+        },
+        {
+            "timestamp": 1785032569870,
+            "message": "Step 900  t=5e+04s  dt=60s  global_agents=2247  local_agents=2247  mu_avg=0.00017  pct=8.929  rate=2.382  eta_s=231194",
+            "ingestionTime": 1785032573034
+        },
+        {
+            "timestamp": 1785034408045,
+            "message": "Step 960  t=6e+04s  dt=60s  global_agents=3325  local_agents=3325  mu_avg=0.00017  pct=9.524  rate=2.351  eta_s=232790",
+            "ingestionTime": 1785034413032
+        },
+        {
+            "timestamp": 1785036594564,
+            "message": "Step 1020  t=6e+04s  dt=60s  global_agents=3247  local_agents=3247  mu_avg=0.00017  pct=10.12  rate=2.293  eta_s=237077",
+            "ingestionTime": 1785036598033
+        },
+        {
+            "timestamp": 1785039120843,
+            "message": "Step 1080  t=6e+04s  dt=60s  global_agents=4778  local_agents=4778  mu_avg=0.00017  pct=10.71  rate=2.218  eta_s=243475",
+            "ingestionTime": 1785039123034
+        },
+        {
+            "timestamp": 1785042202532,
+            "message": "Step 1140  t=7e+04s  dt=60s  global_agents=7100  local_agents=7100  mu_avg=0.00017  pct=11.31  rate=2.118  eta_s=253290",
+            "ingestionTime": 1785042203032
+        },
+        {
+            "timestamp": 1785045976657,
+            "message": "Step 1200  t=7e+04s  dt=60s  global_agents=10541  local_agents=10541  mu_avg=0.00017  pct=11.9  rate=1.996  eta_s=266939",
+            "ingestionTime": 1785045978035
+        },
+        {
+            "timestamp": 1785050704116,
+            "message": "Step 1260  t=8e+04s  dt=60s  global_agents=15582  local_agents=15582  mu_avg=0.00017  pct=12.5  rate=1.853  eta_s=285602",
+            "ingestionTime": 1785050708039
+        }
+    ],
+    "nextForwardToken": "f/39807960918948595049544571718425061800173676332346441728/s",
+    "nextBackwardToken": "b/39807050808410070702342597736780756005936682834566774784/s"
+}
