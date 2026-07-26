@@ -12,9 +12,10 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 AWS = "aws"
 STATUS_FILE_NAME = "status.json"

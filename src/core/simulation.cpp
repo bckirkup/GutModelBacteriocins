@@ -483,6 +483,28 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
   schedule_output_from_time(clock_.time, cfg_.time.output_interval, clock_.next_output, clock_.next_snapshot);
 }
 
+void Simulation::maybe_write_restart() {
+  if (!cfg_.restart.enabled || cfg_.restart.interval_steps <= 0) return;
+  if (clock_.step_count <= 0) return;
+  if (clock_.step_count % cfg_.restart.interval_steps != 0) return;
+  write_restart_now();
+}
+
+void Simulation::write_restart_now() {
+  if (!cfg_.restart.enabled) return;
+  if (cfg_.restart.directory.empty()) return;
+
+  const std::string step_name = std::format("step_{:06}", clock_.step_count);
+  const std::string path = cfg_.restart.directory + "/" + step_name + ".h5";
+  const bool ok = HDF5Writer::write_closed_restart(
+      *this, path, clock_.step_count, clock_.time, cfg_.time.bio_dt);
+  if (ok && domain_.rank() == 0) {
+    std::cout << "Wrote closed restart: " << path
+              << "  (t=" << clock_.time << "s step=" << clock_.step_count << ")\n"
+              << std::flush;
+  }
+}
+
 std::vector<std::string> Simulation::fix_names() const {
   std::vector<std::string> names;
   names.reserve(fixes_.size());
@@ -598,9 +620,9 @@ void Simulation::run() {
   bool stopped_for_population = false;
   const auto wall_start = std::chrono::steady_clock::now();
 
-  // Initial snapshot (step 0, pre-biology)
-  if (hdf5_.is_enabled()) {
-    hdf5_.write_step(*this, 0, 0.0, last_dt);
+  // Initial snapshot only for fresh runs (not checkpoint resume).
+  if (hdf5_.is_enabled() && clock_.step_count == 0) {
+    hdf5_.write_step(*this, 0, clock_.time, last_dt);
   }
   if (rank == 0) {
     take_lineage_snapshot();
@@ -635,6 +657,8 @@ void Simulation::run() {
         step_profile_.hdf5_s += std::chrono::duration<double>(hdf5_t1 - hdf5_t0).count();
       }
     }
+
+    maybe_write_restart();
 
     // Console progress and in-memory lineage snapshots use output_interval (seconds).
     if (clock_.time >= clock_.next_output) {
@@ -685,6 +709,11 @@ void Simulation::run() {
         break;
       }
     }
+  }
+
+  // Final closed restart so Spot/SIGTERM/early-exit still leaves a usable artifact.
+  if (cfg_.restart.enabled && clock_.step_count > 0) {
+    write_restart_now();
   }
 
   hdf5_.finalize();

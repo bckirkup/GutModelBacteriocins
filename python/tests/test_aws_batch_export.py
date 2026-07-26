@@ -8,11 +8,11 @@ against dead-wiring where every input is identical). S3 / submit are mocked.
 
 from __future__ import annotations
 
+import itertools
 import json
 from pathlib import Path
 
 import pytest
-
 from gut_ibm_tools.aws_batch_export import (
     ENV_CHECKPOINT_PREFIX,
     ENV_INPUT_PREFIX,
@@ -42,7 +42,7 @@ JOB_DEF = "gutibm-cuda-campaign"
 
 def _argv_flags(argv: list[str]) -> dict[str, str]:
     """Map each ``--flag`` to the token that follows it (safe, no index math)."""
-    return {flag: value for flag, value in zip(argv, argv[1:]) if flag.startswith("--")}
+    return {flag: value for flag, value in itertools.pairwise(argv) if flag.startswith("--")}
 
 
 def _only_submit_flags(recorder: _Recorder) -> dict[str, str]:

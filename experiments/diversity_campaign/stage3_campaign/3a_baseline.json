@@ -49,9 +49,15 @@
       "genome": 60
     }
   },
+  "restart": {
+    "enabled": true,
+    "directory": "restart",
+    "interval_steps": 60
+  },
   "_comment": [
     "CAMPAIGN: Baseline. No optional modules, motility OFF.",
-    "GPU ON (50M-cell Stage 3): requires CUDA-enabled gut_ibm build."
+    "GPU ON (50M-cell Stage 3): requires CUDA-enabled gut_ibm build.",
+    "Closed restart artifacts every 60 steps enable Spot resume and midstream forks."
   ],
   "motility.enabled": false,
   "gpu_enabled": true,

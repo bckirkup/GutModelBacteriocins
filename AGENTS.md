@@ -198,6 +198,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | Plasmid names | `ColE1`, `ColE2`, `ColB`, `ColIa`, `ColM`, `MccV` |
 | HDF5 schedule | Nested `hdf5.schedule.*` in input JSON or `cfg.hdf5.schedule` (summary/agents/grid/lineage/genome intervals) |
 | Checkpoint restart | `checkpoint_file` + optional `checkpoint_step` in input JSON |
+| Closed midstream restarts | `restart.enabled` + `restart.directory` + `restart.interval_steps` (Tier 2: agents+grid; AWS uploads immutable `step_*.h5` + `latest.json`) |
 | Disable HDF5 in tests | `cfg.hdf5.enabled = false` |
 | Strict config | `GUTIBM_STRICT_CONFIG=1` aborts on invalid numerics |
 | MPI decomp axis | `cfg.domain.mpi_decomp_axis` (default 0 = x) |

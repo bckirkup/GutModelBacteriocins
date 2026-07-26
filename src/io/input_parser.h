@@ -90,6 +90,15 @@ struct SimulationConfig {
   };
   CheckpointConfig checkpoint;
 
+  // Closed midstream restart artifacts (separate from live hdf5 analysis trail).
+  // When enabled, Simulation writes restart/step_NNNNNN.h5 every interval_steps.
+  struct RestartConfig {
+    bool enabled = false;
+    std::string directory = "restart";
+    Int interval_steps = 0;  // 0 = disabled even if enabled=true
+  };
+  RestartConfig restart;
+
   struct InitialStrain {
     Int type = 0;
     Int count = 0;

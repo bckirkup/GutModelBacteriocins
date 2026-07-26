@@ -1,0 +1,17 @@
+{
+  "_comment": "Stage 3A burn-in (2 days) producing immutable restart artifacts for forks.",
+  "output_dir": "batch_results/diversity_campaign/stage3_burnin",
+  "base_config": "experiments/diversity_campaign/stage3_campaign/3a_burnin.json",
+  "binary": "build/gut_ibm",
+  "mpirun_args": [
+    "--bind-to",
+    "none"
+  ],
+  "on_fail": "continue",
+  "sweep": {
+    "seed": [
+      1001
+    ]
+  },
+  "mpi_ranks": 1
+}

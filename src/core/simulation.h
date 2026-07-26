@@ -148,6 +148,8 @@ class Simulation {
   void check_washout();
   void crypt_migration(Real dt);
   void take_lineage_snapshot();
+  void maybe_write_restart();
+  void write_restart_now();
 
   // Module execution (NUFEB-inspired)
   void module_biology(Real dt);

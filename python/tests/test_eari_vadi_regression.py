@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from gut_ibm_tools.validation_regression import (
     FISH_TARGETS,
     VALIDATION_TARGETS,
@@ -18,7 +17,6 @@ from gut_ibm_tools.validation_regression import (
     load_golden,
     run_validation,
 )
-
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from gut_ibm_tools.aws_batch_estimate import (
     PRICE_TABLE_USD_PER_HOUR,
     estimate_cost,

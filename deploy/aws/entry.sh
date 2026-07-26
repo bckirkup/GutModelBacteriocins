@@ -7,7 +7,10 @@
 #   OUTPUT_S3_URI    s3://bucket/path/output.h5.gz (or set OUTPUT_S3_PREFIX)
 #   OUTPUT_S3_PREFIX s3://bucket/path/jobs         → ${PREFIX}/${INDEX}/output.h5.gz
 #   CHECKPOINT_S3_PREFIX  s3://bucket/.../ckpt/    (optional; per-index if ARRAY)
-#   CHECKPOINT_INTERVAL_SECONDS  checkpoint upload cadence (default 300)
+#   CHECKPOINT_S3_URI     s3://bucket/.../step_N.h5  (optional explicit restart file)
+#   CHECKPOINT_INTERVAL_SECONDS  how often to scan/upload closed restarts (default 300)
+#   RESTART_INTERVAL_STEPS  injected into input.json when checkpointing (default 60)
+#   REQUIRE_RESTART_GRID  1 (default) = closed restarts must contain /grid/
 #   STATUS_S3_URI    optional explicit status.json URI (else under CHECKPOINT prefix)
 #   GUTIBM_BINARY    path to gut_ibm (default /opt/gutibm/gut_ibm)
 #   MPI_RANKS        default 1
@@ -32,8 +35,13 @@ MEMORY_GUARD="${MEMORY_GUARD:-1}"
 MEMORY_MIN_AVAILABLE_MB="${MEMORY_MIN_AVAILABLE_MB:-2048}"
 GPU_MIN_FREE_MB="${GPU_MIN_FREE_MB:-512}"
 REQUIRE_GPU="${REQUIRE_GPU:-0}"
+REQUIRE_RESTART_GRID="${REQUIRE_RESTART_GRID:-1}"
+RESTART_INTERVAL_STEPS="${RESTART_INTERVAL_STEPS:-60}"
 CHECKPOINT_NAME="checkpoint.h5"
+LATEST_NAME="latest.json"
 STATUS_NAME="status.json"
+STATUS_FAILED="failed"
+RESTART_DIR="${WORK}/restart"
 SYNC_PID=""
 MPIRUN_PID=""
 SPOT_NOTICED=0
@@ -45,7 +53,8 @@ MEM_AVAILABLE_MB=""
 MEM_CGROUP_FREE_MB=""
 MEM_EFFECTIVE_FREE_MB=""
 GPU_FREE_MB=""
-mkdir -p "${WORK}"
+CHECKPOINT_KEY=""
+mkdir -p "${WORK}" "${RESTART_DIR}"
 RUN_LOG="${WORK}/run.log"
 : >"${RUN_LOG}"
 
@@ -68,14 +77,117 @@ resolve_status_uri() {
   echo ""
 }
 
-# Upload the newest checkpoint (the working output.h5 already holds the step
-# snapshot groups the C++ side writes; init_from_checkpoint restarts from the
-# latest step group). Best-effort: a mid-write copy just misses the newest group.
+# True if path is a readable closed restart (agents required; grid when Tier 2).
+hdf5_checkpoint_usable() {
+  local f="$1"
+  [[ -f "${f}" ]] || return 1
+  local sz
+  sz="$(stat -c '%s' "${f}" 2>/dev/null || echo 0)"
+  if ! [[ "${sz}" =~ ^[0-9]+$ ]] || (( sz < 4096 )); then
+    return 1
+  fi
+  if command -v h5ls >/dev/null 2>&1; then
+    h5ls -r "${f}" 2>/dev/null | grep -qE '^/agents/' || return 1
+    if [[ "${REQUIRE_RESTART_GRID}" == "1" ]]; then
+      h5ls -r "${f}" 2>/dev/null | grep -qE '^/grid/' || return 1
+    fi
+  else
+    # Weak fallback when hdf5-tools is missing: signature only.
+    local magic
+    magic="$(od -An -N8 -tx1 "${f}" 2>/dev/null | tr -d ' \n')"
+    [[ "${magic}" == "894844460d0a1a0a" ]] || return 1
+  fi
+  return 0
+}
+
+file_sha256() {
+  local f="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "${f}" | awk '{print $1}'
+  else
+    echo ""
+  fi
+}
+
+write_latest_json() {
+  local step_name="$1"
+  local s3_uri="$2"
+  local local_path="$3"
+  local size sha
+  size="$(stat -c '%s' "${local_path}" 2>/dev/null || echo 0)"
+  sha="$(file_sha256 "${local_path}")"
+  GUTIBM_WORK_DIR="${WORK}" \
+  GUTIBM_LATEST_STEP="${step_name}" \
+  GUTIBM_LATEST_URI="${s3_uri}" \
+  GUTIBM_LATEST_SIZE="${size}" \
+  GUTIBM_LATEST_SHA="${sha}" \
+  GUTIBM_JOB_ID="${JOB_ID}" \
+  python3 - <<'PY'
+import json, os
+from pathlib import Path
+work = Path(os.environ["GUTIBM_WORK_DIR"])
+payload = {
+    "step": os.environ.get("GUTIBM_LATEST_STEP"),
+    "uri": os.environ.get("GUTIBM_LATEST_URI"),
+    "size_bytes": int(os.environ.get("GUTIBM_LATEST_SIZE") or 0),
+    "sha256": os.environ.get("GUTIBM_LATEST_SHA") or None,
+    "job_id": os.environ.get("GUTIBM_JOB_ID") or None,
+    "updated_at": __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "fidelity": "tier2_agents_grid",
+    "rng": "reseeded_from_config_seed",
+}
+(work / "latest.json").write_text(json.dumps(payload, indent=2) + "\n")
+PY
+}
+
+# Upload closed restart/step_*.h5 files immutably; update latest.json pointer only.
 upload_checkpoint() {
-  [[ -n "${CHECKPOINT_S3_PREFIX:-}" && -f "${WORK}/output.h5" ]] || return 0
-  if aws s3 cp "${WORK}/output.h5" "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}" >/dev/null 2>&1; then
-    CHECKPOINT_UPLOADED_AT="$(iso_now)"
-    export CHECKPOINT_UPLOADED_AT
+  [[ -n "${CHECKPOINT_S3_PREFIX:-}" ]] || return 0
+  [[ -d "${RESTART_DIR}" ]] || return 0
+  local f base dest uploading step_name newest="" newest_uri=""
+  shopt -s nullglob
+  for f in "${RESTART_DIR}"/step_*.h5; do
+    base="$(basename "${f}")"
+    dest="${CHECKPOINT_S3_PREFIX}${base}"
+    if [[ -f "${f}.uploaded" ]]; then
+      newest="${f}"
+      newest_uri="${dest}"
+      continue
+    fi
+    if ! hdf5_checkpoint_usable "${f}"; then
+      echo "Skipping unusable restart artifact: ${f}" >&2
+      continue
+    fi
+    # Immutable: never overwrite an existing remote step object.
+    if aws s3 ls "${dest}" >/dev/null 2>&1; then
+      echo "Remote restart already exists (immutable): ${dest}"
+      : >"${f}.uploaded"
+      newest="${f}"
+      newest_uri="${dest}"
+      continue
+    fi
+    uploading="${dest}.uploading"
+    if aws s3 cp "${f}" "${uploading}" >/dev/null 2>&1 \
+      && aws s3 cp "${uploading}" "${dest}" >/dev/null 2>&1; then
+      aws s3 rm "${uploading}" >/dev/null 2>&1 || true
+      : >"${f}.uploaded"
+      newest="${f}"
+      newest_uri="${dest}"
+      CHECKPOINT_UPLOADED_AT="$(iso_now)"
+      CHECKPOINT_KEY="${base}"
+      export CHECKPOINT_UPLOADED_AT CHECKPOINT_KEY
+      echo "Uploaded immutable restart: ${dest}"
+    else
+      echo "Restart upload failed for ${f} (left prior S3 objects untouched)" >&2
+      aws s3 rm "${uploading}" >/dev/null 2>&1 || true
+    fi
+  done
+  shopt -u nullglob
+
+  if [[ -n "${newest}" && -n "${newest_uri}" ]]; then
+    step_name="$(basename "${newest}" .h5)"
+    write_latest_json "${step_name}" "${newest_uri}" "${newest}"
+    aws s3 cp "${WORK}/latest.json" "${CHECKPOINT_S3_PREFIX}${LATEST_NAME}" >/dev/null 2>&1 || true
   fi
 }
 
@@ -215,6 +327,7 @@ write_status_json() {
   GUTIBM_ETA_S="${ETA_S}" \
   GUTIBM_WALL_ELAPSED_S="${wall_elapsed}" \
   GUTIBM_CHECKPOINT_UPLOADED_AT="${CHECKPOINT_UPLOADED_AT:-}" \
+  GUTIBM_CHECKPOINT_KEY="${CHECKPOINT_KEY:-}" \
   GUTIBM_RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT}" \
   GUTIBM_SPOT_INTERRUPTION="${SPOT_NOTICED}" \
   GUTIBM_SPOT_ACTION_TIME="${spot_action}" \
@@ -260,6 +373,7 @@ payload = {
     "wall_elapsed_s": num_or_none(os.environ.get("GUTIBM_WALL_ELAPSED_S", "")),
     "eta_s": num_or_none(os.environ.get("GUTIBM_ETA_S", "")),
     "checkpoint_uploaded_at": os.environ.get("GUTIBM_CHECKPOINT_UPLOADED_AT") or None,
+    "checkpoint_key": os.environ.get("GUTIBM_CHECKPOINT_KEY") or None,
     "resume_from_checkpoint": os.environ.get("GUTIBM_RESUME_FROM_CHECKPOINT", "0") == "1",
     "spot_interruption": spot,
     "spot_action_time": os.environ.get("GUTIBM_SPOT_ACTION_TIME") or None,
@@ -383,12 +497,55 @@ fi
 echo "Downloading input: ${INPUT_S3_URI}"
 aws s3 cp "${INPUT_S3_URI}" "${WORK}/input.json"
 
-if [[ -n "${CHECKPOINT_S3_PREFIX:-}" ]]; then
+resolve_resume_uri() {
+  if [[ -n "${CHECKPOINT_S3_URI:-}" ]]; then
+    echo "${CHECKPOINT_S3_URI}"
+    return 0
+  fi
+  [[ -n "${CHECKPOINT_S3_PREFIX:-}" ]] || return 1
+  if aws s3 cp "${CHECKPOINT_S3_PREFIX}${LATEST_NAME}" "${WORK}/latest.json" >/dev/null 2>&1; then
+    local uri
+    uri="$(GUTIBM_WORK_DIR="${WORK}" python3 - <<'PY'
+import json, os
+from pathlib import Path
+work = Path(os.environ["GUTIBM_WORK_DIR"])
+data = json.loads((work / "latest.json").read_text())
+print(data.get("uri") or "")
+PY
+)"
+    if [[ -n "${uri}" ]]; then
+      echo "${uri}"
+      return 0
+    fi
+  fi
+  # Legacy fallback: mutable checkpoint.h5 from older entrypoint revisions.
   if aws s3 ls "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}" >/dev/null 2>&1; then
-    echo "Resuming from checkpoint: ${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}"
-    aws s3 cp "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}" "${WORK}/checkpoint.h5"
-    RESUME_FROM_CHECKPOINT=1
-    GUTIBM_WORK_DIR="${WORK}" python3 - <<'PY'
+    echo "${CHECKPOINT_S3_PREFIX}${CHECKPOINT_NAME}"
+    return 0
+  fi
+  return 1
+}
+
+RESUME_URI=""
+if RESUME_URI="$(resolve_resume_uri)" && [[ -n "${RESUME_URI}" ]]; then
+  echo "Resuming from restart artifact: ${RESUME_URI}"
+  aws s3 cp "${RESUME_URI}" "${WORK}/checkpoint.h5"
+  if ! hdf5_checkpoint_usable "${WORK}/checkpoint.h5"; then
+    echo "Downloaded restart is unreadable/incomplete; refusing resume" >&2
+    echo "Quarantining S3 object so retries do not loop on a corrupt file" >&2
+    aws s3 mv \
+      "${RESUME_URI}" \
+      "${RESUME_URI}.corrupt.$(date -u +%Y%m%dT%H%M%SZ)" \
+      >/dev/null 2>&1 || true
+    rm -f "${WORK}/checkpoint.h5"
+    write_status_json "${STATUS_FAILED}"
+    upload_status
+    exit 3
+  fi
+  RESUME_FROM_CHECKPOINT=1
+  CHECKPOINT_KEY="$(basename "${RESUME_URI}")"
+  export CHECKPOINT_KEY
+  GUTIBM_WORK_DIR="${WORK}" python3 - <<'PY'
 import json, os
 from pathlib import Path
 work = Path(os.environ["GUTIBM_WORK_DIR"])
@@ -397,16 +554,33 @@ cfg["checkpoint_file"] = str(work / "checkpoint.h5")
 cfg.setdefault("checkpoint_step", "")
 (work / "input.json").write_text(json.dumps(cfg, indent=2) + "\n")
 PY
-  fi
 fi
 
-GUTIBM_WORK_DIR="${WORK}" python3 - <<'PY'
+ENABLE_RESTART=0
+if [[ -n "${CHECKPOINT_S3_PREFIX:-}" ]]; then
+  ENABLE_RESTART=1
+fi
+GUTIBM_WORK_DIR="${WORK}" \
+RESTART_INTERVAL_STEPS="${RESTART_INTERVAL_STEPS}" \
+ENABLE_RESTART="${ENABLE_RESTART}" \
+python3 - <<'PY'
 import json, os
 from pathlib import Path
 work = Path(os.environ["GUTIBM_WORK_DIR"])
 cfg = json.loads((work / "input.json").read_text())
 cfg["hdf5_file"] = str(work / "output.h5")
 cfg.setdefault("gpu_enabled", True)
+if os.environ.get("ENABLE_RESTART") == "1":
+    restart = cfg.get("restart")
+    if not isinstance(restart, dict):
+        restart = {}
+    restart["enabled"] = True
+    restart["directory"] = str(work / "restart")
+    restart.setdefault(
+        "interval_steps",
+        int(os.environ.get("RESTART_INTERVAL_STEPS", "60")),
+    )
+    cfg["restart"] = restart
 (work / "input.json").write_text(json.dumps(cfg, indent=2) + "\n")
 PY
 
@@ -471,7 +645,7 @@ if [[ "${MEMORY_PRESSURE}" -eq 1 ]]; then
 fi
 
 if [[ "${RUN_EXIT_CODE}" -ne 0 ]]; then
-  write_status_json "failed"
+  write_status_json "${STATUS_FAILED}"
   upload_status
   echo "gut_ibm exited with ${RUN_EXIT_CODE}" >&2
   exit "${RUN_EXIT_CODE}"
@@ -484,7 +658,7 @@ if [[ "${REQUIRE_GPU}" == "1" ]]; then
   if grep -qE 'GPU: ON' "${RUN_LOG}"; then
     echo "GPU activation confirmed (REQUIRE_GPU=1)"
   else
-    write_status_json "failed"
+    write_status_json "${STATUS_FAILED}"
     upload_status
     echo "REQUIRE_GPU=1 but no 'GPU: ON' line in run log — CUDA fell back to CPU" >&2
     exit 42
@@ -496,7 +670,7 @@ if [[ -f "${WORK}/output.h5" ]]; then
   echo "Uploading ${OUTPUT_S3_URI}"
   aws s3 cp "${WORK}/output.h5.gz" "${OUTPUT_S3_URI}"
 else
-  write_status_json "failed"
+  write_status_json "${STATUS_FAILED}"
   upload_status
   echo "No output.h5 produced" >&2
   exit 1

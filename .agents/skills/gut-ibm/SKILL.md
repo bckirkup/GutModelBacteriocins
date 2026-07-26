@@ -216,6 +216,7 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `siderophore.enabled`, `siderophore.secretion_rate`, … | Siderophore dynamics (Spec 4) |
 | `profile_steps` | Per-step profiling (`docs/SCALING.md`) |
 | `checkpoint_file`, `checkpoint_step` | Checkpoint restart |
+| `restart.enabled`, `restart.directory`, `restart.interval_steps` | Closed midstream restarts (Tier 2) |
 | `adaptive_dt_enabled`, `dt_min`, `dt_max`, `dt_safety`, `dt_growth_limit` | Adaptive timestep |
 | `initial_strains` | JSON array of strain objects |
 | `fixes` | JSON array of Fix plugin names (execution order) |

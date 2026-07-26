@@ -575,7 +575,32 @@ gpu_device_id 0
 | `hdf5.compression_level` | 4 | — | gzip level (0–9) when compression is `gzip` |
 | `hdf5.parallel` | false | — | MPI-parallel agent gather on rank 0 |
 
+### Closed midstream restarts (Tier 2)
+
+Separate from the live analysis trail. When enabled, Simulation writes
+`{directory}/step_NNNNNN.h5` (create → agents/lineage/genome/grid/summary → close)
+every `interval_steps`, plus a final file on exit. AWS `entry.sh` uploads these
+immutably and points `latest.json` at the newest.
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `restart.enabled` | false | — | Master switch for closed restart writes |
+| `restart.directory` | `restart` | — | Local directory for `step_*.h5` files |
+| `restart.interval_steps` | 0 | steps | Cadence (0 = off even if enabled) |
+| `checkpoint_file` | — | — | Path to an existing restart/analysis HDF5 to resume |
+| `checkpoint_step` | — | — | Optional step group; empty = latest |
+
 Nested JSON example:
+
+```json
+"restart": {
+  "enabled": true,
+  "directory": "restart",
+  "interval_steps": 60
+}
+```
+
+HDF5 nested JSON example:
 
 ```json
 "hdf5": {

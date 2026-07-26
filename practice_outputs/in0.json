@@ -1,0 +1,34 @@
+{
+  "total_time": 120,
+  "bio_dt": 60,
+  "output_interval": 1000000000,
+  "seed": 4092,
+  "domain_x": 0.0001,
+  "domain_y": 0.0001,
+  "domain_z": 5e-05,
+  "grid_dx": 5e-06,
+  "gpu_enabled": true,
+  "gpu_device_id": -1,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 20,
+      "mu_max": 0.00055,
+      "plasmids": [
+        "ColE1"
+      ],
+      "conjugative": false
+    }
+  ],
+  "hdf5": {
+    "enabled": true,
+    "schedule": {
+      "summary": 1,
+      "agents": 0,
+      "grid": 0,
+      "lineage": 0,
+      "genome": 0
+    }
+  },
+  "hdf5_file": "output.h5"
+}

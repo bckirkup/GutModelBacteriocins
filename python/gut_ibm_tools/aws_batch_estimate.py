@@ -10,8 +10,8 @@ import argparse
 import json
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 AWS = "aws"
 DEFAULT_REGION = "us-east-1"

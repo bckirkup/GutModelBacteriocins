@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from gut_ibm_tools import GutIBMData
 
 

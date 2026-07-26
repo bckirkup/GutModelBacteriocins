@@ -167,7 +167,7 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          pip install ruff pytest
+          pip install "ruff==0.16.0" pytest
           pip install -e "python/.[dev,viz]"
 
       - name: Validate config JSON syntax

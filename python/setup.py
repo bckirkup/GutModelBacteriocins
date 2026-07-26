@@ -1,11 +1,11 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="gut-ibm-tools",
     version="0.1.0",
     description="Analysis toolkit for GutIBM Enterobacteriaceae simulation",
     packages=find_packages(),
-    python_requires=">=3.9",
+    python_requires=">=3.11",
     install_requires=[
         "numpy>=1.21",
         "h5py>=3.0",
@@ -22,6 +22,7 @@ setup(
             "gut-ibm-aws-status=gut_ibm_tools.aws_batch_status:main",
             "gut-ibm-aws-estimate=gut_ibm_tools.aws_batch_estimate:main",
             "gut-ibm-aws-qa=gut_ibm_tools.aws_batch_qa:main",
+            "gut-ibm-aws-branch=gut_ibm_tools.aws_batch_branch:main",
         ],
     },
 )

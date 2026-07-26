@@ -389,6 +389,17 @@ bool apply_io_key(SimulationConfig& cfg, std::string_view key, const std::string
     return true;
   }
   if (key == "checkpoint_step")        { cfg.checkpoint.step = val; return true; }
+  if (key == "restart.enabled" || key == "restart_enabled") {
+    cfg.restart.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "restart.directory" || key == "restart_directory") {
+    validate_path_syntax(val);
+    cfg.restart.directory = val;
+    return true;
+  }
+  if (key == "restart.interval_steps" || key == "restart_interval_steps") {
+    cfg.restart.interval_steps = parse_config_int(key, val); return true;
+  }
   return false;
 }
 

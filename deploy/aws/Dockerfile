@@ -56,6 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
       gzip \
+      hdf5-tools \
       libhdf5-openmpi-103-1 \
       libstdc++6 \
       openmpi-bin \

@@ -15,9 +15,10 @@ import json
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from .hdf5_reader import GutIBMData
 from .path_utils import PathValidationError, prepare_output_file, validate_path_syntax
@@ -134,7 +135,7 @@ def summarize_hdf5(path: Path, *, index: int, seed: int | None) -> IndexSummary:
         has_agents = False
         if data._file is not None and "agents" in data._file:
             has_agents = any(
-                name.startswith("step_") for name in data._file["agents"].keys()
+                name.startswith("step_") for name in data._file["agents"]
             )
     return IndexSummary(
         index=index,
