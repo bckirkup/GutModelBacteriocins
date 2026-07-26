@@ -69,6 +69,41 @@ Real peak_ai2(const Simulation& sim, Int i_ai2) {
   return peak;
 }
 
+Real peak_ai2_after_production(bool clustered) {
+  auto cfg = qs_cfg(77);
+  cfg.quorum_sensing.lsr_vmax = 0.0;
+  cfg.quorum_sensing.ai2_decay_rate = 0.0;
+  cfg.quorum_sensing.ai2_basal_rate = 1.0e-19;
+  cfg.quorum_sensing.ai2_growth_coupled = 0.0;
+  cfg.enabled_fixes = {"quorum_sensing"};
+  Simulation sim;
+  sim.init(cfg);
+  const Int i_ai2 = sim.chemical_field().find(species::AI2);
+  assert(i_ai2 >= 0);
+
+  if (clustered) {
+    for (int i = 0; i < 5; ++i) {
+      sim.agents().push_back(place_agent(sim, {25e-6, 25e-6, 25e-6}, 0.0));
+    }
+  } else {
+    const std::vector<Vec3> positions = {
+        {5e-6, 5e-6, 5e-6},
+        {45e-6, 5e-6, 5e-6},
+        {5e-6, 45e-6, 5e-6},
+        {45e-6, 45e-6, 5e-6},
+        {25e-6, 25e-6, 45e-6},
+    };
+    for (const Vec3& p : positions) {
+      sim.agents().push_back(place_agent(sim, p, 0.0));
+    }
+  }
+
+  for (int step = 0; step < 4; ++step) {
+    sim.step(10.0);
+  }
+  return peak_ai2(sim, i_ai2);
+}
+
 }  // namespace
 
 void test_qs_disabled_has_no_effect() {
@@ -303,44 +338,8 @@ void test_ai2_chemotaxis_bias() {
 }
 
 void test_clustering_increases_local_ai2() {
-  auto make_peak = [](bool clustered) {
-    auto cfg = qs_cfg(77);
-    cfg.quorum_sensing.lsr_vmax = 0.0;
-    cfg.quorum_sensing.ai2_decay_rate = 0.0;
-    cfg.quorum_sensing.ai2_basal_rate = 1.0e-19;
-    cfg.quorum_sensing.ai2_growth_coupled = 0.0;
-    cfg.enabled_fixes = {"quorum_sensing"};
-    Simulation sim;
-    sim.init(cfg);
-    const Int i_ai2 = sim.chemical_field().find(species::AI2);
-    assert(i_ai2 >= 0);
-
-    if (clustered) {
-      for (int i = 0; i < 5; ++i) {
-        sim.agents().push_back(
-            place_agent(sim, {25e-6, 25e-6, 25e-6}, 0.0));
-      }
-    } else {
-      const std::vector<Vec3> positions = {
-          {5e-6, 5e-6, 5e-6},
-          {45e-6, 5e-6, 5e-6},
-          {5e-6, 45e-6, 5e-6},
-          {45e-6, 45e-6, 5e-6},
-          {25e-6, 25e-6, 45e-6},
-      };
-      for (const Vec3& p : positions) {
-        sim.agents().push_back(place_agent(sim, p, 0.0));
-      }
-    }
-
-    for (int step = 0; step < 4; ++step) {
-      sim.step(10.0);
-    }
-    return peak_ai2(sim, i_ai2);
-  };
-
-  const Real peak_cluster = make_peak(true);
-  const Real peak_spread = make_peak(false);
+  const Real peak_cluster = peak_ai2_after_production(true);
+  const Real peak_spread = peak_ai2_after_production(false);
   assert(peak_cluster > 0.0);
   assert(peak_cluster > peak_spread);
 

@@ -254,7 +254,7 @@ template <typename T>
 void append_bytes(std::vector<char>& buf, const T& value) {
   const auto bytes = std::as_bytes(std::span<const T, 1>(&value, 1));
   for (const std::byte b : bytes) {
-    buf.push_back(static_cast<char>(b));
+    buf.push_back(static_cast<char>(to_underlying(b)));
   }
 }
 

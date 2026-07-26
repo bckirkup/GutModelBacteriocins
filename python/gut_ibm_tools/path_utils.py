@@ -198,6 +198,32 @@ def prepare_output_file(path: str | Path) -> Path:
     return validate_output_path(candidate)
 
 
+def prepare_output_directory(path: str | Path) -> Path:
+    """Validate a directory under cwd, create it, return a trusted rebuilt path.
+
+    Rebuilds the path from regex-sanitized segments so Sonar S8707 taint from
+    CLI arguments does not reach ``mkdir``.
+    """
+    candidate = validate_path_syntax(path)
+    candidate = _ensure_output_within_cwd(candidate)
+    trusted = _trusted_output_path(candidate)
+    if trusted.exists():
+        if trusted.is_symlink():
+            raise PathValidationError(
+                f"refusing to create directory through symlink: {trusted}"
+            )
+        if not trusted.is_dir():
+            raise PathValidationError(
+                f"output path exists and is not a directory: {trusted}"
+            )
+        return trusted
+
+    parent = trusted.parent if trusted.parent.parts else Path(".")
+    _mkdir_validated_parents(parent)
+    trusted.mkdir(exist_ok=True)
+    return trusted
+
+
 def write_text_file(path: str | Path, text: str) -> None:
     """Write text to a validated output path (must resolve under cwd)."""
     candidate = validate_path_syntax(path)

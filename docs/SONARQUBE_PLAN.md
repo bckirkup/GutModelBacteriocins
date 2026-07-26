@@ -101,12 +101,26 @@ validation.
      segments (breaks S8707 taint from CLI args on SonarCloud automatic analysis)
    - Use `open()` on the trusted path instead of passing user input through
    - `_mkdir_validated_parents()` creates only pre-checked directory segments
+   - `prepare_output_directory()` for CLI work dirs (`aws_batch_qa`) — same trusted rebuild
 
 2. **SAST config** (`sonar/pythonsecurity-s8707.json` + `sonar-project.properties`):
-   - Registers `validate_path_syntax`, `validate_output_path`, `prepare_output_file`, and
-     `_ensure_output_within_cwd` as validators for rule S8707
+   - Registers `validate_path_syntax`, `validate_output_path`, `prepare_output_file`,
+     `prepare_output_directory`, and `_ensure_output_within_cwd` as validators for S8707
    - Upload the same JSON in SonarCloud → Project Settings → SAST Engine → Python custom
      configuration if the scanner property is not picked up automatically
+
+### GitHub Actions pip (`githubactions:S8541` / `S8544`)
+
+Install third-party deps from the hash-locked
+[`.github/requirements-ci.txt`](../.github/requirements-ci.txt) with
+`pip install --only-binary=:all: --require-hashes -r ...`. Load the local package via
+`PYTHONPATH` (no editable install in CI). Regenerate from
+`.github/requirements-ci.in` with `pip-compile --generate-hashes`.
+
+### Docker COPY ownership (`docker:S6504`)
+
+Runtime `COPY` of `gut_ibm` / `entry.sh` uses `--chown=root:root --chmod=755` so the
+non-root `gutibm` user can execute but not rewrite the binaries.
 
 **All user-supplied paths** must go through `path_utils` — see
 `.agents/skills/sonarqube-python/SKILL.md`.

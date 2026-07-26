@@ -298,7 +298,7 @@ def fetch_job_status(
         try:
             text = getter(uri)
             report.status_json = json.loads(text)
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError):
             report.status_json = None
 
     if tail_logs > 0 and report.log_stream:

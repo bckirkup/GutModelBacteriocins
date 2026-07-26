@@ -22,9 +22,9 @@ function Ensure-Role {
   param([string]$Role, [string]$TrustFile)
   aws iam get-role --role-name $Role *> $null
   if ($LASTEXITCODE -eq 0) {
-    Write-Host "  role exists: $Role"
+    Write-Output "  role exists: $Role"
   } else {
-    Write-Host "  creating role: $Role"
+    Write-Output "  creating role: $Role"
     aws iam create-role --role-name $Role --assume-role-policy-document "file://$TrustFile" | Out-Null
   }
 }
