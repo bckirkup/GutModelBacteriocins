@@ -1,53 +1,26 @@
 {
     "jobs": [
         {
-            "jobArn": "arn:aws:batch:us-east-1:994254241749:job/f1e50083-c14c-4c07-86e6-9f0993d1f07a",
+            "jobArn": "arn:aws:batch:us-east-1:994254241749:job/8ccf470a-7369-4ed1-9767-dff551c070b6",
             "jobName": "gutibm-baseline-seed1001",
-            "jobId": "f1e50083-c14c-4c07-86e6-9f0993d1f07a",
+            "jobId": "8ccf470a-7369-4ed1-9767-dff551c070b6",
             "jobQueue": "arn:aws:batch:us-east-1:994254241749:job-queue/gutibm-gpu-campaign",
-            "status": "FAILED",
-            "attempts": [
-                {
-                    "container": {
-                        "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-campaign-spot_Batch_e9b7098d-4e15-3f0a-badf-5df799e30e7d/ad77929ff840428799aaf70ce8b66012",
-                        "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-campaign-spot_Batch_e9b7098d-4e15-3f0a-badf-5df799e30e7d/313bd7e266994db687182f1169a69048",
-                        "logStreamName": "gutibm-cuda-campaign/default/313bd7e266994db687182f1169a69048",
-                        "networkInterfaces": []
-                    },
-                    "startedAt": 1785009893374,
-                    "stoppedAt": 1785055941435,
-                    "statusReason": "Host EC2 (instance i-0317a1b28a2a58873) terminated."
-                },
-                {
-                    "container": {
-                        "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-campaign-spot_Batch_e9b7098d-4e15-3f0a-badf-5df799e30e7d/1612fed10e6a485e8bb0a02595cd636e",
-                        "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-campaign-spot_Batch_e9b7098d-4e15-3f0a-badf-5df799e30e7d/f75d007c540942be94fbd9b8f502bad2",
-                        "exitCode": 134,
-                        "logStreamName": "gutibm-cuda-campaign/default/f75d007c540942be94fbd9b8f502bad2",
-                        "networkInterfaces": []
-                    },
-                    "startedAt": 1785056088432,
-                    "stoppedAt": 1785056251446,
-                    "statusReason": "Essential container in task exited"
-                }
-            ],
-            "statusReason": "Essential container in task exited",
-            "createdAt": 1785009739124,
+            "status": "SUBMITTED",
+            "attempts": [],
+            "createdAt": 1785535735728,
             "retryStrategy": {
-                "attempts": 2,
+                "attempts": 8,
                 "evaluateOnExit": [
                     {
                         "onStatusReason": "Host EC2*",
                         "action": "retry"
                     },
                     {
-                        "onReason": "*",
+                        "onStatusReason": "*",
                         "action": "exit"
                     }
                 ]
             },
-            "startedAt": 1785056088432,
-            "stoppedAt": 1785056251446,
             "dependsOn": [],
             "jobDefinition": "arn:aws:batch:us-east-1:994254241749:job-definition/gutibm-cuda-campaign:1",
             "parameters": {},
@@ -65,8 +38,16 @@
                         "value": "s3://gutibm-inputs-994254241749/campaign/baseline_seed1001/input.json"
                     },
                     {
+                        "name": "MEMORY_MIN_AVAILABLE_MB",
+                        "value": "2048"
+                    },
+                    {
                         "name": "CHECKPOINT_S3_PREFIX",
                         "value": "s3://gutibm-outputs-994254241749/campaign/baseline_seed1001/ckpt/"
+                    },
+                    {
+                        "name": "GPU_MIN_FREE_MB",
+                        "value": "512"
                     },
                     {
                         "name": "MPI_RANKS",
@@ -77,12 +58,24 @@
                         "value": "1"
                     },
                     {
+                        "name": "MEMORY_GUARD",
+                        "value": "1"
+                    },
+                    {
                         "name": "CHECKPOINT_INTERVAL_SECONDS",
                         "value": "300"
                     },
                     {
+                        "name": "RESTART_INTERVAL_STEPS",
+                        "value": "30"
+                    },
+                    {
                         "name": "OUTPUT_S3_URI",
                         "value": "s3://gutibm-outputs-994254241749/campaign/baseline_seed1001/output.h5.gz"
+                    },
+                    {
+                        "name": "CHECKPOINT_S3_URI",
+                        "value": "s3://gutibm-outputs-994254241749/campaign/baseline_seed1001/ckpt/step_002490.h5"
                     },
                     {
                         "name": "STATUS_S3_URI",
@@ -92,10 +85,6 @@
                 "mountPoints": [],
                 "ulimits": [],
                 "privileged": true,
-                "exitCode": 134,
-                "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-campaign-spot_Batch_e9b7098d-4e15-3f0a-badf-5df799e30e7d/1612fed10e6a485e8bb0a02595cd636e",
-                "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-campaign-spot_Batch_e9b7098d-4e15-3f0a-badf-5df799e30e7d/f75d007c540942be94fbd9b8f502bad2",
-                "logStreamName": "gutibm-cuda-campaign/default/f75d007c540942be94fbd9b8f502bad2",
                 "networkInterfaces": [],
                 "resourceRequirements": [
                     {
