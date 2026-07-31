@@ -31,6 +31,9 @@ struct HDF5CheckpointAgents {
   std::vector<double>  radius;
   std::vector<double>  biomass;
   std::vector<double>  mu;
+  // Optional (empty when absent in older checkpoints).
+  std::vector<double>  mu_max;
+  std::vector<int32_t> in_crypt;
   std::vector<int64_t> lineage;
 };
 

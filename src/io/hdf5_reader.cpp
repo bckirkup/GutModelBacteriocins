@@ -129,6 +129,14 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
       ? prefix + "mu_realized" : prefix + "mu";
   out.mu = read_dataset_1d<double>(file, mu_path, H5T_NATIVE_DOUBLE);
 
+  if (link_exists(file, prefix + "mu_max")) {
+    out.mu_max = read_dataset_1d<double>(file, prefix + "mu_max", H5T_NATIVE_DOUBLE);
+  }
+  if (link_exists(file, prefix + "in_crypt")) {
+    out.in_crypt =
+        read_dataset_1d<int32_t>(file, prefix + "in_crypt", H5T_NATIVE_INT32);
+  }
+
   const std::string lineage_path = link_exists(file, prefix + "lineage_id")
       ? prefix + "lineage_id" : prefix + "lineage";
   out.lineage = read_dataset_1d<int64_t>(file, lineage_path, H5T_NATIVE_INT64);
@@ -138,6 +146,12 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
       out.y.size() != n || out.z.size() != n || out.radius.size() != n ||
       out.biomass.size() != n || out.mu.size() != n || out.lineage.size() != n) {
     throw HDF5Error("inconsistent agent dataset lengths in agents/" + step);
+  }
+  if (!out.mu_max.empty() && out.mu_max.size() != out.id.size()) {
+    throw HDF5Error("inconsistent mu_max length in agents/" + step);
+  }
+  if (!out.in_crypt.empty() && out.in_crypt.size() != out.id.size()) {
+    throw HDF5Error("inconsistent in_crypt length in agents/" + step);
   }
   return out;
 }

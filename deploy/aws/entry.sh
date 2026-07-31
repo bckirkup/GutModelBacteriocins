@@ -21,7 +21,9 @@
 #   MEMORY_MIN_AVAILABLE_MB  host/cgroup free-RAM threshold to stop (default 2048)
 #   GPU_MIN_FREE_MB          nvidia free-VRAM threshold to stop (default 512; 0=skip)
 #   REQUIRE_GPU              1 = fail the job if the run log has no "GPU: ON" line
-#                            (guards against a silent CUDA→CPU fallback; default 0)
+#                            (guards against a silent CUDA→CPU fallback; default 0).
+#                            Fresh init() and init_from_checkpoint() both print the
+#                            banner, so Spot resumes are covered.
 
 set -euo pipefail
 
@@ -85,18 +87,51 @@ hdf5_checkpoint_usable() {
   local sz
   sz="$(stat -c '%s' "${f}" 2>/dev/null || echo 0)"
   if ! [[ "${sz}" =~ ^[0-9]+$ ]] || (( sz < 4096 )); then
+    echo "Restart unusable (${f}): size=${sz} (<4096)" >&2
     return 1
   fi
   if command -v h5ls >/dev/null 2>&1; then
-    h5ls -r "${f}" 2>/dev/null | grep -qE '^/agents/' || return 1
+    local listing err rc=0
+    err="$(mktemp)"
+    # Path probes are more reliable than grepping `h5ls -r` (and surface open errors).
+    if ! h5ls "${f}/agents" >/dev/null 2>"${err}"; then
+      echo "Restart unusable (${f}): missing/unreadable /agents (size=${sz}) $(tr '\n' ' ' <"${err}" | head -c 180)" >&2
+      rm -f "${err}"
+      return 1
+    fi
     if [[ "${REQUIRE_RESTART_GRID}" == "1" ]]; then
-      h5ls -r "${f}" 2>/dev/null | grep -qE '^/grid/' || return 1
+      if ! h5ls "${f}/grid" >/dev/null 2>"${err}"; then
+        echo "Restart unusable (${f}): missing/unreadable /grid (size=${sz}) $(tr '\n' ' ' <"${err}" | head -c 180)" >&2
+        rm -f "${err}"
+        return 1
+      fi
+    fi
+    # Full listing only for the agents-path regex seatbelt used by older probes.
+    listing="$(h5ls -r "${f}" 2>"${err}")" || rc=$?
+    if (( rc != 0 )); then
+      echo "Restart unusable (${f}): h5ls -r failed rc=${rc} size=${sz} $(tr '\n' ' ' <"${err}" | head -c 180)" >&2
+      rm -f "${err}"
+      return 1
+    fi
+    rm -f "${err}"
+    echo "${listing}" | grep -qE '^/agents/' || {
+      echo "Restart unusable (${f}): no /agents/ child groups (size=${sz})" >&2
+      return 1
+    }
+    if [[ "${REQUIRE_RESTART_GRID}" == "1" ]]; then
+      echo "${listing}" | grep -qE '^/grid/' || {
+        echo "Restart unusable (${f}): no /grid/ child groups (size=${sz})" >&2
+        return 1
+      }
     fi
   else
     # Weak fallback when hdf5-tools is missing: signature only.
     local magic
     magic="$(od -An -N8 -tx1 "${f}" 2>/dev/null | tr -d ' \n')"
-    [[ "${magic}" == "894844460d0a1a0a" ]] || return 1
+    [[ "${magic}" == "894844460d0a1a0a" ]] || {
+      echo "Restart unusable (${f}): bad HDF5 signature (no h5ls)" >&2
+      return 1
+    }
   fi
   return 0
 }
@@ -155,8 +190,13 @@ upload_checkpoint() {
       newest_uri="${dest}"
       continue
     fi
+    if [[ -f "${f}.rejected" ]]; then
+      continue
+    fi
     if ! hdf5_checkpoint_usable "${f}"; then
       echo "Skipping unusable restart artifact: ${f}" >&2
+      # Stop re-probing every sync interval; keep the file for the instance lifetime.
+      : >"${f}.rejected"
       continue
     fi
     # Immutable: never overwrite an existing remote step object.
@@ -178,6 +218,15 @@ upload_checkpoint() {
       CHECKPOINT_KEY="${base}"
       export CHECKPOINT_UPLOADED_AT CHECKPOINT_KEY
       echo "Uploaded immutable restart: ${dest}"
+      # Free scratch space: drop older uploaded local steps (keep the newest).
+      local old
+      for old in "${RESTART_DIR}"/step_*.h5; do
+        [[ -f "${old}" ]] || continue
+        [[ "${old}" == "${f}" ]] && continue
+        if [[ -f "${old}.uploaded" ]]; then
+          rm -f "${old}" "${old}.uploaded" "${old}.rejected" || true
+        fi
+      done
     else
       echo "Restart upload failed for ${f} (left prior S3 objects untouched)" >&2
       aws s3 rm "${uploading}" >/dev/null 2>&1 || true
@@ -651,7 +700,8 @@ fi
 
 # Guard against a silent CUDA→CPU fallback: gut_ibm exits 0 and writes HDF5 even
 # when GPU init fails, so a green Batch job does not by itself prove the GPU path
-# ran. When REQUIRE_GPU=1, insist on the "GPU: ON" banner from simulation.cpp.
+# ran. When REQUIRE_GPU=1, insist on the "GPU: ON" banner (printed by both fresh
+# init() and init_from_checkpoint() resume paths).
 if [[ "${REQUIRE_GPU}" == "1" ]]; then
   if grep -qE 'GPU: ON' "${RUN_LOG}"; then
     echo "GPU activation confirmed (REQUIRE_GPU=1)"

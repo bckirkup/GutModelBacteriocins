@@ -65,6 +65,18 @@ void tag_crypt_resident(Agent& agent, const AdvectionField& advection) {
   }
 }
 
+// Prefer strain mu_max from config when older checkpoints omit /mu_max.
+// Never substitute mu_realized — that permanently caps growth after a stressed
+// snapshot and triggers a one-step combinatorial washout wipe on resume.
+Real fallback_mu_max(const SimulationConfig& cfg, Int type) {
+  for (const auto& strain : cfg.initial_strains) {
+    if (strain.type == type && strain.mu_max > 0.0) {
+      return strain.mu_max;
+    }
+  }
+  return 5.0e-4;
+}
+
 std::vector<size_t> build_bi_offsets(const std::vector<Int>& num_bi_loci) {
   const size_t n = num_bi_loci.size();
   std::vector<size_t> offsets(n + 1, 0);
@@ -226,6 +238,20 @@ std::string gpu_fallback_reason(const GpuConfig& gpu) {
 #endif
 }
 
+void print_gpu_status_banner(bool gpu_active, const GpuConfig& gpu) {
+  const char* gpu_enabled_str = gpu.enabled ? "true" : "false";
+  const std::string gpu_status = gpu_active
+      ? std::format(" (device {})", gpu_device().device_id())
+      : std::format(" (gpu_enabled={}, device_id={})",
+                    gpu_enabled_str,
+                    gpu.device_id);
+  std::cout << "  GPU: " << (gpu_active ? "ON" : "OFF") << gpu_status << "\n";
+  if (!gpu_active && gpu.enabled) {
+    std::cerr << "  GPU requested (gpu_enabled) but inactive: "
+              << gpu_fallback_reason(gpu) << "\n";
+  }
+}
+
 }  // namespace
 
 void Simulation::init(const SimulationConfig& cfg) {
@@ -302,21 +328,11 @@ void Simulation::init(const SimulationConfig& cfg) {
     const std::string adaptive_dt_status = cfg.adaptive_dt.enabled
         ? std::format(" [{}s, {}s]", cfg.adaptive_dt.min, cfg.adaptive_dt.max)
         : "";
-    const char* gpu_enabled_str = cfg.gpu.enabled ? "true" : "false";
-    const std::string gpu_status = gpu_active_
-        ? std::format(" (device {})", gpu_device().device_id())
-        : std::format(" (gpu_enabled={}, device_id={})",
-                      gpu_enabled_str,
-                      cfg.gpu.device_id);
     std::cout << "  Bio dt: " << cfg.time.bio_dt << " s\n"
               << "  Adaptive dt: " << (cfg.adaptive_dt.enabled ? "ON" : "OFF")
               << adaptive_dt_status << "\n"
-              << "  Total time: " << cfg.time.total_time << " s\n"
-              << "  GPU: " << (gpu_active_ ? "ON" : "OFF") << gpu_status << "\n";
-    if (!gpu_active_ && cfg.gpu.enabled) {
-      std::cerr << "  GPU requested (gpu_enabled) but inactive: "
-                << gpu_fallback_reason(cfg.gpu) << "\n";
-    }
+              << "  Total time: " << cfg.time.total_time << " s\n";
+    print_gpu_status_banner(gpu_active_, cfg.gpu);
     std::cout << std::flush;
   }
 }
@@ -375,10 +391,6 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   gpu_set_config(cfg.gpu);
   gpu_init_for_rank(domain_.rank(), domain_.nprocs());
   gpu_active_ = gpu_runtime_enabled();
-  if (gpu_active_) {
-    chem_gpu_.init(chem_);
-    agents_gpu_.sync_from_host(agents_);
-  }
 
 #ifndef GUTIBM_HDF5
   (void)h5_file;
@@ -387,6 +399,12 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
 #else
   HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(h5_file, step);
   apply_checkpoint_snapshot(snap);
+
+  // Sync GPU mirrors *after* host restore (agents/grid were empty above).
+  if (gpu_active_) {
+    chem_gpu_.init(chem_);
+    agents_gpu_.sync_from_host(agents_);
+  }
 
   rebuild_spatial_hash();
   update_grid_coupling();
@@ -400,8 +418,9 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
               << "  Restored time: " << clock_.time << " s\n"
               << "  Restored step: " << clock_.step_count << "\n"
               << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
-              << "  Local agents: " << agents_.size() << "\n"
-              << std::flush;
+              << "  Local agents: " << agents_.size() << "\n";
+    print_gpu_status_banner(gpu_active_, cfg_.gpu);
+    std::cout << std::flush;
   }
 #endif
 }
@@ -437,7 +456,13 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     a.mass         = sphere_mass(a.radius, CELL_DENSITY_DEFAULT);
     a.biomass      = atoms.biomass[i];
     a.mu_realized  = atoms.mu[i];
-    a.mu_max       = std::max(mu_guess, atoms.mu[i]);
+    // Intrinsic capacity must survive low mu_realized snapshots. Older files
+    // omit /mu_max — fall back to the matching strain (never to mu_realized).
+    if (i < atoms.mu_max.size() && atoms.mu_max[i] > 0.0) {
+      a.mu_max = atoms.mu_max[i];
+    } else {
+      a.mu_max = fallback_mu_max(cfg_, atoms.type[i]);
+    }
 
     a.genome.lineage_id = static_cast<TagID>(atoms.lineage[i]);
     a.genome.generation = static_cast<uint32_t>(lin.generation[i]);
@@ -465,7 +490,11 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 #endif
     }
 
-    tag_crypt_resident(a, advection_);
+    if (i < atoms.in_crypt.size()) {
+      a.flags.in_crypt = (atoms.in_crypt[i] != 0);
+    } else {
+      tag_crypt_resident(a, advection_);
+    }
 
     max_tag = std::max(max_tag, static_cast<TagID>(atoms.id[i]));
     agents_.push_back(std::move(a));

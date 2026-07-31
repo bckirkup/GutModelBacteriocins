@@ -140,6 +140,104 @@ void test_closed_restart_roundtrip() {
   std::cout << "PASS: closed restart round-trip (agents+grid+time)\n";
 }
 
+void test_resume_preserves_mu_max_and_in_crypt() {
+  // Reproduces the AWS baseline wipe: stressed mu_realized with intact mu_max
+  // must survive checkpoint restore; in_crypt must come from the file, not z.
+  const std::string out =
+      resolve_test_h5_path("GUTIBM_TEST_RESTART_STRESS_H5", "restart_stress_out");
+  const fs::path scratch = fs::path(out).parent_path() / "gutibm_restart_stress";
+  const fs::path restart_dir = scratch / "ckpt";
+  fs::create_directories(restart_dir);
+
+  SimulationConfig cfg = make_restart_config(out, restart_dir.string());
+  cfg.hdf5.enabled = false;
+  cfg.restart.enabled = false;
+  cfg.time.total_time = 60.0;
+  cfg.initial_strains[0].mu_max = 5.5e-4;
+  cfg.advection.crypts_enabled = true;
+  cfg.advection.crypt_depth = 5e-6;
+
+  Simulation sim;
+  sim.init(cfg);
+  assert(sim.agents().size() > 0);
+
+  constexpr Real kStressedMu = 5.0e-6;
+  constexpr Real kTrueMuMax = 5.5e-4;
+  // Outside crypt zone: z-retag would NOT set in_crypt, and washout_rate at
+  // zn≈0.6 exceeds kStressedMu — crushed mu_max would wipe the population.
+  const Real outside_crypt_z = sim.domain().lo()[2] + 15e-6;
+  for (Agent& a : sim.agents()) {
+    a.mu_max = kTrueMuMax;
+    a.mu_realized = kStressedMu;
+    a.x[2] = outside_crypt_z;
+    a.flags.in_crypt = true;  // written to HDF5; must round-trip
+  }
+
+  const fs::path ckpt_crypt = restart_dir / "step_000010.h5";
+  assert(HDF5Writer::write_closed_restart(
+      sim, ckpt_crypt.string(), 10, 600.0, 60.0));
+
+  HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(ckpt_crypt.string(), "");
+  assert(!snap.agents.mu_max.empty());
+  assert(!snap.agents.in_crypt.empty());
+  assert(snap.agents.mu_max.size() == snap.agents.id.size());
+  for (size_t i = 0; i < snap.agents.id.size(); ++i) {
+    assert(std::abs(snap.agents.mu_max[i] - kTrueMuMax) < 1e-12);
+    assert(std::abs(snap.agents.mu[i] - kStressedMu) < 1e-12);
+    assert(snap.agents.in_crypt[i] != 0);
+  }
+
+  const std::string resume_out =
+      resolve_test_h5_path("GUTIBM_TEST_RESTART_STRESS_RESUME_H5",
+                           "restart_stress_resume");
+  SimulationConfig resume_cfg =
+      make_restart_config(resume_out, (scratch / "resume").string());
+  resume_cfg.hdf5.enabled = false;
+  resume_cfg.restart.enabled = false;
+  resume_cfg.time.total_time = 720.0;
+  resume_cfg.initial_strains[0].mu_max = kTrueMuMax;
+  resume_cfg.advection.crypts_enabled = true;
+  resume_cfg.advection.crypt_depth = 5e-6;
+  resume_cfg.checkpoint.file = ckpt_crypt.string();
+
+  Simulation resumed_crypt;
+  resumed_crypt.init_from_checkpoint(resume_cfg, ckpt_crypt.string(), "");
+  assert(resumed_crypt.global_agent_count() == snap.metadata.num_agents);
+  for (const Agent& a : resumed_crypt.agents()) {
+    assert(std::abs(a.mu_max - kTrueMuMax) < 1e-12);
+    assert(std::abs(a.mu_realized - kStressedMu) < 1e-12);
+    assert(a.flags.in_crypt);
+  }
+
+  // Second artifact: same stress, but NOT crypt-protected — proves mu_max
+  // (not in_crypt) is what prevents the one-step washout wipe.
+  for (Agent& a : sim.agents()) {
+    a.mu_max = kTrueMuMax;
+    a.mu_realized = kStressedMu;
+    a.x[2] = outside_crypt_z;
+    a.flags.in_crypt = false;
+  }
+  const fs::path ckpt_open = restart_dir / "step_000011.h5";
+  assert(HDF5Writer::write_closed_restart(
+      sim, ckpt_open.string(), 11, 660.0, 60.0));
+
+  SimulationConfig open_cfg = resume_cfg;
+  open_cfg.checkpoint.file = ckpt_open.string();
+  Simulation resumed_open;
+  resumed_open.init_from_checkpoint(open_cfg, ckpt_open.string(), "");
+  const Int n_before = resumed_open.global_agent_count();
+  assert(n_before > 1);
+  for (const Agent& a : resumed_open.agents()) {
+    assert(std::abs(a.mu_max - kTrueMuMax) < 1e-12);
+    assert(!a.flags.in_crypt);
+  }
+  resumed_open.step(60.0);
+  assert(resumed_open.global_agent_count() > 1);
+  assert(resumed_open.global_agent_count() >= n_before / 2);
+
+  std::cout << "PASS: resume preserves mu_max + in_crypt (no one-step wipe)\n";
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -151,6 +249,7 @@ int main(int argc, char** argv) {
 #endif
   try {
     test_closed_restart_roundtrip();
+    test_resume_preserves_mu_max_and_in_crypt();
   } catch (const std::exception& ex) {
     std::cerr << "FAIL: " << ex.what() << "\n";
 #ifdef GUTIBM_MPI

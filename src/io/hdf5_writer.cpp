@@ -22,6 +22,7 @@ extern "C" {
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <format>
@@ -583,6 +584,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   std::vector<double> y(static_cast<size_t>(n));
   std::vector<double> z(static_cast<size_t>(n));
   std::vector<double> mu(static_cast<size_t>(n));
+  std::vector<double> mu_max(static_cast<size_t>(n));
   std::vector<double> biomass(static_cast<size_t>(n));
   std::vector<int32_t> in_crypt(static_cast<size_t>(n));
   std::vector<int32_t> n_bi(static_cast<size_t>(n));
@@ -600,6 +602,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
     y[idx] = a.x[1];
     z[idx] = a.x[2];
     mu[idx] = a.mu_realized;
+    mu_max[idx] = a.mu_max;
     biomass[idx] = a.biomass;
     in_crypt[idx] = a.flags.in_crypt ? 1 : 0;
     n_bi[idx] = static_cast<int32_t>(a.genome.bi_loci.size());
@@ -618,6 +621,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   write_dataset_1d(fid, group + "/y", H5T_NATIVE_DOUBLE, y.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/z", H5T_NATIVE_DOUBLE, z.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/mu_realized", H5T_NATIVE_DOUBLE, mu.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/mu_max", H5T_NATIVE_DOUBLE, mu_max.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/biomass", H5T_NATIVE_DOUBLE, biomass.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/in_crypt", H5T_NATIVE_INT32, in_crypt.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/n_bi_loci", H5T_NATIVE_INT32, n_bi.data(), local_n, cfg_);
@@ -674,7 +678,17 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
       H5Eclear2(H5E_DEFAULT);
       ds = H5Dopen2(fid, dsname.c_str(), H5P_DEFAULT);
     }
-    H5Dwrite(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, grid3d.data());
+    if (ds < 0) {
+      std::cerr << "Warning: cannot create/open grid dataset '" << dsname
+                << "'\n";
+      continue;
+    }
+    if (H5Dwrite(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                 grid3d.data()) < 0) {
+      std::cerr << "Warning: H5Dwrite failed for grid dataset '" << dsname
+                << "'\n";
+      H5Eclear2(H5E_DEFAULT);
+    }
     H5Dclose(ds);
   }
 
@@ -871,9 +885,38 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
     }
   }
 
+  // Stage-3 grids are ~3.6 GiB uncompressed (50M cells × 9 species). Gzip keeps
+  // Spot artifacts small enough for container scratch disks and S3 upload.
+  const auto nx = static_cast<std::uint64_t>(sim.domain().nx());
+  const auto ny = static_cast<std::uint64_t>(sim.domain().ny());
+  const auto nz = static_cast<std::uint64_t>(sim.domain().nz());
+  const auto nspecies =
+      static_cast<std::uint64_t>(std::max(sim.chemical_field().num_species(), 1));
+  const std::uint64_t uncompressed_est =
+      nx * ny * nz * nspecies * sizeof(double) + (64ull << 20);
+  {
+    std::error_code space_ec;
+    const fs::path space_root =
+        out.has_parent_path() ? out.parent_path() : fs::current_path();
+    const fs::space_info si = fs::space(space_root, space_ec);
+    // Gzip shrinks sparse toxin fields a lot; still keep multi-GiB headroom for
+    // Stage-3 chemistry dumps on small container scratch volumes.
+    constexpr std::uint64_t kHeadroom = 1ull << 30;
+    const std::uint64_t need =
+        std::max<std::uint64_t>((uncompressed_est / 4) + kHeadroom, 2ull << 30);
+    if (!space_ec && si.available < need) {
+      std::cerr << "Warning: refusing restart write to '" << path
+                << "': only " << (si.available >> 20)
+                << " MiB free, need ~" << (need >> 20) << " MiB\n";
+      return false;
+    }
+  }
+
   HDF5Config cfg;
   cfg.filename = tmp.string();
   cfg.enabled = true;
+  cfg.compression = "gzip";
+  cfg.compression_level = 4;
   cfg.schedule.summary = 1;
   cfg.schedule.agents = 1;
   cfg.schedule.grid = 1;
@@ -890,6 +933,16 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
   }
   writer.write_step(sim, step, time, dt);
   writer.finalize();
+
+  std::error_code sz_ec;
+  const auto tmp_bytes = fs::file_size(tmp, sz_ec);
+  if (sz_ec || tmp_bytes < 4096 || H5Fis_hdf5(tmp.string().c_str()) <= 0) {
+    std::cerr << "Warning: restart tmp '" << tmp.string()
+              << "' is missing/unreadable after write (size="
+              << (sz_ec ? 0 : tmp_bytes) << ")\n";
+    fs::remove(tmp, sz_ec);
+    return false;
+  }
 
   std::error_code rename_ec;
   fs::rename(tmp, out, rename_ec);
