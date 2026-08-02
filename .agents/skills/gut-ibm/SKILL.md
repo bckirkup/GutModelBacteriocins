@@ -142,6 +142,16 @@ Import from package root (re-exported in `__init__.py`):
 from gut_ibm_tools import GutIBMData, analysis, validation, visualization
 ```
 
+Checkpoint campaign analysis (stream `step_*.h5` restarts one at a time):
+
+```bash
+gut-ibm-analyze --summarize --checkpoint-dir path/to/ckpt --output summary.csv
+gut-ibm-analyze --snapshot --checkpoint path/to/ckpt/step_002520.h5 --output snap_2520
+gut-ibm-analyze --timeseries --summary summary.csv --output timeseries
+```
+
+See `docs/CHECKPOINT_ANALYSIS.md` for schema mapping and workflow.
+
 CI runs `ruff check python/`, fast pytest (`-m "not integration"`), JSON config validation (`scripts/validate_config_json.sh`), and EARI/VADI golden regression (`scripts/validate_eari_vadi.sh`).
 
 ## Simulation Timestep (read before touching `simulation.cpp`)

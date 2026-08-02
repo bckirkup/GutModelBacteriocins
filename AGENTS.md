@@ -79,7 +79,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | `src/io/input_parser.cpp` | JSON + legacy flat-key config parser |
 | `src/io/hdf5_writer.cpp` | Parallel HDF5 output + genome checkpoint groups |
 | `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
-| `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
+| `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization, checkpoint analyze CLI |
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `batch_scan/`, `scaling_benchmark/` |
 | `tests/` | CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
@@ -221,6 +221,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `docs/API.md` — class reference
 - `docs/CONFIG_FORMAT.md` — strict JSON input format
 - `docs/BATCH_RUNNER.md` — resumable parameter-scan CLI
+- `docs/CHECKPOINT_ANALYSIS.md` — stream Spec-4 `step_*.h5` checkpoints → CSV/PNG
 - `docs/PARAMETERS.md` — configurable parameters
 - `docs/SCALING.md` — agent-count benchmarks and profiling
 - `docs/AWS_BATCH.md` — AWS Batch Spot + CUDA deployment + Phase Observability

@@ -22,12 +22,29 @@ class GutIBMData:
         self._nx: int = 0
         self._ny: int = 0
         self._nz: int = 0
+        self._grid_dx: float = 0.0
 
     def open(self) -> None:
         self._file = h5py.File(self.path, "r")
         self._nx = int(self._file.attrs.get("nx", 0))
         self._ny = int(self._file.attrs.get("ny", 0))
         self._nz = int(self._file.attrs.get("nz", 0))
+        self._grid_dx = float(self._file.attrs.get("grid_dx", 0.0))
+
+    @property
+    def grid_shape(self) -> tuple[int, int, int]:
+        """Return ``(nx, ny, nz)`` from file attributes."""
+        return (self._nx, self._ny, self._nz)
+
+    @property
+    def grid_dx(self) -> float:
+        """Return grid spacing (m) from file attributes."""
+        return self._grid_dx
+
+    def has_layer(self, layer: str) -> bool:
+        """Return True if a top-level Spec-4 group exists (e.g. ``summary``)."""
+        assert self._file is not None
+        return layer in self._file
 
     def close(self) -> None:
         if self._file is not None:
@@ -69,6 +86,18 @@ class GutIBMData:
         }
         if "num_lineages" in grp:
             out["num_lineages"] = read_scalar("num_lineages")
+        if "dt" in grp:
+            out["dt"] = read_scalar("dt")
+        for array_key in (
+            "n_by_type",
+            "n_in_crypt",
+            "n_by_state",
+            "mean_z_by_type",
+            "mean_mu_by_type",
+            "mean_receptor_expr",
+        ):
+            if array_key in grp:
+                out[array_key] = np.array(grp[array_key])
         if "events" in grp:
             out["events"] = {name: np.array(ds).item() for name, ds in grp["events"].items()}
         if "chem" in grp:
@@ -90,16 +119,17 @@ class GutIBMData:
 
     def get_grid(self, step: str) -> dict[str, np.ndarray]:
         """Return chemical grid arrays for a step (3D datasets flattened to 1D)."""
+        volumes = self.get_grid_volumes(step)
+        return {name: arr.ravel() for name, arr in volumes.items()}
+
+    def get_grid_volumes(self, step: str) -> dict[str, np.ndarray]:
+        """Return chemical grid arrays preserving native dataset shapes."""
         assert self._file is not None
         path = f"grid/{step}"
         if path not in self._file:
             return {}
         grp = self._file[path]
-        out: dict[str, np.ndarray] = {}
-        for name, ds in grp.items():
-            arr = np.array(ds)
-            out[name] = arr.ravel()
-        return out
+        return {name: np.array(ds) for name, ds in grp.items()}
 
     def get_metadata(self, step: str) -> dict[str, Any]:
         """Compatibility alias for summary scalars."""

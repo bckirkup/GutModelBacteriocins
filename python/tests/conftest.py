@@ -60,7 +60,11 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
 
             grid = f.require_group("grid").require_group(step_name)
             btub = np.linspace(0.1, 2.0, ncells) ** (1 + 0.2 * step_idx)
-            grid.create_dataset("bacteriocin_BtuB", data=btub.reshape(nz, ny, nx))
+            grid.create_dataset("bacteriocin_BtuB", data=btub.reshape(nx, ny, nz))
+            carbon = np.full((nx, ny, nz), 1.0 + 0.1 * step_idx)
+            grid.create_dataset("carbon", data=carbon)
+            acetate = np.linspace(0.0, 1.0, ncells).reshape(nx, ny, nz)
+            grid.create_dataset("acetate", data=acetate)
 
             summary = f.require_group("summary").require_group(step_name)
             summary.create_dataset("time", data=np.array(step_idx * 3600.0))
@@ -68,6 +72,19 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
             summary.create_dataset("n_total", data=np.array(n_agents, dtype=np.int32))
             summary.create_dataset("num_agents", data=np.array(n_agents, dtype=np.int32))
             summary.create_dataset("num_lineages", data=np.array(3, dtype=np.int32))
+            summary.create_dataset(
+                "n_by_type",
+                data=np.array([0, n_per_type, n_per_type] + [0] * 5, dtype=np.int32),
+            )
+            events = summary.require_group("events")
+            events.create_dataset("colicin_kills", data=np.array(step_idx * 2, dtype=np.int32))
+            events.create_dataset("cdi_kills", data=np.array(step_idx, dtype=np.int32))
+            events.create_dataset("divisions", data=np.array(n_agents + step_idx, dtype=np.int32))
+            events.create_dataset("starvation_deaths", data=np.array(0, dtype=np.int32))
+            chem = summary.require_group("chem")
+            chem.create_dataset("mean_carbon", data=np.array(1.0 + 0.1 * step_idx))
+            chem.create_dataset("mean_oxygen", data=np.array(0.05))
+            chem.create_dataset("max_toxin_BtuB", data=np.array(float(btub.max())))
 
             lin = f.require_group("lineage").require_group(step_name)
             lin.create_dataset("btuB_expression", data=rng.uniform(0.2, 1.0, n_agents))
