@@ -112,11 +112,20 @@ After Stage 2:
 After Stage 3:
 - Analyze Kd sweep; compare motile vs non-motile (`3c` vs `3b`) if Stage 1 passed
 
+For the full question→scale map (what short/small runs can teach vs host-scale
+campaigns), burn-in→fork composition, L2 fork gates, and what not to claim from
+each level, see the multi-scale methodology:
+[docs/MULTI_SCALE_EXPERIMENTATION.md](../../docs/MULTI_SCALE_EXPERIMENTATION.md).
+
 ## Cloud runs (AWS)
 
 Full Stage 3 often exceeds desktop/WSL RAM and wall time. Deployment plan for
 **AWS Batch + Spot GPU + CUDA** (instance sizing, array jobs, closed restart
 artifacts, burn-in→fork): [docs/AWS_BATCH.md](../../docs/AWS_BATCH.md).
+
+Multi-scale ladder (establish → nest → fork → occasional full) and when to
+re-burn-in vs reuse colonization state:
+[docs/MULTI_SCALE_EXPERIMENTATION.md](../../docs/MULTI_SCALE_EXPERIMENTATION.md).
 
 Burn-in + fork recipe:
 
