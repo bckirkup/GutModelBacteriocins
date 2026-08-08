@@ -224,6 +224,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `docs/PARAMETERS.md` — configurable parameters
 - `docs/SCALING.md` — agent-count benchmarks and profiling
 - `docs/AWS_BATCH.md` — AWS Batch Spot + CUDA deployment + Phase Observability
+- `docs/MULTI_SCALE_EXPERIMENTATION.md` — nested short/small vs host-scale experiment ladder
 
 ## Code Conventions
 
