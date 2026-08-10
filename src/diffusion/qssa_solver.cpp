@@ -34,10 +34,6 @@ bool in_periodic_grid(Int& idx, Int count, bool periodic) {
   return idx >= 0 && idx < count;
 }
 
-bool is_first_periodic_offset(Int offset, Int count, Int span, bool periodic) {
-  return !periodic || offset - count < -span;
-}
-
 struct NearFieldGridContext {
   const Domain& domain;
   Int nx;

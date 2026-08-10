@@ -15,6 +15,11 @@
 
 namespace gutibm {
 
+inline bool is_first_periodic_offset(Int offset, Int count, Int span,
+                                     bool periodic) {
+  return !periodic || offset - count < -span;
+}
+
 struct DomainConfig {
   // Physical domain (meters) — colonic mucus slab
   Vec3 lo = {0.0, 0.0, 0.0};
