@@ -251,7 +251,7 @@ hid_t make_dataset_plist(const HDF5Config& cfg, const hsize_t* chunk_dims,
 
 bool schedule_has_output(const HDF5Schedule& sched) {
   return sched.summary > 0 || sched.agents > 0 || sched.grid > 0 ||
-         sched.lineage > 0 || sched.genome > 0;
+         sched.lineage > 0 || sched.genome > 0 || sched.provenance > 0;
 }
 
 Real field_mean(const ChemicalField& chem, Int species_idx) {
@@ -419,6 +419,12 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
     ensure_group(fid, path, cfg_);
     write_genome_layer(sim, path);
   }
+  if (layer_due(cfg_.schedule.provenance, step)) {
+    const std::string path = "provenance/" + step_name;
+    ensure_group(fid, "provenance", cfg_);
+    ensure_group(fid, path, cfg_);
+    write_provenance_layer(sim, path);
+  }
 
   // Flush so a concurrent checkpoint copy (entry.sh SIGSTOP+cp) sees consistent
   // metadata; without this, mid-write S3 uploads can be unreadable on resume.
@@ -548,25 +554,76 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_scalar_dataset(fid, group + "/chem/max_toxin_CirA", H5T_NATIVE_DOUBLE, &max_cirA);
   write_scalar_dataset(fid, group + "/chem/max_toxin_FhuA", H5T_NATIVE_DOUBLE, &max_fhuA);
 
-  double hopkins = 0.0;
-  double mean_nnd = 0.0;
-  double mono = 0.0;
-  if (live >= 10) {
-    mean_nnd = 5.0e-6;
-    hopkins = 0.5;
-    mono = 0.5;
-  }
-  ensure_group(fid, group + "/spatial", cfg_);
-  write_scalar_dataset(fid, group + "/spatial/hopkins_statistic", H5T_NATIVE_DOUBLE, &hopkins);
-  write_scalar_dataset(fid, group + "/spatial/mean_nnd", H5T_NATIVE_DOUBLE, &mean_nnd);
-  write_scalar_dataset(fid, group + "/spatial/monochromatic_score", H5T_NATIVE_DOUBLE, &mono);
-
   sim.reset_step_events_after_summary();
   }
 
   mpi_barrier(cfg_);
 #else
   (void)sim; (void)group; (void)step; (void)time; (void)dt;
+#endif
+}
+
+void HDF5Writer::write_provenance_layer(Simulation& sim,
+                                         const std::string& group) const {
+#ifdef GUTIBM_HDF5
+  auto fid = static_cast<hid_t>(file_id_);
+  const auto& events = sim.kill_provenance();
+  const auto local_n = static_cast<hsize_t>(events.size());
+
+  std::vector<int64_t> victim_id(events.size());
+  std::vector<double> x(events.size());
+  std::vector<double> y(events.size());
+  std::vector<double> z(events.size());
+  std::vector<int32_t> strain(events.size());
+  std::vector<int32_t> cause(events.size());
+  std::vector<int64_t> cdi_attacker_id(events.size());
+  std::vector<int32_t> cdi_attacker_known(events.size());
+  std::vector<double> toxin_concentration(events.size() * 4);
+  std::vector<double> toxin_occupancy(events.size() * 4);
+  std::vector<double> toxin_hazard(events.size() * 4);
+
+  for (size_t i = 0; i < events.size(); ++i) {
+    const auto& event = events[i];
+    victim_id[i] = event.victim_id;
+    x[i] = event.position[0];
+    y[i] = event.position[1];
+    z[i] = event.position[2];
+    strain[i] = event.strain;
+    cause[i] = static_cast<int32_t>(event.cause);
+    cdi_attacker_id[i] = event.cdi_attacker_id;
+    cdi_attacker_known[i] = event.cdi_attacker_known ? 1 : 0;
+    for (size_t toxin = 0; toxin < 4; ++toxin) {
+      const size_t flat = i * 4 + toxin;
+      toxin_concentration[flat] = event.toxin_concentration[toxin];
+      toxin_occupancy[flat] = event.toxin_occupancy[toxin];
+      toxin_hazard[flat] = event.toxin_hazard[toxin];
+    }
+  }
+
+  write_dataset_1d(fid, group + "/victim_id", H5T_NATIVE_INT64,
+                   victim_id.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/x", H5T_NATIVE_DOUBLE, x.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/y", H5T_NATIVE_DOUBLE, y.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/z", H5T_NATIVE_DOUBLE, z.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/strain", H5T_NATIVE_INT32,
+                   strain.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/cause", H5T_NATIVE_INT32,
+                   cause.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/cdi_attacker_id", H5T_NATIVE_INT64,
+                   cdi_attacker_id.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/cdi_attacker_known", H5T_NATIVE_INT32,
+                   cdi_attacker_known.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/toxin_concentration", H5T_NATIVE_DOUBLE,
+                   toxin_concentration.data(), local_n * 4, cfg_);
+  write_dataset_1d(fid, group + "/toxin_occupancy", H5T_NATIVE_DOUBLE,
+                   toxin_occupancy.data(), local_n * 4, cfg_);
+  write_dataset_1d(fid, group + "/toxin_hazard", H5T_NATIVE_DOUBLE,
+                   toxin_hazard.data(), local_n * 4, cfg_);
+  sim.clear_kill_provenance();
+  mpi_barrier(cfg_);
+#else
+  (void)sim;
+  (void)group;
 #endif
 }
 

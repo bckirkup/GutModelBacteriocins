@@ -996,6 +996,14 @@ void Simulation::check_washout() {
     if (a.x[2] >= z_max) {
       a.state = PhenoState::DEAD;
       step_events_.boundary_deaths++;
+      if (provenance_enabled()) {
+        KillProvenanceEvent event;
+        event.victim_id = a.identity.tag;
+        event.position = a.x;
+        event.strain = a.identity.type;
+        event.cause = ProvenanceCause::BOUNDARY;
+        record_kill_provenance(event);
+      }
       lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
       continue;
     }
@@ -1005,6 +1013,14 @@ void Simulation::check_washout() {
     if (a.mu_realized < gamma) {
       a.state = PhenoState::DEAD;
       step_events_.washout_deaths++;
+      if (provenance_enabled()) {
+        KillProvenanceEvent event;
+        event.victim_id = a.identity.tag;
+        event.position = a.x;
+        event.strain = a.identity.type;
+        event.cause = ProvenanceCause::WASHOUT;
+        record_kill_provenance(event);
+      }
       lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
     }
   }
@@ -1417,6 +1433,10 @@ Real Simulation::local_nuclease_toxin(const Agent& agent) const {
 
 void Simulation::add_toxin_burst(const ToxinBurstSource& burst) {
   toxin_bursts_.push_back(burst);
+}
+
+void Simulation::record_kill_provenance(const KillProvenanceEvent& event) {
+  kill_provenance_.push_back(event);
 }
 
 void Simulation::prune_toxin_bursts(Real current_time) {

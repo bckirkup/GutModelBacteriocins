@@ -30,6 +30,7 @@ void test_single_colony_example() {
   assert(std::abs(cfg.domain.hi[0] - 0.001) < 1e-12);
   assert(cfg.hdf5.filename == "single_colony_output.h5");
   assert(cfg.hdf5.schedule.agents == 60);
+  assert(cfg.hdf5.schedule.provenance == 0);
   std::cout << "  test_single_colony_example: PASSED\n";
 }
 
@@ -278,6 +279,7 @@ void test_fix_tunables_fixture() {
   assert(std::abs(cfg.fixes.mutation.bi_duplication_rate - 1e-4) < 1e-12);
   assert(cfg.fixes.mutation.max_bi_loci == 6);
   assert(std::abs(cfg.fixes.mutation.immunity_escape_prob - 0.75) < 1e-12);
+  assert(cfg.hdf5.schedule.provenance == 7);
   std::cout << "  test_fix_tunables_fixture: PASSED\n";
 }
 

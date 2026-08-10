@@ -148,6 +148,7 @@ SimulationConfig InputParser::default_config() {
   cfg.hdf5.schedule.grid = 0;
   cfg.hdf5.schedule.lineage = 100;
   cfg.hdf5.schedule.genome = 100;
+  cfg.hdf5.schedule.provenance = 0;
 
   finalize_config(cfg);
   return cfg;
@@ -455,6 +456,9 @@ bool apply_hdf5_key(SimulationConfig& cfg, std::string_view key, const std::stri
   }
   if (key == "hdf5.schedule.genome" || key == "hdf5_schedule_genome") {
     cfg.hdf5.schedule.genome = parse_config_int(key, val); return true;
+  }
+  if (key == "hdf5.schedule.provenance" || key == "hdf5_schedule_provenance") {
+    cfg.hdf5.schedule.provenance = parse_config_int(key, val); return true;
   }
   return false;
 }

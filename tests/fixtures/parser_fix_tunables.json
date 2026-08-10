@@ -44,7 +44,8 @@
       "agents": 100,
       "grid": 0,
       "lineage": 100,
-      "genome": 100
+      "genome": 100,
+      "provenance": 7
     }
   }
 }

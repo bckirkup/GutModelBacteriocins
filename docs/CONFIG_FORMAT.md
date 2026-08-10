@@ -121,7 +121,8 @@ Full parameter lists: [PARAMETERS.md](PARAMETERS.md).
       "agents": 60,
       "grid": 0,
       "lineage": 100,
-      "genome": 100
+      "genome": 100,
+      "provenance": 0
     }
   }
 }

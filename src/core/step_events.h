@@ -6,8 +6,29 @@
 #define GUTIBM_STEP_EVENTS_H
 
 #include "types.h"
+#include <array>
 
 namespace gutibm {
+
+enum class ProvenanceCause : Int {
+  COLICIN = 0,
+  CDI = 1,
+  WASHOUT = 2,
+  BOUNDARY = 3,
+  STARVATION = 4,
+};
+
+struct KillProvenanceEvent {
+  TagID victim_id = 0;
+  Vec3 position{};
+  Int strain = 0;
+  ProvenanceCause cause = ProvenanceCause::COLICIN;
+  TagID cdi_attacker_id = 0;
+  bool cdi_attacker_known = false;
+  std::array<Real, 4> toxin_concentration{};
+  std::array<Real, 4> toxin_occupancy{};
+  std::array<Real, 4> toxin_hazard{};
+};
 
 struct StepEvents {
   Int sos_inductions = 0;
