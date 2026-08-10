@@ -3,8 +3,8 @@
 #include "simulation.h"
 
 #include <cassert>
+#include <charconv>
 #include <cmath>
-#include <iomanip>
 #include <iostream>
 #include <limits>
 
@@ -85,14 +85,21 @@ void print_difference(const char* label,
       std::abs(first.total_biomass - second.total_biomass);
   const Real relative_difference =
       absolute_difference / first.total_biomass;
-  std::cout << std::setprecision(std::numeric_limits<Real>::max_digits10)
-            << "  " << label
+  auto format_real = [](Real value) {
+    char buffer[64];
+    const auto result = std::to_chars(
+        buffer, buffer + sizeof(buffer), value, std::chars_format::general,
+        std::numeric_limits<Real>::max_digits10);
+    assert(result.ec == std::errc{});
+    return std::string(buffer, result.ptr);
+  };
+  std::cout << "  " << label
             << ": live_a=" << first.live
             << " live_b=" << second.live
-            << " biomass_a=" << first.total_biomass
-            << " biomass_b=" << second.total_biomass
-            << " abs_diff=" << absolute_difference
-            << " rel_diff=" << relative_difference << "\n";
+            << " biomass_a=" << format_real(first.total_biomass)
+            << " biomass_b=" << format_real(second.total_biomass)
+            << " abs_diff=" << format_real(absolute_difference)
+            << " rel_diff=" << format_real(relative_difference) << "\n";
 }
 #endif
 
