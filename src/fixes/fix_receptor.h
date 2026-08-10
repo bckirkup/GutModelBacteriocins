@@ -28,16 +28,16 @@ struct ReceptorConfig {
   // Spec 6 / Receptor Ligand Parameterization: kd_b12_btuB is the BtuB affinity
   // for the dominant corrinoid analog (aka kd_corrinoid_btuB), the key unknown
   // governing colicin-E competition against the ~1 uM corrinoid pool.
-  Real kd_b12_btuB        = 1.0e-9;   // corrinoid affinity for BtuB (1 nM)
-  Real kd_colicinE_btuB   = 5.0e-10;  // Colicin E affinity for BtuB
+  Real kd_b12_btuB        = 1.0e-6;   // corrinoid affinity for BtuB (1 nM)
+  Real kd_colicinE_btuB   = 5.0e-7;   // Colicin E affinity for BtuB (0.5 nM)
   // Spec 6 §4.1 — FepA affinity for ferric enterobactin tightened 10 nM -> 1 nM
   // to match measured high-affinity siderophore uptake.
-  Real kd_enterobactin    = 1.0e-9;   // enterobactin affinity for FepA (1 nM)
-  Real kd_colicinB_fepA   = 2.0e-9;   // Colicin B affinity for FepA
-  Real kd_lin_enterobactin = 5.0e-8;  // linearized enterobactin for CirA
-  Real kd_colicinIa_cirA  = 3.0e-9;   // Colicin Ia affinity for CirA
-  Real kd_colicinM_fhuA   = 2.5e-9;   // Colicin M affinity for FhuA
-  Real kd_ferrichrome     = 1.0e-8;   // ferrichrome affinity for FhuA
+  Real kd_enterobactin    = 1.0e-6;   // enterobactin affinity for FepA (1 nM)
+  Real kd_colicinB_fepA   = 2.0e-6;   // Colicin B affinity for FepA (2 nM)
+  Real kd_lin_enterobactin = 5.0e-5;  // linearized enterobactin for CirA (50 nM)
+  Real kd_colicinIa_cirA  = 3.0e-6;   // Colicin Ia affinity for CirA (3 nM)
+  Real kd_colicinM_fhuA   = 2.5e-6;   // Colicin M affinity for FhuA (2.5 nM)
+  Real kd_ferrichrome     = 1.0e-5;   // ferrichrome affinity for FhuA (10 nM)
 
   // CirA ligand: fraction of siderophore pool that is linearized enterobactin
   Real cirA_linearized_fraction = 0.3;

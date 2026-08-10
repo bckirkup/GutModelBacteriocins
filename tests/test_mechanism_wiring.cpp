@@ -314,7 +314,7 @@ void test_corrinoid_field_constant() {
   expect(ib12 >= 0, "B12/corrinoid species must be registered");
   if (ib12 < 0) return;
 
-  const Real expected = 1.0e-6;  // 1 uM total corrinoid (Spec 6 §3)
+  const Real expected = 1.0e-3;  // 1 uM total corrinoid (Spec 6 §3)
   const Real tol = 1.0e-12;      // constant field: no drift permitted
 
   Real max_dev = 0.0;

@@ -166,10 +166,10 @@ The effective diffusion coefficient: `D_eff = D_free / R`
 
 | Receptor | Nutrient ligand | Toxin field | Toxin ligand | Kd_nutrient | Kd_toxin |
 |----------|----------------|-------------|--------------|-------------|----------|
-| BtuB | Vitamin B12 | `bacteriocin_BtuB` | Colicin E1/E2/E5/E7/E8/E9/K | 1 nM | 0.5 nM |
-| FepA | Enterobactin-Fe | `bacteriocin_FepA` | Colicin B/D | 10 nM | 2 nM |
-| CirA | Linearized siderophore | `bacteriocin_CirA` | Colicin Ia, Microcin V | 50 nM | 3 nM |
-| FhuA | Ferrichrome | `bacteriocin_FhuA` | Colicin M | 10 nM | 2.5 nM |
+| BtuB | Vitamin B12 | `bacteriocin_BtuB` | Colicin E1/E2/E5/E7/E8/E9/K | 1 nM (`1e-6 mol/m³`) | 0.5 nM (`5e-7 mol/m³`) |
+| FepA | Enterobactin-Fe | `bacteriocin_FepA` | Colicin B/D | 1 nM (`1e-6 mol/m³`) | 2 nM (`2e-6 mol/m³`) |
+| CirA | Linearized siderophore | `bacteriocin_CirA` | Colicin Ia, Microcin V | 50 nM (`5e-5 mol/m³`) | 3 nM (`3e-6 mol/m³`) |
+| FhuA | Ferrichrome | `bacteriocin_FhuA` | Colicin M | 10 nM (`1e-5 mol/m³`) | 2.5 nM (`2.5e-6 mol/m³`) |
 
 CirA ligand is `cirA_linearized_fraction × [siderophore]` when `siderophore.enabled`; otherwise zero.
 

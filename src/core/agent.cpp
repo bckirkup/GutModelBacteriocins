@@ -49,7 +49,7 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
   a.receptor_expr = a.receptor_expr_base;
 
   a.km.km_iron   = 1.0e-6;
-  a.km.km_b12    = 1.0e-9;
+  a.km.km_b12    = 1.0e-6;
   a.km.km_carbon = 5.0e-3;
 
   a.state = PhenoState::NORMAL;
