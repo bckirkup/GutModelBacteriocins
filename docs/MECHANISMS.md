@@ -123,6 +123,10 @@ not local co-location-driven protection: it cannot generate spatial structure
 in colicin B susceptibility. It is a global parameter shift wearing the
 costume of a spatial mechanism.
 
+Enabling this chemistry by default adds two full implicit diffusion solves per
+biological step, measured at `+15`–`17 ms/step` of chemistry time
+(`+44`–`50%`) against the same benchmark with siderophore chemistry disabled.
+
 This is different from bacteriocin dose. Lysing producers release toxin but do
 not reimport it, so toxin dose does scale with co-located producers; the
 microcolony threshold from #213 is consequently a genuine density effect,
@@ -235,8 +239,9 @@ The effective diffusion coefficient: `D_eff = D_free / R`
 
 CirA ligand is `cirA_linearized_fraction × [ferric_enterobactin]` when
 siderophore chemistry is enabled; otherwise zero. FepA competition likewise
-uses ferric enterobactin, but diffusion-limited single-cell FeEnt remains far
-below its Kd; meaningful FepA competition requires a co-located microcolony.
+uses ferric enterobactin, but diffusion-limited local FeEnt remains far below
+its Kd and falls further with co-location; the only competition present is the
+uniform domain-wide background described above.
 Ferrichrome remains disabled by default because
 *E. coli* does not synthesize it and no defensible gut concentration is
 available; consequently FhuA has no ambient ferrichrome competition by default.
