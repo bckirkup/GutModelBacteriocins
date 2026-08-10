@@ -8,10 +8,13 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <iomanip>
 #include <limits>
 #include <sstream>
 
 using namespace gutibm;
+
+constexpr Real kEncounterDistanceTolerance = 1e-6;
 
 void test_schedule_and_uniform_placement() {
   ImmigrationConfig cfg;
@@ -302,7 +305,7 @@ EncounterResult run_bacteriocin_encounter(uint64_t seed, Real target_distance) {
   cfg.immigration.strain_index = 1;
   cfg.immigration.placement = "at_distance";
   cfg.immigration.distance = target_distance;
-  cfg.immigration.distance_tolerance = 1e-6;
+  cfg.immigration.distance_tolerance = kEncounterDistanceTolerance;
   cfg.immigration.step = 1;
   cfg.fixes.bacteriocin.sos_lysis_prob = 1.0;
   cfg.fixes.bacteriocin.burst_release_tau = 300.0;
@@ -365,10 +368,11 @@ void test_near_colony_kill_separation() {
         run_bacteriocin_encounter(8000 + i, 120e-6);
     assert(near.injected);
     assert(far.injected);
-    assert(near.distance_error <= 20e-6);
-    assert(far.distance_error <= 20e-6);
+    assert(near.distance_error <= kEncounterDistanceTolerance);
+    assert(far.distance_error <= kEncounterDistanceTolerance);
     assert(far.alive);
-    std::cout << "  encounter " << i << " distance errors="
+    std::cout << std::scientific << std::setprecision(3)
+              << "  encounter " << i << " distance errors="
               << near.distance_error << "/" << far.distance_error << "\n";
     near_kills += near.colicin_kills;
     far_kills += far.colicin_kills;
