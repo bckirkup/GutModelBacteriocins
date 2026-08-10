@@ -167,7 +167,50 @@ No test or Python golden found in this inventory asserts the default B12
 change only if receptor conversion behavior were implemented; this audit
 does not change them.
 
-## 7. Option A versus Option B
+## 7. Accidental cancellation and sweep fragility
+
+At the current defaults, the model is in a sensible graded regime only
+because two independent unit errors nearly cancel:
+
+1. The toxin Kd is numerically molar while the QSSA toxin field is genuine
+   mol/m^3, making the toxin Kd 1000 times too small in the comparison.
+2. The B12 field and BtuB ligand Kd use the same numerical-molar convention,
+   making the competition factor 1001 rather than the physically corresponding
+   factor for a 1 uM field and 1 nM Kd.
+
+Consequently,
+
+```text
+apparent_Kd = 5e-10 * 1001 = 5.005e-7 mol/m^3
+```
+
+lands close to the intended apparent Kd by accident. The graded occupancies
+at 10/50/100 um are therefore not evidence that the units are correctly
+constructed; they are evidence that the two errors happen to compensate at
+this one parameter point.
+
+The cancellation is fragile along the exact sweep recommended by
+`docs/RECEPTOR_LIGAND_PARAMETERIZATION.md:47-51`. Holding the B12 field at
+`1e-6` and sweeping `kd_b12_btuB` changes the competition factor and apparent
+Kd as follows:
+
+| `kd_b12_btuB` | Competition factor `1 + [B12]/Kd` | Apparent ColE1 Kd (mol/m^3) | Occupancy at 10 um | Occupancy at 50 um | Occupancy at 100 um |
+|---:|---:|---:|---:|---:|---:|
+| `1e-9` | `1001` | `5.005e-7` | `0.89831` | `0.42349` | `0.10923` |
+| `1e-8` | `101` | `5.05e-8` | `0.98871` | `0.87923` | `0.54861` |
+| `1e-7` | `11` | `5.5e-9` | `0.99876` | `0.98526` | `0.91776` |
+| `1e-6` | `2` | `1e-9` | `0.99977` | `0.99729` | `0.98397` |
+
+At the proposed `1e-6` endpoint, the 50 um field
+(`3.676568e-7 mol/m^3`) is approximately 368 times the apparent Kd, so
+occupancy is `0.99729`: the model is effectively re-saturated. A user
+following the documented sweep would therefore silently move from the
+accidentally graded regime back toward the saturation behavior associated
+with the old toxin over-potency, while believing they were varying only
+corrinoid affinity. This is why the unit issue is a scientific correctness
+problem, not merely a documentation/tidiness problem.
+
+## 8. Option A versus Option B
 
 ### Option A: genuine mol/m^3 everywhere
 
@@ -210,18 +253,25 @@ B12 documentation/default error or the suspect siderophore reimport Km.
 ### Recommendation
 
 Use **Option A as the end-state**, but implement it as a staged migration
-with explicit parameter groups and regression tests. First document and test
-the current conventions; then convert B12 and the receptor ligand/toxin Kds
-together, convert `Agent::km_b12` with the B12 field, and resolve the
-siderophore field/Km and iron-ligand identity questions. Do not rescale the
-already-correct iron, carbon, oxygen, acetate, ethanolamine, mucin, or VBF Kms.
+with explicit parameter groups and regression tests. The decisive reason is
+that the current post-#208 behavior is defensible only at one accidental
+parameter point: the toxin-Kd error and B12-competition error cancel there,
+but the documented Kd sweep immediately destroys that cancellation. The first
+parameter sweep would therefore silently reproduce toxin saturation while
+appearing to explore corrinoid affinity.
+
+First document and test the current conventions; then convert B12 and the
+receptor ligand/toxin Kds together, convert `Agent::km_b12` with the B12
+field, and resolve the siderophore field/Km and iron-ligand identity
+questions. Do not rescale the already-correct iron, carbon, oxygen, acetate,
+ethanolamine, mucin, or VBF Kms.
 
 If a narrowly scoped production fix is needed before that migration is
 complete, Option B is safer operationally because it has one boundary and
 provably preserves all existing ligand/Km ratios. Neither option is
 implemented in this audit branch.
 
-## 8. ColE1 BtuB occupancy estimate
+## 9. ColE1 BtuB occupancy estimate
 
 This calculation uses the merged finite-burst and screened kernel as a
 stationary point-source snapshot:
@@ -262,6 +312,13 @@ they use the initial `Q=M/tau` snapshot, a stationary point source, and zero
 advection. The full code additionally depends on source age, source-target
 orientation, local advection, boundaries, cutoff/FMM choice, receptor
 expression, and immunity.
+
+This supersedes the residual-saturation statement in the description of
+physics PR #208, which compared the 50 um field with the bare toxin Kd and
+reported approximately `740 * Kd`. That comparison omitted ligand
+competition. The corrected statement is that the competition-adjusted
+apparent Kd is `5.005e-7 mol/m^3`, placing the 50 um field at occupancy
+`0.42349`, not at near-total saturation.
 
 ## Conclusion
 
