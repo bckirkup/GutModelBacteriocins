@@ -82,6 +82,7 @@ bool launch_superpose(const Domain& domain,
     sp[i].diff_coeff = params[i].diff_coeff;
     sp[i].source_rate = params[i].source_rate * scale;
     sp[i].retardation = params[i].retardation;
+    sp[i].decay_rate = params[i].decay_rate;
   }
 
   DeviceBuffer<double> d_sx;

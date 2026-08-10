@@ -141,16 +141,21 @@ GreensFunctionParams weighted_avg_params(
     avg_params.diff_coeff  += s * params[i].diff_coeff;
     avg_params.pI          += s * params[i].pI;
     avg_params.retardation += s * params[i].retardation;
+    // FMM approximates mixed-toxin screening with a source-weighted k;
+    // sqrt(k) is nonlinear, so heterogeneous clusters are approximate.
+    avg_params.decay_rate  += s * params[i].decay_rate;
     total_s += s;
   }
   if (total_s > 0.0) {
     avg_params.diff_coeff  /= total_s;
     avg_params.pI          /= total_s;
     avg_params.retardation /= total_s;
+    avg_params.decay_rate  /= total_s;
   } else {
     avg_params.diff_coeff  = cfg.fallback_diff_coeff;
     avg_params.pI          = cfg.fallback_pI;
     avg_params.retardation = cfg.fallback_retardation;
+    avg_params.decay_rate = 0.0;
   }
   avg_params.source_rate = 0.0;
   return avg_params;
@@ -244,14 +249,6 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
   return false;
 }
 
-Real microcin_steady_decay_factor(Real decay_rate,
-                                  Real washout,
-                                  Real fallback_dilution) {
-  const Real k_dilution = std::max(washout, fallback_dilution);
-  if (decay_rate <= 0.0) return 1.0;
-  return 1.0 / (1.0 + decay_rate / k_dilution);
-}
-
 void collect_microcin_sources(const AgentPool& agents,
                               const QSSAConfig& cfg,
                               const ProteaseConfig& protease,
@@ -268,17 +265,16 @@ void collect_microcin_sources(const AgentPool& agents,
       gfp.retardation  = bi.retardation;
       gfp.pI           = bi.pI;
       gfp.source_rate  = cfg.microcin_secretion;
-
-      Real factor = 1.0;
-      if (protease.enabled && bi.protease_half_life > 0.0) {
-        const Real decay_rate = k_ln2 / bi.protease_half_life;
-        factor = microcin_steady_decay_factor(
-            decay_rate, adv.washout_rate(a.x[2]), protease.dilution_rate);
-      }
+      const Real protease_decay = (protease.enabled
+                                   && bi.protease_half_life > 0.0)
+          ? k_ln2 / bi.protease_half_life : 0.0;
+      const Real dilution_decay = std::max(
+          adv.washout_rate(a.x[2]), protease.dilution_rate);
+      gfp.decay_rate = protease_decay + dilution_decay;
 
       out.sources.push_back(a.x);
       out.params.push_back(gfp);
-      out.strength_factors.push_back(factor);
+      out.strength_factors.push_back(1.0);
       out.is_nuclease.push_back(bi.is_nuclease);
       out.targets.push_back(bi.target);
     }
@@ -287,15 +283,12 @@ void collect_microcin_sources(const AgentPool& agents,
 
 void append_burst_sources(const std::vector<ToxinBurstSource>& bursts,
                           Real current_time,
-                          const ProteaseConfig& protease,
                           MicrocinSourceBuffers& out) {
   for (const ToxinBurstSource& burst : bursts) {
-    Real factor = 1.0;
-    if (protease.enabled && burst.decay_rate > 0.0) {
-      const Real age = std::max(0.0, current_time - burst.creation_time);
-      factor = std::exp(-burst.decay_rate * age);
-      if (factor < 1.0e-12) continue;
-    }
+    if (burst.release_tau <= 0.0) continue;
+    const Real age = std::max(0.0, current_time - burst.creation_time);
+    const Real factor = std::exp(-age / burst.release_tau);
+    if (factor < 1.0e-12) continue;
 
     out.sources.push_back(burst.pos);
     out.params.push_back(burst.params);
@@ -359,7 +352,7 @@ void QSSASolver::solve_bacteriocin_field(
   MicrocinSourceBuffers buffers{all_sources, all_params, all_strengths, is_nuclease, all_targets};
 
   collect_microcin_sources(agents, cfg_, protease, adv, buffers);
-  append_burst_sources(bursts, current_time, protease, buffers);
+  append_burst_sources(bursts, current_time, buffers);
 
   std::vector<Vec3> sources;
   std::vector<GreensFunctionParams> params;

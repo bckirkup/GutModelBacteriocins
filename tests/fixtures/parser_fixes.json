@@ -13,6 +13,7 @@
   "fixes": ["metabolism", "mechanics"],
 
   "sos_basal_rate": 1.0,
+  "burst_release_tau": 300.0,
 
   "initial_strains": [
     {

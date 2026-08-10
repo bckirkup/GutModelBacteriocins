@@ -424,7 +424,7 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 | `bacteriocin.retardation_acidic` | 1.5 | — | R for pI < 7.0 (Lethal Halo) |
 | `bacteriocin.retardation_neutral` | 5.0 | — | R for 7.0–8.5 |
 | `bacteriocin.D_free_colicin` | 4e-11 | m^2/s | Free diffusion (~50kDa protein) |
-| `bacteriocin.burst_molecules` | 1e4 | — | Reference burst size for scaling per-BI `burst_size` |
+| `bacteriocin.burst_release_tau` | 300 | s | Exponential release timescale; total delivered dose is tau-invariant, while tau sets peak versus duration |
 | `bacteriocin.microcin_mu_penalty` | 0.03 | — | Growth cost of microcin secretion |
 
 Per-plasmid defaults in `PlasmidLibrary`: `release_mode`, `is_nuclease`, `burst_size`, `phage_induction_rate` (ColB/ColIa: 1e-4 /generation).

@@ -2,13 +2,13 @@
   "scenario": "eari_vadi_ci",
   "metrics": {
     "monochromatic_score": 0.0,
-    "comet_tail_ratio": 0.9413243374933972,
-    "mean_exclusion_radius": 4.31494013984319e-05,
-    "hopkins_statistic": 0.4629511128758882,
-    "nnd_mean": 4.68534974916144e-05,
-    "comet_tail_asymmetry": 1.087986782256151,
-    "resident_retention": 0.50625,
-    "resident_mean_bi_loci": 1.5061728395061729,
+    "comet_tail_ratio": 0.9443415192723296,
+    "mean_exclusion_radius": 4.324404840644196e-05,
+    "hopkins_statistic": 0.49367335798935535,
+    "nnd_mean": 4.8620902531017355e-05,
+    "comet_tail_asymmetry": 1.090681329731719,
+    "resident_retention": 0.575,
+    "resident_mean_bi_loci": 1.5217391304347827,
     "transient_mean_bi_loci": 0.0,
     "transient_mean_btuB_expression": 1.0
   }

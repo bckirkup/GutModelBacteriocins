@@ -46,7 +46,7 @@ __device__ inline double minimum_image_delta(double delta, double span,
 }
 
 __device__ inline double single_kernel(const double src[3], const double tgt[3],
-                                       double D_eff, double Q,
+                                       double D_eff, double Q, double decay_rate,
                                        const double flow[3],
                                        const DomainParams& dom) {
   double dx = minimum_image_delta(
@@ -61,7 +61,10 @@ __device__ inline double single_kernel(const double src[3], const double tgt[3],
   double U_mag = sqrt(flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]);
   double U_dot_r = flow[0] * dx + flow[1] * dy + flow[2] * dz;
   double prefactor = Q / (4.0 * PI_GPU * D_eff * r);
-  double exponent = (U_dot_r - U_mag * r) / (2.0 * D_eff);
+  double screened_speed = decay_rate <= 0.0
+      ? U_mag
+      : sqrt(U_mag * U_mag + 4.0 * D_eff * decay_rate);
+  double exponent = (U_dot_r - screened_speed * r) / (2.0 * D_eff);
   exponent = exponent < -500.0 ? -500.0 : exponent;
   return prefactor * exp(exponent);
 }
@@ -74,7 +77,7 @@ __device__ inline double concentration_bounded(const double src[3], const double
   double flow[3];
   flow_velocity(adv, src[0], src[2], flow[0], flow[1], flow[2]);
   double Q = p.source_rate;
-  double total = single_kernel(src, tgt, D_eff, Q, flow, dom);
+  double total = single_kernel(src, tgt, D_eff, Q, p.decay_rate, flow, dom);
 
   for (int n = 1; n <= N_IMAGES; ++n) {
     double img[3];
@@ -82,16 +85,16 @@ __device__ inline double concentration_bounded(const double src[3], const double
 
     img[0] = src[0]; img[1] = src[1];
     img[2] = 2.0 * dom.z_lo - src[2] - 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, flow, dom);
+    total += single_kernel(img, tgt, D_eff, Q, p.decay_rate, flow, dom);
 
     img[2] = 2.0 * dom.z_hi - src[2] + 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, flow, dom);
+    total += single_kernel(img, tgt, D_eff, Q, p.decay_rate, flow, dom);
 
     img[2] = 2.0 * dom.z_lo - src[2] + 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, flow, dom);
+    total += single_kernel(img, tgt, D_eff, Q, p.decay_rate, flow, dom);
 
     img[2] = 2.0 * dom.z_hi - src[2] - 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, flow, dom);
+    total += single_kernel(img, tgt, D_eff, Q, p.decay_rate, flow, dom);
   }
 
   return total > 0.0 ? total : 0.0;

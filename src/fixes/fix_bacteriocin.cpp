@@ -116,29 +116,27 @@ void FixBacteriocin::check_phage_induction(Agent& agent, const BICluster& bi, Re
 }
 
 void FixBacteriocin::lyse_agent(Agent& agent) {
-  const Real base_release = sim_.config().qssa.colicin_release_rate;
   const Real creation_time = sim_.time();
 
   for (const auto& bi : agent.genome.bi_loci) {
     if (bi.release_mode == ReleaseMode::CONTINUOUS) continue;
     if (bi.molecular_weight < 10000.0) continue;
 
-    const Real scale = (bi.burst_size > 0.0)
-        ? bi.burst_size / cfg_.burst_molecules : 1.0;
-
     ToxinBurstSource burst;
     burst.pos = agent.x;
     burst.params.diff_coeff = bi.diff_coeff;
     burst.params.retardation = bi.retardation;
     burst.params.pI = bi.pI;
-    burst.params.source_rate = base_release * scale;
+    const Real inventory = bi.burst_size / AVOGADRO;
+    burst.params.source_rate = inventory / cfg_.burst_release_tau;
     burst.creation_time = creation_time;
+    burst.release_tau = cfg_.burst_release_tau;
     burst.is_nuclease = bi.is_nuclease;
     burst.target = bi.target;
-    burst.decay_rate = (bi.protease_half_life > 0.0)
+    burst.params.decay_rate = (bi.protease_half_life > 0.0)
         ? k_ln2 / bi.protease_half_life : 0.0;
     if (!sim_.config().chem_env.protease.enabled) {
-      burst.decay_rate = 0.0;
+      burst.params.decay_rate = 0.0;
     }
     sim_.add_toxin_burst(burst);
   }

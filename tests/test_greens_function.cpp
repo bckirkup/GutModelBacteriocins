@@ -8,12 +8,133 @@
 #include "domain.h"
 #include "advection.h"
 #include "error.h"
+#include "plasmid.h"
 #include <cassert>
 #include <iostream>
 #include <cmath>
+#include <numbers>
 #include <string>
 
 using namespace gutibm;
+
+namespace {
+
+void setup_zero_flow(Domain& domain, AdvectionField& adv, GreensFunction& gf) {
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {1e-3, 1e-3, 100e-6};
+  dcfg.grid_dx = 5e-6;
+  domain.init(dcfg);
+
+  AdvectionConfig acfg;
+  acfg.radial_turnover = 1e20;
+  acfg.distal_transit_time = 1e20;
+  acfg.mucus_thickness = 100e-6;
+  acfg.distal_length = 1e-3;
+  adv.init(acfg, domain);
+  gf.init(domain, adv);
+}
+
+Real fit_screening_length(GreensFunction& gf, const Vec3& source,
+                          const BICluster& bi) {
+  GreensFunctionParams params;
+  params.diff_coeff = bi.diff_coeff;
+  params.retardation = bi.retardation;
+  params.source_rate = 1.0e-18;
+  params.decay_rate = std::numbers::ln2 / bi.protease_half_life;
+
+  const std::array<Real, 4> distances = {10e-6, 20e-6, 40e-6, 80e-6};
+  Real sum_r = 0.0;
+  Real sum_y = 0.0;
+  Real sum_rr = 0.0;
+  Real sum_ry = 0.0;
+  for (const Real r : distances) {
+    Vec3 target = source;
+    target[0] += r;
+    const Real y = std::log(gf.concentration(source, target, params) * r);
+    sum_r += r;
+    sum_y += y;
+    sum_rr += r * r;
+    sum_ry += r * y;
+  }
+  const Real n = static_cast<Real>(distances.size());
+  const Real slope = (n * sum_ry - sum_r * sum_y)
+      / (n * sum_rr - sum_r * sum_r);
+  return -1.0 / slope;
+}
+
+}  // namespace
+
+void test_zero_decay_exact_regression() {
+  Domain domain;
+  AdvectionField adv;
+  GreensFunction gf;
+  setup_zero_flow(domain, adv, gf);
+
+  GreensFunctionParams implicit_zero;
+  implicit_zero.diff_coeff = 4e-11;
+  implicit_zero.retardation = 1.5;
+  implicit_zero.source_rate = 1e-18;
+  implicit_zero.pI = 5.4;
+  GreensFunctionParams explicit_zero = implicit_zero;
+  explicit_zero.decay_rate = 0.0;
+  const Vec3 source = {500e-6, 500e-6, 50e-6};
+  const Vec3 target = {550e-6, 500e-6, 50e-6};
+  const Real old_value = gf.concentration(source, target, implicit_zero);
+  const Real new_value = gf.concentration(source, target, explicit_zero);
+  assert(old_value == new_value);
+  std::cout << "  test_zero_decay_exact_regression: PASSED\n";
+}
+
+void test_screening_lengths() {
+  Domain domain;
+  AdvectionField adv;
+  GreensFunction gf;
+  setup_zero_flow(domain, adv, gf);
+  const Vec3 source = {500e-6, 500e-6, 50e-6};
+  const Real col_e1 = fit_screening_length(gf, source, PlasmidLibrary::colicin_E1());
+  const Real col_b = fit_screening_length(gf, source, PlasmidLibrary::colicin_B());
+  const Real expected_e1 = std::sqrt(
+      (4.0e-11 / 50.0) / (std::numbers::ln2 / 1800.0));
+  const Real expected_b = std::sqrt(
+      (4.0e-11 / 1.5) / (std::numbers::ln2 / 900.0));
+  assert(std::abs(col_e1 - expected_e1) / expected_e1 < 1.0e-10);
+  assert(std::abs(col_b - expected_b) / expected_b < 1.0e-10);
+  std::cout << "  test_screening_lengths: PASSED (ColE1=" << col_e1 * 1e6
+            << " um ColB=" << col_b * 1e6 << " um)\n";
+}
+
+void test_core_halo_decay_ordering() {
+  Domain domain;
+  AdvectionField adv;
+  GreensFunction gf;
+  setup_zero_flow(domain, adv, gf);
+  const Vec3 source = {500e-6, 500e-6, 50e-6};
+  const Vec3 near = {510e-6, 500e-6, 50e-6};
+  const Vec3 far = {100e-6, 500e-6, 50e-6};
+
+  auto make_params = [](const BICluster& bi) {
+    GreensFunctionParams p;
+    p.diff_coeff = bi.diff_coeff;
+    p.retardation = bi.retardation;
+    p.source_rate = 1.0e-18;
+    p.decay_rate = std::numbers::ln2 / bi.protease_half_life;
+    return p;
+  };
+  const Real e1_near = gf.concentration(source, near,
+                                         make_params(PlasmidLibrary::colicin_E1()));
+  const Real e1_far = gf.concentration(source, far,
+                                       make_params(PlasmidLibrary::colicin_E1()));
+  const Real b_near = gf.concentration(source, near,
+                                       make_params(PlasmidLibrary::colicin_B()));
+  const Real b_far = gf.concentration(source, far,
+                                      make_params(PlasmidLibrary::colicin_B()));
+  const Real e1_ratio = e1_far / e1_near;
+  const Real b_ratio = b_far / b_near;
+  assert(e1_ratio < b_ratio);
+  std::cout << "  test_core_halo_decay_ordering: PASSED (ColE1="
+            << e1_ratio << " ColB=" << b_ratio << ")\n";
+}
 
 void test_radial_symmetry_no_flow() {
   // Without flow, Green's function should be radially symmetric
@@ -235,6 +356,9 @@ void test_peclet_number() {
 
 int main() {
   std::cout << "=== Green's Function Tests ===\n";
+  test_zero_decay_exact_regression();
+  test_screening_lengths();
+  test_core_halo_decay_ordering();
   test_uninitialized_throws();
   test_radial_symmetry_no_flow();
   test_comet_tail_asymmetry();

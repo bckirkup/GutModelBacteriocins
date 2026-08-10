@@ -180,7 +180,7 @@ void GreensFunction::require_init() const {
 }
 
 Real GreensFunction::single_kernel(const Vec3& src, const Vec3& tgt,
-                                    Real D_eff, Real Q,
+                                    Real D_eff, Real Q, Real decay_rate,
                                     const Vec3& flow_vel) const {
   Vec3 delta = domain_->min_image_delta(src, tgt);
   Real r = std::sqrt(delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2]);
@@ -196,7 +196,10 @@ Real GreensFunction::single_kernel(const Vec3& src, const Vec3& tgt,
 
   // Advection-diffusion Green's function (3D steady-state)
   Real prefactor = Q / (4.0 * PI * D_eff * r);
-  Real exponent  = (U_dot_r - U_mag * r) / (2.0 * D_eff);
+  const Real screened_speed = decay_rate <= 0.0
+      ? U_mag
+      : std::sqrt(U_mag * U_mag + 4.0 * D_eff * decay_rate);
+  Real exponent  = (U_dot_r - screened_speed * r) / (2.0 * D_eff);
 
   // Clamp exponent to avoid overflow
   exponent = std::max(exponent, -500.0);
@@ -209,7 +212,8 @@ Real GreensFunction::concentration(const Vec3& source, const Vec3& target,
   require_init();
   Real D_eff = params.diff_coeff / params.retardation;
   Vec3 flow  = adv_->velocity(source);
-  return single_kernel(source, target, D_eff, params.source_rate, flow);
+  return single_kernel(source, target, D_eff, params.source_rate,
+                       params.decay_rate, flow);
 }
 
 Real GreensFunction::concentration_bounded(const Vec3& source, const Vec3& target,
@@ -219,29 +223,34 @@ Real GreensFunction::concentration_bounded(const Vec3& source, const Vec3& targe
   Vec3 flow  = adv_->velocity(source);
   Real Q     = params.source_rate;
 
-  Real total = single_kernel(source, target, D_eff, Q, flow);
+  Real total = single_kernel(source, target, D_eff, Q,
+                             params.decay_rate, flow);
 
   // Method of Images: reflect source across z=z_lo and z=z_hi
   for (int n = 1; n <= N_IMAGES; ++n) {
     // Image below z_lo
     Vec3 img_lo = source;
     img_lo[2] = 2.0 * z_lo_ - source[2] - 2.0 * n * (z_hi_ - z_lo_);
-    total += single_kernel(img_lo, target, D_eff, Q, flow);
+    total += single_kernel(img_lo, target, D_eff, Q,
+                           params.decay_rate, flow);
 
     // Image above z_hi
     Vec3 img_hi = source;
     img_hi[2] = 2.0 * z_hi_ - source[2] + 2.0 * n * (z_hi_ - z_lo_);
-    total += single_kernel(img_hi, target, D_eff, Q, flow);
+    total += single_kernel(img_hi, target, D_eff, Q,
+                           params.decay_rate, flow);
 
     // Image reflected below then above
     Vec3 img_lo2 = source;
     img_lo2[2] = 2.0 * z_lo_ - source[2] + 2.0 * n * (z_hi_ - z_lo_);
-    total += single_kernel(img_lo2, target, D_eff, Q, flow);
+    total += single_kernel(img_lo2, target, D_eff, Q,
+                           params.decay_rate, flow);
 
     // Image reflected above then below
     Vec3 img_hi2 = source;
     img_hi2[2] = 2.0 * z_hi_ - source[2] - 2.0 * n * (z_hi_ - z_lo_);
-    total += single_kernel(img_hi2, target, D_eff, Q, flow);
+    total += single_kernel(img_hi2, target, D_eff, Q,
+                           params.decay_rate, flow);
   }
 
   return std::max(total, 0.0);

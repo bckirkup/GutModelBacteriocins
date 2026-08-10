@@ -58,12 +58,12 @@ struct QSSAConfig {
   Real fallback_retardation = 5.0;
 };
 
-// Persistent burst from SOS lysis (Spec 1 protease decay)
+// Persistent burst from SOS lysis with finite inventory and release timescale.
 struct ToxinBurstSource {
   Vec3 pos;
   GreensFunctionParams params;
   Real creation_time = 0.0;
-  Real decay_rate = 0.0;   // ln(2) / protease_half_life (1/s)
+  Real release_tau = 300.0;  // exponential release timescale (s)
   bool is_nuclease = false;
   ReceptorType target = ReceptorType::BtuB;
 };

@@ -36,6 +36,7 @@ struct GfSourceParams {
   double diff_coeff;
   double source_rate;
   double retardation;
+  double decay_rate;
 };
 
 struct VbfLaunchParams {
