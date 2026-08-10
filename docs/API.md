@@ -412,6 +412,10 @@ See `src/gpu/README.md` for build prerequisites and memory requirements.
 
 ## Python Toolkit
 
+Colony catalogs and composition-aware 3-D spatial observables are documented in
+[`COLONY_OBSERVABLES.md`](COLONY_OBSERVABLES.md) and provided by
+`gut_ibm_tools.colony` and `gut_ibm_tools.spatial_stats`.
+
 Package: `python/gut_ibm_tools/`
 
 ### `hdf5_reader`

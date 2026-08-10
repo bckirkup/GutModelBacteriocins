@@ -23,6 +23,7 @@ setup(
             "gut-ibm-aws-estimate=gut_ibm_tools.aws_batch_estimate:main",
             "gut-ibm-aws-qa=gut_ibm_tools.aws_batch_qa:main",
             "gut-ibm-aws-branch=gut_ibm_tools.aws_batch_branch:main",
+            "gut-ibm-colony=gut_ibm_tools.colony:main",
         ],
     },
 )
