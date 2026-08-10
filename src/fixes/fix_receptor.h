@@ -67,6 +67,8 @@ class FixReceptor : public Fix {
 
   // Evaluate kill probability for one agent from local toxin field
   Real compute_kill_prob(const Agent& agent, Real dt) const;
+  Real compute_kill_prob(const Agent& agent, Real dt,
+                         KillAssessment* diagnostics) const;
   KillAssessment assess_kill(const Agent& agent, Real dt) const;
 
   Real local_toxin_conc(const ChemicalField& chem, Int cell,
