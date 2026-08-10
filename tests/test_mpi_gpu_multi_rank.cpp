@@ -34,6 +34,9 @@ SimulationConfig make_mpi_gpu_config() {
   cfg.hdf5.enabled = false;
   cfg.gpu.enabled = true;
   cfg.gpu.device_id = -1;
+  // This MPI fixture compares GPU metabolism across ranks; siderophore
+  // chemistry is CPU-authoritative and covered separately.
+  cfg.chem_env.siderophore.enabled = false;
   cfg.chem_env.oxygen.enabled = true;
   cfg.chem_env.acetate.enabled = true;
   cfg.chem_env.mucin.enabled = true;

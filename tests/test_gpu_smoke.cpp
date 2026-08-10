@@ -49,6 +49,9 @@ int main() {
   cfg.time.total_time = 300.0;
   cfg.time.bio_dt = 60.0;
   cfg.hdf5.enabled = false;
+  // Keep this parity fixture on the GPU metabolism path; siderophore chemistry
+  // is CPU-authoritative and intentionally tested by a separate fallback case.
+  cfg.chem_env.siderophore.enabled = false;
   cfg.initial_strains.clear();
   cfg.domain.hi = {200.0e-6, 200.0e-6, 100.0e-6};
   cfg.domain.grid_dx = 4.0e-6;

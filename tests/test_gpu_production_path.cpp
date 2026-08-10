@@ -29,6 +29,9 @@ SimulationConfig make_production_config(uint64_t seed) {
   cfg.profile_steps = false;
   cfg.gpu.enabled = true;
   cfg.gpu.device_id = 0;
+  // This production-path fixture measures GPU metabolism; siderophore
+  // chemistry is CPU-authoritative and covered by the fallback test.
+  cfg.chem_env.siderophore.enabled = false;
 
   // Keep nx=1000 while narrowing the periodic y-axis: 500K cells instead of 50M.
   cfg.domain.lo = {0, 0, 0};
