@@ -123,6 +123,30 @@ Monod growth and QSSA field updates.
 **VRAM estimate:** grid (~1.2 GB) + agent SoA (~32 B × N scalars) + hash buffers.
 At 10⁶ agents, plan for **≥ 2 GB** device memory with default grid.
 
+## GPU numerical parity and reproducibility
+
+The standalone `gpu_reproducibility` diagnostic measured a deterministic
+CPU-vs-GPU total-biomass offset of
+`rel_diff=4.1241258415305931e-07` with siderophore chemistry disabled, where
+GPU metabolism is active. The siderophore-enabled fallback comparison measured
+approximately `7e-07`. These are stable numerical offsets associated with the
+different CPU and GPU diffusion solves, not evidence of run-to-run
+nondeterminism. The diagnostic uses a `1e-5` relative bound, leaving an order
+of headroom while remaining much tighter than the `gpu_smoke` 5% bound.
+
+On one Tesla T4, the same siderophore-enabled GPU fixture produced identical
+total biomass over two repeats:
+`abs_diff=0 rel_diff=0`. This is evidence for that fixture, device, and
+two-repeat comparison only; total biomass was the compared output, and GPU
+atomic accumulation could still vary with larger populations or more occupied
+cells.
+
+The diagnostic runs only five biological steps. Whether a roughly `4e-7`
+per-run CPU-vs-GPU offset remains bounded or compounds over a 10,080-step
+seven-day campaign is unknown and has not been tested. CPU and GPU results
+should therefore not be treated as interchangeable over long campaigns
+without a dedicated long-horizon validation.
+
 ## Recommended parameters by target scale
 
 | Target agents | `use_fmm` | `fmm_theta` | `toxin_cutoff` | MPI ranks | Notes |

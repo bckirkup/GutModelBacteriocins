@@ -127,7 +127,14 @@ void test_gpu_siderophore_cpu_fallback() {
   assert(gpu_live == cpu_live);
   const Real biomass_rel_diff =
       std::abs(gpu_biomass - cpu_biomass) / cpu_biomass;
-  constexpr Real kBiomassRelativeTolerance = 1.0e-8;
+  // The deterministic CPU-vs-GPU numerical offset measured 4e-7--7e-7
+  // across configurations. This 1e-5 bound leaves an order of headroom while
+  // remaining two orders tighter than gpu_smoke's 5% bound. The offset comes
+  // from the different diffusion solves, not nondeterminism; the
+  // gpu_reproducibility target checks exact repeated GPU biomass for one
+  // fixture/device, so that evidence is not a general reproducibility
+  // guarantee for larger populations or more atomic contention.
+  constexpr Real kBiomassRelativeTolerance = 1.0e-5;
   std::cout << "  test_gpu_siderophore_cpu_fallback: biomass_rel_diff="
             << biomass_rel_diff << "\n";
   assert(biomass_rel_diff <= kBiomassRelativeTolerance);
