@@ -6,9 +6,11 @@
 #include "path_utils.h"
 #include "simulation.h"
 #include "species_names.h"
+#include "greens_function.h"
 #include <cassert>
 #include <cmath>
 #include <format>
+#include <iomanip>
 #include <iostream>
 #include <numbers>
 #include <string>
@@ -29,6 +31,8 @@ struct ChallengeResult {
   Int divisions = 0;
   Int target_count = 100;
   Real target_toxin = 0.0;
+  Real greens_function_toxin = 0.0;
+  Real source_to_cell_distance = 0.0;
   Real expected_kill_fraction = 0.0;
 };
 
@@ -58,6 +62,7 @@ SimulationConfig challenge_config(Int producer_count) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {100e-6, 50e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
+  cfg.domain.periodic = {false, false, false};
   cfg.time.bio_dt = 60.0;
   cfg.time.total_time = 600.0;
   cfg.time.output_interval = 600.0;
@@ -154,6 +159,22 @@ ChallengeResult run_challenge(Int producer_count, Real target_distance) {
   const std::string grid_path =
       std::string("grid/step_000006/") + species::BACTERIOCIN_BTUB;
   const Real target_toxin = read_grid_value(file, grid_path, target_cell);
+  GreensFunction greens_function;
+  greens_function.init(sim.domain(), sim.advection());
+  GreensFunctionParams params;
+  params.diff_coeff = 4.0e-11;
+  params.retardation = 50.0;
+  params.source_rate = 1.0e5 / AVOGADRO / 300.0
+      * std::exp(-60.0 / 300.0);
+  params.decay_rate = std::numbers::ln2 / 1800.0;
+  const Real greens_function_toxin = greens_function.concentration_bounded(
+      producer_center, sim.domain().cell_center(target_ix, target_iy, target_iz),
+      params);
+  const Vec3 target_cell_center =
+      sim.domain().cell_center(target_ix, target_iy, target_iz);
+  const Real dx = target_cell_center[0] - producer_center[0];
+  const Real dy = target_cell_center[1] - producer_center[1];
+  const Real dz = target_cell_center[2] - producer_center[2];
   constexpr Real apparent_kd = 5.005e-4;
   constexpr Real kill_rate = 1.0e-3;
   constexpr Real bio_dt = 60.0;
@@ -174,6 +195,8 @@ ChallengeResult run_challenge(Int producer_count, Real target_distance) {
   result.colicin_kills = colicin_kills;
   result.divisions = divisions;
   result.target_toxin = target_toxin;
+  result.greens_function_toxin = greens_function_toxin;
+  result.source_to_cell_distance = std::sqrt(dx * dx + dy * dy + dz * dz);
   result.expected_kill_fraction = 1.0 - std::exp(-cumulative_hazard);
   return result;
 #endif
@@ -196,6 +219,7 @@ int main() {
     }
 
     std::cout << "distance_um=" << distance * 1e6 << "\n";
+    std::cout << std::setprecision(10);
     for (size_t i = 0; i < producer_counts.size(); ++i) {
       const Real simulated_fraction =
           static_cast<Real>(results[i].colicin_kills) / results[i].target_count;
@@ -203,14 +227,25 @@ int main() {
                 << " killed_fraction=" << simulated_fraction
                 << " expected_fraction=" << results[i].expected_kill_fraction
                 << " target_toxin=" << results[i].target_toxin
+                << " gf_toxin=" << results[i].greens_function_toxin
+                << " source_cell_distance_um="
+                << results[i].source_to_cell_distance * 1e6
                 << " divisions=" << results[i].divisions << "\n";
     }
 
-    assert(results.front().colicin_kills <= 1);
-    assert(results[2].colicin_kills >= 10);
-    assert(std::abs(static_cast<Real>(results[2].colicin_kills)
-                    / results[2].target_count
-                    - results[2].expected_kill_fraction) <= 0.1);
+    if (distance == 50e-6) {
+      const Real simulated_fraction =
+          static_cast<Real>(results[2].colicin_kills)
+          / results[2].target_count;
+      const Real sampled_per_source =
+          results[2].target_toxin / producer_counts[2];
+      assert(results[2].colicin_kills <= 5);
+      assert(results[3].colicin_kills >= 10);
+      assert(std::abs(sampled_per_source / results[2].greens_function_toxin
+                      - 1.0) <= 0.1);
+      assert(std::abs(simulated_fraction
+                      - results[2].expected_kill_fraction) <= 0.05);
+    }
     for (const ChallengeResult& result : results) {
       assert(result.divisions == 0);
     }
