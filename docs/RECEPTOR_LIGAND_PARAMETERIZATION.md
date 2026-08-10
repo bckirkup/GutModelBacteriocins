@@ -73,22 +73,20 @@ isolated cell. In a maintained-background single-cell assay with diffusion,
 local source-cell FeEnt immediately after the reaction update was
 `1e-11 mol/m³` at `1e-4 mol/m³` iron and `6e-15 mol/m³` at `1e-8 mol/m³` iron.
 The earlier `8e-16 mol/m³` result was the post-diffusion field average.
-Relative to `kd_enterobactin = 1e-6 mol/m³`, linear co-location scaling requires
-approximately `1e5` and `1.7e8` cells per grid cell, respectively. A
-`5 µm` grid cell is `125 µm³`; even an implausibly dense `100` cells per grid
-cell would produce only `1e-9 mol/m³` (`1e-3 × Kd`) at high iron and
-`6e-13 mol/m³` (`6e-7 × Kd`) at low iron. The thresholds exceed that generous
-packing ceiling by about `1e3` and `1.7e6`, respectively. FepA competition is therefore
-unreachable at achievable density. The larger low-iron threshold reflects
-iron-limited chelation outweighing Fur-mediated secretion derepression.
 
-An occupancy assay with the corrected per-cell aggregation pass used 1, 4, 16,
-and 64 agents in one grid cell while maintaining the local apo background.
-Reaction-stage FeEnt was `5e-12 mol/m³` at every occupancy for high iron
-(`1e-4 mol/m³`, apo `4e-9 mol/m³`) and `1e-15 mol/m³` at every occupancy for
-maintained low iron (`1e-8 mol/m³`, apo `3e-8 mol/m³`). Thus the linear
-thresholds above should be read as optimistic lower bounds: aggregate secretion
-and FepA capacity cancel rather than yielding linear FeEnt accumulation.
+The corrected per-cell aggregation pass was measured with 1, 4, 16, and
+64 agents co-located in one grid cell while maintaining the local apo
+background. Reaction-stage FeEnt was `5e-12 mol/m³` at every occupancy for
+high iron (`1e-4 mol/m³`, apo `4e-9 mol/m³`) and `1e-15 mol/m³` at every
+occupancy for maintained low iron (`1e-8 mol/m³`, apo `3e-8 mol/m³`).
+Local biomass multiplies both apo/FeEnt production and aggregate FepA
+capacity, so the density dependence cancels in both the linear and saturated
+sink regimes. Diffusive escape further suppresses FeEnt. FepA ligand
+competition is therefore unreachable at any density by construction.
+
+This contrasts with colicin dose: lysing producers release bacteriocin without
+also removing it, so toxin dose does increase with co-located producers and
+the microcolony threshold from #213 is a genuine density effect.
 
 | Parameter | Model value | Basis |
 |-----------|-------------|-------|

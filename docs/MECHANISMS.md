@@ -99,26 +99,25 @@ immediately after the reaction update in a maintained single-cell assay was
 `1e-11 mol/m³` at `1e-4 mol/m³` iron and `6e-15 mol/m³` at `1e-8 mol/m³` iron,
 versus `kd_enterobactin = 1e-6 mol/m³`. The earlier `8e-16 mol/m³` value was
 the post-diffusion field average, not the reaction-stage source-cell pulse.
-Assuming linear scaling with the number of co-located cells, the corresponding
-thresholds are approximately `1e5` and `1.7e8` cells per grid cell. A
-`5 µm` grid cell has `125 µm³`; an intentionally generous `1 µm³` per cell
-allows about `100` cells per grid cell. At that ceiling, local FeEnt reaches
-only `1e-9 mol/m³` (`1e-3 × Kd`) at high iron and `6e-13 mol/m³`
-(`6e-7 × Kd`) at low iron. The thresholds exceed that generous packing ceiling
-by about `1e3` and `1.7e6`, respectively. Fur derepression raises secretion,
-but low iron
-reduces chelation flux more strongly; FepA competition is therefore
-unreachable at achievable density rather than a restored single-cell effect.
 
-The aggregate reaction implementation was also measured at 1, 4, 16, and
-64 agents co-located in one grid cell with a maintained local apo background.
-Reaction-stage FeEnt stayed at `5e-12 mol/m³` across all four occupancies at
-high iron (`1e-4 mol/m³`, apo `4e-9 mol/m³`) and at `1e-15 mol/m³` across all
-four occupancies under maintained low iron (`1e-8 mol/m³`, apo `3e-8 mol/m³`).
-Secretion and aggregate FepA capacity scale together, so the linear
-co-location calculation is an optimistic lower bound on the occupancy needed
-for competition; it is not a prediction that FeEnt increases linearly through
-the microcolony regime.
+The corrected per-cell aggregation pass was measured at 1, 4, 16, and
+64 agents co-located in one grid cell with a maintained apo-enterobactin
+background. Reaction-stage FeEnt stayed at `5e-12 mol/m³` across all four
+occupancies at high iron (`1e-4 mol/m³`, apo `4e-9 mol/m³`) and at
+`1e-15 mol/m³` across all four occupancies under maintained low iron
+(`1e-8 mol/m³`, apo `3e-8 mol/m³`).
+
+The cancellation is structural: multiplying local biomass by `N` multiplies
+apo production and chelation by `N`, while the aggregate FepA sink becomes
+`N × Vmax × C / Km` in the linear regime or `N × Vmax` when saturated.
+Production and reimport therefore cancel at every occupancy. Diffusive escape
+does not scale with `N` and further lowers FeEnt. FepA ligand competition is
+unreachable at any density in this model, not merely above or below a
+packing-based threshold.
+
+This is different from bacteriocin dose. Lysing producers release toxin but do
+not reimport it, so toxin dose does scale with co-located producers; the
+microcolony threshold from #213 is consequently a genuine density effect.
 
 The FeEnt reimport step uses a positivity-preserving backward-Euler
 Michaelis–Menten update. With the literature-grounded `Vmax` and the model's

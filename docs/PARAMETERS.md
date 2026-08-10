@@ -142,7 +142,7 @@ Nutrients and small molecules use backward-Euler directional splitting in `Chemi
 | Oxygen | `oxygen.D_free` (default `2.1e-9 m²/s`) | when oxygen is enabled |
 | Acetate | `acetate.D_free` (default `1.2e-9 m²/s`) | yes |
 | Ethanolamine | `D_free = 1e-9 m²/s` | yes |
-| Siderophore | `siderophore.D_free` (default `5e-10 m²/s`) | when siderophore is enabled |
+| Siderophore | `siderophore.D_free` (default `1e-10 m²/s`) | when siderophore is enabled |
 | Mucin | immobile polymer field | no |
 | Bacteriocins | analytical QSSA Green's functions | no grid diffusion |
 
@@ -443,7 +443,7 @@ QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteri
 |-----------|---------|-------|-------------|
 | `siderophore.enabled` | true | — | Register `siderophore` species and secretion/chelation in metabolism; enabled by default because iron-limited *E. coli* commonly produces enterobactin |
 | `siderophore.secretion_rate` | 1e-5 | mol/(s·kg) | Constrained estimate for enterobactin secretion, scaled by Fur activity |
-| `siderophore.D_free` | 4e-11 | m²/s | Free siderophore diffusion |
+| `siderophore.D_free` | 1e-10 | m²/s | Free siderophore diffusion |
 | `siderophore.chelation_rate` | 1e3 | m³/mol/s | Iron–siderophore chelation sink |
 | `siderophore.Km_reimport` | 1e-6 | mol/m³ | FepA-mediated ferric-enterobactin reimport; converted from the erroneous `1e-9` default |
 | `siderophore.Vmax_reimport` | 1e-5 | mol/(s·kg) | FepA ferric-enterobactin transport capacity, grounded in FepA copy number and TonB-limited turnover |
@@ -458,19 +458,29 @@ enterobactin away faster than local chelation, so the realized
 after the reaction update was `1e-11 mol/m³` at `1e-4 mol/m³` iron and
 `6e-15 mol/m³` at `1e-8 mol/m³` iron. The previously reported `8e-16 mol/m³`
 was the post-diffusion field average; diffusion spreads the reaction-stage
-source pulse across the grid before the next biological step. Under the linear
-co-location assumption, reaching `kd_enterobactin = 1e-6 mol/m³` requires
-approximately `1e5` co-located cells per grid cell at high iron and `1.7e8`
-under the maintained low-iron condition. A `5 µm` grid cell contains
-`125 µm³`; using roughly `1 µm³` per *E. coli* gives an implausibly generous
-physical ceiling of about `100` cells per grid cell. At that ceiling, local
-FeEnt is only `1e-9 mol/m³` (`1e-3 × Kd`) at high iron and `6e-13 mol/m³`
-(`6e-7 × Kd`) at low iron. The thresholds are therefore about `1e3` and
-`1.7e6` times the generous packing ceiling, respectively. The low-iron
-threshold is higher because Fur
-derepression increases secretion, but iron limitation suppresses the chelation
-flux. Meaningful competition is therefore unreachable at achievable densities
-in this model.
+source pulse across the grid before the next biological step.
+
+The corrected per-cell aggregation pass was measured with 1, 4, 16, and
+64 agents co-located in one grid cell while maintaining the local
+apo-enterobactin background. At high iron (`1e-4 mol/m³`, maintained apo
+`4e-9 mol/m³`), reaction-stage FeEnt was `5e-12 mol/m³` at every occupancy.
+At maintained low iron (`1e-8 mol/m³`, maintained apo `3e-8 mol/m³`), it was
+`1e-15 mol/m³` at every occupancy.
+
+This flat response is the expected result. If local biomass is multiplied by
+`N`, apo-enterobactin production and chelation scale by `N`, while the
+aggregate FepA reimport capacity also scales by `N`. In either the
+pseudo-first-order regime (`N × Vmax × C / Km`) or the saturated regime
+(`N × Vmax`), production and reimport therefore cancel in the local
+steady-state balance. Diffusive escape is the only term that does not scale
+with `N`, and it further suppresses local FeEnt. FepA ligand competition is
+therefore unreachable at any density in this model by construction, rather
+than merely unreachable below a packing ceiling.
+
+This differs from the colicin result: bacteriocin dose scales with co-located
+producers because lysing producers are not also a sink for the toxin. The
+microcolony threshold identified for colicin in #213 is therefore a real
+density effect; no analogous FeEnt density threshold exists here.
 
 The per-cell aggregation pass was checked with 1, 4, 16, and 64 agents
 co-located in one grid cell while maintaining the local apo-enterobactin
