@@ -8,6 +8,7 @@
 #include "input_parser.h"
 #include "species_names.h"
 #include "qssa_solver.h"
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -242,10 +243,11 @@ void test_true_unit_receptor_regression() {
   constexpr Real toxin_at_100_um = 6.137581e-8;
 
   const SimulationConfig defaults = InputParser::default_config();
-  const Int b12_index = defaults.chemicals.size() > 2 ? 2 : -1;
-  assert(b12_index >= 0);
-  assert(std::abs(defaults.chemicals[static_cast<size_t>(b12_index)].initial_conc
-                  - 1.0e-3) < 1.0e-15);
+  const auto b12_spec = std::find_if(
+      defaults.chemicals.begin(), defaults.chemicals.end(),
+      [](const ChemicalSpec& s) { return s.id == species::B12; });
+  assert(b12_spec != defaults.chemicals.end());
+  assert(std::abs(b12_spec->initial_conc - 1.0e-3) < 1.0e-15);
 
   const ReceptorConfig& receptor = defaults.fixes.receptor;
   const Real b12 = 1.0e-3;
