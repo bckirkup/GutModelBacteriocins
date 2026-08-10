@@ -47,10 +47,11 @@ int32_t read_event(hid_t file, const std::string& path) {
   return value;
 }
 
-Real read_grid_value(hid_t file, const std::string& path, Int cell) {
+Real read_grid_value(hid_t file, const std::string& path,
+                     const Domain& domain, Int cell) {
   hid_t dataset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
   assert(dataset >= 0);
-  std::vector<Real> values(20 * 10 * 10);
+  std::vector<Real> values(static_cast<size_t>(domain.ncells()));
   assert(H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
                  H5P_DEFAULT, values.data()) >= 0);
   H5Dclose(dataset);
@@ -155,10 +156,11 @@ ChallengeResult run_challenge(Int producer_count, Real target_distance) {
       std::lround(target_center[1] / cfg.domain.grid_dx));
   const Int target_iz = static_cast<Int>(
       std::lround(target_center[2] / cfg.domain.grid_dx));
-  const Int target_cell = target_iz * 20 * 10 + target_iy * 20 + target_ix;
+  const Int target_cell = sim.domain().cell_index(target_ix, target_iy, target_iz);
   const std::string grid_path =
       std::string("grid/step_000006/") + species::BACTERIOCIN_BTUB;
-  const Real target_toxin = read_grid_value(file, grid_path, target_cell);
+  const Real target_toxin =
+      read_grid_value(file, grid_path, sim.domain(), target_cell);
   GreensFunction greens_function;
   greens_function.init(sim.domain(), sim.advection());
   GreensFunctionParams params;
@@ -211,7 +213,9 @@ int main() {
 #else
   const std::vector<Int> producer_counts = {1, 10, 100, 1000, 10000};
   const std::vector<Real> distances = {10e-6, 50e-6};
-  for (const Real distance : distances) {
+  for (size_t distance_index = 0; distance_index < distances.size();
+       ++distance_index) {
+    const Real distance = distances[distance_index];
     std::vector<ChallengeResult> results;
     results.reserve(producer_counts.size());
     for (const Int count : producer_counts) {
@@ -233,7 +237,7 @@ int main() {
                 << " divisions=" << results[i].divisions << "\n";
     }
 
-    if (distance == 50e-6) {
+    if (distance_index == 1U) {
       const Real simulated_fraction =
           static_cast<Real>(results[2].colicin_kills)
           / results[2].target_count;
