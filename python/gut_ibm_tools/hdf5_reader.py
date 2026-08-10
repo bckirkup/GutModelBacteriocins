@@ -126,6 +126,56 @@ class GutIBMData:
         grp = self._file[path]
         return {name: np.array(ds) for name, ds in grp.items()}
 
+    def get_genome_loci(
+        self,
+        step: str,
+    ) -> dict[int, tuple[tuple[int, int], ...]]:
+        """Return BI-locus identities grouped by agent ID when offsets exist.
+
+        Older genome layers lack the per-agent ID and offset datasets.  Those
+        layers return an empty mapping so callers can use count-based fallback
+        genotypes.
+        """
+        genome = self.get_genome(step)
+        required = {"id", "bi_offset", "bi_count", "bi_toxin_id", "bi_immunity_id"}
+        if not required.issubset(genome):
+            return {}
+        ids = genome["id"]
+        offsets = genome["bi_offset"]
+        counts = genome["bi_count"]
+        toxin_ids = genome["bi_toxin_id"]
+        immunity_ids = genome["bi_immunity_id"]
+        if len(ids) != len(offsets) or len(ids) != len(counts):
+            return {}
+        if len(set(ids.tolist())) != len(ids):
+            return {}
+        if len(toxin_ids) != len(immunity_ids):
+            return {}
+        loci: dict[int, tuple[tuple[int, int], ...]] = {}
+        previous_end = 0
+        for agent_id, offset, count in zip(ids, offsets, counts):
+            start = int(offset)
+            stop = start + int(count)
+            if (
+                start < previous_end
+                or count < 0
+                or stop > len(toxin_ids)
+                or stop > len(immunity_ids)
+            ):
+                return {}
+            loci[int(agent_id)] = tuple(
+                sorted(
+                    (int(toxin), int(immunity))
+                    for toxin, immunity in zip(
+                        toxin_ids[start:stop], immunity_ids[start:stop]
+                    )
+                )
+            )
+            previous_end = stop
+        if previous_end != len(toxin_ids):
+            return {}
+        return loci
+
     def time_series(self, field: str = "num_agents") -> tuple[np.ndarray, np.ndarray]:
         """Extract a scalar time series from summary layers."""
         times, vals = [], []

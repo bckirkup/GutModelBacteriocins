@@ -421,6 +421,10 @@ Package: `python/gut_ibm_tools/`
 ### `hdf5_reader`
 Read GutIBM HDF5 output files into pandas DataFrames.
 
+`GutIBMData.get_genome_loci(step)` reconstructs per-agent BI-locus identity
+tuples from the genome layer's `id`, `bi_offset`, and `bi_count` datasets when
+available, returning an empty mapping for legacy genome layers.
+
 ### `analysis`
 Spatial statistics and exclusion-radius clustering metrics.
 

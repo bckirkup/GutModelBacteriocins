@@ -13,9 +13,14 @@ joined directly on `agent_id`.  The colony table reports size, centroid,
 radius of gyration, maximum member radius, nearest colony, producer count and
 fraction, and producer-threshold flags for 113, 527, and 1361 producers.
 
-Genotype means `(type, lineage_id, n_bi_loci)` when lineage is present and
-`(type, n_bi_loci)` otherwise.  Thus purity is BI-locus-content purity at the
-resolution preserved by the HDF5 agent layer, not full genome identity.
+When the genome layer includes `id`, `bi_offset`, and `bi_count`, genotype
+means `(type, lineage_id, sorted BI-locus identities)` when lineage is present
+and `(type, sorted BI-locus identities)` otherwise.  Each BI-locus identity is
+the `(bi_toxin_id, bi_immunity_id)` pair, and the offsets define the slice
+`bi_*[bi_offset:bi_offset + bi_count]` for each agent.  This makes purity and
+clonality use the recoverable per-agent BI-locus multiset.  Older files lack
+these join and offset datasets; they fall back to `(type, lineage_id,
+n_bi_loci)` or `(type, n_bi_loci)`, preserving the previous behavior.
 
 ## Spatial nulls
 

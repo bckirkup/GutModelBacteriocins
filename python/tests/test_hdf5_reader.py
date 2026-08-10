@@ -52,6 +52,17 @@ def test_get_genome(sample_hdf5: Path) -> None:
         genome = data.get_genome("step_000000")
         assert "has_conjugative_plasmid" in genome
         assert len(genome["has_conjugative_plasmid"]) == 12
+        assert data.get_genome_loci("step_000000") == {}
+
+
+def test_get_genome_loci_reconstructs_ragged_agents(ragged_genome_hdf5: Path) -> None:
+    with GutIBMData(ragged_genome_hdf5) as data:
+        loci = data.get_genome_loci("step_000000")
+    assert loci == {
+        101: (),
+        205: ((7, 17), (11, 19)),
+        999: ((13, 23),),
+    }
 
 
 def test_time_series_num_agents(sample_hdf5: Path) -> None:

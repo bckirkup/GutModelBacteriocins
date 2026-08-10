@@ -33,6 +33,7 @@ using gutibm::test::collect_agent_snapshots;
 using gutibm::test::compare_agent_snapshots;
 using gutibm::test::hdf5_dataset_exists;
 using gutibm::test::hdf5_read_scalar;
+using gutibm::test::hdf5_read_dataset_1d;
 using gutibm::test::kAgentSnapshotTol;
 using gutibm::test::read_agent_snapshots;
 
@@ -105,6 +106,9 @@ void assert_schema(hid_t file, const std::string& step) {
   assert(hdf5_dataset_exists(file, "lineage/" + step + "/btuB_expression"));
   assert(hdf5_dataset_exists(file, "lineage/" + step + "/num_bi_loci"));
   assert(hdf5_dataset_exists(file, "genome/" + step + "/parent_id"));
+  assert(hdf5_dataset_exists(file, "genome/" + step + "/id"));
+  assert(hdf5_dataset_exists(file, "genome/" + step + "/bi_offset"));
+  assert(hdf5_dataset_exists(file, "genome/" + step + "/bi_count"));
   assert(hdf5_dataset_exists(file, "genome/" + step + "/bi_toxin_id"));
   assert(hdf5_dataset_exists(file, "genome/" + step + "/bi_pI"));
 }
@@ -176,7 +180,52 @@ void validate_step_agents_match_sim(hid_t file,
   assert(grid_elems == static_cast<size_t>(sim.chemical_field().ncells()));
 }
 
-void validate_step_genome(hid_t /*file*/, const std::string& /*step*/,
+void validate_genome_slices(hid_t file, const std::string& step,
+                            const Simulation& sim) {
+  const std::string prefix = "genome/" + step + "/";
+  const auto ids = hdf5_read_dataset_1d<int64_t>(
+      file, prefix + "id", H5T_NATIVE_INT64);
+  const auto offsets = hdf5_read_dataset_1d<int64_t>(
+      file, prefix + "bi_offset", H5T_NATIVE_INT64);
+  const auto counts = hdf5_read_dataset_1d<int32_t>(
+      file, prefix + "bi_count", H5T_NATIVE_INT32);
+  const auto toxin_ids = hdf5_read_dataset_1d<int32_t>(
+      file, prefix + "bi_toxin_id", H5T_NATIVE_INT32);
+  const auto immunity_ids = hdf5_read_dataset_1d<int32_t>(
+      file, prefix + "bi_immunity_id", H5T_NATIVE_INT32);
+  assert(ids.size() == offsets.size());
+  assert(ids.size() == counts.size());
+  assert(toxin_ids.size() == immunity_ids.size());
+
+  int64_t previous_end = 0;
+  for (size_t i = 0; i < ids.size(); ++i) {
+    assert(offsets[i] >= previous_end);
+    assert(counts[i] >= 0);
+    const auto start = static_cast<size_t>(offsets[i]);
+    const auto count = static_cast<size_t>(counts[i]);
+    assert(start + count <= toxin_ids.size());
+    previous_end = offsets[i] + counts[i];
+  }
+  assert(previous_end == static_cast<int64_t>(toxin_ids.size()));
+
+  for (const Agent& agent : sim.agents()) {
+    size_t index = 0;
+    for (; index < ids.size(); ++index) {
+      if (ids[index] == agent.identity.tag) break;
+    }
+    assert(index < ids.size());
+    assert(counts[index] == static_cast<int32_t>(agent.genome.bi_loci.size()));
+    const auto start = static_cast<size_t>(offsets[index]);
+    for (size_t locus = 0; locus < agent.genome.bi_loci.size(); ++locus) {
+      assert(toxin_ids[start + locus] ==
+             static_cast<int32_t>(agent.genome.bi_loci[locus].toxin_id));
+      assert(immunity_ids[start + locus] ==
+             static_cast<int32_t>(agent.genome.bi_loci[locus].immunity_id));
+    }
+  }
+}
+
+void validate_step_genome(hid_t file, const std::string& step,
                           const Simulation& sim) {
   const BICluster ref = PlasmidLibrary::colicin_E1();
   int with_bi = 0;
@@ -198,6 +247,9 @@ void validate_step_genome(hid_t /*file*/, const std::string& /*step*/,
 #else
   assert(with_bi > 0);
 #endif
+  if (file >= 0) {
+    validate_genome_slices(file, step, sim);
+  }
 }
 
 void validate_step(hid_t file,
@@ -241,6 +293,14 @@ void validate_parallel_roundtrip(const Simulation& sim, const std::string& filen
   int global_with_bi = 0;
   MPI_Allreduce(&with_bi, &global_with_bi, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
   assert(global_with_bi > 0);
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  if (rank == 0) {
+    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+    assert(file >= 0);
+    validate_genome_slices(file, "step_000002", sim);
+    H5Fclose(file);
+  }
 #else
   validate_step_genome(static_cast<hid_t>(-1), "step_000002", sim);
 #endif
