@@ -64,6 +64,12 @@ class GreensFunction {
                           std::vector<Real>& grid_conc,
                           Real cutoff_radius) const;
 
+  void superpose_to_grid(const std::vector<Vec3>& sources,
+                          const std::vector<GreensFunctionParams>& params,
+                          const std::vector<Real>& strength_factors,
+                          std::vector<Real>& grid_conc,
+                          Real cutoff_radius) const;
+
   // Peclet number at position: Pe = U*L/D
   Real peclet(const Vec3& pos, Real D_eff, Real length_scale) const;
 
