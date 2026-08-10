@@ -95,8 +95,8 @@ bool gpu_compute_receptor_kill_probs_host_packed(
   Int i_cirA = chem.find(species::BACTERIOCIN_CIRA);
   Int i_fhuA = chem.find(species::BACTERIOCIN_FHUA);
   Int i_b12 = chem.find(species::B12);
-  Int i_iron = chem.find(species::IRON);
-  Int i_sid = chem.find(species::SIDEROPHORE);
+  Int i_ferric_enterobactin = chem.find(species::FERRIC_ENTEROBACTIN);
+  Int i_ferrichrome = chem.find(species::FERRICHROME);
 
   gpu::launch_receptor_kill_prob_kernel(
       agents.grid_cell(), agents.state(),
@@ -107,8 +107,9 @@ bool gpu_compute_receptor_kill_probs_host_packed(
       i_cirA >= 0 ? chem_gpu.conc_device(i_cirA) : nullptr,
       i_fhuA >= 0 ? chem_gpu.conc_device(i_fhuA) : nullptr,
       i_b12 >= 0 ? chem_gpu.conc_device(i_b12) : nullptr,
-      i_iron >= 0 ? chem_gpu.conc_device(i_iron) : nullptr,
-      i_sid >= 0 ? chem_gpu.conc_device(i_sid) : nullptr,
+      i_ferric_enterobactin >= 0
+          ? chem_gpu.conc_device(i_ferric_enterobactin) : nullptr,
+      i_ferrichrome >= 0 ? chem_gpu.conc_device(i_ferrichrome) : nullptr,
       d_kill.data(), static_cast<int>(n), dt,
       cfg.kd_b12_btuB, cfg.kd_colicinE_btuB, cfg.kd_enterobactin,
       cfg.kd_colicinB_fepA, cfg.kd_lin_enterobactin, cfg.kd_colicinIa_cirA,

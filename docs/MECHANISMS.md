@@ -73,7 +73,16 @@ monod_iron  = iron_uptake / (1 + expr_IroN + expr_IutA + expr_Fiu)
 
 This replaces the previous binary FepA-dependent penalty (`Km_Fe / expr_FepA`). When FepA is downregulated to resist colicin B/D, cells switch to secondary systems rather than complete iron starvation. The normalization ensures wild-type cells (all receptors at 1.0) maintain equivalent growth.
 
-**Note:** FhuA (ferrichrome) is NOT included as a secondary iron fallback because it transports fungal ferrichrome, which is not an endogenous enterobactin pathway (corrects EARI §70).
+**Note:** FhuA (ferrichrome) is NOT included as a secondary iron fallback because it transports fungal ferrichrome, which is not an endogenous enterobactin pathway (corrects EARI §70). Ferrichrome is represented only as an optional ambient/boundary ligand field and is disabled by default.
+
+### Apo-enterobactin → ferric enterobactin → iron
+
+When siderophore chemistry is enabled, `siderophore` represents apo-enterobactin.
+Chelation consumes apo-enterobactin and free iron and produces the distinct
+`ferric_enterobactin` species. FepA-mediated reimport consumes ferric
+enterobactin and returns iron to the extracellular field, preserving the
+tracked reaction chain. The former secretion-rate-proportional recapture term
+has been removed.
 
 **Penalties applied:**
 - **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Base cost = `metE_penalty` (default 5%). The MetE cost is further amplified by local acetate concentration (see below). Additionally, concentration-dependent ethanolamine utilization loss applies:

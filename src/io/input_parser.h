@@ -55,6 +55,7 @@ struct ChemicalEnvironmentConfig {
   MucinConfig mucin;
   ProteaseConfig protease;
   SiderophoreConfig siderophore;
+  FerrichromeConfig ferrichrome;
 };
 
 struct CellBiologyConfig {

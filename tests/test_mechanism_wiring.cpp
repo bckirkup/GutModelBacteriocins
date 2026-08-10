@@ -434,6 +434,56 @@ void test_all_species_bounded_steady_state() {
   std::cout << "  test_all_species_bounded_steady_state: PASSED\n";
 }
 
+void test_siderophore_apo_ferric_iron_chain() {
+  SimulationConfig cfg = make_integration_cfg(1, 919);
+  cfg.chem_env.siderophore.enabled = true;
+  cfg.chem_env.siderophore.secretion_rate = 0.0;
+  cfg.chem_env.siderophore.chelation_rate = 1.0;
+  cfg.initial_strains[0].count = 1;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  auto& chem = sim.chemical_field();
+  const Int cell = sim.agents()[0].grid_cell;
+  const Int i_sid = chem.find(species::SIDEROPHORE);
+  const Int i_fe = chem.find(species::IRON);
+  const Int i_ferric = chem.find(species::FERRIC_ENTEROBACTIN);
+  expect(i_sid >= 0 && i_fe >= 0 && i_ferric >= 0,
+         "siderophore chain species must all be registered");
+  if (i_sid < 0 || i_fe < 0 || i_ferric < 0) return;
+
+  Agent& agent = sim.agents()[0];
+  agent.mu_max = 0.0;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 0.0;
+  chem.conc(i_sid, cell) = 1.0;
+  chem.conc(i_fe, cell) = 1.0;
+  chem.conc(i_ferric, cell) = 0.0;
+  chem.zero_reactions();
+  FixMetabolism metabolism(sim, sim.config().fixes.metabolism);
+  metabolism.compute(1.0);
+
+  const Real chelation = chem.reac(i_ferric, cell);
+  expect(chelation > 0.0, "chelation must produce ferric enterobactin");
+  expect(std::abs(chem.reac(i_sid, cell) + chelation) < 1.0e-12,
+         "chelation must consume apo-siderophore stoichiometrically");
+  expect(std::abs(chem.reac(i_fe, cell) + chelation) < 1.0e-12,
+         "chelation must consume iron stoichiometrically");
+
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  chem.conc(i_sid, cell) = 0.0;
+  chem.conc(i_fe, cell) = 0.0;
+  chem.conc(i_ferric, cell) = 1.0;
+  chem.zero_reactions();
+  metabolism.compute(1.0);
+
+  const Real reimport = -chem.reac(i_ferric, cell);
+  expect(reimport > 0.0, "FepA reimport must consume ferric enterobactin");
+  expect(std::abs(chem.reac(i_fe, cell) - reimport) < 1.0e-12,
+         "FepA reimport must return iron");
+  std::cout << "  test_siderophore_apo_ferric_iron_chain: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -445,6 +495,7 @@ int main() {
   test_corrinoid_field_constant();
   test_dysbiosis_halt();
   test_metabolism_uptake_has_rate_units();
+  test_siderophore_apo_ferric_iron_chain();
   test_all_species_bounded_steady_state();
 
   if (failure_counter().value == 0) {

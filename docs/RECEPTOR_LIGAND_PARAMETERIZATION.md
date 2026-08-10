@@ -57,6 +57,11 @@ recommended future work (out of scope for the Spec 6 PR).
 
 ## 2. FepA — siderophores vs colicin B/D
 
+The model now represents ferric enterobactin explicitly rather than using bulk
+free iron as a proxy. FepA competition therefore reads the
+`ferric_enterobactin` field. Free iron remains a metabolic substrate but is not
+the FepA ligand.
+
 Live-cell FepA–ferric-enterobactin adsorption Kd is ~0.2 nM (Klebba 2003);
 colicins B/D share FeEnt binding determinants at extracellular loop 5 (true
 competitive inhibition). Under iron limitation the Fur regulon is induced 35–56×
@@ -76,9 +81,18 @@ No quantitative Kd data for CirA were found; current estimates are retained.
 esterase-linearized enterobactin fraction. Note the natural "Trojan horse"
 salmochelin–microcin H47 conjugate (Cherrak 2024) that the per-receptor toxin
 field system could capture if IroN-targeted microcins are added to the plasmid
-library.
+library. CirA's linearized-enterobactin ligand is derived from ferric
+enterobactin, not the apo pool.
 
-## 4. Key unknowns and future experimental targets
+## 4. FhuA — ambient ferrichrome
+
+FhuA competition reads the optional `ferrichrome` ambient field. Since
+*E. coli* does not synthesize ferrichrome and no defensible gut concentration is
+available, this field is disabled and zero by default. Users may provide
+`ferrichrome.initial_conc` and `ferrichrome.boundary_conc` when modeling an
+exogenous ferrichrome source.
+
+## 5. Key unknowns and future experimental targets
 
 | Unknown | Impact | How to resolve |
 |---------|--------|----------------|

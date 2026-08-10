@@ -29,8 +29,8 @@ __global__ void receptor_kill_prob_kernel(
     const double* conc_cirA,
     const double* conc_fhuA,
     const double* conc_b12,
-    const double* conc_iron,
-    const double* conc_siderophore,
+    const double* conc_ferric_enterobactin,
+    const double* conc_ferrichrome,
     double* kill_probs,
     int num_agents,
     double dt,
@@ -82,22 +82,23 @@ __global__ void receptor_kill_prob_kernel(
     total_kill += kill_rate_colicin * occ * imm[0] * dt;
   }
   if (tox_fepA > 0.0) {
-    const double ligand = conc_iron ? conc_iron[cell] : 0.0;
+    const double ligand = conc_ferric_enterobactin
+        ? conc_ferric_enterobactin[cell] : 0.0;
     const double occ = toxin_occupancy_device(
         tox_fepA, ligand, kd_colicinB_fepA, kd_enterobactin,
         rex_base[1 * num_agents + i], tox ? tox[1] : 1.0, lig_base[1 * num_agents + i]);
     total_kill += kill_rate_colicin * occ * imm[1] * dt;
   }
   if (tox_cirA > 0.0) {
-    const double ligand = conc_siderophore
-        ? conc_siderophore[cell] * cirA_linearized_fraction : 0.0;
+    const double ligand = conc_ferric_enterobactin
+        ? conc_ferric_enterobactin[cell] * cirA_linearized_fraction : 0.0;
     const double occ = toxin_occupancy_device(
         tox_cirA, ligand, kd_colicinIa_cirA, kd_lin_enterobactin,
         rex_base[6 * num_agents + i], tox ? tox[6] : 1.0, lig_base[6 * num_agents + i]);
     total_kill += kill_rate_microcin * occ * imm[2] * dt;
   }
   if (tox_fhuA > 0.0) {
-    const double ligand = conc_iron ? conc_iron[cell] : 0.0;
+    const double ligand = conc_ferrichrome ? conc_ferrichrome[cell] : 0.0;
     const double occ = toxin_occupancy_device(
         tox_fhuA, ligand, kd_colicinM_fhuA, kd_ferrichrome,
         rex_base[3 * num_agents + i], tox ? tox[3] : 1.0, lig_base[3 * num_agents + i]);
@@ -120,8 +121,8 @@ void launch_receptor_kill_prob_kernel(
     const double* conc_cirA,
     const double* conc_fhuA,
     const double* conc_b12,
-    const double* conc_iron,
-    const double* conc_siderophore,
+    const double* conc_ferric_enterobactin,
+    const double* conc_ferrichrome,
     double* kill_probs,
     int num_agents,
     double dt,
@@ -143,7 +144,8 @@ void launch_receptor_kill_prob_kernel(
   receptor_kill_prob_kernel<<<grid, block, 0, stream>>>(
       grid_cell, state, receptor_expr, ligand_affinity, toxin_affinity,
       immunity_eff, conc_btuB, conc_fepA, conc_cirA, conc_fhuA,
-      conc_b12, conc_iron, conc_siderophore, kill_probs, num_agents, dt,
+      conc_b12, conc_ferric_enterobactin, conc_ferrichrome,
+      kill_probs, num_agents, dt,
       kd_b12_btuB, kd_colicinE_btuB, kd_enterobactin, kd_colicinB_fepA,
       kd_lin_enterobactin, kd_colicinIa_cirA, kd_colicinM_fhuA, kd_ferrichrome,
       cirA_linearized_fraction, kill_rate_colicin, kill_rate_microcin);

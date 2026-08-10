@@ -41,7 +41,11 @@ int main() {
   const Int cell = sim.agents()[0].grid_cell;
   assert(cell >= 0);
   const Int i_sid = sim.chemical_field().find(species::SIDEROPHORE);
+  const Int i_ferric = sim.chemical_field().find(species::FERRIC_ENTEROBACTIN);
+  const Int i_ferrichrome = sim.chemical_field().find(species::FERRICHROME);
   assert(i_sid >= 0);
+  assert(i_ferric >= 0);
+  assert(i_ferrichrome < 0);
 
   FixMetabolism metab(sim, sim.config().fixes.metabolism);
   metab.compute(60.0);

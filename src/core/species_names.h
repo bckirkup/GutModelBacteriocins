@@ -28,6 +28,8 @@ inline constexpr const char* ETHANOLAMINE       = "ethanolamine";
 inline constexpr const char* OXYGEN             = "oxygen";
 inline constexpr const char* MUCIN              = "mucin";
 inline constexpr const char* SIDEROPHORE         = "siderophore";
+inline constexpr const char* FERRIC_ENTEROBACTIN  = "ferric_enterobactin";
+inline constexpr const char* FERRICHROME         = "ferrichrome";
 inline constexpr const char* AI2                 = "ai2";
 
 // Per-receptor toxin field for a TonB-dependent transporter target.

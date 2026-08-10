@@ -230,9 +230,14 @@ void test_chem_env_fixture() {
   assert(std::abs(cfg.chem_env.protease.default_half_life - 1200.0) < 1e-6);
   assert(std::abs(cfg.chem_env.protease.dilution_rate - 2e-4) < 1e-12);
 
+  assert(cfg.chem_env.ferrichrome.enabled == true);
+  assert(std::abs(cfg.chem_env.ferrichrome.initial_conc - 2e-6) < 1e-15);
+  assert(std::abs(cfg.chem_env.ferrichrome.boundary_conc - 4e-6) < 1e-15);
+
   bool has_oxygen = false;
   bool has_acetate = false;
   bool has_mucin = false;
+  bool has_ferrichrome = false;
   for (const auto& spec : cfg.chemicals) {
     if (spec.name == "oxygen") {
       has_oxygen = true;
@@ -242,11 +247,16 @@ void test_chem_env_fixture() {
     } else if (spec.name == "mucin") {
       has_mucin = true;
       assert(std::abs(spec.initial_conc - 2e-2) < 1e-12);
+    } else if (spec.name == "ferrichrome") {
+      has_ferrichrome = true;
+      assert(std::abs(spec.initial_conc - 2e-6) < 1e-15);
+      assert(std::abs(spec.boundary_conc - 4e-6) < 1e-15);
     }
   }
   assert(has_oxygen);
   assert(has_acetate);
   assert(has_mucin);
+  assert(has_ferrichrome);
 
   std::cout << "  test_chem_env_fixture: PASSED\n";
 }
@@ -273,7 +283,8 @@ void test_unknown_key_warning_json() {
     "_comment": "unknown key warning test",
     "total_time": 100,
     "bogus_key_xyz": 5,
-    "another.unknown_key": true
+    "another.unknown_key": true,
+    "siderophore.recapture_fraction": 0.5
   })";
 
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/_unknown_key_doc.json";
@@ -295,6 +306,7 @@ void test_unknown_key_warning_json() {
   // Unknown keys are surfaced.
   assert(warnings.find("bogus_key_xyz") != std::string::npos);
   assert(warnings.find("another.unknown_key") != std::string::npos);
+  assert(warnings.find("siderophore.recapture_fraction") != std::string::npos);
   // Comment keys and recognized keys are not flagged.
   assert(warnings.find("_comment") == std::string::npos);
   assert(warnings.find("'total_time'") == std::string::npos);

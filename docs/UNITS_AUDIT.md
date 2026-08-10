@@ -50,7 +50,8 @@ mol/m^3 (`src/fields/chemical_field.h:18-24`). The default table is in
 | Bacteriocin BtuB/FepA/CirA/FhuA | `0` initial/boundary | No environmental background; supplied by QSSA | `0` background | **Self-consistent field initialization.** QSSA deposits positive toxin concentrations into these fields; see §5. |
 | Acetate | `80` | 60–100 mM physiology (`docs/PARAMETERS.md:313`) | 80 mM = `80` | **Self-consistent.** Compared with `metE_acetate_km = 40` at `fix_metabolism.cpp:274-279`. |
 | Ethanolamine | `0.5e-3` | No conflicting target in the source documentation; value is 0.5 mM | 0.5 mM = `0.5` | **Self-consistent units; target provenance unclear.** Compared with `eut_km = 0.1e-3` at `fix_metabolism.cpp:281-284`. |
-| Siderophore/enterobactin | Not in the static table; dynamically added as `0` when enabled (`src/io/input_parser.cpp:220-224`) | No ambient target; secretion is `mol/s/cell` | `0` background; dynamic field is generated in mol/m^3 | **Field units self-consistent, but its receptor Kd and reimport Km use the suspect numerical-nanomolar convention.** Used at `fix_receptor.cpp:141-149` and `fix_metabolism.cpp:322-349`. |
+| Siderophore/enterobactin | Apo-enterobactin and distinct ferric-enterobactin fields dynamically added when enabled | No ambient target; secretion is `mol/s/cell` | `0` background; dynamic fields are generated in mol/m^3 | **Field units self-consistent.** Chelation now produces ferric enterobactin and FepA/CirA consume that field; `Km_reimport` is corrected to `1e-6 mol/m^3`. |
+| Ferrichrome | Dynamically added when `ferrichrome.enabled` is true | Exogenous ambient/boundary ligand; disabled by default | User-supplied `initial_conc`/`boundary_conc` in mol/m^3 | **Explicit ambient field.** It is not synthesized by *E. coli*. |
 
 The static-table diffusivities and rates do not imply concentration units. In
 particular, the bacteriocin entries have zero background and
@@ -101,7 +102,7 @@ mol/m^3.
 | `km_iron_iutA = 100e-6` | Iron field | same | **Self-consistent genuine mol/m^3** (100 nM). |
 | `km_iron_fiu = 200e-6` | Iron field | same | **Self-consistent genuine mol/m^3** (200 nM). |
 | `fur.Km = 1e-5` | Iron field | `fix_metabolism.cpp:201-210`; GPU expression update mirrors this through host-side Fur update | **Self-consistent genuine mol/m^3** (10 nM). |
-| `siderophore.Km_reimport = 1e-9` (`src/io/chem_environment_config.h:60-66`) | Siderophore field | `fix_metabolism.cpp:340-349`; no separate GPU siderophore reimport path | **Wrong or unclear.** It is labeled mol/m^3 but numerically resembles a 1 nM molar value; genuine 1 nM would be `1e-6 mol/m^3`. `docs/PARAMETERS.md:444` independently lists `1e-6`, so documentation and code disagree. |
+| `siderophore.Km_reimport = 1e-6` (`src/io/chem_environment_config.h`) | Ferric-enterobactin field | `fix_metabolism.cpp`; FepA-mediated reimport | **Corrected.** The previous `1e-9` value was a molar 1 nM number mislabeled as mol/m^3; true 1 nM is `1e-6 mol/m^3`. |
 | `vbf_carbon_sink_km = 1e-4` | Carbon field | VBF carbon sink | **Self-consistent genuine mol/m^3.** |
 | `mucin.Km_degradation = 1e-3` | Mucin field | `src/fields/vbf.cpp:18-22` | **Self-consistent/unclear biological target**, no receptor-unit coupling. |
 | `oxygen.Km = 1e-6` | Oxygen field | `fix_metabolism.cpp:256-261`; GPU `agent_update_kernel.cu:71-75` | **Self-consistent as a mol/m^3 field/Km pair; separate subsystem.** |
