@@ -33,6 +33,29 @@ The label null fixes positions exactly and permutes labels, preserving every
 label count; it destroys spatial segregation associated with those labels.
 Both use an injected `numpy.random.Generator`.
 
+Choose the null from the question being asked:
+
+- **Is the point pattern clustered at all?** Call
+  `compute_spatial_stats(..., labels=None)` and compare with the
+  z-stratified coordinate-randomization envelope.  A whole-box uniform null
+  is wrong for this model because the epithelial surface at `z=0` creates
+  strong z-structure; it would report expected epithelial layering as
+  biological clustering.
+- **Are producers more clustered than an arbitrary subset of the same cells?**
+  Pass an externally defined producer-status mark (or genotype mark) and use
+  the label-permutation envelope.  Positions remain fixed and the marks are
+  shuffled, preserving the observed composition.
+
+Never pass spatially derived labels to the label null.  DBSCAN `colony_id` is
+the most tempting example and is the wrong choice: colony IDs already encode
+spatial proximity, so permuting them is circular and guarantees an apparent
+departure.  In the short validation measurement this produced departures at
+21--23 of 24 radii, whereas externally defined producer status produced
+departures at 0--1 radii per snapshot on the same EARI/VADI data.  The module
+does not issue an automatic warning because no general test can distinguish a
+legitimate spatially structured mark from an incorrectly supplied
+spatially-derived mark without false positives.
+
 The reported curves use a same-mark K/g estimator: only pairs sharing the
 same label contribute, while intensity and population size use the whole
 realized population.  With one label this reduces exactly to ordinary
@@ -46,6 +69,13 @@ volume.  These simple estimators apply no edge correction and therefore have
 boundary bias.  Observed and randomized curves use exactly the same estimator,
 so envelope comparisons remain valid; absolute values near the boundary should
 not be interpreted as an unbiased infinite-domain estimate.
+
+The first real-output characterization found no interpretable microcolony-
+scale `K(r)` signal at 10--50 µm in the short fixtures: `K(r)` is zero or
+numerically tiny there because too few close pairs form.  This is an honest
+sparse-population baseline, not a statistics defect.  Those measurements used
+160-cell, 900-second EARI/VADI fixtures and one short 600-agent local run;
+they say nothing about seven-day campaign behavior.
 
 For a single colony, `nn_colony_id` is `-1` and
 `nn_colony_distance` is `NaN`.  An all-noise snapshot returns an empty colony
