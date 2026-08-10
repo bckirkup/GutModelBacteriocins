@@ -460,21 +460,23 @@ after the reaction update was `1e-11 mol/m³` at `1e-4 mol/m³` iron and
 was the post-diffusion field average; diffusion spreads the reaction-stage
 source pulse across the grid before the next biological step.
 
-The corrected per-cell aggregation pass was measured with 1, 4, 16, and
-64 agents co-located in one grid cell while maintaining the local
-apo-enterobactin background. At high iron (`1e-4 mol/m³`, maintained apo
-`4e-9 mol/m³`), reaction-stage FeEnt was `5e-12 mol/m³` at every occupancy.
-At maintained low iron (`1e-8 mol/m³`, maintained apo `3e-8 mol/m³`), it was
-`1e-15 mol/m³` at every occupancy.
+The corrected chemistry was measured with 1, 4, 16, and 64 agents co-located
+in one grid cell while maintaining the local apo-enterobactin background.
+Reaction-stage FeEnt decreased with occupancy:
 
-This flat response is the expected result. If local biomass is multiplied by
-`N`, apo-enterobactin production and chelation scale by `N`, while the
-aggregate FepA reimport capacity also scales by `N`. In either the
-pseudo-first-order regime (`N × Vmax × C / Km`) or the saturated regime
-(`N × Vmax`), production and reimport therefore cancel in the local
-steady-state balance. Diffusive escape is the only term that does not scale
-with `N`, and it further suppresses local FeEnt. FepA ligand competition is
-therefore unreachable at any density in this model by construction.
+| Iron condition | N=1 | N=4 | N=16 | N=64 |
+|---|---:|---:|---:|---:|
+| `1e-4 mol/m³`, apo `4e-9 mol/m³` | `5e-12` | `1e-12` | `3e-13` | `7e-14` |
+| `1e-8 mol/m³`, apo `3e-8 mol/m³` | `1e-15` | `3e-16` | `8e-17` | `2e-17` |
+
+Values are in `mol/m³`. Chelation is a solution-phase reaction and is now
+applied in every grid cell containing apo-enterobactin and iron, independent
+of occupancy. Secretion and FepA reimport remain biomass-weighted and are
+confined to occupied cells. Increasing local biomass therefore increases the
+aggregate FepA sink without multiplying the solution-phase chelation term,
+driving local FeEnt down rather than up. Diffusive escape further removes apo
+and FeEnt from the source cell. FepA ligand competition is therefore
+unreachable at any density in this model.
 
 This differs from the colicin result: bacteriocin dose scales with co-located
 producers because lysing producers are not also a sink for the toxin. The

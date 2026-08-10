@@ -124,6 +124,7 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
   std::vector<Real> fepA_biomass_by_cell(
       static_cast<size_t>(num_cells), 0.0);
   std::vector<Int> occupancy_by_cell(static_cast<size_t>(num_cells), 0);
+  std::vector<Real> chelation_by_cell(static_cast<size_t>(num_cells), 0.0);
   for (const Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD) continue;
     const Int cell = agent.grid_cell;
@@ -134,6 +135,18 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
         agent.receptor_expr[to_underlying(ReceptorType::FepA)]
         * agent.biomass;
     occupancy_by_cell[index] += 1;
+  }
+
+  if (i_iron >= 0) {
+    for (Int cell = 0; cell < num_cells; ++cell) {
+      const Real s_sid = chem.conc(i_sid, cell);
+      const Real s_iron = chem.conc(i_iron, cell);
+      const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
+      chelation_by_cell[static_cast<size_t>(cell)] = chelation;
+      chem.reac(i_iron, cell) -= chelation;
+      chem.reac(i_sid, cell) -= chelation;
+      chem.reac(i_ferric_enterobactin, cell) += chelation;
+    }
   }
 
   for (Int cell = 0; cell < num_cells; ++cell) {
@@ -151,22 +164,13 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
         * std::max(0.0, fur_activity) * biomass_density;
     chem.reac(i_sid, cell) += sid_rate;
 
-    const Real s_sid = chem.conc(i_sid, cell);
-    const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron
-        * static_cast<Real>(occupancy_by_cell[index]);
-    if (i_iron >= 0) {
-      chem.reac(i_iron, cell) -= chelation;
-    }
-    chem.reac(i_sid, cell) -= chelation;
-    chem.reac(i_ferric_enterobactin, cell) += chelation;
-
     if (i_iron < 0) continue;
     const Real s_ferric_enterobactin =
         chem.conc(i_ferric_enterobactin, cell);
     const Real vmax = sid_cfg.Vmax_reimport
         * fepA_biomass_by_cell[index] / cell_volume;
     const Real ferric_after_production = s_ferric_enterobactin
-        + chelation * dt;
+        + chelation_by_cell[index] * dt;
     const Real reimport = implicit_ferric_enterobactin_reimport(
         ferric_after_production, vmax, sid_cfg.Km_reimport, dt);
     chem.reac(i_ferric_enterobactin, cell) -= reimport;

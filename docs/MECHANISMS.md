@@ -100,20 +100,22 @@ immediately after the reaction update in a maintained single-cell assay was
 versus `kd_enterobactin = 1e-6 mol/m³`. The earlier `8e-16 mol/m³` value was
 the post-diffusion field average, not the reaction-stage source-cell pulse.
 
-The corrected per-cell aggregation pass was measured at 1, 4, 16, and
-64 agents co-located in one grid cell with a maintained apo-enterobactin
-background. Reaction-stage FeEnt stayed at `5e-12 mol/m³` across all four
-occupancies at high iron (`1e-4 mol/m³`, apo `4e-9 mol/m³`) and at
-`1e-15 mol/m³` across all four occupancies under maintained low iron
-(`1e-8 mol/m³`, apo `3e-8 mol/m³`).
+The corrected chemistry was measured at 1, 4, 16, and 64 agents co-located in
+one grid cell with a maintained apo-enterobactin background:
 
-The cancellation is structural: multiplying local biomass by `N` multiplies
-apo production and chelation by `N`, while the aggregate FepA sink becomes
-`N × Vmax × C / Km` in the linear regime or `N × Vmax` when saturated.
-Production and reimport therefore cancel at every occupancy. Diffusive escape
-does not scale with `N` and further lowers FeEnt. FepA ligand competition is
-unreachable at any density in this model, not merely above or below a
-packing-based threshold.
+| Iron condition | N=1 | N=4 | N=16 | N=64 |
+|---|---:|---:|---:|---:|
+| `1e-4 mol/m³`, apo `4e-9 mol/m³` | `5e-12` | `1e-12` | `3e-13` | `7e-14` |
+| `1e-8 mol/m³`, apo `3e-8 mol/m³` | `1e-15` | `3e-16` | `8e-17` | `2e-17` |
+
+Values are reaction-stage FeEnt in `mol/m³`. Chelation is a solution-phase
+reaction and is applied in every grid cell containing apo-enterobactin and
+iron, independent of occupancy. Secretion and FepA reimport remain
+biomass-weighted and confined to occupied cells. Thus increasing local
+biomass increases the aggregate FepA sink without multiplying the
+solution-phase chelation term, so local FeEnt decreases with co-location.
+Diffusive escape further lowers the source-cell concentration. FepA ligand
+competition is unreachable at any density in this model.
 
 This is different from bacteriocin dose. Lysing producers release toxin but do
 not reimport it, so toxin dose does scale with co-located producers; the

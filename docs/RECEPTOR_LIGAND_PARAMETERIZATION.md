@@ -74,15 +74,21 @@ local source-cell FeEnt immediately after the reaction update was
 `1e-11 mol/m³` at `1e-4 mol/m³` iron and `6e-15 mol/m³` at `1e-8 mol/m³` iron.
 The earlier `8e-16 mol/m³` result was the post-diffusion field average.
 
-The corrected per-cell aggregation pass was measured with 1, 4, 16, and
-64 agents co-located in one grid cell while maintaining the local apo
-background. Reaction-stage FeEnt was `5e-12 mol/m³` at every occupancy for
-high iron (`1e-4 mol/m³`, apo `4e-9 mol/m³`) and `1e-15 mol/m³` at every
-occupancy for maintained low iron (`1e-8 mol/m³`, apo `3e-8 mol/m³`).
-Local biomass multiplies both apo/FeEnt production and aggregate FepA
-capacity, so the density dependence cancels in both the linear and saturated
-sink regimes. Diffusive escape further suppresses FeEnt. FepA ligand
-competition is therefore unreachable at any density by construction.
+The corrected chemistry was measured with 1, 4, 16, and 64 agents co-located
+in one grid cell while maintaining the local apo background:
+
+| Iron condition | N=1 | N=4 | N=16 | N=64 |
+|---|---:|---:|---:|---:|
+| `1e-4 mol/m³`, apo `4e-9 mol/m³` | `5e-12` | `1e-12` | `3e-13` | `7e-14` |
+| `1e-8 mol/m³`, apo `3e-8 mol/m³` | `1e-15` | `3e-16` | `8e-17` | `2e-17` |
+
+Values are reaction-stage FeEnt in `mol/m³`. Chelation is solution-phase and
+is applied in every cell containing apo-enterobactin and iron, while
+secretion and FepA reimport remain biomass-weighted and restricted to
+occupied cells. Consequently, co-location increases the aggregate FepA sink
+without increasing the chelation term, and local FeEnt decreases with
+occupancy. Diffusive escape further suppresses it. FepA ligand competition is
+therefore unreachable at any density by construction.
 
 This contrasts with colicin dose: lysing producers release bacteriocin without
 also removing it, so toxin dose does increase with co-located producers and

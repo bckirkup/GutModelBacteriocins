@@ -635,6 +635,41 @@ void test_siderophore_multi_agent_positivity() {
   std::cout << "  test_siderophore_multi_agent_positivity: PASSED\n";
 }
 
+void test_siderophore_chelation_in_empty_cell() {
+  SimulationConfig cfg = make_integration_cfg(1, 961);
+  cfg.chem_env.siderophore.enabled = true;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.fixes.metabolism.division_threshold = 100.0;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  auto& chem = sim.chemical_field();
+  const Int occupied_cell = sim.agents()[0].grid_cell;
+  const Int empty_cell = occupied_cell == 0 ? 1 : 0;
+  const Int i_sid = chem.find(species::SIDEROPHORE);
+  const Int i_iron = chem.find(species::IRON);
+  const Int i_ferric = chem.find(species::FERRIC_ENTEROBACTIN);
+  expect(empty_cell < chem.ncells(),
+         "solution chelation test requires an empty grid cell");
+  expect(i_sid >= 0 && i_iron >= 0 && i_ferric >= 0,
+         "solution chelation test species must be registered");
+  if (empty_cell >= chem.ncells() || i_sid < 0 || i_iron < 0
+      || i_ferric < 0) {
+    return;
+  }
+
+  chem.conc(i_sid, empty_cell) = 1.0e-8;
+  chem.conc(i_iron, empty_cell) = 1.0e-4;
+  chem.conc(i_ferric, empty_cell) = 0.0;
+  chem.zero_reactions();
+  FixMetabolism metabolism(sim, sim.config().fixes.metabolism);
+  metabolism.compute(60.0);
+  expect(chem.reac(i_ferric, empty_cell) > 0.0,
+         "solution-phase chelation must run in unoccupied cells");
+  std::cout << "  test_siderophore_chelation_in_empty_cell: PASSED\n";
+}
+
 void test_siderophore_occupancy_scaling() {
   std::cout << "  maintained-apo source-cell FeEnt occupancy assay:\n";
   for (const auto& condition : {
@@ -693,6 +728,7 @@ int main() {
   test_siderophore_apo_ferric_iron_chain();
   test_siderophore_specific_rate_scaling();
   test_siderophore_multi_agent_positivity();
+  test_siderophore_chelation_in_empty_cell();
   test_siderophore_occupancy_scaling();
   test_all_species_bounded_steady_state();
 
