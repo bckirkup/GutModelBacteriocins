@@ -113,7 +113,7 @@ SimulationConfig InputParser::default_config() {
   cfg.chemicals = {
     {species::CARBON,      5.0e-10, 1.0, 5.0e-3, 5.0e-3, 0.0, true,  25.0e-6, true},
     {species::IRON,        7.0e-10, 1.0, 1.0e-4, 1.0e-4, 0.0, false, 25.0e-6, true},
-    {species::B12,         5.0e-10, 1.0, 1.0e-6, 1.0e-6, 0.0, false, 25.0e-6, true},
+    {species::B12,         5.0e-10, 1.0, 1.0e-3, 1.0e-3, 0.0, false, 25.0e-6, true},
     {species::BACTERIOCIN_BTUB, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
     {species::BACTERIOCIN_FEPA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
     {species::BACTERIOCIN_CIRA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},

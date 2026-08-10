@@ -166,11 +166,11 @@ metabolism Fix).
 | Carbon | metabolism Fix (`yield_carbon`) | Sourced by VBF mucin liberation, bounded by the VBF Monod carbon sink (now active by default, ~1 mM equilibrium) |
 | Iron | metabolism Fix (`yield_iron`) + siderophore coupling | VBF first-order sink; Fur-regulated receptor uptake |
 | O₂ | `solve_nutrient_depletion` — Pirt respiration `(q_consumption × μ_realized + q_maintenance) / cell_vol` | Supplied at the epithelial boundary; per-agent respiration (growth-associated **+ density-coupled maintenance**) + first-order VBF background sink |
-| Corrinoid (B12) | **not consumed** | Constant field pinned at 1 µM (see below) |
+| Corrinoid (B12) | **not consumed** | Constant field pinned at 1 µM = `1e-3 mol/m³` (see below) |
 
 **Corrinoid (B12) is a constant pool, not a depletable field (Spec 6 §3).** The
 B12 species now represents the *total bioavailable corrinoid pool* (~1 µM,
-`initial_conc = boundary_conc = 1e-6`), the great majority of which are
+`initial_conc = boundary_conc = 1e-3`), the great majority of which are
 non-cobalamin analogs produced by the anaerobic majority at rates far exceeding
 E. coli demand. It is neither produced nor consumed in the model, so the field
 stays pinned at 1 µM. (This replaces the Spec 5 `vbf_b12_production` source,
@@ -180,11 +180,13 @@ no longer removes corrinoid from the field.)
 **Competitive binding & colicin E (Receptor Ligand Parameterization).** BtuB is
 both the corrinoid importer and the colicin-E receptor, so ambient corrinoid
 competitively blocks colicin E: `apparent_Kd = kd_colicinE_btuB × (1 + [corrinoid] / kd_corrinoid_btuB)`.
-Raising the corrinoid field from 1 nM to 1 µM increases this competitive factor
+With genuine concentration units, the corrinoid field is `1e-3 mol/m³` and
+`kd_corrinoid_btuB` is `1e-6 mol/m³`, giving a factor of 1001. Raising the
+corrinoid field from 1 nM to 1 µM increases this competitive factor
 by ~1000×, making colicin E markedly less potent — the single most consequential
 downstream effect of the nutrient-cycle rework. `kd_corrinoid_btuB`
-(alias of `kd_b12_btuB`, default 1 nM) is flagged as the **key unknown**; a
-sweep over `{1e-9 … 1e-6}` is recommended future work (out of scope for this
+(alias of `kd_b12_btuB`, default `1e-6 mol/m³` = 1 nM) is flagged as the **key unknown**; a
+sweep over `{1e-6 … 1e-3}` mol/m³ is recommended future work (out of scope for this
 change).
 
 ---
@@ -401,12 +403,14 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 
 | Parameter | Config key | Default | Units | Description |
 |-----------|------------|---------|-------|-------------|
-| `receptor.kd_b12_btuB` | `kd_b12_btuB` / `kd_corrinoid_btuB` | 1e-9 | mol/m^3 | BtuB affinity for the dominant corrinoid analog (Spec 6 / Receptor Ligand Parameterization). **Key unknown**: with the corrinoid pool at ~1 µM this Kd governs how strongly corrinoid competitively blocks colicin E at BtuB (see note below). `kd_corrinoid_btuB` is an alias for the same field |
-| `receptor.kd_colicinE_btuB` | `kd_colicinE_btuB` | 5e-10 | mol/m^3 | Colicin E affinity for BtuB |
-| `receptor.kd_enterobactin` | `kd_enterobactin` | 1e-9 | mol/m^3 | FepA affinity for ferric enterobactin (Spec 6 §4.1; tightened 10 nM → 1 nM to match measured high-affinity siderophore uptake) |
-| `receptor.kd_colicinB_fepA` | `kd_colicinB_fepA` | 2e-9 | mol/m^3 | Colicin B affinity for FepA |
-| `receptor.kd_lin_enterobactin` | `kd_lin_enterobactin` | 5e-8 | mol/m^3 | Linearized enterobactin for CirA |
-| `receptor.kd_colicinIa_cirA` | `kd_colicinIa_cirA` | 3e-9 | mol/m^3 | Colicin Ia affinity for CirA |
+| `receptor.kd_b12_btuB` | `kd_b12_btuB` / `kd_corrinoid_btuB` | 1e-6 | mol/m^3 | BtuB affinity for the dominant corrinoid analog (1 nM; Spec 6 / Receptor Ligand Parameterization). **Key unknown**: with the corrinoid pool at ~1 µM this Kd governs how strongly corrinoid competitively blocks colicin E at BtuB (see note below). `kd_corrinoid_btuB` is an alias for the same field |
+| `receptor.kd_colicinE_btuB` | `kd_colicinE_btuB` | 5e-7 | mol/m^3 | Colicin E affinity for BtuB (0.5 nM) |
+| `receptor.kd_enterobactin` | `kd_enterobactin` | 1e-6 | mol/m^3 | FepA affinity for ferric enterobactin (1 nM; Spec 6 §4.1) |
+| `receptor.kd_colicinB_fepA` | `kd_colicinB_fepA` | 2e-6 | mol/m^3 | Colicin B affinity for FepA (2 nM) |
+| `receptor.kd_lin_enterobactin` | `kd_lin_enterobactin` | 5e-5 | mol/m^3 | Linearized enterobactin for CirA (50 nM) |
+| `receptor.kd_colicinIa_cirA` | `kd_colicinIa_cirA` | 3e-6 | mol/m^3 | Colicin Ia affinity for CirA (3 nM) |
+| `receptor.kd_colicinM_fhuA` | `kd_colicinM_fhuA` | 2.5e-6 | mol/m^3 | Colicin M affinity for FhuA (2.5 nM) |
+| `receptor.kd_ferrichrome` | `kd_ferrichrome` | 1e-5 | mol/m^3 | Ferrichrome affinity for FhuA (10 nM) |
 | `receptor.kill_rate_colicin` | `kill_rate_colicin` | 1e-3 | 1/s | Single-hit colicin kill rate |
 | `receptor.kill_rate_microcin` | `kill_rate_microcin` | 5e-4 | 1/s | Microcin kill rate (slower) |
 | `receptor.cirA_linearized_fraction` | `cirA_linearized_fraction` | 0.3 | — | Fraction of siderophore as CirA ligand |

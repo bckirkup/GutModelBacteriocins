@@ -544,17 +544,15 @@ void test_partial_resistance_survival() {
   //      radial/distal flow). Otherwise the whole population is wiped out
   //      regardless of colicin resistance and the comparison degenerates to
   //      two empty cohorts (vacuously 0 == 0), testing nothing.
-  //   2. Spec 6 raised the ambient corrinoid pool to ~1 µM, which competitively
-  //      suppresses colicin E at BtuB ~1000× (see docs/RECEPTOR_LIGAND_
-  //      PARAMETERIZATION.md). Restore the pre-Spec-6 competition level
-  //      (factor ≈ 2) so colicin E is potent enough to differentiate cohorts:
-  //      1 + [B12]/kd = 1 + 1e-6/1e-6 = 2.
+  //   2. Use a weak corrinoid affinity to restore a competition factor of
+  //      about 2 for this focused assay under genuine mol/m^3 units:
+  //      1 + [B12]/kd = 1 + 1e-3/1e-3 = 2.
   cfg.advection.radial_turnover = 1.0e12;
   cfg.advection.distal_transit_time = 1.0e12;
   cfg.cell_bio.motility.enabled = false;
   cfg.cell_bio.cdi.enabled = false;
   cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
-  cfg.fixes.receptor.kd_b12_btuB = 1.0e-6;
+  cfg.fixes.receptor.kd_b12_btuB = 1.0e-3;
 
   // Producers (type 1) with ColE1
   cfg.initial_strains.clear();

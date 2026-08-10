@@ -7,6 +7,11 @@ the model, along with the key unknowns left for future work.
 
 ## Competitive-binding model
 
+All concentration fields and all Kd values in this document are expressed as
+genuine `mol/m³`. The conversion is `1 µM = 1e-3 mol/m³` and
+`1 nM = 1e-6 mol/m³`; numerical molar values must not be copied directly into
+the chemical-field or receptor configuration.
+
 Colicin kill probability at each receptor follows competitive Michaelis–Menten
 binding between the toxin and the receptor's native ligand:
 
@@ -25,7 +30,7 @@ cobalamin is only ~1.4% of the pool. The dominant species are non-cobalamin
 analogs ([2-methyladenine]cobamide 60.6%, [p-cresol]cobamide 16.3%,
 pseudo-B12 12.5%). Converting to molarity (mean cobamide MW ~1350 Da):
 
-- Total corrinoids: ≈ **1 µM** (9.7e-7 mol/m³)
+- Total corrinoids: ≈ **1 µM** (`1e-3 mol/m³`)
 - True cobalamin only: ≈ 14 nM
 - Dominant analog: ≈ 590 nM
 
@@ -35,19 +40,19 @@ is confirmed: 5 µM B12 preincubation blocks ColE1 killing (Masi et al. 2007).
 
 | Parameter | Model value | Basis |
 |-----------|-------------|-------|
-| `[B12]` field | **1e-6 mol/m³ (1 µM)** | Total bioavailable corrinoid pool, not true Cbl only |
-| `kd_b12_btuB` / `kd_corrinoid_btuB` | 1e-9 (1 nM) | Sub-nM transport affinity supported; **key unknown** for the dominant analog |
-| `kd_colicinE_btuB` | 5e-10 (0.5 nM) | No better data; colicins operate at pM–nM potency |
+| `[B12]` field | **`1e-3 mol/m³` (1 µM)** | Total bioavailable corrinoid pool, not true Cbl only |
+| `kd_b12_btuB` / `kd_corrinoid_btuB` | `1e-6 mol/m³` (1 nM) | Sub-nM transport affinity supported; **key unknown** for the dominant analog |
+| `kd_colicinE_btuB` | `5e-7 mol/m³` (0.5 nM) | No better data; colicins operate at pM–nM potency |
 
 **Consequence.** At `[corrinoid]` = 1 µM and `kd_ligand` = 1 nM the competitive
-factor is `1 + 1e-6/1e-9 ≈ 1001`, so `apparent_Kd ≈ 0.5 µM`. Colicin E is ~1000×
+factor is `1 + 1e-3/1e-6 ≈ 1001`, so `apparent_Kd ≈ 0.5 mM`. Colicin E is ~1000×
 less potent than under the old `[B12]` = 1 nM field (competitive factor ≈ 2).
 This is the single most consequential downstream effect of the nutrient rework.
 
 **Key unknown / future sweep.** BtuB affinity for the dominant analog
 ([2-MeAde]cobamide) is unmeasured; if it binds 10×/100× weaker, the competitive
 factor falls to ~101×/~11×. A sweep over
-`kd_corrinoid_btuB ∈ {1e-9, 1e-8, 1e-7, 1e-6}` at `[corrinoid]` = 1 µM is
+`kd_corrinoid_btuB ∈ {1e-6, 1e-5, 1e-4, 1e-3}` mol/m³ at `[corrinoid]` = 1 µM is
 recommended future work (out of scope for the Spec 6 PR).
 
 ## 2. FepA — siderophores vs colicin B/D
@@ -60,8 +65,8 @@ peptide stress rather than pure iron chelation.
 
 | Parameter | Model value | Basis |
 |-----------|-------------|-------|
-| `kd_enterobactin` | **1e-9 (1 nM)** | Live-cell Kd ~0.2 nM; 1 nM is conservative (was 10 nM) |
-| `kd_colicinB_fepA` | 2e-9 (2 nM) | No data; same order as colicin E at BtuB |
+| `kd_enterobactin` | **`1e-6 mol/m³` (1 nM)** | Live-cell Kd ~0.2 nM; 1 nM is conservative (was 10 nM) |
+| `kd_colicinB_fepA` | `2e-6 mol/m³` (2 nM) | No data; same order as colicin E at BtuB |
 | `fur.upregulation_max` | **10.0** | Conservative vs measured 35–56×; was 4.0 |
 
 ## 3. CirA — linearized enterobactin vs colicin Ia / microcin V

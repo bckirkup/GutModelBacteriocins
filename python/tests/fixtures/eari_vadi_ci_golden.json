@@ -3,12 +3,12 @@
   "metrics": {
     "monochromatic_score": 0.0,
     "comet_tail_ratio": 0.9443415192723296,
-    "mean_exclusion_radius": 4.324404840644196e-05,
-    "hopkins_statistic": 0.49367335798935535,
-    "nnd_mean": 4.8620902531017355e-05,
+    "mean_exclusion_radius": 4.247476362088915e-05,
+    "hopkins_statistic": 0.4399109488862671,
+    "nnd_mean": 4.619638914141984e-05,
     "comet_tail_asymmetry": 1.090681329731719,
-    "resident_retention": 0.575,
-    "resident_mean_bi_loci": 1.5217391304347827,
+    "resident_retention": 0.5875,
+    "resident_mean_bi_loci": 1.4680851063829787,
     "transient_mean_bi_loci": 0.0,
     "transient_mean_btuB_expression": 1.0
   }

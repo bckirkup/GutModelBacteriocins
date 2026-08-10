@@ -8,6 +8,7 @@
 #include "input_parser.h"
 #include "species_names.h"
 #include "qssa_solver.h"
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -236,6 +237,66 @@ void test_burst_kills_same_step() {
   std::cout << "  test_burst_kills_same_step: PASSED\n";
 }
 
+void test_true_unit_receptor_regression() {
+  constexpr Real toxin_at_10_um = 4.421248e-6;
+  constexpr Real toxin_at_50_um = 3.676568e-7;
+  constexpr Real toxin_at_100_um = 6.137581e-8;
+
+  const SimulationConfig defaults = InputParser::default_config();
+  const auto b12_spec = std::find_if(
+      defaults.chemicals.begin(), defaults.chemicals.end(),
+      [](const ChemicalSpec& s) { return s.name == species::B12; });
+  assert(b12_spec != defaults.chemicals.end());
+  assert(std::abs(b12_spec->initial_conc - 1.0e-3) < 1.0e-15);
+
+  const ReceptorConfig& receptor = defaults.fixes.receptor;
+  const Real b12 = 1.0e-3;
+  const Real b12_factor = 1.0 + b12 / receptor.kd_b12_btuB;
+  const Real apparent_kd = receptor.kd_colicinE_btuB * b12_factor;
+  assert(std::abs(b12_factor - 1001.0) < 1.0e-12);
+  assert(std::abs(apparent_kd - 5.005e-4) < 1.0e-12);
+
+  const Real occ_10 = toxin_at_10_um / (apparent_kd + toxin_at_10_um);
+  const Real occ_50 = toxin_at_50_um / (apparent_kd + toxin_at_50_um);
+  const Real occ_100 = toxin_at_100_um / (apparent_kd + toxin_at_100_um);
+  assert(std::abs(occ_10 - 0.00875631) < 1.0e-7);
+  assert(std::abs(occ_50 - 0.00073404) < 1.0e-7);
+  assert(std::abs(occ_100 - 0.00012261) < 1.0e-7);
+
+  const Real fepa_factor = 1.0 + 1.0e-4 / receptor.kd_enterobactin;
+  assert(std::abs(fepa_factor - 101.0) < 1.0e-12);
+  const Real old_fepa_factor = 1.0 + 1.0e-4 / 1.0e-9;
+  assert(std::abs(old_fepa_factor - 100001.0) < 1.0e-9);
+
+  const Real b12_monod = b12 / (receptor.kd_b12_btuB + b12);
+  const Real old_b12_monod = 1.0e-6 / (1.0e-9 + 1.0e-6);
+  assert(std::abs(b12_monod - old_b12_monod) < 1.0e-12);
+
+  auto corrected = make_empty_sim(8118);
+  Agent corrected_agent = make_susceptible_agent(corrected);
+  set_local_chemistry(corrected, corrected_agent.grid_cell, toxin_at_50_um, b12);
+  corrected.agents().push_back(std::move(corrected_agent));
+  ReceptorConfig corrected_cfg;
+  corrected_cfg.kill_rate_colicin = 1.0;
+  FixReceptor corrected_fix(corrected, corrected_cfg);
+  corrected_fix.compute(60.0);
+  assert(corrected.agents()[0].state != PhenoState::DEAD);
+
+  auto legacy = make_empty_sim(8118);
+  Agent legacy_agent = make_susceptible_agent(legacy);
+  set_local_chemistry(legacy, legacy_agent.grid_cell, toxin_at_50_um, 1.0e-6);
+  legacy.agents().push_back(std::move(legacy_agent));
+  ReceptorConfig legacy_cfg;
+  legacy_cfg.kill_rate_colicin = 1.0;
+  legacy_cfg.kd_b12_btuB = 1.0e-9;
+  legacy_cfg.kd_colicinE_btuB = 5.0e-10;
+  FixReceptor legacy_fix(legacy, legacy_cfg);
+  legacy_fix.compute(60.0);
+  assert(legacy.agents()[0].state == PhenoState::DEAD);
+
+  std::cout << "  test_true_unit_receptor_regression: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Receptor Fix Tests ===\n";
   test_high_toxin_kills_susceptible();
@@ -244,6 +305,7 @@ int main() {
   test_partial_resistance_reduces_lethality();
   test_cira_uses_siderophore_ligand();
   test_burst_kills_same_step();
+  test_true_unit_receptor_regression();
   std::cout << "All receptor fix tests passed.\n";
   return 0;
 }
