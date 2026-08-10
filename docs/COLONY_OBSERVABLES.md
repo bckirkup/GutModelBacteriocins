@@ -28,8 +28,21 @@ The label null fixes positions exactly and permutes labels, preserving every
 label count; it destroys spatial segregation associated with those labels.
 Both use an injected `numpy.random.Generator`.
 
+The reported curves use a same-mark K/g estimator: only pairs sharing the
+same label contribute, while intensity and population size use the whole
+realized population.  With one label this reduces exactly to ordinary
+unmarked K/g.  A label null is only valid when at least two distinct labels
+are present; otherwise the result exposes `label_null_valid=False`, returns
+NaN label-null curves, and `summarize_excess(null="label")` raises
+`ValueError`.
+
 Intensity is estimated from the realized axis-aligned occupied bounding-box
 volume.  These simple estimators apply no edge correction and therefore have
 boundary bias.  Observed and randomized curves use exactly the same estimator,
 so envelope comparisons remain valid; absolute values near the boundary should
 not be interpreted as an unbiased infinite-domain estimate.
+
+For a single colony, `nn_colony_id` is `-1` and
+`nn_colony_distance` is `NaN`.  An all-noise snapshot returns an empty colony
+table with the complete column schema and appropriate NumPy dtypes, rather
+than omitting the columns.

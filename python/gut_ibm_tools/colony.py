@@ -19,6 +19,13 @@ from .path_utils import prepare_output_file, validate_input_path
 
 PRODUCER_THRESHOLDS: tuple[int, ...] = (113, 527, 1361)
 AGENT_COLUMNS = ("agent_id", "colony_id", "type", "n_bi_loci", "x", "y", "z")
+COLONY_COLUMNS = (
+    "colony_id", "n_members", "centroid_x", "centroid_y", "centroid_z",
+    "radius_of_gyration", "max_member_distance_from_centroid", "n_genotypes",
+    "dominant_genotype_fraction", "is_clonal", "n_producers", "producer_fraction",
+    "mean_z", "nn_colony_id", "nn_colony_distance",
+    "reaches_113", "reaches_527", "reaches_1361",
+)
 
 
 @dataclass(frozen=True)
@@ -98,7 +105,7 @@ def dbscan_colonies(
     if eps <= 0 or min_samples < 1:
         raise ValueError("eps must be positive and min_samples must be positive")
     tree = cKDTree(points)
-    pairs = np.asarray(list(tree.query_pairs(eps)), dtype=np.int64)
+    pairs = tree.query_pairs(eps, output_type="ndarray")
     adjacency = _symmetric_graph(pairs, len(points))
     degree = np.asarray(adjacency.sum(axis=1)).ravel() + 1
     core = degree >= min_samples
@@ -106,15 +113,15 @@ def dbscan_colonies(
     if np.any(core):
         core_indices = np.flatnonzero(core)
         core_graph = adjacency.tocsr()[core_indices][:, core_indices]
-        count, component = connected_components(core_graph, directed=False)
+        _, component = connected_components(core_graph, directed=False)
         labels[core_indices] = component
-        for index in np.flatnonzero(~core):
-            neighbours = tree.query_ball_point(points[index], eps)
-            core_neighbours = [item for item in neighbours if core[item]]
-            if core_neighbours:
-                labels[index] = int(component[np.flatnonzero(core_indices == min(core_neighbours))[0]])
-        if count == 0:
-            labels.fill(-1)
+        border_indices = np.flatnonzero(~core)
+        if len(border_indices):
+            border_distances, nearest = cKDTree(points[core_indices]).query(
+                points[border_indices], k=1
+            )
+            attached = border_distances <= eps
+            labels[border_indices[attached]] = component[nearest[attached]]
     return labels
 
 
@@ -198,7 +205,29 @@ def _colony_table(
         }
         row.update(producer_threshold_flags(producers, thresholds))
         rows.append(row)
-    result = {key: np.asarray([row[key] for row in rows]) for key in rows[0]} if rows else {}
+    if rows:
+        result = {key: np.asarray([row[key] for row in rows]) for key in rows[0]}
+    else:
+        result = {
+            "colony_id": np.array([], dtype=np.int64),
+            "n_members": np.array([], dtype=np.int64),
+            "centroid_x": np.array([], dtype=float),
+            "centroid_y": np.array([], dtype=float),
+            "centroid_z": np.array([], dtype=float),
+            "radius_of_gyration": np.array([], dtype=float),
+            "max_member_distance_from_centroid": np.array([], dtype=float),
+            "n_genotypes": np.array([], dtype=np.int64),
+            "dominant_genotype_fraction": np.array([], dtype=float),
+            "is_clonal": np.array([], dtype=bool),
+            "n_producers": np.array([], dtype=np.int64),
+            "producer_fraction": np.array([], dtype=float),
+            "mean_z": np.array([], dtype=float),
+            "nn_colony_id": np.array([], dtype=np.int64),
+            "nn_colony_distance": np.array([], dtype=float),
+        }
+        for threshold in thresholds:
+            result[f"reaches_{threshold}"] = np.array([], dtype=bool)
+        return result
     if rows:
         centroids = np.column_stack([result[f"centroid_{axis}"] for axis in ("x", "y", "z")])
         if len(rows) > 1:
@@ -257,13 +286,29 @@ def main() -> None:
     """Write agent and colony CSV tables for an HDF5 step."""
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=validate_input_path)
-    parser.add_argument("step")
+    parser.add_argument("step", nargs="?")
     parser.add_argument("--agent-output", default="agents.csv")
     parser.add_argument("--colony-output", default="colonies.csv")
+    parser.add_argument("--diagnostics-output", default="colony_diagnostics.csv")
     parser.add_argument("--eps", type=float)
     parser.add_argument("--min-samples", type=int, default=3)
     args = parser.parse_args()
     config = ColonyConfig(eps=args.eps, min_samples=args.min_samples)
     with GutIBMData(args.input) as data:
-        catalog = colony_catalog_from_hdf5(data, args.step, config)
+        step = args.step or data.steps[-1]
+        catalog = colony_catalog_from_hdf5(data, step, config)
     catalog.write_csv(args.agent_output, args.colony_output)
+    _write_diagnostics(prepare_output_file(args.diagnostics_output), catalog)
+
+
+def _write_diagnostics(path: Path, catalog: ColonyCatalog) -> None:
+    """Write eps selection and sensitivity diagnostics as a tidy CSV."""
+    with path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(["metric", "value"])
+        for key, value in catalog.eps_diagnostics.items():
+            writer.writerow([key, value])
+        for index, factor in enumerate(catalog.eps_sensitivity["factor"]):
+            writer.writerow([f"sensitivity_{factor}_eps", catalog.eps_sensitivity["eps"][index]])
+            writer.writerow([f"sensitivity_{factor}_n_colonies", catalog.eps_sensitivity["n_colonies"][index]])
+            writer.writerow([f"sensitivity_{factor}_noise_fraction", catalog.eps_sensitivity["noise_fraction"][index]])

@@ -67,3 +67,37 @@ def test_catalog_reads_sample_hdf5(sample_hdf5) -> None:
         )
     assert len(catalog.agents["agent_id"]) == 12
     assert catalog.agents["agent_id"].dtype == np.int64
+
+
+def test_eps_sensitivity_reduces_noise_and_merges_at_largest_factor() -> None:
+    rng = np.random.default_rng(13)
+    points = np.vstack([
+        rng.normal([0.0, 0.0, 0.0], 0.08, (20, 3)),
+        rng.normal([1.5, 0.0, 0.0], 0.08, (20, 3)),
+    ])
+    catalog = build_colony_catalog(
+        _agents(points),
+        ColonyConfig(eps=0.6, min_samples=3),
+    )
+    np.testing.assert_array_equal(
+        np.diff(catalog.eps_sensitivity["noise_fraction"]) <= 0,
+        np.ones(3, dtype=bool),
+    )
+    assert catalog.eps_sensitivity["n_colonies"][-1] == 1
+
+
+def test_producer_threshold_flags() -> None:
+    points = np.zeros((120, 3))
+    agents = _agents(points)
+    catalog = build_colony_catalog(agents, ColonyConfig(eps=1.0, min_samples=2))
+    assert catalog.colonies["reaches_113"][0]
+    assert not catalog.colonies["reaches_527"][0]
+    assert not catalog.colonies["reaches_1361"][0]
+
+
+def test_all_noise_has_well_formed_empty_colony_table() -> None:
+    points = np.arange(15, dtype=float).reshape(5, 3) * 100.0
+    catalog = build_colony_catalog(_agents(points), ColonyConfig(eps=1.0, min_samples=2))
+    assert catalog.colonies["colony_id"].size == 0
+    assert catalog.colonies["colony_id"].dtype == np.int64
+    assert catalog.colonies["nn_colony_distance"].dtype == float

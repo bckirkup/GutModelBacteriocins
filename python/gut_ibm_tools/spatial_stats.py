@@ -29,7 +29,12 @@ class SpatialStatsConfig:
 
 @dataclass
 class SpatialStatsResult:
-    """Observed curves and pointwise envelopes for both null models."""
+    """Observed same-mark curves and pointwise envelopes for both null models.
+
+    ``observed_g`` and ``observed_k`` count only pairs with equal labels,
+    normalized by whole-population intensity and size.  With one mark they
+    are the ordinary unmarked estimators.
+    """
 
     radii: np.ndarray
     observed_g: np.ndarray
@@ -47,6 +52,7 @@ class SpatialStatsResult:
     label_null_mean_k: np.ndarray
     label_null_low_k: np.ndarray
     label_null_high_k: np.ndarray
+    label_null_valid: bool
 
     def to_table(self) -> dict[str, np.ndarray]:
         """Return a tidy columnar representation suitable for CSV."""
@@ -65,6 +71,7 @@ class SpatialStatsResult:
                 "label_null_mean_k": self.label_null_mean_k,
                 "label_null_low_k": self.label_null_low_k,
                 "label_null_high_k": self.label_null_high_k,
+                "label_null_valid": np.full(len(self.radii), self.label_null_valid),
             }
         )
         return result
@@ -101,14 +108,44 @@ def compute_spatial_stats(
         raise ValueError("radii must be strictly increasing and positive")
     composition = _labels(labels, len(points))
     observed = _curves(points, composition, radii)
-    z_curves = np.array([_curves(_z_null(points, cfg.z_bins, generator), composition, radii) for _ in range(cfg.n_null)])
-    label_curves = np.array([_curves(points, generator.permutation(composition), radii) for _ in range(cfg.n_null)])
+    z_curves = np.array(
+        [
+            _curves(z_stratified_null(points, cfg.z_bins, generator), composition, radii)
+            for _ in range(cfg.n_null)
+        ]
+    )
+    label_valid = len(np.unique(composition)) > 1
+    label_curves = (
+        np.array(
+            [
+                _curves(
+                    points,
+                    label_permutation_null(points, composition, generator)[1],
+                    radii,
+                )
+                for _ in range(cfg.n_null)
+            ]
+        )
+        if label_valid
+        else None
+    )
     z_mean, z_low, z_high = _summaries(z_curves)
-    label_mean, label_low, label_high = _summaries(label_curves)
+    if label_curves is None:
+        label_mean = label_low = label_high = np.full_like(observed[0], np.nan)
+        label_k_mean = label_k_low = label_k_high = np.full_like(observed[1], np.nan)
+    else:
+        label_mean, label_low, label_high = _summaries(label_curves)
+        label_k_mean, label_k_low, label_k_high = _summaries(label_curves[:, 1, :])
     return SpatialStatsResult(
         radii, observed[0], observed[1], observed[2],
         z_mean[0], z_low[0], z_high[0], z_mean[1], z_low[1], z_high[1],
-        label_mean[0], label_low[0], label_high[0], label_mean[1], label_low[1], label_high[1],
+        label_mean if label_curves is None else label_mean[0],
+        label_low if label_curves is None else label_low[0],
+        label_high if label_curves is None else label_high[0],
+        label_k_mean if label_curves is not None else label_mean,
+        label_k_low if label_curves is not None else label_low,
+        label_k_high if label_curves is not None else label_high,
+        label_valid,
     )
 
 
@@ -117,6 +154,10 @@ spatial_statistics = compute_spatial_stats
 
 def summarize_excess(result: SpatialStatsResult, *, null: str = "z") -> list[tuple[float, float]]:
     """Return contiguous radius intervals where observed g exits a null band."""
+    if null not in {"z", "label"}:
+        raise ValueError("null must be 'z' or 'label'")
+    if null == "label" and not result.label_null_valid:
+        raise ValueError("label null is invalid when fewer than two labels are present")
     prefix = "z_null" if null == "z" else "label_null"
     low, high = (
         (result.z_null_low_g, result.z_null_high_g)
@@ -142,7 +183,12 @@ def _labels(labels: np.ndarray | None, size: int) -> np.ndarray:
     return np.zeros(size, dtype=np.int64) if labels is None else np.asarray(labels)
 
 
-def _curves(points: np.ndarray, labels: np.ndarray, radii: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _curves(
+    points: np.ndarray,
+    labels: np.ndarray,
+    radii: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return same-mark g, K, and L-r using whole-population intensity."""
     distances = cKDTree(points).query_pairs(float(radii[-1]), output_type="ndarray")
     pair_distances = np.linalg.norm(points[distances[:, 0]] - points[distances[:, 1]], axis=1) if len(distances) else np.array([])
     same = labels[distances[:, 0]] == labels[distances[:, 1]] if len(distances) else np.array([], dtype=bool)
@@ -152,11 +198,18 @@ def _curves(points: np.ndarray, labels: np.ndarray, radii: np.ndarray) -> tuple[
     k_values = counts / (intensity * len(points)) if intensity > 0 else np.zeros_like(counts)
     edges = np.r_[0.0, radii]
     shell = 4.0 * np.pi * ((edges[1:] ** 3 - edges[:-1] ** 3) / 3.0)
-    g_values = np.diff(np.r_[0.0, k_values]) / shell / (1.0 / intensity) if intensity > 0 else np.zeros_like(k_values)
+    g_values = np.diff(np.r_[0.0, k_values]) / shell if intensity > 0 else np.zeros_like(k_values)
     return g_values, k_values, np.cbrt(3.0 * k_values / (4.0 * np.pi)) - radii
 
 
-def _z_null(points: np.ndarray, bins: int, rng: np.random.Generator) -> np.ndarray:
+def z_stratified_null(
+    points: np.ndarray,
+    bins: int,
+    rng: np.random.Generator,
+) -> np.ndarray:
+    """Randomize lateral coordinates within realized z strata, preserving z."""
+    if bins < 1:
+        raise ValueError("bins must be positive")
     result = points.copy()
     edges = np.linspace(float(np.min(points[:, 2])), float(np.max(points[:, 2])), bins + 1)
     for index in range(bins):
@@ -167,6 +220,15 @@ def _z_null(points: np.ndarray, bins: int, rng: np.random.Generator) -> np.ndarr
             hi = np.max(lateral, axis=0)
             result[members, :2] = rng.uniform(lo, hi, size=(len(members), 2))
     return result
+
+
+def label_permutation_null(
+    positions: np.ndarray,
+    labels: np.ndarray,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return bit-identical positions and a composition-preserving labels permutation."""
+    return np.asarray(positions).copy(), rng.permutation(np.asarray(labels)).copy()
 
 
 def _summaries(curves: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
