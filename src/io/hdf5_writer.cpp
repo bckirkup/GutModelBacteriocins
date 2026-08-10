@@ -893,7 +893,7 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
   const auto nspecies =
       static_cast<std::uint64_t>(std::max(sim.chemical_field().num_species(), 1));
   const std::uint64_t uncompressed_est =
-      nx * ny * nz * nspecies * sizeof(double) + (64ull << 20);
+      nx * ny * nz * nspecies * sizeof(double) + (64ULL << 20);
   {
     std::error_code space_ec;
     const fs::path space_root =
@@ -901,9 +901,9 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
     const fs::space_info si = fs::space(space_root, space_ec);
     // Gzip shrinks sparse toxin fields a lot; still keep multi-GiB headroom for
     // Stage-3 chemistry dumps on small container scratch volumes.
-    constexpr std::uint64_t kHeadroom = 1ull << 30;
+    constexpr std::uint64_t kHeadroom = 1ULL << 30;
     const std::uint64_t need =
-        std::max<std::uint64_t>((uncompressed_est / 4) + kHeadroom, 2ull << 30);
+        std::max<std::uint64_t>((uncompressed_est / 4) + kHeadroom, 2ULL << 30);
     if (!space_ec && si.available < need) {
       std::cerr << "Warning: refusing restart write to '" << path
                 << "': only " << (si.available >> 20)

@@ -127,7 +127,8 @@ def test_qa_array_distinct_seeds_and_report(
     assert [row.seed for row in report.rows] == [4092, 4093]
     assert [row.final_agents for row in report.rows] == [13, 12]
     text = format_report(report)
-    assert "4092" in text and "4093" in text
+    assert "4092" in text
+    assert "4093" in text
     assert "distinct_fingerprints=True" in text
     assert any("summary-only" in w for w in report.warnings)
 
