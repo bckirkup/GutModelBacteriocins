@@ -232,6 +232,7 @@ void test_split_run_matches_uninterrupted(const std::string& filename) {
 void test_checkpoint_fork_immigration(const std::string& filename) {
   SimulationConfig run_cfg = make_checkpoint_config(filename);
   run_cfg.time.total_time = 60.0;
+  run_cfg.initial_strains[1].count = 0;
   run_cfg.hdf5.schedule.summary = 1;
   run_cfg.hdf5.schedule.agents = 1;
   run_cfg.hdf5.schedule.genome = 1;
@@ -259,11 +260,15 @@ void test_checkpoint_fork_immigration(const std::string& filename) {
   fork_cfg.immigration.strain_index = 1;
   fork_cfg.immigration.step = 0;
 
+  SimulationConfig control_cfg = fork_cfg;
+  control_cfg.immigration.enabled = false;
+  Simulation control;
+  control.init_from_checkpoint(control_cfg, filename, "step_000000");
+  control.step(60.0);
+
   Simulation fork;
   fork.init_from_checkpoint(fork_cfg, filename, "step_000000");
-  const Int before = fork.global_agent_count();
   fork.step(60.0);
-  assert(fork.global_agent_count() == before + fork_cfg.immigration.count);
 
   Int immigrants = 0;
   for (const Agent& agent : fork.agents()) {
@@ -275,7 +280,13 @@ void test_checkpoint_fork_immigration(const std::string& filename) {
     assert(std::abs(agent.mu_max - fork_cfg.initial_strains[1].mu_max) < kTol);
     assert(agent.receptor_expr[to_underlying(ReceptorType::BtuB)] > 0.0);
   }
-  assert(immigrants == fork_cfg.immigration.count);
+  Int control_immigrants = 0;
+  for (const Agent& agent : control.agents()) {
+    if (agent.identity.type == control_cfg.initial_strains[1].type) {
+      ++control_immigrants;
+    }
+  }
+  assert(immigrants == control_immigrants + fork_cfg.immigration.count);
   std::cout << "  test_checkpoint_fork_immigration: PASSED\n";
 }
 
@@ -305,7 +316,10 @@ int main(int argc, char** argv) {
   if (rank == 0) std::cout << "=== HDF5 Checkpoint Restart Tests ===\n";
   test_checkpoint_restart(filename);
   test_split_run_matches_uninterrupted(filename);
-  test_checkpoint_fork_immigration(filename + ".immigration.h5");
+  const std::string immigration_filename =
+      resolve_test_h5_path("GUTIBM_CHECKPOINT_IMMIGRATION_H5",
+                           "checkpoint_immigration");
+  test_checkpoint_fork_immigration(immigration_filename);
   if (rank == 0) {
     std::cout << "  test_hdf5_reader_api: PASSED\n";
     std::cout << "  test_checkpoint_restart: PASSED\n";

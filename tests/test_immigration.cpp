@@ -4,6 +4,7 @@
 #include "simulation.h"
 #include "species_names.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -185,7 +186,14 @@ void test_continuous_schedule_end_to_end() {
             << injected << " PASSED\n";
 }
 
-bool run_bacteriocin_encounter(uint64_t seed, Real target_distance) {
+struct EncounterResult {
+  bool injected = false;
+  Int colicin_kills = 0;
+  bool alive = false;
+  Real distance_error = std::numeric_limits<Real>::max();
+};
+
+EncounterResult run_bacteriocin_encounter(uint64_t seed, Real target_distance) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {200e-6, 200e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
@@ -213,7 +221,7 @@ bool run_bacteriocin_encounter(uint64_t seed, Real target_distance) {
   cfg.immigration.strain_index = 1;
   cfg.immigration.placement = "at_distance";
   cfg.immigration.distance = target_distance;
-  cfg.immigration.distance_tolerance = 5e-6;
+  cfg.immigration.distance_tolerance = 20e-6;
   cfg.immigration.step = 1;
   cfg.fixes.bacteriocin.sos_lysis_prob = 1.0;
   cfg.fixes.bacteriocin.burst_release_tau = 300.0;
@@ -230,13 +238,39 @@ bool run_bacteriocin_encounter(uint64_t seed, Real target_distance) {
   sim.agents()[0].state = PhenoState::SOS_INDUCED;
   sim.agents()[0].timers.sos_timer = 0.0;
   sim.step(60.0);
-  sim.step(60.0);
+  const Int immigrations_before = sim.step_events().immigrations;
+  sim.step(0.0);
+  EncounterResult result;
+  result.injected =
+      sim.step_events().immigrations == immigrations_before + 1;
+  const Agent* sensitive_agent = nullptr;
   for (const Agent& agent : sim.agents()) {
     if (agent.identity.type == sensitive.type) {
-      return agent.state == PhenoState::DEAD;
+      sensitive_agent = &agent;
+      break;
     }
   }
-  return true;
+  if (!result.injected || sensitive_agent == nullptr) return result;
+
+  Real nearest_sq = std::numeric_limits<Real>::max();
+  for (const Agent& agent : sim.agents()) {
+    if (agent.identity.type == producer.type &&
+        agent.state != PhenoState::DEAD) {
+      nearest_sq = std::min(nearest_sq,
+                            sim.domain().min_image_dist_sq(
+                                sensitive_agent->x, agent.x));
+    }
+  }
+  result.distance_error =
+      std::abs(std::sqrt(nearest_sq) - target_distance);
+  const Int kills_before = sim.step_events().colicin_kills;
+  sim.step(60.0);
+  result.colicin_kills = sim.step_events().colicin_kills - kills_before;
+  result.alive = std::ranges::any_of(
+      sim.agents(), [type = sensitive.type](const Agent& agent) {
+        return agent.identity.type == type && agent.state != PhenoState::DEAD;
+      });
+  return result;
 }
 
 void test_near_colony_kill_separation() {
@@ -244,8 +278,19 @@ void test_near_colony_kill_separation() {
   Int far_kills = 0;
   constexpr Int replicates = 12;
   for (Int i = 0; i < replicates; ++i) {
-    near_kills += run_bacteriocin_encounter(7000 + i, 5e-6) ? 1 : 0;
-    far_kills += run_bacteriocin_encounter(8000 + i, 100e-6) ? 1 : 0;
+    const EncounterResult near =
+        run_bacteriocin_encounter(7000 + i, 5e-6);
+    const EncounterResult far =
+        run_bacteriocin_encounter(8000 + i, 120e-6);
+    assert(near.injected);
+    assert(far.injected);
+    assert(near.distance_error <= 20e-6);
+    assert(far.distance_error <= 20e-6);
+    assert(far.alive);
+    std::cout << "  encounter " << i << " distance errors="
+              << near.distance_error << "/" << far.distance_error << "\n";
+    near_kills += near.colicin_kills;
+    far_kills += far.colicin_kills;
   }
   std::cout << "  near/far colicin kills=" << near_kills << "/"
             << far_kills << "\n";
