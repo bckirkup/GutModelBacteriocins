@@ -52,6 +52,29 @@ def test_purity_and_mixed_genotypes() -> None:
     assert clonal.colonies["is_clonal"][0]
 
 
+def test_genome_locus_genotypes_distinguish_equal_counts() -> None:
+    points = np.zeros((2, 3))
+    agents = _agents(points, np.array([101, 205], dtype=np.int64))
+    genome_loci = {
+        101: ((7, 17),),
+        205: ((11, 19),),
+    }
+    catalog = build_colony_catalog(
+        agents,
+        ColonyConfig(eps=1.0, min_samples=2),
+        genome_loci,
+    )
+    assert catalog.colonies["n_genotypes"][0] == 2
+    assert not catalog.colonies["is_clonal"][0]
+
+    fallback = build_colony_catalog(
+        agents,
+        ColonyConfig(eps=1.0, min_samples=2),
+    )
+    assert fallback.colonies["n_genotypes"][0] == 1
+    assert fallback.colonies["is_clonal"][0]
+
+
 def test_dbscan_border_points_are_attached_to_core() -> None:
     points = np.array([[0.0, 0.0, 0.0], [0.4, 0.0, 0.0], [0.0, 0.4, 0.0], [0.4, 0.4, 0.0], [2.0, 0.0, 0.0]])
     labels = dbscan_colonies(points, eps=0.5, min_samples=4)

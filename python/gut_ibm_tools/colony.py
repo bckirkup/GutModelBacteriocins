@@ -129,6 +129,7 @@ def dbscan_colonies(
 def build_colony_catalog(
     agents: dict[str, np.ndarray],
     config: ColonyConfig | None = None,
+    genome_loci: dict[int, tuple[tuple[int, int], ...]] | None = None,
 ) -> ColonyCatalog:
     """Build per-agent and per-colony tables from ``GutIBMData.get_agents``."""
     cfg = config or ColonyConfig()
@@ -154,7 +155,9 @@ def build_colony_catalog(
         "y": positions[:, 1],
         "z": positions[:, 2],
     }
-    colony_table = _colony_table(agent_table, labels, agents, cfg.producer_thresholds)
+    colony_table = _colony_table(
+        agent_table, labels, agents, cfg.producer_thresholds, genome_loci
+    )
     return ColonyCatalog(
         agent_table,
         colony_table,
@@ -167,7 +170,7 @@ def build_colony_catalog(
 
 def colony_catalog_from_hdf5(data: GutIBMData, step: str, config: ColonyConfig | None = None) -> ColonyCatalog:
     """Build a catalog from one open HDF5 agent step."""
-    return build_colony_catalog(data.get_agents(step), config)
+    return build_colony_catalog(data.get_agents(step), config, data.get_genome_loci(step))
 
 
 def producer_threshold_flags(
@@ -183,6 +186,7 @@ def _colony_table(
     labels: np.ndarray,
     agents: dict[str, np.ndarray],
     thresholds: tuple[int, ...],
+    genome_loci: dict[int, tuple[tuple[int, int], ...]] | None,
 ) -> dict[str, np.ndarray]:
     """Compute tidy statistics for non-noise DBSCAN components."""
     lineage = agents.get("lineage_id")
@@ -194,7 +198,13 @@ def _colony_table(
         centroid = xyz.mean(axis=0)
         radius = np.sqrt(np.mean(np.sum((xyz - centroid) ** 2, axis=1)))
         distances = np.sqrt(np.sum((xyz - centroid) ** 2, axis=1))
-        genotypes = _genotypes(table["type"][member], table["n_bi_loci"][member], lineage[member] if lineage is not None else None)
+        genotypes = _genotypes(
+            table["agent_id"][member],
+            table["type"][member],
+            table["n_bi_loci"][member],
+            lineage[member] if lineage is not None else None,
+            genome_loci,
+        )
         producers = int(np.sum(table["n_bi_loci"][member] > 0))
         row: dict[str, float | int | bool] = {
             "colony_id": int(colony_id), "n_members": int(np.sum(member)),
@@ -239,7 +249,22 @@ def _colony_table(
     return result
 
 
-def _genotypes(types: np.ndarray, loci: np.ndarray, lineage: np.ndarray | None) -> list[tuple[int, ...]]:
+def _genotypes(
+    ids: np.ndarray,
+    types: np.ndarray,
+    loci: np.ndarray,
+    lineage: np.ndarray | None,
+    genome_loci: dict[int, tuple[tuple[int, int], ...]] | None,
+) -> list[tuple[int, ...] | tuple[int, tuple[tuple[int, int], ...]]]:
+    use_genome = genome_loci is not None and all(int(agent_id) in genome_loci for agent_id in ids)
+    if use_genome:
+        identities = [genome_loci[int(agent_id)] for agent_id in ids]
+        if lineage is None:
+            return [(int(kind), identity) for kind, identity in zip(types, identities)]
+        return [
+            (int(kind), identity, int(parent))
+            for kind, identity, parent in zip(types, identities, lineage)
+        ]
     if lineage is None:
         return [(int(kind), int(count)) for kind, count in zip(types, loci)]
     return [(int(kind), int(parent), int(count)) for kind, parent, count in zip(types, lineage, loci)]

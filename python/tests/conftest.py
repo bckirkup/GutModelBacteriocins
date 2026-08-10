@@ -101,3 +101,25 @@ def sample_hdf5(tmp_path: Path) -> Path:
     path = tmp_path / "sample_output.h5"
     write_sample_hdf5(path)
     return path
+
+
+@pytest.fixture
+def ragged_genome_hdf5(tmp_path: Path) -> Path:
+    """Write a minimal genome layer with zero- and multi-locus agents."""
+    path = tmp_path / "ragged_genome.h5"
+    with h5py.File(path, "w") as handle:
+        agents = handle.require_group("agents").require_group("step_000000")
+        agents.create_dataset("id", data=np.array([101, 205, 999], dtype=np.int64))
+        agents.create_dataset("type", data=np.ones(3, dtype=np.int32))
+        agents.create_dataset("n_bi_loci", data=np.array([0, 2, 1], dtype=np.int32))
+        agents.create_dataset("x", data=np.array([0.0, 1.0, 2.0]))
+        agents.create_dataset("y", data=np.zeros(3))
+        agents.create_dataset("z", data=np.zeros(3))
+
+        genome = handle.require_group("genome").require_group("step_000000")
+        genome.create_dataset("id", data=np.array([101, 205, 999], dtype=np.int64))
+        genome.create_dataset("bi_offset", data=np.array([0, 0, 2], dtype=np.int64))
+        genome.create_dataset("bi_count", data=np.array([0, 2, 1], dtype=np.int32))
+        genome.create_dataset("bi_toxin_id", data=np.array([7, 11, 13], dtype=np.int32))
+        genome.create_dataset("bi_immunity_id", data=np.array([17, 19, 23], dtype=np.int32))
+    return path

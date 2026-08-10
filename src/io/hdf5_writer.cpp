@@ -802,6 +802,9 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
   const Int n = static_cast<Int>(agents.size());
   const auto local_n = static_cast<hsize_t>(n);
 
+  std::vector<int64_t> ids(static_cast<size_t>(n));
+  std::vector<int64_t> bi_offsets(static_cast<size_t>(n));
+  std::vector<int32_t> bi_counts(static_cast<size_t>(n));
   std::vector<int64_t> parent_id(static_cast<size_t>(n));
   std::vector<int32_t> mutations(static_cast<size_t>(n));
   std::vector<int32_t> has_conjugative(static_cast<size_t>(n));
@@ -825,6 +828,8 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
   for (Int i = 0; i < n; ++i) {
     const Agent& a = *agents[static_cast<size_t>(i)];
     const auto idx = static_cast<size_t>(i);
+    ids[idx] = a.identity.tag;
+    bi_counts[idx] = static_cast<int32_t>(a.genome.bi_loci.size());
     parent_id[idx] = a.genome.parent_id;
     mutations[idx] = static_cast<int32_t>(a.genome.mutations);
     has_conjugative[idx] = a.genome.has_conjugative_plasmid ? 1 : 0;
@@ -852,6 +857,20 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
     }
   }
 
+  const auto local_bi = static_cast<hsize_t>(bi_toxin_id.size());
+  const ParSlice bi_slice = compute_par_slice(local_bi, cfg_);
+  hsize_t local_offset = bi_slice.offset;
+  for (size_t i = 0; i < bi_offsets.size(); ++i) {
+    bi_offsets[i] = static_cast<int64_t>(local_offset);
+    local_offset += static_cast<hsize_t>(bi_counts[i]);
+  }
+
+  write_dataset_1d(fid, group + "/id", H5T_NATIVE_INT64,
+                   ids.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/bi_offset", H5T_NATIVE_INT64,
+                   bi_offsets.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/bi_count", H5T_NATIVE_INT32,
+                   bi_counts.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/parent_id", H5T_NATIVE_INT64,
                    parent_id.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/mutations", H5T_NATIVE_INT32,
@@ -871,7 +890,6 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
   write_dataset_1d(fid, group + "/ligand_affinity", H5T_NATIVE_DOUBLE,
                    ligand_aff.data(), local_n * NUM_RECEPTORS, cfg_);
 
-  const auto local_bi = static_cast<hsize_t>(bi_toxin_id.size());
   write_dataset_1d(fid, group + "/bi_toxin_id", H5T_NATIVE_INT32,
                    bi_toxin_id.data(), local_bi, cfg_);
   write_dataset_1d(fid, group + "/bi_immunity_id", H5T_NATIVE_INT32,
