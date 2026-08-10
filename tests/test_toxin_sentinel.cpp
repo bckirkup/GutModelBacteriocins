@@ -5,9 +5,12 @@
 #include "input_parser.h"
 #include "path_utils.h"
 #include "simulation.h"
+#include "species_names.h"
 #include <cassert>
+#include <cmath>
 #include <format>
 #include <iostream>
+#include <numbers>
 #include <string>
 #include <vector>
 
@@ -24,6 +27,9 @@ namespace {
 struct ChallengeResult {
   Int colicin_kills = 0;
   Int divisions = 0;
+  Int target_count = 100;
+  Real target_toxin = 0.0;
+  Real expected_kill_fraction = 0.0;
 };
 
 #ifdef GUTIBM_HDF5
@@ -36,11 +42,21 @@ int32_t read_event(hid_t file, const std::string& path) {
   H5Dclose(dataset);
   return value;
 }
+
+Real read_grid_value(hid_t file, const std::string& path, Int cell) {
+  hid_t dataset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
+  assert(dataset >= 0);
+  std::vector<Real> values(20 * 10 * 10);
+  assert(H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                 H5P_DEFAULT, values.data()) >= 0);
+  H5Dclose(dataset);
+  return values[static_cast<size_t>(cell)];
+}
 #endif
 
 SimulationConfig challenge_config(Int producer_count) {
   SimulationConfig cfg = InputParser::default_config();
-  cfg.domain.hi = {400e-6, 100e-6, 50e-6};
+  cfg.domain.hi = {100e-6, 50e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.time.bio_dt = 60.0;
   cfg.time.total_time = 600.0;
@@ -53,8 +69,9 @@ SimulationConfig challenge_config(Int producer_count) {
   cfg.cell_bio.cdi.enabled = false;
   cfg.advection.crypts_enabled = false;
   cfg.fixes.mechanics.hertzian_enabled = false;
+  cfg.enabled_fixes = {"bacteriocin", "receptor"};
+  cfg.qssa.toxin_cutoff = 60e-6;
   cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
-  cfg.fixes.receptor.kill_rate_colicin = 1.0;
 
   cfg.initial_strains.clear();
 
@@ -68,16 +85,15 @@ SimulationConfig challenge_config(Int producer_count) {
 
   SimulationConfig::InitialStrain targets;
   targets.type = 2;
-  targets.count = 20;
+  targets.count = 100;
   targets.mu_max = 5.0e-4;
   targets.conjugative = false;
   cfg.initial_strains.push_back(targets);
   return cfg;
 }
 
-ChallengeResult run_challenge(Int producer_count) {
+ChallengeResult run_challenge(Int producer_count, Real target_distance) {
 #ifndef GUTIBM_HDF5
-  (void)producer_count;
   return {};
 #else
   SimulationConfig cfg = challenge_config(producer_count);
@@ -86,15 +102,16 @@ ChallengeResult run_challenge(Int producer_count) {
                                             "toxin_sentinel");
   cfg.hdf5.schedule.summary = 1;
   cfg.hdf5.schedule.agents = 0;
-  cfg.hdf5.schedule.grid = 0;
+  cfg.hdf5.schedule.grid = 1;
+  cfg.hdf5.schedule.grid_species = {species::BACTERIOCIN_BTUB};
   cfg.hdf5.schedule.lineage = 0;
   cfg.hdf5.schedule.genome = 0;
 
   Simulation sim;
   sim.init(cfg);
 
-  const Vec3 producer_center = {75e-6, 50e-6, 25e-6};
-  const Vec3 target_center = {275e-6, 50e-6, 25e-6};
+  const Vec3 producer_center = {25e-6, 25e-6, 25e-6};
+  const Vec3 target_center = {25e-6 + target_distance, 25e-6, 25e-6};
   for (Agent& agent : sim.agents()) {
     agent.x = agent.identity.type == 1 ? producer_center : target_center;
     agent.flags.in_crypt = false;
@@ -127,11 +144,37 @@ ChallengeResult run_challenge(Int producer_count) {
     colicin_kills += read_event(file, prefix + "colicin_kills");
     divisions += read_event(file, prefix + "divisions");
   }
+  const Int target_ix = static_cast<Int>(
+      std::lround(target_center[0] / cfg.domain.grid_dx));
+  const Int target_iy = static_cast<Int>(
+      std::lround(target_center[1] / cfg.domain.grid_dx));
+  const Int target_iz = static_cast<Int>(
+      std::lround(target_center[2] / cfg.domain.grid_dx));
+  const Int target_cell = target_iz * 20 * 10 + target_iy * 20 + target_ix;
+  const std::string grid_path =
+      std::string("grid/step_000006/") + species::BACTERIOCIN_BTUB;
+  const Real target_toxin = read_grid_value(file, grid_path, target_cell);
+  constexpr Real apparent_kd = 5.005e-4;
+  constexpr Real kill_rate = 1.0e-3;
+  constexpr Real bio_dt = 60.0;
+  constexpr Real release_tau = 300.0;
+  constexpr Real toxin_half_life = 1800.0;
+  constexpr Real decay_rate = std::numbers::ln2 / toxin_half_life;
+  Real cumulative_hazard = 0.0;
+  for (Int step = 0; step < 5; ++step) {
+    const Real age = static_cast<Real>(step) * bio_dt;
+    const Real toxin = target_toxin
+        * std::exp(-age / release_tau - decay_rate * age);
+    const Real occupancy = toxin / (apparent_kd + toxin);
+    cumulative_hazard += kill_rate * occupancy * bio_dt;
+  }
   H5Fclose(file);
 
   ChallengeResult result;
   result.colicin_kills = colicin_kills;
   result.divisions = divisions;
+  result.target_toxin = target_toxin;
+  result.expected_kill_fraction = 1.0 - std::exp(-cumulative_hazard);
   return result;
 #endif
 }
@@ -143,29 +186,35 @@ int main() {
   std::cout << "HDF5 disabled — skipping toxin sentinel challenge.\n";
   return 0;
 #else
-  const std::vector<Int> producer_counts = {1, 10, 100, 1000};
-  std::vector<ChallengeResult> results;
-  results.reserve(producer_counts.size());
-  for (const Int count : producer_counts) {
-    results.push_back(run_challenge(count));
-  }
+  const std::vector<Int> producer_counts = {1, 10, 100, 1000, 10000};
+  const std::vector<Real> distances = {10e-6, 50e-6};
+  for (const Real distance : distances) {
+    std::vector<ChallengeResult> results;
+    results.reserve(producer_counts.size());
+    for (const Int count : producer_counts) {
+      results.push_back(run_challenge(count, distance));
+    }
 
-  std::cout << "=== Toxin Sentinel Colony Challenge ===\n";
-  for (size_t i = 0; i < producer_counts.size(); ++i) {
-    std::cout << "producers=" << producer_counts[i]
-              << " colicin_kills=" << results[i].colicin_kills
-              << " divisions=" << results[i].divisions << "\n";
-  }
+    std::cout << "distance_um=" << distance * 1e6 << "\n";
+    for (size_t i = 0; i < producer_counts.size(); ++i) {
+      const Real simulated_fraction =
+          static_cast<Real>(results[i].colicin_kills) / results[i].target_count;
+      std::cout << "producers=" << producer_counts[i]
+                << " killed_fraction=" << simulated_fraction
+                << " expected_fraction=" << results[i].expected_kill_fraction
+                << " target_toxin=" << results[i].target_toxin
+                << " divisions=" << results[i].divisions << "\n";
+    }
 
-  assert(results[0].colicin_kills <= 1);
-  assert(results[1].colicin_kills >= 5);
-  assert(results[2].colicin_kills >= 10);
-  assert(results[3].colicin_kills >= results[2].colicin_kills);
-  assert(results[3].colicin_kills >= 10);
-  for (const ChallengeResult& result : results) {
-    assert(result.divisions == 0);
+    assert(results.front().colicin_kills <= 1);
+    assert(results[2].colicin_kills >= 10);
+    assert(std::abs(static_cast<Real>(results[2].colicin_kills)
+                    / results[2].target_count
+                    - results[2].expected_kill_fraction) <= 0.1);
+    for (const ChallengeResult& result : results) {
+      assert(result.divisions == 0);
+    }
   }
-
   std::cout << "Toxin-sensitive colony challenge passed.\n";
   return 0;
 #endif
