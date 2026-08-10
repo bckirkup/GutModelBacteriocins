@@ -130,21 +130,11 @@ def compute_spatial_stats(
         else None
     )
     z_mean, z_low, z_high = _summaries(z_curves)
-    if label_curves is None:
-        label_mean = label_low = label_high = np.full_like(observed[0], np.nan)
-        label_k_mean = label_k_low = label_k_high = np.full_like(observed[1], np.nan)
-    else:
-        label_mean, label_low, label_high = _summaries(label_curves)
-        label_k_mean, label_k_low, label_k_high = _summaries(label_curves[:, 1, :])
+    label_summary = _label_null_summaries(label_curves, radii)
     return SpatialStatsResult(
         radii, observed[0], observed[1], observed[2],
         z_mean[0], z_low[0], z_high[0], z_mean[1], z_low[1], z_high[1],
-        label_mean if label_curves is None else label_mean[0],
-        label_low if label_curves is None else label_low[0],
-        label_high if label_curves is None else label_high[0],
-        label_k_mean if label_curves is not None else label_mean,
-        label_k_low if label_curves is not None else label_low,
-        label_k_high if label_curves is not None else label_high,
+        *label_summary,
         label_valid,
     )
 
@@ -158,10 +148,9 @@ def summarize_excess(result: SpatialStatsResult, *, null: str = "z") -> list[tup
         raise ValueError("null must be 'z' or 'label'")
     if null == "label" and not result.label_null_valid:
         raise ValueError("label null is invalid when fewer than two labels are present")
-    prefix = "z_null" if null == "z" else "label_null"
     low, high = (
         (result.z_null_low_g, result.z_null_high_g)
-        if prefix == "z_null"
+        if null == "z"
         else (result.label_null_low_g, result.label_null_high_g)
     )
     outside = (result.observed_g < low) | (result.observed_g > high)
@@ -233,3 +222,16 @@ def label_permutation_null(
 
 def _summaries(curves: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return np.mean(curves, axis=0), np.percentile(curves, 2.5, axis=0), np.percentile(curves, 97.5, axis=0)
+
+
+def _label_null_summaries(
+    curves: np.ndarray | None,
+    radii: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Summarize label-null g and K curves, or return invalid NaN arrays."""
+    if curves is None:
+        nan = np.full_like(radii, np.nan)
+        return nan, nan.copy(), nan.copy(), nan.copy(), nan.copy(), nan.copy()
+    g_mean, g_low, g_high = _summaries(curves[:, 0, :])
+    k_mean, k_low, k_high = _summaries(curves[:, 1, :])
+    return g_mean, g_low, g_high, k_mean, k_low, k_high

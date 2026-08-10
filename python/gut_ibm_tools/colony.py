@@ -205,39 +205,36 @@ def _colony_table(
         }
         row.update(producer_threshold_flags(producers, thresholds))
         rows.append(row)
-    if rows:
-        result = {key: np.asarray([row[key] for row in rows]) for key in rows[0]}
-    else:
-        result = {
-            "colony_id": np.array([], dtype=np.int64),
-            "n_members": np.array([], dtype=np.int64),
-            "centroid_x": np.array([], dtype=float),
-            "centroid_y": np.array([], dtype=float),
-            "centroid_z": np.array([], dtype=float),
-            "radius_of_gyration": np.array([], dtype=float),
-            "max_member_distance_from_centroid": np.array([], dtype=float),
-            "n_genotypes": np.array([], dtype=np.int64),
-            "dominant_genotype_fraction": np.array([], dtype=float),
-            "is_clonal": np.array([], dtype=bool),
-            "n_producers": np.array([], dtype=np.int64),
-            "producer_fraction": np.array([], dtype=float),
-            "mean_z": np.array([], dtype=float),
-            "nn_colony_id": np.array([], dtype=np.int64),
-            "nn_colony_distance": np.array([], dtype=float),
+    if not rows:
+        dtypes: dict[str, type] = {
+            "colony_id": np.int64,
+            "n_members": np.int64,
+            "centroid_x": float,
+            "centroid_y": float,
+            "centroid_z": float,
+            "radius_of_gyration": float,
+            "max_member_distance_from_centroid": float,
+            "n_genotypes": np.int64,
+            "dominant_genotype_fraction": float,
+            "is_clonal": bool,
+            "n_producers": np.int64,
+            "producer_fraction": float,
+            "mean_z": float,
+            "nn_colony_id": np.int64,
+            "nn_colony_distance": float,
         }
-        for threshold in thresholds:
-            result[f"reaches_{threshold}"] = np.array([], dtype=bool)
-        return result
-    if rows:
-        centroids = np.column_stack([result[f"centroid_{axis}"] for axis in ("x", "y", "z")])
-        if len(rows) > 1:
-            distances = cKDTree(centroids).query(centroids, k=2)[0][:, 1]
-            neighbours = cKDTree(centroids).query(centroids, k=2)[1][:, 1]
-            result["nn_colony_id"] = result["colony_id"][neighbours]
-            result["nn_colony_distance"] = distances
-        else:
-            result["nn_colony_id"] = np.array([-1], dtype=np.int64)
-            result["nn_colony_distance"] = np.array([np.nan])
+        dtypes.update({f"reaches_{threshold}": bool for threshold in thresholds})
+        return {column: np.array([], dtype=dtypes[column]) for column in COLONY_COLUMNS}
+    result = {key: np.asarray([row[key] for row in rows]) for key in rows[0]}
+    centroids = np.column_stack([result[f"centroid_{axis}"] for axis in ("x", "y", "z")])
+    if len(rows) > 1:
+        distances = cKDTree(centroids).query(centroids, k=2)[0][:, 1]
+        neighbours = cKDTree(centroids).query(centroids, k=2)[1][:, 1]
+        result["nn_colony_id"] = result["colony_id"][neighbours]
+        result["nn_colony_distance"] = distances
+    else:
+        result["nn_colony_id"] = np.array([-1], dtype=np.int64)
+        result["nn_colony_distance"] = np.array([np.nan])
     return result
 
 
