@@ -68,6 +68,40 @@ competitive inhibition). Under iron limitation the Fur regulon is induced 35–5
 (cirA 56×, fepA 35×, fiu 39×), though those figures come from antimicrobial-
 peptide stress rather than pure iron chelation.
 
+The explicit FeEnt field does not imply meaningful competition around an
+isolated cell. In a maintained-background single-cell assay with diffusion,
+local source-cell FeEnt immediately after the reaction update was
+`1e-11 mol/m³` at `1e-4 mol/m³` iron and `6e-15 mol/m³` at `1e-8 mol/m³` iron.
+The earlier `8e-16 mol/m³` result was the post-diffusion field average.
+
+The corrected chemistry was measured with 1, 4, 16, and 64 agents co-located
+in one grid cell while maintaining the local apo background:
+
+| Iron condition | N=1 | N=4 | N=16 | N=64 |
+|---|---:|---:|---:|---:|
+| `1e-4 mol/m³`, apo `4e-9 mol/m³` | `5e-12` | `1e-12` | `3e-13` | `7e-14` |
+| `1e-8 mol/m³`, apo `3e-8 mol/m³` | `1e-15` | `3e-16` | `8e-17` | `2e-17` |
+
+Values are reaction-stage FeEnt in `mol/m³`. Chelation is solution-phase and
+is applied in every cell containing apo-enterobactin and iron, while
+secretion and FepA reimport remain biomass-weighted and restricted to
+occupied cells. Consequently, co-location increases the aggregate FepA sink
+without increasing the chelation term, and local FeEnt decreases with
+occupancy. Diffusive escape further suppresses it. In the EARI/VADI run, the
+final saved domain-wide FeEnt field had mean `6.37e-8 mol/m³` and maximum
+`1.07e-7 mol/m³`, giving mean and maximum FepA competition factors of
+approximately `1.064` and `1.107` relative to `kd_enterobactin =
+1e-6 mol/m³`. Thus the model has a modest, spatially flat background
+competition effect, but local co-location-driven competition remains
+unreachable: increasing occupancy reduces rather than increases source-cell
+FeEnt.
+
+This contrasts with colicin dose: lysing producers release bacteriocin without
+also removing it, so toxin dose does increase with co-located producers and
+the microcolony threshold from #213 is a genuine density effect. FeEnt
+competition instead acts as a global parameter shift rather than a spatial
+mechanism.
+
 | Parameter | Model value | Basis |
 |-----------|-------------|-------|
 | `kd_enterobactin` | **`1e-6 mol/m³` (1 nM)** | Live-cell Kd ~0.2 nM; 1 nM is conservative (was 10 nM) |

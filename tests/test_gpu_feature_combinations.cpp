@@ -26,6 +26,9 @@ SimulationConfig make_combo_config(uint64_t seed) {
   cfg.profile_steps = false;
   cfg.gpu.enabled = true;
   cfg.gpu.device_id = 0;
+  // These combinations measure GPU metabolism; siderophore chemistry is
+  // CPU-authoritative and has a dedicated fallback test below.
+  cfg.chem_env.siderophore.enabled = false;
 
   cfg.domain.lo = {0, 0, 0};
   cfg.domain.hi = {80e-6, 80e-6, 50e-6};
@@ -90,6 +93,48 @@ Simulation run_gpu_combo(const SimulationConfig& cfg) {
 
 }  // namespace
 
+void test_gpu_siderophore_cpu_fallback() {
+  SimulationConfig cfg = make_combo_config(3004);
+  cfg.chem_env.siderophore.enabled = true;
+
+  SimulationConfig cpu_cfg = cfg;
+  cpu_cfg.gpu.enabled = false;
+  Simulation cpu;
+  cpu.init(cpu_cfg);
+  cpu.run();
+
+  Simulation gpu_cfg_sim;
+  gpu_cfg_sim.init(cfg);
+  assert(gpu_cfg_sim.gpu_active());
+  gpu_cfg_sim.run();
+
+  Int cpu_live = 0;
+  Int gpu_live = 0;
+  Real cpu_biomass = 0.0;
+  Real gpu_biomass = 0.0;
+  for (const Agent& agent : cpu.agents()) {
+    if (agent.state == PhenoState::DEAD) continue;
+    ++cpu_live;
+    cpu_biomass += agent.biomass;
+  }
+  for (const Agent& agent : gpu_cfg_sim.agents()) {
+    if (agent.state == PhenoState::DEAD) continue;
+    ++gpu_live;
+    gpu_biomass += agent.biomass;
+  }
+  assert(cpu_live > 0);
+  assert(cpu_biomass > 0.0);
+  assert(gpu_live == cpu_live);
+  const Real biomass_rel_diff =
+      std::abs(gpu_biomass - cpu_biomass) / cpu_biomass;
+  constexpr Real kBiomassRelativeTolerance = 1.0e-8;
+  std::cout << "  test_gpu_siderophore_cpu_fallback: biomass_rel_diff="
+            << biomass_rel_diff << "\n";
+  assert(biomass_rel_diff <= kBiomassRelativeTolerance);
+
+  std::cout << "  test_gpu_siderophore_cpu_fallback: PASSED\n";
+}
+
 void test_gpu_full_chemical_environment() {
   SimulationConfig cfg = make_combo_config(3001);
   cfg.chem_env.oxygen.enabled = true;
@@ -153,6 +198,7 @@ int main() {
   test_gpu_full_chemical_environment();
   test_gpu_adaptive_dt_with_crypts();
   test_gpu_kitchen_sink_light();
+  test_gpu_siderophore_cpu_fallback();
 
   std::cout << "All GPU feature-combination tests passed.\n";
   return 0;

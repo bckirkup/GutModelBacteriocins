@@ -58,11 +58,12 @@ struct ProteaseConfig {
 };
 
 struct SiderophoreConfig {
-  bool enabled = false;
-  Real secretion_rate = 1.0e-15;      // mol/s/cell
+  bool enabled = true;
+  Real secretion_rate = 1.0e-5;       // mol/(s·kg), constrained estimate
   Real D_free = 1.0e-10;              // m^2/s
   Real chelation_rate = 1.0e3;        // m^3/(mol·s) effective second-order
   Real Km_reimport = 1.0e-6;          // mol/m^3 for FepA-mediated ferric enterobactin reimport
+  Real Vmax_reimport = 1.0e-5;        // mol/(s·kg), FepA FeEnt transport capacity
 };
 
 struct FerrichromeConfig {

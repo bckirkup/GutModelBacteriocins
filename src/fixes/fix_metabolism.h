@@ -25,6 +25,7 @@
 
 #include "fix.h"
 #include "agent.h"
+#include <vector>
 
 namespace gutibm {
 
@@ -64,10 +65,16 @@ class FixMetabolism : public Fix {
  private:
   void compute_growth_rate(Agent& agent);
   void grow_agent(Agent& agent, Real dt);
+  void apply_siderophore_chemistry(Real dt);
   void perform_divisions();
   void check_death(Agent& agent);
 
   MetabolismConfig cfg_;
+  std::vector<Real> biomass_by_cell_;
+  std::vector<Real> fepA_biomass_by_cell_;
+  std::vector<Int> occupancy_by_cell_;
+  std::vector<Real> chelation_by_cell_;
+  std::vector<Int> touched_cells_;
 };
 
 }  // namespace gutibm

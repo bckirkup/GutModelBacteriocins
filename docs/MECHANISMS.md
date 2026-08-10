@@ -77,12 +77,69 @@ This replaces the previous binary FepA-dependent penalty (`Km_Fe / expr_FepA`). 
 
 ### Apo-enterobactin → ferric enterobactin → iron
 
-When siderophore chemistry is enabled, `siderophore` represents apo-enterobactin.
+Siderophore chemistry is enabled by default because enterobactin production is
+near-universal among iron-limited *E. coli*. `siderophore` represents
+apo-enterobactin.
 Chelation consumes apo-enterobactin and free iron and produces the distinct
 `ferric_enterobactin` species. FepA-mediated reimport consumes ferric
 enterobactin and returns iron to the extracellular field, preserving the
-tracked reaction chain. The former secretion-rate-proportional recapture term
-has been removed.
+tracked reaction chain. Secretion and reimport are specific rates in
+mol/(s·kg) multiplied by biomass density. The secretion rate is a constrained
+estimate; the reimport capacity is grounded in approximately 35,000 FepA
+copies per iron-starved cell and approximately five TonB-limited transport
+cycles per minute per FepA (Smallwood et al. 2016; Newton et al. 2010),
+converted using the default cell mass. The exact conversion is
+`8.33e-6 mol/(s·kg)` for the code-derived default cell mass, rounded to the
+configured `1e-5 mol/(s·kg)`. The former secretion-rate-proportional recapture
+term has been removed.
+
+This chemistry does not make an isolated cell a meaningful FepA competitor.
+With diffusion enabled, the measured local source-cell FeEnt concentration
+immediately after the reaction update in a maintained single-cell assay was
+`1e-11 mol/m³` at `1e-4 mol/m³` iron and `6e-15 mol/m³` at `1e-8 mol/m³` iron,
+versus `kd_enterobactin = 1e-6 mol/m³`. The earlier `8e-16 mol/m³` value was
+the post-diffusion field average, not the reaction-stage source-cell pulse.
+
+The corrected chemistry was measured at 1, 4, 16, and 64 agents co-located in
+one grid cell with a maintained apo-enterobactin background:
+
+| Iron condition | N=1 | N=4 | N=16 | N=64 |
+|---|---:|---:|---:|---:|
+| `1e-4 mol/m³`, apo `4e-9 mol/m³` | `5e-12` | `1e-12` | `3e-13` | `7e-14` |
+| `1e-8 mol/m³`, apo `3e-8 mol/m³` | `1e-15` | `3e-16` | `8e-17` | `2e-17` |
+
+Values are reaction-stage FeEnt in `mol/m³`. Chelation is a solution-phase
+reaction and is applied in every grid cell containing apo-enterobactin and
+iron, independent of occupancy. Secretion and FepA reimport remain
+biomass-weighted and confined to occupied cells. Thus increasing local
+biomass increases the aggregate FepA sink without multiplying the
+solution-phase chelation term, so local FeEnt decreases with co-location.
+Diffusive escape further lowers the source-cell concentration. In the
+EARI/VADI run, the final saved domain-wide FeEnt field had mean
+`6.37e-8 mol/m³` and maximum `1.07e-7 mol/m³`, corresponding to competition
+factors of approximately `1.064` and `1.107` relative to
+`kd_enterobactin = 1e-6 mol/m³`. This is a spatially flat background effect,
+not local co-location-driven protection: it cannot generate spatial structure
+in colicin B susceptibility. It is a global parameter shift wearing the
+costume of a spatial mechanism.
+
+Enabling this chemistry by default adds two full implicit diffusion solves per
+biological step, measured at `+15`–`17 ms/step` of chemistry time
+(`+44`–`50%`) against the same benchmark with siderophore chemistry disabled.
+
+This is different from bacteriocin dose. Lysing producers release toxin but do
+not reimport it, so toxin dose does scale with co-located producers; the
+microcolony threshold from #213 is consequently a genuine density effect,
+whereas local FeEnt competition remains unreachable even though the
+domain-wide background produces a modest uniform detuning.
+
+The FeEnt reimport step uses a positivity-preserving backward-Euler
+Michaelis–Menten update. With the literature-grounded `Vmax` and the model's
+60 s biological timestep, the low-concentration pseudo-first-order sink can
+be tens of inverse seconds; an explicit `reac * dt` update would overshoot
+and clamp FeEnt to zero. The implicit solve remains nonnegative and bounded
+by the biomass-scaled `Vmax` for all tested timesteps from `1e-6` through
+`600 s`.
 
 **Penalties applied:**
 - **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Base cost = `metE_penalty` (default 5%). The MetE cost is further amplified by local acetate concentration (see below). Additionally, concentration-dependent ethanolamine utilization loss applies:
@@ -180,7 +237,14 @@ The effective diffusion coefficient: `D_eff = D_free / R`
 | CirA | Linearized siderophore | `bacteriocin_CirA` | Colicin Ia, Microcin V | 50 nM (`5e-5 mol/m³`) | 3 nM (`3e-6 mol/m³`) |
 | FhuA | Ferrichrome | `bacteriocin_FhuA` | Colicin M | 10 nM (`1e-5 mol/m³`) | 2.5 nM (`2.5e-6 mol/m³`) |
 
-CirA ligand is `cirA_linearized_fraction × [siderophore]` when `siderophore.enabled`; otherwise zero.
+CirA ligand is `cirA_linearized_fraction × [ferric_enterobactin]` when
+siderophore chemistry is enabled; otherwise zero. FepA competition likewise
+uses ferric enterobactin, but diffusion-limited local FeEnt remains far below
+its Kd and falls further with co-location; the only competition present is the
+uniform domain-wide background described above.
+Ferrichrome remains disabled by default because
+*E. coli* does not synthesize it and no defensible gut concentration is
+available; consequently FhuA has no ambient ferrichrome competition by default.
 
 **Competitive binding model (Michaelis-Menten with competitive inhibition):**
 ```

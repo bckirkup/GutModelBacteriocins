@@ -39,6 +39,9 @@ SimulationConfig bench_config(int agent_count, bool gpu_enabled) {
   cfg.adaptive_dt.enabled = false;
   cfg.profile_steps = true;
   cfg.gpu.enabled = gpu_enabled;
+  // Preserve GPU metabolism coverage in this timing comparison; siderophore
+  // chemistry is intentionally CPU-authoritative.
+  cfg.chem_env.siderophore.enabled = false;
   cfg.domain.hi = {200.0e-6, 200.0e-6, 100.0e-6};
   cfg.domain.grid_dx = 4.0e-6;
   cfg.qssa.toxin_cutoff = 80.0e-6;

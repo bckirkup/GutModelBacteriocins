@@ -62,6 +62,7 @@ write_config() {
   "use_fmm": $use_fmm,
   "fmm_theta": 0.5,
   "fmm_expansion_order": 2,
+  "siderophore.enabled": false,
   "initial_strains": [
     {
       "type": 1,

@@ -26,6 +26,9 @@
   "protease.default_half_life": 1200,
   "protease.dilution_rate": 2e-4,
 
+  "siderophore.secretion_rate": 1e-5,
+  "siderophore.Vmax_reimport": 1e-5,
+
   "ferrichrome.enabled": true,
   "ferrichrome.initial_conc": 2e-6,
   "ferrichrome.boundary_conc": 4e-6,

@@ -22,37 +22,25 @@ void FixMetabolism::init() { /* no-op: parameters set via cfg_ at construction *
 
 namespace {
 
-void apply_fur_receptor_expr(Simulation& sim) {
-  const auto& fur_cfg = sim.config().cell_bio.fur;
-  if (!fur_cfg.enabled) return;
-
-  auto& agents = sim.agents();
-  auto& chem = sim.chemical_field();
-  Int i_iron = chem.find(species::IRON);
-
-  for (Agent& agent : agents) {
-    if (agent.state == PhenoState::DEAD) continue;
-    Int cell = agent.grid_cell;
-    if (cell < 0) continue;
-
-    Real S_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
-    const Real fur_factor = 1.0 + fur_cfg.upregulation_max * fur_cfg.Km
-        / (fur_cfg.Km + S_iron);
-    for (int r = 0; r < NUM_RECEPTORS; ++r) {
-      if (!is_iron_receptor(r)) {
-        agent.receptor_expr[r] = agent.receptor_expr_base[r];
-        continue;
-      }
-      agent.receptor_expr[r] = std::min(
-          agent.receptor_expr_base[r] * fur_factor, fur_cfg.receptor_max);
-    }
+Real implicit_ferric_enterobactin_reimport(
+    Real ferric_after_production, Real vmax, Real km, Real dt) {
+  if (ferric_after_production <= 0.0 || vmax <= 0.0 || dt <= 0.0) {
+    return 0.0;
   }
+  const Real linear_term = km + dt * vmax - ferric_after_production;
+  const Real discriminant = linear_term * linear_term
+      + 4.0 * ferric_after_production * km;
+  const Real root = std::sqrt(discriminant);
+  const Real ferric_after_reimport = linear_term >= 0.0
+      ? 2.0 * ferric_after_production * km / (linear_term + root)
+      : 0.5 * (-linear_term + root);
+  return (ferric_after_production - ferric_after_reimport) / dt;
 }
 
 bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   if (!sim.gpu_active()) return false;
-
-  apply_fur_receptor_expr(sim);
+  if (sim.config().cell_bio.fur.enabled) return false;
+  if (sim.config().chem_env.siderophore.enabled) return false;
 
   auto& agents = sim.agents();
   auto& ag = sim.agents_gpu();
@@ -108,10 +96,96 @@ void FixMetabolism::compute(Real dt) {
     compute_growth_rate(a);
     grow_agent(a, dt);
   }
+  apply_siderophore_chemistry(dt);
 
   // Division must run in compute (not post_step) so fix_bacteriocin in the same
   // biology pass can observe just_divided during the division timestep.
   perform_divisions();
+}
+
+void FixMetabolism::apply_siderophore_chemistry(Real dt) {
+  const auto& sid_cfg = sim_.config().chem_env.siderophore;
+  if (!sid_cfg.enabled) return;
+
+  auto& chem = sim_.chemical_field();
+  const Int i_sid = chem.find(species::SIDEROPHORE);
+  const Int i_iron = chem.find(species::IRON);
+  const Int i_ferric_enterobactin =
+      chem.find(species::FERRIC_ENTEROBACTIN);
+  if (i_sid < 0 || i_ferric_enterobactin < 0) return;
+
+  const Real cell_volume = sim_.domain().dx() * sim_.domain().dx()
+      * sim_.domain().dx();
+  if (cell_volume <= 0.0) return;
+
+  const Int num_cells = chem.ncells();
+  if (biomass_by_cell_.size() != static_cast<size_t>(num_cells)) {
+    biomass_by_cell_.assign(static_cast<size_t>(num_cells), 0.0);
+    fepA_biomass_by_cell_.assign(static_cast<size_t>(num_cells), 0.0);
+    occupancy_by_cell_.assign(static_cast<size_t>(num_cells), 0);
+    chelation_by_cell_.assign(static_cast<size_t>(num_cells), 0.0);
+    touched_cells_.clear();
+  } else {
+    for (const Int cell : touched_cells_) {
+      const size_t index = static_cast<size_t>(cell);
+      biomass_by_cell_[index] = 0.0;
+      fepA_biomass_by_cell_[index] = 0.0;
+      occupancy_by_cell_[index] = 0;
+    }
+    touched_cells_.clear();
+  }
+  for (const Agent& agent : sim_.agents()) {
+    if (agent.state == PhenoState::DEAD) continue;
+    const Int cell = agent.grid_cell;
+    if (cell < 0 || cell >= num_cells) continue;
+    const size_t index = static_cast<size_t>(cell);
+    if (occupancy_by_cell_[index] == 0) touched_cells_.push_back(cell);
+    biomass_by_cell_[index] += agent.biomass;
+    fepA_biomass_by_cell_[index] +=
+        agent.receptor_expr[to_underlying(ReceptorType::FepA)]
+        * agent.biomass;
+    occupancy_by_cell_[index] += 1;
+  }
+
+  if (i_iron >= 0) {
+    for (Int cell = 0; cell < num_cells; ++cell) {
+      const Real s_sid = chem.conc(i_sid, cell);
+      const Real s_iron = chem.conc(i_iron, cell);
+      const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
+      chelation_by_cell_[static_cast<size_t>(cell)] = chelation;
+      chem.reac(i_iron, cell) -= chelation;
+      chem.reac(i_sid, cell) -= chelation;
+      chem.reac(i_ferric_enterobactin, cell) += chelation;
+    }
+  }
+
+  for (Int cell = 0; cell < num_cells; ++cell) {
+    const size_t index = static_cast<size_t>(cell);
+    if (occupancy_by_cell_[index] == 0) continue;
+
+    const Real s_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
+    Real fur_Km = 1.0e-6;
+    if (sim_.config().cell_bio.fur.enabled) {
+      fur_Km = sim_.config().cell_bio.fur.Km;
+    }
+    const Real fur_activity = 1.0 - s_iron / (fur_Km + s_iron);
+    const Real biomass_density = biomass_by_cell_[index] / cell_volume;
+    const Real sid_rate = sid_cfg.secretion_rate
+        * std::max(0.0, fur_activity) * biomass_density;
+    chem.reac(i_sid, cell) += sid_rate;
+
+    if (i_iron < 0) continue;
+    const Real s_ferric_enterobactin =
+        chem.conc(i_ferric_enterobactin, cell);
+    const Real vmax = sid_cfg.Vmax_reimport
+        * fepA_biomass_by_cell_[index] / cell_volume;
+    const Real ferric_after_production = s_ferric_enterobactin
+        + chelation_by_cell_[index] * dt;
+    const Real reimport = implicit_ferric_enterobactin_reimport(
+        ferric_after_production, vmax, sid_cfg.Km_reimport, dt);
+    chem.reac(i_ferric_enterobactin, cell) -= reimport;
+    chem.reac(i_iron, cell) += reimport;
+  }
 }
 
 void FixMetabolism::post_step(Real /*dt*/) {
@@ -318,42 +392,6 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   Int i_acetate = chem.find(species::ACETATE);
 
   Real cell_vol = sim_.domain().dx() * sim_.domain().dx() * sim_.domain().dx();
-
-  const auto& sid_cfg = sim_.config().chem_env.siderophore;
-  if (sid_cfg.enabled && cell_vol > 0.0) {
-    Int i_sid = chem.find(species::SIDEROPHORE);
-    Int i_ferric_enterobactin = chem.find(species::FERRIC_ENTEROBACTIN);
-    if (i_sid >= 0 && i_ferric_enterobactin >= 0) {
-      const Real s_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
-      Real fur_Km = 1.0e-6;
-      if (sim_.config().cell_bio.fur.enabled) {
-        fur_Km = sim_.config().cell_bio.fur.Km;
-      }
-      const Real fur_activity = 1.0 - s_iron / (fur_Km + s_iron);
-      const Real sid_rate = sid_cfg.secretion_rate * std::max(0.0, fur_activity)
-          * agent.biomass / cell_vol;
-      chem.reac(i_sid, cell) += sid_rate;
-
-      const Real s_sid = chem.conc(i_sid, cell);
-      const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
-      if (i_iron >= 0) {
-        chem.reac(i_iron, cell) -= chelation;
-      }
-      chem.reac(i_sid, cell) -= chelation;
-      chem.reac(i_ferric_enterobactin, cell) += chelation;
-
-      const Real expr_fepA = agent.receptor_expr[to_underlying(ReceptorType::FepA)];
-      if (i_iron >= 0 && expr_fepA > 0.0) {
-        const Real s_ferric_enterobactin =
-            chem.conc(i_ferric_enterobactin, cell);
-        const Real reimport = expr_fepA * s_ferric_enterobactin
-            / (sid_cfg.Km_reimport + s_ferric_enterobactin)
-            * agent.biomass / cell_vol;
-        chem.reac(i_ferric_enterobactin, cell) -= reimport;
-        chem.reac(i_iron, cell) += reimport;
-      }
-    }
-  }
 
   if (d_biomass <= 0.0 || dt <= 0.0) return;
 

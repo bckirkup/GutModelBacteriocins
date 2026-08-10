@@ -475,6 +475,9 @@ bool apply_siderophore_key(SimulationConfig& cfg, std::string_view key, const st
   if (key == "siderophore.Km_reimport" || key == "siderophore_Km_reimport") {
     cfg.chem_env.siderophore.Km_reimport = parse_config_real(key, val); return true;
   }
+  if (key == "siderophore.Vmax_reimport" || key == "siderophore_Vmax_reimport") {
+    cfg.chem_env.siderophore.Vmax_reimport = parse_config_real(key, val); return true;
+  }
   return false;
 }
 

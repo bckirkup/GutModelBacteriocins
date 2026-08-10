@@ -230,6 +230,9 @@ void test_chem_env_fixture() {
   assert(std::abs(cfg.chem_env.protease.default_half_life - 1200.0) < 1e-6);
   assert(std::abs(cfg.chem_env.protease.dilution_rate - 2e-4) < 1e-12);
 
+  assert(std::abs(cfg.chem_env.siderophore.secretion_rate - 1e-5) < 1e-12);
+  assert(std::abs(cfg.chem_env.siderophore.Vmax_reimport - 1e-5) < 1e-12);
+
   assert(cfg.chem_env.ferrichrome.enabled == true);
   assert(std::abs(cfg.chem_env.ferrichrome.initial_conc - 2e-6) < 1e-15);
   assert(std::abs(cfg.chem_env.ferrichrome.boundary_conc - 4e-6) < 1e-15);

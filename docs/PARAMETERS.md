@@ -142,7 +142,7 @@ Nutrients and small molecules use backward-Euler directional splitting in `Chemi
 | Oxygen | `oxygen.D_free` (default `2.1e-9 m²/s`) | when oxygen is enabled |
 | Acetate | `acetate.D_free` (default `1.2e-9 m²/s`) | yes |
 | Ethanolamine | `D_free = 1e-9 m²/s` | yes |
-| Siderophore | `siderophore.D_free` (default `5e-10 m²/s`) | when siderophore is enabled |
+| Siderophore | `siderophore.D_free` (default `1e-10 m²/s`) | when siderophore is enabled |
 | Mucin | immobile polymer field | no |
 | Bacteriocins | analytical QSSA Green's functions | no grid diffusion |
 
@@ -329,7 +329,7 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 | `fur.upregulation_max` | 10.0 | — | Max fold-upregulation under iron starvation (Spec 6 §4.2; raised 4→10, still conservative vs measured 35–56× Fur-regulon induction; capped by `receptor_max`) |
 | `fur.receptor_max` | 5.0 | — | Cap on effective receptor expression |
 
-When enabled, iron-uptake receptors (FepA, FhuA, IroN, IutA, Fiu, CirA) are upregulated under low local iron, increasing colicin susceptibility (Vulnerability Paradox). Mutations modify `receptor_expr_base`; Fur scales effective `receptor_expr` each metabolism step. GPU metabolism fast-path is disabled when Fur is enabled.
+When enabled, iron-uptake receptors (FepA, FhuA, IroN, IutA, Fiu, CirA) are upregulated under low local iron, increasing colicin susceptibility (Vulnerability Paradox). Mutations modify `receptor_expr_base`; Fur scales effective `receptor_expr` each metabolism step. GPU metabolism fast-path is disabled when Fur or siderophore chemistry is enabled because those CPU-only biology paths must remain authoritative.
 
 ---
 
@@ -441,15 +441,67 @@ QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteri
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `siderophore.enabled` | false | — | Register `siderophore` species and secretion/chelation in metabolism |
-| `siderophore.secretion_rate` | 1e-15 | mol/s per biomass | Enterobactin secretion scaled by Fur activity |
-| `siderophore.D_free` | 4e-11 | m²/s | Free siderophore diffusion |
+| `siderophore.enabled` | true | — | Register `siderophore` species and secretion/chelation in metabolism; enabled by default because iron-limited *E. coli* commonly produces enterobactin |
+| `siderophore.secretion_rate` | 1e-5 | mol/(s·kg) | Constrained estimate for enterobactin secretion, scaled by Fur activity |
+| `siderophore.D_free` | 1e-10 | m²/s | Free siderophore diffusion |
 | `siderophore.chelation_rate` | 1e3 | m³/mol/s | Iron–siderophore chelation sink |
 | `siderophore.Km_reimport` | 1e-6 | mol/m³ | FepA-mediated ferric-enterobactin reimport; converted from the erroneous `1e-9` default |
+| `siderophore.Vmax_reimport` | 1e-5 | mol/(s·kg) | FepA ferric-enterobactin transport capacity, grounded in FepA copy number and TonB-limited turnover |
+
+Siderophore chemistry is enabled by default because enterobactin production is
+near-universal among iron-limited *E. coli*. Enabling it does not restore
+meaningful FepA competition for an isolated cell: diffusion carries apo
+enterobactin away faster than local chelation, so the realized
+`ferric_enterobactin` concentration remains far below
+`receptor.kd_enterobactin`. In a maintained-background single-cell assay
+(`grid_dx = 5 µm`), the local source-cell FeEnt concentration immediately
+after the reaction update was `1e-11 mol/m³` at `1e-4 mol/m³` iron and
+`6e-15 mol/m³` at `1e-8 mol/m³` iron. The previously reported `8e-16 mol/m³`
+was the post-diffusion field average; diffusion spreads the reaction-stage
+source pulse across the grid before the next biological step.
+
+The corrected chemistry was measured with 1, 4, 16, and 64 agents co-located
+in one grid cell while maintaining the local apo-enterobactin background.
+Reaction-stage FeEnt decreased with occupancy:
+
+| Iron condition | N=1 | N=4 | N=16 | N=64 |
+|---|---:|---:|---:|---:|
+| `1e-4 mol/m³`, apo `4e-9 mol/m³` | `5e-12` | `1e-12` | `3e-13` | `7e-14` |
+| `1e-8 mol/m³`, apo `3e-8 mol/m³` | `1e-15` | `3e-16` | `8e-17` | `2e-17` |
+
+Values are in `mol/m³`. Chelation is a solution-phase reaction and is now
+applied in every grid cell containing apo-enterobactin and iron, independent
+of occupancy. Secretion and FepA reimport remain biomass-weighted and are
+confined to occupied cells. Increasing local biomass therefore increases the
+aggregate FepA sink without multiplying the solution-phase chelation term,
+driving local FeEnt down rather than up. Diffusive escape further removes apo
+and FeEnt from the source cell. In the EARI/VADI run, diffusion and
+solution-phase chelation produce a domain-wide background with mean FeEnt
+`6.37e-8 mol/m³` and maximum `1.07e-7 mol/m³` at the final saved step.
+Relative to `kd_enterobactin = 1e-6 mol/m³`, that is a mean competition factor
+of approximately `1.064` and a maximum of approximately `1.107`.
+The competition is therefore a spatially flat background effect rather than
+local co-location-driven protection: increasing occupancy decreases the local
+source-cell FeEnt, so it cannot create spatial structure in colicin B
+susceptibility. It is a global parameter shift wearing the costume of a
+spatial mechanism.
+
+This differs from the colicin result: bacteriocin dose scales with co-located
+producers because lysing producers are not also a sink for the toxin. The
+microcolony threshold identified for colicin in #213 is therefore a real
+density effect, whereas FeEnt competition here is a domain-wide detuning and
+local co-location-driven competition remains unreachable.
 
 Chelation consumes apo-enterobactin (`siderophore`) and free iron and produces
 `ferric_enterobactin`. FepA reimport consumes ferric enterobactin and returns
-iron; there is no secretion-rate-proportional recapture term.
+iron; both secretion and reimport are specific rates in mol/(s·kg), multiplied
+by biomass density. The secretion value is a constrained estimate rather than
+a direct measurement. The reimport value uses approximately 35,000 FepA per
+iron-starved cell and approximately five transport cycles per minute per FepA
+(Smallwood et al. 2016; Newton et al. 2010), converted using the default cell
+mass from `CELL_RADIUS_DEFAULT` and `CELL_DENSITY_DEFAULT`. The selected
+`1e-5 mol/(s·kg)` is a rounded capacity; the exact default-cell-mass
+conversion of the cited estimate is `8.33e-6 mol/(s·kg)`.
 
 ## Ferrichrome ambient field
 
