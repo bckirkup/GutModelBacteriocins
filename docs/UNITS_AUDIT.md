@@ -10,7 +10,8 @@ The receptor/ligand parameterization has two conventions:
 
 1. The B12/siderophore ligand fields and their receptor Kd values are mostly
    numerical molar values (`M`) carrying a `mol/m^3` label. Within each
-   receptor competition ratio, that convention is self-consistent.
+   receptor competition ratio, that convention is self-consistent and
+   scale-invariant.
 2. QSSA bacteriocin fields are genuine `mol/m^3`: source rates are in `mol/s`
    and the Green's function divides by diffusivity and distance. The receptor
    code compares those fields directly with the numerical-molar toxin Kd
@@ -21,7 +22,10 @@ The clearest documented field error is B12: the documented target is 1 uM,
 but `1e-6` is 1 uM expressed as mol/L, not as mol/m^3. The true mol/m^3 value
 is `1e-3`. The B12 field and BtuB ligand Kd currently preserve their intended
 ratio (`1e-6 / 1e-9 = 1000`), so changing only either one would change
-competition.
+competition. There is no cancellation between the B12 competition error and
+the toxin-Kd error: multiplying both operands of a ratio by 1000 leaves the
+ratio unchanged. The single cross-convention defect is the QSSA toxin field
+versus toxin Kd comparison.
 
 ## Unit reference
 
@@ -167,48 +171,60 @@ No test or Python golden found in this inventory asserts the default B12
 change only if receptor conversion behavior were implemented; this audit
 does not change them.
 
-## 7. Accidental cancellation and sweep fragility
+## 7. Erratum: the competition factor does not cancel the toxin-Kd error
 
-At the current defaults, the model is in a sensible graded regime only
-because two independent unit errors nearly cancel:
+The previously published version of this audit claimed that the current
+graded regime came from two errors cancelling: a toxin Kd that was 1000 times
+too small, and a B12 competition factor that was 1000 times too large. That
+mechanism was wrong.
 
-1. The toxin Kd is numerically molar while the QSSA toxin field is genuine
-   mol/m^3, making the toxin Kd 1000 times too small in the comparison.
-2. The B12 field and BtuB ligand Kd use the same numerical-molar convention,
-   making the competition factor 1001 rather than the physically corresponding
-   factor for a 1 uM field and 1 nM Kd.
-
-Consequently,
+The competition factor is
 
 ```text
-apparent_Kd = 5e-10 * 1001 = 5.005e-7 mol/m^3
+f = 1 + [B12] / kd_b12
 ```
 
-lands close to the intended apparent Kd by accident. The graded occupancies
-at 10/50/100 um are therefore not evidence that the units are correctly
-constructed; they are evidence that the two errors happen to compensate at
-this one parameter point.
+If both `[B12]` and `kd_b12` are converted from numerical molar values to
+genuine mol/m^3, both are multiplied by 1000 and their ratio is unchanged:
 
-The cancellation is fragile along the exact sweep recommended by
-`docs/RECEPTOR_LIGAND_PARAMETERIZATION.md:47-51`. Holding the B12 field at
-`1e-6` and sweeping `kd_b12_btuB` changes the competition factor and apparent
-Kd as follows:
+```text
+(1000 * [B12]) / (1000 * kd_b12) = [B12] / kd_b12
+```
 
-| `kd_b12_btuB` | Competition factor `1 + [B12]/Kd` | Apparent ColE1 Kd (mol/m^3) | Occupancy at 10 um | Occupancy at 50 um | Occupancy at 100 um |
+Therefore `f = 1001` under either convention. Nothing cancels. The single
+defect is that the genuine mol/m^3 QSSA toxin field is compared against the
+numerical-molar toxin Kd, making toxin potency approximately 1000 times too
+high.
+
+The corrected true-unit defaults are:
+
+```text
+[B12]       = 1e-3 mol/m^3  (1 uM)
+kd_b12      = 1e-6 mol/m^3  (1 nM)
+kd_colicinE = 5e-7 mol/m^3  (0.5 nM)
+```
+
+The competition factor remains 1001, but the physically intended apparent Kd
+is therefore `5e-7 * 1001 = 5.005e-4 mol/m^3`. The prior sweep table and the
+claim that its `1e-6` endpoint produced `0.99729` occupancy were artifacts of
+holding the B12 field in the as-coded convention while interpreting the Kd
+values as true-unit values. They are superseded by the true-unit sweep below.
+
+For the documented sweep, `[B12] = 1e-3 mol/m^3` is held fixed while
+`kd_b12` is swept through the corresponding true-unit values:
+
+| `kd_b12_btuB` | Competition factor | Apparent ColE1 Kd (mol/m^3) | Occupancy at 10 um | Occupancy at 50 um | Occupancy at 100 um |
 |---:|---:|---:|---:|---:|---:|
-| `1e-9` | `1001` | `5.005e-7` | `0.89831` | `0.42349` | `0.10923` |
-| `1e-8` | `101` | `5.05e-8` | `0.98871` | `0.87923` | `0.54861` |
-| `1e-7` | `11` | `5.5e-9` | `0.99876` | `0.98526` | `0.91776` |
-| `1e-6` | `2` | `1e-9` | `0.99977` | `0.99729` | `0.98397` |
+| `1e-6` (1 nM) | `1001` | `5.005e-4` | `0.00876` | `0.00073` | `0.00012` |
+| `1e-5` (10 nM) | `101` | `5.05e-5` | `0.08050` | `0.00723` | `0.00121` |
+| `1e-4` (100 nM) | `11` | `5.5e-6` | `0.44563` | `0.06266` | `0.01104` |
+| `1e-3` (1 uM) | `2` | `1e-6` | `0.81554` | `0.26882` | `0.05783` |
 
-At the proposed `1e-6` endpoint, the 50 um field
-(`3.676568e-7 mol/m^3`) is approximately 368 times the apparent Kd, so
-occupancy is `0.99729`: the model is effectively re-saturated. A user
-following the documented sweep would therefore silently move from the
-accidentally graded regime back toward the saturation behavior associated
-with the old toxin over-potency, while believing they were varying only
-corrinoid affinity. This is why the unit issue is a scientific correctness
-problem, not merely a documentation/tidiness problem.
+The sweep spans approximately 370-fold in 50 um occupancy, remains a real
+hazard, and does not re-saturate at the `1e-3` endpoint. This is the
+scientifically relevant sensitivity result: correcting the units makes the
+documented affinity sweep meaningful rather than an accidental return to
+near-total occupancy.
 
 ## 8. Option A versus Option B
 
@@ -236,9 +252,14 @@ Ratios that must **not** be blindly scaled:
 Option A therefore requires a broader, explicit migration of the B12,
 receptor-Kd, and suspect siderophore parameters, plus tests for every
 metabolic ratio. It would remove the documented unit lie and make future
-source/field coupling safer. Its net intended physical effect can be limited
-to toxin potency only, but only if the already-correct nutrient Kms are left
-unchanged and all affected B12/siderophore ratios are migrated together.
+source/field coupling safer. It is not behavior-preserving in any practical
+sense: correcting the toxin comparison lowers single-lysis occupancy and
+lethality by roughly 1000-fold in the unsaturated regime. Population-level
+goldens should therefore move substantially, and isolated-cell
+bacteriocin-mediated exclusion may largely disappear. This is an expected
+scientific consequence, not a regression to be tuned away. The already-correct
+nutrient Kms must remain unchanged and all affected B12/siderophore ratios
+must be migrated together.
 
 ### Option B: convert the toxin field once at receptor entry
 
@@ -254,11 +275,12 @@ B12 documentation/default error or the suspect siderophore reimport Km.
 
 Use **Option A as the end-state**, but implement it as a staged migration
 with explicit parameter groups and regression tests. The decisive reason is
-that the current post-#208 behavior is defensible only at one accidental
-parameter point: the toxin-Kd error and B12-competition error cancel there,
-but the documented Kd sweep immediately destroys that cancellation. The first
-parameter sweep would therefore silently reproduce toxin saturation while
-appearing to explore corrinoid affinity.
+that the current toxin potency is wrong by a single, real 1000-fold unit
+defect, and Option A makes both the toxin field and all receptor/ligand
+parameters honest. The corrected numbers show that one lysis is essentially
+non-lethal at realistic spacing; the resulting population-level changes are
+the scientific result of the correction, not an accidental cancellation to
+preserve.
 
 First document and test the current conventions; then convert B12 and the
 receptor ligand/toxin Kds together, convert `Agent::km_b12` with the B12
@@ -282,11 +304,11 @@ stationary point-source snapshot:
 - `D_eff = 8e-13 m^2/s`;
 - ColE1 half-life 1800 s, so `k = ln(2)/1800`;
 - screening length `ell = sqrt(D_eff/k) = 45.5794 um`;
-- toxin Kd `5e-10` in the current numerical-molar convention;
-- B12 field `1e-6`, B12 Kd `1e-9`, so the actual competition factor is
-  `1 + 1e-6/1e-9 = 1001`;
+- toxin Kd `5e-7 mol/m^3` after the true-unit conversion (0.5 nM);
+- B12 field `1e-3 mol/m^3` and B12 Kd `1e-6 mol/m^3`, so the competition
+  factor is `1 + 1e-3/1e-6 = 1001`;
 - apparent toxin Kd after competition:
-  `5e-10 * 1001 = 5.005e-7 mol/m^3`;
+  `5e-7 * 1001 = 5.005e-4 mol/m^3`;
 - receptor expression, toxin affinity, and ligand affinity are all taken as
   one; no immunity factor is part of occupancy itself.
 
@@ -300,25 +322,62 @@ and occupancy is `C/(apparent_Kd + C)`.
 
 | Distance | Raw toxin field (mol/m^3) | Competition factor | Apparent Kd (mol/m^3) | BtuB occupancy |
 |---:|---:|---:|---:|---:|
-| 10 um | `4.421248e-6` | `1001` | `5.005e-7` | **0.89831** |
-| 50 um | `3.676568e-7` | `1001` | `5.005e-7` | **0.42349** |
-| 100 um | `6.137581e-8` | `1001` | `5.005e-7` | **0.10923** |
+| 10 um | `4.421248e-6` | `1001` | `5.005e-4` | **0.00876** |
+| 50 um | `3.676568e-7` | `1001` | `5.005e-4` | **0.00073** |
+| 100 um | `6.137581e-8` | `1001` | `5.005e-4` | **0.00012** |
 
-These values confirm the preliminary `0.90 / 0.42 / 0.11` estimate; including
-the actual B12 competition term produces essentially the same values because
-the stated `5e-7` effective Kd already approximated the factor of 1000.
-The values are not a time-integrated dose and not a full simulation outcome:
-they use the initial `Q=M/tau` snapshot, a stationary point source, and zero
-advection. The full code additionally depends on source age, source-target
-orientation, local advection, boundaries, cutoff/FMM choice, receptor
-expression, and immunity.
+These are the physically intended occupancies. The previously reported
+`0.89831 / 0.42349 / 0.10923` values are the as-coded-convention results,
+not the corrected physical answer. The values are not a time-integrated dose
+and not a full simulation outcome: they use the initial `Q=M/tau` snapshot, a
+stationary point source, and zero advection. The full code additionally
+depends on source age, source-target orientation, local advection, boundaries,
+cutoff/FMM choice, receptor expression, and immunity.
 
 This supersedes the residual-saturation statement in the description of
 physics PR #208, which compared the 50 um field with the bare toxin Kd and
 reported approximately `740 * Kd`. That comparison omitted ligand
-competition. The corrected statement is that the competition-adjusted
-apparent Kd is `5.005e-7 mol/m^3`, placing the 50 um field at occupancy
-`0.42349`, not at near-total saturation.
+competition. The corrected true-unit statement is that the
+competition-adjusted apparent Kd is `5.005e-4 mol/m^3`, placing the 50 um
+field at occupancy `0.00073`, not at near-total saturation.
+
+## 10. Microcolony requirement under honest units
+
+Because the point-source field is linear in source inventory, `N` colocated
+producers multiply the single-lysis concentration by `N`. For occupancy 0.5,
+
+```text
+N_0.5 = apparent_Kd / C_single(r)
+```
+
+using the true-unit apparent Kd `5.005e-4 mol/m^3`. The resulting producer
+counts are:
+
+| Distance | Single-lysis field (mol/m^3) | Single-lysis occupancy | Producers for 0.5 occupancy (continuous equivalent) | Whole producers needed |
+|---:|---:|---:|---:|---:|
+| 10 um | `4.421248e-6` | `0.00876` | `113.20` | **114** |
+| 30 um | `9.502929e-7` | `0.00190` | `526.68` | **527** |
+| 50 um | `3.676568e-7` | `0.00073` | `1361.32` | **1362** |
+| 100 um | `6.137580e-8` | `0.00012` | `8154.68` | **8155** |
+| 200 um | `3.420868e-9` | `6.83e-6` | `146307.88` | **146308** |
+
+Thus a single lysis event is essentially non-lethal at realistic spacing.
+Bacteriocin efficacy requires a co-located producer count of order 10^2 at
+10 um, 10^3 at 30–50 um, and 10^4 or more by 100 um. These counts quantify
+the microcolony argument in `docs/COHERENCE_DIAGNOSIS.md`, which previously
+stated the concern qualitatively: the relevant encounter variable is the
+source inventory concentrated in a microcolony, not the nearest isolated
+cell-to-cell spacing.
+
+For the short-fork encounter assays, this makes **colony size** (and the
+resulting number of colocated producers) the state variable, rather than cell
+spacing alone. An assay that changes spacing without controlling producer
+counts is not a controlled test of the corrected toxin hazard.
+
+The migration to honest units is therefore expected to move population-level
+goldens substantially. In particular, isolated-cell bacteriocin-mediated
+exclusion may largely disappear, while dense producer microcolonies can still
+generate a meaningful local hazard.
 
 ## Conclusion
 
