@@ -474,23 +474,12 @@ pseudo-first-order regime (`N × Vmax × C / Km`) or the saturated regime
 (`N × Vmax`), production and reimport therefore cancel in the local
 steady-state balance. Diffusive escape is the only term that does not scale
 with `N`, and it further suppresses local FeEnt. FepA ligand competition is
-therefore unreachable at any density in this model by construction, rather
-than merely unreachable below a packing ceiling.
+therefore unreachable at any density in this model by construction.
 
 This differs from the colicin result: bacteriocin dose scales with co-located
 producers because lysing producers are not also a sink for the toxin. The
 microcolony threshold identified for colicin in #213 is therefore a real
 density effect; no analogous FeEnt density threshold exists here.
-
-The per-cell aggregation pass was checked with 1, 4, 16, and 64 agents
-co-located in one grid cell while maintaining the local apo-enterobactin
-background. At high iron (`1e-4 mol/m³`, maintained apo `4e-9 mol/m³`),
-reaction-stage FeEnt was `5e-12 mol/m³` at every occupancy. At maintained low
-iron (`1e-8 mol/m³`, maintained apo `3e-8 mol/m³`), it was `1e-15 mol/m³` at
-every occupancy. Production and aggregate FepA capacity therefore cancel in
-this assay rather than producing linear concentration growth. The `1e5` and
-`1.7e8` values above are consequently optimistic linear-scaling lower bounds,
-not validated high-density targets.
 
 Chelation consumes apo-enterobactin (`siderophore`) and free iron and produces
 `ferric_enterobactin`. FepA reimport consumes ferric enterobactin and returns
