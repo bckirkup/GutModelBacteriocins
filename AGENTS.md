@@ -210,6 +210,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 | Cell biology (Spec 3 / 10v2) | `fur.enabled`, `cdi.enabled`, `motility.enabled` + aerotaxis/energy/surface/mucin keys; per-strain `cdi_type`, `cdi_immunity` |
 | Quorum sensing (Spec 11) | `quorum_sensing.enabled` + AI-2 production/import/chemotaxis keys in `docs/PARAMETERS.md` |
 | GPU | `gpu_enabled` in input JSON (CUDA build required) |
+| Immigration | `immigration.enabled` plus `immigration.count`, `strain_index`, placement and schedule keys; pulse `step` is relative to run start |
 
 Full parameter docs: `docs/PARAMETERS.md`.
 

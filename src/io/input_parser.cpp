@@ -512,6 +512,68 @@ bool apply_dt_key(SimulationConfig& cfg, std::string_view key, const std::string
   return false;
 }
 
+bool apply_immigration_key(SimulationConfig& cfg, std::string_view key,
+                           const std::string& val) {
+  if (key == "immigration.enabled") {
+    cfg.immigration.enabled = parse_bool_config(val);
+    return true;
+  }
+  if (key == "immigration.count") {
+    cfg.immigration.count = parse_config_int(key, val);
+    return true;
+  }
+  if (key == "immigration.strain_index") {
+    cfg.immigration.strain_index = parse_config_int(key, val);
+    return true;
+  }
+  if (key == "immigration.placement") {
+    if (val != "uniform" && val != "at_distance" && val != "z_slab") {
+      throw ConfigError("invalid immigration.placement: " + val);
+    }
+    cfg.immigration.placement = val;
+    return true;
+  }
+  if (key == "immigration.distance") {
+    cfg.immigration.distance = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "immigration.distance_tolerance") {
+    cfg.immigration.distance_tolerance = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "immigration.distance_reference") {
+    if (val != "nearest_agent" && val != "centroid") {
+      throw ConfigError("invalid immigration.distance_reference: " + val);
+    }
+    cfg.immigration.distance_reference = val;
+    return true;
+  }
+  if (key == "immigration.z_min") {
+    cfg.immigration.z_min = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "immigration.z_max") {
+    cfg.immigration.z_max = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "immigration.schedule") {
+    if (val != "pulse" && val != "continuous") {
+      throw ConfigError("invalid immigration.schedule: " + val);
+    }
+    cfg.immigration.schedule = val;
+    return true;
+  }
+  if (key == "immigration.step") {
+    cfg.immigration.step = parse_config_int(key, val);
+    return true;
+  }
+  if (key == "immigration.rate") {
+    cfg.immigration.rate = parse_config_real(key, val);
+    return true;
+  }
+  return false;
+}
+
 bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "division_threshold")      { cfg.fixes.metabolism.division_threshold = parse_config_real(key, val); return true; }
   if (key == "maintenance_rate")        { cfg.fixes.metabolism.maintenance_rate = parse_config_real(key, val); return true; }
@@ -768,7 +830,7 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 25> k_flat_key_handlers = {
+constexpr std::array<FlatKeyHandler, 26> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_advection_key,
@@ -783,6 +845,7 @@ constexpr std::array<FlatKeyHandler, 25> k_flat_key_handlers = {
   apply_io_key,
   apply_hdf5_key,
   apply_dt_key,
+  apply_immigration_key,
   apply_misc_key,
   apply_oxygen_key,
   apply_acetate_dyn_key,

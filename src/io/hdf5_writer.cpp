@@ -536,6 +536,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_event("divisions", events.divisions);
   write_event("conjugation_transfers", events.conjugation_transfers);
   write_event("mutations", events.mutations);
+  write_event("immigrations", events.immigrations);
 
   const double mean_carbon = field_mean(chem, chem.find(species::CARBON));
   const double mean_iron = field_mean(chem, chem.find(species::IRON));

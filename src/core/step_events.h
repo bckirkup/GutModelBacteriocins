@@ -41,6 +41,7 @@ struct StepEvents {
   Int divisions = 0;
   Int conjugation_transfers = 0;
   Int mutations = 0;
+  Int immigrations = 0;
 
   void reset() { *this = StepEvents{}; }
 };

@@ -350,6 +350,43 @@ void test_multirank_simulation_steps() {
   }
 }
 
+void test_multirank_immigration_ownership() {
+  require_mpi_ranks(2);
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  SimulationConfig cfg = make_mpi_config(9876, 20);
+  cfg.enabled_fixes = {"mechanics"};
+  SimulationConfig::InitialStrain immigrant;
+  immigrant.type = 2;
+  immigrant.count = 0;
+  immigrant.mu_max = 3.5e-4;
+  immigrant.plasmids = {"ColE1"};
+  cfg.initial_strains.push_back(immigrant);
+  cfg.immigration.enabled = true;
+  cfg.immigration.count = 3;
+  cfg.immigration.strain_index = 1;
+  cfg.immigration.step = 0;
+
+  Simulation sim;
+  sim.init(cfg);
+  sim.step(cfg.time.bio_dt);
+
+  const std::vector<TagID> tags = gather_live_tags_flat(sim);
+  assert_unique_tags(tags);
+  Int local_immigrants = 0;
+  for (const Agent& agent : sim.agents()) {
+    if (agent.identity.type == immigrant.type) ++local_immigrants;
+  }
+  Int global_immigrants = 0;
+  MPI_Allreduce(&local_immigrants, &global_immigrants, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  assert(global_immigrants == 3);
+  if (rank == 0) {
+    std::cout << "  test_multirank_immigration_ownership: PASSED\n";
+  }
+}
+
 #endif  // GUTIBM_MPI
 
 }  // namespace
@@ -372,6 +409,7 @@ int main(int argc, char** argv) {
   test_boundary_ghost_exchange_runs();
   test_periodic_x_ghost_and_migration();
   test_multirank_simulation_steps();
+  test_multirank_immigration_ownership();
 
   if (rank == 0) {
     std::cout << "All MPI multi-rank tests passed.\n";

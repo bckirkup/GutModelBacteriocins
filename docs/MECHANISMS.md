@@ -21,6 +21,39 @@ The adaptive dt is recomputed before every call to `step()`. During quiescent pe
 
 The `run()` loop uses `while (time < total_time)` with the adaptive dt, clamping the final step to avoid overshooting `total_time`.
 
+## Immigration
+
+Immigration runs in the pre-step phase immediately after ghost removal and
+before ghost exchange. This leaves the pool containing only real local agents,
+so ghost indices remain valid and nearest-biomass distances count each resident
+once. The new cell is then exchanged, coupled to the grid, and processed by
+biology, chemistry, physics, post-step, migration, and washout in its first
+step; injecting later would grant it a free step.
+
+Pulse events fire when `current_step - run_start_step == immigration.step`;
+therefore a checkpoint fork can use a step relative to the fork, independent
+of the checkpoint's absolute step. Continuous events draw a Poisson number
+with mean `rate * dt`.
+
+`at_distance` proposes candidates on shells around replicated live-biomass
+anchors, using isotropic directions and the requested distance. The global
+minimum-image distance to the nearest live pre-existing agent is still
+computed for every proposal, so a proposal near an unrelated cluster is
+rejected unless its true nearest-biomass distance meets the tolerance. This
+targets the colony surface because toxin exposure is dominated by nearby
+producing cells, and remains well-defined for multiple colonies.
+`distance_reference: centroid` instead anchors proposals on the globally
+reduced centroid and is intended for a single compact cluster; its centroid is
+not min-image-corrected across periodic wraps. `z_slab` samples uniformly
+within its configured z bounds. If neither candidate batch meets
+`distance_tolerance`, the cell is skipped with a rank-0 warning rather than
+placed at the wrong distance.
+
+Immigration uses a dedicated RNG seeded from `seed` with a fixed mixing
+constant. Every rank draws identical event counts and candidates. The owning
+rank alone constructs each cell, using its stride-allocated `AgentPool` tag;
+this guarantees globally unique IDs without migration duplicates.
+
 ---
 
 ## Fix Architecture (NUFEB-inspired)

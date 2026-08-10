@@ -95,6 +95,20 @@ void test_strain_fixture() {
   std::cout << "  test_strain_fixture: PASSED\n";
 }
 
+void test_immigration_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR) +
+                           "/tests/fixtures/parser_immigration.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.immigration.enabled);
+  assert(cfg.immigration.count == 2);
+  assert(cfg.immigration.strain_index == 1);
+  assert(cfg.immigration.placement == "z_slab");
+  assert(cfg.immigration.schedule == "pulse");
+  assert(std::abs(cfg.immigration.z_min - 1e-6) < 1e-15);
+  assert(std::abs(cfg.immigration.z_max - 20e-6) < 1e-15);
+  std::cout << "  test_immigration_fixture: PASSED\n";
+}
+
 void test_diversity_paradox_strains() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/examples/diversity_paradox/input.json";
   SimulationConfig cfg = InputParser::parse(path);
@@ -392,6 +406,7 @@ int main() {
   test_diversity_paradox_example();
   test_fmm_peristaltic_fixture();
   test_strain_fixture();
+  test_immigration_fixture();
   test_diversity_paradox_strains();
   test_strain_spawn_integration();
   test_fixes_fixture();

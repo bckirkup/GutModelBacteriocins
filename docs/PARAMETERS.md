@@ -38,6 +38,30 @@ After constraint evaluation, `dt` is multiplied by `dt_safety` and clamped to `[
 
 When disabled (`adaptive_dt_enabled = false`), the fixed `bio_dt` is used as before.
 
+## Immigration
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `immigration.enabled` | false | — | Enable propagule injection |
+| `immigration.count` | 1 | cells/event | Cells injected per event |
+| `immigration.strain_index` | 0 | index | Entry in `initial_strains` used to construct immigrants |
+| `immigration.placement` | `uniform` | — | `uniform`, `at_distance`, or `z_slab` |
+| `immigration.distance` | 0 | m | Target nearest-biomass/centroid distance |
+| `immigration.distance_tolerance` | 0 | m | Maximum placement error |
+| `immigration.distance_reference` | `nearest_agent` | — | Nearest live cell or global centroid |
+| `immigration.z_min`, `immigration.z_max` | 0 | m | Bounds for `z_slab` placement |
+| `immigration.schedule` | `pulse` | — | One pulse or Poisson `continuous` schedule |
+| `immigration.step` | 0 | relative step | Pulse step relative to run start |
+| `immigration.rate` | 0 | events/s | Continuous event rate |
+
+`at_distance` proposes positions on shells around sampled live-biomass
+anchors, then verifies each proposal using the true global minimum-image
+distance to the nearest live, pre-existing agent. The centroid convention
+anchors on the global centroid and is intended only for a single compact
+cluster; it is not min-image-corrected across periodic wraps. If no proposal
+meets `distance_tolerance` after the retry, the cell is skipped with a rank-0
+warning rather than placed at the wrong distance.
+
 ---
 
 ## Domain
