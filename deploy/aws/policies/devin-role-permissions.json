@@ -1,0 +1,88 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BatchReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "batch:Describe*",
+        "batch:List*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "BatchSubmitToGutibmQueuesOnly",
+      "Effect": "Allow",
+      "Action": "batch:SubmitJob",
+      "Resource": [
+        "arn:aws:batch:*:994254241749:job-queue/gutibm-*",
+        "arn:aws:batch:*:994254241749:job-definition/gutibm-*"
+      ]
+    },
+    {
+      "Sid": "BatchManageOwnJobs",
+      "Effect": "Allow",
+      "Action": [
+        "batch:TerminateJob",
+        "batch:CancelJob"
+      ],
+      "Resource": "arn:aws:batch:*:994254241749:job/*"
+    },
+    {
+      "Sid": "BatchRegisterGutibmJobDefinitions",
+      "Effect": "Allow",
+      "Action": [
+        "batch:RegisterJobDefinition",
+        "batch:DeregisterJobDefinition"
+      ],
+      "Resource": "arn:aws:batch:*:994254241749:job-definition/gutibm-*"
+    },
+    {
+      "Sid": "EcrAuthTokenIsAccountWide",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "EcrPushPullGutibmRepoOnly",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:BatchGetImage",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:*:994254241749:repository/gutibm"
+    },
+    {
+      "Sid": "S3GutibmBucketsOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:ListBucket",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::gutibm-*",
+        "arn:aws:s3:::gutibm-*/*"
+      ]
+    },
+    {
+      "Sid": "ReadJobLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:GetLogEvents",
+        "logs:DescribeLogStreams",
+        "logs:DescribeLogGroups"
+      ],
+      "Resource": "arn:aws:logs:*:994254241749:log-group:/aws/batch/job:*"
+    }
+  ]
+}
