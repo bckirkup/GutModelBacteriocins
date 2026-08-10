@@ -245,7 +245,7 @@ void test_true_unit_receptor_regression() {
   const SimulationConfig defaults = InputParser::default_config();
   const auto b12_spec = std::find_if(
       defaults.chemicals.begin(), defaults.chemicals.end(),
-      [](const ChemicalSpec& s) { return s.id == species::B12; });
+      [](const ChemicalSpec& s) { return s.name == species::B12; });
   assert(b12_spec != defaults.chemicals.end());
   assert(std::abs(b12_spec->initial_conc - 1.0e-3) < 1.0e-15);
 
