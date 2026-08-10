@@ -319,7 +319,17 @@ def main() -> None:
     args = parser.parse_args()
     config = ColonyConfig(eps=args.eps, min_samples=args.min_samples)
     with GutIBMData(args.input) as data:
-        step = args.step or data.steps[-1]
+        agent_steps = data.steps_for("agents")
+        if not agent_steps:
+            parser.error("input file has no agent-layer steps")
+        if args.step is None:
+            step = agent_steps[-1]
+        elif args.step not in agent_steps:
+            available = ", ".join(agent_steps)
+            parser.error(
+                f"agent step {args.step!r} is unavailable; "
+                f"available agent steps: {available}"
+            )
         catalog = colony_catalog_from_hdf5(data, step, config)
     catalog.write_csv(args.agent_output, args.colony_output)
     write_text_file(args.diagnostics_output, _diagnostics_text(catalog))

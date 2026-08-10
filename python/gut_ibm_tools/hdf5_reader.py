@@ -46,6 +46,11 @@ class GutIBMData:
         """Return sorted list of step group names from summary or agents layers."""
         assert self._file is not None
         layer = "summary" if "summary" in self._file else "agents"
+        return self.steps_for(layer)
+
+    def steps_for(self, layer: str) -> list[str]:
+        """Return sorted step group names present in one output layer."""
+        assert self._file is not None
         if layer not in self._file:
             return []
         return sorted(
