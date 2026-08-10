@@ -128,6 +128,7 @@ gutibm_add_test(immunity_escape test_immunity_escape.cpp LABELS "unit;slow")
 
 # ── Integration tests (simulation / I/O; separate CI job) ────────────────
 gutibm_add_test(smoke test_smoke.cpp LABELS "integration")
+gutibm_add_test(toxin_sentinel test_toxin_sentinel.cpp LABELS "integration;science")
 gutibm_add_test(washout_trap test_washout_trap.cpp LABELS "integration;slow;science")
 gutibm_add_test(feature_combinations test_feature_combinations.cpp LABELS "integration")
 gutibm_add_test(config_diversity test_config_diversity.cpp
