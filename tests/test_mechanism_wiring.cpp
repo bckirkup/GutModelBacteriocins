@@ -572,6 +572,69 @@ void test_siderophore_specific_rate_scaling() {
   std::cout << "  test_siderophore_specific_rate_scaling: PASSED\n";
 }
 
+void test_siderophore_multi_agent_positivity() {
+  SimulationConfig cfg = make_integration_cfg(4, 947);
+  cfg.chem_env.siderophore.enabled = true;
+  cfg.chem_env.siderophore.chelation_rate = 1.0e3;
+  cfg.cell_bio.fur.enabled = false;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.fixes.metabolism.division_threshold = 100.0;
+  cfg.initial_strains[0].count = 4;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  auto& chem = sim.chemical_field();
+  const Int cell = sim.agents()[0].grid_cell;
+  const Int i_sid = chem.find(species::SIDEROPHORE);
+  const Int i_iron = chem.find(species::IRON);
+  const Int i_ferric = chem.find(species::FERRIC_ENTEROBACTIN);
+  expect(i_sid >= 0 && i_iron >= 0 && i_ferric >= 0,
+         "multi-agent siderophore test species must be registered");
+  if (i_sid < 0 || i_iron < 0 || i_ferric < 0) return;
+
+  for (Agent& agent : sim.agents()) {
+    agent.grid_cell = cell;
+    agent.mu_max = 0.0;
+    agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+    agent.receptor_expr_base[to_underlying(ReceptorType::FepA)] = 1.0;
+  }
+
+  const Real initial_ferric = 1.0e-6;
+  const Real initial_apo = 1.0e-8;
+  const Real iron = 1.0e-4;
+  const Real cell_volume = sim.domain().dx() * sim.domain().dx()
+      * sim.domain().dx();
+  const Real total_production = cfg.chem_env.siderophore.chelation_rate
+      * initial_apo * iron * static_cast<Real>(sim.agents().size());
+  const Real expected_available = initial_ferric + total_production * 60.0;
+
+  chem.conc(i_sid, cell) = initial_apo;
+  chem.conc(i_iron, cell) = iron;
+  chem.conc(i_ferric, cell) = initial_ferric;
+  chem.zero_reactions();
+  FixMetabolism metabolism(sim, sim.config().fixes.metabolism);
+  metabolism.compute(60.0);
+  const Real ferric_after_large_dt =
+      initial_ferric + chem.reac(i_ferric, cell) * 60.0;
+  const Real sink_large_dt = std::max(
+      0.0, -chem.reac(i_ferric, cell) * 60.0);
+  expect(ferric_after_large_dt >= -1.0e-15,
+         "co-located FeEnt must remain nonnegative at bio_dt");
+  expect(sink_large_dt <= expected_available * (1.0 + 1.0e-9),
+         "co-located FeEnt sink must not exceed available plus production");
+
+  chem.conc(i_ferric, cell) = initial_ferric;
+  chem.zero_reactions();
+  metabolism.compute(1.0e-6);
+  const Real ferric_after_small_dt =
+      initial_ferric + chem.reac(i_ferric, cell) * 1.0e-6;
+  expect(ferric_after_small_dt >= -1.0e-15,
+         "co-located FeEnt must remain nonnegative at small dt");
+  expect(cell_volume > 0.0, "multi-agent test cell volume must be positive");
+  std::cout << "  test_siderophore_multi_agent_positivity: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -585,6 +648,7 @@ int main() {
   test_metabolism_uptake_has_rate_units();
   test_siderophore_apo_ferric_iron_chain();
   test_siderophore_specific_rate_scaling();
+  test_siderophore_multi_agent_positivity();
   test_all_species_bounded_steady_state();
 
   if (failure_counter().value == 0) {
