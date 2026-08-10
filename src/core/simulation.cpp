@@ -42,6 +42,8 @@ namespace gutibm {
 
 namespace {
 
+constexpr uint64_t kImmigrationSeedMix = 0x9e3779b97f4a7c15ULL;
+
 void assign_plasmids(Agent& agent, const std::vector<std::string>& plasmids, int rank) {
   for (const auto& pname : plasmids) {
     const PlasmidEntry* entry = PlasmidLibrary::find(pname);
@@ -257,7 +259,10 @@ void print_gpu_status_banner(bool gpu_active, const GpuConfig& gpu) {
 void Simulation::init(const SimulationConfig& cfg) {
   cfg_ = cfg;
   InputParser::finalize_config(cfg_);
+  validate_immigration_config();
   rng_.seed(cfg_.seed);
+  immigration_rng_.seed(cfg_.seed ^ kImmigrationSeedMix);
+  immigration_start_step_ = 0;
 
   // Domain
   domain_.init(cfg.domain);
@@ -352,18 +357,7 @@ void Simulation::init_population(const SimulationConfig& cfg) {
       // Only keep agents that belong to this rank's slab
       if (!domain_.is_local(pos)) continue;
 
-      Agent a = Agent::create_default(agents_.next_tag(), strain.type,
-                                       pos, strain.mu_max);
-      a.identity.owner_rank = domain_.rank();
-
-      assign_plasmids(a, strain.plasmids, domain_.rank());
-      a.genome.cdi_type = strain.cdi_type;
-      a.genome.cdi_immunity = strain.cdi_immunity;
-      tag_crypt_resident(a, advection_);
-      if (cfg_.cell_bio.motility.enabled) {
-        FixMotility::init_agent_motility(a, cfg_.cell_bio.motility, rng_);
-      }
-
+      Agent a = create_strain_agent(strain, pos);
       agents_.push_back(std::move(a));
     }
   }
@@ -374,7 +368,9 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
                                       const std::string& step) {
   cfg_ = cfg;
   InputParser::finalize_config(cfg_);
+  validate_immigration_config();
   rng_.seed(cfg_.seed);
+  immigration_rng_.seed(cfg_.seed ^ kImmigrationSeedMix);
 
   domain_.init(cfg_.domain);
   chem_.init(domain_, cfg_.chemicals);
@@ -509,7 +505,138 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 
   clock_.time       = snap.metadata.time;
   clock_.step_count = snap.metadata.step;
+  immigration_start_step_ = clock_.step_count;
   schedule_output_from_time(clock_.time, cfg_.time.output_interval, clock_.next_output, clock_.next_snapshot);
+}
+
+Agent Simulation::create_strain_agent(
+    const SimulationConfig::InitialStrain& strain, Vec3 pos) {
+  Agent agent = Agent::create_default(agents_.next_tag(), strain.type, pos,
+                                      strain.mu_max);
+  agent.identity.owner_rank = domain_.rank();
+  assign_plasmids(agent, strain.plasmids, domain_.rank());
+  agent.genome.cdi_type = strain.cdi_type;
+  agent.genome.cdi_immunity = strain.cdi_immunity;
+  tag_crypt_resident(agent, advection_);
+  if (cfg_.cell_bio.motility.enabled) {
+    FixMotility::init_agent_motility(agent, cfg_.cell_bio.motility,
+                                     rng_);
+  }
+  return agent;
+}
+
+void Simulation::validate_immigration_config() const {
+  const ImmigrationConfig& immigration = cfg_.immigration;
+  if (!immigration.enabled) return;
+  if (immigration.count < 0) {
+    throw ConfigError("immigration.count must be non-negative");
+  }
+  if (immigration.strain_index < 0 ||
+      immigration.strain_index >= static_cast<Int>(cfg_.initial_strains.size())) {
+    throw ConfigError("immigration.strain_index is outside initial_strains");
+  }
+  if (immigration.placement == "at_distance" &&
+      immigration.distance <= 0.0) {
+    throw ConfigError("immigration.distance must be positive for at_distance");
+  }
+  if (immigration.placement == "z_slab" &&
+      immigration.z_min >= immigration.z_max) {
+    throw ConfigError("immigration.z_min must be less than z_max");
+  }
+  if (immigration.distance_tolerance < 0.0 ||
+      immigration.rate < 0.0) {
+    throw ConfigError("immigration tolerance and rate must be non-negative");
+  }
+}
+
+void Simulation::inject_immigrants(Real dt) {
+  // MPI contract: immigration_rng_ is replicated and never observes
+  // rank-local state, so every rank agrees on event counts and candidates.
+  // The distance reduction is collective on every candidate batch. Only the
+  // owning rank constructs a cell; AgentPool::next_tag() supplies that rank's
+  // stride stream, making IDs globally unique without migration duplicates.
+  const ImmigrationConfig& immigration = cfg_.immigration;
+  if (!immigration.enabled) return;
+
+  const Int relative_step = clock_.step_count - immigration_start_step_;
+  const Int event_count = immigration_event_count(
+      immigration, relative_step, dt, immigration_rng_);
+  if (event_count == 0) {
+    return;
+  }
+
+  for (Int event = 0; event < event_count; ++event) {
+  Int local_live_count = 0;
+  for (const Agent& agent : agents_) {
+    if (agent.state != PhenoState::DEAD) ++local_live_count;
+  }
+  Int global_live_count = local_live_count;
+#ifdef GUTIBM_MPI
+  if (domain_.nprocs() > 1) {
+    MPI_Allreduce(&local_live_count, &global_live_count, 1, MPI_INT, MPI_SUM,
+                  MPI_COMM_WORLD);
+  }
+#endif
+
+  const auto reducer = [this](const std::vector<Vec3>& candidates,
+                              std::vector<Real>& distances_sq) {
+    Vec3 centroid = {0.0, 0.0, 0.0};
+    Int local_count = 0;
+    if (cfg_.immigration.distance_reference == "centroid") {
+      for (const Agent& agent : agents_) {
+        if (agent.state == PhenoState::DEAD) continue;
+        for (Int axis = 0; axis < 3; ++axis) centroid[axis] += agent.x[axis];
+        ++local_count;
+      }
+#ifdef GUTIBM_MPI
+      if (domain_.nprocs() > 1) {
+        Vec3 global_sum = {0.0, 0.0, 0.0};
+        Int global_count = 0;
+        MPI_Allreduce(centroid.data(), global_sum.data(), 3, MPI_DOUBLE,
+                      MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(&local_count, &global_count, 1, MPI_INT, MPI_SUM,
+                      MPI_COMM_WORLD);
+        centroid = global_sum;
+        local_count = global_count;
+      }
+#endif
+      if (local_count > 0) {
+        for (Real& value : centroid) value /= static_cast<Real>(local_count);
+      }
+    }
+
+    for (size_t i = 0; i < candidates.size(); ++i) {
+      Real nearest = std::numeric_limits<Real>::max();
+      for (const Agent& agent : agents_) {
+        if (agent.state == PhenoState::DEAD) continue;
+        const Real distance = cfg_.immigration.distance_reference == "centroid"
+            ? domain_.min_image_dist_sq(candidates[i], centroid)
+            : domain_.min_image_dist_sq(candidates[i], agent.x);
+        nearest = std::min(nearest, distance);
+      }
+      distances_sq[i] = nearest;
+    }
+#ifdef GUTIBM_MPI
+    if (domain_.nprocs() > 1) {
+      MPI_Allreduce(MPI_IN_PLACE, distances_sq.data(),
+                    static_cast<int>(distances_sq.size()), MPI_DOUBLE, MPI_MIN,
+                    MPI_COMM_WORLD);
+    }
+#endif
+  };
+
+  const bool has_live_agents = global_live_count > 0;
+  const std::vector<Vec3> positions = immigration_positions(
+      immigration, domain_.lo(), domain_.hi(), immigration_rng_,
+      has_live_agents, reducer);
+  const auto& strain = cfg_.initial_strains[
+      static_cast<size_t>(immigration.strain_index)];
+  for (const Vec3& pos : positions) {
+    if (!domain_.is_local(pos)) continue;
+    agents_.push_back(create_strain_agent(strain, pos));
+    ++step_events_.immigrations;
+  }
+  }
 }
 
 void Simulation::maybe_write_restart() {
@@ -780,6 +907,7 @@ void Simulation::step(Real dt) {
 
   // Pre-step: clear ghosts from previous step
   clear_ghost_agents();
+  inject_immigrants(dt);
   if (gpu_active_) {
     chem_gpu_.zero_reactions_on_device();
   }

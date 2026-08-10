@@ -365,6 +365,12 @@ Overrides support dot paths for nested fields (e.g. `"initial_strains.0.count": 
 - `docs/SCALING.md` — 10⁶–10⁷ agent benchmarks, memory, FMM tuning
 - `docs/API.md` — class/function reference
 
+Immigration keys: `immigration.enabled`, `immigration.count`,
+`immigration.strain_index`, `immigration.placement`, `immigration.distance`,
+`immigration.distance_tolerance`, `immigration.distance_reference`,
+`immigration.z_min`, `immigration.z_max`, `immigration.schedule`,
+`immigration.step`, and `immigration.rate`.
+
 ## GPU
 
 CUDA acceleration lives in `src/gpu/`. Enable with `-DGUTIBM_USE_CUDA=ON` and `gpu_enabled true` at runtime. Falls back to OpenMP/serial CPU when CUDA is unavailable. See `src/gpu/README.md` and issue #33.
@@ -380,4 +386,3 @@ Before fixing or writing code that touches I/O, tests, randomness, or exceptions
 3. `.agents/skills/sonarqube-python/SKILL.md` — Python rule patterns
 
 Quick rules: domain exceptions from `error.h`, `to_underlying()` for enums, `gutibm::RNG` for simulation PRNG, `path_utils` / `prepare_output_file` for user paths, `pytest.approx` for float test assertions.
-

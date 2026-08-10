@@ -151,6 +151,20 @@ std::vector<Probe> build_probes() {
   v.push_back(R("output_interval", [](const SimulationConfig& c) { return c.time.output_interval; }));
   v.push_back(I("seed", [](const SimulationConfig& c) { return static_cast<long long>(c.seed); }));
 
+  // ── Immigration ─────────────────────────────────────────────────────────
+  v.push_back(B("immigration.enabled", [](const SimulationConfig& c) { return c.immigration.enabled; }));
+  v.push_back(I("immigration.count", [](const SimulationConfig& c) { return static_cast<long long>(c.immigration.count); }));
+  v.push_back(I("immigration.strain_index", [](const SimulationConfig& c) { return static_cast<long long>(c.immigration.strain_index); }));
+  v.push_back(S("immigration.placement", [](const SimulationConfig& c) { return c.immigration.placement; }, "z_slab"));
+  v.push_back(R("immigration.distance", [](const SimulationConfig& c) { return c.immigration.distance; }));
+  v.push_back(R("immigration.distance_tolerance", [](const SimulationConfig& c) { return c.immigration.distance_tolerance; }));
+  v.push_back(S("immigration.distance_reference", [](const SimulationConfig& c) { return c.immigration.distance_reference; }, "centroid"));
+  v.push_back(R("immigration.z_min", [](const SimulationConfig& c) { return c.immigration.z_min; }));
+  v.push_back(R("immigration.z_max", [](const SimulationConfig& c) { return c.immigration.z_max; }));
+  v.push_back(S("immigration.schedule", [](const SimulationConfig& c) { return c.immigration.schedule; }, "continuous"));
+  v.push_back(I("immigration.step", [](const SimulationConfig& c) { return static_cast<long long>(c.immigration.step); }));
+  v.push_back(R("immigration.rate", [](const SimulationConfig& c) { return c.immigration.rate; }));
+
   // ── Domain ───────────────────────────────────────────────────────────────
   v.push_back(R("grid_dx", [](const SimulationConfig& c) { return c.domain.grid_dx; }));
   v.push_back(R("domain_x", [](const SimulationConfig& c) { return c.domain.hi[0]; }));
@@ -418,6 +432,7 @@ std::vector<Probe> build_probes() {
 const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
+      "immigration",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity"};

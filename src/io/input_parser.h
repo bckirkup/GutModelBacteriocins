@@ -25,6 +25,7 @@
 #include "hdf5_writer.h"
 #include "hdf5_reader.h"
 #include "gpu_config.h"
+#include "immigration_config.h"
 
 #include <string>
 #include <string_view>
@@ -116,6 +117,7 @@ struct SimulationConfig {
   ChemicalEnvironmentConfig chem_env;
   CellBiologyConfig cell_bio;
   QuorumSensingConfig quorum_sensing;
+  ImmigrationConfig immigration;
   bool profile_steps = false;
 
   // Spec 5 §4 — Dysbiosis safety net. When > 0, the run halts if global agent

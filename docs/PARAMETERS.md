@@ -28,6 +28,27 @@ For **batch runner** manifests (multi-run sweeps), see [BATCH_RUNNER.md](BATCH_R
 | `dt_safety` | 0.8 | — | Safety factor applied after constraint computation |
 | `dt_growth_limit` | 0.1 | — | Maximum mu × dt product allowed |
 
+## Immigration
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `immigration.enabled` | false | — | Enable propagule injection |
+| `immigration.count` | 1 | cells/event | Cells injected per event |
+| `immigration.strain_index` | 0 | index | Entry in `initial_strains` used to construct immigrants |
+| `immigration.placement` | `uniform` | — | `uniform`, `at_distance`, or `z_slab` |
+| `immigration.distance` | 0 | m | Target nearest-biomass/centroid distance |
+| `immigration.distance_tolerance` | 0 | m | Maximum placement error |
+| `immigration.distance_reference` | `nearest_agent` | — | Nearest live cell or global centroid |
+| `immigration.z_min`, `immigration.z_max` | 0 | m | Bounds for `z_slab` placement |
+| `immigration.schedule` | `pulse` | — | One pulse or Poisson `continuous` schedule |
+| `immigration.step` | 0 | relative step | Pulse step relative to run start |
+| `immigration.rate` | 0 | events/s | Continuous event rate |
+
+`at_distance` uses the minimum-image distance to the nearest live,
+pre-existing agent. This measures the colony surface where toxin exposure is
+determined by nearby producers. The centroid convention is intended only for a
+single compact cluster and is not min-image-corrected across periodic wraps.
+
 When `adaptive_dt_enabled = true`, the simulation replaces the fixed `bio_dt` loop with a `while (time < total_time)` loop that recomputes `dt` each step based on three constraints:
 
 1. **Growth rate**: `dt ≤ dt_growth_limit / max(|mu_realized|)` — prevents large fractional biomass changes per step.

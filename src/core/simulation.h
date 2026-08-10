@@ -39,6 +39,7 @@
 #include "step_events.h"
 #include "hdf5_reader.h"
 #include "input_parser.h"
+#include "immigration.h"
 #include "fix.h"
 #include "chemical_field_gpu.h"
 #include "agent_pool_gpu.h"
@@ -141,6 +142,10 @@ class Simulation {
  private:
   // Initialization helpers
   void init_population(const SimulationConfig& cfg);
+  Agent create_strain_agent(const SimulationConfig::InitialStrain& strain,
+                            Vec3 pos);
+  void inject_immigrants(Real dt);
+  void validate_immigration_config() const;
   void apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap);
   void update_grid_coupling();
   void rebuild_spatial_hash();
@@ -191,6 +196,8 @@ class Simulation {
   LineageTracker  lineage_;
   HDF5Writer      hdf5_;
   RNG             rng_;
+  RNG             immigration_rng_;
+  Int             immigration_start_step_ = 0;
 
   // Fix modules (mutable: compute() updates simulation state via sim_ reference)
   mutable std::vector<std::unique_ptr<Fix>> fixes_;

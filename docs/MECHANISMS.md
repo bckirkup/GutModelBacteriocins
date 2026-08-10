@@ -6,6 +6,33 @@ Detailed descriptions of each Fix module, their biological basis, and implementa
 
 ## Adaptive Timestep Selection
 
+## Immigration
+
+Immigration runs in the pre-step phase immediately after ghost removal and
+before ghost exchange. This leaves the pool containing only real local agents,
+so ghost indices remain valid and nearest-biomass distances count each resident
+once. The new cell is then exchanged, coupled to the grid, and processed by
+biology, chemistry, physics, post-step, migration, and washout in its first
+step; injecting later would grant it a free step.
+
+Pulse events fire when `current_step - run_start_step == immigration.step`;
+therefore a checkpoint fork can use a step relative to the fork, independent
+of the checkpoint's absolute step. Continuous events draw a Poisson number
+with mean `rate * dt`.
+
+`at_distance` selects from replicated uniform global candidates using the
+minimum-image distance to the nearest live pre-existing agent. This measures
+the colony surface because toxin exposure is dominated by nearby producing
+cells, and remains well-defined for multiple colonies. `distance_reference:
+centroid` is also available for a single compact cluster; its centroid is
+computed by MPI reduction and is not min-image-corrected across periodic
+wraps. `z_slab` samples uniformly within its configured z bounds.
+
+Immigration uses a dedicated RNG seeded from `seed` with a fixed mixing
+constant. Every rank draws identical event counts and candidates. The owning
+rank alone constructs each cell, using its stride-allocated `AgentPool` tag;
+this guarantees globally unique IDs without migration duplicates.
+
 When `adaptive_dt_enabled = true`, `compute_adaptive_dt()` selects the biological timestep each iteration using CFL-like constraints:
 
 ```

@@ -1,0 +1,23 @@
+{
+  "total_time": 120,
+  "bio_dt": 60,
+  "seed": 123,
+  "immigration": {
+    "enabled": true,
+    "count": 2,
+    "strain_index": 1,
+    "placement": "z_slab",
+    "distance": 2e-5,
+    "distance_tolerance": 1e-6,
+    "distance_reference": "nearest_agent",
+    "z_min": 1e-6,
+    "z_max": 20e-6,
+    "schedule": "pulse",
+    "step": 0,
+    "rate": 0.5
+  },
+  "initial_strains": [
+    {"type": 1, "count": 4, "mu_max": 5.5e-4, "plasmids": ["ColE1"]},
+    {"type": 2, "count": 0, "mu_max": 5.0e-4, "plasmids": [], "cdi_type": 3, "cdi_immunity": 4}
+  ]
+}
