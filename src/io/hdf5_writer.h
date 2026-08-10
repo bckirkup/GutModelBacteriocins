@@ -35,7 +35,7 @@ struct HDF5Config {
   bool        enabled       = true;
   bool        parallel      = false;  // reserved
   HDF5Schedule schedule;
-  std::string compression   = "none";  // "none" | "gzip"
+  std::string compression   = "gzip";  // "none" | "gzip"
   Int         compression_level = 4;
 };
 
@@ -65,8 +65,10 @@ class HDF5Writer {
   void write_grid_layer(const Simulation& sim, const std::string& step_group) const;
   void write_lineage_layer(const Simulation& sim, const std::string& step_group) const;
   void write_genome_layer(const Simulation& sim, const std::string& step_group) const;
+  std::vector<const struct Agent*> output_agents(const Simulation& sim) const;
 
   HDF5Config cfg_;
+  bool include_dead_agents_ = false;
   bool enabled_ = false;
   Int nx_ = 0;
   Int ny_ = 0;

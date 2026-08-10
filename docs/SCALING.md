@@ -78,8 +78,46 @@ Default domain 1 mm × 1 mm × 100 µm at `grid_dx = 2 µm`:
 nx = 500, ny = 500, nz = 50  →  12.5 × 10⁶ cells
 ```
 
-Six species × (`conc` + `reac`) × 8 bytes ≈ **1.2 GB** host memory, independent
-of agent count. Doubling domain linearly increases grid memory.
+The finalized default configuration has 11 chemical species (including
+siderophore and ferric-enterobactin). Eleven species × (`conc` + `reac`) ×
+8 bytes ≈ **2.2 GB** host memory, independent of agent count. The older
+six-species estimate was ≈1.2 GB and is no longer the shipped default.
+Doubling domain linearly increases grid memory.
+
+### HDF5 storage model
+
+The storage figures below are raw serialized payloads derived from
+`hdf5_storage_model.json`. They exclude HDF5 object metadata and filesystem
+allocation. The campaign-domain examples
+(`examples/diversity_paradox/input.json` and
+`examples/scaling_benchmark/input_1e6.json`) use 2 mm × 2 mm × 100 µm at
+`dx = 2 µm`, or 50 million cells.
+
+| Layer | Payload |
+|-------|---------|
+| Agents | 152 bytes per serialized live agent |
+| Lineage | 24 bytes per serialized live agent |
+| Genome | 224 bytes per live agent + 56 bytes per BI locus |
+| Grid | 8 bytes per cell per selected species |
+| Summary | 424 bytes per dump |
+
+Grid output is independent of agent count. At the campaign domain, a full
+11-species grid dump is 4.4 GB raw before HDF5 metadata. For a fixed physical
+domain, grid output scales as `dx⁻³`; halving `dx` increases cells and grid
+payload eightfold. `grid_species = ["all"]` selects every configured species,
+while a named list writes only those species.
+
+The default HDF5 compression is gzip level 4, matching the closed-restart
+writer. `"none"` remains available for explicitly requested uncompressed
+output. The discoverable `examples/fork_profile/input.json` uses gzip and
+named species for short branch-from-checkpoint runs.
+
+The fork profile assumes 500 µm × 500 µm × 100 µm at `dx = 5 µm`, or 200,000
+cells. A full 11-species grid dump is 17.6 MB raw, independent of agent count.
+At 60-second biology steps over two hours (120 steps), grid output every five
+steps produces 25 dumps including step zero, or 440 MB (0.44 GB) raw before
+compression and metadata. The fork profile selects named species rather than
+all 11, so its actual grid payload is lower.
 
 ### Per-agent host memory (AoS layout)
 

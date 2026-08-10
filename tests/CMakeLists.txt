@@ -142,6 +142,7 @@ if(GUTIBM_USE_HDF5)
   gutibm_add_test(hdf5_restart test_hdf5_restart.cpp LABELS "integration;hdf5")
   gutibm_add_test(hdf5_schedule test_hdf5_schedule.cpp LABELS "integration;hdf5")
   gutibm_add_test(hdf5_compression test_hdf5_compression.cpp LABELS "integration;hdf5")
+  gutibm_add_test(hdf5_live_agents test_hdf5_live_agents.cpp LABELS "integration;hdf5")
   gutibm_add_test(summary_events test_summary_events.cpp LABELS "integration;hdf5")
   gutibm_add_test(hdf5_graceful_shutdown test_hdf5_graceful_shutdown.cpp LABELS "integration;hdf5")
 

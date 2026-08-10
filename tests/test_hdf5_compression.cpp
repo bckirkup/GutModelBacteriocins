@@ -79,7 +79,24 @@ int main() {
 
   hid_t gz = H5Fopen(gzip_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   assert(gz >= 0);
-  assert(H5Lexists(gz, "grid/step_000001/carbon", H5P_DEFAULT) > 0);
+  hid_t dataset = H5Dopen2(gz, "grid/step_000001/carbon", H5P_DEFAULT);
+  assert(dataset >= 0);
+  hid_t property_list = H5Dget_create_plist(dataset);
+  assert(property_list >= 0);
+  const int filter_count = H5Pget_nfilters(property_list);
+  bool has_deflate = false;
+  for (int i = 0; i < filter_count; ++i) {
+    unsigned flags = 0;
+    size_t cd_nelmts = 0;
+    unsigned filter_config = 0;
+    const H5Z_filter_t filter = H5Pget_filter2(
+        property_list, static_cast<unsigned>(i), &flags, &cd_nelmts, nullptr,
+        0, nullptr, &filter_config);
+    if (filter == H5Z_FILTER_DEFLATE) has_deflate = true;
+  }
+  assert(has_deflate);
+  H5Pclose(property_list);
+  H5Dclose(dataset);
   H5Fclose(gz);
 
   std::cout << "All HDF5 compression tests passed.\n";

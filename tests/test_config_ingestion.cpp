@@ -281,7 +281,7 @@ std::vector<Probe> build_probes() {
   add_ns_int(v, "hdf5.schedule.genome", "hdf5_schedule_genome",
              [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.schedule.genome); });
   add_ns_bool(v, "hdf5.enabled", "hdf5_enabled", [](const SimulationConfig& c) { return c.hdf5.enabled; });
-  v.push_back(S("hdf5.compression", [](const SimulationConfig& c) { return c.hdf5.compression; }, "gzip"));
+  v.push_back(S("hdf5.compression", [](const SimulationConfig& c) { return c.hdf5.compression; }, "none"));
   add_ns_int(v, "hdf5.compression_level", "hdf5_compression_level",
              [](const SimulationConfig& c) { return static_cast<long long>(c.hdf5.compression_level); });
   v.push_back(S("checkpoint_file", [](const SimulationConfig& c) { return c.checkpoint.file; }, "probe_checkpoint.h5"));
