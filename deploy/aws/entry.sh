@@ -99,12 +99,11 @@ hdf5_checkpoint_usable() {
       rm -f "${err}"
       return 1
     fi
-    if [[ "${REQUIRE_RESTART_GRID}" == "1" ]]; then
-      if ! h5ls "${f}/grid" >/dev/null 2>"${err}"; then
-        echo "Restart unusable (${f}): missing/unreadable /grid (size=${sz}) $(tr '\n' ' ' <"${err}" | head -c 180)" >&2
-        rm -f "${err}"
-        return 1
-      fi
+    if [[ "${REQUIRE_RESTART_GRID}" == "1" ]] \
+       && ! h5ls "${f}/grid" >/dev/null 2>"${err}"; then
+      echo "Restart unusable (${f}): missing/unreadable /grid (size=${sz}) $(tr '\n' ' ' <"${err}" | head -c 180)" >&2
+      rm -f "${err}"
+      return 1
     fi
     # Full listing only for the agents-path regex seatbelt used by older probes.
     listing="$(h5ls -r "${f}" 2>"${err}")" || rc=$?
@@ -379,6 +378,7 @@ write_status_json() {
   GUTIBM_SPOT_INTERRUPTION="${SPOT_NOTICED}" \
   GUTIBM_SPOT_ACTION_TIME="${spot_action}" \
   GUTIBM_MEMORY_PRESSURE="${MEMORY_PRESSURE}" \
+  GUTIBM_STATUS_MEMORY_PRESSURE_KEY="${STATUS_MEMORY_PRESSURE}" \
   GUTIBM_MEM_AVAILABLE_MB="${MEM_AVAILABLE_MB}" \
   GUTIBM_MEM_CGROUP_FREE_MB="${MEM_CGROUP_FREE_MB}" \
   GUTIBM_MEM_EFFECTIVE_FREE_MB="${MEM_EFFECTIVE_FREE_MB}" \
@@ -406,6 +406,7 @@ def num_or_none(raw):
 work = Path(os.environ["GUTIBM_WORK_DIR"])
 spot = os.environ.get("GUTIBM_SPOT_INTERRUPTION", "0") == "1"
 mem_pressure = os.environ.get("GUTIBM_MEMORY_PRESSURE", "0") == "1"
+mem_pressure_key = os.environ["GUTIBM_STATUS_MEMORY_PRESSURE_KEY"]
 payload = {
     "job_id": os.environ.get("GUTIBM_JOB_ID") or None,
     "array_index": os.environ.get("GUTIBM_ARRAY_INDEX") or None,
@@ -424,7 +425,7 @@ payload = {
     "resume_from_checkpoint": os.environ.get("GUTIBM_RESUME_FROM_CHECKPOINT", "0") == "1",
     "spot_interruption": spot,
     "spot_action_time": os.environ.get("GUTIBM_SPOT_ACTION_TIME") or None,
-    "memory_pressure": mem_pressure,
+    mem_pressure_key: mem_pressure,
     "mem_available_mb": num_or_none(os.environ.get("GUTIBM_MEM_AVAILABLE_MB", "")),
     "mem_cgroup_free_mb": num_or_none(os.environ.get("GUTIBM_MEM_CGROUP_FREE_MB", "")),
     "mem_effective_free_mb": num_or_none(os.environ.get("GUTIBM_MEM_EFFECTIVE_FREE_MB", "")),
@@ -487,11 +488,11 @@ checkpoint_sync_loop() {
     fi
     if check_memory_pressure; then
       MEMORY_PRESSURE=1
-      write_status_json "memory_pressure"
+      write_status_json "${STATUS_MEMORY_PRESSURE}"
       upload_status
       request_graceful_stop
       upload_checkpoint
-      write_status_json "memory_pressure"
+      write_status_json "${STATUS_MEMORY_PRESSURE}"
       upload_status
       return 0
     fi
@@ -638,7 +639,7 @@ upload_status
 # job-def memory for this grid) before burning GPU time.
 if check_memory_pressure; then
   MEMORY_PRESSURE=1
-  write_status_json "memory_pressure"
+  write_status_json "${STATUS_MEMORY_PRESSURE}"
   upload_status
   echo "Refusing to start: effective free RAM/VRAM below guard thresholds" >&2
   exit 137
@@ -679,7 +680,7 @@ if [[ "${SPOT_NOTICED}" -eq 1 ]]; then
 fi
 
 if [[ "${MEMORY_PRESSURE}" -eq 1 ]]; then
-  write_status_json "memory_pressure"
+  write_status_json "${STATUS_MEMORY_PRESSURE}"
   upload_status
   # Do NOT rely on Batch auto-retry here — same instance size will OOM again.
   # Checkpoint is on S3; resume manually on a larger CE / higher memory job def.
