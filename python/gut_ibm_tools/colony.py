@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -15,7 +16,7 @@ from scipy.sparse.csgraph import connected_components
 from scipy.spatial import cKDTree
 
 from .hdf5_reader import GutIBMData
-from .path_utils import prepare_output_file, validate_input_path
+from .path_utils import validate_input_path, write_text_file
 
 PRODUCER_THRESHOLDS: tuple[int, ...] = (113, 527, 1361)
 AGENT_COLUMNS = ("agent_id", "colony_id", "type", "n_bi_loci", "x", "y", "z")
@@ -53,8 +54,8 @@ class ColonyCatalog:
 
     def write_csv(self, agent_path: str | Path, colony_path: str | Path) -> None:
         """Write both tidy tables after validating output paths."""
-        _write_table(prepare_output_file(agent_path), self.agents)
-        _write_table(prepare_output_file(colony_path), self.colonies)
+        write_text_file(agent_path, _table_text(self.agents))
+        write_text_file(colony_path, _table_text(self.colonies))
 
 
 def estimate_eps(
@@ -270,13 +271,14 @@ def _symmetric_graph(pairs: np.ndarray, size: int) -> coo_matrix:
     return coo_matrix((np.ones(len(rows), dtype=np.int8), (rows, cols)), shape=(size, size))
 
 
-def _write_table(path: Path, table: dict[str, np.ndarray]) -> None:
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        columns = list(table)
-        writer.writerow(columns)
-        for row in zip(*(table[column] for column in columns)):
-            writer.writerow(row)
+def _table_text(table: dict[str, np.ndarray]) -> str:
+    handle = io.StringIO(newline="")
+    writer = csv.writer(handle)
+    columns = list(table)
+    writer.writerow(columns)
+    for row in zip(*(table[column] for column in columns)):
+        writer.writerow(row)
+    return handle.getvalue()
 
 
 def main() -> None:
@@ -295,17 +297,18 @@ def main() -> None:
         step = args.step or data.steps[-1]
         catalog = colony_catalog_from_hdf5(data, step, config)
     catalog.write_csv(args.agent_output, args.colony_output)
-    _write_diagnostics(prepare_output_file(args.diagnostics_output), catalog)
+    write_text_file(args.diagnostics_output, _diagnostics_text(catalog))
 
 
-def _write_diagnostics(path: Path, catalog: ColonyCatalog) -> None:
+def _diagnostics_text(catalog: ColonyCatalog) -> str:
     """Write eps selection and sensitivity diagnostics as a tidy CSV."""
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(["metric", "value"])
-        for key, value in catalog.eps_diagnostics.items():
-            writer.writerow([key, value])
-        for index, factor in enumerate(catalog.eps_sensitivity["factor"]):
-            writer.writerow([f"sensitivity_{factor}_eps", catalog.eps_sensitivity["eps"][index]])
-            writer.writerow([f"sensitivity_{factor}_n_colonies", catalog.eps_sensitivity["n_colonies"][index]])
-            writer.writerow([f"sensitivity_{factor}_noise_fraction", catalog.eps_sensitivity["noise_fraction"][index]])
+    handle = io.StringIO(newline="")
+    writer = csv.writer(handle)
+    writer.writerow(["metric", "value"])
+    for key, value in catalog.eps_diagnostics.items():
+        writer.writerow([key, value])
+    for index, factor in enumerate(catalog.eps_sensitivity["factor"]):
+        writer.writerow([f"sensitivity_{factor}_eps", catalog.eps_sensitivity["eps"][index]])
+        writer.writerow([f"sensitivity_{factor}_n_colonies", catalog.eps_sensitivity["n_colonies"][index]])
+        writer.writerow([f"sensitivity_{factor}_noise_fraction", catalog.eps_sensitivity["noise_fraction"][index]])
+    return handle.getvalue()

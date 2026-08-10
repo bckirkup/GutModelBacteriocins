@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import csv
+import io
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from scipy.spatial import cKDTree
 
-from .path_utils import prepare_output_file
+from .path_utils import write_text_file
 
 
 @dataclass(frozen=True)
@@ -78,12 +79,12 @@ class SpatialStatsResult:
 
     def write_csv(self, path: str | Path) -> None:
         """Write the tidy curve table."""
-        target = prepare_output_file(path)
+        handle = io.StringIO(newline="")
         table = self.to_table()
-        with target.open("w", newline="", encoding="utf-8") as handle:
-            writer = csv.writer(handle)
-            writer.writerow(table)
-            writer.writerows(zip(*(table[column] for column in table)))
+        writer = csv.writer(handle)
+        writer.writerow(table)
+        writer.writerows(zip(*(table[column] for column in table)))
+        write_text_file(path, handle.getvalue())
 
 
 def compute_spatial_stats(
@@ -102,7 +103,7 @@ def compute_spatial_stats(
     """
     points = _points(positions)
     cfg = config or SpatialStatsConfig()
-    generator = rng or np.random.default_rng()
+    generator = rng or np.random.default_rng(0)
     radii = np.asarray(cfg.radius_grid(), dtype=float)
     if np.any(radii <= 0) or np.any(np.diff(radii) <= 0):
         raise ValueError("radii must be strictly increasing and positive")
