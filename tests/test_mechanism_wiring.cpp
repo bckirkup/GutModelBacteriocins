@@ -635,6 +635,50 @@ void test_siderophore_multi_agent_positivity() {
   std::cout << "  test_siderophore_multi_agent_positivity: PASSED\n";
 }
 
+void test_siderophore_occupancy_scaling() {
+  std::cout << "  maintained-apo source-cell FeEnt occupancy assay:\n";
+  for (const auto& condition : {
+           std::pair<Real, Real>{1.0e-4, 4.0e-9},
+           std::pair<Real, Real>{1.0e-8, 3.0e-8}}) {
+    std::cout << "    iron=" << condition.first << " mol/m^3\n";
+    for (const Int occupancy : {1, 4, 16, 64}) {
+      SimulationConfig cfg = make_integration_cfg(occupancy, 953 + occupancy);
+      cfg.chem_env.siderophore.enabled = true;
+      cfg.cell_bio.fur.enabled = true;
+      cfg.fixes.metabolism.maintenance_rate = 0.0;
+      cfg.fixes.metabolism.division_threshold = 100.0;
+      cfg.initial_strains[0].count = occupancy;
+      InputParser::finalize_config(cfg);
+
+      Simulation sim;
+      sim.init(cfg);
+      auto& chem = sim.chemical_field();
+      const Int cell = sim.agents()[0].grid_cell;
+      const Int i_sid = chem.find(species::SIDEROPHORE);
+      const Int i_iron = chem.find(species::IRON);
+      const Int i_ferric = chem.find(species::FERRIC_ENTEROBACTIN);
+      for (Agent& agent : sim.agents()) {
+        agent.grid_cell = cell;
+        agent.mu_max = 0.0;
+        agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+        agent.receptor_expr_base[to_underlying(ReceptorType::FepA)] = 1.0;
+      }
+      FixMetabolism metabolism(sim, sim.config().fixes.metabolism);
+      chem.conc(i_sid, cell) = condition.second;
+      chem.conc(i_iron, cell) = condition.first;
+      chem.conc(i_ferric, cell) = 0.0;
+      chem.zero_reactions();
+      metabolism.compute(60.0);
+      const Real local_ferric = chem.reac(i_ferric, cell) * 60.0;
+      expect(local_ferric >= 0.0,
+             "source-cell FeEnt must remain nonnegative in occupancy assay");
+      std::cout << "      N=" << occupancy << " FeEnt=" << local_ferric
+                << " mol/m^3\n";
+    }
+  }
+  std::cout << "  test_siderophore_occupancy_scaling: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -649,6 +693,7 @@ int main() {
   test_siderophore_apo_ferric_iron_chain();
   test_siderophore_specific_rate_scaling();
   test_siderophore_multi_agent_positivity();
+  test_siderophore_occupancy_scaling();
   test_all_species_bounded_steady_state();
 
   if (failure_counter().value == 0) {

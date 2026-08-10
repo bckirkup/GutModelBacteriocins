@@ -110,6 +110,16 @@ but low iron
 reduces chelation flux more strongly; FepA competition is therefore
 unreachable at achievable density rather than a restored single-cell effect.
 
+The aggregate reaction implementation was also measured at 1, 4, 16, and
+64 agents co-located in one grid cell with a maintained local apo background.
+Reaction-stage FeEnt stayed at `5e-12 mol/m³` across all four occupancies at
+high iron (`1e-4 mol/m³`, apo `4e-9 mol/m³`) and at `1e-15 mol/m³` across all
+four occupancies under maintained low iron (`1e-8 mol/m³`, apo `3e-8 mol/m³`).
+Secretion and aggregate FepA capacity scale together, so the linear
+co-location calculation is an optimistic lower bound on the occupancy needed
+for competition; it is not a prediction that FeEnt increases linearly through
+the microcolony regime.
+
 The FeEnt reimport step uses a positivity-preserving backward-Euler
 Michaelis–Menten update. With the literature-grounded `Vmax` and the model's
 60 s biological timestep, the low-concentration pseudo-first-order sink can

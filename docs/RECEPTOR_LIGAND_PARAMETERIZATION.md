@@ -82,6 +82,14 @@ packing ceiling by about `1e3` and `1.7e6`, respectively. FepA competition is th
 unreachable at achievable density. The larger low-iron threshold reflects
 iron-limited chelation outweighing Fur-mediated secretion derepression.
 
+An occupancy assay with the corrected per-cell aggregation pass used 1, 4, 16,
+and 64 agents in one grid cell while maintaining the local apo background.
+Reaction-stage FeEnt was `5e-12 mol/m³` at every occupancy for high iron
+(`1e-4 mol/m³`, apo `4e-9 mol/m³`) and `1e-15 mol/m³` at every occupancy for
+maintained low iron (`1e-8 mol/m³`, apo `3e-8 mol/m³`). Thus the linear
+thresholds above should be read as optimistic lower bounds: aggregate secretion
+and FepA capacity cancel rather than yielding linear FeEnt accumulation.
+
 | Parameter | Model value | Basis |
 |-----------|-------------|-------|
 | `kd_enterobactin` | **`1e-6 mol/m³` (1 nM)** | Live-cell Kd ~0.2 nM; 1 nM is conservative (was 10 nM) |
