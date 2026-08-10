@@ -454,15 +454,23 @@ meaningful FepA competition for an isolated cell: diffusion carries apo
 enterobactin away faster than local chelation, so the realized
 `ferric_enterobactin` concentration remains far below
 `receptor.kd_enterobactin`. In a maintained-background single-cell assay
-(15 × 60 s steps, `grid_dx = 5 µm`), the local FeEnt concentration was
-`8e-16 mol/m³` at `1e-4 mol/m³` iron and `3e-19 mol/m³` at `1e-8 mol/m³`
-iron. Under the linear co-location assumption, reaching
-`kd_enterobactin = 1e-6 mol/m³` therefore requires approximately `1.25e9`
-co-located cells at high iron and `3.3e12` under the maintained low-iron
-condition. The low-iron threshold is higher because Fur derepression increases
-secretion, but iron limitation suppresses the chelation flux. These values are
-single-cell field estimates, not population targets; meaningful competition is
-a microcolony property.
+(`grid_dx = 5 µm`), the local source-cell FeEnt concentration immediately
+after the reaction update was `1e-11 mol/m³` at `1e-4 mol/m³` iron and
+`6e-15 mol/m³` at `1e-8 mol/m³` iron. The previously reported `8e-16 mol/m³`
+was the post-diffusion field average; diffusion spreads the reaction-stage
+source pulse across the grid before the next biological step. Under the linear
+co-location assumption, reaching `kd_enterobactin = 1e-6 mol/m³` requires
+approximately `1e5` co-located cells per grid cell at high iron and `1.7e8`
+under the maintained low-iron condition. A `5 µm` grid cell contains
+`125 µm³`; using roughly `1 µm³` per *E. coli* gives an implausibly generous
+physical ceiling of about `100` cells per grid cell. At that ceiling, local
+FeEnt is only `1e-9 mol/m³` (`1e-3 × Kd`) at high iron and `6e-13 mol/m³`
+(`6e-7 × Kd`) at low iron. The thresholds are therefore about `1e3` and
+`1.7e6` times the generous packing ceiling, respectively. The low-iron
+threshold is higher because Fur
+derepression increases secretion, but iron limitation suppresses the chelation
+flux. Meaningful competition is therefore unreachable at achievable densities
+in this model.
 
 Chelation consumes apo-enterobactin (`siderophore`) and free iron and produces
 `ferric_enterobactin`. FepA reimport consumes ferric enterobactin and returns

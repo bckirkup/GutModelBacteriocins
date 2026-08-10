@@ -94,15 +94,21 @@ configured `1e-5 mol/(s·kg)`. The former secretion-rate-proportional recapture
 term has been removed.
 
 This chemistry does not make an isolated cell a meaningful FepA competitor.
-With diffusion enabled, the measured local FeEnt concentration in a maintained
-single-cell assay was `8e-16 mol/m³` at `1e-4 mol/m³` iron and
-`3e-19 mol/m³` at `1e-8 mol/m³` iron, versus
-`kd_enterobactin = 1e-6 mol/m³`. Assuming linear scaling with the number of
-co-located cells, the corresponding thresholds are approximately `1.25e9`
-cells at high iron and `3.3e12` under maintained low iron. Fur derepression
-raises secretion, but low iron reduces chelation flux more strongly; FeEnt
-competition is therefore a microcolony-scale property rather than a restored
-single-cell effect.
+With diffusion enabled, the measured local source-cell FeEnt concentration
+immediately after the reaction update in a maintained single-cell assay was
+`1e-11 mol/m³` at `1e-4 mol/m³` iron and `6e-15 mol/m³` at `1e-8 mol/m³` iron,
+versus `kd_enterobactin = 1e-6 mol/m³`. The earlier `8e-16 mol/m³` value was
+the post-diffusion field average, not the reaction-stage source-cell pulse.
+Assuming linear scaling with the number of co-located cells, the corresponding
+thresholds are approximately `1e5` and `1.7e8` cells per grid cell. A
+`5 µm` grid cell has `125 µm³`; an intentionally generous `1 µm³` per cell
+allows about `100` cells per grid cell. At that ceiling, local FeEnt reaches
+only `1e-9 mol/m³` (`1e-3 × Kd`) at high iron and `6e-13 mol/m³`
+(`6e-7 × Kd`) at low iron. The thresholds exceed that generous packing ceiling
+by about `1e3` and `1.7e6`, respectively. Fur derepression raises secretion,
+but low iron
+reduces chelation flux more strongly; FepA competition is therefore
+unreachable at achievable density rather than a restored single-cell effect.
 
 The FeEnt reimport step uses a positivity-preserving backward-Euler
 Michaelis–Menten update. With the literature-grounded `Vmax` and the model's

@@ -70,13 +70,17 @@ peptide stress rather than pure iron chelation.
 
 The explicit FeEnt field does not imply meaningful competition around an
 isolated cell. In a maintained-background single-cell assay with diffusion,
-local FeEnt was `8e-16 mol/m³` at `1e-4 mol/m³` iron and `3e-19 mol/m³` at
-`1e-8 mol/m³` iron. Relative to `kd_enterobactin = 1e-6 mol/m³`, linear
-co-location scaling would require approximately `1.25e9` cells at high iron
-or `3.3e12` cells under maintained low iron to reach unit-affinity occupancy.
-These are field-scale threshold estimates; FepA competition is consequently
-a microcolony property. The larger low-iron threshold reflects iron-limited
-chelation outweighing Fur-mediated secretion derepression.
+local source-cell FeEnt immediately after the reaction update was
+`1e-11 mol/m³` at `1e-4 mol/m³` iron and `6e-15 mol/m³` at `1e-8 mol/m³` iron.
+The earlier `8e-16 mol/m³` result was the post-diffusion field average.
+Relative to `kd_enterobactin = 1e-6 mol/m³`, linear co-location scaling requires
+approximately `1e5` and `1.7e8` cells per grid cell, respectively. A
+`5 µm` grid cell is `125 µm³`; even an implausibly dense `100` cells per grid
+cell would produce only `1e-9 mol/m³` (`1e-3 × Kd`) at high iron and
+`6e-13 mol/m³` (`6e-7 × Kd`) at low iron. The thresholds exceed that generous
+packing ceiling by about `1e3` and `1.7e6`, respectively. FepA competition is therefore
+unreachable at achievable density. The larger low-iron threshold reflects
+iron-limited chelation outweighing Fur-mediated secretion derepression.
 
 | Parameter | Model value | Basis |
 |-----------|-------------|-------|
