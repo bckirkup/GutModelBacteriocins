@@ -302,7 +302,7 @@ EncounterResult run_bacteriocin_encounter(uint64_t seed, Real target_distance) {
   cfg.immigration.strain_index = 1;
   cfg.immigration.placement = "at_distance";
   cfg.immigration.distance = target_distance;
-  cfg.immigration.distance_tolerance = 20e-6;
+  cfg.immigration.distance_tolerance = 1e-6;
   cfg.immigration.step = 1;
   cfg.fixes.bacteriocin.sos_lysis_prob = 1.0;
   cfg.fixes.bacteriocin.burst_release_tau = 300.0;
