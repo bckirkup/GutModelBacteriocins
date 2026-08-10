@@ -574,8 +574,8 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
                                      const std::string& group) const {
 #ifdef GUTIBM_HDF5
   auto fid = static_cast<hid_t>(file_id_);
-  const auto& agents = sim.agents();
-  Int n = agents.size();
+  const auto agents = output_agents(sim);
+  const Int n = static_cast<Int>(agents.size());
 
   std::vector<int64_t> ids(static_cast<size_t>(n));
   std::vector<int32_t> types(static_cast<size_t>(n));
@@ -593,7 +593,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   std::vector<double> receptor_expr(static_cast<size_t>(n) * NUM_RECEPTORS);
 
   for (Int i = 0; i < n; ++i) {
-    const Agent& a = agents[i];
+    const Agent& a = *agents[static_cast<size_t>(i)];
     const auto idx = static_cast<size_t>(i);
     ids[idx] = a.identity.tag;
     types[idx] = a.identity.type;
@@ -706,8 +706,8 @@ void HDF5Writer::write_lineage_layer(const Simulation& sim,
                                       const std::string& group) const {
 #ifdef GUTIBM_HDF5
   auto fid = static_cast<hid_t>(file_id_);
-  const auto& agents = sim.agents();
-  Int n = agents.size();
+  const auto agents = output_agents(sim);
+  const Int n = static_cast<Int>(agents.size());
 
   std::vector<double> btuB_expr(static_cast<size_t>(n));
   std::vector<double> fepA_expr(static_cast<size_t>(n));
@@ -715,7 +715,7 @@ void HDF5Writer::write_lineage_layer(const Simulation& sim,
   std::vector<int32_t> generation(static_cast<size_t>(n));
 
   for (Int i = 0; i < n; ++i) {
-    const Agent& a = agents[i];
+    const Agent& a = *agents[static_cast<size_t>(i)];
     btuB_expr[static_cast<size_t>(i)] = a.receptor_expr[to_underlying(ReceptorType::BtuB)];
     fepA_expr[static_cast<size_t>(i)] = a.receptor_expr[to_underlying(ReceptorType::FepA)];
     n_bi[static_cast<size_t>(i)] = static_cast<int32_t>(a.genome.bi_loci.size());
@@ -741,8 +741,8 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
                                      const std::string& group) const {
 #ifdef GUTIBM_HDF5
   auto fid = static_cast<hid_t>(file_id_);
-  const auto& agents = sim.agents();
-  Int n = agents.size();
+  const auto agents = output_agents(sim);
+  const Int n = static_cast<Int>(agents.size());
   const auto local_n = static_cast<hsize_t>(n);
 
   std::vector<int64_t> parent_id(static_cast<size_t>(n));
@@ -766,7 +766,7 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
   std::vector<double> bi_imm_aff;
 
   for (Int i = 0; i < n; ++i) {
-    const Agent& a = agents[i];
+    const Agent& a = *agents[static_cast<size_t>(i)];
     const auto idx = static_cast<size_t>(i);
     parent_id[idx] = a.genome.parent_id;
     mutations[idx] = static_cast<int32_t>(a.genome.mutations);
@@ -837,6 +837,16 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
 #else
   (void)sim; (void)group;
 #endif
+}
+
+std::vector<const Agent*> HDF5Writer::output_agents(const Simulation& sim) const {
+  std::vector<const Agent*> output;
+  output.reserve(sim.agents().size());
+  for (const Agent& agent : sim.agents()) {
+    if (!include_dead_agents_ && agent.state == PhenoState::DEAD) continue;
+    output.push_back(&agent);
+  }
+  return output;
 }
 
 void HDF5Writer::finalize() {
@@ -926,6 +936,7 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
 
   HDF5Writer writer;
   writer.init(cfg, sim.domain());
+  writer.include_dead_agents_ = true;
   if (!writer.is_enabled()) {
     std::error_code ec;
     fs::remove(tmp, ec);

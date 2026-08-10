@@ -643,7 +643,7 @@ gpu_device_id 0
 | `hdf5.schedule.grid` | 0 | steps | 3D chemical grids (0 = disabled) |
 | `hdf5.schedule.lineage` | 100 | steps | Lineage tracker arrays |
 | `hdf5.schedule.genome` | 100 | steps | Full genome / BI locus tables |
-| `hdf5.compression` | `none` | — | Grid compression: `none` or `gzip` |
+| `hdf5.compression` | `gzip` | — | Grid compression: `none` or `gzip` |
 | `hdf5.compression_level` | 4 | — | gzip level (0–9) when compression is `gzip` |
 | `hdf5.parallel` | false | — | MPI-parallel agent gather on rank 0 |
 
