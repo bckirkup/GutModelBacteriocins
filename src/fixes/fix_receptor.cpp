@@ -60,8 +60,20 @@ void FixReceptor::compute(Real dt) {
       continue;
 
     if (kill_probs[i] > 0.0 && rng.bernoulli(kill_probs[i])) {
+      const KillAssessment assessment = assess_kill(a, dt);
       a.state = DEAD;
       sim_.step_events().colicin_kills++;
+      if (sim_.provenance_enabled()) {
+        KillProvenanceEvent event;
+        event.victim_id = a.identity.tag;
+        event.position = a.x;
+        event.strain = a.identity.type;
+        event.cause = ProvenanceCause::COLICIN;
+        event.toxin_concentration = assessment.concentration;
+        event.toxin_occupancy = assessment.occupancy;
+        event.toxin_hazard = assessment.hazard;
+        sim_.record_kill_provenance(event);
+      }
     }
   }
 }
@@ -74,6 +86,18 @@ Real FixReceptor::local_toxin_conc(const ChemicalField& chem, Int cell,
 }
 
 Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
+  return compute_kill_prob(agent, dt, nullptr);
+}
+
+FixReceptor::KillAssessment FixReceptor::assess_kill(const Agent& agent,
+                                                      Real dt) const {
+  KillAssessment assessment;
+  assessment.probability = compute_kill_prob(agent, dt, &assessment);
+  return assessment;
+}
+
+Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt,
+                                    KillAssessment* diagnostics) const {
   const auto& chem = sim_.chemical_field();
   Int cell = agent.grid_cell;
   if (cell < 0) return 0.0;
@@ -82,6 +106,9 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
   Real tox_fepA = local_toxin_conc(chem, cell, species::BACTERIOCIN_FEPA);
   Real tox_cirA = local_toxin_conc(chem, cell, species::BACTERIOCIN_CIRA);
   Real tox_fhuA = local_toxin_conc(chem, cell, species::BACTERIOCIN_FHUA);
+  if (diagnostics != nullptr) {
+    diagnostics->concentration = {tox_btuB, tox_fepA, tox_cirA, tox_fhuA};
+  }
   if (tox_btuB <= 0.0 && tox_fepA <= 0.0 && tox_cirA <= 0.0 && tox_fhuA <= 0.0) {
     return 0.0;
   }
@@ -108,7 +135,12 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
         if (candidate < eff) eff = candidate;
       }
     }
-    total_kill += cfg_.kill_rate_colicin * occ * eff * dt;
+    Real hazard = cfg_.kill_rate_colicin * occ * eff * dt;
+    if (diagnostics != nullptr) {
+      diagnostics->occupancy[0] = occ;
+      diagnostics->hazard[0] = hazard;
+    }
+    total_kill += hazard;
   }
 
   // FepA-mediated killing (colicin B/D)
@@ -132,7 +164,12 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
         if (candidate < eff) eff = candidate;
       }
     }
-    total_kill += cfg_.kill_rate_colicin * occ * eff * dt;
+    Real hazard = cfg_.kill_rate_colicin * occ * eff * dt;
+    if (diagnostics != nullptr) {
+      diagnostics->occupancy[1] = occ;
+      diagnostics->hazard[1] = hazard;
+    }
+    total_kill += hazard;
   }
 
   // CirA-mediated killing (colicin Ia, microcin V)
@@ -158,7 +195,12 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
         if (candidate < eff) eff = candidate;
       }
     }
-    total_kill += cfg_.kill_rate_microcin * occ * eff * dt;
+    Real hazard = cfg_.kill_rate_microcin * occ * eff * dt;
+    if (diagnostics != nullptr) {
+      diagnostics->occupancy[2] = occ;
+      diagnostics->hazard[2] = hazard;
+    }
+    total_kill += hazard;
   }
 
   // FhuA-mediated killing (colicin M)
@@ -182,7 +224,12 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
         if (candidate < eff) eff = candidate;
       }
     }
-    total_kill += cfg_.kill_rate_colicin * occ * eff * dt;
+    Real hazard = cfg_.kill_rate_colicin * occ * eff * dt;
+    if (diagnostics != nullptr) {
+      diagnostics->occupancy[3] = occ;
+      diagnostics->hazard[3] = hazard;
+    }
+    total_kill += hazard;
   }
 
   return std::min(1.0 - std::exp(-total_kill), 1.0);

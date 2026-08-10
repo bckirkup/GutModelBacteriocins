@@ -438,6 +438,14 @@ void FixMetabolism::check_death(Agent& agent) {
   if (agent.mu_realized < cfg_.death_threshold && agent.timers.age > 3600.0) {
     agent.state = PhenoState::DEAD;
     sim_.step_events().starvation_deaths++;
+    if (sim_.provenance_enabled()) {
+      KillProvenanceEvent event;
+      event.victim_id = agent.identity.tag;
+      event.position = agent.x;
+      event.strain = agent.identity.type;
+      event.cause = ProvenanceCause::STARVATION;
+      sim_.record_kill_provenance(event);
+    }
   }
 }
 

@@ -27,6 +27,7 @@ struct HDF5Schedule {
   Int grid    = 0;   // 0 = disabled
   Int lineage = 100;
   Int genome  = 100;
+  Int provenance = 0;  // 0 = disabled
   std::vector<std::string> grid_species;  // empty = none; ["all"] = all species
 };
 
@@ -65,6 +66,7 @@ class HDF5Writer {
   void write_grid_layer(const Simulation& sim, const std::string& step_group) const;
   void write_lineage_layer(const Simulation& sim, const std::string& step_group) const;
   void write_genome_layer(const Simulation& sim, const std::string& step_group) const;
+  void write_provenance_layer(Simulation& sim, const std::string& step_group) const;
   std::vector<const struct Agent*> output_agents(const Simulation& sim) const;
 
   HDF5Config cfg_;

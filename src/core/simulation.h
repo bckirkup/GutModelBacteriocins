@@ -105,6 +105,14 @@ class Simulation {
   const StepEvents& step_events() const { return step_events_; }
   StepEvents&       step_events()       { return step_events_; }
   void reset_step_events_after_summary() { step_events_.reset(); }
+  bool provenance_enabled() const {
+    return cfg_.hdf5.enabled && cfg_.hdf5.schedule.provenance > 0;
+  }
+  const std::vector<KillProvenanceEvent>& kill_provenance() const {
+    return kill_provenance_;
+  }
+  void record_kill_provenance(const KillProvenanceEvent& event);
+  void clear_kill_provenance() { kill_provenance_.clear(); }
 
   // Spec 1: local oxygen and ROS induction hook (Spec 2)
   Real local_O2(const Agent& agent) const;
@@ -211,6 +219,7 @@ class Simulation {
 
   std::vector<ToxinBurstSource> toxin_bursts_;
   StepEvents step_events_;
+  std::vector<KillProvenanceEvent> kill_provenance_;
   bool bacteriocin_fields_current_ = false;
 };
 
