@@ -1426,10 +1426,9 @@ void Simulation::prune_toxin_bursts(Real current_time) {
   kept.reserve(toxin_bursts_.size());
 
   for (const ToxinBurstSource& burst : toxin_bursts_) {
-    if (burst.release_tau <= 0.0) {
-      kept.push_back(burst);
-      continue;
-    }
+    // A non-positive release timescale contributes no source (see
+    // append_burst_sources), so such a burst is dropped rather than retained.
+    if (burst.release_tau <= 0.0) continue;
     const Real age = std::max(0.0, current_time - burst.creation_time);
     const Real max_age = 5.0 * burst.release_tau;
     if (age <= max_age) {
