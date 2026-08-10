@@ -117,6 +117,11 @@ int main() {
       summarize(run_case(fallback_cfg, true));
   print_difference("siderophore_on_gpu_repeat",
                    fallback_gpu_a, fallback_gpu_b);
+  // Exact equality is the load-bearing reproducibility guard. This was
+  // demonstrated on one T4 fixture over two repeats and does not guarantee
+  // reproducibility for larger populations or more atomic contention.
+  assert(fallback_gpu_a.live == fallback_gpu_b.live);
+  assert(fallback_gpu_a.total_biomass == fallback_gpu_b.total_biomass);
 
   const BiomassSummary fallback_cpu_a =
       summarize(run_case(fallback_cfg, false));
@@ -135,6 +140,15 @@ int main() {
       summarize(run_case(metabolism_cfg, true));
   print_difference("siderophore_off_cpu_vs_gpu",
                    metabolism_cpu, metabolism_gpu);
+  const Real cpu_gpu_absolute_difference =
+      std::abs(metabolism_cpu.total_biomass - metabolism_gpu.total_biomass);
+  const Real cpu_gpu_relative_difference =
+      cpu_gpu_absolute_difference / metabolism_cpu.total_biomass;
+  // This is a deterministic CPU-vs-GPU numerical offset from the different
+  // diffusion solves, not nondeterminism. The 1e-5 bound leaves headroom over
+  // the measured 4e-7--7e-7 offsets; repeated-GPU equality is checked above.
+  constexpr Real kCpuGpuRelativeTolerance = 1.0e-5;
+  assert(cpu_gpu_relative_difference <= kCpuGpuRelativeTolerance);
 
   std::cout << "GPU reproducibility diagnostic complete.\n";
   return 0;
