@@ -8,7 +8,6 @@
 #include "receptor_utils.h"
 #include <cmath>
 #include <algorithm>
-#include <vector>
 #ifdef GUTIBM_OPENMP
 #include <omp.h>
 #include <utility>
@@ -120,21 +119,32 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
   if (cell_volume <= 0.0) return;
 
   const Int num_cells = chem.ncells();
-  std::vector<Real> biomass_by_cell(static_cast<size_t>(num_cells), 0.0);
-  std::vector<Real> fepA_biomass_by_cell(
-      static_cast<size_t>(num_cells), 0.0);
-  std::vector<Int> occupancy_by_cell(static_cast<size_t>(num_cells), 0);
-  std::vector<Real> chelation_by_cell(static_cast<size_t>(num_cells), 0.0);
+  if (biomass_by_cell_.size() != static_cast<size_t>(num_cells)) {
+    biomass_by_cell_.assign(static_cast<size_t>(num_cells), 0.0);
+    fepA_biomass_by_cell_.assign(static_cast<size_t>(num_cells), 0.0);
+    occupancy_by_cell_.assign(static_cast<size_t>(num_cells), 0);
+    chelation_by_cell_.assign(static_cast<size_t>(num_cells), 0.0);
+    touched_cells_.clear();
+  } else {
+    for (const Int cell : touched_cells_) {
+      const size_t index = static_cast<size_t>(cell);
+      biomass_by_cell_[index] = 0.0;
+      fepA_biomass_by_cell_[index] = 0.0;
+      occupancy_by_cell_[index] = 0;
+    }
+    touched_cells_.clear();
+  }
   for (const Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD) continue;
     const Int cell = agent.grid_cell;
     if (cell < 0 || cell >= num_cells) continue;
     const size_t index = static_cast<size_t>(cell);
-    biomass_by_cell[index] += agent.biomass;
-    fepA_biomass_by_cell[index] +=
+    if (occupancy_by_cell_[index] == 0) touched_cells_.push_back(cell);
+    biomass_by_cell_[index] += agent.biomass;
+    fepA_biomass_by_cell_[index] +=
         agent.receptor_expr[to_underlying(ReceptorType::FepA)]
         * agent.biomass;
-    occupancy_by_cell[index] += 1;
+    occupancy_by_cell_[index] += 1;
   }
 
   if (i_iron >= 0) {
@@ -142,7 +152,7 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
       const Real s_sid = chem.conc(i_sid, cell);
       const Real s_iron = chem.conc(i_iron, cell);
       const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
-      chelation_by_cell[static_cast<size_t>(cell)] = chelation;
+      chelation_by_cell_[static_cast<size_t>(cell)] = chelation;
       chem.reac(i_iron, cell) -= chelation;
       chem.reac(i_sid, cell) -= chelation;
       chem.reac(i_ferric_enterobactin, cell) += chelation;
@@ -151,7 +161,7 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
 
   for (Int cell = 0; cell < num_cells; ++cell) {
     const size_t index = static_cast<size_t>(cell);
-    if (occupancy_by_cell[index] == 0) continue;
+    if (occupancy_by_cell_[index] == 0) continue;
 
     const Real s_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
     Real fur_Km = 1.0e-6;
@@ -159,7 +169,7 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
       fur_Km = sim_.config().cell_bio.fur.Km;
     }
     const Real fur_activity = 1.0 - s_iron / (fur_Km + s_iron);
-    const Real biomass_density = biomass_by_cell[index] / cell_volume;
+    const Real biomass_density = biomass_by_cell_[index] / cell_volume;
     const Real sid_rate = sid_cfg.secretion_rate
         * std::max(0.0, fur_activity) * biomass_density;
     chem.reac(i_sid, cell) += sid_rate;
@@ -168,9 +178,9 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
     const Real s_ferric_enterobactin =
         chem.conc(i_ferric_enterobactin, cell);
     const Real vmax = sid_cfg.Vmax_reimport
-        * fepA_biomass_by_cell[index] / cell_volume;
+        * fepA_biomass_by_cell_[index] / cell_volume;
     const Real ferric_after_production = s_ferric_enterobactin
-        + chelation_by_cell[index] * dt;
+        + chelation_by_cell_[index] * dt;
     const Real reimport = implicit_ferric_enterobactin_reimport(
         ferric_after_production, vmax, sid_cfg.Km_reimport, dt);
     chem.reac(i_ferric_enterobactin, cell) -= reimport;

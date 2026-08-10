@@ -475,13 +475,22 @@ of occupancy. Secretion and FepA reimport remain biomass-weighted and are
 confined to occupied cells. Increasing local biomass therefore increases the
 aggregate FepA sink without multiplying the solution-phase chelation term,
 driving local FeEnt down rather than up. Diffusive escape further removes apo
-and FeEnt from the source cell. FepA ligand competition is therefore
-unreachable at any density in this model.
+and FeEnt from the source cell. In the EARI/VADI run, diffusion and
+solution-phase chelation produce a domain-wide background with mean FeEnt
+`6.37e-8 mol/m³` and maximum `1.07e-7 mol/m³` at the final saved step.
+Relative to `kd_enterobactin = 1e-6 mol/m³`, that is a mean competition factor
+of approximately `1.064` and a maximum of approximately `1.107`.
+The competition is therefore a spatially flat background effect rather than
+local co-location-driven protection: increasing occupancy decreases the local
+source-cell FeEnt, so it cannot create spatial structure in colicin B
+susceptibility. It is a global parameter shift wearing the costume of a
+spatial mechanism.
 
 This differs from the colicin result: bacteriocin dose scales with co-located
 producers because lysing producers are not also a sink for the toxin. The
 microcolony threshold identified for colicin in #213 is therefore a real
-density effect; no analogous FeEnt density threshold exists here.
+density effect, whereas FeEnt competition here is a domain-wide detuning and
+local co-location-driven competition remains unreachable.
 
 Chelation consumes apo-enterobactin (`siderophore`) and free iron and produces
 `ferric_enterobactin`. FepA reimport consumes ferric enterobactin and returns

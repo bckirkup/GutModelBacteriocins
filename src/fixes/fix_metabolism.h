@@ -25,6 +25,7 @@
 
 #include "fix.h"
 #include "agent.h"
+#include <vector>
 
 namespace gutibm {
 
@@ -69,6 +70,11 @@ class FixMetabolism : public Fix {
   void check_death(Agent& agent);
 
   MetabolismConfig cfg_;
+  std::vector<Real> biomass_by_cell_;
+  std::vector<Real> fepA_biomass_by_cell_;
+  std::vector<Int> occupancy_by_cell_;
+  std::vector<Real> chelation_by_cell_;
+  std::vector<Int> touched_cells_;
 };
 
 }  // namespace gutibm

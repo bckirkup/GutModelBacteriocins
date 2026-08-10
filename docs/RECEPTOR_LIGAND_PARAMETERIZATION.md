@@ -87,12 +87,20 @@ is applied in every cell containing apo-enterobactin and iron, while
 secretion and FepA reimport remain biomass-weighted and restricted to
 occupied cells. Consequently, co-location increases the aggregate FepA sink
 without increasing the chelation term, and local FeEnt decreases with
-occupancy. Diffusive escape further suppresses it. FepA ligand competition is
-therefore unreachable at any density by construction.
+occupancy. Diffusive escape further suppresses it. In the EARI/VADI run, the
+final saved domain-wide FeEnt field had mean `6.37e-8 mol/m³` and maximum
+`1.07e-7 mol/m³`, giving mean and maximum FepA competition factors of
+approximately `1.064` and `1.107` relative to `kd_enterobactin =
+1e-6 mol/m³`. Thus the model has a modest, spatially flat background
+competition effect, but local co-location-driven competition remains
+unreachable: increasing occupancy reduces rather than increases source-cell
+FeEnt.
 
 This contrasts with colicin dose: lysing producers release bacteriocin without
 also removing it, so toxin dose does increase with co-located producers and
-the microcolony threshold from #213 is a genuine density effect.
+the microcolony threshold from #213 is a genuine density effect. FeEnt
+competition instead acts as a global parameter shift rather than a spatial
+mechanism.
 
 | Parameter | Model value | Basis |
 |-----------|-------------|-------|

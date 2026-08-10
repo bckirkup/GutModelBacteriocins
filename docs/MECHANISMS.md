@@ -114,12 +114,20 @@ iron, independent of occupancy. Secretion and FepA reimport remain
 biomass-weighted and confined to occupied cells. Thus increasing local
 biomass increases the aggregate FepA sink without multiplying the
 solution-phase chelation term, so local FeEnt decreases with co-location.
-Diffusive escape further lowers the source-cell concentration. FepA ligand
-competition is unreachable at any density in this model.
+Diffusive escape further lowers the source-cell concentration. In the
+EARI/VADI run, the final saved domain-wide FeEnt field had mean
+`6.37e-8 mol/m³` and maximum `1.07e-7 mol/m³`, corresponding to competition
+factors of approximately `1.064` and `1.107` relative to
+`kd_enterobactin = 1e-6 mol/m³`. This is a spatially flat background effect,
+not local co-location-driven protection: it cannot generate spatial structure
+in colicin B susceptibility. It is a global parameter shift wearing the
+costume of a spatial mechanism.
 
 This is different from bacteriocin dose. Lysing producers release toxin but do
 not reimport it, so toxin dose does scale with co-located producers; the
-microcolony threshold from #213 is consequently a genuine density effect.
+microcolony threshold from #213 is consequently a genuine density effect,
+whereas local FeEnt competition remains unreachable even though the
+domain-wide background produces a modest uniform detuning.
 
 The FeEnt reimport step uses a positivity-preserving backward-Euler
 Michaelis–Menten update. With the literature-grounded `Vmax` and the model's
