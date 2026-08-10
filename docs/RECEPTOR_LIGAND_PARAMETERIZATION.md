@@ -68,6 +68,16 @@ competitive inhibition). Under iron limitation the Fur regulon is induced 35–5
 (cirA 56×, fepA 35×, fiu 39×), though those figures come from antimicrobial-
 peptide stress rather than pure iron chelation.
 
+The explicit FeEnt field does not imply meaningful competition around an
+isolated cell. In a maintained-background single-cell assay with diffusion,
+local FeEnt was `8e-16 mol/m³` at `1e-4 mol/m³` iron and `3e-19 mol/m³` at
+`1e-8 mol/m³` iron. Relative to `kd_enterobactin = 1e-6 mol/m³`, linear
+co-location scaling would require approximately `1.25e9` cells at high iron
+or `3.3e12` cells under maintained low iron to reach unit-affinity occupancy.
+These are field-scale threshold estimates; FepA competition is consequently
+a microcolony property. The larger low-iron threshold reflects iron-limited
+chelation outweighing Fur-mediated secretion derepression.
+
 | Parameter | Model value | Basis |
 |-----------|-------------|-------|
 | `kd_enterobactin` | **`1e-6 mol/m³` (1 nM)** | Live-cell Kd ~0.2 nM; 1 nM is conservative (was 10 nM) |

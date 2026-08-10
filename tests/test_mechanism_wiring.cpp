@@ -439,6 +439,7 @@ void test_siderophore_apo_ferric_iron_chain() {
   cfg.chem_env.siderophore.enabled = true;
   cfg.chem_env.siderophore.secretion_rate = 0.0;
   cfg.chem_env.siderophore.chelation_rate = 1.0;
+  cfg.cell_bio.fur.enabled = false;
   cfg.initial_strains[0].count = 1;
   InputParser::finalize_config(cfg);
 
@@ -456,6 +457,7 @@ void test_siderophore_apo_ferric_iron_chain() {
   Agent& agent = sim.agents()[0];
   agent.mu_max = 0.0;
   agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 0.0;
+  agent.receptor_expr_base[to_underlying(ReceptorType::FepA)] = 0.0;
   chem.conc(i_sid, cell) = 1.0;
   chem.conc(i_fe, cell) = 1.0;
   chem.conc(i_ferric, cell) = 0.0;
@@ -484,6 +486,92 @@ void test_siderophore_apo_ferric_iron_chain() {
   std::cout << "  test_siderophore_apo_ferric_iron_chain: PASSED\n";
 }
 
+void test_siderophore_specific_rate_scaling() {
+  SimulationConfig cfg = make_integration_cfg(1, 929);
+  cfg.chem_env.siderophore.enabled = true;
+  cfg.chem_env.siderophore.secretion_rate = 1.0e-5;
+  cfg.chem_env.siderophore.Vmax_reimport = 1.0e-5;
+  cfg.chem_env.siderophore.Km_reimport = 1.0e-6;
+  cfg.chem_env.siderophore.chelation_rate = 0.0;
+  cfg.cell_bio.fur.enabled = false;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.fixes.metabolism.division_threshold = 100.0;
+  cfg.initial_strains[0].count = 1;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  auto& chem = sim.chemical_field();
+  Agent& agent = sim.agents()[0];
+  const Int cell = agent.grid_cell;
+  const Int i_sid = chem.find(species::SIDEROPHORE);
+  const Int i_fe = chem.find(species::IRON);
+  const Int i_ferric = chem.find(species::FERRIC_ENTEROBACTIN);
+  expect(i_sid >= 0 && i_fe >= 0 && i_ferric >= 0,
+         "specific-rate test species must all be registered");
+  if (i_sid < 0 || i_fe < 0 || i_ferric < 0) return;
+
+  agent.mu_max = 0.0;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  agent.receptor_expr_base[to_underlying(ReceptorType::FepA)] = 1.0;
+  chem.conc(i_fe, cell) = 0.0;
+  chem.conc(i_ferric, cell) = 0.0;
+  chem.zero_reactions();
+  FixMetabolism metabolism(sim, sim.config().fixes.metabolism);
+  metabolism.compute(1.0);
+  const Real secretion_one = chem.reac(i_sid, cell);
+
+  agent.biomass *= 2.0;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  chem.zero_reactions();
+  metabolism.compute(1.0);
+  const Real secretion_two = chem.reac(i_sid, cell);
+  expect(secretion_one > 0.0 && std::abs(secretion_two / secretion_one - 2.0)
+      < 1.0e-12,
+      "siderophore secretion must scale linearly with biomass density");
+
+  agent.biomass *= 0.5;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  chem.conc(i_ferric, cell) = 1.0e-6;
+  chem.zero_reactions();
+  metabolism.compute(1.0e-6);
+  const Real reimport_one = -chem.reac(i_ferric, cell);
+
+  agent.biomass *= 2.0;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  chem.zero_reactions();
+  metabolism.compute(1.0e-6);
+  const Real reimport_two = -chem.reac(i_ferric, cell);
+  expect(reimport_one > 0.0 && std::abs(reimport_two / reimport_one - 2.0)
+      < 1.0e-4,
+      "FepA reimport must scale linearly with biomass density");
+
+  agent.biomass *= 0.5;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  chem.conc(i_ferric, cell) = 1.0e6;
+  chem.zero_reactions();
+  metabolism.compute(1.0);
+  const Real saturated_reimport = -chem.reac(i_ferric, cell);
+  const Real cell_volume = sim.domain().dx() * sim.domain().dx()
+      * sim.domain().dx();
+  const Real expected_vmax = cfg.chem_env.siderophore.Vmax_reimport
+      * agent.biomass / cell_volume;
+  const Real saturation_error =
+      std::abs(saturated_reimport - expected_vmax) / expected_vmax;
+  expect(saturation_error < 1.0e-5,
+         "FepA reimport must saturate at biomass-scaled Vmax");
+  for (const Real dt : {1.0e-6, 1.0, 60.0, 600.0}) {
+    chem.conc(i_ferric, cell) = 1.0e6;
+    chem.zero_reactions();
+    metabolism.compute(dt);
+    const Real reimport = -chem.reac(i_ferric, cell);
+    expect(reimport >= -1.0e-12
+        && reimport <= expected_vmax * (1.0 + 1.0e-6),
+           "implicit FeEnt reimport must remain nonnegative and bounded");
+  }
+  std::cout << "  test_siderophore_specific_rate_scaling: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -496,6 +584,7 @@ int main() {
   test_dysbiosis_halt();
   test_metabolism_uptake_has_rate_units();
   test_siderophore_apo_ferric_iron_chain();
+  test_siderophore_specific_rate_scaling();
   test_all_species_bounded_steady_state();
 
   if (failure_counter().value == 0) {

@@ -83,8 +83,34 @@ apo-enterobactin.
 Chelation consumes apo-enterobactin and free iron and produces the distinct
 `ferric_enterobactin` species. FepA-mediated reimport consumes ferric
 enterobactin and returns iron to the extracellular field, preserving the
-tracked reaction chain. The former secretion-rate-proportional recapture term
-has been removed.
+tracked reaction chain. Secretion and reimport are specific rates in
+mol/(s·kg) multiplied by biomass density. The secretion rate is a constrained
+estimate; the reimport capacity is grounded in approximately 35,000 FepA
+copies per iron-starved cell and approximately five TonB-limited transport
+cycles per minute per FepA (Smallwood et al. 2016; Newton et al. 2010),
+converted using the default cell mass. The exact conversion is
+`8.33e-6 mol/(s·kg)` for the code-derived default cell mass, rounded to the
+configured `1e-5 mol/(s·kg)`. The former secretion-rate-proportional recapture
+term has been removed.
+
+This chemistry does not make an isolated cell a meaningful FepA competitor.
+With diffusion enabled, the measured local FeEnt concentration in a maintained
+single-cell assay was `8e-16 mol/m³` at `1e-4 mol/m³` iron and
+`3e-19 mol/m³` at `1e-8 mol/m³` iron, versus
+`kd_enterobactin = 1e-6 mol/m³`. Assuming linear scaling with the number of
+co-located cells, the corresponding thresholds are approximately `1.25e9`
+cells at high iron and `3.3e12` under maintained low iron. Fur derepression
+raises secretion, but low iron reduces chelation flux more strongly; FeEnt
+competition is therefore a microcolony-scale property rather than a restored
+single-cell effect.
+
+The FeEnt reimport step uses a positivity-preserving backward-Euler
+Michaelis–Menten update. With the literature-grounded `Vmax` and the model's
+60 s biological timestep, the low-concentration pseudo-first-order sink can
+be tens of inverse seconds; an explicit `reac * dt` update would overshoot
+and clamp FeEnt to zero. The implicit solve remains nonnegative and bounded
+by the biomass-scaled `Vmax` for all tested timesteps from `1e-6` through
+`600 s`.
 
 **Penalties applied:**
 - **BtuB loss** (expr < 0.5): Activates MetE pathway for B12-independent methionine synthesis. Base cost = `metE_penalty` (default 5%). The MetE cost is further amplified by local acetate concentration (see below). Additionally, concentration-dependent ethanolamine utilization loss applies:
@@ -184,7 +210,9 @@ The effective diffusion coefficient: `D_eff = D_free / R`
 
 CirA ligand is `cirA_linearized_fraction × [ferric_enterobactin]` when
 siderophore chemistry is enabled; otherwise zero. FepA competition likewise
-uses ferric enterobactin. Ferrichrome remains disabled by default because
+uses ferric enterobactin, but diffusion-limited single-cell FeEnt remains far
+below its Kd; meaningful FepA competition requires a co-located microcolony.
+Ferrichrome remains disabled by default because
 *E. coli* does not synthesize it and no defensible gut concentration is
 available; consequently FhuA has no ambient ferrichrome competition by default.
 

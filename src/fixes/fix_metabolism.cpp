@@ -22,6 +22,21 @@ void FixMetabolism::init() { /* no-op: parameters set via cfg_ at construction *
 
 namespace {
 
+Real implicit_ferric_enterobactin_reimport(
+    Real ferric_after_production, Real vmax, Real km, Real dt) {
+  if (ferric_after_production <= 0.0 || vmax <= 0.0 || dt <= 0.0) {
+    return 0.0;
+  }
+  const Real linear_term = km + dt * vmax - ferric_after_production;
+  const Real discriminant = linear_term * linear_term
+      + 4.0 * ferric_after_production * km;
+  const Real root = std::sqrt(discriminant);
+  const Real ferric_after_reimport = linear_term >= 0.0
+      ? 2.0 * ferric_after_production * km / (linear_term + root)
+      : 0.5 * (-linear_term + root);
+  return (ferric_after_production - ferric_after_reimport) / dt;
+}
+
 void apply_fur_receptor_expr(Simulation& sim) {
   const auto& fur_cfg = sim.config().cell_bio.fur;
   if (!fur_cfg.enabled) return;
@@ -51,8 +66,8 @@ void apply_fur_receptor_expr(Simulation& sim) {
 
 bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   if (!sim.gpu_active()) return false;
-
-  apply_fur_receptor_expr(sim);
+  if (sim.config().cell_bio.fur.enabled) return false;
+  if (sim.config().chem_env.siderophore.enabled) return false;
 
   auto& agents = sim.agents();
   auto& ag = sim.agents_gpu();
@@ -346,9 +361,12 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
       if (i_iron >= 0 && expr_fepA > 0.0) {
         const Real s_ferric_enterobactin =
             chem.conc(i_ferric_enterobactin, cell);
-        const Real reimport = expr_fepA * s_ferric_enterobactin
-            / (sid_cfg.Km_reimport + s_ferric_enterobactin)
+        const Real vmax = expr_fepA * sid_cfg.Vmax_reimport
             * agent.biomass / cell_vol;
+        const Real ferric_after_production = s_ferric_enterobactin
+            + chelation * dt;
+        const Real reimport = implicit_ferric_enterobactin_reimport(
+            ferric_after_production, vmax, sid_cfg.Km_reimport, dt);
         chem.reac(i_ferric_enterobactin, cell) -= reimport;
         chem.reac(i_iron, cell) += reimport;
       }

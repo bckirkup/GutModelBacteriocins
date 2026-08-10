@@ -329,7 +329,7 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 | `fur.upregulation_max` | 10.0 | — | Max fold-upregulation under iron starvation (Spec 6 §4.2; raised 4→10, still conservative vs measured 35–56× Fur-regulon induction; capped by `receptor_max`) |
 | `fur.receptor_max` | 5.0 | — | Cap on effective receptor expression |
 
-When enabled, iron-uptake receptors (FepA, FhuA, IroN, IutA, Fiu, CirA) are upregulated under low local iron, increasing colicin susceptibility (Vulnerability Paradox). Mutations modify `receptor_expr_base`; Fur scales effective `receptor_expr` each metabolism step. GPU metabolism fast-path is disabled when Fur is enabled.
+When enabled, iron-uptake receptors (FepA, FhuA, IroN, IutA, Fiu, CirA) are upregulated under low local iron, increasing colicin susceptibility (Vulnerability Paradox). Mutations modify `receptor_expr_base`; Fur scales effective `receptor_expr` each metabolism step. GPU metabolism fast-path is disabled when Fur or siderophore chemistry is enabled because those CPU-only biology paths must remain authoritative.
 
 ---
 
@@ -442,17 +442,38 @@ QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteri
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
 | `siderophore.enabled` | true | — | Register `siderophore` species and secretion/chelation in metabolism; enabled by default because iron-limited *E. coli* commonly produces enterobactin |
-| `siderophore.secretion_rate` | 1e-15 | mol/s per biomass | Enterobactin secretion scaled by Fur activity |
+| `siderophore.secretion_rate` | 1e-5 | mol/(s·kg) | Constrained estimate for enterobactin secretion, scaled by Fur activity |
 | `siderophore.D_free` | 4e-11 | m²/s | Free siderophore diffusion |
 | `siderophore.chelation_rate` | 1e3 | m³/mol/s | Iron–siderophore chelation sink |
 | `siderophore.Km_reimport` | 1e-6 | mol/m³ | FepA-mediated ferric-enterobactin reimport; converted from the erroneous `1e-9` default |
+| `siderophore.Vmax_reimport` | 1e-5 | mol/(s·kg) | FepA ferric-enterobactin transport capacity, grounded in FepA copy number and TonB-limited turnover |
 
 Siderophore chemistry is enabled by default because enterobactin production is
-near-universal among iron-limited *E. coli*; leaving it off would remove the
-ferric-enterobactin competition term from FepA. Chelation consumes
-apo-enterobactin (`siderophore`) and free iron and produces
+near-universal among iron-limited *E. coli*. Enabling it does not restore
+meaningful FepA competition for an isolated cell: diffusion carries apo
+enterobactin away faster than local chelation, so the realized
+`ferric_enterobactin` concentration remains far below
+`receptor.kd_enterobactin`. In a maintained-background single-cell assay
+(15 × 60 s steps, `grid_dx = 5 µm`), the local FeEnt concentration was
+`8e-16 mol/m³` at `1e-4 mol/m³` iron and `3e-19 mol/m³` at `1e-8 mol/m³`
+iron. Under the linear co-location assumption, reaching
+`kd_enterobactin = 1e-6 mol/m³` therefore requires approximately `1.25e9`
+co-located cells at high iron and `3.3e12` under the maintained low-iron
+condition. The low-iron threshold is higher because Fur derepression increases
+secretion, but iron limitation suppresses the chelation flux. These values are
+single-cell field estimates, not population targets; meaningful competition is
+a microcolony property.
+
+Chelation consumes apo-enterobactin (`siderophore`) and free iron and produces
 `ferric_enterobactin`. FepA reimport consumes ferric enterobactin and returns
-iron; there is no secretion-rate-proportional recapture term.
+iron; both secretion and reimport are specific rates in mol/(s·kg), multiplied
+by biomass density. The secretion value is a constrained estimate rather than
+a direct measurement. The reimport value uses approximately 35,000 FepA per
+iron-starved cell and approximately five transport cycles per minute per FepA
+(Smallwood et al. 2016; Newton et al. 2010), converted using the default cell
+mass from `CELL_RADIUS_DEFAULT` and `CELL_DENSITY_DEFAULT`. The selected
+`1e-5 mol/(s·kg)` is a rounded capacity; the exact default-cell-mass
+conversion of the cited estimate is `8.33e-6 mol/(s·kg)`.
 
 ## Ferrichrome ambient field
 
