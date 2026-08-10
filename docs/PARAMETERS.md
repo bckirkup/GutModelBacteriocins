@@ -54,10 +54,13 @@ When disabled (`adaptive_dt_enabled = false`), the fixed `bio_dt` is used as bef
 | `immigration.step` | 0 | relative step | Pulse step relative to run start |
 | `immigration.rate` | 0 | events/s | Continuous event rate |
 
-`at_distance` uses the minimum-image distance to the nearest live,
-pre-existing agent. This measures the colony surface where toxin exposure is
-determined by nearby producers. The centroid convention is intended only for a
-single compact cluster and is not min-image-corrected across periodic wraps.
+`at_distance` proposes positions on shells around sampled live-biomass
+anchors, then verifies each proposal using the true global minimum-image
+distance to the nearest live, pre-existing agent. The centroid convention
+anchors on the global centroid and is intended only for a single compact
+cluster; it is not min-image-corrected across periodic wraps. If no proposal
+meets `distance_tolerance` after the retry, the cell is skipped with a rank-0
+warning rather than placed at the wrong distance.
 
 ---
 

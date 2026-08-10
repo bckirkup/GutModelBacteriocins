@@ -552,9 +552,11 @@ void Simulation::validate_immigration_config() const {
 void Simulation::inject_immigrants(Real dt) {
   // MPI contract: immigration_rng_ is replicated and never observes
   // rank-local state, so every rank agrees on event counts and candidates.
-  // The distance reduction is collective on every candidate batch. Only the
-  // owning rank constructs a cell; AgentPool::next_tag() supplies that rank's
-  // stride stream, making IDs globally unique without migration duplicates.
+  // When an event fires, every rank also participates in the replicated
+  // anchor Allgatherv before the distance reduction. Both collectives are
+  // unconditional for that event. Only the owning rank constructs a cell;
+  // AgentPool::next_tag() supplies that rank's stride stream, making IDs
+  // globally unique without migration duplicates.
   const ImmigrationConfig& immigration = cfg_.immigration;
   if (!immigration.enabled) return;
 
@@ -569,6 +571,77 @@ void Simulation::inject_immigrants(Real dt) {
   for (Int event = 0; event < event_count; ++event) {
     inject_one_immigration_event(immigration, log_warnings);
   }
+}
+
+std::vector<Vec3> Simulation::immigration_anchors(
+    const ImmigrationConfig& immigration, Int global_live_count) const {
+  if (global_live_count <= 0) return {};
+  if (immigration.distance_reference == "centroid") {
+    Vec3 local_sum = {0.0, 0.0, 0.0};
+    for (const Agent& agent : agents_) {
+      if (agent.state == PhenoState::DEAD) continue;
+      for (Int axis = 0; axis < 3; ++axis) local_sum[axis] += agent.x[axis];
+    }
+    Vec3 global_sum = local_sum;
+#ifdef GUTIBM_MPI
+    if (domain_.nprocs() > 1) {
+      MPI_Allreduce(local_sum.data(), global_sum.data(), 3, MPI_DOUBLE,
+                    MPI_SUM, MPI_COMM_WORLD);
+    }
+#endif
+    for (Real& value : global_sum) {
+      value /= static_cast<Real>(global_live_count);
+    }
+    return {global_sum};
+  }
+
+  constexpr Int kMaxGlobalAnchors = 256;
+  const Int rank = domain_.rank();
+  const Int nprocs = domain_.nprocs();
+  const Int base = kMaxGlobalAnchors / nprocs;
+  const Int remainder = kMaxGlobalAnchors % nprocs;
+  const Int target = base + (rank < remainder ? 1 : 0);
+  std::vector<Vec3> local;
+  local.reserve(static_cast<size_t>(target));
+  for (const Agent& agent : agents_) {
+    if (agent.state != PhenoState::DEAD) local.push_back(agent.x);
+  }
+  const Int sample_count = std::min<Int>(target, local.size());
+  std::vector<Vec3> sampled;
+  sampled.reserve(static_cast<size_t>(sample_count));
+  for (Int i = 0; i < sample_count; ++i) {
+    const size_t index = static_cast<size_t>(
+        (static_cast<long long>(i) * local.size()) / sample_count);
+    sampled.push_back(local[index]);
+  }
+#ifdef GUTIBM_MPI
+  if (nprocs > 1) {
+    const Int local_values = static_cast<Int>(sampled.size() * 3);
+    std::vector<Int> counts(static_cast<size_t>(nprocs));
+    MPI_Allgather(&local_values, 1, MPI_INT, counts.data(), 1, MPI_INT,
+                  MPI_COMM_WORLD);
+    std::vector<Int> displacements(static_cast<size_t>(nprocs), 0);
+    Int total_values = 0;
+    for (Int i = 0; i < nprocs; ++i) {
+      displacements[static_cast<size_t>(i)] = total_values;
+      total_values += counts[static_cast<size_t>(i)];
+    }
+    std::vector<Real> packed(static_cast<size_t>(total_values));
+    MPI_Allgatherv(sampled.empty() ? nullptr : sampled.front().data(),
+                   local_values, MPI_DOUBLE, packed.data(), counts.data(),
+                   displacements.data(), MPI_DOUBLE, MPI_COMM_WORLD);
+    std::vector<Vec3> anchors;
+    anchors.reserve(static_cast<size_t>(total_values / 3));
+    for (Int i = 0; i < total_values; i += 3) {
+      anchors.push_back(
+          {packed[static_cast<size_t>(i)],
+           packed[static_cast<size_t>(i + 1)],
+           packed[static_cast<size_t>(i + 2)]});
+    }
+    return anchors;
+  }
+#endif
+  return sampled;
 }
 
 void Simulation::inject_one_immigration_event(
@@ -635,9 +708,12 @@ void Simulation::inject_one_immigration_event(
   };
 
   const bool has_live_agents = global_live_count > 0;
+  const std::vector<Vec3> anchors =
+      immigration_anchors(immigration, global_live_count);
   const std::vector<Vec3> positions = immigration_positions(
       immigration, domain_.lo(), domain_.hi(), immigration_rng_,
-      has_live_agents, log_warnings, reducer);
+      anchors, has_live_agents, log_warnings, reducer,
+      [this](Vec3& position) { domain_.apply_pbc(position); });
   const auto& strain =
       cfg_.initial_strains[static_cast<size_t>(immigration.strain_index)];
   for (const Vec3& pos : positions) {

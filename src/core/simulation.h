@@ -147,6 +147,8 @@ class Simulation {
   void inject_immigrants(Real dt);
   void inject_one_immigration_event(const ImmigrationConfig& immigration,
                                     bool log_warnings);
+  std::vector<Vec3> immigration_anchors(
+      const ImmigrationConfig& immigration, Int global_live_count) const;
   void validate_immigration_config() const;
   void apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap);
   void update_grid_coupling();

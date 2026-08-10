@@ -35,13 +35,19 @@ therefore a checkpoint fork can use a step relative to the fork, independent
 of the checkpoint's absolute step. Continuous events draw a Poisson number
 with mean `rate * dt`.
 
-`at_distance` selects from replicated uniform global candidates using the
-minimum-image distance to the nearest live pre-existing agent. This measures
-the colony surface because toxin exposure is dominated by nearby producing
-cells, and remains well-defined for multiple colonies. `distance_reference:
-centroid` is also available for a single compact cluster; its centroid is
-computed by MPI reduction and is not min-image-corrected across periodic
-wraps. `z_slab` samples uniformly within its configured z bounds.
+`at_distance` proposes candidates on shells around replicated live-biomass
+anchors, using isotropic directions and the requested distance. The global
+minimum-image distance to the nearest live pre-existing agent is still
+computed for every proposal, so a proposal near an unrelated cluster is
+rejected unless its true nearest-biomass distance meets the tolerance. This
+targets the colony surface because toxin exposure is dominated by nearby
+producing cells, and remains well-defined for multiple colonies.
+`distance_reference: centroid` instead anchors proposals on the globally
+reduced centroid and is intended for a single compact cluster; its centroid is
+not min-image-corrected across periodic wraps. `z_slab` samples uniformly
+within its configured z bounds. If neither candidate batch meets
+`distance_tolerance`, the cell is skipped with a rank-0 warning rather than
+placed at the wrong distance.
 
 Immigration uses a dedicated RNG seeded from `seed` with a fixed mixing
 constant. Every rank draws identical event counts and candidates. The owning

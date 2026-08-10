@@ -27,9 +27,10 @@ void test_schedule_and_uniform_placement() {
   cfg.z_min = 2e-6;
   cfg.z_max = 8e-6;
   auto positions = immigration_positions(
-      cfg, {0.0, 0.0, 0.0}, {20e-6, 20e-6, 10e-6}, rng, false,
-      false,
-      [](const std::vector<Vec3>&, std::vector<Real>&) {});
+      cfg, {0.0, 0.0, 0.0}, {20e-6, 20e-6, 10e-6}, rng,
+      {}, false, false,
+      [](const std::vector<Vec3>&, std::vector<Real>&) {},
+      [](Vec3&) {});
   assert(positions.size() == 3);
   for (const Vec3& pos : positions) {
     assert(pos[2] >= cfg.z_min);
@@ -48,14 +49,15 @@ void test_at_distance_selects_candidate() {
   RNG rng(42);
   int calls = 0;
   auto positions = immigration_positions(
-      cfg, {0.0, 0.0, 0.0}, {20e-6, 20e-6, 20e-6}, rng, true,
-      false,
+      cfg, {0.0, 0.0, 0.0}, {20e-6, 20e-6, 20e-6}, rng,
+      {{0.0, 0.0, 0.0}}, true, false,
       [&calls](const std::vector<Vec3>& candidates, std::vector<Real>& out) {
         ++calls;
         for (size_t i = 0; i < candidates.size(); ++i) {
           out[i] = 25e-12;
         }
-      });
+      },
+      [](Vec3&) {});
   assert(calls == 1);
   assert(positions.size() == 1);
   std::cout << "  test_at_distance_selects_candidate: PASSED\n";
@@ -156,6 +158,85 @@ void test_at_distance_end_to_end_and_empty_fallback() {
   assert(empty.agents().size() == 1);
   assert(warning.str().find("no live biomass") != std::string::npos);
   std::cout << "  test_at_distance_empty_fallback: PASSED\n";
+}
+
+void test_small_colony_shell_reliability() {
+  for (uint64_t seed = 9100; seed < 9108; ++seed) {
+    SimulationConfig cfg = InputParser::default_config();
+    cfg.seed = seed;
+    cfg.domain.hi = {200e-6, 200e-6, 50e-6};
+    cfg.domain.grid_dx = 5e-6;
+    cfg.time.bio_dt = 60.0;
+    cfg.hdf5.enabled = false;
+    cfg.enabled_fixes = {"mechanics"};
+    cfg.initial_strains.clear();
+    SimulationConfig::InitialStrain resident;
+    resident.type = 1;
+    resident.count = 2;
+    cfg.initial_strains.push_back(resident);
+    SimulationConfig::InitialStrain immigrant;
+    immigrant.type = 2;
+    immigrant.count = 0;
+    cfg.initial_strains.push_back(immigrant);
+    cfg.immigration.enabled = true;
+    cfg.immigration.count = 1;
+    cfg.immigration.strain_index = 1;
+    cfg.immigration.placement = "at_distance";
+    cfg.immigration.distance = 5e-6;
+    cfg.immigration.distance_tolerance = 1e-6;
+    cfg.immigration.step = 0;
+
+    Simulation sim;
+    sim.init(cfg);
+    for (Agent& agent : sim.agents()) {
+      agent.x = {100e-6, 100e-6, 25e-6};
+      agent.flags.in_crypt = true;
+    }
+    sim.step(0.0);
+    assert(sim.step_events().immigrations == 1);
+    const Agent* injected = nullptr;
+    for (const Agent& agent : sim.agents()) {
+      if (agent.identity.type == immigrant.type) injected = &agent;
+    }
+    assert(injected != nullptr);
+    Real nearest_sq = std::numeric_limits<Real>::max();
+    for (const Agent& agent : sim.agents()) {
+      if (agent.identity.type == resident.type) {
+        nearest_sq = std::min(
+            nearest_sq, sim.domain().min_image_dist_sq(injected->x, agent.x));
+      }
+    }
+    const Real error = std::abs(std::sqrt(nearest_sq) - cfg.immigration.distance);
+    assert(error <= cfg.immigration.distance_tolerance);
+    std::cout << "  small-colony seed=" << seed
+              << " distance error=" << error << "\n";
+  }
+  std::cout << "  test_small_colony_shell_reliability: PASSED\n";
+}
+
+void test_shell_candidate_rejected_by_global_reducer() {
+  ImmigrationConfig cfg;
+  cfg.enabled = true;
+  cfg.count = 1;
+  cfg.placement = "at_distance";
+  cfg.distance = 5e-6;
+  cfg.distance_tolerance = 1e-12;
+  RNG rng(123);
+  Int calls = 0;
+  const auto positions = immigration_positions(
+      cfg, {0.0, 0.0, 0.0}, {20e-6, 20e-6, 20e-6}, rng,
+      {{0.0, 0.0, 0.0}}, true, false,
+      [&calls](const std::vector<Vec3>&, std::vector<Real>& distances) {
+        ++calls;
+        // The unrelated cluster is the true nearest biomass for every
+        // proposal in this reducer fixture, so the shell geometry alone
+        // must not make a candidate acceptable.
+        std::fill(distances.begin(), distances.end(), 0.0);
+      },
+      [](Vec3&) {});
+  assert(calls == 2);
+  assert(positions.empty());
+  std::cout << "  test_shell_candidate_rejected_by_global_reducer: PASSED\n";
 }
 
 void test_continuous_schedule_end_to_end() {
@@ -347,6 +428,8 @@ int main() {
   test_at_distance_selects_candidate();
   test_disabled_is_inert();
   test_at_distance_end_to_end_and_empty_fallback();
+  test_small_colony_shell_reliability();
+  test_shell_candidate_rejected_by_global_reducer();
   test_continuous_schedule_end_to_end();
   test_near_colony_kill_separation();
   test_pulse_constructs_full_agents();
