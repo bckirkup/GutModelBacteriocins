@@ -207,7 +207,7 @@ std::vector<Probe> build_probes() {
   v.push_back(R("retardation_acidic", [](const SimulationConfig& c) { return c.fixes.bacteriocin.retardation_acidic; }));
   v.push_back(R("retardation_neutral", [](const SimulationConfig& c) { return c.fixes.bacteriocin.retardation_neutral; }));
   v.push_back(R("D_free_colicin", [](const SimulationConfig& c) { return c.fixes.bacteriocin.D_free_colicin; }));
-  v.push_back(R("burst_molecules", [](const SimulationConfig& c) { return c.fixes.bacteriocin.burst_molecules; }));
+  v.push_back(R("burst_release_tau", [](const SimulationConfig& c) { return c.fixes.bacteriocin.burst_release_tau; }));
   v.push_back(R("microcin_mu_penalty", [](const SimulationConfig& c) { return c.fixes.bacteriocin.microcin_mu_penalty; }));
 
   // ── Metabolism Fix tunables ───────────────────────────────────────────────

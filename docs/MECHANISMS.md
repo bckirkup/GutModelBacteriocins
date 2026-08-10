@@ -141,7 +141,9 @@ MccV (`CONTINUOUS` mode) exports peptide without lysis:
 
 **Per-colicin burst sizes** (default library): ColE1 1e5, ColE2 5e4, ColB/ColIa 1e4, ColM 2e5.
 
-Burst sources scale `qssa.colicin_release_rate` by `burst_size / burst_molecules`.
+Lysis releases a finite inventory of `burst_size / AVOGADRO` mol with an
+exponential `burst_release_tau` timescale. The source integral therefore equals
+the configured burst inventory.
 
 **pI-dependent diffusion classification:**
 | Class | pI range | Retardation | Behavior |

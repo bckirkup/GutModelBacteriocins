@@ -317,7 +317,7 @@ void test_cross_induction() {
 
 void test_per_colicin_burst_size() {
   BacteriocinConfig cfg;
-  cfg.burst_molecules = 1.0e4;
+  cfg.burst_release_tau = 300.0;
 
   auto sim = make_empty_sim();
   Agent a = make_agent_at_center(sim, 1);
@@ -332,8 +332,9 @@ void test_per_colicin_burst_size() {
   fix.post_step(2.0);
 
   assert(sim.toxin_bursts().size() == 1);
-  const Real expected = sim.config().qssa.colicin_release_rate * (1.0e5 / 1.0e4);
+  const Real expected = (1.0e5 / AVOGADRO) / cfg.burst_release_tau;
   assert(std::abs(sim.toxin_bursts()[0].params.source_rate - expected) < 1e-30);
+  assert(std::abs(sim.toxin_bursts()[0].release_tau - cfg.burst_release_tau) < 1e-12);
   assert(sim.toxin_bursts()[0].is_nuclease == false);
 
   std::cout << "  test_per_colicin_burst_size: PASSED\n";

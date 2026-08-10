@@ -356,6 +356,18 @@ void test_strict_config_aborts_on_bad_numeric() {
   std::cout << "  test_strict_config_aborts_on_bad_numeric: PASSED\n";
 }
 
+void test_burst_release_tau_must_be_positive() {
+  SimulationConfig cfg = InputParser::default_config();
+  bool threw = false;
+  try {
+    (void)InputParser::apply_flat_key(cfg, "burst_release_tau", "0");
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+  assert(threw);
+  std::cout << "  test_burst_release_tau_must_be_positive: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -375,6 +387,7 @@ int main() {
   test_unknown_key_warning_legacy();
   test_gpu_enabled_fixture();
   test_strict_config_aborts_on_bad_numeric();
+  test_burst_release_tau_must_be_positive();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }

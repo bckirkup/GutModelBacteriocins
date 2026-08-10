@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <array>
 #include <cctype>
+#include <cmath>
 
 namespace gutibm {
 
@@ -67,6 +68,15 @@ Real parse_config_real(std::string_view key, const std::string& val) {
     warn_parse_failure("numeric", key, val);
     return 0.0;
   }
+}
+
+Real parse_positive_config_real(std::string_view key, const std::string& val) {
+  const Real result = parse_config_real(key, val);
+  if (!std::isfinite(result) || result <= 0.0) {
+    throw ConfigError("config key '" + std::string(key)
+                      + "' must be a finite positive real");
+  }
+  return result;
 }
 
 Int parse_config_int(std::string_view key, const std::string& val) {
@@ -329,7 +339,7 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
   if (key == "retardation_acidic")   { cfg.fixes.bacteriocin.retardation_acidic = parse_config_real(key, val); return true; }
   if (key == "retardation_neutral")  { cfg.fixes.bacteriocin.retardation_neutral = parse_config_real(key, val); return true; }
   if (key == "D_free_colicin")       { cfg.fixes.bacteriocin.D_free_colicin = parse_config_real(key, val); return true; }
-  if (key == "burst_molecules")      { cfg.fixes.bacteriocin.burst_molecules = parse_config_real(key, val); return true; }
+  if (key == "burst_release_tau")    { cfg.fixes.bacteriocin.burst_release_tau = parse_positive_config_real(key, val); return true; }
   if (key == "microcin_mu_penalty")  { cfg.fixes.bacteriocin.microcin_mu_penalty = parse_config_real(key, val); return true; }
   return false;
 }

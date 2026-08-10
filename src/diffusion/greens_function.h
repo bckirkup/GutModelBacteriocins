@@ -30,10 +30,11 @@ class Domain;
 class AdvectionField;
 
 struct GreensFunctionParams {
-  Real diff_coeff;       // effective D (m^2/s) = D_free / retardation
-  Real source_rate;      // Q (mol/s)
-  Real pI;               // isoelectric point (determines retardation)
-  Real retardation;      // mucin retardation factor
+  Real diff_coeff = 0.0;       // effective D (m^2/s) = D_free / retardation
+  Real source_rate = 0.0;      // Q (mol/s)
+  Real pI = 0.0;               // isoelectric point (determines retardation)
+  Real retardation = 1.0;      // mucin retardation factor
+  Real decay_rate = 0.0;       // first-order toxin degradation rate (1/s)
 
   // NOTE: bacteriocin pI classification lives in a single source of truth,
   // `classify_by_pI()` in src/genome/plasmid.h (pI > 8.5 → CORE, pI < 7.0 →
@@ -71,7 +72,7 @@ class GreensFunction {
 
   // Single image contribution
   Real single_kernel(const Vec3& src, const Vec3& tgt,
-                      Real D_eff, Real Q,
+                      Real D_eff, Real Q, Real decay_rate,
                       const Vec3& flow_vel) const;
 
   const Domain* domain_    = nullptr;

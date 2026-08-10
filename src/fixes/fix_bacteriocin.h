@@ -35,8 +35,8 @@ struct BacteriocinConfig {
   // Free diffusion coefficient for ~50kDa protein (m^2/s)
   Real D_free_colicin       = 4.0e-11;
 
-  // Burst size: molecules released per lysis event
-  Real burst_molecules      = 1.0e4;
+  // Exponential release timescale for finite lysis inventory
+  Real burst_release_tau    = 300.0;
 
   // Microcin continuous secretion penalty on mu_max
   Real microcin_mu_penalty  = 0.03;    // 3%

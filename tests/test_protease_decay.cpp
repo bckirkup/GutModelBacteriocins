@@ -46,7 +46,7 @@ GreensFunctionParams params_from_bi(const BICluster& bi, Real release_rate) {
 
 }  // namespace
 
-void test_burst_halflife_decay() {
+void test_spatial_decay_not_temporal_amplitude() {
   Domain domain;
   AdvectionField adv;
   QSSASolver qssa;
@@ -61,16 +61,58 @@ void test_burst_halflife_decay() {
   std::vector<Vec3> sources = {source};
   std::vector<GreensFunctionParams> params = {
       params_from_bi(bi, 1.0e-18)};
+  params[0].decay_rate = decay_rate;
 
   const Real c0 = qssa.point_concentration(target, sources, params, {1.0});
-  const Real factor_half = std::exp(-decay_rate * half_life);
-  const Real c_half = qssa.point_concentration(target, sources, params, {factor_half});
-
   assert(c0 > 0.0);
-  const Real ratio = c_half / c0;
-  assert(std::abs(ratio - 0.5) < 0.05);
+  const Real c_same_source_age = qssa.point_concentration(target, sources, params, {1.0});
+  assert(std::abs(c_same_source_age - c0) < 1e-30 * std::max(c0, 1.0));
 
-  std::cout << "  test_burst_halflife_decay: PASSED (ratio=" << ratio << ")\n";
+  std::cout << "  test_spatial_decay_not_temporal_amplitude: PASSED (k="
+            << decay_rate << ")\n";
+}
+
+void test_inventory_conservation() {
+  const Real inventory = 1.0e5 / AVOGADRO;
+  for (const Real tau : {60.0, 300.0, 1800.0}) {
+    const Real dt = tau / 1000.0;
+    Real integrated = 0.0;
+    for (Real age = 0.0; age < 20.0 * tau; age += dt) {
+      integrated += (inventory / tau) * std::exp(-age / tau) * dt;
+    }
+    assert(std::abs(integrated - inventory) / inventory < 1.0e-3);
+  }
+  std::cout << "  test_inventory_conservation: PASSED\n";
+}
+
+void test_dose_invariant_to_release_tau() {
+  Domain domain;
+  AdvectionField adv;
+  QSSASolver qssa;
+  setup_qssa(domain, adv, qssa);
+  const BICluster bi = PlasmidLibrary::colicin_E1();
+  const Vec3 source = {50e-6, 50e-6, 25e-6};
+  const Vec3 target = {60e-6, 50e-6, 25e-6};
+  const Real inventory = bi.burst_size / AVOGADRO;
+  GreensFunctionParams params = params_from_bi(bi, inventory);
+  params.decay_rate = 0.0;
+  const Real kernel = qssa.point_concentration(target, {source}, {params}, {1.0});
+  Real reference = 0.0;
+  bool have_reference = false;
+  for (const Real tau : {60.0, 300.0, 1800.0}) {
+    const Real dt = tau / 1000.0;
+    Real dose = 0.0;
+    for (Real age = 0.0; age < 20.0 * tau; age += dt) {
+      dose += kernel * std::exp(-age / tau) * dt / tau;
+    }
+    if (!have_reference) {
+      reference = dose;
+      have_reference = true;
+    }
+    assert(std::abs(dose - reference) / reference < 1.0e-3);
+  }
+  std::cout << "  test_dose_invariant_to_release_tau: PASSED (dose="
+            << reference << ")\n";
 }
 
 void test_protease_disabled_no_decay() {
@@ -131,13 +173,24 @@ void test_lysis_registers_burst() {
 
   assert(sim.toxin_bursts().size() == 1);
   assert(sim.agents()[0].state == PhenoState::DEAD);
+  const ToxinBurstSource& burst = sim.toxin_bursts().front();
+  const Real expected_inventory = 1.0e5 / AVOGADRO;
+  assert(std::abs(burst.params.source_rate
+                  - expected_inventory / bcfg.burst_release_tau)
+         < 1e-30);
+  assert(std::abs(burst.release_tau - bcfg.burst_release_tau) < 1e-12);
+  assert(std::abs(burst.params.decay_rate
+                  - std::numbers::ln2 / 1800.0)
+         < 1e-15);
 
   std::cout << "  test_lysis_registers_burst: PASSED\n";
 }
 
 int main() {
   std::cout << "=== Protease Decay Tests ===\n";
-  test_burst_halflife_decay();
+  test_spatial_decay_not_temporal_amplitude();
+  test_inventory_conservation();
+  test_dose_invariant_to_release_tau();
   test_protease_disabled_no_decay();
   test_per_colicin_decay_rates();
   test_lysis_registers_burst();
