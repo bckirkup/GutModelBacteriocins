@@ -26,24 +26,6 @@ namespace {
 
 constexpr Real k_ln2 = std::numbers::ln2;
 
-bool in_periodic_grid(Int& idx, Int count, bool periodic) {
-  if (periodic) {
-    idx = ((idx % count) + count) % count;
-    return true;
-  }
-  return idx >= 0 && idx < count;
-}
-
-struct NearFieldGridContext {
-  const Domain& domain;
-  Int nx;
-  Int ny;
-  Int nz;
-  Int span;
-  bool periodic_x;
-  bool periodic_y;
-};
-
 struct FarFieldGridContext {
   const Domain& domain;
   Real fmm_theta;
@@ -59,73 +41,6 @@ struct MicrocinSourceBuffers {
   std::vector<bool>& is_nuclease;
   std::vector<ReceptorType>& targets;
 };
-
-void accumulate_near_field_cell(const Domain& domain,
-                                const GreensFunction& gf,
-                                const Vec3& src,
-                                const GreensFunctionParams& p,
-                                Int ix, Int iy, Int iz,
-                                std::vector<Real>& toxin_conc) {
-  const Vec3 tgt = domain.cell_center(ix, iy, iz);
-  const Real c = gf.concentration_bounded(src, tgt, p);
-  const Int idx = domain.cell_index(ix, iy, iz);
-  toxin_conc[idx] += c;
-}
-
-void accumulate_near_field_row(const GreensFunction& gf,
-                               const Vec3& src,
-                               const GreensFunctionParams& p,
-                               Int src_ix, Int src_iy, Int iz,
-                               const NearFieldGridContext& grid,
-                               std::vector<Real>& toxin_conc) {
-  for (Int dx = -grid.span; dx <= grid.span; ++dx) {
-    Int ix = src_ix + dx;
-    if (!in_periodic_grid(ix, grid.nx, grid.periodic_x)) continue;
-    accumulate_near_field_cell(grid.domain, gf, src, p, ix, src_iy, iz, toxin_conc);
-  }
-}
-
-void accumulate_near_field(const Domain& domain,
-                           const GreensFunction& gf,
-                           const std::vector<Vec3>& sources,
-                           const std::vector<GreensFunctionParams>& params,
-                           const std::vector<Real>& strength_factors,
-                           const NearFieldGridContext& grid,
-                           std::vector<Real>& toxin_conc) {
-  for (size_t s = 0; s < sources.size(); ++s) {
-    const Vec3& src = sources[s];
-    GreensFunctionParams p = params[s];
-    p.source_rate *= strength_factors[s];
-
-    Int src_ix = 0;
-    Int src_iy = 0;
-    Int src_iz = 0;
-    domain.pos_to_grid(src, src_ix, src_iy, src_iz);
-
-    for (Int dz = -grid.span; dz <= grid.span; ++dz) {
-      Int iz = src_iz + dz;
-      if (iz < 0 || iz >= grid.nz) continue;
-
-      for (Int dy = -grid.span; dy <= grid.span; ++dy) {
-        Int iy = src_iy + dy;
-        if (!in_periodic_grid(iy, grid.ny, grid.periodic_y)) continue;
-        accumulate_near_field_row(gf, src, p, src_ix, iy, iz, grid, toxin_conc);
-      }
-    }
-  }
-}
-
-NearFieldGridContext make_near_field_grid(const Domain& domain, Real cutoff_radius) {
-  return {
-    domain,
-    domain.nx(),
-    domain.ny(),
-    domain.nz(),
-    static_cast<Int>(std::ceil(cutoff_radius / domain.dx())),
-    domain.config().periodic[0],
-    domain.config().periodic[1],
-  };
-}
 
 GreensFunctionParams weighted_avg_params(
     const std::vector<GreensFunctionParams>& params,
@@ -233,7 +148,6 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
                                       const std::vector<GreensFunctionParams>& params,
                                       const std::vector<Real>& strength_factors,
                                       Real cutoff_radius,
-                                      const NearFieldGridContext& grid,
                                       std::vector<Real>& toxin_conc,
                                       ChemicalField& chem,
                                       Int toxin_species_idx,
@@ -244,8 +158,8 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
                          defer_host_sync)) {
     return true;
   }
-  accumulate_near_field(domain, gf, sources, params, strength_factors,
-                        grid, toxin_conc);
+  gf.superpose_to_grid(sources, params, strength_factors, toxin_conc,
+                       cutoff_radius);
   return false;
 }
 
@@ -372,10 +286,9 @@ void QSSASolver::solve_bacteriocin_field(
   }
 
   std::vector<Real> toxin_conc(domain_->ncells(), 0.0);
-  const NearFieldGridContext grid = make_near_field_grid(*domain_, cfg_.toxin_cutoff);
   const bool defer_sync = chem_gpu != nullptr && chem_gpu->active();
   if (!accumulate_near_field_gpu_or_cpu(*domain_, gf_, adv, sources, params,
-                                      strength_factors, cfg_.toxin_cutoff, grid,
+                                      strength_factors, cfg_.toxin_cutoff,
                                       toxin_conc, chem, toxin_species_idx,
                                       chem_gpu, defer_sync)) {
     deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
@@ -430,14 +343,13 @@ void QSSASolver::solve_bacteriocin_field_fmm(
   fmm.compute_local_expansions(cfg_.fmm_theta, gf_, avg_params);
 
   const Int ncells = domain_->ncells();
-  const NearFieldGridContext near_grid = make_near_field_grid(*domain_, cfg_.toxin_cutoff);
   const FarFieldGridContext far_grid = make_far_field_grid(*domain_, cfg_.fmm_theta);
 
   std::vector<Real> toxin_conc(ncells, 0.0);
   const bool defer_sync = chem_gpu != nullptr && chem_gpu->active();
   const bool near_on_gpu = accumulate_near_field_gpu_or_cpu(
       *domain_, gf_, adv, sources, params, strength_factors, cfg_.toxin_cutoff,
-      near_grid, toxin_conc, chem, toxin_species_idx, chem_gpu, defer_sync);
+      toxin_conc, chem, toxin_species_idx, chem_gpu, defer_sync);
   if (near_on_gpu) {
     chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
     for (Int c = 0; c < ncells; ++c) {

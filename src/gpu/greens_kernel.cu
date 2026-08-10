@@ -30,6 +30,9 @@ __global__ void superpose_kernel(
 
   double src[3] = {src_x[sid], src_y[sid], src_z[sid]};
 
+  if (dom.periodic[0] && dx - dom.nx >= -span) return;
+  if (dom.periodic[1] && dy - dom.ny >= -span) return;
+
   int src_ix = static_cast<int>((src[0] - dom.lo[0]) / dom.dx);
   int src_iy = static_cast<int>((src[1] - dom.lo[1]) / dom.dx);
   int src_iz = static_cast<int>((src[2] - dom.lo[2]) / dom.dx);
