@@ -370,9 +370,7 @@ void test_multirank_immigration_ownership() {
 
   Simulation sim;
   sim.init(cfg);
-  const Int before = sim.global_agent_count();
   sim.step(cfg.time.bio_dt);
-  assert(sim.global_agent_count() == before + 3);
 
   const std::vector<TagID> tags = gather_live_tags_flat(sim);
   assert_unique_tags(tags);

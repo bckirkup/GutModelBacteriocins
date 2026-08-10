@@ -145,6 +145,8 @@ class Simulation {
   Agent create_strain_agent(const SimulationConfig::InitialStrain& strain,
                             Vec3 pos);
   void inject_immigrants(Real dt);
+  void inject_one_immigration_event(const ImmigrationConfig& immigration,
+                                    bool log_warnings);
   void validate_immigration_config() const;
   void apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap);
   void update_grid_coupling();

@@ -1,10 +1,14 @@
 #include "immigration.h"
 #include "input_parser.h"
+#include "sim_fingerprint.h"
 #include "simulation.h"
+#include "species_names.h"
 
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <limits>
+#include <sstream>
 
 using namespace gutibm;
 
@@ -23,6 +27,7 @@ void test_schedule_and_uniform_placement() {
   cfg.z_max = 8e-6;
   auto positions = immigration_positions(
       cfg, {0.0, 0.0, 0.0}, {20e-6, 20e-6, 10e-6}, rng, false,
+      false,
       [](const std::vector<Vec3>&, std::vector<Real>&) {});
   assert(positions.size() == 3);
   for (const Vec3& pos : positions) {
@@ -43,6 +48,7 @@ void test_at_distance_selects_candidate() {
   int calls = 0;
   auto positions = immigration_positions(
       cfg, {0.0, 0.0, 0.0}, {20e-6, 20e-6, 20e-6}, rng, true,
+      false,
       [&calls](const std::vector<Vec3>& candidates, std::vector<Real>& out) {
         ++calls;
         for (size_t i = 0; i < candidates.size(); ++i) {
@@ -57,8 +63,10 @@ void test_at_distance_selects_candidate() {
 void test_disabled_is_inert() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {40e-6, 40e-6, 20e-6};
-  cfg.time.total_time = 0.0;
+  cfg.time.total_time = 180.0;
+  cfg.time.bio_dt = 60.0;
   cfg.hdf5.enabled = false;
+  cfg.enabled_fixes = {"mechanics"};
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain strain;
   strain.type = 1;
@@ -67,11 +75,182 @@ void test_disabled_is_inert() {
   cfg.initial_strains.push_back(strain);
   Simulation off;
   off.init(cfg);
-  cfg.immigration.enabled = true;
+  off.run();
+  const uint64_t off_fingerprint = test_util::simulation_fingerprint(off);
+  cfg.immigration.enabled = false;
+  cfg.immigration.count = 4;
+  cfg.immigration.strain_index = 0;
+  cfg.immigration.placement = "z_slab";
+  cfg.immigration.z_min = 2e-6;
+  cfg.immigration.z_max = 8e-6;
+  cfg.immigration.schedule = "continuous";
+  cfg.immigration.rate = 1.0;
   Simulation on;
   on.init(cfg);
-  assert(off.agents().size() == on.agents().size());
+  on.run();
+  assert(off_fingerprint == test_util::simulation_fingerprint(on));
   std::cout << "  test_disabled_is_inert: PASSED\n";
+}
+
+void test_at_distance_end_to_end_and_empty_fallback() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {80e-6, 80e-6, 30e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.time.total_time = 60.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.hdf5.enabled = false;
+  cfg.enabled_fixes = {"mechanics"};
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain resident;
+  resident.type = 1;
+  resident.count = 8;
+  cfg.initial_strains.push_back(resident);
+  SimulationConfig::InitialStrain immigrant;
+  immigrant.type = 2;
+  immigrant.count = 0;
+  cfg.initial_strains.push_back(immigrant);
+  cfg.immigration.enabled = true;
+  cfg.immigration.count = 1;
+  cfg.immigration.strain_index = 1;
+  cfg.immigration.placement = "at_distance";
+  cfg.immigration.distance = 8e-6;
+  cfg.immigration.distance_tolerance = 2e-6;
+  cfg.immigration.step = 0;
+
+  Simulation sim;
+  sim.init(cfg);
+  const Vec3 center = {40e-6, 40e-6, 15e-6};
+  for (Agent& agent : sim.agents()) {
+    agent.x = center;
+    agent.flags.in_crypt = true;
+  }
+  sim.step(60.0);
+  const Agent* injected = nullptr;
+  for (const Agent& agent : sim.agents()) {
+    if (agent.identity.type == immigrant.type) injected = &agent;
+  }
+  assert(injected != nullptr);
+  Real nearest_sq = std::numeric_limits<Real>::max();
+  for (const Agent& agent : sim.agents()) {
+    if (agent.identity.type == resident.type &&
+        agent.state != PhenoState::DEAD) {
+      nearest_sq = std::min(nearest_sq,
+                            sim.domain().min_image_dist_sq(injected->x, agent.x));
+    }
+  }
+  const Real achieved = std::sqrt(nearest_sq);
+  assert(std::abs(achieved - cfg.immigration.distance) <=
+         cfg.immigration.distance_tolerance);
+  std::cout << "  at_distance achieved error="
+            << std::abs(achieved - cfg.immigration.distance) << "\n";
+
+  cfg.initial_strains[0].count = 0;
+  cfg.immigration.distance = 5e-6;
+  std::ostringstream warning;
+  auto* old_buffer = std::cerr.rdbuf(warning.rdbuf());
+  Simulation empty;
+  empty.init(cfg);
+  empty.step(60.0);
+  std::cerr.rdbuf(old_buffer);
+  assert(empty.agents().size() == 1);
+  assert(warning.str().find("no live biomass") != std::string::npos);
+  std::cout << "  test_at_distance_empty_fallback: PASSED\n";
+}
+
+void test_continuous_schedule_end_to_end() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {40e-6, 40e-6, 20e-6};
+  cfg.time.total_time = 600.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.hdf5.enabled = false;
+  cfg.enabled_fixes = {"mechanics"};
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain strain;
+  strain.type = 1;
+  strain.count = 2;
+  cfg.initial_strains.push_back(strain);
+  cfg.immigration.enabled = true;
+  cfg.immigration.count = 1;
+  cfg.immigration.schedule = "continuous";
+  cfg.immigration.rate = 1.0 / 60.0;
+
+  Simulation sim;
+  sim.init(cfg);
+  for (Agent& agent : sim.agents()) agent.flags.in_crypt = true;
+  sim.run();
+  const Int injected = sim.step_events().immigrations;
+  assert(injected > 0);
+  assert(injected >= 2 && injected <= 20);
+  std::cout << "  test_continuous_schedule_end_to_end: injected="
+            << injected << " PASSED\n";
+}
+
+bool run_bacteriocin_encounter(uint64_t seed, Real target_distance) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {200e-6, 200e-6, 50e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.time.total_time = 120.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.hdf5.enabled = false;
+  cfg.seed = seed;
+  cfg.enabled_fixes = {"bacteriocin", "receptor", "mechanics"};
+  cfg.qssa.toxin_cutoff = 80e-6;
+  cfg.advection.radial_turnover = 1.0e30;
+  cfg.advection.distal_transit_time = 1.0e30;
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain producer;
+  producer.type = 1;
+  producer.count = 2;
+  producer.plasmids = {"ColE1"};
+  cfg.initial_strains.push_back(producer);
+  SimulationConfig::InitialStrain sensitive;
+  sensitive.type = 2;
+  sensitive.count = 0;
+  sensitive.plasmids = {};
+  cfg.initial_strains.push_back(sensitive);
+  cfg.immigration.enabled = true;
+  cfg.immigration.count = 1;
+  cfg.immigration.strain_index = 1;
+  cfg.immigration.placement = "at_distance";
+  cfg.immigration.distance = target_distance;
+  cfg.immigration.distance_tolerance = 5e-6;
+  cfg.immigration.step = 1;
+  cfg.fixes.bacteriocin.sos_lysis_prob = 1.0;
+  cfg.fixes.bacteriocin.burst_release_tau = 300.0;
+  cfg.fixes.receptor.kill_rate_colicin = 100.0;
+
+  Simulation sim;
+  sim.init(cfg);
+  const Vec3 center = {100e-6, 100e-6, 25e-6};
+  for (Agent& agent : sim.agents()) {
+    agent.x = center;
+    agent.flags.in_crypt = true;
+    for (BICluster& bi : agent.genome.bi_loci) bi.burst_size = 1.0e12;
+  }
+  sim.agents()[0].state = PhenoState::SOS_INDUCED;
+  sim.agents()[0].timers.sos_timer = 0.0;
+  sim.step(60.0);
+  sim.step(60.0);
+  for (const Agent& agent : sim.agents()) {
+    if (agent.identity.type == sensitive.type) {
+      return agent.state == PhenoState::DEAD;
+    }
+  }
+  return true;
+}
+
+void test_near_colony_kill_separation() {
+  Int near_kills = 0;
+  Int far_kills = 0;
+  constexpr Int replicates = 12;
+  for (Int i = 0; i < replicates; ++i) {
+    near_kills += run_bacteriocin_encounter(7000 + i, 5e-6) ? 1 : 0;
+    far_kills += run_bacteriocin_encounter(8000 + i, 100e-6) ? 1 : 0;
+  }
+  std::cout << "  near/far colicin kills=" << near_kills << "/"
+            << far_kills << "\n";
+  assert(near_kills >= 8);
+  assert(near_kills >= far_kills + 4);
 }
 
 void test_pulse_constructs_full_agents() {
@@ -122,6 +301,9 @@ int main() {
   test_schedule_and_uniform_placement();
   test_at_distance_selects_candidate();
   test_disabled_is_inert();
+  test_at_distance_end_to_end_and_empty_fallback();
+  test_continuous_schedule_end_to_end();
+  test_near_colony_kill_separation();
   test_pulse_constructs_full_agents();
   std::cout << "All immigration tests passed.\n";
   return 0;

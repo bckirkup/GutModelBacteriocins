@@ -229,6 +229,56 @@ void test_split_run_matches_uninterrupted(const std::string& filename) {
   assert(resumed.step_count() == 2);
 }
 
+void test_checkpoint_fork_immigration(const std::string& filename) {
+  SimulationConfig run_cfg = make_checkpoint_config(filename);
+  run_cfg.time.total_time = 60.0;
+  run_cfg.hdf5.schedule.summary = 1;
+  run_cfg.hdf5.schedule.agents = 1;
+  run_cfg.hdf5.schedule.genome = 1;
+  run_cfg.hdf5.schedule.lineage = 1;
+  Simulation baseline;
+  baseline.init(run_cfg);
+  baseline.run();
+
+  const HDF5CheckpointSnapshot checkpoint =
+      HDF5Reader::load_snapshot(filename, "step_000000");
+  std::vector<TagID> checkpoint_tags;
+  checkpoint_tags.reserve(checkpoint.agents.id.size());
+  for (const int64_t id : checkpoint.agents.id) {
+    checkpoint_tags.push_back(static_cast<TagID>(id));
+  }
+
+  SimulationConfig fork_cfg = run_cfg;
+  fork_cfg.hdf5.enabled = false;
+  fork_cfg.restart.enabled = false;
+  fork_cfg.enabled_fixes = {"mechanics"};
+  fork_cfg.initial_strains[1].count = 0;
+  fork_cfg.initial_strains[1].plasmids = {"ColE1"};
+  fork_cfg.immigration.enabled = true;
+  fork_cfg.immigration.count = 2;
+  fork_cfg.immigration.strain_index = 1;
+  fork_cfg.immigration.step = 0;
+
+  Simulation fork;
+  fork.init_from_checkpoint(fork_cfg, filename, "step_000000");
+  const Int before = fork.global_agent_count();
+  fork.step(60.0);
+  assert(fork.global_agent_count() == before + fork_cfg.immigration.count);
+
+  Int immigrants = 0;
+  for (const Agent& agent : fork.agents()) {
+    if (agent.identity.type != fork_cfg.initial_strains[1].type) continue;
+    ++immigrants;
+    assert(std::ranges::find(checkpoint_tags, agent.identity.tag) ==
+           checkpoint_tags.end());
+    assert(!agent.genome.bi_loci.empty());
+    assert(std::abs(agent.mu_max - fork_cfg.initial_strains[1].mu_max) < kTol);
+    assert(agent.receptor_expr[to_underlying(ReceptorType::BtuB)] > 0.0);
+  }
+  assert(immigrants == fork_cfg.immigration.count);
+  std::cout << "  test_checkpoint_fork_immigration: PASSED\n";
+}
+
 #endif  // GUTIBM_HDF5
 
 }  // namespace
@@ -255,6 +305,7 @@ int main(int argc, char** argv) {
   if (rank == 0) std::cout << "=== HDF5 Checkpoint Restart Tests ===\n";
   test_checkpoint_restart(filename);
   test_split_run_matches_uninterrupted(filename);
+  test_checkpoint_fork_immigration(filename + ".immigration.h5");
   if (rank == 0) {
     std::cout << "  test_hdf5_reader_api: PASSED\n";
     std::cout << "  test_checkpoint_restart: PASSED\n";

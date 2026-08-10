@@ -48,7 +48,8 @@ Int immigration_event_count(const ImmigrationConfig& cfg, Int relative_step,
 
 std::vector<Vec3> immigration_positions(
     const ImmigrationConfig& cfg, const Vec3& lo, const Vec3& hi, RNG& rng,
-    bool has_live_agents, const ImmigrationDistanceReducer& reduce_distances) {
+    bool has_live_agents, bool log_warnings,
+    const ImmigrationDistanceReducer& reduce_distances) {
   std::vector<Vec3> result;
   result.reserve(static_cast<size_t>(std::max<Int>(0, cfg.count)));
   for (Int immigrant = 0; immigrant < cfg.count; ++immigrant) {
@@ -57,8 +58,10 @@ std::vector<Vec3> immigration_positions(
       continue;
     }
     if (!has_live_agents) {
-      std::cerr << "Warning: immigration at_distance has no live biomass; "
-                   "falling back to uniform placement\n";
+      if (log_warnings) {
+        std::cerr << "Warning: immigration at_distance has no live biomass; "
+                     "falling back to uniform placement\n";
+      }
       const std::vector<Vec3> candidates = candidate_batch(cfg, lo, hi, rng);
       std::vector<Real> unused_distances(kCandidateBatchSize,
                                          std::numeric_limits<Real>::max());
@@ -91,8 +94,10 @@ std::vector<Vec3> immigration_positions(
       }
     }
     if (!found) {
-      std::cerr << "Warning: immigration candidate did not meet distance "
-                   "tolerance; skipping cell\n";
+      if (log_warnings) {
+        std::cerr << "Warning: immigration candidate did not meet distance "
+                     "tolerance; skipping cell\n";
+      }
       continue;
     }
     result.push_back(selected);

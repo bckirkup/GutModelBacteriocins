@@ -565,7 +565,14 @@ void Simulation::inject_immigrants(Real dt) {
     return;
   }
 
+  const bool log_warnings = domain_.rank() == 0;
   for (Int event = 0; event < event_count; ++event) {
+    inject_one_immigration_event(immigration, log_warnings);
+  }
+}
+
+void Simulation::inject_one_immigration_event(
+    const ImmigrationConfig& immigration, bool log_warnings) {
   Int local_live_count = 0;
   for (const Agent& agent : agents_) {
     if (agent.state != PhenoState::DEAD) ++local_live_count;
@@ -602,19 +609,21 @@ void Simulation::inject_immigrants(Real dt) {
 #endif
       if (local_count > 0) {
         for (Real& value : centroid) value /= static_cast<Real>(local_count);
+        for (size_t i = 0; i < candidates.size(); ++i) {
+          distances_sq[i] =
+              domain_.min_image_dist_sq(candidates[i], centroid);
+        }
       }
-    }
-
-    for (size_t i = 0; i < candidates.size(); ++i) {
-      Real nearest = std::numeric_limits<Real>::max();
-      for (const Agent& agent : agents_) {
-        if (agent.state == PhenoState::DEAD) continue;
-        const Real distance = cfg_.immigration.distance_reference == "centroid"
-            ? domain_.min_image_dist_sq(candidates[i], centroid)
-            : domain_.min_image_dist_sq(candidates[i], agent.x);
-        nearest = std::min(nearest, distance);
+    } else {
+      for (size_t i = 0; i < candidates.size(); ++i) {
+        Real nearest = std::numeric_limits<Real>::max();
+        for (const Agent& agent : agents_) {
+          if (agent.state == PhenoState::DEAD) continue;
+          nearest = std::min(
+              nearest, domain_.min_image_dist_sq(candidates[i], agent.x));
+        }
+        distances_sq[i] = nearest;
       }
-      distances_sq[i] = nearest;
     }
 #ifdef GUTIBM_MPI
     if (domain_.nprocs() > 1) {
@@ -628,14 +637,13 @@ void Simulation::inject_immigrants(Real dt) {
   const bool has_live_agents = global_live_count > 0;
   const std::vector<Vec3> positions = immigration_positions(
       immigration, domain_.lo(), domain_.hi(), immigration_rng_,
-      has_live_agents, reducer);
-  const auto& strain = cfg_.initial_strains[
-      static_cast<size_t>(immigration.strain_index)];
+      has_live_agents, log_warnings, reducer);
+  const auto& strain =
+      cfg_.initial_strains[static_cast<size_t>(immigration.strain_index)];
   for (const Vec3& pos : positions) {
     if (!domain_.is_local(pos)) continue;
     agents_.push_back(create_strain_agent(strain, pos));
     ++step_events_.immigrations;
-  }
   }
 }
 
