@@ -34,6 +34,10 @@ bool in_periodic_grid(Int& idx, Int count, bool periodic) {
   return idx >= 0 && idx < count;
 }
 
+bool is_first_periodic_offset(Int offset, Int count, Int span, bool periodic) {
+  return !periodic || offset - count < -span;
+}
+
 struct NearFieldGridContext {
   const Domain& domain;
   Int nx;
@@ -79,6 +83,9 @@ void accumulate_near_field_row(const GreensFunction& gf,
                                const NearFieldGridContext& grid,
                                std::vector<Real>& toxin_conc) {
   for (Int dx = -grid.span; dx <= grid.span; ++dx) {
+    if (!is_first_periodic_offset(dx, grid.nx, grid.span, grid.periodic_x)) {
+      continue;
+    }
     Int ix = src_ix + dx;
     if (!in_periodic_grid(ix, grid.nx, grid.periodic_x)) continue;
     accumulate_near_field_cell(grid.domain, gf, src, p, ix, src_iy, iz, toxin_conc);
@@ -107,6 +114,10 @@ void accumulate_near_field(const Domain& domain,
       if (iz < 0 || iz >= grid.nz) continue;
 
       for (Int dy = -grid.span; dy <= grid.span; ++dy) {
+        if (!is_first_periodic_offset(dy, grid.ny, grid.span,
+                                      grid.periodic_y)) {
+          continue;
+        }
         Int iy = src_iy + dy;
         if (!in_periodic_grid(iy, grid.ny, grid.periodic_y)) continue;
         accumulate_near_field_row(gf, src, p, src_ix, iy, iz, grid, toxin_conc);

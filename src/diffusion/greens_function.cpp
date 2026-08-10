@@ -35,6 +35,10 @@ bool in_periodic_grid(Int& idx, Int count, bool periodic) {
   return idx >= 0 && idx < count;
 }
 
+bool is_first_periodic_offset(Int offset, Int count, Int span, bool periodic) {
+  return !periodic || offset - count < -span;
+}
+
 struct SuperposeGridContext {
   Int nx;
   Int ny;
@@ -64,6 +68,9 @@ void accumulate_cutoff_row(const Domain& domain,
                            const SuperposeGridContext& grid,
                            std::vector<Real>& grid_conc) {
   for (Int dx = -grid.span; dx <= grid.span; ++dx) {
+    if (!is_first_periodic_offset(dx, grid.nx, grid.span, grid.periodic_x)) {
+      continue;
+    }
     Int ix = src_ix + dx;
     if (!in_periodic_grid(ix, grid.nx, grid.periodic_x)) continue;
     accumulate_cutoff_cell(domain, gf, src, p, ix, iy, iz, grid_conc);
@@ -86,6 +93,10 @@ void accumulate_source_cutoff(const Domain& domain,
     if (iz < 0 || iz >= grid.nz) continue;
 
     for (Int dy = -grid.span; dy <= grid.span; ++dy) {
+      if (!is_first_periodic_offset(dy, grid.ny, grid.span,
+                                    grid.periodic_y)) {
+        continue;
+      }
       Int iy = src_iy + dy;
       if (!in_periodic_grid(iy, grid.ny, grid.periodic_y)) continue;
       accumulate_cutoff_row(domain, gf, src, p, src_ix, iy, iz, grid, grid_conc);

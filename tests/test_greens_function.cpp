@@ -180,6 +180,52 @@ void test_radial_symmetry_no_flow() {
   std::cout << "  test_radial_symmetry: PASSED (ratio=" << ratio << ")\n";
 }
 
+void test_periodic_cutoff_and_minimum_image() {
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {20e-6, 20e-6, 100e-6};
+  dcfg.grid_dx = 5e-6;
+
+  Domain domain;
+  domain.init(dcfg);
+
+  AdvectionConfig acfg;
+  acfg.radial_turnover = 1e20;
+  acfg.distal_transit_time = 1e20;
+  acfg.mucus_thickness = 100e-6;
+  acfg.distal_length = 1e-3;
+
+  AdvectionField adv;
+  adv.init(acfg, domain);
+
+  GreensFunction gf;
+  gf.init(domain, adv);
+
+  const Vec3 source = {2.5e-6, 10e-6, 50e-6};
+  const Vec3 target = domain.cell_center(3, 2, 10);
+  GreensFunctionParams params;
+  params.diff_coeff = 4e-11;
+  params.retardation = 50.0;
+  params.source_rate = 1e-18;
+
+  std::vector<Real> field;
+  gf.superpose_to_grid({source}, {params}, field, 60e-6);
+  const Int target_cell = domain.cell_index(3, 2, 10);
+  const Real expected = gf.concentration_bounded(source, target, params);
+  const Real direct_distance = std::sqrt(
+      (target[0] - source[0]) * (target[0] - source[0])
+      + (target[1] - source[1]) * (target[1] - source[1])
+      + (target[2] - source[2]) * (target[2] - source[2]));
+  const Real direct_domain_value = params.source_rate
+      / (4.0 * std::numbers::pi
+         * (params.diff_coeff / params.retardation) * direct_distance);
+
+  assert(std::abs(field[static_cast<size_t>(target_cell)] / expected - 1.0)
+         < 1e-12);
+  assert(expected > direct_domain_value);
+  std::cout << "  test_periodic_cutoff_and_minimum_image: PASSED\n";
+}
+
 void test_comet_tail_asymmetry() {
   // With flow, downstream concentration > upstream
   DomainConfig dcfg;
@@ -361,6 +407,7 @@ int main() {
   test_core_halo_decay_ordering();
   test_uninitialized_throws();
   test_radial_symmetry_no_flow();
+  test_periodic_cutoff_and_minimum_image();
   test_comet_tail_asymmetry();
   test_lethal_core_vs_halo();
   test_peclet_number();
