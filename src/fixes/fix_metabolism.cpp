@@ -322,7 +322,8 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   const auto& sid_cfg = sim_.config().chem_env.siderophore;
   if (sid_cfg.enabled && cell_vol > 0.0) {
     Int i_sid = chem.find(species::SIDEROPHORE);
-    if (i_sid >= 0) {
+    Int i_ferric_enterobactin = chem.find(species::FERRIC_ENTEROBACTIN);
+    if (i_sid >= 0 && i_ferric_enterobactin >= 0) {
       const Real s_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
       Real fur_Km = 1.0e-6;
       if (sim_.config().cell_bio.fur.enabled) {
@@ -339,14 +340,16 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
         chem.reac(i_iron, cell) -= chelation;
       }
       chem.reac(i_sid, cell) -= chelation;
-      if (i_iron >= 0) {
-        chem.reac(i_iron, cell) += sid_rate * sid_cfg.recapture_fraction;
-      }
+      chem.reac(i_ferric_enterobactin, cell) += chelation;
 
       const Real expr_fepA = agent.receptor_expr[to_underlying(ReceptorType::FepA)];
       if (i_iron >= 0 && expr_fepA > 0.0) {
-        const Real reimport = expr_fepA * s_sid / (sid_cfg.Km_reimport + s_sid)
+        const Real s_ferric_enterobactin =
+            chem.conc(i_ferric_enterobactin, cell);
+        const Real reimport = expr_fepA * s_ferric_enterobactin
+            / (sid_cfg.Km_reimport + s_ferric_enterobactin)
             * agent.biomass / cell_vol;
+        chem.reac(i_ferric_enterobactin, cell) -= reimport;
         chem.reac(i_iron, cell) += reimport;
       }
     }

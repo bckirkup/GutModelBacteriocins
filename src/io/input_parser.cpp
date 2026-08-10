@@ -230,6 +230,24 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
     }
   }
 
+  if (cfg.chem_env.siderophore.enabled) {
+    if (find_chemical_spec(cfg.chemicals, species::FERRIC_ENTEROBACTIN) < 0) {
+      cfg.chemicals.emplace_back(
+          species::FERRIC_ENTEROBACTIN, cfg.chem_env.siderophore.D_free, 1.0,
+          0.0, 0.0, 0.0, false, k_z_lambda, true);
+    }
+  }
+
+  if (cfg.chem_env.ferrichrome.enabled) {
+    if (find_chemical_spec(cfg.chemicals, species::FERRICHROME) < 0) {
+      cfg.chemicals.emplace_back(
+          species::FERRICHROME, 1.0e-10, 1.0,
+          cfg.chem_env.ferrichrome.initial_conc,
+          cfg.chem_env.ferrichrome.boundary_conc,
+          0.0, false, k_z_lambda, true);
+    }
+  }
+
   // Spec 11 — AI-2 autoinducer (no z-gradient; agent-produced only)
   if (cfg.quorum_sensing.enabled) {
     const Int idx = find_chemical_spec(cfg.chemicals, species::AI2);
@@ -457,8 +475,23 @@ bool apply_siderophore_key(SimulationConfig& cfg, std::string_view key, const st
   if (key == "siderophore.Km_reimport" || key == "siderophore_Km_reimport") {
     cfg.chem_env.siderophore.Km_reimport = parse_config_real(key, val); return true;
   }
-  if (key == "siderophore.recapture_fraction" || key == "siderophore_recapture_fraction") {
-    cfg.chem_env.siderophore.recapture_fraction = parse_config_real(key, val); return true;
+  return false;
+}
+
+bool apply_ferrichrome_key(SimulationConfig& cfg, std::string_view key,
+                           const std::string& val) {
+  if (key == "ferrichrome.enabled" || key == "ferrichrome_enabled") {
+    cfg.chem_env.ferrichrome.enabled = parse_bool_config(val);
+    return true;
+  }
+  if (key == "ferrichrome.initial_conc" || key == "ferrichrome_initial_conc") {
+    cfg.chem_env.ferrichrome.initial_conc = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "ferrichrome.boundary_conc"
+      || key == "ferrichrome_boundary_conc") {
+    cfg.chem_env.ferrichrome.boundary_conc = parse_config_real(key, val);
+    return true;
   }
   return false;
 }
@@ -728,7 +761,7 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 24> k_flat_key_handlers = {
+constexpr std::array<FlatKeyHandler, 25> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_advection_key,
@@ -749,6 +782,7 @@ constexpr std::array<FlatKeyHandler, 24> k_flat_key_handlers = {
   apply_mucin_key,
   apply_protease_key,
   apply_siderophore_key,
+  apply_ferrichrome_key,
   apply_fur_key,
   apply_cdi_key,
   apply_motility_key,

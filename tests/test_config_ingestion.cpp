@@ -348,7 +348,11 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "siderophore.D_free", "siderophore_D_free", [](const SimulationConfig& c) { return c.chem_env.siderophore.D_free; });
   add_ns_real(v, "siderophore.chelation_rate", "siderophore_chelation_rate", [](const SimulationConfig& c) { return c.chem_env.siderophore.chelation_rate; });
   add_ns_real(v, "siderophore.Km_reimport", "siderophore_Km_reimport", [](const SimulationConfig& c) { return c.chem_env.siderophore.Km_reimport; });
-  add_ns_real(v, "siderophore.recapture_fraction", "siderophore_recapture_fraction", [](const SimulationConfig& c) { return c.chem_env.siderophore.recapture_fraction; });
+
+  // ── Ferrichrome ambient field ────────────────────────────────────────────
+  add_ns_bool(v, "ferrichrome.enabled", "ferrichrome_enabled", [](const SimulationConfig& c) { return c.chem_env.ferrichrome.enabled; });
+  add_ns_real(v, "ferrichrome.initial_conc", "ferrichrome_initial_conc", [](const SimulationConfig& c) { return c.chem_env.ferrichrome.initial_conc; });
+  add_ns_real(v, "ferrichrome.boundary_conc", "ferrichrome_boundary_conc", [](const SimulationConfig& c) { return c.chem_env.ferrichrome.boundary_conc; });
 
   // ── Fur (Spec 3) ──────────────────────────────────────────────────────────
   add_ns_bool(v, "fur.enabled", "fur_enabled", [](const SimulationConfig& c) { return c.cell_bio.fur.enabled; });

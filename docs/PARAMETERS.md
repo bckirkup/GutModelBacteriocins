@@ -413,7 +413,7 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 | `receptor.kd_ferrichrome` | `kd_ferrichrome` | 1e-5 | mol/m^3 | Ferrichrome affinity for FhuA (10 nM) |
 | `receptor.kill_rate_colicin` | `kill_rate_colicin` | 1e-3 | 1/s | Single-hit colicin kill rate |
 | `receptor.kill_rate_microcin` | `kill_rate_microcin` | 5e-4 | 1/s | Microcin kill rate (slower) |
-| `receptor.cirA_linearized_fraction` | `cirA_linearized_fraction` | 0.3 | — | Fraction of siderophore as CirA ligand |
+| `receptor.cirA_linearized_fraction` | `cirA_linearized_fraction` | 0.3 | — | Fraction of ferric enterobactin represented as the CirA linearized ligand |
 
 ---
 
@@ -445,10 +445,26 @@ QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteri
 | `siderophore.secretion_rate` | 1e-15 | mol/s per biomass | Enterobactin secretion scaled by Fur activity |
 | `siderophore.D_free` | 4e-11 | m²/s | Free siderophore diffusion |
 | `siderophore.chelation_rate` | 1e3 | m³/mol/s | Iron–siderophore chelation sink |
-| `siderophore.Km_reimport` | 1e-6 | mol/m³ | FepA-mediated siderophore–iron reimport |
-| `siderophore.recapture_fraction` | 0.1 | — | Local iron recapture near producer |
+| `siderophore.Km_reimport` | 1e-6 | mol/m³ | FepA-mediated ferric-enterobactin reimport; converted from the erroneous `1e-9` default |
 
-`receptor.cirA_linearized_fraction` (default 0.3) scales siderophore concentration as the CirA nutrient ligand when siderophore is enabled.
+Chelation consumes apo-enterobactin (`siderophore`) and free iron and produces
+`ferric_enterobactin`. FepA reimport consumes ferric enterobactin and returns
+iron; there is no secretion-rate-proportional recapture term.
+
+## Ferrichrome ambient field
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `ferrichrome.enabled` | false | — | Register the ambient ferrichrome field |
+| `ferrichrome.initial_conc` | 0 | mol/m³ | Initial bulk ferrichrome concentration |
+| `ferrichrome.boundary_conc` | 0 | mol/m³ | Boundary ferrichrome concentration |
+
+Ferrichrome is an exogenous ligand: *E. coli* does not synthesize it, so it is
+not a secretion product. The default is deliberately disabled because no
+defensible gut ferrichrome concentration is currently available.
+
+`receptor.cirA_linearized_fraction` (default 0.3) scales ferric-enterobactin
+concentration as the CirA linearized ligand when siderophore chemistry is enabled.
 
 ---
 

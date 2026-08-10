@@ -115,8 +115,9 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
   if (tox_fepA > 0.0) {
     int ri = to_underlying(ReceptorType::FepA);
     Real expr = agent.receptor_expr[ri];
-    Int i_iron = chem.find(species::IRON);
-    Real ligand = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
+    Int i_ferric_enterobactin = chem.find(species::FERRIC_ENTEROBACTIN);
+    Real ligand = (i_ferric_enterobactin >= 0)
+        ? chem.conc(i_ferric_enterobactin, cell) : 0.0;
 
     Real occ = toxin_occupancy(tox_fepA, ligand,
                                 cfg_.kd_colicinB_fepA,
@@ -138,9 +139,10 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
   if (tox_cirA > 0.0) {
     int ri = to_underlying(ReceptorType::CirA);
     Real expr = agent.receptor_expr[ri];
-    Int i_sid = chem.find(species::SIDEROPHORE);
-    Real ligand = (i_sid >= 0)
-        ? chem.conc(i_sid, cell) * cfg_.cirA_linearized_fraction
+    Int i_ferric_enterobactin = chem.find(species::FERRIC_ENTEROBACTIN);
+    Real ligand = (i_ferric_enterobactin >= 0)
+        ? chem.conc(i_ferric_enterobactin, cell)
+          * cfg_.cirA_linearized_fraction
         : 0.0;
 
     Real occ = toxin_occupancy(tox_cirA, ligand,
@@ -163,8 +165,9 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
   if (tox_fhuA > 0.0) {
     int ri = to_underlying(ReceptorType::FhuA);
     Real expr = agent.receptor_expr[ri];
-    Int i_iron = chem.find(species::IRON);
-    Real ligand = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
+    Int i_ferrichrome = chem.find(species::FERRICHROME);
+    Real ligand = (i_ferrichrome >= 0)
+        ? chem.conc(i_ferrichrome, cell) : 0.0;
 
     Real occ = toxin_occupancy(tox_fhuA, ligand,
                                 cfg_.kd_colicinM_fhuA,

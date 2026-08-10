@@ -24,7 +24,10 @@ that parses but never changes an outcome is *dead wiring*.
 |---------|-----------|---------|--------------|-------|
 | **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z=0 boundary | **Agent uptake `fix_metabolism.cpp grow_agent` (canonical, Spec 6)**; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1) | Yes | Implicit diffusion transports local source/sink changes with `D=5e-10 m²/s`; the metabolism Fix is the single per-agent uptake site. |
 | **b12 / corrinoid** | z=0 boundary | **none — not consumed (Spec 6 §3)** | N/A (constant pool) | The ~1 µM bioavailable pool remains spatially uniform under implicit diffusion (`D=5e-10 m²/s`). |
-| **iron** | z=0 boundary; siderophore liberation | VBF first-order sink `apply_iron_sink`; **agent uptake `grow_agent` (canonical, Spec 6)** | Yes | Implicit diffusion (`D=7e-10 m²/s`) couples local depletion to the epithelial supply. |
+| **iron** | z=0 boundary; siderophore liberation; FeEnt reimport | VBF first-order sink `apply_iron_sink`; **agent uptake `grow_agent` (canonical, Spec 6)**; ferric-enterobactin reimport | Yes | Implicit diffusion (`D=7e-10 m²/s`) couples local depletion to the epithelial supply. |
+| **siderophore** | apo-enterobactin secretion | `grow_agent`: secretion and chelation consumption | Yes | Apo pool is consumed with iron to produce `ferric_enterobactin`. |
+| **ferric_enterobactin** | apo-enterobactin + iron chelation | `grow_agent`: chelation product; FepA reimport and receptor competition | Yes | Distinct extracellular ferric ligand; reimport consumes it and returns iron. |
+| **ferrichrome** | optional ambient/boundary configuration | FhuA receptor competition | Yes | Exogenous field only; disabled and zero by default. |
 | **oxygen** | Epithelial Dirichlet boundary `chemical_field.cpp apply_boundaries` | **Agent Pirt respiration** `qssa_solver.cpp solve_nutrient_depletion`; first-order VBF background sink `apply_oxygen_sink` | Yes | Implicit diffusion (`D=2.1e-9 m²/s`) replaces checkerboard-prone local-only updates and preserves a smooth boundary-fed gradient. |
 | **acetate** | VBF fermentation `apply_acetate_coupling`; agent overflow | VBF cross-feeding; MetE uptake | Yes | Closed. |
 | **mucin** | Goblet secretion `apply_mucin_secretion` | VBF degradation → carbon | Yes | Closed. |

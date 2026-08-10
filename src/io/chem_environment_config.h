@@ -62,8 +62,13 @@ struct SiderophoreConfig {
   Real secretion_rate = 1.0e-15;      // mol/s/cell
   Real D_free = 1.0e-10;              // m^2/s
   Real chelation_rate = 1.0e3;        // m^3/(mol·s) effective second-order
-  Real Km_reimport = 1.0e-9;          // mol/m^3 for FepA-mediated iron recapture
-  Real recapture_fraction = 0.5;      // fraction of secreted siderophore iron returned locally
+  Real Km_reimport = 1.0e-6;          // mol/m^3 for FepA-mediated ferric enterobactin reimport
+};
+
+struct FerrichromeConfig {
+  bool enabled = false;
+  Real initial_conc = 0.0;             // ambient ferrichrome concentration (mol/m^3)
+  Real boundary_conc = 0.0;            // epithelial/luminal boundary concentration (mol/m^3)
 };
 
 }  // namespace gutibm
