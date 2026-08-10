@@ -123,9 +123,14 @@ void test_gpu_siderophore_cpu_fallback() {
     gpu_biomass += agent.biomass;
   }
   assert(cpu_live > 0);
+  assert(cpu_biomass > 0.0);
   assert(gpu_live == cpu_live);
-  const Real biomass_scale = std::max(std::abs(cpu_biomass), 1.0);
-  assert(std::abs(gpu_biomass - cpu_biomass) <= 1.0e-6 * biomass_scale);
+  const Real biomass_rel_diff =
+      std::abs(gpu_biomass - cpu_biomass) / cpu_biomass;
+  constexpr Real kBiomassRelativeTolerance = 1.0e-8;
+  std::cout << "  test_gpu_siderophore_cpu_fallback: biomass_rel_diff="
+            << biomass_rel_diff << "\n";
+  assert(biomass_rel_diff <= kBiomassRelativeTolerance);
 
   std::cout << "  test_gpu_siderophore_cpu_fallback: PASSED\n";
 }
