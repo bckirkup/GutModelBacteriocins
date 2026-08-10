@@ -77,7 +77,9 @@ This replaces the previous binary FepA-dependent penalty (`Km_Fe / expr_FepA`). 
 
 ### Apo-enterobactin → ferric enterobactin → iron
 
-When siderophore chemistry is enabled, `siderophore` represents apo-enterobactin.
+Siderophore chemistry is enabled by default because enterobactin production is
+near-universal among iron-limited *E. coli*. `siderophore` represents
+apo-enterobactin.
 Chelation consumes apo-enterobactin and free iron and produces the distinct
 `ferric_enterobactin` species. FepA-mediated reimport consumes ferric
 enterobactin and returns iron to the extracellular field, preserving the
@@ -180,7 +182,11 @@ The effective diffusion coefficient: `D_eff = D_free / R`
 | CirA | Linearized siderophore | `bacteriocin_CirA` | Colicin Ia, Microcin V | 50 nM (`5e-5 mol/m³`) | 3 nM (`3e-6 mol/m³`) |
 | FhuA | Ferrichrome | `bacteriocin_FhuA` | Colicin M | 10 nM (`1e-5 mol/m³`) | 2.5 nM (`2.5e-6 mol/m³`) |
 
-CirA ligand is `cirA_linearized_fraction × [siderophore]` when `siderophore.enabled`; otherwise zero.
+CirA ligand is `cirA_linearized_fraction × [ferric_enterobactin]` when
+siderophore chemistry is enabled; otherwise zero. FepA competition likewise
+uses ferric enterobactin. Ferrichrome remains disabled by default because
+*E. coli* does not synthesize it and no defensible gut concentration is
+available; consequently FhuA has no ambient ferrichrome competition by default.
 
 **Competitive binding model (Michaelis-Menten with competitive inhibition):**
 ```

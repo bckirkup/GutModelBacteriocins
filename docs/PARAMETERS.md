@@ -441,13 +441,16 @@ QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteri
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `siderophore.enabled` | false | — | Register `siderophore` species and secretion/chelation in metabolism |
+| `siderophore.enabled` | true | — | Register `siderophore` species and secretion/chelation in metabolism; enabled by default because iron-limited *E. coli* commonly produces enterobactin |
 | `siderophore.secretion_rate` | 1e-15 | mol/s per biomass | Enterobactin secretion scaled by Fur activity |
 | `siderophore.D_free` | 4e-11 | m²/s | Free siderophore diffusion |
 | `siderophore.chelation_rate` | 1e3 | m³/mol/s | Iron–siderophore chelation sink |
 | `siderophore.Km_reimport` | 1e-6 | mol/m³ | FepA-mediated ferric-enterobactin reimport; converted from the erroneous `1e-9` default |
 
-Chelation consumes apo-enterobactin (`siderophore`) and free iron and produces
+Siderophore chemistry is enabled by default because enterobactin production is
+near-universal among iron-limited *E. coli*; leaving it off would remove the
+ferric-enterobactin competition term from FepA. Chelation consumes
+apo-enterobactin (`siderophore`) and free iron and produces
 `ferric_enterobactin`. FepA reimport consumes ferric enterobactin and returns
 iron; there is no secretion-rate-proportional recapture term.
 

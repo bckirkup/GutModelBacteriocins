@@ -58,7 +58,7 @@ struct ProteaseConfig {
 };
 
 struct SiderophoreConfig {
-  bool enabled = false;
+  bool enabled = true;
   Real secretion_rate = 1.0e-15;      // mol/s/cell
   Real D_free = 1.0e-10;              // m^2/s
   Real chelation_rate = 1.0e3;        // m^3/(mol·s) effective second-order
