@@ -1,6 +1,7 @@
 #include "immigration.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -25,6 +26,11 @@ Vec3 random_unit_direction(RNG& rng) {
   for (Real& value : direction) value *= inverse_norm;
   return direction;
 }
+
+constexpr std::array<Vec3, 6> kAxisDirections = {
+    Vec3{1.0, 0.0, 0.0}, Vec3{-1.0, 0.0, 0.0},
+    Vec3{0.0, 1.0, 0.0}, Vec3{0.0, -1.0, 0.0},
+    Vec3{0.0, 0.0, 1.0}, Vec3{0.0, 0.0, -1.0}};
 
 Vec3 random_position(const ImmigrationConfig& cfg, const Vec3& lo,
                      const Vec3& hi, RNG& rng) {
@@ -57,7 +63,20 @@ std::vector<Vec3> shell_candidate_batch(
     const ImmigrationPositionProjector& project_position) {
   std::vector<Vec3> candidates;
   candidates.reserve(kCandidateBatchSize);
-  for (Int i = 0; i < kCandidateBatchSize; ++i) {
+  const Int deterministic_count = std::min<Int>(
+      static_cast<Int>(anchors.size()), kCandidateBatchSize);
+  for (Int i = 0; i < deterministic_count; ++i) {
+    Vec3 candidate = anchors[static_cast<size_t>(i)];
+    const Vec3& direction =
+        kAxisDirections[static_cast<size_t>(i % kAxisDirections.size())];
+    for (Int axis = 0; axis < 3; ++axis) {
+      candidate[axis] += cfg.distance * direction[axis];
+    }
+    project_position(candidate);
+    candidate[2] = std::clamp(candidate[2], lo[2], hi[2] - kBoundaryEpsilon);
+    candidates.push_back(candidate);
+  }
+  for (Int i = deterministic_count; i < kCandidateBatchSize; ++i) {
     const Int anchor_index =
         rng.randint(0, static_cast<Int>(anchors.size()) - 1);
     Vec3 candidate = anchors[static_cast<size_t>(anchor_index)];

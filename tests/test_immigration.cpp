@@ -11,6 +11,7 @@
 #include <iomanip>
 #include <limits>
 #include <sstream>
+#include <vector>
 
 using namespace gutibm;
 
@@ -217,6 +218,78 @@ void test_small_colony_shell_reliability() {
   std::cout << "  test_small_colony_shell_reliability: PASSED\n";
 }
 
+void test_large_colony_shell_regression() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {220e-6, 150e-6, 150e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.time.bio_dt = 60.0;
+  cfg.hdf5.enabled = false;
+  cfg.enabled_fixes = {"mechanics"};
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain resident;
+  resident.type = 1;
+  resident.count = 3000;
+  cfg.initial_strains.push_back(resident);
+  SimulationConfig::InitialStrain immigrant;
+  immigrant.type = 2;
+  immigrant.count = 0;
+  cfg.initial_strains.push_back(immigrant);
+  cfg.immigration.enabled = true;
+  cfg.immigration.count = 1;
+  cfg.immigration.strain_index = 1;
+  cfg.immigration.placement = "at_distance";
+  cfg.immigration.distance = 100e-6;
+  cfg.immigration.distance_tolerance = 0.25e-6;
+  cfg.immigration.step = 0;
+
+  Simulation sim;
+  sim.init(cfg);
+  const Vec3 center = {110e-6, 75e-6, 75e-6};
+  std::vector<Vec3> colony_positions;
+  for (Int x = -10; x <= 10; ++x) {
+    for (Int y = -10; y <= 10; ++y) {
+      for (Int z = -10; z <= 10; ++z) {
+        colony_positions.push_back(
+            {center[0] + static_cast<Real>(x) * 1.2e-6,
+             center[1] + static_cast<Real>(y) * 1.2e-6,
+             center[2] + static_cast<Real>(z) * 1.2e-6});
+      }
+    }
+  }
+  std::ranges::sort(colony_positions, [center](const Vec3& lhs, const Vec3& rhs) {
+    const Real lhs_radius = (lhs[0] - center[0]) * (lhs[0] - center[0])
+                          + (lhs[1] - center[1]) * (lhs[1] - center[1])
+                          + (lhs[2] - center[2]) * (lhs[2] - center[2]);
+    const Real rhs_radius = (rhs[0] - center[0]) * (rhs[0] - center[0])
+                          + (rhs[1] - center[1]) * (rhs[1] - center[1])
+                          + (rhs[2] - center[2]) * (rhs[2] - center[2]);
+    return lhs_radius < rhs_radius;
+  });
+  for (Int i = 0; i < static_cast<Int>(sim.agents().size()); ++i) {
+    sim.agents()[i].x = colony_positions[i];
+    sim.agents()[i].flags.in_crypt = true;
+  }
+  sim.step(0.0);
+
+  const Agent* injected = nullptr;
+  for (const Agent& agent : sim.agents()) {
+    if (agent.identity.type == immigrant.type) injected = &agent;
+  }
+  assert(injected != nullptr);
+  Real nearest_sq = std::numeric_limits<Real>::max();
+  for (const Agent& agent : sim.agents()) {
+    if (agent.identity.type == resident.type) {
+      nearest_sq = std::min(
+          nearest_sq, sim.domain().min_image_dist_sq(injected->x, agent.x));
+    }
+  }
+  const Real error = std::abs(std::sqrt(nearest_sq) -
+                              cfg.immigration.distance);
+  assert(error <= cfg.immigration.distance_tolerance);
+  std::cout << "  test_large_colony_shell_regression: error=" << error
+            << " PASSED\n";
+}
+
 void test_shell_candidate_rejected_by_global_reducer() {
   ImmigrationConfig cfg;
   cfg.enabled = true;
@@ -240,6 +313,41 @@ void test_shell_candidate_rejected_by_global_reducer() {
   assert(calls == 2);
   assert(positions.empty());
   std::cout << "  test_shell_candidate_rejected_by_global_reducer: PASSED\n";
+}
+
+void test_failed_at_distance_is_fatal() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {20e-6, 20e-6, 20e-6};
+  cfg.time.bio_dt = 60.0;
+  cfg.hdf5.enabled = false;
+  cfg.enabled_fixes = {"mechanics"};
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain resident;
+  resident.type = 1;
+  resident.count = 1;
+  cfg.initial_strains.push_back(resident);
+  SimulationConfig::InitialStrain immigrant;
+  immigrant.type = 2;
+  immigrant.count = 0;
+  cfg.initial_strains.push_back(immigrant);
+  cfg.immigration.enabled = true;
+  cfg.immigration.count = 1;
+  cfg.immigration.strain_index = 1;
+  cfg.immigration.placement = "at_distance";
+  cfg.immigration.distance = 1e-3;
+  cfg.immigration.distance_tolerance = 1e-9;
+  cfg.immigration.step = 0;
+
+  Simulation sim;
+  sim.init(cfg);
+  bool threw = false;
+  try {
+    sim.step(0.0);
+  } catch (const SimulationError&) {
+    threw = true;
+  }
+  assert(threw);
+  std::cout << "  test_failed_at_distance_is_fatal: PASSED\n";
 }
 
 void test_continuous_schedule_end_to_end() {
@@ -433,7 +541,9 @@ int main() {
   test_disabled_is_inert();
   test_at_distance_end_to_end_and_empty_fallback();
   test_small_colony_shell_reliability();
+  test_large_colony_shell_regression();
   test_shell_candidate_rejected_by_global_reducer();
+  test_failed_at_distance_is_fatal();
   test_continuous_schedule_end_to_end();
   test_near_colony_kill_separation();
   test_pulse_constructs_full_agents();

@@ -595,25 +595,27 @@ std::vector<Vec3> Simulation::immigration_anchors(
     return {global_sum};
   }
 
-  constexpr Int kMaxGlobalAnchors = 256;
-  const Int rank = domain_.rank();
   const Int nprocs = domain_.nprocs();
-  const Int base = kMaxGlobalAnchors / nprocs;
-  const Int remainder = kMaxGlobalAnchors % nprocs;
-  const Int target = base + (rank < remainder ? 1 : 0);
-  std::vector<Vec3> local;
-  local.reserve(static_cast<size_t>(target));
+  constexpr std::array<Vec3, 6> directions = {
+      Vec3{1.0, 0.0, 0.0}, Vec3{-1.0, 0.0, 0.0},
+      Vec3{0.0, 1.0, 0.0}, Vec3{0.0, -1.0, 0.0},
+      Vec3{0.0, 0.0, 1.0}, Vec3{0.0, 0.0, -1.0}};
+  std::array<Vec3, directions.size()> local_support{};
+  std::array<Real, directions.size()> local_best;
+  local_best.fill(-std::numeric_limits<Real>::max());
   for (const Agent& agent : agents_) {
-    if (agent.state != PhenoState::DEAD) local.push_back(agent.x);
+    if (agent.state == PhenoState::DEAD) continue;
+    for (size_t i = 0; i < directions.size(); ++i) {
+      const Real projection = agent.x[0] * directions[i][0]
+                            + agent.x[1] * directions[i][1]
+                            + agent.x[2] * directions[i][2];
+      if (projection > local_best[i]) {
+        local_best[i] = projection;
+        local_support[i] = agent.x;
+      }
+    }
   }
-  const Int sample_count = std::min<Int>(target, local.size());
-  std::vector<Vec3> sampled;
-  sampled.reserve(static_cast<size_t>(sample_count));
-  for (Int i = 0; i < sample_count; ++i) {
-    const size_t index = static_cast<size_t>(
-        (static_cast<long long>(i) * local.size()) / sample_count);
-    sampled.push_back(local[index]);
-  }
+  std::vector<Vec3> sampled(local_support.begin(), local_support.end());
 #ifdef GUTIBM_MPI
   if (nprocs > 1) {
     const Int local_values = static_cast<Int>(sampled.size() * 3);
@@ -714,6 +716,11 @@ void Simulation::inject_one_immigration_event(
       immigration, domain_.lo(), domain_.hi(), immigration_rng_,
       anchors, has_live_agents, log_warnings, reducer,
       [this](Vec3& position) { domain_.apply_pbc(position); });
+  if (immigration.placement == "at_distance" &&
+      static_cast<Int>(positions.size()) != immigration.count) {
+    throw SimulationError(
+        "immigration at_distance could not place all requested immigrants");
+  }
   const auto& strain =
       cfg_.initial_strains[static_cast<size_t>(immigration.strain_index)];
   for (const Vec3& pos : positions) {
