@@ -1,4 +1,18 @@
-"""Composition-aware 3-D pair-correlation and Ripley spatial statistics."""
+"""Composition-aware 3-D pair-correlation and Ripley spatial statistics.
+
+Choose the null according to the scientific question.  To ask whether the
+point pattern is clustered at all, call :func:`compute_spatial_stats` with
+``labels=None`` and use its z-stratified coordinate-randomization envelope.
+The epithelial surface at ``z=0`` creates strong z-structure, so a whole-box
+uniform null would call that expected structure biological clustering.
+
+To ask whether producers are more clustered than an arbitrary subset of the
+same cells, pass an externally defined producer mark and use the
+label-permutation envelope.  The positions stay fixed while the marks are
+permuted.  Do not pass spatially derived labels, especially DBSCAN colony
+IDs, to that null: doing so is circular because the labels already encode
+proximity and guarantees an apparent departure.
+"""
 
 from __future__ import annotations
 
@@ -94,7 +108,15 @@ def compute_spatial_stats(
     config: SpatialStatsConfig | None = None,
     rng: np.random.Generator | None = None,
 ) -> SpatialStatsResult:
-    """Compute 3-D g(r), K(r), and L(r)-r with two composition-matched nulls.
+    """Compute 3-D spatial curves with z and label-permutation nulls.
+
+    Use ``labels=None`` with the z-stratified null for the question "is the
+    point pattern clustered at all?"  Use externally defined marks such as
+    producer status or genotype with the label-permutation null for "are
+    those marks more clustered than an arbitrary subset of the same cells?"
+    Never use spatially derived labels such as DBSCAN colony IDs with the
+    label null; that comparison is circular and guarantees an apparent
+    departure.
 
     Intensity is estimated as N divided by the occupied axis-aligned bounding
     box.  No edge correction is applied, so boundary bias is expected; observed
@@ -197,7 +219,12 @@ def z_stratified_null(
     bins: int,
     rng: np.random.Generator,
 ) -> np.ndarray:
-    """Randomize lateral coordinates within realized z strata, preserving z."""
+    """Randomize lateral coordinates within realized z strata, preserving z.
+
+    This is the point-pattern null for asking whether the population is
+    clustered at all.  A whole-box uniform null is inappropriate when the
+    epithelial surface imposes a strong z distribution.
+    """
     if bins < 1:
         raise ValueError("bins must be positive")
     result = points.copy()
@@ -217,7 +244,13 @@ def label_permutation_null(
     labels: np.ndarray,
     rng: np.random.Generator,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return bit-identical positions and a composition-preserving labels permutation."""
+    """Return fixed positions and a composition-preserving mark permutation.
+
+    ``labels`` must be an externally defined mark, such as producer status or
+    genotype.  Do not pass DBSCAN colony IDs or other spatially derived labels:
+    the resulting comparison is circular because those labels already encode
+    spatial proximity.
+    """
     return np.asarray(positions).copy(), rng.permutation(np.asarray(labels)).copy()
 
 
