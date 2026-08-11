@@ -144,7 +144,7 @@ $JDJson = New-TemporaryFile
 }
 "@ | Set-Content -Encoding ascii $JDJson.FullName
 $RetryJson = Join-Path $PSScriptRoot "retry_strategy.json"
-aws batch register-job-definition --job-definition-name $env:JOB_DEFINITION_CAMPAIGN --type container --platform-capabilities EC2 --container-properties "file://$($JDJson.FullName)" --retry-strategy "file://$($RetryJson.FullName)" --region $env:AWS_REGION | Out-Null
+aws batch register-job-definition --job-definition-name $env:JOB_DEFINITION_CAMPAIGN --type container --platform-capabilities EC2 --container-properties "file://$($JDJson.FullName)" --retry-strategy "file://$RetryJson" --region $env:AWS_REGION | Out-Null
 Remove-Item $JDJson.FullName -Force
 
 Write-Host "OK: campaign stack ready"
