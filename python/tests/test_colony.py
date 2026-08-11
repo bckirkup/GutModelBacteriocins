@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 import pytest
 from gut_ibm_tools.colony import ColonyConfig, build_colony_catalog, dbscan_colonies
+from gut_ibm_tools.colony import main as colony_main
 from gut_ibm_tools.hdf5_reader import GutIBMData
 
 
@@ -90,6 +93,42 @@ def test_catalog_reads_sample_hdf5(sample_hdf5) -> None:
         )
     assert len(catalog.agents["agent_id"]) == 12
     assert catalog.agents["agent_id"].dtype == np.int64
+
+
+def test_cli_uses_latest_agent_step_when_layers_differ(
+    mismatched_schedule_hdf5, tmp_path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "gut-ibm-colony",
+            str(mismatched_schedule_hdf5),
+            "--agent-output",
+            "catalog_agents.csv",
+            "--colony-output",
+            "catalog_colonies.csv",
+            "--diagnostics-output",
+            "catalog_diagnostics.csv",
+        ],
+    )
+    colony_main()
+    assert "agent_id" in (tmp_path / "catalog_agents.csv").read_text()
+
+
+def test_cli_reports_available_agent_steps_for_invalid_step(
+    mismatched_schedule_hdf5, monkeypatch, capsys
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["gut-ibm-colony", str(mismatched_schedule_hdf5), "step_000002"],
+    )
+    with pytest.raises(SystemExit):
+        colony_main()
+    captured = capsys.readouterr()
+    assert "available agent steps: step_000000, step_000001" in captured.err
 
 
 def test_eps_sensitivity_reduces_noise_and_merges_at_largest_factor() -> None:

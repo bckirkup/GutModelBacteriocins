@@ -104,6 +104,20 @@ def sample_hdf5(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def mismatched_schedule_hdf5(tmp_path: Path) -> Path:
+    """Write output where summary advances beyond the agent layer."""
+    path = tmp_path / "mismatched_schedule.h5"
+    write_sample_hdf5(path)
+    with h5py.File(path, "a") as handle:
+        summary = handle["summary"].create_group("step_000002")
+        summary.create_dataset("time", data=np.array(7200.0))
+        summary.create_dataset("step", data=np.array(2, dtype=np.int32))
+        summary.create_dataset("n_total", data=np.array(12, dtype=np.int32))
+        summary.create_dataset("num_agents", data=np.array(12, dtype=np.int32))
+    return path
+
+
+@pytest.fixture
 def ragged_genome_hdf5(tmp_path: Path) -> Path:
     """Write a minimal genome layer with zero- and multi-locus agents."""
     path = tmp_path / "ragged_genome.h5"

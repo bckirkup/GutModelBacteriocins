@@ -21,6 +21,17 @@ def test_steps_sorted_numerically(sample_hdf5: Path) -> None:
         assert data.steps == ["step_000000", "step_000001"]
 
 
+def test_steps_for_returns_layer_specific_steps(mismatched_schedule_hdf5: Path) -> None:
+    with GutIBMData(mismatched_schedule_hdf5) as data:
+        assert data.steps == ["step_000000", "step_000001", "step_000002"]
+        assert data.steps_for("agents") == ["step_000000", "step_000001"]
+        assert data.steps_for("summary") == [
+            "step_000000",
+            "step_000001",
+            "step_000002",
+        ]
+
+
 def test_get_agents_schema(sample_hdf5: Path) -> None:
     with GutIBMData(sample_hdf5) as data:
         agents = data.get_agents("step_000000")
