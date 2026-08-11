@@ -9,6 +9,9 @@ full campaigns (especially Stage 3: 7-day biology, 2 mm domain, GPU chemistry).
 **Practice workload (now):** `experiments/smoke_gpu.json` (+ optional
 `smoke_gpu_batch.json`).
 
+For the pre-campaign throughput and resume calibration, see
+[AWS_CALIBRATION_6H.md](AWS_CALIBRATION_6H.md).
+
 ## Goals
 
 | Goal | Detail |

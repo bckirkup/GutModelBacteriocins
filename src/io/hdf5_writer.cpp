@@ -971,7 +971,7 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
     }
   }
 
-  // Stage-3 grids are ~3.6 GiB uncompressed (50M cells × 9 species). Gzip keeps
+  // Stage-3 grids are ~4.4 GB uncompressed (50M cells × 11 species). Gzip keeps
   // Spot artifacts small enough for container scratch disks and S3 upload.
   const auto nx = static_cast<std::uint64_t>(sim.domain().nx());
   const auto ny = static_cast<std::uint64_t>(sim.domain().ny());
