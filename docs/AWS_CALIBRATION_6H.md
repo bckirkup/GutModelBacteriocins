@@ -16,6 +16,13 @@ The six-hour wall-clock limit is intentional. `total_time` remains 172800 s
 (two simulated days), so the run should be stopped by the Batch timeout or a
 deliberate termination rather than by a shortened biological horizon.
 
+Provenance is dumped every 360 biological steps, matching the closed-restart
+cadence. The writer accumulates kill events between dumps, so this cadence does
+not discard deaths. The resulting throughput measurement includes the
+provenance work that an equivalent production burn-in will perform and is
+therefore directly transferable to that configuration. It is not a
+provenance-free benchmark.
+
 ## Storage before submission
 
 The Stage 3 domain is:
@@ -173,7 +180,14 @@ Record these from the final status, Batch attempts, logs, and S3:
 - the final checkpoint's step, time, SHA-256, and `latest.json` pointer;
 - provenance groups under `provenance/step_*` in the live output HDF5 if an
   attempt reaches successful completion. Closed Tier-2 checkpoints intentionally
-  contain agents and grid, not the live provenance event buffer.
+  contain agents and grid, not the live provenance event buffer. The 360-step
+  dump is lossless because kill events accumulate until the writer clears them;
+  see `src/io/hdf5_writer.cpp:567-624`.
+- interpret the throughput as the rate for the production-equivalent
+  provenance cadence, not as a provenance-disabled upper bound. For scale,
+  #220 measured a 15.3% receptor-path diagnostic cost when provenance arrays
+  were built every step; this calibration deliberately avoids that
+  every-step-dump overhead.
 - population count and producer count at the final checkpoint;
 - whether any observed colony reaches the 113, 527, or 1361 producer
   thresholds from the T2 surface.

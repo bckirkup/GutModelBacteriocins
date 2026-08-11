@@ -48,7 +48,7 @@
       "grid": 0,
       "lineage": 3600,
       "genome": 3600,
-      "provenance": 60
+      "provenance": 360
     }
   },
   "restart": {
@@ -56,7 +56,7 @@
     "directory": "restart",
     "interval_steps": 360
   },
-  "_comment_restart": "Closed Tier-2 restarts every six simulated hours; provenance is recorded every biological step.",
+  "_comment_restart": "Closed Tier-2 restarts and provenance dumps every six simulated hours.",
   "motility.enabled": false,
   "gpu_enabled": true,
   "gpu_device_id": -1
