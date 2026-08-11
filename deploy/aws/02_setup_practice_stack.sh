@@ -205,13 +205,25 @@ cat > "${JD_JSON}" <<EOF
   "linuxParameters": {"sharedMemorySize": 2048}
 }
 EOF
+RETRY_JSON="$(mktemp)"
+# Retry Spot reclaims; exit immediately on application failures.
+cat > "${RETRY_JSON}" <<EOF
+{
+  "attempts": 10,
+  "evaluateOnExit": [
+    {"onStatusReason": "Host EC2*", "action": "RETRY"},
+    {"onReason": "*", "action": "EXIT"}
+  ]
+}
+EOF
 aws batch register-job-definition \
   --job-definition-name "${JOB_DEFINITION}" \
   --type container \
   --platform-capabilities EC2 \
   --container-properties "file://${JD_JSON}" \
+  --retry-strategy "file://${RETRY_JSON}" \
   --region "${AWS_REGION}" >/dev/null
-rm -f "${JD_JSON}"
+rm -f "${JD_JSON}" "${RETRY_JSON}"
 
 echo "OK: practice stack ready"
 echo "  queue=${JOB_QUEUE}"

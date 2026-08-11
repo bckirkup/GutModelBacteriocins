@@ -147,7 +147,7 @@ $RetryJson = New-TemporaryFile
 # Retry Spot reclaims (surfaced as "Host EC2*"); exit on application failures.
 @"
 {
-  "attempts": 2,
+  "attempts": 10,
   "evaluateOnExit": [
     {"onStatusReason": "Host EC2*", "action": "RETRY"},
     {"onReason": "*", "action": "EXIT"}

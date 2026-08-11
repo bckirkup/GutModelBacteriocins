@@ -193,10 +193,10 @@ cat > "${JD_JSON}" <<EOF
 EOF
 RETRY_JSON="$(mktemp)"
 # Retry Spot reclaims (Batch surfaces them as "Host EC2*" status reasons); exit
-# immediately on application failures so bad configs do not burn two attempts.
+# immediately on application failures so bad configs do not burn all ten attempts.
 cat > "${RETRY_JSON}" <<EOF
 {
-  "attempts": 2,
+  "attempts": 10,
   "evaluateOnExit": [
     {"onStatusReason": "Host EC2*", "action": "RETRY"},
     {"onReason": "*", "action": "EXIT"}
