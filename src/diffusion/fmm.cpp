@@ -63,14 +63,14 @@ void FMM::build(const std::vector<Vec3>& positions,
   std::vector<int> all_indices(positions.size());
   std::iota(all_indices.begin(), all_indices.end(), 0);
 
-  build_recursive(positions, strengths, all_indices, center, half_size);
+  build_recursive(positions, strengths, all_indices, center, half_size, 0);
   upward_pass(positions, strengths);
 }
 
 int FMM::build_recursive(const std::vector<Vec3>& positions,
                            const std::vector<Real>& strengths,
                            const std::vector<int>& indices,
-                           const Vec3& center, Real half_size) {
+                           const Vec3& center, Real half_size, int depth) {
   auto node_idx = static_cast<int>(nodes_.size());
   nodes_.emplace_back();
   FMMNode& node = nodes_[node_idx];
@@ -113,6 +113,21 @@ int FMM::build_recursive(const std::vector<Vec3>& positions,
     child_indices[oct].push_back(idx);
   }
 
+  bool subdivision_progress = false;
+  for (const auto& child : child_indices) {
+    if (child.size() < indices.size()) {
+      subdivision_progress = true;
+      break;
+    }
+  }
+  if (!subdivision_progress || depth >= MAX_TREE_DEPTH) {
+    // Preserve all sources in an oversized leaf when subdivision cannot
+    // separate them or has reached the recursion backstop.
+    node.is_leaf = true;
+    node.sources = indices;
+    return node_idx;
+  }
+
   Real child_half = half_size * 0.5;
   for (int oct = 0; oct < 8; ++oct) {
     if (child_indices[oct].empty()) continue;
@@ -124,7 +139,7 @@ int FMM::build_recursive(const std::vector<Vec3>& positions,
 
     int child_idx = build_recursive(positions, strengths,
                                     child_indices[oct],
-                                    child_center, child_half);
+                                    child_center, child_half, depth + 1);
     nodes_[node_idx].children[oct] = child_idx;
   }
 

@@ -86,6 +86,50 @@ void test_fmm_build_and_moments() {
   std::cout << "  test_fmm_build_and_moments: PASSED\n";
 }
 
+void test_fmm_degenerate_clusters_match_direct_field() {
+  Domain domain;
+  AdvectionField adv;
+  make_test_domain(domain, adv);
+
+  GreensFunction gf;
+  gf.init(domain, adv);
+
+  GreensFunctionParams params;
+  params.diff_coeff = 4e-11;
+  params.source_rate = 1e-18;
+  params.pI = 7.0;
+  params.retardation = 5.0;
+  const Vec3 target = {300e-6, 300e-6, 50e-6};
+
+  for (const bool tight_cluster : {false, true}) {
+    std::vector<Vec3> positions(9);
+    std::vector<Real> strengths(9, params.source_rate);
+    for (int i = 0; i < 9; ++i) {
+      const Real offset = tight_cluster
+                            ? static_cast<Real>(i) * 1e-12
+                            : 0.0;
+      positions[static_cast<size_t>(i)] = {
+          500e-6 + offset, 500e-6, 50e-6};
+    }
+
+    FMM fmm;
+    fmm.build(positions, strengths, domain, 2);
+
+    Real exact = 0.0;
+    for (const Vec3& source : positions)
+      exact += gf.concentration_bounded(source, target, params);
+
+    const GreensFunctionParams avg = params;
+    const Real approx = fmm.evaluate_field(
+        target, 0.5, 10e-6, gf, positions,
+        std::vector<GreensFunctionParams>(positions.size(), params), avg);
+    const Real relative_error = std::abs(approx - exact) / exact;
+    assert(relative_error < 1e-6);
+  }
+
+  std::cout << "  test_fmm_degenerate_clusters_match_direct_field: PASSED\n";
+}
+
 void test_fmm_accuracy_order2_vs_exact() {
   Domain domain;
   AdvectionField adv;
@@ -328,6 +372,7 @@ int main() {
   std::cout << "=== FMM Tests ===\n";
   test_fmm_coefficient_count();
   test_fmm_build_and_moments();
+  test_fmm_degenerate_clusters_match_direct_field();
   test_fmm_accuracy_order2_vs_exact();
   test_fmm_higher_order_more_accurate_than_monopole();
   test_fmm_local_expansion_nonnegative();
