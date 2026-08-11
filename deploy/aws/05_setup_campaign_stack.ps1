@@ -143,19 +143,9 @@ $JDJson = New-TemporaryFile
   "linuxParameters": {"sharedMemorySize": 2048}
 }
 "@ | Set-Content -Encoding ascii $JDJson.FullName
-$RetryJson = New-TemporaryFile
-# Retry Spot reclaims (surfaced as "Host EC2*"); exit on application failures.
-@"
-{
-  "attempts": 2,
-  "evaluateOnExit": [
-    {"onStatusReason": "Host EC2*", "action": "RETRY"},
-    {"onReason": "*", "action": "EXIT"}
-  ]
-}
-"@ | Set-Content -Encoding ascii $RetryJson.FullName
-aws batch register-job-definition --job-definition-name $env:JOB_DEFINITION_CAMPAIGN --type container --platform-capabilities EC2 --container-properties "file://$($JDJson.FullName)" --retry-strategy "file://$($RetryJson.FullName)" --region $env:AWS_REGION | Out-Null
-Remove-Item $JDJson.FullName, $RetryJson.FullName -Force
+$RetryJson = Join-Path $PSScriptRoot "retry_strategy.json"
+aws batch register-job-definition --job-definition-name $env:JOB_DEFINITION_CAMPAIGN --type container --platform-capabilities EC2 --container-properties "file://$($JDJson.FullName)" --retry-strategy "file://$RetryJson" --region $env:AWS_REGION | Out-Null
+Remove-Item $JDJson.FullName -Force
 
 Write-Host "OK: campaign stack ready"
 Write-Host "  computeEnv=$($env:COMPUTE_ENV_CAMPAIGN) (Spot, maxvCpus=$($env:CAMPAIGN_MAX_VCPUS))"

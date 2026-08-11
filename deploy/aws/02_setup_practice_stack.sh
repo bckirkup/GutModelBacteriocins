@@ -205,11 +205,13 @@ cat > "${JD_JSON}" <<EOF
   "linuxParameters": {"sharedMemorySize": 2048}
 }
 EOF
+RETRY_JSON="${ROOT}/deploy/aws/retry_strategy.json"
 aws batch register-job-definition \
   --job-definition-name "${JOB_DEFINITION}" \
   --type container \
   --platform-capabilities EC2 \
   --container-properties "file://${JD_JSON}" \
+  --retry-strategy "file://${RETRY_JSON}" \
   --region "${AWS_REGION}" >/dev/null
 rm -f "${JD_JSON}"
 
