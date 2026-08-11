@@ -150,19 +150,9 @@ $JDJson = New-TemporaryFile
   "linuxParameters": {"sharedMemorySize": 2048}
 }
 "@ | Set-Content -Encoding ascii $JDJson.FullName
-$RetryJson = New-TemporaryFile
-# Retry Spot reclaims; exit immediately on application failures.
-@"
-{
-  "attempts": 10,
-  "evaluateOnExit": [
-    {"onStatusReason": "Host EC2*", "action": "RETRY"},
-    {"onReason": "*", "action": "EXIT"}
-  ]
-}
-"@ | Set-Content -Encoding ascii $RetryJson.FullName
+$RetryJson = Join-Path $PSScriptRoot "retry_strategy.json"
 aws batch register-job-definition --job-definition-name $env:JOB_DEFINITION --type container --platform-capabilities EC2 --container-properties "file://$($JDJson.FullName)" --retry-strategy "file://$($RetryJson.FullName)" --region $env:AWS_REGION | Out-Null
-Remove-Item $JDJson.FullName, $RetryJson.FullName -Force
+Remove-Item $JDJson.FullName -Force
 
 Write-Host "OK: practice stack ready"
 Write-Host "  queue=$($env:JOB_QUEUE)"

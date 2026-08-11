@@ -191,18 +191,7 @@ cat > "${JD_JSON}" <<EOF
   "linuxParameters": {"sharedMemorySize": 2048}
 }
 EOF
-RETRY_JSON="$(mktemp)"
-# Retry Spot reclaims (Batch surfaces them as "Host EC2*" status reasons); exit
-# immediately on application failures so bad configs do not burn all ten attempts.
-cat > "${RETRY_JSON}" <<EOF
-{
-  "attempts": 10,
-  "evaluateOnExit": [
-    {"onStatusReason": "Host EC2*", "action": "RETRY"},
-    {"onReason": "*", "action": "EXIT"}
-  ]
-}
-EOF
+RETRY_JSON="${ROOT}/deploy/aws/retry_strategy.json"
 aws batch register-job-definition \
   --job-definition-name "${JOB_DEFINITION_CAMPAIGN}" \
   --type container \
@@ -210,7 +199,7 @@ aws batch register-job-definition \
   --container-properties "file://${JD_JSON}" \
   --retry-strategy "file://${RETRY_JSON}" \
   --region "${AWS_REGION}" >/dev/null
-rm -f "${JD_JSON}" "${RETRY_JSON}"
+rm -f "${JD_JSON}"
 
 echo "OK: campaign stack ready"
 echo "  computeEnv=${COMPUTE_ENV_CAMPAIGN} (Spot, maxvCpus=${CAMPAIGN_MAX_VCPUS})"

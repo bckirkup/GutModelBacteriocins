@@ -1,0 +1,7 @@
+{
+  "attempts": 10,
+  "evaluateOnExit": [
+    {"onStatusReason": "Host EC2*", "action": "RETRY"},
+    {"onReason": "*", "action": "EXIT"}
+  ]
+}
