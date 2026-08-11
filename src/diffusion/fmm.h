@@ -87,6 +87,7 @@ class FMM {
   int expansion_order() const { return expansion_order_; }
 
   static constexpr int MAX_LEAF_SOURCES = 8;
+  static constexpr int MAX_TREE_DEPTH = 64;
   static constexpr int MAX_EXPANSION_ORDER = 3;
 
   // Number of Cartesian Taylor coefficients for total degree <= order.
@@ -96,7 +97,7 @@ class FMM {
   int build_recursive(const std::vector<Vec3>& positions,
                       const std::vector<Real>& strengths,
                       const std::vector<int>& indices,
-                      const Vec3& center, Real half_size);
+                      const Vec3& center, Real half_size, int depth);
 
   void upward_pass(const std::vector<Vec3>& positions,
                    const std::vector<Real>& strengths);
