@@ -9,6 +9,7 @@ Related:
 - Campaign configs: [`experiments/diversity_campaign/README.md`](../experiments/diversity_campaign/README.md)
 - Burn-in → fork on AWS: [`docs/AWS_BATCH.md`](AWS_BATCH.md)
 - Batch sweeps: [`docs/BATCH_RUNNER.md`](BATCH_RUNNER.md)
+- T2 finite-colony measurement: [`docs/T2_COLONY_CHALLENGE.md`](T2_COLONY_CHALLENGE.md)
 - Frameworks: [`EARI.md`](../EARI.md), [`VADI.md`](../VADI.md)
 
 ---
