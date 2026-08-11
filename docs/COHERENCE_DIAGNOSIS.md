@@ -6,7 +6,8 @@ program that resolves it without week-long runs.
 
 Companion to [`docs/MULTI_SCALE_EXPERIMENTATION.md`](MULTI_SCALE_EXPERIMENTATION.md),
 which covers *how* to compose runs. This document covers *what is wrong* and
-*what to measure*.
+*what to measure*. The completed finite-colony measurement is documented in
+[`docs/T2_COLONY_CHALLENGE.md`](T2_COLONY_CHALLENGE.md).
 
 ---
 
