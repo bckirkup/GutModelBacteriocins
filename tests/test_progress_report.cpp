@@ -1,5 +1,5 @@
 /* -----------------------------------------------------------------------
-   GutIBM – Progress line includes pct / rate / eta_s for Batch observability
+   GutIBM – Progress and wall-clock heartbeat lines for Batch observability
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
@@ -21,7 +21,9 @@ void test_progress_line_fields() {
   cfg.domain.hash_cell_size = 10e-6;
   cfg.time.total_time = 180.0;
   cfg.time.bio_dt = 60.0;
-  cfg.time.output_interval = 60.0;
+  // The heartbeat must remain observable even when output is scheduled later
+  // than the entire run.
+  cfg.time.output_interval = 3600.0;
   cfg.seed = 7;
   cfg.hdf5.enabled = false;
   cfg.advection.mucus_thickness = 30e-6;
@@ -52,6 +54,8 @@ void test_progress_line_fields() {
   assert(out.find("rate=") != std::string::npos);
   assert(out.find("eta_s=") != std::string::npos);
   assert(out.find("global_agents=") != std::string::npos);
+  assert(out.find("Heartbeat step=") != std::string::npos);
+  assert(out.find("wall_elapsed_s=") != std::string::npos);
 }
 
 int main() {
