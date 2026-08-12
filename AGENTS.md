@@ -84,6 +84,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `batch_scan/`, `scaling_benchmark/` |
 | `tests/` | CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
+| `.agents/skills/gutibm-campaign-ops/SKILL.md` | AWS campaign operations and checkpoint safety |
 | `.agents/skills/sonarqube-gutibm/SKILL.md` | SonarQube remediation workflow |
 | `.agents/skills/sonarqube-cpp/SKILL.md` | C++ SonarQube patterns |
 | `.agents/skills/sonarqube-python/SKILL.md` | Python SonarQube patterns |
