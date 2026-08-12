@@ -291,8 +291,8 @@ void test_true_unit_receptor_regression() {
   constexpr Real toxin_at_100_um = 6.137581e-8;
 
   const SimulationConfig defaults = InputParser::default_config();
-  const auto b12_spec = std::find_if(
-      defaults.chemicals.begin(), defaults.chemicals.end(),
+  const auto b12_spec = std::ranges::find_if(
+      defaults.chemicals,
       [](const ChemicalSpec& s) { return s.name == species::B12; });
   assert(b12_spec != defaults.chemicals.end());
   assert(std::abs(b12_spec->initial_conc - 1.0e-3) < 1.0e-15);
