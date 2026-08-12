@@ -852,26 +852,41 @@ namespace {
 constexpr Int kPopulationStopThreshold = 1;
 
 // Progress line fields parsed by deploy/aws/entry.sh into status.json.
+}  // namespace
+
+ProgressMetrics calculate_progress_metrics(Real sim_time,
+                                           Real attempt_sim_time,
+                                           Real total_time,
+                                           double wall_elapsed_s) {
+  ProgressMetrics metrics;
+  metrics.pct = (total_time > 0.0) ? (100.0 * sim_time / total_time) : 0.0;
+  metrics.rate = (wall_elapsed_s > 0.0)
+                     ? static_cast<double>(attempt_sim_time) / wall_elapsed_s
+                     : 0.0;
+  if (metrics.rate > 0.0 && total_time > sim_time) {
+    metrics.eta_s = static_cast<double>(total_time - sim_time) / metrics.rate;
+  }
+  return metrics;
+}
+
+namespace {
 void print_progress_line(Int step_count, Real sim_time, Real dt, Int global_agents,
                          Int local_agents, Real mu_avg, Real total_time,
+                         Real attempt_sim_time,
                          double wall_elapsed_s) {
-  const Real pct = (total_time > 0.0) ? (100.0 * sim_time / total_time) : 0.0;
-  const double rate = (wall_elapsed_s > 0.0)
-                          ? static_cast<double>(sim_time) / wall_elapsed_s
-                          : 0.0;
-  double eta_s = 0.0;
-  if (rate > 0.0 && total_time > sim_time) {
-    eta_s = static_cast<double>(total_time - sim_time) / rate;
-  }
+  const ProgressMetrics metrics =
+      calculate_progress_metrics(sim_time, attempt_sim_time, total_time,
+                                 wall_elapsed_s);
   std::cout << "Step " << step_count
             << "  t=" << sim_time << "s"
             << "  dt=" << std::setprecision(3) << dt << "s"
             << "  global_agents=" << global_agents
             << "  local_agents=" << local_agents
             << "  mu_avg=" << mu_avg
-            << "  pct=" << std::setprecision(4) << pct
-            << "  rate=" << std::setprecision(4) << rate
-            << "  eta_s=" << std::setprecision(0) << std::fixed << eta_s
+            << "  pct=" << std::setprecision(4) << metrics.pct
+            << "  rate=" << std::setprecision(4) << metrics.rate
+            << "  eta_s=" << std::setprecision(0) << std::fixed
+            << metrics.eta_s
             << "\n" << std::flush;
   std::cout.unsetf(std::ios_base::floatfield);
 }
@@ -889,6 +904,7 @@ void Simulation::run() {
   Real last_dt = cfg_.time.bio_dt;
   bool stopped_for_population = false;
   const auto wall_start = std::chrono::steady_clock::now();
+  const Real attempt_start_sim_time = clock_.time;
   const auto heartbeat_interval = std::chrono::seconds(60);
   auto next_heartbeat = wall_start;
   bool heartbeat_emitted = false;
@@ -951,7 +967,9 @@ void Simulation::run() {
                             mpi_stats_.global_agent_count,
                             agents_.size(),
                             mpi_stats_.global_mu_avg,
-                            cfg_.time.total_time, wall_elapsed_s);
+                            cfg_.time.total_time,
+                            clock_.time - attempt_start_sim_time,
+                            wall_elapsed_s);
       }
       clock_.next_output += cfg_.time.output_interval;
     }

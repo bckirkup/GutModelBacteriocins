@@ -51,6 +51,17 @@
 
 namespace gutibm {
 
+struct ProgressMetrics {
+  double pct = 0.0;
+  double rate = 0.0;
+  double eta_s = 0.0;
+};
+
+ProgressMetrics calculate_progress_metrics(Real sim_time,
+                                           Real attempt_sim_time,
+                                           Real total_time,
+                                           double wall_elapsed_s);
+
 class Simulation {
  public:
   Simulation() = default;
