@@ -44,7 +44,7 @@ if (-not $env:JOB_QUEUE)      { $env:JOB_QUEUE      = "gutibm-gpu-practice" }
 if (-not $env:JOB_DEFINITION) { $env:JOB_DEFINITION = "gutibm-cuda" }
 if (-not $env:COMPUTE_ENV)    { $env:COMPUTE_ENV    = "gutibm-gpu-practice-od" }
 
-# Campaign stack (05): Spot GPU (g5.2xlarge / g4dn.2xlarge), one GPU per run.
+# Campaign stack (05): multi-AZ Spot GPU, single-GPU sizes, one GPU per run.
 if (-not $env:COMPUTE_ENV_CAMPAIGN)     { $env:COMPUTE_ENV_CAMPAIGN     = "gutibm-gpu-campaign-spot" }
 if (-not $env:COMPUTE_ENV_CAMPAIGN_OD)  { $env:COMPUTE_ENV_CAMPAIGN_OD  = "gutibm-gpu-campaign-od" }
 if (-not $env:JOB_QUEUE_CAMPAIGN)       { $env:JOB_QUEUE_CAMPAIGN       = "gutibm-gpu-campaign" }

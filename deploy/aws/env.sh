@@ -41,7 +41,7 @@ export JOB_QUEUE="${JOB_QUEUE:-gutibm-gpu-practice}"
 export JOB_DEFINITION="${JOB_DEFINITION:-gutibm-cuda}"
 export COMPUTE_ENV="${COMPUTE_ENV:-gutibm-gpu-practice-od}"
 
-# Campaign stack (05): Spot GPU (g5.2xlarge / g4dn.2xlarge), one GPU per run.
+# Campaign stack (05): multi-AZ Spot GPU, single-GPU sizes, one GPU per run.
 export COMPUTE_ENV_CAMPAIGN="${COMPUTE_ENV_CAMPAIGN:-gutibm-gpu-campaign-spot}"
 export COMPUTE_ENV_CAMPAIGN_OD="${COMPUTE_ENV_CAMPAIGN_OD:-gutibm-gpu-campaign-od}"
 export JOB_QUEUE_CAMPAIGN="${JOB_QUEUE_CAMPAIGN:-gutibm-gpu-campaign}"
