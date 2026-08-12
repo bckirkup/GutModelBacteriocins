@@ -18,7 +18,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${ROOT}/deploy/aws/env.sh"
 
 if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to preserve and update CE resource fields." >&2
+  echo "ERROR: jq is required to build the CE update payload." >&2
   exit 1
 fi
 
@@ -106,12 +106,28 @@ echo "  target_subnets=$(jq -c '.' <<<"${ALL_SUBNETS_JSON}")"
 echo "  current_instance_types=$(jq -c '.computeEnvironments[0].computeResources.instanceTypes' <<<"${CE_JSON}")"
 echo "  target_instance_types=$(jq -c '.' <<<"${INSTANCE_TYPES_JSON}")"
 
+# UpdateComputeEnvironment accepts a ComputeResourceUpdate object, not the
+# describe response. Omitted fields remain unchanged, so use an explicit
+# allow-list rather than round-tripping output-only or create-only fields such
+# as type, spotIamFleetRole, launchTemplate, and image settings. Preserve the
+# capacity bounds, but omit desiredvCpus: Batch owns that scheduler-controlled
+# value and resending it can fight scaling.
+if ! jq -e \
+  '.computeEnvironments[0].computeResources
+   | (.minvCpus | type == "number")
+   and (.maxvCpus | type == "number")' <<<"${CE_JSON}" >/dev/null; then
+  echo "ERROR: CE is missing numeric minvCpus or maxvCpus." >&2
+  exit 1
+fi
 jq --argjson subnets "${ALL_SUBNETS_JSON}" \
   --argjson instance_types "${INSTANCE_TYPES_JSON}" \
   '.computeEnvironments[0].computeResources
-   | del(.ec2Configuration[]?.batchImageStatus)
-   | .subnets = $subnets
-   | .instanceTypes = $instance_types' <<<"${CE_JSON}" >"${TMP_RESOURCES}"
+   | {
+       minvCpus: .minvCpus,
+       maxvCpus: .maxvCpus,
+       subnets: $subnets,
+       instanceTypes: $instance_types
+     }' <<<"${CE_JSON}" >"${TMP_RESOURCES}"
 
 wait_for_state() {
   local expected="$1"
@@ -151,24 +167,27 @@ update_resources() {
   if output="$(aws batch update-compute-environment \
     --compute-environment "${CE}" \
     --compute-resources "file://${TMP_RESOURCES}" \
-    --state ENABLED \
     --region "${AWS_REGION}" 2>&1)"; then
     echo "${output}"
     return 0
   fi
 
   echo "${output}" >&2
-  if [[ "${output,,}" != *"disabled"* ]]; then
-    echo "ERROR: CE update failed for a reason other than a required disabled state." >&2
+  local api_error_code
+  api_error_code="$(sed -n 's/.*An error occurred (\([^)]*\)).*/\1/p' <<<"${output}")"
+  if [[ "${api_error_code}" != "ClientException" ]]; then
+    echo "ERROR: CE update failed with API error code '${api_error_code:-unknown}'." >&2
     return 1
   fi
 
-  echo "==> Batch requires the CE to be disabled for this update"
-  aws batch update-compute-environment \
-    --compute-environment "${CE}" \
-    --state DISABLED \
-    --region "${AWS_REGION}" >/dev/null
   RESTORE_ENABLED=1
+  if [[ "${CE_STATE}" != "DISABLED" ]]; then
+    echo "==> Retrying the infrastructure update with the CE disabled"
+    aws batch update-compute-environment \
+      --compute-environment "${CE}" \
+      --state DISABLED \
+      --region "${AWS_REGION}" >/dev/null
+  fi
   wait_for_state DISABLED
   aws batch update-compute-environment \
     --compute-environment "${CE}" \
@@ -183,10 +202,18 @@ update_resources() {
 
 echo "==> Update ${CE} without touching queue or job definitions"
 update_resources
-aws batch update-compute-environment \
-  --compute-environment "${CE}" \
-  --state ENABLED \
-  --region "${AWS_REGION}" >/dev/null
+CURRENT_STATE="$(aws batch describe-compute-environments \
+  --compute-environments "${CE}" \
+  --region "${AWS_REGION}" \
+  --query 'computeEnvironments[0].state' \
+  --output text)"
+if [[ "${CURRENT_STATE}" != "ENABLED" ]]; then
+  echo "==> Re-enabling ${CE}"
+  aws batch update-compute-environment \
+    --compute-environment "${CE}" \
+    --state ENABLED \
+    --region "${AWS_REGION}" >/dev/null
+fi
 wait_for_state ENABLED
 RESTORE_ENABLED=0
 
