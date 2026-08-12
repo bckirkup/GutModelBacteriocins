@@ -1,5 +1,6 @@
 # Create the campaign Batch stack: Spot GPU compute environment + queue + job
-# definition sized for one GPU instance per Stage 3 run (g5.2xlarge / g4dn.2xlarge).
+# definition sized for one GPU instance per Stage 3 run. The CE spans every
+# available subnet in the selected VPC to avoid single-AZ Spot starvation.
 # PowerShell port of 05_setup_campaign_stack.sh. Safe to re-run.
 #
 # Prerequisite: run 02_setup_practice_stack.ps1 first (it creates the IAM roles,
@@ -56,11 +57,12 @@ if ($LASTEXITCODE -ne 0) { throw "instance profile 'ecsInstanceRole' not found. 
 Write-Host "==> Default VPC + subnet + security group (created by 02)"
 $VPC_ID = Test-AwsText (aws ec2 describe-vpcs --filters Name=isDefault,Values=true --query 'Vpcs[0].VpcId' --output text --region $env:AWS_REGION)
 if (-not $VPC_ID) { throw "no default VPC in $($env:AWS_REGION). Run 02_setup_practice_stack.ps1 first." }
-$SUBNET_ID = Test-AwsText (aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[0].SubnetId' --output text --region $env:AWS_REGION)
+$SUBNETS_JSON = (aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query 'Subnets[?State==`available`].SubnetId' --output json --region $env:AWS_REGION | Out-String).Trim()
+if ([string]::IsNullOrWhiteSpace($SUBNETS_JSON) -or $SUBNETS_JSON -eq "[]") { throw "no available subnets found in VPC $VPC_ID." }
 $SG_ID = Test-AwsText (aws ec2 describe-security-groups --filters "Name=group-name,Values=gutibm-batch-sg" "Name=vpc-id,Values=$VPC_ID" --query 'SecurityGroups[0].GroupId' --output text --region $env:AWS_REGION 2>$null)
 if (-not $SG_ID) { throw "security group 'gutibm-batch-sg' not found. Run 02_setup_practice_stack.ps1 first." }
 Write-Host "  VPC_ID=$VPC_ID"
-Write-Host "  SUBNET_ID=$SUBNET_ID"
+Write-Host "  SUBNETS=$SUBNETS_JSON"
 Write-Host "  SG_ID=$SG_ID"
 
 Write-Host "==> Spot GPU compute environment $($env:COMPUTE_ENV_CAMPAIGN) (maxvCpus=$($env:CAMPAIGN_MAX_VCPUS))"
@@ -75,8 +77,8 @@ if (-not $CE_STATUS) {
   "minvCpus": 0,
   "maxvCpus": $($env:CAMPAIGN_MAX_VCPUS),
   "desiredvCpus": 0,
-  "instanceTypes": ["g5.2xlarge", "g4dn.2xlarge"],
-  "subnets": ["$SUBNET_ID"],
+  "instanceTypes": ["g5.2xlarge", "g5.4xlarge", "g5.8xlarge", "g5.16xlarge", "g4dn.2xlarge", "g4dn.4xlarge", "g4dn.8xlarge", "g4dn.16xlarge"],
+  "subnets": $SUBNETS_JSON,
   "securityGroupIds": ["$SG_ID"],
   "instanceRole": "arn:aws:iam::${ACCOUNT}:instance-profile/ecsInstanceRole",
   "spotIamFleetRole": "arn:aws:iam::${ACCOUNT}:role/AmazonEC2SpotFleetTaggingRole",
@@ -104,8 +106,8 @@ if ($env:CAMPAIGN_ONDEMAND_FALLBACK -eq "1") {
   "minvCpus": 0,
   "maxvCpus": $($env:CAMPAIGN_MAX_VCPUS),
   "desiredvCpus": 0,
-  "instanceTypes": ["g5.2xlarge", "g4dn.2xlarge"],
-  "subnets": ["$SUBNET_ID"],
+  "instanceTypes": ["g5.2xlarge", "g5.4xlarge", "g5.8xlarge", "g5.16xlarge", "g4dn.2xlarge", "g4dn.4xlarge", "g4dn.8xlarge", "g4dn.16xlarge"],
+  "subnets": $SUBNETS_JSON,
   "securityGroupIds": ["$SG_ID"],
   "instanceRole": "arn:aws:iam::${ACCOUNT}:instance-profile/ecsInstanceRole",
   "ec2Configuration": [{"imageType": "ECS_AL2023_NVIDIA"}]

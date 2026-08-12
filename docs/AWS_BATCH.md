@@ -34,7 +34,7 @@ Terraform/CDK, or replacing local Stage 1–2 validation.
 | Infra style | **AWS CLI + Docker + checked-in JSON** (no Terraform for v1) | Matches local Crusher→ECR workflow; Batch resources created once via CLI |
 | Scheduler | **AWS Batch** (EC2 GPU), not Fargate | Fargate has **no NVIDIA GPUs**; keep the Docker/ECR muscle memory, change only the compute backend |
 | Practice instance | **`g4dn.xlarge`** (T4, 16 GB VRAM) | Cheapest common GPU Spot class for tiny smokes |
-| Campaign instance | **`g5.2xlarge`** (A10G, 24 GB) | Stage 3 chemistry ~8 GB VRAM + headroom; allow `g4dn.2xlarge` in the same compute env if Spot is thinner on g5 |
+| Campaign instances | **`g5.2xlarge`**, `g5.4xlarge`, `g5.8xlarge`, `g5.16xlarge`, `g4dn.2xlarge`, `g4dn.4xlarge`, `g4dn.8xlarge`, `g4dn.16xlarge` | Single-GPU sizes with at least 8 vCPUs and 32 GiB host RAM; multi-GPU sizes are excluded because one requested GPU would leave paid accelerators idle |
 | First jobs | **`experiments/smoke_gpu.json`** then `smoke_gpu_batch.json` | Prove CUDA path before Stage 3 |
 | Image build | **Laptop `docker build` + `aws ecr get-login-password` push** | Same as existing Fargate deploys; GHA→ECR later if desired |
 | First campaign (after smoke) | **`batch_baseline.json`** (3 seeds) | Smaller than the 12-run Kd sweep; validate cost/wall time once |
@@ -89,7 +89,7 @@ aws batch submit-job               ──► Batch Spot/OnDemand GPU queue
 | Scheduler | AWS Batch managed CE | GPU + Spot + array jobs; scales to 0 |
 | Compute | EC2 Spot GPU (`SPOT_PRICE_CAPACITY_OPTIMIZED`) | Low priority / cost |
 | Practice CE | Prefer `g4dn.xlarge` (optionally On-Demand for first green run) | Fast feedback, cheap fails |
-| Campaign CE | `g5.2xlarge` + `g4dn.2xlarge` allowed | Stage 3 VRAM/RAM |
+| Campaign CE | Multi-AZ Spot with single-GPU campaign sizes | Stage 3 VRAM/RAM; the CE should search every available subnet in its VPC |
 | Container | ECR + `deploy/aws/Dockerfile` | Same push path as Fargate apps |
 | Storage | S3 prefixes in `us-east-1` | Spot-safe artifacts |
 | IAM | Job role scoped to those prefixes | No keys in the image |
@@ -116,7 +116,9 @@ memory is negligible. Goal is “CUDA path ran on Batch,” not science.
 
 Compute environment tip: list **families or several sizes** and let Spot
 allocation pick (`SPOT_PRICE_CAPACITY_OPTIMIZED`). Job definition still asks for
-`GPU=1` + enough memory.
+`GPU=1` + enough memory. Keep the CE in multiple AZs: a single-AZ GPU Spot
+search is the narrowest possible search for the scarcest capacity class and
+can present as a job queued forever with a healthy CE and no error anywhere.
 
 ## Practice path (Phase 1) — concrete
 
@@ -357,7 +359,7 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
 - [x] Region: `us-east-1`
 - [x] Infra style: CLI + Docker (no Terraform v1)
 - [x] Practice instance: `g4dn.xlarge`
-- [x] Campaign instance: `g5.2xlarge` (CE also allows `g4dn.2xlarge`)
+- [x] Campaign instances: multi-AZ CE with single-GPU sizes that fit 8 vCPU / 28 GB / GPU=1
 - [x] Practice configs: `experiments/smoke_gpu.json`, `smoke_gpu_batch.json`
 
 ### Phase 1 — CUDA smoke on Batch (done Jul 2026)
@@ -423,12 +425,27 @@ sourcing/running — differentiate with key prefixes, e.g.
    bash deploy/aws/05_setup_campaign_stack.sh
    ```
 
-   Creates `gutibm-gpu-campaign-spot` (Spot `g5.2xlarge`/`g4dn.2xlarge`,
-   `SPOT_CAPACITY_OPTIMIZED`, `maxvCpus=${CAMPAIGN_MAX_VCPUS:-96}`), queue
+   Creates `gutibm-gpu-campaign-spot` (Spot single-GPU sizes across every
+   available subnet in the selected VPC, `SPOT_CAPACITY_OPTIMIZED`,
+   `maxvCpus=${CAMPAIGN_MAX_VCPUS:-96}`), queue
    `gutibm-gpu-campaign`, and job def `gutibm-cuda-campaign` (8 vCPU / 28 GB /
    `GPU=1`, `retryStrategy` for Spot reclaims).
 
-3. **Dry-run the array export** (no uploads, no submit — verify count + inputs):
+3. **Widen an existing campaign CE (admin credentials only):**
+
+   ```bash
+   bash deploy/aws/07_widen_campaign_capacity.sh
+   ```
+
+   The script derives the VPC from the CE's existing subnet, discovers every
+   available subnet in that VPC, and updates only the CE's subnet and
+   single-GPU instance-type lists. It prints before/after values, handles the
+   disabled-CE update path, and leaves the CE enabled. It never changes the
+   queue or job definitions. The scoped GutIBM role intentionally lacks the
+   EC2 discovery and Batch update permissions required by this admin-only
+   operation.
+
+4. **Dry-run the array export** (no uploads, no submit — verify count + inputs):
 
    ```bash
    source deploy/aws/env.sh
