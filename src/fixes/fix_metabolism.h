@@ -66,6 +66,11 @@ class FixMetabolism : public Fix {
   void compute_growth_rate(Agent& agent);
   void grow_agent(Agent& agent, Real dt);
   void apply_siderophore_chemistry(Real dt);
+  void apply_siderophore_chelation(Int i_sid, Int i_iron,
+                                   Int i_ferric_enterobactin, Int num_cells);
+  void apply_siderophore_reimport(Int i_sid, Int i_iron,
+                                  Int i_ferric_enterobactin, Int num_cells,
+                                  Real cell_volume, Real dt);
   void perform_divisions();
   void check_death(Agent& agent);
 

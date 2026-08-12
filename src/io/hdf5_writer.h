@@ -80,6 +80,7 @@ class HDF5Writer {
   Vec3 domain_hi_{};
 
 #ifdef GUTIBM_HDF5
+  void initialize_file();
   int64_t file_id_ = -1;
 #endif
 };

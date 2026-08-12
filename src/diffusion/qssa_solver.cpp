@@ -42,6 +42,25 @@ struct MicrocinSourceBuffers {
   std::vector<ReceptorType>& targets;
 };
 
+void accumulate_far_field_cell(
+    const FMM& fmm, const GreensFunction& gf,
+    const GreensFunctionParams& avg_params, const FarFieldGridContext& grid,
+    std::vector<Real>& toxin_conc, Real toxin_cutoff, bool near_field_on_device,
+    Int ix, Int iy, Int iz) {
+  const Vec3 tgt = grid.domain.cell_center(ix, iy, iz);
+  const Int idx = grid.domain.cell_index(ix, iy, iz);
+  Real contribution = 0.0;
+  if (near_field_on_device) {
+    contribution = fmm.evaluate_far_field(
+        tgt, grid.fmm_theta, toxin_cutoff, gf, avg_params);
+  } else {
+    const Real total = fmm.evaluate_total_field(
+        tgt, grid.fmm_theta, gf, avg_params);
+    contribution = std::max(0.0, total - toxin_conc[idx]);
+  }
+  toxin_conc[idx] += contribution;
+}
+
 GreensFunctionParams weighted_avg_params(
     const std::vector<GreensFunctionParams>& params,
     const std::vector<Real>& strength_factors,
@@ -86,18 +105,9 @@ void accumulate_far_field(const FMM& fmm,
   for (Int iz = 0; iz < grid.nz; ++iz) {
     for (Int iy = 0; iy < grid.ny; ++iy) {
       for (Int ix = 0; ix < grid.nx; ++ix) {
-        const Vec3 tgt = grid.domain.cell_center(ix, iy, iz);
-        const Int idx = grid.domain.cell_index(ix, iy, iz);
-        Real contribution = 0.0;
-        if (near_field_on_device) {
-          contribution = fmm.evaluate_far_field(
-              tgt, grid.fmm_theta, toxin_cutoff, gf, avg_params);
-        } else {
-          const Real total = fmm.evaluate_total_field(
-              tgt, grid.fmm_theta, gf, avg_params);
-          contribution = std::max(0.0, total - toxin_conc[idx]);
-        }
-        toxin_conc[idx] += contribution;
+        accumulate_far_field_cell(fmm, gf, avg_params, grid, toxin_conc,
+                                  toxin_cutoff, near_field_on_device, ix, iy,
+                                  iz);
       }
     }
   }
