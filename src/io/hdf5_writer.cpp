@@ -40,6 +40,9 @@ namespace gutibm {
 
 namespace {
 
+constexpr int k_max_types = 8;
+constexpr int k_num_pheno_states = 4;
+
 bool schedule_has_output(const HDF5Schedule& sched) {
   return sched.summary > 0 || sched.agents > 0 || sched.grid > 0 ||
          sched.lineage > 0 || sched.genome > 0 || sched.provenance > 0;
@@ -290,8 +293,7 @@ Real field_max(const ChemicalField& chem, Int species_idx) {
   return mx;
 }
 
-template <typename Agents>
-int32_t count_live_lineages(const Agents& agents) {
+int32_t count_live_lineages(const AgentPool& agents) {
   std::set<int64_t> unique_lineages;
   for (const Agent& agent : agents) {
     if (agent.state != PhenoState::DEAD) {
@@ -312,7 +314,7 @@ std::vector<char> species_name_table(const ChemicalField& chem) {
   return names;
 }
 
-std::vector<Real> boundary_area_flux(
+std::vector<Real> boundary_flux_per_area(
     const std::vector<Real>& interval, Real area, Real interval_time) {
   std::vector<Real> result(interval.size(), 0.0);
   if (area <= 0.0 || interval_time <= 0.0) return result;
@@ -322,25 +324,27 @@ std::vector<Real> boundary_area_flux(
   return result;
 }
 
-template <typename Agents>
 void summarize_agents(
-    const Agents& agents, std::array<int32_t, 8>& n_by_type,
-    std::array<int32_t, 8>& n_in_crypt, std::array<int32_t, 4>& n_by_state,
-    std::array<double, 8>& mean_z, std::array<double, 8>& mean_mu) {
-  std::array<int32_t, 8> count_by_type{};
+    const AgentPool& agents, std::array<int32_t, k_max_types>& n_by_type,
+    std::array<int32_t, k_max_types>& n_in_crypt,
+    std::array<int32_t, k_num_pheno_states>& n_by_state,
+    std::array<double, k_max_types>& mean_z,
+    std::array<double, k_max_types>& mean_mu) {
+  std::array<int32_t, k_max_types> count_by_type{};
   for (const Agent& agent : agents) {
     if (agent.state == PhenoState::DEAD) continue;
-    const Int tidx = std::clamp(agent.identity.type, 0, 7);
+    const Int tidx = std::clamp(agent.identity.type, 0, k_max_types - 1);
     n_by_type[static_cast<size_t>(tidx)]++;
     if (agent.flags.in_crypt) n_in_crypt[static_cast<size_t>(tidx)]++;
     mean_z[static_cast<size_t>(tidx)] += agent.x[2];
     mean_mu[static_cast<size_t>(tidx)] += agent.mu_realized;
     count_by_type[static_cast<size_t>(tidx)]++;
     const Int sidx = std::clamp(
-        static_cast<Int>(to_underlying(agent.state)), 0, 3);
+        static_cast<Int>(to_underlying(agent.state)), 0,
+        k_num_pheno_states - 1);
     n_by_state[static_cast<size_t>(sidx)]++;
   }
-  for (Int type_idx = 0; type_idx < 8; ++type_idx) {
+  for (Int type_idx = 0; type_idx < k_max_types; ++type_idx) {
     const auto index = static_cast<size_t>(type_idx);
     if (count_by_type[index] > 0) {
       const Real inv = 1.0 / static_cast<Real>(count_by_type[index]);
@@ -350,8 +354,7 @@ void summarize_agents(
   }
 }
 
-template <typename Agents>
-std::vector<double> mean_receptor_expression(const Agents& agents) {
+std::vector<double> mean_receptor_expression(const AgentPool& agents) {
   std::vector<double> result(NUM_RECEPTORS, 0.0);
   Int live = 0;
   for (const Agent& agent : agents) {
@@ -619,7 +622,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
       * (sim.domain().hi()[1] - sim.domain().lo()[1]);
   const Real interval_time = std::max(
       sim.time() - sim.event_window_start_time(), 0.0);
-  const auto boundary_area_flux = ::gutibm::boundary_area_flux(
+  const auto boundary_area_flux = boundary_flux_per_area(
       flux.boundary_interval, area, interval_time);
   write_flux("boundary_area_flux_interval", boundary_area_flux);
   const auto write_flux_bound = [&](const char* name, Real value) {
@@ -631,10 +634,9 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_flux_bound("interval_end_step", static_cast<Real>(step));
   write_flux_bound("interval_start_time", sim.event_window_start_time());
   write_flux_bound("interval_end_time", time);
-  constexpr int k_max_types = 8;
   std::array<int32_t, k_max_types> n_by_type{};
   std::array<int32_t, k_max_types> n_in_crypt{};
-  std::array<int32_t, 4> n_by_state{};
+  std::array<int32_t, k_num_pheno_states> n_by_state{};
   std::array<double, k_max_types> mean_z{};
   std::array<double, k_max_types> mean_mu{};
 

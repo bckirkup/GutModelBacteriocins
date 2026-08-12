@@ -235,7 +235,7 @@ def _append_resource_warnings(
 
 def _append_low_resource_warning(
     warnings: list[UsefulnessWarning],
-    value: Any,
+    value: float | None,
     threshold: float,
     code: str,
     label: str,

@@ -418,6 +418,8 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   }
 }
 
+namespace {
+
 void apply_epithelial_boundary_layer(
     std::vector<std::vector<Real>>& concentration,
     const Domain& domain, Int species_index, Real boundary_conc,
@@ -449,6 +451,8 @@ void mirror_non_diffusing_top_layer(std::vector<std::vector<Real>>& concentratio
     }
   }
 }
+
+}  // namespace
 
 void ChemicalField::apply_boundaries(const Domain& domain) {
   const Int nz = domain.nz();
