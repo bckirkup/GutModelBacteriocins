@@ -25,7 +25,7 @@ class ChemicalFieldGpu {
   void zero_reactions_on_device();
 
   bool apply_reactions(double dt, const Domain& domain);
-  bool apply_diffusion(const Domain& domain, const ChemicalField& field, Real dt);
+  bool apply_diffusion(const Domain& domain, ChemicalField& field, Real dt);
   bool apply_boundaries(const Domain& domain, ChemicalField& field);
   void reset_agent_uptake();
   void download_agent_uptake(ChemicalField& field);

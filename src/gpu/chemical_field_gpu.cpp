@@ -174,7 +174,7 @@ bool ChemicalFieldGpu::apply_reactions(double dt, const Domain& domain) {
 }
 
 bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
-                                       const ChemicalField& field,
+                                       ChemicalField& field,
                                        Real dt) {
 #ifndef GUTIBM_CUDA
   (void)domain;
