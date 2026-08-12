@@ -65,22 +65,55 @@ With `restart.interval_steps = 30`, the unchanged two-day `total_time` contains:
 2880 / 30 = 96 closed restarts
 ```
 
-The immutable S3 checkpoint prefix can therefore retain up to approximately
-**422.4 GB uncompressed grid payload** for a complete two-day run, before
-metadata and compression. This is an upper bound based on the 4.40 GB
-uncompressed grid estimate per checkpoint; no compressed checkpoint size has
-yet been measured. At the measured rate, six wall hours reaches approximately
-854 steps and therefore produces up to 28 checkpoints, or approximately
-**123.2 GB uncompressed grid payload**. Use:
+The entrypoint separates resume retention from coarse archive retention:
 
 ```text
-checkpoint_count = min(96, floor(21600 × steps_per_second / 30))
+CHECKPOINT_RETAIN_NEWEST_K = 2
+CHECKPOINT_ARCHIVE_INTERVAL_STEPS = 360
+```
+
+The newest two checkpoints preserve a resume point if the newest upload is
+interrupted. Every 360th step remains as a permanent fork origin. Older
+non-archive checkpoints are deleted from S3 only after the new checkpoint and
+its `latest.json` pointer have uploaded successfully. The retention path
+protects the object named by `latest.json`, and a denied or failed delete is
+logged while leaving the simulation alive.
+
+For a complete two-day run, the eight archive steps are
+`360, 720, ..., 2880`. The final step overlaps the newest-two set, so nine
+objects are retained:
+
+```text
+8 archive checkpoints + 2 newest checkpoints - 1 overlap = 9 objects
+9 × 4.40 GB = 39.6 GB uncompressed grid payload upper bound
+```
+
+At the measured rate, six wall hours reaches approximately 854 steps and
+therefore produces up to 28 checkpoints. The full archive set is not yet
+reached; steps 360 and 720 plus the newest two are retained, for at
+most four objects or **17.6 GB uncompressed grid payload**. These figures are
+upper bounds based on the 4.40 GB uncompressed grid estimate per checkpoint;
+no compressed checkpoint size has yet been measured. The retained-count
+calculation is:
+
+```text
+archive_count = floor(checkpoint_steps / 360)
+retained_count = min(2, checkpoint_count) + archive_count
+                 - archives_overlap_newest_two
 ```
 
 The entrypoint prunes older uploaded local files and keeps the newest local
-checkpoint, so local scratch is not a 96-checkpoint accumulation. S3 keeps
-all immutable steps. Actual compressed sizes must be recorded from S3; they
-cannot be inferred reliably from the uncompressed estimate.
+checkpoint, so local scratch is not a 96-checkpoint accumulation. Actual
+compressed sizes must be recorded from S3; they cannot be inferred reliably
+from the uncompressed estimate.
+
+The Batch job role must have `s3:DeleteObject` on the output bucket for S3
+retention to reduce the archive. The setup scripts already include that
+permission in the `gutibm-s3-access` inline policy for the input and output
+buckets. The scoped monitoring role cannot inspect the live job role policy,
+so Benjamin should verify or re-run the setup script with administrator
+credentials before relying on pruning. If deletion is denied, the entrypoint
+retains the objects and continues the simulation rather than failing the run.
 
 ## Measured calibration result
 

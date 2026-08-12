@@ -9,6 +9,8 @@
 #   CHECKPOINT_S3_PREFIX  s3://bucket/.../ckpt/    (optional; per-index if ARRAY)
 #   CHECKPOINT_S3_URI     s3://bucket/.../step_N.h5  (optional explicit restart file)
 #   CHECKPOINT_INTERVAL_SECONDS  how often to scan/upload closed restarts (default 300)
+#   CHECKPOINT_RETAIN_NEWEST_K  newest immutable checkpoints to retain (default 2)
+#   CHECKPOINT_ARCHIVE_INTERVAL_STEPS  archive every Nth checkpoint (default 360)
 #   RESTART_INTERVAL_STEPS  injected into input.json when checkpointing (default 60)
 #   REQUIRE_RESTART_GRID  1 (default) = closed restarts must contain /grid/
 #   STATUS_S3_URI    optional explicit status.json URI (else under CHECKPOINT prefix)
@@ -33,6 +35,16 @@ WORK="${GUTIBM_WORK_DIR:-/tmp/gutibm_job}"
 INDEX="${AWS_BATCH_JOB_ARRAY_INDEX:-}"
 JOB_ID="${AWS_BATCH_JOB_ID:-}"
 CHECKPOINT_INTERVAL_SECONDS="${CHECKPOINT_INTERVAL_SECONDS:-300}"
+CHECKPOINT_RETAIN_NEWEST_K="${CHECKPOINT_RETAIN_NEWEST_K:-2}"
+CHECKPOINT_ARCHIVE_INTERVAL_STEPS="${CHECKPOINT_ARCHIVE_INTERVAL_STEPS:-360}"
+if ! [[ "${CHECKPOINT_RETAIN_NEWEST_K}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Invalid CHECKPOINT_RETAIN_NEWEST_K; using 2" >&2
+  CHECKPOINT_RETAIN_NEWEST_K=2
+fi
+if ! [[ "${CHECKPOINT_ARCHIVE_INTERVAL_STEPS}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Invalid CHECKPOINT_ARCHIVE_INTERVAL_STEPS; using 360" >&2
+  CHECKPOINT_ARCHIVE_INTERVAL_STEPS=360
+fi
 MEMORY_GUARD="${MEMORY_GUARD:-1}"
 MEMORY_MIN_AVAILABLE_MB="${MEMORY_MIN_AVAILABLE_MB:-2048}"
 GPU_MIN_FREE_MB="${GPU_MIN_FREE_MB:-512}"
@@ -45,6 +57,9 @@ STATUS_NAME="status.json"
 STATUS_FAILED="failed"
 STATUS_MEMORY_PRESSURE="memory_pressure"
 RESTART_DIR="${WORK}/restart"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=checkpoint_retention.sh
+source "${SCRIPT_DIR}/checkpoint_retention.sh"
 SYNC_PID=""
 MPIRUN_PID=""
 SPOT_NOTICED=0
@@ -236,8 +251,48 @@ upload_checkpoint() {
   if [[ -n "${newest}" && -n "${newest_uri}" ]]; then
     step_name="$(basename "${newest}" .h5)"
     write_latest_json "${step_name}" "${newest_uri}" "${newest}"
-    aws s3 cp "${WORK}/latest.json" "${CHECKPOINT_S3_PREFIX}${LATEST_NAME}" >/dev/null 2>&1 || true
+    if aws s3 cp "${WORK}/latest.json" "${CHECKPOINT_S3_PREFIX}${LATEST_NAME}" >/dev/null 2>&1; then
+      prune_checkpoint_objects "${step_name}"
+    else
+      echo "latest.json upload failed; retaining all remote checkpoints" >&2
+    fi
   fi
+}
+
+prune_checkpoint_objects() {
+  local latest_step="$1"
+  local bucket prefix keys key
+  local -A retained=()
+  bucket="${CHECKPOINT_S3_PREFIX#s3://}"
+  prefix="${bucket#*/}"
+  bucket="${bucket%%/*}"
+  keys="$(
+    aws s3api list-objects-v2 \
+      --bucket "${bucket}" \
+      --prefix "${prefix}" \
+      --query 'Contents[].Key' \
+      --output text
+  )" || {
+    echo "Checkpoint retention listing failed; retaining all remote checkpoints" >&2
+    return 0
+  }
+  while IFS= read -r key; do
+    [[ -n "${key}" && "${key}" != "None" ]] || continue
+    retained["${key}"]=1
+  done < <(
+    checkpoint_select_retained_keys "${latest_step}" \
+      "${CHECKPOINT_RETAIN_NEWEST_K}" \
+      "${CHECKPOINT_ARCHIVE_INTERVAL_STEPS}" <<<"${keys}"
+  )
+  while IFS= read -r key; do
+    [[ -n "${key}" && "${key}" != "None" ]] || continue
+    [[ "${key}" == "${prefix}${LATEST_NAME}" ]] && continue
+    [[ "${key}" == "${prefix}"step_*.h5 ]] || continue
+    [[ -n "${retained["${key}"]+keep}" ]] && continue
+    if ! aws s3api delete-object --bucket "${bucket}" --key "${key}" >/dev/null 2>&1; then
+      echo "Checkpoint retention delete denied or failed for s3://${bucket}/${key}; retaining it" >&2
+    fi
+  done <<<"${keys}"
 }
 
 # Parse the latest gut_ibm progress line from RUN_LOG into env vars for status.json.

@@ -246,3 +246,9 @@ add_test(
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_aws_capacity_script.sh"
 )
 set_tests_properties(aws_capacity_script PROPERTIES LABELS "unit")
+
+add_test(
+  NAME checkpoint_retention
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_checkpoint_retention.sh"
+)
+set_tests_properties(checkpoint_retention PROPERTIES LABELS "unit")
