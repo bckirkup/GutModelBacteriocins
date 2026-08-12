@@ -99,140 +99,77 @@ FixReceptor::KillAssessment FixReceptor::assess_kill(const Agent& agent,
 Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt,
                                     KillAssessment* diagnostics) const {
   const auto& chem = sim_.chemical_field();
-  Int cell = agent.grid_cell;
+  const Int cell = agent.grid_cell;
   if (cell < 0) return 0.0;
 
-  Real tox_btuB = local_toxin_conc(chem, cell, species::BACTERIOCIN_BTUB);
-  Real tox_fepA = local_toxin_conc(chem, cell, species::BACTERIOCIN_FEPA);
-  Real tox_cirA = local_toxin_conc(chem, cell, species::BACTERIOCIN_CIRA);
-  Real tox_fhuA = local_toxin_conc(chem, cell, species::BACTERIOCIN_FHUA);
-  if (diagnostics != nullptr) {
-    diagnostics->concentration = {tox_btuB, tox_fepA, tox_cirA, tox_fhuA};
+  const std::array<ReceptorDescriptor, 4> descriptors = {{
+      {ReceptorType::BtuB, species::BACTERIOCIN_BTUB, species::B12,
+       &ReceptorConfig::kd_colicinE_btuB, &ReceptorConfig::kd_b12_btuB,
+       &ReceptorConfig::kill_rate_colicin, 1.0, 0},
+      {ReceptorType::FepA, species::BACTERIOCIN_FEPA,
+       species::FERRIC_ENTEROBACTIN, &ReceptorConfig::kd_colicinB_fepA,
+       &ReceptorConfig::kd_enterobactin, &ReceptorConfig::kill_rate_colicin,
+       1.0, 1},
+      {ReceptorType::CirA, species::BACTERIOCIN_CIRA,
+       species::FERRIC_ENTEROBACTIN, &ReceptorConfig::kd_colicinIa_cirA,
+       &ReceptorConfig::kd_lin_enterobactin, &ReceptorConfig::kill_rate_microcin,
+       cfg_.cirA_linearized_fraction, 2},
+      {ReceptorType::FhuA, species::BACTERIOCIN_FHUA, species::FERRICHROME,
+       &ReceptorConfig::kd_colicinM_fhuA, &ReceptorConfig::kd_ferrichrome,
+       &ReceptorConfig::kill_rate_colicin, 1.0, 3},
+  }};
+
+  Real total_kill = 0.0;
+  bool any_toxin = false;
+  for (const auto& descriptor : descriptors) {
+    const Real toxin_concentration =
+        local_toxin_conc(chem, cell, descriptor.toxin_species);
+    if (diagnostics != nullptr) {
+      diagnostics->concentration[descriptor.diagnostic_index] =
+          toxin_concentration;
+    }
+    if (toxin_concentration <= 0.0) continue;
+    any_toxin = true;
+    total_kill += compute_receptor_hazard(
+        agent, dt, descriptor, toxin_concentration, diagnostics);
   }
-  if (tox_btuB <= 0.0 && tox_fepA <= 0.0 && tox_cirA <= 0.0 && tox_fhuA <= 0.0) {
+  if (!any_toxin) {
     return 0.0;
   }
 
-  Real total_kill = 0.0;
-
-  // BtuB-mediated killing (colicin E family)
-  if (tox_btuB > 0.0) {
-    int ri = to_underlying(ReceptorType::BtuB);
-    Real expr = agent.receptor_expr[ri];
-    Int i_b12 = chem.find(species::B12);
-    auto ligand = (i_b12 >= 0) ? chem.conc(i_b12, cell) : 0.0;
-
-    Real occ = toxin_occupancy(tox_btuB, ligand,
-                                cfg_.kd_colicinE_btuB,
-                                cfg_.kd_b12_btuB,
-                                expr,
-                                agent.genome.toxin_affinity[ri],
-                                agent.genome.ligand_affinity[ri]);
-    Real eff = 1.0;
-    for (const auto& bi : agent.genome.bi_loci) {
-      if (bi.target == ReceptorType::BtuB) {
-        Real candidate = cfg_.immunity_factor * bi.immunity_binding_affinity;
-        if (candidate < eff) eff = candidate;
-      }
-    }
-    Real hazard = cfg_.kill_rate_colicin * occ * eff * dt;
-    if (diagnostics != nullptr) {
-      diagnostics->occupancy[0] = occ;
-      diagnostics->hazard[0] = hazard;
-    }
-    total_kill += hazard;
-  }
-
-  // FepA-mediated killing (colicin B/D)
-  if (tox_fepA > 0.0) {
-    int ri = to_underlying(ReceptorType::FepA);
-    Real expr = agent.receptor_expr[ri];
-    Int i_ferric_enterobactin = chem.find(species::FERRIC_ENTEROBACTIN);
-    Real ligand = (i_ferric_enterobactin >= 0)
-        ? chem.conc(i_ferric_enterobactin, cell) : 0.0;
-
-    Real occ = toxin_occupancy(tox_fepA, ligand,
-                                cfg_.kd_colicinB_fepA,
-                                cfg_.kd_enterobactin,
-                                expr,
-                                agent.genome.toxin_affinity[ri],
-                                agent.genome.ligand_affinity[ri]);
-    Real eff = 1.0;
-    for (const auto& bi : agent.genome.bi_loci) {
-      if (bi.target == ReceptorType::FepA) {
-        Real candidate = cfg_.immunity_factor * bi.immunity_binding_affinity;
-        if (candidate < eff) eff = candidate;
-      }
-    }
-    Real hazard = cfg_.kill_rate_colicin * occ * eff * dt;
-    if (diagnostics != nullptr) {
-      diagnostics->occupancy[1] = occ;
-      diagnostics->hazard[1] = hazard;
-    }
-    total_kill += hazard;
-  }
-
-  // CirA-mediated killing (colicin Ia, microcin V)
-  if (tox_cirA > 0.0) {
-    int ri = to_underlying(ReceptorType::CirA);
-    Real expr = agent.receptor_expr[ri];
-    Int i_ferric_enterobactin = chem.find(species::FERRIC_ENTEROBACTIN);
-    Real ligand = (i_ferric_enterobactin >= 0)
-        ? chem.conc(i_ferric_enterobactin, cell)
-          * cfg_.cirA_linearized_fraction
-        : 0.0;
-
-    Real occ = toxin_occupancy(tox_cirA, ligand,
-                                cfg_.kd_colicinIa_cirA,
-                                cfg_.kd_lin_enterobactin,
-                                expr,
-                                agent.genome.toxin_affinity[ri],
-                                agent.genome.ligand_affinity[ri]);
-    Real eff = 1.0;
-    for (const auto& bi : agent.genome.bi_loci) {
-      if (bi.target == ReceptorType::CirA) {
-        Real candidate = cfg_.immunity_factor * bi.immunity_binding_affinity;
-        if (candidate < eff) eff = candidate;
-      }
-    }
-    Real hazard = cfg_.kill_rate_microcin * occ * eff * dt;
-    if (diagnostics != nullptr) {
-      diagnostics->occupancy[2] = occ;
-      diagnostics->hazard[2] = hazard;
-    }
-    total_kill += hazard;
-  }
-
-  // FhuA-mediated killing (colicin M)
-  if (tox_fhuA > 0.0) {
-    int ri = to_underlying(ReceptorType::FhuA);
-    Real expr = agent.receptor_expr[ri];
-    Int i_ferrichrome = chem.find(species::FERRICHROME);
-    Real ligand = (i_ferrichrome >= 0)
-        ? chem.conc(i_ferrichrome, cell) : 0.0;
-
-    Real occ = toxin_occupancy(tox_fhuA, ligand,
-                                cfg_.kd_colicinM_fhuA,
-                                cfg_.kd_ferrichrome,
-                                expr,
-                                agent.genome.toxin_affinity[ri],
-                                agent.genome.ligand_affinity[ri]);
-    Real eff = 1.0;
-    for (const auto& bi : agent.genome.bi_loci) {
-      if (bi.target == ReceptorType::FhuA) {
-        Real candidate = cfg_.immunity_factor * bi.immunity_binding_affinity;
-        if (candidate < eff) eff = candidate;
-      }
-    }
-    Real hazard = cfg_.kill_rate_colicin * occ * eff * dt;
-    if (diagnostics != nullptr) {
-      diagnostics->occupancy[3] = occ;
-      diagnostics->hazard[3] = hazard;
-    }
-    total_kill += hazard;
-  }
-
   return std::min(1.0 - std::exp(-total_kill), 1.0);
+}
+
+Real FixReceptor::compute_receptor_hazard(
+    const Agent& agent, Real dt, const ReceptorDescriptor& descriptor,
+    Real toxin_concentration, KillAssessment* diagnostics) const {
+  const Int receptor_index = to_underlying(descriptor.receptor);
+  const Int ligand_index =
+      sim_.chemical_field().find(descriptor.ligand_species);
+  const Real ligand_concentration = ligand_index >= 0
+      ? sim_.chemical_field().conc(ligand_index, agent.grid_cell)
+          * descriptor.ligand_scale
+      : 0.0;
+  const Real occupancy = toxin_occupancy(
+      toxin_concentration, ligand_concentration, cfg_.*descriptor.kd_toxin,
+      cfg_.*descriptor.kd_ligand, agent.receptor_expr[receptor_index],
+      agent.genome.toxin_affinity[receptor_index],
+      agent.genome.ligand_affinity[receptor_index]);
+  Real immunity_factor = 1.0;
+  for (const auto& bi : agent.genome.bi_loci) {
+    if (bi.target == descriptor.receptor) {
+      const Real candidate =
+          cfg_.immunity_factor * bi.immunity_binding_affinity;
+      immunity_factor = std::min(immunity_factor, candidate);
+    }
+  }
+  const Real hazard =
+      cfg_.*descriptor.kill_rate * occupancy * immunity_factor * dt;
+  if (diagnostics != nullptr) {
+    diagnostics->occupancy[descriptor.diagnostic_index] = occupancy;
+    diagnostics->hazard[descriptor.diagnostic_index] = hazard;
+  }
+  return hazard;
 }
 
 Real FixReceptor::toxin_occupancy(Real tox_conc, Real ligand_conc,
