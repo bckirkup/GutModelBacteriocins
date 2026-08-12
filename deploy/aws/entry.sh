@@ -10,7 +10,7 @@
 #   CHECKPOINT_S3_URI     s3://bucket/.../step_N.h5  (optional explicit restart file)
 #   CHECKPOINT_INTERVAL_SECONDS  how often to scan/upload closed restarts (default 300)
 #   CHECKPOINT_RETAIN_NEWEST_K  newest immutable checkpoints to retain (default 2)
-#   CHECKPOINT_ARCHIVE_INTERVAL_STEPS  archive every Nth checkpoint (default 360)
+#   CHECKPOINT_ARCHIVE_INTERVAL_STEPS  archive every Nth checkpoint (default 120)
 #   RESTART_INTERVAL_STEPS  injected into input.json when checkpointing (default 60)
 #   REQUIRE_RESTART_GRID  1 (default) = closed restarts must contain /grid/
 #   STATUS_S3_URI    optional explicit status.json URI (else under CHECKPOINT prefix)
@@ -36,14 +36,14 @@ INDEX="${AWS_BATCH_JOB_ARRAY_INDEX:-}"
 JOB_ID="${AWS_BATCH_JOB_ID:-}"
 CHECKPOINT_INTERVAL_SECONDS="${CHECKPOINT_INTERVAL_SECONDS:-300}"
 CHECKPOINT_RETAIN_NEWEST_K="${CHECKPOINT_RETAIN_NEWEST_K:-2}"
-CHECKPOINT_ARCHIVE_INTERVAL_STEPS="${CHECKPOINT_ARCHIVE_INTERVAL_STEPS:-360}"
+CHECKPOINT_ARCHIVE_INTERVAL_STEPS="${CHECKPOINT_ARCHIVE_INTERVAL_STEPS:-120}"
 if ! [[ "${CHECKPOINT_RETAIN_NEWEST_K}" =~ ^[1-9][0-9]*$ ]]; then
   echo "Invalid CHECKPOINT_RETAIN_NEWEST_K; using 2" >&2
   CHECKPOINT_RETAIN_NEWEST_K=2
 fi
 if ! [[ "${CHECKPOINT_ARCHIVE_INTERVAL_STEPS}" =~ ^[1-9][0-9]*$ ]]; then
-  echo "Invalid CHECKPOINT_ARCHIVE_INTERVAL_STEPS; using 360" >&2
-  CHECKPOINT_ARCHIVE_INTERVAL_STEPS=360
+  echo "Invalid CHECKPOINT_ARCHIVE_INTERVAL_STEPS; using 120" >&2
+  CHECKPOINT_ARCHIVE_INTERVAL_STEPS=120
 fi
 MEMORY_GUARD="${MEMORY_GUARD:-1}"
 MEMORY_MIN_AVAILABLE_MB="${MEMORY_MIN_AVAILABLE_MB:-2048}"
@@ -195,6 +195,7 @@ upload_checkpoint() {
   [[ -n "${CHECKPOINT_S3_PREFIX:-}" ]] || return 0
   [[ -d "${RESTART_DIR}" ]] || return 0
   local f base dest uploading step_name newest="" newest_uri=""
+  local upload_t0 upload_t1 upload_ms
   shopt -s nullglob
   for f in "${RESTART_DIR}"/step_*.h5; do
     base="$(basename "${f}")"
@@ -222,8 +223,11 @@ upload_checkpoint() {
       continue
     fi
     uploading="${dest}.uploading"
+    upload_t0="$(date +%s%3N)"
     if aws s3 cp "${f}" "${uploading}" >/dev/null 2>&1 \
       && aws s3 cp "${uploading}" "${dest}" >/dev/null 2>&1; then
+      upload_t1="$(date +%s%3N)"
+      upload_ms="$((upload_t1 - upload_t0))"
       aws s3 rm "${uploading}" >/dev/null 2>&1 || true
       : >"${f}.uploaded"
       newest="${f}"
@@ -231,7 +235,7 @@ upload_checkpoint() {
       CHECKPOINT_UPLOADED_AT="$(iso_now)"
       CHECKPOINT_KEY="${base}"
       export CHECKPOINT_UPLOADED_AT CHECKPOINT_KEY
-      echo "Uploaded immutable restart: ${dest}"
+      echo "Uploaded immutable restart: ${dest} upload_ms=${upload_ms}"
       # Free scratch space: drop older uploaded local steps (keep the newest).
       local old
       for old in "${RESTART_DIR}"/step_*.h5; do
@@ -242,7 +246,10 @@ upload_checkpoint() {
         fi
       done
     else
+      upload_t1="$(date +%s%3N)"
+      upload_ms="$((upload_t1 - upload_t0))"
       echo "Restart upload failed for ${f} (left prior S3 objects untouched)" >&2
+      echo "Restart upload duration: ${upload_ms} ms" >&2
       aws s3 rm "${uploading}" >/dev/null 2>&1 || true
     fi
   done

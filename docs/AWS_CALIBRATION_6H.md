@@ -71,45 +71,61 @@ The entrypoint separates resume retention from coarse archive retention:
 
 ```text
 CHECKPOINT_RETAIN_NEWEST_K = 2
-CHECKPOINT_ARCHIVE_INTERVAL_STEPS = 360
+CHECKPOINT_ARCHIVE_INTERVAL_STEPS = 120
 ```
 
 The newest two checkpoints preserve a resume point if the newest upload is
-interrupted. Every 360th step remains as a permanent fork origin. Older
+interrupted. Every 120th step remains as a permanent fork origin, approximately
+every two simulated hours. Older
 non-archive checkpoints are deleted from S3 only after the new checkpoint and
 its `latest.json` pointer have uploaded successfully. The retention path
 protects the object named by `latest.json`, and a denied or failed delete is
 logged while leaving the simulation alive.
 
-For a complete two-day run, the eight archive steps are
-`360, 720, ..., 2880`. The final step overlaps the newest-two set, so nine
-objects are retained:
+The first measured checkpoint was:
 
 ```text
-8 archive checkpoints + 2 newest checkpoints - 1 overlap = 9 objects
-9 × 4.40 GB = 39.6 GB uncompressed grid payload upper bound
+ContentLength = 199,441,445 bytes = 0.199 GB compressed
+4.40 GB uncompressed grid payload / 0.199 GB compressed = 22.06:1
 ```
 
-At the slow measured rate, six wall hours reaches approximately 854 steps and
-therefore produces up to 28 checkpoints. The full archive set is not yet
-reached; steps 360 and 720 plus the newest two are retained, for at most four
-objects or **17.6 GB uncompressed grid payload**. At the fast measured rate,
-approximately 1,286 steps produce up to 43 checkpoints; steps 360, 720, and
-1080 plus the newest two are retained, for at most five objects or
-**22.0 GB uncompressed grid payload**. These figures are upper bounds based on
-the 4.40 GB uncompressed grid estimate per checkpoint; no compressed
-checkpoint size has yet been measured. The retained-count calculation is:
+This is one measured sample, not a guarantee for every checkpoint or host.
+Using it as a planning estimate, a complete two-day run has 96 checkpoints and
+costs approximately **19.1 GB compressed** if all are retained. A seven-day
+run has 336 checkpoints and costs approximately **67.0 GB compressed** if all
+are retained. The denser 120-step archive cadence reaches approximately:
 
 ```text
-archive_count = floor(checkpoint_steps / 360)
+172800 / 60 = 2880 steps over two simulated days
+10080 / 120 = 84 archive origins over seven simulated days
+84 × 0.199 GB ≈ 16.8 GB compressed archive payload
+```
+
+The 4.40 GB figure is retained only as the uncompressed grid payload used to
+explain the measured compression ratio; it is not a storage projection.
+For the six-hour window, the slow measured rate reaches approximately 854
+steps, producing 28 checkpoints and 7 archive origins at steps
+`120, 240, ..., 840`. The fast measured rate reaches approximately 1,286
+steps, producing 42 checkpoints and 10 archive origins through step 1200.
+With newest-two resume retention, the measured-size planning estimates are
+approximately 5.6 GB and 8.4 GB respectively if all produced checkpoints are
+kept, while the retained archive-plus-newest sets are approximately 1.6 GB
+and 2.2 GB respectively. These estimates assume the first sample's compressed
+size.
+
+The retained-count calculation is:
+
+```text
+archive_count = floor(checkpoint_steps / 120)
 retained_count = min(2, checkpoint_count) + archive_count
                  - archives_overlap_newest_two
 ```
 
 The entrypoint prunes older uploaded local files and keeps the newest local
 checkpoint, so local scratch is not a 96-checkpoint accumulation. Actual
-compressed sizes must be recorded from S3; they cannot be inferred reliably
-from the uncompressed estimate.
+compressed sizes should continue to be recorded from S3; the figures above use
+the first 199,441,445-byte sample and are not a guarantee for every host or
+checkpoint.
 
 The Batch job role must have `s3:DeleteObject` on the output bucket for S3
 retention to reduce the archive. The setup scripts already include that
@@ -143,6 +159,25 @@ The widened eight-instance-type pool therefore has a measured throughput
 range, not one planning rate. The faster rate is consistent with a different
 instance type, but that attribution is inference: the monitoring role could
 not read the ECS container's underlying EC2 instance type.
+
+The first checkpoint also recorded the provenance fields used to validate the
+upload:
+
+```json
+{
+  "step": "step_000360",
+  "uri": "s3://gutibm-outputs-994254241749/campaign/calibration_6h/calibration_6h_seed1001/ckpt/step_000360.h5",
+  "size_bytes": 199441445,
+  "sha256": "3c50ed670ac247b2c397f4a69f7a947f04019e290d08092d3d98d1932a08f6a1",
+  "fidelity": "tier2_agents_grid",
+  "rng": "reseeded_from_config_seed"
+}
+```
+
+During normal execution, `status.json` correctly reported
+`checkpoint_key: "step_000360.h5"` and
+`resume_from_checkpoint: false`; the latter is expected because this was not
+a resumed attempt.
 
 The resulting projections are:
 

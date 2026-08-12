@@ -743,12 +743,28 @@ void Simulation::write_restart_now() {
 
   const std::string step_name = std::format("step_{:06}", clock_.step_count);
   const std::string path = cfg_.restart.directory + "/" + step_name + ".h5";
+  const auto write_t0 = std::chrono::steady_clock::now();
   const bool ok = HDF5Writer::write_closed_restart(
       *this, path, clock_.step_count, clock_.time, cfg_.time.bio_dt);
+  const double write_s = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - write_t0).count();
   if (ok && domain_.rank() == 0) {
+    const auto old_precision = std::cout.precision();
     std::cout << "Wrote closed restart: " << path
-              << "  (t=" << clock_.time << "s step=" << clock_.step_count << ")\n"
+              << "  (t=" << clock_.time << "s step=" << clock_.step_count
+              << " write_s=" << std::fixed << std::setprecision(3) << write_s
+              << ")\n"
               << std::flush;
+    std::cout.unsetf(std::ios_base::floatfield);
+    std::cout.precision(old_precision);
+  } else if (!ok && domain_.rank() == 0) {
+    const auto old_precision = std::cerr.precision();
+    std::cerr << "Closed restart failed: " << path
+              << "  (write_s=" << std::fixed << std::setprecision(3) << write_s
+              << ")\n"
+              << std::flush;
+    std::cerr.unsetf(std::ios_base::floatfield);
+    std::cerr.precision(old_precision);
   }
 }
 
