@@ -60,7 +60,6 @@ wait_ce_valid() {
 }
 
 echo "==> Preflight: IAM roles from 02"
-require_role AWSBatchServiceRole
 require_role ecsInstanceRole
 require_role AmazonEC2SpotFleetTaggingRole
 require_role gutibm-batch-job-role
@@ -102,7 +101,8 @@ CE_STATUS="$(aws batch describe-compute-environments \
   --query 'computeEnvironments[0].status' --output text --region "${AWS_REGION}" 2>/dev/null || true)"
 if [[ -z "${CE_STATUS}" || "${CE_STATUS}" == "None" ]]; then
   SPOT_JSON="$(mktemp)"
-  # type=SPOT is required for the SPOT_CAPACITY_OPTIMIZED allocation strategy.
+  # Omit --service-role so Batch uses AWSServiceRoleForBatch. The Spot Fleet
+  # role remains required for SPOT compute environments.
   cat > "${SPOT_JSON}" <<EOF
 {
   "type": "SPOT",
@@ -122,7 +122,6 @@ EOF
     --compute-environment-name "${COMPUTE_ENV_CAMPAIGN}" \
     --type MANAGED \
     --state ENABLED \
-    --service-role "arn:aws:iam::${ACCOUNT}:role/AWSBatchServiceRole" \
     --compute-resources "file://${SPOT_JSON}" \
     --region "${AWS_REGION}" >/dev/null
   rm -f "${SPOT_JSON}"
@@ -158,7 +157,6 @@ EOF
       --compute-environment-name "${COMPUTE_ENV_CAMPAIGN_OD}" \
       --type MANAGED \
       --state ENABLED \
-      --service-role "arn:aws:iam::${ACCOUNT}:role/AWSBatchServiceRole" \
       --compute-resources "file://${OD_JSON}" \
       --region "${AWS_REGION}" >/dev/null
     rm -f "${OD_JSON}"

@@ -46,7 +46,6 @@ function Wait-CeValid {
 }
 
 Write-Host "==> Preflight: IAM roles from 02"
-Require-Role "AWSBatchServiceRole"
 Require-Role "ecsInstanceRole"
 Require-Role "AmazonEC2SpotFleetTaggingRole"
 Require-Role "gutibm-batch-job-role"
@@ -69,7 +68,8 @@ Write-Host "==> Spot GPU compute environment $($env:COMPUTE_ENV_CAMPAIGN) (maxvC
 $CE_STATUS = Test-AwsText (aws batch describe-compute-environments --compute-environments $env:COMPUTE_ENV_CAMPAIGN --query 'computeEnvironments[0].status' --output text --region $env:AWS_REGION 2>$null)
 if (-not $CE_STATUS) {
   $SpotJson = New-TemporaryFile
-  # type=SPOT is required for the SPOT_CAPACITY_OPTIMIZED allocation strategy.
+  # Omit -service-role so Batch uses AWSServiceRoleForBatch. The Spot Fleet
+  # role remains required for SPOT compute environments.
   @"
 {
   "type": "SPOT",
@@ -85,7 +85,7 @@ if (-not $CE_STATUS) {
   "ec2Configuration": [{"imageType": "ECS_AL2023_NVIDIA"}]
 }
 "@ | Set-Content -Encoding ascii $SpotJson.FullName
-  aws batch create-compute-environment --compute-environment-name $env:COMPUTE_ENV_CAMPAIGN --type MANAGED --state ENABLED --service-role "arn:aws:iam::${ACCOUNT}:role/AWSBatchServiceRole" --compute-resources "file://$($SpotJson.FullName)" --region $env:AWS_REGION | Out-Null
+  aws batch create-compute-environment --compute-environment-name $env:COMPUTE_ENV_CAMPAIGN --type MANAGED --state ENABLED --compute-resources "file://$($SpotJson.FullName)" --region $env:AWS_REGION | Out-Null
   Remove-Item $SpotJson.FullName -Force
 } else {
   Write-Host "  compute env already present (status=$CE_STATUS)"
@@ -113,7 +113,7 @@ if ($env:CAMPAIGN_ONDEMAND_FALLBACK -eq "1") {
   "ec2Configuration": [{"imageType": "ECS_AL2023_NVIDIA"}]
 }
 "@ | Set-Content -Encoding ascii $OdJson.FullName
-    aws batch create-compute-environment --compute-environment-name $env:COMPUTE_ENV_CAMPAIGN_OD --type MANAGED --state ENABLED --service-role "arn:aws:iam::${ACCOUNT}:role/AWSBatchServiceRole" --compute-resources "file://$($OdJson.FullName)" --region $env:AWS_REGION | Out-Null
+    aws batch create-compute-environment --compute-environment-name $env:COMPUTE_ENV_CAMPAIGN_OD --type MANAGED --state ENABLED --compute-resources "file://$($OdJson.FullName)" --region $env:AWS_REGION | Out-Null
     Remove-Item $OdJson.FullName -Force
   } else {
     Write-Host "  compute env already present (status=$OD_STATUS)"

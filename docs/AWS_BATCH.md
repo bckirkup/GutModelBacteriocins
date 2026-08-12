@@ -451,12 +451,27 @@ sourcing/running — differentiate with key prefixes, e.g.
    ```
 
    The script derives the VPC from the CE's existing subnet, discovers every
-   available subnet in that VPC, and updates only the CE's subnet and
-   single-GPU instance-type lists. It prints before/after values, handles the
-   disabled-CE update path, and leaves the CE enabled. It never changes the
-   queue or job definitions. The scoped GutIBM role intentionally lacks the
-   EC2 discovery and Batch update permissions required by this admin-only
-   operation.
+   available subnet in that VPC, and creates or reuses a service-linked-role
+   replacement CE with the single-GPU instance-type list. It waits for the new
+   CE to become `VALID`/`ENABLED`, repoints the queue to it, and prints the
+   resulting configuration. It never changes job definitions. The scoped
+   GutIBM role intentionally lacks the EC2 discovery and Batch update
+   permissions required by this admin-only operation.
+
+   A legacy campaign CE created with `AWSBatchServiceRole` cannot update its
+   subnets or instance types at all. The script therefore creates a distinct
+   `gutibm-gpu-campaign-spot-v2` CE without `--service-role`, so Batch uses
+   `AWSServiceRoleForBatch`, then repoints the queue to the new CE and drops
+   the legacy CE from the queue order. The old CE is left enabled; it is not
+   retained as a lower-order fallback because its single-AZ capacity cannot be
+   repaired. The existing queued job is associated with the job queue, not a
+   CE; [AWS Batch schedules jobs using the queue's current
+   compute-environment order](https://docs.aws.amazon.com/batch/latest/userguide/compute_environments.html),
+   so repointing the queue does not require resubmitting it.
+
+   The practice stack's `02_setup_practice_stack.{sh,ps1}` still creates its
+   separate practice CE with the legacy role. That CE is intentionally outside
+   this campaign-capacity replacement; do not use it for Stage 3 campaign jobs.
 
 4. **Dry-run the array export** (no uploads, no submit — verify count + inputs):
 
