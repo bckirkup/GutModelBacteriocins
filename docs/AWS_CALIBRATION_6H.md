@@ -16,12 +16,12 @@ The six-hour wall-clock limit is intentional. `total_time` remains 172800 s
 (two simulated days), so the run should be stopped by the Batch timeout or a
 deliberate termination rather than by a shortened biological horizon.
 
-Provenance is dumped every 360 biological steps, matching the closed-restart
-cadence. The writer accumulates kill events between dumps, so this cadence does
-not discard deaths. The resulting throughput measurement includes the
-provenance work that an equivalent production burn-in will perform and is
-therefore directly transferable to that configuration. It is not a
-provenance-free benchmark.
+Provenance is dumped every 360 biological steps. The writer accumulates kill
+events between dumps, so this cadence does not discard deaths. Closed Tier-2
+restarts use a tighter cadence so a Spot reclaim can be followed by a durable
+resume. The resulting throughput measurement includes the provenance work that
+an equivalent production burn-in will perform and is therefore directly
+transferable to that configuration. It is not a provenance-free benchmark.
 
 ## Storage before submission
 
@@ -40,27 +40,164 @@ alone is therefore approximately:
 50,000,000 × 11 × 8 bytes = 4.40 GB
 ```
 
-before the writer's metadata overhead and gzip-4 compression. With
-`restart.interval_steps = 360`, the unchanged two-day `total_time` contains:
+before the writer's metadata overhead and gzip-4 compression. The measured
+steady-state rate spans 16.8–25.3 wall seconds per biological step. The
+previous 360-step cadence therefore took 1.68–2.53 wall hours between local
+checkpoint writes, both longer than the observed Spot host lifetime. The
+calibration now uses the slow end for its safety margin:
+
+```text
+restart.interval_steps = 30
+30 × 25.3 s = 759 s = 12.65 wall minutes between local writes
+759 s + 300 s sync poll = 1059 s = 17.65 wall minutes maximum
+durable-checkpoint exposure at the slow end
+```
+
+The 300-second term matters because the entrypoint's S3 sync loop can take up
+to one poll period to upload a newly written local checkpoint. The observed
+host lifetime was approximately 37 minutes, so the maximum exposure is less
+than half that lifetime rather than exceeding it. At the faster measured rate,
+the same cadence has at most 804 seconds (13.4 minutes) of exposure, making
+the 30-step cadence more comfortable rather than less necessary.
+
+With `restart.interval_steps = 30`, the unchanged two-day `total_time` contains:
 
 ```text
 172800 / 60 = 2880 steps
-2880 / 360 = 8 closed restarts
+2880 / 30 = 96 closed restarts
 ```
 
-The immutable S3 checkpoint prefix can therefore retain up to approximately
-**35.2 GB uncompressed grid payload** for a complete two-day run, before
-metadata and compression. The six-hour wall limit will usually produce fewer
-than eight artifacts; after the measured throughput is known, use:
+The entrypoint separates resume retention from coarse archive retention:
 
 ```text
-checkpoint_count = min(8, floor(21600 × steps_per_second / 360))
+CHECKPOINT_RETAIN_NEWEST_K = 2
+CHECKPOINT_ARCHIVE_INTERVAL_STEPS = 120
+```
+
+The newest two checkpoints preserve a resume point if the newest upload is
+interrupted. Every 120th step remains as a permanent fork origin, approximately
+every two simulated hours. Older
+non-archive checkpoints are deleted from S3 only after the new checkpoint and
+its `latest.json` pointer have uploaded successfully. The retention path
+protects the object named by `latest.json`, and a denied or failed delete is
+logged while leaving the simulation alive.
+
+The first measured checkpoint was:
+
+```text
+ContentLength = 199,441,445 bytes = 0.199 GB compressed
+4.40 GB uncompressed grid payload / 0.199 GB compressed = 22.06:1
+```
+
+This is one measured sample, not a guarantee for every checkpoint or host.
+Using it as a planning estimate, a complete two-day run has 96 checkpoints and
+costs approximately **19.1 GB compressed** if all are retained. A seven-day
+run has 336 checkpoints and costs approximately **67.0 GB compressed** if all
+are retained. The denser 120-step archive cadence reaches approximately:
+
+```text
+172800 / 60 = 2880 steps over two simulated days
+10080 / 120 = 84 archive origins over seven simulated days
+84 × 0.199 GB ≈ 16.8 GB compressed archive payload
+```
+
+The 4.40 GB figure is retained only as the uncompressed grid payload used to
+explain the measured compression ratio; it is not a storage projection.
+For the six-hour window, the slow measured rate reaches approximately 854
+steps, producing 28 checkpoints and 7 archive origins at steps
+`120, 240, ..., 840`. The fast measured rate reaches approximately 1,286
+steps, producing 42 checkpoints and 10 archive origins through step 1200.
+With newest-two resume retention, the measured-size planning estimates are
+approximately 5.6 GB and 8.4 GB respectively if all produced checkpoints are
+kept, while the retained archive-plus-newest sets are approximately 1.6 GB
+and 2.2 GB respectively. These estimates assume the first sample's compressed
+size.
+
+The retained-count calculation is:
+
+```text
+archive_count = floor(checkpoint_steps / 120)
+retained_count = min(2, checkpoint_count) + archive_count
+                 - archives_overlap_newest_two
 ```
 
 The entrypoint prunes older uploaded local files and keeps the newest local
-checkpoint, so local scratch is not an eight-checkpoint accumulation. S3 keeps
-all immutable steps. Actual compressed sizes must be recorded from S3; they
-cannot be inferred reliably from the uncompressed estimate.
+checkpoint, so local scratch is not a 96-checkpoint accumulation. Actual
+compressed sizes should continue to be recorded from S3; the figures above use
+the first 199,441,445-byte sample and are not a guarantee for every host or
+checkpoint.
+
+The Batch job role must have `s3:DeleteObject` on the output bucket for S3
+retention to reduce the archive. The setup scripts already include that
+permission in the `gutibm-s3-access` inline policy for the input and output
+buckets. The scoped monitoring role cannot inspect the live job role policy,
+so Benjamin should verify or re-run the setup script with administrator
+credentials before relying on pruning. If deletion is denied, the entrypoint
+retains the objects and continues the simulation rather than failing the run.
+
+## Measured calibration result
+
+The first calibration attempt ran on the GPU path and CloudWatch confirmed:
+
+```text
+GPU: ON (device 0)
+```
+
+Two progress-event intervals measured:
+
+```text
+Attempt 1, Step 1  → Step 60: 1492.104 wall seconds / 59 steps
+             = 25.3 wall seconds per biological step
+             = 2.37 simulated seconds per wall second
+
+Attempt 2, latest progress line:
+             = 16.8 wall seconds per biological step
+             = 3.58 simulated seconds per wall second
+```
+
+The widened eight-instance-type pool therefore has a measured throughput
+range, not one planning rate. The faster rate is consistent with a different
+instance type, but that attribution is inference: the monitoring role could
+not read the ECS container's underlying EC2 instance type.
+
+The first checkpoint also recorded the provenance fields used to validate the
+upload:
+
+```json
+{
+  "step": "step_000360",
+  "uri": "s3://gutibm-outputs-994254241749/campaign/calibration_6h/calibration_6h_seed1001/ckpt/step_000360.h5",
+  "size_bytes": 199441445,
+  "sha256": "3c50ed670ac247b2c397f4a69f7a947f04019e290d08092d3d98d1932a08f6a1",
+  "fidelity": "tier2_agents_grid",
+  "rng": "reseeded_from_config_seed"
+}
+```
+
+During normal execution, `status.json` correctly reported
+`checkpoint_key: "step_000360.h5"` and
+`resume_from_checkpoint: false`; the latter is expected because this was not
+a resumed attempt.
+
+The resulting projections are:
+
+| Measured rate | 6 wall hours | 2 simulated days | 7 simulated days |
+| --- | ---: | ---: | ---: |
+| 25.3 s/step / 2.37 sim-s/wall-s | 854 steps / 14.2 sim h | 20.2 wall h | 70.8 wall h |
+| 16.8 s/step / 3.58 sim-s/wall-s | 1,286 steps / 21.4 sim h | 13.4 wall h | 47.0 wall h |
+
+The first attempt was reclaimed after approximately 37 wall minutes:
+
+```text
+Host EC2 (instance i-0103a811de8d956c4) terminated.
+```
+
+Batch classified the reclaim correctly and automatically started a retry
+without resubmission. This proves the submit-time ten-attempt retry policy and
+real `Host EC2*` classification. No checkpoint existed before that reclaim, so
+checkpoint-backed resume remains unproven: there was no
+`Resuming from restart artifact` line, no `latest.json`, and
+`resume_from_checkpoint` remained false.
 
 ## Submit one calibration job
 
