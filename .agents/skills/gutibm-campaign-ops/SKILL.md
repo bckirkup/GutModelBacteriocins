@@ -178,8 +178,7 @@ validation remains an authorized operator action.
 Do not duplicate the measured calibration inventory or fork choices here:
 
 - [`docs/BRANCHING_FROM_CHECKPOINTS.md`](../../../docs/BRANCHING_FROM_CHECKPOINTS.md)
-  contains the checkpoint inventory and fork rules. That document is from PR
-  #244 and may not yet be merged; use the path as the intended companion.
+  contains the checkpoint inventory and fork rules.
 - [`docs/CARBON_BUDGET.md`](../../../docs/CARBON_BUDGET.md) contains the nutrient
   and epithelial-boundary audit.
 - [`docs/PRE_SUBMISSION_CHECKLIST.md`](../../../docs/PRE_SUBMISSION_CHECKLIST.md)
