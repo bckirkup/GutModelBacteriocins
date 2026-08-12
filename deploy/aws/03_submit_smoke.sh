@@ -10,8 +10,13 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -f "${SCRIPT_DIR}/env.sh" ]]; then
+  echo "ERROR: env.sh is missing beside this script. Clone the repository and run it from the clone." >&2
+  exit 1
+fi
 # shellcheck source=env.sh
-source "${ROOT}/deploy/aws/env.sh"
+source "${SCRIPT_DIR}/env.sh"
 
 SMOKE_JSON="${ROOT}/experiments/smoke_gpu.json"
 if [[ ! -f "${SMOKE_JSON}" ]]; then

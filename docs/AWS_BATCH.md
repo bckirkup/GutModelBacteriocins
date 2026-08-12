@@ -237,6 +237,19 @@ stays visible.
 **Run AWS commands from a local clone with an AWS profile.** This cloud agent
 environment does not manage live Batch jobs.
 
+For AWS CloudShell, clone the repository rather than uploading only one script.
+The capacity-widening script also requires `jq`:
+
+```bash
+git clone https://github.com/bckirkup/GutModelBacteriocins.git
+cd GutModelBacteriocins
+jq --version
+bash deploy/aws/07_widen_campaign_capacity.sh
+```
+
+If `env.sh` is not beside a numbered deployment script, it will stop and ask
+you to clone the repository instead of attempting to source a misleading path.
+
 ### What you get while a job is RUNNING
 
 | Signal | Where |
