@@ -22,6 +22,8 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "hdf5_reader.h"
+#include "path_utils.h"
 #include "input_parser.h"
 #include "vbf.h"
 #include "chemical_field.h"
@@ -31,10 +33,17 @@
 #include "species_names.h"
 
 #include <cmath>
+#include <filesystem>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#ifdef GUTIBM_HDF5
+extern "C" {
+#include <hdf5.h>
+}
+#endif
 
 using namespace gutibm;
 
@@ -346,6 +355,12 @@ void test_dysbiosis_halt() {
   SimulationConfig halt = make_integration_cfg(50, 2024);
   // Hand calculation: 50 cells / (5e-13 m^3 * 1e6 mL/m^3) = 1e8 cells/mL.
   halt.dysbiosis_threshold = 2.0e5;  // cells/mL
+  const std::string restart =
+      resolve_test_h5_path("GUTIBM_DYSBIOSIS_RESTART_H5", "dysbiosis_restart");
+  halt.restart.enabled = true;
+  halt.restart.directory = std::filesystem::path(restart).parent_path().string();
+  halt.restart.interval_steps = 100;
+  halt.hdf5.enabled = false;
   Simulation sim_halt;
   sim_halt.init(halt);
   sim_halt.run();
@@ -354,6 +369,43 @@ void test_dysbiosis_halt() {
          "dysbiosis threshold must halt the run earlier than the disabled control");
   expect(sim_halt.step_count() >= 1 && sim_halt.step_count() <= 2,
          "dysbiosis halt should trigger within the first step or two");
+  const Real expected_density = 50.0 / (5.0e-13 * 1.0e6);
+  expect(sim_halt.halted_for_dysbiosis(),
+         "dysbiosis run must record the halt");
+  expect(std::abs(sim_halt.halt_density_cells_per_mL() - expected_density)
+             < 1.0e-9 * expected_density,
+         "dysbiosis density must use cubic metres to millilitres conversion");
+  const std::filesystem::path checkpoint =
+      std::filesystem::path(halt.restart.directory) /
+      (sim_halt.step_count() == 1 ? "step_000001.h5" : "step_000002.h5");
+  expect(std::filesystem::exists(checkpoint),
+         "dysbiosis checkpoint must be written at halt step");
+#ifdef GUTIBM_HDF5
+  hid_t file = H5Fopen(checkpoint.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  expect(file >= 0, "dysbiosis checkpoint must be readable");
+  const std::string step_name = sim_halt.step_count() == 1
+      ? "step_000001" : "step_000002";
+  hid_t reason_ds = H5Dopen2(
+      file, ("summary/" + step_name + "/halt_reason_code").c_str(),
+      H5P_DEFAULT);
+  hid_t density_ds = H5Dopen2(
+      file, ("summary/" + step_name + "/halt_density_cells_per_mL").c_str(),
+      H5P_DEFAULT);
+  int32_t reason = 0;
+  double density = 0.0;
+  expect(reason_ds >= 0 && density_ds >= 0,
+         "dysbiosis checkpoint must contain halt metadata");
+  H5Dread(reason_ds, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &reason);
+  H5Dread(density_ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &density);
+  H5Dclose(reason_ds);
+  H5Dclose(density_ds);
+  H5Fclose(file);
+  expect(reason == 1, "dysbiosis checkpoint must identify its halt reason");
+  expect(std::abs(density - expected_density) < 1.0e-9 * expected_density,
+         "dysbiosis checkpoint must preserve tripped density");
+#endif
 
   std::cout << "  test_dysbiosis_halt: PASSED"
             << " (control_steps=" << sim_ctrl.step_count()
