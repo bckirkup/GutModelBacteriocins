@@ -76,7 +76,35 @@ Job definition: gutibm-cuda-campaign
 ```
 
 The retry budget must be the ten-attempt policy from the AWS retry-budget
-change before using this as a resume calibration.
+change before using this as a resume calibration. Note that editing
+`deploy/aws/retry_strategy.json` does **not** change a live job definition:
+nothing re-registers it, and `gutibm-cuda-campaign:1` still carries
+`attempts: 2`. Pass the policy at submit time instead, which needs no IAM
+change:
+
+```bash
+aws batch submit-job ... --retry-strategy file://deploy/aws/retry_strategy.json
+```
+
+A submit-time strategy overrides the job definition for that job only.
+
+## Check the image before submitting
+
+The job definition resolves the floating `gutibm:cuda` tag. A floating tag
+silently going stale is a real failure mode here: it was last rebuilt on
+2026-07-31 while the toxin, units, aliasing, siderophore, FMM, immigration and
+restart fixes all landed afterwards, so a run submitted against it would have
+simulated the pre-repair model and produced plausible output. Confirm what the
+tag currently points at, and rebuild if it predates the science you intend to
+measure:
+
+```bash
+aws ecr describe-images --repository-name gutibm \
+  --query 'sort_by(imageDetails,&imagePushedAt)[].[imagePushedAt,imageTags]' --output json
+```
+
+Push an immutable `cuda-<commit>` tag alongside `cuda` so the image that ran a
+given result stays identifiable after the floating tag moves.
 
 ```bash
 source deploy/aws/env.sh
@@ -109,6 +137,7 @@ JOB_ID="$(aws batch submit-job \
   --job-queue "${JOB_QUEUE_CAMPAIGN}" \
   --job-definition "${JOB_DEFINITION_CAMPAIGN}" \
   --timeout attemptDurationSeconds=21600 \
+  --retry-strategy file://deploy/aws/retry_strategy.json \
   --container-overrides "file://${OVERRIDES}" \
   --query jobId --output text)"
 rm -f "${OVERRIDES}"
@@ -125,7 +154,7 @@ Pointer:    ${CHECKPOINT_PREFIX}latest.json
 Status:     ${CHECKPOINT_PREFIX}status.json
 ```
 
-## Watch and deliberately interrupt
+## Watch, and how to prove resume
 
 Watch the job and its S3 heartbeat:
 
@@ -134,26 +163,28 @@ CHECKPOINT_S3_PREFIX="${CHECKPOINT_PREFIX}" \
   bash deploy/aws/04_watch_job.sh "${JOB_ID}"
 ```
 
-Before interrupting, wait until `latest.json` exists and record its step and
-URI:
+Wait until `latest.json` exists and record its step and URI, so there is a
+recorded pre-interruption position to compare against:
 
 ```bash
 aws s3 cp "${CHECKPOINT_PREFIX}latest.json" - \
   | tee calibration_latest_before.json
 ```
 
-Terminate the running job deliberately, before the six-hour timeout:
+Do **not** use `aws batch terminate-job` to test resume. A user-initiated
+termination is not a host reclaim, so the `onReason: "*" -> EXIT` rule applies
+and Batch does not retry: the run simply ends and nothing is proven. Prefer, in
+order:
 
-```bash
-aws batch terminate-job \
-  --job-id "${JOB_ID}" \
-  --reason "calibration resume validation"
-```
+1. a **real Spot reclaim** during the run — the genuine article, and the only
+   thing that exercises Batch's reclaim classification and the retry budget;
+2. failing that, a **short second job pointed at the same
+   `CHECKPOINT_S3_PREFIX`**, which exercises `resolve_resume_uri` and the
+   restore path but *not* the reclaim classification. Report it as such; it is
+   not an end-to-end reclaim proof. Give it a small
+   `attemptDurationSeconds` so it cannot become another long run.
 
-Batch should send the container through the same graceful-stop path used for a
-Spot notice: GutIBM drains the current step, the entrypoint uploads the newest
-closed restart, and the nonzero exit permits a retry. Continue watching the
-same Batch job ID. Evidence of a real resume is:
+Evidence of a real resume is:
 
 1. the retry attempt's log contains `Resuming from restart artifact`;
 2. the URI is the immutable step named by `latest.json`, not a newly invented
