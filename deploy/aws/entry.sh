@@ -62,6 +62,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/checkpoint_retention.sh"
 SYNC_PID=""
 MPIRUN_PID=""
+MPIRUN_PGID=""
 SPOT_NOTICED=0
 MEMORY_PRESSURE=0
 RESUME_FROM_CHECKPOINT=0
@@ -72,6 +73,8 @@ MEM_CGROUP_FREE_MB=""
 MEM_EFFECTIVE_FREE_MB=""
 GPU_FREE_MB=""
 CHECKPOINT_KEY=""
+CHECKPOINT_UPLOAD_STATUS="not_attempted"
+CHECKPOINT_UPLOAD_ERROR=""
 mkdir -p "${WORK}" "${RESTART_DIR}"
 RUN_LOG="${WORK}/run.log"
 : >"${RUN_LOG}"
@@ -192,9 +195,13 @@ PY
 
 # Upload closed restart/step_*.h5 files immutably; update latest.json pointer only.
 upload_checkpoint() {
+  CHECKPOINT_UPLOAD_STATUS="no_checkpoint"
+  CHECKPOINT_UPLOAD_ERROR=""
   [[ -n "${CHECKPOINT_S3_PREFIX:-}" ]] || return 0
   [[ -d "${RESTART_DIR}" ]] || return 0
   local f base dest uploading step_name newest="" newest_uri=""
+  local uploaded_any=0
+  local upload_failed=0
   local upload_t0 upload_t1 upload_ms
   shopt -s nullglob
   for f in "${RESTART_DIR}"/step_*.h5; do
@@ -203,6 +210,7 @@ upload_checkpoint() {
     if [[ -f "${f}.uploaded" ]]; then
       newest="${f}"
       newest_uri="${dest}"
+      CHECKPOINT_UPLOAD_STATUS="already_uploaded"
       continue
     fi
     if [[ -f "${f}.rejected" ]]; then
@@ -232,6 +240,8 @@ upload_checkpoint() {
       : >"${f}.uploaded"
       newest="${f}"
       newest_uri="${dest}"
+      uploaded_any=1
+      CHECKPOINT_UPLOAD_STATUS="uploaded"
       CHECKPOINT_UPLOADED_AT="$(iso_now)"
       CHECKPOINT_KEY="${base}"
       export CHECKPOINT_UPLOADED_AT CHECKPOINT_KEY
@@ -251,6 +261,7 @@ upload_checkpoint() {
       echo "Restart upload failed for ${f} (left prior S3 objects untouched)" >&2
       echo "Restart upload duration: ${upload_ms} ms" >&2
       aws s3 rm "${uploading}" >/dev/null 2>&1 || true
+      upload_failed=1
     fi
   done
   shopt -u nullglob
@@ -262,7 +273,15 @@ upload_checkpoint() {
       prune_checkpoint_objects "${step_name}"
     else
       echo "latest.json upload failed; retaining all remote checkpoints" >&2
+      upload_failed=1
     fi
+  fi
+  if (( upload_failed )); then
+    CHECKPOINT_UPLOAD_STATUS="failed"
+    CHECKPOINT_UPLOAD_ERROR="checkpoint or latest.json upload failed"
+  elif (( uploaded_any == 0 )) \
+    && [[ "${CHECKPOINT_UPLOAD_STATUS}" == "no_checkpoint" ]]; then
+    CHECKPOINT_UPLOAD_STATUS="no_new_checkpoint"
   fi
 }
 
@@ -455,6 +474,8 @@ write_status_json() {
   GUTIBM_WALL_ELAPSED_S="${wall_elapsed}" \
   GUTIBM_CHECKPOINT_UPLOADED_AT="${CHECKPOINT_UPLOADED_AT:-}" \
   GUTIBM_CHECKPOINT_KEY="${CHECKPOINT_KEY:-}" \
+  GUTIBM_CHECKPOINT_UPLOAD_STATUS="${CHECKPOINT_UPLOAD_STATUS}" \
+  GUTIBM_CHECKPOINT_UPLOAD_ERROR="${CHECKPOINT_UPLOAD_ERROR}" \
   GUTIBM_RESUME_FROM_CHECKPOINT="${RESUME_FROM_CHECKPOINT}" \
   GUTIBM_SPOT_INTERRUPTION="${SPOT_NOTICED}" \
   GUTIBM_SPOT_ACTION_TIME="${spot_action}" \
@@ -519,6 +540,12 @@ payload = {
     ),
     "checkpoint_uploaded_at": os.environ.get("GUTIBM_CHECKPOINT_UPLOADED_AT") or None,
     "checkpoint_key": os.environ.get("GUTIBM_CHECKPOINT_KEY") or None,
+    "checkpoint_upload_status": (
+        os.environ.get("GUTIBM_CHECKPOINT_UPLOAD_STATUS") or None
+    ),
+    "checkpoint_upload_error": (
+        os.environ.get("GUTIBM_CHECKPOINT_UPLOAD_ERROR") or None
+    ),
     "resume_from_checkpoint": os.environ.get("GUTIBM_RESUME_FROM_CHECKPOINT", "0") == "1",
     "spot_interruption": spot,
     "spot_action_time": os.environ.get("GUTIBM_SPOT_ACTION_TIME") or None,
@@ -565,8 +592,13 @@ check_spot_interruption() {
 
 request_graceful_stop() {
   if [[ -n "${MPIRUN_PID}" ]] && kill -0 "${MPIRUN_PID}" 2>/dev/null; then
-    echo "Sending SIGTERM to mpirun pid=${MPIRUN_PID}" >&2
-    kill -TERM "${MPIRUN_PID}" 2>/dev/null || true
+    if [[ -n "${MPIRUN_PGID}" ]]; then
+      echo "Sending SIGTERM to MPI process group pgid=${MPIRUN_PGID}" >&2
+      kill -TERM -- "-${MPIRUN_PGID}" 2>/dev/null || true
+    else
+      echo "Sending SIGTERM to mpirun pid=${MPIRUN_PID}" >&2
+      kill -TERM "${MPIRUN_PID}" 2>/dev/null || true
+    fi
   fi
 }
 
@@ -608,14 +640,16 @@ stop_checkpoint_sync() {
 }
 
 on_signal() {
-  echo "Entrypoint received stop signal; flushing checkpoint + status" >&2
+  echo "Entrypoint received stop signal; requesting checkpoint flush" >&2
   request_graceful_stop
-  # Give gut_ibm a moment to finish the current step and finalize HDF5.
+  # Wait for gut_ibm to finish the current step and finalize HDF5. The upload
+  # result below is reported explicitly rather than claiming a flush early.
   if [[ -n "${MPIRUN_PID}" ]]; then
     wait "${MPIRUN_PID}" 2>/dev/null || RUN_EXIT_CODE=$?
   fi
   stop_checkpoint_sync
   upload_checkpoint
+  echo "Shutdown checkpoint status: ${CHECKPOINT_UPLOAD_STATUS}" >&2
   write_status_json "stopping"
   upload_status
   exit "${RUN_EXIT_CODE:-143}"
@@ -751,13 +785,15 @@ fi
 echo "Running ${BINARY} (mpi_ranks=${MPI_RANKS})"
 # shellcheck disable=SC2086
 set +e
-mpirun -np "${MPI_RANKS}" ${EXTRA_MPIRUN_ARGS:-} "${BINARY}" "${WORK}/input.json" \
+setsid mpirun -np "${MPI_RANKS}" ${EXTRA_MPIRUN_ARGS:-} "${BINARY}" "${WORK}/input.json" \
   > >(tee -a "${RUN_LOG}") 2> >(tee -a "${RUN_LOG}" >&2) &
 MPIRUN_PID=$!
+MPIRUN_PGID="${MPIRUN_PID}"
 wait "${MPIRUN_PID}"
 RUN_EXIT_CODE=$?
 set -e
 MPIRUN_PID=""
+MPIRUN_PGID=""
 
 stop_checkpoint_sync
 # Final checkpoint push so a retry after a clean-but-incomplete exit can resume.
