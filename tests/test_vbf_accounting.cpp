@@ -35,7 +35,7 @@ int main() {
   VBFConfig vbf_cfg;
   vbf_cfg.mucin_liberation = 0.0;
   vbf_cfg.carbon_sink_vmax = 2.0e-7;
-  vbf_cfg.carbon_sink_km = 3.0e-6;
+  vbf_cfg.carbon_sink_km = 1.0e-4;
   vbf_cfg.nutrient_sink = 0.0;
   VBF vbf;
   vbf.init(vbf_cfg, domain);
@@ -45,7 +45,7 @@ int main() {
   acetate.enabled = false;
   MucinConfig mucin;
   mucin.enabled = false;
-  constexpr Real dt = 60.0;
+  constexpr Real dt = 300.0;
   VbfFluxTotals totals;
   vbf.apply_nutrient_coupling(
       chem, domain, dt, oxygen, acetate, mucin, &totals);
@@ -71,8 +71,9 @@ int main() {
       / (vbf_cfg.carbon_sink_km + post_update_concentration);
   const Real post_update_amount = post_update_sink_rate
       * static_cast<Real>(chem.ncells()) * cell_volume * dt;
+  constexpr Real kMinimumDistinguishableFraction = 0.05;
   assert(std::abs(pre_update_amount - post_update_amount)
-         > 1.0e-25);
+         > kMinimumDistinguishableFraction * applied_amount);
   assert(std::abs(pre_update_amount - applied_amount)
          < 1.0e-12 * applied_amount);
 #ifdef GUTIBM_CUDA
