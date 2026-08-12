@@ -47,6 +47,7 @@
 #include "gpu_kernels.h"
 
 #include <memory>
+#include <chrono>
 #include <vector>
 
 namespace gutibm {
@@ -186,6 +187,14 @@ class Simulation {
                                     bool log_warnings);
   std::vector<Vec3> immigration_anchors(
       const ImmigrationConfig& immigration, Int global_live_count) const;
+  Vec3 immigration_centroid_anchor(Int global_live_count) const;
+  std::vector<Vec3> immigration_support_anchors() const;
+  void calculate_centroid_distances(const std::vector<Vec3>& candidates,
+                                    std::vector<Real>& distances_sq) const;
+  void calculate_nearest_distances(const std::vector<Vec3>& candidates,
+                                   std::vector<Real>& distances_sq) const;
+  void reduce_immigration_distances(const std::vector<Vec3>& candidates,
+                                    std::vector<Real>& distances_sq) const;
   void validate_immigration_config() const;
   void apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap);
   void update_grid_coupling();
@@ -196,6 +205,18 @@ class Simulation {
   void take_lineage_snapshot();
   void maybe_write_restart();
   void write_restart_now();
+  void write_hdf5_step(Real dt);
+  void emit_heartbeat(const std::chrono::steady_clock::time_point& wall_start,
+                      const std::chrono::steady_clock::time_point& wall_now,
+                      std::chrono::steady_clock::time_point& next_heartbeat,
+                      bool& heartbeat_emitted) const;
+  void emit_progress_if_due(
+      Real dt, const std::chrono::steady_clock::time_point& wall_start,
+      Real attempt_start_sim_time,
+      const std::chrono::steady_clock::time_point& wall_now);
+  void update_lineage_snapshot_if_due();
+  bool population_stop(int rank) const;
+  bool dysbiosis_threshold_exceeded(int rank);
 
   // Module execution (NUFEB-inspired)
   void module_biology(Real dt);

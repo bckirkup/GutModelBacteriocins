@@ -64,11 +64,25 @@ class FixReceptor : public Fix {
     std::array<Real, 4> occupancy{};
     std::array<Real, 4> hazard{};
   };
+  struct ReceptorDescriptor {
+    ReceptorType receptor;
+    const char* toxin_species;
+    const char* ligand_species;
+    Real ReceptorConfig::*kd_toxin;
+    Real ReceptorConfig::*kd_ligand;
+    Real ReceptorConfig::*kill_rate;
+    Real ligand_scale;
+    size_t diagnostic_index;
+  };
 
   // Evaluate kill probability for one agent from local toxin field
   Real compute_kill_prob(const Agent& agent, Real dt) const;
   Real compute_kill_prob(const Agent& agent, Real dt,
                          KillAssessment* diagnostics) const;
+  Real compute_receptor_hazard(const Agent& agent, Real dt,
+                               const ReceptorDescriptor& descriptor,
+                               Real toxin_concentration,
+                               KillAssessment* diagnostics) const;
   KillAssessment assess_kill(const Agent& agent, Real dt) const;
 
   Real local_toxin_conc(const ChemicalField& chem, Int cell,

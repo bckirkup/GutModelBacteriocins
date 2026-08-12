@@ -604,24 +604,32 @@ std::vector<Vec3> Simulation::immigration_anchors(
     const ImmigrationConfig& immigration, Int global_live_count) const {
   if (global_live_count <= 0) return {};
   if (immigration.distance_reference == "centroid") {
-    Vec3 local_sum = {0.0, 0.0, 0.0};
-    for (const Agent& agent : agents_) {
-      if (agent.state == PhenoState::DEAD) continue;
-      for (Int axis = 0; axis < 3; ++axis) local_sum[axis] += agent.x[axis];
-    }
-    Vec3 global_sum = local_sum;
-#ifdef GUTIBM_MPI
-    if (domain_.nprocs() > 1) {
-      MPI_Allreduce(local_sum.data(), global_sum.data(), 3, MPI_DOUBLE,
-                    MPI_SUM, MPI_COMM_WORLD);
-    }
-#endif
-    for (Real& value : global_sum) {
-      value /= static_cast<Real>(global_live_count);
-    }
-    return {global_sum};
+    return {immigration_centroid_anchor(global_live_count)};
   }
 
+  return immigration_support_anchors();
+}
+
+Vec3 Simulation::immigration_centroid_anchor(Int global_live_count) const {
+  Vec3 local_sum = {0.0, 0.0, 0.0};
+  for (const Agent& agent : agents_) {
+    if (agent.state == PhenoState::DEAD) continue;
+    for (Int axis = 0; axis < 3; ++axis) local_sum[axis] += agent.x[axis];
+  }
+  Vec3 global_sum = local_sum;
+#ifdef GUTIBM_MPI
+  if (domain_.nprocs() > 1) {
+    MPI_Allreduce(local_sum.data(), global_sum.data(), 3, MPI_DOUBLE,
+                  MPI_SUM, MPI_COMM_WORLD);
+  }
+#endif
+  for (Real& value : global_sum) {
+    value /= static_cast<Real>(global_live_count);
+  }
+  return global_sum;
+}
+
+std::vector<Vec3> Simulation::immigration_support_anchors() const {
   const Int nprocs = domain_.nprocs();
   constexpr std::array<Vec3, 6> directions = {
       Vec3{1.0, 0.0, 0.0}, Vec3{-1.0, 0.0, 0.0},
@@ -673,6 +681,66 @@ std::vector<Vec3> Simulation::immigration_anchors(
   return sampled;
 }
 
+void Simulation::calculate_centroid_distances(
+    const std::vector<Vec3>& candidates,
+    std::vector<Real>& distances_sq) const {
+  Vec3 centroid = {0.0, 0.0, 0.0};
+  Int local_count = 0;
+  for (const Agent& agent : agents_) {
+    if (agent.state == PhenoState::DEAD) continue;
+    for (Int axis = 0; axis < 3; ++axis) centroid[axis] += agent.x[axis];
+    ++local_count;
+  }
+#ifdef GUTIBM_MPI
+  if (domain_.nprocs() > 1) {
+    Vec3 global_sum = {0.0, 0.0, 0.0};
+    Int global_count = 0;
+    MPI_Allreduce(centroid.data(), global_sum.data(), 3, MPI_DOUBLE,
+                  MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_count, &global_count, 1, MPI_INT, MPI_SUM,
+                  MPI_COMM_WORLD);
+    centroid = global_sum;
+    local_count = global_count;
+  }
+#endif
+  if (local_count <= 0) return;
+  for (Real& value : centroid) value /= static_cast<Real>(local_count);
+  for (size_t i = 0; i < candidates.size(); ++i) {
+    distances_sq[i] = domain_.min_image_dist_sq(candidates[i], centroid);
+  }
+}
+
+void Simulation::calculate_nearest_distances(
+    const std::vector<Vec3>& candidates,
+    std::vector<Real>& distances_sq) const {
+  for (size_t i = 0; i < candidates.size(); ++i) {
+    Real nearest = std::numeric_limits<Real>::max();
+    for (const Agent& agent : agents_) {
+      if (agent.state == PhenoState::DEAD) continue;
+      nearest = std::min(
+          nearest, domain_.min_image_dist_sq(candidates[i], agent.x));
+    }
+    distances_sq[i] = nearest;
+  }
+}
+
+void Simulation::reduce_immigration_distances(
+    const std::vector<Vec3>& candidates,
+    std::vector<Real>& distances_sq) const {
+  if (cfg_.immigration.distance_reference == "centroid") {
+    calculate_centroid_distances(candidates, distances_sq);
+  } else {
+    calculate_nearest_distances(candidates, distances_sq);
+  }
+#ifdef GUTIBM_MPI
+  if (domain_.nprocs() > 1) {
+    MPI_Allreduce(MPI_IN_PLACE, distances_sq.data(),
+                  static_cast<int>(distances_sq.size()), MPI_DOUBLE, MPI_MIN,
+                  MPI_COMM_WORLD);
+  }
+#endif
+}
+
 void Simulation::inject_one_immigration_event(
     const ImmigrationConfig& immigration, bool log_warnings) {
   Int local_live_count = 0;
@@ -689,51 +757,7 @@ void Simulation::inject_one_immigration_event(
 
   const auto reducer = [this](const std::vector<Vec3>& candidates,
                               std::vector<Real>& distances_sq) {
-    Vec3 centroid = {0.0, 0.0, 0.0};
-    Int local_count = 0;
-    if (cfg_.immigration.distance_reference == "centroid") {
-      for (const Agent& agent : agents_) {
-        if (agent.state == PhenoState::DEAD) continue;
-        for (Int axis = 0; axis < 3; ++axis) centroid[axis] += agent.x[axis];
-        ++local_count;
-      }
-#ifdef GUTIBM_MPI
-      if (domain_.nprocs() > 1) {
-        Vec3 global_sum = {0.0, 0.0, 0.0};
-        Int global_count = 0;
-        MPI_Allreduce(centroid.data(), global_sum.data(), 3, MPI_DOUBLE,
-                      MPI_SUM, MPI_COMM_WORLD);
-        MPI_Allreduce(&local_count, &global_count, 1, MPI_INT, MPI_SUM,
-                      MPI_COMM_WORLD);
-        centroid = global_sum;
-        local_count = global_count;
-      }
-#endif
-      if (local_count > 0) {
-        for (Real& value : centroid) value /= static_cast<Real>(local_count);
-        for (size_t i = 0; i < candidates.size(); ++i) {
-          distances_sq[i] =
-              domain_.min_image_dist_sq(candidates[i], centroid);
-        }
-      }
-    } else {
-      for (size_t i = 0; i < candidates.size(); ++i) {
-        Real nearest = std::numeric_limits<Real>::max();
-        for (const Agent& agent : agents_) {
-          if (agent.state == PhenoState::DEAD) continue;
-          nearest = std::min(
-              nearest, domain_.min_image_dist_sq(candidates[i], agent.x));
-        }
-        distances_sq[i] = nearest;
-      }
-    }
-#ifdef GUTIBM_MPI
-    if (domain_.nprocs() > 1) {
-      MPI_Allreduce(MPI_IN_PLACE, distances_sq.data(),
-                    static_cast<int>(distances_sq.size()), MPI_DOUBLE, MPI_MIN,
-                    MPI_COMM_WORLD);
-    }
-#endif
+    reduce_immigration_distances(candidates, distances_sq);
   };
 
   const bool has_live_agents = global_live_count > 0;
@@ -932,6 +956,91 @@ void print_heartbeat_line(Int step_count, Real sim_time, double wall_elapsed_s) 
 }
 }  // namespace
 
+void Simulation::write_hdf5_step(Real dt) {
+  if (!hdf5_.is_enabled()) return;
+  const auto hdf5_t0 = std::chrono::steady_clock::now();
+  hdf5_.write_step(*this, clock_.step_count, clock_.time, dt);
+  if (cfg_.profile_steps) {
+    const auto hdf5_t1 = std::chrono::steady_clock::now();
+    step_profile_.hdf5_s +=
+        std::chrono::duration<double>(hdf5_t1 - hdf5_t0).count();
+  }
+}
+
+void Simulation::emit_heartbeat(
+    const std::chrono::steady_clock::time_point& wall_start,
+    const std::chrono::steady_clock::time_point& wall_now,
+    std::chrono::steady_clock::time_point& next_heartbeat,
+    bool& heartbeat_emitted) const {
+  if (domain_.rank() != 0 ||
+      (heartbeat_emitted && wall_now < next_heartbeat)) {
+    return;
+  }
+  const double wall_elapsed_s =
+      std::chrono::duration<double>(wall_now - wall_start).count();
+  print_heartbeat_line(clock_.step_count, clock_.time, wall_elapsed_s);
+  heartbeat_emitted = true;
+  next_heartbeat = wall_now + std::chrono::seconds(60);
+}
+
+void Simulation::emit_progress_if_due(
+    Real dt, const std::chrono::steady_clock::time_point& wall_start,
+    Real attempt_start_sim_time,
+    const std::chrono::steady_clock::time_point& wall_now) {
+  if (clock_.time < clock_.next_output) return;
+  if (domain_.rank() == 0) {
+    const double wall_elapsed_s =
+        std::chrono::duration<double>(wall_now - wall_start).count();
+    print_progress_line(clock_.step_count, clock_.time, dt,
+                        mpi_stats_.global_agent_count, agents_.size(),
+                        mpi_stats_.global_mu_avg, cfg_.time.total_time,
+                        clock_.time - attempt_start_sim_time, wall_elapsed_s);
+  }
+  clock_.next_output += cfg_.time.output_interval;
+}
+
+void Simulation::update_lineage_snapshot_if_due() {
+  if (clock_.time < clock_.next_snapshot) return;
+  take_lineage_snapshot();
+  clock_.next_snapshot += cfg_.time.output_interval;
+}
+
+bool Simulation::population_stop(int rank) const {
+  if (mpi_stats_.global_agent_count > kPopulationStopThreshold) {
+    return false;
+  }
+  if (rank == 0) {
+    std::cout << "Population stop: " << mpi_stats_.global_agent_count
+              << " cell(s) — ending simulation.\n"
+              << std::flush;
+  }
+  return true;
+}
+
+bool Simulation::dysbiosis_threshold_exceeded(int rank) {
+  if (cfg_.dysbiosis_threshold <= 0.0) return false;
+  const Vec3 lo = domain_.lo();
+  const Vec3 hi = domain_.hi();
+  const Real vol_m3 = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]);
+  constexpr Real kMillilitersPerCubicMeter = 1.0e6;
+  const Real volume_mL = vol_m3 * kMillilitersPerCubicMeter;
+  const Real density_cells_per_mL = volume_mL > 0.0
+      ? static_cast<Real>(mpi_stats_.global_agent_count) / volume_mL
+      : 0.0;
+  if (density_cells_per_mL <= cfg_.dysbiosis_threshold) return false;
+
+  halted_for_dysbiosis_ = true;
+  halt_density_cells_per_mL_ = density_cells_per_mL;
+  if (rank == 0) {
+    std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: "
+              << density_cells_per_mL
+              << " cells/mL > " << cfg_.dysbiosis_threshold
+              << " cells/mL — halting simulation.\n"
+              << std::flush;
+  }
+  return true;
+}
+
 void Simulation::run() {
   int rank = domain_.rank();
   Real last_dt = cfg_.time.bio_dt;
@@ -940,7 +1049,6 @@ void Simulation::run() {
   halt_density_cells_per_mL_ = 0.0;
   const auto wall_start = std::chrono::steady_clock::now();
   const Real attempt_start_sim_time = clock_.time;
-  const auto heartbeat_interval = std::chrono::seconds(60);
   auto next_heartbeat = wall_start;
   bool heartbeat_emitted = false;
 
@@ -952,16 +1060,10 @@ void Simulation::run() {
     take_lineage_snapshot();
   }
 
-  if (mpi_stats_.global_agent_count <= kPopulationStopThreshold) {
-    stopped_for_population = true;
-    if (rank == 0) {
-      std::cout << "Population stop: " << mpi_stats_.global_agent_count
-                << " cell(s) — ending simulation.\n"
-                << std::flush;
-    }
-  }
+  stopped_for_population = population_stop(rank);
 
-  while (!stopped_for_population && clock_.time < cfg_.time.total_time) {
+  while (!stopped_for_population && !halted_for_dysbiosis_ &&
+         clock_.time < cfg_.time.total_time) {
     if (gutibm_stop_requested()) break;
 
     Real dt = compute_adaptive_dt();
@@ -975,78 +1077,20 @@ void Simulation::run() {
     maybe_write_restart();
 
     // HDF5 cadence is controlled solely by hdf5.schedule.* (per-layer intervals).
-    if (hdf5_.is_enabled()) {
-      const auto hdf5_t0 = std::chrono::steady_clock::now();
-      hdf5_.write_step(*this, clock_.step_count, clock_.time, last_dt);
-      if (cfg_.profile_steps) {
-        const auto hdf5_t1 = std::chrono::steady_clock::now();
-        step_profile_.hdf5_s += std::chrono::duration<double>(hdf5_t1 - hdf5_t0).count();
-      }
-    }
+    write_hdf5_step(last_dt);
 
     const auto wall_now = std::chrono::steady_clock::now();
-    if (rank == 0 && (!heartbeat_emitted || wall_now >= next_heartbeat)) {
-      const double wall_elapsed_s =
-          std::chrono::duration<double>(wall_now - wall_start).count();
-      print_heartbeat_line(clock_.step_count, clock_.time, wall_elapsed_s);
-      heartbeat_emitted = true;
-      next_heartbeat = wall_now + heartbeat_interval;
-    }
+    emit_heartbeat(wall_start, wall_now, next_heartbeat, heartbeat_emitted);
 
     // Console progress and in-memory lineage snapshots use output_interval (seconds).
-    if (clock_.time >= clock_.next_output) {
-      if (rank == 0) {
-        const double wall_elapsed_s =
-            std::chrono::duration<double>(wall_now - wall_start).count();
-        print_progress_line(clock_.step_count, clock_.time, dt,
-                            mpi_stats_.global_agent_count,
-                            agents_.size(),
-                            mpi_stats_.global_mu_avg,
-                            cfg_.time.total_time,
-                            clock_.time - attempt_start_sim_time,
-                            wall_elapsed_s);
-      }
-      clock_.next_output += cfg_.time.output_interval;
-    }
+    emit_progress_if_due(dt, wall_start, attempt_start_sim_time, wall_now);
 
     // Lineage snapshots
-    if (clock_.time >= clock_.next_snapshot) {
-      take_lineage_snapshot();
-      clock_.next_snapshot += cfg_.time.output_interval;
-    }
+    update_lineage_snapshot_if_due();
 
-    if (mpi_stats_.global_agent_count <= kPopulationStopThreshold) {
-      if (rank == 0) {
-        std::cout << "Population stop: " << mpi_stats_.global_agent_count
-                  << " cell(s) — ending simulation.\n"
-                  << std::flush;
-      }
-      break;
-    }
-
-    // Spec 5 §4 — Dysbiosis safety net: halt if density leaves the homeostatic
-    // regime the model is calibrated for.
-    if (cfg_.dysbiosis_threshold > 0.0) {
-      const Vec3 lo = domain_.lo();
-      const Vec3 hi = domain_.hi();
-      const Real vol_m3 = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]);
-      constexpr Real kMillilitersPerCubicMeter = 1.0e6;
-      const Real volume_mL = vol_m3 * kMillilitersPerCubicMeter;
-      if (const Real density_cells_per_mL = volume_mL > 0.0
-              ? static_cast<Real>(mpi_stats_.global_agent_count) / volume_mL
-              : 0.0;
-          density_cells_per_mL > cfg_.dysbiosis_threshold) {
-        halted_for_dysbiosis_ = true;
-        halt_density_cells_per_mL_ = density_cells_per_mL;
-        if (rank == 0) {
-          std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: "
-                    << density_cells_per_mL
-                    << " cells/mL > " << cfg_.dysbiosis_threshold
-                    << " cells/mL — halting simulation.\n"
-                    << std::flush;
-        }
-        break;
-      }
+    stopped_for_population = population_stop(rank);
+    if (!stopped_for_population) {
+      dysbiosis_threshold_exceeded(rank);
     }
   }
 
