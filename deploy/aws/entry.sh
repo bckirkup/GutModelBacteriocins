@@ -270,8 +270,8 @@ prune_checkpoint_objects() {
     aws s3api list-objects-v2 \
       --bucket "${bucket}" \
       --prefix "${prefix}" \
-      --query 'Contents[].Key' \
-      --output text
+      --output json \
+    | checkpoint_keys_from_list_response
   )" || {
     echo "Checkpoint retention listing failed; retaining all remote checkpoints" >&2
     return 0

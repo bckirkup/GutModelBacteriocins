@@ -1,12 +1,12 @@
 {
-  "keys": [
-    "campaign/calibration/ckpt/step_000030.h5",
-    "campaign/calibration/ckpt/step_000060.h5",
-    "campaign/calibration/ckpt/step_000360.h5",
-    "campaign/calibration/ckpt/step_000720.h5",
-    "campaign/calibration/ckpt/step_000750.h5",
-    "campaign/calibration/ckpt/step_000780.h5",
-    "campaign/calibration/ckpt/step_000810.h5"
+  "Contents": [
+    {"Key": "campaign/calibration/ckpt/step_000030.h5"},
+    {"Key": "campaign/calibration/ckpt/step_000060.h5"},
+    {"Key": "campaign/calibration/ckpt/step_000360.h5"},
+    {"Key": "campaign/calibration/ckpt/step_000720.h5"},
+    {"Key": "campaign/calibration/ckpt/step_000750.h5"},
+    {"Key": "campaign/calibration/ckpt/step_000780.h5"},
+    {"Key": "campaign/calibration/ckpt/step_000810.h5"}
   ],
   "latest": {
     "uri": "s3://gutibm-outputs-994254241749/campaign/calibration/ckpt/step_000810.h5"

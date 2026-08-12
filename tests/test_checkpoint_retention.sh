@@ -11,9 +11,12 @@ fail() {
   exit 1
 }
 
-KEYS="$(jq -r '.keys[]' "$FIXTURE")"
+KEYS="$(checkpoint_keys_from_list_response <"$FIXTURE")"
 LATEST_STEP="$(jq -r '.latest.uri | split("/")[-1]' "$FIXTURE" |
   sed -E 's/^step_([0-9]+)\.h5$/\1/')"
+[[ "$(checkpoint_step_from_key \
+  's3://gutibm-outputs-994254241749/campaign/calibration/ckpt/step_000750.h5'
+)" == "750" ]] || fail "full S3 URI was not parsed as a checkpoint step"
 RETAINED="$(
   checkpoint_select_retained_keys "${LATEST_STEP}" 2 360 <<<"${KEYS}"
 )"
@@ -32,9 +35,15 @@ fi
 
 LATEST_TARGET='campaign/calibration/ckpt/step_000720.h5'
 RETAINED_WITH_OLDER_LATEST="$(
-  checkpoint_select_retained_keys 720 2 360 <<<"${KEYS}"
+  checkpoint_select_retained_keys \
+    's3://gutibm-outputs-994254241749/campaign/calibration/ckpt/step_000750.h5' \
+    2 360 <<<"${KEYS}"
 )"
 grep -Fxq "${LATEST_TARGET}" <<<"${RETAINED_WITH_OLDER_LATEST}" ||
   fail "latest.json target was not retained"
+grep -Fxq \
+  'campaign/calibration/ckpt/step_000750.h5' \
+  <<<"${RETAINED_WITH_OLDER_LATEST}" ||
+  fail "latest.json target outside newest/archive sets was not retained"
 
 echo "Checkpoint retention selection self-test passed."
