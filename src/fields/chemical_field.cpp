@@ -226,14 +226,20 @@ void diffuse_bounded_z(std::vector<Real>& concentration,
   }
 }
 
-void set_epithelial_boundary(std::vector<Real>& concentration,
+Real set_epithelial_boundary(std::vector<Real>& concentration,
                              const Domain& domain,
-                             Real boundary_conc) {
+                             Real boundary_conc,
+                             Real cell_volume) {
+  Real amount = 0.0;
   for (Int iy = 0; iy < domain.ny(); ++iy) {
     for (Int ix = 0; ix < domain.nx(); ++ix) {
-      concentration[static_cast<size_t>(domain.cell_index(ix, iy, 0))] = boundary_conc;
+      const size_t index = static_cast<size_t>(
+          domain.cell_index(ix, iy, 0));
+      amount += (boundary_conc - concentration[index]) * cell_volume;
+      concentration[index] = boundary_conc;
     }
   }
+  return amount;
 }
 
 void set_luminal_neumann_boundary(std::vector<Real>& concentration,
@@ -369,10 +375,16 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
         chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0;
     Real diffusion_boundary = chemical.boundary_conc;
 
-    set_epithelial_boundary(concentration, domain, chemical.boundary_conc);
+    const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+    flux_accounting_.add_boundary(
+        s, set_epithelial_boundary(concentration, domain,
+                                   chemical.boundary_conc, cell_volume));
     if (preserve_gradient) {
       // The configured z-gradient is an environmental background profile.
       // Diffuse reaction-driven departures from it rather than erasing it.
+      // Its reintroduction is a prescribed bulk profile, not epithelial
+      // Dirichlet injection, so it is intentionally excluded from the
+      // boundary flux counter.
       set_luminal_neumann_boundary(concentration, domain);
       shift_z_gradient(concentration, chemical, domain, -1.0);
       diffusion_boundary = 0.0;
@@ -387,7 +399,9 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
       set_luminal_neumann_boundary(concentration, domain);
     }
     clamp_nonnegative(concentration);
-    set_epithelial_boundary(concentration, domain, chemical.boundary_conc);
+    flux_accounting_.add_boundary(
+        s, set_epithelial_boundary(concentration, domain,
+                                   chemical.boundary_conc, cell_volume));
   }
 }
 
@@ -404,7 +418,10 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
         const Int idx = domain.cell_index(ix, iy, 0);
-        conc_[s][idx] = bc;
+        const Real old = conc_[s][static_cast<size_t>(idx)];
+        conc_[s][static_cast<size_t>(idx)] = bc;
+        flux_accounting_.add_boundary(
+            s, (bc - old) * domain.dx() * domain.dx() * domain.dx());
       }
     }
 

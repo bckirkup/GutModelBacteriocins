@@ -235,13 +235,19 @@ __global__ void diffuse_z_bounded_kernel(double* conc,
 __global__ void set_epithelial_boundary_kernel(double* conc,
                                                int nx,
                                                int ny,
-                                               double boundary_conc) {
+                                               double boundary_conc,
+                                               double cell_volume,
+                                               double* injected_amount) {
   const int idx = blockIdx.x * blockDim.x + threadIdx.x;
   const int face = nx * ny;
   if (idx >= face) return;
   const int ix = idx % nx;
   const int iy = idx / nx;
-  conc[cell_index(ix, iy, 0, nx, ny)] = boundary_conc;
+  const int cell = cell_index(ix, iy, 0, nx, ny);
+  if (injected_amount != nullptr) {
+    atomicAdd(injected_amount, (boundary_conc - conc[cell]) * cell_volume);
+  }
+  conc[cell] = boundary_conc;
 }
 
 __global__ void set_luminal_neumann_kernel(double* conc, int nx, int ny, int nz) {
@@ -355,13 +361,15 @@ void launch_set_epithelial_boundary(double* conc,
                                     int nx,
                                     int ny,
                                     double boundary_conc,
+                                    double cell_volume,
+                                    double* injected_amount,
                                     cudaStream_t stream) {
   const int face = nx * ny;
   if (face <= 0) return;
   const int block = 256;
   const int grid = (face + block - 1) / block;
   set_epithelial_boundary_kernel<<<grid, block, 0, stream>>>(
-      conc, nx, ny, boundary_conc);
+      conc, nx, ny, boundary_conc, cell_volume, injected_amount);
 }
 
 void launch_set_luminal_neumann(double* conc,

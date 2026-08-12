@@ -45,6 +45,10 @@ struct NutrientFluxAccounting {
     agent_uptake_interval[index] += uptake;
   }
 
+  void add_boundary(Int species, Real amount) {
+    boundary_interval[static_cast<size_t>(species)] += amount;
+  }
+
   void close_interval() {
     for (size_t i = 0; i < boundary_interval.size(); ++i) {
       boundary_cumulative[i] += boundary_interval[i];

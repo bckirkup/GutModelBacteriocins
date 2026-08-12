@@ -66,7 +66,9 @@ void launch_diffuse_z_bounded(double* conc, int nx, int ny, int nz,
                               double alpha, double boundary_conc,
                               cudaStream_t stream);
 void launch_set_epithelial_boundary(double* conc, int nx, int ny,
-                                    double boundary_conc, cudaStream_t stream);
+                                    double boundary_conc, double cell_volume,
+                                    double* injected_amount,
+                                    cudaStream_t stream);
 void launch_set_luminal_neumann(double* conc, int nx, int ny, int nz,
                                 cudaStream_t stream);
 void launch_shift_z_gradient(double* conc, int nx, int ny, int nz, double dx,

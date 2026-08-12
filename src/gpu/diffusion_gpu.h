@@ -18,6 +18,7 @@ bool gpu_diffusion_line_lengths_supported(const Domain& domain);
 bool gpu_apply_species_diffusion_device(const Domain& domain,
                                         const ChemicalSpec& spec,
                                         double* d_conc,
+                                        double* d_injected_amount,
                                         Real dt);
 
 // Host-buffer variant: upload, diffuse on device, download.

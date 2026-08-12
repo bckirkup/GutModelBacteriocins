@@ -928,6 +928,8 @@ void Simulation::run() {
   int rank = domain_.rank();
   Real last_dt = cfg_.time.bio_dt;
   bool stopped_for_population = false;
+  halted_for_dysbiosis_ = false;
+  halt_density_cells_per_mL_ = 0.0;
   const auto wall_start = std::chrono::steady_clock::now();
   const Real attempt_start_sim_time = clock_.time;
   const auto heartbeat_interval = std::chrono::seconds(60);
@@ -1026,6 +1028,8 @@ void Simulation::run() {
               ? static_cast<Real>(mpi_stats_.global_agent_count) / volume_mL
               : 0.0;
           density_cells_per_mL > cfg_.dysbiosis_threshold) {
+        halted_for_dysbiosis_ = true;
+        halt_density_cells_per_mL_ = density_cells_per_mL;
         if (rank == 0) {
           std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: "
                     << density_cells_per_mL
@@ -1041,7 +1045,8 @@ void Simulation::run() {
   // Final closed restart so Spot/SIGTERM/early-exit still leaves a usable artifact.
   const bool already_checkpointed = cfg_.restart.interval_steps > 0
       && clock_.step_count % cfg_.restart.interval_steps == 0;
-  if (cfg_.restart.enabled && clock_.step_count > 0 && !already_checkpointed) {
+  if (cfg_.restart.enabled && clock_.step_count > 0
+      && (halted_for_dysbiosis_ || !already_checkpointed)) {
     write_restart_now();
   }
 

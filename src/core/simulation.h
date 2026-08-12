@@ -163,6 +163,8 @@ class Simulation {
   Real compute_adaptive_dt() const;
 
   bool gpu_active() const { return gpu_active_; }
+  bool halted_for_dysbiosis() const { return halted_for_dysbiosis_; }
+  Real halt_density_cells_per_mL() const { return halt_density_cells_per_mL_; }
 
   const StepProfile& step_profile() const { return step_profile_; }
   void reset_step_profile() { step_profile_.reset(); }
@@ -252,6 +254,8 @@ class Simulation {
 
   // GPU acceleration state
   bool gpu_active_ = false;
+  bool halted_for_dysbiosis_ = false;
+  Real halt_density_cells_per_mL_ = 0.0;
   ChemicalFieldGpu chem_gpu_;
   AgentPoolGpu agents_gpu_;
 

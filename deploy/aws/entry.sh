@@ -336,6 +336,8 @@ parse_progress_from_log() {
   HEARTBEAT_SIM_TIME_S=""
   HEARTBEAT_WALL_ELAPSED_S=""
   PROGRESS_LINE_STEP=""
+  DYSBIOSIS_DENSITY=""
+  DYSBIOSIS_THRESHOLD=""
   local line
   line="$(grep -E '^Step ' "${RUN_LOG}" 2>/dev/null | tail -n 1 || true)"
   local heartbeat_line
@@ -372,6 +374,12 @@ parse_progress_from_log() {
   fi
   if [[ "${heartbeat_line}" =~ wall_elapsed_s=([0-9.eE+-]+) ]]; then
     HEARTBEAT_WALL_ELAPSED_S="${BASH_REMATCH[1]}"
+  fi
+  local dysbiosis_line
+  dysbiosis_line="$(grep -E '^DYSBIOSIS THRESHOLD EXCEEDED:' "${RUN_LOG}" 2>/dev/null | tail -n 1 || true)"
+  if [[ "${dysbiosis_line}" =~ EXCEEDED:[[:space:]]+([0-9.eE+-]+)[[:space:]]+cells/mL[[:space:]]+\>[[:space:]]+([0-9.eE+-]+) ]]; then
+    DYSBIOSIS_DENSITY="${BASH_REMATCH[1]}"
+    DYSBIOSIS_THRESHOLD="${BASH_REMATCH[2]}"
   fi
   if [[ -f "${WORK}/input.json" ]]; then
     TOTAL_TIME_S="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("total_time",""))' "${WORK}/input.json" 2>/dev/null || true)"
@@ -471,6 +479,8 @@ write_status_json() {
   GUTIBM_HEARTBEAT_STEP="${HEARTBEAT_STEP}" \
   GUTIBM_HEARTBEAT_SIM_TIME_S="${HEARTBEAT_SIM_TIME_S}" \
   GUTIBM_HEARTBEAT_WALL_ELAPSED_S="${HEARTBEAT_WALL_ELAPSED_S}" \
+  GUTIBM_DYSBIOSIS_DENSITY="${DYSBIOSIS_DENSITY}" \
+  GUTIBM_DYSBIOSIS_THRESHOLD="${DYSBIOSIS_THRESHOLD}" \
   GUTIBM_WALL_ELAPSED_S="${wall_elapsed}" \
   GUTIBM_CHECKPOINT_UPLOADED_AT="${CHECKPOINT_UPLOADED_AT:-}" \
   GUTIBM_CHECKPOINT_KEY="${CHECKPOINT_KEY:-}" \
@@ -533,6 +543,17 @@ payload = {
     ),
     "heartbeat_wall_elapsed_s": num_or_none(
         os.environ.get("GUTIBM_HEARTBEAT_WALL_ELAPSED_S", "")
+    ),
+    "halt_reason": (
+        "dysbiosis_threshold"
+        if os.environ.get("GUTIBM_DYSBIOSIS_DENSITY")
+        else None
+    ),
+    "halt_density_cells_per_mL": num_or_none(
+        os.environ.get("GUTIBM_DYSBIOSIS_DENSITY", "")
+    ),
+    "halt_threshold_cells_per_mL": num_or_none(
+        os.environ.get("GUTIBM_DYSBIOSIS_THRESHOLD", "")
     ),
     "progress_line_stale": (
         heartbeat_step is not None

@@ -470,6 +470,12 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_scalar_dataset(fid, group + "/n_total", H5T_NATIVE_INT32, &n_total);
   write_scalar_dataset(fid, group + "/num_lineages", H5T_NATIVE_INT32, &num_lineages);
   write_scalar_dataset(fid, group + "/num_agents", H5T_NATIVE_INT32, &n_total);
+  const int32_t halt_reason = sim.halted_for_dysbiosis() ? 1 : 0;
+  const double halt_density = sim.halt_density_cells_per_mL();
+  write_scalar_dataset(fid, group + "/halt_reason_code",
+                       H5T_NATIVE_INT32, &halt_reason);
+  write_scalar_dataset(fid, group + "/halt_density_cells_per_mL",
+                       H5T_NATIVE_DOUBLE, &halt_density);
   ensure_group(fid, group + "/nutrient_flux", cfg_);
   const auto& flux = sim.chemical_field().flux_accounting();
   const auto write_flux = [&](const char* name,

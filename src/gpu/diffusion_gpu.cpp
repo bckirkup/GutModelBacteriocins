@@ -89,6 +89,7 @@ bool species_diffusion_eligible(const ChemicalSpec& spec, Real dt,
 bool apply_species_diffusion_on_device(const Domain& domain,
                                        const ChemicalSpec& spec,
                                        double* d_conc,
+                                       double* d_injected_amount,
                                        Real dt) {
   const int nx = domain.nx();
   const int ny = domain.ny();
@@ -103,7 +104,9 @@ bool apply_species_diffusion_on_device(const Domain& domain,
   double diffusion_boundary = spec.boundary_conc;
 
   gpu::launch_set_epithelial_boundary(
-      d_conc, nx, ny, spec.boundary_conc, gpu_compute_stream());
+      d_conc, nx, ny, spec.boundary_conc,
+      domain.dx() * domain.dx() * domain.dx(), d_injected_amount,
+      gpu_compute_stream());
 
   if (preserve_gradient) {
     gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, gpu_compute_stream());
@@ -140,7 +143,8 @@ bool apply_species_diffusion_on_device(const Domain& domain,
 
   gpu::launch_clamp_nonneg(d_conc, ncells, gpu_compute_stream());
   gpu::launch_set_epithelial_boundary(
-      d_conc, nx, ny, spec.boundary_conc, gpu_compute_stream());
+      d_conc, nx, ny, spec.boundary_conc, 0.0, nullptr,
+      gpu_compute_stream());
   return true;
 }
 #endif
@@ -161,18 +165,21 @@ bool gpu_diffusion_line_lengths_supported(const Domain& domain) {
 bool gpu_apply_species_diffusion_device(const Domain& domain,
                                         const ChemicalSpec& spec,
                                         double* d_conc,
+                                        double* d_injected_amount,
                                         Real dt) {
 #ifndef GUTIBM_CUDA
   (void)domain;
   (void)spec;
   (void)d_conc;
+  (void)d_injected_amount;
   (void)dt;
   return false;
 #else
   if (!gpu_runtime_enabled()) return false;
   if (!species_diffusion_eligible(spec, dt, domain)) return false;
   if (!gpu_diffusion_line_lengths_supported(domain)) return false;
-  return apply_species_diffusion_on_device(domain, spec, d_conc, dt);
+  return apply_species_diffusion_on_device(
+      domain, spec, d_conc, d_injected_amount, dt);
 #endif
 }
 
@@ -196,7 +203,8 @@ bool gpu_apply_species_diffusion(const Domain& domain,
 
   DeviceBuffer<double> d_conc;
   d_conc.upload(concentration);
-  if (!apply_species_diffusion_on_device(domain, spec, d_conc.data(), dt)) {
+  if (!apply_species_diffusion_on_device(
+          domain, spec, d_conc.data(), nullptr, dt)) {
     return false;
   }
 

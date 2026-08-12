@@ -70,7 +70,8 @@ class VBF {
                                 Real dt,
                                 const OxygenConfig& oxygen,
                                 const AcetateConfig& acetate,
-                                const MucinConfig& mucin) const;
+                                const MucinConfig& mucin,
+                                VbfFluxTotals* totals = nullptr) const;
 
   // Compute drag force on an agent at position with velocity
   Vec3 drag_force(const Vec3& agent_vel) const;
@@ -87,10 +88,6 @@ class VBF {
 
   // Mucin liberation rate at a z-position relative to the epithelium
   Real mucin_rate(Real z_rel) const;
-  VbfFluxTotals flux_totals(const ChemicalField& chem, const Domain& domain,
-                            const OxygenConfig& oxygen,
-                            const AcetateConfig& acetate,
-                            const MucinConfig& mucin, Real dt) const;
 
  private:
   VBFConfig cfg_;

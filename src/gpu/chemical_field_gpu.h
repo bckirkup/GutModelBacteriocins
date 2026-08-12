@@ -26,7 +26,7 @@ class ChemicalFieldGpu {
 
   bool apply_reactions(double dt, const Domain& domain);
   bool apply_diffusion(const Domain& domain, const ChemicalField& field, Real dt);
-  bool apply_boundaries(const Domain& domain, const ChemicalField& field);
+  bool apply_boundaries(const Domain& domain, ChemicalField& field);
 
   bool try_sum_reactions_on_device(ChemicalField& field);
 
@@ -44,6 +44,7 @@ class ChemicalFieldGpu {
   std::vector<DeviceBuffer<double>> d_conc_;
   std::vector<DeviceBuffer<double>> d_reac_;
   DeviceBuffer<double> d_boundary_conc_;
+  DeviceBuffer<double> d_boundary_injected_;
 };
 
 }  // namespace gutibm
