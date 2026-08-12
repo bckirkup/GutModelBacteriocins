@@ -6,6 +6,7 @@
 #include "dispatch.h"
 #include "gpu_kernels.h"
 #include "device_memory.h"
+#include "species_names.h"
 
 #include <cstdlib>
 
@@ -37,7 +38,40 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
     bc[static_cast<size_t>(s)] = field.spec(s).boundary_conc;
   }
   d_boundary_conc_.upload(bc);
+  d_boundary_injected_.allocate(static_cast<size_t>(nspec_));
+  d_agent_uptake_.allocate(3);
+  d_vbf_totals_.allocate(4);
   sync_to_device(field);
+}
+
+void ChemicalFieldGpu::reset_agent_uptake() {
+  if (!active_) return;
+  d_agent_uptake_.upload(std::vector<double>(3, 0.0));
+}
+
+void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) {
+  if (!active_) return;
+  gpu_sync_compute();
+  std::vector<double> values(3, 0.0);
+  d_agent_uptake_.download(values);
+  const Int carbon = field.find(species::CARBON);
+  const Int iron = field.find(species::IRON);
+  if (carbon >= 0) field.flux_accounting().add_agent_uptake(carbon, values[0]);
+  if (iron >= 0) field.flux_accounting().add_agent_uptake(iron, values[1]);
+}
+
+void ChemicalFieldGpu::reset_vbf_totals() {
+  if (!active_) return;
+  d_vbf_totals_.upload(std::vector<double>(4, 0.0));
+}
+
+double* ChemicalFieldGpu::vbf_totals_device() {
+  return active_ ? d_vbf_totals_.data() : nullptr;
+}
+
+void ChemicalFieldGpu::download_vbf_totals(std::vector<double>& values) {
+  if (!active_) return;
+  d_vbf_totals_.download(values);
 }
 
 void ChemicalFieldGpu::sync_to_device(const ChemicalField& field) {
@@ -140,7 +174,7 @@ bool ChemicalFieldGpu::apply_reactions(double dt, const Domain& domain) {
 }
 
 bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
-                                       const ChemicalField& field,
+                                       ChemicalField& field,
                                        Real dt) {
 #ifndef GUTIBM_CUDA
   (void)domain;
@@ -152,9 +186,12 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   if (!gpu_diffusion_line_lengths_supported(domain)) return false;
 
   bool applied = false;
+  std::vector<double> zero(static_cast<size_t>(nspec_), 0.0);
+  d_boundary_injected_.upload(zero);
   for (Int s = 0; s < nspec_; ++s) {
     if (gpu_apply_species_diffusion_device(
-            domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(), dt)) {
+            domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(),
+            d_boundary_injected_.data() + s, dt)) {
       applied = true;
     }
   }
@@ -162,13 +199,18 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   if (applied) {
     gpu_sync_compute();
     gpu_check_error("ChemicalFieldGpu::apply_diffusion");
+    std::vector<double> injected(static_cast<size_t>(nspec_), 0.0);
+    d_boundary_injected_.download(injected);
+    for (Int s = 0; s < nspec_; ++s) {
+      field.flux_accounting().add_boundary(s, injected[static_cast<size_t>(s)]);
+    }
   }
   return applied;
 #endif
 }
 
 bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
-                                        const ChemicalField& field) {
+                                        ChemicalField& field) {
 #ifndef GUTIBM_CUDA
   (void)domain;
   (void)field;
@@ -180,11 +222,15 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
   const int ny = domain.ny();
   const int nz = domain.nz();
 
+  std::vector<double> zero(static_cast<size_t>(nspec_), 0.0);
+  d_boundary_injected_.upload(zero);
   for (Int s = 0; s < nspec_; ++s) {
     const ChemicalSpec& spec = field.spec(s);
     double* d_conc = d_conc_[static_cast<size_t>(s)].data();
     gpu::launch_set_epithelial_boundary(
-        d_conc, nx, ny, spec.boundary_conc, gpu_compute_stream());
+        d_conc, nx, ny, spec.boundary_conc,
+        domain.dx() * domain.dx() * domain.dx(),
+        d_boundary_injected_.data() + s, gpu_compute_stream());
     if (!spec.diffusion_enabled && nz >= 2) {
       gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, gpu_compute_stream());
     }
@@ -192,6 +238,11 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
 
   gpu_sync_compute();
   gpu_check_error("ChemicalFieldGpu::apply_boundaries");
+  std::vector<double> injected(static_cast<size_t>(nspec_), 0.0);
+  d_boundary_injected_.download(injected);
+  for (Int s = 0; s < nspec_; ++s) {
+    field.flux_accounting().add_boundary(s, injected[static_cast<size_t>(s)]);
+  }
   return true;
 #endif
 }

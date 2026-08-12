@@ -7,6 +7,7 @@
 #include "gpu_kernels.h"
 #include "species_names.h"
 #include "vbf.h"
+#include <vector>
 
 #ifdef GUTIBM_CUDA
 #include <cuda_runtime.h>
@@ -20,7 +21,8 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
                             const VBF& vbf,
                             const OxygenConfig& oxygen,
                             const AcetateConfig& acetate,
-                            const MucinConfig& mucin) {
+                            const MucinConfig& mucin,
+                            VbfFluxTotals& totals, Real dt) {
 #ifndef GUTIBM_CUDA
   (void)chem_gpu;
   (void)chem;
@@ -29,6 +31,8 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   (void)oxygen;
   (void)acetate;
   (void)mucin;
+  (void)totals;
+  (void)dt;
   return false;
 #else
   if (!gpu_runtime_enabled() || !chem_gpu.active()) return false;
@@ -75,10 +79,17 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
       i_acetate >= 0 ? chem_gpu.reac_device(i_acetate) : nullptr,
       i_mucin >= 0 ? chem_gpu.reac_device(i_mucin) : nullptr,
       i_mucin >= 0 ? chem_gpu.conc_device(i_mucin) : nullptr,
+      chem_gpu.vbf_totals_device(), dt,
       gpu_compute_stream());
 
   gpu_sync_compute();
   gpu_check_error("gpu_apply_vbf_coupling");
+  std::vector<double> values(4, 0.0);
+  chem_gpu.download_vbf_totals(values);
+  totals.carbon_source = values[0];
+  totals.carbon_sink = values[1];
+  totals.iron_sink = values[2];
+  totals.oxygen_sink = values[3];
   return true;
 #endif
 }

@@ -45,7 +45,7 @@ void launch_metabolism_kernel(
     double metE_acetate_km, double eut_max_penalty, double eut_km,
     double yield_carbon, double yield_iron, double yield_b12,
     int o2_enabled, double o2_boost_max, double o2_Km,
-    const double* conc_oxygen,
+    const double* conc_oxygen, double* agent_uptake_totals,
     cudaStream_t stream);
 
 void launch_spatial_hash_build_kernel(
@@ -66,7 +66,9 @@ void launch_diffuse_z_bounded(double* conc, int nx, int ny, int nz,
                               double alpha, double boundary_conc,
                               cudaStream_t stream);
 void launch_set_epithelial_boundary(double* conc, int nx, int ny,
-                                    double boundary_conc, cudaStream_t stream);
+                                    double boundary_conc, double cell_volume,
+                                    double* injected_amount,
+                                    cudaStream_t stream);
 void launch_set_luminal_neumann(double* conc, int nx, int ny, int nz,
                                 cudaStream_t stream);
 void launch_shift_z_gradient(double* conc, int nx, int ny, int nz, double dx,
@@ -96,6 +98,8 @@ void launch_vbf_coupling_kernel(int ncells,
                                 double* reac_acetate,
                                 double* reac_mucin,
                                 const double* conc_mucin,
+                                double* vbf_totals,
+                                double dt,
                                 cudaStream_t stream);
 
 void launch_fmm_far_local_kernel(

@@ -144,12 +144,13 @@ void AgentPoolGpu::sync_positions_to_host(AgentPool& pool) const {
 
 bool AgentPoolGpu::run_metabolism(
     const Domain& domain, const MetabolismConfig& cfg,
-    const GpuMetabolismBuffers& buffers, double dt) {
+    const GpuMetabolismBuffers& buffers, double* uptake_totals, double dt) {
 
 #ifndef GUTIBM_CUDA
   (void)domain;
   (void)cfg;
   (void)buffers;
+  (void)uptake_totals;
   (void)dt;
   return false;
 #else
@@ -171,7 +172,7 @@ bool AgentPoolGpu::run_metabolism(
       cfg.metE_acetate_km, cfg.eut_max_penalty, cfg.eut_km,
       cfg.yield_carbon, cfg.yield_iron, cfg.yield_b12,
       buffers.o2_enabled, buffers.o2_boost_max, buffers.o2_Km,
-      buffers.d_conc_oxygen, gpu_compute_stream());
+      buffers.d_conc_oxygen, uptake_totals, gpu_compute_stream());
 
   gpu_sync_compute();
   gpu_check_error("metabolism_kernel");

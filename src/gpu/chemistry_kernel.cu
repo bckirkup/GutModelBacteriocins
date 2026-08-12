@@ -27,30 +27,42 @@ __device__ void apply_vbf_at_cell(int cell,
                                   const double* conc_oxygen,
                                   double* reac_acetate,
                                   double* reac_mucin,
-                                  const double* conc_mucin) {
+                                  const double* conc_mucin,
+                                  double* vbf_totals,
+                                  double cell_volume,
+                                  double dt) {
   if (p.use_dynamic_mucin && p.mucin_enabled && reac_mucin && conc_mucin) {
     const double liberation =
         dynamic_mucin_liberation(conc_mucin[cell], p);
     reac_mucin[cell] -= liberation;
     if (reac_carbon) {
       reac_carbon[cell] += liberation;
+      if (vbf_totals) atomicAdd(&vbf_totals[0], liberation * cell_volume * dt);
     }
   } else if (reac_carbon) {
     reac_carbon[cell] += static_liberation;
+    if (vbf_totals) {
+      atomicAdd(&vbf_totals[0], static_liberation * cell_volume * dt);
+    }
   }
 
   if (reac_carbon && conc_carbon && p.carbon_sink_vmax > 0.0) {
     const double c = conc_carbon[cell];
-    reac_carbon[cell] -=
-        p.carbon_sink_vmax * c / (p.carbon_sink_km + c);
+    const double sink = p.carbon_sink_vmax * c / (p.carbon_sink_km + c);
+    reac_carbon[cell] -= sink;
+    if (vbf_totals) atomicAdd(&vbf_totals[1], sink * cell_volume * dt);
   }
 
   if (reac_iron && conc_iron) {
-    reac_iron[cell] -= p.nutrient_sink * conc_iron[cell];
+    const double sink = p.nutrient_sink * conc_iron[cell];
+    reac_iron[cell] -= sink;
+    if (vbf_totals) atomicAdd(&vbf_totals[2], sink * cell_volume * dt);
   }
 
   if (p.oxygen_enabled && reac_oxygen && conc_oxygen) {
-    reac_oxygen[cell] -= p.oxygen_vbf_sink * conc_oxygen[cell];
+    const double sink = p.oxygen_vbf_sink * conc_oxygen[cell];
+    reac_oxygen[cell] -= sink;
+    if (vbf_totals) atomicAdd(&vbf_totals[3], sink * cell_volume * dt);
   }
 
   if (p.acetate_enabled && reac_acetate) {
@@ -96,7 +108,9 @@ __global__ void vbf_coupling_kernel(int ncells,
                                     const double* conc_oxygen,
                                     double* reac_acetate,
                                     double* reac_mucin,
-                                    const double* conc_mucin) {
+                                    const double* conc_mucin,
+                                    double* vbf_totals,
+                                    double dt) {
   const int cell = blockIdx.x * blockDim.x + threadIdx.x;
   if (cell >= ncells) return;
 
@@ -118,7 +132,8 @@ __global__ void vbf_coupling_kernel(int ncells,
                     reac_iron, conc_iron,
                     reac_oxygen, conc_oxygen,
                     reac_acetate,
-                    reac_mucin, conc_mucin);
+                    reac_mucin, conc_mucin, vbf_totals,
+                    params.dx * params.dx * params.dx, dt);
 }
 
 }  // namespace
@@ -151,6 +166,8 @@ void launch_vbf_coupling_kernel(int ncells,
                                 double* reac_acetate,
                                 double* reac_mucin,
                                 const double* conc_mucin,
+                                double* vbf_totals,
+                                double dt,
                                 cudaStream_t stream) {
   if (ncells <= 0) return;
   const int block = 256;
@@ -161,7 +178,7 @@ void launch_vbf_coupling_kernel(int ncells,
       reac_iron, conc_iron,
       reac_oxygen, conc_oxygen,
       reac_acetate,
-      reac_mucin, conc_mucin);
+      reac_mucin, conc_mucin, vbf_totals, dt);
 }
 
 }  // namespace gpu

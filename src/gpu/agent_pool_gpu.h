@@ -63,7 +63,8 @@ class AgentPoolGpu {
   double* plasmid_amelioration() { return d_plasmid_amelioration_.data(); }
 
   bool run_metabolism(const Domain& domain, const MetabolismConfig& cfg,
-                      const GpuMetabolismBuffers& buffers, double dt);
+                      const GpuMetabolismBuffers& buffers, double* uptake_totals,
+                      double dt);
 
   void sync_positions_to_host(AgentPool& pool) const;
 

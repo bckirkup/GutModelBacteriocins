@@ -2,10 +2,12 @@
 #include "agent.h"
 #include "chemical_field.h"
 #include "chemical_field_gpu.h"
+#include "domain.h"
 #include "dispatch.h"
 #include "step_profiler.h"
 #include "qssa_gpu.h"
 #include "qssa_solver.h"
+#include "species_names.h"
 #include "vbf.h"
 #include "vbf_gpu.h"
 
@@ -57,20 +59,43 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   // Every rank holds the full chemical grid but only its local agents. Sum the
   // rank-local agent reaction fields before adding the identical global VBF.
   sum_reactions_with_optional_device(in);
-
+  const Int carbon = in.chem.find(species::CARBON);
+  const Int iron = in.chem.find(species::IRON);
+  const Int oxygen = in.chem.find(species::OXYGEN);
+  VbfFluxTotals vbf_totals;
+  in.chem.sum_agent_uptake_across_ranks();
+  in.chem.flux_accounting().commit_agent_uptake_step();
   bool reactions_on_device = false;
   bool applied_vbf_on_gpu = false;
   if (in.gpu_active && applied_o2_on_gpu) {
     in.chem_gpu.sync_reactions_to_device(in.chem);
     reactions_on_device = true;
+    in.chem_gpu.reset_vbf_totals();
     applied_vbf_on_gpu = gpu_apply_vbf_coupling(
         in.chem_gpu, in.chem, in.domain, in.vbf,
-        in.oxygen, in.acetate, in.mucin);
+        in.oxygen, in.acetate, in.mucin, vbf_totals, dt);
   }
   if (!applied_vbf_on_gpu) {
+    reactions_on_device = false;
     in.vbf.apply_nutrient_coupling(in.chem, in.domain, dt,
-                                   in.oxygen, in.acetate, in.mucin);
-    if (in.gpu_active) {
+                                   in.oxygen, in.acetate, in.mucin,
+                                   &vbf_totals);
+  }
+  if (carbon >= 0) {
+    in.flux_accounting.add_interval(
+        carbon, 0.0, vbf_totals.carbon_source,
+        vbf_totals.carbon_sink, 0.0);
+  }
+  if (iron >= 0) {
+    in.flux_accounting.add_interval(
+        iron, 0.0, 0.0, vbf_totals.iron_sink, 0.0);
+  }
+  if (oxygen >= 0) {
+    in.flux_accounting.add_interval(
+        oxygen, 0.0, 0.0, vbf_totals.oxygen_sink, 0.0);
+  }
+  if (in.gpu_active) {
+    if (!reactions_on_device) {
       in.chem_gpu.sync_reactions_to_device(in.chem);
       reactions_on_device = true;
     }

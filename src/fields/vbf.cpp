@@ -39,39 +39,65 @@ struct VbfCellContext {
   Int iz;
 };
 
-void apply_carbon_source(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+void apply_carbon_source(ChemicalField& chem, Int cell,
+                         const VbfCellContext& ctx,
+                         VbfFluxTotals* totals,
+                         Real cell_volume,
+                         Real dt) {
   if (ctx.cfg.use_dynamic_mucin && ctx.mucin.enabled && ctx.idx.mucin >= 0) {
     const Real liberation =
         dynamic_mucin_liberation(chem.conc(ctx.idx.mucin, cell), ctx.cfg, ctx.mucin);
     chem.reac(ctx.idx.mucin, cell) -= liberation;
     if (ctx.idx.carbon >= 0) {
       chem.reac(ctx.idx.carbon, cell) += liberation;
+      if (totals != nullptr) {
+        totals->carbon_source += liberation * cell_volume * dt;
+      }
     }
     return;
   }
   if (ctx.idx.carbon >= 0) {
     chem.reac(ctx.idx.carbon, cell) += ctx.static_liberation;
+    if (totals != nullptr) {
+      totals->carbon_source += ctx.static_liberation * cell_volume * dt;
+    }
   }
 }
 
 // Spec 5 §1 — VBF carbon consumption (Restaurant Hypothesis). Monod-saturating
 // sink: near-complete uptake at high [C], leaving a thin residual at low [C].
-void apply_carbon_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+void apply_carbon_sink(ChemicalField& chem, Int cell,
+                       const VbfCellContext& ctx,
+                       VbfFluxTotals* totals,
+                       Real cell_volume,
+                       Real dt) {
   if (ctx.cfg.carbon_sink_vmax <= 0.0 || ctx.idx.carbon < 0) return;
   const Real c = chem.conc(ctx.idx.carbon, cell);
-  chem.reac(ctx.idx.carbon, cell) -=
-      ctx.cfg.carbon_sink_vmax * c / (ctx.cfg.carbon_sink_km + c);
+  const Real sink = ctx.cfg.carbon_sink_vmax * c
+      / (ctx.cfg.carbon_sink_km + c);
+  chem.reac(ctx.idx.carbon, cell) -= sink;
+  if (totals != nullptr) totals->carbon_sink += sink * cell_volume * dt;
 }
 
-void apply_iron_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+void apply_iron_sink(ChemicalField& chem, Int cell,
+                     const VbfCellContext& ctx,
+                     VbfFluxTotals* totals,
+                     Real cell_volume,
+                     Real dt) {
   if (ctx.idx.iron < 0) return;
   // First-order (concentration-dependent) uptake: nutrient_sink is a rate
   // constant (1/s). See VBFConfig::nutrient_sink for why this is not a
   // zero-order mol/m^3/s removal.
-  chem.reac(ctx.idx.iron, cell) -= ctx.cfg.nutrient_sink * chem.conc(ctx.idx.iron, cell);
+  const Real sink = ctx.cfg.nutrient_sink * chem.conc(ctx.idx.iron, cell);
+  chem.reac(ctx.idx.iron, cell) -= sink;
+  if (totals != nullptr) totals->iron_sink += sink * cell_volume * dt;
 }
 
-void apply_oxygen_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
+void apply_oxygen_sink(ChemicalField& chem, Int cell,
+                       const VbfCellContext& ctx,
+                       VbfFluxTotals* totals,
+                       Real cell_volume,
+                       Real dt) {
   if (!ctx.oxygen.enabled || ctx.idx.oxygen < 0) return;
   // First-order background O2 consumption by the anaerobic majority:
   // reac -= vbf_sink * [O2] (1/s rate constant), mirroring the iron sink. A
@@ -81,7 +107,9 @@ void apply_oxygen_sink(ChemicalField& chem, Int cell, const VbfCellContext& ctx)
   // reported. A first-order sink is self-limiting: it scales with the local O2
   // it can actually consume, so a smooth gradient survives and agent
   // respiration remains visible on top of it.
-  chem.reac(ctx.idx.oxygen, cell) -= ctx.oxygen.vbf_sink * chem.conc(ctx.idx.oxygen, cell);
+  const Real sink = ctx.oxygen.vbf_sink * chem.conc(ctx.idx.oxygen, cell);
+  chem.reac(ctx.idx.oxygen, cell) -= sink;
+  if (totals != nullptr) totals->oxygen_sink += sink * cell_volume * dt;
 }
 
 void apply_acetate_coupling(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
@@ -98,11 +126,15 @@ void apply_mucin_secretion(ChemicalField& chem, Int cell, const VbfCellContext& 
   chem.reac(ctx.idx.mucin, cell) += ctx.mucin.secretion_rate;
 }
 
-void apply_vbf_at_cell(ChemicalField& chem, Int cell, const VbfCellContext& ctx) {
-  apply_carbon_source(chem, cell, ctx);
-  apply_carbon_sink(chem, cell, ctx);
-  apply_iron_sink(chem, cell, ctx);
-  apply_oxygen_sink(chem, cell, ctx);
+void apply_vbf_at_cell(ChemicalField& chem, Int cell,
+                       const VbfCellContext& ctx,
+                       VbfFluxTotals* totals,
+                       Real cell_volume,
+                       Real dt) {
+  apply_carbon_source(chem, cell, ctx, totals, cell_volume, dt);
+  apply_carbon_sink(chem, cell, ctx, totals, cell_volume, dt);
+  apply_iron_sink(chem, cell, ctx, totals, cell_volume, dt);
+  apply_oxygen_sink(chem, cell, ctx, totals, cell_volume, dt);
   apply_acetate_coupling(chem, cell, ctx);
   apply_mucin_secretion(chem, cell, ctx);
 }
@@ -133,15 +165,17 @@ Real VBF::mucin_rate(Real z_rel) const {
 }
 
 void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
-                                   Real /*dt*/,
+                                   Real dt,
                                    const OxygenConfig& oxygen,
                                    const AcetateConfig& acetate,
-                                   const MucinConfig& mucin) const {
+                                   const MucinConfig& mucin,
+                                   VbfFluxTotals* totals) const {
   const VbfSpeciesIndices idx = find_vbf_species(chem);
 
   const Int nx = domain.nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
+  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
 
   for (Int iz = 0; iz < nz; ++iz) {
     const Real z_rel = (iz + 0.5) * domain.dx();
@@ -155,7 +189,8 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
 
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
-        apply_vbf_at_cell(chem, domain.cell_index(ix, iy, iz), ctx);
+        apply_vbf_at_cell(chem, domain.cell_index(ix, iy, iz), ctx,
+                          totals, cell_volume, dt);
       }
     }
   }

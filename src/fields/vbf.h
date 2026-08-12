@@ -20,6 +20,13 @@ struct OxygenConfig;
 struct AcetateConfig;
 struct MucinConfig;
 
+struct VbfFluxTotals {
+  Real carbon_source = 0.0;
+  Real carbon_sink = 0.0;
+  Real iron_sink = 0.0;
+  Real oxygen_sink = 0.0;
+};
+
 struct VBFConfig {
   Real density          = 1.0e11;   // background cell density (#/m^3)
   Real drag_coeff       = 1.0e-9;   // Stokes-like drag (N·s/m)
@@ -63,7 +70,8 @@ class VBF {
                                 Real dt,
                                 const OxygenConfig& oxygen,
                                 const AcetateConfig& acetate,
-                                const MucinConfig& mucin) const;
+                                const MucinConfig& mucin,
+                                VbfFluxTotals* totals = nullptr) const;
 
   // Compute drag force on an agent at position with velocity
   Vec3 drag_force(const Vec3& agent_vel) const;
