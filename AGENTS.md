@@ -228,6 +228,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `docs/AWS_BATCH.md` — AWS Batch Spot + CUDA deployment + Phase Observability
 - `docs/MULTI_SCALE_EXPERIMENTATION.md` — nested short/small vs host-scale experiment ladder
 - `docs/BRANCHING_FROM_CHECKPOINTS.md` — measured calibration checkpoint fork runbook
+- `docs/PRE_SUBMISSION_CHECKLIST.md` — operator checks before campaign submission
 
 ## Code Conventions
 

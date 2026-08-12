@@ -109,6 +109,8 @@ gutibm_add_test(config_ingestion test_config_ingestion.cpp
   LABELS "unit"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(kill_provenance test_kill_provenance.cpp LABELS "unit")
+gutibm_add_test(counter_resume test_counter_resume.cpp LABELS "unit")
+gutibm_add_test(vbf_accounting test_vbf_accounting.cpp LABELS "unit")
 gutibm_add_test(data_defaults test_data_defaults.cpp LABELS "unit")
 gutibm_add_test(bacteriocin test_bacteriocin.cpp LABELS "unit")
 gutibm_add_test(per_receptor_toxin test_per_receptor_toxin.cpp LABELS "unit")
@@ -252,3 +254,9 @@ add_test(
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_checkpoint_retention.sh"
 )
 set_tests_properties(checkpoint_retention PROPERTIES LABELS "unit")
+
+add_test(
+  NAME process_group_signal
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_process_group_signal.sh"
+)
+set_tests_properties(process_group_signal PROPERTIES LABELS "unit")
