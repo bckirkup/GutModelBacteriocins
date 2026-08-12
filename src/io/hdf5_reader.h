@@ -7,6 +7,7 @@
 #define GUTIBM_HDF5_READER_H
 
 #include "types.h"
+#include "step_events.h"
 #include <cstdint>
 #include <map>
 #include <string>
@@ -19,6 +20,12 @@ struct HDF5CheckpointMetadata {
   Real  time         = 0.0;
   Int   num_agents   = 0;
   Int   num_lineages = 0;
+  Int   event_window_start_step = 0;
+  Int   event_window_end_step = 0;
+  Real  event_window_start_time = 0.0;
+  Real  event_window_end_time = 0.0;
+  StepEvents interval_events;
+  StepEvents cumulative_events;
 };
 
 struct HDF5CheckpointAgents {

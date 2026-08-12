@@ -258,6 +258,10 @@ void print_gpu_status_banner(bool gpu_active, const GpuConfig& gpu) {
 
 void Simulation::init(const SimulationConfig& cfg) {
   cfg_ = cfg;
+  step_events_.reset();
+  cumulative_events_.reset();
+  event_window_start_step_ = 1;
+  event_window_start_time_ = 0.0;
   InputParser::finalize_config(cfg_);
   validate_immigration_config();
   rng_.seed(cfg_.seed);
@@ -367,6 +371,10 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
                                       const std::string& h5_file,
                                       const std::string& step) {
   cfg_ = cfg;
+  step_events_.reset();
+  cumulative_events_.reset();
+  event_window_start_step_ = 1;
+  event_window_start_time_ = 0.0;
   InputParser::finalize_config(cfg_);
   validate_immigration_config();
   rng_.seed(cfg_.seed);
@@ -505,6 +513,13 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 
   clock_.time       = snap.metadata.time;
   clock_.step_count = snap.metadata.step;
+  cumulative_events_ = snap.metadata.cumulative_events;
+  event_window_start_step_ = snap.metadata.event_window_end_step > 0
+      ? snap.metadata.event_window_end_step + 1
+      : clock_.step_count + 1;
+  event_window_start_time_ = snap.metadata.event_window_end_step > 0
+      ? snap.metadata.event_window_end_time
+      : clock_.time;
   immigration_start_step_ = clock_.step_count;
   schedule_output_from_time(clock_.time, cfg_.time.output_interval, clock_.next_output, clock_.next_snapshot);
 }
@@ -746,6 +761,12 @@ void Simulation::write_restart_now() {
   const auto write_t0 = std::chrono::steady_clock::now();
   const bool ok = HDF5Writer::write_closed_restart(
       *this, path, clock_.step_count, clock_.time, cfg_.time.bio_dt);
+  const bool summary_due = cfg_.hdf5.enabled
+      && cfg_.hdf5.schedule.summary > 0
+      && clock_.step_count % cfg_.hdf5.schedule.summary == 0;
+  if (ok && !summary_due) {
+    reset_step_events_after_summary(clock_.step_count, clock_.time);
+  }
   const double write_s = std::chrono::duration<double>(
       std::chrono::steady_clock::now() - write_t0).count();
   if (ok && domain_.rank() == 0) {
@@ -937,6 +958,8 @@ void Simulation::run() {
 
     step(dt);
 
+    maybe_write_restart();
+
     // HDF5 cadence is controlled solely by hdf5.schedule.* (per-layer intervals).
     if (hdf5_.is_enabled()) {
       const auto hdf5_t0 = std::chrono::steady_clock::now();
@@ -946,8 +969,6 @@ void Simulation::run() {
         step_profile_.hdf5_s += std::chrono::duration<double>(hdf5_t1 - hdf5_t0).count();
       }
     }
-
-    maybe_write_restart();
 
     const auto wall_now = std::chrono::steady_clock::now();
     if (rank == 0 && (!heartbeat_emitted || wall_now >= next_heartbeat)) {
@@ -1012,7 +1033,9 @@ void Simulation::run() {
   }
 
   // Final closed restart so Spot/SIGTERM/early-exit still leaves a usable artifact.
-  if (cfg_.restart.enabled && clock_.step_count > 0) {
+  const bool already_checkpointed = cfg_.restart.interval_steps > 0
+      && clock_.step_count % cfg_.restart.interval_steps == 0;
+  if (cfg_.restart.enabled && clock_.step_count > 0 && !already_checkpointed) {
     write_restart_now();
   }
 

@@ -116,11 +116,27 @@ class Simulation {
 
   const StepEvents& step_events() const { return step_events_; }
   StepEvents&       step_events()       { return step_events_; }
-  void reset_step_events_after_summary() { step_events_.reset(); }
+  const StepEvents& cumulative_events() const { return cumulative_events_; }
+  StepEvents& cumulative_events() { return cumulative_events_; }
+  Int event_window_start_step() const { return event_window_start_step_; }
+  Real event_window_start_time() const { return event_window_start_time_; }
+  void set_event_window_start(Int step, Real time) {
+    event_window_start_step_ = step;
+    event_window_start_time_ = time;
+  }
+  void reset_step_events_after_summary(Int step, Real time) {
+    cumulative_events_.add(step_events_);
+    step_events_.reset();
+    event_window_start_step_ = step + 1;
+    event_window_start_time_ = time;
+  }
   bool provenance_enabled() const {
     return cfg_.hdf5.enabled && cfg_.hdf5.schedule.provenance > 0;
   }
   const std::vector<KillProvenanceEvent>& kill_provenance() const {
+    return kill_provenance_;
+  }
+  std::vector<KillProvenanceEvent>& kill_provenance() {
     return kill_provenance_;
   }
   void record_kill_provenance(const KillProvenanceEvent& event);
@@ -241,6 +257,9 @@ class Simulation {
 
   std::vector<ToxinBurstSource> toxin_bursts_;
   StepEvents step_events_;
+  StepEvents cumulative_events_;
+  Int event_window_start_step_ = 1;
+  Real event_window_start_time_ = 0.0;
   std::vector<KillProvenanceEvent> kill_provenance_;
   bool bacteriocin_fields_current_ = false;
 };
