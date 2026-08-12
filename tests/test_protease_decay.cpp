@@ -44,6 +44,11 @@ GreensFunctionParams params_from_bi(const BICluster& bi, Real release_rate) {
   return gfp;
 }
 
+// Release-integral quadrature: dt = tau / kStepsPerTau, horizon = kTauHorizons * tau.
+constexpr int kStepsPerTau = 1000;
+constexpr int kTauHorizons = 20;
+constexpr int kQuadratureSteps = kStepsPerTau * kTauHorizons;
+
 }  // namespace
 
 void test_spatial_decay_not_temporal_amplitude() {
@@ -75,9 +80,10 @@ void test_spatial_decay_not_temporal_amplitude() {
 void test_inventory_conservation() {
   const Real inventory = 1.0e5 / AVOGADRO;
   for (const Real tau : {60.0, 300.0, 1800.0}) {
-    const Real dt = tau / 1000.0;
+    const Real dt = tau / static_cast<Real>(kStepsPerTau);
     Real integrated = 0.0;
-    for (Real age = 0.0; age < 20.0 * tau; age += dt) {
+    for (int i = 0; i < kQuadratureSteps; ++i) {
+      const Real age = static_cast<Real>(i) * dt;
       integrated += (inventory / tau) * std::exp(-age / tau) * dt;
     }
     assert(std::abs(integrated - inventory) / inventory < 1.0e-3);
@@ -100,9 +106,10 @@ void test_dose_invariant_to_release_tau() {
   Real reference = 0.0;
   bool have_reference = false;
   for (const Real tau : {60.0, 300.0, 1800.0}) {
-    const Real dt = tau / 1000.0;
+    const Real dt = tau / static_cast<Real>(kStepsPerTau);
     Real dose = 0.0;
-    for (Real age = 0.0; age < 20.0 * tau; age += dt) {
+    for (int i = 0; i < kQuadratureSteps; ++i) {
+      const Real age = static_cast<Real>(i) * dt;
       dose += kernel * std::exp(-age / tau) * dt / tau;
     }
     if (!have_reference) {
