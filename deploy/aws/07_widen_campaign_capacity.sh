@@ -164,14 +164,19 @@ SECURITY_GROUPS_JSON="$(jq -c '.securityGroupIds // []' <<<"${CE_RESOURCES}")"
 INSTANCE_ROLE="$(jq -r '.instanceRole // empty' <<<"${CE_RESOURCES}")"
 SPOT_FLEET_ROLE="$(jq -r '.spotIamFleetRole // empty' <<<"${CE_RESOURCES}")"
 EC2_CONFIGURATION_JSON="$(jq -c '[.ec2Configuration[]? | select(.imageType != null) | {imageType: .imageType}]' <<<"${CE_RESOURCES}")"
-# Keep the existing Spot Fleet role: AWS requires spotIamFleetRole for SPOT
-# compute resources; the service-linked role replaces only the legacy Batch
-# serviceRole.
+# The AWS ComputeResource API requires spotIamFleetRole for SPOT resources.
+# The service-linked role replaces only the legacy Batch serviceRole.
 if [[ ! "${MIN_VCPUS}" =~ ^[0-9]+$ || ! "${MAX_VCPUS}" =~ ^[0-9]+$ ||
       "$(jq 'length' <<<"${SECURITY_GROUPS_JSON}")" == "0" ||
-      -z "${INSTANCE_ROLE}" || -z "${SPOT_FLEET_ROLE}" ||
+      -z "${INSTANCE_ROLE}" || "${INSTANCE_ROLE}" != *"/instance-profile/"* ||
+      -z "${SPOT_FLEET_ROLE}" ||
       "$(jq 'length' <<<"${EC2_CONFIGURATION_JSON}")" == "0" ]]; then
   echo "ERROR: legacy CE lacks required Spot/EC2 resource settings to copy." >&2
+  exit 1
+fi
+if ! jq -e 'all(.[]; (.imageType | type) == "string")' \
+  <<<"${EC2_CONFIGURATION_JSON}" >/dev/null; then
+  echo "ERROR: legacy CE has an invalid ec2Configuration image type." >&2
   exit 1
 fi
 
@@ -246,7 +251,10 @@ if [[ ! "${QUEUE_PRIORITY}" =~ ^[0-9]+$ ]]; then
 fi
 OLD_ORDER="$(jq -r --arg old_ce "${CE}" \
   '.jobQueues[0].computeEnvironmentOrder[]
-   | select(.computeEnvironment == $old_ce) | .order' <<<"${QUEUE_JSON}" | head -n 1)"
+   | select(
+       .computeEnvironment == $old_ce or
+       ((.computeEnvironment | split("/") | .[-1]) == $old_ce)
+     ) | .order' <<<"${QUEUE_JSON}" | head -n 1)"
 if [[ -z "${OLD_ORDER}" ]]; then
   OLD_ORDER=1
 fi
@@ -256,7 +264,10 @@ while IFS='|' read -r order environment; do
   QUEUE_ORDER_ARGS+=("order=${order},computeEnvironment=${environment}")
 done < <(jq -r --arg old_ce "${CE}" \
   '.jobQueues[0].computeEnvironmentOrder[]
-   | select(.computeEnvironment != $old_ce)
+   | select(
+       (.computeEnvironment != $old_ce) and
+       ((.computeEnvironment | split("/") | .[-1]) != $old_ce)
+     )
    | "\(.order)|\(.computeEnvironment)"' <<<"${QUEUE_JSON}")
 
 # Drop the old CE rather than leaving it at its old order: its legacy service
@@ -276,8 +287,14 @@ for _ in $(seq 1 60); do
   if jq -e --arg new_ce "${NEW_CE}" --arg old_ce "${CE}" \
     '.jobQueues | length == 1 and .[0].status == "VALID" and
      .[0].state == "ENABLED" and
-     (.[0].computeEnvironmentOrder | any(.computeEnvironment == $new_ce)) and
-     (.[0].computeEnvironmentOrder | all(.computeEnvironment != $old_ce))' \
+     (.[0].computeEnvironmentOrder | any(
+       .computeEnvironment == $new_ce or
+       ((.computeEnvironment | split("/") | .[-1]) == $new_ce)
+     )) and
+     (.[0].computeEnvironmentOrder | all(
+       (.computeEnvironment != $old_ce) and
+       ((.computeEnvironment | split("/") | .[-1]) != $old_ce)
+     ))' \
     <<<"${QUEUE_JSON}" >/dev/null; then
     break
   fi
@@ -287,8 +304,14 @@ done
 if ! jq -e --arg new_ce "${NEW_CE}" --arg old_ce "${CE}" \
   '.jobQueues | length == 1 and .[0].status == "VALID" and
    .[0].state == "ENABLED" and
-   (.[0].computeEnvironmentOrder | any(.computeEnvironment == $new_ce)) and
-   (.[0].computeEnvironmentOrder | all(.computeEnvironment != $old_ce))' \
+   (.[0].computeEnvironmentOrder | any(
+     .computeEnvironment == $new_ce or
+     ((.computeEnvironment | split("/") | .[-1]) == $new_ce)
+   )) and
+   (.[0].computeEnvironmentOrder | all(
+     (.computeEnvironment != $old_ce) and
+     ((.computeEnvironment | split("/") | .[-1]) != $old_ce)
+   ))' \
   <<<"${QUEUE_JSON}" >/dev/null; then
   echo "ERROR: queue ${QUEUE} did not become VALID/ENABLED on ${NEW_CE}." >&2
   exit 1
