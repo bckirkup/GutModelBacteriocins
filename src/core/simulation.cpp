@@ -1016,13 +1016,15 @@ void Simulation::run() {
       const Vec3 lo = domain_.lo();
       const Vec3 hi = domain_.hi();
       const Real vol_m3 = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]);
-      const Real vol_mL = vol_m3 * 1.0e9;  // 1 m^3 = 1e9 mL
-      if (const Real density = vol_mL > 0.0
-              ? static_cast<Real>(mpi_stats_.global_agent_count) / vol_mL
+      constexpr Real kMillilitersPerCubicMeter = 1.0e6;
+      const Real volume_mL = vol_m3 * kMillilitersPerCubicMeter;
+      if (const Real density_cells_per_mL = volume_mL > 0.0
+              ? static_cast<Real>(mpi_stats_.global_agent_count) / volume_mL
               : 0.0;
-          density > cfg_.dysbiosis_threshold) {
+          density_cells_per_mL > cfg_.dysbiosis_threshold) {
         if (rank == 0) {
-          std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: " << density
+          std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: "
+                    << density_cells_per_mL
                     << " cells/mL > " << cfg_.dysbiosis_threshold
                     << " cells/mL — halting simulation.\n"
                     << std::flush;

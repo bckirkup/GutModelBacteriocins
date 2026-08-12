@@ -8,6 +8,7 @@
 #include "stop_signal.h"
 
 #include <cassert>
+#include <filesystem>
 #include <iostream>
 #include <string>
 
@@ -42,6 +43,10 @@ int main() {
   cfg.hdf5.schedule.agents = 1;
   cfg.initial_strains[0].count = 4;
   cfg.initial_strains.resize(1);
+  cfg.restart.enabled = true;
+  cfg.restart.directory = filename + ".restart";
+  cfg.restart.interval_steps = 360;
+  std::filesystem::create_directories(cfg.restart.directory);
 
   Simulation sim;
   sim.init(cfg);
@@ -52,6 +57,23 @@ int main() {
   assert(file >= 0);
   assert(H5Lexists(file, "summary/step_000000/time", H5P_DEFAULT) > 0);
   H5Fclose(file);
+
+  const std::string restart_output = filename + ".restart_output";
+  cfg.hdf5.filename = restart_output;
+  gutibm_reset_stop_request();
+  Simulation restart_sim;
+  restart_sim.init(cfg);
+  restart_sim.step(60.0);
+  gutibm_request_stop();
+  restart_sim.run();
+
+  const std::string restart_path =
+      cfg.restart.directory + "/step_000001.h5";
+  assert(std::filesystem::is_regular_file(restart_path));
+  hid_t restart = H5Fopen(restart_path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  assert(restart >= 0);
+  assert(H5Lexists(restart, "agents/step_000001", H5P_DEFAULT) > 0);
+  H5Fclose(restart);
 
   std::cout << "All graceful shutdown tests passed.\n";
   return 0;

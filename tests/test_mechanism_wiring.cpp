@@ -344,8 +344,8 @@ void test_dysbiosis_halt() {
 
   // Halting: threshold well below the initial density -> run stops early.
   SimulationConfig halt = make_integration_cfg(50, 2024);
-  // Initial density = 50 cells / (100e-6*100e-6*50e-6 m^3 * 1e9 mL/m^3).
-  halt.dysbiosis_threshold = 1.0e4;  // cells/mL, far below actual
+  // Hand calculation: 50 cells / (5e-13 m^3 * 1e6 mL/m^3) = 1e8 cells/mL.
+  halt.dysbiosis_threshold = 2.0e5;  // cells/mL
   Simulation sim_halt;
   sim_halt.init(halt);
   sim_halt.run();
