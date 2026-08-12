@@ -388,8 +388,9 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
 
   const std::string step_name = std::format("step_{:06}", step);
   auto fid = static_cast<hid_t>(file_id_);
+  const bool summary_due = layer_due(cfg_.schedule.summary, step);
 
-  if (layer_due(cfg_.schedule.summary, step)) {
+  if (summary_due) {
     const std::string path = "summary/" + step_name;
     ensure_group(fid, "summary", cfg_);
     ensure_group(fid, path, cfg_);
@@ -424,6 +425,9 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
     ensure_group(fid, "provenance", cfg_);
     ensure_group(fid, path, cfg_);
     write_provenance_layer(sim, path);
+  }
+  if (summary_due) {
+    sim.reset_step_events_after_summary(step, time);
   }
 
   // Flush so a concurrent checkpoint copy (entry.sh SIGSTOP+cp) sees consistent
@@ -538,6 +542,38 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_event("mutations", events.mutations);
   write_event("immigrations", events.immigrations);
 
+  StepEvents cumulative = sim.cumulative_events();
+  cumulative.add(events);
+  const auto write_cumulative_event = [&](const char* name, Int val) {
+    const int32_t v = val;
+    write_scalar_dataset(fid, group + std::string("/events/cumulative_") + name,
+                         H5T_NATIVE_INT32, &v);
+  };
+  write_cumulative_event("sos_inductions", cumulative.sos_inductions);
+  write_cumulative_event("phage_inductions", cumulative.phage_inductions);
+  write_cumulative_event("colicin_kills", cumulative.colicin_kills);
+  write_cumulative_event("cdi_kills", cumulative.cdi_kills);
+  write_cumulative_event("washout_deaths", cumulative.washout_deaths);
+  write_cumulative_event("boundary_deaths", cumulative.boundary_deaths);
+  write_cumulative_event("starvation_deaths", cumulative.starvation_deaths);
+  write_cumulative_event("divisions", cumulative.divisions);
+  write_cumulative_event("conjugation_transfers", cumulative.conjugation_transfers);
+  write_cumulative_event("mutations", cumulative.mutations);
+  write_cumulative_event("immigrations", cumulative.immigrations);
+
+  const int32_t interval_start_step = sim.event_window_start_step();
+  const int32_t interval_end_step = step;
+  const double interval_start_time = sim.event_window_start_time();
+  const double interval_end_time = time;
+  write_scalar_dataset(fid, group + "/events/interval_start_step",
+                       H5T_NATIVE_INT32, &interval_start_step);
+  write_scalar_dataset(fid, group + "/events/interval_end_step",
+                       H5T_NATIVE_INT32, &interval_end_step);
+  write_scalar_dataset(fid, group + "/events/interval_start_time",
+                       H5T_NATIVE_DOUBLE, &interval_start_time);
+  write_scalar_dataset(fid, group + "/events/interval_end_time",
+                       H5T_NATIVE_DOUBLE, &interval_end_time);
+
   const double mean_carbon = field_mean(chem, chem.find(species::CARBON));
   const double mean_iron = field_mean(chem, chem.find(species::IRON));
   const double mean_oxygen = field_mean(chem, chem.find(species::OXYGEN));
@@ -555,7 +591,6 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_scalar_dataset(fid, group + "/chem/max_toxin_CirA", H5T_NATIVE_DOUBLE, &max_cirA);
   write_scalar_dataset(fid, group + "/chem/max_toxin_FhuA", H5T_NATIVE_DOUBLE, &max_fhuA);
 
-  sim.reset_step_events_after_summary();
   }
 
   mpi_barrier(cfg_);
@@ -1008,6 +1043,7 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
   cfg.schedule.grid = 1;
   cfg.schedule.lineage = 1;
   cfg.schedule.genome = 1;
+  cfg.schedule.provenance = 1;
   cfg.schedule.grid_species = {"all"};
 
   HDF5Writer writer;
@@ -1018,7 +1054,16 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
     fs::remove(tmp, ec);
     return false;
   }
+  const StepEvents saved_step_events = sim.step_events();
+  const StepEvents saved_cumulative_events = sim.cumulative_events();
+  const Int saved_window_start_step = sim.event_window_start_step();
+  const Real saved_window_start_time = sim.event_window_start_time();
+  const auto saved_provenance = sim.kill_provenance();
   writer.write_step(sim, step, time, dt);
+  sim.step_events() = saved_step_events;
+  sim.cumulative_events() = saved_cumulative_events;
+  sim.set_event_window_start(saved_window_start_step, saved_window_start_time);
+  sim.kill_provenance() = saved_provenance;
   writer.finalize();
 
   std::error_code sz_ec;

@@ -8,6 +8,7 @@
 #include "species_names.h"
 
 #include <cassert>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -67,6 +68,16 @@ int32_t read_scalar(hid_t file, const std::string& path) {
   return value;
 }
 
+double read_double_scalar(hid_t file, const std::string& path) {
+  hid_t dataset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
+  assert(dataset >= 0);
+  double value = 0.0;
+  assert(H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                 H5P_DEFAULT, &value) >= 0);
+  H5Dclose(dataset);
+  return value;
+}
+
 int count_cause(const std::vector<int32_t>& causes, ProvenanceCause cause) {
   int count = 0;
   for (const int32_t value : causes) {
@@ -104,6 +115,10 @@ int main() {
   cfg.hdf5.schedule.lineage = 0;
   cfg.hdf5.schedule.genome = 0;
   cfg.hdf5.schedule.provenance = 1;
+  cfg.restart.enabled = true;
+  cfg.restart.directory = std::filesystem::path(filename).parent_path().string()
+      + "/kill_provenance_restart";
+  cfg.restart.interval_steps = 1;
   cfg.initial_strains.clear();
   cfg.initial_strains.push_back({1, 1, 5e-4, {"MccV"}});
   cfg.initial_strains.push_back({2, 1, 5e-4, {}});
@@ -136,6 +151,14 @@ int main() {
   assert(read_scalar(file, "summary/step_000001/events/washout_deaths") == 0);
   assert(read_scalar(file, "summary/step_000001/events/boundary_deaths") == 0);
   assert(read_scalar(file, "summary/step_000001/events/starvation_deaths") == 0);
+  assert(read_scalar(file, "summary/step_000001/events/interval_start_step") == 1);
+  assert(read_scalar(file, "summary/step_000001/events/interval_end_step") == 1);
+  assert(read_double_scalar(
+             file, "summary/step_000001/events/interval_start_time") == 0.0);
+  assert(read_double_scalar(
+             file, "summary/step_000001/events/interval_end_time") == 60.0);
+  assert(read_scalar(
+             file, "summary/step_000001/events/cumulative_colicin_kills") == 1);
   assert(causes.size() == 1);
   assert(causes[0] == static_cast<int32_t>(ProvenanceCause::COLICIN));
   assert(count_cause(causes, ProvenanceCause::COLICIN) == 1);
@@ -150,6 +173,24 @@ int main() {
   assert(occupancies[2] > 0.0);
   assert(hazards[2] > 0.0);
   H5Fclose(file);
+
+  const std::string restart_filename = cfg.restart.directory + "/step_000001.h5";
+  hid_t restart_file = H5Fopen(
+      restart_filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  assert(restart_file >= 0);
+  const auto restart_causes =
+      read_int_vector(restart_file, "provenance/step_000001/cause");
+  assert(restart_causes.size() == 1);
+  assert(read_scalar(
+             restart_file,
+             "summary/step_000001/events/interval_start_step") == 1);
+  assert(read_scalar(
+             restart_file,
+             "summary/step_000001/events/interval_end_step") == 1);
+  assert(read_scalar(
+             restart_file,
+             "summary/step_000001/events/cumulative_colicin_kills") == 1);
+  H5Fclose(restart_file);
 
   std::cout << "All kill provenance tests passed.\n";
   return 0;

@@ -256,6 +256,45 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   if (link_exists(file, prefix + "num_lineages")) {
     meta.num_lineages = read_scalar<int32_t>(file, prefix + "num_lineages", H5T_NATIVE_INT32);
   }
+  const std::string events = prefix + "events/";
+  const auto read_event = [&](const std::string& name, Int& value) {
+    if (link_exists(file, events + name)) {
+      value = read_scalar<int32_t>(file, events + name, H5T_NATIVE_INT32);
+    }
+  };
+  read_event("sos_inductions", meta.interval_events.sos_inductions);
+  read_event("phage_inductions", meta.interval_events.phage_inductions);
+  read_event("colicin_kills", meta.interval_events.colicin_kills);
+  read_event("cdi_kills", meta.interval_events.cdi_kills);
+  read_event("washout_deaths", meta.interval_events.washout_deaths);
+  read_event("boundary_deaths", meta.interval_events.boundary_deaths);
+  read_event("starvation_deaths", meta.interval_events.starvation_deaths);
+  read_event("divisions", meta.interval_events.divisions);
+  read_event("conjugation_transfers", meta.interval_events.conjugation_transfers);
+  read_event("mutations", meta.interval_events.mutations);
+  read_event("immigrations", meta.interval_events.immigrations);
+  read_event("cumulative_sos_inductions", meta.cumulative_events.sos_inductions);
+  read_event("cumulative_phage_inductions", meta.cumulative_events.phage_inductions);
+  read_event("cumulative_colicin_kills", meta.cumulative_events.colicin_kills);
+  read_event("cumulative_cdi_kills", meta.cumulative_events.cdi_kills);
+  read_event("cumulative_washout_deaths", meta.cumulative_events.washout_deaths);
+  read_event("cumulative_boundary_deaths", meta.cumulative_events.boundary_deaths);
+  read_event("cumulative_starvation_deaths", meta.cumulative_events.starvation_deaths);
+  read_event("cumulative_divisions", meta.cumulative_events.divisions);
+  read_event("cumulative_conjugation_transfers",
+             meta.cumulative_events.conjugation_transfers);
+  read_event("cumulative_mutations", meta.cumulative_events.mutations);
+  read_event("cumulative_immigrations", meta.cumulative_events.immigrations);
+  if (link_exists(file, events + "interval_start_step")) {
+    meta.event_window_start_step =
+        read_scalar<int32_t>(file, events + "interval_start_step", H5T_NATIVE_INT32);
+    meta.event_window_end_step =
+        read_scalar<int32_t>(file, events + "interval_end_step", H5T_NATIVE_INT32);
+    meta.event_window_start_time =
+        read_scalar<double>(file, events + "interval_start_time", H5T_NATIVE_DOUBLE);
+    meta.event_window_end_time =
+        read_scalar<double>(file, events + "interval_end_time", H5T_NATIVE_DOUBLE);
+  }
   return meta;
 }
 

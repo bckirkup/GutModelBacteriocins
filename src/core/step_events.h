@@ -43,6 +43,20 @@ struct StepEvents {
   Int mutations = 0;
   Int immigrations = 0;
 
+  void add(const StepEvents& other) {
+    sos_inductions += other.sos_inductions;
+    phage_inductions += other.phage_inductions;
+    colicin_kills += other.colicin_kills;
+    cdi_kills += other.cdi_kills;
+    washout_deaths += other.washout_deaths;
+    boundary_deaths += other.boundary_deaths;
+    starvation_deaths += other.starvation_deaths;
+    divisions += other.divisions;
+    conjugation_transfers += other.conjugation_transfers;
+    mutations += other.mutations;
+    immigrations += other.immigrations;
+  }
+
   void reset() { *this = StepEvents{}; }
 };
 
