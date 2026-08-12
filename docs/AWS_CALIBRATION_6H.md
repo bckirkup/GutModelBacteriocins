@@ -41,22 +41,24 @@ alone is therefore approximately:
 ```
 
 before the writer's metadata overhead and gzip-4 compression. The measured
-steady-state rate is approximately 25.3 wall seconds per biological step.
-The previous 360-step cadence therefore took approximately 2.53 wall hours
-between local checkpoint writes, which was longer than the observed Spot host
-lifetime. The calibration now uses:
+steady-state rate spans 16.8–25.3 wall seconds per biological step. The
+previous 360-step cadence therefore took 1.68–2.53 wall hours between local
+checkpoint writes, both longer than the observed Spot host lifetime. The
+calibration now uses the slow end for its safety margin:
 
 ```text
 restart.interval_steps = 30
 30 × 25.3 s = 759 s = 12.65 wall minutes between local writes
 759 s + 300 s sync poll = 1059 s = 17.65 wall minutes maximum
-durable-checkpoint exposure
+durable-checkpoint exposure at the slow end
 ```
 
 The 300-second term matters because the entrypoint's S3 sync loop can take up
 to one poll period to upload a newly written local checkpoint. The observed
 host lifetime was approximately 37 minutes, so the maximum exposure is less
-than half that lifetime rather than exceeding it.
+than half that lifetime rather than exceeding it. At the faster measured rate,
+the same cadence has at most 804 seconds (13.4 minutes) of exposure, making
+the 30-step cadence more comfortable rather than less necessary.
 
 With `restart.interval_steps = 30`, the unchanged two-day `total_time` contains:
 
@@ -88,13 +90,15 @@ objects are retained:
 9 × 4.40 GB = 39.6 GB uncompressed grid payload upper bound
 ```
 
-At the measured rate, six wall hours reaches approximately 854 steps and
+At the slow measured rate, six wall hours reaches approximately 854 steps and
 therefore produces up to 28 checkpoints. The full archive set is not yet
-reached; steps 360 and 720 plus the newest two are retained, for at
-most four objects or **17.6 GB uncompressed grid payload**. These figures are
-upper bounds based on the 4.40 GB uncompressed grid estimate per checkpoint;
-no compressed checkpoint size has yet been measured. The retained-count
-calculation is:
+reached; steps 360 and 720 plus the newest two are retained, for at most four
+objects or **17.6 GB uncompressed grid payload**. At the fast measured rate,
+approximately 1,286 steps produce up to 43 checkpoints; steps 360, 720, and
+1080 plus the newest two are retained, for at most five objects or
+**22.0 GB uncompressed grid payload**. These figures are upper bounds based on
+the 4.40 GB uncompressed grid estimate per checkpoint; no compressed
+checkpoint size has yet been measured. The retained-count calculation is:
 
 ```text
 archive_count = floor(checkpoint_steps / 360)
@@ -123,21 +127,29 @@ The first calibration attempt ran on the GPU path and CloudWatch confirmed:
 GPU: ON (device 0)
 ```
 
-Two progress events measured:
+Two progress-event intervals measured:
 
 ```text
-Step 1  → Step 60: 1492.104 wall seconds / 59 steps
+Attempt 1, Step 1  → Step 60: 1492.104 wall seconds / 59 steps
              = 25.3 wall seconds per biological step
              = 2.37 simulated seconds per wall second
+
+Attempt 2, latest progress line:
+             = 16.8 wall seconds per biological step
+             = 3.58 simulated seconds per wall second
 ```
+
+The widened eight-instance-type pool therefore has a measured throughput
+range, not one planning rate. The faster rate is consistent with a different
+instance type, but that attribution is inference: the monitoring role could
+not read the ECS container's underlying EC2 instance type.
 
 The resulting projections are:
 
-```text
-6 wall hours:  approximately 854 steps = 14.23 simulated hours
-2 simulated days (2880 steps): approximately 20.2 wall hours
-7 simulated days (10080 steps): approximately 70.8 wall hours
-```
+| Measured rate | 6 wall hours | 2 simulated days | 7 simulated days |
+| --- | ---: | ---: | ---: |
+| 25.3 s/step / 2.37 sim-s/wall-s | 854 steps / 14.2 sim h | 20.2 wall h | 70.8 wall h |
+| 16.8 s/step / 3.58 sim-s/wall-s | 1,286 steps / 21.4 sim h | 13.4 wall h | 47.0 wall h |
 
 The first attempt was reclaimed after approximately 37 wall minutes:
 
