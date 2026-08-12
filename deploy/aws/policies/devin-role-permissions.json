@@ -11,6 +11,15 @@
       "Resource": "*"
     },
     {
+      "Sid": "ReadOnlyHardwareAttribution",
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeContainerInstances",
+        "ec2:DescribeInstances"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "BatchSubmitToGutibmQueuesOnly",
       "Effect": "Allow",
       "Action": "batch:SubmitJob",

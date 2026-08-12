@@ -12,6 +12,14 @@ full campaigns (especially Stage 3: 7-day biology, 2 mm domain, GPU chemistry).
 For the pre-campaign throughput and resume calibration, see
 [AWS_CALIBRATION_6H.md](AWS_CALIBRATION_6H.md).
 
+The Devin monitoring role includes read-only `ecs:DescribeContainerInstances`
+and `ec2:DescribeInstances` access so calibration throughput can be attributed
+to the EC2 instance type rather than inferred from rates. The widened campaign
+pool intentionally trades predictability for Spot availability, so this
+attribution is needed before deciding whether to constrain the pool.
+`ec2:DescribeInstances` does not support resource-level scoping and therefore
+uses `"Resource": "*"`. These permissions are read-only and describe-only.
+
 ## Goals
 
 | Goal | Detail |
