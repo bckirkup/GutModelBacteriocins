@@ -89,16 +89,56 @@ ContentLength = 199,441,445 bytes = 0.199 GB compressed
 4.40 GB uncompressed grid payload / 0.199 GB compressed = 22.06:1
 ```
 
-This is one measured sample, not a guarantee for every checkpoint or host.
-Using it as a planning estimate, a complete two-day run has 96 checkpoints and
-costs approximately **19.1 GB compressed** if all are retained. A seven-day
-run has 336 checkpoints and costs approximately **67.0 GB compressed** if all
-are retained. The denser 120-step archive cadence reaches approximately:
+The first value is one lag-phase sample, not a guarantee for every checkpoint.
+The second campaign-scale sample is:
+
+```text
+step_000720.h5:
+ContentLength = 722,476,470 bytes = 0.722 GB compressed
+4.40 GB uncompressed grid payload / 0.722 GB compressed = 6.09:1
+```
+
+The third campaign-scale sample is:
+
+```text
+step_001080.h5:
+ContentLength = 899,386,733 bytes = 0.899 GB compressed
+4.40 GB uncompressed grid payload / 0.899 GB compressed = 4.89:1
+```
+
+The three samples show a monotone compression decline:
+
+| Step | Agents | ContentLength | Compression ratio |
+| ---: | ---: | ---: | ---: |
+| 360 | 654 | 199,441,445 B | 22.06:1 |
+| 720 | 5,377 | 722,476,470 B | 6.09:1 |
+| 1080 | 42,937 | 899,386,733 B | 4.89:1 |
+
+The step-1080 object is 4.51× larger than step 360, while the agent count is
+65.7× larger. The grid remains dominant: compressed grid datasets are
+approximately 197.8 MB, 718.4 MB, and 875.7 MB at steps 360, 720, and 1080.
+The third point confirms that the 22.06:1 value is a lag-phase artifact and
+that storage is approaching a populated-grid regime, although three points
+remain too few to fit a reliable long-horizon model.
+
+Using the three measured samples as endpoint scenarios, a complete two-day
+run with all 96 checkpoints spans approximately **19.1–86.3 GB compressed**.
+A seven-day run with all 336 checkpoints spans approximately **67.0–302.2 GB
+compressed**. These are endpoint scenarios, not confidence intervals. Because
+the ratio degrades with population, the 67.0 GB seven-day figure is a lower
+bound, not an estimate; the 302.2 GB endpoint is an observed-size scenario,
+not a forecast.
+
+The denser 120-step archive cadence reaches approximately:
 
 ```text
 172800 / 60 = 2880 steps over two simulated days
 10080 / 120 = 84 archive origins over seven simulated days
-84 × 0.199 GB ≈ 16.8 GB compressed archive payload
+84 × 0.199 GB ≈ 16.8 GB compressed archive payload at the step-360
+lag-phase sample, or
+84 × 0.722 GB ≈ 60.7 GB compressed archive payload at the step-720 sample.
+At the step-1080 sample:
+84 × 0.899 GB ≈ 75.5 GB compressed archive payload.
 ```
 
 The 4.40 GB figure is retained only as the uncompressed grid payload used to
@@ -107,11 +147,11 @@ For the six-hour window, the slow measured rate reaches approximately 854
 steps, producing 28 checkpoints and 7 archive origins at steps
 `120, 240, ..., 840`. The fast measured rate reaches approximately 1,286
 steps, producing 42 checkpoints and 10 archive origins through step 1200.
-With newest-two resume retention, the measured-size planning estimates are
-approximately 5.6 GB and 8.4 GB respectively if all produced checkpoints are
-kept, while the retained archive-plus-newest sets are approximately 1.6 GB
-and 2.2 GB respectively. These estimates assume the first sample's compressed
-size.
+At the three measured checkpoint sizes, those six-hour all-checkpoint payloads
+range from approximately 5.6–25.2 GB at the slow rate and 8.4–37.8 GB at the
+fast rate. Retained archive-plus-newest storage likewise spans approximately
+1.6–6.3 GB and 2.2–9.0 GB respectively. These ranges are conditional on the
+three observed samples; subsequent populated checkpoints may be larger.
 
 The retained-count calculation is:
 
@@ -123,9 +163,8 @@ retained_count = min(2, checkpoint_count) + archive_count
 
 The entrypoint prunes older uploaded local files and keeps the newest local
 checkpoint, so local scratch is not a 96-checkpoint accumulation. Actual
-compressed sizes should continue to be recorded from S3; the figures above use
-the first 199,441,445-byte sample and are not a guarantee for every host or
-checkpoint.
+compressed sizes should continue to be recorded from S3. Do not use the
+step-360 sample alone for long-run capacity planning.
 
 The Batch job role must have `s3:DeleteObject` on the output bucket for S3
 retention to reduce the archive. The setup scripts already include that
@@ -179,6 +218,25 @@ During normal execution, `status.json` correctly reported
 `resume_from_checkpoint: false`; the latter is expected because this was not
 a resumed attempt.
 
+The later checkpoint recorded:
+
+```json
+{
+  "step": "step_000720",
+  "size_bytes": 722476470,
+  "sha256": "f9e6cb1c86a0264e685652f81c91b66c3753c1b48fcd68383d3518dffbb05e5b",
+  "fidelity": "tier2_agents_grid",
+  "rng": "reseeded_from_config_seed"
+}
+```
+
+Attempt 2 reached step 780 before the host reclaim at 07:09:39 UTC. Attempt 3
+automatically resumed from `step_000720.h5` at 07:17:15 UTC; the restored
+checkpoint step was 720 and `status.json` reported
+`resume_from_checkpoint: true`. The lost uncheckpointed interval was 3,600
+simulated seconds (one hour), with 22m06s between the checkpoint upload and
+reclaim and 7m34s between reclaim and retry start.
+
 The resulting projections are:
 
 | Measured rate | 6 wall hours | 2 simulated days | 7 simulated days |
@@ -194,10 +252,8 @@ Host EC2 (instance i-0103a811de8d956c4) terminated.
 
 Batch classified the reclaim correctly and automatically started a retry
 without resubmission. This proves the submit-time ten-attempt retry policy and
-real `Host EC2*` classification. No checkpoint existed before that reclaim, so
-checkpoint-backed resume remains unproven: there was no
-`Resuming from restart artifact` line, no `latest.json`, and
-`resume_from_checkpoint` remained false.
+real `Host EC2*` classification. The later attempt-2/attempt-3 sequence also
+proves checkpoint-backed resume.
 
 ## Submit one calibration job
 

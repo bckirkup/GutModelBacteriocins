@@ -13,6 +13,20 @@
 
 using namespace gutibm;
 
+void test_progress_metrics_use_attempt_time() {
+  const ProgressMetrics fresh =
+      calculate_progress_metrics(60.0, 60.0, 180.0, 30.0);
+  assert(std::abs(fresh.pct - 33.3333333333) < 1e-9);
+  assert(std::abs(fresh.rate - 2.0) < 1e-12);
+  assert(std::abs(fresh.eta_s - 60.0) < 1e-12);
+
+  const ProgressMetrics resumed =
+      calculate_progress_metrics(120.0, 60.0, 180.0, 30.0);
+  assert(std::abs(resumed.pct - 66.6666666667) < 1e-9);
+  assert(std::abs(resumed.rate - 2.0) < 1e-12);
+  assert(std::abs(resumed.eta_s - 30.0) < 1e-12);
+}
+
 SimulationConfig progress_config(Real output_interval, uint64_t seed) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.lo = {0, 0, 0};
@@ -77,6 +91,7 @@ void test_heartbeat_when_progress_is_unscheduled() {
 }
 
 int main() {
+  test_progress_metrics_use_attempt_time();
   test_progress_line_fields();
   test_heartbeat_when_progress_is_unscheduled();
   std::cout << "All progress-report tests passed\n";
