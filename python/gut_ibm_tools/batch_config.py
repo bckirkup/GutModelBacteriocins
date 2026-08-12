@@ -164,13 +164,7 @@ def _expand_explicit_runs(runs_raw: Any) -> list[JobSpec]:
 def _expand_sweep(sweep_raw: Any) -> list[JobSpec]:
     if not isinstance(sweep_raw, dict) or not sweep_raw:
         raise BatchConfigError("'sweep' must be a non-empty object")
-    keys = sorted(sweep_raw.keys())
-    value_lists: list[list[Any]] = []
-    for key in keys:
-        values = sweep_raw[key]
-        if not isinstance(values, list) or not values:
-            raise BatchConfigError(f"sweep.{key} must be a non-empty array")
-        value_lists.append(values)
+    keys, value_lists = _sweep_dimensions(sweep_raw)
 
     jobs: list[JobSpec] = []
     seen: set[str] = set()
@@ -182,6 +176,19 @@ def _expand_sweep(sweep_raw: Any) -> list[JobSpec]:
         seen.add(job_id)
         jobs.append(JobSpec(job_id=job_id, overrides=overrides))
     return jobs
+
+
+def _sweep_dimensions(
+    sweep_raw: dict[str, Any],
+) -> tuple[list[str], list[list[Any]]]:
+    keys = sorted(sweep_raw.keys())
+    value_lists: list[list[Any]] = []
+    for key in keys:
+        values = sweep_raw[key]
+        if not isinstance(values, list) or not values:
+            raise BatchConfigError(f"sweep.{key} must be a non-empty array")
+        value_lists.append(values)
+    return keys, value_lists
 
 
 def _format_param_value(value: Any) -> str:
@@ -223,22 +230,7 @@ def _set_dot_path(config: dict[str, Any], dotted_key: str, value: Any) -> None:
         config[parts[0]] = value
         return
 
-    cursor: Any = config
-    for part in parts[:-1]:
-        if isinstance(cursor, list):
-            if not part.isdigit():
-                raise BatchConfigError(
-                    f"list index must be numeric in dot path '{dotted_key}'",
-                )
-            index = int(part)
-            cursor = cursor[index]
-        elif isinstance(cursor, dict):
-            if part not in cursor:
-                raise BatchConfigError(f"dot path segment not found: {part}")
-            cursor = cursor[part]
-        else:
-            raise BatchConfigError(f"cannot traverse dot path '{dotted_key}'")
-
+    cursor = _resolve_dot_path_parent(config, parts[:-1], dotted_key)
     last = parts[-1]
     if isinstance(cursor, list):
         if not last.isdigit():
@@ -250,6 +242,28 @@ def _set_dot_path(config: dict[str, Any], dotted_key: str, value: Any) -> None:
         cursor[last] = value
     else:
         raise BatchConfigError(f"cannot set dot path '{dotted_key}'")
+
+
+def _resolve_dot_path_parent(
+    config: dict[str, Any],
+    parts: list[str],
+    dotted_key: str,
+) -> Any:
+    cursor: Any = config
+    for part in parts:
+        if isinstance(cursor, list):
+            if not part.isdigit():
+                raise BatchConfigError(
+                    f"list index must be numeric in dot path '{dotted_key}'",
+                )
+            cursor = cursor[int(part)]
+        elif isinstance(cursor, dict):
+            if part not in cursor:
+                raise BatchConfigError(f"dot path segment not found: {part}")
+            cursor = cursor[part]
+        else:
+            raise BatchConfigError(f"cannot traverse dot path '{dotted_key}'")
+    return cursor
 
 
 def apply_overrides(config: dict[str, Any], overrides: dict[str, Any]) -> None:

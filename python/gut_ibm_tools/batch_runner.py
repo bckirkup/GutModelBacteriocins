@@ -202,17 +202,7 @@ def _run_single_job(
     job.finished_at = utc_now()
     job.exit_code = result.returncode
 
-    if _INTERRUPT.requested:
-        job.status = JOB_STATUS_INTERRUPTED
-    elif result.returncode == 0:
-        job.validation_failures = _maybe_validate(settings, job)
-        job.status = (
-            JOB_STATUS_FAILED if job.validation_failures else JOB_STATUS_DONE
-        )
-        if job.status == JOB_STATUS_DONE:
-            maybe_gzip_hdf5_file(paths["hdf5_path"])
-    else:
-        job.status = JOB_STATUS_FAILED
+    _finish_job(settings, job, result.returncode, paths["hdf5_path"])
 
     save_manifest(manifest, output_dir)
 
@@ -228,6 +218,25 @@ def _run_single_job(
     if job.status == JOB_STATUS_INTERRUPTED:
         return EXIT_INTERRUPTED
     return 0 if job.status == JOB_STATUS_DONE else 1
+
+
+def _finish_job(
+    settings: BatchSettings,
+    job: JobRecord,
+    exit_code: int,
+    hdf5_path: Path,
+) -> None:
+    if _INTERRUPT.requested:
+        job.status = JOB_STATUS_INTERRUPTED
+    elif exit_code == 0:
+        job.validation_failures = _maybe_validate(settings, job)
+        job.status = (
+            JOB_STATUS_FAILED if job.validation_failures else JOB_STATUS_DONE
+        )
+        if job.status == JOB_STATUS_DONE:
+            maybe_gzip_hdf5_file(hdf5_path)
+    else:
+        job.status = JOB_STATUS_FAILED
 
 
 def _prepare_manifest(

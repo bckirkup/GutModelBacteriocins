@@ -197,6 +197,17 @@ def evaluate_usefulness(
             )
         )
 
+    _append_resource_warnings(warnings, status, mem_warn_mb, gpu_warn_mb)
+
+    return warnings
+
+
+def _append_resource_warnings(
+    warnings: list[UsefulnessWarning],
+    status: dict[str, Any],
+    mem_warn_mb: float,
+    gpu_warn_mb: float,
+) -> None:
     if status.get("memory_pressure"):
         warnings.append(
             UsefulnessWarning(
@@ -205,25 +216,37 @@ def evaluate_usefulness(
                 "(graceful stop; resize instance before resume)",
             )
         )
-    else:
-        mem_free = status.get("mem_effective_free_mb")
-        if isinstance(mem_free, (int, float)) and mem_free < mem_warn_mb:
-            warnings.append(
-                UsefulnessWarning(
-                    "low_memory",
-                    f"mem_effective_free_mb={mem_free} below warn {mem_warn_mb}",
-                )
-            )
-        gpu_free = status.get("gpu_free_mb")
-        if isinstance(gpu_free, (int, float)) and gpu_free < gpu_warn_mb:
-            warnings.append(
-                UsefulnessWarning(
-                    "low_gpu_memory",
-                    f"gpu_free_mb={gpu_free} below warn {gpu_warn_mb}",
-                )
-            )
+        return
+    _append_low_resource_warning(
+        warnings,
+        status.get("mem_effective_free_mb"),
+        mem_warn_mb,
+        "low_memory",
+        "mem_effective_free_mb",
+    )
+    _append_low_resource_warning(
+        warnings,
+        status.get("gpu_free_mb"),
+        gpu_warn_mb,
+        "low_gpu_memory",
+        "gpu_free_mb",
+    )
 
-    return warnings
+
+def _append_low_resource_warning(
+    warnings: list[UsefulnessWarning],
+    value: Any,
+    threshold: float,
+    code: str,
+    label: str,
+) -> None:
+    if isinstance(value, (int, float)) and value < threshold:
+        warnings.append(
+            UsefulnessWarning(
+                code,
+                f"{label}={value} below warn {threshold}",
+            )
+        )
 
 
 def _parse_describe_job(payload: dict[str, Any], job_id: str) -> JobStatusReport:
