@@ -12,6 +12,10 @@
 
 set -euo pipefail
 
+readonly JQ_LENGTH='length'
+readonly JQ_COMPUTE_ENV_STATE='.computeEnvironments[0].state'
+readonly JQ_COMPUTE_ENV_STATUS='.computeEnvironments[0].status'
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   if [[ ! -f "${SCRIPT_DIR}/env.sh" ]]; then
@@ -35,8 +39,9 @@ cleanup() {
 }
 
 describe_ce() {
+  local name="$1"
   aws batch describe-compute-environments \
-    --compute-environments "$1" \
+    --compute-environments "${name}" \
     --region "${AWS_REGION}" \
     --output json
 }
@@ -222,7 +227,7 @@ ALL_SUBNETS_JSON="$(aws ec2 describe-subnets \
   --region "${AWS_REGION}" \
   --query 'Subnets[?State==`available`].SubnetId' \
   --output json)"
-if [[ "$(jq 'length' <<<"${ALL_SUBNETS_JSON}")" == "0" ]]; then
+if [[ "$(jq "${JQ_LENGTH}" <<<"${ALL_SUBNETS_JSON}")" == "0" ]]; then
   echo "ERROR: VPC ${VPC_ID} has no available subnets." >&2
   exit 1
 fi
@@ -391,8 +396,8 @@ FINAL_CE_JSON="$(describe_ce "${NEW_CE}")"
 FINAL_QUEUE_JSON="$(describe_queue)"
 echo "==> Campaign capacity replacement complete"
 echo "  new_ce=${NEW_CE}"
-echo "  new_ce_state=$(jq -r '.computeEnvironments[0].state' <<<"${FINAL_CE_JSON}")"
-echo "  new_ce_status=$(jq -r '.computeEnvironments[0].status' <<<"${FINAL_CE_JSON}")"
+echo "  new_ce_state=$(jq -r "${JQ_COMPUTE_ENV_STATE}" <<<"${FINAL_CE_JSON}")"
+echo "  new_ce_status=$(jq -r "${JQ_COMPUTE_ENV_STATUS}" <<<"${FINAL_CE_JSON}")"
 echo "  subnets=$(jq -c '.computeEnvironments[0].computeResources.subnets' <<<"${FINAL_CE_JSON}")"
 echo "  instance_types=$(jq -c '.computeEnvironments[0].computeResources.instanceTypes' <<<"${FINAL_CE_JSON}")"
 echo "  queue_state=$(jq -r '.jobQueues[0].state' <<<"${FINAL_QUEUE_JSON}")"

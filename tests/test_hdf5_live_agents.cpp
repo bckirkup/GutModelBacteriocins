@@ -9,6 +9,7 @@
 
 #include <cassert>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <iostream>
@@ -98,7 +99,7 @@ int main() {
   assert(std::abs(serialized_biomass - live_biomass) < 1.0e-30);
   assert(std::abs(serialized_biomass - (live_biomass + dead_biomass)) > 1.0e-30);
 
-  const char* aligned_datasets[] = {
+  const std::array<const char*, 7> aligned_datasets = {
       "lineage/step_000000/btuB_expression",
       "lineage/step_000000/fepA_expression",
       "lineage/step_000000/num_bi_loci",

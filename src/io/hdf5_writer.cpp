@@ -484,7 +484,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
                              H5T_NATIVE_DOUBLE, values.data(), values.size());
   };
   constexpr size_t kSpeciesNameWidth = 48;
-  std::vector<char> species_names(chem.specs().size() * kSpeciesNameWidth, '\0');
+  std::vector species_names(chem.specs().size() * kSpeciesNameWidth, '\0');
   for (size_t i = 0; i < chem.specs().size(); ++i) {
     const std::string& name = chem.specs()[i].name;
     const size_t count = std::min(name.size(), kSpeciesNameWidth - 1);
@@ -509,7 +509,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_flux("boundary_interval", flux.boundary_interval);
   const auto add_cumulative = [](const std::vector<Real>& prior,
                                  const std::vector<Real>& interval) {
-    std::vector<Real> values(prior.size(), 0.0);
+    std::vector values(prior.size(), 0.0);
     for (size_t i = 0; i < values.size(); ++i) {
       values[i] = prior[i] + interval[i];
     }
@@ -531,7 +531,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
       * (sim.domain().hi()[1] - sim.domain().lo()[1]);
   const Real interval_time = std::max(
       sim.time() - sim.event_window_start_time(), 0.0);
-  std::vector<Real> boundary_area_flux(flux.boundary_interval.size(), 0.0);
+  std::vector boundary_area_flux(flux.boundary_interval.size(), 0.0);
   if (area > 0.0 && interval_time > 0.0) {
     for (size_t i = 0; i < boundary_area_flux.size(); ++i) {
       boundary_area_flux[i] = flux.boundary_interval[i]
@@ -587,7 +587,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_dataset_1d_serial(fid, group + "/mean_mu_by_type", H5T_NATIVE_DOUBLE,
                           mean_mu.data(), k_max_types);
 
-  std::vector<double> mean_receptor(NUM_RECEPTORS, 0.0);
+  std::vector mean_receptor(NUM_RECEPTORS, 0.0);
   Int live = 0;
   for (const Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
@@ -703,7 +703,7 @@ void HDF5Writer::write_provenance_layer(Simulation& sim,
     y[i] = event.position[1];
     z[i] = event.position[2];
     strain[i] = event.strain;
-    cause[i] = static_cast<int32_t>(event.cause);
+    cause[i] = to_underlying(event.cause);
     cdi_attacker_id[i] = event.cdi_attacker_id;
     cdi_attacker_known[i] = event.cdi_attacker_known ? 1 : 0;
     for (size_t toxin = 0; toxin < 4; ++toxin) {

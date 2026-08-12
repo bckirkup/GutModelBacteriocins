@@ -63,7 +63,7 @@ void test_spatial_decay_not_temporal_amplitude() {
 
   Vec3 source = {50e-6, 50e-6, 25e-6};
   Vec3 target = {55e-6, 50e-6, 25e-6};
-  std::vector<Vec3> sources = {source};
+  std::vector sources = {source};
   std::vector<GreensFunctionParams> params = {
       params_from_bi(bi, 1.0e-18)};
   params[0].decay_rate = decay_rate;
@@ -131,7 +131,7 @@ void test_protease_disabled_no_decay() {
   const BICluster bi = PlasmidLibrary::colicin_B();
   Vec3 source = {50e-6, 50e-6, 25e-6};
   Vec3 target = {55e-6, 50e-6, 25e-6};
-  std::vector<Vec3> sources = {source};
+  std::vector sources = {source};
   std::vector<GreensFunctionParams> params = {
       params_from_bi(bi, 1.0e-18)};
 

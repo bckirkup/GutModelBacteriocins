@@ -46,7 +46,7 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
 
 void ChemicalFieldGpu::reset_agent_uptake() {
   if (!active_) return;
-  d_agent_uptake_.upload(std::vector<double>(3, 0.0));
+  d_agent_uptake_.upload(std::vector(3, 0.0));
 }
 
 void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) {
@@ -62,7 +62,7 @@ void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) {
 
 void ChemicalFieldGpu::reset_vbf_totals() {
   if (!active_) return;
-  d_vbf_totals_.upload(std::vector<double>(4, 0.0));
+  d_vbf_totals_.upload(std::vector(4, 0.0));
 }
 
 double* ChemicalFieldGpu::vbf_totals_device() {

@@ -23,7 +23,7 @@ namespace {
 
 void test_soa_indexing_isolates_receptors_per_agent() {
   constexpr Int n = 3;
-  std::vector<double> receptor_expr(static_cast<size_t>(NUM_RECEPTORS) * n, 0.0);
+  std::vector receptor_expr(static_cast<size_t>(NUM_RECEPTORS) * n, 0.0);
 
   // Distinct per-agent iron vs BtuB expression (Fur-like heterogeneity).
   for (Int i = 0; i < n; ++i) {

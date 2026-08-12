@@ -5,6 +5,7 @@
 #include "simulation.h"
 
 #include <cassert>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
@@ -23,9 +24,9 @@ namespace {
 double scalar(hid_t file, const std::string& path) {
   hid_t dataset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
   assert(dataset >= 0);
-  double values[16]{};
+  std::array<double, 16> values{};
   assert(H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
-                 H5P_DEFAULT, values) >= 0);
+                  H5P_DEFAULT, values.data()) >= 0);
   H5Dclose(dataset);
   return values[0];
 }

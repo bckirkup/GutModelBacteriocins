@@ -56,9 +56,9 @@ class PeriodicLineSolver {
     const Real diagonal_value = 1.0 + 2.0 * alpha_;
     const Real gamma = -diagonal_value;
     const Real corner = -alpha_;
-    std::vector<Real> lower(static_cast<size_t>(size_ - 1), -alpha_);
-    std::vector<Real> upper(static_cast<size_t>(size_ - 1), -alpha_);
-    std::vector<Real> diagonal(static_cast<size_t>(size_), diagonal_value);
+    std::vector lower(static_cast<size_t>(size_ - 1), -alpha_);
+    std::vector upper(static_cast<size_t>(size_ - 1), -alpha_);
+    std::vector diagonal(static_cast<size_t>(size_), diagonal_value);
     diagonal.front() -= gamma;
     diagonal.back() -= corner * corner / gamma;
     factorization_.factorize(lower, diagonal, upper);
@@ -109,9 +109,9 @@ class NeumannTopLineSolver {
  public:
   NeumannTopLineSolver(Int size, Real alpha) : size_(size), alpha_(alpha) {
     if (size_ <= 0) return;
-    std::vector<Real> lower(static_cast<size_t>(std::max(size_ - 1, 0)), -alpha_);
-    std::vector<Real> upper(static_cast<size_t>(std::max(size_ - 1, 0)), -alpha_);
-    std::vector<Real> diagonal(static_cast<size_t>(size_), 1.0 + 2.0 * alpha_);
+    std::vector lower(static_cast<size_t>(std::max(size_ - 1, 0)), -alpha_);
+    std::vector upper(static_cast<size_t>(std::max(size_ - 1, 0)), -alpha_);
+    std::vector diagonal(static_cast<size_t>(size_), 1.0 + 2.0 * alpha_);
     diagonal.back() = 1.0 + alpha_;
     factorization_.factorize(lower, diagonal, upper);
   }

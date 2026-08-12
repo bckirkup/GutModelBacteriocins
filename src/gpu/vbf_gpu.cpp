@@ -84,7 +84,7 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
 
   gpu_sync_compute();
   gpu_check_error("gpu_apply_vbf_coupling");
-  std::vector<double> values(4, 0.0);
+  std::vector values(4, 0.0);
   chem_gpu.download_vbf_totals(values);
   totals.carbon_source = values[0];
   totals.carbon_sink = values[1];

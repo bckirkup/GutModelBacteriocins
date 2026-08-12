@@ -211,8 +211,8 @@ int main() {
   std::cout << "HDF5 disabled — skipping toxin sentinel challenge.\n";
   return 0;
 #else
-  const std::vector<Int> producer_counts = {1, 10, 100, 1000, 10000};
-  const std::vector<Real> distances = {10e-6, 50e-6};
+  const std::vector producer_counts = {1, 10, 100, 1000, 10000};
+  const std::vector distances = {10e-6, 50e-6};
   for (size_t distance_index = 0; distance_index < distances.size();
        ++distance_index) {
     const Real distance = distances[distance_index];

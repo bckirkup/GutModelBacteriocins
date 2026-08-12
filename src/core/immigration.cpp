@@ -118,8 +118,8 @@ std::vector<Vec3> immigration_positions(
                      "falling back to uniform placement\n";
       }
       const std::vector<Vec3> candidates = candidate_batch(cfg, lo, hi, rng);
-      std::vector<Real> unused_distances(kCandidateBatchSize,
-                                         std::numeric_limits<Real>::max());
+      std::vector unused_distances(kCandidateBatchSize,
+                                   std::numeric_limits<Real>::max());
       reduce_distances(candidates, unused_distances);
       result.push_back(random_position(cfg, lo, hi, rng));
       continue;
@@ -130,8 +130,8 @@ std::vector<Vec3> immigration_positions(
     for (Int attempt = 0; attempt < 2; ++attempt) {
       const std::vector<Vec3> candidates = shell_candidate_batch(
           cfg, lo, hi, rng, anchors, project_position);
-      std::vector<Real> distances_sq(kCandidateBatchSize,
-                                     std::numeric_limits<Real>::max());
+      std::vector distances_sq(kCandidateBatchSize,
+                               std::numeric_limits<Real>::max());
       reduce_distances(candidates, distances_sq);
       Int best = 0;
       Real best_error = std::numeric_limits<Real>::max();

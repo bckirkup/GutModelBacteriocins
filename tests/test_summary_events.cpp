@@ -7,6 +7,7 @@
 #include "path_utils.h"
 
 #include <cassert>
+#include <array>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -40,9 +41,9 @@ std::vector<double> read_vector(hid_t file, const std::string& path) {
   hid_t dset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
   assert(dset >= 0);
   hid_t space = H5Dget_space(dset);
-  hsize_t dims[1] = {0};
+  std::array<hsize_t, 1> dims = {0};
   assert(H5Sget_simple_extent_ndims(space) == 1);
-  H5Sget_simple_extent_dims(space, dims, nullptr);
+  H5Sget_simple_extent_dims(space, dims.data(), nullptr);
   std::vector<double> values(static_cast<size_t>(dims[0]));
   H5Dread(dset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
           values.data());

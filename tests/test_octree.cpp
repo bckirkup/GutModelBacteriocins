@@ -78,7 +78,7 @@ void test_single_source() {
   Vec3 src = {500e-6, 500e-6, 50e-6};
   Real strength = 1e-18;
   std::vector<Vec3> positions = {src};
-  std::vector<Real> strengths = {strength};
+  std::vector strengths = {strength};
 
   Octree tree;
   tree.build(positions, strengths, domain);
@@ -103,7 +103,7 @@ void test_octree_construction() {
   RNG rng(42);
   int N = 100;
   std::vector<Vec3> positions(N);
-  std::vector<Real> strengths(N, 1e-18);
+  std::vector strengths(N, 1e-18);
   for (int i = 0; i < N; ++i) {
     positions[i] = {rng.uniform(0.0, 1e-3), rng.uniform(0.0, 1e-3),
                     rng.uniform(0.0, 100e-6)};
@@ -209,7 +209,7 @@ void test_far_field_only() {
   RNG rng(456);
   int N = 30;
   std::vector<Vec3> positions(N);
-  std::vector<Real> strengths(N, 1e-18);
+  std::vector strengths(N, 1e-18);
   for (int i = 0; i < N; ++i) {
     positions[i] = {rng.uniform(100e-6, 900e-6), rng.uniform(100e-6, 900e-6),
                     rng.uniform(10e-6, 90e-6)};

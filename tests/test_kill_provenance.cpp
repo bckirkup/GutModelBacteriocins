@@ -81,7 +81,7 @@ double read_double_scalar(hid_t file, const std::string& path) {
 int count_cause(const std::vector<int32_t>& causes, ProvenanceCause cause) {
   int count = 0;
   for (const int32_t value : causes) {
-    if (value == static_cast<int32_t>(cause)) ++count;
+    if (value == to_underlying(cause)) ++count;
   }
   return count;
 }

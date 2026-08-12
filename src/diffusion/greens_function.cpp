@@ -164,7 +164,7 @@ void superpose_sources_openmp(const std::vector<Vec3>& sources,
                               std::vector<Real>& grid_conc) {
   #pragma omp parallel
   {
-    std::vector<Real> local_conc(ctx.ncells, 0.0);
+    std::vector local_conc(ctx.ncells, 0.0);
     #pragma omp for schedule(dynamic)
     for (size_t s = 0; s < sources.size(); ++s) {
       accumulate_source_cutoff(ctx.sources.domain, ctx.sources.gf,
