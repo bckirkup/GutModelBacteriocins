@@ -240,3 +240,9 @@ add_test(
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_rebuild_and_run_script.sh"
 )
 set_tests_properties(rebuild_and_run_script PROPERTIES LABELS "unit")
+
+add_test(
+  NAME aws_capacity_script
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_aws_capacity_script.sh"
+)
+set_tests_properties(aws_capacity_script PROPERTIES LABELS "unit")

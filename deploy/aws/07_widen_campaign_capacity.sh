@@ -20,17 +20,6 @@ fi
 # shellcheck source=env.sh
 source "${SCRIPT_DIR}/env.sh"
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to build and validate the CE payloads." >&2
-  exit 1
-fi
-
-CE="${COMPUTE_ENV_CAMPAIGN}"
-NEW_CE="${COMPUTE_ENV_CAMPAIGN}-v2"
-QUEUE="${JOB_QUEUE_CAMPAIGN}"
-TMP_RESOURCES="$(mktemp)"
-RESTORE_OLD=1
-
 cleanup() {
   local rc=$?
   trap - EXIT
@@ -42,7 +31,6 @@ cleanup() {
   rm -f "${TMP_RESOURCES}"
   exit "${rc}"
 }
-trap cleanup EXIT
 
 describe_ce() {
   aws batch describe-compute-environments \
@@ -108,6 +96,90 @@ restore_old_ce() {
   return 1
 }
 
+validate_copy_fields() {
+  if [[ ! "${MIN_VCPUS}" =~ ^[0-9]+$ || ! "${MAX_VCPUS}" =~ ^[0-9]+$ ||
+        "$(jq 'length' <<<"${SECURITY_GROUPS_JSON}")" == "0" ||
+        -z "${INSTANCE_ROLE}" || "${INSTANCE_ROLE}" != *:instance-profile/* ||
+        -z "${SPOT_FLEET_ROLE}" ||
+        "$(jq 'length' <<<"${EC2_CONFIGURATION_JSON}")" == "0" ]]; then
+    echo "ERROR: legacy CE lacks required Spot/EC2 resource settings to copy." >&2
+    return 1
+  fi
+  if ! jq -e 'all(.[]; (.imageType | type) == "string")' \
+    <<<"${EC2_CONFIGURATION_JSON}" >/dev/null; then
+    echo "ERROR: legacy CE has an invalid ec2Configuration image type." >&2
+    return 1
+  fi
+}
+
+build_resources_payload() {
+  jq -n \
+    --argjson subnets "${ALL_SUBNETS_JSON}" \
+    --argjson instance_types "${INSTANCE_TYPES_JSON}" \
+    --argjson security_groups "${SECURITY_GROUPS_JSON}" \
+    --argjson ec2_configuration "${EC2_CONFIGURATION_JSON}" \
+    --arg min_vcpus "${MIN_VCPUS}" \
+    --arg max_vcpus "${MAX_VCPUS}" \
+    --arg instance_role "${INSTANCE_ROLE}" \
+    --arg spot_fleet_role "${SPOT_FLEET_ROLE}" \
+    '{
+       type: "SPOT",
+       allocationStrategy: "SPOT_CAPACITY_OPTIMIZED",
+       minvCpus: ($min_vcpus | tonumber),
+       maxvCpus: ($max_vcpus | tonumber),
+       desiredvCpus: 0,
+       instanceTypes: $instance_types,
+       subnets: $subnets,
+       securityGroupIds: $security_groups,
+       instanceRole: $instance_role,
+       spotIamFleetRole: $spot_fleet_role,
+       ec2Configuration: $ec2_configuration
+     }'
+}
+
+validate_replacement_json() {
+  local replacement_json="$1"
+  jq -e \
+    --argjson subnets "${ALL_SUBNETS_JSON}" \
+    --argjson instance_types "${INSTANCE_TYPES_JSON}" \
+    '.computeEnvironments[0]
+     | (.serviceRole | contains("AWSServiceRoleForBatch"))
+       and (.state != "INVALID")
+       and (.computeResources.subnets | sort == ($subnets | sort))
+       and (.computeResources.instanceTypes | sort == ($instance_types | sort))' \
+    <<<"${replacement_json}" >/dev/null
+}
+
+main() {
+  local arg
+  DRY_RUN=0
+  for arg in "$@"; do
+    case "${arg}" in
+      --dry-run)
+        DRY_RUN=1
+        ;;
+      --help|-h)
+        echo "Usage: bash deploy/aws/07_widen_campaign_capacity.sh [--dry-run]"
+        return 0
+        ;;
+      *)
+        echo "ERROR: unknown argument '${arg}'. Use --help for usage." >&2
+        return 2
+        ;;
+    esac
+  done
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "ERROR: jq is required to build and validate the CE payloads." >&2
+    return 1
+  fi
+
+  CE="${COMPUTE_ENV_CAMPAIGN}"
+  NEW_CE="${COMPUTE_ENV_CAMPAIGN}-v2"
+  QUEUE="${JOB_QUEUE_CAMPAIGN}"
+  TMP_RESOURCES="$(mktemp)"
+  RESTORE_OLD=1
+  trap cleanup EXIT
+
 echo "==> Inspect legacy campaign compute environment ${CE}"
 CE_JSON="$(describe_ce "${CE}")"
 if [[ "$(jq '.computeEnvironments | length' <<<"${CE_JSON}")" != "1" ]]; then
@@ -166,19 +238,7 @@ SPOT_FLEET_ROLE="$(jq -r '.spotIamFleetRole // empty' <<<"${CE_RESOURCES}")"
 EC2_CONFIGURATION_JSON="$(jq -c '[.ec2Configuration[]? | select(.imageType != null) | {imageType: .imageType}]' <<<"${CE_RESOURCES}")"
 # The AWS ComputeResource API requires spotIamFleetRole for SPOT resources.
 # The service-linked role replaces only the legacy Batch serviceRole.
-if [[ ! "${MIN_VCPUS}" =~ ^[0-9]+$ || ! "${MAX_VCPUS}" =~ ^[0-9]+$ ||
-      "$(jq 'length' <<<"${SECURITY_GROUPS_JSON}")" == "0" ||
-      -z "${INSTANCE_ROLE}" || "${INSTANCE_ROLE}" != *"/instance-profile/"* ||
-      -z "${SPOT_FLEET_ROLE}" ||
-      "$(jq 'length' <<<"${EC2_CONFIGURATION_JSON}")" == "0" ]]; then
-  echo "ERROR: legacy CE lacks required Spot/EC2 resource settings to copy." >&2
-  exit 1
-fi
-if ! jq -e 'all(.[]; (.imageType | type) == "string")' \
-  <<<"${EC2_CONFIGURATION_JSON}" >/dev/null; then
-  echo "ERROR: legacy CE has an invalid ec2Configuration image type." >&2
-  exit 1
-fi
+validate_copy_fields
 
 echo "  old_state=$(jq -r '.computeEnvironments[0].state' <<<"${CE_JSON}")"
 echo "  old_status=$(jq -r '.computeEnvironments[0].status' <<<"${CE_JSON}")"
@@ -187,57 +247,52 @@ echo "  target_subnets=$(jq -c '.' <<<"${ALL_SUBNETS_JSON}")"
 echo "  target_instance_types=$(jq -c '.' <<<"${INSTANCE_TYPES_JSON}")"
 
 echo "==> Ensure the old CE is ENABLED before changing the queue"
-restore_old_ce
+if ((DRY_RUN)); then
+  echo "  dry-run: would verify/re-enable ${CE}; no update call will be made"
+else
+  restore_old_ce
+fi
 
-jq -n \
-  --argjson subnets "${ALL_SUBNETS_JSON}" \
-  --argjson instance_types "${INSTANCE_TYPES_JSON}" \
-  --argjson security_groups "${SECURITY_GROUPS_JSON}" \
-  --argjson ec2_configuration "${EC2_CONFIGURATION_JSON}" \
-  --arg min_vcpus "${MIN_VCPUS}" \
-  --arg max_vcpus "${MAX_VCPUS}" \
-  --arg instance_role "${INSTANCE_ROLE}" \
-  --arg spot_fleet_role "${SPOT_FLEET_ROLE}" \
-  '{
-     type: "SPOT",
-     allocationStrategy: "SPOT_CAPACITY_OPTIMIZED",
-     minvCpus: ($min_vcpus | tonumber),
-     maxvCpus: ($max_vcpus | tonumber),
-     desiredvCpus: 0,
-     instanceTypes: $instance_types,
-     subnets: $subnets,
-     securityGroupIds: $security_groups,
-     instanceRole: $instance_role,
-     spotIamFleetRole: $spot_fleet_role,
-     ec2Configuration: $ec2_configuration
-   }' >"${TMP_RESOURCES}"
+build_resources_payload >"${TMP_RESOURCES}"
+if ((DRY_RUN)); then
+  echo "==> Dry-run create-compute-environment payload"
+  jq -n \
+    --arg name "${NEW_CE}" \
+    --argjson resources "$(cat "${TMP_RESOURCES}")" \
+    '{
+       computeEnvironmentName: $name,
+       type: "MANAGED",
+       state: "ENABLED",
+       computeResources: $resources
+     }'
+fi
 
 NEW_JSON="$(describe_ce "${NEW_CE}" 2>/dev/null || true)"
 if [[ -z "${NEW_JSON}" || "$(jq '.computeEnvironments | length' <<<"${NEW_JSON}")" == "0" ]]; then
   echo "==> Create service-linked-role campaign CE ${NEW_CE}"
   echo "  no --service-role is passed; Batch uses AWSServiceRoleForBatch"
-  aws batch create-compute-environment \
-    --compute-environment-name "${NEW_CE}" \
-    --type MANAGED \
-    --state ENABLED \
-    --compute-resources "file://${TMP_RESOURCES}" \
-    --region "${AWS_REGION}" >/dev/null
+  if ((DRY_RUN)); then
+    echo "  dry-run: would run aws batch create-compute-environment"
+  else
+    aws batch create-compute-environment \
+      --compute-environment-name "${NEW_CE}" \
+      --type MANAGED \
+      --state ENABLED \
+      --compute-resources "file://${TMP_RESOURCES}" \
+      --region "${AWS_REGION}" >/dev/null
+  fi
 else
-  if ! jq -e \
-    --argjson subnets "${ALL_SUBNETS_JSON}" \
-    --argjson instance_types "${INSTANCE_TYPES_JSON}" \
-    '.computeEnvironments[0]
-     | (.serviceRole | contains("AWSServiceRoleForBatch"))
-       and (.state != "INVALID")
-       and (.computeResources.subnets | sort == ($subnets | sort))
-       and (.computeResources.instanceTypes | sort == ($instance_types | sort))' \
-    <<<"${NEW_JSON}" >/dev/null; then
+  if ! validate_replacement_json "${NEW_JSON}"; then
     echo "ERROR: existing ${NEW_CE} does not match the required service-linked-role capacity shape." >&2
     exit 1
   fi
   echo "  ${NEW_CE} already exists; reusing it"
 fi
-wait_for_ce "${NEW_CE}"
+if ((DRY_RUN)); then
+  echo "  dry-run: would wait for ${NEW_CE} to become VALID/ENABLED"
+else
+  wait_for_ce "${NEW_CE}"
+fi
 
 QUEUE_JSON="$(describe_queue)"
 if [[ "$(jq '.jobQueues | length' <<<"${QUEUE_JSON}")" != "1" ]]; then
@@ -275,14 +330,20 @@ done < <(jq -r --arg old_ce "${CE}" \
 # unrelated fallback CEs at their existing orders. Jobs are associated with
 # the queue, so queued jobs remain eligible after this repoint.
 echo "==> Repoint queue ${QUEUE} to ${NEW_CE}; old CE is intentionally dropped"
-aws batch update-job-queue \
-  --job-queue "${QUEUE}" \
-  --state ENABLED \
-  --priority "${QUEUE_PRIORITY}" \
-  --compute-environment-order "${QUEUE_ORDER_ARGS[@]}" \
-  --region "${AWS_REGION}" >/dev/null
+if ((DRY_RUN)); then
+  printf '  dry-run: would run aws batch update-job-queue --compute-environment-order %q\n' \
+    "${QUEUE_ORDER_ARGS[@]}"
+else
+  aws batch update-job-queue \
+    --job-queue "${QUEUE}" \
+    --state ENABLED \
+    --priority "${QUEUE_PRIORITY}" \
+    --compute-environment-order "${QUEUE_ORDER_ARGS[@]}" \
+    --region "${AWS_REGION}" >/dev/null
+fi
 
 for _ in $(seq 1 60); do
+  ((DRY_RUN)) && break
   QUEUE_JSON="$(describe_queue)"
   if jq -e --arg new_ce "${NEW_CE}" --arg old_ce "${CE}" \
     '.jobQueues | length == 1 and .[0].status == "VALID" and
@@ -301,7 +362,7 @@ for _ in $(seq 1 60); do
   echo "  queue ${QUEUE}: waiting for VALID/ENABLED order"
   sleep 5
 done
-if ! jq -e --arg new_ce "${NEW_CE}" --arg old_ce "${CE}" \
+if (( ! DRY_RUN )) && ! jq -e --arg new_ce "${NEW_CE}" --arg old_ce "${CE}" \
   '.jobQueues | length == 1 and .[0].status == "VALID" and
    .[0].state == "ENABLED" and
    (.[0].computeEnvironmentOrder | any(
@@ -317,6 +378,11 @@ if ! jq -e --arg new_ce "${NEW_CE}" --arg old_ce "${CE}" \
   exit 1
 fi
 
+if ((DRY_RUN)); then
+  RESTORE_OLD=0
+  echo "OK: dry-run completed without AWS mutations"
+  return 0
+fi
 restore_old_ce
 RESTORE_OLD=0
 FINAL_CE_JSON="$(describe_ce "${NEW_CE}")"
@@ -331,3 +397,8 @@ echo "  queue_state=$(jq -r '.jobQueues[0].state' <<<"${FINAL_QUEUE_JSON}")"
 echo "  queue_status=$(jq -r '.jobQueues[0].status' <<<"${FINAL_QUEUE_JSON}")"
 echo "  queue_compute_environments=$(jq -c '.jobQueues[0].computeEnvironmentOrder' <<<"${FINAL_QUEUE_JSON}")"
 echo "OK: new CE and queue are VALID/ENABLED; old CE remains ENABLED; job definitions were not modified"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi
