@@ -23,6 +23,7 @@ struct NutrientFluxAccounting {
   std::vector<Real> vbf_sink_interval;
   std::vector<Real> vbf_sink_cumulative;
   std::vector<Real> agent_uptake_interval;
+  std::vector<Real> agent_uptake_step;
   std::vector<Real> agent_uptake_cumulative;
 
   void init(size_t species_count) {
@@ -33,6 +34,7 @@ struct NutrientFluxAccounting {
     vbf_sink_interval.assign(species_count, 0.0);
     vbf_sink_cumulative.assign(species_count, 0.0);
     agent_uptake_interval.assign(species_count, 0.0);
+    agent_uptake_step.assign(species_count, 0.0);
     agent_uptake_cumulative.assign(species_count, 0.0);
   }
 
@@ -47,6 +49,20 @@ struct NutrientFluxAccounting {
 
   void add_boundary(Int species, Real amount) {
     boundary_interval[static_cast<size_t>(species)] += amount;
+  }
+
+  void add_agent_uptake(Int species, Real amount) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    agent_uptake_step[static_cast<size_t>(species)] += amount;
+  }
+
+  void commit_agent_uptake_step() {
+    for (size_t i = 0; i < agent_uptake_step.size(); ++i) {
+      agent_uptake_interval[i] += agent_uptake_step[i];
+      agent_uptake_step[i] = 0.0;
+    }
   }
 
   void close_interval() {
@@ -108,6 +124,7 @@ class ChemicalField {
 
   // Sum rank-local agent reaction fields before spatial diffusion.
   void sum_reactions_across_ranks();
+  void sum_agent_uptake_across_ranks();
 
   // Get species index by name
   Int find(std::string_view name) const;

@@ -354,6 +354,18 @@ void ChemicalField::sum_reactions_across_ranks() {
 #endif
 }
 
+void ChemicalField::sum_agent_uptake_across_ranks() {
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) return;
+  MPI_Allreduce(MPI_IN_PLACE, agent_uptake_step.data(), nspec_,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+#endif
+}
+
 void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   if (dt <= 0.0 || domain.dx() <= 0.0) return;
 

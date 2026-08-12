@@ -6,6 +6,7 @@
 #include "dispatch.h"
 #include "gpu_kernels.h"
 #include "device_memory.h"
+#include "species_names.h"
 
 #include <cstdlib>
 
@@ -38,7 +39,39 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   }
   d_boundary_conc_.upload(bc);
   d_boundary_injected_.allocate(static_cast<size_t>(nspec_));
+  d_agent_uptake_.allocate(3);
+  d_vbf_totals_.allocate(4);
   sync_to_device(field);
+}
+
+void ChemicalFieldGpu::reset_agent_uptake() {
+  if (!active_) return;
+  d_agent_uptake_.upload(std::vector<double>(3, 0.0));
+}
+
+void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) {
+  if (!active_) return;
+  gpu_sync_compute();
+  std::vector<double> values(3, 0.0);
+  d_agent_uptake_.download(values);
+  const Int carbon = field.find(species::CARBON);
+  const Int iron = field.find(species::IRON);
+  if (carbon >= 0) field.flux_accounting().add_agent_uptake(carbon, values[0]);
+  if (iron >= 0) field.flux_accounting().add_agent_uptake(iron, values[1]);
+}
+
+void ChemicalFieldGpu::reset_vbf_totals() {
+  if (!active_) return;
+  d_vbf_totals_.upload(std::vector<double>(4, 0.0));
+}
+
+double* ChemicalFieldGpu::vbf_totals_device() {
+  return active_ ? d_vbf_totals_.data() : nullptr;
+}
+
+void ChemicalFieldGpu::download_vbf_totals(std::vector<double>& values) {
+  if (!active_) return;
+  d_vbf_totals_.download(values);
 }
 
 void ChemicalFieldGpu::sync_to_device(const ChemicalField& field) {

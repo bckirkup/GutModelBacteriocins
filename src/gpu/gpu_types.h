@@ -64,6 +64,10 @@ struct VbfLaunchParams {
   double mucin_k_liberation = 0.0;
 };
 
+struct AgentUptakeDevice {
+  double* totals = nullptr;
+};
+
 struct MechanicsLaunchParams {
   double hertz_k = 0.0;
   int hertzian_enabled = 0;

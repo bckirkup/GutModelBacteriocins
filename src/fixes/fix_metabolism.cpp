@@ -45,6 +45,7 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   auto& agents = sim.agents();
   auto& ag = sim.agents_gpu();
   auto& cg = sim.chem_gpu();
+  cg.reset_agent_uptake();
   ag.sync_from_host(agents);
   const auto& chem = sim.chemical_field();
   Int i_carbon = chem.find(species::CARBON);
@@ -70,10 +71,11 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
             o2cfg.boost_max,
             o2cfg.Km,
           },
-          dt)) {
+          cg.agent_uptake_device(), dt)) {
     return false;
   }
   ag.sync_to_host(agents);
+  cg.download_agent_uptake(sim.chemical_field());
   return true;
 }
 
@@ -397,6 +399,8 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
 
   if (i_carbon >= 0 && cell_vol > 0.0) {
     Real delta_c = d_biomass * cfg_.yield_carbon / (cell_vol * dt);
+    chem.flux_accounting().add_agent_uptake(
+        i_carbon, d_biomass * cfg_.yield_carbon);
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif
@@ -404,6 +408,8 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   }
   if (i_iron >= 0 && cell_vol > 0.0) {
     Real delta_fe = d_biomass * cfg_.yield_iron / (cell_vol * dt);
+    chem.flux_accounting().add_agent_uptake(
+        i_iron, d_biomass * cfg_.yield_iron);
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif

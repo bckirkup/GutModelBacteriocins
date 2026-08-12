@@ -39,7 +39,6 @@ void sum_reactions_with_optional_device(ChemistryPipelineInput& in) {
 
 ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real dt) {
   ChemistryPipelineResult result;
-  std::vector<Real> agent_reaction_amount(in.chem.num_species(), 0.0);
 
   bool applied_o2_on_gpu = false;
   if (in.gpu_active) {
@@ -60,36 +59,28 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   // Every rank holds the full chemical grid but only its local agents. Sum the
   // rank-local agent reaction fields before adding the identical global VBF.
   sum_reactions_with_optional_device(in);
-  for (Int s = 0; s < in.chem.num_species(); ++s) {
-    for (Int cell = 0; cell < in.chem.ncells(); ++cell) {
-      agent_reaction_amount[static_cast<size_t>(s)] +=
-          in.chem.reac(s, cell) * in.domain.dx() * in.domain.dx()
-          * in.domain.dx() * dt;
-    }
-  }
-
   const Int carbon = in.chem.find(species::CARBON);
   const Int iron = in.chem.find(species::IRON);
   const Int oxygen = in.chem.find(species::OXYGEN);
   VbfFluxTotals vbf_totals;
-  const auto record_uptake = [&](Int species_index, Real amount) {
-    if (species_index < 0) return;
-    const Real uptake = std::max(-amount, 0.0);
-    in.flux_accounting.add_interval(species_index, 0.0, 0.0, 0.0, uptake);
-  };
-  if (carbon >= 0) {
-    record_uptake(carbon, agent_reaction_amount[static_cast<size_t>(carbon)]);
-  }
-  if (iron >= 0) {
-    record_uptake(iron, agent_reaction_amount[static_cast<size_t>(iron)]);
-  }
+  in.chem.sum_agent_uptake_across_ranks();
+  in.chem.flux_accounting().commit_agent_uptake_step();
   bool reactions_on_device = false;
-  // Keep VBF coupling on the host so the accounting uses the same expression
-  // as the reaction update. The resulting reaction field is uploaded before
-  // the existing device concentration integration.
-  in.vbf.apply_nutrient_coupling(in.chem, in.domain, dt,
-                                 in.oxygen, in.acetate, in.mucin,
-                                 &vbf_totals);
+  bool applied_vbf_on_gpu = false;
+  if (in.gpu_active && applied_o2_on_gpu) {
+    in.chem_gpu.sync_reactions_to_device(in.chem);
+    reactions_on_device = true;
+    in.chem_gpu.reset_vbf_totals();
+    applied_vbf_on_gpu = gpu_apply_vbf_coupling(
+        in.chem_gpu, in.chem, in.domain, in.vbf,
+        in.oxygen, in.acetate, in.mucin, vbf_totals, dt);
+  }
+  if (!applied_vbf_on_gpu) {
+    reactions_on_device = false;
+    in.vbf.apply_nutrient_coupling(in.chem, in.domain, dt,
+                                   in.oxygen, in.acetate, in.mucin,
+                                   &vbf_totals);
+  }
   if (carbon >= 0) {
     in.flux_accounting.add_interval(
         carbon, 0.0, vbf_totals.carbon_source,
@@ -104,8 +95,10 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
         oxygen, 0.0, 0.0, vbf_totals.oxygen_sink, 0.0);
   }
   if (in.gpu_active) {
-    in.chem_gpu.sync_reactions_to_device(in.chem);
-    reactions_on_device = true;
+    if (!reactions_on_device) {
+      in.chem_gpu.sync_reactions_to_device(in.chem);
+      reactions_on_device = true;
+    }
   }
 
   if (in.gpu_active) {

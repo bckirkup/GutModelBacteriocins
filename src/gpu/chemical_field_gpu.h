@@ -27,6 +27,14 @@ class ChemicalFieldGpu {
   bool apply_reactions(double dt, const Domain& domain);
   bool apply_diffusion(const Domain& domain, const ChemicalField& field, Real dt);
   bool apply_boundaries(const Domain& domain, ChemicalField& field);
+  void reset_agent_uptake();
+  void download_agent_uptake(ChemicalField& field);
+  void reset_vbf_totals();
+  double* vbf_totals_device();
+  void download_vbf_totals(std::vector<double>& values);
+  double* agent_uptake_device() {
+    return active_ ? d_agent_uptake_.data() : nullptr;
+  }
 
   bool try_sum_reactions_on_device(ChemicalField& field);
 
@@ -45,6 +53,8 @@ class ChemicalFieldGpu {
   std::vector<DeviceBuffer<double>> d_reac_;
   DeviceBuffer<double> d_boundary_conc_;
   DeviceBuffer<double> d_boundary_injected_;
+  DeviceBuffer<double> d_agent_uptake_;
+  DeviceBuffer<double> d_vbf_totals_;
 };
 
 }  // namespace gutibm

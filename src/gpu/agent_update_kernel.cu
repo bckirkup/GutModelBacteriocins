@@ -24,7 +24,7 @@ __global__ void metabolism_kernel(
     double metE_acetate_km, double eut_max_penalty, double eut_km,
     double yield_carbon, double yield_iron, double yield_b12,
     int o2_enabled, double o2_boost_max, double o2_Km,
-    const double* conc_oxygen) {
+    const double* conc_oxygen, double* agent_uptake_totals) {
 
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
@@ -113,10 +113,14 @@ __global__ void metabolism_kernel(
   if (cell_vol <= 0.0) return;
 
   if (reac_carbon) {
-    atomicAdd(&reac_carbon[cell], -d_biomass * yield_carbon / (cell_vol * dt));
+    const double uptake = d_biomass * yield_carbon;
+    atomicAdd(&reac_carbon[cell], -uptake / (cell_vol * dt));
+    if (agent_uptake_totals) atomicAdd(&agent_uptake_totals[0], uptake);
   }
   if (reac_iron) {
-    atomicAdd(&reac_iron[cell], -d_biomass * yield_iron / (cell_vol * dt));
+    const double uptake = d_biomass * yield_iron;
+    atomicAdd(&reac_iron[cell], -uptake / (cell_vol * dt));
+    if (agent_uptake_totals) atomicAdd(&agent_uptake_totals[1], uptake);
   }
   // Spec 6 §3 — B12/corrinoid is not depleted (constant bioavailable pool).
   // reac_b12 / yield_b12 retained in the signature for ABI stability but unused.
@@ -139,7 +143,7 @@ void launch_metabolism_kernel(
     double metE_acetate_km, double eut_max_penalty, double eut_km,
     double yield_carbon, double yield_iron, double yield_b12,
     int o2_enabled, double o2_boost_max, double o2_Km,
-    const double* conc_oxygen,
+    const double* conc_oxygen, double* agent_uptake_totals,
     cudaStream_t stream) {
   if (num_agents <= 0) return;
   int block = 256;
@@ -155,7 +159,7 @@ void launch_metabolism_kernel(
       maintenance_rate, metE_penalty, metE_acetate_max_factor,
       metE_acetate_km, eut_max_penalty, eut_km,
       yield_carbon, yield_iron, yield_b12,
-      o2_enabled, o2_boost_max, o2_Km, conc_oxygen);
+      o2_enabled, o2_boost_max, o2_Km, conc_oxygen, agent_uptake_totals);
 }
 
 }  // namespace gpu
