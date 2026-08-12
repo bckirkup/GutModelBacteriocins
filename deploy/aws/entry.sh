@@ -251,13 +251,19 @@ parse_progress_from_log() {
   MU_AVG=""
   RATE=""
   ETA_S=""
+  HEARTBEAT_STEP=""
+  HEARTBEAT_SIM_TIME_S=""
+  HEARTBEAT_WALL_ELAPSED_S=""
+  PROGRESS_LINE_STEP=""
   local line
   line="$(grep -E '^Step ' "${RUN_LOG}" 2>/dev/null | tail -n 1 || true)"
-  [[ -n "${line}" ]] || return 0
+  local heartbeat_line
+  heartbeat_line="$(grep -E '^Heartbeat ' "${RUN_LOG}" 2>/dev/null | tail -n 1 || true)"
   # Example:
   # Step 10  t=600s  dt=60s  global_agents=50  local_agents=50  mu_avg=5e-4  pct=10  rate=1.2  eta_s=4500
   if [[ "${line}" =~ Step[[:space:]]+([0-9]+) ]]; then
     STEP="${BASH_REMATCH[1]}"
+    PROGRESS_LINE_STEP="${STEP}"
   fi
   if [[ "${line}" =~ t=([0-9.eE+-]+)s ]]; then
     SIM_TIME_S="${BASH_REMATCH[1]}"
@@ -276,6 +282,15 @@ parse_progress_from_log() {
   fi
   if [[ "${line}" =~ eta_s=([0-9.eE+-]+) ]]; then
     ETA_S="${BASH_REMATCH[1]}"
+  fi
+  if [[ "${heartbeat_line}" =~ step=([0-9]+) ]]; then
+    HEARTBEAT_STEP="${BASH_REMATCH[1]}"
+  fi
+  if [[ "${heartbeat_line}" =~ t=([0-9.eE+-]+)s ]]; then
+    HEARTBEAT_SIM_TIME_S="${BASH_REMATCH[1]}"
+  fi
+  if [[ "${heartbeat_line}" =~ wall_elapsed_s=([0-9.eE+-]+) ]]; then
+    HEARTBEAT_WALL_ELAPSED_S="${BASH_REMATCH[1]}"
   fi
   if [[ -f "${WORK}/input.json" ]]; then
     TOTAL_TIME_S="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("total_time",""))' "${WORK}/input.json" 2>/dev/null || true)"
@@ -371,6 +386,10 @@ write_status_json() {
   GUTIBM_MU_AVG="${MU_AVG}" \
   GUTIBM_RATE="${RATE}" \
   GUTIBM_ETA_S="${ETA_S}" \
+  GUTIBM_PROGRESS_LINE_STEP="${PROGRESS_LINE_STEP}" \
+  GUTIBM_HEARTBEAT_STEP="${HEARTBEAT_STEP}" \
+  GUTIBM_HEARTBEAT_SIM_TIME_S="${HEARTBEAT_SIM_TIME_S}" \
+  GUTIBM_HEARTBEAT_WALL_ELAPSED_S="${HEARTBEAT_WALL_ELAPSED_S}" \
   GUTIBM_WALL_ELAPSED_S="${wall_elapsed}" \
   GUTIBM_CHECKPOINT_UPLOADED_AT="${CHECKPOINT_UPLOADED_AT:-}" \
   GUTIBM_CHECKPOINT_KEY="${CHECKPOINT_KEY:-}" \
@@ -407,6 +426,8 @@ work = Path(os.environ["GUTIBM_WORK_DIR"])
 spot = os.environ.get("GUTIBM_SPOT_INTERRUPTION", "0") == "1"
 mem_pressure = os.environ.get("GUTIBM_MEMORY_PRESSURE", "0") == "1"
 mem_pressure_key = os.environ["GUTIBM_STATUS_MEMORY_PRESSURE_KEY"]
+progress_step = num_or_none(os.environ.get("GUTIBM_PROGRESS_LINE_STEP", ""))
+heartbeat_step = num_or_none(os.environ.get("GUTIBM_HEARTBEAT_STEP", ""))
 payload = {
     "job_id": os.environ.get("GUTIBM_JOB_ID") or None,
     "array_index": os.environ.get("GUTIBM_ARRAY_INDEX") or None,
@@ -420,6 +441,20 @@ payload = {
     "rate": num_or_none(os.environ.get("GUTIBM_RATE", "")),
     "wall_elapsed_s": num_or_none(os.environ.get("GUTIBM_WALL_ELAPSED_S", "")),
     "eta_s": num_or_none(os.environ.get("GUTIBM_ETA_S", "")),
+    "progress_line_step": num_or_none(
+        os.environ.get("GUTIBM_PROGRESS_LINE_STEP", "")
+    ),
+    "heartbeat_step": num_or_none(os.environ.get("GUTIBM_HEARTBEAT_STEP", "")),
+    "heartbeat_sim_time_s": num_or_none(
+        os.environ.get("GUTIBM_HEARTBEAT_SIM_TIME_S", "")
+    ),
+    "heartbeat_wall_elapsed_s": num_or_none(
+        os.environ.get("GUTIBM_HEARTBEAT_WALL_ELAPSED_S", "")
+    ),
+    "progress_line_stale": (
+        heartbeat_step is not None
+        and (progress_step is None or heartbeat_step > progress_step)
+    ),
     "checkpoint_uploaded_at": os.environ.get("GUTIBM_CHECKPOINT_UPLOADED_AT") or None,
     "checkpoint_key": os.environ.get("GUTIBM_CHECKPOINT_KEY") or None,
     "resume_from_checkpoint": os.environ.get("GUTIBM_RESUME_FROM_CHECKPOINT", "0") == "1",

@@ -859,6 +859,13 @@ void print_progress_line(Int step_count, Real sim_time, Real dt, Int global_agen
             << "\n" << std::flush;
   std::cout.unsetf(std::ios_base::floatfield);
 }
+
+void print_heartbeat_line(Int step_count, Real sim_time, double wall_elapsed_s) {
+  std::cout << "Heartbeat step=" << step_count
+            << "  t=" << sim_time << "s"
+            << "  wall_elapsed_s=" << wall_elapsed_s
+            << "\n" << std::flush;
+}
 }  // namespace
 
 void Simulation::run() {
@@ -866,6 +873,9 @@ void Simulation::run() {
   Real last_dt = cfg_.time.bio_dt;
   bool stopped_for_population = false;
   const auto wall_start = std::chrono::steady_clock::now();
+  const auto heartbeat_interval = std::chrono::seconds(60);
+  auto next_heartbeat = wall_start;
+  bool heartbeat_emitted = false;
 
   // Initial snapshot only for fresh runs (not checkpoint resume).
   if (hdf5_.is_enabled() && clock_.step_count == 0) {
@@ -907,11 +917,20 @@ void Simulation::run() {
 
     maybe_write_restart();
 
+    const auto wall_now = std::chrono::steady_clock::now();
+    if (rank == 0 && (!heartbeat_emitted || wall_now >= next_heartbeat)) {
+      const double wall_elapsed_s =
+          std::chrono::duration<double>(wall_now - wall_start).count();
+      print_heartbeat_line(clock_.step_count, clock_.time, wall_elapsed_s);
+      heartbeat_emitted = true;
+      next_heartbeat = wall_now + heartbeat_interval;
+    }
+
     // Console progress and in-memory lineage snapshots use output_interval (seconds).
     if (clock_.time >= clock_.next_output) {
       if (rank == 0) {
-        const double wall_elapsed_s = std::chrono::duration<double>(
-            std::chrono::steady_clock::now() - wall_start).count();
+        const double wall_elapsed_s =
+            std::chrono::duration<double>(wall_now - wall_start).count();
         print_progress_line(clock_.step_count, clock_.time, dt,
                             mpi_stats_.global_agent_count,
                             agents_.size(),
