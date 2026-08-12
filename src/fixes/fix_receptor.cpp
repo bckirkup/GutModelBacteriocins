@@ -24,7 +24,7 @@ void FixReceptor::compute(Real dt) {
   auto& rng    = sim_.rng();
   Int n = agents.size();
 
-  std::vector<Real> kill_probs(n, 0.0);
+  std::vector kill_probs(n, 0.0);
 
   bool gpu_ok = false;
   if (sim_.gpu_active()) {

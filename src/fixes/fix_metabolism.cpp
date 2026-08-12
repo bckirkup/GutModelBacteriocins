@@ -54,8 +54,8 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   Int i_acetate = chem.find(species::ACETATE);
   Int i_eut = chem.find(species::ETHANOLAMINE);
   Int i_o2 = chem.find(species::OXYGEN);
-  const auto& o2cfg = sim.config().chem_env.oxygen;
-  if (!ag.run_metabolism(
+  if (const auto& o2cfg = sim.config().chem_env.oxygen;
+      !ag.run_metabolism(
           sim.domain(), cfg,
           {
             i_carbon >= 0 ? cg.conc_device(i_carbon) : nullptr,
@@ -129,7 +129,7 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
     touched_cells_.clear();
   } else {
     for (const Int cell : touched_cells_) {
-      const size_t index = static_cast<size_t>(cell);
+      const auto index = static_cast<size_t>(cell);
       biomass_by_cell_[index] = 0.0;
       fepA_biomass_by_cell_[index] = 0.0;
       occupancy_by_cell_[index] = 0;
@@ -140,7 +140,7 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
     if (agent.state == PhenoState::DEAD) continue;
     const Int cell = agent.grid_cell;
     if (cell < 0 || cell >= num_cells) continue;
-    const size_t index = static_cast<size_t>(cell);
+    const auto index = static_cast<size_t>(cell);
     if (occupancy_by_cell_[index] == 0) touched_cells_.push_back(cell);
     biomass_by_cell_[index] += agent.biomass;
     fepA_biomass_by_cell_[index] +=
@@ -162,7 +162,7 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
   }
 
   for (Int cell = 0; cell < num_cells; ++cell) {
-    const size_t index = static_cast<size_t>(cell);
+    const auto index = static_cast<size_t>(cell);
     if (occupancy_by_cell_[index] == 0) continue;
 
     const Real s_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;

@@ -101,10 +101,8 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     }
   }
 
-  if (in.gpu_active) {
-    if (!reactions_on_device) {
-      in.chem_gpu.sync_reactions_to_device(in.chem);
-    }
+  if (in.gpu_active && !reactions_on_device) {
+    in.chem_gpu.sync_reactions_to_device(in.chem);
     result.reactions_on_gpu = in.chem_gpu.apply_reactions(dt, in.domain);
   }
 

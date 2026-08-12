@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <format>
 #include <iostream>
 #include <iomanip>
 #include <limits>
@@ -487,9 +488,9 @@ void test_near_colony_kill_separation() {
     assert(near.distance_error <= kEncounterDistanceTolerance);
     assert(far.distance_error <= kEncounterDistanceTolerance);
     assert(far.alive);
-    std::cout << std::scientific << std::setprecision(3)
-              << "  encounter " << i << " distance errors="
-              << near.distance_error << "/" << far.distance_error << "\n";
+    std::cout << std::format(
+        "  encounter {} distance errors={:.3e}/{:.3e}\n", i,
+        near.distance_error, far.distance_error);
     near_kills += near.colicin_kills;
     far_kills += far.colicin_kills;
   }

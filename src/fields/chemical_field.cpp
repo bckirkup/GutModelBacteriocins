@@ -233,7 +233,7 @@ Real set_epithelial_boundary(std::vector<Real>& concentration,
   Real amount = 0.0;
   for (Int iy = 0; iy < domain.ny(); ++iy) {
     for (Int ix = 0; ix < domain.nx(); ++ix) {
-      const size_t index = static_cast<size_t>(
+      const auto index = static_cast<size_t>(
           domain.cell_index(ix, iy, 0));
       amount += (boundary_conc - concentration[index]) * cell_volume;
       concentration[index] = boundary_conc;

@@ -645,7 +645,7 @@ std::vector<Vec3> Simulation::immigration_anchors(
   std::vector<Vec3> sampled(local_support.begin(), local_support.end());
 #ifdef GUTIBM_MPI
   if (nprocs > 1) {
-    const Int local_values = static_cast<Int>(sampled.size() * 3);
+    const auto local_values = static_cast<Int>(sampled.size() * 3);
     std::vector<Int> counts(static_cast<size_t>(nprocs));
     MPI_Allgather(&local_values, 1, MPI_INT, counts.data(), 1, MPI_INT,
                   MPI_COMM_WORLD);

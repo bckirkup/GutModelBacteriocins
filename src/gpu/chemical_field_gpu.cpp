@@ -52,7 +52,7 @@ void ChemicalFieldGpu::reset_agent_uptake() {
 void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) {
   if (!active_) return;
   gpu_sync_compute();
-  std::vector<double> values(3, 0.0);
+  std::vector values(3, 0.0);
   d_agent_uptake_.download(values);
   const Int carbon = field.find(species::CARBON);
   const Int iron = field.find(species::IRON);
@@ -186,7 +186,7 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   if (!gpu_diffusion_line_lengths_supported(domain)) return false;
 
   bool applied = false;
-  std::vector<double> zero(static_cast<size_t>(nspec_), 0.0);
+  std::vector zero(static_cast<size_t>(nspec_), 0.0);
   d_boundary_injected_.upload(zero);
   for (Int s = 0; s < nspec_; ++s) {
     if (gpu_apply_species_diffusion_device(
@@ -199,7 +199,7 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   if (applied) {
     gpu_sync_compute();
     gpu_check_error("ChemicalFieldGpu::apply_diffusion");
-    std::vector<double> injected(static_cast<size_t>(nspec_), 0.0);
+    std::vector injected(static_cast<size_t>(nspec_), 0.0);
     d_boundary_injected_.download(injected);
     for (Int s = 0; s < nspec_; ++s) {
       field.flux_accounting().add_boundary(s, injected[static_cast<size_t>(s)]);
@@ -222,7 +222,7 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
   const int ny = domain.ny();
   const int nz = domain.nz();
 
-  std::vector<double> zero(static_cast<size_t>(nspec_), 0.0);
+  std::vector zero(static_cast<size_t>(nspec_), 0.0);
   d_boundary_injected_.upload(zero);
   for (Int s = 0; s < nspec_; ++s) {
     const ChemicalSpec& spec = field.spec(s);
@@ -238,7 +238,7 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
 
   gpu_sync_compute();
   gpu_check_error("ChemicalFieldGpu::apply_boundaries");
-  std::vector<double> injected(static_cast<size_t>(nspec_), 0.0);
+  std::vector injected(static_cast<size_t>(nspec_), 0.0);
   d_boundary_injected_.download(injected);
   for (Int s = 0; s < nspec_; ++s) {
     field.flux_accounting().add_boundary(s, injected[static_cast<size_t>(s)]);
@@ -286,8 +286,8 @@ bool ChemicalFieldGpu::try_sum_reactions_on_device(ChemicalField& field) {
   if (ranks <= 1) return false;
 #endif
 
-  const char* env = std::getenv("GUTIBM_CUDA_AWARE_MPI");
-  if (env == nullptr || (env[0] != '1' && env[0] != 't' && env[0] != 'T')) {
+  if (const char* env = std::getenv("GUTIBM_CUDA_AWARE_MPI");
+      env == nullptr || (env[0] != '1' && env[0] != 't' && env[0] != 'T')) {
     return false;
   }
   if (!cuda_aware_mpi_runtime_available()) {

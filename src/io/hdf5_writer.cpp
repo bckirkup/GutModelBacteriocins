@@ -495,10 +495,10 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
       static_cast<hsize_t>(chem.specs().size()),
       static_cast<hsize_t>(kSpeciesNameWidth)};
   hid_t name_space = H5Screate_simple(2, name_dims.data(), nullptr);
-  hid_t name_ds = H5Dcreate2(
-      fid, (group + "/nutrient_flux/species_names").c_str(),
-      H5T_NATIVE_CHAR, name_space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  if (name_ds >= 0) {
+  if (hid_t name_ds = H5Dcreate2(
+          fid, (group + "/nutrient_flux/species_names").c_str(),
+          H5T_NATIVE_CHAR, name_space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+      name_ds >= 0) {
     if (!species_names.empty()) {
       H5Dwrite(name_ds, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT,
                species_names.data());
@@ -746,7 +746,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
 #ifdef GUTIBM_HDF5
   auto fid = static_cast<hid_t>(file_id_);
   const auto agents = output_agents(sim);
-  const Int n = static_cast<Int>(agents.size());
+  const auto n = static_cast<Int>(agents.size());
 
   std::vector<int64_t> ids(static_cast<size_t>(n));
   std::vector<int32_t> types(static_cast<size_t>(n));
@@ -878,7 +878,7 @@ void HDF5Writer::write_lineage_layer(const Simulation& sim,
 #ifdef GUTIBM_HDF5
   auto fid = static_cast<hid_t>(file_id_);
   const auto agents = output_agents(sim);
-  const Int n = static_cast<Int>(agents.size());
+  const auto n = static_cast<Int>(agents.size());
 
   std::vector<double> btuB_expr(static_cast<size_t>(n));
   std::vector<double> fepA_expr(static_cast<size_t>(n));
@@ -913,7 +913,7 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
 #ifdef GUTIBM_HDF5
   auto fid = static_cast<hid_t>(file_id_);
   const auto agents = output_agents(sim);
-  const Int n = static_cast<Int>(agents.size());
+  const auto n = static_cast<Int>(agents.size());
   const auto local_n = static_cast<hsize_t>(n);
 
   std::vector<int64_t> ids(static_cast<size_t>(n));
@@ -1147,8 +1147,8 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
   writer.finalize();
 
   std::error_code sz_ec;
-  const auto tmp_bytes = fs::file_size(tmp, sz_ec);
-  if (sz_ec || tmp_bytes < 4096 || H5Fis_hdf5(tmp.string().c_str()) <= 0) {
+  if (const auto tmp_bytes = fs::file_size(tmp, sz_ec);
+      sz_ec || tmp_bytes < 4096 || H5Fis_hdf5(tmp.string().c_str()) <= 0) {
     std::cerr << "Warning: restart tmp '" << tmp.string()
               << "' is missing/unreadable after write (size="
               << (sz_ec ? 0 : tmp_bytes) << ")\n";

@@ -40,7 +40,7 @@ struct NutrientFluxAccounting {
 
   void add_interval(Int species, Real boundary, Real source, Real sink,
                     Real uptake) {
-    const size_t index = static_cast<size_t>(species);
+    const auto index = static_cast<size_t>(species);
     boundary_interval[index] += boundary;
     vbf_source_interval[index] += source;
     vbf_sink_interval[index] += sink;
