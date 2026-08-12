@@ -40,6 +40,11 @@ namespace gutibm {
 
 namespace {
 
+bool schedule_has_output(const HDF5Schedule& sched) {
+  return sched.summary > 0 || sched.agents > 0 || sched.grid > 0 ||
+         sched.lineage > 0 || sched.genome > 0 || sched.provenance > 0;
+}
+
 #ifdef GUTIBM_HDF5
 
 #ifdef GUTIBM_MPI
@@ -249,9 +254,20 @@ hid_t make_dataset_plist(const HDF5Config& cfg, const hsize_t* chunk_dims,
   return plist;
 }
 
-bool schedule_has_output(const HDF5Schedule& sched) {
-  return sched.summary > 0 || sched.agents > 0 || sched.grid > 0 ||
-         sched.lineage > 0 || sched.genome > 0 || sched.provenance > 0;
+void pack_grid_species(const ChemicalField& chem, const Domain& domain,
+                       Int species_index, Int nx, Int ny, Int nz,
+                       std::vector<double>& grid3d) {
+  for (Int iz = 0; iz < nz; ++iz) {
+    for (Int iy = 0; iy < ny; ++iy) {
+      for (Int ix = 0; ix < nx; ++ix) {
+        const Int flat = domain.cell_index(ix, iy, iz);
+        const size_t idx = static_cast<size_t>(iz) * static_cast<size_t>(nx * ny)
+            + static_cast<size_t>(iy) * static_cast<size_t>(nx)
+            + static_cast<size_t>(ix);
+        grid3d[idx] = chem.conc(species_index, flat);
+      }
+    }
+  }
 }
 
 Real field_mean(const ChemicalField& chem, Int species_idx) {
@@ -274,6 +290,83 @@ Real field_max(const ChemicalField& chem, Int species_idx) {
   return mx;
 }
 
+template <typename Agents>
+int32_t count_live_lineages(const Agents& agents) {
+  std::set<int64_t> unique_lineages;
+  for (const Agent& agent : agents) {
+    if (agent.state != PhenoState::DEAD) {
+      unique_lineages.insert(static_cast<int64_t>(agent.genome.lineage_id));
+    }
+  }
+  return static_cast<int32_t>(unique_lineages.size());
+}
+
+std::vector<char> species_name_table(const ChemicalField& chem) {
+  constexpr size_t kSpeciesNameWidth = 48;
+  std::vector<char> names(chem.specs().size() * kSpeciesNameWidth, '\0');
+  for (size_t i = 0; i < chem.specs().size(); ++i) {
+    const std::string& name = chem.specs()[i].name;
+    const size_t count = std::min(name.size(), kSpeciesNameWidth - 1);
+    std::copy_n(name.data(), count, names.begin() + i * kSpeciesNameWidth);
+  }
+  return names;
+}
+
+std::vector<Real> boundary_area_flux(
+    const std::vector<Real>& interval, Real area, Real interval_time) {
+  std::vector<Real> result(interval.size(), 0.0);
+  if (area <= 0.0 || interval_time <= 0.0) return result;
+  for (size_t i = 0; i < result.size(); ++i) {
+    result[i] = interval[i] / (area * interval_time);
+  }
+  return result;
+}
+
+template <typename Agents>
+void summarize_agents(
+    const Agents& agents, std::array<int32_t, 8>& n_by_type,
+    std::array<int32_t, 8>& n_in_crypt, std::array<int32_t, 4>& n_by_state,
+    std::array<double, 8>& mean_z, std::array<double, 8>& mean_mu) {
+  std::array<int32_t, 8> count_by_type{};
+  for (const Agent& agent : agents) {
+    if (agent.state == PhenoState::DEAD) continue;
+    const Int tidx = std::clamp(agent.identity.type, 0, 7);
+    n_by_type[static_cast<size_t>(tidx)]++;
+    if (agent.flags.in_crypt) n_in_crypt[static_cast<size_t>(tidx)]++;
+    mean_z[static_cast<size_t>(tidx)] += agent.x[2];
+    mean_mu[static_cast<size_t>(tidx)] += agent.mu_realized;
+    count_by_type[static_cast<size_t>(tidx)]++;
+    const Int sidx = std::clamp(
+        static_cast<Int>(to_underlying(agent.state)), 0, 3);
+    n_by_state[static_cast<size_t>(sidx)]++;
+  }
+  for (Int type_idx = 0; type_idx < 8; ++type_idx) {
+    const auto index = static_cast<size_t>(type_idx);
+    if (count_by_type[index] > 0) {
+      const Real inv = 1.0 / static_cast<Real>(count_by_type[index]);
+      mean_z[index] *= inv;
+      mean_mu[index] *= inv;
+    }
+  }
+}
+
+template <typename Agents>
+std::vector<double> mean_receptor_expression(const Agents& agents) {
+  std::vector<double> result(NUM_RECEPTORS, 0.0);
+  Int live = 0;
+  for (const Agent& agent : agents) {
+    if (agent.state == PhenoState::DEAD) continue;
+    ++live;
+    for (Int receptor = 0; receptor < NUM_RECEPTORS; ++receptor) {
+      result[static_cast<size_t>(receptor)] += agent.receptor_expr[receptor];
+    }
+  }
+  if (live > 0) {
+    for (double& value : result) value /= static_cast<double>(live);
+  }
+  return result;
+}
+
 #endif  // GUTIBM_HDF5
 
 }  // namespace
@@ -289,34 +382,8 @@ bool HDF5Writer::should_write_species(const std::string& name) const {
       || std::ranges::find(species, name) != species.end();
 }
 
-void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
-  cfg_ = cfg;
-  nx_ = domain.nx();
-  ny_ = domain.ny();
-  nz_ = domain.nz();
-  grid_dx_ = domain.dx();
-  domain_lo_ = domain.lo();
-  domain_hi_ = domain.hi();
-
-  if (!cfg_.enabled || !schedule_has_output(cfg_.schedule)) {
-    enabled_ = false;
-    return;
-  }
-
 #ifdef GUTIBM_HDF5
-  enabled_ = true;
-  file_id_ = -1;
-
-  if (io_rank(cfg_) == 0) {
-    try {
-      validate_output_file_path(cfg_.filename);
-    } catch (const IOError& ex) {
-      std::cerr << "Warning: invalid HDF5 output path '" << cfg_.filename
-                << "': " << ex.what() << " — HDF5 output disabled\n";
-      enabled_ = false;
-    }
-  }
-
+void HDF5Writer::initialize_file() {
   if (enabled_ && io_rank(cfg_) == 0) {
     // Parallel HDF5 builds can return invalid FILE_CREATE property lists from
     // H5Pcreate on some platforms; H5P_DEFAULT is reliable for rank-0 serial I/O.
@@ -371,6 +438,38 @@ void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
     }
   }
 
+}
+#endif
+
+void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
+  cfg_ = cfg;
+  nx_ = domain.nx();
+  ny_ = domain.ny();
+  nz_ = domain.nz();
+  grid_dx_ = domain.dx();
+  domain_lo_ = domain.lo();
+  domain_hi_ = domain.hi();
+
+  if (!cfg_.enabled || !schedule_has_output(cfg_.schedule)) {
+    enabled_ = false;
+    return;
+  }
+
+#ifdef GUTIBM_HDF5
+  enabled_ = true;
+  file_id_ = -1;
+
+  if (io_rank(cfg_) == 0) {
+    try {
+      validate_output_file_path(cfg_.filename);
+    } catch (const IOError& ex) {
+      std::cerr << "Warning: invalid HDF5 output path '" << cfg_.filename
+                << "': " << ex.what() << " — HDF5 output disabled\n";
+      enabled_ = false;
+    }
+  }
+
+  initialize_file();
   mpi_barrier(cfg_);
 #ifdef GUTIBM_MPI
   if (mpi_multi_rank()) {
@@ -457,12 +556,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   const int32_t step_val = step;
   const auto n_total = static_cast<int32_t>(sim.global_agent_count());
 
-  std::set<int64_t> unique_lineages;
-  for (const Agent& a : agents) {
-    if (a.state == PhenoState::DEAD) continue;
-    unique_lineages.insert(static_cast<int64_t>(a.genome.lineage_id));
-  }
-  const auto num_lineages = static_cast<int32_t>(unique_lineages.size());
+  const auto num_lineages = count_live_lineages(agents);
 
   write_scalar_dataset(fid, group + "/time", H5T_NATIVE_DOUBLE, &t);
   write_scalar_dataset(fid, group + "/dt", H5T_NATIVE_DOUBLE, &dt_val);
@@ -484,13 +578,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
                              H5T_NATIVE_DOUBLE, values.data(), values.size());
   };
   constexpr size_t kSpeciesNameWidth = 48;
-  std::vector species_names(chem.specs().size() * kSpeciesNameWidth, '\0');
-  for (size_t i = 0; i < chem.specs().size(); ++i) {
-    const std::string& name = chem.specs()[i].name;
-    const size_t count = std::min(name.size(), kSpeciesNameWidth - 1);
-    std::copy_n(name.data(), count,
-                species_names.begin() + i * kSpeciesNameWidth);
-  }
+  const auto species_names = species_name_table(chem);
   std::array<hsize_t, 2> name_dims = {
       static_cast<hsize_t>(chem.specs().size()),
       static_cast<hsize_t>(kSpeciesNameWidth)};
@@ -531,13 +619,8 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
       * (sim.domain().hi()[1] - sim.domain().lo()[1]);
   const Real interval_time = std::max(
       sim.time() - sim.event_window_start_time(), 0.0);
-  std::vector boundary_area_flux(flux.boundary_interval.size(), 0.0);
-  if (area > 0.0 && interval_time > 0.0) {
-    for (size_t i = 0; i < boundary_area_flux.size(); ++i) {
-      boundary_area_flux[i] = flux.boundary_interval[i]
-          / (area * interval_time);
-    }
-  }
+  const auto boundary_area_flux = ::gutibm::boundary_area_flux(
+      flux.boundary_interval, area, interval_time);
   write_flux("boundary_area_flux_interval", boundary_area_flux);
   const auto write_flux_bound = [&](const char* name, Real value) {
     write_scalar_dataset(fid, group + "/nutrient_flux/" + name,
@@ -554,27 +637,8 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   std::array<int32_t, 4> n_by_state{};
   std::array<double, k_max_types> mean_z{};
   std::array<double, k_max_types> mean_mu{};
-  std::array<int32_t, k_max_types> count_by_type{};
 
-  for (const Agent& a : agents) {
-    if (a.state == PhenoState::DEAD) continue;
-    Int tidx = std::clamp(a.identity.type, 0, k_max_types - 1);
-    n_by_type[static_cast<size_t>(tidx)]++;
-    if (a.flags.in_crypt) n_in_crypt[static_cast<size_t>(tidx)]++;
-    mean_z[static_cast<size_t>(tidx)] += a.x[2];
-    mean_mu[static_cast<size_t>(tidx)] += a.mu_realized;
-    count_by_type[static_cast<size_t>(tidx)]++;
-    Int sidx = std::clamp(static_cast<Int>(to_underlying(a.state)), 0, 3);
-    n_by_state[static_cast<size_t>(sidx)]++;
-  }
-
-  for (Int type_idx = 0; type_idx < k_max_types; ++type_idx) {
-    if (count_by_type[static_cast<size_t>(type_idx)] > 0) {
-      const Real inv = 1.0 / static_cast<Real>(count_by_type[static_cast<size_t>(type_idx)]);
-      mean_z[static_cast<size_t>(type_idx)] *= inv;
-      mean_mu[static_cast<size_t>(type_idx)] *= inv;
-    }
-  }
+  summarize_agents(agents, n_by_type, n_in_crypt, n_by_state, mean_z, mean_mu);
 
   write_dataset_1d_serial(fid, group + "/n_by_type", H5T_NATIVE_INT32,
                           n_by_type.data(), k_max_types);
@@ -587,18 +651,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_dataset_1d_serial(fid, group + "/mean_mu_by_type", H5T_NATIVE_DOUBLE,
                           mean_mu.data(), k_max_types);
 
-  std::vector mean_receptor(NUM_RECEPTORS, 0.0);
-  Int live = 0;
-  for (const Agent& a : agents) {
-    if (a.state == PhenoState::DEAD) continue;
-    ++live;
-    for (Int r = 0; r < NUM_RECEPTORS; ++r) {
-      mean_receptor[static_cast<size_t>(r)] += a.receptor_expr[r];
-    }
-  }
-  if (live > 0) {
-    for (double& v : mean_receptor) v /= static_cast<double>(live);
-  }
+  const auto mean_receptor = mean_receptor_expression(agents);
   write_dataset_1d_serial(fid, group + "/mean_receptor_expr", H5T_NATIVE_DOUBLE,
                           mean_receptor.data(), NUM_RECEPTORS);
 
@@ -830,17 +883,7 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
     const std::string name = chem.spec(s).name;
     if (!should_write_species(name)) continue;
 
-    for (Int iz = 0; iz < nz_; ++iz) {
-      for (Int iy = 0; iy < ny_; ++iy) {
-        for (Int ix = 0; ix < nx_; ++ix) {
-          const Int flat = domain.cell_index(ix, iy, iz);
-          const size_t idx = static_cast<size_t>(iz) * static_cast<size_t>(nx_ * ny_) +
-                             static_cast<size_t>(iy) * static_cast<size_t>(nx_) +
-                             static_cast<size_t>(ix);
-          grid3d[idx] = chem.conc(s, flat);
-        }
-      }
-    }
+    pack_grid_species(chem, domain, s, nx_, ny_, nz_, grid3d);
 
     const std::string dsname = group + "/" + name;
     hid_t ds = H5Dcreate2(fid, dsname.c_str(), H5T_NATIVE_DOUBLE, space,
