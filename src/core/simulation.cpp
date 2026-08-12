@@ -520,13 +520,11 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     auto& flux = chem_.flux_accounting();
     // A closed restart closes the current reporting window at write time.
     // Restore cumulative totals, but never reopen that already-closed window.
-    std::fill(flux.boundary_interval.begin(), flux.boundary_interval.end(), 0.0);
-    std::fill(flux.vbf_source_interval.begin(),
-              flux.vbf_source_interval.end(), 0.0);
-    std::fill(flux.vbf_sink_interval.begin(), flux.vbf_sink_interval.end(), 0.0);
-    std::fill(flux.agent_uptake_interval.begin(),
-              flux.agent_uptake_interval.end(), 0.0);
-    std::fill(flux.agent_uptake_step.begin(), flux.agent_uptake_step.end(), 0.0);
+    std::ranges::fill(flux.boundary_interval, 0.0);
+    std::ranges::fill(flux.vbf_source_interval, 0.0);
+    std::ranges::fill(flux.vbf_sink_interval, 0.0);
+    std::ranges::fill(flux.agent_uptake_interval, 0.0);
+    std::ranges::fill(flux.agent_uptake_step, 0.0);
   }
   event_window_start_step_ = snap.metadata.event_window_end_step > 0
       ? snap.metadata.event_window_end_step + 1
@@ -647,7 +645,7 @@ std::vector<Vec3> Simulation::immigration_anchors(
   std::vector<Vec3> sampled(local_support.begin(), local_support.end());
 #ifdef GUTIBM_MPI
   if (nprocs > 1) {
-    const Int local_values = static_cast<Int>(sampled.size() * 3);
+    const auto local_values = static_cast<Int>(sampled.size() * 3);
     std::vector<Int> counts(static_cast<size_t>(nprocs));
     MPI_Allgather(&local_values, 1, MPI_INT, counts.data(), 1, MPI_INT,
                   MPI_COMM_WORLD);
@@ -664,10 +662,10 @@ std::vector<Vec3> Simulation::immigration_anchors(
     std::vector<Vec3> anchors;
     anchors.reserve(static_cast<size_t>(total_values / 3));
     for (Int i = 0; i < total_values; i += 3) {
-      anchors.push_back(
+      anchors.emplace_back(Vec3{
           {packed[static_cast<size_t>(i)],
            packed[static_cast<size_t>(i + 1)],
-           packed[static_cast<size_t>(i + 2)]});
+           packed[static_cast<size_t>(i + 2)]}});
     }
     return anchors;
   }
@@ -775,10 +773,10 @@ void Simulation::write_restart_now() {
   const auto write_t0 = std::chrono::steady_clock::now();
   const bool ok = HDF5Writer::write_closed_restart(
       *this, path, clock_.step_count, clock_.time, cfg_.time.bio_dt);
-  const bool summary_due = cfg_.hdf5.enabled
-      && cfg_.hdf5.schedule.summary > 0
-      && clock_.step_count % cfg_.hdf5.schedule.summary == 0;
-  if (ok && !summary_due) {
+  if (const bool summary_due = cfg_.hdf5.enabled
+          && cfg_.hdf5.schedule.summary > 0
+          && clock_.step_count % cfg_.hdf5.schedule.summary == 0;
+      ok && !summary_due) {
     reset_step_events_after_summary(clock_.step_count, clock_.time);
   }
   const double write_s = std::chrono::duration<double>(
@@ -1053,9 +1051,9 @@ void Simulation::run() {
   }
 
   // Final closed restart so Spot/SIGTERM/early-exit still leaves a usable artifact.
-  const bool already_checkpointed = cfg_.restart.interval_steps > 0
-      && clock_.step_count % cfg_.restart.interval_steps == 0;
-  if (cfg_.restart.enabled && clock_.step_count > 0
+  if (const bool already_checkpointed = cfg_.restart.interval_steps > 0
+          && clock_.step_count % cfg_.restart.interval_steps == 0;
+      cfg_.restart.enabled && clock_.step_count > 0
       && (halted_for_dysbiosis_ || !already_checkpointed)) {
     write_restart_now();
   }

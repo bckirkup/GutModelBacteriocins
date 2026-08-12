@@ -50,7 +50,7 @@ bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
   std::vector<int> keys(static_cast<size_t>(num_agents));
   out.cell_keys.download(keys);
 
-  std::vector<int> counts(static_cast<size_t>(num_cells), 0);
+  std::vector counts(static_cast<size_t>(num_cells), 0);
   for (Int i = 0; i < num_agents; ++i) {
     const int key = keys[static_cast<size_t>(i)];
     if (key >= 0 && key < num_cells) {
@@ -58,14 +58,14 @@ bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
     }
   }
 
-  std::vector<int> offsets(static_cast<size_t>(num_cells + 1), 0);
+  std::vector offsets(static_cast<size_t>(num_cells + 1), 0);
   for (Int c = 0; c < num_cells; ++c) {
     offsets[static_cast<size_t>(c + 1)] =
         offsets[static_cast<size_t>(c)] + counts[static_cast<size_t>(c)];
   }
 
   std::vector<int> cursor = offsets;
-  std::vector<int> sorted(static_cast<size_t>(num_agents), -1);
+  std::vector sorted(static_cast<size_t>(num_agents), -1);
   for (Int i = 0; i < num_agents; ++i) {
     const int key = keys[static_cast<size_t>(i)];
     if (key < 0 || key >= num_cells) continue;

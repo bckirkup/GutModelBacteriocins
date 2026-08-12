@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <format>
 #include <iostream>
 #include <iomanip>
 #include <limits>
@@ -33,8 +34,12 @@ void test_schedule_and_uniform_placement() {
   auto positions = immigration_positions(
       cfg, {0.0, 0.0, 0.0}, {20e-6, 20e-6, 10e-6}, rng,
       {}, false, false,
-      [](const std::vector<Vec3>&, std::vector<Real>&) {},
-      [](Vec3&) {});
+      [](const std::vector<Vec3>&, std::vector<Real>&) {
+        // Intentionally empty: this test isolates placement behavior.
+      },
+      [](Vec3&) {
+        // Intentionally empty: this test isolates placement behavior.
+      });
   assert(positions.size() == 3);
   for (const Vec3& pos : positions) {
     assert(pos[2] >= cfg.z_min);
@@ -61,7 +66,9 @@ void test_at_distance_selects_candidate() {
           out[i] = 25e-12;
         }
       },
-      [](Vec3&) {});
+      [](Vec3&) {
+        // Intentionally empty: projection is not under test here.
+      });
   assert(calls == 1);
   assert(positions.size() == 1);
   std::cout << "  test_at_distance_selects_candidate: PASSED\n";
@@ -249,10 +256,10 @@ void test_large_colony_shell_regression() {
   for (Int x = -10; x <= 10; ++x) {
     for (Int y = -10; y <= 10; ++y) {
       for (Int z = -10; z <= 10; ++z) {
-        colony_positions.push_back(
+        colony_positions.emplace_back(Vec3{
             {center[0] + static_cast<Real>(x) * 1.2e-6,
              center[1] + static_cast<Real>(y) * 1.2e-6,
-             center[2] + static_cast<Real>(z) * 1.2e-6});
+             center[2] + static_cast<Real>(z) * 1.2e-6}});
       }
     }
   }
@@ -307,9 +314,11 @@ void test_shell_candidate_rejected_by_global_reducer() {
         // The unrelated cluster is the true nearest biomass for every
         // proposal in this reducer fixture, so the shell geometry alone
         // must not make a candidate acceptable.
-        std::fill(distances.begin(), distances.end(), 0.0);
+        std::ranges::fill(distances, 0.0);
       },
-      [](Vec3&) {});
+      [](Vec3&) {
+        // Intentionally empty: projection is not under test here.
+      });
   assert(calls == 2);
   assert(positions.empty());
   std::cout << "  test_shell_candidate_rejected_by_global_reducer: PASSED\n";
@@ -479,9 +488,9 @@ void test_near_colony_kill_separation() {
     assert(near.distance_error <= kEncounterDistanceTolerance);
     assert(far.distance_error <= kEncounterDistanceTolerance);
     assert(far.alive);
-    std::cout << std::scientific << std::setprecision(3)
-              << "  encounter " << i << " distance errors="
-              << near.distance_error << "/" << far.distance_error << "\n";
+    std::cout << std::format(
+        "  encounter {} distance errors={:.3e}/{:.3e}\n", i,
+        near.distance_error, far.distance_error);
     near_kills += near.colicin_kills;
     far_kills += far.colicin_kills;
   }

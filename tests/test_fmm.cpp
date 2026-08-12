@@ -103,7 +103,7 @@ void test_fmm_degenerate_clusters_match_direct_field() {
 
   for (const bool tight_cluster : {false, true}) {
     std::vector<Vec3> positions(9);
-    std::vector<Real> strengths(9, params.source_rate);
+    std::vector strengths(9, params.source_rate);
     for (int i = 0; i < 9; ++i) {
       const Real offset = tight_cluster
                             ? static_cast<Real>(i) * 1e-12

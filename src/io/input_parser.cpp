@@ -231,22 +231,20 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
     }
   }
 
-  if (cfg.chem_env.siderophore.enabled) {
-    if (find_chemical_spec(cfg.chemicals, species::FERRIC_ENTEROBACTIN) < 0) {
-      cfg.chemicals.emplace_back(
-          species::FERRIC_ENTEROBACTIN, cfg.chem_env.siderophore.D_free, 1.0,
-          0.0, 0.0, 0.0, false, k_z_lambda, true);
-    }
+  if (cfg.chem_env.siderophore.enabled
+      && find_chemical_spec(cfg.chemicals, species::FERRIC_ENTEROBACTIN) < 0) {
+    cfg.chemicals.emplace_back(
+        species::FERRIC_ENTEROBACTIN, cfg.chem_env.siderophore.D_free, 1.0,
+        0.0, 0.0, 0.0, false, k_z_lambda, true);
   }
 
-  if (cfg.chem_env.ferrichrome.enabled) {
-    if (find_chemical_spec(cfg.chemicals, species::FERRICHROME) < 0) {
-      cfg.chemicals.emplace_back(
-          species::FERRICHROME, 1.0e-10, 1.0,
-          cfg.chem_env.ferrichrome.initial_conc,
-          cfg.chem_env.ferrichrome.boundary_conc,
-          0.0, false, k_z_lambda, true);
-    }
+  if (cfg.chem_env.ferrichrome.enabled
+      && find_chemical_spec(cfg.chemicals, species::FERRICHROME) < 0) {
+    cfg.chemicals.emplace_back(
+        species::FERRICHROME, 1.0e-10, 1.0,
+        cfg.chem_env.ferrichrome.initial_conc,
+        cfg.chem_env.ferrichrome.boundary_conc,
+        0.0, false, k_z_lambda, true);
   }
 
   // Spec 11 — AI-2 autoinducer (no z-gradient; agent-produced only)

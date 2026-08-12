@@ -228,8 +228,7 @@ void test_full_chemical_environment() {
     assert(max_conc < 1e6);
   }
 
-  const Int i_carbon = chem.find(species::CARBON);
-  if (i_carbon >= 0) {
+  if (const Int i_carbon = chem.find(species::CARBON); i_carbon >= 0) {
     Real sum = 0.0;
     for (Int c = 0; c < chem.ncells(); ++c) {
       sum += chem.conc(i_carbon, c);

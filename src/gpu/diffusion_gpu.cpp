@@ -61,9 +61,9 @@ PeriodicPcrCoeffs build_periodic_coeffs(int n, double alpha) {
   out.gamma = -diagonal_value;
   out.corner = -alpha;
 
-  std::vector<Real> lower(static_cast<size_t>(n - 1), -alpha);
-  std::vector<Real> upper(static_cast<size_t>(n - 1), -alpha);
-  std::vector<Real> diagonal(static_cast<size_t>(n), diagonal_value);
+  std::vector lower(static_cast<size_t>(n - 1), -alpha);
+  std::vector upper(static_cast<size_t>(n - 1), -alpha);
+  std::vector diagonal(static_cast<size_t>(n), diagonal_value);
   diagonal.front() -= out.gamma;
   diagonal.back() -= out.corner * out.corner / out.gamma;
 

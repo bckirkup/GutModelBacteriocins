@@ -519,8 +519,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
 
     return true;
   } catch (const ConfigError& ex) {
-    const std::string message = ex.what();
-    if (message.find("invalid immigration.") == 0) {
+    if (const std::string message = ex.what();
+        message.find("invalid immigration.") == 0) {
       throw;
     }
     std::cerr << "Warning: JSON config parse failed: " << ex.what()

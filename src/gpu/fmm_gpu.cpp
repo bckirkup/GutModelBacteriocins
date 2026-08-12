@@ -51,7 +51,7 @@ bool gpu_accumulate_far_field_local(const FMM& fmm,
     return false;
   }
 
-  std::vector<int> leaf_ids(fmm.num_nodes(), -1);
+  std::vector leaf_ids(fmm.num_nodes(), -1);
   int leaf_idx = 0;
   for (int i = 0; i < fmm.num_nodes(); ++i) {
     if (fmm.node(i).is_leaf) leaf_ids[static_cast<size_t>(i)] = leaf_idx++;
@@ -78,8 +78,8 @@ bool gpu_accumulate_far_field_local(const FMM& fmm,
     }
   }
 
-  std::vector<double> packed_local(static_cast<size_t>(num_leaves) * coeffs_per_leaf, 0.0);
-  std::vector<double> packed_center(static_cast<size_t>(num_leaves) * 3, 0.0);
+  std::vector packed_local(static_cast<size_t>(num_leaves) * coeffs_per_leaf, 0.0);
+  std::vector packed_center(static_cast<size_t>(num_leaves) * 3, 0.0);
   for (int i = 0; i < fmm.num_nodes(); ++i) {
     if (!fmm.node(i).is_leaf) continue;
     const int lid = leaf_ids[static_cast<size_t>(i)];

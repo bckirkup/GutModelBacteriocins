@@ -3,6 +3,7 @@
 #include "simulation.h"
 
 #include <cassert>
+#include <array>
 #include <charconv>
 #include <cmath>
 #include <iostream>
@@ -86,12 +87,13 @@ void print_difference(const char* label,
   const Real relative_difference =
       absolute_difference / first.total_biomass;
   auto format_real = [](Real value) {
-    char buffer[64];
+    std::array<char, 64> buffer{};
     const auto result = std::to_chars(
-        buffer, buffer + sizeof(buffer), value, std::chars_format::general,
+        buffer.data(), buffer.data() + buffer.size(), value,
+        std::chars_format::general,
         std::numeric_limits<Real>::max_digits10);
     assert(result.ec == std::errc{});
-    return std::string(buffer, result.ptr);
+    return std::string(buffer.data(), result.ptr);
   };
   std::cout << "  " << label
             << ": live_a=" << first.live

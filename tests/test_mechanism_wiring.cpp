@@ -477,8 +477,7 @@ void test_all_species_bounded_steady_state() {
   }
 
   // Carbon must stay bounded despite its constant VBF source (sink active).
-  const Int ic = chem.find(species::CARBON);
-  if (ic >= 0) {
+  if (const Int ic = chem.find(species::CARBON); ic >= 0) {
     expect(max_conc(chem, ic) < 1.0,
            "with the sink active carbon must stay bounded across a full run");
   }
@@ -724,10 +723,10 @@ void test_siderophore_chelation_in_empty_cell() {
 
 void test_siderophore_occupancy_scaling() {
   std::cout << "  maintained-apo source-cell FeEnt occupancy assay:\n";
-  for (const auto& condition : {
+  for (const auto& [iron, expected] : {
            std::pair<Real, Real>{1.0e-4, 4.0e-9},
            std::pair<Real, Real>{1.0e-8, 3.0e-8}}) {
-    std::cout << "    iron=" << condition.first << " mol/m^3\n";
+    std::cout << "    iron=" << iron << " mol/m^3\n";
     for (const Int occupancy : {1, 4, 16, 64}) {
       SimulationConfig cfg = make_integration_cfg(occupancy, 953 + occupancy);
       cfg.chem_env.siderophore.enabled = true;
@@ -751,8 +750,8 @@ void test_siderophore_occupancy_scaling() {
         agent.receptor_expr_base[to_underlying(ReceptorType::FepA)] = 1.0;
       }
       FixMetabolism metabolism(sim, sim.config().fixes.metabolism);
-      chem.conc(i_sid, cell) = condition.second;
-      chem.conc(i_iron, cell) = condition.first;
+      chem.conc(i_sid, cell) = expected;
+      chem.conc(i_iron, cell) = iron;
       chem.conc(i_ferric, cell) = 0.0;
       chem.zero_reactions();
       metabolism.compute(60.0);

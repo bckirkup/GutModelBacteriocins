@@ -278,7 +278,7 @@ std::vector<Real> shift_moments(const std::vector<Real>& child,
                                 const Vec3& child_center,
                                 const Vec3& parent_center) {
   const int n = num_coefficients(order);
-  std::vector<Real> parent(n, 0.0);
+  std::vector parent(n, 0.0);
 
   const Vec3 delta = {child_center[0] - parent_center[0],
                       child_center[1] - parent_center[1],
@@ -365,7 +365,7 @@ std::vector<Real> multipole_to_local(
     const GreensFunction& gf,
     const GreensFunctionParams& avg_params) {
   const int n = fmm_detail::num_coefficients(order);
-  std::vector<Real> local(n, 0.0);
+  std::vector local(n, 0.0);
 
   const Real L = fmm_detail::separation_length(source_center, target_center);
   const auto multipole_field = [&gf, &moments, order, source_center, avg_params](const Vec3& eval_target) {
@@ -392,7 +392,7 @@ std::vector<Real> shift_local_expansion(const std::vector<Real>& parent_local,
                                         const Vec3& parent_center,
                                         const Vec3& child_center) {
   const int n = fmm_detail::num_coefficients(order);
-  std::vector<Real> child(n, 0.0);
+  std::vector child(n, 0.0);
 
   const Vec3 delta = {child_center[0] - parent_center[0],
                       child_center[1] - parent_center[1],

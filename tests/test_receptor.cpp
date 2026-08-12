@@ -195,15 +195,16 @@ void test_cira_uses_ferric_enterobactin_ligand() {
 }
 
 void test_fepa_uses_ferric_enterobactin_not_iron() {
+  using enum ReceptorType;
   ReceptorConfig rcfg;
   rcfg.kill_rate_colicin = 1.0;
 
   auto sim_fe = make_empty_sim(7020, true);
   Agent fe_agent = make_susceptible_agent(sim_fe);
-  fe_agent.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.0;
-  fe_agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
-  fe_agent.receptor_expr[to_underlying(ReceptorType::CirA)] = 0.0;
-  fe_agent.receptor_expr[to_underlying(ReceptorType::FhuA)] = 0.0;
+  fe_agent.receptor_expr[to_underlying(BtuB)] = 0.0;
+  fe_agent.receptor_expr[to_underlying(FepA)] = 1.0;
+  fe_agent.receptor_expr[to_underlying(CirA)] = 0.0;
+  fe_agent.receptor_expr[to_underlying(FhuA)] = 0.0;
   const Int fe_cell = fe_agent.grid_cell;
   auto& fe_chem = sim_fe.chemical_field();
   const Int fe_toxin = fe_chem.find(species::BACTERIOCIN_FEPA);
@@ -217,10 +218,10 @@ void test_fepa_uses_ferric_enterobactin_not_iron() {
 
   auto sim_iron = make_empty_sim(7020, true);
   Agent iron_agent = make_susceptible_agent(sim_iron);
-  iron_agent.receptor_expr[to_underlying(ReceptorType::BtuB)] = 0.0;
-  iron_agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
-  iron_agent.receptor_expr[to_underlying(ReceptorType::CirA)] = 0.0;
-  iron_agent.receptor_expr[to_underlying(ReceptorType::FhuA)] = 0.0;
+  iron_agent.receptor_expr[to_underlying(BtuB)] = 0.0;
+  iron_agent.receptor_expr[to_underlying(FepA)] = 1.0;
+  iron_agent.receptor_expr[to_underlying(CirA)] = 0.0;
+  iron_agent.receptor_expr[to_underlying(FhuA)] = 0.0;
   const Int iron_cell = iron_agent.grid_cell;
   auto& iron_chem = sim_iron.chemical_field();
   const Int iron_toxin = iron_chem.find(species::BACTERIOCIN_FEPA);
@@ -291,8 +292,8 @@ void test_true_unit_receptor_regression() {
   constexpr Real toxin_at_100_um = 6.137581e-8;
 
   const SimulationConfig defaults = InputParser::default_config();
-  const auto b12_spec = std::find_if(
-      defaults.chemicals.begin(), defaults.chemicals.end(),
+  const auto b12_spec = std::ranges::find_if(
+      defaults.chemicals,
       [](const ChemicalSpec& s) { return s.name == species::B12; });
   assert(b12_spec != defaults.chemicals.end());
   assert(std::abs(b12_spec->initial_conc - 1.0e-3) < 1.0e-15);

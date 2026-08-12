@@ -455,8 +455,9 @@ HDF5CheckpointSnapshot HDF5Reader::load_step(const std::string& step_name) const
   }
 
   const bool has_agents = link_exists(static_cast<hid_t>(file_id_), "agents/" + step_name);
-  const bool has_summary = link_exists(static_cast<hid_t>(file_id_), "summary/" + step_name);
-  if (!has_agents && !has_summary) {
+  if (const bool has_summary =
+          link_exists(static_cast<hid_t>(file_id_), "summary/" + step_name);
+      !has_agents && !has_summary) {
     throw HDF5Error("missing step group: " + step_name);
   }
 
