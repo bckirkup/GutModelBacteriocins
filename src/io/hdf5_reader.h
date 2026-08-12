@@ -8,6 +8,7 @@
 
 #include "types.h"
 #include "step_events.h"
+#include "chemical_field.h"
 #include <cstdint>
 #include <map>
 #include <string>
@@ -26,6 +27,7 @@ struct HDF5CheckpointMetadata {
   Real  event_window_end_time = 0.0;
   StepEvents interval_events;
   StepEvents cumulative_events;
+  NutrientFluxAccounting flux_accounting;
 };
 
 struct HDF5CheckpointAgents {

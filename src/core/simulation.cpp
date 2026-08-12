@@ -514,6 +514,10 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
   clock_.time       = snap.metadata.time;
   clock_.step_count = snap.metadata.step;
   cumulative_events_ = snap.metadata.cumulative_events;
+  if (snap.metadata.flux_accounting.boundary_interval.size()
+      == static_cast<size_t>(chem_.num_species())) {
+    chem_.flux_accounting() = snap.metadata.flux_accounting;
+  }
   event_window_start_step_ = snap.metadata.event_window_end_step > 0
       ? snap.metadata.event_window_end_step + 1
       : clock_.step_count + 1;
@@ -1199,6 +1203,7 @@ void Simulation::module_chemistry(Real dt) {
       .acetate = cfg_.chem_env.acetate,
       .mucin = cfg_.chem_env.mucin,
       .num_agents = agents_.size(),
+      .flux_accounting = chem_.flux_accounting(),
       .step_profile = cfg_.profile_steps ? &step_profile_ : nullptr,
   };
   (void)run_chemistry_pipeline(pipeline, dt);

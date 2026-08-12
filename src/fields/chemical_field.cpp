@@ -310,6 +310,7 @@ void ChemicalField::init(const Domain& domain,
   specs_  = specs;
   nspec_  = static_cast<Int>(specs.size());
   ncells_ = domain.ncells();
+  flux_accounting_.init(specs.size());
 
   conc_.resize(nspec_);
   reac_.resize(nspec_);

@@ -132,6 +132,51 @@ Real VBF::mucin_rate(Real z_rel) const {
   return cfg_.mucin_liberation * std::exp(-z_rel / cfg_.mucin_z_gradient_lambda);
 }
 
+VbfFluxTotals VBF::flux_totals(const ChemicalField& chem,
+                               const Domain& domain,
+                               const OxygenConfig& oxygen,
+                               const AcetateConfig& /*acetate*/,
+                               const MucinConfig& mucin,
+                               Real dt) const {
+  VbfFluxTotals totals;
+  const Int carbon = chem.find(species::CARBON);
+  const Int iron = chem.find(species::IRON);
+  const Int oxygen_index = chem.find(species::OXYGEN);
+  const Int mucin_index = chem.find(species::MUCIN);
+  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  if (cell_volume <= 0.0 || dt <= 0.0) return totals;
+
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    const Int iz = cell / (domain.nx() * domain.ny());
+    const Real z_rel = (iz + 0.5) * domain.dx();
+    if (carbon >= 0) {
+      Real source = 0.0;
+      if (cfg_.use_dynamic_mucin && mucin.enabled && mucin_index >= 0) {
+        const Real mucin_conc = chem.conc(mucin_index, cell);
+        source = dynamic_mucin_liberation(mucin_conc, cfg_, mucin);
+      } else {
+        source = mucin_rate(z_rel);
+      }
+      const Real concentration = chem.conc(carbon, cell);
+      const Real sink = cfg_.carbon_sink_vmax > 0.0
+          ? cfg_.carbon_sink_vmax * concentration
+              / (cfg_.carbon_sink_km + concentration)
+          : 0.0;
+      totals.carbon_source += source * cell_volume * dt;
+      totals.carbon_sink += sink * cell_volume * dt;
+    }
+    if (iron >= 0) {
+      totals.iron_sink += cfg_.nutrient_sink * chem.conc(iron, cell)
+          * cell_volume * dt;
+    }
+    if (oxygen.enabled && oxygen_index >= 0) {
+      totals.oxygen_sink += oxygen.vbf_sink * chem.conc(oxygen_index, cell)
+          * cell_volume * dt;
+    }
+  }
+  return totals;
+}
+
 void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
                                    Real /*dt*/,
                                    const OxygenConfig& oxygen,

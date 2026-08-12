@@ -2,10 +2,12 @@
 #include "agent.h"
 #include "chemical_field.h"
 #include "chemical_field_gpu.h"
+#include "domain.h"
 #include "dispatch.h"
 #include "step_profiler.h"
 #include "qssa_gpu.h"
 #include "qssa_solver.h"
+#include "species_names.h"
 #include "vbf.h"
 #include "vbf_gpu.h"
 
@@ -37,6 +39,14 @@ void sum_reactions_with_optional_device(ChemistryPipelineInput& in) {
 
 ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real dt) {
   ChemistryPipelineResult result;
+  const Real cell_volume = in.domain.dx() * in.domain.dx() * in.domain.dx();
+  std::vector<Real> pre_mass(in.chem.num_species(), 0.0);
+  std::vector<Real> agent_reaction_amount(in.chem.num_species(), 0.0);
+  for (Int s = 0; s < in.chem.num_species(); ++s) {
+    for (Int cell = 0; cell < in.chem.ncells(); ++cell) {
+      pre_mass[static_cast<size_t>(s)] += in.chem.conc(s, cell) * cell_volume;
+    }
+  }
 
   bool applied_o2_on_gpu = false;
   if (in.gpu_active) {
@@ -57,6 +67,43 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   // Every rank holds the full chemical grid but only its local agents. Sum the
   // rank-local agent reaction fields before adding the identical global VBF.
   sum_reactions_with_optional_device(in);
+  for (Int s = 0; s < in.chem.num_species(); ++s) {
+    for (Int cell = 0; cell < in.chem.ncells(); ++cell) {
+      agent_reaction_amount[static_cast<size_t>(s)] +=
+          in.chem.reac(s, cell) * cell_volume * dt;
+    }
+  }
+
+  const VbfFluxTotals vbf_totals = in.vbf.flux_totals(
+      in.chem, in.domain, in.oxygen, in.acetate, in.mucin, dt);
+  const Int carbon = in.chem.find(species::CARBON);
+  const Int iron = in.chem.find(species::IRON);
+  const Int oxygen = in.chem.find(species::OXYGEN);
+  const auto record_uptake = [&](Int species_index, Real amount) {
+    if (species_index < 0) return;
+    const Real uptake = std::max(-amount, 0.0);
+    in.flux_accounting.add_interval(species_index, 0.0, 0.0, 0.0, uptake);
+  };
+  if (carbon >= 0) {
+    record_uptake(carbon, agent_reaction_amount[static_cast<size_t>(carbon)]);
+  }
+  if (iron >= 0) {
+    record_uptake(iron, agent_reaction_amount[static_cast<size_t>(iron)]);
+  }
+  const Real carbon_source = vbf_totals.carbon_source;
+  const Real carbon_sink = vbf_totals.carbon_sink;
+  if (carbon >= 0) {
+    in.flux_accounting.add_interval(
+        carbon, 0.0, carbon_source, carbon_sink, 0.0);
+  }
+  if (iron >= 0) {
+    in.flux_accounting.add_interval(
+        iron, 0.0, 0.0, vbf_totals.iron_sink, 0.0);
+  }
+  if (oxygen >= 0) {
+    in.flux_accounting.add_interval(
+        oxygen, 0.0, 0.0, vbf_totals.oxygen_sink, 0.0);
+  }
 
   bool reactions_on_device = false;
   bool applied_vbf_on_gpu = false;
@@ -116,6 +163,25 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     if (in.gpu_active) {
       in.chem_gpu.sync_concentrations_to_device(in.chem);
     }
+  }
+
+  for (Int s = 0; s < in.chem.num_species(); ++s) {
+    Real post_mass = 0.0;
+    for (Int cell = 0; cell < in.chem.ncells(); ++cell) {
+      post_mass += in.chem.conc(s, cell) * cell_volume;
+    }
+    Real reaction_amount = agent_reaction_amount[static_cast<size_t>(s)];
+    if (s == carbon) {
+      reaction_amount += carbon_source - carbon_sink;
+    } else if (s == iron) {
+      reaction_amount -= vbf_totals.iron_sink;
+    } else if (s == oxygen) {
+      reaction_amount -= vbf_totals.oxygen_sink;
+    }
+    const Real boundary_amount =
+        post_mass - pre_mass[static_cast<size_t>(s)] - reaction_amount;
+    in.flux_accounting.boundary_interval[static_cast<size_t>(s)] +=
+        boundary_amount;
   }
 
   if (in.gpu_active) {

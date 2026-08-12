@@ -4,6 +4,7 @@
 #include "types.h"
 #include "agent.h"
 #include "chem_environment_config.h"
+#include "chemical_field.h"
 
 namespace gutibm {
 
@@ -31,6 +32,7 @@ struct ChemistryPipelineInput {
   const AcetateConfig& acetate;
   const MucinConfig& mucin;
   Int num_agents = 0;
+  NutrientFluxAccounting& flux_accounting;
   StepProfile* step_profile = nullptr;
 };
 

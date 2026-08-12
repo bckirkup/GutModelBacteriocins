@@ -295,6 +295,20 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
     meta.event_window_end_time =
         read_scalar<double>(file, events + "interval_end_time", H5T_NATIVE_DOUBLE);
   }
+  const std::string flux = prefix + "nutrient_flux/";
+  const auto read_flux = [&](const std::string& name, std::vector<Real>& values) {
+    if (link_exists(file, flux + name)) {
+      values = read_dataset_1d<double>(file, flux + name, H5T_NATIVE_DOUBLE);
+    }
+  };
+  read_flux("boundary_interval", meta.flux_accounting.boundary_interval);
+  read_flux("boundary_cumulative", meta.flux_accounting.boundary_cumulative);
+  read_flux("vbf_source_interval", meta.flux_accounting.vbf_source_interval);
+  read_flux("vbf_source_cumulative", meta.flux_accounting.vbf_source_cumulative);
+  read_flux("vbf_sink_interval", meta.flux_accounting.vbf_sink_interval);
+  read_flux("vbf_sink_cumulative", meta.flux_accounting.vbf_sink_cumulative);
+  read_flux("agent_uptake_interval", meta.flux_accounting.agent_uptake_interval);
+  read_flux("agent_uptake_cumulative", meta.flux_accounting.agent_uptake_cumulative);
   return meta;
 }
 

@@ -20,6 +20,13 @@ struct OxygenConfig;
 struct AcetateConfig;
 struct MucinConfig;
 
+struct VbfFluxTotals {
+  Real carbon_source = 0.0;
+  Real carbon_sink = 0.0;
+  Real iron_sink = 0.0;
+  Real oxygen_sink = 0.0;
+};
+
 struct VBFConfig {
   Real density          = 1.0e11;   // background cell density (#/m^3)
   Real drag_coeff       = 1.0e-9;   // Stokes-like drag (N·s/m)
@@ -80,6 +87,10 @@ class VBF {
 
   // Mucin liberation rate at a z-position relative to the epithelium
   Real mucin_rate(Real z_rel) const;
+  VbfFluxTotals flux_totals(const ChemicalField& chem, const Domain& domain,
+                            const OxygenConfig& oxygen,
+                            const AcetateConfig& acetate,
+                            const MucinConfig& mucin, Real dt) const;
 
  private:
   VBFConfig cfg_;

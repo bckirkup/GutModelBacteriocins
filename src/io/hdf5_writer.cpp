@@ -428,6 +428,7 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
   }
   if (summary_due) {
     sim.reset_step_events_after_summary(step, time);
+    sim.chemical_field().flux_accounting().close_interval();
   }
 
   // Flush so a concurrent checkpoint copy (entry.sh SIGSTOP+cp) sees consistent
@@ -469,7 +470,78 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_scalar_dataset(fid, group + "/n_total", H5T_NATIVE_INT32, &n_total);
   write_scalar_dataset(fid, group + "/num_lineages", H5T_NATIVE_INT32, &num_lineages);
   write_scalar_dataset(fid, group + "/num_agents", H5T_NATIVE_INT32, &n_total);
-
+  ensure_group(fid, group + "/nutrient_flux", cfg_);
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const auto write_flux = [&](const char* name,
+                              const std::vector<Real>& values) {
+    write_dataset_1d_serial(fid, group + "/nutrient_flux/" + name,
+                             H5T_NATIVE_DOUBLE, values.data(), values.size());
+  };
+  constexpr size_t kSpeciesNameWidth = 48;
+  std::vector<char> species_names(chem.specs().size() * kSpeciesNameWidth, '\0');
+  for (size_t i = 0; i < chem.specs().size(); ++i) {
+    const std::string& name = chem.specs()[i].name;
+    const size_t count = std::min(name.size(), kSpeciesNameWidth - 1);
+    std::copy_n(name.data(), count,
+                species_names.begin() + i * kSpeciesNameWidth);
+  }
+  std::array<hsize_t, 2> name_dims = {
+      static_cast<hsize_t>(chem.specs().size()),
+      static_cast<hsize_t>(kSpeciesNameWidth)};
+  hid_t name_space = H5Screate_simple(2, name_dims.data(), nullptr);
+  hid_t name_ds = H5Dcreate2(
+      fid, (group + "/nutrient_flux/species_names").c_str(),
+      H5T_NATIVE_CHAR, name_space, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  if (name_ds >= 0) {
+    if (!species_names.empty()) {
+      H5Dwrite(name_ds, H5T_NATIVE_CHAR, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+               species_names.data());
+    }
+    H5Dclose(name_ds);
+  }
+  H5Sclose(name_space);
+  write_flux("boundary_interval", flux.boundary_interval);
+  const auto add_cumulative = [](const std::vector<Real>& prior,
+                                 const std::vector<Real>& interval) {
+    std::vector<Real> values(prior.size(), 0.0);
+    for (size_t i = 0; i < values.size(); ++i) {
+      values[i] = prior[i] + interval[i];
+    }
+    return values;
+  };
+  write_flux("boundary_cumulative",
+             add_cumulative(flux.boundary_cumulative, flux.boundary_interval));
+  write_flux("vbf_source_interval", flux.vbf_source_interval);
+  write_flux("vbf_source_cumulative",
+             add_cumulative(flux.vbf_source_cumulative, flux.vbf_source_interval));
+  write_flux("vbf_sink_interval", flux.vbf_sink_interval);
+  write_flux("vbf_sink_cumulative",
+             add_cumulative(flux.vbf_sink_cumulative, flux.vbf_sink_interval));
+  write_flux("agent_uptake_interval", flux.agent_uptake_interval);
+  write_flux("agent_uptake_cumulative",
+             add_cumulative(flux.agent_uptake_cumulative,
+                           flux.agent_uptake_interval));
+  const Real area = (sim.domain().hi()[0] - sim.domain().lo()[0])
+      * (sim.domain().hi()[1] - sim.domain().lo()[1]);
+  const Real interval_time = std::max(
+      sim.time() - sim.event_window_start_time(), 0.0);
+  std::vector<Real> boundary_area_flux(flux.boundary_interval.size(), 0.0);
+  if (area > 0.0 && interval_time > 0.0) {
+    for (size_t i = 0; i < boundary_area_flux.size(); ++i) {
+      boundary_area_flux[i] = flux.boundary_interval[i]
+          / (area * interval_time);
+    }
+  }
+  write_flux("boundary_area_flux_interval", boundary_area_flux);
+  const auto write_flux_bound = [&](const char* name, Real value) {
+    write_scalar_dataset(fid, group + "/nutrient_flux/" + name,
+                         H5T_NATIVE_DOUBLE, &value);
+  };
+  write_flux_bound("interval_start_step",
+                   static_cast<Real>(sim.event_window_start_step()));
+  write_flux_bound("interval_end_step", static_cast<Real>(step));
+  write_flux_bound("interval_start_time", sim.event_window_start_time());
+  write_flux_bound("interval_end_time", time);
   constexpr int k_max_types = 8;
   std::array<int32_t, k_max_types> n_by_type{};
   std::array<int32_t, k_max_types> n_in_crypt{};
@@ -1059,11 +1131,13 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
   const Int saved_window_start_step = sim.event_window_start_step();
   const Real saved_window_start_time = sim.event_window_start_time();
   const auto saved_provenance = sim.kill_provenance();
+  const auto saved_flux_accounting = sim.chemical_field().flux_accounting();
   writer.write_step(sim, step, time, dt);
   sim.step_events() = saved_step_events;
   sim.cumulative_events() = saved_cumulative_events;
   sim.set_event_window_start(saved_window_start_step, saved_window_start_time);
   sim.kill_provenance() = saved_provenance;
+  sim.chemical_field().flux_accounting() = saved_flux_accounting;
   writer.finalize();
 
   std::error_code sz_ec;
