@@ -259,4 +259,7 @@ add_test(
   NAME process_group_signal
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_process_group_signal.sh"
 )
-set_tests_properties(process_group_signal PROPERTIES LABELS "unit")
+set_tests_properties(process_group_signal PROPERTIES
+  LABELS "unit"
+  TIMEOUT 30
+)

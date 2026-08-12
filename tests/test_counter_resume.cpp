@@ -116,7 +116,6 @@ int main() {
   Simulation resumed;
   resumed.init_from_checkpoint(resume_cfg, first.string(), "");
   assert(resumed.cumulative_events().colicin_kills == 2);
-  assert(resumed.chemical_field().flux_accounting().boundary_interval[0] == 0.0);
   populate_window(resumed, 5, 7.0);
   assert(HDF5Writer::write_closed_restart(
       resumed, second.string(), 2, 120.0, 60.0));

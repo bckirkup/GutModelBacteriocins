@@ -38,12 +38,30 @@ for _ in {1..100}; do
   [[ "$(ps -o pgid= -p "${leader}" | tr -d ' ')" == "${pgid}" ]] && break
   sleep 0.01
 done
-while [[ ! -f "${ready}.children" ]]; do sleep 0.01; done
-while [[ "$(wc -l < "${observed}")" -lt 3 ]]; do sleep 0.01; done
+for _ in {1..200}; do
+  [[ -f "${ready}.children" ]] && break
+  sleep 0.01
+done
+if [[ ! -f "${ready}.children" ]]; then
+  echo "process-group smoke failed: children readiness marker missing" >&2
+  exit 1
+fi
+for _ in {1..200}; do
+  [[ "$(wc -l < "${observed}")" -ge 3 ]] && break
+  sleep 0.01
+done
+if [[ "$(wc -l < "${observed}")" -lt 3 ]]; then
+  echo "process-group smoke failed: three child processes never became ready" >&2
+  exit 1
+fi
 kill -TERM -- "-${pgid}"
 touch "${ready}.done"
 wait "${leader}" || true
-test "$(wc -l < "${observed}")" -eq 6
+observed_lines="$(wc -l < "${observed}")"
+if [[ "${observed_lines}" -ne 6 ]]; then
+  echo "process-group smoke failed: expected 3 child signal observations, got ${observed_lines}" >&2
+  exit 1
+fi
 
 # This proves only the shell-level setsid/negative-PGID signalling contract.
 # It does not prove OpenMPI process-group behaviour, AWS Batch Spot reclaim

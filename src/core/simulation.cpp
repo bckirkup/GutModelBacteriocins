@@ -518,6 +518,8 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
       == static_cast<size_t>(chem_.num_species())) {
     chem_.flux_accounting() = snap.metadata.flux_accounting;
     auto& flux = chem_.flux_accounting();
+    // A closed restart closes the current reporting window at write time.
+    // Restore cumulative totals, but never reopen that already-closed window.
     std::fill(flux.boundary_interval.begin(), flux.boundary_interval.end(), 0.0);
     std::fill(flux.vbf_source_interval.begin(),
               flux.vbf_source_interval.end(), 0.0);

@@ -23,18 +23,18 @@ int main() {
 
   ChemicalSpec carbon;
   carbon.name = species::CARBON;
-  carbon.initial_conc = 1.0e-6;
+  carbon.initial_conc = 1.0e-4;
   carbon.diffusion_enabled = false;
   ChemicalField chem;
   chem.init(domain, {carbon});
   const Int carbon_index = chem.find(species::CARBON);
   for (Int cell = 0; cell < chem.ncells(); ++cell) {
-    chem.conc(carbon_index, cell) = 1.0e-6;
+    chem.conc(carbon_index, cell) = 1.0e-4;
   }
 
   VBFConfig vbf_cfg;
   vbf_cfg.mucin_liberation = 0.0;
-  vbf_cfg.carbon_sink_vmax = 2.0e-5;
+  vbf_cfg.carbon_sink_vmax = 2.0e-7;
   vbf_cfg.carbon_sink_km = 3.0e-6;
   vbf_cfg.nutrient_sink = 0.0;
   VBF vbf;
@@ -57,7 +57,24 @@ int main() {
   }
   assert(applied_amount > 0.0);
   assert(std::abs(applied_amount - totals.carbon_sink)
-         < 1.0e-14 * std::max(1.0, applied_amount));
+         < 1.0e-12 * applied_amount);
+  const Real initial_concentration = 1.0e-4;
+  const Real pre_update_sink_rate = vbf_cfg.carbon_sink_vmax
+      * initial_concentration
+      / (vbf_cfg.carbon_sink_km + initial_concentration);
+  const Real pre_update_amount = pre_update_sink_rate
+      * static_cast<Real>(chem.ncells()) * cell_volume * dt;
+  const Real post_update_concentration = initial_concentration
+      - pre_update_sink_rate * dt;
+  const Real post_update_sink_rate = vbf_cfg.carbon_sink_vmax
+      * post_update_concentration
+      / (vbf_cfg.carbon_sink_km + post_update_concentration);
+  const Real post_update_amount = post_update_sink_rate
+      * static_cast<Real>(chem.ncells()) * cell_volume * dt;
+  assert(std::abs(pre_update_amount - post_update_amount)
+         > 1.0e-25);
+  assert(std::abs(pre_update_amount - applied_amount)
+         < 1.0e-12 * applied_amount);
 #ifdef GUTIBM_CUDA
   GpuConfig gpu_cfg;
   gpu_cfg.enabled = true;
@@ -67,7 +84,7 @@ int main() {
     ChemicalField gpu_reference;
     gpu_reference.init(domain, {carbon});
     for (Int cell = 0; cell < gpu_reference.ncells(); ++cell) {
-      gpu_reference.conc(carbon_index, cell) = 1.0e-6;
+      gpu_reference.conc(carbon_index, cell) = 1.0e-4;
     }
     ChemicalFieldGpu gpu_field;
     gpu_field.init(gpu_reference);
@@ -84,9 +101,9 @@ int main() {
           * cell_volume * dt;
     }
     assert(std::abs(gpu_applied_amount - gpu_totals.carbon_sink)
-           < 1.0e-14 * std::max(1.0, gpu_applied_amount));
+           < 1.0e-12 * gpu_applied_amount);
     assert(std::abs(gpu_totals.carbon_sink - totals.carbon_sink)
-           < 1.0e-14 * std::max(1.0, totals.carbon_sink));
+           < 1.0e-12 * totals.carbon_sink);
   }
 #endif
   std::cout << "PASS: VBF reported carbon sink equals applied reaction integral\n";
