@@ -38,6 +38,20 @@
       "Resource": "arn:aws:batch:*:994254241749:job-definition/gutibm-*"
     },
     {
+      "Sid": "PassBatchRolesToGutibmJobDefinitionsOnly",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::994254241749:role/gutibm-batch-job-role",
+        "arn:aws:iam::994254241749:role/gutibm-batch-execution-role"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
+      }
+    },
+    {
       "Sid": "EcrAuthTokenIsAccountWide",
       "Effect": "Allow",
       "Action": "ecr:GetAuthorizationToken",
