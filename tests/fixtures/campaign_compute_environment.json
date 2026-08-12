@@ -1,0 +1,38 @@
+{
+  "computeEnvironments": [
+    {
+      "computeEnvironmentName": "gutibm-gpu-campaign-spot",
+      "computeEnvironmentArn": "arn:aws:batch:us-east-1:994254241749:compute-environment/gutibm-gpu-campaign-spot",
+      "ecsClusterArn": "arn:aws:ecs:us-east-1:994254241749:cluster/gutibm-gpu-campaign-spot",
+      "serviceRole": "arn:aws:iam::994254241749:role/AWSBatchServiceRole",
+      "state": "ENABLED",
+      "status": "VALID",
+      "computeResources": {
+        "type": "SPOT",
+        "allocationStrategy": "SPOT_CAPACITY_OPTIMIZED",
+        "minvCpus": 0,
+        "maxvCpus": 96,
+        "desiredvCpus": 8,
+        "instanceTypes": [
+          "g5.2xlarge",
+          "g4dn.2xlarge"
+        ],
+        "subnets": [
+          "subnet-0dfd15e585b9b7e84"
+        ],
+        "securityGroupIds": [
+          "sg-0842264e2d23e6b5d"
+        ],
+        "instanceRole": "arn:aws:iam::994254241749:instance-profile/ecsInstanceRole",
+        "tags": {},
+        "spotIamFleetRole": "arn:aws:iam::994254241749:role/AmazonEC2SpotFleetTaggingRole",
+        "ec2Configuration": [
+          {
+            "imageType": "ECS_AL2023_NVIDIA",
+            "batchImageStatus": "UPDATE_AVAILABLE"
+          }
+        ]
+      }
+    }
+  ]
+}

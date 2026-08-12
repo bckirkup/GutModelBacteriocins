@@ -244,6 +244,7 @@ The capacity-widening script also requires `jq`:
 git clone https://github.com/bckirkup/GutModelBacteriocins.git
 cd GutModelBacteriocins
 jq --version
+bash deploy/aws/07_widen_campaign_capacity.sh --dry-run
 bash deploy/aws/07_widen_campaign_capacity.sh
 ```
 
@@ -447,8 +448,13 @@ sourcing/running — differentiate with key prefixes, e.g.
 3. **Widen an existing campaign CE (admin credentials only):**
 
    ```bash
+   bash deploy/aws/07_widen_campaign_capacity.sh --dry-run
    bash deploy/aws/07_widen_campaign_capacity.sh
    ```
+
+   The dry run performs the describe calls and prints the exact replacement CE
+   and queue-update payloads without creating a CE, changing the queue, or
+   changing the legacy CE state.
 
    The script derives the VPC from the CE's existing subnet, discovers every
    available subnet in that VPC, and creates or reuses a service-linked-role
