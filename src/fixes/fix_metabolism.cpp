@@ -150,17 +150,32 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
   }
 
   if (i_iron >= 0) {
-    for (Int cell = 0; cell < num_cells; ++cell) {
-      const Real s_sid = chem.conc(i_sid, cell);
-      const Real s_iron = chem.conc(i_iron, cell);
-      const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
-      chelation_by_cell_[static_cast<size_t>(cell)] = chelation;
-      chem.reac(i_iron, cell) -= chelation;
-      chem.reac(i_sid, cell) -= chelation;
-      chem.reac(i_ferric_enterobactin, cell) += chelation;
-    }
+    apply_siderophore_chelation(
+        sid_cfg, chem, i_sid, i_iron, i_ferric_enterobactin, num_cells);
   }
 
+  apply_siderophore_reimport(sid_cfg, chem, i_sid, i_iron, i_ferric_enterobactin,
+                             num_cells, cell_volume, dt);
+}
+
+void FixMetabolism::apply_siderophore_chelation(
+    const SiderophoreConfig& sid_cfg, ChemicalField& chem, Int i_sid,
+    Int i_iron, Int i_ferric_enterobactin, Int num_cells) {
+  for (Int cell = 0; cell < num_cells; ++cell) {
+    const Real s_sid = chem.conc(i_sid, cell);
+    const Real s_iron = chem.conc(i_iron, cell);
+    const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
+    chelation_by_cell_[static_cast<size_t>(cell)] = chelation;
+    chem.reac(i_iron, cell) -= chelation;
+    chem.reac(i_sid, cell) -= chelation;
+    chem.reac(i_ferric_enterobactin, cell) += chelation;
+  }
+}
+
+void FixMetabolism::apply_siderophore_reimport(
+    const SiderophoreConfig& sid_cfg, ChemicalField& chem, Int i_sid,
+    Int i_iron, Int i_ferric_enterobactin, Int num_cells, Real cell_volume,
+    Real dt) {
   for (Int cell = 0; cell < num_cells; ++cell) {
     const auto index = static_cast<size_t>(cell);
     if (occupancy_by_cell_[index] == 0) continue;

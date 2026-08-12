@@ -630,7 +630,6 @@ Vec3 Simulation::immigration_centroid_anchor(Int global_live_count) const {
 }
 
 std::vector<Vec3> Simulation::immigration_support_anchors() const {
-  const Int nprocs = domain_.nprocs();
   constexpr std::array<Vec3, 6> directions = {
       Vec3{1.0, 0.0, 0.0}, Vec3{-1.0, 0.0, 0.0},
       Vec3{0.0, 1.0, 0.0}, Vec3{0.0, -1.0, 0.0},
@@ -652,6 +651,7 @@ std::vector<Vec3> Simulation::immigration_support_anchors() const {
   }
   std::vector<Vec3> sampled(local_support.begin(), local_support.end());
 #ifdef GUTIBM_MPI
+  const Int nprocs = domain_.nprocs();
   if (nprocs > 1) {
     const auto local_values = static_cast<Int>(sampled.size() * 3);
     std::vector<Int> counts(static_cast<size_t>(nprocs));

@@ -29,6 +29,9 @@
 
 namespace gutibm {
 
+class ChemicalField;
+struct SiderophoreConfig;
+
 struct MetabolismConfig {
   Real division_threshold = 2.0;      // divide at 2x initial biomass
   Real death_threshold    = -0.01;    // net growth below this → death
@@ -66,6 +69,14 @@ class FixMetabolism : public Fix {
   void compute_growth_rate(Agent& agent);
   void grow_agent(Agent& agent, Real dt);
   void apply_siderophore_chemistry(Real dt);
+  void apply_siderophore_chelation(const SiderophoreConfig& sid_cfg,
+                                   ChemicalField& chem, Int i_sid,
+                                   Int i_iron, Int i_ferric_enterobactin,
+                                   Int num_cells);
+  void apply_siderophore_reimport(const SiderophoreConfig& sid_cfg,
+                                  ChemicalField& chem, Int i_sid, Int i_iron,
+                                  Int i_ferric_enterobactin, Int num_cells,
+                                  Real cell_volume, Real dt);
   void perform_divisions();
   void check_death(Agent& agent);
 

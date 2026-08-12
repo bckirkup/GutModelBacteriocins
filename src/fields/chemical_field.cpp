@@ -418,9 +418,39 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   }
 }
 
+void apply_epithelial_boundary_layer(
+    std::vector<std::vector<Real>>& concentration,
+    const Domain& domain, Int species_index, Real boundary_conc,
+    NutrientFluxAccounting& flux_accounting) {
+  for (Int iy = 0; iy < domain.ny(); ++iy) {
+    for (Int ix = 0; ix < domain.nx(); ++ix) {
+      const Int idx = domain.cell_index(ix, iy, 0);
+      const Real old = concentration[static_cast<size_t>(species_index)]
+          [static_cast<size_t>(idx)];
+      concentration[static_cast<size_t>(species_index)]
+          [static_cast<size_t>(idx)] = boundary_conc;
+      flux_accounting.add_boundary(
+          species_index,
+          (boundary_conc - old) * domain.dx() * domain.dx() * domain.dx());
+    }
+  }
+}
+
+void mirror_non_diffusing_top_layer(std::vector<std::vector<Real>>& concentration,
+                                    const Domain& domain, Int species_index) {
+  for (Int iy = 0; iy < domain.ny(); ++iy) {
+    for (Int ix = 0; ix < domain.nx(); ++ix) {
+      const Int top = domain.cell_index(ix, iy, domain.nz() - 1);
+      const Int below = domain.cell_index(ix, iy, domain.nz() - 2);
+      concentration[static_cast<size_t>(species_index)]
+          [static_cast<size_t>(top)] =
+              concentration[static_cast<size_t>(species_index)]
+                  [static_cast<size_t>(below)];
+    }
+  }
+}
+
 void ChemicalField::apply_boundaries(const Domain& domain) {
-  const Int nx = domain.nx();
-  const Int ny = domain.ny();
   const Int nz = domain.nz();
 
   for (Int s = 0; s < nspec_; ++s) {
@@ -428,26 +458,12 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
 
     // z=0 (epithelial surface): Dirichlet for nutrients. When a z-gradient is
     // configured, this is the peak concentration at the epithelium.
-    for (Int iy = 0; iy < ny; ++iy) {
-      for (Int ix = 0; ix < nx; ++ix) {
-        const Int idx = domain.cell_index(ix, iy, 0);
-        const Real old = conc_[s][static_cast<size_t>(idx)];
-        conc_[s][static_cast<size_t>(idx)] = bc;
-        flux_accounting_.add_boundary(
-            s, (bc - old) * domain.dx() * domain.dx() * domain.dx());
-      }
-    }
+    apply_epithelial_boundary_layer(conc_, domain, s, bc, flux_accounting_);
 
     // The implicit z solve enforces the luminal zero-flux condition directly.
     // Non-diffusing fields retain the legacy mirrored top layer.
     if (!specs_[s].diffusion_enabled && nz >= 2) {
-      for (Int iy = 0; iy < ny; ++iy) {
-        for (Int ix = 0; ix < nx; ++ix) {
-          const Int top = domain.cell_index(ix, iy, nz - 1);
-          const Int below = domain.cell_index(ix, iy, nz - 2);
-          conc_[s][top] = conc_[s][below];
-        }
-      }
+      mirror_non_diffusing_top_layer(conc_, domain, s);
     }
   }
 }

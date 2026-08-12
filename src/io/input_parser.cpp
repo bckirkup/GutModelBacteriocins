@@ -730,7 +730,8 @@ bool apply_cdi_key(SimulationConfig& cfg, std::string_view key, const std::strin
   return false;
 }
 
-bool apply_motility_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
+bool apply_motility_run_key(SimulationConfig& cfg, std::string_view key,
+                            const std::string& val) {
   if (key == "motility.enabled" || key == "motility_enabled") {
     cfg.cell_bio.motility.enabled = parse_bool_config(val); return true;
   }
@@ -746,6 +747,11 @@ bool apply_motility_key(SimulationConfig& cfg, std::string_view key, const std::
   if (key == "motility.stop_duration" || key == "motility_stop_duration") {
     cfg.cell_bio.motility.stop_duration = parse_config_real(key, val); return true;
   }
+  return false;
+}
+
+bool apply_motility_chemotaxis_key(SimulationConfig& cfg, std::string_view key,
+                                   const std::string& val) {
   if (key == "motility.chemotaxis_enabled" || key == "motility_chemotaxis_enabled") {
     cfg.cell_bio.motility.chemotaxis_enabled = parse_bool_config(val); return true;
   }
@@ -755,18 +761,33 @@ bool apply_motility_key(SimulationConfig& cfg, std::string_view key, const std::
   if (key == "motility.chemotaxis_threshold" || key == "motility_chemotaxis_threshold") {
     cfg.cell_bio.motility.chemotaxis_threshold = parse_config_real(key, val); return true;
   }
+  return false;
+}
+
+bool apply_motility_aerotaxis_key(SimulationConfig& cfg, std::string_view key,
+                                  const std::string& val) {
   if (key == "motility.aerotaxis_enabled" || key == "motility_aerotaxis_enabled") {
     cfg.cell_bio.motility.aerotaxis_enabled = parse_bool_config(val); return true;
   }
   if (key == "motility.aerotaxis_sensitivity" || key == "motility_aerotaxis_sensitivity") {
     cfg.cell_bio.motility.aerotaxis_sensitivity = parse_config_real(key, val); return true;
   }
+  return false;
+}
+
+bool apply_motility_energy_key(SimulationConfig& cfg, std::string_view key,
+                               const std::string& val) {
   if (key == "motility.energy_taxis_enabled" || key == "motility_energy_taxis_enabled") {
     cfg.cell_bio.motility.energy_taxis_enabled = parse_bool_config(val); return true;
   }
   if (key == "motility.energy_taxis_floor" || key == "motility_energy_taxis_floor") {
     cfg.cell_bio.motility.energy_taxis_floor = parse_config_real(key, val); return true;
   }
+  return false;
+}
+
+bool apply_motility_surface_key(SimulationConfig& cfg, std::string_view key,
+                                const std::string& val) {
   if (key == "motility.surface_sensing_enabled" || key == "motility_surface_sensing_enabled") {
     cfg.cell_bio.motility.surface_sensing_enabled = parse_bool_config(val); return true;
   }
@@ -776,12 +797,22 @@ bool apply_motility_key(SimulationConfig& cfg, std::string_view key, const std::
   if (key == "motility.surface_sensing_floor" || key == "motility_surface_sensing_floor") {
     cfg.cell_bio.motility.surface_sensing_floor = parse_config_real(key, val); return true;
   }
+  return false;
+}
+
+bool apply_motility_mucin_key(SimulationConfig& cfg, std::string_view key,
+                              const std::string& val) {
   if (key == "motility.mucin_drag_enabled" || key == "motility_mucin_drag_enabled") {
     cfg.cell_bio.motility.mucin_drag_enabled = parse_bool_config(val); return true;
   }
   if (key == "motility.mucin_drag_reference" || key == "motility_mucin_drag_reference") {
     cfg.cell_bio.motility.mucin_drag_reference = parse_config_real(key, val); return true;
   }
+  return false;
+}
+
+bool apply_motility_cluster_key(SimulationConfig& cfg, std::string_view key,
+                                const std::string& val) {
   if (key == "motility.cluster_suppress_radius" || key == "motility_cluster_suppress_radius") {
     cfg.cell_bio.motility.cluster_suppress_radius = parse_config_real(key, val); return true;
   }
@@ -792,6 +823,17 @@ bool apply_motility_key(SimulationConfig& cfg, std::string_view key, const std::
     cfg.cell_bio.motility.cluster_tumble_factor = parse_config_real(key, val); return true;
   }
   return false;
+}
+
+bool apply_motility_key(SimulationConfig& cfg, std::string_view key,
+                        const std::string& val) {
+  return apply_motility_run_key(cfg, key, val)
+      || apply_motility_chemotaxis_key(cfg, key, val)
+      || apply_motility_aerotaxis_key(cfg, key, val)
+      || apply_motility_energy_key(cfg, key, val)
+      || apply_motility_surface_key(cfg, key, val)
+      || apply_motility_mucin_key(cfg, key, val)
+      || apply_motility_cluster_key(cfg, key, val);
 }
 
 bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,

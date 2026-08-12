@@ -91,6 +91,21 @@ std::vector<Vec3> shell_candidate_batch(
   return candidates;
 }
 
+std::pair<Int, Real> best_distance_candidate(
+    const std::vector<Real>& distances_sq, Real target_distance) {
+  Int best = 0;
+  Real best_error = std::numeric_limits<Real>::max();
+  for (Int i = 0; i < kCandidateBatchSize; ++i) {
+    const Real error = std::abs(
+        std::sqrt(distances_sq[static_cast<size_t>(i)]) - target_distance);
+    if (error < best_error) {
+      best = i;
+      best_error = error;
+    }
+  }
+  return {best, best_error};
+}
+
 }  // namespace
 
 Int immigration_event_count(const ImmigrationConfig& cfg, Int relative_step,
@@ -133,16 +148,8 @@ std::vector<Vec3> immigration_positions(
       std::vector distances_sq(kCandidateBatchSize,
                                std::numeric_limits<Real>::max());
       reduce_distances(candidates, distances_sq);
-      Int best = 0;
-      Real best_error = std::numeric_limits<Real>::max();
-      for (Int i = 0; i < kCandidateBatchSize; ++i) {
-        const Real error = std::abs(std::sqrt(distances_sq[static_cast<size_t>(i)]) -
-                                    cfg.distance);
-        if (error < best_error) {
-          best = i;
-          best_error = error;
-        }
-      }
+      const auto [best, best_error] =
+          best_distance_candidate(distances_sq, cfg.distance);
       selected = candidates[static_cast<size_t>(best)];
       if (best_error <= cfg.distance_tolerance) {
         found = true;
