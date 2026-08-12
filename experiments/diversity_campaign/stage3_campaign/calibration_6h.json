@@ -54,9 +54,9 @@
   "restart": {
     "enabled": true,
     "directory": "restart",
-    "interval_steps": 360
+    "interval_steps": 30
   },
-  "_comment_restart": "Closed Tier-2 restarts and provenance dumps every six simulated hours.",
+  "_comment_restart": "Closed Tier-2 restart every 30 biological steps; provenance remains every 360 steps.",
   "motility.enabled": false,
   "gpu_enabled": true,
   "gpu_device_id": -1

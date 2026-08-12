@@ -16,12 +16,12 @@ The six-hour wall-clock limit is intentional. `total_time` remains 172800 s
 (two simulated days), so the run should be stopped by the Batch timeout or a
 deliberate termination rather than by a shortened biological horizon.
 
-Provenance is dumped every 360 biological steps, matching the closed-restart
-cadence. The writer accumulates kill events between dumps, so this cadence does
-not discard deaths. The resulting throughput measurement includes the
-provenance work that an equivalent production burn-in will perform and is
-therefore directly transferable to that configuration. It is not a
-provenance-free benchmark.
+Provenance is dumped every 360 biological steps. The writer accumulates kill
+events between dumps, so this cadence does not discard deaths. Closed Tier-2
+restarts use a tighter cadence so a Spot reclaim can be followed by a durable
+resume. The resulting throughput measurement includes the provenance work that
+an equivalent production burn-in will perform and is therefore directly
+transferable to that configuration. It is not a provenance-free benchmark.
 
 ## Storage before submission
 
@@ -40,27 +40,84 @@ alone is therefore approximately:
 50,000,000 × 11 × 8 bytes = 4.40 GB
 ```
 
-before the writer's metadata overhead and gzip-4 compression. With
-`restart.interval_steps = 360`, the unchanged two-day `total_time` contains:
+before the writer's metadata overhead and gzip-4 compression. The measured
+steady-state rate is approximately 25.3 wall seconds per biological step.
+The previous 360-step cadence therefore took approximately 2.53 wall hours
+between local checkpoint writes, which was longer than the observed Spot host
+lifetime. The calibration now uses:
+
+```text
+restart.interval_steps = 30
+30 × 25.3 s = 759 s = 12.65 wall minutes between local writes
+759 s + 300 s sync poll = 1059 s = 17.65 wall minutes maximum
+durable-checkpoint exposure
+```
+
+The 300-second term matters because the entrypoint's S3 sync loop can take up
+to one poll period to upload a newly written local checkpoint. The observed
+host lifetime was approximately 37 minutes, so the maximum exposure is less
+than half that lifetime rather than exceeding it.
+
+With `restart.interval_steps = 30`, the unchanged two-day `total_time` contains:
 
 ```text
 172800 / 60 = 2880 steps
-2880 / 360 = 8 closed restarts
+2880 / 30 = 96 closed restarts
 ```
 
 The immutable S3 checkpoint prefix can therefore retain up to approximately
-**35.2 GB uncompressed grid payload** for a complete two-day run, before
-metadata and compression. The six-hour wall limit will usually produce fewer
-than eight artifacts; after the measured throughput is known, use:
+**422.4 GB uncompressed grid payload** for a complete two-day run, before
+metadata and compression. This is an upper bound based on the 4.40 GB
+uncompressed grid estimate per checkpoint; no compressed checkpoint size has
+yet been measured. At the measured rate, six wall hours reaches approximately
+854 steps and therefore produces up to 28 checkpoints, or approximately
+**123.2 GB uncompressed grid payload**. Use:
 
 ```text
-checkpoint_count = min(8, floor(21600 × steps_per_second / 360))
+checkpoint_count = min(96, floor(21600 × steps_per_second / 30))
 ```
 
 The entrypoint prunes older uploaded local files and keeps the newest local
-checkpoint, so local scratch is not an eight-checkpoint accumulation. S3 keeps
+checkpoint, so local scratch is not a 96-checkpoint accumulation. S3 keeps
 all immutable steps. Actual compressed sizes must be recorded from S3; they
 cannot be inferred reliably from the uncompressed estimate.
+
+## Measured calibration result
+
+The first calibration attempt ran on the GPU path and CloudWatch confirmed:
+
+```text
+GPU: ON (device 0)
+```
+
+Two progress events measured:
+
+```text
+Step 1  → Step 60: 1492.104 wall seconds / 59 steps
+             = 25.3 wall seconds per biological step
+             = 2.37 simulated seconds per wall second
+```
+
+The resulting projections are:
+
+```text
+6 wall hours:  approximately 854 steps = 14.23 simulated hours
+2 simulated days (2880 steps): approximately 20.2 wall hours
+7 simulated days (10080 steps): approximately 70.8 wall hours
+```
+
+The first attempt was reclaimed after approximately 37 wall minutes:
+
+```text
+Host EC2 (instance i-0103a811de8d956c4) terminated.
+```
+
+Batch classified the reclaim correctly and automatically started a retry
+without resubmission. This proves the submit-time ten-attempt retry policy and
+real `Host EC2*` classification. No checkpoint existed before that reclaim, so
+checkpoint-backed resume remains unproven: there was no
+`Resuming from restart artifact` line, no `latest.json`, and
+`resume_from_checkpoint` remained false.
 
 ## Submit one calibration job
 
