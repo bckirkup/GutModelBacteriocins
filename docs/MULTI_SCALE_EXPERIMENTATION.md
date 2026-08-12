@@ -8,6 +8,7 @@ Related:
 
 - Campaign configs: [`experiments/diversity_campaign/README.md`](../experiments/diversity_campaign/README.md)
 - Burn-in → fork on AWS: [`docs/AWS_BATCH.md`](AWS_BATCH.md)
+- Measured calibration origins and fork records: [`docs/BRANCHING_FROM_CHECKPOINTS.md`](BRANCHING_FROM_CHECKPOINTS.md)
 - Batch sweeps: [`docs/BATCH_RUNNER.md`](BATCH_RUNNER.md)
 - T2 finite-colony measurement: [`docs/T2_COLONY_CHALLENGE.md`](T2_COLONY_CHALLENGE.md)
 - Frameworks: [`EARI.md`](../EARI.md), [`VADI.md`](../VADI.md)
@@ -130,7 +131,10 @@ forks are population-state branches, not bit-identical continuations.
 
 ### Step 2 — Fork (cheap science)
 
-Branch many short overlays from the same burn-in:
+Branch many short overlays from the same burn-in. For the measured calibration
+inventory, origin selection, throughput, storage, and fork record, follow
+[`BRANCHING_FROM_CHECKPOINTS.md`](BRANCHING_FROM_CHECKPOINTS.md); the AWS
+submission and resume mechanics remain in [`AWS_BATCH.md`](AWS_BATCH.md).
 
 ```bash
 # Local: point a short overlay at a closed restart

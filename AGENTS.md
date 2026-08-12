@@ -227,6 +227,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `docs/SCALING.md` — agent-count benchmarks and profiling
 - `docs/AWS_BATCH.md` — AWS Batch Spot + CUDA deployment + Phase Observability
 - `docs/MULTI_SCALE_EXPERIMENTATION.md` — nested short/small vs host-scale experiment ladder
+- `docs/BRANCHING_FROM_CHECKPOINTS.md` — measured calibration checkpoint fork runbook
 
 ## Code Conventions
 
