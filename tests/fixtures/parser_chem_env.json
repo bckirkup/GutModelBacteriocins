@@ -32,6 +32,7 @@
   "ferrichrome.enabled": true,
   "ferrichrome.initial_conc": 2e-6,
   "ferrichrome.boundary_conc": 4e-6,
+  "carbon.boundary_conc": 7e-3,
 
   "initial_strains": [
     {

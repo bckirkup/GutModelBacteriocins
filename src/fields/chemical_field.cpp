@@ -192,16 +192,18 @@ void diffuse_periodic_y(std::vector<Real>& concentration,
   }
 }
 
-void diffuse_bounded_z(std::vector<Real>& concentration,
+Real diffuse_bounded_z(std::vector<Real>& concentration,
                        const Domain& domain,
                        Real alpha,
-                       Real boundary_conc) {
+                       Real boundary_conc,
+                       Real cell_volume) {
   const Int nx = domain.nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
-  if (nz <= 1) return;
+  if (nz <= 1) return 0.0;
 
   const NeumannTopLineSolver solver(nz - 1, alpha);
+  Real face_exchange = 0.0;
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel
   #endif
@@ -217,6 +219,10 @@ void diffuse_bounded_z(std::vector<Real>& concentration,
               concentration[static_cast<size_t>(domain.cell_index(ix, iy, iz))];
         }
         solver.solve(line, boundary_conc);
+        #ifdef GUTIBM_OPENMP
+        #pragma omp atomic
+        #endif
+        face_exchange += alpha * (boundary_conc - line.front()) * cell_volume;
         for (Int iz = 1; iz < nz; ++iz) {
           concentration[static_cast<size_t>(domain.cell_index(ix, iy, iz))] =
               line[static_cast<size_t>(iz - 1)];
@@ -224,6 +230,7 @@ void diffuse_bounded_z(std::vector<Real>& concentration,
       }
     }
   }
+  return face_exchange;
 }
 
 Real set_epithelial_boundary(std::vector<Real>& concentration,
@@ -405,7 +412,9 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
 
     diffuse_periodic_x(concentration, domain, alpha);
     diffuse_periodic_y(concentration, domain, alpha);
-    diffuse_bounded_z(concentration, domain, alpha, diffusion_boundary);
+    flux_accounting_.add_boundary(
+        s, diffuse_bounded_z(concentration, domain, alpha,
+                             diffusion_boundary, cell_volume));
 
     if (preserve_gradient) {
       shift_z_gradient(concentration, chemical, domain, 1.0);
