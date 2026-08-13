@@ -27,6 +27,7 @@
 
 #include "types.h"
 #include "step_profiler.h"
+#include "dysbiosis_guard.h"
 #include "agent.h"
 #include "domain.h"
 #include "random.h"
@@ -62,10 +63,6 @@ ProgressMetrics calculate_progress_metrics(Real sim_time,
                                            Real attempt_sim_time,
                                            Real total_time,
                                            double wall_elapsed_s);
-
-bool is_accelerating_density_window(const std::vector<Real>& density_samples,
-                                    Real threshold,
-                                    Int required_samples);
 
 class Simulation {
  public:
@@ -178,8 +175,10 @@ class Simulation {
   Real compute_adaptive_dt() const;
 
   bool gpu_active() const { return gpu_.active; }
-  bool halted_for_dysbiosis() const { return dysbiosis_.halted; }
-  Real halt_density_cells_per_mL() const { return dysbiosis_.halt_density; }
+  bool halted_for_dysbiosis() const { return dysbiosis_.halted(); }
+  Real halt_density_cells_per_mL() const {
+    return dysbiosis_.halt_density_cells_per_mL();
+  }
 
   const StepProfile& step_profile() const { return step_profile_; }
   void reset_step_profile() { step_profile_.reset(); }
@@ -230,7 +229,6 @@ class Simulation {
       const std::chrono::steady_clock::time_point& wall_now);
   void update_lineage_snapshot_if_due();
   bool population_stop(int rank) const;
-  void sample_dysbiosis_density();
   bool dysbiosis_threshold_exceeded(int rank);
 
   // Module execution (NUFEB-inspired)
@@ -257,13 +255,6 @@ class Simulation {
     Int window_start_step = 1;
     Real window_start_time = 0.0;
     std::vector<KillProvenanceEvent> kill_provenance;
-  };
-
-  struct DysbiosisGuard {
-    bool halted = false;
-    Real halt_density = 0.0;
-    std::vector<Real> density_history;
-    Real next_sample_time = 0.0;
   };
 
   struct GpuState {
