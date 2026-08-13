@@ -251,11 +251,7 @@ void test_chem_env_fixture() {
   assert(cfg.chem_env.ferrichrome.enabled == true);
   assert(std::abs(cfg.chem_env.ferrichrome.initial_conc - 2e-6) < 1e-15);
   assert(std::abs(cfg.chem_env.ferrichrome.boundary_conc - 4e-6) < 1e-15);
-  for (const auto& spec : cfg.chemicals) {
-    if (spec.name == "carbon") {
-      assert(std::abs(spec.boundary_conc - 5e-3) < 1e-15);
-    }
-  }
+  assert(std::abs(cfg.carbon_boundary_conc - 7e-3) < 1e-15);
 
   bool has_oxygen = false;
   bool has_acetate = false;
@@ -274,6 +270,8 @@ void test_chem_env_fixture() {
       has_ferrichrome = true;
       assert(std::abs(spec.initial_conc - 2e-6) < 1e-15);
       assert(std::abs(spec.boundary_conc - 4e-6) < 1e-15);
+    } else if (spec.name == "carbon") {
+      assert(std::abs(spec.boundary_conc - 7e-3) < 1e-15);
     }
   }
   assert(has_oxygen);

@@ -111,7 +111,7 @@ SimulationConfig InputParser::default_config() {
   // Default chemical species. Nutrients and small molecules use stable
   // implicit diffusion; bacteriocins remain on the QSSA Green's-function path.
   cfg.chemicals = {
-    {species::CARBON,      5.0e-10, 1.0, 5.0e-3, 5.0e-3, 0.0, true,  25.0e-6, true},
+    {species::CARBON,      5.0e-10, 1.0, 5.0e-3, cfg.carbon_boundary_conc, 0.0, true,  25.0e-6, true},
     {species::IRON,        7.0e-10, 1.0, 1.0e-4, 1.0e-4, 0.0, false, 25.0e-6, true},
     {species::B12,         5.0e-10, 1.0, 1.0e-3, 1.0e-3, 0.0, false, 25.0e-6, true},
     {species::BACTERIOCIN_BTUB, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
@@ -335,9 +335,10 @@ bool apply_vbf_key(SimulationConfig& cfg, std::string_view key, const std::strin
 
 bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "carbon.boundary_conc" || key == "carbon_boundary_conc") {
+    cfg.carbon_boundary_conc = parse_config_real(key, val);
     for (auto& c : cfg.chemicals) {
       if (c.name == species::CARBON) {
-        c.boundary_conc = parse_config_real(key, val);
+        c.boundary_conc = cfg.carbon_boundary_conc;
         return true;
       }
     }
