@@ -153,8 +153,7 @@ int main() {
     VBFConfig sweep_cfg = vbf_cfg;
     sweep_cfg.carbon_sink_vmax = vmax_values[i];
     measurements[i] = measure_sink(domain, carbon, sweep_cfg, dt);
-    assert(measurements[i].amount <= 1.0e-4
-           * static_cast<Real>(chem.ncells()) * cell_volume);
+    assert(measurements[i].amount <= carbon.initial_conc * cell_volume);
     assert(measurements[i].updated_concentration > 0.0);
     if (i > 0) {
       assert(measurements[i].amount > measurements[i - 1].amount);

@@ -21,7 +21,6 @@
   "mucin.enabled": true,
   "mucin.initial_conc": 2e-2,
   "mucin.k_liberation": 2e-4,
-  "carbon.boundary_conc": 5e-3,
 
   "protease.enabled": false,
   "protease.default_half_life": 1200,
