@@ -22,6 +22,7 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "dysbiosis_guard.h"
 #include "hdf5_reader.h"
 #include "path_utils.h"
 #include "input_parser.h"
@@ -383,9 +384,14 @@ void test_dysbiosis_halt() {
   expect(std::abs(sim_halt.halt_density_cells_per_mL() - expected_density)
              < 1.0e-9 * expected_density,
          "dysbiosis density must use cubic metres to millilitres conversion");
-  expect(!is_accelerating_density_window(
-             {1.01e8, 1.02e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8},
-             1.0e8, 7),
+  DysbiosisGuard plateau_guard(1.0e8, 300.0, 7);
+  plateau_guard.reset(0.0);
+  const std::vector<Real> plateau{
+      1.01e8, 1.02e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8};
+  for (Int i = 0; i < 7; ++i) {
+    plateau_guard.observe(i * 300.0, plateau[static_cast<size_t>(i)]);
+  }
+  expect(!plateau_guard.halted(),
          "a plateau above the boundary must not trigger dysbiosis");
   const std::filesystem::path checkpoint =
       std::filesystem::path(halt.restart.directory) /
