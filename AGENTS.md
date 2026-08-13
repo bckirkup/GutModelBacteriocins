@@ -133,7 +133,14 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 **GPU (CUDA job):** `greens_function_gpu`, `gpu_diffusion`, `gpu_chemical_field`, `gpu_feature_combinations`, `gpu_production_path`, `gpu_smoke`, `mpi_gpu_multi_rank`, `mpi_four_rank`, `cuda_aware_mpi_reaction` + `scripts/compare_gpu_parity.sh`.
 
-**Benchmark:** `scaling_benchmark` (issue #55 smoke counts).
+**Benchmark:** `scaling_benchmark` (issue #55 smoke counts). The larger
+scaling sweeps are on-demand only via
+`scripts/run_scaling_benchmark.sh` and
+`scripts/run_gpu_scaling_benchmark.sh`; the nightly workflow was removed after
+OOM failures at the `1000x1000x50` grid in the two-rank case. Chemical-field
+storage is confirmed by code and a local OOM measurement to use the global
+grid per rank, requiring approximately 16 GiB for two ranks before other
+allocations. This memory behavior is not fixed.
 
 **Config diversity guardrail:** `test_config_diversity` runs short simulations from parser fixtures and example JSON files and asserts distinct deterministic fingerprints — catches configs silently reverting to defaults.
 
