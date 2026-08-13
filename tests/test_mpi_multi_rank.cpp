@@ -350,6 +350,61 @@ void test_multirank_simulation_steps() {
   }
 }
 
+void test_adaptive_dt_is_rank_identical() {
+  require_mpi_ranks(2);
+
+  SimulationConfig cfg = make_mpi_config(8080, 40);
+  cfg.adaptive_dt.enabled = true;
+  cfg.adaptive_dt.min = 1.0;
+  cfg.adaptive_dt.max = 300.0;
+  cfg.adaptive_dt.safety = 0.8;
+  cfg.adaptive_dt.growth_limit = 0.1;
+  cfg.initial_strains.clear();
+
+  SimulationConfig::InitialStrain resident;
+  resident.type = 1;
+  resident.count = 40;
+  resident.mu_max = 1.0e-8;
+  cfg.initial_strains.push_back(resident);
+
+  SimulationConfig::InitialStrain fast;
+  fast.type = 2;
+  fast.count = 1;
+  fast.mu_max = 5.0e-2;
+  cfg.initial_strains.push_back(fast);
+
+  Simulation sim;
+  sim.init(cfg);
+
+  const Real dt = sim.compute_adaptive_dt();
+  Real local_max_abs_mu = 0.0;
+  for (const Agent& agent : sim.agents()) {
+    local_max_abs_mu = std::max(local_max_abs_mu,
+                                std::abs(agent.mu_realized));
+  }
+  Real minimum_local_max_abs_mu = 0.0;
+  Real maximum_local_max_abs_mu = 0.0;
+  MPI_Allreduce(&local_max_abs_mu, &minimum_local_max_abs_mu, 1, MPI_DOUBLE,
+                MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_max_abs_mu, &maximum_local_max_abs_mu, 1, MPI_DOUBLE,
+                MPI_MAX, MPI_COMM_WORLD);
+  assert(minimum_local_max_abs_mu < 1.0e-6);
+  assert(maximum_local_max_abs_mu > 1.0e-2);
+  Real minimum = 0.0;
+  Real maximum = 0.0;
+  MPI_Allreduce(&dt, &minimum, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(&dt, &maximum, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+  assert(std::abs(maximum - minimum) < 1e-12);
+  assert(dt < cfg.adaptive_dt.max);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  if (rank == 0) {
+    std::cout << "  test_adaptive_dt_is_rank_identical: PASSED"
+              << " (dt=" << dt << ")\n";
+  }
+}
+
 void test_multirank_immigration_ownership() {
   require_mpi_ranks(2);
   int rank = 0;
@@ -409,6 +464,7 @@ int main(int argc, char** argv) {
   test_boundary_ghost_exchange_runs();
   test_periodic_x_ghost_and_migration();
   test_multirank_simulation_steps();
+  test_adaptive_dt_is_rank_identical();
   test_multirank_immigration_ownership();
 
   if (rank == 0) {

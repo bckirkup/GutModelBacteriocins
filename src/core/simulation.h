@@ -233,6 +233,8 @@ class Simulation {
   struct MpiStats {
     Int global_agent_count = 0;
     Real global_mu_avg = 0.0;
+    Real global_max_abs_mu = 0.0;
+    Int global_sos_count = 0;
   };
 
   struct EventLedger {
