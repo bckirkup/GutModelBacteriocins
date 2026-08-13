@@ -145,10 +145,10 @@ units; the literature anchors are primarily areal or per-mass values, so using
 them without the slab conversion would shift the threshold by roughly two
 orders of magnitude.
 
-The shipped default guardrail is `1e8 cells/mL`, the top of the caution band.
-The halt retains its existing strict `>` comparison and global-count/global-
-volume basis. A threshold at `1e7 cells/mL` would be too trigger-happy for
-the small campaign geometry described below.
+The shipped default guardrail boundary is `1e8 cells/mL`, the top of the
+caution band. The boundary retains its strict `>` comparison and
+global-count/global-volume basis. A threshold at `1e7 cells/mL` would be too
+trigger-happy for the small campaign geometry described below.
 
 ## 4. Where shipped configurations sit
 
@@ -190,6 +190,30 @@ the biological lower bound is zero.
 disabled for explicitly opted-out performance or microcolony configurations.
 The campaign configurations that previously used inert `1e12` values now use
 `1e8`.
+
+The guardrail is a **bloom trajectory** check, not a density-only stop:
+
+1. Density is sampled every `300 s` of simulated time, rather than every
+   step. This keeps the meaning stable when adaptive timestep settings change.
+2. The default requires seven consecutive samples, spanning 30 minutes from
+   the first sample to the last. This is a short but biologically meaningful
+   fraction of the hours-scale *E. coli* growth timescale, while avoiding a
+   one-sample response to noise.
+3. Every sample in the window must be strictly above `1e8 cells/mL`, strictly
+   increasing, and have a non-decreasing increment from the previous sample.
+   The final condition is the discrete second-difference test for a rise that
+   is not decelerating.
+
+Thus, a population that reaches `1.07e8 cells/mL` and plateaus is homeostasis
+at the top of the envelope and is not halted. A population that crosses
+`1e8 cells/mL` while still rising and accelerating is a bloom heading into
+the out-of-scope regime and is halted. The halt message reports the observed
+latest rise rate in cells/mL/s.
+
+The trajectory history is runtime-only and is not written to HDF5. A
+checkpoint restore starts with an empty history and must re-establish the
+full rising, non-decelerating window. This avoids inheriting a stale
+trajectory across a checkpoint fork and is deliberately conservative.
 
 The runtime progress and summary output report the current global density in
 cells/mL alongside the global agent count. This uses the already-computed

@@ -63,6 +63,10 @@ ProgressMetrics calculate_progress_metrics(Real sim_time,
                                            Real total_time,
                                            double wall_elapsed_s);
 
+bool is_accelerating_density_window(const std::vector<Real>& density_samples,
+                                    Real threshold,
+                                    Int required_samples);
+
 class Simulation {
  public:
   Simulation() = default;
@@ -216,6 +220,7 @@ class Simulation {
       const std::chrono::steady_clock::time_point& wall_now);
   void update_lineage_snapshot_if_due();
   bool population_stop(int rank) const;
+  void sample_dysbiosis_density();
   bool dysbiosis_threshold_exceeded(int rank);
 
   // Module execution (NUFEB-inspired)
@@ -277,6 +282,8 @@ class Simulation {
   bool gpu_active_ = false;
   bool halted_for_dysbiosis_ = false;
   Real halt_density_cells_per_mL_ = 0.0;
+  std::vector<Real> dysbiosis_density_history_;
+  Real next_dysbiosis_sample_time_ = 0.0;
   ChemicalFieldGpu chem_gpu_;
   AgentPoolGpu agents_gpu_;
 

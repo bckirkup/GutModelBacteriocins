@@ -323,6 +323,14 @@ std::vector<Probe> build_probes() {
   v.push_back(I("gpu_device_id", [](const SimulationConfig& c) { return static_cast<long long>(c.gpu.device_id); }));
   v.push_back(B("profile_steps", [](const SimulationConfig& c) { return c.profile_steps; }));
   v.push_back(R("dysbiosis_threshold", [](const SimulationConfig& c) { return c.dysbiosis_threshold; }));
+  v.push_back(R("dysbiosis_sampling_interval",
+                [](const SimulationConfig& c) {
+                  return c.dysbiosis_sampling_interval;
+                }));
+  v.push_back(I("dysbiosis_sample_count",
+                [](const SimulationConfig& c) {
+                  return static_cast<long long>(c.dysbiosis_sample_count);
+                }));
 
   // ── Oxygen (Spec 1) ───────────────────────────────────────────────────────
   add_ns_bool(v, "oxygen.enabled", "oxygen_enabled", [](const SimulationConfig& c) { return c.chem_env.oxygen.enabled; });

@@ -120,10 +120,12 @@ struct SimulationConfig {
   ImmigrationConfig immigration;
   bool profile_steps = false;
 
-  // Spec 5 §4 — Dysbiosis safety net. When > 0, the run halts if global agent
-  // density (cells/mL) exceeds this threshold. The default is the top of the
-  // caution band; see docs/OPERATING_ENVELOPE.md. 0 disables the check.
+  // Spec 5 §4 — Dysbiosis safety net. When > 0, the run halts after a
+  // persistent, increasing, non-decelerating density excursion above this
+  // threshold. See docs/OPERATING_ENVELOPE.md. 0 disables the check.
   Real dysbiosis_threshold = 1.0e8;   // cells/mL, 0 = disabled
+  Real dysbiosis_sampling_interval = 300.0;  // simulated seconds
+  Int dysbiosis_sample_count = 7;            // 30-minute trajectory window
 };
 
 class InputParser {

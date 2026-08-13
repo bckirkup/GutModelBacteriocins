@@ -14,7 +14,9 @@ For **batch runner** manifests (multi-run sweeps), see [BATCH_RUNNER.md](BATCH_R
 | `bio_dt` | 60 | s | Biological timestep |
 | `output_interval` | 3600 | s | Console progress + in-memory lineage snapshot interval (not HDF5) |
 | `seed` | 42 | — | Random number generator seed |
-| `dysbiosis_threshold` | 1e8 | cells/mL | Spec 5 §4 safety net: halt if global agent density exceeds the top of the caution band. See [OPERATING_ENVELOPE.md](OPERATING_ENVELOPE.md). `0` disables the check |
+| `dysbiosis_threshold` | 1e8 | cells/mL | Spec 5 §4 bloom boundary: with the sampling controls below, halt only after a persistent above-boundary rise whose increments are not decelerating. See [OPERATING_ENVELOPE.md](OPERATING_ENVELOPE.md). `0` disables the check |
+| `dysbiosis_sampling_interval` | 300 | s | Simulated-time interval between global-density samples for the bloom guardrail |
+| `dysbiosis_sample_count` | 7 | samples | Consecutive samples required: 7 samples span 30 minutes from first to last; all must be above the boundary, strictly increasing, and non-decelerating |
 
 **Guidance:** `bio_dt` should be ≤ 60 s for accurate growth dynamics. Larger values speed up simulation but may miss fast-timescale events (SOS induction, toxin killing).
 

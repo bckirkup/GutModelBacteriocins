@@ -78,6 +78,7 @@ endfunction()
 # ── Fast unit tests (default CI gate) ────────────────────────────────────
 gutibm_add_test(assertions_enabled test_assertions_enabled.cpp LABELS "unit")
 gutibm_add_test(progress_report test_progress_report.cpp LABELS "unit")
+gutibm_add_test(dysbiosis_guardrail test_dysbiosis_guardrail.cpp LABELS "unit")
 gutibm_add_test(spatial_hash test_spatial_hash.cpp LABELS "unit")
 gutibm_add_test(greens_function test_greens_function.cpp LABELS "unit")
 gutibm_add_test(agent test_agent.cpp LABELS "unit")

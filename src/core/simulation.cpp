@@ -329,6 +329,8 @@ void Simulation::init(const SimulationConfig& cfg) {
   clock_.step_count    = 0;
   clock_.next_output   = 0.0;
   clock_.next_snapshot = 0.0;
+  dysbiosis_density_history_.clear();
+  next_dysbiosis_sample_time_ = clock_.time;
 
   int rank = domain_.rank();
   if (rank == 0) {
@@ -414,6 +416,8 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
 #else
   HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(h5_file, step);
   apply_checkpoint_snapshot(snap);
+  dysbiosis_density_history_.clear();
+  next_dysbiosis_sample_time_ = clock_.time;
 
   // Sync GPU mirrors *after* host restore (agents/grid were empty above).
   if (gpu_active_) {
@@ -940,6 +944,28 @@ ProgressMetrics calculate_progress_metrics(Real sim_time,
   return metrics;
 }
 
+bool is_accelerating_density_window(const std::vector<Real>& density_samples,
+                                    Real threshold,
+                                    Int required_samples) {
+  if (required_samples < 3 ||
+      density_samples.size() < static_cast<size_t>(required_samples)) {
+    return false;
+  }
+
+  const size_t first =
+      density_samples.size() - static_cast<size_t>(required_samples);
+  for (size_t i = first; i < density_samples.size(); ++i) {
+    if (density_samples[i] <= threshold) return false;
+    if (i > first + 1) {
+      const Real increment = density_samples[i] - density_samples[i - 1];
+      const Real previous_increment =
+          density_samples[i - 1] - density_samples[i - 2];
+      if (increment <= 0.0 || increment < previous_increment) return false;
+    }
+  }
+  return true;
+}
+
 namespace {
 struct ProgressLineData {
   Int step_count;
@@ -1050,19 +1076,49 @@ bool Simulation::population_stop(int rank) const {
   return true;
 }
 
+void Simulation::sample_dysbiosis_density() {
+  if (cfg_.dysbiosis_threshold <= 0.0 ||
+      cfg_.dysbiosis_sampling_interval <= 0.0 ||
+      cfg_.dysbiosis_sample_count < 3) {
+    return;
+  }
+
+  while (clock_.time >= next_dysbiosis_sample_time_) {
+    dysbiosis_density_history_.push_back(
+        global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count));
+    if (dysbiosis_density_history_.size() >
+        static_cast<size_t>(cfg_.dysbiosis_sample_count)) {
+      dysbiosis_density_history_.erase(dysbiosis_density_history_.begin());
+    }
+    next_dysbiosis_sample_time_ += cfg_.dysbiosis_sampling_interval;
+  }
+}
+
 bool Simulation::dysbiosis_threshold_exceeded(int rank) {
   if (cfg_.dysbiosis_threshold <= 0.0) return false;
+  sample_dysbiosis_density();
+  if (!is_accelerating_density_window(
+          dysbiosis_density_history_, cfg_.dysbiosis_threshold,
+          cfg_.dysbiosis_sample_count)) {
+    return false;
+  }
   const Real density_cells_per_mL =
       global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count);
-  if (density_cells_per_mL <= cfg_.dysbiosis_threshold) return false;
 
   halted_for_dysbiosis_ = true;
   halt_density_cells_per_mL_ = density_cells_per_mL;
+  const size_t last = dysbiosis_density_history_.size() - 1;
+  const Real density_rate =
+      (dysbiosis_density_history_[last] -
+       dysbiosis_density_history_[last - 1]) /
+      cfg_.dysbiosis_sampling_interval;
   if (rank == 0) {
     std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: "
               << density_cells_per_mL
               << " cells/mL > " << cfg_.dysbiosis_threshold
-              << " cells/mL — halting simulation.\n"
+              << " cells/mL, increasing at " << density_rate
+              << " cells/mL/s with non-decelerating growth"
+              << " — halting simulation.\n"
               << std::flush;
   }
   return true;
@@ -1078,6 +1134,8 @@ void Simulation::run() {
   const Real attempt_start_sim_time = clock_.time;
   auto next_heartbeat = wall_start;
   bool heartbeat_emitted = false;
+
+  sample_dysbiosis_density();
 
   // Initial snapshot only for fresh runs (not checkpoint resume).
   if (hdf5_.is_enabled() && clock_.step_count == 0) {
