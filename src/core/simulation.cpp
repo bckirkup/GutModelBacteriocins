@@ -941,20 +941,30 @@ ProgressMetrics calculate_progress_metrics(Real sim_time,
 }
 
 namespace {
-void print_progress_line(Int step_count, Real sim_time, Real dt, Int global_agents,
-                         Real global_density, Int local_agents, Real mu_avg,
-                         Real total_time, Real attempt_sim_time,
-                         double wall_elapsed_s) {
+struct ProgressLineData {
+  Int step_count;
+  Real sim_time;
+  Real dt;
+  Int global_agents;
+  Real global_density;
+  Int local_agents;
+  Real mu_avg;
+  Real total_time;
+  Real attempt_sim_time;
+  double wall_elapsed_s;
+};
+
+void print_progress_line(const ProgressLineData& data) {
   const ProgressMetrics metrics =
-      calculate_progress_metrics(sim_time, attempt_sim_time, total_time,
-                                 wall_elapsed_s);
-  std::cout << "Step " << step_count
-            << "  t=" << sim_time << "s"
-            << "  dt=" << std::setprecision(3) << dt << "s"
-            << "  global_agents=" << global_agents
-            << "  density_cells_per_mL=" << global_density
-            << "  local_agents=" << local_agents
-            << "  mu_avg=" << mu_avg
+      calculate_progress_metrics(data.sim_time, data.attempt_sim_time,
+                                 data.total_time, data.wall_elapsed_s);
+  std::cout << "Step " << data.step_count
+            << "  t=" << data.sim_time << "s"
+            << "  dt=" << std::setprecision(3) << data.dt << "s"
+            << "  global_agents=" << data.global_agents
+            << "  density_cells_per_mL=" << data.global_density
+            << "  local_agents=" << data.local_agents
+            << "  mu_avg=" << data.mu_avg
             << "  pct=" << std::setprecision(4) << metrics.pct
             << "  rate=" << std::setprecision(4) << metrics.rate
             << "  eta_s=" << std::setprecision(0) << std::fixed
@@ -1006,13 +1016,18 @@ void Simulation::emit_progress_if_due(
   if (domain_.rank() == 0) {
     const double wall_elapsed_s =
         std::chrono::duration<double>(wall_now - wall_start).count();
-    print_progress_line(clock_.step_count, clock_.time, dt,
-                        mpi_stats_.global_agent_count,
-                        global_density_cells_per_mL(
-                            domain_, mpi_stats_.global_agent_count),
-                        agents_.size(),
-                        mpi_stats_.global_mu_avg, cfg_.time.total_time,
-                        clock_.time - attempt_start_sim_time, wall_elapsed_s);
+    const ProgressLineData data{
+        clock_.step_count,
+        clock_.time,
+        dt,
+        mpi_stats_.global_agent_count,
+        global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count),
+        agents_.size(),
+        mpi_stats_.global_mu_avg,
+        cfg_.time.total_time,
+        clock_.time - attempt_start_sim_time,
+        wall_elapsed_s};
+    print_progress_line(data);
   }
   clock_.next_output += cfg_.time.output_interval;
 }
@@ -1037,14 +1052,8 @@ bool Simulation::population_stop(int rank) const {
 
 bool Simulation::dysbiosis_threshold_exceeded(int rank) {
   if (cfg_.dysbiosis_threshold <= 0.0) return false;
-  const Vec3 lo = domain_.lo();
-  const Vec3 hi = domain_.hi();
-  const Real vol_m3 = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]);
-  constexpr Real kMillilitersPerCubicMeter = 1.0e6;
-  const Real volume_mL = vol_m3 * kMillilitersPerCubicMeter;
-  const Real density_cells_per_mL = volume_mL > 0.0
-      ? static_cast<Real>(mpi_stats_.global_agent_count) / volume_mL
-      : 0.0;
+  const Real density_cells_per_mL =
+      global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count);
   if (density_cells_per_mL <= cfg_.dysbiosis_threshold) return false;
 
   halted_for_dysbiosis_ = true;
