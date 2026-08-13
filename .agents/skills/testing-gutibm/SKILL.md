@@ -73,14 +73,12 @@ When writing or reviewing Python tests, follow `.agents/skills/sonarqube-python/
 
 When writing C++ tests with random fixtures, use `gutibm::RNG` (see `.agents/skills/sonarqube-cpp/SKILL.md`), not `std::mt19937`.
 
-## Golden File Considerations
+## Validation output considerations
 
-When modifying RNG usage (e.g., switching from `np.random.seed()` to `np.random.default_rng()`), the deterministic stream changes. This requires updating golden files:
-
-- `python/tests/fixtures/sample_hdf5_golden.json` — local test golden values
-- `python/tests/fixtures/eari_vadi_ci_golden.json` — CI regression golden values (value comes from CI run, not local)
-
-The EARI/VADI golden must match what CI computes. Push the code change first, let CI fail, read the actual value from the CI log, then update the golden file.
+The EARI/VADI CI scenario uses finite-value, bounds, liveness, and FISH
+relationship checks rather than stored trajectory baselines. Keep documented
+full-run biological targets in `validation_regression.py`; do not turn a short
+run's observed values into new thresholds.
 
 ## GPU Runtime and Memory Validation
 

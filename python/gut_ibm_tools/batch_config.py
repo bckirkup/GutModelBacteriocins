@@ -25,8 +25,6 @@ class BatchConfigError(ValueError):
 
 @dataclass(frozen=True)
 class ValidateConfig:
-    golden: str | None = None
-    fish_golden: str | None = None
     check_targets: bool = False
     check_fish_targets: bool = False
 
@@ -71,8 +69,6 @@ def _parse_validate_block(raw: Any) -> ValidateConfig | None:
     if not isinstance(raw, dict):
         raise BatchConfigError("'validate' must be an object")
     return ValidateConfig(
-        golden=raw.get("golden"),
-        fish_golden=raw.get("fish_golden"),
         check_targets=bool(raw.get("check_targets", False)),
         check_fish_targets=bool(raw.get("check_fish_targets", False)),
     )

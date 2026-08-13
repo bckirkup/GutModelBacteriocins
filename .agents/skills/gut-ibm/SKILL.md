@@ -78,7 +78,7 @@ CTest targets (2- and 4-rank MPI tests included):
 | `washout_trap` | `test_washout_trap.cpp` | Long-horizon VADI metabolic washout regression (#160) |
 | `config_diversity` | `test_config_diversity.cpp` | Distinct fingerprints across configs |
 | `z_gradient` | `test_z_gradient.cpp` | Z-dependent nutrient gradients |
-| `nutrient_diffusion` | `test_nutrient_diffusion.cpp` | Implicit profile golden, stability, boundaries, sensitivity |
+| `nutrient_diffusion` | `test_nutrient_diffusion.cpp` | Implicit residual/invariant checks, stability, boundaries, sensitivity |
 | `domain_decomp` | `test_domain_decomp.cpp` | Slab logic (single rank) |
 | `acetate_mete` | `test_acetate_mete.cpp` | Acetate inhibition of MetE |
 | `protease_decay` | `test_protease_decay.cpp` | Protease half-life decay on burst sources |
@@ -142,7 +142,7 @@ Import from package root (re-exported in `__init__.py`):
 from gut_ibm_tools import GutIBMData, analysis, validation, visualization
 ```
 
-CI runs `ruff check python/`, fast pytest (`-m "not integration"`), JSON config validation (`scripts/validate_config_json.sh`), and EARI/VADI golden regression (`scripts/validate_eari_vadi.sh`).
+CI runs `ruff check python/`, fast pytest (`-m "not integration"`), JSON config validation (`scripts/validate_config_json.sh`), and EARI/VADI invariant/bounds plus FISH checks (`scripts/validate_eari_vadi.sh`).
 
 ## Simulation Timestep (read before touching `simulation.cpp`)
 
@@ -192,7 +192,7 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 2. Nutrients/small molecules: add stable implicit field logic in `src/fields/chemical_field.cpp`; do not use an explicit stencil at `bio_dt`.
 3. Preserve periodic x/y, epithelial Dirichlet z=0, and luminal zero-flux z boundaries.
 4. Sum rank-local reaction grids before global VBF coupling and diffusion.
-5. Add a quantitative golden profile plus enable/coefficient sensitivity, positivity, MPI-equality, and CPU/GPU parity coverage.
+5. Add analytic residual/invariant checks plus enable/coefficient sensitivity, positivity, MPI-equality, and CPU/GPU parity coverage.
 
 ## Configuration
 

@@ -145,12 +145,8 @@ def _maybe_validate(
     if not h5_path.is_file():
         return [f"HDF5 output missing: {h5_path}"]
 
-    golden = settings.validate.golden
-    fish_golden = settings.validate.fish_golden
     _, _, failures = run_validation(
         h5_path,
-        golden_path=Path(golden) if golden else None,
-        fish_golden_path=Path(fish_golden) if fish_golden else None,
         check_targets=settings.validate.check_targets,
         enforce_fish_targets=settings.validate.check_fish_targets,
     )

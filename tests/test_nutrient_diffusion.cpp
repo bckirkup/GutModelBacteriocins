@@ -4,7 +4,6 @@
 #include "species_names.h"
 
 #include <algorithm>
-#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -59,26 +58,51 @@ void test_uniform_field_is_fixed_point() {
   std::cout << "  test_uniform_field_is_fixed_point: PASSED\n";
 }
 
-void test_point_source_golden_profile() {
+void test_point_source_invariants_and_residual() {
   Domain domain = make_domain(5, 1, 2);
   ChemicalField chem;
   chem.init(domain, {diffusing_species(1.0e-12, 0.0, 0.0)});
   chem.conc(0, domain.cell_index(2, 0, 1)) = 1.0;
+  const Real before = inventory(chem, domain);
 
   chem.apply_diffusion(domain, 2.5);
 
-  constexpr std::array<Real, 5> expected = {
-      0.00586510263929619,
-      0.0645161290322581,
-      0.768328445747801,
-      0.0645161290322581,
-      0.00586510263929619,
-  };
+  const Real after = inventory(chem, domain);
+  const Real alpha = 2.5 * 1.0e-12 / (domain.dx() * domain.dx());
+  const Real periodic_ring_inventory = after * (1.0 + alpha);
+  assert(std::abs(periodic_ring_inventory - before) <=
+         1.0e-12 * std::abs(before));
+  const Int source = 2;
   for (Int ix = 0; ix < domain.nx(); ++ix) {
-    const Real actual = chem.conc(0, domain.cell_index(ix, 0, 1));
-    assert(std::abs(actual - expected[static_cast<size_t>(ix)]) < 1.0e-12);
+    const Real value = chem.conc(0, domain.cell_index(ix, 0, 1));
+    const Real left = chem.conc(
+        0, domain.cell_index((ix + domain.nx() - 1) % domain.nx(), 0, 1));
+    const Real right = chem.conc(
+        0, domain.cell_index((ix + 1) % domain.nx(), 0, 1));
+    assert(value > 0.0);
+    if (ix < source) {
+      assert(value < chem.conc(0, domain.cell_index(ix + 1, 0, 1)));
+    } else if (ix > source) {
+      assert(value < chem.conc(0, domain.cell_index(ix - 1, 0, 1)));
+    }
+    const Real initial = ix == source ? 1.0 : 0.0;
+    const Real laplacian = (left + right - 2.0 * value)
+        / (domain.dx() * domain.dx());
+    // The directional z solve follows the periodic x solve and scales this
+    // ring by (1 + alpha); undo that factor before checking the x operator.
+    const Real residual = (1.0 + alpha)
+        * (value - 2.5 * 1.0e-12 * laplacian);
+    assert(std::abs(residual - initial) < 1.0e-12);
   }
-  std::cout << "  test_point_source_golden_profile: PASSED\n";
+  const Real center = chem.conc(0, domain.cell_index(source, 0, 1));
+  assert(center > chem.conc(0, domain.cell_index(1, 0, 1)));
+  assert(std::abs(chem.conc(0, domain.cell_index(1, 0, 1))
+                  - chem.conc(0, domain.cell_index(3, 0, 1)))
+         < 1.0e-12);
+  assert(std::abs(chem.conc(0, domain.cell_index(0, 0, 1))
+                  - chem.conc(0, domain.cell_index(4, 0, 1)))
+         < 1.0e-12);
+  std::cout << "  test_point_source_invariants_and_residual: PASSED\n";
 }
 
 ChemicalField diffuse_point_source(const Domain& domain, Real diffusion,
@@ -269,7 +293,7 @@ void test_default_species_configuration() {
 int main() {
   std::cout << "=== Nutrient Diffusion Tests ===\n";
   test_uniform_field_is_fixed_point();
-  test_point_source_golden_profile();
+  test_point_source_invariants_and_residual();
   test_diffusion_enable_and_coefficient_sensitivity();
   test_dirichlet_neumann_boundary_gradient();
   test_configured_z_gradient_is_background_fixed_point();

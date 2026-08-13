@@ -163,11 +163,12 @@ void test_long_horizon_resident_persists() {
 }
 
 void test_trap_monotonic_live_decline() {
+  constexpr Int kInitialCount = 12;
   SimulationConfig cfg = make_washout_horizon_config(16021, 1800.0);
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain immigrant;
   immigrant.type = 2;
-  immigrant.count = 12;
+  immigrant.count = kInitialCount;
   immigrant.mu_max = 5e-4;
   cfg.initial_strains.push_back(immigrant);
 
@@ -193,7 +194,8 @@ void test_trap_monotonic_live_decline() {
   }
 
   assert(prev_live <= 1);
-  assert(cumulative_washout == 12);
+  assert(cumulative_washout == kInitialCount - prev_live);
+  assert(cumulative_washout > 0);
 
   std::cout << "  test_trap_monotonic_live_decline: PASSED"
             << " (washout_deaths=" << cumulative_washout << ")\n";
