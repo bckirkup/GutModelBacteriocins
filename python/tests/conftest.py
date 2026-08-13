@@ -104,6 +104,29 @@ def sample_hdf5(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
+def invariant_hdf5(tmp_path: Path) -> Path:
+    """Write sample output with agents inside the declared domain."""
+    path = tmp_path / "invariant_output.h5"
+    write_sample_hdf5(path)
+    with h5py.File(path, "a") as handle:
+        for step_name in handle["agents"]:
+            agents = handle["agents"][step_name]
+            count = len(agents["id"])
+            agents["x"][:] = np.linspace(1e-6, 19e-6, count)
+            agents["y"][:] = np.linspace(1e-6, 24e-6, count)
+            agents["z"][:] = 1e-6
+    return path
+
+
+@pytest.fixture
+def no_summary_hdf5(invariant_hdf5: Path) -> Path:
+    """Write self-consistent output without summary intervals."""
+    with h5py.File(invariant_hdf5, "a") as handle:
+        del handle["summary"]
+    return invariant_hdf5
+
+
+@pytest.fixture
 def mismatched_schedule_hdf5(tmp_path: Path) -> Path:
     """Write output where summary advances beyond the agent layer."""
     path = tmp_path / "mismatched_schedule.h5"
