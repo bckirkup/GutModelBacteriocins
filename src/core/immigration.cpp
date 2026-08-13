@@ -277,6 +277,12 @@ void ImmigrationEngine::reduce_distances(
 #endif
 }
 
+// MPI contract: rng_ is replicated and never observes rank-local state, so
+// every rank agrees on event counts and candidates. When an event fires, every
+// rank also participates in the replicated anchor Allgatherv before the
+// distance reduction. Both collectives are unconditional for that event. Only
+// the owning rank constructs a cell; AgentPool::next_tag() supplies that rank's
+// stride stream, making IDs globally unique without migration duplicates.
 void ImmigrationEngine::inject(const ImmigrationConfig& immigration,
                                Int current_step, Real dt,
                                const AgentPool& agents, const Domain& domain,
