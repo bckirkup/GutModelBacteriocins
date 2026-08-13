@@ -104,9 +104,13 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   if (in.gpu_active && !reactions_on_device) {
     in.chem_gpu.sync_reactions_to_device(in.chem);
     result.reactions_on_gpu = in.chem_gpu.apply_reactions(dt, in.domain);
+    if (result.reactions_on_gpu) {
+      in.chem_gpu.download_reaction_clip(in.chem);
+    }
   }
 
   if (!result.reactions_on_gpu) {
+    const Real cell_volume = in.domain.dx() * in.domain.dx() * in.domain.dx();
     Int s = 0;
     for (const auto& conc_row : in.chem.conc_data()) {
       (void)conc_row;
@@ -114,8 +118,11 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
       #pragma omp parallel for schedule(static)
       #endif
       for (Int c = 0; c < in.chem.ncells(); ++c) {
-        in.chem.conc(s, c) += in.chem.reac(s, c) * dt;
-        in.chem.conc(s, c) = std::max(in.chem.conc(s, c), 0.0);
+        const Real updated = in.chem.conc(s, c) + in.chem.reac(s, c) * dt;
+        if (updated < 0.0) {
+          in.flux_accounting.add_reaction_clip(s, -updated * cell_volume);
+        }
+        in.chem.conc(s, c) = std::max(updated, 0.0);
       }
       ++s;
     }

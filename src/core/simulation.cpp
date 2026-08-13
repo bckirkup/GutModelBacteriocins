@@ -557,6 +557,16 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     std::ranges::fill(flux.vbf_sink_interval, 0.0);
     std::ranges::fill(flux.agent_uptake_interval, 0.0);
     std::ranges::fill(flux.agent_uptake_step, 0.0);
+    if (flux.reaction_clip_interval.size()
+        != static_cast<size_t>(chem_.num_species())) {
+      flux.reaction_clip_interval.assign(
+          static_cast<size_t>(chem_.num_species()), 0.0);
+    }
+    if (flux.reaction_clip_cumulative.size()
+        != static_cast<size_t>(chem_.num_species())) {
+      flux.reaction_clip_cumulative.assign(
+          static_cast<size_t>(chem_.num_species()), 0.0);
+    }
   }
   event_ledger_.window_start_step = snap.metadata.event_window_end_step > 0
       ? snap.metadata.event_window_end_step + 1

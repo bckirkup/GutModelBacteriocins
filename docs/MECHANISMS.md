@@ -587,6 +587,17 @@ The 99% obligate anaerobic microbiota is modeled as a continuum rather than disc
 - **Mucin liberation**: Monosaccharide release from mucin glycoproteins (carbon source)
 - **Carrying capacity**: Local density limit for the simulation domain
 
+### Implicit carbon competition sink
+
+The VBF carbon sink follows Monod kinetics,
+`vmax * c / (Km + c)`, integrated implicitly over each biological timestep.
+The backward-Euler solve reports the realized concentration removal rather than
+the unconstrained instantaneous demand, so the sink cannot remove more carbon
+than the local field contains. That realized amount is written both into the
+carbon reaction rate and `vbf_sink` accounting. Any residual reaction
+positivity clip is recorded separately in the nutrient-flux summary. Agent-side
+uptake remains an independent pathway and can still overdraw a cell.
+
 ---
 
 ## z-Dependent Nutrient Gradient

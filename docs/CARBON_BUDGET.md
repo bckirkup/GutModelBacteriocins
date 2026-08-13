@@ -125,6 +125,8 @@ summary/step_NNNNNN/nutrient_flux/
   vbf_sink_cumulative
   agent_uptake_interval          # mol taken up by agents (positive = removed)
   agent_uptake_cumulative
+  reaction_clip_interval        # mass discarded by reaction positivity clipping
+  reaction_clip_cumulative
   interval_start_step, interval_end_step
   interval_start_time, interval_end_time
 ```
@@ -162,9 +164,9 @@ happens when the interior is richer than the boundary). `vbf_sink_*` and
   revision inferred it by differencing whole-grid inventory before and after
   transport, which cost about as much as the chemistry it was measuring.
 - **The prescribed z-gradient is deliberately excluded.** Its
-  subtract-diffuse-re-add is linear superposition and adds no net mass; the
-  depletion it hides reappears as the departure field that the boundary clamp
-  then refills, which *is* counted.
+  subtract-diffuse-re-add is linear superposition and adds no net mass. Any
+  departure-field exchange at the z=0 face is included in the z-solve
+  face-exchange term above, not attributed to the clamp overwrite.
 - **One expression per mechanism.** VBF totals accumulate inside
   `apply_carbon_source` / `apply_carbon_sink` / `apply_iron_sink` /
   `apply_oxygen_sink` as they compute the reaction they apply, so the audit
@@ -183,10 +185,24 @@ The instrumentation is verified to change no trajectory: identical
 `FINGERPRINT` and `FINGERPRINT_STOCHASTIC` against `main`. It is safe to leave
 on for a whole campaign rather than switching it on for audits.
 
-## 6. Open questions this does not settle
+## 6. Measured boundary flux and resolved carbon overdraw
 
-- **What the realized boundary flux is.** The 81× above is a Fickian estimate.
-  The first campaign run carrying this accounting will replace it with a number.
+- The scaled calibration measured a late-run boundary flux of
+  `1.17641933397e-11 mol/m²/s`, or `0.101642630 nmol/cm²/day`. This is
+  approximately 104.3× below the `1.227e-9 mol/m²/s` mucin-source scale and
+  approximately 8500× below the `1e-7 mol/m²/s` Fickian upper estimate.
+- With the z-gradient disabled, the boundary supplied approximately **77%** of
+  reported agent-plus-VBF consumption. With the default gradient enabled, the
+  boundary supplied approximately **28%**, while the unaccounted
+  reaction-integration positivity clip supplied approximately **43%**.
+- The carbon VBF sink now uses backward-Euler implicit Monod integration and
+  reports realized removal, so it cannot demand more carbon than the local
+  field contains. The positivity-clip question for that VBF overdraw is
+  therefore closed. The `reaction_clip_*` channel remains in every artifact
+  so any residual clip is visible.
+- Agent-side uptake can still overdraw a cell because realized uptake is not
+  yet fed back into growth. That remains an open follow-up and is not fixed
+  here.
 - **Whether the boundary should be Dirichlet at all.** A flux (Neumann/Robin)
   boundary calibrated to mucin turnover would give the epithelium a *delivery
   rate* instead of an infinite pantry, which is what makes growth-versus-washout

@@ -334,6 +334,15 @@ bool apply_vbf_key(SimulationConfig& cfg, std::string_view key, const std::strin
 }
 
 bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
+  if (key == "carbon.boundary_conc" || key == "carbon_boundary_conc") {
+    for (auto& c : cfg.chemicals) {
+      if (c.name == species::CARBON) {
+        c.boundary_conc = parse_config_real(key, val);
+        return true;
+      }
+    }
+    return true;
+  }
   if (key == "carbon_z_gradient") {
     for (auto& c : cfg.chemicals) {
       if (c.name == species::CARBON) { c.z_gradient_enabled = (val == "true" || val == "1"); return true; }

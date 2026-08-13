@@ -212,6 +212,10 @@ std::vector<Probe> build_probes() {
   v.push_back(R("vbf_carbon_sink_km", [](const SimulationConfig& c) { return c.vbf.carbon_sink_km; }));
 
   // ── Carbon z-gradient + bacteriocin SOS ───────────────────────────────────
+  add_ns_real(v, "carbon.boundary_conc", "carbon_boundary_conc",
+              [](const SimulationConfig& c) {
+                return carbon_spec(c).boundary_conc;
+              });
   v.push_back(B("carbon_z_gradient", [](const SimulationConfig& c) { return carbon_spec(c).z_gradient_enabled; }));
   v.push_back(R("carbon_z_lambda", [](const SimulationConfig& c) { return carbon_spec(c).z_gradient_lambda; }));
   v.push_back(R("sos_lysis_prob", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_lysis_prob; }));

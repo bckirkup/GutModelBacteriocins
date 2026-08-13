@@ -19,7 +19,8 @@ void launch_superpose_kernel(
 
 void launch_field_update_kernel(
     double* conc, const double* reac, int ncells, int num_species,
-    double dt, cudaStream_t stream);
+    double dt, double* reaction_clip, double cell_volume,
+    cudaStream_t stream);
 
 void launch_apply_boundaries_kernel(
     double* conc, int nx, int ny, int nz, int num_species,
