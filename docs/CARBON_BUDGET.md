@@ -193,12 +193,12 @@ on for a whole campaign rather than switching it on for audits.
 ## 6. Open questions this does not settle
 
 - **What the realized boundary flux is.** The earlier 81× value is only a
-  Fickian upper-scale estimate. The scaled 6-hour calibration measurement
-  recorded a late realized carbon flux of
-  `1.17641933397e-11 mol/m²/s`, or `0.101642630 nmol/cm²/day`,
-  approximately 104.3× below the `1.227e-9 mol/m²/s` mucin source and
-  approximately 8,500× below the `1e-7 mol/m²/s` Fickian estimate. The
-  follow-up paired mass-closure diagnosis then attributed the previously
+  Fickian upper-scale estimate. A scaled 6-hour calibration measurement taken
+  before this change recorded `1.17641933397e-11 mol/m²/s`
+  (`0.101642630 nmol/cm²/day`), but that is the *clamp-discard term alone* —
+  roughly 0.3% of the boundary's actual supply, which is why it looked
+  ~8,500× below the Fickian estimate. The
+  follow-up paired mass-closure diagnosis attributed the previously
   missing boundary exchange: with `carbon_z_gradient=false`, the boundary
   supplies approximately **77%** of recorded VBF-plus-agent consumption;
   with the default gradient enabled, it supplies approximately **28%**,
