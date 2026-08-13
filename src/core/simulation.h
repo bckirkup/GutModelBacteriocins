@@ -195,20 +195,6 @@ class Simulation {
   void init_population(const SimulationConfig& cfg);
   Agent create_strain_agent(const SimulationConfig::InitialStrain& strain,
                             Vec3 pos);
-  void inject_immigrants(Real dt);
-  void inject_one_immigration_event(const ImmigrationConfig& immigration,
-                                    bool log_warnings);
-  std::vector<Vec3> immigration_anchors(
-      const ImmigrationConfig& immigration, Int global_live_count) const;
-  Vec3 immigration_centroid_anchor(Int global_live_count) const;
-  std::vector<Vec3> immigration_support_anchors() const;
-  void calculate_centroid_distances(const std::vector<Vec3>& candidates,
-                                    std::vector<Real>& distances_sq) const;
-  void calculate_nearest_distances(const std::vector<Vec3>& candidates,
-                                   std::vector<Real>& distances_sq) const;
-  void reduce_immigration_distances(const std::vector<Vec3>& candidates,
-                                    std::vector<Real>& distances_sq) const;
-  void validate_immigration_config() const;
   void apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap);
   void update_grid_coupling();
   void rebuild_spatial_hash();
@@ -298,7 +284,7 @@ class Simulation {
   LineageTracker  lineage_;
   HDF5Writer      hdf5_;
   RNG             rng_;
-  ImmigrationState immigration_;
+  ImmigrationEngine immigration_;
 
   // Fix modules (mutable: compute() updates simulation state via sim_ reference)
   mutable std::vector<std::unique_ptr<Fix>> fixes_;
