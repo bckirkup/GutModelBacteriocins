@@ -643,24 +643,22 @@ Real Simulation::compute_adaptive_dt() const {
   Real dt = cfg_.adaptive_dt.max;
 
   // Growth rate constraint: mu_max * dt < growth_limit
-  Real max_mu = 0.0;
-  Int sos_count = 0;
-  for (const Agent& a : agents_) {
-    if (a.state == PhenoState::DEAD) continue;
-    max_mu = std::max(max_mu, std::abs(a.mu_realized));
-    if (a.state == PhenoState::SOS_INDUCED) sos_count++;
+  if (mpi_ghost_.stats.global_max_abs_mu > 0) {
+    dt = std::min(
+        dt, cfg_.adaptive_dt.growth_limit / mpi_ghost_.stats.global_max_abs_mu);
   }
-  if (max_mu > 0) dt = std::min(dt, cfg_.adaptive_dt.growth_limit / max_mu);
 
   // SOS cascade constraint: reduce dt during active lysis
-  if (sos_count > 5)  dt = std::min(dt, 10.0);
-  if (sos_count > 20) dt = std::min(dt, 2.0);
+  if (mpi_ghost_.stats.global_sos_count > 5)  dt = std::min(dt, 10.0);
+  if (mpi_ghost_.stats.global_sos_count > 20) dt = std::min(dt, 2.0);
 
   // Agent density constraint
-  Vec3 sz = domain_.size();
-  if (Real volume = sz[0] * sz[1] * sz[2]; volume > 0.0) {
-    Real density = static_cast<Real>(agents_.size()) / volume;
-    if (density > 1e15) dt = std::min(dt, 10.0);
+  const Real density = global_density_cells_per_mL(
+      domain_, mpi_ghost_.stats.global_agent_count);
+  // 1e15 cells/m^3 is 1e9 cells/mL.
+  constexpr Real kDensityLimitCellsPerML = 1.0e9;
+  if (density > kDensityLimitCellsPerML) {
+    dt = std::min(dt, 10.0);
   }
 
   // Apply safety factor and bounds
@@ -1576,30 +1574,46 @@ void Simulation::clear_ghost_agents() {
 void Simulation::allreduce_global_stats() {
   // Compute local stats
   Int local_count = 0;
+  Int local_sos_count = 0;
   Real local_mu_sum = 0.0;
+  Real local_max_abs_mu = 0.0;
   for (const Agent& a : agents_) {
     if (a.state != PhenoState::DEAD) {
       local_count++;
       local_mu_sum += a.mu_realized;
+      // Ghosts duplicate an owned agent, so including one in this max is
+      // harmless; the global maximum is unchanged.
+      local_max_abs_mu = std::max(local_max_abs_mu, std::abs(a.mu_realized));
+      if (a.state == PhenoState::SOS_INDUCED) local_sos_count++;
     }
   }
 
 #ifdef GUTIBM_MPI
   if (domain_.nprocs() > 1) {
-    Int global_count = 0;
-    Real global_mu_sum = 0.0;
-    MPI_Allreduce(&local_count, &global_count, 1, MPI_INT, MPI_SUM,
-                  MPI_COMM_WORLD);
-    MPI_Allreduce(&local_mu_sum, &global_mu_sum, 1, MPI_DOUBLE, MPI_SUM,
-                  MPI_COMM_WORLD);
-    mpi_ghost_.stats.global_agent_count = global_count;
-    mpi_ghost_.stats.global_mu_avg = global_count > 0 ? global_mu_sum / global_count : 0.0;
+    const std::array<Real, 3> local_sums = {
+        static_cast<Real>(local_count), static_cast<Real>(local_sos_count),
+        local_mu_sum};
+    std::array<Real, 3> global_sums = {};
+    MPI_Allreduce(local_sums.data(), global_sums.data(), 3, MPI_DOUBLE,
+                  MPI_SUM, MPI_COMM_WORLD);
+    Real global_max_abs_mu = 0.0;
+    MPI_Allreduce(&local_max_abs_mu, &global_max_abs_mu, 1, MPI_DOUBLE,
+                  MPI_MAX, MPI_COMM_WORLD);
+    mpi_ghost_.stats.global_agent_count =
+        static_cast<Int>(global_sums[0]);
+    mpi_ghost_.stats.global_sos_count =
+        static_cast<Int>(global_sums[1]);
+    mpi_ghost_.stats.global_mu_avg =
+        global_sums[0] > 0.0 ? global_sums[2] / global_sums[0] : 0.0;
+    mpi_ghost_.stats.global_max_abs_mu = global_max_abs_mu;
     return;
   }
 #endif
 
   mpi_ghost_.stats.global_agent_count = local_count;
+  mpi_ghost_.stats.global_sos_count = local_sos_count;
   mpi_ghost_.stats.global_mu_avg = local_count > 0 ? local_mu_sum / local_count : 0.0;
+  mpi_ghost_.stats.global_max_abs_mu = local_max_abs_mu;
 }
 
 Real Simulation::local_O2(const Agent& agent) const {
