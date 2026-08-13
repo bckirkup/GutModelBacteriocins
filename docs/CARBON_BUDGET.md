@@ -194,15 +194,23 @@ on for a whole campaign rather than switching it on for audits.
 
 ## 6. Measured boundary flux and resolved carbon overdraw
 
-- The scaled calibration measured a late-run clamp-discard flux of
-  `1.17641933397e-11 mol/m²/s` (`0.101642630 nmol/cm²/day`). The complete
-  z-solve boundary exchange is approximately 104.3× below the
+- The scaled calibration measured a late-run **clamp-discard-only** flux of
+  `1.17641933397e-11 mol/m²/s` (`0.101642630 nmol/cm²/day`). This
+  clamp-discard-only number is approximately 104.3× below the
   `1.227e-9 mol/m²/s` mucin-source scale and approximately 8500× below the
-  `1e-7 mol/m²/s` Fickian upper estimate.
-- With the z-gradient disabled, the boundary supplied approximately **77%** of
-  reported agent-plus-VBF consumption. With the default gradient enabled, the
-  boundary supplied approximately **28%**, while the unaccounted
-  reaction-integration positivity clip supplied approximately **43%**.
+  `1e-7 mol/m²/s` Fickian upper estimate; those ratios do not describe the
+  complete z-solve boundary exchange.
+- In the **pre-fix** diagnosis, with the z-gradient disabled, the boundary
+  supplied approximately **77%** of reported agent-plus-VBF consumption. With
+  the default gradient enabled, the boundary supplied approximately **28%**,
+  while the unaccounted reaction-integration positivity clip supplied
+  approximately **43%**.
+- In the **post-fix** calibration with the default gradient enabled, the
+  boundary supplied **29.1%**, VBF/mucin liberation supplied **70.7%**, and
+  the residual reaction clip supplied **0.11%** of reported consumption. The
+  pre-fix 43% was not carbon redirected to another pathway: it was the
+  discarded explicit-sink demand, so removing it leaves a smaller honest
+  denominator and raises liberation's share.
 - The carbon VBF sink now uses backward-Euler implicit Monod integration and
   reports realized removal, so it cannot demand more carbon than the local
   field contains. The positivity-clip question for that VBF overdraw is
