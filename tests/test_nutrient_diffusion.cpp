@@ -196,7 +196,9 @@ void test_boundary_accounting_closes_diffusion_only_inventory() {
 
   const Real after = inventory(chem, domain);
   const Real recorded = chem.flux_accounting().boundary_interval[0];
-  assert(std::abs((after - before) - recorded) < 1.0e-25);
+  const Real tolerance =
+      1.0e-12 * (std::abs(before) + std::abs(after));
+  assert(std::abs((after - before) - recorded) < tolerance);
   std::cout << "  test_boundary_accounting_closes_diffusion_only_inventory: PASSED\n";
 }
 

@@ -170,8 +170,8 @@ happens when the interior is richer than the boundary). `vbf_sink_*` and
   channel.
 - **The prescribed z-gradient is deliberately excluded.** Its
   subtract-diffuse-re-add is linear superposition and adds no net mass; the
-  depletion it hides reappears as the departure field that the boundary clamp
-  then refills, which *is* counted.
+  departure-field exchange at the z=0 face is included in the z-solve
+  face-exchange term above.
 - **One expression per mechanism.** VBF totals accumulate inside
   `apply_carbon_source` / `apply_carbon_sink` / `apply_iron_sink` /
   `apply_oxygen_sink` as they compute the reaction they apply, so the audit
