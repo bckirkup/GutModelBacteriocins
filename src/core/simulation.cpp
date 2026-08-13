@@ -334,6 +334,14 @@ void Simulation::init(const SimulationConfig& cfg) {
 
   int rank = domain_.rank();
   if (rank == 0) {
+    if (cfg.dysbiosis_threshold > 0.0 &&
+        cfg.dysbiosis_sampling_interval > 0.0 &&
+        cfg.dysbiosis_sampling_interval < cfg.time.bio_dt) {
+      std::cerr << "Warning: dysbiosis sampling interval ("
+                << cfg.dysbiosis_sampling_interval
+                << " s) is shorter than bio_dt (" << cfg.time.bio_dt
+                << " s); at most one density sample will be taken per step.\n";
+    }
     std::cout << "GutIBM initialized:\n"
               << "  Domain: " << domain_.nx() << "x" << domain_.ny()
               << "x" << domain_.nz() << " cells"
@@ -956,11 +964,13 @@ bool is_accelerating_density_window(const std::vector<Real>& density_samples,
       density_samples.size() - static_cast<size_t>(required_samples);
   for (size_t i = first; i < density_samples.size(); ++i) {
     if (density_samples[i] <= threshold) return false;
-    if (i > first + 1) {
+    if (i > first) {
       const Real increment = density_samples[i] - density_samples[i - 1];
+      if (increment <= 0.0) return false;
+      if (i == first + 1) continue;
       const Real previous_increment =
           density_samples[i - 1] - density_samples[i - 2];
-      if (increment <= 0.0 || increment < previous_increment) return false;
+      if (increment < previous_increment) return false;
     }
   }
   return true;
@@ -1083,14 +1093,15 @@ void Simulation::sample_dysbiosis_density() {
     return;
   }
 
-  while (clock_.time >= next_dysbiosis_sample_time_) {
+  if (clock_.time >= next_dysbiosis_sample_time_) {
     dysbiosis_density_history_.push_back(
         global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count));
     if (dysbiosis_density_history_.size() >
         static_cast<size_t>(cfg_.dysbiosis_sample_count)) {
       dysbiosis_density_history_.erase(dysbiosis_density_history_.begin());
     }
-    next_dysbiosis_sample_time_ += cfg_.dysbiosis_sampling_interval;
+    next_dysbiosis_sample_time_ =
+        clock_.time + cfg_.dysbiosis_sampling_interval;
   }
 }
 

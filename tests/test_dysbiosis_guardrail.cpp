@@ -28,6 +28,11 @@ int main() {
   assert(!is_accelerating_density_window(decelerating, threshold,
                                          sample_count));
 
+  const std::vector<Real> dip_then_accelerate{
+      1.05e8, 1.02e8, 1.03e8, 1.05e8, 1.08e8, 1.12e8, 1.17e8};
+  assert(!is_accelerating_density_window(dip_then_accelerate, threshold,
+                                         sample_count));
+
   std::cout << "Operating-envelope dysbiosis guardrail tests passed.\n";
   return 0;
 }
