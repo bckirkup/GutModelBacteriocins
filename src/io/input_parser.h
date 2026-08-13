@@ -121,9 +121,9 @@ struct SimulationConfig {
   bool profile_steps = false;
 
   // Spec 5 §4 — Dysbiosis safety net. When > 0, the run halts if global agent
-  // density (cells/mL) exceeds this threshold, keeping the model in the
-  // homeostatic regime it is calibrated for. 0 disables the check.
-  Real dysbiosis_threshold = 0.0;   // cells/mL, 0 = disabled
+  // density (cells/mL) exceeds this threshold. The default is the top of the
+  // caution band; see docs/OPERATING_ENVELOPE.md. 0 disables the check.
+  Real dysbiosis_threshold = 1.0e8;   // cells/mL, 0 = disabled
 };
 
 class InputParser {

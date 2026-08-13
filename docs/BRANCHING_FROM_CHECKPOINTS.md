@@ -154,11 +154,11 @@ For each fork, record at minimum:
 
 ## 6. Open items: do not assume these away
 
-- The dysbiosis threshold is **disabled by default** pending Benjamin's
-  healthy-density ceiling in cells/mL. The killed run peaked near
-  `1.575e8 cells/mL`, approximately three orders of magnitude below lumen
-  density. The earlier `1.6e11` figure was a 1,000× arithmetic error and is
-  wrong. If a fork enables the halt, retain its reason and tripped density in
+- The dysbiosis threshold now defaults to `1e8 cells/mL`; see
+  [`OPERATING_ENVELOPE.md`](OPERATING_ENVELOPE.md) for the rationale. The
+  killed run peaked near `1.575e8 cells/mL`, just above the out-of-scope
+  boundary. The earlier `1.6e11` figure was a 1,000× arithmetic error and is
+  wrong. If a fork trips the halt, retain its reason and tripped density in
   the closed restart.
 - The epithelial carbon boundary is an **unmetered Dirichlet reservoir**.
   Growth rates from any fork inherit that subsidy until the boundary question

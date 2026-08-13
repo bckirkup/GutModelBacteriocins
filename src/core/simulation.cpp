@@ -44,6 +44,14 @@ namespace {
 
 constexpr uint64_t kImmigrationSeedMix = 0x9e3779b97f4a7c15ULL;
 
+Real global_density_cells_per_mL(const Domain& domain, Int global_agents) {
+  const Vec3 size = domain.size();
+  const Real volume_m3 = size[0] * size[1] * size[2];
+  constexpr Real kMillilitersPerCubicMeter = 1.0e6;
+  const Real volume_mL = volume_m3 * kMillilitersPerCubicMeter;
+  return volume_mL > 0.0 ? static_cast<Real>(global_agents) / volume_mL : 0.0;
+}
+
 void assign_plasmids(Agent& agent, const std::vector<std::string>& plasmids, int rank) {
   for (const auto& pname : plasmids) {
     const PlasmidEntry* entry = PlasmidLibrary::find(pname);
@@ -333,6 +341,9 @@ void Simulation::init(const SimulationConfig& cfg) {
               << domain_.local_hi_x() << ") m\n"
               << "  Local agents: " << agents_.size()
               << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
+              << "  Global density: "
+              << global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count)
+              << " cells/mL\n"
               << "  Chemical species: " << chem_.num_species() << "\n";
     const std::string adaptive_dt_status = cfg.adaptive_dt.enabled
         ? std::format(" [{}s, {}s]", cfg.adaptive_dt.min, cfg.adaptive_dt.max)
@@ -422,7 +433,10 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
               << "  Restored time: " << clock_.time << " s\n"
               << "  Restored step: " << clock_.step_count << "\n"
               << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
-              << "  Local agents: " << agents_.size() << "\n";
+              << "  Local agents: " << agents_.size() << "\n"
+              << "  Global density: "
+              << global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count)
+              << " cells/mL\n";
     print_gpu_status_banner(gpu_active_, cfg_.gpu);
     std::cout << std::flush;
   }
@@ -928,8 +942,8 @@ ProgressMetrics calculate_progress_metrics(Real sim_time,
 
 namespace {
 void print_progress_line(Int step_count, Real sim_time, Real dt, Int global_agents,
-                         Int local_agents, Real mu_avg, Real total_time,
-                         Real attempt_sim_time,
+                         Real global_density, Int local_agents, Real mu_avg,
+                         Real total_time, Real attempt_sim_time,
                          double wall_elapsed_s) {
   const ProgressMetrics metrics =
       calculate_progress_metrics(sim_time, attempt_sim_time, total_time,
@@ -938,6 +952,7 @@ void print_progress_line(Int step_count, Real sim_time, Real dt, Int global_agen
             << "  t=" << sim_time << "s"
             << "  dt=" << std::setprecision(3) << dt << "s"
             << "  global_agents=" << global_agents
+            << "  density_cells_per_mL=" << global_density
             << "  local_agents=" << local_agents
             << "  mu_avg=" << mu_avg
             << "  pct=" << std::setprecision(4) << metrics.pct
@@ -992,7 +1007,10 @@ void Simulation::emit_progress_if_due(
     const double wall_elapsed_s =
         std::chrono::duration<double>(wall_now - wall_start).count();
     print_progress_line(clock_.step_count, clock_.time, dt,
-                        mpi_stats_.global_agent_count, agents_.size(),
+                        mpi_stats_.global_agent_count,
+                        global_density_cells_per_mL(
+                            domain_, mpi_stats_.global_agent_count),
+                        agents_.size(),
                         mpi_stats_.global_mu_avg, cfg_.time.total_time,
                         clock_.time - attempt_start_sim_time, wall_elapsed_s);
   }
@@ -1108,6 +1126,9 @@ void Simulation::run() {
     Real retention = lineage_.resident_retention(cfg_.time.total_time * 0.5);
     std::cout << "\nSimulation complete.\n"
               << "  Final global agents: " << mpi_stats_.global_agent_count << "\n"
+              << "  Final global density: "
+              << global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count)
+              << " cells/mL\n"
               << "  Steps taken: " << clock_.step_count << "\n"
               << "  Resident retention: " << retention * 100.0 << "%\n"
               << "  Dominant lineage: " << lineage_.dominant_lineage() << "\n"
