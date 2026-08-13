@@ -37,6 +37,15 @@ ChemicalSpec diffusing_species(Real diffusion, Real initial, Real boundary) {
   return spec;
 }
 
+Real inventory(const ChemicalField& chem, const Domain& domain) {
+  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  Real total = 0.0;
+  for (Int cell = 0; cell < chem.ncells(); ++cell) {
+    total += chem.conc(0, cell) * cell_volume;
+  }
+  return total;
+}
+
 void test_uniform_field_is_fixed_point() {
   Domain domain = make_domain(5, 4, 6);
   ChemicalField chem;
@@ -177,6 +186,61 @@ void test_large_timestep_is_positive_and_finite() {
   std::cout << "  test_large_timestep_is_positive_and_finite: PASSED\n";
 }
 
+void test_boundary_accounting_closes_diffusion_only_inventory() {
+  Domain domain = make_domain(5, 4, 6);
+  ChemicalField chem;
+  chem.init(domain, {diffusing_species(2.1e-9, 0.0, 1.0)});
+  const Real before = inventory(chem, domain);
+
+  chem.apply_diffusion(domain, 60.0);
+
+  const Real after = inventory(chem, domain);
+  const Real recorded = chem.flux_accounting().boundary_interval[0];
+  assert(std::abs((after - before) - recorded) < 1.0e-25);
+  std::cout << "  test_boundary_accounting_closes_diffusion_only_inventory: PASSED\n";
+}
+
+void test_boundary_accounting_is_boundary_concentration_sensitive() {
+  Domain domain = make_domain(5, 4, 6);
+  std::array<Real, 3> boundary_values = {0.25, 1.0, 4.0};
+  std::array<Real, 3> fluxes{};
+
+  for (size_t i = 0; i < boundary_values.size(); ++i) {
+    ChemicalField chem;
+    chem.init(domain, {diffusing_species(2.1e-9, 0.0, boundary_values[i])});
+    chem.apply_diffusion(domain, 60.0);
+    fluxes[i] = chem.flux_accounting().boundary_interval[0];
+  }
+
+  assert(fluxes[0] < fluxes[1]);
+  assert(fluxes[1] < fluxes[2]);
+  assert(fluxes[1] - fluxes[0] > 1.0e-16);
+  assert(fluxes[2] - fluxes[1] > 1.0e-16);
+  std::cout << "  test_boundary_accounting_is_boundary_concentration_sensitive: PASSED\n";
+}
+
+void test_gradient_boundary_accounting_is_nonzero() {
+  Domain domain = make_domain(5, 4, 6);
+  ChemicalSpec spec = diffusing_species(5.0e-10, 1.0e-3, 1.0e-3);
+  spec.z_gradient_enabled = true;
+  spec.z_gradient_lambda = 10.0e-6;
+  ChemicalField chem;
+  chem.init(domain, {spec});
+  for (Int iz = 1; iz < domain.nz(); ++iz) {
+    for (Int iy = 0; iy < domain.ny(); ++iy) {
+      for (Int ix = 0; ix < domain.nx(); ++ix) {
+        chem.conc(0, domain.cell_index(ix, iy, iz)) = 0.0;
+      }
+    }
+  }
+
+  chem.apply_diffusion(domain, 60.0);
+
+  const Real recorded = chem.flux_accounting().boundary_interval[0];
+  assert(std::abs(recorded) > 1.0e-20);
+  std::cout << "  test_gradient_boundary_accounting_is_nonzero: PASSED\n";
+}
+
 void test_default_species_configuration() {
   const SimulationConfig cfg = InputParser::default_config();
   const auto diffusion_enabled = [&cfg](std::string_view name) {
@@ -208,6 +272,9 @@ int main() {
   test_dirichlet_neumann_boundary_gradient();
   test_configured_z_gradient_is_background_fixed_point();
   test_large_timestep_is_positive_and_finite();
+  test_boundary_accounting_closes_diffusion_only_inventory();
+  test_boundary_accounting_is_boundary_concentration_sensitive();
+  test_gradient_boundary_accounting_is_nonzero();
   test_default_species_configuration();
   std::cout << "All nutrient diffusion tests passed.\n";
   return 0;

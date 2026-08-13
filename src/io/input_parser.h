@@ -81,6 +81,7 @@ struct SimulationConfig {
   DomainConfig domain;
   AdvectionConfig advection;
   VBFConfig vbf;
+  Real carbon_boundary_conc = 5.0e-3;
   std::vector<ChemicalSpec> chemicals;
   QSSAConfig qssa;
   FixPluginsConfig fixes;

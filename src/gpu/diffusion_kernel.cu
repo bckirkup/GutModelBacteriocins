@@ -206,7 +206,9 @@ __global__ void diffuse_z_bounded_kernel(double* conc,
                                          int ny,
                                          int nz,
                                          double alpha,
-                                         double boundary_conc) {
+                                         double boundary_conc,
+                                         double cell_volume,
+                                         double* face_exchange) {
   const int line_id = blockIdx.x;
   if (line_id >= nx * ny) return;
   const int ix = line_id / ny;
@@ -226,6 +228,11 @@ __global__ void diffuse_z_bounded_kernel(double* conc,
 
   solve_bounded_line(line, pcr_base, n, alpha, boundary_conc, tid);
   __syncthreads();
+
+  if (tid == 0 && face_exchange != nullptr) {
+    atomicAdd(face_exchange,
+              alpha * (boundary_conc - line[0]) * cell_volume);
+  }
 
   if (tid < n) {
     conc[cell_index(ix, iy, tid + 1, nx, ny)] = line[tid];
@@ -347,6 +354,8 @@ void launch_diffuse_z_bounded(double* conc,
                               int nz,
                               double alpha,
                               double boundary_conc,
+                              double cell_volume,
+                              double* face_exchange,
                               cudaStream_t stream) {
   if (nx <= 0 || ny <= 0 || nz <= 1) return;
   const int n = nz - 1;
@@ -354,7 +363,7 @@ void launch_diffuse_z_bounded(double* conc,
   const int grid = nx * ny;
   const size_t smem = static_cast<size_t>(5 * block) * sizeof(double);
   diffuse_z_bounded_kernel<<<grid, block, smem, stream>>>(
-      conc, nx, ny, nz, alpha, boundary_conc);
+      conc, nx, ny, nz, alpha, boundary_conc, cell_volume, face_exchange);
 }
 
 void launch_set_epithelial_boundary(double* conc,

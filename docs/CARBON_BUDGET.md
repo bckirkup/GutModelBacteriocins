@@ -27,7 +27,7 @@ was invisible for so long.
 | VBF liberation | mucin-derived carbon released by the background flora | `vbf_mucin_liberation`, `vbf_mucin_z_gradient*`, or the dynamic mucin path |
 | VBF consumption | Monod sink representing background-flora competition | `vbf_carbon_sink_vmax`, `vbf_carbon_sink_km` |
 | Agent uptake | `FixMetabolism::grow_agent()` writing negative reaction into `chem.reac` | strain `mu_max`, `K_carbon` |
-| **Epithelial boundary** | the `z=0` plane re-clamped to `boundary_conc` every step | `carbon.boundary_conc` |
+| **Epithelial boundary** | net exchange across the `z=0` face, including the clamp and implicit z-solve boundary exchange | `carbon.boundary_conc` or `carbon_boundary_conc` |
 
 The first three are bounded by parameters. The fourth is a **Dirichlet
 reservoir with no inventory behind it**: whatever the interior loses, the clamp
@@ -116,7 +116,7 @@ Each summary write carries:
 ```
 summary/step_NNNNNN/nutrient_flux/
   species_names                  # (nspec, 48) char — index → species, self-describing
-  boundary_interval              # mol injected by the Dirichlet clamp this interval
+  boundary_interval              # net mol supplied by the epithelial boundary this interval
   boundary_cumulative            #   … since t=0, survives resumes
   boundary_area_flux_interval    # mol/m²/s — compare directly against literature
   vbf_source_interval            # mol liberated by VBF
@@ -155,12 +155,19 @@ happens when the interior is richer than the boundary). `vbf_sink_*` and
 
 ## 5. How the numbers are obtained (and why it matters that they are cheap)
 
-- **Boundary flux is taken where the boundary is applied.** The mass the
-  Dirichlet condition injects is exactly what the clamp discards:
-  `(boundary_conc - conc[idx]) · cell_volume`, accumulated inside
-  `set_epithelial_boundary()`. That is `O(nx·ny)` per species. An earlier
-  revision inferred it by differencing whole-grid inventory before and after
-  transport, which cost about as much as the chemistry it was measuring.
+- **Boundary flux is taken where the boundary is applied.** The accounting
+  adds two `O(nx·ny)` contributions per diffusing species to the existing
+  boundary channel:
+  1. the clamp-discard term
+     `(boundary_conc - conc[idx]) · cell_volume` from
+     `set_epithelial_boundary()`;
+  2. the net z-solve face exchange
+     `alpha · (diffusion_boundary - C_first_after_solve) · cell_volume`,
+     summed over the x-y face where `diffuse_bounded_z()` applies it.
+  This avoids differencing whole-grid inventories. In the
+  gradient-preserving path, `diffusion_boundary = 0` for the departure
+  field; the resulting exchange is still part of the epithelial boundary
+  channel.
 - **The prescribed z-gradient is deliberately excluded.** Its
   subtract-diffuse-re-add is linear superposition and adds no net mass; the
   depletion it hides reappears as the departure field that the boundary clamp
@@ -185,8 +192,18 @@ on for a whole campaign rather than switching it on for audits.
 
 ## 6. Open questions this does not settle
 
-- **What the realized boundary flux is.** The 81× above is a Fickian estimate.
-  The first campaign run carrying this accounting will replace it with a number.
+- **What the realized boundary flux is.** The earlier 81× value is only a
+  Fickian upper-scale estimate. The scaled 6-hour calibration measurement
+  recorded a late realized carbon flux of
+  `1.17641933397e-11 mol/m²/s`, or `0.101642630 nmol/cm²/day`,
+  approximately 104.3× below the `1.227e-9 mol/m²/s` mucin source and
+  approximately 8,500× below the `1e-7 mol/m²/s` Fickian estimate. The
+  follow-up paired mass-closure diagnosis then attributed the previously
+  missing boundary exchange: with `carbon_z_gradient=false`, the boundary
+  supplies approximately **77%** of recorded VBF-plus-agent consumption;
+  with the default gradient enabled, it supplies approximately **28%**,
+  while the unaccounted reaction-integration positivity clip creates
+  approximately **43%**. The clip is not fixed by this accounting change.
 - **Whether the boundary should be Dirichlet at all.** A flux (Neumann/Robin)
   boundary calibrated to mucin turnover would give the epithelium a *delivery
   rate* instead of an infinite pantry, which is what makes growth-versus-washout

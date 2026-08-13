@@ -132,7 +132,9 @@ bool apply_species_diffusion_on_device(const Domain& domain,
       y_coeffs.gamma, y_coeffs.corner, y_coeffs.denominator,
       d_corr_y.data(), gpu_compute_stream());
   gpu::launch_diffuse_z_bounded(
-      d_conc, nx, ny, nz, alpha, diffusion_boundary, gpu_compute_stream());
+      d_conc, nx, ny, nz, alpha, diffusion_boundary,
+      domain.dx() * domain.dx() * domain.dx(), d_injected_amount,
+      gpu_compute_stream());
 
   if (preserve_gradient) {
     gpu::launch_shift_z_gradient(
