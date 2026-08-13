@@ -341,8 +341,8 @@ void test_corrinoid_field_constant() {
             << " (expected=" << expected << " max_dev=" << max_dev << ")\n";
 }
 
-// ── Spec 5 §4 — the dysbiosis safety net must halt a run once density leaves
-// the calibrated regime, and must be inert when disabled. ───────────────────
+// ── Spec 5 §4 — the dysbiosis safety net must halt a rising bloom, and must
+// be inert when disabled. ───────────────────────────────────────────────────
 void test_dysbiosis_halt() {
   // Control: threshold disabled -> run proceeds through many steps.
   SimulationConfig ctrl = make_integration_cfg(50, 2024);
@@ -351,10 +351,14 @@ void test_dysbiosis_halt() {
   sim_ctrl.init(ctrl);
   sim_ctrl.run();
 
-  // Halting: threshold well below the initial density -> run stops early.
+  // Halting: threshold well below the initial density, with a short sampling
+  // interval and low division threshold to drive a rising trajectory.
   SimulationConfig halt = make_integration_cfg(50, 2024);
   // Hand calculation: 50 cells / (5e-13 m^3 * 1e6 mL/m^3) = 1e8 cells/mL.
   halt.dysbiosis_threshold = 2.0e5;  // cells/mL
+  halt.dysbiosis_sampling_interval = 1.0;
+  halt.dysbiosis_sample_count = 3;
+  halt.fixes.metabolism.division_threshold = 1.01;
   const std::string restart =
       resolve_test_h5_path("GUTIBM_DYSBIOSIS_RESTART_H5", "dysbiosis_restart");
   halt.restart.enabled = true;
@@ -363,18 +367,26 @@ void test_dysbiosis_halt() {
   halt.hdf5.enabled = false;
   Simulation sim_halt;
   sim_halt.init(halt);
+  for (Agent& agent : sim_halt.agents()) {
+    agent.biomass *= 2.0;
+  }
   sim_halt.run();
 
   expect(sim_ctrl.step_count() > sim_halt.step_count(),
          "dysbiosis threshold must halt the run earlier than the disabled control");
   expect(sim_halt.step_count() >= 1 && sim_halt.step_count() <= 2,
          "dysbiosis halt should trigger within the first step or two");
-  const Real expected_density = 50.0 / (5.0e-13 * 1.0e6);
+  const Real expected_density =
+      static_cast<Real>(sim_halt.agents().size()) / (5.0e-13 * 1.0e6);
   expect(sim_halt.halted_for_dysbiosis(),
          "dysbiosis run must record the halt");
   expect(std::abs(sim_halt.halt_density_cells_per_mL() - expected_density)
              < 1.0e-9 * expected_density,
          "dysbiosis density must use cubic metres to millilitres conversion");
+  expect(!is_accelerating_density_window(
+             {1.01e8, 1.02e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8},
+             1.0e8, 7),
+         "a plateau above the boundary must not trigger dysbiosis");
   const std::filesystem::path checkpoint =
       std::filesystem::path(halt.restart.directory) /
       (sim_halt.step_count() == 1 ? "step_000001.h5" : "step_000002.h5");

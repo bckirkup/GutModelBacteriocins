@@ -279,6 +279,16 @@ void test_chem_env_fixture() {
   std::cout << "  test_chem_env_fixture: PASSED\n";
 }
 
+void test_operating_envelope_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR) +
+                           "/tests/fixtures/parser_operating_envelope.json";
+  const SimulationConfig cfg = InputParser::parse(path);
+  assert(std::abs(cfg.dysbiosis_threshold - 1.0e8) < 1.0);
+  assert(std::abs(cfg.dysbiosis_sampling_interval - 300.0) < 1e-12);
+  assert(cfg.dysbiosis_sample_count == 7);
+  std::cout << "  test_operating_envelope_fixture: PASSED\n";
+}
+
 void test_fix_tunables_fixture() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_fix_tunables.json";
   SimulationConfig cfg = InputParser::parse(path);
@@ -411,6 +421,7 @@ int main() {
   test_strain_spawn_integration();
   test_fixes_fixture();
   test_chem_env_fixture();
+  test_operating_envelope_fixture();
   test_fix_tunables_fixture();
   test_json_document_parser();
   test_malformed_numeric_warnings_json();

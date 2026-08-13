@@ -44,6 +44,14 @@ namespace {
 
 constexpr uint64_t kImmigrationSeedMix = 0x9e3779b97f4a7c15ULL;
 
+Real global_density_cells_per_mL(const Domain& domain, Int global_agents) {
+  const Vec3 size = domain.size();
+  const Real volume_m3 = size[0] * size[1] * size[2];
+  constexpr Real kMillilitersPerCubicMeter = 1.0e6;
+  const Real volume_mL = volume_m3 * kMillilitersPerCubicMeter;
+  return volume_mL > 0.0 ? static_cast<Real>(global_agents) / volume_mL : 0.0;
+}
+
 void assign_plasmids(Agent& agent, const std::vector<std::string>& plasmids, int rank) {
   for (const auto& pname : plasmids) {
     const PlasmidEntry* entry = PlasmidLibrary::find(pname);
@@ -321,9 +329,19 @@ void Simulation::init(const SimulationConfig& cfg) {
   clock_.step_count    = 0;
   clock_.next_output   = 0.0;
   clock_.next_snapshot = 0.0;
+  dysbiosis_density_history_.clear();
+  next_dysbiosis_sample_time_ = clock_.time;
 
   int rank = domain_.rank();
   if (rank == 0) {
+    if (cfg.dysbiosis_threshold > 0.0 &&
+        cfg.dysbiosis_sampling_interval > 0.0 &&
+        cfg.dysbiosis_sampling_interval < cfg.time.bio_dt) {
+      std::cerr << "Warning: dysbiosis sampling interval ("
+                << cfg.dysbiosis_sampling_interval
+                << " s) is shorter than bio_dt (" << cfg.time.bio_dt
+                << " s); at most one density sample will be taken per step.\n";
+    }
     std::cout << "GutIBM initialized:\n"
               << "  Domain: " << domain_.nx() << "x" << domain_.ny()
               << "x" << domain_.nz() << " cells"
@@ -333,6 +351,9 @@ void Simulation::init(const SimulationConfig& cfg) {
               << domain_.local_hi_x() << ") m\n"
               << "  Local agents: " << agents_.size()
               << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
+              << "  Global density: "
+              << global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count)
+              << " cells/mL\n"
               << "  Chemical species: " << chem_.num_species() << "\n";
     const std::string adaptive_dt_status = cfg.adaptive_dt.enabled
         ? std::format(" [{}s, {}s]", cfg.adaptive_dt.min, cfg.adaptive_dt.max)
@@ -403,6 +424,8 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
 #else
   HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(h5_file, step);
   apply_checkpoint_snapshot(snap);
+  dysbiosis_density_history_.clear();
+  next_dysbiosis_sample_time_ = clock_.time;
 
   // Sync GPU mirrors *after* host restore (agents/grid were empty above).
   if (gpu_active_) {
@@ -422,7 +445,10 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
               << "  Restored time: " << clock_.time << " s\n"
               << "  Restored step: " << clock_.step_count << "\n"
               << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
-              << "  Local agents: " << agents_.size() << "\n";
+              << "  Local agents: " << agents_.size() << "\n"
+              << "  Global density: "
+              << global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count)
+              << " cells/mL\n";
     print_gpu_status_banner(gpu_active_, cfg_.gpu);
     std::cout << std::flush;
   }
@@ -926,20 +952,55 @@ ProgressMetrics calculate_progress_metrics(Real sim_time,
   return metrics;
 }
 
+bool is_accelerating_density_window(const std::vector<Real>& density_samples,
+                                    Real threshold,
+                                    Int required_samples) {
+  if (required_samples < 3 ||
+      density_samples.size() < static_cast<size_t>(required_samples)) {
+    return false;
+  }
+
+  const size_t first =
+      density_samples.size() - static_cast<size_t>(required_samples);
+  for (size_t i = first; i < density_samples.size(); ++i) {
+    if (density_samples[i] <= threshold) return false;
+    if (i > first) {
+      const Real increment = density_samples[i] - density_samples[i - 1];
+      if (increment <= 0.0) return false;
+      if (i == first + 1) continue;
+      const Real previous_increment =
+          density_samples[i - 1] - density_samples[i - 2];
+      if (increment < previous_increment) return false;
+    }
+  }
+  return true;
+}
+
 namespace {
-void print_progress_line(Int step_count, Real sim_time, Real dt, Int global_agents,
-                         Int local_agents, Real mu_avg, Real total_time,
-                         Real attempt_sim_time,
-                         double wall_elapsed_s) {
+struct ProgressLineData {
+  Int step_count;
+  Real sim_time;
+  Real dt;
+  Int global_agents;
+  Real global_density;
+  Int local_agents;
+  Real mu_avg;
+  Real total_time;
+  Real attempt_sim_time;
+  double wall_elapsed_s;
+};
+
+void print_progress_line(const ProgressLineData& data) {
   const ProgressMetrics metrics =
-      calculate_progress_metrics(sim_time, attempt_sim_time, total_time,
-                                 wall_elapsed_s);
-  std::cout << "Step " << step_count
-            << "  t=" << sim_time << "s"
-            << "  dt=" << std::setprecision(3) << dt << "s"
-            << "  global_agents=" << global_agents
-            << "  local_agents=" << local_agents
-            << "  mu_avg=" << mu_avg
+      calculate_progress_metrics(data.sim_time, data.attempt_sim_time,
+                                 data.total_time, data.wall_elapsed_s);
+  std::cout << "Step " << data.step_count
+            << "  t=" << data.sim_time << "s"
+            << "  dt=" << std::setprecision(3) << data.dt << "s"
+            << "  global_agents=" << data.global_agents
+            << "  density_cells_per_mL=" << data.global_density
+            << "  local_agents=" << data.local_agents
+            << "  mu_avg=" << data.mu_avg
             << "  pct=" << std::setprecision(4) << metrics.pct
             << "  rate=" << std::setprecision(4) << metrics.rate
             << "  eta_s=" << std::setprecision(0) << std::fixed
@@ -991,10 +1052,18 @@ void Simulation::emit_progress_if_due(
   if (domain_.rank() == 0) {
     const double wall_elapsed_s =
         std::chrono::duration<double>(wall_now - wall_start).count();
-    print_progress_line(clock_.step_count, clock_.time, dt,
-                        mpi_stats_.global_agent_count, agents_.size(),
-                        mpi_stats_.global_mu_avg, cfg_.time.total_time,
-                        clock_.time - attempt_start_sim_time, wall_elapsed_s);
+    const ProgressLineData data{
+        clock_.step_count,
+        clock_.time,
+        dt,
+        mpi_stats_.global_agent_count,
+        global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count),
+        agents_.size(),
+        mpi_stats_.global_mu_avg,
+        cfg_.time.total_time,
+        clock_.time - attempt_start_sim_time,
+        wall_elapsed_s};
+    print_progress_line(data);
   }
   clock_.next_output += cfg_.time.output_interval;
 }
@@ -1017,25 +1086,50 @@ bool Simulation::population_stop(int rank) const {
   return true;
 }
 
+void Simulation::sample_dysbiosis_density() {
+  if (cfg_.dysbiosis_threshold <= 0.0 ||
+      cfg_.dysbiosis_sampling_interval <= 0.0 ||
+      cfg_.dysbiosis_sample_count < 3) {
+    return;
+  }
+
+  if (clock_.time >= next_dysbiosis_sample_time_) {
+    dysbiosis_density_history_.push_back(
+        global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count));
+    if (dysbiosis_density_history_.size() >
+        static_cast<size_t>(cfg_.dysbiosis_sample_count)) {
+      dysbiosis_density_history_.erase(dysbiosis_density_history_.begin());
+    }
+    next_dysbiosis_sample_time_ =
+        clock_.time + cfg_.dysbiosis_sampling_interval;
+  }
+}
+
 bool Simulation::dysbiosis_threshold_exceeded(int rank) {
   if (cfg_.dysbiosis_threshold <= 0.0) return false;
-  const Vec3 lo = domain_.lo();
-  const Vec3 hi = domain_.hi();
-  const Real vol_m3 = (hi[0] - lo[0]) * (hi[1] - lo[1]) * (hi[2] - lo[2]);
-  constexpr Real kMillilitersPerCubicMeter = 1.0e6;
-  const Real volume_mL = vol_m3 * kMillilitersPerCubicMeter;
-  const Real density_cells_per_mL = volume_mL > 0.0
-      ? static_cast<Real>(mpi_stats_.global_agent_count) / volume_mL
-      : 0.0;
-  if (density_cells_per_mL <= cfg_.dysbiosis_threshold) return false;
+  sample_dysbiosis_density();
+  if (!is_accelerating_density_window(
+          dysbiosis_density_history_, cfg_.dysbiosis_threshold,
+          cfg_.dysbiosis_sample_count)) {
+    return false;
+  }
+  const Real density_cells_per_mL =
+      global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count);
 
   halted_for_dysbiosis_ = true;
   halt_density_cells_per_mL_ = density_cells_per_mL;
+  const size_t last = dysbiosis_density_history_.size() - 1;
+  const Real density_rate =
+      (dysbiosis_density_history_[last] -
+       dysbiosis_density_history_[last - 1]) /
+      cfg_.dysbiosis_sampling_interval;
   if (rank == 0) {
     std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: "
               << density_cells_per_mL
               << " cells/mL > " << cfg_.dysbiosis_threshold
-              << " cells/mL — halting simulation.\n"
+              << " cells/mL, increasing at " << density_rate
+              << " cells/mL/s with non-decelerating growth"
+              << " — halting simulation.\n"
               << std::flush;
   }
   return true;
@@ -1051,6 +1145,8 @@ void Simulation::run() {
   const Real attempt_start_sim_time = clock_.time;
   auto next_heartbeat = wall_start;
   bool heartbeat_emitted = false;
+
+  sample_dysbiosis_density();
 
   // Initial snapshot only for fresh runs (not checkpoint resume).
   if (hdf5_.is_enabled() && clock_.step_count == 0) {
@@ -1108,6 +1204,9 @@ void Simulation::run() {
     Real retention = lineage_.resident_retention(cfg_.time.total_time * 0.5);
     std::cout << "\nSimulation complete.\n"
               << "  Final global agents: " << mpi_stats_.global_agent_count << "\n"
+              << "  Final global density: "
+              << global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count)
+              << " cells/mL\n"
               << "  Steps taken: " << clock_.step_count << "\n"
               << "  Resident retention: " << retention * 100.0 << "%\n"
               << "  Dominant lineage: " << lineage_.dominant_lineage() << "\n"

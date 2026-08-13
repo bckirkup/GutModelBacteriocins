@@ -1,0 +1,6 @@
+{
+  "_comment": "Operating-envelope guardrail sampling controls",
+  "dysbiosis_threshold": 100000000,
+  "dysbiosis_sampling_interval": 300,
+  "dysbiosis_sample_count": 7
+}

@@ -3,7 +3,8 @@
     "Scaling benchmark template for 10^6 agents (issue #55).",
     "Run: mpirun -np 4 ./gut_ibm ../examples/scaling_benchmark/input_1e6.json",
     "Full sweep: bash scripts/run_scaling_benchmark.sh",
-    "Enable profile_steps for per-phase hotspot breakdown."
+    "Enable profile_steps for per-phase hotspot breakdown.",
+    "Dysbiosis guard disabled: this performance configuration intentionally exceeds the science envelope."
   ],
 
   "total_time": 600,
@@ -16,6 +17,7 @@
   "domain_y": 0.002,
   "domain_z": 0.0001,
   "grid_dx": 2e-6,
+  "dysbiosis_threshold": 0,
 
   "mucus_thickness": 100e-6,
   "radial_turnover": 5400,

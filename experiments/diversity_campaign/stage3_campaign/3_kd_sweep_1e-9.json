@@ -67,7 +67,7 @@
   "dt_max": 300,
   "dt_safety": 0.8,
   "dt_growth_limit": 0.1,
-  "dysbiosis_threshold": 1000000000000.0,
+  "dysbiosis_threshold": 100000000.0,
   "kd_corrinoid_btuB": 1e-09,
   "gpu_enabled": true,
   "gpu_device_id": -1

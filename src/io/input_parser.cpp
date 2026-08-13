@@ -601,6 +601,14 @@ bool apply_misc_key(SimulationConfig& cfg, std::string_view key, const std::stri
   if (key == "gpu_device_id")        { cfg.gpu.device_id = parse_config_int(key, val); return true; }
   if (key == "profile_steps")        { cfg.profile_steps = (val == "true" || val == "1"); return true; }
   if (key == "dysbiosis_threshold")  { cfg.dysbiosis_threshold = parse_config_real(key, val); return true; }
+  if (key == "dysbiosis_sampling_interval") {
+    cfg.dysbiosis_sampling_interval = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "dysbiosis_sample_count") {
+    cfg.dysbiosis_sample_count = parse_config_int(key, val);
+    return true;
+  }
   return false;
 }
 
