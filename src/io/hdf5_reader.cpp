@@ -396,7 +396,9 @@ bool HDF5Reader::open(const std::string& filename) {
     filename_ = validate_input_file_path(filename);
   } catch (const IOError& ) {
     open_ = false;
+#ifdef GUTIBM_HDF5
     file_id_ = -1;
+#endif
     return false;
   }
 
