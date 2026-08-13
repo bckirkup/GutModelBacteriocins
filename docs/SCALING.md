@@ -240,9 +240,15 @@ If auto-detection fails but buffers are known CUDA-aware, set `GUTIBM_CUDA_AWARE
 
 - **Pull requests:** `scaling_benchmark` CTest (label `benchmark;slow`) runs 500 /
   1.5k / 3k agents (brute-force QSSA) on a compact domain. Barnes-Hut FMM sweeps
-  are exercised via `run_scaling_benchmark.sh` (nightly workflow).
-- **Nightly:** `.github/workflows/benchmark-nightly.yml` runs a larger sweep on
-  `ubuntu-latest` and uploads `benchmark_results/*.csv` as an artifact.
+  are exercised on demand via `run_scaling_benchmark.sh`.
+- **On demand:** `run_scaling_benchmark.sh` and
+  `run_gpu_scaling_benchmark.sh` remain available for manual or HPC runs. The
+  nightly workflow was removed because the `1000x1000x50` benchmark grid was
+  OOM-killing its runner during the two-rank case. Chemical-field storage is
+  confirmed by code and a local OOM measurement to use the global grid on each
+  rank; with the current 11 species and concentration/reaction arrays, two
+  ranks require approximately 16 GiB before other allocations. This memory
+  behavior is not fixed.
 
 ## Known limits (v0.1.0)
 

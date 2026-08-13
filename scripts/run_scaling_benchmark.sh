@@ -100,7 +100,7 @@ for agents in $AGENT_COUNTS; do
       }
 
     wall_s="$(awk -F= '/^TIME wall_s=/ {print $2}' "$log.time" | awk '{print $1}')"
-    rss_kb="$(awk -F= '/maxrss_kb=/ {print $2}' "$log.time")"
+    rss_kb="$(awk '/^TIME wall_s=/ {sub(/^maxrss_kb=/, "", $NF); print $NF}' "$log.time")"
     rss_mb="$(awk -v kb="${rss_kb:-0}" 'BEGIN { if (kb == "" || kb <= 0) print -1; else printf "%.1f", kb/1024 }')"
 
     profile_line="$(grep '^PROFILE_CSV' "$log" | tail -1 || true)"
