@@ -271,10 +271,11 @@ void Simulation::init(const SimulationConfig& cfg) {
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
   InputParser::finalize_config(cfg_);
-  validate_immigration_config();
+  immigration_.validate(cfg_.immigration,
+                        static_cast<Int>(cfg_.initial_strains.size()));
   rng_.seed(cfg_.seed);
-  immigration_.rng.seed(cfg_.seed ^ kImmigrationSeedMix);
-  immigration_.start_step = 0;
+  immigration_.seed(cfg_.seed ^ kImmigrationSeedMix);
+  immigration_.set_start_step(0);
 
   // Domain
   domain_.init(cfg.domain);
@@ -399,9 +400,10 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
   InputParser::finalize_config(cfg_);
-  validate_immigration_config();
+  immigration_.validate(cfg_.immigration,
+                        static_cast<Int>(cfg_.initial_strains.size()));
   rng_.seed(cfg_.seed);
-  immigration_.rng.seed(cfg_.seed ^ kImmigrationSeedMix);
+  immigration_.seed(cfg_.seed ^ kImmigrationSeedMix);
 
   domain_.init(cfg_.domain);
   chem_.init(domain_, cfg_.chemicals);
@@ -562,7 +564,7 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
   event_ledger_.window_start_time = snap.metadata.event_window_end_step > 0
       ? snap.metadata.event_window_end_time
       : clock_.time;
-  immigration_.start_step = clock_.step_count;
+  immigration_.set_start_step(clock_.step_count);
   schedule_output_from_time(clock_.time, cfg_.time.output_interval, clock_.next_output, clock_.next_snapshot);
 }
 
@@ -580,235 +582,6 @@ Agent Simulation::create_strain_agent(
                                      rng_);
   }
   return agent;
-}
-
-void Simulation::validate_immigration_config() const {
-  const ImmigrationConfig& immigration = cfg_.immigration;
-  if (!immigration.enabled) return;
-  if (immigration.count < 0) {
-    throw ConfigError("immigration.count must be non-negative");
-  }
-  if (immigration.strain_index < 0 ||
-      immigration.strain_index >= static_cast<Int>(cfg_.initial_strains.size())) {
-    throw ConfigError("immigration.strain_index is outside initial_strains");
-  }
-  if (immigration.placement == "at_distance" &&
-      immigration.distance <= 0.0) {
-    throw ConfigError("immigration.distance must be positive for at_distance");
-  }
-  if (immigration.placement == "z_slab" &&
-      immigration.z_min >= immigration.z_max) {
-    throw ConfigError("immigration.z_min must be less than z_max");
-  }
-  if (immigration.distance_tolerance < 0.0 ||
-      immigration.rate < 0.0) {
-    throw ConfigError("immigration tolerance and rate must be non-negative");
-  }
-}
-
-void Simulation::inject_immigrants(Real dt) {
-  // MPI contract: immigration_.rng is replicated and never observes
-  // rank-local state, so every rank agrees on event counts and candidates.
-  // When an event fires, every rank also participates in the replicated
-  // anchor Allgatherv before the distance reduction. Both collectives are
-  // unconditional for that event. Only the owning rank constructs a cell;
-  // AgentPool::next_tag() supplies that rank's stride stream, making IDs
-  // globally unique without migration duplicates.
-  const ImmigrationConfig& immigration = cfg_.immigration;
-  if (!immigration.enabled) return;
-
-  const Int relative_step = clock_.step_count - immigration_.start_step;
-  const Int event_count = immigration_event_count(
-      immigration, relative_step, dt, immigration_.rng);
-  if (event_count == 0) {
-    return;
-  }
-
-  const bool log_warnings = domain_.rank() == 0;
-  for (Int event = 0; event < event_count; ++event) {
-    inject_one_immigration_event(immigration, log_warnings);
-  }
-}
-
-std::vector<Vec3> Simulation::immigration_anchors(
-    const ImmigrationConfig& immigration, Int global_live_count) const {
-  if (global_live_count <= 0) return {};
-  if (immigration.distance_reference == "centroid") {
-    return {immigration_centroid_anchor(global_live_count)};
-  }
-
-  return immigration_support_anchors();
-}
-
-Vec3 Simulation::immigration_centroid_anchor(Int global_live_count) const {
-  Vec3 local_sum = {0.0, 0.0, 0.0};
-  for (const Agent& agent : agents_) {
-    if (agent.state == PhenoState::DEAD) continue;
-    for (Int axis = 0; axis < 3; ++axis) local_sum[axis] += agent.x[axis];
-  }
-  Vec3 global_sum = local_sum;
-#ifdef GUTIBM_MPI
-  if (domain_.nprocs() > 1) {
-    MPI_Allreduce(local_sum.data(), global_sum.data(), 3, MPI_DOUBLE,
-                  MPI_SUM, MPI_COMM_WORLD);
-  }
-#endif
-  for (Real& value : global_sum) {
-    value /= static_cast<Real>(global_live_count);
-  }
-  return global_sum;
-}
-
-std::vector<Vec3> Simulation::immigration_support_anchors() const {
-  constexpr std::array<Vec3, 6> directions = {
-      Vec3{1.0, 0.0, 0.0}, Vec3{-1.0, 0.0, 0.0},
-      Vec3{0.0, 1.0, 0.0}, Vec3{0.0, -1.0, 0.0},
-      Vec3{0.0, 0.0, 1.0}, Vec3{0.0, 0.0, -1.0}};
-  std::array<Vec3, directions.size()> local_support{};
-  std::array<Real, directions.size()> local_best;
-  local_best.fill(-std::numeric_limits<Real>::max());
-  for (const Agent& agent : agents_) {
-    if (agent.state == PhenoState::DEAD) continue;
-    for (size_t i = 0; i < directions.size(); ++i) {
-      const Real projection = agent.x[0] * directions[i][0]
-                            + agent.x[1] * directions[i][1]
-                            + agent.x[2] * directions[i][2];
-      if (projection > local_best[i]) {
-        local_best[i] = projection;
-        local_support[i] = agent.x;
-      }
-    }
-  }
-  std::vector<Vec3> sampled(local_support.begin(), local_support.end());
-#ifdef GUTIBM_MPI
-  const Int nprocs = domain_.nprocs();
-  if (nprocs > 1) {
-    const auto local_values = static_cast<Int>(sampled.size() * 3);
-    std::vector<Int> counts(static_cast<size_t>(nprocs));
-    MPI_Allgather(&local_values, 1, MPI_INT, counts.data(), 1, MPI_INT,
-                  MPI_COMM_WORLD);
-    std::vector<Int> displacements(static_cast<size_t>(nprocs), 0);
-    Int total_values = 0;
-    for (Int i = 0; i < nprocs; ++i) {
-      displacements[static_cast<size_t>(i)] = total_values;
-      total_values += counts[static_cast<size_t>(i)];
-    }
-    std::vector<Real> packed(static_cast<size_t>(total_values));
-    MPI_Allgatherv(sampled.empty() ? nullptr : sampled.front().data(),
-                   local_values, MPI_DOUBLE, packed.data(), counts.data(),
-                   displacements.data(), MPI_DOUBLE, MPI_COMM_WORLD);
-    std::vector<Vec3> anchors;
-    anchors.reserve(static_cast<size_t>(total_values / 3));
-    for (Int i = 0; i < total_values; i += 3) {
-      anchors.emplace_back(Vec3{
-          {packed[static_cast<size_t>(i)],
-           packed[static_cast<size_t>(i + 1)],
-           packed[static_cast<size_t>(i + 2)]}});
-    }
-    return anchors;
-  }
-#endif
-  return sampled;
-}
-
-void Simulation::calculate_centroid_distances(
-    const std::vector<Vec3>& candidates,
-    std::vector<Real>& distances_sq) const {
-  Vec3 centroid = {0.0, 0.0, 0.0};
-  Int local_count = 0;
-  for (const Agent& agent : agents_) {
-    if (agent.state == PhenoState::DEAD) continue;
-    for (Int axis = 0; axis < 3; ++axis) centroid[axis] += agent.x[axis];
-    ++local_count;
-  }
-#ifdef GUTIBM_MPI
-  if (domain_.nprocs() > 1) {
-    Vec3 global_sum = {0.0, 0.0, 0.0};
-    Int global_count = 0;
-    MPI_Allreduce(centroid.data(), global_sum.data(), 3, MPI_DOUBLE,
-                  MPI_SUM, MPI_COMM_WORLD);
-    MPI_Allreduce(&local_count, &global_count, 1, MPI_INT, MPI_SUM,
-                  MPI_COMM_WORLD);
-    centroid = global_sum;
-    local_count = global_count;
-  }
-#endif
-  if (local_count <= 0) return;
-  for (Real& value : centroid) value /= static_cast<Real>(local_count);
-  for (size_t i = 0; i < candidates.size(); ++i) {
-    distances_sq[i] = domain_.min_image_dist_sq(candidates[i], centroid);
-  }
-}
-
-void Simulation::calculate_nearest_distances(
-    const std::vector<Vec3>& candidates,
-    std::vector<Real>& distances_sq) const {
-  for (size_t i = 0; i < candidates.size(); ++i) {
-    Real nearest = std::numeric_limits<Real>::max();
-    for (const Agent& agent : agents_) {
-      if (agent.state == PhenoState::DEAD) continue;
-      nearest = std::min(
-          nearest, domain_.min_image_dist_sq(candidates[i], agent.x));
-    }
-    distances_sq[i] = nearest;
-  }
-}
-
-void Simulation::reduce_immigration_distances(
-    const std::vector<Vec3>& candidates,
-    std::vector<Real>& distances_sq) const {
-  if (cfg_.immigration.distance_reference == "centroid") {
-    calculate_centroid_distances(candidates, distances_sq);
-  } else {
-    calculate_nearest_distances(candidates, distances_sq);
-  }
-#ifdef GUTIBM_MPI
-  if (domain_.nprocs() > 1) {
-    MPI_Allreduce(MPI_IN_PLACE, distances_sq.data(),
-                  static_cast<int>(distances_sq.size()), MPI_DOUBLE, MPI_MIN,
-                  MPI_COMM_WORLD);
-  }
-#endif
-}
-
-void Simulation::inject_one_immigration_event(
-    const ImmigrationConfig& immigration, bool log_warnings) {
-  Int local_live_count = 0;
-  for (const Agent& agent : agents_) {
-    if (agent.state != PhenoState::DEAD) ++local_live_count;
-  }
-  Int global_live_count = local_live_count;
-#ifdef GUTIBM_MPI
-  if (domain_.nprocs() > 1) {
-    MPI_Allreduce(&local_live_count, &global_live_count, 1, MPI_INT, MPI_SUM,
-                  MPI_COMM_WORLD);
-  }
-#endif
-
-  const auto reducer = [this](const std::vector<Vec3>& candidates,
-                              std::vector<Real>& distances_sq) {
-    reduce_immigration_distances(candidates, distances_sq);
-  };
-
-  const bool has_live_agents = global_live_count > 0;
-  const std::vector<Vec3> anchors =
-      immigration_anchors(immigration, global_live_count);
-  const std::vector<Vec3> positions = immigration_positions(
-      immigration, domain_.lo(), domain_.hi(), immigration_.rng,
-      anchors, has_live_agents, log_warnings, reducer,
-      [this](Vec3& position) { domain_.apply_pbc(position); });
-  if (immigration.placement == "at_distance" &&
-      static_cast<Int>(positions.size()) != immigration.count) {
-    throw SimulationError(
-        "immigration at_distance could not place all requested immigrants");
-  }
-  const auto& strain =
-      cfg_.initial_strains[static_cast<size_t>(immigration.strain_index)];
-  for (const Vec3& pos : positions) {
-    if (!domain_.is_local(pos)) continue;
-    agents_.push_back(create_strain_agent(strain, pos));
-    ++event_ledger_.step_events.immigrations;
-  }
 }
 
 void Simulation::maybe_write_restart() {
@@ -1186,7 +959,15 @@ void Simulation::step(Real dt) {
 
   // Pre-step: clear ghosts from previous step
   clear_ghost_agents();
-  inject_immigrants(dt);
+  const auto& immigration = cfg_.immigration;
+  immigration_.inject(
+      immigration, clock_.step_count, dt, agents_, domain_,
+      [this](const Vec3& position) {
+        const auto& strain = cfg_.initial_strains[static_cast<size_t>(
+            cfg_.immigration.strain_index)];
+        agents_.push_back(create_strain_agent(strain, position));
+        ++event_ledger_.step_events.immigrations;
+      });
   if (gpu_.active) {
     gpu_.chem.zero_reactions_on_device();
   }
