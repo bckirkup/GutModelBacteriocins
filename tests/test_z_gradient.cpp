@@ -169,8 +169,8 @@ void test_vbf_mucin_rate_uniform_when_disabled() {
 }
 
 void test_vbf_coupling_z_gradient() {
-  // Verify that after VBF coupling, carbon reaction rates near z=0 are
-  // higher than those further from the epithelium
+  // Verify that after VBF coupling, the stronger near-epithelium carbon
+  // concentration produces a stronger realized sink.
   DomainConfig dcfg;
   dcfg.lo = {0, 0, 0};
   dcfg.hi = {20e-6, 20e-6, 100e-6};
@@ -207,10 +207,11 @@ void test_vbf_coupling_z_gradient() {
   MucinConfig mucin;
   vbf.apply_nutrient_coupling(chem, domain, 60.0, oxygen, acetate, mucin);
 
-  // Carbon reaction rate near z=0 should be > rate near z=max
+  // The net carbon reaction is more negative near z=0 because the implicit
+  // sink responds to the higher local concentration.
   Int bottom_cell = domain.cell_index(0, 0, 0);
   Int top_cell = domain.cell_index(0, 0, domain.nz() - 1);
-  assert(chem.reac(0, bottom_cell) > chem.reac(0, top_cell));
+  assert(chem.reac(0, bottom_cell) < chem.reac(0, top_cell));
 
   std::cout << "  test_vbf_coupling_z_gradient: PASSED\n";
 }
