@@ -266,15 +266,15 @@ void print_gpu_status_banner(bool gpu_active, const GpuConfig& gpu) {
 
 void Simulation::init(const SimulationConfig& cfg) {
   cfg_ = cfg;
-  step_events_.reset();
-  cumulative_events_.reset();
-  event_window_start_step_ = 1;
-  event_window_start_time_ = 0.0;
+  event_ledger_.step_events.reset();
+  event_ledger_.cumulative_events.reset();
+  event_ledger_.window_start_step = 1;
+  event_ledger_.window_start_time = 0.0;
   InputParser::finalize_config(cfg_);
   validate_immigration_config();
   rng_.seed(cfg_.seed);
-  immigration_rng_.seed(cfg_.seed ^ kImmigrationSeedMix);
-  immigration_start_step_ = 0;
+  immigration_.rng.seed(cfg_.seed ^ kImmigrationSeedMix);
+  immigration_.start_step = 0;
 
   // Domain
   domain_.init(cfg.domain);
@@ -300,10 +300,10 @@ void Simulation::init(const SimulationConfig& cfg) {
   // GPU acceleration
   gpu_set_config(cfg.gpu);
   gpu_init_for_rank(domain_.rank(), domain_.nprocs());
-  gpu_active_ = gpu_runtime_enabled();
-  if (gpu_active_) {
-    chem_gpu_.init(chem_);
-    agents_gpu_.sync_from_host(agents_);
+  gpu_.active = gpu_runtime_enabled();
+  if (gpu_.active) {
+    gpu_.chem.init(chem_);
+    gpu_.agents.sync_from_host(agents_);
   }
 
   // Register biological fixes via plugin registry
@@ -329,8 +329,8 @@ void Simulation::init(const SimulationConfig& cfg) {
   clock_.step_count    = 0;
   clock_.next_output   = 0.0;
   clock_.next_snapshot = 0.0;
-  dysbiosis_density_history_.clear();
-  next_dysbiosis_sample_time_ = clock_.time;
+  dysbiosis_.density_history.clear();
+  dysbiosis_.next_sample_time = clock_.time;
 
   int rank = domain_.rank();
   if (rank == 0) {
@@ -350,9 +350,9 @@ void Simulation::init(const SimulationConfig& cfg) {
               << "  Slab [" << domain_.local_lo_x() << ", "
               << domain_.local_hi_x() << ") m\n"
               << "  Local agents: " << agents_.size()
-              << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
+              << "  Global agents: " << mpi_ghost_.stats.global_agent_count << "\n"
               << "  Global density: "
-              << global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count)
+              << global_density_cells_per_mL(domain_, mpi_ghost_.stats.global_agent_count)
               << " cells/mL\n"
               << "  Chemical species: " << chem_.num_species() << "\n";
     const std::string adaptive_dt_status = cfg.adaptive_dt.enabled
@@ -362,7 +362,7 @@ void Simulation::init(const SimulationConfig& cfg) {
               << "  Adaptive dt: " << (cfg.adaptive_dt.enabled ? "ON" : "OFF")
               << adaptive_dt_status << "\n"
               << "  Total time: " << cfg.time.total_time << " s\n";
-    print_gpu_status_banner(gpu_active_, cfg.gpu);
+    print_gpu_status_banner(gpu_.active, cfg.gpu);
     std::cout << std::flush;
   }
 }
@@ -392,14 +392,14 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
                                       const std::string& h5_file,
                                       const std::string& step) {
   cfg_ = cfg;
-  step_events_.reset();
-  cumulative_events_.reset();
-  event_window_start_step_ = 1;
-  event_window_start_time_ = 0.0;
+  event_ledger_.step_events.reset();
+  event_ledger_.cumulative_events.reset();
+  event_ledger_.window_start_step = 1;
+  event_ledger_.window_start_time = 0.0;
   InputParser::finalize_config(cfg_);
   validate_immigration_config();
   rng_.seed(cfg_.seed);
-  immigration_rng_.seed(cfg_.seed ^ kImmigrationSeedMix);
+  immigration_.rng.seed(cfg_.seed ^ kImmigrationSeedMix);
 
   domain_.init(cfg_.domain);
   chem_.init(domain_, cfg_.chemicals);
@@ -415,7 +415,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
 
   gpu_set_config(cfg.gpu);
   gpu_init_for_rank(domain_.rank(), domain_.nprocs());
-  gpu_active_ = gpu_runtime_enabled();
+  gpu_.active = gpu_runtime_enabled();
 
 #ifndef GUTIBM_HDF5
   (void)h5_file;
@@ -424,13 +424,13 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
 #else
   HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(h5_file, step);
   apply_checkpoint_snapshot(snap);
-  dysbiosis_density_history_.clear();
-  next_dysbiosis_sample_time_ = clock_.time;
+  dysbiosis_.density_history.clear();
+  dysbiosis_.next_sample_time = clock_.time;
 
   // Sync GPU mirrors *after* host restore (agents/grid were empty above).
-  if (gpu_active_) {
-    chem_gpu_.init(chem_);
-    agents_gpu_.sync_from_host(agents_);
+  if (gpu_.active) {
+    gpu_.chem.init(chem_);
+    gpu_.agents.sync_from_host(agents_);
   }
 
   rebuild_spatial_hash();
@@ -444,12 +444,12 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
               << "  Step group: " << snap.step_name << "\n"
               << "  Restored time: " << clock_.time << " s\n"
               << "  Restored step: " << clock_.step_count << "\n"
-              << "  Global agents: " << mpi_stats_.global_agent_count << "\n"
+              << "  Global agents: " << mpi_ghost_.stats.global_agent_count << "\n"
               << "  Local agents: " << agents_.size() << "\n"
               << "  Global density: "
-              << global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count)
+              << global_density_cells_per_mL(domain_, mpi_ghost_.stats.global_agent_count)
               << " cells/mL\n";
-    print_gpu_status_banner(gpu_active_, cfg_.gpu);
+    print_gpu_status_banner(gpu_.active, cfg_.gpu);
     std::cout << std::flush;
   }
 #endif
@@ -539,7 +539,7 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 
   clock_.time       = snap.metadata.time;
   clock_.step_count = snap.metadata.step;
-  cumulative_events_ = snap.metadata.cumulative_events;
+  event_ledger_.cumulative_events = snap.metadata.cumulative_events;
   if (snap.metadata.flux_accounting.boundary_interval.size()
       == static_cast<size_t>(chem_.num_species())) {
     chem_.flux_accounting() = snap.metadata.flux_accounting;
@@ -552,13 +552,13 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     std::ranges::fill(flux.agent_uptake_interval, 0.0);
     std::ranges::fill(flux.agent_uptake_step, 0.0);
   }
-  event_window_start_step_ = snap.metadata.event_window_end_step > 0
+  event_ledger_.window_start_step = snap.metadata.event_window_end_step > 0
       ? snap.metadata.event_window_end_step + 1
       : clock_.step_count + 1;
-  event_window_start_time_ = snap.metadata.event_window_end_step > 0
+  event_ledger_.window_start_time = snap.metadata.event_window_end_step > 0
       ? snap.metadata.event_window_end_time
       : clock_.time;
-  immigration_start_step_ = clock_.step_count;
+  immigration_.start_step = clock_.step_count;
   schedule_output_from_time(clock_.time, cfg_.time.output_interval, clock_.next_output, clock_.next_snapshot);
 }
 
@@ -603,7 +603,7 @@ void Simulation::validate_immigration_config() const {
 }
 
 void Simulation::inject_immigrants(Real dt) {
-  // MPI contract: immigration_rng_ is replicated and never observes
+  // MPI contract: immigration_.rng is replicated and never observes
   // rank-local state, so every rank agrees on event counts and candidates.
   // When an event fires, every rank also participates in the replicated
   // anchor Allgatherv before the distance reduction. Both collectives are
@@ -613,9 +613,9 @@ void Simulation::inject_immigrants(Real dt) {
   const ImmigrationConfig& immigration = cfg_.immigration;
   if (!immigration.enabled) return;
 
-  const Int relative_step = clock_.step_count - immigration_start_step_;
+  const Int relative_step = clock_.step_count - immigration_.start_step;
   const Int event_count = immigration_event_count(
-      immigration, relative_step, dt, immigration_rng_);
+      immigration, relative_step, dt, immigration_.rng);
   if (event_count == 0) {
     return;
   }
@@ -790,7 +790,7 @@ void Simulation::inject_one_immigration_event(
   const std::vector<Vec3> anchors =
       immigration_anchors(immigration, global_live_count);
   const std::vector<Vec3> positions = immigration_positions(
-      immigration, domain_.lo(), domain_.hi(), immigration_rng_,
+      immigration, domain_.lo(), domain_.hi(), immigration_.rng,
       anchors, has_live_agents, log_warnings, reducer,
       [this](Vec3& position) { domain_.apply_pbc(position); });
   if (immigration.placement == "at_distance" &&
@@ -803,7 +803,7 @@ void Simulation::inject_one_immigration_event(
   for (const Vec3& pos : positions) {
     if (!domain_.is_local(pos)) continue;
     agents_.push_back(create_strain_agent(strain, pos));
-    ++step_events_.immigrations;
+    ++event_ledger_.step_events.immigrations;
   }
 }
 
@@ -925,7 +925,7 @@ void Simulation::print_step_profile() const {
             << " mpi_reaction_reduce_s=" << step_profile_.mpi_reaction_reduce_s * inv
             << " hdf5_s=" << step_profile_.hdf5_s * inv
             << " total_s=" << total
-            << " agents=" << mpi_stats_.global_agent_count
+            << " agents=" << mpi_ghost_.stats.global_agent_count
             << " ranks=" << domain_.nprocs()
             << "\n"
             << std::flush;
@@ -1056,10 +1056,10 @@ void Simulation::emit_progress_if_due(
         clock_.step_count,
         clock_.time,
         dt,
-        mpi_stats_.global_agent_count,
-        global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count),
+        mpi_ghost_.stats.global_agent_count,
+        global_density_cells_per_mL(domain_, mpi_ghost_.stats.global_agent_count),
         agents_.size(),
-        mpi_stats_.global_mu_avg,
+        mpi_ghost_.stats.global_mu_avg,
         cfg_.time.total_time,
         clock_.time - attempt_start_sim_time,
         wall_elapsed_s};
@@ -1075,11 +1075,11 @@ void Simulation::update_lineage_snapshot_if_due() {
 }
 
 bool Simulation::population_stop(int rank) const {
-  if (mpi_stats_.global_agent_count > kPopulationStopThreshold) {
+  if (mpi_ghost_.stats.global_agent_count > kPopulationStopThreshold) {
     return false;
   }
   if (rank == 0) {
-    std::cout << "Population stop: " << mpi_stats_.global_agent_count
+    std::cout << "Population stop: " << mpi_ghost_.stats.global_agent_count
               << " cell(s) — ending simulation.\n"
               << std::flush;
   }
@@ -1093,14 +1093,14 @@ void Simulation::sample_dysbiosis_density() {
     return;
   }
 
-  if (clock_.time >= next_dysbiosis_sample_time_) {
-    dysbiosis_density_history_.push_back(
-        global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count));
-    if (dysbiosis_density_history_.size() >
+  if (clock_.time >= dysbiosis_.next_sample_time) {
+    dysbiosis_.density_history.push_back(
+        global_density_cells_per_mL(domain_, mpi_ghost_.stats.global_agent_count));
+    if (dysbiosis_.density_history.size() >
         static_cast<size_t>(cfg_.dysbiosis_sample_count)) {
-      dysbiosis_density_history_.erase(dysbiosis_density_history_.begin());
+      dysbiosis_.density_history.erase(dysbiosis_.density_history.begin());
     }
-    next_dysbiosis_sample_time_ =
+    dysbiosis_.next_sample_time =
         clock_.time + cfg_.dysbiosis_sampling_interval;
   }
 }
@@ -1109,19 +1109,19 @@ bool Simulation::dysbiosis_threshold_exceeded(int rank) {
   if (cfg_.dysbiosis_threshold <= 0.0) return false;
   sample_dysbiosis_density();
   if (!is_accelerating_density_window(
-          dysbiosis_density_history_, cfg_.dysbiosis_threshold,
+          dysbiosis_.density_history, cfg_.dysbiosis_threshold,
           cfg_.dysbiosis_sample_count)) {
     return false;
   }
   const Real density_cells_per_mL =
-      global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count);
+      global_density_cells_per_mL(domain_, mpi_ghost_.stats.global_agent_count);
 
-  halted_for_dysbiosis_ = true;
-  halt_density_cells_per_mL_ = density_cells_per_mL;
-  const size_t last = dysbiosis_density_history_.size() - 1;
+  dysbiosis_.halted = true;
+  dysbiosis_.halt_density = density_cells_per_mL;
+  const size_t last = dysbiosis_.density_history.size() - 1;
   const Real density_rate =
-      (dysbiosis_density_history_[last] -
-       dysbiosis_density_history_[last - 1]) /
+      (dysbiosis_.density_history[last] -
+       dysbiosis_.density_history[last - 1]) /
       cfg_.dysbiosis_sampling_interval;
   if (rank == 0) {
     std::cerr << "DYSBIOSIS THRESHOLD EXCEEDED: "
@@ -1139,8 +1139,8 @@ void Simulation::run() {
   int rank = domain_.rank();
   Real last_dt = cfg_.time.bio_dt;
   bool stopped_for_population = false;
-  halted_for_dysbiosis_ = false;
-  halt_density_cells_per_mL_ = 0.0;
+  dysbiosis_.halted = false;
+  dysbiosis_.halt_density = 0.0;
   const auto wall_start = std::chrono::steady_clock::now();
   const Real attempt_start_sim_time = clock_.time;
   auto next_heartbeat = wall_start;
@@ -1158,7 +1158,7 @@ void Simulation::run() {
 
   stopped_for_population = population_stop(rank);
 
-  while (!stopped_for_population && !halted_for_dysbiosis_ &&
+  while (!stopped_for_population && !dysbiosis_.halted &&
          clock_.time < cfg_.time.total_time) {
     if (gutibm_stop_requested()) break;
 
@@ -1194,7 +1194,7 @@ void Simulation::run() {
   if (const bool already_checkpointed = cfg_.restart.interval_steps > 0
           && clock_.step_count % cfg_.restart.interval_steps == 0;
       cfg_.restart.enabled && clock_.step_count > 0
-      && (halted_for_dysbiosis_ || !already_checkpointed)) {
+      && (dysbiosis_.halted || !already_checkpointed)) {
     write_restart_now();
   }
 
@@ -1203,9 +1203,9 @@ void Simulation::run() {
   if (rank == 0) {
     Real retention = lineage_.resident_retention(cfg_.time.total_time * 0.5);
     std::cout << "\nSimulation complete.\n"
-              << "  Final global agents: " << mpi_stats_.global_agent_count << "\n"
+              << "  Final global agents: " << mpi_ghost_.stats.global_agent_count << "\n"
               << "  Final global density: "
-              << global_density_cells_per_mL(domain_, mpi_stats_.global_agent_count)
+              << global_density_cells_per_mL(domain_, mpi_ghost_.stats.global_agent_count)
               << " cells/mL\n"
               << "  Steps taken: " << clock_.step_count << "\n"
               << "  Resident retention: " << retention * 100.0 << "%\n"
@@ -1218,9 +1218,9 @@ void Simulation::run() {
 }
 
 void Simulation::step(Real dt) {
-  bacteriocin_fields_current_ = false;
+  bacteriocin_.fields_current = false;
   if (cfg_.profile_steps) {
-    gpu_transfer_profile_set_enabled(gpu_active_);
+    gpu_transfer_profile_set_enabled(gpu_.active);
   }
 
   StepProfiler profiler(cfg_.profile_steps);
@@ -1237,8 +1237,8 @@ void Simulation::step(Real dt) {
   // Pre-step: clear ghosts from previous step
   clear_ghost_agents();
   inject_immigrants(dt);
-  if (gpu_active_) {
-    chem_gpu_.zero_reactions_on_device();
+  if (gpu_.active) {
+    gpu_.chem.zero_reactions_on_device();
   }
   chem_.zero_reactions();
 
@@ -1246,19 +1246,19 @@ void Simulation::step(Real dt) {
   exchange_ghost_agents();
   profiler.lap(step_profile_.ghost_exchange_s);
 
-  if (gpu_active_) {
-    agents_gpu_.sync_from_host(agents_);
-    chem_gpu_.sync_to_device(chem_);
+  if (gpu_.active) {
+    gpu_.agents.sync_from_host(agents_);
+    gpu_.chem.sync_to_device(chem_);
 #ifdef GUTIBM_CUDA
     gpu::launch_grid_coupling_kernel(
-        agents_gpu_.x(), agents_gpu_.y(), agents_gpu_.z(),
-        agents_gpu_.grid_cell(), agents_gpu_.state(),
+        gpu_.agents.x(), gpu_.agents.y(), gpu_.agents.z(),
+        gpu_.agents.grid_cell(), gpu_.agents.state(),
         domain_.lo()[0], domain_.lo()[1], domain_.lo()[2], domain_.dx(),
         domain_.nx(), domain_.ny(), domain_.nz(),
         agents_.size(), gpu_compute_stream());
     gpu_sync_compute();
     gpu_check_error("grid_coupling_kernel");
-    agents_gpu_.sync_to_host(agents_);
+    gpu_.agents.sync_to_host(agents_);
 #endif
   }
 
@@ -1296,8 +1296,8 @@ void Simulation::step(Real dt) {
   migrate_agents();
   profiler.lap(step_profile_.mpi_migrate_s);
 
-  if (gpu_active_) {
-    agents_gpu_.sync_from_host(agents_);
+  if (gpu_.active) {
+    gpu_.agents.sync_from_host(agents_);
   }
 
   // Cleanup
@@ -1321,15 +1321,15 @@ void Simulation::step(Real dt) {
 }
 
 void Simulation::update_bacteriocin_fields() {
-  if (bacteriocin_fields_current_) return;
+  if (bacteriocin_.fields_current) return;
 
   prune_toxin_bursts(clock_.time);
 
-  ChemicalFieldGpu* chem_gpu_ptr = gpu_active_ ? &chem_gpu_ : nullptr;
-  qssa_.solve_all_bacteriocin_fields(agents_, toxin_bursts_, clock_.time,
+  ChemicalFieldGpu* chem_gpu_ptr = gpu_.active ? &gpu_.chem : nullptr;
+  qssa_.solve_all_bacteriocin_fields(agents_, bacteriocin_.bursts, clock_.time,
                                       cfg_.chem_env.protease, advection_, chem_,
                                       chem_gpu_ptr);
-  bacteriocin_fields_current_ = true;
+  bacteriocin_.fields_current = true;
 }
 
 void Simulation::module_biology(Real dt) {
@@ -1347,9 +1347,9 @@ void Simulation::module_chemistry(Real dt) {
   update_bacteriocin_fields();
 
   ChemistryPipelineInput pipeline{
-      .gpu_active = gpu_active_,
-      .agents_gpu = agents_gpu_,
-      .chem_gpu = chem_gpu_,
+      .gpu_active = gpu_.active,
+      .agents_gpu = gpu_.agents,
+      .chem_gpu = gpu_.chem,
       .chem = chem_,
       .domain = domain_,
       .vbf = vbf_,
@@ -1453,7 +1453,7 @@ void Simulation::check_washout() {
 
     if (a.x[2] >= z_max) {
       a.state = PhenoState::DEAD;
-      step_events_.boundary_deaths++;
+      event_ledger_.step_events.boundary_deaths++;
       if (provenance_enabled()) {
         KillProvenanceEvent event;
         event.victim_id = a.identity.tag;
@@ -1470,7 +1470,7 @@ void Simulation::check_washout() {
     Real gamma = advection_.washout_rate(a.x[2]);
     if (a.mu_realized < gamma) {
       a.state = PhenoState::DEAD;
-      step_events_.washout_deaths++;
+      event_ledger_.step_events.washout_deaths++;
       if (provenance_enabled()) {
         KillProvenanceEvent event;
         event.victim_id = a.identity.tag;
@@ -1813,15 +1813,15 @@ void Simulation::exchange_ghost_agents() {
   auto recv_lo = agent_transfer_deserialize(buf_recv_lo);
   auto recv_hi = agent_transfer_deserialize(buf_recv_hi);
 
-  ghost_indices_.clear();
+  mpi_ghost_.ghost_indices.clear();
   for (auto& a : recv_lo) {
     Int idx = agents_.size();
-    ghost_indices_.push_back(idx);
+    mpi_ghost_.ghost_indices.push_back(idx);
     agents_.push_back(std::move(a));
   }
   for (auto& a : recv_hi) {
     Int idx = agents_.size();
-    ghost_indices_.push_back(idx);
+    mpi_ghost_.ghost_indices.push_back(idx);
     agents_.push_back(std::move(a));
   }
 #endif
@@ -1829,16 +1829,16 @@ void Simulation::exchange_ghost_agents() {
 
 void Simulation::clear_ghost_agents() {
 #ifdef GUTIBM_MPI
-  if (ghost_indices_.empty()) return;
+  if (mpi_ghost_.ghost_indices.empty()) return;
 
   // Remove ghosts in reverse index order
-  std::sort(ghost_indices_.rbegin(), ghost_indices_.rend());
-  for (Int idx : ghost_indices_) {
+  std::sort(mpi_ghost_.ghost_indices.rbegin(), mpi_ghost_.ghost_indices.rend());
+  for (Int idx : mpi_ghost_.ghost_indices) {
     if (idx < agents_.size()) {
       agents_.remove(idx);
     }
   }
-  ghost_indices_.clear();
+  mpi_ghost_.ghost_indices.clear();
 #endif
 }
 
@@ -1861,14 +1861,14 @@ void Simulation::allreduce_global_stats() {
                   MPI_COMM_WORLD);
     MPI_Allreduce(&local_mu_sum, &global_mu_sum, 1, MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
-    mpi_stats_.global_agent_count = global_count;
-    mpi_stats_.global_mu_avg = global_count > 0 ? global_mu_sum / global_count : 0.0;
+    mpi_ghost_.stats.global_agent_count = global_count;
+    mpi_ghost_.stats.global_mu_avg = global_count > 0 ? global_mu_sum / global_count : 0.0;
     return;
   }
 #endif
 
-  mpi_stats_.global_agent_count = local_count;
-  mpi_stats_.global_mu_avg = local_count > 0 ? local_mu_sum / local_count : 0.0;
+  mpi_ghost_.stats.global_agent_count = local_count;
+  mpi_ghost_.stats.global_mu_avg = local_count > 0 ? local_mu_sum / local_count : 0.0;
 }
 
 Real Simulation::local_O2(const Agent& agent) const {
@@ -1890,20 +1890,20 @@ Real Simulation::local_nuclease_toxin(const Agent& agent) const {
 }
 
 void Simulation::add_toxin_burst(const ToxinBurstSource& burst) {
-  toxin_bursts_.push_back(burst);
+  bacteriocin_.bursts.push_back(burst);
 }
 
 void Simulation::record_kill_provenance(const KillProvenanceEvent& event) {
-  kill_provenance_.push_back(event);
+  event_ledger_.kill_provenance.push_back(event);
 }
 
 void Simulation::prune_toxin_bursts(Real current_time) {
-  if (toxin_bursts_.empty()) return;
+  if (bacteriocin_.bursts.empty()) return;
 
   std::vector<ToxinBurstSource> kept;
-  kept.reserve(toxin_bursts_.size());
+  kept.reserve(bacteriocin_.bursts.size());
 
-  for (const ToxinBurstSource& burst : toxin_bursts_) {
+  for (const ToxinBurstSource& burst : bacteriocin_.bursts) {
     // A non-positive release timescale contributes no source (see
     // append_burst_sources), so such a burst is dropped rather than retained.
     if (burst.release_tau <= 0.0) continue;
@@ -1914,7 +1914,7 @@ void Simulation::prune_toxin_bursts(Real current_time) {
     }
   }
 
-  toxin_bursts_.swap(kept);
+  bacteriocin_.bursts.swap(kept);
 }
 
 }  // namespace gutibm

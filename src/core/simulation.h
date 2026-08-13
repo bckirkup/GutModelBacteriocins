@@ -119,33 +119,39 @@ class Simulation {
 
   const SimulationConfig& config() const { return cfg_; }
 
-  const StepEvents& step_events() const { return step_events_; }
-  StepEvents&       step_events()       { return step_events_; }
-  const StepEvents& cumulative_events() const { return cumulative_events_; }
-  StepEvents& cumulative_events() { return cumulative_events_; }
-  Int event_window_start_step() const { return event_window_start_step_; }
-  Real event_window_start_time() const { return event_window_start_time_; }
+  const StepEvents& step_events() const { return event_ledger_.step_events; }
+  StepEvents&       step_events()       { return event_ledger_.step_events; }
+  const StepEvents& cumulative_events() const {
+    return event_ledger_.cumulative_events;
+  }
+  StepEvents& cumulative_events() { return event_ledger_.cumulative_events; }
+  Int event_window_start_step() const {
+    return event_ledger_.window_start_step;
+  }
+  Real event_window_start_time() const {
+    return event_ledger_.window_start_time;
+  }
   void set_event_window_start(Int step, Real time) {
-    event_window_start_step_ = step;
-    event_window_start_time_ = time;
+    event_ledger_.window_start_step = step;
+    event_ledger_.window_start_time = time;
   }
   void reset_step_events_after_summary(Int step, Real time) {
-    cumulative_events_.add(step_events_);
-    step_events_.reset();
-    event_window_start_step_ = step + 1;
-    event_window_start_time_ = time;
+    event_ledger_.cumulative_events.add(event_ledger_.step_events);
+    event_ledger_.step_events.reset();
+    event_ledger_.window_start_step = step + 1;
+    event_ledger_.window_start_time = time;
   }
   bool provenance_enabled() const {
     return cfg_.hdf5.enabled && cfg_.hdf5.schedule.provenance > 0;
   }
   const std::vector<KillProvenanceEvent>& kill_provenance() const {
-    return kill_provenance_;
+    return event_ledger_.kill_provenance;
   }
   std::vector<KillProvenanceEvent>& kill_provenance() {
-    return kill_provenance_;
+    return event_ledger_.kill_provenance;
   }
   void record_kill_provenance(const KillProvenanceEvent& event);
-  void clear_kill_provenance() { kill_provenance_.clear(); }
+  void clear_kill_provenance() { event_ledger_.kill_provenance.clear(); }
 
   // Spec 1: local oxygen and ROS induction hook (Spec 2)
   Real local_O2(const Agent& agent) const;
@@ -155,30 +161,34 @@ class Simulation {
   // Persistent SOS lysis burst sources (protease decay)
   void add_toxin_burst(const ToxinBurstSource& burst);
   void prune_toxin_bursts(Real current_time);
-  const std::vector<ToxinBurstSource>& toxin_bursts() const { return toxin_bursts_; }
+  const std::vector<ToxinBurstSource>& toxin_bursts() const {
+    return bacteriocin_.bursts;
+  }
 
   // Active Fix plugin names in execution order
   std::vector<std::string> fix_names() const;
 
   // MPI global statistics (valid after allreduce)
-  Int  global_agent_count() const { return mpi_stats_.global_agent_count; }
-  Real global_mu_avg()      const { return mpi_stats_.global_mu_avg; }
+  Int  global_agent_count() const {
+    return mpi_ghost_.stats.global_agent_count;
+  }
+  Real global_mu_avg()      const { return mpi_ghost_.stats.global_mu_avg; }
 
   // Adaptive timestep computation
   Real compute_adaptive_dt() const;
 
-  bool gpu_active() const { return gpu_active_; }
-  bool halted_for_dysbiosis() const { return halted_for_dysbiosis_; }
-  Real halt_density_cells_per_mL() const { return halt_density_cells_per_mL_; }
+  bool gpu_active() const { return gpu_.active; }
+  bool halted_for_dysbiosis() const { return dysbiosis_.halted; }
+  Real halt_density_cells_per_mL() const { return dysbiosis_.halt_density; }
 
   const StepProfile& step_profile() const { return step_profile_; }
   void reset_step_profile() { step_profile_.reset(); }
   void print_step_profile() const;
 
-  ChemicalFieldGpu&       chem_gpu()       { return chem_gpu_; }
-  const ChemicalFieldGpu& chem_gpu() const { return chem_gpu_; }
-  AgentPoolGpu&           agents_gpu()       { return agents_gpu_; }
-  const AgentPoolGpu&     agents_gpu() const { return agents_gpu_; }
+  ChemicalFieldGpu&       chem_gpu()       { return gpu_.chem; }
+  const ChemicalFieldGpu& chem_gpu() const { return gpu_.chem; }
+  AgentPoolGpu&           agents_gpu()       { return gpu_.agents; }
+  const AgentPoolGpu&     agents_gpu() const { return gpu_.agents; }
 
 
  private:
@@ -241,6 +251,42 @@ class Simulation {
     Real global_mu_avg = 0.0;
   };
 
+  struct EventLedger {
+    StepEvents step_events;
+    StepEvents cumulative_events;
+    Int window_start_step = 1;
+    Real window_start_time = 0.0;
+    std::vector<KillProvenanceEvent> kill_provenance;
+  };
+
+  struct DysbiosisGuard {
+    bool halted = false;
+    Real halt_density = 0.0;
+    std::vector<Real> density_history;
+    Real next_sample_time = 0.0;
+  };
+
+  struct GpuState {
+    bool active = false;
+    ChemicalFieldGpu chem;
+    AgentPoolGpu agents;
+  };
+
+  struct MpiGhostState {
+    MpiStats stats;
+    std::vector<Int> ghost_indices;
+  };
+
+  struct ImmigrationState {
+    RNG rng;
+    Int start_step = 0;
+  };
+
+  struct BacteriocinState {
+    std::vector<ToxinBurstSource> bursts;
+    bool fields_current = false;
+  };
+
   // Timestep clock and output scheduling
   struct Clock {
     Real time = 0.0;
@@ -249,9 +295,7 @@ class Simulation {
     Real next_snapshot = 0.0;
   };
 
-  // Ghost agent tracking
-  std::vector<Int> ghost_indices_;  // indices of ghost agents in the pool
-  MpiStats mpi_stats_;
+  MpiGhostState mpi_ghost_;
 
   // State
   AgentPool       agents_;
@@ -263,8 +307,7 @@ class Simulation {
   LineageTracker  lineage_;
   HDF5Writer      hdf5_;
   RNG             rng_;
-  RNG             immigration_rng_;
-  Int             immigration_start_step_ = 0;
+  ImmigrationState immigration_;
 
   // Fix modules (mutable: compute() updates simulation state via sim_ reference)
   mutable std::vector<std::unique_ptr<Fix>> fixes_;
@@ -278,22 +321,11 @@ class Simulation {
   // Step profiling
   StepProfile step_profile_;
 
-  // GPU acceleration state
-  bool gpu_active_ = false;
-  bool halted_for_dysbiosis_ = false;
-  Real halt_density_cells_per_mL_ = 0.0;
-  std::vector<Real> dysbiosis_density_history_;
-  Real next_dysbiosis_sample_time_ = 0.0;
-  ChemicalFieldGpu chem_gpu_;
-  AgentPoolGpu agents_gpu_;
+  GpuState gpu_;
+  DysbiosisGuard dysbiosis_;
 
-  std::vector<ToxinBurstSource> toxin_bursts_;
-  StepEvents step_events_;
-  StepEvents cumulative_events_;
-  Int event_window_start_step_ = 1;
-  Real event_window_start_time_ = 0.0;
-  std::vector<KillProvenanceEvent> kill_provenance_;
-  bool bacteriocin_fields_current_ = false;
+  BacteriocinState bacteriocin_;
+  EventLedger event_ledger_;
 };
 
 }  // namespace gutibm
