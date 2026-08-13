@@ -169,8 +169,7 @@ void test_vbf_mucin_rate_uniform_when_disabled() {
 }
 
 void test_vbf_coupling_z_gradient() {
-  // Verify that after VBF coupling, carbon reaction rates near z=0 are
-  // higher than those further from the epithelium
+  // Verify both z-dependent mucin liberation and carbon consumption.
   DomainConfig dcfg;
   dcfg.lo = {0, 0, 0};
   dcfg.hi = {20e-6, 20e-6, 100e-6};
@@ -190,27 +189,36 @@ void test_vbf_coupling_z_gradient() {
   carbon.z_gradient_enabled = true;
   carbon.z_gradient_lambda = 25.0e-6;
 
-  ChemicalField chem;
-  chem.init(domain, {carbon});
-
   VBFConfig vcfg;
   vcfg.mucin_liberation = 5.0e-5;
   vcfg.mucin_z_gradient_enabled = true;
   vcfg.mucin_z_gradient_lambda = 25.0e-6;
 
-  VBF vbf;
-  vbf.init(vcfg, domain);
-
-  chem.zero_reactions();
   OxygenConfig oxygen;
   AcetateConfig acetate;
   MucinConfig mucin;
-  vbf.apply_nutrient_coupling(chem, domain, 60.0, oxygen, acetate, mucin);
-
-  // Carbon reaction rate near z=0 should be > rate near z=max
   Int bottom_cell = domain.cell_index(0, 0, 0);
   Int top_cell = domain.cell_index(0, 0, domain.nz() - 1);
-  assert(chem.reac(0, bottom_cell) > chem.reac(0, top_cell));
+
+  ChemicalField source_chem;
+  source_chem.init(domain, {carbon});
+  VBFConfig source_cfg = vcfg;
+  source_cfg.carbon_sink_vmax = 0.0;
+  VBF source_vbf;
+  source_vbf.init(source_cfg, domain);
+  source_vbf.apply_nutrient_coupling(
+      source_chem, domain, 60.0, oxygen, acetate, mucin);
+  assert(source_chem.reac(0, bottom_cell) > source_chem.reac(0, top_cell));
+
+  ChemicalField sink_chem;
+  sink_chem.init(domain, {carbon});
+  VBFConfig sink_cfg = vcfg;
+  sink_cfg.mucin_liberation = 0.0;
+  VBF sink_vbf;
+  sink_vbf.init(sink_cfg, domain);
+  sink_vbf.apply_nutrient_coupling(
+      sink_chem, domain, 60.0, oxygen, acetate, mucin);
+  assert(sink_chem.reac(0, bottom_cell) < sink_chem.reac(0, top_cell));
 
   std::cout << "  test_vbf_coupling_z_gradient: PASSED\n";
 }

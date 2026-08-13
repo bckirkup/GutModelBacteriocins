@@ -10,13 +10,18 @@ __device__ inline int iz_cell_index(int ix, int iy, int iz, int nx, int ny) {
 }
 
 __global__ void field_update_kernel(double* conc, const double* reac,
-                                    int ncells, int num_species, double dt) {
+                                    int ncells, int num_species, double dt,
+                                    double* reaction_clip,
+                                    double cell_volume) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
   int total = ncells * num_species;
   if (idx >= total) return;
   int spec = idx / ncells;
   int cell = idx % ncells;
   double c = conc[spec * ncells + cell] + reac[spec * ncells + cell] * dt;
+  if (c < 0.0 && reaction_clip != nullptr) {
+    atomicAdd(reaction_clip, -c * cell_volume);
+  }
   conc[spec * ncells + cell] = c > 0.0 ? c : 0.0;
 }
 
@@ -66,11 +71,14 @@ __global__ void grid_coupling_kernel(
 }
 
 void launch_field_update_kernel(double* conc, const double* reac, int ncells,
-                                int num_species, double dt, cudaStream_t stream) {
+                                int num_species, double dt,
+                                double* reaction_clip, double cell_volume,
+                                cudaStream_t stream) {
   int total = ncells * num_species;
   int block = 256;
   int grid = (total + block - 1) / block;
-  field_update_kernel<<<grid, block, 0, stream>>>(conc, reac, ncells, num_species, dt);
+  field_update_kernel<<<grid, block, 0, stream>>>(
+      conc, reac, ncells, num_species, dt, reaction_clip, cell_volume);
 }
 
 void launch_apply_boundaries_kernel(double* conc, int nx, int ny, int nz,

@@ -618,6 +618,10 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_flux("agent_uptake_cumulative",
              add_cumulative(flux.agent_uptake_cumulative,
                            flux.agent_uptake_interval));
+  write_flux("reaction_clip_interval", flux.reaction_clip_interval);
+  write_flux("reaction_clip_cumulative",
+             add_cumulative(flux.reaction_clip_cumulative,
+                           flux.reaction_clip_interval));
   const Real area = (sim.domain().hi()[0] - sim.domain().lo()[0])
       * (sim.domain().hi()[1] - sim.domain().lo()[1]);
   const Real interval_time = std::max(

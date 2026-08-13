@@ -41,6 +41,7 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   d_boundary_injected_.allocate(static_cast<size_t>(nspec_));
   d_agent_uptake_.allocate(3);
   d_vbf_totals_.allocate(4);
+  d_reaction_clip_.allocate(static_cast<size_t>(nspec_));
   sync_to_device(field);
 }
 
@@ -72,6 +73,32 @@ double* ChemicalFieldGpu::vbf_totals_device() {
 void ChemicalFieldGpu::download_vbf_totals(std::vector<double>& values) {
   if (!active_) return;
   d_vbf_totals_.download(values);
+}
+
+void ChemicalFieldGpu::reset_reaction_clip() {
+#ifndef GUTIBM_CUDA
+  return;
+#else
+  if (!active_) return;
+  cudaMemset(d_reaction_clip_.data(), 0,
+             static_cast<size_t>(nspec_) * sizeof(double));
+#endif
+}
+
+void ChemicalFieldGpu::download_reaction_clip(ChemicalField& field) {
+#ifndef GUTIBM_CUDA
+  (void)field;
+  return;
+#else
+  if (!active_) return;
+  gpu_sync_compute();
+  std::vector<double> values(static_cast<size_t>(nspec_), 0.0);
+  d_reaction_clip_.download(values);
+  for (Int s = 0; s < nspec_; ++s) {
+    field.flux_accounting().add_reaction_clip(
+        s, values[static_cast<size_t>(s)]);
+  }
+#endif
 }
 
 void ChemicalFieldGpu::sync_to_device(const ChemicalField& field) {
@@ -161,11 +188,14 @@ bool ChemicalFieldGpu::apply_reactions(double dt, const Domain& domain) {
   return false;
 #else
   if (!active_) return false;
+  reset_reaction_clip();
   for (Int s = 0; s < nspec_; ++s) {
     gpu::launch_field_update_kernel(
         d_conc_[static_cast<size_t>(s)].data(),
         d_reac_[static_cast<size_t>(s)].data(),
-        ncells_, 1, dt, gpu_compute_stream());
+        ncells_, 1, dt,
+        d_reaction_clip_.data() + static_cast<size_t>(s),
+        domain.dx() * domain.dx() * domain.dx(), gpu_compute_stream());
   }
   gpu_sync_compute();
   gpu_check_error("field_update_kernel");

@@ -8,11 +8,96 @@
 #include "vbf.h"
 #include "vbf_gpu.h"
 
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <utility>
 
 using namespace gutibm;
+
+namespace {
+
+struct SinkMeasurement {
+  Real amount = 0.0;
+  Real updated_concentration = 0.0;
+};
+
+SinkMeasurement measure_sink(const Domain& domain, const ChemicalSpec& carbon,
+                             const VBFConfig& vbf_cfg, Real dt) {
+  ChemicalField chem;
+  chem.init(domain, {carbon});
+  const Int carbon_index = chem.find(species::CARBON);
+  VBF vbf;
+  vbf.init(vbf_cfg, domain);
+  OxygenConfig oxygen;
+  AcetateConfig acetate;
+  MucinConfig mucin;
+  VbfFluxTotals totals;
+  vbf.apply_nutrient_coupling(
+      chem, domain, dt, oxygen, acetate, mucin, &totals);
+
+  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  const Real updated = chem.conc(carbon_index, 0)
+      + chem.reac(carbon_index, 0) * dt;
+  return {
+      -chem.reac(carbon_index, 0) * cell_volume * dt,
+      updated,
+  };
+}
+
+void test_implicit_sink_mass_closure(const Domain& domain,
+                                     const ChemicalSpec& carbon) {
+  VBFConfig vbf_cfg;
+  vbf_cfg.mucin_liberation = 5.0e-5;
+  vbf_cfg.carbon_sink_vmax = 5.0e-3;
+  vbf_cfg.carbon_sink_km = 1.0e-4;
+  vbf_cfg.nutrient_sink = 0.0;
+  VBF vbf;
+  vbf.init(vbf_cfg, domain);
+  OxygenConfig oxygen;
+  AcetateConfig acetate;
+  MucinConfig mucin;
+  ChemicalField chem;
+  ChemicalSpec initial = carbon;
+  initial.initial_conc = 2.0e-4;
+  chem.init(domain, {initial});
+  const Int carbon_index = chem.find(species::CARBON);
+  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  constexpr Real dt = 60.0;
+  constexpr int steps = 5;
+  const Real before = chem.conc(carbon_index, 0)
+      * static_cast<Real>(chem.ncells()) * cell_volume;
+  Real source = 0.0;
+  Real sink = 0.0;
+  for (int step = 0; step < steps; ++step) {
+    chem.zero_reactions();
+    VbfFluxTotals totals;
+    vbf.apply_nutrient_coupling(
+        chem, domain, dt, oxygen, acetate, mucin, &totals);
+    source += totals.carbon_source;
+    sink += totals.carbon_sink;
+    for (Int cell = 0; cell < chem.ncells(); ++cell) {
+      const Real updated =
+          chem.conc(carbon_index, cell) + chem.reac(carbon_index, cell) * dt;
+      if (updated < 0.0) {
+        chem.flux_accounting().add_reaction_clip(
+            carbon_index, -updated * cell_volume);
+      }
+      chem.conc(carbon_index, cell) = std::max(updated, 0.0);
+    }
+  }
+  const Real after = chem.conc(carbon_index, 0)
+      * static_cast<Real>(chem.ncells()) * cell_volume;
+  const Real clip = chem.flux_accounting().reaction_clip_interval[
+      static_cast<size_t>(carbon_index)];
+  const Real scale = std::abs(before) + std::abs(after)
+      + std::abs(source) + std::abs(sink) + std::abs(clip);
+  assert(std::abs((after - before) - (source - sink + clip))
+         < 1.0e-12 * scale);
+}
+
+}  // namespace
 
 int main() {
   DomainConfig domain_cfg;
@@ -58,24 +143,23 @@ int main() {
   assert(applied_amount > 0.0);
   assert(std::abs(applied_amount - totals.carbon_sink)
          < 1.0e-12 * applied_amount);
-  const Real initial_concentration = 1.0e-4;
-  const Real pre_update_sink_rate = vbf_cfg.carbon_sink_vmax
-      * initial_concentration
-      / (vbf_cfg.carbon_sink_km + initial_concentration);
-  const Real pre_update_amount = pre_update_sink_rate
-      * static_cast<Real>(chem.ncells()) * cell_volume * dt;
-  const Real post_update_concentration = initial_concentration
-      - pre_update_sink_rate * dt;
-  const Real post_update_sink_rate = vbf_cfg.carbon_sink_vmax
-      * post_update_concentration
-      / (vbf_cfg.carbon_sink_km + post_update_concentration);
-  const Real post_update_amount = post_update_sink_rate
-      * static_cast<Real>(chem.ncells()) * cell_volume * dt;
-  constexpr Real kMinimumDistinguishableFraction = 0.05;
-  assert(std::abs(pre_update_amount - post_update_amount)
-         > kMinimumDistinguishableFraction * applied_amount);
-  assert(std::abs(pre_update_amount - applied_amount)
-         < 1.0e-12 * applied_amount);
+  assert(applied_amount < 1.0e-4 * static_cast<Real>(chem.ncells())
+         * cell_volume);
+
+  const std::array<Real, 4> vmax_values = {
+      2.0e-7, 2.0e-6, 2.0e-4, 2.0e-2};
+  std::array<SinkMeasurement, 4> measurements{};
+  for (size_t i = 0; i < vmax_values.size(); ++i) {
+    VBFConfig sweep_cfg = vbf_cfg;
+    sweep_cfg.carbon_sink_vmax = vmax_values[i];
+    measurements[i] = measure_sink(domain, carbon, sweep_cfg, dt);
+    assert(measurements[i].amount <= carbon.initial_conc * cell_volume);
+    assert(measurements[i].updated_concentration > 0.0);
+    if (i > 0) {
+      assert(measurements[i].amount > measurements[i - 1].amount);
+    }
+  }
+  test_implicit_sink_mass_closure(domain, carbon);
 #ifdef GUTIBM_CUDA
   GpuConfig gpu_cfg;
   gpu_cfg.enabled = true;

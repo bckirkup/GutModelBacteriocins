@@ -150,20 +150,26 @@ void test_carbon_sink_bounds_accumulation() {
   const Real c_with_sink = max_conc(chem_b, ic);
 
   // Analytic unbounded growth: source * dt * steps.
-  const Real expected_unbounded = 5.0e-5 * dt * steps;  // = 1.2 mol/m^3
-  // Analytic bounded steady state: km * S / (vmax - S).
-  const Real steady = 1.0e-3 * 5.0e-5 / (1.0e-3 - 5.0e-5);
-
+  const Real source_rate = 5.0e-5;
+  const Real expected_unbounded = source_rate * dt * steps;
+  // At equilibrium, implicit removal evaluates the Monod rate at the
+  // post-sink concentration, giving km*S/(vmax-S). The source is applied
+  // separately before the next step, so the sampled concentration includes
+  // one source increment.
+  const Real steady = with_sink.carbon_sink_km * source_rate
+      / (with_sink.carbon_sink_vmax - source_rate);
+  const Real expected_bounded = steady + source_rate * dt;
   expect(c_no_sink > 0.5 * expected_unbounded,
          "carbon without a sink should accumulate unbounded (Spec 5 §1 gap)");
-  expect(c_with_sink < 100.0 * steady && c_with_sink < 1.0e-3,
-         "carbon with the VBF sink must reach a small bounded steady state");
+  expect(std::isfinite(c_with_sink)
+             && c_with_sink < 1.01 * expected_bounded,
+         "carbon with the VBF sink must match the implicit steady-state bound");
   expect(c_with_sink < 0.01 * c_no_sink,
          "enabling the carbon sink must dramatically lower carbon vs no sink");
 
   std::cout << "  test_carbon_sink_bounds_accumulation: PASSED"
             << " (no_sink=" << c_no_sink << " with_sink=" << c_with_sink
-            << " steady~=" << steady << ")\n";
+            << " bounded_reference=" << expected_bounded << ")\n";
 }
 
 // Directional sensitivity: a larger Vmax removes more carbon per step. ──────

@@ -25,6 +25,8 @@ class ChemicalFieldGpu {
   void zero_reactions_on_device();
 
   bool apply_reactions(double dt, const Domain& domain);
+  void reset_reaction_clip();
+  void download_reaction_clip(ChemicalField& field);
   bool apply_diffusion(const Domain& domain, ChemicalField& field, Real dt);
   bool apply_boundaries(const Domain& domain, ChemicalField& field);
   void reset_agent_uptake();
@@ -55,6 +57,7 @@ class ChemicalFieldGpu {
   DeviceBuffer<double> d_boundary_injected_;
   DeviceBuffer<double> d_agent_uptake_;
   DeviceBuffer<double> d_vbf_totals_;
+  DeviceBuffer<double> d_reaction_clip_;
 };
 
 }  // namespace gutibm

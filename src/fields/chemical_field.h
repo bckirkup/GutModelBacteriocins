@@ -25,6 +25,8 @@ struct NutrientFluxAccounting {
   std::vector<Real> agent_uptake_interval;
   std::vector<Real> agent_uptake_step;
   std::vector<Real> agent_uptake_cumulative;
+  std::vector<Real> reaction_clip_interval;
+  std::vector<Real> reaction_clip_cumulative;
 
   void init(size_t species_count) {
     boundary_interval.assign(species_count, 0.0);
@@ -36,6 +38,8 @@ struct NutrientFluxAccounting {
     agent_uptake_interval.assign(species_count, 0.0);
     agent_uptake_step.assign(species_count, 0.0);
     agent_uptake_cumulative.assign(species_count, 0.0);
+    reaction_clip_interval.assign(species_count, 0.0);
+    reaction_clip_cumulative.assign(species_count, 0.0);
   }
 
   void add_interval(Int species, Real boundary, Real source, Real sink,
@@ -58,6 +62,13 @@ struct NutrientFluxAccounting {
     agent_uptake_step[static_cast<size_t>(species)] += amount;
   }
 
+  void add_reaction_clip(Int species, Real amount) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    reaction_clip_interval[static_cast<size_t>(species)] += amount;
+  }
+
   void commit_agent_uptake_step() {
     for (size_t i = 0; i < agent_uptake_step.size(); ++i) {
       agent_uptake_interval[i] += agent_uptake_step[i];
@@ -71,10 +82,12 @@ struct NutrientFluxAccounting {
       vbf_source_cumulative[i] += vbf_source_interval[i];
       vbf_sink_cumulative[i] += vbf_sink_interval[i];
       agent_uptake_cumulative[i] += agent_uptake_interval[i];
+      reaction_clip_cumulative[i] += reaction_clip_interval[i];
       boundary_interval[i] = 0.0;
       vbf_source_interval[i] = 0.0;
       vbf_sink_interval[i] = 0.0;
       agent_uptake_interval[i] = 0.0;
+      reaction_clip_interval[i] = 0.0;
     }
   }
 };
