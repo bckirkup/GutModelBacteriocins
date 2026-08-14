@@ -176,18 +176,26 @@ void FixMetabolism::apply_siderophore_chelation(
     Int i_sid, Int i_iron, Int i_ferric_enterobactin, Int num_cells) {
   const auto& sid_cfg = sim_.config().chem_env.siderophore;
   auto& chem = sim_.chemical_field();
-  for (Int cell = 0; cell < num_cells; ++cell) {
-    if (chem.slab_mode()) {
-      const Int global_cell = chem.storage_to_global_cell(cell);
-      if (global_cell < 0 || !chem.owns_global_cell(global_cell)) continue;
+  const Int x_begin = chem.slab_mode()
+      ? chem.owned_storage_x_begin() : sim_.domain().local_grid_x_begin();
+  const Int x_end = chem.slab_mode()
+      ? chem.owned_storage_x_end() : sim_.domain().local_grid_x_end();
+  const Int storage_nx = chem.slab_mode()
+      ? chem.storage_nx() : sim_.domain().nx();
+  for (Int iz = 0; iz < chem.global_nz(); ++iz) {
+    for (Int iy = 0; iy < chem.global_ny(); ++iy) {
+      for (Int ix = x_begin; ix < x_end; ++ix) {
+        const Int cell = (iz * chem.global_ny() + iy) * storage_nx + ix;
+        if (cell < 0 || cell >= num_cells) continue;
+        const Real s_sid = chem.conc(i_sid, cell);
+        const Real s_iron = chem.conc(i_iron, cell);
+        const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
+        chelation_by_cell_[static_cast<size_t>(cell)] = chelation;
+        chem.reac(i_iron, cell) -= chelation;
+        chem.reac(i_sid, cell) -= chelation;
+        chem.reac(i_ferric_enterobactin, cell) += chelation;
+      }
     }
-    const Real s_sid = chem.conc(i_sid, cell);
-    const Real s_iron = chem.conc(i_iron, cell);
-    const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
-    chelation_by_cell_[static_cast<size_t>(cell)] = chelation;
-    chem.reac(i_iron, cell) -= chelation;
-    chem.reac(i_sid, cell) -= chelation;
-    chem.reac(i_ferric_enterobactin, cell) += chelation;
   }
 }
 
@@ -196,36 +204,44 @@ void FixMetabolism::apply_siderophore_reimport(
     Real cell_volume, Real dt) {
   const auto& sid_cfg = sim_.config().chem_env.siderophore;
   auto& chem = sim_.chemical_field();
-  for (Int cell = 0; cell < num_cells; ++cell) {
-    if (chem.slab_mode()) {
-      const Int global_cell = chem.storage_to_global_cell(cell);
-      if (global_cell < 0 || !chem.owns_global_cell(global_cell)) continue;
-    }
-    const auto index = static_cast<size_t>(cell);
-    if (occupancy_by_cell_[index] == 0) continue;
+  const Int x_begin = chem.slab_mode()
+      ? chem.owned_storage_x_begin() : sim_.domain().local_grid_x_begin();
+  const Int x_end = chem.slab_mode()
+      ? chem.owned_storage_x_end() : sim_.domain().local_grid_x_end();
+  const Int storage_nx = chem.slab_mode()
+      ? chem.storage_nx() : sim_.domain().nx();
+  for (Int iz = 0; iz < chem.global_nz(); ++iz) {
+    for (Int iy = 0; iy < chem.global_ny(); ++iy) {
+      for (Int ix = x_begin; ix < x_end; ++ix) {
+        const Int cell = (iz * chem.global_ny() + iy) * storage_nx + ix;
+        if (cell < 0 || cell >= num_cells) continue;
+        const auto index = static_cast<size_t>(cell);
+        if (occupancy_by_cell_[index] == 0) continue;
 
-    const Real s_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
-    Real fur_Km = 1.0e-6;
-    if (sim_.config().cell_bio.fur.enabled) {
-      fur_Km = sim_.config().cell_bio.fur.Km;
-    }
-    const Real fur_activity = 1.0 - s_iron / (fur_Km + s_iron);
-    const Real biomass_density = biomass_by_cell_[index] / cell_volume;
-    const Real sid_rate = sid_cfg.secretion_rate
-        * std::max(0.0, fur_activity) * biomass_density;
-    chem.reac(i_sid, cell) += sid_rate;
+        const Real s_iron = (i_iron >= 0) ? chem.conc(i_iron, cell) : 0.0;
+        Real fur_Km = 1.0e-6;
+        if (sim_.config().cell_bio.fur.enabled) {
+          fur_Km = sim_.config().cell_bio.fur.Km;
+        }
+        const Real fur_activity = 1.0 - s_iron / (fur_Km + s_iron);
+        const Real biomass_density = biomass_by_cell_[index] / cell_volume;
+        const Real sid_rate = sid_cfg.secretion_rate
+            * std::max(0.0, fur_activity) * biomass_density;
+        chem.reac(i_sid, cell) += sid_rate;
 
-    if (i_iron < 0) continue;
-    const Real s_ferric_enterobactin =
-        chem.conc(i_ferric_enterobactin, cell);
-    const Real vmax = sid_cfg.Vmax_reimport
-        * fepA_biomass_by_cell_[index] / cell_volume;
-    const Real ferric_after_production = s_ferric_enterobactin
-        + chelation_by_cell_[index] * dt;
-    const Real reimport = implicit_ferric_enterobactin_reimport(
-        ferric_after_production, vmax, sid_cfg.Km_reimport, dt);
-    chem.reac(i_ferric_enterobactin, cell) -= reimport;
-    chem.reac(i_iron, cell) += reimport;
+        if (i_iron < 0) continue;
+        const Real s_ferric_enterobactin =
+            chem.conc(i_ferric_enterobactin, cell);
+        const Real vmax = sid_cfg.Vmax_reimport
+            * fepA_biomass_by_cell_[index] / cell_volume;
+        const Real ferric_after_production = s_ferric_enterobactin
+            + chelation_by_cell_[index] * dt;
+        const Real reimport = implicit_ferric_enterobactin_reimport(
+            ferric_after_production, vmax, sid_cfg.Km_reimport, dt);
+        chem.reac(i_ferric_enterobactin, cell) -= reimport;
+        chem.reac(i_iron, cell) += reimport;
+      }
+    }
   }
 }
 
