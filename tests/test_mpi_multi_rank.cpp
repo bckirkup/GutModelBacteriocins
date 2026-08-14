@@ -14,6 +14,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <iomanip>
 #include <iostream>
 #include <numbers>
 #include <string>
@@ -265,16 +266,20 @@ void assert_equal_ledgers(const Simulation& slab,
                     MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
       assert(slab_min == slab_max);
       assert(replicated_min == replicated_max);
-    if (slab_min != replicated_min) {
-      int rank = 0;
-      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-      if (rank == 0) {
-        std::cerr << std::setprecision(17);
-        std::cerr << "ledger mismatch " << name << '[' << species << "] "
-                  << slab_min << " vs " << replicated_min << '\n';
+      // Ledger totals sum identical cell contributions in different orders:
+      // slab reduces rank-local partials, while replicated sweeps the grid.
+      const Real scale = std::max(
+          std::max(std::abs(slab_min), std::abs(replicated_min)), 1.0e-300);
+      if (std::abs(slab_min - replicated_min) > 1.0e-12 * scale) {
+        int rank = 0;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0) {
+          std::cerr << std::setprecision(17);
+          std::cerr << "ledger mismatch " << name << '[' << species << "] "
+                    << slab_min << " vs " << replicated_min << '\n';
+        }
       }
-      }
-      assert(slab_min == replicated_min);
+      assert(std::abs(slab_min - replicated_min) <= 1.0e-12 * scale);
     }
   };
   compare("boundary_interval", slab_flux.boundary_interval,
