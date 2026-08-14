@@ -7,9 +7,11 @@
 #include "input_parser.h"
 #include "mpi_test_helpers.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 #ifdef GUTIBM_MPI
 #include <mpi.h>
@@ -41,13 +43,67 @@ void test_four_rank_slab_decomposition() {
   Domain dom;
   dom.init(cfg);
 
-  const Real slab = 25e-6;
-  assert(std::abs(dom.local_lo_x() - static_cast<Real>(rank) * slab) < 1e-15);
-  assert(std::abs(dom.local_hi_x() - static_cast<Real>(rank + 1) * slab) < 1e-15);
+  const Int nprocs = dom.nprocs();
+  const Int nx = dom.nx();
+  const auto grid_range =
+      Domain::grid_x_range_for_rank(nx, nprocs, rank);
+  const Real expected_lo =
+      dom.lo()[0] + static_cast<Real>(grid_range.first) * dom.dx();
+  const Real expected_hi =
+      rank == nprocs - 1
+          ? dom.hi()[0]
+          : dom.lo()[0] + static_cast<Real>(grid_range.second) * dom.dx();
+  const Real boundary_tolerance = 1e-15;
+  assert(std::abs(dom.local_lo_x() - expected_lo) < boundary_tolerance);
+  assert(std::abs(dom.local_hi_x() - expected_hi) < boundary_tolerance);
 
-  const Real mid_x = (static_cast<Real>(rank) + 0.5) * slab;
+  std::vector<Real> all_local_lo(static_cast<std::size_t>(nprocs));
+  std::vector<Real> all_local_hi(static_cast<std::size_t>(nprocs));
+  std::vector<Int> all_cell_counts(static_cast<std::size_t>(nprocs));
+  const Real local_lo_x = dom.local_lo_x();
+  const Real local_hi_x = dom.local_hi_x();
+  const Int local_cell_count = grid_range.second - grid_range.first;
+  MPI_Allgather(&local_lo_x, 1, MPI_DOUBLE, all_local_lo.data(), 1,
+                MPI_DOUBLE, MPI_COMM_WORLD);
+  MPI_Allgather(&local_hi_x, 1, MPI_DOUBLE, all_local_hi.data(), 1,
+                MPI_DOUBLE, MPI_COMM_WORLD);
+  MPI_Allgather(&local_cell_count, 1, MPI_INT, all_cell_counts.data(), 1,
+                MPI_INT, MPI_COMM_WORLD);
+
+  assert(std::abs(all_local_lo.front() - dom.lo()[0]) < boundary_tolerance);
+  assert(std::abs(all_local_hi.back() - dom.hi()[0]) < boundary_tolerance);
+  for (Int owner = 1; owner < nprocs; ++owner) {
+    assert(std::abs(all_local_lo[static_cast<std::size_t>(owner)]
+                    - all_local_hi[static_cast<std::size_t>(owner - 1)])
+           < boundary_tolerance);
+  }
+  for (Int owner = 0; owner < nprocs; ++owner) {
+    const Real scaled_boundary =
+        (all_local_lo[static_cast<std::size_t>(owner)] - dom.lo()[0])
+        / dom.dx();
+    assert(std::abs(scaled_boundary - std::round(scaled_boundary))
+           < 1e-12);
+  }
+
+  Int minimum_cells = all_cell_counts.front();
+  Int maximum_cells = all_cell_counts.front();
+  Int total_cells = 0;
+  for (const Int count : all_cell_counts) {
+    minimum_cells = std::min(minimum_cells, count);
+    maximum_cells = std::max(maximum_cells, count);
+    total_cells += count;
+  }
+  assert(maximum_cells - minimum_cells <= 1);
+  assert(total_cells == nx);
+
+  const Real mid_x = 0.5 * (dom.local_lo_x() + dom.local_hi_x());
   assert(dom.is_local({mid_x, 25e-6, 25e-6}));
   assert(dom.owner_rank({mid_x, 25e-6, 25e-6}) == rank);
+  for (Int ix = grid_range.first; ix < grid_range.second; ++ix) {
+    const Vec3 center = dom.cell_center(ix, 0, 0);
+    assert(dom.is_local(center));
+    assert(dom.owner_rank(center) == rank);
+  }
 
   if (rank == 0) {
     assert(dom.rank_lo() == -1);
