@@ -7,6 +7,7 @@
 #define GUTIBM_CHEMICAL_microcin_penalty_applied_H
 
 #include "types.h"
+#include <cassert>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -111,6 +112,8 @@ struct ChemicalSpec {
 
 class ChemicalField {
  public:
+  enum class DecompositionMode { Replicated, Slab };
+
   ChemicalField() = default;
 
   void init(const Domain& domain, const std::vector<ChemicalSpec>& specs,
@@ -120,8 +123,14 @@ class ChemicalField {
   Int ncells() const { return ncells_; }
 
   // Concentration accessors [species][storage cell].
-  Real conc(Int spec, Int cell) const { return conc_[spec][storage_cell(cell)]; }
-  Real& conc(Int spec, Int cell)       { return conc_[spec][storage_cell(cell)]; }
+  Real conc(Int spec, Int cell) const {
+    assert(cell >= 0 && cell < ncells_);
+    return conc_[spec][cell];
+  }
+  Real& conc(Int spec, Int cell) {
+    assert(cell >= 0 && cell < ncells_);
+    return conc_[spec][cell];
+  }
   Real conc_global(Int spec, Int cell) const {
     return conc_[spec][global_to_storage_cell(cell)];
   }
@@ -130,8 +139,14 @@ class ChemicalField {
   }
 
   // Reaction rate [species][storage cell] (mol/m^3/s, negative = consumption)
-  Real reac(Int spec, Int cell) const { return reac_[spec][storage_cell(cell)]; }
-  Real& reac(Int spec, Int cell)       { return reac_[spec][storage_cell(cell)]; }
+  Real reac(Int spec, Int cell) const {
+    assert(cell >= 0 && cell < ncells_);
+    return reac_[spec][cell];
+  }
+  Real& reac(Int spec, Int cell) {
+    assert(cell >= 0 && cell < ncells_);
+    return reac_[spec][cell];
+  }
   Real reac_global(Int spec, Int cell) const {
     return reac_[spec][global_to_storage_cell(cell)];
   }
@@ -148,7 +163,7 @@ class ChemicalField {
   Int storage_to_global_cell(Int storage_cell) const;
   bool owns_global_cell(Int global_cell) const;
   bool global_cell_in_halo(Int global_cell) const;
-  bool slab_mode() const { return decomposition_ == "slab"; }
+  bool slab_mode() const { return mode_ == DecompositionMode::Slab; }
 
   // Reset reaction rates to zero each timestep
   void zero_reactions();
@@ -177,17 +192,13 @@ class ChemicalField {
   const std::vector<std::vector<Real>>& conc_data() const { return conc_; }
 
  private:
-  Int storage_cell(Int cell) const;
-
   Int nspec_  = 0;
   Int ncells_ = 0;
   Int global_nx_ = 0;
-  Int global_ny_ = 0;
-  Int global_nz_ = 0;
   Int owned_x_begin_ = 0;
   Int owned_x_end_ = 0;
   Int halo_width_ = 0;
-  std::string decomposition_ = "replicated";
+  DecompositionMode mode_ = DecompositionMode::Replicated;
   const Domain* domain_ = nullptr;
   std::vector<ChemicalSpec> specs_;
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]

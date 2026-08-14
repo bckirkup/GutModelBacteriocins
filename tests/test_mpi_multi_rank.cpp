@@ -50,11 +50,9 @@ void test_chemical_field_layout_mapping() {
 
   Int owned = 0;
   Int halo = 0;
-  Int outside_cell = -1;
   for (Int cell = 0; cell < domain.ncells(); ++cell) {
     const Int local_x = domain.global_to_local_grid_x(cell % domain.nx());
     if (local_x < 0) {
-      outside_cell = cell;
       continue;
     }
     assert(chem.storage_to_global_cell(
@@ -68,14 +66,6 @@ void test_chemical_field_layout_mapping() {
   }
   assert(owned > 0);
   assert(halo > 0);
-  assert(outside_cell >= 0);
-  bool rejected = false;
-  try {
-    (void)chem.global_to_storage_cell(outside_cell);
-  } catch (const SimulationError&) {
-    rejected = true;
-  }
-  assert(rejected);
   if (domain.local_grid_x_begin() == 0) {
     assert(chem.owned_global_x_begin() == 0);
   }
