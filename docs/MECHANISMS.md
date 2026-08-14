@@ -544,7 +544,7 @@ where:
 The simulation domain is partitioned across MPI ranks using 1D slab decomposition along the x-axis (distal flow direction). This enables multi-node scaling for large agent populations.
 
 ### Slab Decomposition
-The domain is divided into `nprocs` equal-width slabs along the x-axis. Each rank owns agents within its slab bounds `[local_lo_x, local_hi_x)`.
+The domain is divided into cell-aligned slabs along the x-axis. Each rank owns agents within its contiguous slab bounds `[local_lo_x, local_hi_x)`, with boundaries at chemical-grid cell faces and widths balanced to within one cell.
 
 ### Ghost Layers
 Before the biology module, each rank exchanges **ghost agents** — copies of agents within `ghost_width` of slab boundaries — with its neighbors. This ensures correct neighbor queries (spatial hash lookups) for cross-boundary interactions (conjugation, mechanical repulsion, receptor binding).

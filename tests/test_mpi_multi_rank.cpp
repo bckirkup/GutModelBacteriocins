@@ -178,22 +178,20 @@ void test_slab_decomposition() {
   Domain dom;
   dom.init(cfg);
 
+  gutibm::test::assert_cell_aligned_slab_contract(dom);
+
   if (rank == 0) {
     assert(dom.rank_lo() == -1);
     assert(dom.rank_hi() == 1);
-    assert(std::abs(dom.local_lo_x() - 0.0) < 1e-15);
-    assert(std::abs(dom.local_hi_x() - 50e-6) < 1e-15);
-    assert(dom.is_local({25e-6, 25e-6, 25e-6}));
-    assert(!dom.is_local({75e-6, 25e-6, 25e-6}));
-    assert(dom.owner_rank({25e-6, 25e-6, 25e-6}) == 0);
-    assert(dom.owner_rank({75e-6, 25e-6, 25e-6}) == 1);
+    const Real mid_x = 0.5 * (dom.local_lo_x() + dom.local_hi_x());
+    assert(dom.is_local({mid_x, 25e-6, 25e-6}));
+    assert(dom.owner_rank({mid_x, 25e-6, 25e-6}) == rank);
   } else {
     assert(dom.rank_lo() == 0);
     assert(dom.rank_hi() == -1);
-    assert(std::abs(dom.local_lo_x() - 50e-6) < 1e-15);
-    assert(std::abs(dom.local_hi_x() - 100e-6) < 1e-15);
-    assert(!dom.is_local({25e-6, 25e-6, 25e-6}));
-    assert(dom.is_local({75e-6, 25e-6, 25e-6}));
+    const Real mid_x = 0.5 * (dom.local_lo_x() + dom.local_hi_x());
+    assert(dom.is_local({mid_x, 25e-6, 25e-6}));
+    assert(dom.owner_rank({mid_x, 25e-6, 25e-6}) == rank);
   }
 
   if (rank == 0) {

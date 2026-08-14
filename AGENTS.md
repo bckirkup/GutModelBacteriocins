@@ -54,7 +54,7 @@ cd python && pytest tests/ -v -m "not integration"
 - **Hybrid chemical transport** — analytical QSSA Green's functions for bacteriocins; stable implicit directional diffusion for nutrients and small molecules
 - **VBF for anaerobes** — 99% of background flora is a continuum field, not discrete agents
 - **Spatial hashing** — O(N) neighbor lookups, not O(N²)
-- **MPI domain decomposition** — 1D slab along x-axis; ghost exchange + agent migration
+- **MPI domain decomposition** — cell-aligned 1D slab along x-axis; ghost exchange + agent migration
 - **Never modify tests to make them pass** — fix the implementation
 
 ### Timestep modules (do not reorder casually)

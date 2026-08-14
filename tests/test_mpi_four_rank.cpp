@@ -41,11 +41,9 @@ void test_four_rank_slab_decomposition() {
   Domain dom;
   dom.init(cfg);
 
-  const Real slab = 25e-6;
-  assert(std::abs(dom.local_lo_x() - static_cast<Real>(rank) * slab) < 1e-15);
-  assert(std::abs(dom.local_hi_x() - static_cast<Real>(rank + 1) * slab) < 1e-15);
+  gutibm::test::assert_cell_aligned_slab_contract(dom);
 
-  const Real mid_x = (static_cast<Real>(rank) + 0.5) * slab;
+  const Real mid_x = 0.5 * (dom.local_lo_x() + dom.local_hi_x());
   assert(dom.is_local({mid_x, 25e-6, 25e-6}));
   assert(dom.owner_rank({mid_x, 25e-6, 25e-6}) == rank);
 

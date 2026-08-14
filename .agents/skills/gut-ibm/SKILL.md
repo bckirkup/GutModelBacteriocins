@@ -274,7 +274,7 @@ Use **exact** names from `PlasmidLibrary::entries()` in `src/genome/plasmid.cpp`
 
 ### MPI decomposition
 
-1D slab decomposition along `DomainConfig::mpi_decomp_axis` (default `0` = x, distal flow). Set in code, not input file. Ghost agents exchanged at slab boundaries; agents migrate via `migrate_agents()`.
+Cell-aligned 1D slab decomposition along `DomainConfig::mpi_decomp_axis` (default `0` = x, distal flow). Set in code, not input file. Ghost agents exchanged at slab boundaries; agents migrate via `migrate_agents()`.
 
 **Caveat:** MPI serialization lives in `src/core/agent_transfer.cpp` — update pack/unpack when adding agent or genome fields.
 

@@ -80,7 +80,7 @@ warning rather than placed at the wrong distance.
 
 **Biological context:** The domain represents a patch of colonic mucus layer. x,y are periodic (infinite mucosa plane). z spans from epithelium (z=0) to luminal surface (z=h).
 
-**MPI decomposition:** The domain is partitioned into equal-width slabs along `mpi_decomp_axis` (default: x, the distal flow direction). Each rank owns one slab. `ghost_width` should be ≥ `hash_cell_size` to ensure correct neighbor queries across slab boundaries.
+**MPI decomposition:** The domain is partitioned into cell-aligned slabs along `mpi_decomp_axis` (default: x, the distal flow direction). Each rank owns a contiguous half-open range of grid cells; physical slab widths can differ by at most one cell. `ghost_width` should be ≥ `hash_cell_size` to ensure correct neighbor queries across slab boundaries.
 
 ---
 

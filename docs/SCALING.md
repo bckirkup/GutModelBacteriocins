@@ -66,7 +66,7 @@ PROFILE_CSV steps=... ghost_s=... hash_s=... biology_s=... chemistry_s=...
 | &lt; 10⁵ agents | Biology (Fix compute, mechanics) | Reduce enabled fixes; coarser `grid_dx` |
 | 10⁵–10⁶ | QSSA chemistry (Green's superposition) | `use_fmm true`, widen `toxin_cutoff` carefully |
 | 10⁶+ | Chemistry + MPI ghost exchange | Barnes-Hut FMM + ≥4 MPI ranks; disable HDF5 during tuning |
-| Multi-rank | `mpi_migrate`, ghost exchange | 1D slab along x; keep agents well mixed in x |
+| Multi-rank | `mpi_migrate`, ghost exchange | Cell-aligned 1D slab along x; keep agents well mixed in x |
 
 ## Memory budget
 
