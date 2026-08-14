@@ -83,7 +83,8 @@ void test_mini_simulation() {
   for (const Agent& a : sim.agents()) {
     if (!a.genome.bi_loci.empty()) ++with_plasmid;
   }
-  assert(with_plasmid == 35);  // 30 ColE1 + 5 ColB
+  const Int expected_plasmid_agents = resident.count + conj.count;
+  assert(with_plasmid == expected_plasmid_agents);
 
   // Run the simulation
   sim.run();

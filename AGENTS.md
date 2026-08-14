@@ -158,7 +158,7 @@ allocations. This memory behavior is not fixed.
 | `gpu-parity` | CPU vs GPU fingerprint check via `compare_gpu_parity.sh` (#158) |
 | `openmp-parity` | Serial vs OpenMP deterministic + stochastic toxin-kill fingerprints |
 | `cuda-compile` | CUDA compile + GPU test targets (single arch, no duplicate parity rebuild) |
-| `eari-vadi-validation` | Short EARI/VADI + FISH golden regression (#56, #25) |
+| `eari-vadi-validation` | Short EARI/VADI + FISH invariant/bounds checks (#56, #25) |
 | `python-lint` | JSON syntax, ruff, pytest (fast), batch runner dry-run |
 
 ### Gaps (add tests when touching these areas)
@@ -179,7 +179,7 @@ allocations. This memory behavior is not fixed.
 1. Bacteriocins: add QSSA-compatible Green's-function logic in `src/diffusion/` and wire through `QSSASolver`
 2. Nutrients/small molecules: add stable implicit field logic in `src/fields/chemical_field.cpp`; never add an explicit biological-timestep stencil
 3. Preserve periodic x/y, epithelial Dirichlet z=0, and luminal zero-flux z boundary conditions
-4. Add golden-profile, coefficient/enable sensitivity, positivity, MPI, and GPU-parity tests
+4. Add analytic/invariant, coefficient/enable sensitivity, positivity, MPI, and GPU-parity tests
 
 ### MPI-sensitive changes
 - Guard all MPI calls with rank checks

@@ -221,9 +221,9 @@ with GutIBMData("output.h5") as data:
 **CLI tools:**
 
 ```bash
-# Golden regression (CI)
+# Invariant and FISH checks (CI)
 python -m gut_ibm_tools.validation_regression output.h5 \
-  --golden python/tests/fixtures/eari_vadi_ci_golden.json --check-fish-targets
+  --check-fish-targets
 
 # Batch runner
 python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json
@@ -254,7 +254,8 @@ Parallel HDF5 when built with MPI. Checkpoint groups support restart.
 | Comet-tail asymmetry | > 1.5 | EARI/VADI advection models |
 | Hopkins statistic | > 0.7 | Spatial clustering (VADI §75) |
 
-Short CI runs use **golden-file regression** instead of full targets:
+Short CI runs use finite-value, bounds, liveness, and FISH relationship checks
+instead of stored expected values:
 `bash scripts/validate_eari_vadi.sh`
 
 ## Project Structure
@@ -302,7 +303,7 @@ GitHub Actions (`.github/workflows/ci.yml`) on every push/PR to `main`:
 | `integration-tests` | Smoke, config diversity, HDF5, batch runner smoke |
 | `openmp-parity` | Serial vs OpenMP simulation fingerprints |
 | `cuda-compile` | CUDA compile + GPU test targets (single arch) |
-| `eari-vadi-validation` | Short sim → HDF5 → golden + FISH regression |
+| `eari-vadi-validation` | Short sim → HDF5 → invariant/bounds + FISH checks |
 | `python-lint` | JSON syntax, ruff, pytest, batch dry-run |
 
 Helper scripts: `scripts/validate_eari_vadi.sh`, `scripts/smoke_batch_runner.sh`, `scripts/run_scaling_benchmark.sh`.

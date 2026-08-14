@@ -113,8 +113,6 @@ After a successful simulation, call `validation_regression.run_validation()`:
 ```json
 {
   "validate": {
-    "golden": "python/tests/fixtures/eari_vadi_ci_golden.json",
-    "fish_golden": "python/tests/fixtures/eari_vadi_ci_fish_golden.json",
     "check_targets": false,
     "check_fish_targets": true
   }

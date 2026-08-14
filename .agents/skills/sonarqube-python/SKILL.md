@@ -80,7 +80,7 @@ Hotspot: `python/gut_ibm_tools/validation_regression.py`.
 Keep functions ≤ 15 cognitive complexity. For CLI `main()`:
 
 - Parse args in `main()`
-- Delegate to `run_validation()`, `_write_golden_outputs()`, `_print_failures()`
+- Delegate to `run_validation()`, invariant checks, and `_print_failures()`
 - One `if` branch per subcommand handler
 
 ## Naming (S117)
@@ -112,6 +112,6 @@ CI job `python-lint` runs the same checks on every PR.
 ## Reference files
 
 - Path utils: `python/gut_ibm_tools/path_utils.py`
-- Golden writers: `python/gut_ibm_tools/validation_regression.py`
+- Validation and invariant checks: `python/gut_ibm_tools/validation_regression.py`
 - Path tests: `python/tests/test_path_utils.py`
 - Float assertion examples: `python/tests/test_hdf5_writer_roundtrip.py`

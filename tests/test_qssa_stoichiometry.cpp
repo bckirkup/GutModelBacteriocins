@@ -10,7 +10,7 @@
    The growth-associated term (q_consumption * mu) plus a basal maintenance
    term (q_maintenance) that is applied per living cell regardless of growth,
    so the O2 field tracks agent *density* (a non-growing cell still respires).
-   These tests pin the term with golden values, config-sensitivity checks, and
+   These tests pin the term with analytic relations, config-sensitivity checks, and
    a density-coupling check, and confirm carbon/iron/B12 are NOT touched here.
    ----------------------------------------------------------------------- */
 
@@ -115,10 +115,11 @@ DepletionResult run_depletion(const Domain& domain, Real q_consumption,
 
 }  // namespace
 
-void test_o2_respiration_golden_and_sensitivity() {
+void test_o2_respiration_analytic_relation_and_sensitivity() {
   const Domain domain = make_domain();
 
-  // Golden (growth-associated term only): reac_o2 = -q_consumption*mu/cell_vol.
+  // Analytic growth-associated relation:
+  // reac_o2 = -q_consumption*mu/cell_vol.
   const Real q1 = 1.0e-14;
   const DepletionResult r1 = run_depletion(domain, q1, /*oxygen_enabled=*/true,
                                            /*q_maintenance=*/0.0);
@@ -146,7 +147,7 @@ void test_o2_respiration_golden_and_sensitivity() {
                                            qm);
   assert(std::abs(r0.reac_o2) <= 1e-30);
 
-  std::cout << "  test_o2_respiration_golden_and_sensitivity: PASSED\n";
+  std::cout << "  test_o2_respiration_analytic_relation_and_sensitivity: PASSED\n";
 }
 
 // Regression for the bug Edison flagged: respiration was purely growth-coupled
@@ -194,7 +195,7 @@ void test_carbon_iron_b12_not_depleted_by_qssa() {
 
 int main() {
   std::cout << "=== QSSA Nutrient-Depletion (O2) Tests ===\n";
-  test_o2_respiration_golden_and_sensitivity();
+  test_o2_respiration_analytic_relation_and_sensitivity();
   test_o2_maintenance_tracks_density();
   test_carbon_iron_b12_not_depleted_by_qssa();
   std::cout << "All QSSA nutrient-depletion tests passed.\n";

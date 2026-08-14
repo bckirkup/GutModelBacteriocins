@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from shutil import copy2
 
 import h5py
 import numpy as np
@@ -100,6 +101,31 @@ def single_step_hdf5(tmp_path: Path) -> Path:
 def sample_hdf5(tmp_path: Path) -> Path:
     path = tmp_path / "sample_output.h5"
     write_sample_hdf5(path)
+    return path
+
+
+@pytest.fixture
+def invariant_hdf5(tmp_path: Path) -> Path:
+    """Write sample output with agents inside the declared domain."""
+    path = tmp_path / "invariant_output.h5"
+    write_sample_hdf5(path)
+    with h5py.File(path, "a") as handle:
+        for step_name in handle["agents"]:
+            agents = handle["agents"][step_name]
+            count = len(agents["id"])
+            agents["x"][:] = np.linspace(1e-6, 19e-6, count)
+            agents["y"][:] = np.linspace(1e-6, 24e-6, count)
+            agents["z"][:] = 1e-6
+    return path
+
+
+@pytest.fixture
+def no_summary_hdf5(invariant_hdf5: Path, tmp_path: Path) -> Path:
+    """Write self-consistent output without summary intervals."""
+    path = tmp_path / "no_summary_output.h5"
+    copy2(invariant_hdf5, path)
+    with h5py.File(path, "a") as handle:
+        del handle["summary"]
     return path
 
 

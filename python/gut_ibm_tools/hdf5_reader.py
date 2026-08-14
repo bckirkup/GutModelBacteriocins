@@ -58,6 +58,21 @@ class GutIBMData:
             key=lambda s: int(s.split("_")[1]),
         )
 
+    @property
+    def domain_diagonal(self) -> float:
+        """Return the physical domain diagonal from HDF5 metadata."""
+        assert self._file is not None
+        grid_dx = float(self._file.attrs.get("grid_dx", 0.0))
+        lengths = []
+        for axis, cells in (("x", self._nx), ("y", self._ny), ("z", self._nz)):
+            lo = self._file.attrs.get(f"domain_lo_{axis}")
+            hi = self._file.attrs.get(f"domain_hi_{axis}")
+            if lo is not None and hi is not None:
+                lengths.append(float(hi) - float(lo))
+            else:
+                lengths.append(float(cells) * grid_dx)
+        return float(np.linalg.norm(lengths))
+
     def get_summary(self, step: str) -> dict[str, Any]:
         """Return summary scalars and nested groups for a step."""
         assert self._file is not None
