@@ -94,7 +94,18 @@ void test_mpi_gpu_chemistry_identical_across_ranks() {
   Simulation sim;
   sim.init(cfg);
   assert(sim.gpu_active());
+  bool positioned_boundary_agent = false;
+  for (Agent& agent : sim.agents()) {
+    if (agent.state == PhenoState::DEAD) continue;
+    agent.x[0] = rank == 0
+        ? sim.domain().local_hi_x() - 0.5 * sim.domain().ghost_width()
+        : sim.domain().local_lo_x() + 0.5 * sim.domain().ghost_width();
+    positioned_boundary_agent = true;
+    break;
+  }
+  assert(positioned_boundary_agent);
   sim.run();
+  assert(sim.agents_gpu().metabolism_gpu_steps() > 0);
 
   Real local = chemistry_checksum(sim);
   Real minimum = 0.0;

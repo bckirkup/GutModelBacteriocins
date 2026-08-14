@@ -144,7 +144,8 @@ void AgentPoolGpu::sync_positions_to_host(AgentPool& pool) const {
 
 bool AgentPoolGpu::run_metabolism(
     const Domain& domain, const MetabolismConfig& cfg,
-    const GpuMetabolismBuffers& buffers, double* uptake_totals, double dt) {
+    const GpuMetabolismBuffers& buffers, double* uptake_totals, double dt,
+    Int num_agents) {
 
 #ifndef GUTIBM_CUDA
   (void)domain;
@@ -152,6 +153,7 @@ bool AgentPoolGpu::run_metabolism(
   (void)buffers;
   (void)uptake_totals;
   (void)dt;
+  (void)num_agents;
   return false;
 #else
   if (!gpu_runtime_enabled() || size_ <= 0) return false;
@@ -166,7 +168,7 @@ bool AgentPoolGpu::run_metabolism(
       d_mu_max_.data(), d_km_b12_.data(), d_km_carbon_.data(),
       d_receptor_expr_.data(), d_ligand_affinity_.data(),
       d_bi_loci_count_.data(), d_plasmid_amelioration_.data(),
-      size_, dt, domain.dx(), CELL_DENSITY_DEFAULT,
+      num_agents, dt, domain.dx(), CELL_DENSITY_DEFAULT,
       cfg.km_iron_primary, cfg.km_iron_iroN, cfg.km_iron_iutA, cfg.km_iron_fiu,
       cfg.maintenance_rate, cfg.metE_penalty, cfg.metE_acetate_max_factor,
       cfg.metE_acetate_km, cfg.eut_max_penalty, cfg.eut_km,
@@ -176,6 +178,7 @@ bool AgentPoolGpu::run_metabolism(
 
   gpu_sync_compute();
   gpu_check_error("metabolism_kernel");
+  ++metabolism_gpu_steps_;
   return true;
 #endif
 }

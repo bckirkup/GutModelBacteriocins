@@ -199,6 +199,7 @@ Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_d
   a.timers.death_time = d.lifecycle.death_time;
   a.grid_cell = d.lifecycle.grid_cell;
   a.flags.in_crypt = (d.lifecycle.in_crypt != 0);
+  a.flags.is_ghost = false;
   for (int k = 0; k < 3; ++k)
     a.motility.swim_direction[k] = d.motility.swim_direction[k];
   a.motility.swim_speed = d.motility.swim_speed;
