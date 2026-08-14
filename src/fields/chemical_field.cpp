@@ -223,10 +223,10 @@ Real diffuse_bounded_z(std::vector<Real>& concentration,
               concentration[static_cast<size_t>(domain.cell_index(ix, iy, iz))];
         }
         solver.solve(line, boundary_conc);
-        #ifdef GUTIBM_OPENMP
-        #pragma omp atomic
-        #endif
         if (ix >= accounting_x_begin && ix < accounting_x_end) {
+          #ifdef GUTIBM_OPENMP
+          #pragma omp atomic
+          #endif
           face_exchange += alpha * (boundary_conc - line.front()) * cell_volume;
         }
         for (Int iz = 1; iz < nz; ++iz) {
