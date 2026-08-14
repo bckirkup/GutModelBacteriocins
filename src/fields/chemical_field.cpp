@@ -419,15 +419,11 @@ void ChemicalField::exchange_concentration_halos() {
                 - halo_width_ + h;
             const Int hi_source = iz * storage_nx_ * global_ny_
                 + iy * storage_nx_ + halo_width_ + h;
-            if (domain_->config().periodic[0]) {
-              conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_storage)] =
-                  conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_source)];
-              conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_storage)] =
-                  conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_source)];
-            } else {
-              conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_storage)] = 0.0;
-              conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_storage)] = 0.0;
-            }
+            if (!domain_->config().periodic[0]) continue;
+            conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_storage)] =
+                conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_source)];
+            conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_storage)] =
+                conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_source)];
           }
         }
       }

@@ -21,7 +21,6 @@ extern "C" {
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -959,9 +958,12 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
       total_count += counts[static_cast<size_t>(r)];
       gathered_width += widths[static_cast<size_t>(r)];
     }
-    assert(gathered_width == nx_);
-    assert(total_count == nx_ * ny_ * nz_);
-    if (rank == 0) grid3d.reserve(static_cast<size_t>(total_count));
+    if (gathered_width != nx_) {
+      throw HDF5Error("slab grid gather width does not cover global nx");
+    }
+    if (total_count != nx_ * ny_ * nz_) {
+      throw HDF5Error("slab grid gather count does not cover global grid");
+    }
   }
 #else
   if (chem.slab_mode()) {
