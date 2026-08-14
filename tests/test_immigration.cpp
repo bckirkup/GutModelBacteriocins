@@ -272,7 +272,7 @@ void test_large_colony_shell_regression() {
                           + (rhs[2] - center[2]) * (rhs[2] - center[2]);
     return lhs_radius < rhs_radius;
   });
-  for (Int i = 0; i < static_cast<Int>(sim.agents().size()); ++i) {
+  for (Int i = 0; i < sim.agents().size(); ++i) {
     sim.agents()[i].x = colony_positions[i];
     sim.agents()[i].flags.in_crypt = true;
   }

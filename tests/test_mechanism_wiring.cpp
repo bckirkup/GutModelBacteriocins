@@ -70,7 +70,8 @@ void expect(bool cond, const std::string& msg) {
 // let the VBF apply its sources/sinks, then apply conc += reac * dt (clamped
 // at zero, matching Simulation::module_chemistry). No diffusion/boundaries —
 // this isolates the VBF coupling so the mass-balance conclusion is unambiguous.
-void step_vbf_closed_cell(VBF& vbf, ChemicalField& chem, const Domain& domain,
+void step_vbf_closed_cell(const VBF& vbf, ChemicalField& chem,
+                          const Domain& domain,
                           const OxygenConfig& oxy, const AcetateConfig& ace,
                           const MucinConfig& muc, Real dt) {
   chem.zero_reactions();
@@ -392,7 +393,7 @@ void test_dysbiosis_halt() {
          "dysbiosis density must use cubic metres to millilitres conversion");
   DysbiosisGuard plateau_guard(1.0e8, 300.0, 7);
   plateau_guard.reset(0.0);
-  const std::vector<Real> plateau{
+  const std::vector plateau{
       1.01e8, 1.02e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8};
   for (Int i = 0; i < 7; ++i) {
     plateau_guard.observe(i * 300.0, plateau[static_cast<size_t>(i)]);

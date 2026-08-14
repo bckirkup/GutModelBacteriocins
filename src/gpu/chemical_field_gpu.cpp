@@ -92,7 +92,7 @@ void ChemicalFieldGpu::download_reaction_clip(ChemicalField& field) {
 #else
   if (!active_) return;
   gpu_sync_compute();
-  std::vector<double> values(static_cast<size_t>(nspec_), 0.0);
+  std::vector values(static_cast<size_t>(nspec_), 0.0);
   d_reaction_clip_.download(values);
   for (Int s = 0; s < nspec_; ++s) {
     field.flux_accounting().add_reaction_clip(

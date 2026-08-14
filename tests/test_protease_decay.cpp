@@ -64,7 +64,7 @@ void test_spatial_decay_not_temporal_amplitude() {
   Vec3 source = {50e-6, 50e-6, 25e-6};
   Vec3 target = {55e-6, 50e-6, 25e-6};
   std::vector sources = {source};
-  std::vector<GreensFunctionParams> params = {
+  std::vector params = {
       params_from_bi(bi, 1.0e-18)};
   params[0].decay_rate = decay_rate;
 
@@ -132,7 +132,7 @@ void test_protease_disabled_no_decay() {
   Vec3 source = {50e-6, 50e-6, 25e-6};
   Vec3 target = {55e-6, 50e-6, 25e-6};
   std::vector sources = {source};
-  std::vector<GreensFunctionParams> params = {
+  std::vector params = {
       params_from_bi(bi, 1.0e-18)};
 
   const Real c_young = qssa.point_concentration(target, sources, params, {1.0});

@@ -666,8 +666,8 @@ Real Simulation::compute_adaptive_dt() const {
   const Real density = global_density_cells_per_mL(
       domain_, mpi_ghost_.stats.global_agent_count);
   // 1e15 cells/m^3 is 1e9 cells/mL.
-  constexpr Real kDensityLimitCellsPerML = 1.0e9;
-  if (density > kDensityLimitCellsPerML) {
+  if (constexpr Real kDensityLimitCellsPerML = 1.0e9;
+      density > kDensityLimitCellsPerML) {
     dt = std::min(dt, 10.0);
   }
 

@@ -196,13 +196,12 @@ std::vector<Vec3> ImmigrationEngine::support_anchors(
   }
   std::vector<Vec3> sampled(local_support.begin(), local_support.end());
 #ifdef GUTIBM_MPI
-  const Int nprocs = domain.nprocs();
-  if (nprocs > 1) {
+  if (const Int nprocs = domain.nprocs(); nprocs > 1) {
     const auto local_values = static_cast<Int>(sampled.size() * 3);
     std::vector<Int> counts(static_cast<size_t>(nprocs));
     MPI_Allgather(&local_values, 1, MPI_INT, counts.data(), 1, MPI_INT,
                   MPI_COMM_WORLD);
-    std::vector<Int> displacements(static_cast<size_t>(nprocs), 0);
+    std::vector displacements(static_cast<size_t>(nprocs), Int{0});
     Int total_values = 0;
     for (Int rank = 0; rank < nprocs; ++rank) {
       displacements[static_cast<size_t>(rank)] = total_values;

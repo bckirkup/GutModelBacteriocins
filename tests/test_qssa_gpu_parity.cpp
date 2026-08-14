@@ -101,8 +101,8 @@ int main() {
   }
 
   std::vector<Real> stronger_cpu_values;
-  Real stronger_cpu_total = 0.0;
-  if (!capture_cpu_field(2.0 * kMicrocinSecretion, stronger_cpu_values,
+  if (Real stronger_cpu_total = 0.0;
+      !capture_cpu_field(2.0 * kMicrocinSecretion, stronger_cpu_values,
                          stronger_cpu_total)
       || stronger_cpu_total <= cpu_total) {
     std::cout << "  FAIL: microcin secretion sensitivity missing\n";
@@ -153,8 +153,8 @@ int main() {
   }
 
   constexpr double kAbsTol = 1.0e-12;
-  constexpr double kRelTol = 1.0e-4;
-  if (max_abs > kAbsTol && max_rel > kRelTol) {
+  if (constexpr double kRelTol = 1.0e-4;
+      max_abs > kAbsTol && max_rel > kRelTol) {
     std::cout << "  FAIL: max_abs=" << max_abs << " max_rel=" << max_rel << "\n";
     return 1;
   }

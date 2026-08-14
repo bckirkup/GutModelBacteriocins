@@ -169,8 +169,8 @@ Int Domain::global_to_local_grid_x(Int global_ix) const {
 }
 
 Int Domain::local_to_global_grid_x(Int local_ix) const {
-  const Int storage_nx = local_grid_storage_nx();
-  if (local_ix < 0 || local_ix >= storage_nx) return -1;
+  if (const auto storage_nx = local_grid_storage_nx();
+      local_ix < 0 || local_ix >= storage_nx) return -1;
 
   Int global_ix = local_grid_x_begin_ + local_ix - grid_halo_width_;
   if (periodic_[0]) {

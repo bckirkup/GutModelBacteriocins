@@ -15,7 +15,7 @@ int main() {
   constexpr Int sample_count = 7;
   constexpr Real interval = 300.0;
 
-  const std::vector<Real> accelerating{
+  const std::vector accelerating{
       1.01e8, 1.02e8, 1.04e8, 1.07e8, 1.11e8, 1.16e8, 1.22e8};
   DysbiosisGuard accelerating_guard(threshold, interval, sample_count);
   accelerating_guard.reset(0.0);
@@ -24,7 +24,7 @@ int main() {
   }
   assert(accelerating_guard.halted());
 
-  const std::vector<Real> plateau{
+  const std::vector plateau{
       1.01e8, 1.02e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8, 1.03e8};
   DysbiosisGuard plateau_guard(threshold, interval, sample_count);
   plateau_guard.reset(0.0);
@@ -33,7 +33,7 @@ int main() {
   }
   assert(!plateau_guard.halted());
 
-  const std::vector<Real> decelerating{
+  const std::vector decelerating{
       1.01e8, 1.04e8, 1.06e8, 1.07e8, 1.075e8, 1.078e8, 1.079e8};
   DysbiosisGuard decelerating_guard(threshold, interval, sample_count);
   decelerating_guard.reset(0.0);
@@ -43,7 +43,7 @@ int main() {
   }
   assert(!decelerating_guard.halted());
 
-  const std::vector<Real> dip_then_accelerate{
+  const std::vector dip_then_accelerate{
       1.05e8, 1.02e8, 1.03e8, 1.05e8, 1.08e8, 1.12e8, 1.17e8};
   DysbiosisGuard dip_guard(threshold, interval, sample_count);
   dip_guard.reset(0.0);

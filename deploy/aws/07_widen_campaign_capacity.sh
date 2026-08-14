@@ -69,7 +69,7 @@ wait_for_ce() {
       jq -r '.computeEnvironments[0].statusReason' <<<"${data}" >&2
       return 1
     fi
-    echo "  ${name}: state=$(jq -r '.computeEnvironments[0].state' <<<"${data}") status=$(jq -r '.computeEnvironments[0].status' <<<"${data}")"
+    echo "  ${name}: state=$(jq -r "${JQ_COMPUTE_ENV_STATE}" <<<"${data}") status=$(jq -r "${JQ_COMPUTE_ENV_STATUS}" <<<"${data}")"
     sleep 5
   done
   echo "ERROR: ${name} did not become VALID and ENABLED." >&2
@@ -82,8 +82,8 @@ restore_old_ce() {
   local status=""
   for _ in $(seq 1 60); do
     data="$(describe_ce "${CE}")"
-    state="$(jq -r '.computeEnvironments[0].state' <<<"${data}")"
-    status="$(jq -r '.computeEnvironments[0].status' <<<"${data}")"
+    state="$(jq -r "${JQ_COMPUTE_ENV_STATE}" <<<"${data}")"
+    status="$(jq -r "${JQ_COMPUTE_ENV_STATUS}" <<<"${data}")"
     if [[ "${state}" == "ENABLED" && "${status}" == "VALID" ]]; then
       return 0
     fi
@@ -105,10 +105,10 @@ restore_old_ce() {
 
 validate_copy_fields() {
   if [[ ! "${MIN_VCPUS}" =~ ^[0-9]+$ || ! "${MAX_VCPUS}" =~ ^[0-9]+$ ||
-        "$(jq 'length' <<<"${SECURITY_GROUPS_JSON}")" == "0" ||
+        "$(jq "${JQ_LENGTH}" <<<"${SECURITY_GROUPS_JSON}")" == "0" ||
         -z "${INSTANCE_ROLE}" || "${INSTANCE_ROLE}" != *:instance-profile/* ||
         -z "${SPOT_FLEET_ROLE}" ||
-        "$(jq 'length' <<<"${EC2_CONFIGURATION_JSON}")" == "0" ]]; then
+        "$(jq "${JQ_LENGTH}" <<<"${EC2_CONFIGURATION_JSON}")" == "0" ]]; then
     echo "ERROR: legacy CE lacks required Spot/EC2 resource settings to copy." >&2
     return 1
   fi
@@ -189,14 +189,14 @@ main() {
 
 echo "==> Inspect legacy campaign compute environment ${CE}"
 CE_JSON="$(describe_ce "${CE}")"
-if [[ "$(jq '.computeEnvironments | length' <<<"${CE_JSON}")" != "1" ]]; then
+if [[ "$(jq ".computeEnvironments | ${JQ_LENGTH}" <<<"${CE_JSON}")" != "1" ]]; then
   echo "ERROR: campaign compute environment '${CE}' was not found uniquely." >&2
   exit 1
 fi
 
 CE_RESOURCES="$(jq -c '.computeEnvironments[0].computeResources' <<<"${CE_JSON}")"
 EXISTING_SUBNETS_JSON="$(jq -c '.subnets // []' <<<"${CE_RESOURCES}")"
-if [[ "$(jq 'length' <<<"${EXISTING_SUBNETS_JSON}")" == "0" ]]; then
+if [[ "$(jq "${JQ_LENGTH}" <<<"${EXISTING_SUBNETS_JSON}")" == "0" ]]; then
   echo "ERROR: ${CE} has no configured subnet; refusing to guess a VPC." >&2
   exit 1
 fi
@@ -247,8 +247,8 @@ EC2_CONFIGURATION_JSON="$(jq -c '[.ec2Configuration[]? | select(.imageType != nu
 # The service-linked role replaces only the legacy Batch serviceRole.
 validate_copy_fields
 
-echo "  old_state=$(jq -r '.computeEnvironments[0].state' <<<"${CE_JSON}")"
-echo "  old_status=$(jq -r '.computeEnvironments[0].status' <<<"${CE_JSON}")"
+echo "  old_state=$(jq -r "${JQ_COMPUTE_ENV_STATE}" <<<"${CE_JSON}")"
+echo "  old_status=$(jq -r "${JQ_COMPUTE_ENV_STATUS}" <<<"${CE_JSON}")"
 echo "  vpc=${VPC_ID}"
 echo "  target_subnets=$(jq -c '.' <<<"${ALL_SUBNETS_JSON}")"
 echo "  target_instance_types=$(jq -c '.' <<<"${INSTANCE_TYPES_JSON}")"
@@ -275,7 +275,7 @@ if ((DRY_RUN)); then
 fi
 
 NEW_JSON="$(describe_ce "${NEW_CE}" 2>/dev/null || true)"
-if [[ -z "${NEW_JSON}" || "$(jq '.computeEnvironments | length' <<<"${NEW_JSON}")" == "0" ]]; then
+if [[ -z "${NEW_JSON}" || "$(jq ".computeEnvironments | ${JQ_LENGTH}" <<<"${NEW_JSON}")" == "0" ]]; then
   echo "==> Create service-linked-role campaign CE ${NEW_CE}"
   echo "  no --service-role is passed; Batch uses AWSServiceRoleForBatch"
   if ((DRY_RUN)); then
@@ -302,7 +302,7 @@ else
 fi
 
 QUEUE_JSON="$(describe_queue)"
-if [[ "$(jq '.jobQueues | length' <<<"${QUEUE_JSON}")" != "1" ]]; then
+if [[ "$(jq ".jobQueues | ${JQ_LENGTH}" <<<"${QUEUE_JSON}")" != "1" ]]; then
   echo "ERROR: campaign queue '${QUEUE}' was not found uniquely." >&2
   exit 1
 fi

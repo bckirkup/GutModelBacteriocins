@@ -94,11 +94,9 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     in.flux_accounting.add_interval(
         oxygen, 0.0, 0.0, vbf_totals.oxygen_sink, 0.0);
   }
-  if (in.gpu_active) {
-    if (!reactions_on_device) {
-      in.chem_gpu.sync_reactions_to_device(in.chem);
-      reactions_on_device = true;
-    }
+  if (in.gpu_active && !reactions_on_device) {
+    in.chem_gpu.sync_reactions_to_device(in.chem);
+    reactions_on_device = true;
   }
 
   if (in.gpu_active && !reactions_on_device) {
