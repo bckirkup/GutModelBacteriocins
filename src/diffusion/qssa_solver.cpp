@@ -50,6 +50,10 @@ struct MicrocinSourceBuffers {
   std::vector<ReceptorType>& targets;
 };
 
+bool source_owned_by_rank(const Domain& domain, const Vec3& position) {
+  return domain.nprocs() <= 1 || domain.owner_rank(position) == domain.rank();
+}
+
 struct ToxinSourceRecord {
   Vec3 position;
   GreensFunctionParams params;
@@ -285,9 +289,11 @@ void collect_microcin_sources(const AgentPool& agents,
                               const QSSAConfig& cfg,
                               const ProteaseConfig& protease,
                               const AdvectionField& adv,
+                              const Domain& domain,
                               MicrocinSourceBuffers& out) {
   for (const Agent& a : agents) {
     if (a.state == PhenoState::DEAD || a.state == PhenoState::SOS_INDUCED) continue;
+    if (!source_owned_by_rank(domain, a.x)) continue;
 
     for (const auto& bi : a.genome.bi_loci) {
       if (bi.release_mode != ReleaseMode::CONTINUOUS) continue;
@@ -315,8 +321,10 @@ void collect_microcin_sources(const AgentPool& agents,
 
 void append_burst_sources(const std::vector<ToxinBurstSource>& bursts,
                           Real current_time,
+                          const Domain& domain,
                           MicrocinSourceBuffers& out) {
   for (const ToxinBurstSource& burst : bursts) {
+    if (!source_owned_by_rank(domain, burst.pos)) continue;
     if (burst.release_tau <= 0.0) continue;
     const Real age = std::max(0.0, current_time - burst.creation_time);
     const Real factor = std::exp(-age / burst.release_tau);
@@ -383,8 +391,8 @@ void QSSASolver::solve_bacteriocin_field(
   std::vector<ReceptorType> all_targets;
   MicrocinSourceBuffers buffers{all_sources, all_params, all_strengths, is_nuclease, all_targets};
 
-  collect_microcin_sources(agents, cfg_, protease, adv, buffers);
-  append_burst_sources(bursts, current_time, buffers);
+  collect_microcin_sources(agents, cfg_, protease, adv, *domain_, buffers);
+  append_burst_sources(bursts, current_time, *domain_, buffers);
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
 
@@ -445,8 +453,8 @@ void QSSASolver::solve_all_bacteriocin_fields(
   std::vector<ReceptorType> all_targets;
   MicrocinSourceBuffers buffers{all_sources, all_params, all_strengths,
                                 is_nuclease, all_targets};
-  collect_microcin_sources(agents, cfg_, protease, adv, buffers);
-  append_burst_sources(bursts, current_time, buffers);
+  collect_microcin_sources(agents, cfg_, protease, adv, *domain_, buffers);
+  append_burst_sources(bursts, current_time, *domain_, buffers);
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
 

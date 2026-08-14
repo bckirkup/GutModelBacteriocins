@@ -8,10 +8,12 @@
 #include "mpi_test_helpers.h"
 #include "species_names.h"
 #include "plasmid.h"
+#include "greens_function.h"
 
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <numbers>
 
 #ifdef GUTIBM_MPI
 #include <mpi.h>
@@ -88,6 +90,7 @@ void test_cross_rank_bacteriocin_source_exchange() {
 
   SimulationConfig cfg = make_mpi_config(4243, 40);
   cfg.qssa.toxin_cutoff = 80e-6;
+  cfg.enabled_fixes = {"receptor"};
   Simulation sim;
   sim.init(cfg);
 
@@ -96,7 +99,7 @@ void test_cross_rank_bacteriocin_source_exchange() {
   }
   if (rank == 0) {
     Agent& producer = sim.agents()[0];
-    producer.x = {49e-6, 50e-6, 25e-6};
+    producer.x = {49.5e-6, 50e-6, 25e-6};
     producer.grid_cell = sim.domain().cell_index(9, 10, 5);
     producer.genome.bi_loci.push_back(PlasmidLibrary::microcin_V());
   }
@@ -117,9 +120,7 @@ void test_cross_rank_bacteriocin_source_exchange() {
   const Int species_idx =
       sim.chemical_field().find(species::BACTERIOCIN_CIRA);
   assert(species_idx >= 0);
-  sim.qssa().solve_bacteriocin_field(
-      sim.agents(), {}, 0.0, cfg.chem_env.protease, sim.advection(),
-      sim.chemical_field(), species_idx, ReceptorType::CirA);
+  sim.step(cfg.time.bio_dt);
 
   const Int target_cell =
       sim.domain().cell_index(target_ix, target_iy, target_iz);
@@ -134,6 +135,27 @@ void test_cross_rank_bacteriocin_source_exchange() {
   assert(minimum > 0.0);
   assert(std::abs(maximum - minimum)
          <= 1.0e-12 * std::max(1.0, maximum));
+
+  GreensFunction greens;
+  greens.init(sim.domain(), sim.advection());
+  GreensFunctionParams params;
+  const BICluster source_cluster = PlasmidLibrary::microcin_V();
+  params.diff_coeff = source_cluster.diff_coeff;
+  params.retardation = source_cluster.retardation;
+  params.pI = source_cluster.pI;
+  params.source_rate = cfg.qssa.microcin_secretion;
+  const Real protease_decay =
+      cfg.chem_env.protease.enabled && source_cluster.protease_half_life > 0.0
+          ? std::numbers::ln2 / source_cluster.protease_half_life
+          : 0.0;
+  const Real dilution_decay = std::max(
+      sim.advection().washout_rate(25e-6),
+      cfg.chem_env.protease.dilution_rate);
+  params.decay_rate = protease_decay + dilution_decay;
+  const Real expected = greens.concentration_bounded(
+      {49.5e-6, 50e-6, 25e-6}, target_position, params);
+  assert(std::abs(minimum - expected)
+         <= 1.0e-12 * std::max(std::abs(expected), 1.0e-30));
 
   if (rank == 0) {
     std::cout << "  test_cross_rank_bacteriocin_source_exchange: PASSED\n";
