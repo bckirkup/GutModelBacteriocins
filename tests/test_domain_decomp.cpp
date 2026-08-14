@@ -231,6 +231,39 @@ void test_grid_partition_metadata() {
     for (const Int owners : coverage) assert(owners == 1);
   }
 
+  DomainConfig misaligned_cfg;
+  misaligned_cfg.lo = {0, 0, 0};
+  misaligned_cfg.hi = {10.4, 10.0, 10.0};
+  misaligned_cfg.grid_dx = 1.0;
+  misaligned_cfg.periodic = {true, true, false};
+  Domain misaligned_domain;
+  misaligned_domain.init(misaligned_cfg);
+  for (const Int nprocs : {2, 3, 4, 11}) {
+    for (Int rank = 0; rank < nprocs; ++rank) {
+      const auto range = Domain::grid_x_range_for_rank(
+          misaligned_domain.nx(), nprocs, rank);
+      for (Int ix = range.first; ix < range.second; ++ix) {
+        const Vec3 center = misaligned_domain.cell_center(ix, 0, 0);
+        Int center_ix = 0;
+        Int center_iy = 0;
+        Int center_iz = 0;
+        misaligned_domain.pos_to_grid(
+            center, center_ix, center_iy, center_iz);
+        assert(center_ix == ix);
+        assert(Domain::grid_owner_rank_for_cell(
+                   misaligned_domain.nx(), nprocs, center_ix) == rank);
+      }
+    }
+  }
+
+  bool invalid_partition_threw = false;
+  try {
+    (void)Domain::grid_x_range_for_rank(nx, 0, 0);
+  } catch (const ConfigError&) {
+    invalid_partition_threw = true;
+  }
+  assert(invalid_partition_threw);
+
   DomainConfig cfg;
   cfg.lo = {0, 0, 0};
   cfg.hi = {50.0e-6, 10.0e-6, 10.0e-6};
@@ -251,6 +284,12 @@ void test_grid_partition_metadata() {
   assert(dom.local_to_global_grid_x(dom.local_grid_storage_nx() - 1) == 0);
   assert(dom.global_to_local_grid_x(-1) == 0);
   assert(dom.global_to_local_grid_x(dom.nx()) == dom.nx() + 1);
+
+  cfg.periodic[0] = false;
+  Domain nonperiodic_dom;
+  nonperiodic_dom.init(cfg);
+  assert(nonperiodic_dom.global_to_local_grid_x(-1) == -1);
+  assert(nonperiodic_dom.global_to_local_grid_x(nonperiodic_dom.nx()) == -1);
 
   std::cout << "  test_grid_partition_metadata: PASSED\n";
 }

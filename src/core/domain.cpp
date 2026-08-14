@@ -3,9 +3,9 @@
    ----------------------------------------------------------------------- */
 
 #include "domain.h"
+#include "error.h"
 #include <cmath>
 #include <algorithm>
-#include <cassert>
 
 namespace gutibm {
 
@@ -87,11 +87,9 @@ void Domain::decompose() {
   Int axis = cfg_.mpi_decomp_axis;  // 0 = x
   Real global_lo = lo_[axis];
   Real global_hi = hi_[axis];
-  Real total_len = global_hi - global_lo;
   const auto grid_range = grid_x_range_for_rank(nx_, nprocs_, rank_);
-  const Real cell_width = total_len / nx_;
-  local_lo_x_ = global_lo + grid_range.first * cell_width;
-  local_hi_x_ = global_lo + grid_range.second * cell_width;
+  local_lo_x_ = global_lo + grid_range.first * dx_;
+  local_hi_x_ = global_lo + grid_range.second * dx_;
   if (rank_ == nprocs_ - 1) local_hi_x_ = global_hi;
 
   ghost_width_ = cfg_.ghost_width;
@@ -114,25 +112,53 @@ void Domain::decompose() {
 
 std::pair<Int, Int> Domain::grid_x_range_for_rank(
     Int global_nx, Int nprocs, Int rank) {
-  assert(global_nx >= 0);
-  assert(nprocs > 0);
-  assert(rank >= 0 && rank < nprocs);
+  if (global_nx < 0) {
+    throw ConfigError("grid partition requires a non-negative cell count");
+  }
+  if (nprocs <= 0) {
+    throw ConfigError("grid partition requires at least one rank");
+  }
+  if (rank < 0 || rank >= nprocs) {
+    throw ConfigError("grid partition rank is outside the process range");
+  }
   const Int begin = (global_nx * rank) / nprocs;
   const Int end = (global_nx * (rank + 1)) / nprocs;
   return {begin, end};
+}
+
+Int Domain::grid_owner_rank_for_cell(
+    Int global_nx, Int nprocs, Int global_ix) {
+  if (global_nx <= 0) {
+    throw ConfigError("grid ownership requires at least one cell");
+  }
+  if (nprocs <= 0) {
+    throw ConfigError("grid ownership requires at least one rank");
+  }
+  if (global_ix < 0 || global_ix >= global_nx) {
+    throw ConfigError("grid ownership cell is outside the global range");
+  }
+  const Int rank = ((global_ix + 1) * nprocs - 1) / global_nx;
+  return std::clamp(rank, 0, nprocs - 1);
 }
 
 Int Domain::global_to_local_grid_x(Int global_ix) const {
   if (nx_ <= 0) return -1;
 
   Int candidate = global_ix;
+  if (!periodic_[0] && (candidate < 0 || candidate >= nx_)) return -1;
   if (periodic_[0]) {
-    while (candidate < local_grid_x_begin_ - grid_halo_width_) {
-      candidate += nx_;
+    const Int lower = local_grid_x_begin_ - grid_halo_width_;
+    const Int upper = local_grid_x_end_ + grid_halo_width_;
+    if (candidate >= lower && candidate < upper) {
+      return candidate - local_grid_x_begin_ + grid_halo_width_;
     }
-    while (candidate >= local_grid_x_end_ + grid_halo_width_) {
-      candidate -= nx_;
-    }
+    candidate %= nx_;
+    if (candidate < 0) candidate += nx_;
+    const Int periods = static_cast<Int>(std::floor(
+        static_cast<Real>(local_grid_x_begin_ - candidate) / nx_));
+    candidate += periods * nx_;
+    if (candidate < lower) candidate += nx_;
+    if (candidate >= upper) candidate -= nx_;
   }
 
   if (candidate < local_grid_x_begin_ - grid_halo_width_
@@ -166,14 +192,9 @@ Int Domain::owner_rank(const Vec3& pos) const {
   if (nprocs_ <= 1) return 0;
   Int axis = cfg_.mpi_decomp_axis;
   Real global_lo = lo_[axis];
-  Real cell_width = (hi_[axis] - global_lo) / nx_;
-  auto ix = static_cast<Int>(std::floor((pos[axis] - global_lo) / cell_width));
+  auto ix = static_cast<Int>(std::floor((pos[axis] - global_lo) / dx_));
   ix = std::clamp(ix, 0, nx_ - 1);
-  for (Int r = 0; r < nprocs_; ++r) {
-    const auto range = grid_x_range_for_rank(nx_, nprocs_, r);
-    if (ix >= range.first && ix < range.second) return r;
-  }
-  return nprocs_ - 1;
+  return grid_owner_rank_for_cell(nx_, nprocs_, ix);
 }
 
 }  // namespace gutibm

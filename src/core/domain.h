@@ -85,6 +85,8 @@ class Domain {
   // Integer partition helper shared by decomposition metadata and tests.
   static std::pair<Int, Int> grid_x_range_for_rank(
       Int global_nx, Int nprocs, Int rank);
+  static Int grid_owner_rank_for_cell(
+      Int global_nx, Int nprocs, Int global_ix);
 
   // Cell index from grid coordinates
   Int cell_index(Int ix, Int iy, Int iz) const {
