@@ -220,11 +220,15 @@ void assert_equal_ledgers(const Simulation& slab,
                     MPI_MIN, MPI_COMM_WORLD);
       MPI_Allreduce(&slab_values[species], &slab_max, 1, MPI_DOUBLE,
                     MPI_MAX, MPI_COMM_WORLD);
-      Real replicated_total = 0.0;
-      MPI_Allreduce(&replicated_values[species], &replicated_total, 1,
-                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+      Real replicated_min = 0.0;
+      Real replicated_max = 0.0;
+      MPI_Allreduce(&replicated_values[species], &replicated_min, 1,
+                    MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+      MPI_Allreduce(&replicated_values[species], &replicated_max, 1,
+                    MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
       assert(slab_min == slab_max);
-      assert(slab_min == replicated_total);
+      assert(replicated_min == replicated_max);
+      assert(slab_min == replicated_min);
     }
   };
   compare(slab_flux.boundary_interval, replicated_flux.boundary_interval);
