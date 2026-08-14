@@ -339,6 +339,89 @@ void test_boundary_ghost_exchange_runs() {
   }
 }
 
+void test_ghost_agents_do_not_double_count_biology() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  SimulationConfig cfg = make_mpi_config(4244, 1);
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.time.bio_dt = 1.0;
+  cfg.chem_env.oxygen.enabled = false;
+  cfg.chem_env.acetate.enabled = false;
+  cfg.chem_env.siderophore.enabled = false;
+  cfg.quorum_sensing.enabled = false;
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+
+  Simulation sim;
+  sim.init(cfg);
+
+  while (sim.agents().size() > 0) {
+    sim.agents().remove(sim.agents().size() - 1);
+  }
+  sim.agents().configure_tags(
+      AgentPool::first_tag_for_rank(rank, 2), AgentPool::tag_stride(2));
+  if (rank == 0) {
+    const Vec3 position = {
+        sim.domain().local_hi_x() - 0.5 * sim.domain().ghost_width(),
+        50e-6,
+        25e-6};
+    Agent agent = Agent::create_default(
+        sim.agents().next_tag(), 1, position, cfg.initial_strains[0].mu_max);
+    agent.identity.owner_rank = rank;
+    sim.agents().push_back(std::move(agent));
+  }
+
+  const Real initial_mass = sphere_mass(
+      CELL_RADIUS_DEFAULT, CELL_DENSITY_DEFAULT);
+  TagID parent_tag = 0;
+  Real initial_biomass = 0.0;
+  for (Agent& agent : sim.agents()) {
+    if (agent.state == PhenoState::DEAD) continue;
+    parent_tag = agent.identity.tag;
+    initial_biomass = 2.5 * initial_mass;
+    agent.biomass = initial_biomass;
+    agent.mass = agent.biomass;
+    agent.radius = std::cbrt(
+        3.0 * agent.biomass / (4.0 * PI * CELL_DENSITY_DEFAULT));
+  }
+
+  Int local_initial = parent_tag != 0 ? 1 : 0;
+  Int global_initial = 0;
+  MPI_Allreduce(&local_initial, &global_initial, 1, MPI_INT,
+                MPI_SUM, MPI_COMM_WORLD);
+  assert(global_initial == 1);
+
+  sim.step(cfg.time.bio_dt);
+
+  assert(sim.global_agent_count() == 2);
+
+  Real expected_uptake = 0.0;
+  for (const Agent& agent : sim.agents()) {
+    if (agent.identity.tag == parent_tag) {
+      expected_uptake = agent.mu_realized * initial_biomass
+          * cfg.time.bio_dt * cfg.fixes.metabolism.yield_carbon;
+    }
+  }
+  Real global_expected_uptake = 0.0;
+  MPI_Allreduce(&expected_uptake, &global_expected_uptake, 1, MPI_DOUBLE,
+                MPI_SUM, MPI_COMM_WORLD);
+
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  assert(carbon >= 0);
+  const Real actual_uptake =
+      sim.chemical_field().flux_accounting().agent_uptake_interval[
+          static_cast<size_t>(carbon)];
+  assert(std::abs(actual_uptake - global_expected_uptake)
+         <= 1.0e-12 * std::max(1.0, std::abs(global_expected_uptake)));
+
+  if (rank == 0) {
+    std::cout << "  test_ghost_agents_do_not_double_count_biology: PASSED\n";
+  }
+}
+
 void test_periodic_x_ghost_and_migration() {
   require_mpi_ranks(2);
 
@@ -545,6 +628,7 @@ int main(int argc, char** argv) {
   test_init_population_partitioned();
   test_migration_preserves_global_count();
   test_boundary_ghost_exchange_runs();
+  test_ghost_agents_do_not_double_count_biology();
   test_periodic_x_ghost_and_migration();
   test_multirank_simulation_steps();
   test_adaptive_dt_is_rank_identical();

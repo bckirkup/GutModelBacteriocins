@@ -1487,10 +1487,12 @@ void Simulation::migrate_agents() {
 
   for (auto& a : recv_lo) {
     a.identity.owner_rank = my_rank;
+    a.flags.is_ghost = false;
     agents_.push_back(std::move(a));
   }
   for (auto& a : recv_hi) {
     a.identity.owner_rank = my_rank;
+    a.flags.is_ghost = false;
     agents_.push_back(std::move(a));
   }
 #endif
@@ -1556,11 +1558,13 @@ void Simulation::exchange_ghost_agents() {
   for (auto& a : recv_lo) {
     Int idx = agents_.size();
     mpi_ghost_.ghost_indices.push_back(idx);
+    a.flags.is_ghost = true;
     agents_.push_back(std::move(a));
   }
   for (auto& a : recv_hi) {
     Int idx = agents_.size();
     mpi_ghost_.ghost_indices.push_back(idx);
+    a.flags.is_ghost = true;
     agents_.push_back(std::move(a));
   }
 #endif

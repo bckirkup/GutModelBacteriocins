@@ -43,6 +43,9 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   if (sim.config().chem_env.siderophore.enabled) return false;
 
   auto& agents = sim.agents();
+  for (const Agent& agent : agents) {
+    if (agent.flags.is_ghost) return false;
+  }
   auto& ag = sim.agents_gpu();
   auto& cg = sim.chem_gpu();
   cg.reset_agent_uptake();
@@ -96,6 +99,7 @@ void FixMetabolism::compute(Real dt) {
   for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
     compute_growth_rate(a);
+    if (a.flags.is_ghost) continue;
     grow_agent(a, dt);
   }
   apply_siderophore_chemistry(dt);
@@ -137,7 +141,7 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
     touched_cells_.clear();
   }
   for (const Agent& agent : sim_.agents()) {
-    if (agent.state == PhenoState::DEAD) continue;
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
     const Int cell = agent.grid_cell;
     if (cell < 0 || cell >= num_cells) continue;
     const auto index = static_cast<size_t>(cell);
@@ -222,7 +226,7 @@ void FixMetabolism::perform_divisions() {
   std::vector<Agent> new_agents;
 
   for (Agent& a : agents) {
-    if (a.state == PhenoState::DEAD) continue;
+    if (a.state == PhenoState::DEAD || a.flags.is_ghost) continue;
 
     Real initial_mass = sphere_mass(CELL_RADIUS_DEFAULT, CELL_DENSITY_DEFAULT);
     if (a.biomass >= cfg_.division_threshold * initial_mass) {

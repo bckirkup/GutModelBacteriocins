@@ -548,7 +548,7 @@ void QSSASolver::solve_nutrient_depletion(
   #pragma omp parallel for schedule(dynamic)
   #endif
   for (const Agent& a : agents) {
-    if (a.state == PhenoState::DEAD) continue;
+    if (a.state == PhenoState::DEAD || a.flags.is_ghost) continue;
 
     Int cell = a.grid_cell;
     if (cell < 0) continue;

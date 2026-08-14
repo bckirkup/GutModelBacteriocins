@@ -34,6 +34,7 @@ struct AgentFlags {
   bool in_crypt = false;
   bool just_divided = false;
   bool microcin_penalty_applied = false;
+  bool is_ghost = false;
 };
 
 struct Agent {

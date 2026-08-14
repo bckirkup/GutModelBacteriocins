@@ -25,7 +25,7 @@ void FixQuorumSensing::compute(Real /*dt*/) {
 
   // Agent production (LuxS) and Lsr import
   for (const Agent& agent : sim_.agents()) {
-    if (agent.state == PhenoState::DEAD) continue;
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
     if (agent.grid_cell < 0) continue;
 
     const Real production = cfg_.ai2_basal_rate
