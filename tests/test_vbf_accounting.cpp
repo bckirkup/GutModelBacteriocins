@@ -86,6 +86,7 @@ void test_implicit_sink_mass_closure(const Domain& domain,
       }
       chem.conc(carbon_index, cell) = std::max(updated, 0.0);
     }
+    chem.flux_accounting().commit_boundary_and_reaction_step();
   }
   const Real after = chem.conc(carbon_index, 0)
       * static_cast<Real>(chem.ncells()) * cell_volume;

@@ -182,6 +182,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   }
 
   in.chem.sum_accounting_across_ranks();
+  in.chem.flux_accounting().commit_boundary_and_reaction_step();
 
   return result;
 }

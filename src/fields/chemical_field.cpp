@@ -510,8 +510,8 @@ void ChemicalField::sum_accounting_across_ranks() {
     MPI_Allreduce(MPI_IN_PLACE, values.data(), count, MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
   };
-  reduce(flux_accounting_.boundary_interval);
-  reduce(flux_accounting_.reaction_clip_interval);
+  reduce(flux_accounting_.boundary_step);
+  reduce(flux_accounting_.reaction_clip_step);
 #endif
 }
 

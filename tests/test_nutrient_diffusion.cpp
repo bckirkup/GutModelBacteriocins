@@ -172,6 +172,7 @@ void test_dirichlet_neumann_boundary_gradient() {
   chem.init(domain, {diffusing_species(2.1e-9, 0.0, 1.0)});
 
   chem.apply_diffusion(domain, 60.0);
+  chem.flux_accounting().commit_boundary_and_reaction_step();
 
   Real previous = chem.conc(0, domain.cell_index(0, 0, 0));
   assert(std::abs(previous - 1.0) < 1.0e-15);
@@ -252,6 +253,7 @@ void test_boundary_accounting_closes_diffusion_only_inventory() {
   const Real before = inventory(chem, domain);
 
   chem.apply_diffusion(domain, 60.0);
+  chem.flux_accounting().commit_boundary_and_reaction_step();
 
   const Real after = inventory(chem, domain);
   const Real recorded = chem.flux_accounting().boundary_interval[0];
@@ -270,6 +272,7 @@ void test_boundary_accounting_is_boundary_concentration_sensitive() {
     ChemicalField chem;
     chem.init(domain, {diffusing_species(2.1e-9, 0.0, boundary_values[i])});
     chem.apply_diffusion(domain, 60.0);
+    chem.flux_accounting().commit_boundary_and_reaction_step();
     fluxes[i] = chem.flux_accounting().boundary_interval[0];
   }
 
@@ -296,6 +299,7 @@ void test_gradient_boundary_accounting_is_nonzero() {
   }
 
   chem.apply_diffusion(domain, 60.0);
+  chem.flux_accounting().commit_boundary_and_reaction_step();
 
   const Real recorded = chem.flux_accounting().boundary_interval[0];
   assert(std::abs(recorded) > 1.0e-20);

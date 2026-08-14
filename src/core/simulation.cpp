@@ -576,10 +576,12 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     // A closed restart closes the current reporting window at write time.
     // Restore cumulative totals, but never reopen that already-closed window.
     std::ranges::fill(flux.boundary_interval, 0.0);
+    std::ranges::fill(flux.boundary_step, 0.0);
     std::ranges::fill(flux.vbf_source_interval, 0.0);
     std::ranges::fill(flux.vbf_sink_interval, 0.0);
     std::ranges::fill(flux.agent_uptake_interval, 0.0);
     std::ranges::fill(flux.agent_uptake_step, 0.0);
+    std::ranges::fill(flux.reaction_clip_step, 0.0);
     if (flux.reaction_clip_interval.size()
         != static_cast<size_t>(chem_.num_species())) {
       flux.reaction_clip_interval.assign(

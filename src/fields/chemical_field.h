@@ -18,6 +18,7 @@ class Domain;
 
 struct NutrientFluxAccounting {
   std::vector<Real> boundary_interval;
+  std::vector<Real> boundary_step;
   std::vector<Real> boundary_cumulative;
   std::vector<Real> vbf_source_interval;
   std::vector<Real> vbf_source_cumulative;
@@ -27,10 +28,12 @@ struct NutrientFluxAccounting {
   std::vector<Real> agent_uptake_step;
   std::vector<Real> agent_uptake_cumulative;
   std::vector<Real> reaction_clip_interval;
+  std::vector<Real> reaction_clip_step;
   std::vector<Real> reaction_clip_cumulative;
 
   void init(size_t species_count) {
     boundary_interval.assign(species_count, 0.0);
+    boundary_step.assign(species_count, 0.0);
     boundary_cumulative.assign(species_count, 0.0);
     vbf_source_interval.assign(species_count, 0.0);
     vbf_source_cumulative.assign(species_count, 0.0);
@@ -40,6 +43,7 @@ struct NutrientFluxAccounting {
     agent_uptake_step.assign(species_count, 0.0);
     agent_uptake_cumulative.assign(species_count, 0.0);
     reaction_clip_interval.assign(species_count, 0.0);
+    reaction_clip_step.assign(species_count, 0.0);
     reaction_clip_cumulative.assign(species_count, 0.0);
   }
 
@@ -53,7 +57,7 @@ struct NutrientFluxAccounting {
   }
 
   void add_boundary(Int species, Real amount) {
-    boundary_interval[static_cast<size_t>(species)] += amount;
+    boundary_step[static_cast<size_t>(species)] += amount;
   }
 
   void add_agent_uptake(Int species, Real amount) {
@@ -67,13 +71,22 @@ struct NutrientFluxAccounting {
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif
-    reaction_clip_interval[static_cast<size_t>(species)] += amount;
+    reaction_clip_step[static_cast<size_t>(species)] += amount;
   }
 
   void commit_agent_uptake_step() {
     for (size_t i = 0; i < agent_uptake_step.size(); ++i) {
       agent_uptake_interval[i] += agent_uptake_step[i];
       agent_uptake_step[i] = 0.0;
+    }
+  }
+
+  void commit_boundary_and_reaction_step() {
+    for (size_t i = 0; i < boundary_step.size(); ++i) {
+      boundary_interval[i] += boundary_step[i];
+      reaction_clip_interval[i] += reaction_clip_step[i];
+      boundary_step[i] = 0.0;
+      reaction_clip_step[i] = 0.0;
     }
   }
 
