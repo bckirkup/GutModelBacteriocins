@@ -31,7 +31,7 @@ that parses but never changes an outcome is *dead wiring*.
 | **oxygen** | Epithelial Dirichlet boundary `chemical_field.cpp apply_boundaries` | **Agent Pirt respiration** `qssa_solver.cpp solve_nutrient_depletion`; first-order VBF background sink `apply_oxygen_sink` | Yes | Implicit diffusion (`D=2.1e-9 m²/s`) replaces checkerboard-prone local-only updates and preserves a smooth boundary-fed gradient. |
 | **acetate** | VBF fermentation `apply_acetate_coupling`; agent overflow | VBF cross-feeding; MetE uptake | Yes | Closed. |
 | **mucin** | Goblet secretion `apply_mucin_secretion` | VBF degradation → carbon | Yes | Closed. |
-| **bacteriocins** (btuB/fepA/cirA/fhuA) | Producer burst `fix_bacteriocin` → QSSA deposition | First-order decay; diffusion out | Yes | QSSA analytic field, recomputed each step. |
+| **bacteriocins** (btuB/fepA/cirA/fhuA) | Producer burst `fix_bacteriocin` → MPI source exchange → QSSA deposition | First-order decay; diffusion out | Yes | QSSA analytic field, recomputed each step from the global source list. |
 
 ---
 
@@ -43,7 +43,7 @@ that parses but never changes an outcome is *dead wiring*.
 | O₂ field → aerobic growth boost | ChemicalField | metabolism Fix | `fix_metabolism` O2 Monod boost | `test_O2_growth_boost` |
 | Agents → O₂ depletion | QSSA | ChemicalField | `solve_nutrient_depletion` | `test_mechanism_wiring::test_o2_consumption_wired`, `test_qssa_stoichiometry` |
 | VBF continuum → carbon/iron/O₂/acetate/mucin | VBF | ChemicalField | `apply_nutrient_coupling` | `test_mucin_liberation`, `test_mechanism_wiring` |
-| Toxin field → receptor killing | QSSA bacteriocin | receptor Fix | `fix_receptor` | `test_receptor`, `smoke::test_receptor_killing` |
+| Toxin field → receptor killing | QSSA bacteriocin | receptor Fix | `fix_receptor` | `test_receptor`, `smoke::test_receptor_killing`, `mpi_multi_rank::test_cross_rank_bacteriocin_source_exchange` |
 | Fur (iron) → receptor expression → toxin susceptibility | cell-bio Fur | receptor Fix | `fix_fur`, `fix_receptor` | `test_fur` |
 | μ_realized < γ_flow → washout (VADI) | metabolism + advection | Simulation washout | `simulation.cpp check_washout` | `smoke::test_metabolic_washout_*` | `washout_trap` (issue #160) |
 | Density blow-up → halt (Spec 5 §4) | Simulation | run loop | `simulation.cpp run()` dysbiosis check | `test_mechanism_wiring::test_dysbiosis_halt` |

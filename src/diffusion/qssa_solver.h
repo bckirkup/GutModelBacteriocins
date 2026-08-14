@@ -123,6 +123,15 @@ class QSSASolver {
       Int toxin_species_idx,
       ChemicalFieldGpu* chem_gpu = nullptr) const;
 
+  void solve_bacteriocin_field_from_sources(
+      const std::vector<Vec3>& sources,
+      const std::vector<GreensFunctionParams>& params,
+      const std::vector<Real>& strength_factors,
+      const AdvectionField& adv,
+      ChemicalField& chem,
+      Int toxin_species_idx,
+      ChemicalFieldGpu* chem_gpu = nullptr) const;
+
   QSSAConfig cfg_;
   GreensFunction gf_;
   const Domain* domain_ = nullptr;

@@ -477,12 +477,13 @@ Bacteriocins remain on the analytical QSSA path because they are point-source bu
 
 **Method:** At each biological timestep:
 1. Collect all active toxin sources (SOS-lysed cells as bursts, microcin producers as steady sources)
-2. Evaluate the analytical Green's function at each grid cell:
+2. In MPI runs, allgather the compact source records in rank-major order so every rank solves from the same global source list. This exchanges source records, not grid-sized field data; ranks with no local sources still participate.
+3. Evaluate the analytical Green's function at each grid cell:
    ```
    C(r) = Q / (4 * pi * D_eff * r)    (3D point source, steady state)
    ```
-3. Apply Method of Images for bounded mucus domain (z = 0 epithelium, z = h lumen)
-4. Superpose contributions from all sources within cutoff radius
+4. Apply Method of Images for bounded mucus domain (z = 0 epithelium, z = h lumen)
+5. Superpose contributions from all sources within cutoff radius
 
 **Taylor-Aris dispersion:** The shear profile in the mucus layer enhances longitudinal spreading:
 ```
@@ -494,7 +495,7 @@ This is computed via `AdvectionField::taylor_aris_D_eff()`.
 
 When `QSSAConfig::use_fmm = true`, the QSSA solver uses a kernel-independent Fast Multipole Method to accelerate the Green's function superposition:
 
-1. **Build**: Construct an octree over all active toxin sources with Cartesian multipole moments up to `fmm_expansion_order` (default 2).
+1. **Build**: Construct an octree over the globally exchanged active toxin sources with Cartesian multipole moments up to `fmm_expansion_order` (default 2).
 2. **Upward pass (P2M + M2M)**: Accumulate particle charges into leaf moments, then shift and combine into parent nodes.
 3. **M2L + L2L**: Translate well-separated remote multipoles into local expansions and propagate downward for O(N+M) grid evaluation.
 4. **Near-field** (distance ≤ `toxin_cutoff`): Evaluate exact advection-diffusion Green's function per-source, preserving accuracy for nearby lethal core/halo interactions.
