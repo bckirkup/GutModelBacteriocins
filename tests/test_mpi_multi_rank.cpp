@@ -9,11 +9,15 @@
 #include "species_names.h"
 #include "plasmid.h"
 #include "greens_function.h"
+#include "error.h"
 
 #include <cassert>
 #include <cmath>
+#include <cstdint>
+#include <iomanip>
 #include <iostream>
 #include <numbers>
+#include <string>
 
 #ifdef GUTIBM_MPI
 #include <mpi.h>
@@ -69,8 +73,135 @@ void test_chemical_field_layout_mapping() {
   if (domain.local_grid_x_begin() == 0) {
     assert(chem.owned_global_x_begin() == 0);
   }
+  DomainConfig narrow_cfg = cfg;
+  narrow_cfg.hi[0] = 10e-6;
+  Domain narrow_domain;
+  narrow_domain.init(narrow_cfg);
+  bool rejected = false;
+  try {
+    ChemicalField narrow_field;
+    narrow_field.init(narrow_domain, {spec}, "slab");
+  } catch (const ConfigError& error) {
+    rejected = std::string(error.what()).find("owned x-slab") != std::string::npos;
+  }
+  assert(rejected);
   if (rank == 0) {
     std::cout << "  test_chemical_field_layout_mapping: PASSED\n";
+  }
+}
+
+uint64_t hash_chemical_owned_cells(const ChemicalField& field,
+                                   const Domain& domain);
+uint64_t hash_simulation_chemistry(const Simulation& simulation);
+void assert_equal_ledgers(const Simulation& slab,
+                          const Simulation& replicated);
+
+void test_slab_chemistry_transpose_halos_and_ledger() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  DomainConfig cfg;
+  cfg.lo = {0.0, 0.0, 0.0};
+  cfg.hi = {40e-6, 10e-6, 10e-6};
+  cfg.grid_dx = 5e-6;
+  cfg.ghost_width = 10e-6;
+  cfg.grid_halo_width = 2;
+  cfg.periodic = {true, true, false};
+  Domain domain;
+  domain.init(cfg);
+
+  ChemicalSpec spec;
+  spec.name = "carbon";
+  spec.diff_coeff = 2.0e-9;
+  spec.diffusion_enabled = true;
+  spec.initial_conc = 0.0;
+  ChemicalField slab;
+  slab.init(domain, {spec}, "slab");
+  ChemicalField replicated;
+  replicated.init(domain, {spec}, "replicated");
+
+  for (Int iz = 0; iz < domain.nz(); ++iz) {
+    for (Int iy = 0; iy < domain.ny(); ++iy) {
+      for (Int ix = 0; ix < domain.nx(); ++ix) {
+        const Int global = domain.cell_index(ix, iy, iz);
+        const Real value = static_cast<Real>(1 + ix + 10 * iy + 100 * iz);
+        replicated.conc(0, global) = value;
+        if (slab.owns_global_cell(global)) {
+          slab.conc_global(0, global) = value;
+        }
+      }
+    }
+  }
+  slab.exchange_concentration_halos();
+
+  const Int seam_x = rank == 0 ? domain.nx() - 1 : 0;
+  const Int seam_cell = domain.cell_index(seam_x, 0, 0);
+  const Real expected_seam = static_cast<Real>(1 + seam_x);
+  assert(slab.global_cell_in_halo(seam_cell));
+  assert(slab.conc_global(0, seam_cell) == expected_seam);
+
+  slab.apply_diffusion(domain, 60.0);
+  replicated.apply_diffusion(domain, 60.0);
+  assert(hash_chemical_owned_cells(slab, domain)
+         == hash_chemical_owned_cells(replicated, domain));
+
+  SimulationConfig simulation_cfg = make_mpi_config(24680, 8);
+  simulation_cfg.time.total_time = 3.0 * simulation_cfg.time.bio_dt;
+  simulation_cfg.time.output_interval = simulation_cfg.time.total_time;
+  simulation_cfg.domain.periodic = {true, true, false};
+  simulation_cfg.domain.grid_halo_width = 2;
+  simulation_cfg.chemistry_decomposition = "slab";
+  Simulation slab_simulation;
+  slab_simulation.init(simulation_cfg);
+  slab_simulation.run();
+
+  simulation_cfg.chemistry_decomposition = "replicated";
+  Simulation replicated_simulation;
+  replicated_simulation.init(simulation_cfg);
+  replicated_simulation.run();
+
+  const uint64_t slab_hash = hash_simulation_chemistry(slab_simulation);
+  const uint64_t replicated_hash =
+      hash_simulation_chemistry(replicated_simulation);
+  if (slab_hash != replicated_hash) {
+    if (rank == 0) {
+      std::cerr << "slab chemistry hash " << slab_hash
+                << ", replicated chemistry hash " << replicated_hash << '\n';
+    }
+    const auto& slab_chem = slab_simulation.chemical_field();
+    const auto& replicated_chem = replicated_simulation.chemical_field();
+    for (Int species = 0; species < slab_chem.num_species(); ++species) {
+      Real slab_sum = 0.0;
+      Real replicated_sum = 0.0;
+      for (Int iz = 0; iz < slab_simulation.domain().nz(); ++iz) {
+        for (Int iy = 0; iy < slab_simulation.domain().ny(); ++iy) {
+          for (Int ix = slab_simulation.domain().local_grid_x_begin();
+               ix < slab_simulation.domain().local_grid_x_end(); ++ix) {
+            const Int cell = slab_simulation.domain().cell_index(ix, iy, iz);
+            slab_sum += slab_chem.conc_global(species, cell);
+            replicated_sum += replicated_chem.conc_global(species, cell);
+          }
+        }
+      }
+      Real global_slab_sum = 0.0;
+      Real global_replicated_sum = 0.0;
+      MPI_Allreduce(&slab_sum, &global_slab_sum, 1, MPI_DOUBLE, MPI_SUM,
+                    MPI_COMM_WORLD);
+      MPI_Allreduce(&replicated_sum, &global_replicated_sum, 1, MPI_DOUBLE,
+                    MPI_SUM, MPI_COMM_WORLD);
+      if (rank == 0) {
+        std::cerr << "species " << species << " sums "
+                  << global_slab_sum << " vs " << global_replicated_sum
+                  << '\n';
+      }
+    }
+  }
+  assert(slab_hash == replicated_hash);
+  assert_equal_ledgers(slab_simulation, replicated_simulation);
+
+  if (rank == 0) {
+    std::cout << "  test_slab_chemistry_transpose_halos_and_ledger: PASSED\n";
   }
 }
 
@@ -78,6 +209,101 @@ SimulationConfig make_mpi_periodic_config() {
   SimulationConfig cfg = make_mpi_config(4242, 40);
   cfg.domain.periodic = {true, true, false};
   return cfg;
+}
+
+uint64_t hash_chemical_owned_cells(const ChemicalField& field,
+                                   const Domain& domain) {
+  uint64_t hash = 0;
+  for (Int species = 0; species < field.num_species(); ++species) {
+    for (Int iz = 0; iz < domain.nz(); ++iz) {
+      for (Int iy = 0; iy < domain.ny(); ++iy) {
+        for (Int ix = domain.local_grid_x_begin();
+             ix < domain.local_grid_x_end(); ++ix) {
+          const Int global = domain.cell_index(ix, iy, iz);
+          const auto quantized = static_cast<uint64_t>(
+              std::llround(field.conc_global(species, global) * 1.0e12));
+          hash ^= quantized + 0x9e3779b97f4a7c15ULL
+              + (hash << 6) + (hash >> 2);
+        }
+      }
+    }
+  }
+#ifdef GUTIBM_MPI
+  uint64_t reduced_hash = 0;
+  MPI_Allreduce(&hash, &reduced_hash, 1, MPI_UINT64_T, MPI_BXOR,
+                MPI_COMM_WORLD);
+  hash = reduced_hash;
+#endif
+  return hash;
+}
+
+uint64_t hash_simulation_chemistry(const Simulation& simulation) {
+  return hash_chemical_owned_cells(
+      simulation.chemical_field(), simulation.domain());
+}
+
+void assert_equal_ledgers(const Simulation& slab,
+                          const Simulation& replicated) {
+  const auto& slab_flux = slab.chemical_field().flux_accounting();
+  const auto& replicated_flux =
+      replicated.chemical_field().flux_accounting();
+  const auto compare = [](const char* name,
+                          const std::vector<Real>& slab_values,
+                          const std::vector<Real>& replicated_values) {
+    assert(slab_values.size() == replicated_values.size());
+    for (size_t species = 0; species < slab_values.size(); ++species) {
+      Real slab_min = 0.0;
+      Real slab_max = 0.0;
+      MPI_Allreduce(&slab_values[species], &slab_min, 1, MPI_DOUBLE,
+                    MPI_MIN, MPI_COMM_WORLD);
+      MPI_Allreduce(&slab_values[species], &slab_max, 1, MPI_DOUBLE,
+                    MPI_MAX, MPI_COMM_WORLD);
+      Real replicated_min = 0.0;
+      Real replicated_max = 0.0;
+      MPI_Allreduce(&replicated_values[species], &replicated_min, 1,
+                    MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+      MPI_Allreduce(&replicated_values[species], &replicated_max, 1,
+                    MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+      assert(slab_min == slab_max);
+      assert(replicated_min == replicated_max);
+      // Ledger totals sum identical cell contributions in different orders:
+      // slab reduces rank-local partials, while replicated sweeps the grid.
+      const Real scale = std::max(
+          std::max(std::abs(slab_min), std::abs(replicated_min)), 1.0e-300);
+      if (std::abs(slab_min - replicated_min) > 1.0e-12 * scale) {
+        int rank = 0;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0) {
+          std::cerr << std::setprecision(17);
+          std::cerr << "ledger mismatch " << name << '[' << species << "] "
+                    << slab_min << " vs " << replicated_min << '\n';
+        }
+      }
+      assert(std::abs(slab_min - replicated_min) <= 1.0e-12 * scale);
+    }
+  };
+  compare("boundary_interval", slab_flux.boundary_interval,
+          replicated_flux.boundary_interval);
+  compare("boundary_cumulative", slab_flux.boundary_cumulative,
+          replicated_flux.boundary_cumulative);
+  compare("vbf_source_interval", slab_flux.vbf_source_interval,
+          replicated_flux.vbf_source_interval);
+  compare("vbf_source_cumulative", slab_flux.vbf_source_cumulative,
+          replicated_flux.vbf_source_cumulative);
+  compare("vbf_sink_interval", slab_flux.vbf_sink_interval,
+          replicated_flux.vbf_sink_interval);
+  compare("vbf_sink_cumulative", slab_flux.vbf_sink_cumulative,
+          replicated_flux.vbf_sink_cumulative);
+  compare("agent_uptake_interval", slab_flux.agent_uptake_interval,
+          replicated_flux.agent_uptake_interval);
+  compare("agent_uptake_step", slab_flux.agent_uptake_step,
+          replicated_flux.agent_uptake_step);
+  compare("agent_uptake_cumulative", slab_flux.agent_uptake_cumulative,
+          replicated_flux.agent_uptake_cumulative);
+  compare("reaction_clip_interval", slab_flux.reaction_clip_interval,
+          replicated_flux.reaction_clip_interval);
+  compare("reaction_clip_cumulative", slab_flux.reaction_clip_cumulative,
+          replicated_flux.reaction_clip_cumulative);
 }
 
 void test_reaction_sum_and_diffusion_are_rank_identical() {
@@ -668,6 +894,7 @@ int main(int argc, char** argv) {
 
   test_reaction_sum_and_diffusion_are_rank_identical();
   test_chemical_field_layout_mapping();
+  test_slab_chemistry_transpose_halos_and_ledger();
   test_cross_rank_bacteriocin_source_exchange();
   test_slab_decomposition();
   test_slab_decomposition_periodic_x();

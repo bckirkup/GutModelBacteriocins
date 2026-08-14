@@ -8,10 +8,13 @@
 
 #include "simulation.h"
 #include "input_parser.h"
+#include "sim_fingerprint.h"
 #include "species_names.h"
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <string>
 #include <vector>
 
 using namespace gutibm;
@@ -349,6 +352,67 @@ void test_kitchen_sink() {
   std::cout << "  test_kitchen_sink: PASSED\n";
 }
 
+void test_slab_rejects_unsupported_surfaces() {
+  const std::array<std::pair<SimulationConfig, std::string>, 4> cases = [] {
+    std::array<std::pair<SimulationConfig, std::string>, 4> values;
+    for (auto& value : values) {
+      value.first = make_combo_config(2010);
+      value.first.chemistry_decomposition = "slab";
+    }
+    values[0].first.hdf5.enabled = true;
+    values[0].second = "HDF5";
+    values[1].first.checkpoint.file = "checkpoint.h5";
+    values[1].second = "checkpoint";
+    values[2].first.restart.enabled = true;
+    values[2].second = "checkpoint";
+    values[3].first.gpu.enabled = true;
+    values[3].second = "GPU";
+    return values;
+  }();
+
+  for (const auto& [cfg, name] : cases) {
+    bool rejected = false;
+    try {
+      Simulation sim;
+      sim.init(cfg);
+    } catch (const ConfigError& error) {
+      rejected = std::string(error.what()).find(name) != std::string::npos;
+    }
+    assert(rejected);
+  }
+  std::cout << "  test_slab_rejects_unsupported_surfaces: PASSED\n";
+}
+
+void test_slab_single_rank_biology() {
+  SimulationConfig cfg = make_combo_config(2011);
+  cfg.chemistry_decomposition = "slab";
+  cfg.domain.grid_halo_width = 2;
+  cfg.time.total_time = cfg.time.bio_dt;
+  Simulation sim = run_combo(cfg);
+  assert_population_sane(sim);
+  assert_chemistry_sane(sim);
+  std::cout << "  test_slab_single_rank_biology: PASSED\n";
+}
+
+void test_slab_replicated_fingerprint_equivalence() {
+  SimulationConfig replicated_cfg = make_combo_config(2012);
+  replicated_cfg.time.total_time = replicated_cfg.time.bio_dt;
+  Simulation replicated;
+  replicated.init(replicated_cfg);
+  replicated.run();
+
+  SimulationConfig slab_cfg = replicated_cfg;
+  slab_cfg.chemistry_decomposition = "slab";
+  slab_cfg.domain.grid_halo_width = 2;
+  Simulation slab;
+  slab.init(slab_cfg);
+  slab.run();
+
+  assert(test_util::simulation_fingerprint(replicated)
+         == test_util::simulation_fingerprint(slab));
+  std::cout << "  test_slab_replicated_fingerprint_equivalence: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Feature Combination Integration Tests (Spec 8) ===\n";
   test_aerobic_growth_advantage();
@@ -357,6 +421,9 @@ int main() {
   test_adaptive_dt_with_crypts();
   test_full_biology_with_fmm();
   test_kitchen_sink();
+  test_slab_rejects_unsupported_surfaces();
+  test_slab_single_rank_biology();
+  test_slab_replicated_fingerprint_equivalence();
   std::cout << "All feature combination tests passed.\n";
   return 0;
 }

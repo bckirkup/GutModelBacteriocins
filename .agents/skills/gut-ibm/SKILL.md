@@ -278,6 +278,13 @@ Cell-aligned 1D slab decomposition along `DomainConfig::mpi_decomp_axis` (defaul
 
 **Caveat:** MPI serialization lives in `src/core/agent_transfer.cpp` — update pack/unpack when adding agent or genome fields.
 
+ChemicalField `replicated` storage is the default. In `slab` mode, concentration
+and reaction arrays are rank-local owned x-slabs with configured concentration
+halos; global agent cell indices map explicitly into storage. Periodic-x
+diffusion uses an exact full-line exchange, while y/z operators remain local.
+HDF5 grid output, checkpoint/restart, and the GPU mirror currently reject slab
+mode until their rank-local layouts are implemented.
+
 ### HDF5 output
 
 - Writer: `src/io/hdf5_writer.cpp` — parallel when MPI enabled

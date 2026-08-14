@@ -12,6 +12,9 @@
 #include "vbf_gpu.h"
 
 #include <chrono>
+#ifdef GUTIBM_MPI
+#include <mpi.h>
+#endif
 
 namespace gutibm {
 
@@ -56,8 +59,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     in.chem_gpu.sync_reactions_to_host(in.chem);
   }
 
-  // Every rank holds the full chemical grid but only its local agents. Sum the
-  // rank-local agent reaction fields before adding the identical global VBF.
+  // Sum rank-local agent reaction fields before adding the VBF contribution.
   sum_reactions_with_optional_device(in);
   const Int carbon = in.chem.find(species::CARBON);
   const Int iron = in.chem.find(species::IRON);
@@ -82,15 +84,35 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
                                    &vbf_totals);
   }
   if (carbon >= 0) {
+#ifdef GUTIBM_MPI
+    if (in.chem.slab_mode() && in.domain.nprocs() > 1) {
+      MPI_Allreduce(MPI_IN_PLACE, &vbf_totals.carbon_source, 1, MPI_DOUBLE,
+                    MPI_SUM, MPI_COMM_WORLD);
+      MPI_Allreduce(MPI_IN_PLACE, &vbf_totals.carbon_sink, 1, MPI_DOUBLE,
+                    MPI_SUM, MPI_COMM_WORLD);
+    }
+#endif
     in.flux_accounting.add_interval(
         carbon, 0.0, vbf_totals.carbon_source,
         vbf_totals.carbon_sink, 0.0);
   }
   if (iron >= 0) {
+#ifdef GUTIBM_MPI
+    if (in.chem.slab_mode() && in.domain.nprocs() > 1) {
+      MPI_Allreduce(MPI_IN_PLACE, &vbf_totals.iron_sink, 1, MPI_DOUBLE,
+                    MPI_SUM, MPI_COMM_WORLD);
+    }
+#endif
     in.flux_accounting.add_interval(
         iron, 0.0, 0.0, vbf_totals.iron_sink, 0.0);
   }
   if (oxygen >= 0) {
+#ifdef GUTIBM_MPI
+    if (in.chem.slab_mode() && in.domain.nprocs() > 1) {
+      MPI_Allreduce(MPI_IN_PLACE, &vbf_totals.oxygen_sink, 1, MPI_DOUBLE,
+                    MPI_SUM, MPI_COMM_WORLD);
+    }
+#endif
     in.flux_accounting.add_interval(
         oxygen, 0.0, 0.0, vbf_totals.oxygen_sink, 0.0);
   }
@@ -113,14 +135,23 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     for (const auto& conc_row : in.chem.conc_data()) {
       (void)conc_row;
       #ifdef GUTIBM_OPENMP
-      #pragma omp parallel for schedule(static)
+      #pragma omp parallel for collapse(3) schedule(static)
       #endif
-      for (Int c = 0; c < in.chem.ncells(); ++c) {
-        const Real updated = in.chem.conc(s, c) + in.chem.reac(s, c) * dt;
-        if (updated < 0.0) {
-          in.flux_accounting.add_reaction_clip(s, -updated * cell_volume);
+      for (Int iz = 0; iz < in.chem.global_nz(); ++iz) {
+        for (Int iy = 0; iy < in.chem.global_ny(); ++iy) {
+          for (Int ix = in.chem.owned_storage_x_begin();
+               ix < in.chem.owned_storage_x_end(); ++ix) {
+            const Int c = iz * in.chem.storage_nx() * in.chem.global_ny()
+                + iy * in.chem.storage_nx() + ix;
+            const Real updated = in.chem.conc(s, c)
+                + in.chem.reac(s, c) * dt;
+            if (updated < 0.0) {
+              in.flux_accounting.add_reaction_clip(
+                  s, -updated * cell_volume);
+            }
+            in.chem.conc(s, c) = std::max(updated, 0.0);
+          }
         }
-        in.chem.conc(s, c) = std::max(updated, 0.0);
       }
       ++s;
     }
@@ -149,6 +180,9 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   if (in.gpu_active) {
     gpu_sync_compute();
   }
+
+  in.chem.sum_accounting_across_ranks();
+  in.chem.flux_accounting().commit_boundary_and_reaction_step();
 
   return result;
 }
