@@ -5,6 +5,7 @@
 #include "domain.h"
 #include <cmath>
 #include <algorithm>
+#include <cassert>
 
 namespace gutibm {
 
@@ -19,6 +20,7 @@ void Domain::init(const DomainConfig& cfg) {
   nx_ = std::max(1, static_cast<Int>(std::round(sz[0] / dx_)));
   ny_ = std::max(1, static_cast<Int>(std::round(sz[1] / dx_)));
   nz_ = std::max(1, static_cast<Int>(std::round(sz[2] / dx_)));
+  grid_halo_width_ = std::max(0, cfg.grid_halo_width);
 
 #ifdef GUTIBM_MPI
   int mpi_initialized = 0;
@@ -86,15 +88,11 @@ void Domain::decompose() {
   Real global_lo = lo_[axis];
   Real global_hi = hi_[axis];
   Real total_len = global_hi - global_lo;
-  Real slab_width = total_len / nprocs_;
-
-  local_lo_x_ = global_lo + rank_ * slab_width;
-  local_hi_x_ = global_lo + (rank_ + 1) * slab_width;
-
-  // Last rank absorbs any floating-point remainder
-  if (rank_ == nprocs_ - 1) {
-    local_hi_x_ = global_hi;
-  }
+  const auto grid_range = grid_x_range_for_rank(nx_, nprocs_, rank_);
+  const Real cell_width = total_len / nx_;
+  local_lo_x_ = global_lo + grid_range.first * cell_width;
+  local_hi_x_ = global_lo + grid_range.second * cell_width;
+  if (rank_ == nprocs_ - 1) local_hi_x_ = global_hi;
 
   ghost_width_ = cfg_.ghost_width;
 
@@ -109,6 +107,53 @@ void Domain::decompose() {
   if (rank_hi_ >= nprocs_) {
     rank_hi_ = axis_periodic ? 0 : -1;
   }
+
+  local_grid_x_begin_ = grid_range.first;
+  local_grid_x_end_ = grid_range.second;
+}
+
+std::pair<Int, Int> Domain::grid_x_range_for_rank(
+    Int global_nx, Int nprocs, Int rank) {
+  assert(global_nx >= 0);
+  assert(nprocs > 0);
+  assert(rank >= 0 && rank < nprocs);
+  const Int begin = (global_nx * rank) / nprocs;
+  const Int end = (global_nx * (rank + 1)) / nprocs;
+  return {begin, end};
+}
+
+Int Domain::global_to_local_grid_x(Int global_ix) const {
+  if (nx_ <= 0) return -1;
+
+  Int candidate = global_ix;
+  if (periodic_[0]) {
+    while (candidate < local_grid_x_begin_ - grid_halo_width_) {
+      candidate += nx_;
+    }
+    while (candidate >= local_grid_x_end_ + grid_halo_width_) {
+      candidate -= nx_;
+    }
+  }
+
+  if (candidate < local_grid_x_begin_ - grid_halo_width_
+      || candidate >= local_grid_x_end_ + grid_halo_width_) {
+    return -1;
+  }
+  return candidate - local_grid_x_begin_ + grid_halo_width_;
+}
+
+Int Domain::local_to_global_grid_x(Int local_ix) const {
+  const Int storage_nx = local_grid_storage_nx();
+  if (local_ix < 0 || local_ix >= storage_nx) return -1;
+
+  Int global_ix = local_grid_x_begin_ + local_ix - grid_halo_width_;
+  if (periodic_[0]) {
+    global_ix %= nx_;
+    if (global_ix < 0) global_ix += nx_;
+    return global_ix;
+  }
+  if (global_ix < 0 || global_ix >= nx_) return -1;
+  return global_ix;
 }
 
 bool Domain::is_local(const Vec3& pos) const {
@@ -121,11 +166,14 @@ Int Domain::owner_rank(const Vec3& pos) const {
   if (nprocs_ <= 1) return 0;
   Int axis = cfg_.mpi_decomp_axis;
   Real global_lo = lo_[axis];
-  Real total_len = hi_[axis] - global_lo;
-  Real slab_width = total_len / nprocs_;
-
-  auto r = static_cast<Int>(std::floor((pos[axis] - global_lo) / slab_width));
-  return std::clamp(r, 0, nprocs_ - 1);
+  Real cell_width = (hi_[axis] - global_lo) / nx_;
+  auto ix = static_cast<Int>(std::floor((pos[axis] - global_lo) / cell_width));
+  ix = std::clamp(ix, 0, nx_ - 1);
+  for (Int r = 0; r < nprocs_; ++r) {
+    const auto range = grid_x_range_for_rank(nx_, nprocs_, r);
+    if (ix >= range.first && ix < range.second) return r;
+  }
+  return nprocs_ - 1;
 }
 
 }  // namespace gutibm

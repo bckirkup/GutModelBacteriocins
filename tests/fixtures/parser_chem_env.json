@@ -9,6 +9,9 @@
   "domain_y": 50e-6,
   "domain_z": 25e-6,
   "grid_dx": 5e-6,
+  "chemistry": {
+    "decomposition": "slab"
+  },
 
   "oxygen.enabled": true,
   "oxygen.epithelial_conc": 60e-6,

@@ -11,6 +11,7 @@
 #include <cassert>
 #include <iostream>
 #include <cmath>
+#include <vector>
 
 using namespace gutibm;
 
@@ -211,6 +212,49 @@ void test_ghost_width_config() {
   std::cout << "  test_ghost_width_config: PASSED\n";
 }
 
+void test_grid_partition_metadata() {
+  constexpr Int nx = 10;
+  const std::vector<Int> process_counts = {1, 2, 3, 4, 11};
+  for (const Int nprocs : process_counts) {
+    std::vector<Int> coverage(static_cast<size_t>(nx), 0);
+    Int previous_end = 0;
+    for (Int rank = 0; rank < nprocs; ++rank) {
+      const auto range = Domain::grid_x_range_for_rank(nx, nprocs, rank);
+      assert(range.first == previous_end);
+      assert(range.first <= range.second);
+      for (Int ix = range.first; ix < range.second; ++ix) {
+        ++coverage[static_cast<size_t>(ix)];
+      }
+      previous_end = range.second;
+    }
+    assert(previous_end == nx);
+    for (const Int owners : coverage) assert(owners == 1);
+  }
+
+  DomainConfig cfg;
+  cfg.lo = {0, 0, 0};
+  cfg.hi = {50.0e-6, 10.0e-6, 10.0e-6};
+  cfg.grid_dx = 5.0e-6;
+  cfg.grid_halo_width = 1;
+  Domain dom;
+  dom.init(cfg);
+
+  assert(dom.local_grid_x_begin() == 0);
+  assert(dom.local_grid_x_end() == dom.nx());
+  assert(dom.local_grid_nx() == dom.nx());
+  assert(dom.local_grid_storage_nx() == dom.nx() + 2);
+  for (Int ix = 0; ix < dom.nx(); ++ix) {
+    assert(dom.global_to_local_grid_x(ix) == ix + 1);
+    assert(dom.local_to_global_grid_x(ix + 1) == ix);
+  }
+  assert(dom.local_to_global_grid_x(0) == dom.nx() - 1);
+  assert(dom.local_to_global_grid_x(dom.local_grid_storage_nx() - 1) == 0);
+  assert(dom.global_to_local_grid_x(-1) == 0);
+  assert(dom.global_to_local_grid_x(dom.nx()) == dom.nx() + 1);
+
+  std::cout << "  test_grid_partition_metadata: PASSED\n";
+}
+
 void test_migration_noop_single_rank() {
   // With 1 rank, migrate_agents should be a no-op
   SimulationConfig cfg = InputParser::default_config();
@@ -263,6 +307,7 @@ int main() {
   test_init_population_local_only();
   test_single_rank_simulation_consistent();
   test_ghost_width_config();
+  test_grid_partition_metadata();
   test_migration_noop_single_rank();
   std::cout << "All domain decomposition tests passed.\n";
   return 0;

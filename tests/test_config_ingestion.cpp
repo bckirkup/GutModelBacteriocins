@@ -172,6 +172,12 @@ std::vector<Probe> build_probes() {
   v.push_back(R("domain_z", [](const SimulationConfig& c) { return c.domain.hi[2]; }));
   v.push_back(R("hash_cell_size", [](const SimulationConfig& c) { return c.domain.hash_cell_size; }));
   v.push_back(R("ghost_width", [](const SimulationConfig& c) { return c.domain.ghost_width; }));
+  v.push_back(S("chemistry_decomposition",
+                [](const SimulationConfig& c) { return c.chemistry_decomposition; },
+                "slab"));
+  v.push_back(S("chemistry.decomposition",
+                [](const SimulationConfig& c) { return c.chemistry_decomposition; },
+                "slab"));
 
   // ── Advection / crypts / peristalsis ──────────────────────────────────────
   v.push_back(R("mucus_thickness", [](const SimulationConfig& c) { return c.advection.mucus_thickness; }));
@@ -444,7 +450,7 @@ std::vector<Probe> build_probes() {
 const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
-      "immigration",
+      "immigration", "chemistry",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity"};
