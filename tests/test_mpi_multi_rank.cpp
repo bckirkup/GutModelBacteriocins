@@ -160,8 +160,14 @@ void test_slab_chemistry_transpose_halos_and_ledger() {
   replicated_simulation.init(simulation_cfg);
   replicated_simulation.run();
 
-  assert(hash_simulation_chemistry(slab_simulation)
-         == hash_simulation_chemistry(replicated_simulation));
+  const uint64_t slab_hash = hash_simulation_chemistry(slab_simulation);
+  const uint64_t replicated_hash =
+      hash_simulation_chemistry(replicated_simulation);
+  if (slab_hash != replicated_hash && rank == 0) {
+    std::cerr << "slab chemistry hash " << slab_hash
+              << ", replicated chemistry hash " << replicated_hash << '\n';
+  }
+  assert(slab_hash == replicated_hash);
   assert_equal_ledgers(slab_simulation, replicated_simulation);
 
   if (rank == 0) {
