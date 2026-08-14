@@ -41,10 +41,11 @@ inline uint64_t simulation_fingerprint(const Simulation& sim) {
   }
 
   const auto& chem = sim.chemical_field();
-  for (const auto& row : chem.conc_data()) {
+  for (Int s = 0; s < static_cast<Int>(chem.conc_data().size()); ++s) {
     Real sum = 0.0;
-    for (Real val : row) {
-      sum += val;
+    for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+      if (!chem.owns_global_cell(cell)) continue;
+      sum += chem.conc_global(s, cell);
     }
     h = hash_combine(h, static_cast<uint64_t>(quantize(sum)));
   }

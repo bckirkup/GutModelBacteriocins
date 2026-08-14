@@ -8,6 +8,7 @@
 
 #include "simulation.h"
 #include "input_parser.h"
+#include "sim_fingerprint.h"
 #include "species_names.h"
 #include <array>
 #include <cassert>
@@ -393,6 +394,25 @@ void test_slab_single_rank_biology() {
   std::cout << "  test_slab_single_rank_biology: PASSED\n";
 }
 
+void test_slab_replicated_fingerprint_equivalence() {
+  SimulationConfig replicated_cfg = make_combo_config(2012);
+  replicated_cfg.time.total_time = replicated_cfg.time.bio_dt;
+  Simulation replicated;
+  replicated.init(replicated_cfg);
+  replicated.run();
+
+  SimulationConfig slab_cfg = replicated_cfg;
+  slab_cfg.chemistry_decomposition = "slab";
+  slab_cfg.domain.grid_halo_width = 2;
+  Simulation slab;
+  slab.init(slab_cfg);
+  slab.run();
+
+  assert(test_util::simulation_fingerprint(replicated)
+         == test_util::simulation_fingerprint(slab));
+  std::cout << "  test_slab_replicated_fingerprint_equivalence: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Feature Combination Integration Tests (Spec 8) ===\n";
   test_aerobic_growth_advantage();
@@ -403,6 +423,7 @@ int main() {
   test_kitchen_sink();
   test_slab_rejects_unsupported_surfaces();
   test_slab_single_rank_biology();
+  test_slab_replicated_fingerprint_equivalence();
   std::cout << "All feature combination tests passed.\n";
   return 0;
 }
