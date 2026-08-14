@@ -125,6 +125,12 @@ class ChemicalField {
   Int owned_ncells() const {
     return (owned_x_end_ - owned_x_begin_) * global_ny_ * global_nz_;
   }
+  Int owned_storage_x_begin() const { return halo_width_; }
+  Int owned_storage_x_end() const {
+    return halo_width_ + owned_x_end_ - owned_x_begin_;
+  }
+  Int global_ny() const { return global_ny_; }
+  Int global_nz() const { return global_nz_; }
   Int storage_nx() const { return storage_nx_; }
 
   // Concentration accessors [species][storage cell].

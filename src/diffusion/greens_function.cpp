@@ -41,19 +41,30 @@ struct SuperposeGridContext {
   Int ny;
   Int nz;
   Int span;
+  Int x_begin;
+  Int x_end;
+  Int storage_nx;
+  Int halo_width;
   bool periodic_x;
   bool periodic_y;
 };
+
+Int storage_cell_index(const SuperposeGridContext& grid,
+                       Int ix, Int iy, Int iz) {
+  const Int local_ix = ix - grid.x_begin + grid.halo_width;
+  return iz * grid.storage_nx * grid.ny + iy * grid.storage_nx + local_ix;
+}
 
 void accumulate_cutoff_cell(const Domain& domain,
                             const GreensFunction& gf,
                             const Vec3& src,
                             const GreensFunctionParams& p,
                             Int ix, Int iy, Int iz,
+                            const SuperposeGridContext& grid,
                             std::vector<Real>& grid_conc) {
   const Vec3 tgt = domain.cell_center(ix, iy, iz);
   const Real c = gf.concentration_bounded(src, tgt, p);
-  const auto idx = domain.cell_index(ix, iy, iz);
+  const auto idx = storage_cell_index(grid, ix, iy, iz);
   grid_conc[idx] += c;
 }
 
@@ -70,7 +81,8 @@ void accumulate_cutoff_row(const Domain& domain,
     }
     Int ix = src_ix + dx;
     if (!in_periodic_grid(ix, grid.nx, grid.periodic_x)) continue;
-    accumulate_cutoff_cell(domain, gf, src, p, ix, iy, iz, grid_conc);
+    if (ix < grid.x_begin || ix >= grid.x_end) continue;
+    accumulate_cutoff_cell(domain, gf, src, p, ix, iy, iz, grid, grid_conc);
   }
 }
 
@@ -109,9 +121,24 @@ SuperposeGridContext make_superpose_grid(const Domain& domain, Real cutoff_radiu
     domain.ny(),
     domain.nz(),
     static_cast<Int>(std::ceil(cutoff_radius / domain.dx())),
+    0,
+    domain.nx(),
+    domain.nx(),
+    0,
     domain.config().periodic[0],
     domain.config().periodic[1],
   };
+}
+
+SuperposeGridContext make_superpose_grid(
+    const Domain& domain, Real cutoff_radius, Int x_begin, Int x_end,
+    Int storage_nx, Int halo_width) {
+  auto grid = make_superpose_grid(domain, cutoff_radius);
+  grid.x_begin = x_begin;
+  grid.x_end = x_end;
+  grid.storage_nx = storage_nx;
+  grid.halo_width = halo_width;
+  return grid;
 }
 
 #ifdef GUTIBM_CUDA
@@ -195,6 +222,27 @@ void superpose_cpu(const Domain& domain,
 
 #ifdef GUTIBM_OPENMP
   const Int ncells = domain.ncells();
+  const SuperposeOpenmpContext omp_ctx{ctx, ncells};
+  superpose_sources_openmp(sources, params, omp_ctx, grid_conc);
+#else
+  superpose_sources_serial(sources, params, ctx, grid_conc);
+#endif
+}
+
+void superpose_cpu_local(
+    const Domain& domain, const GreensFunction& gf,
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>* strength_factors,
+    std::vector<Real>& grid_conc, Real cutoff_radius,
+    Int x_begin, Int x_end, Int storage_nx, Int halo_width) {
+  const SuperposeGridContext grid = make_superpose_grid(
+      domain, cutoff_radius, x_begin, x_end, storage_nx, halo_width);
+  const SuperposeSourcesContext ctx{
+      domain, gf, cutoff_radius, grid, strength_factors};
+
+#ifdef GUTIBM_OPENMP
+  const Int ncells = static_cast<Int>(grid_conc.size());
   const SuperposeOpenmpContext omp_ctx{ctx, ncells};
   superpose_sources_openmp(sources, params, omp_ctx, grid_conc);
 #else
@@ -327,6 +375,19 @@ void GreensFunction::superpose_to_grid(
   grid_conc.assign(domain_->ncells(), 0.0);
   superpose_cpu(*domain_, *this, sources, params, &strength_factors,
                 grid_conc, cutoff_radius);
+}
+
+void GreensFunction::superpose_to_local_grid(
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors,
+    std::vector<Real>& grid_conc, Real cutoff_radius, Int x_begin, Int x_end,
+    Int storage_nx, Int halo_width) const {
+  require_init();
+  assert(strength_factors.size() == sources.size());
+  superpose_cpu_local(*domain_, *this, sources, params, &strength_factors,
+                      grid_conc, cutoff_radius, x_begin, x_end, storage_nx,
+                      halo_width);
 }
 
 Real GreensFunction::peclet(const Vec3& pos, Real D_eff, Real length_scale) const {

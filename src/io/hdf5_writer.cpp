@@ -277,10 +277,16 @@ Real field_mean(const ChemicalField& chem, Int species_idx) {
   if (species_idx < 0) return 0.0;
   Real sum = 0.0;
   Int n = 0;
-  for (Int c = 0; c < chem.global_ncells(); ++c) {
-    if (!chem.owns_global_cell(c)) continue;
-    sum += chem.conc_global(species_idx, c);
-    ++n;
+  for (Int iz = 0; iz < chem.global_nz(); ++iz) {
+    for (Int iy = 0; iy < chem.global_ny(); ++iy) {
+      for (Int ix = chem.owned_storage_x_begin();
+           ix < chem.owned_storage_x_end(); ++ix) {
+        const Int c = iz * chem.storage_nx() * chem.global_ny()
+            + iy * chem.storage_nx() + ix;
+        sum += chem.conc(species_idx, c);
+        ++n;
+      }
+    }
   }
 #ifdef GUTIBM_MPI
   if (chem.slab_mode()) {
@@ -299,9 +305,15 @@ Real field_mean(const ChemicalField& chem, Int species_idx) {
 Real field_max(const ChemicalField& chem, Int species_idx) {
   if (species_idx < 0) return 0.0;
   Real mx = 0.0;
-  for (Int c = 0; c < chem.global_ncells(); ++c) {
-    if (!chem.owns_global_cell(c)) continue;
-    mx = std::max(mx, chem.conc_global(species_idx, c));
+  for (Int iz = 0; iz < chem.global_nz(); ++iz) {
+    for (Int iy = 0; iy < chem.global_ny(); ++iy) {
+      for (Int ix = chem.owned_storage_x_begin();
+           ix < chem.owned_storage_x_end(); ++ix) {
+        const Int c = iz * chem.storage_nx() * chem.global_ny()
+            + iy * chem.storage_nx() + ix;
+        mx = std::max(mx, chem.conc(species_idx, c));
+      }
+    }
   }
 #ifdef GUTIBM_MPI
   if (chem.slab_mode()) {

@@ -135,16 +135,23 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     for (const auto& conc_row : in.chem.conc_data()) {
       (void)conc_row;
       #ifdef GUTIBM_OPENMP
-      #pragma omp parallel for schedule(static)
+      #pragma omp parallel for collapse(3) schedule(static)
       #endif
-      for (Int c = 0; c < in.chem.global_ncells(); ++c) {
-        if (!in.chem.owns_global_cell(c)) continue;
-        const Real updated = in.chem.conc_global(s, c)
-            + in.chem.reac_global(s, c) * dt;
-        if (updated < 0.0) {
-          in.flux_accounting.add_reaction_clip(s, -updated * cell_volume);
+      for (Int iz = 0; iz < in.chem.global_nz(); ++iz) {
+        for (Int iy = 0; iy < in.chem.global_ny(); ++iy) {
+          for (Int ix = in.chem.owned_storage_x_begin();
+               ix < in.chem.owned_storage_x_end(); ++ix) {
+            const Int c = iz * in.chem.storage_nx() * in.chem.global_ny()
+                + iy * in.chem.storage_nx() + ix;
+            const Real updated = in.chem.conc(s, c)
+                + in.chem.reac(s, c) * dt;
+            if (updated < 0.0) {
+              in.flux_accounting.add_reaction_clip(
+                  s, -updated * cell_volume);
+            }
+            in.chem.conc(s, c) = std::max(updated, 0.0);
+          }
         }
-        in.chem.conc_global(s, c) = std::max(updated, 0.0);
       }
       ++s;
     }
