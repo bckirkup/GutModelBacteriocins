@@ -150,7 +150,9 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
   }
   for (const Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
-    const Int cell = agent.grid_cell;
+    const Int global_cell = agent.grid_cell;
+    if (global_cell < 0) continue;
+    const Int cell = chem.global_to_storage_cell(global_cell);
     if (cell < 0 || cell >= num_cells) continue;
     const auto index = static_cast<size_t>(cell);
     if (occupancy_by_cell_[index] == 0) touched_cells_.push_back(cell);
@@ -175,6 +177,10 @@ void FixMetabolism::apply_siderophore_chelation(
   const auto& sid_cfg = sim_.config().chem_env.siderophore;
   auto& chem = sim_.chemical_field();
   for (Int cell = 0; cell < num_cells; ++cell) {
+    if (chem.slab_mode()) {
+      const Int global_cell = chem.storage_to_global_cell(cell);
+      if (global_cell < 0 || !chem.owns_global_cell(global_cell)) continue;
+    }
     const Real s_sid = chem.conc(i_sid, cell);
     const Real s_iron = chem.conc(i_iron, cell);
     const Real chelation = sid_cfg.chelation_rate * s_sid * s_iron;
@@ -191,6 +197,10 @@ void FixMetabolism::apply_siderophore_reimport(
   const auto& sid_cfg = sim_.config().chem_env.siderophore;
   auto& chem = sim_.chemical_field();
   for (Int cell = 0; cell < num_cells; ++cell) {
+    if (chem.slab_mode()) {
+      const Int global_cell = chem.storage_to_global_cell(cell);
+      if (global_cell < 0 || !chem.owns_global_cell(global_cell)) continue;
+    }
     const auto index = static_cast<size_t>(cell);
     if (occupancy_by_cell_[index] == 0) continue;
 

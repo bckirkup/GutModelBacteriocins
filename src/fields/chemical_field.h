@@ -121,6 +121,11 @@ class ChemicalField {
 
   Int num_species() const { return nspec_; }
   Int ncells() const { return ncells_; }
+  Int global_ncells() const { return global_ncells_; }
+  Int owned_ncells() const {
+    return (owned_x_end_ - owned_x_begin_) * global_ny_ * global_nz_;
+  }
+  Int storage_nx() const { return storage_nx_; }
 
   // Concentration accessors [species][storage cell].
   Real conc(Int spec, Int cell) const {
@@ -132,10 +137,14 @@ class ChemicalField {
     return conc_[spec][cell];
   }
   Real conc_global(Int spec, Int cell) const {
-    return conc_[spec][global_to_storage_cell(cell)];
+    const Int storage_cell = global_to_storage_cell(cell);
+    assert(storage_cell >= 0);
+    return conc_[spec][storage_cell];
   }
   Real& conc_global(Int spec, Int cell) {
-    return conc_[spec][global_to_storage_cell(cell)];
+    const Int storage_cell = global_to_storage_cell(cell);
+    assert(storage_cell >= 0);
+    return conc_[spec][storage_cell];
   }
 
   // Reaction rate [species][storage cell] (mol/m^3/s, negative = consumption)
@@ -148,14 +157,18 @@ class ChemicalField {
     return reac_[spec][cell];
   }
   Real reac_global(Int spec, Int cell) const {
-    return reac_[spec][global_to_storage_cell(cell)];
+    const Int storage_cell = global_to_storage_cell(cell);
+    assert(storage_cell >= 0);
+    return reac_[spec][storage_cell];
   }
   Real& reac_global(Int spec, Int cell) {
-    return reac_[spec][global_to_storage_cell(cell)];
+    const Int storage_cell = global_to_storage_cell(cell);
+    assert(storage_cell >= 0);
+    return reac_[spec][storage_cell];
   }
 
-  // Stage 2a retains global storage in every mode; these mappings establish
-  // the indirection used by later local storage.
+  // Global cell mapping. In slab mode, only owned cells and configured halo
+  // cells map to storage; an out-of-range global cell is a programming error.
   Int owned_global_x_begin() const { return owned_x_begin_; }
   Int owned_global_x_end() const { return owned_x_end_; }
   Int grid_halo_width() const { return halo_width_; }
@@ -164,6 +177,10 @@ class ChemicalField {
   bool owns_global_cell(Int global_cell) const;
   bool global_cell_in_halo(Int global_cell) const;
   bool slab_mode() const { return mode_ == DecompositionMode::Slab; }
+
+  // Make slab concentration halos current after chemistry and before the next
+  // biology pass. Replicated mode is intentionally a no-op.
+  void exchange_concentration_halos();
 
   // Reset reaction rates to zero each timestep
   void zero_reactions();
@@ -177,6 +194,7 @@ class ChemicalField {
   // Sum rank-local agent reaction fields before spatial diffusion.
   void sum_reactions_across_ranks();
   void sum_agent_uptake_across_ranks();
+  void sum_accounting_across_ranks();
 
   // Get species index by name
   Int find(std::string_view name) const;
@@ -194,16 +212,23 @@ class ChemicalField {
  private:
   Int nspec_  = 0;
   Int ncells_ = 0;
+  Int global_ncells_ = 0;
   Int global_nx_ = 0;
+  Int global_ny_ = 0;
+  Int global_nz_ = 0;
   Int owned_x_begin_ = 0;
   Int owned_x_end_ = 0;
   Int halo_width_ = 0;
+  Int storage_nx_ = 0;
   DecompositionMode mode_ = DecompositionMode::Replicated;
   const Domain* domain_ = nullptr;
   std::vector<ChemicalSpec> specs_;
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]
   NutrientFluxAccounting flux_accounting_;
+
+  void apply_diffusion_slab(const Domain& domain, Real dt);
+  void apply_boundaries_slab(const Domain& domain);
 };
 
 }  // namespace gutibm

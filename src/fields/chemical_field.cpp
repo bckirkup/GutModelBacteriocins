@@ -299,24 +299,6 @@ void clamp_nonnegative(std::vector<Real>& concentration) {
   }
 }
 
-void apply_z_gradient(std::vector<Real>& conc_row,
-                      const ChemicalSpec& spec,
-                      const Domain& domain) {
-  const Int nx = domain.nx();
-  const Int ny = domain.ny();
-  const Int nz = domain.nz();
-  for (Int iz = 0; iz < nz; ++iz) {
-    Real z_rel = (iz + 0.5) * domain.dx();
-    Real factor = std::exp(-z_rel / spec.z_gradient_lambda);
-    Real conc = spec.initial_conc * factor;
-    for (Int iy = 0; iy < ny; ++iy) {
-      for (Int ix = 0; ix < nx; ++ix) {
-        conc_row[domain.cell_index(ix, iy, iz)] = conc;
-      }
-    }
-  }
-}
-
 }  // namespace
 
 void ChemicalField::init(const Domain& domain,
@@ -338,14 +320,19 @@ void ChemicalField::init(const Domain& domain,
   mode_ = decomposition == "slab"
       ? DecompositionMode::Slab : DecompositionMode::Replicated;
   global_nx_ = domain.nx();
+  global_ny_ = domain.ny();
+  global_nz_ = domain.nz();
+  global_ncells_ = domain.ncells();
   owned_x_begin_ = decomposition == "slab"
       ? domain.local_grid_x_begin() : 0;
   owned_x_end_ = decomposition == "slab"
       ? domain.local_grid_x_end() : domain.nx();
   halo_width_ = decomposition == "slab" ? domain.grid_halo_width() : 0;
+  storage_nx_ = decomposition == "slab"
+      ? domain.local_grid_storage_nx() : domain.nx();
   specs_  = specs;
   nspec_  = static_cast<Int>(specs.size());
-  ncells_ = domain.ncells();
+  ncells_ = storage_nx_ * global_ny_ * global_nz_;
   flux_accounting_.init(specs.size());
 
   conc_.resize(nspec_);
@@ -355,41 +342,115 @@ void ChemicalField::init(const Domain& domain,
     reac_[s].assign(ncells_, 0.0);
 
     if (specs_[s].z_gradient_enabled) {
-      apply_z_gradient(conc_[s], specs_[s], domain);
+      for (Int storage_cell = 0; storage_cell < ncells_; ++storage_cell) {
+        const Int global_cell = storage_to_global_cell(storage_cell);
+        if (global_cell < 0) continue;
+        const Int iz = global_cell / (global_nx_ * global_ny_);
+        const Real z_rel = (iz + 0.5) * domain.dx();
+        conc_[s][static_cast<size_t>(storage_cell)] =
+            specs_[s].initial_conc
+            * std::exp(-z_rel / specs_[s].z_gradient_lambda);
+      }
     }
   }
 }
 
 Int ChemicalField::global_to_storage_cell(Int global_cell) const {
-  assert(global_cell >= 0 && global_cell < ncells_);
-  if (mode_ == DecompositionMode::Slab) {
-    const Int ix = global_cell % global_nx_;
-    assert(domain_->global_to_local_grid_x(ix) >= 0);
-  }
-  return global_cell;
+  assert(global_cell >= 0 && global_cell < global_ncells_);
+  if (mode_ == DecompositionMode::Replicated) return global_cell;
+
+  const Int ix = global_cell % global_nx_;
+  const Int yz = global_cell / global_nx_;
+  const Int local_ix = domain_->global_to_local_grid_x(ix);
+  if (local_ix < 0) return -1;
+  return yz * storage_nx_ + local_ix;
 }
 
 Int ChemicalField::storage_to_global_cell(Int storage_cell) const {
   assert(storage_cell >= 0 && storage_cell < ncells_);
-  if (mode_ == DecompositionMode::Slab) {
-    const Int ix = storage_cell % global_nx_;
-    assert(domain_->global_to_local_grid_x(ix) >= 0);
-  }
-  return storage_cell;
+  if (mode_ == DecompositionMode::Replicated) return storage_cell;
+
+  const Int local_ix = storage_cell % storage_nx_;
+  const Int yz = storage_cell / storage_nx_;
+  const Int global_ix = domain_->local_to_global_grid_x(local_ix);
+  if (global_ix < 0) return -1;
+  return yz * global_nx_ + global_ix;
 }
 
 bool ChemicalField::owns_global_cell(Int global_cell) const {
-  if (global_cell < 0 || global_cell >= ncells_) return false;
+  if (global_cell < 0 || global_cell >= global_ncells_) return false;
   const Int ix = global_cell % global_nx_;
   return mode_ != DecompositionMode::Slab
       || (ix >= owned_x_begin_ && ix < owned_x_end_);
 }
 
 bool ChemicalField::global_cell_in_halo(Int global_cell) const {
-  if (global_cell < 0 || global_cell >= ncells_) return false;
+  if (global_cell < 0 || global_cell >= global_ncells_) return false;
   return mode_ == DecompositionMode::Slab
       && !owns_global_cell(global_cell)
-      && domain_->global_to_local_grid_x(global_cell % global_nx_) >= 0;
+      && global_to_storage_cell(global_cell) >= 0;
+}
+
+void ChemicalField::exchange_concentration_halos() {
+#ifdef GUTIBM_MPI
+  if (mode_ != DecompositionMode::Slab || domain_->nprocs() <= 1) return;
+
+  const Int plane_cells = global_ny_ * global_nz_;
+  const Int halo_cells = halo_width_ * plane_cells;
+  const Int local_nx = owned_x_end_ - owned_x_begin_;
+  if (halo_cells <= 0 || local_nx <= 0) return;
+
+  const int rank_lo = domain_->rank_lo() >= 0
+      ? domain_->rank_lo() : MPI_PROC_NULL;
+  const int rank_hi = domain_->rank_hi() >= 0
+      ? domain_->rank_hi() : MPI_PROC_NULL;
+  for (Int s = 0; s < nspec_; ++s) {
+    std::vector<Real> send_lo(static_cast<size_t>(halo_cells));
+    std::vector<Real> send_hi(static_cast<size_t>(halo_cells));
+    std::vector<Real> recv_lo(static_cast<size_t>(halo_cells));
+    std::vector<Real> recv_hi(static_cast<size_t>(halo_cells));
+    for (Int iz = 0; iz < global_nz_; ++iz) {
+      for (Int iy = 0; iy < global_ny_; ++iy) {
+        for (Int h = 0; h < halo_width_; ++h) {
+          const Int lo_storage = iz * storage_nx_ * global_ny_
+              + iy * storage_nx_ + halo_width_ + h;
+          const Int hi_storage = iz * storage_nx_ * global_ny_
+              + iy * storage_nx_ + halo_width_ + local_nx
+              - halo_width_ + h;
+          const Int offset = (iz * global_ny_ + iy) * halo_width_ + h;
+          send_lo[static_cast<size_t>(offset)] =
+              conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_storage)];
+          send_hi[static_cast<size_t>(offset)] =
+              conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_storage)];
+        }
+      }
+    }
+
+    const int tag = 700 + 2 * static_cast<int>(s);
+    MPI_Sendrecv(send_lo.data(), halo_cells, MPI_DOUBLE, rank_lo, tag,
+                 recv_hi.data(), halo_cells, MPI_DOUBLE, rank_hi, tag,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    MPI_Sendrecv(send_hi.data(), halo_cells, MPI_DOUBLE, rank_hi, tag + 1,
+                 recv_lo.data(), halo_cells, MPI_DOUBLE, rank_lo, tag + 1,
+                 MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+    for (Int iz = 0; iz < global_nz_; ++iz) {
+      for (Int iy = 0; iy < global_ny_; ++iy) {
+        for (Int h = 0; h < halo_width_; ++h) {
+          const Int lo_storage = iz * storage_nx_ * global_ny_
+              + iy * storage_nx_ + h;
+          const Int hi_storage = iz * storage_nx_ * global_ny_
+              + iy * storage_nx_ + halo_width_ + local_nx + h;
+          const Int offset = (iz * global_ny_ + iy) * halo_width_ + h;
+          conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_storage)] =
+              recv_lo[static_cast<size_t>(offset)];
+          conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_storage)] =
+              recv_hi[static_cast<size_t>(offset)];
+        }
+      }
+    }
+  }
+#endif
 }
 
 void ChemicalField::zero_reactions() {
@@ -400,6 +461,7 @@ void ChemicalField::zero_reactions() {
 
 void ChemicalField::sum_reactions_across_ranks() {
 #ifdef GUTIBM_MPI
+  if (mode_ == DecompositionMode::Slab) return;
   int initialized = 0;
   int finalized = 0;
   MPI_Initialized(&initialized);
@@ -429,8 +491,226 @@ void ChemicalField::sum_agent_uptake_across_ranks() {
 #endif
 }
 
+void ChemicalField::sum_accounting_across_ranks() {
+#ifdef GUTIBM_MPI
+  if (mode_ != DecompositionMode::Slab) return;
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) return;
+  const int count = static_cast<int>(nspec_);
+  auto reduce = [count](std::vector<Real>& values) {
+    MPI_Allreduce(MPI_IN_PLACE, values.data(), count, MPI_DOUBLE, MPI_SUM,
+                  MPI_COMM_WORLD);
+  };
+  reduce(flux_accounting_.boundary_interval);
+  reduce(flux_accounting_.vbf_source_interval);
+  reduce(flux_accounting_.vbf_sink_interval);
+  reduce(flux_accounting_.reaction_clip_interval);
+#endif
+}
+
+namespace {
+
+Int slab_storage_index(
+    Int local_ix, Int iy, Int iz, Int storage_nx, Int ny) {
+  return iz * storage_nx * ny + iy * storage_nx + local_ix;
+}
+
+void diffuse_periodic_x_slab(
+    std::vector<Real>& concentration, const Domain& domain,
+    Int storage_nx, Int halo_width, Real alpha) {
+  const Int nx = domain.nx();
+  const Int ny = domain.ny();
+  const Int nz = domain.nz();
+  const Int local_begin = domain.local_grid_x_begin();
+  const Int local_nx = domain.local_grid_nx();
+  const PeriodicLineSolver solver(nx, alpha);
+  std::vector<Int> counts;
+  std::vector<Int> displacements;
+  std::vector<Int> send_counts;
+  std::vector<Int> send_displacements;
+#ifdef GUTIBM_MPI
+  counts.resize(static_cast<size_t>(domain.nprocs()));
+  displacements.resize(static_cast<size_t>(domain.nprocs()));
+  send_counts.resize(static_cast<size_t>(domain.nprocs()), local_nx);
+  send_displacements.resize(static_cast<size_t>(domain.nprocs()));
+  for (Int rank = 0; rank < domain.nprocs(); ++rank) {
+    const auto [begin, end] =
+        Domain::grid_x_range_for_rank(nx, domain.nprocs(), rank);
+    counts[static_cast<size_t>(rank)] = end - begin;
+    displacements[static_cast<size_t>(rank)] =
+        rank == 0 ? 0 : displacements[static_cast<size_t>(rank - 1)]
+            + counts[static_cast<size_t>(rank - 1)];
+    send_displacements[static_cast<size_t>(rank)] = rank * local_nx;
+  }
+#endif
+  for (Int iz = 0; iz < nz; ++iz) {
+    for (Int iy = 0; iy < ny; ++iy) {
+      std::vector<Real> local_line(static_cast<size_t>(local_nx));
+      for (Int ix = 0; ix < local_nx; ++ix) {
+        local_line[static_cast<size_t>(ix)] = concentration[
+            static_cast<size_t>(slab_storage_index(
+                halo_width + ix, iy, iz, storage_nx, ny))];
+      }
+      std::vector<Real> line(static_cast<size_t>(nx));
+#if defined(GUTIBM_MPI)
+      if (domain.nprocs() > 1) {
+      std::vector<Real> send_line(
+          static_cast<size_t>(domain.nprocs() * local_nx));
+      for (Int rank = 0; rank < domain.nprocs(); ++rank) {
+        std::copy(local_line.begin(), local_line.end(),
+                  send_line.begin() + rank * local_nx);
+      }
+      MPI_Alltoallv(send_line.data(), send_counts.data(),
+                    send_displacements.data(), MPI_DOUBLE,
+                    line.data(), counts.data(), displacements.data(),
+                    MPI_DOUBLE, MPI_COMM_WORLD);
+      } else {
+        std::copy(local_line.begin(), local_line.end(), line.begin());
+      }
+#else
+      std::copy(local_line.begin(), local_line.end(), line.begin());
+#endif
+      solver.solve(line);
+      for (Int ix = 0; ix < local_nx; ++ix) {
+        concentration[static_cast<size_t>(slab_storage_index(
+            halo_width + ix, iy, iz, storage_nx, ny))] =
+            line[static_cast<size_t>(local_begin + ix)];
+      }
+    }
+  }
+}
+
+void diffuse_periodic_y_slab(
+    std::vector<Real>& concentration, const Domain& domain,
+    Int storage_nx, Int halo_width, Real alpha) {
+  const Int ny = domain.ny();
+  const Int nz = domain.nz();
+  const Int local_nx = domain.local_grid_nx();
+  const PeriodicLineSolver solver(ny, alpha);
+  for (Int iz = 0; iz < nz; ++iz) {
+    for (Int ix = 0; ix < local_nx; ++ix) {
+      std::vector<Real> line(static_cast<size_t>(ny));
+      for (Int iy = 0; iy < ny; ++iy) {
+        line[static_cast<size_t>(iy)] = concentration[
+            static_cast<size_t>(slab_storage_index(
+                halo_width + ix, iy, iz, storage_nx, ny))];
+      }
+      solver.solve(line);
+      for (Int iy = 0; iy < ny; ++iy) {
+        concentration[static_cast<size_t>(slab_storage_index(
+            halo_width + ix, iy, iz, storage_nx, ny))] =
+            line[static_cast<size_t>(iy)];
+      }
+    }
+  }
+}
+
+Real diffuse_bounded_z_slab(
+    std::vector<Real>& concentration, const Domain& domain,
+    Int storage_nx, Int halo_width, Real alpha, Real boundary_conc,
+    Real cell_volume) {
+  const Int ny = domain.ny();
+  const Int nz = domain.nz();
+  const Int local_nx = domain.local_grid_nx();
+  if (nz <= 1) return 0.0;
+  const NeumannTopLineSolver solver(nz - 1, alpha);
+  Real face_exchange = 0.0;
+  for (Int iy = 0; iy < ny; ++iy) {
+    for (Int ix = 0; ix < local_nx; ++ix) {
+      std::vector<Real> line(static_cast<size_t>(nz - 1));
+      for (Int iz = 1; iz < nz; ++iz) {
+        line[static_cast<size_t>(iz - 1)] = concentration[
+            static_cast<size_t>(slab_storage_index(
+                halo_width + ix, iy, iz, storage_nx, ny))];
+      }
+      solver.solve(line, boundary_conc);
+      face_exchange += alpha * (boundary_conc - line.front()) * cell_volume;
+      for (Int iz = 1; iz < nz; ++iz) {
+        concentration[static_cast<size_t>(slab_storage_index(
+            halo_width + ix, iy, iz, storage_nx, ny))] =
+            line[static_cast<size_t>(iz - 1)];
+      }
+    }
+  }
+  return face_exchange;
+}
+
+Real set_epithelial_boundary_slab(
+    std::vector<Real>& concentration, const Domain& domain,
+    Int storage_nx, Int halo_width, Real boundary_conc, Real cell_volume) {
+  Real amount = 0.0;
+  for (Int iy = 0; iy < domain.ny(); ++iy) {
+    for (Int ix = 0; ix < domain.local_grid_nx(); ++ix) {
+      const Int index = slab_storage_index(
+          halo_width + ix, iy, 0, storage_nx, domain.ny());
+      amount += (boundary_conc - concentration[static_cast<size_t>(index)])
+          * cell_volume;
+      concentration[static_cast<size_t>(index)] = boundary_conc;
+    }
+  }
+  return amount;
+}
+
+void set_luminal_neumann_boundary_slab(
+    std::vector<Real>& concentration, const Domain& domain,
+    Int storage_nx, Int halo_width) {
+  if (domain.nz() < 2) return;
+  for (Int iy = 0; iy < domain.ny(); ++iy) {
+    for (Int ix = 0; ix < domain.local_grid_nx(); ++ix) {
+      const Int top = slab_storage_index(
+          halo_width + ix, iy, domain.nz() - 1, storage_nx, domain.ny());
+      const Int below = slab_storage_index(
+          halo_width + ix, iy, domain.nz() - 2, storage_nx, domain.ny());
+      concentration[static_cast<size_t>(top)] =
+          concentration[static_cast<size_t>(below)];
+    }
+  }
+}
+
+void shift_z_gradient_slab(
+    std::vector<Real>& concentration, const ChemicalSpec& spec,
+    const Domain& domain, Int storage_nx, Int halo_width, Real scale) {
+  for (Int iz = 0; iz < domain.nz(); ++iz) {
+    const Int profile_iz = domain.nz() >= 2 && iz == domain.nz() - 1
+        ? domain.nz() - 2 : iz;
+    const Real z_rel = (profile_iz + 0.5) * domain.dx();
+    const Real shift = scale * spec.initial_conc
+        * std::exp(-z_rel / spec.z_gradient_lambda);
+    for (Int iy = 0; iy < domain.ny(); ++iy) {
+      for (Int ix = 0; ix < domain.local_grid_nx(); ++ix) {
+        concentration[static_cast<size_t>(slab_storage_index(
+            halo_width + ix, iy, iz, storage_nx, domain.ny()))] += shift;
+      }
+    }
+  }
+}
+
+void clamp_nonnegative_slab(
+    std::vector<Real>& concentration, const Domain& domain,
+    Int storage_nx, Int halo_width) {
+  for (Int iz = 0; iz < domain.nz(); ++iz) {
+    for (Int iy = 0; iy < domain.ny(); ++iy) {
+      for (Int ix = 0; ix < domain.local_grid_nx(); ++ix) {
+        const Int index = slab_storage_index(
+            halo_width + ix, iy, iz, storage_nx, domain.ny());
+        concentration[static_cast<size_t>(index)] =
+            std::max(concentration[static_cast<size_t>(index)], 0.0);
+      }
+    }
+  }
+}
+
+}  // namespace
+
 void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   if (dt <= 0.0 || domain.dx() <= 0.0) return;
+  if (mode_ == DecompositionMode::Slab) {
+    apply_diffusion_slab(domain, dt);
+    return;
+  }
 
   const Real dx2 = domain.dx() * domain.dx();
   for (Int s = 0; s < nspec_; ++s) {
@@ -482,6 +762,55 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   }
 }
 
+void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
+  const Real dx2 = domain.dx() * domain.dx();
+  for (Int s = 0; s < nspec_; ++s) {
+    const ChemicalSpec& chemical = specs_[s];
+    if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
+        || chemical.retardation <= 0.0) {
+      continue;
+    }
+    const Real alpha =
+        (chemical.diff_coeff / chemical.retardation) * dt / dx2;
+    auto& concentration = conc_[static_cast<size_t>(s)];
+    const bool preserve_gradient =
+        chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0;
+    Real diffusion_boundary = chemical.boundary_conc;
+    const Real cell_volume = dx2 * domain.dx();
+    flux_accounting_.add_boundary(
+        s, set_epithelial_boundary_slab(
+               concentration, domain, storage_nx_, halo_width_,
+               chemical.boundary_conc, cell_volume));
+    if (preserve_gradient) {
+      set_luminal_neumann_boundary_slab(
+          concentration, domain, storage_nx_, halo_width_);
+      shift_z_gradient_slab(
+          concentration, chemical, domain, storage_nx_, halo_width_, -1.0);
+      diffusion_boundary = 0.0;
+    }
+    diffuse_periodic_x_slab(
+        concentration, domain, storage_nx_, halo_width_, alpha);
+    diffuse_periodic_y_slab(
+        concentration, domain, storage_nx_, halo_width_, alpha);
+    flux_accounting_.add_boundary(
+        s, diffuse_bounded_z_slab(
+               concentration, domain, storage_nx_, halo_width_, alpha,
+               diffusion_boundary, cell_volume));
+    if (preserve_gradient) {
+      shift_z_gradient_slab(
+          concentration, chemical, domain, storage_nx_, halo_width_, 1.0);
+      set_luminal_neumann_boundary_slab(
+          concentration, domain, storage_nx_, halo_width_);
+    }
+    clamp_nonnegative_slab(
+        concentration, domain, storage_nx_, halo_width_);
+    flux_accounting_.add_boundary(
+        s, set_epithelial_boundary_slab(
+               concentration, domain, storage_nx_, halo_width_,
+               chemical.boundary_conc, cell_volume));
+  }
+}
+
 namespace {
 
 void apply_epithelial_boundary_layer(
@@ -519,6 +848,10 @@ void mirror_non_diffusing_top_layer(std::vector<std::vector<Real>>& concentratio
 }  // namespace
 
 void ChemicalField::apply_boundaries(const Domain& domain) {
+  if (mode_ == DecompositionMode::Slab) {
+    apply_boundaries_slab(domain);
+    return;
+  }
   const Int nz = domain.nz();
 
   for (Int s = 0; s < nspec_; ++s) {
@@ -532,6 +865,21 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
     // Non-diffusing fields retain the legacy mirrored top layer.
     if (!specs_[s].diffusion_enabled && nz >= 2) {
       mirror_non_diffusing_top_layer(conc_, domain, s);
+    }
+  }
+}
+
+void ChemicalField::apply_boundaries_slab(const Domain& domain) {
+  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  for (Int s = 0; s < nspec_; ++s) {
+    auto& concentration = conc_[static_cast<size_t>(s)];
+    flux_accounting_.add_boundary(
+        s, set_epithelial_boundary_slab(
+               concentration, domain, storage_nx_, halo_width_,
+               specs_[s].boundary_conc, cell_volume));
+    if (!specs_[s].diffusion_enabled && domain.nz() >= 2) {
+      set_luminal_neumann_boundary_slab(
+          concentration, domain, storage_nx_, halo_width_);
     }
   }
 }

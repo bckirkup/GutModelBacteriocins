@@ -236,7 +236,9 @@ void deposit_to_chemical_field(ChemicalField& chem,
   #pragma omp parallel for schedule(static)
   #endif
   for (size_t c = 0; c < concentrations.size(); ++c) {
-    chem.conc(toxin_species_idx, static_cast<Int>(c)) = concentrations[c];
+    const Int global_cell = static_cast<Int>(c);
+    if (!chem.owns_global_cell(global_cell)) continue;
+    chem.conc_global(toxin_species_idx, global_cell) = concentrations[c];
   }
 }
 
@@ -358,8 +360,9 @@ void zero_species_field(ChemicalField& chem, Int species_idx) {
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(static)
   #endif
-  for (Int c = 0; c < chem.ncells(); ++c) {
-    chem.conc(species_idx, c) = 0.0;
+  for (Int c = 0; c < chem.global_ncells(); ++c) {
+    if (!chem.owns_global_cell(c)) continue;
+    chem.conc_global(species_idx, c) = 0.0;
   }
 }
 
