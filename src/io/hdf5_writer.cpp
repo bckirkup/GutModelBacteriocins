@@ -901,52 +901,171 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
 void HDF5Writer::write_grid_layer(const Simulation& sim,
                                    const std::string& group) const {
 #ifdef GUTIBM_HDF5
-  if (io_rank(cfg_) == 0 && file_id_ >= 0) {
   auto fid = static_cast<hid_t>(file_id_);
   const auto& chem = sim.chemical_field();
   const auto& domain = sim.domain();
 
-  std::array<hsize_t, 3> dims = {static_cast<hsize_t>(nx_),
+  std::array<hsize_t, 3> dims = {static_cast<hsize_t>(nz_),
                                  static_cast<hsize_t>(ny_),
-                                 static_cast<hsize_t>(nz_)};
+                                 static_cast<hsize_t>(nx_)};
   std::array<hsize_t, 3> chunk = {
-      static_cast<hsize_t>(std::min(nx_, 32)),
+      static_cast<hsize_t>(std::min(nz_, 32)),
       static_cast<hsize_t>(std::min(ny_, 32)),
-      static_cast<hsize_t>(std::min(nz_, 32))};
-  hid_t plist = make_dataset_plist(cfg_, chunk.data(), 3);
-  hid_t space = H5Screate_simple(3, dims.data(), nullptr);
+      static_cast<hsize_t>(std::min(nx_, 32))};
+  hid_t plist = -1;
+  hid_t space = -1;
+  std::vector<double> grid3d;
+  if (io_rank(cfg_) == 0 && file_id_ >= 0) {
+    plist = make_dataset_plist(cfg_, chunk.data(), 3);
+    space = H5Screate_simple(3, dims.data(), nullptr);
+    grid3d.resize(static_cast<size_t>(nx_ * ny_ * nz_));
+  }
 
-  std::vector<double> grid3d(static_cast<size_t>(nx_ * ny_ * nz_));
+  Int local_begin = 0;
+  Int local_nx = nx_;
+#ifdef GUTIBM_MPI
+  int rank = 0;
+  int nprocs = 1;
+  std::vector<int> counts;
+  std::vector<int> displacements;
+  std::vector<int> begins;
+  std::vector<int> widths;
+  int total_count = 0;
+  const bool gather_slab = chem.slab_mode() && mpi_multi_rank();
+  if (chem.slab_mode()) {
+    local_begin = chem.owned_storage_x_begin();
+    local_nx = chem.owned_storage_x_end() - local_begin;
+  }
+  if (gather_slab) {
+    rank = mpi_rank_world();
+    nprocs = mpi_nprocs_world();
+    const int local_count = static_cast<int>(local_nx * ny_ * nz_);
+    counts.resize(static_cast<size_t>(nprocs));
+    displacements.resize(static_cast<size_t>(nprocs));
+    begins.resize(static_cast<size_t>(nprocs));
+    widths.resize(static_cast<size_t>(nprocs));
+    MPI_Allgather(&local_count, 1, MPI_INT, counts.data(), 1, MPI_INT,
+                  MPI_COMM_WORLD);
+    const int global_begin = domain.local_grid_x_begin();
+    const int global_width = domain.local_grid_nx();
+    MPI_Allgather(&global_begin, 1, MPI_INT, begins.data(), 1, MPI_INT,
+                  MPI_COMM_WORLD);
+    MPI_Allgather(&global_width, 1, MPI_INT, widths.data(), 1, MPI_INT,
+                  MPI_COMM_WORLD);
+    Int gathered_width = 0;
+    for (int r = 0; r < nprocs; ++r) {
+      displacements[static_cast<size_t>(r)] = total_count;
+      total_count += counts[static_cast<size_t>(r)];
+      gathered_width += widths[static_cast<size_t>(r)];
+    }
+    if (gathered_width != nx_) {
+      throw HDF5Error("slab grid gather width does not cover global nx");
+    }
+    if (total_count != nx_ * ny_ * nz_) {
+      throw HDF5Error("slab grid gather count does not cover global grid");
+    }
+  }
+#else
+  if (chem.slab_mode()) {
+    local_begin = chem.owned_storage_x_begin();
+    local_nx = chem.owned_storage_x_end() - local_begin;
+  }
+#endif
 
   for (Int s = 0; s < chem.num_species(); ++s) {
     const std::string name = chem.spec(s).name;
     if (!should_write_species(name)) continue;
 
-    pack_grid_species(chem, domain, s, nx_, ny_, nz_, grid3d);
+    if (chem.slab_mode()) {
+      std::vector<double> local(
+          static_cast<size_t>(local_nx * ny_ * nz_));
+      for (Int iz = 0; iz < nz_; ++iz) {
+        for (Int iy = 0; iy < ny_; ++iy) {
+          for (Int ix = 0; ix < local_nx; ++ix) {
+            const Int storage_cell =
+                (iz * chem.storage_nx() * ny_) + iy * chem.storage_nx()
+                + local_begin + ix;
+            const size_t packed =
+                static_cast<size_t>(iz) * static_cast<size_t>(ny_ * local_nx)
+                + static_cast<size_t>(iy * local_nx + ix);
+            local[packed] = chem.conc(s, storage_cell);
+          }
+        }
+      }
+#ifdef GUTIBM_MPI
+      if (gather_slab) {
+        const int local_count = static_cast<int>(local.size());
+        std::vector<double> gathered;
+        if (rank == 0) gathered.resize(static_cast<size_t>(total_count));
+        double dummy = 0.0;
+        const double* send = local.empty() ? &dummy : local.data();
+        MPI_Gatherv(send, local_count, MPI_DOUBLE,
+                    rank == 0 ? gathered.data() : nullptr, counts.data(),
+                    displacements.data(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        if (rank == 0) {
+          std::fill(grid3d.begin(), grid3d.end(), 0.0);
+          for (int r = 0; r < nprocs; ++r) {
+            const int width = widths[static_cast<size_t>(r)];
+            const int source_offset = displacements[static_cast<size_t>(r)];
+            for (Int iz = 0; iz < nz_; ++iz) {
+              for (Int iy = 0; iy < ny_; ++iy) {
+                for (Int ix = 0; ix < width; ++ix) {
+                  const size_t source = static_cast<size_t>(source_offset)
+                      + static_cast<size_t>(iz * ny_ * width + iy * width + ix);
+                  const size_t target = static_cast<size_t>(iz * ny_ * nx_
+                      + iy * nx_ + begins[static_cast<size_t>(r)] + ix);
+                  grid3d[target] = gathered[source];
+                }
+              }
+            }
+          }
+        }
+      } else {
+        for (Int iz = 0; iz < nz_; ++iz) {
+          for (Int iy = 0; iy < ny_; ++iy) {
+            for (Int ix = 0; ix < local_nx; ++ix) {
+              const size_t source =
+                  static_cast<size_t>(iz * ny_ * local_nx + iy * local_nx + ix);
+              const size_t target = static_cast<size_t>(
+                  iz * ny_ * nx_ + iy * nx_ + domain.local_grid_x_begin() + ix);
+              grid3d[target] = local[source];
+            }
+          }
+        }
+      }
+#else
+      grid3d = std::move(local);
+#endif
+    } else if (io_rank(cfg_) == 0) {
+      pack_grid_species(chem, domain, s, nx_, ny_, nz_, grid3d);
+    }
 
-    const std::string dsname = group + "/" + name;
-    hid_t ds = H5Dcreate2(fid, dsname.c_str(), H5T_NATIVE_DOUBLE, space,
-                          H5P_DEFAULT, plist, H5P_DEFAULT);
-    if (ds < 0) {
-      H5Eclear2(H5E_DEFAULT);
-      ds = H5Dopen2(fid, dsname.c_str(), H5P_DEFAULT);
+    if (io_rank(cfg_) == 0 && file_id_ >= 0) {
+      const std::string dsname = group + "/" + name;
+      hid_t ds = H5Dcreate2(fid, dsname.c_str(), H5T_NATIVE_DOUBLE, space,
+                            H5P_DEFAULT, plist, H5P_DEFAULT);
+      if (ds < 0) {
+        H5Eclear2(H5E_DEFAULT);
+        ds = H5Dopen2(fid, dsname.c_str(), H5P_DEFAULT);
+      }
+      if (ds < 0) {
+        std::cerr << "Warning: cannot create/open grid dataset '" << dsname
+                  << "'\n";
+        continue;
+      }
+      if (H5Dwrite(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                   grid3d.data()) < 0) {
+        std::cerr << "Warning: H5Dwrite failed for grid dataset '" << dsname
+                  << "'\n";
+        H5Eclear2(H5E_DEFAULT);
+      }
+      H5Dclose(ds);
     }
-    if (ds < 0) {
-      std::cerr << "Warning: cannot create/open grid dataset '" << dsname
-                << "'\n";
-      continue;
-    }
-    if (H5Dwrite(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
-                 grid3d.data()) < 0) {
-      std::cerr << "Warning: H5Dwrite failed for grid dataset '" << dsname
-                << "'\n";
-      H5Eclear2(H5E_DEFAULT);
-    }
-    H5Dclose(ds);
   }
 
-  H5Pclose(plist);
-  H5Sclose(space);
+  if (io_rank(cfg_) == 0 && file_id_ >= 0) {
+    H5Pclose(plist);
+    H5Sclose(space);
   }
 
   mpi_barrier(cfg_);
