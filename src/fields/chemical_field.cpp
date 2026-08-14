@@ -7,6 +7,7 @@
 #include "error.h"
 #include <algorithm>
 #include <cmath>
+#include <numeric>
 #include <vector>
 
 #ifdef GUTIBM_MPI
@@ -314,6 +315,11 @@ void ChemicalField::init(const Domain& domain,
       throw ConfigError(
           "slab chemistry requires grid_halo_width >= ceil(ghost_width / dx)");
     }
+    if (domain.local_grid_nx() < domain.grid_halo_width()) {
+      throw ConfigError(
+          "slab chemistry requires each owned x-slab to be at least "
+          "grid_halo_width cells wide");
+    }
   }
 
   domain_ = &domain;
@@ -505,8 +511,6 @@ void ChemicalField::sum_accounting_across_ranks() {
                   MPI_COMM_WORLD);
   };
   reduce(flux_accounting_.boundary_interval);
-  reduce(flux_accounting_.vbf_source_interval);
-  reduce(flux_accounting_.vbf_sink_interval);
   reduce(flux_accounting_.reaction_clip_interval);
 #endif
 }
@@ -524,63 +528,183 @@ void diffuse_periodic_x_slab(
   const Int nx = domain.nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
-  const Int local_begin = domain.local_grid_x_begin();
   const Int local_nx = domain.local_grid_nx();
   const PeriodicLineSolver solver(nx, alpha);
-  std::vector<Int> counts;
-  std::vector<Int> displacements;
-  std::vector<Int> send_counts;
-  std::vector<Int> send_displacements;
-#ifdef GUTIBM_MPI
-  counts.resize(static_cast<size_t>(domain.nprocs()));
-  displacements.resize(static_cast<size_t>(domain.nprocs()));
-  send_counts.resize(static_cast<size_t>(domain.nprocs()), local_nx);
-  send_displacements.resize(static_cast<size_t>(domain.nprocs()));
-  for (Int rank = 0; rank < domain.nprocs(); ++rank) {
+  const Int line_count = ny * nz;
+  const Int process_count = domain.nprocs();
+  std::vector<Int> line_counts(static_cast<size_t>(process_count), 0);
+  std::vector<Int> line_displacements(static_cast<size_t>(process_count), 0);
+  std::vector<Int> x_counts(static_cast<size_t>(process_count), 0);
+  std::vector<Int> x_displacements(static_cast<size_t>(process_count), 0);
+  for (Int rank = 0; rank < process_count; ++rank) {
     const auto [begin, end] =
-        Domain::grid_x_range_for_rank(nx, domain.nprocs(), rank);
-    counts[static_cast<size_t>(rank)] = end - begin;
-    displacements[static_cast<size_t>(rank)] =
-        rank == 0 ? 0 : displacements[static_cast<size_t>(rank - 1)]
-            + counts[static_cast<size_t>(rank - 1)];
-    send_displacements[static_cast<size_t>(rank)] = rank * local_nx;
+        Domain::grid_x_range_for_rank(nx, process_count, rank);
+    x_counts[static_cast<size_t>(rank)] = end - begin;
+    x_displacements[static_cast<size_t>(rank)] = begin;
+    line_counts[static_cast<size_t>(rank)] =
+        (line_count + process_count - rank - 1) / process_count;
+    line_displacements[static_cast<size_t>(rank)] =
+        rank == 0 ? 0 : line_displacements[static_cast<size_t>(rank - 1)]
+            + line_counts[static_cast<size_t>(rank - 1)];
   }
-#endif
-  for (Int iz = 0; iz < nz; ++iz) {
-    for (Int iy = 0; iy < ny; ++iy) {
-      std::vector<Real> local_line(static_cast<size_t>(local_nx));
+
+  if (process_count == 1) {
+    for (Int line_id = 0; line_id < line_count; ++line_id) {
+      const Int iy = line_id % ny;
+      const Int iz = line_id / ny;
+      std::vector<Real> line(static_cast<size_t>(nx));
       for (Int ix = 0; ix < local_nx; ++ix) {
-        local_line[static_cast<size_t>(ix)] = concentration[
+        line[static_cast<size_t>(ix)] = concentration[
             static_cast<size_t>(slab_storage_index(
                 halo_width + ix, iy, iz, storage_nx, ny))];
       }
-      std::vector<Real> line(static_cast<size_t>(nx));
-#if defined(GUTIBM_MPI)
-      if (domain.nprocs() > 1) {
-      std::vector<Real> send_line(
-          static_cast<size_t>(domain.nprocs() * local_nx));
-      for (Int rank = 0; rank < domain.nprocs(); ++rank) {
-        std::copy(local_line.begin(), local_line.end(),
-                  send_line.begin() + rank * local_nx);
-      }
-      MPI_Alltoallv(send_line.data(), send_counts.data(),
-                    send_displacements.data(), MPI_DOUBLE,
-                    line.data(), counts.data(), displacements.data(),
-                    MPI_DOUBLE, MPI_COMM_WORLD);
-      } else {
-        std::copy(local_line.begin(), local_line.end(), line.begin());
-      }
-#else
-      std::copy(local_line.begin(), local_line.end(), line.begin());
-#endif
       solver.solve(line);
       for (Int ix = 0; ix < local_nx; ++ix) {
         concentration[static_cast<size_t>(slab_storage_index(
             halo_width + ix, iy, iz, storage_nx, ny))] =
-            line[static_cast<size_t>(local_begin + ix)];
+            line[static_cast<size_t>(ix)];
       }
     }
+    return;
   }
+
+#ifdef GUTIBM_MPI
+  std::vector<Int> send_counts(static_cast<size_t>(process_count), 0);
+  std::vector<Int> send_displacements(
+      static_cast<size_t>(process_count), 0);
+  std::vector<Int> recv_counts(static_cast<size_t>(process_count), 0);
+  std::vector<Int> recv_displacements(
+      static_cast<size_t>(process_count), 0);
+  for (Int rank = 0; rank < process_count; ++rank) {
+    send_counts[static_cast<size_t>(rank)] =
+        line_counts[static_cast<size_t>(rank)] * local_nx;
+    send_displacements[static_cast<size_t>(rank)] =
+        rank == 0 ? 0 : send_displacements[static_cast<size_t>(rank - 1)]
+            + send_counts[static_cast<size_t>(rank - 1)];
+    recv_counts[static_cast<size_t>(rank)] =
+        line_counts[static_cast<size_t>(domain.rank())]
+        * x_counts[static_cast<size_t>(rank)];
+    recv_displacements[static_cast<size_t>(rank)] =
+        rank == 0 ? 0 : recv_displacements[static_cast<size_t>(rank - 1)]
+            + recv_counts[static_cast<size_t>(rank - 1)];
+  }
+  const std::vector<Int> gathered_displacements = recv_displacements;
+
+  const Int send_total = std::accumulate(send_counts.begin(),
+                                         send_counts.end(), 0);
+  const Int recv_total = std::accumulate(recv_counts.begin(),
+                                         recv_counts.end(), 0);
+  std::vector<Real> send_buffer(static_cast<size_t>(send_total));
+  std::vector<Real> recv_buffer(static_cast<size_t>(recv_total));
+  for (Int destination = 0; destination < process_count; ++destination) {
+    Int offset = send_displacements[static_cast<size_t>(destination)];
+    for (Int line_id = destination; line_id < line_count;
+         line_id += process_count) {
+      const Int iy = line_id % ny;
+      const Int iz = line_id / ny;
+      for (Int ix = 0; ix < local_nx; ++ix) {
+        send_buffer[static_cast<size_t>(offset + ix)] = concentration[
+            static_cast<size_t>(slab_storage_index(
+                halo_width + ix, iy, iz, storage_nx, ny))];
+      }
+      offset += local_nx;
+    }
+  }
+  MPI_Alltoallv(send_buffer.data(), send_counts.data(),
+                send_displacements.data(), MPI_DOUBLE,
+                recv_buffer.data(), recv_counts.data(),
+                recv_displacements.data(), MPI_DOUBLE,
+                MPI_COMM_WORLD);
+
+  std::vector<Real> solved_buffer(static_cast<size_t>(recv_total));
+  const Int local_rank = domain.rank();
+  for (Int line_index = 0; line_index < line_counts[static_cast<size_t>(local_rank)];
+       ++line_index) {
+    std::vector<Real> line(static_cast<size_t>(nx));
+    for (Int source = 0; source < process_count; ++source) {
+      const Int segment_offset =
+          gathered_displacements[static_cast<size_t>(source)]
+          + line_index * x_counts[static_cast<size_t>(source)];
+      std::copy_n(recv_buffer.begin() + segment_offset,
+                  x_counts[static_cast<size_t>(source)],
+                  line.begin() + x_displacements[static_cast<size_t>(source)]);
+    }
+    solver.solve(line);
+    for (Int destination = 0; destination < process_count; ++destination) {
+      const Int segment_offset =
+          gathered_displacements[static_cast<size_t>(destination)]
+          + line_index * x_counts[static_cast<size_t>(destination)];
+      std::copy_n(line.begin() + x_displacements[static_cast<size_t>(destination)],
+                  x_counts[static_cast<size_t>(destination)],
+                  solved_buffer.begin() + segment_offset);
+    }
+  }
+
+  std::fill(send_counts.begin(), send_counts.end(), 0);
+  std::fill(send_displacements.begin(), send_displacements.end(), 0);
+  std::fill(recv_counts.begin(), recv_counts.end(), 0);
+  std::fill(recv_displacements.begin(), recv_displacements.end(), 0);
+  for (Int rank = 0; rank < process_count; ++rank) {
+    send_counts[static_cast<size_t>(rank)] =
+        line_counts[static_cast<size_t>(local_rank)]
+        * x_counts[static_cast<size_t>(rank)];
+    recv_counts[static_cast<size_t>(rank)] =
+        line_counts[static_cast<size_t>(rank)] * local_nx;
+    if (rank > 0) {
+      send_displacements[static_cast<size_t>(rank)] =
+          send_displacements[static_cast<size_t>(rank - 1)]
+          + send_counts[static_cast<size_t>(rank - 1)];
+      recv_displacements[static_cast<size_t>(rank)] =
+          recv_displacements[static_cast<size_t>(rank - 1)]
+          + recv_counts[static_cast<size_t>(rank - 1)];
+    }
+  }
+  const Int solved_total = std::accumulate(send_counts.begin(),
+                                           send_counts.end(), 0);
+  const Int output_total = std::accumulate(recv_counts.begin(),
+                                           recv_counts.end(), 0);
+  send_buffer.assign(static_cast<size_t>(solved_total), 0.0);
+  recv_buffer.assign(static_cast<size_t>(output_total), 0.0);
+  for (Int destination = 0; destination < process_count; ++destination) {
+    const Int segment_length = x_counts[static_cast<size_t>(destination)];
+    Int offset = send_displacements[static_cast<size_t>(destination)];
+    for (Int line_index = 0;
+         line_index < line_counts[static_cast<size_t>(local_rank)];
+         ++line_index) {
+      const Int source_offset =
+          gathered_displacements[static_cast<size_t>(destination)]
+          + line_index * segment_length;
+      std::copy_n(solved_buffer.begin() + source_offset, segment_length,
+                  send_buffer.begin() + offset);
+      offset += segment_length;
+    }
+  }
+  MPI_Alltoallv(send_buffer.data(), send_counts.data(),
+                send_displacements.data(), MPI_DOUBLE,
+                recv_buffer.data(), recv_counts.data(),
+                recv_displacements.data(), MPI_DOUBLE,
+                MPI_COMM_WORLD);
+  for (Int source = 0; source < process_count; ++source) {
+    Int offset = recv_displacements[static_cast<size_t>(source)];
+    for (Int line_id = source; line_id < line_count;
+         line_id += process_count) {
+      const Int iy = line_id % ny;
+      const Int iz = line_id / ny;
+      for (Int ix = 0; ix < local_nx; ++ix) {
+        concentration[static_cast<size_t>(slab_storage_index(
+            halo_width + ix, iy, iz, storage_nx, ny))] =
+            recv_buffer[static_cast<size_t>(offset + ix)];
+      }
+      offset += local_nx;
+    }
+  }
+#else
+  (void)concentration;
+  (void)domain;
+  (void)storage_nx;
+  (void)halo_width;
+  (void)alpha;
+#endif
 }
 
 void diffuse_periodic_y_slab(
