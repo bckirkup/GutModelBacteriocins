@@ -2,7 +2,7 @@
 
 checkpoint_keys_from_list_response() {
   jq -r '.Contents[]?.Key'
-  return 0
+  return $?
 }
 
 checkpoint_step_from_key() {
