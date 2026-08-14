@@ -246,7 +246,8 @@ void assert_equal_ledgers(const Simulation& slab,
   const auto& slab_flux = slab.chemical_field().flux_accounting();
   const auto& replicated_flux =
       replicated.chemical_field().flux_accounting();
-  const auto compare = [](const std::vector<Real>& slab_values,
+  const auto compare = [](const char* name,
+                          const std::vector<Real>& slab_values,
                           const std::vector<Real>& replicated_values) {
     assert(slab_values.size() == replicated_values.size());
     for (size_t species = 0; species < slab_values.size(); ++species) {
@@ -264,26 +265,38 @@ void assert_equal_ledgers(const Simulation& slab,
                     MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
       assert(slab_min == slab_max);
       assert(replicated_min == replicated_max);
+      if (slab_min != replicated_min) {
+        int rank = 0;
+        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        if (rank == 0) {
+          std::cerr << "ledger mismatch " << name << '[' << species << "] "
+                    << slab_min << " vs " << replicated_min << '\n';
+        }
+      }
       assert(slab_min == replicated_min);
     }
   };
-  compare(slab_flux.boundary_interval, replicated_flux.boundary_interval);
-  compare(slab_flux.boundary_cumulative, replicated_flux.boundary_cumulative);
-  compare(slab_flux.vbf_source_interval,
+  compare("boundary_interval", slab_flux.boundary_interval,
+          replicated_flux.boundary_interval);
+  compare("boundary_cumulative", slab_flux.boundary_cumulative,
+          replicated_flux.boundary_cumulative);
+  compare("vbf_source_interval", slab_flux.vbf_source_interval,
           replicated_flux.vbf_source_interval);
-  compare(slab_flux.vbf_source_cumulative,
+  compare("vbf_source_cumulative", slab_flux.vbf_source_cumulative,
           replicated_flux.vbf_source_cumulative);
-  compare(slab_flux.vbf_sink_interval, replicated_flux.vbf_sink_interval);
-  compare(slab_flux.vbf_sink_cumulative,
+  compare("vbf_sink_interval", slab_flux.vbf_sink_interval,
+          replicated_flux.vbf_sink_interval);
+  compare("vbf_sink_cumulative", slab_flux.vbf_sink_cumulative,
           replicated_flux.vbf_sink_cumulative);
-  compare(slab_flux.agent_uptake_interval,
+  compare("agent_uptake_interval", slab_flux.agent_uptake_interval,
           replicated_flux.agent_uptake_interval);
-  compare(slab_flux.agent_uptake_step, replicated_flux.agent_uptake_step);
-  compare(slab_flux.agent_uptake_cumulative,
+  compare("agent_uptake_step", slab_flux.agent_uptake_step,
+          replicated_flux.agent_uptake_step);
+  compare("agent_uptake_cumulative", slab_flux.agent_uptake_cumulative,
           replicated_flux.agent_uptake_cumulative);
-  compare(slab_flux.reaction_clip_interval,
+  compare("reaction_clip_interval", slab_flux.reaction_clip_interval,
           replicated_flux.reaction_clip_interval);
-  compare(slab_flux.reaction_clip_cumulative,
+  compare("reaction_clip_cumulative", slab_flux.reaction_clip_cumulative,
           replicated_flux.reaction_clip_cumulative);
 }
 
