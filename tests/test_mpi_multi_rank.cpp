@@ -91,6 +91,9 @@ void test_chemical_field_layout_mapping() {
 
 uint64_t hash_chemical_owned_cells(const ChemicalField& field,
                                    const Domain& domain);
+uint64_t hash_simulation_chemistry(const Simulation& simulation);
+void assert_equal_ledgers(const Simulation& slab,
+                          const Simulation& replicated);
 
 void test_slab_chemistry_transpose_halos_and_ledger() {
   require_mpi_ranks(2);
@@ -142,28 +145,23 @@ void test_slab_chemistry_transpose_halos_and_ledger() {
   assert(hash_chemical_owned_cells(slab, domain)
          == hash_chemical_owned_cells(replicated, domain));
 
-  auto& slab_flux = slab.flux_accounting();
-  auto& replicated_flux = replicated.flux_accounting();
-  slab_flux.boundary_interval[0] = static_cast<Real>(rank + 1);
-  slab_flux.vbf_source_interval[0] = static_cast<Real>(2 * (rank + 1));
-  slab_flux.vbf_sink_interval[0] = static_cast<Real>(3 * (rank + 1));
-  slab_flux.reaction_clip_interval[0] = static_cast<Real>(4 * (rank + 1));
-  Real vbf_source = 0.0;
-  Real vbf_sink = 0.0;
-  MPI_Allreduce(&slab_flux.vbf_source_interval[0], &vbf_source, 1,
-                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  MPI_Allreduce(&slab_flux.vbf_sink_interval[0], &vbf_sink, 1,
-                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  slab.sum_accounting_across_ranks();
-  replicated_flux.boundary_interval[0] = 3.0;
-  replicated_flux.vbf_source_interval[0] = vbf_source;
-  replicated_flux.vbf_sink_interval[0] = vbf_sink;
-  replicated_flux.reaction_clip_interval[0] = 12.0;
-  assert(slab_flux.boundary_interval == replicated_flux.boundary_interval);
-  assert(slab_flux.vbf_source_interval == replicated_flux.vbf_source_interval);
-  assert(slab_flux.vbf_sink_interval == replicated_flux.vbf_sink_interval);
-  assert(slab_flux.reaction_clip_interval
-         == replicated_flux.reaction_clip_interval);
+  SimulationConfig simulation_cfg = make_mpi_config(24680, 8);
+  simulation_cfg.time.total_time = 3.0 * simulation_cfg.time.bio_dt;
+  simulation_cfg.time.output_interval = simulation_cfg.time.total_time;
+  simulation_cfg.domain.periodic = {true, true, false};
+  simulation_cfg.chemistry_decomposition = "slab";
+  Simulation slab_simulation;
+  slab_simulation.init(simulation_cfg);
+  slab_simulation.run();
+
+  simulation_cfg.chemistry_decomposition = "replicated";
+  Simulation replicated_simulation;
+  replicated_simulation.init(simulation_cfg);
+  replicated_simulation.run();
+
+  assert(hash_simulation_chemistry(slab_simulation)
+         == hash_simulation_chemistry(replicated_simulation));
+  assert_equal_ledgers(slab_simulation, replicated_simulation);
 
   if (rank == 0) {
     std::cout << "  test_slab_chemistry_transpose_halos_and_ledger: PASSED\n";
@@ -179,19 +177,74 @@ SimulationConfig make_mpi_periodic_config() {
 uint64_t hash_chemical_owned_cells(const ChemicalField& field,
                                    const Domain& domain) {
   uint64_t hash = 0;
-  for (Int iz = 0; iz < domain.nz(); ++iz) {
-    for (Int iy = 0; iy < domain.ny(); ++iy) {
-      for (Int ix = domain.local_grid_x_begin();
-           ix < domain.local_grid_x_end(); ++ix) {
-        const Int global = domain.cell_index(ix, iy, iz);
-        const auto quantized = static_cast<uint64_t>(
-            std::llround(field.conc_global(0, global) * 1.0e12));
-        hash ^= quantized + 0x9e3779b97f4a7c15ULL
-            + (hash << 6) + (hash >> 2);
+  for (Int species = 0; species < field.num_species(); ++species) {
+    for (Int iz = 0; iz < domain.nz(); ++iz) {
+      for (Int iy = 0; iy < domain.ny(); ++iy) {
+        for (Int ix = domain.local_grid_x_begin();
+             ix < domain.local_grid_x_end(); ++ix) {
+          const Int global = domain.cell_index(ix, iy, iz);
+          const auto quantized = static_cast<uint64_t>(
+              std::llround(field.conc_global(species, global) * 1.0e12));
+          hash ^= quantized + 0x9e3779b97f4a7c15ULL
+              + (hash << 6) + (hash >> 2);
+        }
       }
     }
   }
+#ifdef GUTIBM_MPI
+  uint64_t reduced_hash = 0;
+  MPI_Allreduce(&hash, &reduced_hash, 1, MPI_UINT64_T, MPI_BXOR,
+                MPI_COMM_WORLD);
+  hash = reduced_hash;
+#endif
   return hash;
+}
+
+uint64_t hash_simulation_chemistry(const Simulation& simulation) {
+  return hash_chemical_owned_cells(
+      simulation.chemical_field(), simulation.domain());
+}
+
+void assert_equal_ledgers(const Simulation& slab,
+                          const Simulation& replicated) {
+  const auto& slab_flux = slab.chemical_field().flux_accounting();
+  const auto& replicated_flux =
+      replicated.chemical_field().flux_accounting();
+  const auto compare = [](const std::vector<Real>& slab_values,
+                          const std::vector<Real>& replicated_values) {
+    assert(slab_values.size() == replicated_values.size());
+    for (size_t species = 0; species < slab_values.size(); ++species) {
+      Real slab_min = 0.0;
+      Real slab_max = 0.0;
+      MPI_Allreduce(&slab_values[species], &slab_min, 1, MPI_DOUBLE,
+                    MPI_MIN, MPI_COMM_WORLD);
+      MPI_Allreduce(&slab_values[species], &slab_max, 1, MPI_DOUBLE,
+                    MPI_MAX, MPI_COMM_WORLD);
+      Real replicated_total = 0.0;
+      MPI_Allreduce(&replicated_values[species], &replicated_total, 1,
+                    MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+      assert(slab_min == slab_max);
+      assert(slab_min == replicated_total);
+    }
+  };
+  compare(slab_flux.boundary_interval, replicated_flux.boundary_interval);
+  compare(slab_flux.boundary_cumulative, replicated_flux.boundary_cumulative);
+  compare(slab_flux.vbf_source_interval,
+          replicated_flux.vbf_source_interval);
+  compare(slab_flux.vbf_source_cumulative,
+          replicated_flux.vbf_source_cumulative);
+  compare(slab_flux.vbf_sink_interval, replicated_flux.vbf_sink_interval);
+  compare(slab_flux.vbf_sink_cumulative,
+          replicated_flux.vbf_sink_cumulative);
+  compare(slab_flux.agent_uptake_interval,
+          replicated_flux.agent_uptake_interval);
+  compare(slab_flux.agent_uptake_step, replicated_flux.agent_uptake_step);
+  compare(slab_flux.agent_uptake_cumulative,
+          replicated_flux.agent_uptake_cumulative);
+  compare(slab_flux.reaction_clip_interval,
+          replicated_flux.reaction_clip_interval);
+  compare(slab_flux.reaction_clip_cumulative,
+          replicated_flux.reaction_clip_cumulative);
 }
 
 void test_reaction_sum_and_diffusion_are_rank_identical() {

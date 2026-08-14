@@ -556,17 +556,19 @@ void QSSASolver::solve_bacteriocin_field_fmm(
 
   std::vector toxin_conc(static_cast<size_t>(ncells), 0.0);
   const bool defer_sync = chem_gpu != nullptr && chem_gpu->active();
-  if (const bool near_on_gpu = chem.slab_mode()
-          ? (gf_.superpose_to_local_grid(
-                 sources, params, strength_factors, toxin_conc,
-                 cfg_.toxin_cutoff, domain_->local_grid_x_begin(),
-                 domain_->local_grid_x_end(), chem.storage_nx(),
-                 chem.owned_storage_x_begin()), false)
-          : accumulate_near_field_gpu_or_cpu(
-                *domain_, gf_, adv, sources, params, strength_factors,
-                cfg_.toxin_cutoff, toxin_conc, chem, toxin_species_idx,
-                chem_gpu, defer_sync);
-      near_on_gpu) {
+  bool near_on_gpu = false;
+  if (chem.slab_mode()) {
+    gf_.superpose_to_local_grid(
+        sources, params, strength_factors, toxin_conc, cfg_.toxin_cutoff,
+        domain_->local_grid_x_begin(), domain_->local_grid_x_end(),
+        chem.storage_nx(), chem.owned_storage_x_begin());
+  } else {
+    near_on_gpu = accumulate_near_field_gpu_or_cpu(
+        *domain_, gf_, adv, sources, params, strength_factors,
+        cfg_.toxin_cutoff, toxin_conc, chem, toxin_species_idx, chem_gpu,
+        defer_sync);
+  }
+  if (near_on_gpu) {
     chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
     for (Int c = 0; c < ncells; ++c) {
       toxin_conc[static_cast<size_t>(c)] = chem.conc(toxin_species_idx, c);
