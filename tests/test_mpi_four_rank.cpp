@@ -99,10 +99,12 @@ void test_four_rank_slab_decomposition() {
   const Real mid_x = 0.5 * (dom.local_lo_x() + dom.local_hi_x());
   assert(dom.is_local({mid_x, 25e-6, 25e-6}));
   assert(dom.owner_rank({mid_x, 25e-6, 25e-6}) == rank);
-  for (Int ix = grid_range.first; ix < grid_range.second; ++ix) {
+  for (Int ix = 0; ix < nx; ++ix) {
     const Vec3 center = dom.cell_center(ix, 0, 0);
-    assert(dom.is_local(center));
-    assert(dom.owner_rank(center) == rank);
+    const Int expected_owner =
+        Domain::grid_owner_rank_for_cell(nx, nprocs, ix);
+    assert(dom.owner_rank(center) == expected_owner);
+    assert(dom.is_local(center) == (expected_owner == rank));
   }
 
   if (rank == 0) {
