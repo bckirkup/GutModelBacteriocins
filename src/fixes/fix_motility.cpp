@@ -128,7 +128,7 @@ Real FixMotility::effective_swim_speed(const Agent& agent) const {
     auto& chem = sim_.chemical_field();
     const Int i_mucin = chem.find(species::MUCIN);
     if (i_mucin >= 0 && agent.grid_cell >= 0) {
-      const Real mucin = chem.conc(i_mucin, agent.grid_cell);
+      const Real mucin = chem.conc_global(i_mucin, agent.grid_cell);
       speed *= cfg_.mucin_drag_reference
           / (cfg_.mucin_drag_reference + mucin);
     }
@@ -164,7 +164,7 @@ void FixMotility::update_chemotaxis(Agent& agent, Real dt) {
   if (cfg_.aerotaxis_enabled) {
     const Int i_o2 = chem.find(species::OXYGEN);
     if (i_o2 >= 0) {
-      const Real o2 = chem.conc(i_o2, agent.grid_cell);
+      const Real o2 = chem.conc_global(i_o2, agent.grid_cell);
       const Real frac_rate = weber_fechner_frac_rate(
           o2, mot.prev_oxygen, cfg_.chemotaxis_threshold, dt);
       modifier += cfg_.aerotaxis_sensitivity * frac_rate;
@@ -176,7 +176,7 @@ void FixMotility::update_chemotaxis(Agent& agent, Real dt) {
   if (cfg_.chemotaxis_enabled) {
     const Int i_carbon = chem.find(species::CARBON);
     if (i_carbon >= 0) {
-      const Real carbon = chem.conc(i_carbon, agent.grid_cell);
+      const Real carbon = chem.conc_global(i_carbon, agent.grid_cell);
       const Real frac_rate = weber_fechner_frac_rate(
           carbon, mot.prev_carbon, cfg_.chemotaxis_threshold, dt);
       modifier += cfg_.chi_carbon * frac_rate;
@@ -189,7 +189,7 @@ void FixMotility::update_chemotaxis(Agent& agent, Real dt) {
       qs.enabled && qs.ai2_chemotaxis_enabled) {
     const Int i_ai2 = chem.find(species::AI2);
     if (i_ai2 >= 0) {
-      const Real ai2 = chem.conc(i_ai2, agent.grid_cell);
+      const Real ai2 = chem.conc_global(i_ai2, agent.grid_cell);
       const Real frac_rate = weber_fechner_frac_rate(
           ai2, mot.prev_ai2, cfg_.chemotaxis_threshold, dt);
       modifier += qs.chi_ai2 * frac_rate;
@@ -224,13 +224,13 @@ void FixMotility::complete_run(Agent& agent) {
     const Int i_oxygen = chem.find(species::OXYGEN);
     const Int i_ai2 = chem.find(species::AI2);
     if (i_carbon >= 0) {
-      mot.prev_carbon = chem.conc(i_carbon, agent.grid_cell);
+      mot.prev_carbon = chem.conc_global(i_carbon, agent.grid_cell);
     }
     if (i_oxygen >= 0) {
-      mot.prev_oxygen = chem.conc(i_oxygen, agent.grid_cell);
+      mot.prev_oxygen = chem.conc_global(i_oxygen, agent.grid_cell);
     }
     if (i_ai2 >= 0) {
-      mot.prev_ai2 = chem.conc(i_ai2, agent.grid_cell);
+      mot.prev_ai2 = chem.conc_global(i_ai2, agent.grid_cell);
     }
   }
 

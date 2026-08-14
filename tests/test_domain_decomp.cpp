@@ -6,6 +6,7 @@
    ----------------------------------------------------------------------- */
 
 #include "domain.h"
+#include "chemical_field.h"
 #include "simulation.h"
 #include "input_parser.h"
 #include <cassert>
@@ -14,6 +15,54 @@
 #include <vector>
 
 using namespace gutibm;
+
+void test_chemical_field_layout_mapping() {
+  DomainConfig replicated_cfg;
+  replicated_cfg.hi = {100e-6, 20e-6, 20e-6};
+  replicated_cfg.grid_dx = 5e-6;
+  Domain replicated_domain;
+  replicated_domain.init(replicated_cfg);
+
+  ChemicalSpec spec;
+  spec.name = "carbon";
+  ChemicalField replicated;
+  replicated.init(replicated_domain, {spec});
+  const Int replicated_cell = replicated_domain.cell_index(3, 2, 1);
+  assert(replicated.global_to_storage_cell(replicated_cell)
+         == replicated_cell);
+  assert(replicated.storage_to_global_cell(replicated_cell)
+         == replicated_cell);
+  assert(replicated.owns_global_cell(replicated_cell));
+  assert(!replicated.global_cell_in_halo(replicated_cell));
+
+  DomainConfig slab_cfg = replicated_cfg;
+  slab_cfg.grid_halo_width = 2;
+  Domain slab_domain;
+  slab_domain.init(slab_cfg);
+  ChemicalField slab;
+  slab.init(slab_domain, {spec}, "slab");
+  for (Int cell = 0; cell < slab_domain.ncells(); ++cell) {
+    assert(slab.global_to_storage_cell(cell)
+           == slab.storage_to_global_cell(cell));
+  }
+  assert(slab.owns_global_cell(
+      slab_domain.cell_index(slab_domain.local_grid_x_begin(), 0, 0)));
+  assert(slab.grid_halo_width() == slab_domain.grid_halo_width());
+
+  DomainConfig undersized_cfg = replicated_cfg;
+  undersized_cfg.grid_halo_width = 1;
+  Domain undersized_domain;
+  undersized_domain.init(undersized_cfg);
+  bool rejected = false;
+  try {
+    ChemicalField undersized;
+    undersized.init(undersized_domain, {spec}, "slab");
+  } catch (const ConfigError&) {
+    rejected = true;
+  }
+  assert(rejected);
+  std::cout << "  test_chemical_field_layout_mapping: PASSED\n";
+}
 
 void test_decompose_single_rank() {
   // With 1 rank, the entire domain is local
@@ -348,6 +397,7 @@ int main() {
   test_single_rank_simulation_consistent();
   test_ghost_width_config();
   test_grid_partition_metadata();
+  test_chemical_field_layout_mapping();
   test_migration_noop_single_rank();
   std::cout << "All domain decomposition tests passed.\n";
   return 0;
