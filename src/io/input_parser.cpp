@@ -289,6 +289,23 @@ bool apply_domain_key(SimulationConfig& cfg, std::string_view key, const std::st
   return false;
 }
 
+bool apply_chemistry_key(SimulationConfig& cfg, std::string_view key,
+                         const std::string& val) {
+  if (key == "chemistry_decomposition" || key == "chemistry.decomposition") {
+    if (val == "replicated" || val == "slab") {
+      cfg.chemistry_decomposition = val;
+      return true;
+    }
+    if (val == "interface") {
+      throw ConfigError(
+          "invalid chemistry_decomposition: interface is not yet implemented");
+    }
+    throw ConfigError(
+        "invalid chemistry_decomposition: unknown mode '" + val + "'");
+  }
+  return false;
+}
+
 bool apply_advection_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "mucus_thickness")      { cfg.advection.mucus_thickness = parse_config_real(key, val); return true; }
   if (key == "radial_turnover")      { cfg.advection.radial_turnover = parse_config_real(key, val); return true; }
@@ -888,9 +905,10 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 26> k_flat_key_handlers = {
+constexpr std::array<FlatKeyHandler, 27> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
+  apply_chemistry_key,
   apply_advection_key,
   apply_qssa_key,
   apply_vbf_key,

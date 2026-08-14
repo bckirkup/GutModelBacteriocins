@@ -9,6 +9,8 @@
 #include "types.h"
 #include "spatial_hash.h"
 
+#include <utility>
+
 #ifdef GUTIBM_MPI
 #include <mpi.h>
 #endif
@@ -39,6 +41,10 @@ struct DomainConfig {
 
   // Ghost layer thickness (should be >= hash_cell_size for correct neighbor queries)
   Real ghost_width = 10.0e-6;  // 10 um default
+
+  // Chemical grid halo width in cells. Stage 1 stores this metadata only;
+  // chemistry remains replicated until a later decomposition stage.
+  Int grid_halo_width = 1;
 };
 
 class Domain {
@@ -60,6 +66,27 @@ class Domain {
   Int nz() const { return nz_; }
   Int ncells() const { return nx_ * ny_ * nz_; }
   Real dx() const { return dx_; }
+
+  // Rank-local x-grid ownership, half-open in global cell coordinates.
+  Int local_grid_x_begin() const { return local_grid_x_begin_; }
+  Int local_grid_x_end() const { return local_grid_x_end_; }
+  Int local_grid_nx() const { return local_grid_x_end_ - local_grid_x_begin_; }
+  Int grid_halo_width() const { return grid_halo_width_; }
+  Int local_grid_storage_nx() const {
+    return local_grid_nx() + 2 * grid_halo_width_;
+  }
+
+  // Convert between global x indices and this rank's owned-plus-halo storage.
+  // Global indices wrap in periodic x; -1 means the global index is outside
+  // this rank's configured halo (or an invalid non-periodic halo).
+  Int global_to_local_grid_x(Int global_ix) const;
+  Int local_to_global_grid_x(Int local_ix) const;
+
+  // Integer partition helper shared by decomposition metadata and tests.
+  static std::pair<Int, Int> grid_x_range_for_rank(
+      Int global_nx, Int nprocs, Int rank);
+  static Int grid_owner_rank_for_cell(
+      Int global_nx, Int nprocs, Int global_ix);
 
   // Cell index from grid coordinates
   Int cell_index(Int ix, Int iy, Int iz) const {
@@ -135,6 +162,11 @@ class Domain {
   Real ghost_width_ = 0.0;
   Int rank_lo_ = -1;  // neighbor rank in -x direction
   Int rank_hi_ = -1;  // neighbor rank in +x direction
+
+  // Rank-local chemical grid metadata along x.
+  Int local_grid_x_begin_ = 0;
+  Int local_grid_x_end_ = 0;
+  Int grid_halo_width_ = 1;
 };
 
 }  // namespace gutibm

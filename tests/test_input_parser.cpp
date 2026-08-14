@@ -252,6 +252,7 @@ void test_chem_env_fixture() {
   assert(std::abs(cfg.chem_env.ferrichrome.initial_conc - 2e-6) < 1e-15);
   assert(std::abs(cfg.chem_env.ferrichrome.boundary_conc - 4e-6) < 1e-15);
   assert(std::abs(cfg.carbon_boundary_conc - 7e-3) < 1e-15);
+  assert(cfg.chemistry_decomposition == "slab");
 
   bool has_oxygen = false;
   bool has_acetate = false;
@@ -412,6 +413,23 @@ void test_burst_release_tau_must_be_positive() {
   std::cout << "  test_burst_release_tau_must_be_positive: PASSED\n";
 }
 
+void test_chemistry_decomposition_rejects_unimplemented_modes() {
+  SimulationConfig cfg = InputParser::default_config();
+  assert(cfg.chemistry_decomposition == "replicated");
+  assert(InputParser::apply_flat_key(cfg, "chemistry_decomposition", "slab"));
+  assert(cfg.chemistry_decomposition == "slab");
+  for (const std::string mode : {"interface", "unknown"}) {
+    bool threw = false;
+    try {
+      (void)InputParser::apply_flat_key(cfg, "chemistry_decomposition", mode);
+    } catch (const ConfigError&) {
+      threw = true;
+    }
+    assert(threw);
+  }
+  std::cout << "  test_chemistry_decomposition_rejects_unimplemented_modes: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -434,6 +452,7 @@ int main() {
   test_gpu_enabled_fixture();
   test_strict_config_aborts_on_bad_numeric();
   test_burst_release_tau_must_be_positive();
+  test_chemistry_decomposition_rejects_unimplemented_modes();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }

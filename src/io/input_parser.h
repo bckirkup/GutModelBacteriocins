@@ -79,6 +79,8 @@ struct SimulationConfig {
   AdaptiveTimestepConfig adaptive_dt;
 
   DomainConfig domain;
+  // Stage-1 selector; only replicated is active until slab storage exists.
+  std::string chemistry_decomposition = "replicated";
   AdvectionConfig advection;
   VBFConfig vbf;
   Real carbon_boundary_conc = 5.0e-3;
