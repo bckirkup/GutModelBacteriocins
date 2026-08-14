@@ -149,6 +149,7 @@ void test_slab_chemistry_transpose_halos_and_ledger() {
   simulation_cfg.time.total_time = 3.0 * simulation_cfg.time.bio_dt;
   simulation_cfg.time.output_interval = simulation_cfg.time.total_time;
   simulation_cfg.domain.periodic = {true, true, false};
+  simulation_cfg.domain.grid_halo_width = 2;
   simulation_cfg.chemistry_decomposition = "slab";
   Simulation slab_simulation;
   slab_simulation.init(simulation_cfg);
