@@ -198,7 +198,9 @@ Real diffuse_bounded_z(std::vector<Real>& concentration,
                        const Domain& domain,
                        Real alpha,
                        Real boundary_conc,
-                       Real cell_volume) {
+                       Real cell_volume,
+                       Int accounting_x_begin,
+                       Int accounting_x_end) {
   const Int nx = domain.nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
@@ -224,7 +226,9 @@ Real diffuse_bounded_z(std::vector<Real>& concentration,
         #ifdef GUTIBM_OPENMP
         #pragma omp atomic
         #endif
-        face_exchange += alpha * (boundary_conc - line.front()) * cell_volume;
+        if (ix >= accounting_x_begin && ix < accounting_x_end) {
+          face_exchange += alpha * (boundary_conc - line.front()) * cell_volume;
+        }
         for (Int iz = 1; iz < nz; ++iz) {
           concentration[static_cast<size_t>(domain.cell_index(ix, iy, iz))] =
               line[static_cast<size_t>(iz - 1)];
@@ -238,13 +242,17 @@ Real diffuse_bounded_z(std::vector<Real>& concentration,
 Real set_epithelial_boundary(std::vector<Real>& concentration,
                              const Domain& domain,
                              Real boundary_conc,
-                             Real cell_volume) {
+                             Real cell_volume,
+                             Int accounting_x_begin,
+                             Int accounting_x_end) {
   Real amount = 0.0;
   for (Int iy = 0; iy < domain.ny(); ++iy) {
     for (Int ix = 0; ix < domain.nx(); ++ix) {
       const auto index = static_cast<size_t>(
           domain.cell_index(ix, iy, 0));
-      amount += (boundary_conc - concentration[index]) * cell_volume;
+      if (ix >= accounting_x_begin && ix < accounting_x_end) {
+        amount += (boundary_conc - concentration[index]) * cell_volume;
+      }
       concentration[index] = boundary_conc;
     }
   }
@@ -499,7 +507,6 @@ void ChemicalField::sum_agent_uptake_across_ranks() {
 
 void ChemicalField::sum_accounting_across_ranks() {
 #ifdef GUTIBM_MPI
-  if (mode_ != DecompositionMode::Slab) return;
   int initialized = 0;
   int finalized = 0;
   MPI_Initialized(&initialized);
@@ -511,7 +518,9 @@ void ChemicalField::sum_accounting_across_ranks() {
                   MPI_COMM_WORLD);
   };
   reduce(flux_accounting_.boundary_interval);
-  reduce(flux_accounting_.reaction_clip_interval);
+  if (mode_ == DecompositionMode::Slab) {
+    reduce(flux_accounting_.reaction_clip_interval);
+  }
 #endif
 }
 
@@ -857,7 +866,9 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
     const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
     flux_accounting_.add_boundary(
         s, set_epithelial_boundary(concentration, domain,
-                                   chemical.boundary_conc, cell_volume));
+                                   chemical.boundary_conc, cell_volume,
+                                   domain.local_grid_x_begin(),
+                                   domain.local_grid_x_end()));
     if (preserve_gradient) {
       // The configured z-gradient is an environmental background profile.
       // Diffuse reaction-driven departures from it rather than erasing it.
@@ -873,7 +884,9 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
     diffuse_periodic_y(concentration, domain, alpha);
     flux_accounting_.add_boundary(
         s, diffuse_bounded_z(concentration, domain, alpha,
-                             diffusion_boundary, cell_volume));
+                             diffusion_boundary, cell_volume,
+                             domain.local_grid_x_begin(),
+                             domain.local_grid_x_end()));
 
     if (preserve_gradient) {
       shift_z_gradient(concentration, chemical, domain, 1.0);
@@ -882,7 +895,9 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
     clamp_nonnegative(concentration);
     flux_accounting_.add_boundary(
         s, set_epithelial_boundary(concentration, domain,
-                                   chemical.boundary_conc, cell_volume));
+                                   chemical.boundary_conc, cell_volume,
+                                   domain.local_grid_x_begin(),
+                                   domain.local_grid_x_end()));
   }
 }
 
@@ -940,7 +955,8 @@ namespace {
 void apply_epithelial_boundary_layer(
     std::vector<std::vector<Real>>& concentration,
     const Domain& domain, Int species_index, Real boundary_conc,
-    NutrientFluxAccounting& flux_accounting) {
+    NutrientFluxAccounting& flux_accounting,
+    Int accounting_x_begin, Int accounting_x_end) {
   for (Int iy = 0; iy < domain.ny(); ++iy) {
     for (Int ix = 0; ix < domain.nx(); ++ix) {
       const Int idx = domain.cell_index(ix, iy, 0);
@@ -948,9 +964,11 @@ void apply_epithelial_boundary_layer(
           [static_cast<size_t>(idx)];
       concentration[static_cast<size_t>(species_index)]
           [static_cast<size_t>(idx)] = boundary_conc;
-      flux_accounting.add_boundary(
-          species_index,
-          (boundary_conc - old) * domain.dx() * domain.dx() * domain.dx());
+      if (ix >= accounting_x_begin && ix < accounting_x_end) {
+        flux_accounting.add_boundary(
+            species_index,
+            (boundary_conc - old) * domain.dx() * domain.dx() * domain.dx());
+      }
     }
   }
 }
@@ -983,7 +1001,9 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
 
     // z=0 (epithelial surface): Dirichlet for nutrients. When a z-gradient is
     // configured, this is the peak concentration at the epithelium.
-    apply_epithelial_boundary_layer(conc_, domain, s, bc, flux_accounting_);
+    apply_epithelial_boundary_layer(
+        conc_, domain, s, bc, flux_accounting_,
+        domain.local_grid_x_begin(), domain.local_grid_x_end());
 
     // The implicit z solve enforces the luminal zero-flux condition directly.
     // Non-diffusing fields retain the legacy mirrored top layer.
