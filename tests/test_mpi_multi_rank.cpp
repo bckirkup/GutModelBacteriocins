@@ -265,13 +265,14 @@ void assert_equal_ledgers(const Simulation& slab,
                     MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
       assert(slab_min == slab_max);
       assert(replicated_min == replicated_max);
-      if (slab_min != replicated_min) {
-        int rank = 0;
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        if (rank == 0) {
-          std::cerr << "ledger mismatch " << name << '[' << species << "] "
-                    << slab_min << " vs " << replicated_min << '\n';
-        }
+    if (slab_min != replicated_min) {
+      int rank = 0;
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      if (rank == 0) {
+        std::cerr << std::setprecision(17);
+        std::cerr << "ledger mismatch " << name << '[' << species << "] "
+                  << slab_min << " vs " << replicated_min << '\n';
+      }
       }
       assert(slab_min == replicated_min);
     }
