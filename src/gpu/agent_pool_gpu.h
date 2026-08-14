@@ -64,12 +64,14 @@ class AgentPoolGpu {
 
   bool run_metabolism(const Domain& domain, const MetabolismConfig& cfg,
                       const GpuMetabolismBuffers& buffers, double* uptake_totals,
-                      double dt);
+                      double dt, Int num_agents);
+  Int metabolism_gpu_steps() const { return metabolism_gpu_steps_; }
 
   void sync_positions_to_host(AgentPool& pool) const;
 
  private:
   Int size_ = 0;
+  Int metabolism_gpu_steps_ = 0;
   DeviceBuffer<double> d_x_;
   DeviceBuffer<double> d_y_;
   DeviceBuffer<double> d_z_;

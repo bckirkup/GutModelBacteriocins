@@ -43,9 +43,17 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   if (sim.config().chem_env.siderophore.enabled) return false;
 
   auto& agents = sim.agents();
+  Int local_agent_count = 0;
+  bool ghost_seen = false;
   for (const Agent& agent : agents) {
-    if (agent.flags.is_ghost) return false;
+    if (agent.flags.is_ghost) {
+      ghost_seen = true;
+    } else {
+      if (ghost_seen) return false;
+      ++local_agent_count;
+    }
   }
+  if (local_agent_count <= 0) return false;
   auto& ag = sim.agents_gpu();
   auto& cg = sim.chem_gpu();
   cg.reset_agent_uptake();
@@ -74,7 +82,7 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
             o2cfg.boost_max,
             o2cfg.Km,
           },
-          cg.agent_uptake_device(), dt)) {
+          cg.agent_uptake_device(), dt, local_agent_count)) {
     return false;
   }
   ag.sync_to_host(agents);
