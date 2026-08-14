@@ -41,9 +41,11 @@ void test_chemical_field_layout_mapping() {
   slab_domain.init(slab_cfg);
   ChemicalField slab;
   slab.init(slab_domain, {spec}, "slab");
-  for (Int cell = 0; cell < slab_domain.ncells(); ++cell) {
-    assert(slab.global_to_storage_cell(cell)
-           == slab.storage_to_global_cell(cell));
+  for (Int cell = 0; cell < slab.global_ncells(); ++cell) {
+    const Int storage = slab.global_to_storage_cell(cell);
+    if (storage >= 0) {
+      assert(slab.storage_to_global_cell(storage) == cell);
+    }
   }
   assert(slab.owns_global_cell(
       slab_domain.cell_index(slab_domain.local_grid_x_begin(), 0, 0)));

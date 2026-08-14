@@ -55,6 +55,9 @@ cd python && pytest tests/ -v -m "not integration"
 - **VBF for anaerobes** — 99% of background flora is a continuum field, not discrete agents
 - **Spatial hashing** — O(N) neighbor lookups, not O(N²)
 - **MPI domain decomposition** — cell-aligned 1D slab along x-axis; ghost exchange + agent migration
+- **Chemical decomposition** — `replicated` is the default; `slab` stores owned x-cells
+  with concentration halos, local y/z operators, and an exact periodic-x exchange
+  before the later HDF5/checkpoint/GPU storage support
 - **Never modify tests to make them pass** — fix the implementation
 
 ### Timestep modules (do not reorder casually)

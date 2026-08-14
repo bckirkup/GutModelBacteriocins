@@ -45,6 +45,41 @@ Real inventory(const ChemicalField& chem, const Domain& domain) {
   return total;
 }
 
+void test_slab_point_source_invariants() {
+  DomainConfig cfg;
+  cfg.lo = {0.0, 0.0, 0.0};
+  cfg.hi = {25.0e-6, 5.0e-6, 10.0e-6};
+  cfg.grid_dx = 5.0e-6;
+  cfg.grid_halo_width = 2;
+  Domain domain;
+  domain.init(cfg);
+  ChemicalField chem;
+  chem.init(domain, {diffusing_species(1.0e-12, 0.0, 0.0)}, "slab");
+  const Int source = domain.cell_index(2, 0, 1);
+  chem.conc_global(0, source) = 1.0;
+  const Real before = inventory(chem, domain);
+  chem.apply_diffusion(domain, 2.5);
+  const Real after = inventory(chem, domain);
+  const Real alpha = 2.5 * 1.0e-12 / (domain.dx() * domain.dx());
+  assert(std::abs(after * (1.0 + alpha) - before)
+         <= 1.0e-12 * std::abs(before));
+  for (Int ix = 0; ix < domain.nx(); ++ix) {
+    const Int cell = domain.cell_index(ix, 0, 1);
+    const Int left = domain.cell_index(
+        (ix + domain.nx() - 1) % domain.nx(), 0, 1);
+    const Int right = domain.cell_index((ix + 1) % domain.nx(), 0, 1);
+    const Real value = chem.conc_global(0, cell);
+    const Real laplacian = (chem.conc_global(0, left)
+        + chem.conc_global(0, right) - 2.0 * value)
+        / (domain.dx() * domain.dx());
+    const Real residual = (1.0 + alpha)
+        * (value - 2.5e-12 * laplacian);
+    assert(std::abs(residual - (ix == 2 ? 1.0 : 0.0)) < 1.0e-12);
+    assert(value >= 0.0);
+  }
+  std::cout << "  test_slab_point_source_invariants: PASSED\n";
+}
+
 void test_uniform_field_is_fixed_point() {
   Domain domain = make_domain(5, 4, 6);
   ChemicalField chem;
@@ -293,6 +328,7 @@ void test_default_species_configuration() {
 int main() {
   std::cout << "=== Nutrient Diffusion Tests ===\n";
   test_uniform_field_is_fixed_point();
+  test_slab_point_source_invariants();
   test_point_source_invariants_and_residual();
   test_diffusion_enable_and_coefficient_sensitivity();
   test_dirichlet_neumann_boundary_gradient();
