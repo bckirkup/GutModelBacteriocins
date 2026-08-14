@@ -13,9 +13,17 @@
 #include "greens_function_gpu.h"
 #include "dispatch.h"
 #include "agent.h"
+#include "error.h"
 #include <cmath>
+#include <cstddef>
+#include <cstring>
+#include <limits>
 #include <numbers>
 #include <numeric>
+#include <type_traits>
+#ifdef GUTIBM_MPI
+#include <mpi.h>
+#endif
 #ifdef GUTIBM_OPENMP
 #include <omp.h>
 #endif
@@ -41,6 +49,106 @@ struct MicrocinSourceBuffers {
   std::vector<bool>& is_nuclease;
   std::vector<ReceptorType>& targets;
 };
+
+struct ToxinSourceRecord {
+  Vec3 position;
+  GreensFunctionParams params;
+  Real strength_factor;
+  int target;
+  int is_nuclease;
+};
+
+static_assert(std::is_trivially_copyable_v<ToxinSourceRecord>);
+
+bool mpi_source_exchange_available(int& ranks) {
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) return false;
+  MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+  return ranks > 1;
+#else
+  (void)ranks;
+  return false;
+#endif
+}
+
+void exchange_toxin_sources(
+    std::vector<Vec3>& sources,
+    std::vector<GreensFunctionParams>& params,
+    std::vector<Real>& strength_factors,
+    std::vector<bool>& is_nuclease,
+    std::vector<ReceptorType>& targets) {
+  int ranks = 1;
+  if (!mpi_source_exchange_available(ranks)) return;
+
+#ifdef GUTIBM_MPI
+  const size_t local_count = sources.size();
+  const size_t max_count = static_cast<size_t>(
+      std::numeric_limits<int>::max()) / sizeof(ToxinSourceRecord);
+  if (local_count > max_count) {
+    throw SimulationError("toxin source count exceeds MPI exchange capacity");
+  }
+
+  std::vector<ToxinSourceRecord> local(local_count);
+  for (size_t i = 0; i < local_count; ++i) {
+    local[i].position = sources[i];
+    local[i].params = params[i];
+    local[i].strength_factor = strength_factors[i];
+    local[i].target = to_underlying(targets[i]);
+    local[i].is_nuclease = is_nuclease[i] ? 1 : 0;
+  }
+
+  const int local_bytes =
+      static_cast<int>(local.size() * sizeof(ToxinSourceRecord));
+  std::vector<int> byte_counts(ranks);
+  MPI_Allgather(&local_bytes, 1, MPI_INT, byte_counts.data(), 1, MPI_INT,
+                MPI_COMM_WORLD);
+
+  std::vector<int> displacements(ranks, 0);
+  int total_bytes = 0;
+  for (int rank = 0; rank < ranks; ++rank) {
+    displacements[rank] = total_bytes;
+    if (byte_counts[rank] > std::numeric_limits<int>::max() - total_bytes) {
+      throw SimulationError("toxin source MPI exchange is too large");
+    }
+    total_bytes += byte_counts[rank];
+  }
+
+  std::vector<std::byte> gathered(static_cast<size_t>(total_bytes));
+  MPI_Allgatherv(local.data(), local_bytes, MPI_BYTE, gathered.data(),
+                 byte_counts.data(), displacements.data(), MPI_BYTE,
+                 MPI_COMM_WORLD);
+
+  const size_t total_count =
+      static_cast<size_t>(total_bytes) / sizeof(ToxinSourceRecord);
+  std::vector<ToxinSourceRecord> combined(total_count);
+  if (total_count > 0) {
+    std::memcpy(combined.data(), gathered.data(),
+                total_count * sizeof(ToxinSourceRecord));
+  }
+
+  sources.clear();
+  params.clear();
+  strength_factors.clear();
+  is_nuclease.clear();
+  targets.clear();
+  sources.reserve(total_count);
+  params.reserve(total_count);
+  strength_factors.reserve(total_count);
+  is_nuclease.reserve(total_count);
+  targets.reserve(total_count);
+  for (const ToxinSourceRecord& source : combined) {
+    sources.push_back(source.position);
+    params.push_back(source.params);
+    strength_factors.push_back(source.strength_factor);
+    is_nuclease.push_back(source.is_nuclease != 0);
+    targets.push_back(static_cast<ReceptorType>(source.target));
+  }
+#endif
+}
 
 void accumulate_far_field_cell(
     const FMM& fmm, const GreensFunction& gf,
@@ -277,6 +385,8 @@ void QSSASolver::solve_bacteriocin_field(
 
   collect_microcin_sources(agents, cfg_, protease, adv, buffers);
   append_burst_sources(bursts, current_time, buffers);
+  exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
+                         all_targets);
 
   std::vector<Vec3> sources;
   std::vector<GreensFunctionParams> params;
@@ -289,6 +399,18 @@ void QSSASolver::solve_bacteriocin_field(
     return;
   }
 
+  solve_bacteriocin_field_from_sources(sources, params, strength_factors, adv,
+                                       chem, toxin_species_idx, chem_gpu);
+}
+
+void QSSASolver::solve_bacteriocin_field_from_sources(
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors,
+    const AdvectionField& adv,
+    ChemicalField& chem,
+    Int toxin_species_idx,
+    ChemicalFieldGpu* chem_gpu) const {
   if (cfg_.use_fmm) {
     solve_bacteriocin_field_fmm(sources, params, strength_factors, adv,
                                 chem, toxin_species_idx, chem_gpu);
@@ -316,13 +438,37 @@ void QSSASolver::solve_all_bacteriocin_fields(
   std::vector<Int> solved_indices;
   solved_indices.reserve(species::BACTERIOCIN_RECEPTOR_TARGETS.size());
 
+  std::vector<Vec3> all_sources;
+  std::vector<GreensFunctionParams> all_params;
+  std::vector<Real> all_strengths;
+  std::vector<bool> is_nuclease;
+  std::vector<ReceptorType> all_targets;
+  MicrocinSourceBuffers buffers{all_sources, all_params, all_strengths,
+                                is_nuclease, all_targets};
+  collect_microcin_sources(agents, cfg_, protease, adv, buffers);
+  append_burst_sources(bursts, current_time, buffers);
+  exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
+                         all_targets);
+
+  std::vector<Vec3> sources;
+  std::vector<GreensFunctionParams> params;
+  std::vector<Real> strength_factors;
   for (ReceptorType target : species::BACTERIOCIN_RECEPTOR_TARGETS) {
     const char* name = species::bacteriocin_species_for(target);
     if (name == nullptr) continue;
     Int idx = chem.find(name);
     if (idx < 0) continue;
-    solve_bacteriocin_field(agents, bursts, current_time, protease, adv, chem,
-                              idx, target, chem_gpu);
+    filter_sources_by_target(all_sources, all_params, all_strengths, all_targets,
+                             target, sources, params, strength_factors);
+    if (sources.empty()) {
+      zero_species_field(chem, idx);
+    } else {
+      solve_bacteriocin_field_from_sources(
+          sources, params, strength_factors, adv, chem, idx, chem_gpu);
+    }
+    sources.clear();
+    params.clear();
+    strength_factors.clear();
     if (chem_gpu != nullptr && chem_gpu->active()) {
       solved_indices.push_back(idx);
     }

@@ -6,6 +6,8 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "mpi_test_helpers.h"
+#include "species_names.h"
+#include "plasmid.h"
 
 #include <cassert>
 #include <cmath>
@@ -75,6 +77,66 @@ void test_reaction_sum_and_diffusion_are_rank_identical() {
 
   if (rank == 0) {
     std::cout << "  test_reaction_sum_and_diffusion_are_rank_identical: PASSED\n";
+  }
+}
+
+void test_cross_rank_bacteriocin_source_exchange() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  SimulationConfig cfg = make_mpi_config(4243, 40);
+  cfg.qssa.toxin_cutoff = 80e-6;
+  Simulation sim;
+  sim.init(cfg);
+
+  for (Agent& agent : sim.agents()) {
+    agent.genome.bi_loci.clear();
+  }
+  if (rank == 0) {
+    Agent& producer = sim.agents()[0];
+    producer.x = {49e-6, 50e-6, 25e-6};
+    producer.grid_cell = sim.domain().cell_index(9, 10, 5);
+    producer.genome.bi_loci.push_back(PlasmidLibrary::microcin_V());
+  }
+
+  const Int target_ix = 11;
+  const Int target_iy = 10;
+  const Int target_iz = 5;
+  const Vec3 target_position =
+      sim.domain().cell_center(target_ix, target_iy, target_iz);
+  assert(sim.domain().owner_rank(target_position) == 1);
+
+  Int local_sources = rank == 0 ? 1 : 0;
+  Int global_sources = 0;
+  MPI_Allreduce(&local_sources, &global_sources, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  assert(global_sources == 1);
+
+  const Int species_idx =
+      sim.chemical_field().find(species::BACTERIOCIN_CIRA);
+  assert(species_idx >= 0);
+  sim.qssa().solve_bacteriocin_field(
+      sim.agents(), {}, 0.0, cfg.chem_env.protease, sim.advection(),
+      sim.chemical_field(), species_idx, ReceptorType::CirA);
+
+  const Int target_cell =
+      sim.domain().cell_index(target_ix, target_iy, target_iz);
+  const Real local_concentration =
+      sim.chemical_field().conc(species_idx, target_cell);
+  Real minimum = 0.0;
+  Real maximum = 0.0;
+  MPI_Allreduce(&local_concentration, &minimum, 1, MPI_DOUBLE, MPI_MIN,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_concentration, &maximum, 1, MPI_DOUBLE, MPI_MAX,
+                MPI_COMM_WORLD);
+  assert(minimum > 0.0);
+  assert(std::abs(maximum - minimum)
+         <= 1.0e-12 * std::max(1.0, maximum));
+
+  if (rank == 0) {
+    std::cout << "  test_cross_rank_bacteriocin_source_exchange: PASSED\n";
   }
 }
 
@@ -457,6 +519,7 @@ int main(int argc, char** argv) {
   }
 
   test_reaction_sum_and_diffusion_are_rank_identical();
+  test_cross_rank_bacteriocin_source_exchange();
   test_slab_decomposition();
   test_slab_decomposition_periodic_x();
   test_init_population_partitioned();
