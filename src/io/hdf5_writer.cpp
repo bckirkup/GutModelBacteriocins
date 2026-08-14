@@ -305,7 +305,7 @@ int32_t count_live_lineages(const AgentPool& agents) {
 
 std::vector<char> species_name_table(const ChemicalField& chem) {
   constexpr size_t kSpeciesNameWidth = 48;
-  std::vector<char> names(chem.specs().size() * kSpeciesNameWidth, '\0');
+  std::vector names(chem.specs().size() * kSpeciesNameWidth, '\0');
   for (size_t i = 0; i < chem.specs().size(); ++i) {
     const std::string& name = chem.specs()[i].name;
     const size_t count = std::min(name.size(), kSpeciesNameWidth - 1);
@@ -316,7 +316,7 @@ std::vector<char> species_name_table(const ChemicalField& chem) {
 
 std::vector<Real> boundary_flux_per_area(
     const std::vector<Real>& interval, Real area, Real interval_time) {
-  std::vector<Real> result(interval.size(), 0.0);
+  std::vector result(interval.size(), 0.0);
   if (area <= 0.0 || interval_time <= 0.0) return result;
   for (size_t i = 0; i < result.size(); ++i) {
     result[i] = interval[i] / (area * interval_time);
@@ -355,7 +355,7 @@ void summarize_agents(
 }
 
 std::vector<double> mean_receptor_expression(const AgentPool& agents) {
-  std::vector<double> result(NUM_RECEPTORS, 0.0);
+  std::vector result(NUM_RECEPTORS, 0.0);
   Int live = 0;
   for (const Agent& agent : agents) {
     if (agent.state == PhenoState::DEAD) continue;

@@ -35,7 +35,7 @@ void setup_zero_flow(Domain& domain, AdvectionField& adv, GreensFunction& gf) {
   gf.init(domain, adv);
 }
 
-Real fit_screening_length(GreensFunction& gf, const Vec3& source,
+Real fit_screening_length(const GreensFunction& gf, const Vec3& source,
                           const BICluster& bi) {
   GreensFunctionParams params;
   params.diff_coeff = bi.diff_coeff;
@@ -57,7 +57,7 @@ Real fit_screening_length(GreensFunction& gf, const Vec3& source,
     sum_rr += r * r;
     sum_ry += r * y;
   }
-  const Real n = static_cast<Real>(distances.size());
+  const auto n = static_cast<Real>(distances.size());
   const Real slope = (n * sum_ry - sum_r * sum_y)
       / (n * sum_rr - sum_r * sum_r);
   return -1.0 / slope;

@@ -214,18 +214,19 @@ void test_ghost_width_config() {
 
 void test_grid_partition_metadata() {
   constexpr Int nx = 10;
-  const std::vector<Int> process_counts = {1, 2, 3, 4, 11};
+  const std::vector process_counts = {1, 2, 3, 4, 11};
   for (const Int nprocs : process_counts) {
-    std::vector<Int> coverage(static_cast<size_t>(nx), 0);
+    std::vector coverage(static_cast<size_t>(nx), Int{0});
     Int previous_end = 0;
     for (Int rank = 0; rank < nprocs; ++rank) {
-      const auto range = Domain::grid_x_range_for_rank(nx, nprocs, rank);
-      assert(range.first == previous_end);
-      assert(range.first <= range.second);
-      for (Int ix = range.first; ix < range.second; ++ix) {
+      const auto [range_begin, range_end] =
+          Domain::grid_x_range_for_rank(nx, nprocs, rank);
+      assert(range_begin == previous_end);
+      assert(range_begin <= range_end);
+      for (Int ix = range_begin; ix < range_end; ++ix) {
         ++coverage[static_cast<size_t>(ix)];
       }
-      previous_end = range.second;
+      previous_end = range_end;
     }
     assert(previous_end == nx);
     for (const Int owners : coverage) assert(owners == 1);
@@ -240,9 +241,9 @@ void test_grid_partition_metadata() {
   misaligned_domain.init(misaligned_cfg);
   for (const Int nprocs : {2, 3, 4, 11}) {
     for (Int rank = 0; rank < nprocs; ++rank) {
-      const auto range = Domain::grid_x_range_for_rank(
+      const auto [range_begin, range_end] = Domain::grid_x_range_for_rank(
           misaligned_domain.nx(), nprocs, rank);
-      for (Int ix = range.first; ix < range.second; ++ix) {
+      for (Int ix = range_begin; ix < range_end; ++ix) {
         const Vec3 center = misaligned_domain.cell_center(ix, 0, 0);
         Int center_ix = 0;
         Int center_iy = 0;

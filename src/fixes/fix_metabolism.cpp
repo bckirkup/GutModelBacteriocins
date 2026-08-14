@@ -106,10 +106,10 @@ void FixMetabolism::compute(Real dt) {
 }
 
 void FixMetabolism::apply_siderophore_chemistry(Real dt) {
-  const auto& sid_cfg = sim_.config().chem_env.siderophore;
-  if (!sid_cfg.enabled) return;
+  if (const auto& sid_cfg = sim_.config().chem_env.siderophore;
+      !sid_cfg.enabled) return;
 
-  auto& chem = sim_.chemical_field();
+  const auto& chem = sim_.chemical_field();
   const Int i_sid = chem.find(species::SIDEROPHORE);
   const Int i_iron = chem.find(species::IRON);
   const Int i_ferric_enterobactin =

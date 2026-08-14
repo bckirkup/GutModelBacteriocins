@@ -2,6 +2,7 @@
 
 checkpoint_keys_from_list_response() {
   jq -r '.Contents[]?.Key'
+  return $?
 }
 
 checkpoint_step_from_key() {
@@ -13,6 +14,7 @@ checkpoint_step_from_key() {
   elif [[ "${key}" =~ ^[0-9]+$ ]]; then
     printf '%d\n' "$((10#${key}))"
   fi
+  return 0
 }
 
 checkpoint_select_retained_keys() {
@@ -40,4 +42,5 @@ checkpoint_select_retained_keys() {
       printf '%s\n' "${key}"
     fi
   done
+  return 0
 }

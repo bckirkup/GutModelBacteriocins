@@ -90,13 +90,13 @@ void exchange_toxin_sources(
 
 #ifdef GUTIBM_MPI
   const size_t local_count = sources.size();
-  const size_t max_count = static_cast<size_t>(
-      std::numeric_limits<int>::max()) / sizeof(ToxinSourceRecord);
-  if (local_count > max_count) {
+  if (const size_t max_count = static_cast<size_t>(
+          std::numeric_limits<int>::max()) / sizeof(ToxinSourceRecord);
+      local_count > max_count) {
     throw SimulationError("toxin source count exceeds MPI exchange capacity");
   }
 
-  std::vector<ToxinSourceRecord> local(local_count);
+  std::vector local(local_count, ToxinSourceRecord{});
   for (size_t i = 0; i < local_count; ++i) {
     local[i].position = sources[i];
     local[i].params = params[i];
@@ -105,13 +105,13 @@ void exchange_toxin_sources(
     local[i].is_nuclease = is_nuclease[i] ? 1 : 0;
   }
 
-  const int local_bytes =
+  const auto local_bytes =
       static_cast<int>(local.size() * sizeof(ToxinSourceRecord));
-  std::vector<int> byte_counts(ranks);
+  std::vector byte_counts(ranks, 0);
   MPI_Allgather(&local_bytes, 1, MPI_INT, byte_counts.data(), 1, MPI_INT,
                 MPI_COMM_WORLD);
 
-  std::vector<int> displacements(ranks, 0);
+  std::vector displacements(ranks, 0);
   int total_bytes = 0;
   for (int rank = 0; rank < ranks; ++rank) {
     displacements[rank] = total_bytes;
