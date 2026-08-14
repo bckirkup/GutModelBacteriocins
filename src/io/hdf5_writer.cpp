@@ -276,20 +276,41 @@ void pack_grid_species(const ChemicalField& chem, const Domain& domain,
 Real field_mean(const ChemicalField& chem, Int species_idx) {
   if (species_idx < 0) return 0.0;
   Real sum = 0.0;
-  const Int n = chem.ncells();
-  for (Int c = 0; c < n; ++c) {
-    sum += chem.conc(species_idx, c);
+  Int n = 0;
+  for (Int c = 0; c < chem.global_ncells(); ++c) {
+    if (!chem.owns_global_cell(c)) continue;
+    sum += chem.conc_global(species_idx, c);
+    ++n;
   }
+#ifdef GUTIBM_MPI
+  if (chem.slab_mode()) {
+    Real global_sum = 0.0;
+    Int global_n = 0;
+    MPI_Allreduce(&sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM,
+                  MPI_COMM_WORLD);
+    MPI_Allreduce(&n, &global_n, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    sum = global_sum;
+    n = global_n;
+  }
+#endif
   return n > 0 ? sum / static_cast<Real>(n) : 0.0;
 }
 
 Real field_max(const ChemicalField& chem, Int species_idx) {
   if (species_idx < 0) return 0.0;
   Real mx = 0.0;
-  const Int n = chem.ncells();
-  for (Int c = 0; c < n; ++c) {
-    mx = std::max(mx, chem.conc(species_idx, c));
+  for (Int c = 0; c < chem.global_ncells(); ++c) {
+    if (!chem.owns_global_cell(c)) continue;
+    mx = std::max(mx, chem.conc_global(species_idx, c));
   }
+#ifdef GUTIBM_MPI
+  if (chem.slab_mode()) {
+    Real global_max = 0.0;
+    MPI_Allreduce(&mx, &global_max, 1, MPI_DOUBLE, MPI_MAX,
+                  MPI_COMM_WORLD);
+    mx = global_max;
+  }
+#endif
   return mx;
 }
 

@@ -44,6 +44,24 @@ namespace {
 
 constexpr uint64_t kImmigrationSeedMix = 0x9e3779b97f4a7c15ULL;
 
+void reject_unsupported_slab_surfaces(
+    const SimulationConfig& cfg, const Domain& domain) {
+  if (cfg.chemistry_decomposition != "slab") return;
+  if (cfg.hdf5.enabled) {
+    throw ConfigError(
+        "slab chemistry does not support HDF5 grid output until stage 2c");
+  }
+  if (!cfg.checkpoint.file.empty() || cfg.restart.enabled) {
+    throw ConfigError(
+        "slab chemistry does not support checkpoint/restart until stage 2c");
+  }
+  if (cfg.gpu.enabled) {
+    throw ConfigError(
+        "slab chemistry does not support the GPU mirror until stage 2c");
+  }
+  (void)domain;
+}
+
 Real global_density_cells_per_mL(const Domain& domain, Int global_agents) {
   const Vec3 size = domain.size();
   const Real volume_m3 = size[0] * size[1] * size[2];
@@ -279,6 +297,7 @@ void Simulation::init(const SimulationConfig& cfg) {
 
   // Domain
   domain_.init(cfg.domain);
+  reject_unsupported_slab_surfaces(cfg_, domain_);
 
   // Chemical fields
   chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
@@ -321,6 +340,9 @@ void Simulation::init(const SimulationConfig& cfg) {
   // Initial coupling
   rebuild_spatial_hash();
   update_grid_coupling();
+  // Slab concentration halos are valid for all biology field reads from this
+  // point until chemistry modifies owned concentrations below.
+  chem_.exchange_concentration_halos();
 
   // Initial global stats
   allreduce_global_stats();
@@ -406,6 +428,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   immigration_.seed(cfg_.seed ^ kImmigrationSeedMix);
 
   domain_.init(cfg_.domain);
+  reject_unsupported_slab_surfaces(cfg_, domain_);
   chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
@@ -1003,6 +1026,9 @@ void Simulation::step(Real dt) {
 
   rebuild_spatial_hash();
   update_grid_coupling();
+  // Chemistry changed owned concentrations in the previous step; refresh the
+  // halos before any ghost-agent or gradient/stencil read in biology.
+  chem_.exchange_concentration_halos();
   profiler.lap(step_profile_.spatial_hash_s);
 
   for (const auto& fix : fixes_) {
