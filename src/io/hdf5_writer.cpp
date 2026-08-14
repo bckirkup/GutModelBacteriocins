@@ -21,6 +21,7 @@ extern "C" {
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -921,14 +922,59 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
     grid3d.resize(static_cast<size_t>(nx_ * ny_ * nz_));
   }
 
+  Int local_begin = 0;
+  Int local_nx = nx_;
+#ifdef GUTIBM_MPI
+  int rank = 0;
+  int nprocs = 1;
+  std::vector<int> counts;
+  std::vector<int> displacements;
+  std::vector<int> begins;
+  std::vector<int> widths;
+  int total_count = 0;
+  const bool gather_slab = chem.slab_mode() && mpi_multi_rank();
+  if (chem.slab_mode()) {
+    local_begin = chem.owned_storage_x_begin();
+    local_nx = chem.owned_storage_x_end() - local_begin;
+  }
+  if (gather_slab) {
+    rank = mpi_rank_world();
+    nprocs = mpi_nprocs_world();
+    const int local_count = static_cast<int>(local_nx * ny_ * nz_);
+    counts.resize(static_cast<size_t>(nprocs));
+    displacements.resize(static_cast<size_t>(nprocs));
+    begins.resize(static_cast<size_t>(nprocs));
+    widths.resize(static_cast<size_t>(nprocs));
+    MPI_Allgather(&local_count, 1, MPI_INT, counts.data(), 1, MPI_INT,
+                  MPI_COMM_WORLD);
+    const int global_begin = domain.local_grid_x_begin();
+    const int global_width = domain.local_grid_nx();
+    MPI_Allgather(&global_begin, 1, MPI_INT, begins.data(), 1, MPI_INT,
+                  MPI_COMM_WORLD);
+    MPI_Allgather(&global_width, 1, MPI_INT, widths.data(), 1, MPI_INT,
+                  MPI_COMM_WORLD);
+    Int gathered_width = 0;
+    for (int r = 0; r < nprocs; ++r) {
+      displacements[static_cast<size_t>(r)] = total_count;
+      total_count += counts[static_cast<size_t>(r)];
+      gathered_width += widths[static_cast<size_t>(r)];
+    }
+    assert(gathered_width == nx_);
+    assert(total_count == nx_ * ny_ * nz_);
+    if (rank == 0) grid3d.reserve(static_cast<size_t>(total_count));
+  }
+#else
+  if (chem.slab_mode()) {
+    local_begin = chem.owned_storage_x_begin();
+    local_nx = chem.owned_storage_x_end() - local_begin;
+  }
+#endif
+
   for (Int s = 0; s < chem.num_species(); ++s) {
     const std::string name = chem.spec(s).name;
     if (!should_write_species(name)) continue;
 
     if (chem.slab_mode()) {
-      const Int local_begin = chem.owned_storage_x_begin();
-      const Int local_end = chem.owned_storage_x_end();
-      const Int local_nx = local_end - local_begin;
       std::vector<double> local(
           static_cast<size_t>(local_nx * ny_ * nz_));
       for (Int iz = 0; iz < nz_; ++iz) {
@@ -945,29 +991,10 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
         }
       }
 #ifdef GUTIBM_MPI
-      if (mpi_multi_rank()) {
-        const int rank = mpi_rank_world();
-        const int nprocs = mpi_nprocs_world();
+      if (gather_slab) {
         const int local_count = static_cast<int>(local.size());
-        std::vector<int> counts(static_cast<size_t>(nprocs));
-        std::vector<int> displacements(static_cast<size_t>(nprocs));
-        MPI_Allgather(&local_count, 1, MPI_INT, counts.data(), 1, MPI_INT,
-                      MPI_COMM_WORLD);
-        int total_count = 0;
-        for (int r = 0; r < nprocs; ++r) {
-          displacements[static_cast<size_t>(r)] = total_count;
-          total_count += counts[static_cast<size_t>(r)];
-        }
         std::vector<double> gathered;
-        std::vector<int> begins(static_cast<size_t>(nprocs));
-        std::vector<int> widths(static_cast<size_t>(nprocs));
         if (rank == 0) gathered.resize(static_cast<size_t>(total_count));
-        const int global_begin = domain.local_grid_x_begin();
-        const int global_width = domain.local_grid_nx();
-        MPI_Allgather(&global_begin, 1, MPI_INT, begins.data(), 1, MPI_INT,
-                      MPI_COMM_WORLD);
-        MPI_Allgather(&global_width, 1, MPI_INT, widths.data(), 1, MPI_INT,
-                      MPI_COMM_WORLD);
         double dummy = 0.0;
         const double* send = local.empty() ? &dummy : local.data();
         MPI_Gatherv(send, local_count, MPI_DOUBLE,

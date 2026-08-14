@@ -162,6 +162,16 @@ if(GUTIBM_USE_HDF5)
       PASS_REGULAR_EXPRESSION "All HDF5 round-trip tests passed"
       RESOURCE_LOCK mpi
     )
+    add_test(
+      NAME hdf5_checkpoint_parallel
+      COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_hdf5_checkpoint> ${MPIEXEC_POSTFLAGS}
+    )
+    set_tests_properties(hdf5_checkpoint_parallel PROPERTIES
+      LABELS "integration;mpi;hdf5"
+      PASS_REGULAR_EXPRESSION "All HDF5 checkpoint tests passed"
+      RESOURCE_LOCK mpi
+    )
   endif()
 endif()
 

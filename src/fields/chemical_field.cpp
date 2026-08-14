@@ -398,14 +398,44 @@ bool ChemicalField::global_cell_in_halo(Int global_cell) const {
 }
 
 void ChemicalField::exchange_concentration_halos() {
-#ifdef GUTIBM_MPI
-  if (mode_ != DecompositionMode::Slab || domain_->nprocs() <= 1) return;
+  if (mode_ != DecompositionMode::Slab) return;
 
   const Int plane_cells = global_ny_ * global_nz_;
   const Int halo_cells = halo_width_ * plane_cells;
   const Int local_nx = owned_x_end_ - owned_x_begin_;
   if (halo_cells <= 0 || local_nx <= 0) return;
 
+  if (domain_->nprocs() <= 1) {
+    for (Int s = 0; s < nspec_; ++s) {
+      for (Int iz = 0; iz < global_nz_; ++iz) {
+        for (Int iy = 0; iy < global_ny_; ++iy) {
+          for (Int h = 0; h < halo_width_; ++h) {
+            const Int lo_storage = iz * storage_nx_ * global_ny_
+                + iy * storage_nx_ + h;
+            const Int hi_storage = iz * storage_nx_ * global_ny_
+                + iy * storage_nx_ + halo_width_ + local_nx + h;
+            const Int lo_source = iz * storage_nx_ * global_ny_
+                + iy * storage_nx_ + halo_width_ + local_nx
+                - halo_width_ + h;
+            const Int hi_source = iz * storage_nx_ * global_ny_
+                + iy * storage_nx_ + halo_width_ + h;
+            if (domain_->config().periodic[0]) {
+              conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_storage)] =
+                  conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_source)];
+              conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_storage)] =
+                  conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_source)];
+            } else {
+              conc_[static_cast<size_t>(s)][static_cast<size_t>(lo_storage)] = 0.0;
+              conc_[static_cast<size_t>(s)][static_cast<size_t>(hi_storage)] = 0.0;
+            }
+          }
+        }
+      }
+    }
+    return;
+  }
+
+#ifdef GUTIBM_MPI
   const int rank_lo = domain_->rank_lo() >= 0
       ? domain_->rank_lo() : MPI_PROC_NULL;
   const int rank_hi = domain_->rank_hi() >= 0

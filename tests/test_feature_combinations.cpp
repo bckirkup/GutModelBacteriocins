@@ -368,13 +368,6 @@ void test_slab_io_support_and_gpu_refusal() {
   io_sim.init(io_cfg);
   io_sim.run();
 
-  SimulationConfig checkpoint_cfg = make_combo_config(2011);
-  checkpoint_cfg.chemistry_decomposition = "slab";
-  checkpoint_cfg.domain.grid_halo_width = 2;
-  checkpoint_cfg.checkpoint.file = "slab_feature_checkpoint.h5";
-  Simulation checkpoint_sim;
-  checkpoint_sim.init(checkpoint_cfg);
-
   SimulationConfig gpu_cfg = make_combo_config(2012);
   gpu_cfg.chemistry_decomposition = "slab";
   gpu_cfg.domain.grid_halo_width = 2;

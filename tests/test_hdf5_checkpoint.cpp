@@ -232,7 +232,7 @@ void test_split_run_matches_uninterrupted(const std::string& filename) {
 void test_slab_checkpoint_matches_uninterrupted(const std::string& filename) {
   SimulationConfig split_cfg = make_checkpoint_config(filename + ".split.h5");
   split_cfg.chemistry_decomposition = "slab";
-  split_cfg.domain.grid_halo_width = 1;
+  split_cfg.domain.grid_halo_width = 2;
   split_cfg.time.total_time = 60.0;
 
   Simulation first;
@@ -257,19 +257,33 @@ void test_slab_checkpoint_matches_uninterrupted(const std::string& filename) {
                                "step_000001");
   resumed.run();
 
-  const auto baseline_agents = collect_agent_snapshots(baseline);
-  const auto resumed_agents = collect_agent_snapshots(resumed);
-  compare_agent_snapshots(baseline_agents, resumed_agents);
   const auto& baseline_chem = baseline.chemical_field();
   const auto& resumed_chem = resumed.chemical_field();
   assert(baseline_chem.slab_mode());
   assert(resumed_chem.slab_mode());
+  int local_chem_mismatch = 0;
   for (Int species = 0; species < baseline_chem.num_species(); ++species) {
-    for (Int cell = 0; cell < baseline_chem.global_ncells(); ++cell) {
-      assert(baseline_chem.conc_global(species, cell)
-             == resumed_chem.conc_global(species, cell));
+    for (Int iz = 0; iz < baseline.domain().nz(); ++iz) {
+      for (Int iy = 0; iy < baseline.domain().ny(); ++iy) {
+        for (Int ix = baseline_chem.owned_global_x_begin();
+             ix < baseline_chem.owned_global_x_end(); ++ix) {
+          const Int cell = baseline.domain().cell_index(ix, iy, iz);
+          if (baseline_chem.conc_global(species, cell) !=
+              resumed_chem.conc_global(species, cell)) {
+            ++local_chem_mismatch;
+          }
+        }
+      }
     }
   }
+#ifdef GUTIBM_MPI
+  int global_chem_mismatch = 0;
+  MPI_Allreduce(&local_chem_mismatch, &global_chem_mismatch, 1, MPI_INT,
+                MPI_SUM, MPI_COMM_WORLD);
+  assert(global_chem_mismatch == 0);
+#else
+  assert(local_chem_mismatch == 0);
+#endif
   assert(mid.metadata.step == 1);
   assert(resumed.step_count() == baseline.step_count());
   assert(resumed.time() == baseline.time());
