@@ -173,11 +173,80 @@ void validate_step_agents_match_sim(hid_t file,
   hid_t grid_space = H5Dget_space(grid_btuB_dset);
   std::array<hsize_t, 3> dims{0, 0, 0};
   H5Sget_simple_extent_dims(grid_space, dims.data(), nullptr);
+  assert(dims[0] == static_cast<hsize_t>(sim.domain().nz()));
+  assert(dims[1] == static_cast<hsize_t>(sim.domain().ny()));
+  assert(dims[2] == static_cast<hsize_t>(sim.domain().nx()));
   const size_t grid_elems = static_cast<size_t>(dims[0]) * static_cast<size_t>(dims[1])
       * static_cast<size_t>(dims[2]);
   H5Sclose(grid_space);
   H5Dclose(grid_btuB_dset);
-  assert(grid_elems == static_cast<size_t>(sim.chemical_field().ncells()));
+  assert(grid_elems == static_cast<size_t>(sim.chemical_field().global_ncells()));
+}
+
+void run_slab_grid_pattern() {
+  const std::string filename =
+      resolve_test_h5_path("GUTIBM_SLAB_GRID_PATTERN_H5", "slab_grid_pattern");
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.seed = 97531;
+  cfg.chemistry_decomposition = "slab";
+  cfg.domain.hi = {20e-6, 15e-6, 10e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.grid_halo_width = 1;
+  cfg.time.total_time = 0.0;
+  cfg.hdf5.enabled = true;
+  cfg.hdf5.filename = filename;
+  cfg.hdf5.schedule.summary = 0;
+  cfg.hdf5.schedule.agents = 0;
+  cfg.hdf5.schedule.lineage = 0;
+  cfg.hdf5.schedule.genome = 0;
+  cfg.hdf5.schedule.grid = 1;
+  cfg.hdf5.schedule.grid_species = {"carbon"};
+  cfg.initial_strains.clear();
+
+  Simulation sim;
+  sim.init(cfg);
+  const Int carbon = sim.chemical_field().find("carbon");
+  assert(carbon >= 0);
+  for (Int iz = 0; iz < sim.domain().nz(); ++iz) {
+    for (Int iy = 0; iy < sim.domain().ny(); ++iy) {
+      for (Int ix = sim.chemical_field().owned_global_x_begin();
+           ix < sim.chemical_field().owned_global_x_end(); ++ix) {
+        const Int cell = sim.domain().cell_index(ix, iy, iz);
+        sim.chemical_field().conc_global(carbon, cell) =
+            static_cast<Real>(1000 * iz + 100 * iy + ix);
+      }
+    }
+  }
+  sim.run();
+
+  hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  assert(file >= 0);
+  hid_t dataset =
+      H5Dopen2(file, "grid/step_000000/carbon", H5P_DEFAULT);
+  assert(dataset >= 0);
+  hid_t space = H5Dget_space(dataset);
+  std::array<hsize_t, 3> dims{0, 0, 0};
+  H5Sget_simple_extent_dims(space, dims.data(), nullptr);
+  assert(dims[0] == static_cast<hsize_t>(sim.domain().nz()));
+  assert(dims[1] == static_cast<hsize_t>(sim.domain().ny()));
+  assert(dims[2] == static_cast<hsize_t>(sim.domain().nx()));
+  std::vector<double> values(static_cast<size_t>(
+      sim.domain().nx() * sim.domain().ny() * sim.domain().nz()));
+  H5Dread(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+          values.data());
+  for (Int iz = 0; iz < sim.domain().nz(); ++iz) {
+    for (Int iy = 0; iy < sim.domain().ny(); ++iy) {
+      for (Int ix = 0; ix < sim.domain().nx(); ++ix) {
+        const size_t index = static_cast<size_t>(
+            iz * sim.domain().ny() * sim.domain().nx()
+            + iy * sim.domain().nx() + ix);
+        assert(values[index] == static_cast<double>(1000 * iz + 100 * iy + ix));
+      }
+    }
+  }
+  H5Sclose(space);
+  H5Dclose(dataset);
+  H5Fclose(file);
 }
 
 void validate_genome_slices(hid_t file, const std::string& step,
@@ -364,6 +433,71 @@ void run_roundtrip(bool parallel_io) {
   H5Fclose(file);
 }
 
+#ifdef GUTIBM_MPI
+void run_parallel_slab_grid_equivalence() {
+  const std::string slab_file = resolve_shared_test_h5_path(
+      "GUTIBM_SLAB_ROUNDTRIP_H5", "roundtrip_slab");
+  const std::string replicated_file = resolve_shared_test_h5_path(
+      "GUTIBM_REPLICATED_ROUNDTRIP_H5", "roundtrip_replicated");
+
+  SimulationConfig slab_cfg = make_roundtrip_config(slab_file, false);
+  slab_cfg.chemistry_decomposition = "slab";
+  slab_cfg.domain.grid_halo_width = 2;
+  {
+    Simulation slab;
+    slab.init(slab_cfg);
+    slab.run();
+  }
+
+  SimulationConfig replicated_cfg = make_roundtrip_config(replicated_file, false);
+  replicated_cfg.chemistry_decomposition = "replicated";
+  {
+    Simulation replicated;
+    replicated.init(replicated_cfg);
+    replicated.run();
+  }
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  if (rank != 0) return;
+  hid_t slab_file_id = H5Fopen(slab_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  hid_t replicated_file_id =
+      H5Fopen(replicated_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  assert(slab_file_id >= 0);
+  assert(replicated_file_id >= 0);
+  const std::string path = "grid/step_000000/carbon";
+  hid_t slab_dataset = H5Dopen2(slab_file_id, path.c_str(), H5P_DEFAULT);
+  hid_t replicated_dataset =
+      H5Dopen2(replicated_file_id, path.c_str(), H5P_DEFAULT);
+  assert(slab_dataset >= 0);
+  assert(replicated_dataset >= 0);
+  hid_t slab_space = H5Dget_space(slab_dataset);
+  hid_t replicated_space = H5Dget_space(replicated_dataset);
+  std::array<hsize_t, 3> slab_dims{0, 0, 0};
+  std::array<hsize_t, 3> replicated_dims{0, 0, 0};
+  H5Sget_simple_extent_dims(slab_space, slab_dims.data(), nullptr);
+  H5Sget_simple_extent_dims(replicated_space, replicated_dims.data(), nullptr);
+  assert(slab_dims == replicated_dims);
+  const size_t count = static_cast<size_t>(slab_dims[0] * slab_dims[1]
+                                            * slab_dims[2]);
+  std::vector<double> slab_values(count);
+  std::vector<double> replicated_values(count);
+  H5Dread(slab_dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+          slab_values.data());
+  H5Dread(replicated_dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+          replicated_values.data());
+  for (size_t i = 0; i < count; ++i) {
+    assert(slab_values[i] == replicated_values[i]);
+  }
+  H5Sclose(slab_space);
+  H5Sclose(replicated_space);
+  H5Dclose(slab_dataset);
+  H5Dclose(replicated_dataset);
+  H5Fclose(slab_file_id);
+  H5Fclose(replicated_file_id);
+}
+#endif
+
 #endif  // GUTIBM_HDF5
 
 }  // namespace
@@ -391,13 +525,16 @@ int main(int argc, char** argv) {
   if (nprocs == 1) {
     if (rank == 0) std::cout << "=== HDF5 Serial Round-Trip Tests ===\n";
     run_roundtrip(false);
+    run_slab_grid_pattern();
     if (rank == 0) {
       std::cout << "  test_serial_roundtrip: PASSED\n";
+      std::cout << "  test_serial_slab_grid_pattern: PASSED\n";
       std::cout << "All HDF5 round-trip tests passed.\n";
     }
   } else {
     if (rank == 0) std::cout << "=== HDF5 Parallel Round-Trip Tests ===\n";
     run_roundtrip(true);
+    run_parallel_slab_grid_equivalence();
     if (rank == 0) {
       std::cout << "  test_parallel_roundtrip: PASSED\n";
       std::cout << "All HDF5 round-trip tests passed.\n";

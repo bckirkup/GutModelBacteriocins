@@ -56,8 +56,10 @@ cd python && pytest tests/ -v -m "not integration"
 - **Spatial hashing** — O(N) neighbor lookups, not O(N²)
 - **MPI domain decomposition** — cell-aligned 1D slab along x-axis; ghost exchange + agent migration
 - **Chemical decomposition** — `replicated` is the default; `slab` stores owned x-cells
-  with concentration halos, local y/z operators, and an exact periodic-x exchange
-  before the later HDF5/checkpoint/GPU storage support
+  with concentration halos, local y/z operators, and an exact periodic-x exchange.
+  Slab HDF5 grid output gathers owned cells into global datasets, and slab
+  checkpoint/restart restores owned cells before refreshing halos. The GPU mirror
+  remains unsupported in slab mode.
 - **Never modify tests to make them pass** — fix the implementation
 
 ### Timestep modules (do not reorder casually)

@@ -282,8 +282,10 @@ ChemicalField `replicated` storage is the default. In `slab` mode, concentration
 and reaction arrays are rank-local owned x-slabs with configured concentration
 halos; global agent cell indices map explicitly into storage. Periodic-x
 diffusion uses an exact full-line exchange, while y/z operators remain local.
-HDF5 grid output, checkpoint/restart, and the GPU mirror currently reject slab
-mode until their rank-local layouts are implemented.
+HDF5 grid output and checkpoint/restart support slab mode: owned x-blocks are
+gathered for global grid datasets, and checkpoint grids restore only owned
+cells before halo refresh. The GPU mirror still rejects slab mode pending a
+follow-up implementation.
 
 ### HDF5 output
 

@@ -352,35 +352,42 @@ void test_kitchen_sink() {
   std::cout << "  test_kitchen_sink: PASSED\n";
 }
 
-void test_slab_rejects_unsupported_surfaces() {
-  const std::array<std::pair<SimulationConfig, std::string>, 4> cases = [] {
-    std::array<std::pair<SimulationConfig, std::string>, 4> values;
-    for (auto& value : values) {
-      value.first = make_combo_config(2010);
-      value.first.chemistry_decomposition = "slab";
-    }
-    values[0].first.hdf5.enabled = true;
-    values[0].second = "HDF5";
-    values[1].first.checkpoint.file = "checkpoint.h5";
-    values[1].second = "checkpoint";
-    values[2].first.restart.enabled = true;
-    values[2].second = "checkpoint";
-    values[3].first.gpu.enabled = true;
-    values[3].second = "GPU";
-    return values;
-  }();
+void test_slab_io_support_and_gpu_refusal() {
+  SimulationConfig io_cfg = make_combo_config(2010);
+  io_cfg.chemistry_decomposition = "slab";
+  io_cfg.domain.grid_halo_width = 2;
+  io_cfg.hdf5.enabled = true;
+  io_cfg.hdf5.filename = "slab_feature_support.h5";
+  io_cfg.hdf5.schedule.summary = 0;
+  io_cfg.hdf5.schedule.agents = 0;
+  io_cfg.hdf5.schedule.lineage = 0;
+  io_cfg.hdf5.schedule.genome = 0;
+  io_cfg.hdf5.schedule.grid = 1;
+  io_cfg.hdf5.schedule.grid_species = {"carbon"};
+  Simulation io_sim;
+  io_sim.init(io_cfg);
+  io_sim.run();
 
-  for (const auto& [cfg, name] : cases) {
-    bool rejected = false;
-    try {
-      Simulation sim;
-      sim.init(cfg);
-    } catch (const ConfigError& error) {
-      rejected = std::string(error.what()).find(name) != std::string::npos;
-    }
-    assert(rejected);
+  SimulationConfig checkpoint_cfg = make_combo_config(2011);
+  checkpoint_cfg.chemistry_decomposition = "slab";
+  checkpoint_cfg.domain.grid_halo_width = 2;
+  checkpoint_cfg.checkpoint.file = "slab_feature_checkpoint.h5";
+  Simulation checkpoint_sim;
+  checkpoint_sim.init(checkpoint_cfg);
+
+  SimulationConfig gpu_cfg = make_combo_config(2012);
+  gpu_cfg.chemistry_decomposition = "slab";
+  gpu_cfg.domain.grid_halo_width = 2;
+  gpu_cfg.gpu.enabled = true;
+  bool rejected = false;
+  try {
+    Simulation gpu_sim;
+    gpu_sim.init(gpu_cfg);
+  } catch (const ConfigError& error) {
+    rejected = std::string(error.what()).find("GPU") != std::string::npos;
   }
-  std::cout << "  test_slab_rejects_unsupported_surfaces: PASSED\n";
+  assert(rejected);
+  std::cout << "  test_slab_io_support_and_gpu_refusal: PASSED\n";
 }
 
 void test_slab_single_rank_biology() {
@@ -421,7 +428,7 @@ int main() {
   test_adaptive_dt_with_crypts();
   test_full_biology_with_fmm();
   test_kitchen_sink();
-  test_slab_rejects_unsupported_surfaces();
+  test_slab_io_support_and_gpu_refusal();
   test_slab_single_rank_biology();
   test_slab_replicated_fingerprint_equivalence();
   std::cout << "All feature combination tests passed.\n";

@@ -47,14 +47,6 @@ constexpr uint64_t kImmigrationSeedMix = 0x9e3779b97f4a7c15ULL;
 void reject_unsupported_slab_surfaces(
     const SimulationConfig& cfg, const Domain& domain) {
   if (cfg.chemistry_decomposition != "slab") return;
-  if (cfg.hdf5.enabled) {
-    throw ConfigError(
-        "slab chemistry does not support HDF5 grid output until stage 2c");
-  }
-  if (!cfg.checkpoint.file.empty() || cfg.restart.enabled) {
-    throw ConfigError(
-        "slab chemistry does not support checkpoint/restart until stage 2c");
-  }
   if (cfg.gpu.enabled) {
     throw ConfigError(
         "slab chemistry does not support the GPU mirror until stage 2c");
@@ -187,13 +179,29 @@ void restore_checkpoint_grid(ChemicalField& chem,
       }
       continue;
     }
-    if (static_cast<Int>(values.size()) != chem.ncells()) {
+    if (static_cast<Int>(values.size()) != chem.global_ncells()) {
       throw SimulationError("checkpoint grid size mismatch for species: " + name);
     }
-    Int c = 0;
-    for (const Real val : values) {
-      chem.conc(spec, c++) = val;
+    if (chem.slab_mode()) {
+      for (Int iz = 0; iz < domain.nz(); ++iz) {
+        for (Int iy = 0; iy < domain.ny(); ++iy) {
+          for (Int ix = chem.owned_global_x_begin();
+               ix < chem.owned_global_x_end(); ++ix) {
+            const Int global_cell = domain.cell_index(ix, iy, iz);
+            chem.conc_global(spec, global_cell) =
+                values[static_cast<size_t>(global_cell)];
+          }
+        }
+      }
+    } else {
+      Int c = 0;
+      for (const Real val : values) {
+        chem.conc(spec, c++) = val;
+      }
     }
+  }
+  if (chem.slab_mode()) {
+    chem.exchange_concentration_halos();
   }
 }
 

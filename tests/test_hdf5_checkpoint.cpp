@@ -229,6 +229,52 @@ void test_split_run_matches_uninterrupted(const std::string& filename) {
   assert(resumed.step_count() == 2);
 }
 
+void test_slab_checkpoint_matches_uninterrupted(const std::string& filename) {
+  SimulationConfig split_cfg = make_checkpoint_config(filename + ".split.h5");
+  split_cfg.chemistry_decomposition = "slab";
+  split_cfg.domain.grid_halo_width = 1;
+  split_cfg.time.total_time = 60.0;
+
+  Simulation first;
+  first.init(split_cfg);
+  first.run();
+  const HDF5CheckpointSnapshot mid =
+      HDF5Reader::load_snapshot(split_cfg.hdf5.filename, "step_000001");
+
+  SimulationConfig baseline_cfg = split_cfg;
+  baseline_cfg.hdf5.enabled = false;
+  baseline_cfg.time.total_time = 120.0;
+  Simulation baseline;
+  baseline.init(baseline_cfg);
+  baseline.run();
+
+  SimulationConfig resume_cfg = split_cfg;
+  resume_cfg.hdf5.enabled = false;
+  resume_cfg.time.total_time = 120.0;
+  resume_cfg.initial_strains.clear();
+  Simulation resumed;
+  resumed.init_from_checkpoint(resume_cfg, split_cfg.hdf5.filename,
+                               "step_000001");
+  resumed.run();
+
+  const auto baseline_agents = collect_agent_snapshots(baseline);
+  const auto resumed_agents = collect_agent_snapshots(resumed);
+  compare_agent_snapshots(baseline_agents, resumed_agents);
+  const auto& baseline_chem = baseline.chemical_field();
+  const auto& resumed_chem = resumed.chemical_field();
+  assert(baseline_chem.slab_mode());
+  assert(resumed_chem.slab_mode());
+  for (Int species = 0; species < baseline_chem.num_species(); ++species) {
+    for (Int cell = 0; cell < baseline_chem.global_ncells(); ++cell) {
+      assert(baseline_chem.conc_global(species, cell)
+             == resumed_chem.conc_global(species, cell));
+    }
+  }
+  assert(mid.metadata.step == 1);
+  assert(resumed.step_count() == baseline.step_count());
+  assert(resumed.time() == baseline.time());
+}
+
 void test_checkpoint_fork_immigration(const std::string& filename) {
   SimulationConfig run_cfg = make_checkpoint_config(filename);
   run_cfg.time.total_time = 60.0;
@@ -316,6 +362,9 @@ int main(int argc, char** argv) {
   if (rank == 0) std::cout << "=== HDF5 Checkpoint Restart Tests ===\n";
   test_checkpoint_restart(filename);
   test_split_run_matches_uninterrupted(filename);
+  const std::string slab_filename =
+      resolve_test_h5_path("GUTIBM_SLAB_CHECKPOINT_H5", "slab_checkpoint");
+  test_slab_checkpoint_matches_uninterrupted(slab_filename);
   const std::string immigration_filename =
       resolve_test_h5_path("GUTIBM_CHECKPOINT_IMMIGRATION_H5",
                            "checkpoint_immigration");
@@ -324,6 +373,7 @@ int main(int argc, char** argv) {
     std::cout << "  test_hdf5_reader_api: PASSED\n";
     std::cout << "  test_checkpoint_restart: PASSED\n";
     std::cout << "  test_split_run_matches_uninterrupted: PASSED\n";
+    std::cout << "  test_slab_checkpoint_matches_uninterrupted: PASSED\n";
     std::cout << "All HDF5 checkpoint tests passed.\n";
   }
 #endif
