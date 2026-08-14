@@ -163,9 +163,38 @@ void test_slab_chemistry_transpose_halos_and_ledger() {
   const uint64_t slab_hash = hash_simulation_chemistry(slab_simulation);
   const uint64_t replicated_hash =
       hash_simulation_chemistry(replicated_simulation);
-  if (slab_hash != replicated_hash && rank == 0) {
-    std::cerr << "slab chemistry hash " << slab_hash
-              << ", replicated chemistry hash " << replicated_hash << '\n';
+  if (slab_hash != replicated_hash) {
+    if (rank == 0) {
+      std::cerr << "slab chemistry hash " << slab_hash
+                << ", replicated chemistry hash " << replicated_hash << '\n';
+    }
+    const auto& slab_chem = slab_simulation.chemical_field();
+    const auto& replicated_chem = replicated_simulation.chemical_field();
+    for (Int species = 0; species < slab_chem.num_species(); ++species) {
+      Real slab_sum = 0.0;
+      Real replicated_sum = 0.0;
+      for (Int iz = 0; iz < slab_simulation.domain().nz(); ++iz) {
+        for (Int iy = 0; iy < slab_simulation.domain().ny(); ++iy) {
+          for (Int ix = slab_simulation.domain().local_grid_x_begin();
+               ix < slab_simulation.domain().local_grid_x_end(); ++ix) {
+            const Int cell = slab_simulation.domain().cell_index(ix, iy, iz);
+            slab_sum += slab_chem.conc_global(species, cell);
+            replicated_sum += replicated_chem.conc_global(species, cell);
+          }
+        }
+      }
+      Real global_slab_sum = 0.0;
+      Real global_replicated_sum = 0.0;
+      MPI_Allreduce(&slab_sum, &global_slab_sum, 1, MPI_DOUBLE, MPI_SUM,
+                    MPI_COMM_WORLD);
+      MPI_Allreduce(&replicated_sum, &global_replicated_sum, 1, MPI_DOUBLE,
+                    MPI_SUM, MPI_COMM_WORLD);
+      if (rank == 0) {
+        std::cerr << "species " << species << " sums "
+                  << global_slab_sum << " vs " << global_replicated_sum
+                  << '\n';
+      }
+    }
   }
   assert(slab_hash == replicated_hash);
   assert_equal_ledgers(slab_simulation, replicated_simulation);
