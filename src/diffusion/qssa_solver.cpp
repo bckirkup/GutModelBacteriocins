@@ -568,7 +568,7 @@ void QSSASolver::solve_nutrient_depletion(
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif
-      chem.reac(i_oxygen, cell) -= o2_use / cell_vol;
+      chem.reac_global(i_oxygen, cell) -= o2_use / cell_vol;
     }
   }
 }

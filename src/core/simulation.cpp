@@ -281,7 +281,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   domain_.init(cfg.domain);
 
   // Chemical fields
-  chem_.init(domain_, cfg_.chemicals);
+  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
 
   // Advection
   advection_.init(cfg.advection, domain_);
@@ -406,7 +406,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   immigration_.seed(cfg_.seed ^ kImmigrationSeedMix);
 
   domain_.init(cfg_.domain);
-  chem_.init(domain_, cfg_.chemicals);
+  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
   qssa_.init(cfg.qssa, domain_, advection_);

@@ -7,6 +7,7 @@
 #define GUTIBM_CHEMICAL_microcin_penalty_applied_H
 
 #include "types.h"
+#include <cassert>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -111,20 +112,58 @@ struct ChemicalSpec {
 
 class ChemicalField {
  public:
+  enum class DecompositionMode { Replicated, Slab };
+
   ChemicalField() = default;
 
-  void init(const Domain& domain, const std::vector<ChemicalSpec>& specs);
+  void init(const Domain& domain, const std::vector<ChemicalSpec>& specs,
+            std::string_view decomposition = "replicated");
 
   Int num_species() const { return nspec_; }
   Int ncells() const { return ncells_; }
 
-  // Concentration accessors  [species][cell]
-  Real  conc(Int spec, Int cell) const { return conc_[spec][cell]; }
-  Real& conc(Int spec, Int cell)       { return conc_[spec][cell]; }
+  // Concentration accessors [species][storage cell].
+  Real conc(Int spec, Int cell) const {
+    assert(cell >= 0 && cell < ncells_);
+    return conc_[spec][cell];
+  }
+  Real& conc(Int spec, Int cell) {
+    assert(cell >= 0 && cell < ncells_);
+    return conc_[spec][cell];
+  }
+  Real conc_global(Int spec, Int cell) const {
+    return conc_[spec][global_to_storage_cell(cell)];
+  }
+  Real& conc_global(Int spec, Int cell) {
+    return conc_[spec][global_to_storage_cell(cell)];
+  }
 
-  // Reaction rate  [species][cell]  (mol/m^3/s, negative = consumption)
-  Real  reac(Int spec, Int cell) const { return reac_[spec][cell]; }
-  Real& reac(Int spec, Int cell)       { return reac_[spec][cell]; }
+  // Reaction rate [species][storage cell] (mol/m^3/s, negative = consumption)
+  Real reac(Int spec, Int cell) const {
+    assert(cell >= 0 && cell < ncells_);
+    return reac_[spec][cell];
+  }
+  Real& reac(Int spec, Int cell) {
+    assert(cell >= 0 && cell < ncells_);
+    return reac_[spec][cell];
+  }
+  Real reac_global(Int spec, Int cell) const {
+    return reac_[spec][global_to_storage_cell(cell)];
+  }
+  Real& reac_global(Int spec, Int cell) {
+    return reac_[spec][global_to_storage_cell(cell)];
+  }
+
+  // Stage 2a retains global storage in every mode; these mappings establish
+  // the indirection used by later local storage.
+  Int owned_global_x_begin() const { return owned_x_begin_; }
+  Int owned_global_x_end() const { return owned_x_end_; }
+  Int grid_halo_width() const { return halo_width_; }
+  Int global_to_storage_cell(Int global_cell) const;
+  Int storage_to_global_cell(Int storage_cell) const;
+  bool owns_global_cell(Int global_cell) const;
+  bool global_cell_in_halo(Int global_cell) const;
+  bool slab_mode() const { return mode_ == DecompositionMode::Slab; }
 
   // Reset reaction rates to zero each timestep
   void zero_reactions();
@@ -155,6 +194,12 @@ class ChemicalField {
  private:
   Int nspec_  = 0;
   Int ncells_ = 0;
+  Int global_nx_ = 0;
+  Int owned_x_begin_ = 0;
+  Int owned_x_end_ = 0;
+  Int halo_width_ = 0;
+  DecompositionMode mode_ = DecompositionMode::Replicated;
+  const Domain* domain_ = nullptr;
   std::vector<ChemicalSpec> specs_;
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]

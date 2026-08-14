@@ -42,8 +42,8 @@ struct DomainConfig {
   // Ghost layer thickness (should be >= hash_cell_size for correct neighbor queries)
   Real ghost_width = 10.0e-6;  // 10 um default
 
-  // Chemical grid halo width in cells. Stage 1 stores this metadata only;
-  // chemistry remains replicated until a later decomposition stage.
+  // Chemical grid halo width in cells. Stage 2a validates this metadata for
+  // slab chemistry; storage remains replicated until the local-storage stage.
   Int grid_halo_width = 1;
 };
 

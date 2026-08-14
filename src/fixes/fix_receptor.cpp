@@ -82,7 +82,7 @@ Real FixReceptor::local_toxin_conc(const ChemicalField& chem, Int cell,
                                     const char* species_name) const {
   Int idx = chem.find(species_name);
   if (idx < 0 || cell < 0) return 0.0;
-  return chem.conc(idx, cell);
+  return chem.conc_global(idx, cell);
 }
 
 Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
@@ -147,7 +147,7 @@ Real FixReceptor::compute_receptor_hazard(
   const Int ligand_index =
       sim_.chemical_field().find(descriptor.ligand_species);
   const Real ligand_concentration = ligand_index >= 0
-      ? sim_.chemical_field().conc(ligand_index, agent.grid_cell)
+      ? sim_.chemical_field().conc_global(ligand_index, agent.grid_cell)
           * descriptor.ligand_scale
       : 0.0;
   const Real occupancy = toxin_occupancy(

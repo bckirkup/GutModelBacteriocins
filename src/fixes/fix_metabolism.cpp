@@ -287,9 +287,12 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   Int i_iron   = chem.find(species::IRON);
   Int i_b12    = chem.find(species::B12);
 
-  Real S_carbon = (i_carbon >= 0) ? chem.conc(i_carbon, cell) : 1.0;
-  Real S_iron   = (i_iron >= 0)   ? chem.conc(i_iron, cell)   : 1.0;
-  Real S_b12    = (i_b12 >= 0)    ? chem.conc(i_b12, cell)    : 1.0;
+  Real S_carbon = (i_carbon >= 0)
+      ? chem.conc_global(i_carbon, cell) : 1.0;
+  Real S_iron   = (i_iron >= 0)
+      ? chem.conc_global(i_iron, cell) : 1.0;
+  Real S_b12    = (i_b12 >= 0)
+      ? chem.conc_global(i_b12, cell) : 1.0;
 
   if (const auto& fur_cfg = sim_.config().cell_bio.fur; fur_cfg.enabled) {
     const Real fur_factor = 1.0 + fur_cfg.upregulation_max * fur_cfg.Km
@@ -348,7 +351,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
 
   if (const auto& o2cfg = sim_.config().chem_env.oxygen; o2cfg.enabled) {
     if (Int i_o2 = chem.find(species::OXYGEN); i_o2 >= 0) {
-      const Real s_o2 = chem.conc(i_o2, cell);
+      const Real s_o2 = chem.conc_global(i_o2, cell);
       const Real monod_o2_boost =
           1.0 + o2cfg.boost_max * s_o2 / (o2cfg.Km + s_o2);
       mu *= monod_o2_boost;
@@ -362,7 +365,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   if (expr_btuB < 0.5) {
     Real metE_eff = cfg_.metE_penalty;
     if (Int i_acetate = chem.find(species::ACETATE); i_acetate >= 0) {
-      Real acetate_conc = chem.conc(i_acetate, cell);
+      Real acetate_conc = chem.conc_global(i_acetate, cell);
       Real acetate_factor = 1.0
           + (cfg_.metE_acetate_max_factor - 1.0)
             * acetate_conc / (cfg_.metE_acetate_km + acetate_conc);
@@ -370,7 +373,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
     }
     Real eut_conc = 0.0;
     if (Int i_eut = chem.find(species::ETHANOLAMINE); i_eut >= 0)
-      eut_conc = chem.conc(i_eut, cell);
+      eut_conc = chem.conc_global(i_eut, cell);
     Real eut_effect = cfg_.eut_max_penalty * eut_conc / (cfg_.eut_km + eut_conc);
     mu *= (1.0 - metE_eff - eut_effect);
   }
@@ -421,7 +424,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif
-    chem.reac(i_carbon, cell) -= delta_c;
+    chem.reac_global(i_carbon, cell) -= delta_c;
   }
   if (i_iron >= 0 && cell_vol > 0.0) {
     Real delta_fe = d_biomass * cfg_.yield_iron / (cell_vol * dt);
@@ -430,7 +433,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif
-    chem.reac(i_iron, cell) -= delta_fe;
+    chem.reac_global(i_iron, cell) -= delta_fe;
   }
   // Spec 6 §3 — the B12/corrinoid field is NOT depleted. It represents the
   // total bioavailable corrinoid pool (~1 uM), produced by the anaerobic
@@ -440,12 +443,12 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
 
   const auto& acfg = sim_.config().chem_env.acetate;
   if (acfg.enabled && i_acetate >= 0 && cell_vol > 0.0) {
-    const Real acetate_conc = chem.conc(i_acetate, cell);
+    const Real acetate_conc = chem.conc_global(i_acetate, cell);
     if (agent.mu_realized > acfg.overflow_threshold) {
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif
-      chem.reac(i_acetate, cell) +=
+      chem.reac_global(i_acetate, cell) +=
           acfg.overflow_rate * agent.biomass / cell_vol;
     }
     const Real scavenge = acfg.scavenge_rate * acetate_conc
@@ -453,7 +456,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif
-    chem.reac(i_acetate, cell) -= scavenge;
+    chem.reac_global(i_acetate, cell) -= scavenge;
   }
 }
 

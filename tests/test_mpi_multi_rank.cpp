@@ -29,6 +29,51 @@ namespace {
 
 #ifdef GUTIBM_MPI
 
+void test_chemical_field_layout_mapping() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  DomainConfig cfg;
+  cfg.lo = {0.0, 0.0, 0.0};
+  cfg.hi = {100e-6, 20e-6, 20e-6};
+  cfg.grid_dx = 5e-6;
+  cfg.ghost_width = 10e-6;
+  cfg.grid_halo_width = 2;
+  Domain domain;
+  domain.init(cfg);
+
+  ChemicalSpec spec;
+  spec.name = "carbon";
+  ChemicalField chem;
+  chem.init(domain, {spec}, "slab");
+
+  Int owned = 0;
+  Int halo = 0;
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    const Int local_x = domain.global_to_local_grid_x(cell % domain.nx());
+    if (local_x < 0) {
+      continue;
+    }
+    assert(chem.storage_to_global_cell(
+               chem.global_to_storage_cell(cell)) == cell);
+    if (chem.owns_global_cell(cell)) {
+      ++owned;
+    } else {
+      assert(chem.global_cell_in_halo(cell));
+      ++halo;
+    }
+  }
+  assert(owned > 0);
+  assert(halo > 0);
+  if (domain.local_grid_x_begin() == 0) {
+    assert(chem.owned_global_x_begin() == 0);
+  }
+  if (rank == 0) {
+    std::cout << "  test_chemical_field_layout_mapping: PASSED\n";
+  }
+}
+
 SimulationConfig make_mpi_periodic_config() {
   SimulationConfig cfg = make_mpi_config(4242, 40);
   cfg.domain.periodic = {true, true, false};
@@ -539,6 +584,7 @@ int main(int argc, char** argv) {
   }
 
   test_reaction_sum_and_diffusion_are_rank_identical();
+  test_chemical_field_layout_mapping();
   test_cross_rank_bacteriocin_source_exchange();
   test_slab_decomposition();
   test_slab_decomposition_periodic_x();

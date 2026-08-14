@@ -30,12 +30,12 @@ void FixQuorumSensing::compute(Real /*dt*/) {
 
     const Real production = cfg_.ai2_basal_rate
         + cfg_.ai2_growth_coupled * std::max(agent.mu_realized, 0.0);
-    chem.reac(i_ai2, agent.grid_cell) += production / cell_vol;
+    chem.reac_global(i_ai2, agent.grid_cell) += production / cell_vol;
 
-    const Real ai2_conc = chem.conc(i_ai2, agent.grid_cell);
+    const Real ai2_conc = chem.conc_global(i_ai2, agent.grid_cell);
     const Real import_rate =
         cfg_.lsr_vmax * ai2_conc / (cfg_.lsr_km + ai2_conc);
-    chem.reac(i_ai2, agent.grid_cell) -= import_rate / cell_vol;
+    chem.reac_global(i_ai2, agent.grid_cell) -= import_rate / cell_vol;
   }
 
   // First-order background decay (uses ChemicalSpec.decay_rate when set)

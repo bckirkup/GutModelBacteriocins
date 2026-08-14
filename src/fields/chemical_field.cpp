@@ -4,6 +4,7 @@
 
 #include "chemical_field.h"
 #include "domain.h"
+#include "error.h"
 #include <algorithm>
 #include <cmath>
 #include <vector>
@@ -319,7 +320,29 @@ void apply_z_gradient(std::vector<Real>& conc_row,
 }  // namespace
 
 void ChemicalField::init(const Domain& domain,
-                          const std::vector<ChemicalSpec>& specs) {
+                          const std::vector<ChemicalSpec>& specs,
+                          std::string_view decomposition) {
+  if (decomposition != "replicated" && decomposition != "slab") {
+    throw ConfigError("invalid chemistry decomposition mode");
+  }
+  if (decomposition == "slab") {
+    const auto required_halo = static_cast<Int>(
+        std::ceil(domain.ghost_width() / domain.dx()));
+    if (domain.grid_halo_width() < required_halo) {
+      throw ConfigError(
+          "slab chemistry requires grid_halo_width >= ceil(ghost_width / dx)");
+    }
+  }
+
+  domain_ = &domain;
+  mode_ = decomposition == "slab"
+      ? DecompositionMode::Slab : DecompositionMode::Replicated;
+  global_nx_ = domain.nx();
+  owned_x_begin_ = decomposition == "slab"
+      ? domain.local_grid_x_begin() : 0;
+  owned_x_end_ = decomposition == "slab"
+      ? domain.local_grid_x_end() : domain.nx();
+  halo_width_ = decomposition == "slab" ? domain.grid_halo_width() : 0;
   specs_  = specs;
   nspec_  = static_cast<Int>(specs.size());
   ncells_ = domain.ncells();
@@ -335,6 +358,38 @@ void ChemicalField::init(const Domain& domain,
       apply_z_gradient(conc_[s], specs_[s], domain);
     }
   }
+}
+
+Int ChemicalField::global_to_storage_cell(Int global_cell) const {
+  assert(global_cell >= 0 && global_cell < ncells_);
+  if (mode_ == DecompositionMode::Slab) {
+    const Int ix = global_cell % global_nx_;
+    assert(domain_->global_to_local_grid_x(ix) >= 0);
+  }
+  return global_cell;
+}
+
+Int ChemicalField::storage_to_global_cell(Int storage_cell) const {
+  assert(storage_cell >= 0 && storage_cell < ncells_);
+  if (mode_ == DecompositionMode::Slab) {
+    const Int ix = storage_cell % global_nx_;
+    assert(domain_->global_to_local_grid_x(ix) >= 0);
+  }
+  return storage_cell;
+}
+
+bool ChemicalField::owns_global_cell(Int global_cell) const {
+  if (global_cell < 0 || global_cell >= ncells_) return false;
+  const Int ix = global_cell % global_nx_;
+  return mode_ != DecompositionMode::Slab
+      || (ix >= owned_x_begin_ && ix < owned_x_end_);
+}
+
+bool ChemicalField::global_cell_in_halo(Int global_cell) const {
+  if (global_cell < 0 || global_cell >= ncells_) return false;
+  return mode_ == DecompositionMode::Slab
+      && !owns_global_cell(global_cell)
+      && domain_->global_to_local_grid_x(global_cell % global_nx_) >= 0;
 }
 
 void ChemicalField::zero_reactions() {

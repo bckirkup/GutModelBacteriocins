@@ -79,7 +79,7 @@ struct SimulationConfig {
   AdaptiveTimestepConfig adaptive_dt;
 
   DomainConfig domain;
-  // Stage-1 selector; only replicated is active until slab storage exists.
+  // Chemistry layout selector; stage 2a retains global storage in both modes.
   std::string chemistry_decomposition = "replicated";
   AdvectionConfig advection;
   VBFConfig vbf;
