@@ -74,6 +74,7 @@ warning rather than placed at the wrong distance.
 | `domain.hi` | {1e-3, 1e-3, 100e-6} | m | Upper corner (1mm × 1mm × 100um) |
 | `domain.grid_dx` | 2e-6 | m | Fine chemistry grid spacing |
 | `domain.chemistry_stride.x/y/z` | 1 | — | Integer chemistry-cell coarsening per axis; x/y probe lateral microgradient sensitivity while z remains fine for epithelial O2/mucin stratification |
+| `domain.grid_halo_width` | 1 | cells | Slab-chemistry halo width; must cover `ceil(domain.ghost_width / domain.grid_dx)` and is not a tuning knob |
 | `domain.hash_cell_size` | 10e-6 | m | Spatial hash bucket size |
 | `domain.periodic` | {true, true, false} | — | Periodicity per axis |
 | `domain.mpi_decomp_axis` | 0 | — | Axis for 1D slab decomposition (0=x) |
@@ -82,6 +83,8 @@ warning rather than placed at the wrong distance.
 **Biological context:** The domain represents a patch of colonic mucus layer. x,y are periodic (infinite mucosa plane). z spans from epithelium (z=0) to luminal surface (z=h).
 
 **MPI decomposition:** The domain is partitioned into cell-aligned slabs along `mpi_decomp_axis` (default: x, the distal flow direction). Each rank owns a contiguous half-open range of grid cells; physical slab widths can differ by at most one cell. `ghost_width` should be ≥ `hash_cell_size` to ensure correct neighbor queries across slab boundaries.
+
+For `chemistry.decomposition=slab`, `domain.grid_halo_width` is the number of chemistry cells retained around each owned slab. It must be large enough to cover the physical `domain.ghost_width` at the chemistry spacing; configure it from those two values rather than treating it as a numerical tuning parameter.
 
 ---
 

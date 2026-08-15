@@ -458,6 +458,10 @@ bool apply_domain_key(SimulationConfig& cfg, std::string_view key, const std::st
     cfg.domain.chemistry_stride[2] = parse_positive_config_int(key, val);
     return true;
   }
+  if (key == "grid_halo_width" || key == "domain.grid_halo_width") {
+    cfg.domain.grid_halo_width = parse_positive_config_int(key, val);
+    return true;
+  }
   if (key == "domain_x")             { cfg.domain.hi[0] = parse_config_real(key, val); return true; }
   if (key == "domain_y")             { cfg.domain.hi[1] = parse_config_real(key, val); return true; }
   if (key == "domain_z")             { cfg.domain.hi[2] = parse_config_real(key, val); return true; }
