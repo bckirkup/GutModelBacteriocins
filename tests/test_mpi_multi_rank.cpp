@@ -110,6 +110,22 @@ int32_t read_event(hid_t file, const std::string& path) {
   return value;
 }
 
+void set_all_events(Simulation& sim, Int value) {
+  StepEvents events;
+  events.sos_inductions = value;
+  events.phage_inductions = value;
+  events.colicin_kills = value;
+  events.cdi_kills = value;
+  events.washout_deaths = value;
+  events.boundary_deaths = value;
+  events.starvation_deaths = value;
+  events.divisions = value;
+  events.conjugation_transfers = value;
+  events.mutations = value;
+  events.immigrations = value;
+  sim.step_events() = events;
+}
+
 void test_global_event_counter_reduction() {
   require_mpi_ranks(2);
 
@@ -121,17 +137,7 @@ void test_global_event_counter_reduction() {
   Simulation sim;
   sim.init(cfg);
   const Int local_increment = rank + 1;
-  sim.step_events().sos_inductions = local_increment;
-  sim.step_events().phage_inductions = local_increment;
-  sim.step_events().colicin_kills = local_increment;
-  sim.step_events().cdi_kills = local_increment;
-  sim.step_events().washout_deaths = local_increment;
-  sim.step_events().boundary_deaths = local_increment;
-  sim.step_events().starvation_deaths = local_increment;
-  sim.step_events().divisions = local_increment;
-  sim.step_events().conjugation_transfers = local_increment;
-  sim.step_events().mutations = local_increment;
-  sim.step_events().immigrations = local_increment;
+  set_all_events(sim, local_increment);
   Int expected = 0;
   MPI_Allreduce(&local_increment, &expected, 1, MPI_INT, MPI_SUM,
                 MPI_COMM_WORLD);
@@ -146,17 +152,7 @@ void test_global_event_counter_reduction() {
   writer.init(hdf5_cfg, sim.domain());
   assert(writer.is_enabled());
   writer.write_step(sim, 1, 60.0, 60.0);
-  sim.step_events().sos_inductions = local_increment;
-  sim.step_events().phage_inductions = local_increment;
-  sim.step_events().colicin_kills = local_increment;
-  sim.step_events().cdi_kills = local_increment;
-  sim.step_events().washout_deaths = local_increment;
-  sim.step_events().boundary_deaths = local_increment;
-  sim.step_events().starvation_deaths = local_increment;
-  sim.step_events().divisions = local_increment;
-  sim.step_events().conjugation_transfers = local_increment;
-  sim.step_events().mutations = local_increment;
-  sim.step_events().immigrations = local_increment;
+  set_all_events(sim, local_increment);
   writer.write_step(sim, 2, 120.0, 60.0);
   writer.finalize();
   MPI_Barrier(MPI_COMM_WORLD);
