@@ -8,6 +8,7 @@
 
 #include <cassert>
 #include <array>
+#include <format>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -55,6 +56,73 @@ std::vector<double> read_vector(hid_t file, const std::string& path) {
 
 }  // namespace
 
+void test_population_ledger_closure() {
+#ifndef GUTIBM_HDF5
+  return;
+#else
+  const std::string filename =
+      resolve_test_h5_path("GUTIBM_SERIAL_LEDGER_H5", "serial_population_ledger");
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {40e-6, 40e-6, 20e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.time.total_time = 360.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 360.0;
+  cfg.seed = 334;
+  cfg.hdf5.enabled = true;
+  cfg.hdf5.filename = filename;
+  cfg.hdf5.schedule.summary = 1;
+  cfg.hdf5.schedule.agents = 0;
+  cfg.hdf5.schedule.grid = 0;
+  cfg.hdf5.schedule.lineage = 0;
+  cfg.hdf5.schedule.genome = 0;
+  cfg.enabled_fixes = {"bacteriocin"};
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain strain;
+  strain.type = 1;
+  strain.count = 20;
+  strain.mu_max = 5e-4;
+  strain.plasmids = {"ColE1"};
+  strain.conjugative = false;
+  cfg.initial_strains.push_back(strain);
+  strain.plasmids.clear();
+  strain.type = 2;
+  strain.count = 10;
+  cfg.initial_strains.push_back(strain);
+
+  Simulation sim;
+  sim.init(cfg);
+  const Int initial = sim.global_agent_count();
+  sim.run();
+
+  hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  assert(file >= 0);
+  const std::string step_name =
+      std::format("step_{:06}", sim.step_count());
+  const std::string prefix = "summary/" + step_name + "/events/";
+  const Int divisions = read_event(file, prefix + "cumulative_divisions");
+  const Int immigrations = read_event(file, prefix + "cumulative_immigrations");
+  const Int washout = read_event(file, prefix + "cumulative_washout_deaths");
+  const Int starvation =
+      read_event(file, prefix + "cumulative_starvation_deaths");
+  const Int colicin = read_event(file, prefix + "cumulative_colicin_kills");
+  const Int cdi = read_event(file, prefix + "cumulative_cdi_kills");
+  const Int boundary = read_event(file, prefix + "cumulative_boundary_deaths");
+  const Int lysis = read_event(file, prefix + "cumulative_lysis_deaths");
+  const Int n_total = read_event(file, "summary/" + step_name + "/n_total");
+  const Int expected_final = initial + divisions + immigrations
+      - washout - starvation - colicin - cdi - boundary - lysis;
+  assert(n_total == expected_final);
+  assert(lysis > 0);
+  H5Fclose(file);
+  std::cout << "  test_population_ledger_closure: PASSED"
+            << " (lysis_deaths=" << lysis << ")\n";
+#endif
+}
+
 int main() {
 #ifndef GUTIBM_HDF5
   std::cout << "HDF5 disabled — skipping summary event tests.\n";
@@ -101,6 +169,7 @@ int main() {
   assert(dataset_exists(file, flux_prefix + "interval_end_time"));
 
   H5Fclose(file);
+  test_population_ledger_closure();
   std::cout << "All summary event counter tests passed.\n";
   return 0;
 #endif

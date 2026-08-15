@@ -15,6 +15,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <format>
 #include <iomanip>
 #include <iostream>
 #include <numbers>
@@ -119,6 +120,7 @@ void set_all_events(Simulation& sim, Int value) {
   events.washout_deaths = value;
   events.boundary_deaths = value;
   events.starvation_deaths = value;
+  events.lysis_deaths = value;
   events.divisions = value;
   events.conjugation_transfers = value;
   events.mutations = value;
@@ -167,14 +169,18 @@ void test_global_event_counter_reduction() {
     assert(read_event(file, prefix + "washout_deaths") == expected);
     assert(read_event(file, prefix + "boundary_deaths") == expected);
     assert(read_event(file, prefix + "starvation_deaths") == expected);
+    assert(read_event(file, prefix + "lysis_deaths") == expected);
     assert(read_event(file, prefix + "divisions") == expected);
     assert(read_event(file, prefix + "conjugation_transfers") == expected);
     assert(read_event(file, prefix + "mutations") == expected);
     assert(read_event(file, prefix + "immigrations") == expected);
     assert(read_event(file, prefix + "cumulative_washout_deaths") == expected);
+    assert(read_event(file, prefix + "cumulative_lysis_deaths") == expected);
     const std::string second_prefix = "summary/step_000002/events/";
     assert(read_event(file, second_prefix + "washout_deaths") == expected);
     assert(read_event(file, second_prefix + "cumulative_washout_deaths")
+           == 2 * expected);
+    assert(read_event(file, second_prefix + "cumulative_lysis_deaths")
            == 2 * expected);
     H5Fclose(file);
     std::cout << "  test_global_event_counter_reduction: PASSED\n";
@@ -187,8 +193,18 @@ void test_population_ledger_closure() {
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   SimulationConfig cfg = make_mpi_config(51002, 160);
-  cfg.time.total_time = cfg.time.bio_dt;
+  cfg.time.total_time = 6.0 * cfg.time.bio_dt;
   cfg.time.output_interval = cfg.time.total_time;
+  cfg.enabled_fixes = {"bacteriocin"};
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
+  cfg.initial_strains[0].plasmids = {"ColE1"};
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+  SimulationConfig::InitialStrain survivor = cfg.initial_strains[0];
+  survivor.plasmids.clear();
+  survivor.count = 80;
+  cfg.initial_strains[0].count = 80;
+  cfg.initial_strains.push_back(survivor);
   cfg.hdf5.enabled = true;
   cfg.hdf5.filename = resolve_shared_test_h5_path(
       "GUTIBM_MPI_LEDGER_H5", "mpi_population_ledger");
@@ -208,23 +224,26 @@ void test_population_ledger_closure() {
     hid_t file = H5Fopen(cfg.hdf5.filename.c_str(), H5F_ACC_RDONLY,
                          H5P_DEFAULT);
     assert(file >= 0);
-    const std::string prefix = "summary/step_000001/events/";
-    const Int divisions = read_event(file, prefix + "divisions");
-    const Int immigrations = read_event(file, prefix + "immigrations");
-    const Int washout = read_event(file, prefix + "washout_deaths");
-    const Int starvation = read_event(file, prefix + "starvation_deaths");
-    const Int colicin = read_event(file, prefix + "colicin_kills");
-    const Int cdi = read_event(file, prefix + "cdi_kills");
-    const Int boundary = read_event(file, prefix + "boundary_deaths");
-    const Int sos = read_event(file, prefix + "sos_inductions");
-    const Int n_total = read_event(
-        file, "summary/step_000001/n_total");
-    const Int ledger = initial + divisions + immigrations
-        - washout - starvation - colicin - cdi - boundary - n_total;
-    assert(ledger >= 0);
-    assert(ledger <= sos);
+    const std::string step_name =
+        std::format("step_{:06}", sim.step_count());
+    const std::string prefix = "summary/" + step_name + "/events/";
+    const Int divisions = read_event(file, prefix + "cumulative_divisions");
+    const Int immigrations = read_event(file, prefix + "cumulative_immigrations");
+    const Int washout = read_event(file, prefix + "cumulative_washout_deaths");
+    const Int starvation =
+        read_event(file, prefix + "cumulative_starvation_deaths");
+    const Int colicin = read_event(file, prefix + "cumulative_colicin_kills");
+    const Int cdi = read_event(file, prefix + "cumulative_cdi_kills");
+    const Int boundary = read_event(file, prefix + "cumulative_boundary_deaths");
+    const Int lysis = read_event(file, prefix + "cumulative_lysis_deaths");
+    const Int n_total = read_event(file, "summary/" + step_name + "/n_total");
+    const Int expected_final = initial + divisions + immigrations
+        - washout - starvation - colicin - cdi - boundary - lysis;
+    assert(n_total == expected_final);
+    assert(lysis > 0);
     H5Fclose(file);
-    std::cout << "  test_population_ledger_closure: PASSED\n";
+    std::cout << "  test_population_ledger_closure: PASSED"
+              << " (lysis_deaths=" << lysis << ")\n";
   }
 }
 

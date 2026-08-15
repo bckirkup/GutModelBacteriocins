@@ -44,6 +44,7 @@ the 15-step run.
 | `washout_deaths` | 60 | 60 |
 | `boundary_deaths` | 0 | 0 |
 | `starvation_deaths` | 0 | 0 |
+| `lysis_deaths` | 0 | 0 |
 | **Total counted deaths** | **60** | **63** |
 | `divisions` | **0** | **0** |
 

@@ -142,6 +142,7 @@ void FixBacteriocin::lyse_agent(Agent& agent) {
   }
 
   agent.state = PhenoState::DEAD;
+  sim_.step_events().lysis_deaths++;
 
   sim_.lineage_tracker().record_lysis(agent.identity.tag, agent.x,
                                        agent.genome.lineage_id);
