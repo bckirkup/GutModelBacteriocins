@@ -36,6 +36,7 @@ using gutibm::test::hdf5_read_scalar;
 using gutibm::test::hdf5_read_dataset_1d;
 using gutibm::test::kAgentSnapshotTol;
 using gutibm::test::read_agent_snapshots;
+using gutibm::test::resolve_shared_test_h5_path;
 
 namespace {
 
@@ -191,7 +192,8 @@ void run_slab_grid_pattern() {
   cfg.chemistry_decomposition = "slab";
   cfg.domain.hi = {20e-6, 15e-6, 10e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.domain.grid_halo_width = 1;
+  cfg.domain.grid_halo_width = static_cast<Int>(
+      std::ceil(cfg.domain.ghost_width / cfg.domain.grid_dx));
   cfg.time.total_time = 0.0;
   cfg.hdf5.enabled = true;
   cfg.hdf5.filename = filename;
@@ -375,34 +377,6 @@ void validate_parallel_roundtrip(const Simulation& sim, const std::string& filen
 #endif
 }
 
-std::string resolve_shared_test_h5_path(const char* env_var, const std::string& tag) {
-#ifdef GUTIBM_MPI
-  int rank = 0;
-  int nprocs = 1;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-
-  std::string filename;
-  if (rank == 0) {
-    filename = resolve_test_h5_path(env_var, tag);
-  }
-
-  if (nprocs > 1) {
-    int len = 0;
-    if (rank == 0) len = static_cast<int>(filename.size());
-    MPI_Bcast(&len, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    if (rank != 0) filename.resize(static_cast<size_t>(len));
-    if (len > 0) {
-      MPI_Bcast(filename.data(), len, MPI_CHAR, 0, MPI_COMM_WORLD);
-    }
-  }
-
-  return filename;
-#else
-  return resolve_test_h5_path(env_var, tag);
-#endif
-}
-
 void run_roundtrip(bool parallel_io) {
   std::string filename = resolve_shared_test_h5_path(
       "GUTIBM_ROUNDTRIP_H5",
@@ -543,8 +517,10 @@ int main(int argc, char** argv) {
 #else
   if (rank == 0) std::cout << "=== HDF5 Serial Round-Trip Tests ===\n";
   run_roundtrip(false);
+  run_slab_grid_pattern();
   if (rank == 0) {
     std::cout << "  test_serial_roundtrip: PASSED\n";
+    std::cout << "  test_serial_slab_grid_pattern: PASSED\n";
     std::cout << "All HDF5 round-trip tests passed.\n";
   }
 #endif

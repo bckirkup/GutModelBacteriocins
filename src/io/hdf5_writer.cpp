@@ -581,10 +581,22 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
 void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
                                 Int step, Real time, Real dt) const {
 #ifdef GUTIBM_HDF5
+  const auto& chem = sim.chemical_field();
+  const double mean_carbon = field_mean(chem, chem.find(species::CARBON));
+  const double mean_iron = field_mean(chem, chem.find(species::IRON));
+  const double mean_oxygen = field_mean(chem, chem.find(species::OXYGEN));
+  const double max_btuB =
+      field_max(chem, chem.find(species::BACTERIOCIN_BTUB));
+  const double max_fepA =
+      field_max(chem, chem.find(species::BACTERIOCIN_FEPA));
+  const double max_cirA =
+      field_max(chem, chem.find(species::BACTERIOCIN_CIRA));
+  const double max_fhuA =
+      field_max(chem, chem.find(species::BACTERIOCIN_FHUA));
+
   if (io_rank(cfg_) == 0 && file_id_ >= 0) {
   auto fid = static_cast<hid_t>(file_id_);
   const auto& agents = sim.agents();
-  const auto& chem = sim.chemical_field();
   const auto& events = sim.step_events();
 
   const double t = time;
@@ -743,14 +755,6 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
                        H5T_NATIVE_DOUBLE, &interval_start_time);
   write_scalar_dataset(fid, group + "/events/interval_end_time",
                        H5T_NATIVE_DOUBLE, &interval_end_time);
-
-  const double mean_carbon = field_mean(chem, chem.find(species::CARBON));
-  const double mean_iron = field_mean(chem, chem.find(species::IRON));
-  const double mean_oxygen = field_mean(chem, chem.find(species::OXYGEN));
-  const double max_btuB = field_max(chem, chem.find(species::BACTERIOCIN_BTUB));
-  const double max_fepA = field_max(chem, chem.find(species::BACTERIOCIN_FEPA));
-  const double max_cirA = field_max(chem, chem.find(species::BACTERIOCIN_CIRA));
-  const double max_fhuA = field_max(chem, chem.find(species::BACTERIOCIN_FHUA));
 
   ensure_group(fid, group + "/chem", cfg_);
   write_scalar_dataset(fid, group + "/chem/mean_carbon", H5T_NATIVE_DOUBLE, &mean_carbon);

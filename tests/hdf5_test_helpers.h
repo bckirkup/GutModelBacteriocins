@@ -6,6 +6,7 @@
 
 #include "agent.h"
 #include "hdf5_reader.h"
+#include "path_utils.h"
 #include "simulation.h"
 
 #include <algorithm>
@@ -13,7 +14,12 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
+
+#ifdef GUTIBM_MPI
+#include <mpi.h>
+#endif
 
 #ifdef GUTIBM_HDF5
 extern "C" {
@@ -24,6 +30,39 @@ extern "C" {
 namespace gutibm::test {
 
 constexpr double kAgentSnapshotTol = 1e-12;
+
+inline std::string resolve_shared_test_h5_path(const char* env_var,
+                                               std::string_view tag) {
+#ifdef GUTIBM_MPI
+  int rank = 0;
+  int nprocs = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+  std::string filename;
+  if (rank == 0) {
+    filename = resolve_test_h5_path(env_var, std::string(tag));
+  }
+
+  if (nprocs > 1) {
+    int length = 0;
+    if (rank == 0) {
+      length = static_cast<int>(filename.size());
+    }
+    MPI_Bcast(&length, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    if (rank != 0) {
+      filename.resize(static_cast<size_t>(length));
+    }
+    if (length > 0) {
+      MPI_Bcast(filename.data(), length, MPI_CHAR, 0, MPI_COMM_WORLD);
+    }
+  }
+
+  return filename;
+#else
+  return resolve_test_h5_path(env_var, std::string(tag));
+#endif
+}
 
 struct AgentSnapshot {
   int64_t id;
