@@ -161,7 +161,7 @@ void launch_metabolism_kernel(
       mu_realized, biomass, radius, mass, age,
       grid_cell, state, mu_max, km_b12, km_carbon,
       receptor_expr, ligand_affinity, bi_loci_count, plasmid_amelioration,
-      num_agents, dt, dx, cell_density,
+      num_agents, dt, cell_volume, cell_density,
       km_iron_primary, km_iron_iroN, km_iron_iutA, km_iron_fiu,
       maintenance_rate, metE_penalty, metE_acetate_max_factor,
       metE_acetate_km, eut_max_penalty, eut_km,
