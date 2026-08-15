@@ -282,6 +282,23 @@ experiences through a different receptor. In lumped mode the four
 `bacteriocin_max_*` summary keys remain present and are identical by
 construction; grid output contains one bacteriocin dataset.
 
+`chemistry.species_subset` is likewise a modelling position, not a
+performance flag. `full` is today's complete species set. `nutrient_only`
+removes all bacteriocin fields and turns off bacteriocin/QSSA and receptor
+killing, isolating nutrient competition. `carbon_only` retains carbon alone
+and turns off toxin/receptor chemistry, oxygen, acetate, ethanolamine, mucin,
+siderophore, ferrichrome, quorum sensing, motility taxis terms that read
+removed fields, Fur regulation, iron/B12/eut uptake terms, the VBF iron sink,
+and dynamic mucin; it asks whether spatial carbon competition alone
+reproduces retention and clustering. Setting the VBF iron sink to zero and
+disabling dynamic mucin are intentional parts of this modelling position, not
+hidden parameter overrides. The chosen subset and exhaustive
+disabled-mechanism list are printed in the startup audit line. Required-species
+validation is always on: if an enabled mechanism lacks a required species,
+initialization throws a `ConfigError` naming the mechanism, species, and
+specific configuration key to change. A missing species is not a silent
+mechanism disable.
+
 ---
 
 ## Protease Degradation (Spec 1)

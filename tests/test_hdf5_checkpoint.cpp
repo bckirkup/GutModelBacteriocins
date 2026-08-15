@@ -307,8 +307,11 @@ void test_toxin_lumping_checkpoint_mismatch(const std::string& per_filename,
     bool rejected = false;
     try {
       resumed.init_from_checkpoint(cfg, filename, "step_000001");
-    } catch (const ConfigError&) {
-      rejected = true;
+    } catch (const ConfigError& ex) {
+      const std::string message = ex.what();
+      rejected = message.find("checkpoint chemical species set")
+          != std::string::npos
+          && message.find("chemistry.species_subset") != std::string::npos;
     }
     assert(rejected);
   };
@@ -317,6 +320,43 @@ void test_toxin_lumping_checkpoint_mismatch(const std::string& per_filename,
   expect_mismatch(per_filename, "lumped");
   write_checkpoint(lumped_filename, "lumped");
   expect_mismatch(lumped_filename, "per_receptor");
+}
+
+void test_species_subset_checkpoint_mismatch(
+    const std::string& full_filename,
+    const std::string& nutrient_filename) {
+  auto write_checkpoint = [](const std::string& filename,
+                             std::string_view subset) {
+    SimulationConfig cfg = make_checkpoint_config(filename);
+    cfg.time.total_time = 60.0;
+    cfg.species_subset = std::string(subset);
+    Simulation sim;
+    sim.init(cfg);
+    sim.run();
+  };
+  auto expect_mismatch = [](const std::string& filename,
+                            std::string_view subset) {
+    SimulationConfig cfg = make_checkpoint_config(filename);
+    cfg.species_subset = std::string(subset);
+    cfg.hdf5.enabled = false;
+    cfg.initial_strains.clear();
+    Simulation resumed;
+    bool rejected = false;
+    try {
+      resumed.init_from_checkpoint(cfg, filename, "step_000001");
+    } catch (const ConfigError& ex) {
+      const std::string message = ex.what();
+      rejected = message.find("checkpoint chemical species set")
+          != std::string::npos
+          && message.find("chemistry.species_subset") != std::string::npos;
+    }
+    assert(rejected);
+  };
+
+  write_checkpoint(full_filename, "full");
+  expect_mismatch(full_filename, "nutrient_only");
+  write_checkpoint(nutrient_filename, "nutrient_only");
+  expect_mismatch(nutrient_filename, "full");
 }
 
 void test_slab_checkpoint_matches_uninterrupted(const std::string& filename) {
@@ -486,6 +526,14 @@ int main(int argc, char** argv) {
                                   "toxin_mismatch_lumped");
   test_toxin_lumping_checkpoint_mismatch(toxin_mismatch_per,
                                          toxin_mismatch_lumped);
+  const std::string species_subset_full =
+      resolve_shared_test_h5_path("GUTIBM_SPECIES_SUBSET_FULL_H5",
+                                  "species_subset_full");
+  const std::string species_subset_nutrient =
+      resolve_shared_test_h5_path("GUTIBM_SPECIES_SUBSET_NUTRIENT_H5",
+                                  "species_subset_nutrient");
+  test_species_subset_checkpoint_mismatch(species_subset_full,
+                                           species_subset_nutrient);
   const std::string slab_filename =
       resolve_shared_test_h5_path("GUTIBM_SLAB_CHECKPOINT_H5",
                                   "slab_checkpoint");
@@ -499,6 +547,7 @@ int main(int argc, char** argv) {
     std::cout << "  test_checkpoint_restart: PASSED\n";
     std::cout << "  test_split_run_matches_uninterrupted: PASSED\n";
     std::cout << "  test_toxin_lumping_checkpoint_mismatch: PASSED\n";
+    std::cout << "  test_species_subset_checkpoint_mismatch: PASSED\n";
     std::cout << "  test_slab_checkpoint_matches_uninterrupted: PASSED\n";
     std::cout << "All HDF5 checkpoint tests passed.\n";
   }

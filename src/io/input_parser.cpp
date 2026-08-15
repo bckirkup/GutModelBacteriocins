@@ -253,10 +253,91 @@ bool parse_bool_config(std::string_view val) {
   return lower == "true" || lower == "yes" || lower == "on";
 }
 
+bool is_toxin_species(std::string_view name) {
+  return name == species::BACTERIOCIN_BTUB
+      || name == species::BACTERIOCIN_FEPA
+      || name == species::BACTERIOCIN_CIRA
+      || name == species::BACTERIOCIN_FHUA
+      || name == species::BACTERIOCIN_LUMPED;
+}
+
+void disable_subset_mechanism(SimulationConfig& cfg,
+                              std::string_view fix_name,
+                              std::string_view audit_name) {
+  if (!fix_name.empty()) {
+    cfg.disabled_fixes.emplace_back(fix_name);
+  }
+  cfg.disabled_mechanisms.emplace_back(audit_name);
+}
+
+void apply_species_subset(SimulationConfig& cfg) {
+  if (cfg.species_subset == "full") {
+    cfg.disabled_fixes.clear();
+    cfg.disabled_mechanisms.clear();
+    return;
+  }
+  if (cfg.qssa.toxin_lumping == "lumped") {
+    throw ConfigError(
+        "chemistry.species_subset cannot drop toxin fields while "
+        "toxin_lumping=lumped");
+  }
+
+  cfg.disabled_fixes.clear();
+  cfg.disabled_mechanisms.clear();
+  disable_subset_mechanism(cfg, "receptor", "receptor_killing");
+  disable_subset_mechanism(cfg, "bacteriocin", "bacteriocin_path");
+  disable_subset_mechanism(cfg, "", "qssa_toxin_path");
+  if (cfg.species_subset == "carbon_only") {
+    disable_subset_mechanism(cfg, "", "oxygen");
+    disable_subset_mechanism(cfg, "", "acetate");
+    disable_subset_mechanism(cfg, "", "ethanolamine");
+    disable_subset_mechanism(cfg, "", "mucin");
+    disable_subset_mechanism(cfg, "", "siderophore");
+    disable_subset_mechanism(cfg, "", "ferrichrome");
+    disable_subset_mechanism(cfg, "", "quorum_sensing");
+    disable_subset_mechanism(cfg, "", "motility_aerotaxis");
+    disable_subset_mechanism(cfg, "", "motility_mucin_drag");
+    disable_subset_mechanism(cfg, "", "motility_ai2_chemotaxis");
+    disable_subset_mechanism(cfg, "", "fur_regulation");
+    disable_subset_mechanism(cfg, "", "iron_uptake");
+    disable_subset_mechanism(cfg, "", "b12_uptake");
+    disable_subset_mechanism(cfg, "", "eut_ethanolamine_uptake");
+    disable_subset_mechanism(cfg, "", "vbf_iron_sink");
+    disable_subset_mechanism(cfg, "", "vbf_dynamic_mucin");
+    cfg.chem_env.oxygen.enabled = false;
+    cfg.chem_env.acetate.enabled = false;
+    cfg.chem_env.mucin.enabled = false;
+    cfg.chem_env.siderophore.enabled = false;
+    cfg.chem_env.ferrichrome.enabled = false;
+    cfg.quorum_sensing.enabled = false;
+    cfg.quorum_sensing.ai2_chemotaxis_enabled = false;
+    cfg.cell_bio.fur.enabled = false;
+    cfg.cell_bio.motility.aerotaxis_enabled = false;
+    cfg.cell_bio.motility.mucin_drag_enabled = false;
+    cfg.fixes.metabolism.iron_uptake_enabled = false;
+    cfg.fixes.metabolism.b12_uptake_enabled = false;
+    cfg.fixes.metabolism.eut_enabled = false;
+    cfg.vbf.nutrient_sink = 0.0;
+    cfg.vbf.use_dynamic_mucin = false;
+  }
+
+  std::vector<ChemicalSpec> retained;
+  retained.reserve(cfg.chemicals.size());
+  for (const auto& spec : cfg.chemicals) {
+    const bool keep = cfg.species_subset == "nutrient_only"
+        ? !is_toxin_species(spec.name)
+        : spec.name == species::CARBON;
+    if (keep) retained.push_back(spec);
+  }
+  cfg.chemicals = std::move(retained);
+}
+
 }  // namespace
 
 void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
+
+  apply_species_subset(cfg);
 
   if (cfg.chem_env.oxygen.enabled) {
     const Int idx = find_chemical_spec(cfg.chemicals, species::OXYGEN);
@@ -387,6 +468,15 @@ bool apply_domain_key(SimulationConfig& cfg, std::string_view key, const std::st
 
 bool apply_chemistry_key(SimulationConfig& cfg, std::string_view key,
                          const std::string& val) {
+  if (key == "chemistry.species_subset" || key == "species_subset") {
+    if (val == "full" || val == "nutrient_only" || val == "carbon_only") {
+      cfg.species_subset = val;
+      return true;
+    }
+    throw ConfigError(
+        "invalid species_subset: expected 'full', 'nutrient_only', or "
+        "'carbon_only', got '" + val + "'");
+  }
   if (key == "chemistry.toxin_evaluation" || key == "toxin_evaluation") {
     if (val == "grid" || val == "agents") {
       cfg.qssa.toxin_evaluation = val;

@@ -71,9 +71,23 @@ Many subsystems use **dot-key toggles** in flat JSON:
 | `use_fmm` | false | Barnes–Hut FMM far-field acceleration |
 | `chemistry.toxin_evaluation` | `"grid"` | Toxin exposure mode: `"grid"` or `"agents"` |
 | `chemistry.toxin_lumping` | `"per_receptor"` | Toxin spatial model: receptor-specific fields or one all-source field |
+| `chemistry.species_subset` | `"full"` | Scientific species set: `"full"`, `"nutrient_only"`, or `"carbon_only"` |
 | `gpu_enabled` | false | CUDA GPU path (CUDA build required) |
 
 Full parameter lists: [PARAMETERS.md](PARAMETERS.md).
+
+`chemistry.species_subset` is a modelling position, not a performance switch.
+`full` preserves the historical species set. `nutrient_only` removes
+bacteriocin fields and disables bacteriocin production/QSSA and receptor
+killing. `carbon_only` retains only carbon and additionally disables oxygen,
+acetate, ethanolamine, mucin, siderophore, ferrichrome, quorum sensing, and
+motility taxis terms that read removed fields, Fur regulation, iron/B12/eut
+uptake terms, the VBF iron sink, and dynamic mucin. Zeroing the VBF iron sink
+and disabling dynamic mucin are intentional parts of the subset, not hidden
+parameter overrides. The selected subset and exhaustive disabled mechanisms
+are printed at startup. An enabled mechanism whose required species is absent
+is a `ConfigError` naming the mechanism, species, and enabling configuration
+key; absence is never interpreted as an intentional disable.
 
 ## Per-strain fields
 

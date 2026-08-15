@@ -81,6 +81,8 @@ struct SimulationConfig {
   DomainConfig domain;
   // Chemistry layout selector; stage 2a retains global storage in both modes.
   std::string chemistry_decomposition = "replicated";
+  // Scientific chemistry model variant; full retains the historical species set.
+  std::string species_subset = "full";
   AdvectionConfig advection;
   VBFConfig vbf;
   Real carbon_boundary_conc = 5.0e-3;
@@ -115,6 +117,9 @@ struct SimulationConfig {
   };
   std::vector<InitialStrain> initial_strains;
   std::vector<std::string> enabled_fixes;
+  // Exact Fix names skipped by FixRegistry; audit labels belong below.
+  std::vector<std::string> disabled_fixes;
+  std::vector<std::string> disabled_mechanisms;
   uint64_t seed = 42;
   GpuConfig gpu;
   ChemicalEnvironmentConfig chem_env;

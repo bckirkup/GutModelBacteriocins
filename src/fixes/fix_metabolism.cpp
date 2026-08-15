@@ -332,12 +332,13 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
 
   Real S_carbon = (i_carbon >= 0)
       ? chem.conc_global(i_carbon, cell) : 1.0;
-  Real S_iron   = (i_iron >= 0)
+  Real S_iron   = (cfg_.iron_uptake_enabled && i_iron >= 0)
       ? chem.conc_global(i_iron, cell) : 1.0;
-  Real S_b12    = (i_b12 >= 0)
+  Real S_b12    = (cfg_.b12_uptake_enabled && i_b12 >= 0)
       ? chem.conc_global(i_b12, cell) : 1.0;
 
-  if (const auto& fur_cfg = sim_.config().cell_bio.fur; fur_cfg.enabled) {
+  if (const auto& fur_cfg = sim_.config().cell_bio.fur;
+      fur_cfg.enabled && cfg_.iron_uptake_enabled) {
     const Real fur_factor = 1.0 + fur_cfg.upregulation_max * fur_cfg.Km
         / (fur_cfg.Km + S_iron);
     for (int r = 0; r < NUM_RECEPTORS; ++r) {
@@ -376,19 +377,27 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
 
   // Graded iron uptake: each receptor contributes proportional to expression,
   // ligand affinity, and its own Km
-  Real iron_uptake = 0.0;
-  iron_uptake += expr_fepA * lig_aff_fepA * S_iron / (cfg_.km_iron_primary + S_iron);
-  iron_uptake += expr_iroN * lig_aff_iroN * S_iron / (cfg_.km_iron_iroN + S_iron);
-  iron_uptake += expr_iutA * lig_aff_iutA * S_iron / (cfg_.km_iron_iutA + S_iron);
-  iron_uptake += expr_fiu  * lig_aff_fiu  * S_iron / (cfg_.km_iron_fiu  + S_iron);
-  Real monod_iron = iron_uptake / (1.0 + expr_iroN + expr_iutA + expr_fiu);
+  Real monod_iron = 1.0;
+  if (cfg_.iron_uptake_enabled) {
+    Real iron_uptake = 0.0;
+    iron_uptake += expr_fepA * lig_aff_fepA * S_iron
+        / (cfg_.km_iron_primary + S_iron);
+    iron_uptake += expr_iroN * lig_aff_iroN * S_iron
+        / (cfg_.km_iron_iroN + S_iron);
+    iron_uptake += expr_iutA * lig_aff_iutA * S_iron
+        / (cfg_.km_iron_iutA + S_iron);
+    iron_uptake += expr_fiu * lig_aff_fiu * S_iron
+        / (cfg_.km_iron_fiu + S_iron);
+    monod_iron = iron_uptake / (1.0 + expr_iroN + expr_iutA + expr_fiu);
+  }
 
   Real Km_b12  = agent.km.km_b12  / (expr_btuB * lig_aff_btuB);
   Real Km_carb = agent.km.km_carbon;
 
   // Triple Monod kinetics (uncoupled)
   Real monod_carbon = S_carbon / (Km_carb + S_carbon);
-  Real monod_b12    = S_b12    / (Km_b12  + S_b12);
+  Real monod_b12 = cfg_.b12_uptake_enabled
+      ? S_b12 / (Km_b12 + S_b12) : 1.0;
 
   Real mu = agent.mu_max * monod_carbon * monod_iron * monod_b12;
 
@@ -415,9 +424,13 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
       metE_eff *= acetate_factor;
     }
     Real eut_conc = 0.0;
-    if (Int i_eut = chem.find(species::ETHANOLAMINE); i_eut >= 0)
+    if (cfg_.eut_enabled) {
+      if (Int i_eut = chem.find(species::ETHANOLAMINE); i_eut >= 0) {
       eut_conc = chem.conc_global(i_eut, cell);
-    Real eut_effect = cfg_.eut_max_penalty * eut_conc / (cfg_.eut_km + eut_conc);
+      }
+    }
+    Real eut_effect = cfg_.eut_enabled
+        ? cfg_.eut_max_penalty * eut_conc / (cfg_.eut_km + eut_conc) : 0.0;
     mu *= (1.0 - metE_eff - eut_effect);
   }
 
@@ -469,7 +482,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
     #endif
     chem.reac_global(i_carbon, cell) -= delta_c;
   }
-  if (i_iron >= 0 && cell_vol > 0.0) {
+  if (cfg_.iron_uptake_enabled && i_iron >= 0 && cell_vol > 0.0) {
     Real delta_fe = d_biomass * cfg_.yield_iron / (cell_vol * dt);
     chem.flux_accounting().add_agent_uptake(
         i_iron, d_biomass * cfg_.yield_iron);

@@ -480,6 +480,23 @@ Each directional pass solves a tridiagonal system in O(cells): x and y are perio
 
 Bacteriocins remain on the analytical QSSA path because they are point-source bursts or continuous producer sources with receptor-specific Green's-function fields. The default `chemistry.toxin_lumping = "per_receptor"` keeps separate BtuB, FepA, CirA, and FhuA fields. The scientific `lumped` variant instead superposes every toxin source into one `bacteriocin_lumped` field and makes all receptors read it, while retaining receptor-specific binding, toxin affinity, and immunity in the kill calculation. Its explicit modelling costs are that a colicin to which an agent is immune can still contribute to exposure through another receptor, and that the nuclease SOS/ROS cross-induction path sees total toxin burden rather than only nuclease-colicin/BtuB toxin.
 
+The `chemistry.species_subset` modelling position controls which chemical
+species and mechanisms exist. `full` preserves this complete model.
+`nutrient_only` removes bacteriocin fields and disables bacteriocin release,
+QSSA toxin chemistry, and receptor killing to isolate nutrient competition.
+`carbon_only` retains carbon alone and also disables oxygen, acetate,
+ethanolamine, mucin, siderophore, ferrichrome, quorum sensing, and motility
+taxis terms that read removed fields, Fur regulation, iron/B12/eut uptake
+terms, the VBF iron sink, and dynamic mucin; it asks whether carbon
+competition alone is sufficient for retention and clustering. Zeroing the VBF
+iron sink and disabling dynamic mucin are intentional parts of this modelling
+position, not hidden parameter overrides. Initialization validates required
+species from mechanism enablement. An enabled mechanism with a missing species
+throws `ConfigError` naming the mechanism, species, and enabling configuration
+key instead of silently turning that term off. In lumped mode, the nuclease
+SOS/ROS cross-induction reader also sees total toxin burden, not a nuclease-only
+field; this is an explicit second approximation cost.
+
 **Method:** At each biological timestep:
 1. Collect all active toxin sources (SOS-lysed cells as bursts, microcin producers as steady sources)
 2. In MPI runs, allgather the compact source records in rank-major order so every rank solves from the same global source list. This exchanges source records, not grid-sized field data; ranks with no local sources still participate.
