@@ -10,7 +10,7 @@
 #include "plasmid.h"
 #include "greens_function.h"
 #include "error.h"
-#include "path_utils.h"
+#include "hdf5_test_helpers.h"
 
 #include <cassert>
 #include <cmath>
@@ -35,6 +35,7 @@ using gutibm::test::assert_unique_tags;
 using gutibm::test::gather_live_tags_flat;
 using gutibm::test::make_mpi_config;
 using gutibm::test::require_mpi_ranks;
+using gutibm::test::resolve_shared_test_h5_path;
 
 namespace {
 
@@ -135,7 +136,7 @@ void test_global_event_counter_reduction() {
   MPI_Allreduce(&local_increment, &expected, 1, MPI_INT, MPI_SUM,
                 MPI_COMM_WORLD);
 
-  const std::string path = resolve_test_h5_path(
+  const std::string path = resolve_shared_test_h5_path(
       "GUTIBM_MPI_EVENT_COUNTERS_H5", "mpi_event_counters");
   HDF5Config hdf5_cfg;
   hdf5_cfg.enabled = true;
@@ -193,7 +194,7 @@ void test_population_ledger_closure() {
   cfg.time.total_time = cfg.time.bio_dt;
   cfg.time.output_interval = cfg.time.total_time;
   cfg.hdf5.enabled = true;
-  cfg.hdf5.filename = resolve_test_h5_path(
+  cfg.hdf5.filename = resolve_shared_test_h5_path(
       "GUTIBM_MPI_LEDGER_H5", "mpi_population_ledger");
   cfg.hdf5.schedule.summary = 1;
   cfg.hdf5.schedule.agents = 0;

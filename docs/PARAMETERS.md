@@ -705,7 +705,7 @@ gpu_device_id 0
 |-----------|---------|-------|-------------|
 | `hdf5.filename` / `hdf5_file` | `gut_ibm_output.h5` | — | Output file path |
 | `hdf5.enabled` | true | — | Master switch (also off when all schedule intervals are 0) |
-| `hdf5.schedule.summary` | 1 | steps | Per-step summary stats + event counters |
+| `hdf5.schedule.summary` | 1 | steps | Per-step summary stats + globally reduced interval and cumulative event counters |
 | `hdf5.schedule.agents` | 5 | steps | Lightweight agent arrays |
 | `hdf5.schedule.grid` | 0 | steps | 3D chemical grids (0 = disabled) |
 | `hdf5.schedule.lineage` | 100 | steps | Lineage tracker arrays |
