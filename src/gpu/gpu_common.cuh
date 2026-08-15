@@ -106,9 +106,9 @@ __device__ inline int cell_index(const DomainParams& dom, int ix, int iy, int iz
 
 __device__ inline void cell_center(const DomainParams& dom, int ix, int iy, int iz,
                                    double out[3]) {
-  out[0] = dom.lo[0] + (ix + 0.5) * dom.dx;
-  out[1] = dom.lo[1] + (iy + 0.5) * dom.dx;
-  out[2] = dom.lo[2] + (iz + 0.5) * dom.dx;
+  out[0] = dom.lo[0] + (ix + 0.5) * dom.dx_x;
+  out[1] = dom.lo[1] + (iy + 0.5) * dom.dx_y;
+  out[2] = dom.lo[2] + (iz + 0.5) * dom.dx_z;
 }
 
 }  // namespace gpu

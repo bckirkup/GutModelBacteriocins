@@ -43,7 +43,8 @@ void launch_superpose_kernel(
     const double* src_x, const double* src_y, const double* src_z,
     const GfSourceParams* params, double* grid_conc,
     const DomainParams& dom, const AdvectionParams& adv,
-    int num_sources, int span, cudaStream_t stream);
+    int num_sources, int span_x, int span_y, int span_z,
+    cudaStream_t stream);
 
 void launch_field_update_kernel(
     double* conc, const double* reac, int ncells, int num_species,
@@ -58,7 +59,8 @@ void launch_apply_boundaries_kernel(
 
 void launch_grid_coupling_kernel(
     const double* x, const double* y, const double* z, int* grid_cell,
-    const int* state, double lo0, double lo1, double lo2, double dx,
+    const int* state, double lo0, double lo1, double lo2,
+    double dx_x, double dx_y, double dx_z,
     int nx, int ny, int nz, int num_agents, cudaStream_t stream);
 
 void launch_metabolism_kernel(
@@ -70,7 +72,7 @@ void launch_metabolism_kernel(
     const double* mu_max, const double* km_b12, const double* km_carbon,
     const double* receptor_expr, const double* ligand_affinity,
     const int* bi_loci_count, const double* plasmid_amelioration,
-    int num_agents, double dt, double dx, double cell_density,
+    int num_agents, double dt, double cell_volume, double cell_density,
     double km_iron_primary, double km_iron_iroN, double km_iron_iutA, double km_iron_fiu,
     double maintenance_rate, double metE_penalty, double metE_acetate_max_factor,
     double metE_acetate_km, double eut_max_penalty, double eut_km,
@@ -111,7 +113,7 @@ void launch_set_luminal_neumann(double* conc, int storage_nx, int ny, int nz,
                                 int owned_x_begin, int owned_x_end,
                                 cudaStream_t stream);
 void launch_shift_z_gradient(double* conc, int storage_nx, int ny, int nz,
-                             int owned_x_begin, int owned_x_end, double dx,
+                             int owned_x_begin, int owned_x_end, double dx_z,
                              double initial_conc, double lambda,
                              double boundary_conc, double scale,
                              cudaStream_t stream);
@@ -158,7 +160,7 @@ void launch_fmm_far_local_kernel(
     int num_leaves,
     int coeffs_per_leaf,
     int expansion_order,
-    double lo0, double lo1, double lo2, double dx,
+    double lo0, double lo1, double lo2, double dx_x, double dx_y, double dx_z,
     int nx, int ny,
     cudaStream_t stream);
 

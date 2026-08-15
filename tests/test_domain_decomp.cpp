@@ -16,6 +16,71 @@
 
 using namespace gutibm;
 
+void test_coarse_cell_union() {
+  DomainConfig fine_cfg;
+  fine_cfg.hi = {40e-6, 30e-6, 20e-6};
+  fine_cfg.grid_dx = 5e-6;
+  DomainConfig coarse_cfg = fine_cfg;
+  coarse_cfg.chemistry_stride = {2, 3, 1};
+  Domain fine;
+  Domain coarse;
+  fine.init(fine_cfg);
+  coarse.init(coarse_cfg);
+  assert(coarse.nx() * 2 == fine.nx());
+  assert(coarse.ny() * 3 == fine.ny());
+  assert(coarse.nz() == fine.nz());
+  for (Int iz = 0; iz < coarse.nz(); ++iz) {
+    for (Int iy = 0; iy < coarse.ny(); ++iy) {
+      for (Int ix = 0; ix < coarse.nx(); ++ix) {
+        const Vec3 center = coarse.cell_center(ix, iy, iz);
+        const Real coarse_lo_x = center[0] - 0.5 * coarse.dx_x();
+        const Real coarse_hi_x = center[0] + 0.5 * coarse.dx_x();
+        const Real fine_lo_x = fine.cell_center(2 * ix, 0, 0)[0]
+            - 0.5 * fine.dx_x();
+        const Real fine_hi_x = fine.cell_center(2 * ix + 1, 0, 0)[0]
+            + 0.5 * fine.dx_x();
+        assert(std::abs(coarse_lo_x - fine_lo_x) < 1.0e-18);
+        assert(std::abs(coarse_hi_x - fine_hi_x) < 1.0e-18);
+        const Real coarse_lo_y = center[1] - 0.5 * coarse.dx_y();
+        const Real coarse_hi_y = center[1] + 0.5 * coarse.dx_y();
+        const Real fine_lo_y = fine.cell_center(0, 3 * iy, 0)[1]
+            - 0.5 * fine.dx_y();
+        const Real fine_hi_y = fine.cell_center(0, 3 * iy + 2, 0)[1]
+            + 0.5 * fine.dx_y();
+        assert(std::abs(coarse_lo_y - fine_lo_y) < 1.0e-18);
+        assert(std::abs(coarse_hi_y - fine_hi_y) < 1.0e-18);
+      }
+    }
+  }
+  std::cout << "  test_coarse_cell_union: PASSED\n";
+}
+
+void test_stride_must_tile_base_grid() {
+  DomainConfig cfg;
+  cfg.hi = {40.0e-6, 30.0e-6, 20.0e-6};
+  cfg.grid_dx = 5.0e-6;
+  cfg.chemistry_stride = {3, 1, 1};
+  Domain domain;
+  bool threw = false;
+  try {
+    domain.init(cfg);
+  } catch (const ConfigError& error) {
+    threw = std::string(error.what()).find("axis x") != std::string::npos;
+  }
+  assert(threw);
+  std::cout << "  test_stride_must_tile_base_grid: PASSED\n";
+}
+
+void test_thin_domain_preserves_minimum_cell() {
+  DomainConfig cfg;
+  cfg.hi = {1.0e-6, 10.0e-6, 10.0e-6};
+  cfg.grid_dx = 5.0e-6;
+  Domain domain;
+  domain.init(cfg);
+  assert(domain.nx() == 1);
+  std::cout << "  test_thin_domain_preserves_minimum_cell: PASSED\n";
+}
+
 void test_chemical_field_layout_mapping() {
   DomainConfig replicated_cfg;
   replicated_cfg.hi = {100e-6, 20e-6, 20e-6};
@@ -400,6 +465,9 @@ int main() {
   test_ghost_width_config();
   test_grid_partition_metadata();
   test_chemical_field_layout_mapping();
+  test_coarse_cell_union();
+  test_stride_must_tile_base_grid();
+  test_thin_domain_preserves_minimum_cell();
   test_migration_noop_single_rank();
   std::cout << "All domain decomposition tests passed.\n";
   return 0;

@@ -32,6 +32,9 @@ struct DomainConfig {
 
   // Grid resolution for chemical fields
   Real grid_dx = 2.0e-6;  // 2 um
+  // Integer coarsening of the chemistry grid in x, y, and z.  Agent
+  // mechanics and hashing remain on physical-length scales.
+  std::array<Int, 3> chemistry_stride = {1, 1, 1};
 
   // Spatial hash cell size (should be >= max interaction range)
   Real hash_cell_size = 10.0e-6;  // 10 um
@@ -65,7 +68,10 @@ class Domain {
   Int ny() const { return ny_; }
   Int nz() const { return nz_; }
   Int ncells() const { return nx_ * ny_ * nz_; }
-  Real dx() const { return dx_; }
+  Real dx_x() const { return dx_[0]; }
+  Real dx_y() const { return dx_[1]; }
+  Real dx_z() const { return dx_[2]; }
+  Real cell_volume() const { return dx_[0] * dx_[1] * dx_[2]; }
 
   // Rank-local x-grid ownership, half-open in global cell coordinates.
   Int local_grid_x_begin() const { return local_grid_x_begin_; }
@@ -147,7 +153,7 @@ class Domain {
   Int nx_ = 0;
   Int ny_ = 0;
   Int nz_ = 0;
-  Real dx_ = 2.0e-6;
+  Vec3 dx_ = {2.0e-6, 2.0e-6, 2.0e-6};
 
   std::array<bool, 3> periodic_{};
 

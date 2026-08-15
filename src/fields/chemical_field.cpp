@@ -271,7 +271,7 @@ Real z_gradient_reference(const ChemicalSpec& spec,
   if (iz == 0) return spec.boundary_conc;
   const Int profile_iz = (domain.nz() >= 2 && iz == domain.nz() - 1)
       ? domain.nz() - 2 : iz;
-  const Real z_rel = (profile_iz + 0.5) * domain.dx();
+    const Real z_rel = (profile_iz + 0.5) * domain.dx_z();
   return spec.initial_conc * std::exp(-z_rel / spec.z_gradient_lambda);
 }
 
@@ -310,7 +310,7 @@ void ChemicalField::init(const Domain& domain,
   }
   if (decomposition == "slab") {
     const auto required_halo = static_cast<Int>(
-        std::ceil(domain.ghost_width() / domain.dx()));
+        std::ceil(domain.ghost_width() / domain.dx_x()));
     if (domain.grid_halo_width() < required_halo) {
       throw ConfigError(
           "slab chemistry requires grid_halo_width >= ceil(ghost_width / dx)");
@@ -352,7 +352,7 @@ void ChemicalField::init(const Domain& domain,
         const Int global_cell = storage_to_global_cell(storage_cell);
         if (global_cell < 0) continue;
         const Int iz = global_cell / (global_nx_ * global_ny_);
-        const Real z_rel = (iz + 0.5) * domain.dx();
+        const Real z_rel = (iz + 0.5) * domain.dx_z();
         conc_[s][static_cast<size_t>(storage_cell)] =
             specs_[s].initial_conc
             * std::exp(-z_rel / specs_[s].z_gradient_lambda);
@@ -826,7 +826,7 @@ void shift_z_gradient_slab(
   for (Int iz = 0; iz < domain.nz(); ++iz) {
     const Int profile_iz = domain.nz() >= 2 && iz == domain.nz() - 1
         ? domain.nz() - 2 : iz;
-    const Real z_rel = (profile_iz + 0.5) * domain.dx();
+  const Real z_rel = (profile_iz + 0.5) * domain.dx_z();
     const Real shift = scale * spec.initial_conc
         * std::exp(-z_rel / spec.z_gradient_lambda);
     for (Int iy = 0; iy < domain.ny(); ++iy) {
@@ -856,13 +856,13 @@ void clamp_nonnegative_slab(
 }  // namespace
 
 void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
-  if (dt <= 0.0 || domain.dx() <= 0.0) return;
+  if (dt <= 0.0 || domain.dx_x() <= 0.0 || domain.dx_y() <= 0.0
+      || domain.dx_z() <= 0.0) return;
   if (mode_ == DecompositionMode::Slab) {
     apply_diffusion_slab(domain, dt);
     return;
   }
 
-  const Real dx2 = domain.dx() * domain.dx();
   for (Int s = 0; s < nspec_; ++s) {
     const ChemicalSpec& chemical = specs_[s];
     if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
@@ -874,13 +874,18 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
     // timestep (alpha is 5,040 for O2 at dx=5 um, dt=60 s). Backward-Euler
     // directional splitting is L-stable, positivity-preserving, and O(N).
     const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
-    const Real alpha = effective_diffusion * dt / dx2;
+    const Real alpha_x = effective_diffusion * dt
+        / (domain.dx_x() * domain.dx_x());
+    const Real alpha_y = effective_diffusion * dt
+        / (domain.dx_y() * domain.dx_y());
+    const Real alpha_z = effective_diffusion * dt
+        / (domain.dx_z() * domain.dx_z());
     auto& concentration = conc_[s];
     const bool preserve_gradient =
         chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0;
     Real diffusion_boundary = chemical.boundary_conc;
 
-    const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+    const Real cell_volume = domain.cell_volume();
     flux_accounting_.add_boundary(
         s, set_epithelial_boundary(concentration, domain,
                                    chemical.boundary_conc, cell_volume));
@@ -895,10 +900,10 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
       diffusion_boundary = 0.0;
     }
 
-    diffuse_periodic_x(concentration, domain, alpha);
-    diffuse_periodic_y(concentration, domain, alpha);
+    diffuse_periodic_x(concentration, domain, alpha_x);
+    diffuse_periodic_y(concentration, domain, alpha_y);
     flux_accounting_.add_boundary(
-        s, diffuse_bounded_z(concentration, domain, alpha,
+        s, diffuse_bounded_z(concentration, domain, alpha_z,
                              diffusion_boundary, cell_volume));
 
     if (preserve_gradient) {
@@ -913,7 +918,7 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
 }
 
 void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt) {
-  if (dt <= 0.0 || domain.dx() <= 0.0) return;
+  if (dt <= 0.0 || domain.dx_x() <= 0.0) return;
   for (Int s = 0; s < nspec_; ++s) {
     apply_periodic_x_diffusion(domain, dt, s);
   }
@@ -921,14 +926,14 @@ void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt) {
 
 void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt,
                                                Int spec) {
-  if (dt <= 0.0 || domain.dx() <= 0.0 || spec < 0 || spec >= nspec_) return;
+  if (dt <= 0.0 || domain.dx_x() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
   if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
       || chemical.retardation <= 0.0) {
     return;
   }
-  const Real dx2 = domain.dx() * domain.dx();
-  const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt / dx2;
+  const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt
+      / (domain.dx_x() * domain.dx_x());
   if (mode_ == DecompositionMode::Slab) {
     diffuse_periodic_x_slab(conc_[static_cast<size_t>(spec)], domain,
                             storage_nx_, halo_width_, alpha);
@@ -937,21 +942,55 @@ void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt,
   }
 }
 
+void ChemicalField::apply_periodic_y_diffusion(const Domain& domain, Real dt,
+                                               Int spec) {
+  if (dt <= 0.0 || domain.dx_y() <= 0.0 || spec < 0 || spec >= nspec_) return;
+  const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
+  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
+      || chemical.retardation <= 0.0) {
+    return;
+  }
+  const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt
+      / (domain.dx_y() * domain.dx_y());
+  diffuse_periodic_y(conc_[static_cast<size_t>(spec)], domain, alpha);
+}
+
+void ChemicalField::apply_bounded_z_diffusion(const Domain& domain, Real dt,
+                                              Int spec) {
+  if (dt <= 0.0 || domain.dx_z() <= 0.0 || spec < 0 || spec >= nspec_) return;
+  const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
+  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
+      || chemical.retardation <= 0.0) {
+    return;
+  }
+  const Real effective_diffusion =
+      chemical.diff_coeff / chemical.retardation;
+  const Real alpha = effective_diffusion * dt
+      / (domain.dx_z() * domain.dx_z());
+  diffuse_bounded_z(conc_[static_cast<size_t>(spec)], domain, alpha,
+                    chemical.boundary_conc, domain.cell_volume());
+}
+
 void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
-  const Real dx2 = domain.dx() * domain.dx();
   for (Int s = 0; s < nspec_; ++s) {
     const ChemicalSpec& chemical = specs_[s];
     if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
         || chemical.retardation <= 0.0) {
       continue;
     }
-    const Real alpha =
-        (chemical.diff_coeff / chemical.retardation) * dt / dx2;
+    const Real effective_diffusion =
+        chemical.diff_coeff / chemical.retardation;
+    const Real alpha_x = effective_diffusion * dt
+        / (domain.dx_x() * domain.dx_x());
+    const Real alpha_y = effective_diffusion * dt
+        / (domain.dx_y() * domain.dx_y());
+    const Real alpha_z = effective_diffusion * dt
+        / (domain.dx_z() * domain.dx_z());
     auto& concentration = conc_[static_cast<size_t>(s)];
     const bool preserve_gradient =
         chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0;
     Real diffusion_boundary = chemical.boundary_conc;
-    const Real cell_volume = dx2 * domain.dx();
+    const Real cell_volume = domain.cell_volume();
     flux_accounting_.add_boundary(
         s, set_epithelial_boundary_slab(
                concentration, domain, storage_nx_, halo_width_,
@@ -964,12 +1003,12 @@ void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
       diffusion_boundary = 0.0;
     }
     diffuse_periodic_x_slab(
-        concentration, domain, storage_nx_, halo_width_, alpha);
+        concentration, domain, storage_nx_, halo_width_, alpha_x);
     diffuse_periodic_y_slab(
-        concentration, domain, storage_nx_, halo_width_, alpha);
+        concentration, domain, storage_nx_, halo_width_, alpha_y);
     flux_accounting_.add_boundary(
         s, diffuse_bounded_z_slab(
-               concentration, domain, storage_nx_, halo_width_, alpha,
+               concentration, domain, storage_nx_, halo_width_, alpha_z,
                diffusion_boundary, cell_volume));
     if (preserve_gradient) {
       shift_z_gradient_slab(
@@ -1001,7 +1040,7 @@ void apply_epithelial_boundary_layer(
           [static_cast<size_t>(idx)] = boundary_conc;
       flux_accounting.add_boundary(
           species_index,
-          (boundary_conc - old) * domain.dx() * domain.dx() * domain.dx());
+          (boundary_conc - old) * domain.cell_volume());
     }
   }
 }
@@ -1045,7 +1084,7 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
 }
 
 void ChemicalField::apply_boundaries_slab(const Domain& domain) {
-  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  const Real cell_volume = domain.cell_volume();
   for (Int s = 0; s < nspec_; ++s) {
     auto& concentration = conc_[static_cast<size_t>(s)];
     flux_accounting_.add_boundary(

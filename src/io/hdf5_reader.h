@@ -28,6 +28,8 @@ struct HDF5CheckpointMetadata {
   StepEvents interval_events;
   StepEvents cumulative_events;
   NutrientFluxAccounting flux_accounting;
+  Vec3 grid_spacing = {0.0, 0.0, 0.0};
+  bool has_grid_spacing = false;
 };
 
 struct HDF5CheckpointAgents {

@@ -458,13 +458,19 @@ void HDF5Writer::initialize_file() {
       const int32_t nx_attr = nx_;
       const int32_t ny_attr = ny_;
       const int32_t nz_attr = nz_;
-      const double dx_attr = grid_dx_;
+      const double dx_attr = grid_dx_[0];
+      const double dx_x_attr = grid_dx_[0];
+      const double dx_y_attr = grid_dx_[1];
+      const double dx_z_attr = grid_dx_[2];
       const int32_t version = 4;
       write_file_attr(fid, "gutibm_version", H5T_NATIVE_INT32, &version);
       write_file_attr(fid, "nx", H5T_NATIVE_INT32, &nx_attr);
       write_file_attr(fid, "ny", H5T_NATIVE_INT32, &ny_attr);
       write_file_attr(fid, "nz", H5T_NATIVE_INT32, &nz_attr);
       write_file_attr(fid, "grid_dx", H5T_NATIVE_DOUBLE, &dx_attr);
+      write_file_attr(fid, "grid_dx_x", H5T_NATIVE_DOUBLE, &dx_x_attr);
+      write_file_attr(fid, "grid_dx_y", H5T_NATIVE_DOUBLE, &dx_y_attr);
+      write_file_attr(fid, "grid_dx_z", H5T_NATIVE_DOUBLE, &dx_z_attr);
       write_file_attr(fid, "domain_lo_x", H5T_NATIVE_DOUBLE, &domain_lo_[0]);
       write_file_attr(fid, "domain_lo_y", H5T_NATIVE_DOUBLE, &domain_lo_[1]);
       write_file_attr(fid, "domain_lo_z", H5T_NATIVE_DOUBLE, &domain_lo_[2]);
@@ -482,7 +488,7 @@ void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
   nx_ = domain.nx();
   ny_ = domain.ny();
   nz_ = domain.nz();
-  grid_dx_ = domain.dx();
+  grid_dx_ = {domain.dx_x(), domain.dx_y(), domain.dx_z()};
   domain_lo_ = domain.lo();
   domain_hi_ = domain.hi();
 

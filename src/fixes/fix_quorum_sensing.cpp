@@ -19,8 +19,7 @@ void FixQuorumSensing::compute(Real /*dt*/) {
   const Int i_ai2 = chem.find(species::AI2);
   if (i_ai2 < 0) return;
 
-  const Real dx = sim_.domain().dx();
-  const Real cell_vol = dx * dx * dx;
+  const Real cell_vol = sim_.domain().cell_volume();
   if (cell_vol <= 0.0) return;
 
   // Agent production (LuxS) and Lsr import

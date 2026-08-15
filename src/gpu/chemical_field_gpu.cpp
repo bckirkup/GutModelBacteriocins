@@ -203,7 +203,7 @@ bool ChemicalFieldGpu::apply_reactions(double dt, const Domain& domain) {
         d_reac_[static_cast<size_t>(s)].data(),
         ncells_, 1, dt,
         d_reaction_clip_.data() + static_cast<size_t>(s),
-        domain.dx() * domain.dx() * domain.dx(), storage_nx_,
+        domain.cell_volume(), storage_nx_,
         global_ny_, global_nz_,
         slab_mode_ ? halo_width_ : 0,
         slab_mode_ ? halo_width_ + (owned_x_end_ - owned_x_begin_) : global_nx_,
@@ -286,7 +286,7 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
     gpu::launch_set_epithelial_boundary(
         d_conc, nx, ny, owned_storage_begin, owned_storage_end,
         spec.boundary_conc,
-        domain.dx() * domain.dx() * domain.dx(),
+        domain.cell_volume(),
         d_boundary_injected_.data() + s, gpu_compute_stream());
     if (!spec.diffusion_enabled && nz >= 2) {
       gpu::launch_set_luminal_neumann(

@@ -36,7 +36,7 @@ bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents,
   const Int i_oxygen = chem.find(species::OXYGEN);
   if (i_oxygen < 0) return true;
 
-  const double cell_vol = domain.dx() * domain.dx() * domain.dx();
+  const double cell_vol = domain.cell_volume();
   if (cell_vol <= 0.0 || num_agents <= 0) return true;
 
   double* d_reac_oxygen = chem_gpu.reac_device(i_oxygen);

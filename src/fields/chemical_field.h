@@ -211,6 +211,8 @@ class ChemicalField {
   // exact host path because a global periodic line spans MPI slabs.
   void apply_periodic_x_diffusion(const Domain& domain, Real dt);
   void apply_periodic_x_diffusion(const Domain& domain, Real dt, Int spec);
+  void apply_periodic_y_diffusion(const Domain& domain, Real dt, Int spec);
+  void apply_bounded_z_diffusion(const Domain& domain, Real dt, Int spec);
 
   // Apply boundary conditions
   void apply_boundaries(const Domain& domain);

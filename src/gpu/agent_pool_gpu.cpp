@@ -168,7 +168,7 @@ bool AgentPoolGpu::run_metabolism(
       d_mu_max_.data(), d_km_b12_.data(), d_km_carbon_.data(),
       d_receptor_expr_.data(), d_ligand_affinity_.data(),
       d_bi_loci_count_.data(), d_plasmid_amelioration_.data(),
-      num_agents, dt, domain.dx(), CELL_DENSITY_DEFAULT,
+      num_agents, dt, domain.cell_volume(), CELL_DENSITY_DEFAULT,
       cfg.km_iron_primary, cfg.km_iron_iroN, cfg.km_iron_iutA, cfg.km_iron_fiu,
       cfg.maintenance_rate, cfg.metE_penalty, cfg.metE_acetate_max_factor,
       cfg.metE_acetate_km, cfg.eut_max_penalty, cfg.eut_km,

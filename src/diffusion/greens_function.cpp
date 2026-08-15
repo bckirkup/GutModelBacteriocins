@@ -40,7 +40,9 @@ struct SuperposeGridContext {
   Int nx;
   Int ny;
   Int nz;
-  Int span;
+  Int span_x;
+  Int span_y;
+  Int span_z;
   Int x_begin;
   Int x_end;
   Int storage_nx;
@@ -75,8 +77,8 @@ void accumulate_cutoff_row(const Domain& domain,
                            Int src_ix, Int iy, Int iz,
                            const SuperposeGridContext& grid,
                            std::vector<Real>& grid_conc) {
-  for (Int dx = -grid.span; dx <= grid.span; ++dx) {
-    if (!is_first_periodic_offset(dx, grid.nx, grid.span, grid.periodic_x)) {
+  for (Int dx = -grid.span_x; dx <= grid.span_x; ++dx) {
+    if (!is_first_periodic_offset(dx, grid.nx, grid.span_x, grid.periodic_x)) {
       continue;
     }
     Int ix = src_ix + dx;
@@ -99,12 +101,12 @@ void accumulate_source_cutoff(const Domain& domain,
   Int src_iz = 0;
   domain.pos_to_grid(src, src_ix, src_iy, src_iz);
 
-  for (Int dz = -grid.span; dz <= grid.span; ++dz) {
+  for (Int dz = -grid.span_z; dz <= grid.span_z; ++dz) {
     Int iz = src_iz + dz;
     if (iz < 0 || iz >= grid.nz) continue;
 
-    for (Int dy = -grid.span; dy <= grid.span; ++dy) {
-      if (!is_first_periodic_offset(dy, grid.ny, grid.span,
+    for (Int dy = -grid.span_y; dy <= grid.span_y; ++dy) {
+      if (!is_first_periodic_offset(dy, grid.ny, grid.span_y,
                                     grid.periodic_y)) {
         continue;
       }
@@ -120,7 +122,9 @@ SuperposeGridContext make_superpose_grid(const Domain& domain, Real cutoff_radiu
     domain.nx(),
     domain.ny(),
     domain.nz(),
-    static_cast<Int>(std::ceil(cutoff_radius / domain.dx())),
+    static_cast<Int>(std::ceil(cutoff_radius / domain.dx_x())),
+    static_cast<Int>(std::ceil(cutoff_radius / domain.dx_y())),
+    static_cast<Int>(std::ceil(cutoff_radius / domain.dx_z())),
     0,
     domain.nx(),
     domain.nx(),

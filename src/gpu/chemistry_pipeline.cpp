@@ -130,7 +130,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   }
 
   if (!result.reactions_on_gpu) {
-    const Real cell_volume = in.domain.dx() * in.domain.dx() * in.domain.dx();
+    const Real cell_volume = in.domain.cell_volume();
     Int s = 0;
     for (const auto& conc_row : in.chem.conc_data()) {
       (void)conc_row;

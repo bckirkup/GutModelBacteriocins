@@ -53,7 +53,7 @@ void test_oxygen_z_gradient_init() {
   chem.init(domain, {oxygen});
 
   for (Int iz = 0; iz < domain.nz(); ++iz) {
-    Real z_rel = (iz + 0.5) * domain.dx();
+    Real z_rel = (iz + 0.5) * domain.dx_z();
     Real expected = c0 * std::exp(-z_rel / lambda);
     Int cell = domain.cell_index(0, 0, iz);
     Real actual = chem.conc(0, cell);

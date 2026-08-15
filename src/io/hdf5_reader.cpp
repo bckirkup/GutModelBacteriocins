@@ -113,6 +113,15 @@ int32_t read_file_attr_int(hid_t file, const char* name) {
   return value;
 }
 
+double read_file_attr_real(hid_t file, const char* name) {
+  if (H5Aexists(file, name) <= 0) return 0.0;
+  hid_t attr = H5Aopen(file, name, H5P_DEFAULT);
+  double value = 0.0;
+  H5Aread(attr, H5T_NATIVE_DOUBLE, &value);
+  H5Aclose(attr);
+  return value;
+}
+
 HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
   const std::string prefix = "agents/" + step + "/";
   HDF5CheckpointAgents out;
@@ -246,6 +255,16 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
 HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   const std::string prefix = "summary/" + step + "/";
   HDF5CheckpointMetadata meta;
+  const double legacy_dx = read_file_attr_real(file, "grid_dx");
+  meta.grid_spacing = {
+      read_file_attr_real(file, "grid_dx_x"),
+      read_file_attr_real(file, "grid_dx_y"),
+      read_file_attr_real(file, "grid_dx_z")};
+  if (meta.grid_spacing[0] <= 0.0) meta.grid_spacing[0] = legacy_dx;
+  if (meta.grid_spacing[1] <= 0.0) meta.grid_spacing[1] = legacy_dx;
+  if (meta.grid_spacing[2] <= 0.0) meta.grid_spacing[2] = legacy_dx;
+  meta.has_grid_spacing = meta.grid_spacing[0] > 0.0
+      && meta.grid_spacing[1] > 0.0 && meta.grid_spacing[2] > 0.0;
   meta.time = read_scalar<double>(file, prefix + "time", H5T_NATIVE_DOUBLE);
   meta.step = read_scalar<int32_t>(file, prefix + "step", H5T_NATIVE_INT32);
   if (link_exists(file, prefix + "num_agents")) {

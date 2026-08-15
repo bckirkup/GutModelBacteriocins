@@ -2,7 +2,7 @@
    GutIBM – HDF5 output writer (Spec 4 layered schema)
    
    Output structure:
-     /file attrs: gutibm_version, nx, ny, nz, grid_dx, domain_lo/hi
+     /file attrs: gutibm_version, nx, ny, nz, grid_dx[_x/_y/_z], domain_lo/hi
      /summary/step_NNNNNN/   — scalars + event counters + chem summaries
      /agents/step_NNNNNN/    — lightweight per-agent arrays
      /grid/step_NNNNNN/      — 3D species datasets (optional gzip)
@@ -75,7 +75,7 @@ class HDF5Writer {
   Int nx_ = 0;
   Int ny_ = 0;
   Int nz_ = 0;
-  Real grid_dx_ = 0.0;
+  Vec3 grid_dx_ = {0.0, 0.0, 0.0};
   Vec3 domain_lo_{};
   Vec3 domain_hi_{};
 

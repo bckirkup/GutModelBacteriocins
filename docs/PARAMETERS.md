@@ -72,7 +72,8 @@ warning rather than placed at the wrong distance.
 |-----------|---------|-------|-------------|
 | `domain.lo` | {0,0,0} | m | Lower corner |
 | `domain.hi` | {1e-3, 1e-3, 100e-6} | m | Upper corner (1mm × 1mm × 100um) |
-| `domain.grid_dx` | 2e-6 | m | Grid cell size |
+| `domain.grid_dx` | 2e-6 | m | Fine chemistry grid spacing |
+| `domain.chemistry_stride.x/y/z` | 1 | — | Integer chemistry-cell coarsening per axis; x/y probe lateral microgradient sensitivity while z remains fine for epithelial O2/mucin stratification |
 | `domain.hash_cell_size` | 10e-6 | m | Spatial hash bucket size |
 | `domain.periodic` | {true, true, false} | — | Periodicity per axis |
 | `domain.mpi_decomp_axis` | 0 | — | Axis for 1D slab decomposition (0=x) |
@@ -716,7 +717,7 @@ HDF5 nested JSON example:
 }
 ```
 
-File layout: `/summary/step_NNNNNN/`, `/agents/step_NNNNNN/`, `/grid/step_NNNNNN/` (3D, optional gzip), `/lineage/`, `/genome/`. File attributes include `gutibm_version=4`, `nx`, `ny`, `nz`, `grid_dx`.
+File layout: `/summary/step_NNNNNN/`, `/agents/step_NNNNNN/`, `/grid/step_NNNNNN/` (3D, optional gzip), `/lineage/`, `/genome/`. File attributes include `gutibm_version=4`, `nx`, `ny`, `nz`, and `grid_dx_x`, `grid_dx_y`, `grid_dx_z`; legacy `grid_dx` remains readable.
 
 ---
 

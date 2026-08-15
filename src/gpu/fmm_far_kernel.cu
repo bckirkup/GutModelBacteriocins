@@ -39,7 +39,7 @@ __global__ void fmm_far_local_kernel(
     int num_leaves,
     int coeffs_per_leaf,
     int expansion_order,
-    double lo0, double lo1, double lo2, double dx,
+    double lo0, double lo1, double lo2, double dx_x, double dx_y, double dx_z,
     int nx, int ny) {
   int cell = blockIdx.x * blockDim.x + threadIdx.x;
   if (cell >= ncells) return;
@@ -52,9 +52,9 @@ __global__ void fmm_far_local_kernel(
   const int iy = rem / nx;
   const int ix = rem - iy * nx;
 
-  const double tx = lo0 + (static_cast<double>(ix) + 0.5) * dx;
-  const double ty = lo1 + (static_cast<double>(iy) + 0.5) * dx;
-  const double tz = lo2 + (static_cast<double>(iz) + 0.5) * dx;
+  const double tx = lo0 + (static_cast<double>(ix) + 0.5) * dx_x;
+  const double ty = lo1 + (static_cast<double>(iy) + 0.5) * dx_y;
+  const double tz = lo2 + (static_cast<double>(iz) + 0.5) * dx_z;
 
   const double* local = leaf_local + static_cast<size_t>(leaf) * coeffs_per_leaf;
   const double* center = leaf_center + static_cast<size_t>(leaf) * 3;
@@ -75,7 +75,7 @@ void launch_fmm_far_local_kernel(
     int num_leaves,
     int coeffs_per_leaf,
     int expansion_order,
-    double lo0, double lo1, double lo2, double dx,
+    double lo0, double lo1, double lo2, double dx_x, double dx_y, double dx_z,
     int nx, int ny,
     cudaStream_t stream) {
   if (ncells <= 0 || num_leaves <= 0) return;
@@ -84,7 +84,7 @@ void launch_fmm_far_local_kernel(
   fmm_far_local_kernel<<<grid, block, 0, stream>>>(
       leaf_local, leaf_center, cell_leaf, near_conc, out_conc,
       ncells, num_leaves, coeffs_per_leaf, expansion_order,
-      lo0, lo1, lo2, dx, nx, ny);
+      lo0, lo1, lo2, dx_x, dx_y, dx_z, nx, ny);
 }
 
 }  // namespace gpu

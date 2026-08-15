@@ -9,6 +9,9 @@
   "domain_y": 50e-6,
   "domain_z": 25e-6,
   "grid_dx": 5e-6,
+  "domain": {
+    "chemistry_stride": {"x": 2, "y": 3, "z": 1}
+  },
   "chemistry": {
     "decomposition": "slab"
   },

@@ -61,6 +61,10 @@ cd python && pytest tests/ -v -m "not integration"
   checkpoint/restart restores owned cells before refreshing halos. The GPU
   mirror uses local x storage and owned-cell accounting in slab mode; periodic
   x diffusion takes an exact host transpose round trip.
+  Integer per-axis chemistry strides are a scientific model variant, not a
+  performance switch: carbon diffuses approximately 77 µm in 60 s versus the
+  default 2 µm lateral cell, so x/y coarsening tests lateral microgradient
+  effects while z remains fine for epithelial oxygen/mucin stratification.
 - **Never modify tests to make them pass** — fix the implementation
 
 ### Timestep modules (do not reorder casually)

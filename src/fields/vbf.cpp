@@ -193,11 +193,11 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
   const Int nx = domain.nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
-  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  const Real cell_volume = domain.cell_volume();
 
   if (chem.slab_mode()) {
     for (Int iz = 0; iz < nz; ++iz) {
-      const Real z_rel = (iz + 0.5) * domain.dx();
+      const Real z_rel = (iz + 0.5) * domain.dx_z();
       const Real z_weight = cfg_.mucin_z_gradient_enabled
           ? std::exp(-z_rel / cfg_.mucin_z_gradient_lambda) : 1.0;
       const Real static_liberation =
@@ -218,7 +218,7 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
   }
 
   for (Int iz = 0; iz < nz; ++iz) {
-    const Real z_rel = (iz + 0.5) * domain.dx();
+    const Real z_rel = (iz + 0.5) * domain.dx_z();
     const Real z_weight = cfg_.mucin_z_gradient_enabled
         ? std::exp(-z_rel / cfg_.mucin_z_gradient_lambda)
         : 1.0;

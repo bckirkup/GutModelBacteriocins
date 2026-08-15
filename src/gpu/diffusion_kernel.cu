@@ -288,7 +288,7 @@ __global__ void shift_z_gradient_kernel(double* conc,
                                         int nz,
                                         int owned_x_begin,
                                         int owned_x_end,
-                                        double dx,
+                                        double dx_z,
                                         double initial_conc,
                                         double lambda,
                                         double boundary_conc,
@@ -307,7 +307,7 @@ __global__ void shift_z_gradient_kernel(double* conc,
     shift = scale * boundary_conc;
   } else {
     const int profile_iz = (nz >= 2 && iz == nz - 1) ? nz - 2 : iz;
-    const double z_rel = (profile_iz + 0.5) * dx;
+    const double z_rel = (profile_iz + 0.5) * dx_z;
     shift = scale * initial_conc * exp(-z_rel / lambda);
   }
   conc[cell_index(ix, iy, iz, storage_nx, ny)] += shift;
@@ -442,7 +442,7 @@ void launch_shift_z_gradient(double* conc,
                              int nz,
                              int owned_x_begin,
                              int owned_x_end,
-                             double dx,
+                             double dx_z,
                              double initial_conc,
                              double lambda,
                              double boundary_conc,
@@ -453,7 +453,7 @@ void launch_shift_z_gradient(double* conc,
   const int block = 256;
   const int grid = (ncells + block - 1) / block;
   shift_z_gradient_kernel<<<grid, block, 0, stream>>>(
-      conc, storage_nx, ny, nz, owned_x_begin, owned_x_end, dx, initial_conc,
+      conc, storage_nx, ny, nz, owned_x_begin, owned_x_end, dx_z, initial_conc,
       lambda, boundary_conc, scale);
 }
 

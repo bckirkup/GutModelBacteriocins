@@ -37,7 +37,7 @@ SinkMeasurement measure_sink(const Domain& domain, const ChemicalSpec& carbon,
   vbf.apply_nutrient_coupling(
       chem, domain, dt, oxygen, acetate, mucin, &totals);
 
-  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  const Real cell_volume = domain.cell_volume();
   const Real updated = chem.conc(carbon_index, 0)
       + chem.reac(carbon_index, 0) * dt;
   return {
@@ -63,7 +63,7 @@ void test_implicit_sink_mass_closure(const Domain& domain,
   initial.initial_conc = 2.0e-4;
   chem.init(domain, {initial});
   const Int carbon_index = chem.find(species::CARBON);
-  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  const Real cell_volume = domain.cell_volume();
   constexpr Real dt = 60.0;
   constexpr int steps = 5;
   const Real before = chem.conc(carbon_index, 0)
@@ -104,6 +104,7 @@ int main() {
   DomainConfig domain_cfg;
   domain_cfg.hi = {10e-6, 10e-6, 10e-6};
   domain_cfg.grid_dx = 5e-6;
+  domain_cfg.chemistry_stride = {2, 2, 1};
   Domain domain;
   domain.init(domain_cfg);
 
@@ -136,7 +137,7 @@ int main() {
   vbf.apply_nutrient_coupling(
       chem, domain, dt, oxygen, acetate, mucin, &totals);
 
-  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  const Real cell_volume = domain.cell_volume();
   Real applied_amount = 0.0;
   for (Int cell = 0; cell < chem.ncells(); ++cell) {
     applied_amount += -chem.reac(carbon_index, cell) * cell_volume * dt;

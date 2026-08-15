@@ -14,28 +14,28 @@ __global__ void superpose_kernel(
     DomainParams dom,
     AdvectionParams adv,
     int num_sources,
-    int span) {
+    int span_x, int span_y, int span_z) {
 
   int sid = blockIdx.x;
   if (sid >= num_sources) return;
 
   int local = threadIdx.x + blockIdx.y * blockDim.x;
-  int stencil_vol = (2 * span + 1) * (2 * span + 1) * (2 * span + 1);
+  int stencil_vol = (2 * span_x + 1) * (2 * span_y + 1) * (2 * span_z + 1);
   if (local >= stencil_vol) return;
 
-  int dz = local / ((2 * span + 1) * (2 * span + 1)) - span;
-  int rem = local % ((2 * span + 1) * (2 * span + 1));
-  int dy = rem / (2 * span + 1) - span;
-  int dx = rem % (2 * span + 1) - span;
+  int dz = local / ((2 * span_x + 1) * (2 * span_y + 1)) - span_z;
+  int rem = local % ((2 * span_x + 1) * (2 * span_y + 1));
+  int dy = rem / (2 * span_x + 1) - span_y;
+  int dx = rem % (2 * span_x + 1) - span_x;
 
   double src[3] = {src_x[sid], src_y[sid], src_z[sid]};
 
-  if (dom.periodic[0] && dx - dom.nx >= -span) return;
-  if (dom.periodic[1] && dy - dom.ny >= -span) return;
+  if (dom.periodic[0] && dx - dom.nx >= -span_x) return;
+  if (dom.periodic[1] && dy - dom.ny >= -span_y) return;
 
-  int src_ix = static_cast<int>((src[0] - dom.lo[0]) / dom.dx);
-  int src_iy = static_cast<int>((src[1] - dom.lo[1]) / dom.dx);
-  int src_iz = static_cast<int>((src[2] - dom.lo[2]) / dom.dx);
+  int src_ix = static_cast<int>((src[0] - dom.lo[0]) / dom.dx_x);
+  int src_iy = static_cast<int>((src[1] - dom.lo[1]) / dom.dx_y);
+  int src_iz = static_cast<int>((src[2] - dom.lo[2]) / dom.dx_z);
 
   int iz = src_iz + dz;
   if (iz < 0 || iz >= dom.nz) return;
@@ -65,14 +65,16 @@ void launch_superpose_kernel(
     const double* src_x, const double* src_y, const double* src_z,
     const GfSourceParams* params, double* grid_conc,
     const DomainParams& dom, const AdvectionParams& adv,
-    int num_sources, int span, cudaStream_t stream) {
+    int num_sources, int span_x, int span_y, int span_z,
+    cudaStream_t stream) {
 
   if (num_sources == 0) return;
-  int stencil_vol = (2 * span + 1) * (2 * span + 1) * (2 * span + 1);
+  int stencil_vol = (2 * span_x + 1) * (2 * span_y + 1) * (2 * span_z + 1);
   dim3 block(256);
   dim3 grid(num_sources, (stencil_vol + block.x - 1) / block.x);
   superpose_kernel<<<grid, block, 0, stream>>>(
-      src_x, src_y, src_z, params, grid_conc, dom, adv, num_sources, span);
+      src_x, src_y, src_z, params, grid_conc, dom, adv, num_sources,
+      span_x, span_y, span_z);
 }
 
 }  // namespace gpu

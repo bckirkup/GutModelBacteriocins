@@ -107,7 +107,8 @@ bool gpu_accumulate_far_field_local(const FMM& fmm,
       d_leaf_local.data(), d_leaf_center.data(), d_cell_leaf.data(),
       d_near.data(), d_out.data(),
       static_cast<int>(ncells), num_leaves, coeffs_per_leaf, expansion_order,
-      domain.lo()[0], domain.lo()[1], domain.lo()[2], domain.dx(),
+      domain.lo()[0], domain.lo()[1], domain.lo()[2], domain.dx_x(),
+      domain.dx_y(), domain.dx_z(),
       domain.nx(), domain.ny(), gpu_compute_stream());
   gpu_sync_compute();
   gpu_check_error("fmm_far_local_kernel");
