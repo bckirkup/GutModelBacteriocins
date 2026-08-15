@@ -226,24 +226,15 @@ void test_population_ledger_closure() {
     assert(file >= 0);
     const std::string step_name =
         std::format("step_{:06}", sim.step_count());
-    const std::string prefix = "summary/" + step_name + "/events/";
-    const Int divisions = read_event(file, prefix + "cumulative_divisions");
-    const Int immigrations = read_event(file, prefix + "cumulative_immigrations");
-    const Int washout = read_event(file, prefix + "cumulative_washout_deaths");
-    const Int starvation =
-        read_event(file, prefix + "cumulative_starvation_deaths");
-    const Int colicin = read_event(file, prefix + "cumulative_colicin_kills");
-    const Int cdi = read_event(file, prefix + "cumulative_cdi_kills");
-    const Int boundary = read_event(file, prefix + "cumulative_boundary_deaths");
-    const Int lysis = read_event(file, prefix + "cumulative_lysis_deaths");
-    const Int n_total = read_event(file, "summary/" + step_name + "/n_total");
-    const Int expected_final = initial + divisions + immigrations
-        - washout - starvation - colicin - cdi - boundary - lysis;
-    assert(n_total == expected_final);
-    assert(lysis > 0);
+    const auto ledger = gutibm::test::read_population_ledger(file, step_name);
+    const Int expected_final = initial + ledger.divisions + ledger.immigrations
+        - ledger.washout - ledger.starvation - ledger.colicin - ledger.cdi
+        - ledger.boundary - ledger.lysis;
+    assert(ledger.n_total == expected_final);
+    assert(ledger.lysis > 0);
     H5Fclose(file);
     std::cout << "  test_population_ledger_closure: PASSED"
-              << " (lysis_deaths=" << lysis << ")\n";
+              << " (lysis_deaths=" << ledger.lysis << ")\n";
   }
 }
 
