@@ -128,6 +128,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **MPI ghost reaction/uptake double count** | Fixed | Ghost agents are marked explicitly and excluded from owner-committed reaction writes, uptake accounting, oxygen depletion, and siderophore biomass aggregation before rank reductions. |
 | **MPI ghost division duplication** | Fixed | Ghost agents are excluded from division, so only the owning rank creates daughters before migration. |
 | **Uncounted SOS/phage lysis deaths** | Fixed | `lysis_deaths` records actual delayed SOS/phage deaths separately from induction counters and participates in global interval/cumulative event accounting and population closure. |
+| **Invisible non-growing population** | Fixed | Instantaneous `starving_live_agents` and `washout_trapped_live_agents` summary stocks expose live non-growing cells; they are not cumulative counters or population-closure terms. `ProvenanceCause` values are persisted in HDF5, so new causes must be appended and existing values must never be renumbered. |
 | **Founder placement scales with domain height** | Fixed | `initial_population.placement=z_slab` with explicit `z_min`/`z_max` keeps founders in a scenario-defined band; the default `legacy` policy preserves the historical band for compatibility. |
 | **Cross-boundary HGT to ghost recipient** | Open | Plasmid transfer from a local donor to a ghost recipient is lost when ghosts are cleared, under-counting cross-boundary conjugation. |
 

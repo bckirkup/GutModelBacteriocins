@@ -227,6 +227,7 @@ p_sos = 1 - exp(-rate_total * dt)
 - After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`.
   The event ledger records the resulting death as `lysis_deaths`; this is
   separate from the `sos_inductions` and `phage_inductions` counters.
+The same death is also recorded in kill provenance with cause `LYSIS`.
 
 ### b) Phage-mediated lysis (Group B colicins)
 
@@ -239,6 +240,7 @@ rate_per_s = phage_induction_rate / (ln(2) / mu_realized)
 On induction: `sos_timer = 60 s` (shorter lytic cycle), then burst release.
 The resulting death is included in `lysis_deaths`, while induction remains
 counted separately as `phage_inductions`.
+It is likewise recorded in kill provenance with cause `LYSIS`.
 
 ### c) Continuous microcin secretion
 
@@ -251,6 +253,23 @@ MccV (`CONTINUOUS` mode) exports peptide without lysis:
 Lysis releases a finite inventory of `burst_size / AVOGADRO` mol with an
 exponential `burst_release_tau` timescale. The source integral therefore equals
 the configured burst inventory.
+
+### Population stocks
+
+Summary output includes two instantaneous live-population stocks:
+
+- `starving_live_agents`: live agents with
+  `mu_realized < fixes.metabolism.death_threshold`;
+- `washout_trapped_live_agents`: live agents with
+  `mu_realized < washout_rate(z)`, evaluated at each agent's own z.
+
+These are instantaneous stocks, not cumulative counters. They can fall as well
+as rise, are not part of population closure, and must never be summed over
+time. The washout-trapped condition is the same condition used by
+`check_washout()` to kill an agent, so this stock exposes the trap as a
+standing fraction of the live population rather than only as a body count.
+Consequently, a starving population can have a large stock while
+`starvation_deaths` remains zero.
 
 **pI-dependent diffusion classification:**
 | Class | pI range | Retardation | Behavior |
@@ -585,6 +604,9 @@ After the physics module (advection + mechanics), agents that have moved past th
 HDF5 summary interval and cumulative event counters are likewise globally reduced once per summary, so they describe the same global population as `n_total`.
 Death-channel counters include `lysis_deaths` for actual SOS/phage lysis deaths;
 induction counters are not death counts.
+The summary also contains the instantaneous `starving_live_agents` and
+`washout_trapped_live_agents` stocks; these are not event counters and are not
+part of population closure.
 
 ### HDF5 Parallel I/O
 When `hdf5.parallel = true`, the file is opened with `H5Pset_fapl_mpio` and agent data is written using collective hyperslab operations — each rank writes its local agents at a computed offset. In slab chemistry mode, all ranks pack owned x-cells for grid output and rank 0 assembles the global datasets; halo planes are never written. Checkpoint/restart restores owned global cells and refreshes concentration halos. The GPU mirror remains unsupported with slab chemistry.
