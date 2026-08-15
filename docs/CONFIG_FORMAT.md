@@ -120,7 +120,8 @@ key; absence is never interpreted as an intentional disable.
   "domain_z": 0.0001,
   "grid_dx": 2e-6,
   "domain": {
-    "chemistry_stride": {"x": 1, "y": 1, "z": 1}
+    "chemistry_stride": {"x": 1, "y": 1, "z": 1},
+    "grid_halo_width": 1
   },
 
   "initial_strains": [

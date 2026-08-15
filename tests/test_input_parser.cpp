@@ -427,6 +427,41 @@ void test_chemistry_stride_requires_positive_integer() {
   std::cout << "  test_chemistry_stride_requires_positive_integer: PASSED\n";
 }
 
+void test_grid_halo_width_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_grid_halo_width.json";
+  const SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.domain.grid_halo_width == 2);
+  std::cout << "  test_grid_halo_width_fixture: PASSED\n";
+}
+
+void test_grid_halo_width_requires_positive_integer() {
+  for (const std::string value : {"0", "-2", "1.5", "abc"}) {
+    SimulationConfig cfg = InputParser::default_config();
+    bool threw = false;
+    try {
+      (void)InputParser::apply_flat_key(cfg, "grid_halo_width", value);
+    } catch (const ConfigError&) {
+      threw = true;
+    }
+    assert(threw);
+  }
+  std::cout << "  test_grid_halo_width_requires_positive_integer: PASSED\n";
+}
+
+void test_json_grid_halo_width_errors_are_not_swallowed() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_bad_grid_halo_width.json";
+  bool threw = false;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+  assert(threw);
+  std::cout << "  test_json_grid_halo_width_errors_are_not_swallowed: PASSED\n";
+}
+
 void test_json_chemistry_stride_errors_are_not_swallowed() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR)
       + "/tests/fixtures/parser_bad_chemistry_stride.json";
@@ -559,6 +594,9 @@ int main() {
   test_strict_config_aborts_on_bad_numeric();
   test_burst_release_tau_must_be_positive();
   test_chemistry_stride_requires_positive_integer();
+  test_grid_halo_width_fixture();
+  test_grid_halo_width_requires_positive_integer();
+  test_json_grid_halo_width_errors_are_not_swallowed();
   test_json_chemistry_stride_errors_are_not_swallowed();
   test_chemistry_decomposition_rejects_unimplemented_modes();
   test_toxin_evaluation_rejects_unknown_modes();
