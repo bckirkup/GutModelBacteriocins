@@ -24,6 +24,14 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   active_ = gpu_runtime_enabled();
   nspec_ = field.num_species();
   ncells_ = field.ncells();
+  global_nx_ = field.global_nx();
+  global_ny_ = field.global_ny();
+  global_nz_ = field.global_nz();
+  owned_x_begin_ = field.owned_global_x_begin();
+  owned_x_end_ = field.owned_global_x_end();
+  halo_width_ = field.grid_halo_width();
+  storage_nx_ = field.storage_nx();
+  slab_mode_ = field.slab_mode();
   if (!active_ || nspec_ <= 0 || ncells_ <= 0) return;
 
   d_conc_.resize(static_cast<size_t>(nspec_));
@@ -195,7 +203,11 @@ bool ChemicalFieldGpu::apply_reactions(double dt, const Domain& domain) {
         d_reac_[static_cast<size_t>(s)].data(),
         ncells_, 1, dt,
         d_reaction_clip_.data() + static_cast<size_t>(s),
-        domain.dx() * domain.dx() * domain.dx(), gpu_compute_stream());
+        domain.dx() * domain.dx() * domain.dx(), storage_nx_,
+        global_ny_, global_nz_,
+        slab_mode_ ? halo_width_ : 0,
+        slab_mode_ ? halo_width_ + (owned_x_end_ - owned_x_begin_) : global_nx_,
+        gpu_compute_stream());
   }
   gpu_sync_compute();
   gpu_check_error("field_update_kernel");
@@ -218,10 +230,22 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   bool applied = false;
   std::vector zero(static_cast<size_t>(nspec_), 0.0);
   d_boundary_injected_.upload(zero);
+  const Int owned_storage_begin = owned_storage_x_begin();
+  const Int owned_storage_end = owned_storage_x_end();
   for (Int s = 0; s < nspec_; ++s) {
-    if (gpu_apply_species_diffusion_device(
-            domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(),
-            d_boundary_injected_.data() + s, dt)) {
+    bool species_applied = false;
+    if (slab_mode_) {
+      SlabDiffusionContext context{
+          field, s, storage_nx_, owned_storage_begin, owned_storage_end};
+      species_applied = gpu_apply_species_diffusion_slab_device(
+          domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(),
+          d_boundary_injected_.data() + s, dt, context);
+    } else {
+      species_applied = gpu_apply_species_diffusion_device(
+          domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(),
+          d_boundary_injected_.data() + s, dt);
+    }
+    if (species_applied) {
       applied = true;
     }
   }
@@ -248,9 +272,11 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
 #else
   if (!active_) return false;
 
-  const int nx = domain.nx();
+  const int nx = storage_nx_;
   const int ny = domain.ny();
   const int nz = domain.nz();
+  const Int owned_storage_begin = owned_storage_x_begin();
+  const Int owned_storage_end = owned_storage_x_end();
 
   std::vector zero(static_cast<size_t>(nspec_), 0.0);
   d_boundary_injected_.upload(zero);
@@ -258,11 +284,15 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
     const ChemicalSpec& spec = field.spec(s);
     double* d_conc = d_conc_[static_cast<size_t>(s)].data();
     gpu::launch_set_epithelial_boundary(
-        d_conc, nx, ny, spec.boundary_conc,
+        d_conc, nx, ny, owned_storage_begin, owned_storage_end,
+        spec.boundary_conc,
         domain.dx() * domain.dx() * domain.dx(),
         d_boundary_injected_.data() + s, gpu_compute_stream());
     if (!spec.diffusion_enabled && nz >= 2) {
-      gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, gpu_compute_stream());
+      gpu::launch_set_luminal_neumann(
+          d_conc, nx, ny, nz,
+          owned_storage_begin, owned_storage_end,
+          gpu_compute_stream());
     }
   }
 
@@ -303,6 +333,7 @@ bool ChemicalFieldGpu::try_sum_reactions_on_device(ChemicalField& field) {
   return false;
 #else
   if (!active_) return false;
+  if (slab_mode_) return false;
 
 #ifdef GUTIBM_MPI
   int initialized = 0;

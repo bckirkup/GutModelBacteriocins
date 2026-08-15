@@ -51,6 +51,11 @@ bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents,
       oxygen.q_consumption,
       oxygen.q_maintenance,
       1.0 / cell_vol,
+      chem_gpu.global_nx(), chem_gpu.global_ny(), chem_gpu.storage_nx(),
+      chem_gpu.slab_mode() ? chem_gpu.owned_x_begin() : 0,
+      chem_gpu.slab_mode() ? chem_gpu.owned_x_end()
+                           : chem_gpu.global_nx(),
+      chem_gpu.owned_storage_x_begin(),
       gpu_compute_stream());
 
   gpu_sync_compute();

@@ -11,6 +11,34 @@ using cudaStream_t = void*;
 
 namespace gutibm::gpu {
 
+#ifdef GUTIBM_CUDA
+#ifdef __CUDACC__
+#define GUTIBM_GPU_DEVICE __device__
+#else
+#define GUTIBM_GPU_DEVICE
+#endif
+GUTIBM_GPU_DEVICE inline int map_global_cell_to_storage(
+    int global_cell, int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin) {
+  if (global_cell < 0) return -1;
+  const int global_plane = global_nx * global_ny;
+  const int iz = global_cell / global_plane;
+  const int rem = global_cell % global_plane;
+  const int iy = rem / global_nx;
+  const int ix = rem % global_nx;
+  int local_x = owned_storage_x_begin + ix - owned_global_x_begin;
+  if (local_x < 0 && owned_global_x_end == global_nx) {
+    local_x += global_nx;
+  } else if (local_x >= storage_nx && owned_global_x_begin == 0) {
+    local_x -= global_nx;
+  }
+  if (local_x < 0 || local_x >= storage_nx) return -1;
+  return iz * (storage_nx * global_ny) + iy * storage_nx + local_x;
+}
+#undef GUTIBM_GPU_DEVICE
+#endif
+
 void launch_superpose_kernel(
     const double* src_x, const double* src_y, const double* src_z,
     const GfSourceParams* params, double* grid_conc,
@@ -20,6 +48,8 @@ void launch_superpose_kernel(
 void launch_field_update_kernel(
     double* conc, const double* reac, int ncells, int num_species,
     double dt, double* reaction_clip, double cell_volume,
+    int storage_nx, int global_ny, int global_nz,
+    int owned_x_begin, int owned_x_end,
     cudaStream_t stream);
 
 void launch_apply_boundaries_kernel(
@@ -47,6 +77,9 @@ void launch_metabolism_kernel(
     double yield_carbon, double yield_iron, double yield_b12,
     int o2_enabled, double o2_boost_max, double o2_Km,
     const double* conc_oxygen, double* agent_uptake_totals,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin,
     cudaStream_t stream);
 
 void launch_spatial_hash_build_kernel(
@@ -59,25 +92,32 @@ void launch_diffuse_x_periodic(double* conc, int nx, int ny, int nz,
                                double alpha, double gamma, double corner,
                                double denominator, const double* correction,
                                cudaStream_t stream);
-void launch_diffuse_y_periodic(double* conc, int nx, int ny, int nz,
+void launch_diffuse_y_periodic(double* conc, int storage_nx, int ny, int nz,
+                               int owned_x_begin, int owned_x_end,
                                double alpha, double gamma, double corner,
                                double denominator, const double* correction,
                                cudaStream_t stream);
-void launch_diffuse_z_bounded(double* conc, int nx, int ny, int nz,
+void launch_diffuse_z_bounded(double* conc, int storage_nx, int ny, int nz,
+                              int owned_x_begin, int owned_x_end,
                               double alpha, double boundary_conc,
                               double cell_volume, double* face_exchange,
                               cudaStream_t stream);
-void launch_set_epithelial_boundary(double* conc, int nx, int ny,
+void launch_set_epithelial_boundary(double* conc, int storage_nx, int ny,
+                                    int owned_x_begin, int owned_x_end,
                                     double boundary_conc, double cell_volume,
                                     double* injected_amount,
                                     cudaStream_t stream);
-void launch_set_luminal_neumann(double* conc, int nx, int ny, int nz,
+void launch_set_luminal_neumann(double* conc, int storage_nx, int ny, int nz,
+                                int owned_x_begin, int owned_x_end,
                                 cudaStream_t stream);
-void launch_shift_z_gradient(double* conc, int nx, int ny, int nz, double dx,
+void launch_shift_z_gradient(double* conc, int storage_nx, int ny, int nz,
+                             int owned_x_begin, int owned_x_end, double dx,
                              double initial_conc, double lambda,
                              double boundary_conc, double scale,
                              cudaStream_t stream);
-void launch_clamp_nonneg(double* conc, int ncells, cudaStream_t stream);
+void launch_clamp_nonneg(double* conc, int storage_nx, int ny, int nz,
+                         int owned_x_begin, int owned_x_end,
+                         cudaStream_t stream);
 
 void launch_o2_depletion_kernel(double* reac_oxygen,
                                 const double* mu_realized,
@@ -87,6 +127,10 @@ void launch_o2_depletion_kernel(double* reac_oxygen,
                                 double q_consumption,
                                 double q_maintenance,
                                 double inv_cell_vol,
+                                int global_nx, int global_ny, int storage_nx,
+                                int owned_global_x_begin,
+                                int owned_global_x_end,
+                                int owned_storage_x_begin,
                                 cudaStream_t stream);
 
 void launch_vbf_coupling_kernel(int ncells,
@@ -160,6 +204,9 @@ void launch_receptor_kill_prob_kernel(
     double cirA_linearized_fraction,
     double kill_rate_colicin,
     double kill_rate_microcin,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin,
     cudaStream_t stream);
 
 int diffusion_max_line_length();

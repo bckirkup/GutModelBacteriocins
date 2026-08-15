@@ -40,7 +40,10 @@ struct GfSourceParams {
 };
 
 struct VbfLaunchParams {
-  int nx = 0;
+  int storage_nx = 0;
+  int owned_x_begin = 0;
+  int owned_x_end = 0;
+  int global_nx = 0;
   int ny = 0;
   int nz = 0;
   double dx = 0.0;

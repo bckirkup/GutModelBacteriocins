@@ -25,6 +25,12 @@ struct GpuMetabolismBuffers {
   int o2_enabled = 0;
   double o2_boost_max = 0.0;
   double o2_Km = 0.0;
+  int global_nx = 0;
+  int global_ny = 0;
+  int storage_nx = 0;
+  int owned_global_x_begin = 0;
+  int owned_global_x_end = 0;
+  int owned_storage_x_begin = 0;
 };
 
 class AgentPoolGpu {

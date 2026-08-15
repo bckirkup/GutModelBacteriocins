@@ -21,6 +21,7 @@ namespace {
 
 constexpr int kImmunityReceptors = 4;
 
+#ifdef GUTIBM_CUDA
 void pack_immunity_eff(const AgentPool& pool, const ReceptorConfig& cfg,
                        std::vector<double>& out) {
   const Int n = pool.size();
@@ -53,6 +54,7 @@ void pack_toxin_affinity(const AgentPool& pool, std::vector<double>& out) {
     }
   }
 }
+#endif
 
 }  // namespace
 
@@ -114,7 +116,12 @@ bool gpu_compute_receptor_kill_probs_host_packed(
       cfg.kd_b12_btuB, cfg.kd_colicinE_btuB, cfg.kd_enterobactin,
       cfg.kd_colicinB_fepA, cfg.kd_lin_enterobactin, cfg.kd_colicinIa_cirA,
       cfg.kd_colicinM_fhuA, cfg.kd_ferrichrome, cfg.cirA_linearized_fraction,
-      cfg.kill_rate_colicin, cfg.kill_rate_microcin, gpu_compute_stream());
+      cfg.kill_rate_colicin, cfg.kill_rate_microcin,
+      chem_gpu.global_nx(), chem_gpu.global_ny(), chem_gpu.storage_nx(),
+      chem_gpu.slab_mode() ? chem_gpu.owned_x_begin() : 0,
+      chem_gpu.slab_mode() ? chem_gpu.owned_x_end() : chem_gpu.global_nx(),
+      chem_gpu.owned_storage_x_begin(),
+      gpu_compute_stream());
   gpu_sync_compute();
   gpu_check_error("receptor_kill_prob_kernel");
 

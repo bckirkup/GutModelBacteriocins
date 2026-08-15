@@ -6,7 +6,22 @@
 namespace gutibm {
 
 class ChemicalSpec;
+class ChemicalField;
 class Domain;
+
+enum class DiffusionPhase {
+  Replicated,
+  SlabPreX,
+  SlabPostX,
+};
+
+struct SlabDiffusionContext {
+  ChemicalField& field;
+  Int spec_index;
+  Int storage_nx;
+  Int owned_storage_x_begin;
+  Int owned_storage_x_end;
+};
 
 // True when nx, ny, and nz-1 fit the PCR shared-memory line limit.
 bool gpu_diffusion_line_lengths_supported(const Domain& domain);
@@ -20,6 +35,10 @@ bool gpu_apply_species_diffusion_device(const Domain& domain,
                                         double* d_conc,
                                         double* d_injected_amount,
                                         Real dt);
+
+bool gpu_apply_species_diffusion_slab_device(
+    const Domain& domain, const ChemicalSpec& spec, double* d_conc,
+    double* d_injected_amount, Real dt, SlabDiffusionContext& context);
 
 // Host-buffer variant: upload, diffuse on device, download.
 bool gpu_apply_species_diffusion(const Domain& domain,

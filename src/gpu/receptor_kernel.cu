@@ -44,7 +44,10 @@ __global__ void receptor_kill_prob_kernel(
     double kd_ferrichrome,
     double cirA_linearized_fraction,
     double kill_rate_colicin,
-    double kill_rate_microcin) {
+    double kill_rate_microcin,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
   if (state[i] == 3 || state[i] == 4) {
@@ -52,7 +55,9 @@ __global__ void receptor_kill_prob_kernel(
     return;
   }
 
-  const int cell = grid_cell[i];
+  const int cell = map_global_cell_to_storage(
+      grid_cell[i], global_nx, global_ny, storage_nx,
+      owned_global_x_begin, owned_global_x_end, owned_storage_x_begin);
   if (cell < 0) {
     kill_probs[i] = 0.0;
     return;
@@ -137,6 +142,9 @@ void launch_receptor_kill_prob_kernel(
     double cirA_linearized_fraction,
     double kill_rate_colicin,
     double kill_rate_microcin,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin,
     cudaStream_t stream) {
   if (num_agents <= 0) return;
   int block = 256;
@@ -148,7 +156,9 @@ void launch_receptor_kill_prob_kernel(
       kill_probs, num_agents, dt,
       kd_b12_btuB, kd_colicinE_btuB, kd_enterobactin, kd_colicinB_fepA,
       kd_lin_enterobactin, kd_colicinIa_cirA, kd_colicinM_fhuA, kd_ferrichrome,
-      cirA_linearized_fraction, kill_rate_colicin, kill_rate_microcin);
+      cirA_linearized_fraction, kill_rate_colicin, kill_rate_microcin,
+      global_nx, global_ny, storage_nx, owned_global_x_begin,
+      owned_global_x_end, owned_storage_x_begin);
 }
 
 }  // namespace gpu

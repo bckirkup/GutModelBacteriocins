@@ -352,7 +352,7 @@ void test_kitchen_sink() {
   std::cout << "  test_kitchen_sink: PASSED\n";
 }
 
-void test_slab_io_support_and_gpu_refusal() {
+void test_slab_io_support_and_gpu() {
   SimulationConfig io_cfg = make_combo_config(2010);
   io_cfg.chemistry_decomposition = "slab";
   io_cfg.domain.grid_halo_width = 2;
@@ -372,15 +372,16 @@ void test_slab_io_support_and_gpu_refusal() {
   gpu_cfg.chemistry_decomposition = "slab";
   gpu_cfg.domain.grid_halo_width = 2;
   gpu_cfg.gpu.enabled = true;
-  bool rejected = false;
+  bool initialized = false;
   try {
     Simulation gpu_sim;
     gpu_sim.init(gpu_cfg);
+    initialized = true;
   } catch (const ConfigError& error) {
-    rejected = std::string(error.what()).find("GPU") != std::string::npos;
+    std::cerr << "Unexpected slab GPU rejection: " << error.what() << "\n";
   }
-  assert(rejected);
-  std::cout << "  test_slab_io_support_and_gpu_refusal: PASSED\n";
+  assert(initialized);
+  std::cout << "  test_slab_io_support_and_gpu: PASSED\n";
 }
 
 void test_slab_single_rank_biology() {
@@ -421,7 +422,7 @@ int main() {
   test_adaptive_dt_with_crypts();
   test_full_biology_with_fmm();
   test_kitchen_sink();
-  test_slab_io_support_and_gpu_refusal();
+  test_slab_io_support_and_gpu();
   test_slab_single_rank_biology();
   test_slab_replicated_fingerprint_equivalence();
   std::cout << "All feature combination tests passed.\n";

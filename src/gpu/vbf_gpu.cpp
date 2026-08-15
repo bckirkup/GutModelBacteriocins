@@ -39,7 +39,10 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
 
   const VBFConfig& cfg = vbf.config();
   gpu::VbfLaunchParams params;
-  params.nx = domain.nx();
+  params.storage_nx = chem_gpu.storage_nx();
+  params.owned_x_begin = chem_gpu.owned_storage_x_begin();
+  params.owned_x_end = chem_gpu.owned_storage_x_end();
+  params.global_nx = domain.nx();
   params.ny = domain.ny();
   params.nz = domain.nz();
   params.dx = domain.dx();
@@ -69,7 +72,8 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   const Int i_mucin = chem.find(species::MUCIN);
 
   gpu::launch_vbf_coupling_kernel(
-      domain.ncells(), params,
+      (params.owned_x_end - params.owned_x_begin) * domain.ny() * domain.nz(),
+      params,
       i_carbon >= 0 ? chem_gpu.reac_device(i_carbon) : nullptr,
       i_carbon >= 0 ? chem_gpu.conc_device(i_carbon) : nullptr,
       i_iron >= 0 ? chem_gpu.reac_device(i_iron) : nullptr,
