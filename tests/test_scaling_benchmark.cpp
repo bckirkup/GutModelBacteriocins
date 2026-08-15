@@ -14,6 +14,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #ifdef GUTIBM_MPI
 #include <mpi.h>
@@ -24,6 +25,7 @@ namespace {
 using gutibm::InputParser;
 using gutibm::Simulation;
 using gutibm::SimulationConfig;
+using gutibm::ToxinBurstSource;
 
 int mpi_rank() {
 #ifdef GUTIBM_MPI
@@ -60,7 +62,8 @@ long read_vmrss_kb() {
   return -1;
 }
 
-SimulationConfig bench_config(int agent_count, bool use_fmm) {
+SimulationConfig bench_config(int agent_count, bool use_fmm,
+                              const std::string& toxin_evaluation) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.hdf5.enabled = false;
   cfg.time.total_time = 120.0;
@@ -72,6 +75,7 @@ SimulationConfig bench_config(int agent_count, bool use_fmm) {
   cfg.domain.hi = {200.0e-6, 200.0e-6, 100.0e-6};
   cfg.domain.grid_dx = 4.0e-6;
   cfg.qssa.use_fmm = use_fmm;
+  cfg.qssa.toxin_evaluation = toxin_evaluation;
   cfg.qssa.fmm_theta = 0.5;
   cfg.qssa.toxin_cutoff = 80.0e-6;
   cfg.qssa.nutrient_cutoff = 40.0e-6;
@@ -98,8 +102,10 @@ struct BenchRow {
   double bytes_per_agent = 0.0;
 };
 
-BenchRow run_case(int agent_count, bool use_fmm, int n_steps) {
-  SimulationConfig cfg = bench_config(agent_count, use_fmm);
+BenchRow run_case(int agent_count, bool use_fmm, int n_steps,
+                  const std::string& toxin_evaluation) {
+  SimulationConfig cfg =
+      bench_config(agent_count, use_fmm, toxin_evaluation);
   Simulation sim;
   sim.init(cfg);
 
@@ -135,11 +141,13 @@ BenchRow run_case(int agent_count, bool use_fmm, int n_steps) {
   return row;
 }
 
-void print_row(const BenchRow& row, bool use_fmm) {
+void print_row(const BenchRow& row, bool use_fmm,
+               const std::string& toxin_evaluation) {
   if (mpi_rank() != 0) return;
   std::cout << "BENCHMARK agents=" << row.agents
             << " ranks=" << row.ranks
             << " use_fmm=" << (use_fmm ? 1 : 0)
+            << " toxin_evaluation=" << toxin_evaluation
             << " step_ms=" << row.step_ms
             << " chemistry_ms=" << row.chemistry_ms
             << " biology_ms=" << row.biology_ms
@@ -161,6 +169,96 @@ void assert_monotonic_soft(const BenchRow& small, const BenchRow& large) {
   assert(large.step_ms >= small.step_ms * 0.5);
 }
 
+ToxinBurstSource source_at(gutibm::Vec3 position) {
+  ToxinBurstSource source;
+  source.pos = position;
+  source.creation_time = 0.0;
+  source.release_tau = 300.0;
+  source.target = gutibm::ReceptorType::BtuB;
+  source.params.diff_coeff = 4e-11;
+  source.params.retardation = 1.0;
+  source.params.source_rate = 1e-18;
+  source.params.decay_rate = 0.0;
+  return source;
+}
+
+void run_toxin_timing_case() {
+  constexpr int producer_count = 300;
+  constexpr int consumer_count = 700;
+  constexpr double domain_size = 200e-6;
+  constexpr double grid_dx = 2e-6;
+  constexpr double toxin_cutoff = 200e-6;
+
+  std::vector<ToxinBurstSource> sources;
+  sources.reserve(producer_count);
+  for (int i = 0; i < producer_count; ++i) {
+    const double x = (static_cast<double>(i % 10) + 0.5) * 20e-6;
+    const double y = (static_cast<double>((i / 10) % 10) + 0.5) * 20e-6;
+    const double z = (static_cast<double>(i / 100) + 0.5) * 20e-6;
+    sources.push_back(source_at({x, y, z}));
+  }
+
+  auto config = [&](const std::string& mode) {
+    SimulationConfig cfg = InputParser::default_config();
+    cfg.hdf5.enabled = false;
+    cfg.domain.hi = {domain_size, domain_size, domain_size};
+    cfg.domain.grid_dx = grid_dx;
+    cfg.qssa.toxin_cutoff = toxin_cutoff;
+    cfg.qssa.toxin_evaluation = mode;
+    cfg.initial_strains.clear();
+    SimulationConfig::InitialStrain producers;
+    producers.type = 1;
+    producers.count = producer_count;
+    producers.mu_max = 5.5e-4;
+    producers.plasmids = {"ColB"};
+    producers.conjugative = false;
+    cfg.initial_strains.push_back(producers);
+    SimulationConfig::InitialStrain consumers;
+    consumers.type = 2;
+    consumers.count = consumer_count;
+    consumers.mu_max = 5.5e-4;
+    consumers.conjugative = false;
+    cfg.initial_strains.push_back(consumers);
+    return cfg;
+  };
+
+  Simulation grid_sim;
+  Simulation agent_sim;
+  const SimulationConfig grid_cfg = config("grid");
+  const SimulationConfig agent_cfg = config("agents");
+  grid_sim.init(grid_cfg);
+  agent_sim.init(agent_cfg);
+
+  using Clock = std::chrono::steady_clock;
+  const auto grid_start = Clock::now();
+  grid_sim.qssa().solve_all_bacteriocin_fields(
+      grid_sim.agents(), sources, 0.0, grid_sim.config().chem_env.protease,
+      grid_sim.advection(), grid_sim.chemical_field(), nullptr, true);
+  const auto grid_end = Clock::now();
+  const auto agent_start = Clock::now();
+  agent_sim.qssa().solve_all_bacteriocin_fields(
+      agent_sim.agents(), sources, 0.0, agent_sim.config().chem_env.protease,
+      agent_sim.advection(), agent_sim.chemical_field(), nullptr, false);
+  const auto agent_end = Clock::now();
+
+  const double grid_ms =
+      std::chrono::duration<double, std::milli>(grid_end - grid_start).count();
+  const double agent_ms =
+      std::chrono::duration<double, std::milli>(agent_end - agent_start)
+          .count();
+  if (mpi_rank() == 0) {
+    std::cout << "TOXIN_TIMING label=producer_consumer"
+              << " grid_ms=" << grid_ms
+              << " agents_ms=" << agent_ms
+              << " producers=" << producer_count
+              << " consumers=" << consumer_count
+              << " grid_dx_m=" << grid_dx
+              << " toxin_cutoff_m=" << toxin_cutoff
+              << " grid_cells="
+              << grid_sim.chemical_field().global_ncells() << "\n";
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -168,14 +266,22 @@ int main(int argc, char** argv) {
   MPI_Init(&argc, &argv);
 #endif
 
-  constexpr int k_steps = 1;
-  const BenchRow small = run_case(500, false, k_steps);
-  const BenchRow medium = run_case(1500, false, k_steps);
-  const BenchRow large = run_case(3000, false, k_steps);
+  if (argc > 1 && std::string(argv[1]) == "--toxin-timing") {
+    run_toxin_timing_case();
+#ifdef GUTIBM_MPI
+    MPI_Finalize();
+#endif
+    return 0;
+  }
 
-  print_row(small, false);
-  print_row(medium, false);
-  print_row(large, false);
+  constexpr int k_steps = 1;
+  const BenchRow small = run_case(500, false, k_steps, "grid");
+  const BenchRow medium = run_case(1500, false, k_steps, "grid");
+  const BenchRow large = run_case(3000, false, k_steps, "grid");
+
+  print_row(small, false, "grid");
+  print_row(medium, false, "grid");
+  print_row(large, false, "grid");
 
   assert_monotonic_soft(small, medium);
 

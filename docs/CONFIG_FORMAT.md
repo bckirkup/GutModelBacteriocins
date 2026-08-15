@@ -69,6 +69,7 @@ Many subsystems use **dot-key toggles** in flat JSON:
 | `crypts_enabled` | false | Crypt refugia (zero-flow zones) |
 | `adaptive_dt_enabled` | false | CFL-like adaptive biological timestep |
 | `use_fmm` | false | Barnes–Hut FMM far-field acceleration |
+| `chemistry.toxin_evaluation` | `"grid"` | Toxin exposure mode: `"grid"` or `"agents"` |
 | `gpu_enabled` | false | CUDA GPU path (CUDA build required) |
 
 Full parameter lists: [PARAMETERS.md](PARAMETERS.md).

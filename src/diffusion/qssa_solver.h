@@ -21,6 +21,9 @@
 #include "greens_function.h"
 #include "fmm.h"
 #include "chem_environment_config.h"
+#include <array>
+#include <cstddef>
+#include <string>
 #include <vector>
 
 namespace gutibm {
@@ -43,6 +46,7 @@ struct QSSAConfig {
 
   // FMM / Barnes-Hut acceleration (far-field aggregation)
   bool use_fmm  = false;   // enable octree far-field acceleration
+  std::string toxin_evaluation = "grid";
   Real fmm_theta = 0.5;    // opening angle (0→exact, 1→fast/approximate)
   int  fmm_expansion_order = 2;  // 1=monopole, 2=dipole+quadrupole, 3=octupole
 
@@ -86,7 +90,8 @@ class QSSASolver {
       ChemicalField& chem,
       Int toxin_species_idx,
       ReceptorType target,
-      ChemicalFieldGpu* chem_gpu = nullptr) const;
+      ChemicalFieldGpu* chem_gpu = nullptr,
+      bool materialize_grid = true);
 
   // Solve all four per-receptor bacteriocin fields.
   void solve_all_bacteriocin_fields(
@@ -96,7 +101,8 @@ class QSSASolver {
       const ProteaseConfig& protease,
       const AdvectionField& adv,
       ChemicalField& chem,
-      ChemicalFieldGpu* chem_gpu = nullptr) const;
+      ChemicalFieldGpu* chem_gpu = nullptr,
+      bool materialize_grid = true);
 
   // Compute nutrient depletion zones around colonies
   void solve_nutrient_depletion(
@@ -111,9 +117,22 @@ class QSSASolver {
       const std::vector<GreensFunctionParams>& params,
       const std::vector<Real>& strength_factors) const;
 
+  Real sampled_toxin_conc(Int agent_index, Int species_idx) const;
+  Real sampled_toxin_max(Int species_idx) const;
+  bool agent_sampling() const { return cfg_.toxin_evaluation == "agents"; }
+
   const GreensFunction& gf() const { return gf_; }
 
  private:
+  struct SampledToxinField {
+    std::vector<Vec3> sources;
+    std::vector<GreensFunctionParams> params;
+    std::vector<Real> strength_factors;
+    std::vector<Real> samples;
+    FMM fmm;
+    bool fmm_ready = false;
+  };
+
   void solve_bacteriocin_field_fmm(
       const std::vector<Vec3>& sources,
       const std::vector<GreensFunctionParams>& params,
@@ -122,6 +141,17 @@ class QSSASolver {
       ChemicalField& chem,
       Int toxin_species_idx,
       ChemicalFieldGpu* chem_gpu = nullptr) const;
+
+  void sample_bacteriocin_field(
+      const std::vector<Vec3>& sources,
+      const std::vector<GreensFunctionParams>& params,
+      const std::vector<Real>& strength_factors,
+      const AgentPool& agents,
+      ReceptorType target);
+
+  Int sampled_slot_for_species(Int species_idx) const;
+  Real evaluate_sample(const SampledToxinField& field,
+                       const Vec3& position) const;
 
   void solve_bacteriocin_field_from_sources(
       const std::vector<Vec3>& sources,
@@ -136,6 +166,9 @@ class QSSASolver {
   GreensFunction gf_;
   const Domain* domain_ = nullptr;
   const AdvectionField* adv_ = nullptr;
+  const AgentPool* sampled_agents_ = nullptr;
+  mutable std::array<SampledToxinField, 4> sampled_fields_;
+  std::array<Int, 4> sampled_species_indices_{{-1, -1, -1, -1}};
 };
 
 }  // namespace gutibm

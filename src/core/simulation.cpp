@@ -325,6 +325,10 @@ void Simulation::init(const SimulationConfig& cfg) {
   gpu_set_config(cfg.gpu);
   gpu_init_for_rank(domain_.rank(), domain_.nprocs());
   gpu_.active = gpu_runtime_enabled();
+  if (gpu_.active && qssa_.agent_sampling()) {
+    throw ConfigError(
+        "chemistry.toxin_evaluation=agents is not supported with GPU execution");
+  }
   if (gpu_.active) {
     gpu_.chem.init(chem_);
     gpu_.agents.sync_from_host(agents_);
@@ -447,6 +451,10 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   gpu_set_config(cfg.gpu);
   gpu_init_for_rank(domain_.rank(), domain_.nprocs());
   gpu_.active = gpu_runtime_enabled();
+  if (gpu_.active && qssa_.agent_sampling()) {
+    throw ConfigError(
+        "chemistry.toxin_evaluation=agents is not supported with GPU execution");
+  }
 
 #ifndef GUTIBM_HDF5
   (void)h5_file;
@@ -825,6 +833,10 @@ void print_heartbeat_line(Int step_count, Real sim_time, double wall_elapsed_s) 
 
 void Simulation::write_hdf5_step(Real dt) {
   if (!hdf5_.is_enabled()) return;
+  if (qssa_.agent_sampling() && hdf5_.grid_output_due(clock_.step_count)
+      && !bacteriocin_.grid_materialized) {
+    materialize_bacteriocin_fields_for_output();
+  }
   const auto hdf5_t0 = std::chrono::steady_clock::now();
   hdf5_.write_step(*this, clock_.step_count, clock_.time, dt);
   if (cfg_.profile_steps) {
@@ -995,6 +1007,7 @@ void Simulation::run() {
 
 void Simulation::step(Real dt) {
   bacteriocin_.fields_current = false;
+  bacteriocin_.grid_materialized = false;
   if (cfg_.profile_steps) {
     gpu_transfer_profile_set_enabled(gpu_.active);
   }
@@ -1117,10 +1130,24 @@ void Simulation::update_bacteriocin_fields() {
   prune_toxin_bursts(clock_.time);
 
   ChemicalFieldGpu* chem_gpu_ptr = gpu_.active ? &gpu_.chem : nullptr;
-  qssa_.solve_all_bacteriocin_fields(agents_, bacteriocin_.bursts, clock_.time,
-                                      cfg_.chem_env.protease, advection_, chem_,
-                                      chem_gpu_ptr);
+  const bool materialize_grid =
+      hdf5_.grid_output_due(clock_.step_count + 1);
+  qssa_.solve_all_bacteriocin_fields(
+      agents_, bacteriocin_.bursts, clock_.time, cfg_.chem_env.protease,
+      advection_, chem_, chem_gpu_ptr, materialize_grid);
   bacteriocin_.fields_current = true;
+  bacteriocin_.grid_materialized = materialize_grid;
+}
+
+void Simulation::materialize_bacteriocin_fields_for_output() {
+  if (!qssa_.agent_sampling()) return;
+  prune_toxin_bursts(clock_.time);
+  ChemicalFieldGpu* chem_gpu_ptr = gpu_.active ? &gpu_.chem : nullptr;
+  qssa_.solve_all_bacteriocin_fields(
+      agents_, bacteriocin_.bursts, clock_.time, cfg_.chem_env.protease,
+      advection_, chem_, chem_gpu_ptr, true);
+  bacteriocin_.fields_current = true;
+  bacteriocin_.grid_materialized = true;
 }
 
 void Simulation::module_biology(Real dt) {

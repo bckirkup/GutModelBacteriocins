@@ -245,6 +245,7 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
 | `qssa.toxin_cutoff` | 200e-6 | m | Green's function evaluation radius for toxins |
+| `chemistry.toxin_evaluation` | `grid` | — | Toxin exposure evaluation: `grid` samples each agent's chemistry cell center; `agents` evaluates the same Green's-function superposition at each agent position |
 | `qssa.nutrient_cutoff` | 50e-6 | m | Cutoff for nutrient depletion zones |
 | `qssa.colicin_release_rate` | 1e-18 | mol/s | Burst release per lysed cell |
 | `qssa.microcin_secretion` | 1e-20 | mol/s | Continuous secretion rate |
@@ -258,6 +259,14 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 | `qssa.fmm_expansion_order` | 2 | — | Multipole order: 1=monopole, 2=dipole+quadrupole, 3=octupole |
 
 **Scaling note:** At 10^6 agents, naive O(N × M) evaluation is expensive. The cutoff radius limits each grid cell to nearby sources only, giving effective O(N) via spatial hashing. When `use_fmm` is true, distant sources beyond the cutoff are aggregated via a kernel-independent FMM with Cartesian multipole expansions (M2M, M2L, L2L), giving O(N+M) far-field cost after preprocessing. The opening angle `fmm_theta` controls accuracy: smaller values are more accurate but slower. Increase `fmm_expansion_order` for tighter error bounds (~theta^p) without changing theta. Typical values: `fmm_theta` 0.3 (conservative), 0.5 (balanced), 0.7 (fast); `fmm_expansion_order` 2 (default).
+
+`chemistry.toxin_evaluation` is a modelling variant, not a performance toggle.
+`grid` is the default and preserves the existing behaviour and fingerprints.
+`agents` uses the actual agent position, so it can change killing when a cell is
+offset from its chemistry-cell centre. Scheduled grid output is still
+materialised in agent mode, but `bacteriocin_max_*` summary values become maxima
+over sampled agent positions rather than over every grid cell. GPU execution
+currently rejects `agents` mode because sampling remains CPU-only.
 
 ---
 

@@ -457,6 +457,32 @@ void test_chemistry_decomposition_rejects_unimplemented_modes() {
   std::cout << "  test_chemistry_decomposition_rejects_unimplemented_modes: PASSED\n";
 }
 
+void test_toxin_evaluation_rejects_unknown_modes() {
+  SimulationConfig cfg = InputParser::default_config();
+  assert(cfg.qssa.toxin_evaluation == "grid");
+  assert(InputParser::apply_flat_key(cfg, "toxin_evaluation", "agents"));
+  assert(cfg.qssa.toxin_evaluation == "agents");
+  bool threw = false;
+  try {
+    (void)InputParser::apply_flat_key(
+        cfg, "chemistry.toxin_evaluation", "unknown");
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+  assert(threw);
+
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_bad_toxin_evaluation.json";
+  threw = false;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+  assert(threw);
+  std::cout << "  test_toxin_evaluation_rejects_unknown_modes: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -482,6 +508,7 @@ int main() {
   test_chemistry_stride_requires_positive_integer();
   test_json_chemistry_stride_errors_are_not_swallowed();
   test_chemistry_decomposition_rejects_unimplemented_modes();
+  test_toxin_evaluation_rejects_unknown_modes();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }
