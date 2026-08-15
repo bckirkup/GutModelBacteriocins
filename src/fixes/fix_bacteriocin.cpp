@@ -33,7 +33,9 @@ void FixBacteriocin::compute(Real dt) {
   auto& agents = sim_.agents();
 
   for (Agent& a : agents) {
-    if (a.state == PhenoState::DEAD) continue;
+    // Ghosts participate in neighbor reads but biological state transitions
+    // and event counters belong only to the owning rank.
+    if (a.state == PhenoState::DEAD || a.flags.is_ghost) continue;
     if (a.genome.bi_loci.empty()) continue;
 
     if (has_release_mode(a, ReleaseMode::SOS_LYSIS)) {
@@ -58,7 +60,7 @@ void FixBacteriocin::post_step(Real dt) { // NOLINT(readability-make-member-func
   auto& agents = sim_.agents();
 
   for (Agent& a : agents) {
-    if (a.state == PhenoState::SOS_INDUCED) {
+    if (a.state == PhenoState::SOS_INDUCED && !a.flags.is_ghost) {
       a.timers.sos_timer -= dt;
       if (a.timers.sos_timer <= 0.0) {
         lyse_agent(a);

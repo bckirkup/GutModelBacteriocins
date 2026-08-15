@@ -247,6 +247,61 @@ void test_population_ledger_closure() {
   }
 }
 
+void test_bacteriocin_ghost_accounting() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  SimulationConfig cfg = make_mpi_config(51003, 2);
+  cfg.time.total_time = 6.0 * cfg.time.bio_dt;
+  cfg.time.output_interval = cfg.time.total_time;
+  cfg.enabled_fixes = {"bacteriocin"};
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+  cfg.hdf5.enabled = true;
+  cfg.hdf5.filename = resolve_shared_test_h5_path(
+      "GUTIBM_MPI_BACTERIOCIN_GHOST_H5", "mpi_bacteriocin_ghost");
+
+  Simulation sim;
+  sim.init(cfg);
+  while (sim.agents().size() > 0) {
+    sim.agents().remove(sim.agents().size() - 1);
+  }
+  if (rank == 0) {
+    Agent producer = Agent::create_default(
+        sim.agents().next_tag(), 1, {49.5e-6, 50.0e-6, 25.0e-6}, 5.0e-4);
+    const PlasmidEntry* plasmid = PlasmidLibrary::find("ColE1");
+    assert(plasmid != nullptr);
+    producer.genome.bi_loci.push_back(plasmid->cluster);
+    producer.identity.owner_rank = rank;
+    sim.agents().push_back(std::move(producer));
+  } else {
+    Agent survivor = Agent::create_default(
+        sim.agents().next_tag(), 2, {75.0e-6, 50.0e-6, 25.0e-6}, 5.0e-4);
+    survivor.identity.owner_rank = rank;
+    sim.agents().push_back(std::move(survivor));
+  }
+  sim.run();
+
+  if (rank == 0) {
+    hid_t file = H5Fopen(cfg.hdf5.filename.c_str(), H5F_ACC_RDONLY,
+                         H5P_DEFAULT);
+    assert(file >= 0);
+    const std::string step_name =
+        std::format("step_{:06}", sim.step_count());
+    const std::string prefix = "summary/" + step_name + "/events/";
+    const Int sos = read_event(file, prefix + "cumulative_sos_inductions");
+    const Int lysis = read_event(file, prefix + "cumulative_lysis_deaths");
+    assert(sos == 1);
+    assert(lysis == 1);
+    H5Fclose(file);
+    std::cout << "  test_bacteriocin_ghost_accounting: PASSED"
+              << " (sos_inductions=" << sos
+              << ", lysis_deaths=" << lysis << ")\n";
+  }
+}
+
 #endif
 
 uint64_t hash_chemical_owned_cells(const ChemicalField& field,
@@ -1117,6 +1172,7 @@ int main(int argc, char** argv) {
 #ifdef GUTIBM_HDF5
   test_global_event_counter_reduction();
   test_population_ledger_closure();
+  test_bacteriocin_ghost_accounting();
 #endif
 
   if (rank == 0) {
