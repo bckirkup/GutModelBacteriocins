@@ -207,6 +207,15 @@ inline PopulationLedger read_population_ledger(hid_t file,
   };
 }
 
+inline void assert_population_ledger_closure(const PopulationLedger& ledger,
+                                             Int initial) {
+  const Int expected_final = initial + ledger.divisions + ledger.immigrations
+      - ledger.washout - ledger.starvation - ledger.colicin - ledger.cdi
+      - ledger.boundary - ledger.lysis;
+  assert(ledger.n_total == expected_final);
+  assert(ledger.lysis > 0);
+}
+
 inline std::vector<AgentSnapshot> read_agent_snapshots(hid_t file,
                                                        const std::string& step) {
   const std::string prefix = "agents/" + step + "/";
