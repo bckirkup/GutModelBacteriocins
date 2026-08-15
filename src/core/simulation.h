@@ -122,6 +122,10 @@ class Simulation {
     return event_ledger_.cumulative_events;
   }
   StepEvents& cumulative_events() { return event_ledger_.cumulative_events; }
+  const StepEvents& summary_events() const {
+    return event_ledger_.summary_events;
+  }
+  StepEvents& summary_events() { return event_ledger_.summary_events; }
   Int event_window_start_step() const {
     return event_ledger_.window_start_step;
   }
@@ -132,11 +136,17 @@ class Simulation {
     event_ledger_.window_start_step = step;
     event_ledger_.window_start_time = time;
   }
-  void reset_step_events_after_summary(Int step, Real time) {
-    event_ledger_.cumulative_events.add(event_ledger_.step_events);
+  void prepare_step_events_for_summary();
+  void commit_step_events_after_summary(Int step, Real time) {
+    event_ledger_.cumulative_events.add(event_ledger_.summary_events);
     event_ledger_.step_events.reset();
+    event_ledger_.summary_events.reset();
     event_ledger_.window_start_step = step + 1;
     event_ledger_.window_start_time = time;
+  }
+  void reset_step_events_after_summary(Int step, Real time) {
+    prepare_step_events_for_summary();
+    commit_step_events_after_summary(step, time);
   }
   bool provenance_enabled() const {
     return cfg_.hdf5.enabled && cfg_.hdf5.schedule.provenance > 0;
@@ -240,6 +250,7 @@ class Simulation {
 
   struct EventLedger {
     StepEvents step_events;
+    StepEvents summary_events;
     StepEvents cumulative_events;
     Int window_start_step = 1;
     Real window_start_time = 0.0;
