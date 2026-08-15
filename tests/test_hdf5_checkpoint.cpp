@@ -76,6 +76,57 @@ SimulationConfig make_checkpoint_config(std::string_view filename) {
   return cfg;
 }
 
+#ifdef GUTIBM_MPI
+void assert_checkpoint_agent_partition(
+    const Simulation& resumed,
+    const std::vector<gutibm::test::AgentSnapshot>& expected_agents,
+    const std::vector<gutibm::test::AgentSnapshot>& local_agents,
+    Int expected_count) {
+  const int local_count = static_cast<int>(local_agents.size());
+  int global_count = 0;
+  MPI_Allreduce(&local_count, &global_count, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  assert(global_count == expected_count);
+
+  std::vector<int> counts(static_cast<size_t>(resumed.domain().nprocs()));
+  MPI_Allgather(&local_count, 1, MPI_INT, counts.data(), 1, MPI_INT,
+                MPI_COMM_WORLD);
+  std::vector<int> displacements(counts.size(), 0);
+  int total_count = 0;
+  for (size_t rank = 0; rank < counts.size(); ++rank) {
+    displacements[rank] = total_count;
+    total_count += counts[rank];
+  }
+
+  std::vector<int> byte_counts(counts.size());
+  std::vector<int> byte_displacements(counts.size());
+  for (size_t rank = 0; rank < counts.size(); ++rank) {
+    byte_counts[rank] =
+        counts[rank] * static_cast<int>(sizeof(gutibm::test::AgentSnapshot));
+    byte_displacements[rank] =
+        displacements[rank] * static_cast<int>(sizeof(gutibm::test::AgentSnapshot));
+  }
+  std::vector<gutibm::test::AgentSnapshot> all_agents(
+      static_cast<size_t>(total_count));
+  MPI_Allgatherv(
+      local_agents.data(),
+      local_count * static_cast<int>(sizeof(gutibm::test::AgentSnapshot)),
+      MPI_BYTE, all_agents.data(), byte_counts.data(), byte_displacements.data(),
+      MPI_BYTE, MPI_COMM_WORLD);
+
+  for (const Agent& agent : resumed.agents()) {
+    assert(resumed.domain().owner_rank(agent.x) == resumed.domain().rank());
+  }
+  std::ranges::sort(all_agents, [](const auto& lhs, const auto& rhs) {
+    return lhs.id < rhs.id;
+  });
+  for (size_t i = 1; i < all_agents.size(); ++i) {
+    assert(all_agents[i - 1].id != all_agents[i].id);
+  }
+  compare_agent_snapshots(expected_agents, all_agents);
+}
+#endif
+
 void assert_genome_bi_identity(const Simulation& sim) {
   const BICluster ref = PlasmidLibrary::colicin_E1();
   int with_bi = 0;
@@ -190,8 +241,13 @@ void test_checkpoint_restart(const std::string& filename) {
   assert(resumed.global_agent_count() > 0);
 
   auto restored_agents = collect_agent_snapshots(resumed);
+#ifdef GUTIBM_MPI
+  assert_checkpoint_agent_partition(resumed, expected_agents, restored_agents,
+                                    ckpt.metadata.num_agents);
+#else
   assert(static_cast<Int>(restored_agents.size()) == ckpt.metadata.num_agents);
   compare_agent_snapshots(expected_agents, restored_agents);
+#endif
   assert_genome_bi_identity(resumed);
   assert_genome_matches_snapshot(resumed, ckpt);
 
@@ -347,7 +403,18 @@ void test_checkpoint_fork_immigration(const std::string& filename) {
       ++control_immigrants;
     }
   }
+#ifdef GUTIBM_MPI
+  Int global_immigrants = 0;
+  Int global_control_immigrants = 0;
+  MPI_Allreduce(&immigrants, &global_immigrants, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&control_immigrants, &global_control_immigrants, 1, MPI_INT,
+                MPI_SUM, MPI_COMM_WORLD);
+  assert(global_immigrants ==
+         global_control_immigrants + fork_cfg.immigration.count);
+#else
   assert(immigrants == control_immigrants + fork_cfg.immigration.count);
+#endif
   std::cout << "  test_checkpoint_fork_immigration: PASSED\n";
 }
 

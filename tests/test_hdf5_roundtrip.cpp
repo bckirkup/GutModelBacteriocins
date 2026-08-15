@@ -192,7 +192,8 @@ void run_slab_grid_pattern() {
   cfg.chemistry_decomposition = "slab";
   cfg.domain.hi = {20e-6, 15e-6, 10e-6};
   cfg.domain.grid_dx = 5e-6;
-  cfg.domain.grid_halo_width = 1;
+  cfg.domain.grid_halo_width = static_cast<Int>(
+      std::ceil(cfg.domain.ghost_width / cfg.domain.grid_dx));
   cfg.time.total_time = 0.0;
   cfg.hdf5.enabled = true;
   cfg.hdf5.filename = filename;
@@ -516,8 +517,10 @@ int main(int argc, char** argv) {
 #else
   if (rank == 0) std::cout << "=== HDF5 Serial Round-Trip Tests ===\n";
   run_roundtrip(false);
+  run_slab_grid_pattern();
   if (rank == 0) {
     std::cout << "  test_serial_roundtrip: PASSED\n";
+    std::cout << "  test_serial_slab_grid_pattern: PASSED\n";
     std::cout << "All HDF5 round-trip tests passed.\n";
   }
 #endif
