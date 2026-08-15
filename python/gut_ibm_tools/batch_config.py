@@ -255,7 +255,7 @@ def _resolve_dot_path_parent(
             cursor = cursor[int(part)]
         elif isinstance(cursor, dict):
             if part not in cursor:
-                raise BatchConfigError(f"dot path segment not found: {part}")
+                cursor[part] = {}
             cursor = cursor[part]
         else:
             raise BatchConfigError(f"cannot traverse dot path '{dotted_key}'")

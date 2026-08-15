@@ -118,6 +118,50 @@ def test_dot_path_override_merges_nested_field(batch_workspace: Path) -> None:
     assert config["initial_strains"][0]["count"] == 99
 
 
+def test_dot_path_override_creates_missing_nested_field() -> None:
+    config: dict[str, object] = {}
+    apply_overrides(config, {"chemistry.toxin_evaluation": "agents"})
+    assert config == {"chemistry": {"toxin_evaluation": "agents"}}
+
+
+def test_dot_path_override_creates_multiple_missing_levels() -> None:
+    config: dict[str, object] = {}
+    apply_overrides(config, {"domain.chemistry_stride.x": 4})
+    assert config == {"domain": {"chemistry_stride": {"x": 4}}}
+
+
+def test_dot_path_override_preserves_existing_siblings() -> None:
+    config: dict[str, object] = {
+        "domain": {
+            "chemistry_stride": {"x": 1, "y": 1, "z": 1},
+            "ghost_width": 10e-6,
+        }
+    }
+    apply_overrides(config, {"domain.chemistry_stride.x": 4})
+    assert config["domain"] == {
+        "chemistry_stride": {"x": 4, "y": 1, "z": 1},
+        "ghost_width": 10e-6,
+    }
+
+
+def test_dot_path_override_rejects_existing_scalar_traversal() -> None:
+    config: dict[str, object] = {"seed": 1}
+    with pytest.raises(BatchConfigError, match="cannot set dot path 'seed.x'"):
+        apply_overrides(config, {"seed.x": 2})
+
+
+def test_dot_path_override_preserves_list_index_rules(batch_workspace: Path) -> None:
+    base = batch_workspace / "base_config.json"
+    config = json.loads(base.read_text(encoding="utf-8"))
+    apply_overrides(config, {"initial_strains.0.count": 99})
+    assert config["initial_strains"][0]["count"] == 99
+    with pytest.raises(
+        BatchConfigError,
+        match="list index must be numeric in dot path 'initial_strains.count'",
+    ):
+        apply_overrides(config, {"initial_strains.count": 99})
+
+
 def test_build_job_config_sets_absolute_hdf5(batch_workspace: Path) -> None:
     hdf5_path = batch_workspace / "jobs" / "run_a" / "output.h5"
     config = build_job_config(

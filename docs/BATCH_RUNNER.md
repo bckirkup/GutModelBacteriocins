@@ -104,6 +104,10 @@ parameter keys (e.g. `kd_colicinE_btuB=2e-10_seed=4092`).
 2. Apply per-job `overrides` with shallow top-level merge.
 3. Support **dot-path keys** for nested fields:
    `"initial_strains.0.count": 200`
+   Missing mapping segments are created as objects, so overrides can introduce
+   nested configuration keys that are absent from the base template. Existing
+   scalar and list traversal remains strict; list indices must already exist
+   and be numeric.
 4. Force per-job `hdf5_file` to `{job_dir}/output.h5` (absolute path).
 
 ### Optional validation block
