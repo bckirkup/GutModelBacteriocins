@@ -56,6 +56,10 @@ if [[ "$(wc -l < "${observed}")" -lt 3 ]]; then
 fi
 kill -TERM -- "-${pgid}"
 touch "${ready}.done"
+for _ in {1..200}; do
+  [[ "$(wc -l < "${observed}")" -ge 6 ]] && break
+  sleep 0.01
+done
 wait "${leader}" || true
 observed_lines="$(wc -l < "${observed}")"
 if [[ "${observed_lines}" -ne 6 ]]; then
