@@ -233,16 +233,18 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   const Int owned_storage_begin = owned_storage_x_begin();
   const Int owned_storage_end = owned_storage_x_end();
   for (Int s = 0; s < nspec_; ++s) {
-    const bool species_applied = slab_mode_
-        ? gpu_apply_species_diffusion_slab_device(
-              domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(),
-              d_boundary_injected_.data() + s, dt,
-              SlabDiffusionContext{
-                  field, s, storage_nx_, owned_storage_begin,
-                  owned_storage_end})
-        : gpu_apply_species_diffusion_device(
-              domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(),
-              d_boundary_injected_.data() + s, dt);
+    bool species_applied = false;
+    if (slab_mode_) {
+      SlabDiffusionContext context{
+          field, s, storage_nx_, owned_storage_begin, owned_storage_end};
+      species_applied = gpu_apply_species_diffusion_slab_device(
+          domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(),
+          d_boundary_injected_.data() + s, dt, context);
+    } else {
+      species_applied = gpu_apply_species_diffusion_device(
+          domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(),
+          d_boundary_injected_.data() + s, dt);
+    }
     if (species_applied) {
       applied = true;
     }
