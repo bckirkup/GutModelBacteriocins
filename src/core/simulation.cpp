@@ -475,6 +475,7 @@ void print_gpu_status_banner(bool gpu_active, const GpuConfig& gpu) {
 void Simulation::init(const SimulationConfig& cfg) {
   cfg_ = cfg;
   event_ledger_.step_events.reset();
+  event_ledger_.summary_events.reset();
   event_ledger_.cumulative_events.reset();
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
@@ -601,6 +602,32 @@ void Simulation::init(const SimulationConfig& cfg) {
   }
 }
 
+void Simulation::prepare_step_events_for_summary() {
+  event_ledger_.summary_events = event_ledger_.step_events;
+#ifdef GUTIBM_MPI
+  if (domain_.nprocs() > 1) {
+    std::array<Int, 11> local = {
+        event_ledger_.step_events.sos_inductions,
+        event_ledger_.step_events.phage_inductions,
+        event_ledger_.step_events.colicin_kills,
+        event_ledger_.step_events.cdi_kills,
+        event_ledger_.step_events.washout_deaths,
+        event_ledger_.step_events.boundary_deaths,
+        event_ledger_.step_events.starvation_deaths,
+        event_ledger_.step_events.divisions,
+        event_ledger_.step_events.conjugation_transfers,
+        event_ledger_.step_events.mutations,
+        event_ledger_.step_events.immigrations};
+    std::array<Int, 11> global{};
+    MPI_Allreduce(local.data(), global.data(), static_cast<int>(local.size()),
+                  MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    event_ledger_.summary_events = {
+        global[0], global[1], global[2], global[3], global[4], global[5],
+        global[6], global[7], global[8], global[9], global[10]};
+  }
+#endif
+}
+
 void Simulation::init_population(const SimulationConfig& cfg) {
   agents_.configure_tags(AgentPool::first_tag_for_rank(domain_.rank(), domain_.nprocs()),
                            AgentPool::tag_stride(domain_.nprocs()));
@@ -627,6 +654,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
                                       const std::string& step) {
   cfg_ = cfg;
   event_ledger_.step_events.reset();
+  event_ledger_.summary_events.reset();
   event_ledger_.cumulative_events.reset();
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
@@ -867,13 +895,22 @@ void Simulation::write_restart_now() {
   const std::string step_name = std::format("step_{:06}", clock_.step_count);
   const std::string path = cfg_.restart.directory + "/" + step_name + ".h5";
   const auto write_t0 = std::chrono::steady_clock::now();
+  const bool preserve_event_counters = cfg_.hdf5.enabled
+      && cfg_.hdf5.schedule.summary > 0
+      && clock_.step_count % cfg_.hdf5.schedule.summary == 0;
+  const StepEvents saved_step_events = step_events();
+  const StepEvents saved_summary_events = summary_events();
+  const StepEvents saved_cumulative_events = cumulative_events();
+  const Int saved_window_start_step = event_window_start_step();
+  const Real saved_window_start_time = event_window_start_time();
   const bool ok = HDF5Writer::write_closed_restart(
-      *this, path, clock_.step_count, clock_.time, cfg_.time.bio_dt);
-  if (const bool summary_due = cfg_.hdf5.enabled
-          && cfg_.hdf5.schedule.summary > 0
-          && clock_.step_count % cfg_.hdf5.schedule.summary == 0;
-      ok && !summary_due) {
-    reset_step_events_after_summary(clock_.step_count, clock_.time);
+      *this, path, clock_.step_count, clock_.time, cfg_.time.bio_dt,
+      preserve_event_counters);
+  if (!ok && !preserve_event_counters) {
+    step_events() = saved_step_events;
+    summary_events() = saved_summary_events;
+    cumulative_events() = saved_cumulative_events;
+    set_event_window_start(saved_window_start_step, saved_window_start_time);
   }
   const double write_s = std::chrono::duration<double>(
       std::chrono::steady_clock::now() - write_t0).count();

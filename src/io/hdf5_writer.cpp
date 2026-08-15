@@ -532,6 +532,7 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
   const bool summary_due = layer_due(cfg_.schedule.summary, step);
 
   if (summary_due) {
+    sim.prepare_step_events_for_summary();
     const std::string path = "summary/" + step_name;
     ensure_group(fid, "summary", cfg_);
     ensure_group(fid, path, cfg_);
@@ -568,7 +569,7 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
     write_provenance_layer(sim, path);
   }
   if (summary_due) {
-    sim.reset_step_events_after_summary(step, time);
+    sim.commit_step_events_after_summary(step, time);
     sim.chemical_field().flux_accounting().close_interval();
   }
 
@@ -619,7 +620,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   if (io_rank(cfg_) == 0 && file_id_ >= 0) {
   auto fid = static_cast<hid_t>(file_id_);
   const auto& agents = sim.agents();
-  const auto& events = sim.step_events();
+  const auto& events = sim.summary_events();
 
   const double t = time;
   const double dt_val = dt;
@@ -1281,13 +1282,15 @@ void HDF5Writer::finalize() {
 }
 
 bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
-                                      Int step, Real time, Real dt) {
+                                      Int step, Real time, Real dt,
+                                      bool preserve_event_counters) {
 #ifndef GUTIBM_HDF5
   (void)sim;
   (void)path;
   (void)step;
   (void)time;
   (void)dt;
+  (void)preserve_event_counters;
   return false;
 #else
   namespace fs = std::filesystem;
@@ -1360,6 +1363,7 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
     return false;
   }
   const StepEvents saved_step_events = sim.step_events();
+  const StepEvents saved_summary_events = sim.summary_events();
   const StepEvents saved_cumulative_events = sim.cumulative_events();
   const Int saved_window_start_step = sim.event_window_start_step();
   const Real saved_window_start_time = sim.event_window_start_time();
@@ -1367,9 +1371,12 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
   const auto saved_flux_accounting = sim.chemical_field().flux_accounting();
   sim.materialize_bacteriocin_fields_for_output();
   writer.write_step(sim, step, time, dt);
-  sim.step_events() = saved_step_events;
-  sim.cumulative_events() = saved_cumulative_events;
-  sim.set_event_window_start(saved_window_start_step, saved_window_start_time);
+  if (preserve_event_counters) {
+    sim.step_events() = saved_step_events;
+    sim.summary_events() = saved_summary_events;
+    sim.cumulative_events() = saved_cumulative_events;
+    sim.set_event_window_start(saved_window_start_step, saved_window_start_time);
+  }
   sim.kill_provenance() = saved_provenance;
   sim.chemical_field().flux_accounting() = saved_flux_accounting;
   writer.finalize();

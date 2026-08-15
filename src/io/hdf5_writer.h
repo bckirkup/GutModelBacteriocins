@@ -57,7 +57,8 @@ class HDF5Writer {
   // Includes summary/agents/lineage/genome/grid (all species). Returns false if
   // HDF5 is unavailable or the file could not be created.
   static bool write_closed_restart(Simulation& sim, const std::string& path,
-                                   Int step, Real time, Real dt);
+                                   Int step, Real time, Real dt,
+                                   bool preserve_event_counters = true);
 
  private:
   bool layer_due(Int interval, Int step) const;

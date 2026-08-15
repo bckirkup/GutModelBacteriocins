@@ -578,6 +578,7 @@ After the physics module (advection + mechanics), agents that have moved past th
 
 ### Global Statistics
 `MPI_Allreduce` aggregates per-rank counts and growth rate sums to produce global agent count and mean growth rate. These are used for output and lineage tracking.
+HDF5 summary interval and cumulative event counters are likewise globally reduced once per summary, so they describe the same global population as `n_total`.
 
 ### HDF5 Parallel I/O
 When `hdf5.parallel = true`, the file is opened with `H5Pset_fapl_mpio` and agent data is written using collective hyperslab operations — each rank writes its local agents at a computed offset. In slab chemistry mode, all ranks pack owned x-cells for grid output and rank 0 assembles the global datasets; halo planes are never written. Checkpoint/restart restores owned global cells and refreshes concentration halos. The GPU mirror remains unsupported with slab chemistry.

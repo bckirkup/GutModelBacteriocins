@@ -10,6 +10,7 @@
 #include "plasmid.h"
 #include "greens_function.h"
 #include "error.h"
+#include "hdf5_test_helpers.h"
 
 #include <cassert>
 #include <cmath>
@@ -23,11 +24,18 @@
 #include <mpi.h>
 #endif
 
+#ifdef GUTIBM_HDF5
+extern "C" {
+#include <hdf5.h>
+}
+#endif
+
 using namespace gutibm;
 using gutibm::test::assert_unique_tags;
 using gutibm::test::gather_live_tags_flat;
 using gutibm::test::make_mpi_config;
 using gutibm::test::require_mpi_ranks;
+using gutibm::test::resolve_shared_test_h5_path;
 
 namespace {
 
@@ -89,6 +97,138 @@ void test_chemical_field_layout_mapping() {
     std::cout << "  test_chemical_field_layout_mapping: PASSED\n";
   }
 }
+
+#ifdef GUTIBM_HDF5
+
+int32_t read_event(hid_t file, const std::string& path) {
+  hid_t dataset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
+  assert(dataset >= 0);
+  int32_t value = 0;
+  assert(H5Dread(dataset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+                 H5P_DEFAULT, &value) >= 0);
+  H5Dclose(dataset);
+  return value;
+}
+
+void set_all_events(Simulation& sim, Int value) {
+  StepEvents events;
+  events.sos_inductions = value;
+  events.phage_inductions = value;
+  events.colicin_kills = value;
+  events.cdi_kills = value;
+  events.washout_deaths = value;
+  events.boundary_deaths = value;
+  events.starvation_deaths = value;
+  events.divisions = value;
+  events.conjugation_transfers = value;
+  events.mutations = value;
+  events.immigrations = value;
+  sim.step_events() = events;
+}
+
+void test_global_event_counter_reduction() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  SimulationConfig cfg = make_mpi_config(51001, 2);
+  cfg.domain.hi = {20e-6, 20e-6, 20e-6};
+  cfg.hdf5.enabled = false;
+  Simulation sim;
+  sim.init(cfg);
+  const Int local_increment = rank + 1;
+  set_all_events(sim, local_increment);
+  Int expected = 0;
+  MPI_Allreduce(&local_increment, &expected, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+
+  const std::string path = resolve_shared_test_h5_path(
+      "GUTIBM_MPI_EVENT_COUNTERS_H5", "mpi_event_counters");
+  HDF5Config hdf5_cfg;
+  hdf5_cfg.enabled = true;
+  hdf5_cfg.filename = path;
+  hdf5_cfg.schedule.summary = 1;
+  HDF5Writer writer;
+  writer.init(hdf5_cfg, sim.domain());
+  assert(writer.is_enabled());
+  writer.write_step(sim, 1, 60.0, 60.0);
+  set_all_events(sim, local_increment);
+  writer.write_step(sim, 2, 120.0, 60.0);
+  writer.finalize();
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (rank == 0) {
+    hid_t file = H5Fopen(path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+    assert(file >= 0);
+    const std::string prefix = "summary/step_000001/events/";
+    assert(read_event(file, prefix + "sos_inductions") == expected);
+    assert(read_event(file, prefix + "phage_inductions") == expected);
+    assert(read_event(file, prefix + "colicin_kills") == expected);
+    assert(read_event(file, prefix + "cdi_kills") == expected);
+    assert(read_event(file, prefix + "washout_deaths") == expected);
+    assert(read_event(file, prefix + "boundary_deaths") == expected);
+    assert(read_event(file, prefix + "starvation_deaths") == expected);
+    assert(read_event(file, prefix + "divisions") == expected);
+    assert(read_event(file, prefix + "conjugation_transfers") == expected);
+    assert(read_event(file, prefix + "mutations") == expected);
+    assert(read_event(file, prefix + "immigrations") == expected);
+    assert(read_event(file, prefix + "cumulative_washout_deaths") == expected);
+    const std::string second_prefix = "summary/step_000002/events/";
+    assert(read_event(file, second_prefix + "washout_deaths") == expected);
+    assert(read_event(file, second_prefix + "cumulative_washout_deaths")
+           == 2 * expected);
+    H5Fclose(file);
+    std::cout << "  test_global_event_counter_reduction: PASSED\n";
+  }
+}
+
+void test_population_ledger_closure() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  SimulationConfig cfg = make_mpi_config(51002, 160);
+  cfg.time.total_time = cfg.time.bio_dt;
+  cfg.time.output_interval = cfg.time.total_time;
+  cfg.hdf5.enabled = true;
+  cfg.hdf5.filename = resolve_shared_test_h5_path(
+      "GUTIBM_MPI_LEDGER_H5", "mpi_population_ledger");
+  cfg.hdf5.schedule.summary = 1;
+  cfg.hdf5.schedule.agents = 0;
+  cfg.hdf5.schedule.grid = 0;
+  cfg.hdf5.schedule.lineage = 0;
+  cfg.hdf5.schedule.genome = 0;
+  cfg.hdf5.schedule.provenance = 0;
+
+  Simulation sim;
+  sim.init(cfg);
+  const Int initial = sim.global_agent_count();
+  sim.run();
+  MPI_Barrier(MPI_COMM_WORLD);
+  if (rank == 0) {
+    hid_t file = H5Fopen(cfg.hdf5.filename.c_str(), H5F_ACC_RDONLY,
+                         H5P_DEFAULT);
+    assert(file >= 0);
+    const std::string prefix = "summary/step_000001/events/";
+    const Int divisions = read_event(file, prefix + "divisions");
+    const Int immigrations = read_event(file, prefix + "immigrations");
+    const Int washout = read_event(file, prefix + "washout_deaths");
+    const Int starvation = read_event(file, prefix + "starvation_deaths");
+    const Int colicin = read_event(file, prefix + "colicin_kills");
+    const Int cdi = read_event(file, prefix + "cdi_kills");
+    const Int boundary = read_event(file, prefix + "boundary_deaths");
+    const Int sos = read_event(file, prefix + "sos_inductions");
+    const Int n_total = read_event(
+        file, "summary/step_000001/n_total");
+    const Int ledger = initial + divisions + immigrations
+        - washout - starvation - colicin - cdi - boundary - n_total;
+    assert(ledger >= 0);
+    assert(ledger <= sos);
+    H5Fclose(file);
+    std::cout << "  test_population_ledger_closure: PASSED\n";
+  }
+}
+
+#endif
 
 uint64_t hash_chemical_owned_cells(const ChemicalField& field,
                                    const Domain& domain);
@@ -955,6 +1095,10 @@ int main(int argc, char** argv) {
   test_multirank_simulation_steps();
   test_adaptive_dt_is_rank_identical();
   test_multirank_immigration_ownership();
+#ifdef GUTIBM_HDF5
+  test_global_event_counter_reduction();
+  test_population_ledger_closure();
+#endif
 
   if (rank == 0) {
     std::cout << "All MPI multi-rank tests passed.\n";
