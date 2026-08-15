@@ -49,7 +49,7 @@ void FixReceptor::compute(Real dt) {
       const Agent& a = agents[i];
       if (a.state == DEAD || a.state == SOS_INDUCED)
         continue;
-      kill_probs[i] = compute_kill_prob(a, dt);
+      kill_probs[i] = compute_kill_prob(a, i, dt);
     }
   }
 
@@ -60,7 +60,7 @@ void FixReceptor::compute(Real dt) {
       continue;
 
     if (kill_probs[i] > 0.0 && rng.bernoulli(kill_probs[i])) {
-      const KillAssessment assessment = assess_kill(a, dt);
+      const KillAssessment assessment = assess_kill(a, i, dt);
       a.state = DEAD;
       sim_.step_events().colicin_kills++;
       if (sim_.provenance_enabled()) {
@@ -78,27 +78,32 @@ void FixReceptor::compute(Real dt) {
   }
 }
 
-Real FixReceptor::local_toxin_conc(const ChemicalField& chem, Int cell,
+Real FixReceptor::local_toxin_conc(const Agent& agent, Int agent_index,
                                     const char* species_name) const {
+  const auto& chem = sim_.chemical_field();
   Int idx = chem.find(species_name);
-  if (idx < 0 || cell < 0) return 0.0;
-  return chem.conc_global(idx, cell);
+  if (idx < 0 || agent.grid_cell < 0) return 0.0;
+  if (sim_.qssa().agent_sampling()) {
+    return sim_.qssa().sampled_toxin_conc(agent_index, idx);
+  }
+  return chem.conc_global(idx, agent.grid_cell);
 }
 
-Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt) const {
-  return compute_kill_prob(agent, dt, nullptr);
+Real FixReceptor::compute_kill_prob(const Agent& agent, Int agent_index,
+                                    Real dt) const {
+  return compute_kill_prob(agent, agent_index, dt, nullptr);
 }
 
-FixReceptor::KillAssessment FixReceptor::assess_kill(const Agent& agent,
-                                                      Real dt) const {
+FixReceptor::KillAssessment FixReceptor::assess_kill(
+    const Agent& agent, Int agent_index, Real dt) const {
   KillAssessment assessment;
-  assessment.probability = compute_kill_prob(agent, dt, &assessment);
+  assessment.probability = compute_kill_prob(
+      agent, agent_index, dt, &assessment);
   return assessment;
 }
 
-Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt,
+Real FixReceptor::compute_kill_prob(const Agent& agent, Int agent_index, Real dt,
                                     KillAssessment* diagnostics) const {
-  const auto& chem = sim_.chemical_field();
   const Int cell = agent.grid_cell;
   if (cell < 0) return 0.0;
 
@@ -123,7 +128,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Real dt,
   bool any_toxin = false;
   for (const auto& descriptor : descriptors) {
     const Real toxin_concentration =
-        local_toxin_conc(chem, cell, descriptor.toxin_species);
+        local_toxin_conc(agent, agent_index, descriptor.toxin_species);
     if (diagnostics != nullptr) {
       diagnostics->concentration[descriptor.diagnostic_index] =
           toxin_concentration;

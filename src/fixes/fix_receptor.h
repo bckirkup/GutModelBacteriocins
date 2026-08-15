@@ -76,16 +76,16 @@ class FixReceptor : public Fix {
   };
 
   // Evaluate kill probability for one agent from local toxin field
-  Real compute_kill_prob(const Agent& agent, Real dt) const;
-  Real compute_kill_prob(const Agent& agent, Real dt,
+  Real compute_kill_prob(const Agent& agent, Int agent_index, Real dt) const;
+  Real compute_kill_prob(const Agent& agent, Int agent_index, Real dt,
                          KillAssessment* diagnostics) const;
   Real compute_receptor_hazard(const Agent& agent, Real dt,
                                const ReceptorDescriptor& descriptor,
                                Real toxin_concentration,
                                KillAssessment* diagnostics) const;
-  KillAssessment assess_kill(const Agent& agent, Real dt) const;
+  KillAssessment assess_kill(const Agent& agent, Int agent_index, Real dt) const;
 
-  Real local_toxin_conc(const ChemicalField& chem, Int cell,
+  Real local_toxin_conc(const Agent& agent, Int agent_index,
                         const char* species_name) const;
 
   // Competitive binding fraction: toxin occupancy given ligand competition

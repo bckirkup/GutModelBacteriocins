@@ -433,6 +433,54 @@ void test_cross_rank_bacteriocin_source_exchange() {
   }
 }
 
+void test_cross_rank_agent_toxin_sampling() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  SimulationConfig cfg = make_mpi_config(4244, 40);
+  cfg.qssa.toxin_evaluation = "agents";
+  cfg.qssa.toxin_cutoff = 80e-6;
+  Simulation sim;
+  sim.init(cfg);
+
+  for (Agent& agent : sim.agents()) {
+    agent.genome.bi_loci.clear();
+  }
+  const Vec3 source_position = {49.5e-6, 50e-6, 25e-6};
+  const Vec3 target_position = {57.5e-6, 50e-6, 25e-6};
+  if (rank == 0) {
+    sim.agents()[0].x = source_position;
+    sim.agents()[0].grid_cell = sim.domain().cell_index(9, 10, 5);
+    sim.agents()[0].genome.bi_loci.push_back(PlasmidLibrary::microcin_V());
+  } else {
+    for (Agent& agent : sim.agents()) {
+      agent.x = target_position;
+      agent.grid_cell = sim.domain().cell_index(11, 10, 5);
+    }
+  }
+
+  sim.qssa().solve_all_bacteriocin_fields(
+      sim.agents(), {}, 0.0, cfg.chem_env.protease, sim.advection(),
+      sim.chemical_field(), nullptr, false);
+  const Int species_idx =
+      sim.chemical_field().find(species::BACTERIOCIN_CIRA);
+  assert(species_idx >= 0);
+  const Real local_sample =
+      sim.qssa().sampled_toxin_conc(0, species_idx);
+  if (rank == 1) {
+    assert(local_sample > 0.0);
+  }
+  Real minimum = 0.0;
+  MPI_Allreduce(&local_sample, &minimum, 1, MPI_DOUBLE, MPI_MIN,
+                MPI_COMM_WORLD);
+  assert(minimum > 0.0);
+
+  if (rank == 0) {
+    std::cout << "  test_cross_rank_agent_toxin_sampling: PASSED\n";
+  }
+}
+
 void test_slab_decomposition() {
   require_mpi_ranks(2);
 
@@ -896,6 +944,7 @@ int main(int argc, char** argv) {
   test_chemical_field_layout_mapping();
   test_slab_chemistry_transpose_halos_and_ledger();
   test_cross_rank_bacteriocin_source_exchange();
+  test_cross_rank_agent_toxin_sampling();
   test_slab_decomposition();
   test_slab_decomposition_periodic_x();
   test_init_population_partitioned();

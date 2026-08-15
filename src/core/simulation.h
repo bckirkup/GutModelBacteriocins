@@ -158,6 +158,7 @@ class Simulation {
   // Persistent SOS lysis burst sources (protease decay)
   void add_toxin_burst(const ToxinBurstSource& burst);
   void prune_toxin_bursts(Real current_time);
+  void materialize_bacteriocin_fields_for_output();
   const std::vector<ToxinBurstSource>& toxin_bursts() const {
     return bacteriocin_.bursts;
   }
@@ -264,6 +265,7 @@ class Simulation {
   struct BacteriocinState {
     std::vector<ToxinBurstSource> bursts;
     bool fields_current = false;
+    bool grid_materialized = false;
   };
 
   // Timestep clock and output scheduling

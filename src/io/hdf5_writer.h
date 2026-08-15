@@ -49,6 +49,9 @@ class HDF5Writer {
   void finalize();
 
   bool is_enabled() const { return enabled_; }
+  bool grid_output_due(Int step) const {
+    return enabled_ && layer_due(cfg_.schedule.grid, step);
+  }
 
   // Write a self-contained closed restart file (create → one full step → close).
   // Includes summary/agents/lineage/genome/grid (all species). Returns false if

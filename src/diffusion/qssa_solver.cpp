@@ -14,6 +14,7 @@
 #include "dispatch.h"
 #include "agent.h"
 #include "error.h"
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
@@ -33,6 +34,8 @@ namespace gutibm {
 namespace {
 
 constexpr Real k_ln2 = std::numbers::ln2;
+
+Int toxin_sample_index(ReceptorType target);
 
 struct FarFieldGridContext {
   const Domain& domain;
@@ -415,7 +418,8 @@ void QSSASolver::solve_bacteriocin_field(
     ChemicalField& chem,
     Int toxin_species_idx,
     ReceptorType target,
-    ChemicalFieldGpu* chem_gpu) const {
+    ChemicalFieldGpu* chem_gpu,
+    bool materialize_grid) {
 
   std::vector<Vec3> all_sources;
   std::vector<GreensFunctionParams> all_params;
@@ -435,11 +439,32 @@ void QSSASolver::solve_bacteriocin_field(
   filter_sources_by_target(all_sources, all_params, all_strengths, all_targets, target,
                            sources, params, strength_factors);
 
+  if (cfg_.toxin_evaluation == "agents") {
+    sampled_species_indices_.fill(-1);
+    const Int sample_idx = toxin_sample_index(target);
+    if (sample_idx >= 0) {
+      sampled_species_indices_[static_cast<size_t>(sample_idx)] =
+          toxin_species_idx;
+    }
+    sample_bacteriocin_field(sources, params, strength_factors, agents,
+                             target);
+    if (materialize_grid) {
+      if (sources.empty()) {
+        zero_species_field(chem, toxin_species_idx);
+      } else {
+        solve_bacteriocin_field_from_sources(
+            sources, params, strength_factors, adv, chem, toxin_species_idx,
+            chem_gpu);
+      }
+    } else {
+      zero_species_field(chem, toxin_species_idx);
+    }
+    return;
+  }
   if (sources.empty()) {
     zero_species_field(chem, toxin_species_idx);
     return;
   }
-
   solve_bacteriocin_field_from_sources(sources, params, strength_factors, adv,
                                        chem, toxin_species_idx, chem_gpu);
 }
@@ -487,7 +512,8 @@ void QSSASolver::solve_all_bacteriocin_fields(
     const ProteaseConfig& protease,
     const AdvectionField& adv,
     ChemicalField& chem,
-    ChemicalFieldGpu* chem_gpu) const {
+    ChemicalFieldGpu* chem_gpu,
+    bool materialize_grid) {
   std::vector<Int> solved_indices;
   solved_indices.reserve(species::BACTERIOCIN_RECEPTOR_TARGETS.size());
 
@@ -506,6 +532,36 @@ void QSSASolver::solve_all_bacteriocin_fields(
   std::vector<Vec3> sources;
   std::vector<GreensFunctionParams> params;
   std::vector<Real> strength_factors;
+  if (cfg_.toxin_evaluation == "agents") {
+    sampled_species_indices_.fill(-1);
+    sampled_agents_ = &agents;
+    for (ReceptorType target : species::BACTERIOCIN_RECEPTOR_TARGETS) {
+      const char* name = species::bacteriocin_species_for(target);
+      if (name == nullptr) continue;
+      Int idx = chem.find(name);
+      if (idx < 0) continue;
+      const Int sample_idx = toxin_sample_index(target);
+      if (sample_idx >= 0) {
+        sampled_species_indices_[static_cast<size_t>(sample_idx)] = idx;
+      }
+      filter_sources_by_target(all_sources, all_params, all_strengths,
+                               all_targets, target, sources, params,
+                               strength_factors);
+      sample_bacteriocin_field(sources, params, strength_factors, agents,
+                               target);
+      if (sources.empty() || !materialize_grid) {
+        zero_species_field(chem, idx);
+      } else {
+        solve_bacteriocin_field_from_sources(
+            sources, params, strength_factors, adv, chem, idx, chem_gpu);
+      }
+      sources.clear();
+      params.clear();
+      strength_factors.clear();
+    }
+    return;
+  }
+
   for (ReceptorType target : species::BACTERIOCIN_RECEPTOR_TARGETS) {
     const char* name = species::bacteriocin_species_for(target);
     if (name == nullptr) continue;
@@ -532,6 +588,101 @@ void QSSASolver::solve_all_bacteriocin_fields(
       chem_gpu->sync_species_concentrations_to_host(chem, spec);
     }
   }
+}
+
+namespace {
+
+Int toxin_sample_index(ReceptorType target) {
+  switch (target) {
+    case ReceptorType::BtuB: return 0;
+    case ReceptorType::FepA: return 1;
+    case ReceptorType::CirA: return 2;
+    case ReceptorType::FhuA: return 3;
+    default: return -1;
+  }
+}
+
+}  // namespace
+
+void QSSASolver::sample_bacteriocin_field(
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors,
+    const AgentPool& agents,
+    ReceptorType target) {
+  const Int sample_idx = toxin_sample_index(target);
+  if (sample_idx < 0) return;
+  auto& field = sampled_fields_[static_cast<size_t>(sample_idx)];
+  field.sources = sources;
+  field.params = params;
+  field.strength_factors = strength_factors;
+  field.samples.assign(static_cast<size_t>(agents.size()), 0.0);
+  field.fmm_ready = false;
+  sampled_agents_ = &agents;
+  if (sources.empty()) return;
+
+  std::vector<Real> strengths;
+  GreensFunctionParams avg_params = weighted_avg_params(
+      params, strength_factors, cfg_, strengths);
+  if (cfg_.use_fmm) {
+    field.fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
+    field.fmm.compute_local_expansions(cfg_.fmm_theta, gf_, avg_params);
+    field.fmm_ready = true;
+  }
+  for (Int i = 0; i < agents.size(); ++i) {
+    field.samples[static_cast<size_t>(i)] =
+        std::max(evaluate_sample(field, agents[i].x), 0.0);
+  }
+}
+
+Real QSSASolver::evaluate_sample(const SampledToxinField& field,
+                                 const Vec3& position) const {
+  if (field.sources.empty()) return 0.0;
+  if (field.fmm_ready) {
+    std::vector<Real> strengths;
+    const GreensFunctionParams avg_params = weighted_avg_params(
+        field.params, field.strength_factors, cfg_, strengths);
+    return field.fmm.evaluate_field(
+        position, cfg_.fmm_theta, cfg_.toxin_cutoff, gf_, field.sources,
+        field.params, avg_params);
+  }
+  return point_concentration(position, field.sources, field.params,
+                             field.strength_factors);
+}
+
+Int QSSASolver::sampled_slot_for_species(Int species_idx) const {
+  const auto it = std::find(sampled_species_indices_.begin(),
+                            sampled_species_indices_.end(), species_idx);
+  return it == sampled_species_indices_.end()
+      ? -1
+      : static_cast<Int>(std::distance(sampled_species_indices_.begin(), it));
+}
+
+Real QSSASolver::sampled_toxin_conc(Int agent_index, Int species_idx) const {
+  if (agent_index < 0 || species_idx < 0 || sampled_agents_ == nullptr) {
+    return 0.0;
+  }
+  const Int sample_idx = sampled_slot_for_species(species_idx);
+  if (sample_idx < 0 || agent_index >= sampled_agents_->size()) return 0.0;
+  auto& field = sampled_fields_[static_cast<size_t>(sample_idx)];
+  if (agent_index >= static_cast<Int>(field.samples.size())) {
+    field.samples.resize(static_cast<size_t>(agent_index + 1), 0.0);
+    field.samples[static_cast<size_t>(agent_index)] =
+        std::max(evaluate_sample(field, (*sampled_agents_)[agent_index].x),
+                 0.0);
+  }
+  return field.samples[static_cast<size_t>(agent_index)];
+}
+
+Real QSSASolver::sampled_toxin_max(Int species_idx) const {
+  const Int sample_idx = sampled_slot_for_species(species_idx);
+  if (sample_idx < 0) return 0.0;
+  if (sampled_agents_ == nullptr) return 0.0;
+  Real maximum = 0.0;
+  for (Int i = 0; i < sampled_agents_->size(); ++i) {
+    maximum = std::max(maximum, sampled_toxin_conc(i, species_idx));
+  }
+  return maximum;
 }
 
 void QSSASolver::solve_bacteriocin_field_fmm(

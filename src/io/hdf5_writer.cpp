@@ -591,14 +591,25 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   const double mean_carbon = field_mean(chem, chem.find(species::CARBON));
   const double mean_iron = field_mean(chem, chem.find(species::IRON));
   const double mean_oxygen = field_mean(chem, chem.find(species::OXYGEN));
-  const double max_btuB =
-      field_max(chem, chem.find(species::BACTERIOCIN_BTUB));
-  const double max_fepA =
-      field_max(chem, chem.find(species::BACTERIOCIN_FEPA));
-  const double max_cirA =
-      field_max(chem, chem.find(species::BACTERIOCIN_CIRA));
-  const double max_fhuA =
-      field_max(chem, chem.find(species::BACTERIOCIN_FHUA));
+  const auto toxin_max = [&sim, &chem](const char* name) {
+    const Int idx = chem.find(name);
+    Real value = sim.qssa().agent_sampling()
+        ? sim.qssa().sampled_toxin_max(idx)
+        : field_max(chem, idx);
+#ifdef GUTIBM_MPI
+    if (sim.qssa().agent_sampling()) {
+      Real global_value = 0.0;
+      MPI_Allreduce(&value, &global_value, 1, MPI_DOUBLE, MPI_MAX,
+                    MPI_COMM_WORLD);
+      value = global_value;
+    }
+#endif
+    return value;
+  };
+  const double max_btuB = toxin_max(species::BACTERIOCIN_BTUB);
+  const double max_fepA = toxin_max(species::BACTERIOCIN_FEPA);
+  const double max_cirA = toxin_max(species::BACTERIOCIN_CIRA);
+  const double max_fhuA = toxin_max(species::BACTERIOCIN_FHUA);
 
   if (io_rank(cfg_) == 0 && file_id_ >= 0) {
   auto fid = static_cast<hid_t>(file_id_);
@@ -1349,6 +1360,7 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
   const Real saved_window_start_time = sim.event_window_start_time();
   const auto saved_provenance = sim.kill_provenance();
   const auto saved_flux_accounting = sim.chemical_field().flux_accounting();
+  sim.materialize_bacteriocin_fields_for_output();
   writer.write_step(sim, step, time, dt);
   sim.step_events() = saved_step_events;
   sim.cumulative_events() = saved_cumulative_events;

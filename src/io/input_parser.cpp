@@ -315,6 +315,15 @@ bool apply_domain_key(SimulationConfig& cfg, std::string_view key, const std::st
 
 bool apply_chemistry_key(SimulationConfig& cfg, std::string_view key,
                          const std::string& val) {
+  if (key == "chemistry.toxin_evaluation" || key == "toxin_evaluation") {
+    if (val == "grid" || val == "agents") {
+      cfg.qssa.toxin_evaluation = val;
+      return true;
+    }
+    throw ConfigError(
+        "invalid toxin_evaluation: expected 'grid' or 'agents', got '" + val
+        + "'");
+  }
   if (key == "chemistry_decomposition" || key == "chemistry.decomposition") {
     if (val == "replicated" || val == "slab") {
       cfg.chemistry_decomposition = val;
