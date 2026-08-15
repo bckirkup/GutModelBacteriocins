@@ -28,6 +28,7 @@ using gutibm::test::agent_snapshots_from_checkpoint;
 using gutibm::test::collect_agent_snapshots;
 using gutibm::test::compare_agent_snapshots;
 using gutibm::test::kAgentSnapshotTol;
+using gutibm::test::resolve_shared_test_h5_path;
 
 namespace {
 
@@ -371,17 +372,19 @@ int main(int argc, char** argv) {
     std::cout << "HDF5 disabled at build time — skipping checkpoint tests.\n";
   }
 #else
-  std::string filename = resolve_test_h5_path("GUTIBM_CHECKPOINT_H5", "checkpoint");
+  std::string filename =
+      resolve_shared_test_h5_path("GUTIBM_CHECKPOINT_H5", "checkpoint");
 
   if (rank == 0) std::cout << "=== HDF5 Checkpoint Restart Tests ===\n";
   test_checkpoint_restart(filename);
   test_split_run_matches_uninterrupted(filename);
   const std::string slab_filename =
-      resolve_test_h5_path("GUTIBM_SLAB_CHECKPOINT_H5", "slab_checkpoint");
+      resolve_shared_test_h5_path("GUTIBM_SLAB_CHECKPOINT_H5",
+                                  "slab_checkpoint");
   test_slab_checkpoint_matches_uninterrupted(slab_filename);
   const std::string immigration_filename =
-      resolve_test_h5_path("GUTIBM_CHECKPOINT_IMMIGRATION_H5",
-                           "checkpoint_immigration");
+      resolve_shared_test_h5_path("GUTIBM_CHECKPOINT_IMMIGRATION_H5",
+                                  "checkpoint_immigration");
   test_checkpoint_fork_immigration(immigration_filename);
   if (rank == 0) {
     std::cout << "  test_hdf5_reader_api: PASSED\n";

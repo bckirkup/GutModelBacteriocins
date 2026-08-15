@@ -160,6 +160,7 @@ if(GUTIBM_USE_HDF5)
     set_tests_properties(hdf5_roundtrip_parallel PROPERTIES
       LABELS "integration;mpi;hdf5"
       PASS_REGULAR_EXPRESSION "All HDF5 round-trip tests passed"
+      TIMEOUT 300
       RESOURCE_LOCK mpi
     )
     add_test(
@@ -170,6 +171,7 @@ if(GUTIBM_USE_HDF5)
     set_tests_properties(hdf5_checkpoint_parallel PROPERTIES
       LABELS "integration;mpi;hdf5"
       PASS_REGULAR_EXPRESSION "All HDF5 checkpoint tests passed"
+      TIMEOUT 300
       RESOURCE_LOCK mpi
     )
   endif()
