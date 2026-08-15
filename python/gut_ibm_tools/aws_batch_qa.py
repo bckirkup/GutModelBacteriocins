@@ -46,6 +46,8 @@ class IndexSummary:
     washout_deaths: int
     colicin_kills: int
     lysis_deaths: int
+    starving_live_agents: int
+    washout_trapped_live_agents: int
     mean_carbon: float
     fingerprint: str
     has_agents_layer: bool
@@ -116,6 +118,12 @@ def _event_count(summary: dict[str, Any], name: str) -> int:
     return int(value)
 
 
+def _stock_count(summary: dict[str, Any], name: str) -> int:
+    stocks = summary.get("stocks") or {}
+    value = stocks.get(name, 0)
+    return int(value)
+
+
 def _fingerprint(summary: dict[str, Any], seed: int | None) -> str:
     payload = {
         "seed": seed,
@@ -123,6 +131,7 @@ def _fingerprint(summary: dict[str, Any], seed: int | None) -> str:
         "step": summary.get("step"),
         "n_total": summary.get("n_total", summary.get("num_agents")),
         "events": summary.get("events", {}),
+        "stocks": summary.get("stocks", {}),
         "chem": summary.get("chem", {}),
     }
     blob = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
@@ -151,6 +160,10 @@ def summarize_hdf5(path: Path, *, index: int, seed: int | None) -> IndexSummary:
         washout_deaths=_event_count(final, "washout_deaths"),
         colicin_kills=_event_count(final, "colicin_kills"),
         lysis_deaths=_event_count(final, "lysis_deaths"),
+        starving_live_agents=_stock_count(final, "starving_live_agents"),
+        washout_trapped_live_agents=_stock_count(
+            final, "washout_trapped_live_agents"
+        ),
         mean_carbon=float((final.get("chem") or {}).get("mean_carbon", 0.0)),
         fingerprint=_fingerprint(final, seed),
         has_agents_layer=has_agents,
@@ -232,8 +245,8 @@ def qa_array(
 def format_report(report: ArrayQaReport) -> str:
     """Human-readable table for CLI / docs paste."""
     lines = [
-        "index  seed   agents  t_final  boundary  washout  colicin  lysis  fingerprint        agents_h5",
-        "-----  -----  ------  -------  --------  -------  -------  ------  -----------------  ---------",
+        "index  seed   agents  t_final  boundary  washout  colicin  lysis  starving  trapped  fingerprint        agents_h5",
+        "-----  -----  ------  -------  --------  -------  -------  ------  --------  -------  -----------------  ---------",
     ]
     for row in report.rows:
         seed = "-" if row.seed is None else str(row.seed)
@@ -242,6 +255,8 @@ def format_report(report: ArrayQaReport) -> str:
             f"{row.final_time_s:<7.0f}  {row.boundary_deaths:<8d}  "
             f"{row.washout_deaths:<7d}  {row.colicin_kills:<7d}  "
             f"{row.lysis_deaths:<6d}  "
+            f"{row.starving_live_agents:<8d}  "
+            f"{row.washout_trapped_live_agents:<7d}  "
             f"{row.fingerprint:<17s}  {'yes' if row.has_agents_layer else 'no'}"
         )
     lines.append("")

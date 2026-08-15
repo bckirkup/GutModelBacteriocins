@@ -629,6 +629,34 @@ void Simulation::prepare_step_events_for_summary() {
 #endif
 }
 
+void Simulation::prepare_population_stocks_for_summary() {
+  PopulationStocks local;
+  for (const Agent& agent : agents_) {
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
+    if (agent.mu_realized < cfg_.fixes.metabolism.death_threshold) {
+      ++local.starving_live;
+    }
+    if (agent.mu_realized < advection_.washout_rate(agent.x[2])) {
+      ++local.washout_trapped_live;
+    }
+  }
+
+#ifdef GUTIBM_MPI
+  if (domain_.nprocs() > 1) {
+    const std::array<Int, 2> local_values = {
+        local.starving_live, local.washout_trapped_live};
+    std::array<Int, 2> global_values{};
+    MPI_Allreduce(local_values.data(), global_values.data(),
+                  static_cast<int>(local_values.size()), MPI_INT, MPI_SUM,
+                  MPI_COMM_WORLD);
+    event_ledger_.population_stocks = {
+        global_values[0], global_values[1]};
+    return;
+  }
+#endif
+  event_ledger_.population_stocks = local;
+}
+
 void Simulation::init_population(const SimulationConfig& cfg) {
   agents_.configure_tags(AgentPool::first_tag_for_rank(domain_.rank(), domain_.nprocs()),
                            AgentPool::tag_stride(domain_.nprocs()));

@@ -145,6 +145,14 @@ void FixBacteriocin::lyse_agent(Agent& agent) {
 
   agent.state = PhenoState::DEAD;
   sim_.step_events().lysis_deaths++;
+  if (sim_.provenance_enabled()) {
+    KillProvenanceEvent event;
+    event.victim_id = agent.identity.tag;
+    event.position = agent.x;
+    event.strain = agent.identity.type;
+    event.cause = ProvenanceCause::LYSIS;
+    sim_.record_kill_provenance(event);
+  }
 
   sim_.lineage_tracker().record_lysis(agent.identity.tag, agent.x,
                                        agent.genome.lineage_id);

@@ -49,6 +49,9 @@ def test_get_grid_and_metadata(sample_hdf5: Path) -> None:
         meta = data.get_metadata("step_000000")
         assert meta["time"] == pytest.approx(0.0)
         assert meta["num_agents"] == 12
+        summary = data.get_summary("step_000001")
+        assert summary["stocks"]["starving_live_agents"] == 1
+        assert summary["stocks"]["washout_trapped_live_agents"] == 1
 
 
 def test_get_lineage(sample_hdf5: Path) -> None:

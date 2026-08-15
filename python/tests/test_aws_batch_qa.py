@@ -43,6 +43,11 @@ def _write_summary_h5(
         events.create_dataset("washout_deaths", data=np.array(washout_deaths, dtype=np.int32))
         events.create_dataset("colicin_kills", data=np.array(0, dtype=np.int32))
         events.create_dataset("lysis_deaths", data=np.array(lysis_deaths, dtype=np.int32))
+        stocks = summary.require_group("stocks")
+        stocks.create_dataset("starving_live_agents", data=np.array(2, dtype=np.int32))
+        stocks.create_dataset(
+            "washout_trapped_live_agents", data=np.array(3, dtype=np.int32)
+        )
         chem = summary.require_group("chem")
         chem.create_dataset("mean_carbon", data=np.array(mean_carbon))
         if with_agents:
@@ -129,6 +134,8 @@ def test_qa_array_distinct_seeds_and_report(
     assert [row.seed for row in report.rows] == [4092, 4093]
     assert [row.final_agents for row in report.rows] == [13, 12]
     assert [row.lysis_deaths for row in report.rows] == [0, 0]
+    assert [row.starving_live_agents for row in report.rows] == [2, 2]
+    assert [row.washout_trapped_live_agents for row in report.rows] == [3, 3]
     text = format_report(report)
     assert "4092" in text
     assert "4093" in text

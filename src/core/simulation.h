@@ -66,6 +66,11 @@ ProgressMetrics calculate_progress_metrics(Real sim_time,
 
 class Simulation {
  public:
+  struct PopulationStocks {
+    Int starving_live = 0;
+    Int washout_trapped_live = 0;
+  };
+
   Simulation() = default;
   ~Simulation() = default;
   Simulation(Simulation&&) = default;
@@ -137,6 +142,10 @@ class Simulation {
     event_ledger_.window_start_time = time;
   }
   void prepare_step_events_for_summary();
+  void prepare_population_stocks_for_summary();
+  const PopulationStocks& population_stocks() const {
+    return event_ledger_.population_stocks;
+  }
   void commit_step_events_after_summary(Int step, Real time) {
     event_ledger_.cumulative_events.add(event_ledger_.summary_events);
     event_ledger_.step_events.reset();
@@ -252,6 +261,7 @@ class Simulation {
     StepEvents step_events;
     StepEvents summary_events;
     StepEvents cumulative_events;
+    PopulationStocks population_stocks;
     Int window_start_step = 1;
     Real window_start_time = 0.0;
     std::vector<KillProvenanceEvent> kill_provenance;

@@ -34,6 +34,10 @@ int32_t read_event(hid_t file, const std::string& path) {
   return value;
 }
 
+int32_t read_stock(hid_t file, const std::string& path) {
+  return read_event(file, path);
+}
+
 bool dataset_exists(hid_t file, const std::string& path) {
   const htri_t exists = H5Lexists(file, path.c_str(), H5P_DEFAULT);
   return exists > 0;
@@ -144,6 +148,15 @@ int main() {
 
   const int32_t divisions = read_event(file, "summary/step_000001/events/divisions");
   assert(divisions >= 0);
+  const int32_t n_total = read_event(file, "summary/step_000001/n_total");
+  const int32_t starving = read_stock(
+      file, "summary/step_000001/stocks/starving_live_agents");
+  const int32_t trapped = read_stock(
+      file, "summary/step_000001/stocks/washout_trapped_live_agents");
+  assert(starving >= 0);
+  assert(trapped >= 0);
+  assert(starving <= n_total);
+  assert(trapped <= n_total);
   const std::string flux_prefix = "summary/step_000001/nutrient_flux/";
   assert(dataset_exists(file, flux_prefix + "species_names"));
   assert(dataset_exists(file, flux_prefix + "boundary_area_flux_interval"));
