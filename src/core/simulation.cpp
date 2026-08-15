@@ -47,10 +47,6 @@ constexpr uint64_t kImmigrationSeedMix = 0x9e3779b97f4a7c15ULL;
 void reject_unsupported_slab_surfaces(
     const SimulationConfig& cfg, const Domain& domain) {
   if (cfg.chemistry_decomposition != "slab") return;
-  if (cfg.gpu.enabled) {
-    throw ConfigError(
-        "slab chemistry does not support the GPU mirror until stage 2c");
-  }
   (void)domain;
 }
 
@@ -727,6 +723,8 @@ void Simulation::print_step_profile() const {
             << "  cleanup=" << step_profile_.cleanup_s * inv << "\n"
             << "  gpu_h2d=" << step_profile_.gpu_h2d_s * inv << "\n"
             << "  gpu_d2h=" << step_profile_.gpu_d2h_s * inv << "\n"
+            << "  gpu_slab_x_roundtrip="
+            << step_profile_.gpu_slab_x_roundtrip_s * inv << "\n"
             << "  mpi_reaction_reduce=" << step_profile_.mpi_reaction_reduce_s * inv << "\n"
             << "  hdf5=" << step_profile_.hdf5_s * inv << "\n"
             << "  total=" << total << "\n"
@@ -740,6 +738,8 @@ void Simulation::print_step_profile() const {
             << " cleanup_s=" << step_profile_.cleanup_s * inv
             << " gpu_h2d_s=" << step_profile_.gpu_h2d_s * inv
             << " gpu_d2h_s=" << step_profile_.gpu_d2h_s * inv
+            << " gpu_slab_x_roundtrip_s="
+            << step_profile_.gpu_slab_x_roundtrip_s * inv
             << " mpi_reaction_reduce_s=" << step_profile_.mpi_reaction_reduce_s * inv
             << " hdf5_s=" << step_profile_.hdf5_s * inv
             << " total_s=" << total
@@ -1018,6 +1018,11 @@ void Simulation::step(Real dt) {
   exchange_ghost_agents();
   profiler.lap(step_profile_.ghost_exchange_s);
 
+  // Chemistry changed owned concentrations in the previous step; refresh the
+  // halos before any ghost-agent or gradient/stencil read in biology, and
+  // before the device mirror is uploaded.
+  chem_.exchange_concentration_halos();
+
   if (gpu_.active) {
     gpu_.agents.sync_from_host(agents_);
     gpu_.chem.sync_to_device(chem_);
@@ -1036,9 +1041,6 @@ void Simulation::step(Real dt) {
 
   rebuild_spatial_hash();
   update_grid_coupling();
-  // Chemistry changed owned concentrations in the previous step; refresh the
-  // halos before any ghost-agent or gradient/stencil read in biology.
-  chem_.exchange_concentration_halos();
   profiler.lap(step_profile_.spatial_hash_s);
 
   for (const auto& fix : fixes_) {
@@ -1088,6 +1090,7 @@ void Simulation::step(Real dt) {
     const GpuTransferProfile xfer = gpu_transfer_profile_snapshot();
     step_profile_.gpu_h2d_s += xfer.h2d_s;
     step_profile_.gpu_d2h_s += xfer.d2h_s;
+    step_profile_.gpu_slab_x_roundtrip_s += xfer.slab_x_roundtrip_s;
     gpu_transfer_profile_reset();
   }
 

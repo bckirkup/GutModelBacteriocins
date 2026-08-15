@@ -8,6 +8,9 @@
 #include "input_parser.h"
 #include "dispatch.h"
 #include "device.h"
+#include "species_names.h"
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -90,6 +93,110 @@ Simulation run_gpu_combo(const SimulationConfig& cfg) {
   sim.run();
   return sim;
 }
+
+#ifdef GUTIBM_CUDA
+void assert_flux_parity(const ChemicalField& reference,
+                        const ChemicalField& candidate) {
+  const auto& expected = reference.flux_accounting();
+  const auto& actual = candidate.flux_accounting();
+  const std::array<const std::vector<Real> NutrientFluxAccounting::*,
+                   5> fields = {
+      &NutrientFluxAccounting::boundary_interval,
+      &NutrientFluxAccounting::vbf_source_interval,
+      &NutrientFluxAccounting::vbf_sink_interval,
+      &NutrientFluxAccounting::agent_uptake_interval,
+      &NutrientFluxAccounting::reaction_clip_interval,
+  };
+  const std::array<const std::vector<Real> NutrientFluxAccounting::*,
+                   5> cumulative_fields = {
+      &NutrientFluxAccounting::boundary_cumulative,
+      &NutrientFluxAccounting::vbf_source_cumulative,
+      &NutrientFluxAccounting::vbf_sink_cumulative,
+      &NutrientFluxAccounting::agent_uptake_cumulative,
+      &NutrientFluxAccounting::reaction_clip_cumulative,
+  };
+  for (Int s = 0; s < reference.num_species(); ++s) {
+    for (size_t i = 0; i < fields.size(); ++i) {
+      const Real expected_value =
+          (expected.*fields[i])[static_cast<size_t>(s)]
+          + (expected.*cumulative_fields[i])[static_cast<size_t>(s)];
+      const Real actual_value =
+          (actual.*fields[i])[static_cast<size_t>(s)]
+          + (actual.*cumulative_fields[i])[static_cast<size_t>(s)];
+      const Real scale = std::max({1.0, std::abs(expected_value),
+                                   std::abs(actual_value)});
+      assert(std::abs(actual_value - expected_value) <= 1.0e-7 * scale);
+    }
+  }
+}
+
+void assert_chemistry_parity(const ChemicalField& reference,
+                             const ChemicalField& candidate,
+                             Real tolerance) {
+  assert(reference.num_species() == candidate.num_species());
+  for (Int s = 0; s < reference.num_species(); ++s) {
+    for (Int cell = 0; cell < reference.global_ncells(); ++cell) {
+      const Real expected = reference.conc(s, cell);
+      const Real actual = candidate.conc_global(s, cell);
+      const Real scale = std::max({1.0, std::abs(expected), std::abs(actual)});
+      assert(std::abs(actual - expected) <= tolerance * scale);
+    }
+  }
+}
+
+void test_gpu_slab_equivalence_and_accounting() {
+  SimulationConfig base = make_combo_config(3010);
+  base.time.total_time = 120.0;
+  base.chem_env.oxygen.enabled = true;
+  base.chem_env.acetate.enabled = true;
+  base.chem_env.mucin.enabled = true;
+
+  SimulationConfig cpu_cfg = base;
+  cpu_cfg.gpu.enabled = false;
+  Simulation cpu;
+  cpu.init(cpu_cfg);
+  cpu.run();
+
+  SimulationConfig replicated_cfg = base;
+  Simulation replicated = run_gpu_combo(replicated_cfg);
+
+  SimulationConfig slab_cfg = base;
+  slab_cfg.chemistry_decomposition = "slab";
+  slab_cfg.domain.grid_halo_width = static_cast<Int>(
+      std::ceil(slab_cfg.domain.ghost_width / slab_cfg.domain.grid_dx));
+  Simulation slab = run_gpu_combo(slab_cfg);
+
+  // Device and CPU directional diffusion use the same owned-cell arithmetic;
+  // atomic uptake/VBF reductions can differ only in summation order.
+  assert_chemistry_parity(replicated.chemical_field(),
+                          slab.chemical_field(), 1.0e-9);
+  assert_chemistry_parity(cpu.chemical_field(), replicated.chemical_field(),
+                          1.0e-5);
+  assert_flux_parity(replicated.chemical_field(), slab.chemical_field());
+
+  const Int carbon = slab.chemical_field().find(species::CARBON);
+  assert(carbon >= 0);
+  std::array<Real, 3> sink_values = {0.0, 1.0e-7, 1.0e-5};
+  std::array<Real, 3> carbon_means{};
+  for (size_t i = 0; i < sink_values.size(); ++i) {
+    SimulationConfig sensitivity_cfg = slab_cfg;
+    sensitivity_cfg.seed = 3020;
+    sensitivity_cfg.vbf.carbon_sink_vmax = sink_values[i];
+    Simulation sensitivity = run_gpu_combo(sensitivity_cfg);
+    Real sum = 0.0;
+    for (Int cell = 0; cell < sensitivity.chemical_field().global_ncells();
+         ++cell) {
+      sum += sensitivity.chemical_field().conc_global(carbon, cell);
+    }
+    carbon_means[i] = sum
+        / static_cast<Real>(sensitivity.chemical_field().global_ncells());
+  }
+  assert(carbon_means[0] > carbon_means[1]);
+  assert(carbon_means[1] > carbon_means[2]);
+
+  std::cout << "  test_gpu_slab_equivalence_and_accounting: PASSED\n";
+}
+#endif
 
 }  // namespace
 
@@ -188,6 +295,17 @@ void test_gpu_kitchen_sink_light() {
   std::cout << "  test_gpu_kitchen_sink_light: PASSED\n";
 }
 
+void test_gpu_slab_single_rank() {
+  SimulationConfig cfg = make_combo_config(3005);
+  cfg.chemistry_decomposition = "slab";
+  cfg.domain.grid_halo_width = static_cast<Int>(
+      std::ceil(cfg.domain.ghost_width / cfg.domain.grid_dx));
+  Simulation sim = run_gpu_combo(cfg);
+  assert_chemistry_sane(sim);
+  assert_population_sane(sim);
+  std::cout << "  test_gpu_slab_single_rank: PASSED\n";
+}
+
 int main() {
   std::cout << "=== GPU Feature Combination Smoke Tests ===\n";
 
@@ -206,6 +324,8 @@ int main() {
   test_gpu_adaptive_dt_with_crypts();
   test_gpu_kitchen_sink_light();
   test_gpu_siderophore_cpu_fallback();
+  test_gpu_slab_single_rank();
+  test_gpu_slab_equivalence_and_accounting();
 
   std::cout << "All GPU feature-combination tests passed.\n";
   return 0;

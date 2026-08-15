@@ -912,6 +912,31 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   }
 }
 
+void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt) {
+  if (dt <= 0.0 || domain.dx() <= 0.0) return;
+  for (Int s = 0; s < nspec_; ++s) {
+    apply_periodic_x_diffusion(domain, dt, s);
+  }
+}
+
+void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt,
+                                               Int spec) {
+  if (dt <= 0.0 || domain.dx() <= 0.0 || spec < 0 || spec >= nspec_) return;
+  const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
+  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
+      || chemical.retardation <= 0.0) {
+    return;
+  }
+  const Real dx2 = domain.dx() * domain.dx();
+  const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt / dx2;
+  if (mode_ == DecompositionMode::Slab) {
+    diffuse_periodic_x_slab(conc_[static_cast<size_t>(spec)], domain,
+                            storage_nx_, halo_width_, alpha);
+  } else {
+    diffuse_periodic_x(conc_[static_cast<size_t>(spec)], domain, alpha);
+  }
+}
+
 void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
   const Real dx2 = domain.dx() * domain.dx();
   for (Int s = 0; s < nspec_; ++s) {

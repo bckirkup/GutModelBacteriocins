@@ -135,6 +135,7 @@ class ChemicalField {
   Int num_species() const { return nspec_; }
   Int ncells() const { return ncells_; }
   Int global_ncells() const { return global_ncells_; }
+  Int global_nx() const { return global_nx_; }
   Int owned_ncells() const {
     return (owned_x_end_ - owned_x_begin_) * global_ny_ * global_nz_;
   }
@@ -206,6 +207,10 @@ class ChemicalField {
 
   // Apply stable implicit diffusion for enabled nutrient species.
   void apply_diffusion(const Domain& domain, Real dt);
+  // Apply only the periodic x-direction solve.  GPU slab chemistry uses this
+  // exact host path because a global periodic line spans MPI slabs.
+  void apply_periodic_x_diffusion(const Domain& domain, Real dt);
+  void apply_periodic_x_diffusion(const Domain& domain, Real dt, Int spec);
 
   // Apply boundary conditions
   void apply_boundaries(const Domain& domain);
@@ -227,6 +232,10 @@ class ChemicalField {
 
   // Raw data for HDF5 output
   const std::vector<std::vector<Real>>& conc_data() const { return conc_; }
+  std::vector<Real>& mutable_species_concentration(Int spec) {
+    assert(spec >= 0 && spec < nspec_);
+    return conc_[static_cast<size_t>(spec)];
+  }
 
  private:
   Int nspec_  = 0;

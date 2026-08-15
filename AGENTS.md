@@ -58,8 +58,9 @@ cd python && pytest tests/ -v -m "not integration"
 - **Chemical decomposition** — `replicated` is the default; `slab` stores owned x-cells
   with concentration halos, local y/z operators, and an exact periodic-x exchange.
   Slab HDF5 grid output gathers owned cells into global datasets, and slab
-  checkpoint/restart restores owned cells before refreshing halos. The GPU mirror
-  remains unsupported in slab mode.
+  checkpoint/restart restores owned cells before refreshing halos. The GPU
+  mirror uses local x storage and owned-cell accounting in slab mode; periodic
+  x diffusion takes an exact host transpose round trip.
 - **Never modify tests to make them pass** — fix the implementation
 
 ### Timestep modules (do not reorder casually)

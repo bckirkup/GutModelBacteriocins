@@ -4,6 +4,9 @@
 #include "dispatch.h"
 #include "device_memory.h"
 #include "gpu_kernels.h"
+#include "gpu_profile.h"
+#include <chrono>
+#include <string>
 #include <vector>
 
 #ifdef GUTIBM_CUDA
@@ -14,6 +17,7 @@ namespace gutibm {
 
 namespace {
 
+#ifdef GUTIBM_CUDA
 class TridiagonalFactorization {
  public:
   void factorize(const std::vector<Real>& lower,
@@ -84,17 +88,20 @@ bool species_diffusion_eligible(const ChemicalSpec& spec, Real dt,
   return dt > 0.0 && domain.dx() > 0.0 && spec.diffusion_enabled
       && spec.diff_coeff > 0.0 && spec.retardation > 0.0;
 }
+#endif
 
 #ifdef GUTIBM_CUDA
 bool apply_species_diffusion_on_device(const Domain& domain,
                                        const ChemicalSpec& spec,
                                        double* d_conc,
                                        double* d_injected_amount,
-                                       Real dt) {
-  const int nx = domain.nx();
+                                       Real dt, int storage_nx,
+                                       int owned_x_begin, int owned_x_end,
+                                       DiffusionPhase phase) {
+  const int nx = storage_nx;
   const int ny = domain.ny();
   const int nz = domain.nz();
-  const int ncells = domain.ncells();
+  const int ncells = storage_nx * domain.ny() * domain.nz();
   if (ncells <= 0 || d_conc == nullptr) return false;
 
   const Real dx2 = domain.dx() * domain.dx();
@@ -103,49 +110,62 @@ bool apply_species_diffusion_on_device(const Domain& domain,
       spec.z_gradient_enabled && spec.z_gradient_lambda > 0.0;
   double diffusion_boundary = spec.boundary_conc;
 
-  gpu::launch_set_epithelial_boundary(
-      d_conc, nx, ny, spec.boundary_conc,
-      domain.dx() * domain.dx() * domain.dx(), d_injected_amount,
-      gpu_compute_stream());
-
-  if (preserve_gradient) {
-    gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, gpu_compute_stream());
-    gpu::launch_shift_z_gradient(
-        d_conc, nx, ny, nz, domain.dx(), spec.initial_conc,
-        spec.z_gradient_lambda, spec.boundary_conc, -1.0, gpu_compute_stream());
-    diffusion_boundary = 0.0;
+  if (phase != DiffusionPhase::SlabPostX) {
+    gpu::launch_set_epithelial_boundary(
+        d_conc, nx, ny, owned_x_begin, owned_x_end, spec.boundary_conc,
+        domain.dx() * domain.dx() * domain.dx(), d_injected_amount,
+        gpu_compute_stream());
+    if (preserve_gradient) {
+      gpu::launch_set_luminal_neumann(
+          d_conc, nx, ny, nz, owned_x_begin, owned_x_end,
+          gpu_compute_stream());
+      gpu::launch_shift_z_gradient(
+          d_conc, nx, ny, nz, owned_x_begin, owned_x_end, domain.dx(),
+          spec.initial_conc, spec.z_gradient_lambda, spec.boundary_conc, -1.0,
+          gpu_compute_stream());
+    }
   }
+  if (phase == DiffusionPhase::SlabPreX) {
+    return true;
+  }
+  if (preserve_gradient) diffusion_boundary = 0.0;
 
-  const PeriodicPcrCoeffs x_coeffs = build_periodic_coeffs(nx, alpha);
   const PeriodicPcrCoeffs y_coeffs = build_periodic_coeffs(ny, alpha);
-  DeviceBuffer<double> d_corr_x;
   DeviceBuffer<double> d_corr_y;
-  d_corr_x.upload(x_coeffs.correction);
   d_corr_y.upload(y_coeffs.correction);
 
-  gpu::launch_diffuse_x_periodic(
-      d_conc, nx, ny, nz, alpha,
-      x_coeffs.gamma, x_coeffs.corner, x_coeffs.denominator,
-      d_corr_x.data(), gpu_compute_stream());
+  if (phase == DiffusionPhase::Replicated) {
+    const PeriodicPcrCoeffs x_coeffs =
+        build_periodic_coeffs(domain.nx(), alpha);
+    DeviceBuffer<double> d_corr_x;
+    d_corr_x.upload(x_coeffs.correction);
+    gpu::launch_diffuse_x_periodic(
+        d_conc, nx, ny, nz, alpha, x_coeffs.gamma, x_coeffs.corner,
+        x_coeffs.denominator, d_corr_x.data(), gpu_compute_stream());
+  }
   gpu::launch_diffuse_y_periodic(
-      d_conc, nx, ny, nz, alpha,
+      d_conc, nx, ny, nz, owned_x_begin, owned_x_end, alpha,
       y_coeffs.gamma, y_coeffs.corner, y_coeffs.denominator,
       d_corr_y.data(), gpu_compute_stream());
   gpu::launch_diffuse_z_bounded(
-      d_conc, nx, ny, nz, alpha, diffusion_boundary,
+      d_conc, nx, ny, nz, owned_x_begin, owned_x_end, alpha, diffusion_boundary,
       domain.dx() * domain.dx() * domain.dx(), d_injected_amount,
       gpu_compute_stream());
 
   if (preserve_gradient) {
     gpu::launch_shift_z_gradient(
-        d_conc, nx, ny, nz, domain.dx(), spec.initial_conc,
+        d_conc, nx, ny, nz, owned_x_begin, owned_x_end, domain.dx(),
+        spec.initial_conc,
         spec.z_gradient_lambda, spec.boundary_conc, 1.0, gpu_compute_stream());
-    gpu::launch_set_luminal_neumann(d_conc, nx, ny, nz, gpu_compute_stream());
+    gpu::launch_set_luminal_neumann(
+        d_conc, nx, ny, nz, owned_x_begin, owned_x_end, gpu_compute_stream());
   }
 
-  gpu::launch_clamp_nonneg(d_conc, ncells, gpu_compute_stream());
+  gpu::launch_clamp_nonneg(
+      d_conc, nx, ny, nz, owned_x_begin, owned_x_end, gpu_compute_stream());
   gpu::launch_set_epithelial_boundary(
-      d_conc, nx, ny, spec.boundary_conc, 0.0, nullptr,
+      d_conc, nx, ny, owned_x_begin, owned_x_end, spec.boundary_conc, 0.0,
+      nullptr,
       gpu_compute_stream());
   return true;
 }
@@ -181,7 +201,70 @@ bool gpu_apply_species_diffusion_device(const Domain& domain,
   if (!species_diffusion_eligible(spec, dt, domain)) return false;
   if (!gpu_diffusion_line_lengths_supported(domain)) return false;
   return apply_species_diffusion_on_device(
-      domain, spec, d_conc, d_injected_amount, dt);
+      domain, spec, d_conc, d_injected_amount, dt, domain.nx(), 0,
+      domain.nx(), DiffusionPhase::Replicated);
+#endif
+}
+
+bool gpu_apply_species_diffusion_slab_device(
+    const Domain& domain, const ChemicalSpec& spec, double* d_conc,
+    double* d_injected_amount, Real dt, SlabDiffusionContext& context) {
+#ifndef GUTIBM_CUDA
+  (void)domain;
+  (void)spec;
+  (void)d_conc;
+  (void)d_injected_amount;
+  (void)dt;
+  (void)context;
+  return false;
+#else
+  if (!gpu_runtime_enabled() || !species_diffusion_eligible(spec, dt, domain)
+      || !gpu_diffusion_line_lengths_supported(domain)) {
+    return false;
+  }
+  if (!apply_species_diffusion_on_device(
+          domain, spec, d_conc, d_injected_amount, dt, context.storage_nx,
+          context.owned_storage_x_begin, context.owned_storage_x_end,
+          DiffusionPhase::SlabPreX)) {
+    return false;
+  }
+  gpu_sync_compute();
+  gpu_check_error("slab diffusion boundary");
+  const size_t count = static_cast<size_t>(context.storage_nx) * domain.ny()
+      * domain.nz();
+  const auto start = std::chrono::steady_clock::now();
+  auto& host_concentration =
+      context.field.mutable_species_concentration(context.spec_index);
+  const cudaError_t d2h_status = cudaMemcpy(
+      host_concentration.data(), d_conc, count * sizeof(double),
+      cudaMemcpyDeviceToHost);
+  if (d2h_status != cudaSuccess) {
+    throw Error(std::string("slab diffusion D2H: ")
+                + cudaGetErrorString(d2h_status));
+  }
+  gpu_transfer_record_d2h(
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+          .count());
+  context.field.apply_periodic_x_diffusion(
+      domain, dt, context.spec_index);
+  const auto host_done = std::chrono::steady_clock::now();
+  const cudaError_t h2d_status = cudaMemcpy(
+      d_conc, host_concentration.data(), count * sizeof(double),
+      cudaMemcpyHostToDevice);
+  if (h2d_status != cudaSuccess) {
+    throw Error(std::string("slab diffusion H2D: ")
+                + cudaGetErrorString(h2d_status));
+  }
+  gpu_transfer_record_h2d(
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - host_done)
+          .count());
+  gpu_transfer_record_slab_x_roundtrip(
+      std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
+          .count());
+  return apply_species_diffusion_on_device(
+      domain, spec, d_conc, d_injected_amount, dt, context.storage_nx,
+      context.owned_storage_x_begin, context.owned_storage_x_end,
+      DiffusionPhase::SlabPostX);
 #endif
 }
 
@@ -206,7 +289,8 @@ bool gpu_apply_species_diffusion(const Domain& domain,
   DeviceBuffer<double> d_conc;
   d_conc.upload(concentration);
   if (!apply_species_diffusion_on_device(
-          domain, spec, d_conc.data(), nullptr, dt)) {
+          domain, spec, d_conc.data(), nullptr, dt, ncells, 0, domain.nx(),
+          DiffusionPhase::Replicated)) {
     return false;
   }
 

@@ -7,6 +7,7 @@ struct GpuTransferState {
   bool enabled = false;
   double h2d_s = 0.0;
   double d2h_s = 0.0;
+  double slab_x_roundtrip_s = 0.0;
 };
 
 GpuTransferState& state() {
@@ -26,6 +27,7 @@ void gpu_transfer_profile_reset() {
   auto& s = state();
   s.h2d_s = 0.0;
   s.d2h_s = 0.0;
+  s.slab_x_roundtrip_s = 0.0;
 }
 
 void gpu_transfer_record_h2d(double seconds) {
@@ -38,7 +40,11 @@ void gpu_transfer_record_d2h(double seconds) {
 
 GpuTransferProfile gpu_transfer_profile_snapshot() {
   const auto& s = state();
-  return {s.h2d_s, s.d2h_s};
+  return {s.h2d_s, s.d2h_s, s.slab_x_roundtrip_s};
+}
+
+void gpu_transfer_record_slab_x_roundtrip(double seconds) {
+  if (state().enabled) state().slab_x_roundtrip_s += seconds;
 }
 
 }  // namespace gutibm

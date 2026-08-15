@@ -30,7 +30,17 @@ Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `gree
 
 A dedicated `cudaStream_t` from `gpu_compute_stream()` serializes chemistry kernels without per-kernel device-wide syncs. QSSA near-field superposition runs on GPU via `gpu_superpose_to_device`; FMM far-field uses `fmm_far_kernel.cu` when dense M2L locals are ready (trees with >256 nodes fall back to CPU `traverse_far`).
 
-`StepProfile` records `gpu_h2d_s`, `gpu_d2h_s`, `mpi_reaction_reduce_s`, and `hdf5_s` when `profile_steps` is enabled. Use `scripts/run_gpu_scaling_benchmark.sh` for CPU vs GPU sweeps.
+Chemical-field device mirrors use global y/z extents with a local x storage
+stride. In slab mode, only owned x cells are updated or included in scalar
+accounting; concentration halos are refreshed separately and never contribute
+to boundary, reaction-clip, uptake, or VBF totals. Periodic x diffusion uses
+the exact host slab transpose path before local y/z device operators. Host
+slab halos are exchanged before each mirror upload so agent biology reads
+current halo copies; halo cells remain excluded from scalar totals. The
+host/device round trip is accumulated as `gpu_slab_x_roundtrip_s` in
+`StepProfile` when profiling is enabled. `StepProfile` also records
+`gpu_h2d_s`, `gpu_d2h_s`, `mpi_reaction_reduce_s`, and `hdf5_s`. Use
+`scripts/run_gpu_scaling_benchmark.sh` for CPU vs GPU sweeps.
 
 ### CUDA-aware MPI reaction reduce (#156)
 

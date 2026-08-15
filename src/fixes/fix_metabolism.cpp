@@ -81,6 +81,12 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
             o2cfg.enabled ? 1 : 0,
             o2cfg.boost_max,
             o2cfg.Km,
+            sim.domain().nx(),
+            sim.domain().ny(),
+            cg.storage_nx(),
+            cg.slab_mode() ? cg.owned_x_begin() : 0,
+            cg.slab_mode() ? cg.owned_x_end() : sim.domain().nx(),
+            cg.owned_storage_x_begin(),
           },
           cg.agent_uptake_device(), dt, local_agent_count)) {
     return false;

@@ -24,13 +24,18 @@ __global__ void metabolism_kernel(
     double metE_acetate_km, double eut_max_penalty, double eut_km,
     double yield_carbon, double yield_iron, double yield_b12,
     int o2_enabled, double o2_boost_max, double o2_Km,
-    const double* conc_oxygen, double* agent_uptake_totals) {
+    const double* conc_oxygen, double* agent_uptake_totals,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin) {
 
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
   if (state[i] == 3) return;
 
-  int cell = grid_cell[i];
+  int cell = map_global_cell_to_storage(
+      grid_cell[i], global_nx, global_ny, storage_nx,
+      owned_global_x_begin, owned_global_x_end, owned_storage_x_begin);
   if (cell < 0) {
     mu_realized[i] = 0.0;
     return;
@@ -144,6 +149,9 @@ void launch_metabolism_kernel(
     double yield_carbon, double yield_iron, double yield_b12,
     int o2_enabled, double o2_boost_max, double o2_Km,
     const double* conc_oxygen, double* agent_uptake_totals,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin,
     cudaStream_t stream) {
   if (num_agents <= 0) return;
   int block = 256;
@@ -159,7 +167,9 @@ void launch_metabolism_kernel(
       maintenance_rate, metE_penalty, metE_acetate_max_factor,
       metE_acetate_km, eut_max_penalty, eut_km,
       yield_carbon, yield_iron, yield_b12,
-      o2_enabled, o2_boost_max, o2_Km, conc_oxygen, agent_uptake_totals);
+      o2_enabled, o2_boost_max, o2_Km, conc_oxygen, agent_uptake_totals,
+      global_nx, global_ny, storage_nx, owned_global_x_begin,
+      owned_global_x_end, owned_storage_x_begin);
 }
 
 }  // namespace gpu

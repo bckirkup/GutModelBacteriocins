@@ -5,19 +5,28 @@
 namespace gutibm {
 namespace gpu {
 
-__device__ inline int iz_cell_index(int ix, int iy, int iz, int nx, int ny) {
-  return iz * (nx * ny) + iy * nx + ix;
+__device__ inline int iz_cell_index(int ix, int iy, int iz, int storage_nx,
+                                    int ny) {
+  return iz * (storage_nx * ny) + iy * storage_nx + ix;
 }
 
 __global__ void field_update_kernel(double* conc, const double* reac,
                                     int ncells, int num_species, double dt,
                                     double* reaction_clip,
-                                    double cell_volume) {
+                                    double cell_volume, int storage_nx,
+                                    int global_ny, int global_nz,
+                                    int owned_x_begin, int owned_x_end) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
-  int total = ncells * num_species;
+  const int owned_nx = owned_x_end - owned_x_begin;
+  int total = owned_nx * global_ny * global_nz * num_species;
   if (idx >= total) return;
-  int spec = idx / ncells;
-  int cell = idx % ncells;
+  int spec = idx / (total / num_species);
+  int local = idx % (total / num_species);
+  int iz = local / (owned_nx * global_ny);
+  int rem = local % (owned_nx * global_ny);
+  int iy = rem / owned_nx;
+  int ix = owned_x_begin + rem % owned_nx;
+  int cell = iz_cell_index(ix, iy, iz, storage_nx, global_ny);
   double c = conc[spec * ncells + cell] + reac[spec * ncells + cell] * dt;
   if (c < 0.0 && reaction_clip != nullptr) {
     atomicAdd(reaction_clip, -c * cell_volume);
@@ -73,12 +82,16 @@ __global__ void grid_coupling_kernel(
 void launch_field_update_kernel(double* conc, const double* reac, int ncells,
                                 int num_species, double dt,
                                 double* reaction_clip, double cell_volume,
+                                int storage_nx, int global_ny, int global_nz,
+                                int owned_x_begin, int owned_x_end,
                                 cudaStream_t stream) {
-  int total = ncells * num_species;
+  int total = (owned_x_end - owned_x_begin) * global_ny * global_nz
+      * num_species;
   int block = 256;
   int grid = (total + block - 1) / block;
   field_update_kernel<<<grid, block, 0, stream>>>(
-      conc, reac, ncells, num_species, dt, reaction_clip, cell_volume);
+      conc, reac, ncells, num_species, dt, reaction_clip, cell_volume,
+      storage_nx, global_ny, global_nz, owned_x_begin, owned_x_end);
 }
 
 void launch_apply_boundaries_kernel(double* conc, int nx, int ny, int nz,

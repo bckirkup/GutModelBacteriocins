@@ -46,11 +46,32 @@ class ChemicalFieldGpu {
   const double* reac_device(Int spec) const;
 
   bool active() const { return active_; }
+  Int storage_nx() const { return storage_nx_; }
+  Int global_nx() const { return global_nx_; }
+  Int global_ny() const { return global_ny_; }
+  Int global_nz() const { return global_nz_; }
+  Int owned_x_begin() const { return owned_x_begin_; }
+  Int owned_x_end() const { return owned_x_end_; }
+  Int halo_width() const { return halo_width_; }
+  Int owned_storage_x_begin() const { return slab_mode_ ? halo_width_ : 0; }
+  Int owned_storage_x_end() const {
+    return slab_mode_ ? halo_width_ + (owned_x_end_ - owned_x_begin_)
+                      : global_nx_;
+  }
+  bool slab_mode() const { return slab_mode_; }
 
  private:
   bool active_ = false;
   Int nspec_ = 0;
   Int ncells_ = 0;
+  Int global_nx_ = 0;
+  Int global_ny_ = 0;
+  Int global_nz_ = 0;
+  Int owned_x_begin_ = 0;
+  Int owned_x_end_ = 0;
+  Int halo_width_ = 0;
+  Int storage_nx_ = 0;
+  bool slab_mode_ = false;
   std::vector<DeviceBuffer<double>> d_conc_;
   std::vector<DeviceBuffer<double>> d_reac_;
   DeviceBuffer<double> d_boundary_conc_;
