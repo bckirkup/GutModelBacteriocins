@@ -301,6 +301,62 @@ void test_trap_profile_more_lethal_than_mild_downregulation() {
   std::cout << "  test_trap_profile_more_lethal_than_mild_downregulation: PASSED\n";
 }
 
+void test_population_stocks_are_instantaneous_and_ordered() {
+  constexpr Int kCount = 12;
+  const std::vector<Real> turnovers = {3600.0, 120000.0, 1.0e6};
+  std::vector<Int> trapped;
+
+  for (const Real turnover : turnovers) {
+    SimulationConfig cfg = make_washout_horizon_config(16053, 60.0);
+    cfg.initial_strains.clear();
+    cfg.fixes.metabolism.death_threshold = 2.0e-4;
+    cfg.advection.radial_turnover = turnover;
+    SimulationConfig::InitialStrain strain;
+    strain.type = 2;
+    strain.count = kCount;
+    strain.mu_max = 5e-4;
+    cfg.initial_strains.push_back(strain);
+
+    Simulation sim;
+    sim.init(cfg);
+    for (Agent& agent : sim.agents()) {
+      agent.x[2] = 44e-6;
+      agent.mu_realized = 1.0e-4;
+    }
+    sim.prepare_population_stocks_for_summary();
+    assert(sim.population_stocks().starving_live == kCount);
+    trapped.push_back(sim.population_stocks().washout_trapped_live);
+  }
+
+  assert(std::is_sorted(trapped.rbegin(), trapped.rend()));
+  assert(trapped.front() > trapped.back());
+
+  SimulationConfig cfg = make_washout_horizon_config(16054, 60.0);
+  cfg.initial_strains.clear();
+  cfg.fixes.metabolism.death_threshold = 2.0e-4;
+  SimulationConfig::InitialStrain strain;
+  strain.type = 2;
+  strain.count = kCount;
+  strain.mu_max = 5e-4;
+  cfg.initial_strains.push_back(strain);
+  Simulation sim;
+  sim.init(cfg);
+  for (Agent& agent : sim.agents()) {
+    agent.x[2] = 6e-6;
+    agent.mu_realized = 1.0e-4;
+  }
+  sim.prepare_population_stocks_for_summary();
+  const Int initial_starving = sim.population_stocks().starving_live;
+  for (Agent& agent : sim.agents()) {
+    agent.mu_realized = 5.0e-4;
+  }
+  sim.prepare_population_stocks_for_summary();
+  assert(initial_starving > sim.population_stocks().starving_live);
+  assert(sim.population_stocks().starving_live <= sim.global_agent_count());
+
+  std::cout << "  test_population_stocks_are_instantaneous_and_ordered: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -312,6 +368,7 @@ int main() {
   test_washout_trap_reproducible();
   test_radial_turnover_controls_washout_threshold();
   test_trap_profile_more_lethal_than_mild_downregulation();
+  test_population_stocks_are_instantaneous_and_ordered();
   std::cout << "All washout trap regression tests passed.\n";
   return 0;
 }

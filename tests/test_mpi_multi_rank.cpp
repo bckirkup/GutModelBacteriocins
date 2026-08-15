@@ -289,6 +289,33 @@ void test_bacteriocin_ghost_accounting() {
   }
 }
 
+void test_population_stocks_reduce_owned_agents() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  SimulationConfig cfg = make_mpi_config(51004, 4);
+  cfg.time.total_time = cfg.time.bio_dt;
+  cfg.time.output_interval = cfg.time.total_time;
+  cfg.fixes.metabolism.death_threshold = 1.0e-3;
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+  cfg.hdf5.enabled = false;
+
+  Simulation sim;
+  sim.init(cfg);
+  sim.step(cfg.time.bio_dt);
+  sim.prepare_population_stocks_for_summary();
+
+  const Int expected = sim.global_agent_count();
+  assert(sim.population_stocks().starving_live == expected);
+  assert(sim.population_stocks().washout_trapped_live == 0);
+  if (rank == 0) {
+    std::cout << "  test_population_stocks_reduce_owned_agents: PASSED"
+              << " (starving=" << expected << ")\n";
+  }
+}
+
 #endif
 
 uint64_t hash_chemical_owned_cells(const ChemicalField& field,
@@ -1163,6 +1190,7 @@ int main(int argc, char** argv) {
   test_global_event_counter_reduction();
   test_population_ledger_closure();
   test_bacteriocin_ghost_accounting();
+  test_population_stocks_reduce_owned_agents();
 #endif
 
   if (rank == 0) {

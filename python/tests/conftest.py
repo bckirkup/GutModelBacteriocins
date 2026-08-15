@@ -69,6 +69,14 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
             summary.create_dataset("n_total", data=np.array(n_agents, dtype=np.int32))
             summary.create_dataset("num_agents", data=np.array(n_agents, dtype=np.int32))
             summary.create_dataset("num_lineages", data=np.array(3, dtype=np.int32))
+            stocks = summary.require_group("stocks")
+            stocks.create_dataset(
+                "starving_live_agents", data=np.array(step_idx, dtype=np.int32)
+            )
+            stocks.create_dataset(
+                "washout_trapped_live_agents",
+                data=np.array(n_steps - step_idx, dtype=np.int32),
+            )
 
             lin = f.require_group("lineage").require_group(step_name)
             lin.create_dataset("btuB_expression", data=rng.uniform(0.2, 1.0, n_agents))

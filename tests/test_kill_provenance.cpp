@@ -9,6 +9,7 @@
 
 #include <cassert>
 #include <filesystem>
+#include <format>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -66,6 +67,52 @@ int32_t read_scalar(hid_t file, const std::string& path) {
                  H5P_DEFAULT, &value) >= 0);
   H5Dclose(dataset);
   return value;
+}
+
+int count_cause(const std::vector<int32_t>& causes, ProvenanceCause cause);
+
+void test_lysis_provenance() {
+  const std::string filename =
+      resolve_test_h5_path("GUTIBM_LYSIS_PROVENANCE_H5", "lysis_provenance");
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {40e-6, 40e-6, 20e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.time.total_time = 360.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 60.0;
+  cfg.seed = 54321;
+  cfg.hdf5.enabled = true;
+  cfg.hdf5.filename = filename;
+  cfg.hdf5.schedule.summary = 1;
+  cfg.hdf5.schedule.provenance = 1;
+  cfg.initial_strains.clear();
+  cfg.enabled_fixes = {"bacteriocin"};
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+  SimulationConfig::InitialStrain strain;
+  strain.type = 1;
+  strain.count = 1;
+  strain.mu_max = 5e-4;
+  strain.plasmids = {"ColE1"};
+  cfg.initial_strains.push_back(strain);
+  SimulationConfig::InitialStrain survivor;
+  survivor.type = 2;
+  survivor.count = 1;
+  survivor.mu_max = 5e-4;
+  cfg.initial_strains.push_back(survivor);
+
+  Simulation sim;
+  sim.init(cfg);
+  sim.run();
+
+  hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  assert(file >= 0);
+  const std::string provenance_path = std::format(
+      "provenance/step_{:06}/cause", sim.step_count());
+  const auto causes = read_int_vector(file, provenance_path);
+  assert(count_cause(causes, ProvenanceCause::LYSIS) == 1);
+  H5Fclose(file);
 }
 
 double read_double_scalar(hid_t file, const std::string& path) {
@@ -166,6 +213,7 @@ int main() {
   assert(count_cause(causes, ProvenanceCause::WASHOUT) == 0);
   assert(count_cause(causes, ProvenanceCause::BOUNDARY) == 0);
   assert(count_cause(causes, ProvenanceCause::STARVATION) == 0);
+  assert(count_cause(causes, ProvenanceCause::LYSIS) == 0);
   assert(concentrations.size() == 4);
   assert(occupancies.size() == 4);
   assert(hazards.size() == 4);
@@ -192,6 +240,7 @@ int main() {
              "summary/step_000001/events/cumulative_colicin_kills") == 1);
   H5Fclose(restart_file);
 
+  test_lysis_provenance();
   std::cout << "All kill provenance tests passed.\n";
   return 0;
 #endif

@@ -533,6 +533,7 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
 
   if (summary_due) {
     sim.prepare_step_events_for_summary();
+    sim.prepare_population_stocks_for_summary();
     const std::string path = "summary/" + step_name;
     ensure_group(fid, "summary", cfg_);
     ensure_group(fid, path, cfg_);
@@ -628,6 +629,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   const auto n_total = static_cast<int32_t>(sim.global_agent_count());
 
   const auto num_lineages = count_live_lineages(agents);
+  const auto& stocks = sim.population_stocks();
 
   write_scalar_dataset(fid, group + "/time", H5T_NATIVE_DOUBLE, &t);
   write_scalar_dataset(fid, group + "/dt", H5T_NATIVE_DOUBLE, &dt_val);
@@ -635,6 +637,13 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_scalar_dataset(fid, group + "/n_total", H5T_NATIVE_INT32, &n_total);
   write_scalar_dataset(fid, group + "/num_lineages", H5T_NATIVE_INT32, &num_lineages);
   write_scalar_dataset(fid, group + "/num_agents", H5T_NATIVE_INT32, &n_total);
+  ensure_group(fid, group + "/stocks", cfg_);
+  const int32_t starving_live = stocks.starving_live;
+  const int32_t washout_trapped_live = stocks.washout_trapped_live;
+  write_scalar_dataset(fid, group + "/stocks/starving_live_agents",
+                       H5T_NATIVE_INT32, &starving_live);
+  write_scalar_dataset(fid, group + "/stocks/washout_trapped_live_agents",
+                       H5T_NATIVE_INT32, &washout_trapped_live);
   const int32_t halt_reason = sim.halted_for_dysbiosis() ? 1 : 0;
   const double halt_density = sim.halt_density_cells_per_mL();
   write_scalar_dataset(fid, group + "/halt_reason_code",

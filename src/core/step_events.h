@@ -16,6 +16,7 @@ enum class ProvenanceCause : Int {
   WASHOUT = 2,
   BOUNDARY = 3,
   STARVATION = 4,
+  LYSIS = 5,
 };
 
 struct KillProvenanceEvent {
