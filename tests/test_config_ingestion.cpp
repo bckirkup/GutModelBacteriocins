@@ -194,6 +194,12 @@ std::vector<Probe> build_probes() {
   v.push_back(I("domain.chemistry_stride.z", [](const SimulationConfig& c) {
     return static_cast<long long>(c.domain.chemistry_stride[2]);
   }));
+  v.push_back(I("grid_halo_width", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.grid_halo_width);
+  }));
+  v.push_back(I("domain.grid_halo_width", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.grid_halo_width);
+  }));
   v.push_back(R("domain_x", [](const SimulationConfig& c) { return c.domain.hi[0]; }));
   v.push_back(R("domain_y", [](const SimulationConfig& c) { return c.domain.hi[1]; }));
   v.push_back(R("domain_z", [](const SimulationConfig& c) { return c.domain.hi[2]; }));
