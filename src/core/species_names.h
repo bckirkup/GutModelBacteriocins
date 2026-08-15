@@ -23,6 +23,7 @@ inline constexpr const char* BACTERIOCIN_BTUB  = "bacteriocin_BtuB";
 inline constexpr const char* BACTERIOCIN_FEPA  = "bacteriocin_FepA";
 inline constexpr const char* BACTERIOCIN_CIRA  = "bacteriocin_CirA";
 inline constexpr const char* BACTERIOCIN_FHUA  = "bacteriocin_FhuA";
+inline constexpr const char* BACTERIOCIN_LUMPED = "bacteriocin_lumped";
 inline constexpr const char* ACETATE            = "acetate";
 inline constexpr const char* ETHANOLAMINE       = "ethanolamine";
 inline constexpr const char* OXYGEN             = "oxygen";
@@ -42,6 +43,10 @@ inline const char* bacteriocin_species_for(ReceptorType target) {
     case FhuA: return BACTERIOCIN_FHUA;
     default: return nullptr;
   }
+}
+
+inline const char* bacteriocin_species_for(ReceptorType target, bool lumped) {
+  return lumped ? BACTERIOCIN_LUMPED : bacteriocin_species_for(target);
 }
 
 inline constexpr std::array<ReceptorType, 4> BACTERIOCIN_RECEPTOR_TARGETS = {

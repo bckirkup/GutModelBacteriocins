@@ -246,6 +246,7 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 |-----------|---------|-------|-------------|
 | `qssa.toxin_cutoff` | 200e-6 | m | Green's function evaluation radius for toxins |
 | `chemistry.toxin_evaluation` | `grid` | — | Toxin exposure evaluation: `grid` samples each agent's chemistry cell center; `agents` evaluates the same Green's-function superposition at each agent position |
+| `chemistry.toxin_lumping` | `per_receptor` | — | Scientific toxin spatial model: `per_receptor` keeps four target-specific fields; `lumped` puts all sources in one field read by every receptor |
 | `qssa.nutrient_cutoff` | 50e-6 | m | Cutoff for nutrient depletion zones |
 | `qssa.colicin_release_rate` | 1e-18 | mol/s | Burst release per lysed cell |
 | `qssa.microcin_secretion` | 1e-20 | mol/s | Continuous secretion rate |
@@ -267,6 +268,19 @@ offset from its chemistry-cell centre. Scheduled grid output is still
 materialised in agent mode, but `bacteriocin_max_*` summary values become maxima
 over sampled agent positions rather than over every grid cell. GPU execution
 currently rejects `agents` mode because sampling remains CPU-only.
+
+`chemistry.toxin_lumping` is also a modelling position, not a performance flag.
+`per_receptor` is the default and preserves the existing four-field behaviour:
+each toxin threatens an agent through the receptor it targets. `lumped` carries
+the superposition of all toxin sources in one `bacteriocin_lumped` field and
+lets every receptor read that local burden, while receptor-specific binding
+parameters, toxin affinities, and immunity remain unchanged in the killing
+calculation. This deliberately asks whether receptor-specific spatial targeting
+matters, rather than changing the per-colicin biology. Its modelling cost is
+that a colicin to which an agent is immune can contribute to the exposure it
+experiences through a different receptor. In lumped mode the four
+`bacteriocin_max_*` summary keys remain present and are identical by
+construction; grid output contains one bacteriocin dataset.
 
 ---
 
@@ -459,7 +473,7 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 |-----------|---------|-------|-------------|
 | `bacteriocin.sos_lysis_prob` | 0.01 | — | SOS induction probability per division (active when `just_divided`) |
 | `bacteriocin.sos_basal_rate` | 1e-6 | 1/s | Spontaneous SOS rate |
-| `bacteriocin.sos_cross_induction_rate` | 1e3 | 1/s per mol/m³ | Nuclease provoker rate (reads `bacteriocin_BtuB` field) |
+| `bacteriocin.sos_cross_induction_rate` | 1e3 | 1/s per mol/m³ | Nuclease provoker rate (reads BtuB field by default, total lumped field in lumped mode) |
 | `bacteriocin.retardation_basic` | 50.0 | — | R for pI > 8.5 (Lethal Core) |
 | `bacteriocin.retardation_acidic` | 1.5 | — | R for pI < 7.0 (Lethal Halo) |
 | `bacteriocin.retardation_neutral` | 5.0 | — | R for 7.0–8.5 |
@@ -469,7 +483,7 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 
 Per-plasmid defaults in `PlasmidLibrary`: `release_mode`, `is_nuclease`, `burst_size`, `phage_induction_rate` (ColB/ColIa: 1e-4 /generation).
 
-QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteriocin_FepA`, `bacteriocin_CirA`, `bacteriocin_FhuA`). Nuclease colicin bursts deposit into `bacteriocin_BtuB` for cross-induction. `fix_receptor` reads only the field matching each receptor target.
+QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteriocin_FepA`, `bacteriocin_CirA`, `bacteriocin_FhuA`) by default. With `chemistry.toxin_lumping = "lumped"`, it instead maintains one `bacteriocin_lumped` field containing all sources, and all receptors read that field. Nuclease colicin bursts continue to use the BtuB cross-induction path in the default mode; lumped mode makes that path read total toxin burden as well. The lumped approximation means a colicin an agent is immune to can contribute to exposure through another receptor, and can also contribute to SOS/ROS cross-induction; these are intentional scientific costs of removing receptor-specific spatial targeting.
 
 ---
 

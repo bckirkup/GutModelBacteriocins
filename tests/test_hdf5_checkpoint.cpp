@@ -286,6 +286,39 @@ void test_split_run_matches_uninterrupted(const std::string& filename) {
   assert(resumed.step_count() == 2);
 }
 
+void test_toxin_lumping_checkpoint_mismatch(const std::string& per_filename,
+                                            const std::string& lumped_filename) {
+  auto write_checkpoint = [](const std::string& filename,
+                             std::string_view lumping) {
+    SimulationConfig cfg = make_checkpoint_config(filename);
+    cfg.time.total_time = 60.0;
+    cfg.qssa.toxin_lumping = std::string(lumping);
+    Simulation sim;
+    sim.init(cfg);
+    sim.run();
+  };
+  auto expect_mismatch = [](const std::string& filename,
+                            std::string_view lumping) {
+    SimulationConfig cfg = make_checkpoint_config(filename);
+    cfg.qssa.toxin_lumping = std::string(lumping);
+    cfg.hdf5.enabled = false;
+    cfg.initial_strains.clear();
+    Simulation resumed;
+    bool rejected = false;
+    try {
+      resumed.init_from_checkpoint(cfg, filename, "step_000001");
+    } catch (const ConfigError&) {
+      rejected = true;
+    }
+    assert(rejected);
+  };
+
+  write_checkpoint(per_filename, "per_receptor");
+  expect_mismatch(per_filename, "lumped");
+  write_checkpoint(lumped_filename, "lumped");
+  expect_mismatch(lumped_filename, "per_receptor");
+}
+
 void test_slab_checkpoint_matches_uninterrupted(const std::string& filename) {
   SimulationConfig split_cfg = make_checkpoint_config(filename + ".split.h5");
   split_cfg.chemistry_decomposition = "slab";
@@ -445,6 +478,14 @@ int main(int argc, char** argv) {
   if (rank == 0) std::cout << "=== HDF5 Checkpoint Restart Tests ===\n";
   test_checkpoint_restart(filename);
   test_split_run_matches_uninterrupted(filename);
+  const std::string toxin_mismatch_per =
+      resolve_shared_test_h5_path("GUTIBM_TOXIN_MISMATCH_PER_H5",
+                                  "toxin_mismatch_per");
+  const std::string toxin_mismatch_lumped =
+      resolve_shared_test_h5_path("GUTIBM_TOXIN_MISMATCH_LUMPED_H5",
+                                  "toxin_mismatch_lumped");
+  test_toxin_lumping_checkpoint_mismatch(toxin_mismatch_per,
+                                         toxin_mismatch_lumped);
   const std::string slab_filename =
       resolve_shared_test_h5_path("GUTIBM_SLAB_CHECKPOINT_H5",
                                   "slab_checkpoint");
@@ -457,6 +498,7 @@ int main(int argc, char** argv) {
     std::cout << "  test_hdf5_reader_api: PASSED\n";
     std::cout << "  test_checkpoint_restart: PASSED\n";
     std::cout << "  test_split_run_matches_uninterrupted: PASSED\n";
+    std::cout << "  test_toxin_lumping_checkpoint_mismatch: PASSED\n";
     std::cout << "  test_slab_checkpoint_matches_uninterrupted: PASSED\n";
     std::cout << "All HDF5 checkpoint tests passed.\n";
   }

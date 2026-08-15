@@ -606,10 +606,15 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
 #endif
     return value;
   };
-  const double max_btuB = toxin_max(species::BACTERIOCIN_BTUB);
-  const double max_fepA = toxin_max(species::BACTERIOCIN_FEPA);
-  const double max_cirA = toxin_max(species::BACTERIOCIN_CIRA);
-  const double max_fhuA = toxin_max(species::BACTERIOCIN_FHUA);
+  const bool lumped = sim.qssa().toxin_lumping();
+  const double max_btuB = toxin_max(
+      species::bacteriocin_species_for(ReceptorType::BtuB, lumped));
+  const double max_fepA = toxin_max(
+      species::bacteriocin_species_for(ReceptorType::FepA, lumped));
+  const double max_cirA = toxin_max(
+      species::bacteriocin_species_for(ReceptorType::CirA, lumped));
+  const double max_fhuA = toxin_max(
+      species::bacteriocin_species_for(ReceptorType::FhuA, lumped));
 
   if (io_rank(cfg_) == 0 && file_id_ >= 0) {
   auto fid = static_cast<hid_t>(file_id_);

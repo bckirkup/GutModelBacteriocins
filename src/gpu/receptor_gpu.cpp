@@ -64,6 +64,7 @@ bool gpu_compute_receptor_kill_probs_host_packed(
     const ChemicalFieldGpu& chem_gpu,
     const ChemicalField& chem,
     const ReceptorConfig& cfg,
+    bool toxin_lumped,
     double dt,
     std::vector<double>& kill_probs_out) {
 
@@ -73,6 +74,7 @@ bool gpu_compute_receptor_kill_probs_host_packed(
   (void)chem_gpu;
   (void)chem;
   (void)cfg;
+  (void)toxin_lumped;
   (void)dt;
   (void)kill_probs_out;
   return false;
@@ -92,10 +94,23 @@ bool gpu_compute_receptor_kill_probs_host_packed(
   d_toxin_aff.upload(toxin_aff);
   d_kill.allocate(static_cast<size_t>(n));
 
-  Int i_btuB = chem.find(species::BACTERIOCIN_BTUB);
-  Int i_fepA = chem.find(species::BACTERIOCIN_FEPA);
-  Int i_cirA = chem.find(species::BACTERIOCIN_CIRA);
-  Int i_fhuA = chem.find(species::BACTERIOCIN_FHUA);
+  Int i_btuB = -1;
+  Int i_fepA = -1;
+  Int i_cirA = -1;
+  Int i_fhuA = -1;
+  if (toxin_lumped) {
+    const Int lumped_idx = chem.find(
+        species::bacteriocin_species_for(ReceptorType::BtuB, true));
+    i_btuB = lumped_idx;
+    i_fepA = lumped_idx;
+    i_cirA = lumped_idx;
+    i_fhuA = lumped_idx;
+  } else {
+    i_btuB = chem.find(species::bacteriocin_species_for(ReceptorType::BtuB));
+    i_fepA = chem.find(species::bacteriocin_species_for(ReceptorType::FepA));
+    i_cirA = chem.find(species::bacteriocin_species_for(ReceptorType::CirA));
+    i_fhuA = chem.find(species::bacteriocin_species_for(ReceptorType::FhuA));
+  }
   Int i_b12 = chem.find(species::B12);
   Int i_ferric_enterobactin = chem.find(species::FERRIC_ENTEROBACTIN);
   Int i_ferrichrome = chem.find(species::FERRICHROME);

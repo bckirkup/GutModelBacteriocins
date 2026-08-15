@@ -33,6 +33,7 @@ void FixReceptor::compute(Real dt) {
     std::vector<double> gpu_probs;
     if (gpu_compute_receptor_kill_probs_host_packed(
             ag, agents, sim_.chem_gpu(), sim_.chemical_field(), cfg_, dt,
+            sim_.qssa().toxin_lumping(),
             gpu_probs)) {
       for (Int i = 0; i < n; ++i) {
         kill_probs[i] = gpu_probs[static_cast<size_t>(i)];
@@ -108,18 +109,28 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Int agent_index, Real dt
   if (cell < 0) return 0.0;
 
   const std::array<ReceptorDescriptor, 4> descriptors = {{
-      {ReceptorType::BtuB, species::BACTERIOCIN_BTUB, species::B12,
+      {ReceptorType::BtuB,
+       species::bacteriocin_species_for(ReceptorType::BtuB,
+                                        sim_.qssa().toxin_lumping()),
+       species::B12,
        &ReceptorConfig::kd_colicinE_btuB, &ReceptorConfig::kd_b12_btuB,
        &ReceptorConfig::kill_rate_colicin, 1.0, 0},
-      {ReceptorType::FepA, species::BACTERIOCIN_FEPA,
+      {ReceptorType::FepA,
+       species::bacteriocin_species_for(ReceptorType::FepA,
+                                        sim_.qssa().toxin_lumping()),
        species::FERRIC_ENTEROBACTIN, &ReceptorConfig::kd_colicinB_fepA,
        &ReceptorConfig::kd_enterobactin, &ReceptorConfig::kill_rate_colicin,
        1.0, 1},
-      {ReceptorType::CirA, species::BACTERIOCIN_CIRA,
+      {ReceptorType::CirA,
+       species::bacteriocin_species_for(ReceptorType::CirA,
+                                        sim_.qssa().toxin_lumping()),
        species::FERRIC_ENTEROBACTIN, &ReceptorConfig::kd_colicinIa_cirA,
        &ReceptorConfig::kd_lin_enterobactin, &ReceptorConfig::kill_rate_microcin,
        cfg_.cirA_linearized_fraction, 2},
-      {ReceptorType::FhuA, species::BACTERIOCIN_FHUA, species::FERRICHROME,
+      {ReceptorType::FhuA,
+       species::bacteriocin_species_for(ReceptorType::FhuA,
+                                        sim_.qssa().toxin_lumping()),
+       species::FERRICHROME,
        &ReceptorConfig::kd_colicinM_fhuA, &ReceptorConfig::kd_ferrichrome,
        &ReceptorConfig::kill_rate_colicin, 1.0, 3},
   }};

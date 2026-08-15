@@ -409,6 +409,40 @@ void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
   gf_.init(domain, adv);
 }
 
+void QSSASolver::solve_lumped_bacteriocin_fields(
+    const AgentPool& agents,
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors,
+    const AdvectionField& adv,
+    ChemicalField& chem,
+    ChemicalFieldGpu* chem_gpu,
+    bool materialize_grid) {
+  const Int lumped_idx =
+      chem.find(species::BACTERIOCIN_LUMPED);
+  if (lumped_idx < 0) {
+    throw SimulationError(
+        "lumped toxin field is missing from the chemical field");
+  }
+
+  if (cfg_.toxin_evaluation == "agents") {
+    sampled_species_indices_.fill(lumped_idx);
+    sampled_agents_ = &agents;
+    sample_bacteriocin_field(sources, params, strength_factors, agents,
+                             ReceptorType::BtuB);
+  }
+  if (!materialize_grid || sources.empty()) {
+    zero_species_field(chem, lumped_idx);
+  } else {
+    solve_bacteriocin_field_from_sources(
+        sources, params, strength_factors, adv, chem, lumped_idx, chem_gpu);
+  }
+
+  if (chem_gpu != nullptr && chem_gpu->active()) {
+    chem_gpu->sync_species_concentrations_to_host(chem, lumped_idx);
+  }
+}
+
 void QSSASolver::solve_bacteriocin_field(
     const AgentPool& agents,
     const std::vector<ToxinBurstSource>& bursts,
@@ -432,6 +466,13 @@ void QSSASolver::solve_bacteriocin_field(
   append_burst_sources(bursts, current_time, *domain_, buffers);
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
+
+  if (cfg_.toxin_lumping == "lumped") {
+    solve_lumped_bacteriocin_fields(
+        agents, all_sources, all_params, all_strengths, adv, chem, chem_gpu,
+        materialize_grid);
+    return;
+  }
 
   std::vector<Vec3> sources;
   std::vector<GreensFunctionParams> params;
@@ -528,6 +569,13 @@ void QSSASolver::solve_all_bacteriocin_fields(
   append_burst_sources(bursts, current_time, *domain_, buffers);
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
+
+  if (cfg_.toxin_lumping == "lumped") {
+    solve_lumped_bacteriocin_fields(
+        agents, all_sources, all_params, all_strengths, adv, chem, chem_gpu,
+        materialize_grid);
+    return;
+  }
 
   std::vector<Vec3> sources;
   std::vector<GreensFunctionParams> params;

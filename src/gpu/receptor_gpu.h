@@ -18,6 +18,7 @@ bool gpu_compute_receptor_kill_probs_host_packed(
     const ChemicalFieldGpu& chem_gpu,
     const ChemicalField& chem,
     const ReceptorConfig& cfg,
+    bool toxin_lumped,
     double dt,
     std::vector<double>& kill_probs_out);
 

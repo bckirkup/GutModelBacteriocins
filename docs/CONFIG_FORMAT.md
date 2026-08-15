@@ -70,6 +70,7 @@ Many subsystems use **dot-key toggles** in flat JSON:
 | `adaptive_dt_enabled` | false | CFL-like adaptive biological timestep |
 | `use_fmm` | false | Barnes–Hut FMM far-field acceleration |
 | `chemistry.toxin_evaluation` | `"grid"` | Toxin exposure mode: `"grid"` or `"agents"` |
+| `chemistry.toxin_lumping` | `"per_receptor"` | Toxin spatial model: receptor-specific fields or one all-source field |
 | `gpu_enabled` | false | CUDA GPU path (CUDA build required) |
 
 Full parameter lists: [PARAMETERS.md](PARAMETERS.md).

@@ -211,6 +211,12 @@ std::vector<Probe> build_probes() {
   v.push_back(S("chemistry.toxin_evaluation",
                 [](const SimulationConfig& c) { return c.qssa.toxin_evaluation; },
                 "agents"));
+  v.push_back(S("toxin_lumping",
+                [](const SimulationConfig& c) { return c.qssa.toxin_lumping; },
+                "lumped"));
+  v.push_back(S("chemistry.toxin_lumping",
+                [](const SimulationConfig& c) { return c.qssa.toxin_lumping; },
+                "lumped"));
 
   // ── Advection / crypts / peristalsis ──────────────────────────────────────
   v.push_back(R("mucus_thickness", [](const SimulationConfig& c) { return c.advection.mucus_thickness; }));
