@@ -48,7 +48,7 @@ void test_carbon_z_gradient_init() {
 
   // Verify concentration at each z-layer matches C0 * exp(-z_rel / lambda)
   for (Int iz = 0; iz < nz; ++iz) {
-    Real z_rel = (iz + 0.5) * domain.dx();
+    Real z_rel = (iz + 0.5) * domain.dx_z();
     Real expected = C0 * std::exp(-z_rel / lambda);
     Int cell = domain.cell_index(0, 0, iz);
     Real actual = chem.conc(0, cell);

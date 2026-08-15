@@ -37,12 +37,120 @@ ChemicalSpec diffusing_species(Real diffusion, Real initial, Real boundary) {
 }
 
 Real inventory(const ChemicalField& chem, const Domain& domain) {
-  const Real cell_volume = domain.dx() * domain.dx() * domain.dx();
+  const Real cell_volume = domain.cell_volume();
   Real total = 0.0;
   for (Int cell = 0; cell < chem.ncells(); ++cell) {
     total += chem.conc(0, cell) * cell_volume;
   }
   return total;
+}
+
+void test_anisotropic_diffusion_invariants() {
+  DomainConfig cfg;
+  cfg.lo = {0.0, 0.0, 0.0};
+  cfg.hi = {50.0e-6, 20.0e-6, 10.0e-6};
+  cfg.grid_dx = 5.0e-6;
+  cfg.chemistry_stride = {2, 1, 1};
+  Domain domain;
+  domain.init(cfg);
+  ChemicalField chem;
+  chem.init(domain, {diffusing_species(1.0e-12, 0.0, 0.0)});
+  const Int source = domain.cell_index(2, 1, 1);
+  chem.conc(0, source) = 1.0;
+  const Real before = inventory(chem, domain);
+  const Real dt = 2.5;
+  chem.apply_periodic_x_diffusion(domain, dt);
+  const Real after = inventory(chem, domain);
+  assert(std::abs(after - before) <= 1.0e-12 * before);
+  for (Int ix = 0; ix < domain.nx(); ++ix) {
+    const Int cell = domain.cell_index(ix, 1, 1);
+    const Int left = domain.cell_index(
+        (ix + domain.nx() - 1) % domain.nx(), 1, 1);
+    const Int right = domain.cell_index(
+        (ix + 1) % domain.nx(), 1, 1);
+    const Real value = chem.conc(0, cell);
+    const Real laplacian = (chem.conc(0, left) + chem.conc(0, right)
+        - 2.0 * value) / (domain.dx_x() * domain.dx_x());
+    const Real residual = value - dt * 1.0e-12 * laplacian;
+    assert(std::abs(residual - (ix == 2 ? 1.0 : 0.0)) < 1.0e-12);
+    assert(value >= 0.0);
+  }
+  assert(std::abs(chem.conc(0, domain.cell_index(1, 1, 1))
+                  - chem.conc(0, domain.cell_index(3, 1, 1)))
+         < 1.0e-12);
+  std::cout << "  test_anisotropic_diffusion_invariants: PASSED\n";
+}
+
+void test_stride_sensitivity_is_ordered() {
+  std::array<Real, 3> neighbor_values{};
+  const std::array<Int, 3> strides = {1, 2, 4};
+  for (size_t i = 0; i < strides.size(); ++i) {
+    DomainConfig cfg;
+    cfg.hi = {80.0e-6, 10.0e-6, 10.0e-6};
+    cfg.grid_dx = 5.0e-6;
+    cfg.chemistry_stride = {strides[i], 1, 1};
+    Domain domain;
+    domain.init(cfg);
+    ChemicalField chem;
+    chem.init(domain, {diffusing_species(1.0e-12, 0.0, 0.0)});
+    const Int source = domain.cell_index(domain.nx() / 2, 0, 0);
+    chem.conc(0, source) = 1.0;
+    chem.apply_periodic_x_diffusion(domain, 2.5);
+    neighbor_values[i] = chem.conc(
+        0, domain.cell_index(domain.nx() / 2 + 1, 0, 0));
+  }
+  std::cout << "  stride neighbors: " << neighbor_values[0] << ", "
+            << neighbor_values[1] << ", " << neighbor_values[2] << "\n";
+  assert(neighbor_values[0] > neighbor_values[1]);
+  assert(neighbor_values[1] > neighbor_values[2]);
+  std::cout << "  test_stride_sensitivity_is_ordered: PASSED\n";
+}
+
+void test_anisotropic_yz_residuals() {
+  DomainConfig cfg;
+  cfg.hi = {20.0e-6, 40.0e-6, 60.0e-6};
+  cfg.grid_dx = 5.0e-6;
+  cfg.chemistry_stride = {1, 2, 4};
+  Domain domain;
+  domain.init(cfg);
+  ChemicalSpec spec = diffusing_species(1.0e-12, 0.0, 0.0);
+
+  ChemicalField y_field;
+  y_field.init(domain, {spec});
+  const Int y_source = domain.cell_index(0, domain.ny() / 2, 0);
+  y_field.conc(0, y_source) = 1.0;
+  const Real y_before = inventory(y_field, domain);
+  y_field.apply_periodic_y_diffusion(domain, 2.5, 0);
+  assert(std::abs(inventory(y_field, domain) - y_before)
+         <= 1.0e-12 * y_before);
+  const Real y_value = y_field.conc(
+      0, domain.cell_index(0, domain.ny() / 2, 0));
+  const Real y_left = y_field.conc(
+      0, domain.cell_index(0, domain.ny() / 2 - 1, 0));
+  const Real y_right = y_field.conc(
+      0, domain.cell_index(0, domain.ny() / 2 + 1, 0));
+  const Real y_residual = y_value - 2.5e-12
+      * (y_left + y_right - 2.0 * y_value)
+      / (domain.dx_y() * domain.dx_y());
+  assert(std::abs(y_residual - 1.0) < 1.0e-12);
+  assert(std::abs(y_left - y_right) < 1.0e-12);
+
+  ChemicalField z_field;
+  z_field.init(domain, {spec});
+  const Int z_source = domain.cell_index(0, 0, 1);
+  z_field.conc(0, z_source) = 1.0;
+  z_field.apply_bounded_z_diffusion(domain, 2.5, 0);
+  for (Int iz = 1; iz < domain.nz(); ++iz) {
+    assert(z_field.conc(0, domain.cell_index(0, 0, iz)) >= 0.0);
+  }
+  const Real z_value = z_field.conc(0, z_source);
+  const Real z_below = spec.boundary_conc;
+  const Real z_above = z_field.conc(0, domain.cell_index(0, 0, 2));
+  const Real z_residual = z_value - 2.5e-12
+      * (z_below + z_above - 2.0 * z_value)
+      / (domain.dx_z() * domain.dx_z());
+  assert(std::abs(z_residual - 1.0) < 1.0e-12);
+  std::cout << "  test_anisotropic_yz_residuals: PASSED\n";
 }
 
 void test_slab_point_source_invariants() {
@@ -60,7 +168,7 @@ void test_slab_point_source_invariants() {
   const Real before = inventory(chem, domain);
   chem.apply_diffusion(domain, 2.5);
   const Real after = inventory(chem, domain);
-  const Real alpha = 2.5 * 1.0e-12 / (domain.dx() * domain.dx());
+  const Real alpha = 2.5 * 1.0e-12 / (domain.dx_x() * domain.dx_x());
   assert(std::abs(after * (1.0 + alpha) - before)
          <= 1.0e-12 * std::abs(before));
   for (Int ix = 0; ix < domain.nx(); ++ix) {
@@ -71,7 +179,7 @@ void test_slab_point_source_invariants() {
     const Real value = chem.conc_global(0, cell);
     const Real laplacian = (chem.conc_global(0, left)
         + chem.conc_global(0, right) - 2.0 * value)
-        / (domain.dx() * domain.dx());
+        / (domain.dx_x() * domain.dx_x());
     const Real residual = (1.0 + alpha)
         * (value - 2.5e-12 * laplacian);
     assert(std::abs(residual - (ix == 2 ? 1.0 : 0.0)) < 1.0e-12);
@@ -103,7 +211,7 @@ void test_point_source_invariants_and_residual() {
   chem.apply_diffusion(domain, 2.5);
 
   const Real after = inventory(chem, domain);
-  const Real alpha = 2.5 * 1.0e-12 / (domain.dx() * domain.dx());
+  const Real alpha = 2.5 * 1.0e-12 / (domain.dx_x() * domain.dx_x());
   const Real periodic_ring_inventory = after * (1.0 + alpha);
   assert(std::abs(periodic_ring_inventory - before) <=
          1.0e-12 * std::abs(before));
@@ -122,7 +230,7 @@ void test_point_source_invariants_and_residual() {
     }
     const Real initial = ix == source ? 1.0 : 0.0;
     const Real laplacian = (left + right - 2.0 * value)
-        / (domain.dx() * domain.dx());
+        / (domain.dx_x() * domain.dx_x());
     // The directional z solve follows the periodic x solve and scales this
     // ring by (1 + alpha); undo that factor before checking the x operator.
     const Real residual = (1.0 + alpha)
@@ -200,7 +308,7 @@ void test_configured_z_gradient_is_background_fixed_point() {
   assert(std::abs(chem.conc(0, domain.cell_index(0, 0, 0))
                   - spec.boundary_conc) < 1.0e-15);
   for (Int iz = 1; iz < domain.nz() - 1; ++iz) {
-    const Real z_rel = (iz + 0.5) * domain.dx();
+    const Real z_rel = (iz + 0.5) * domain.dx_z();
     const Real expected = spec.initial_conc
         * std::exp(-z_rel / spec.z_gradient_lambda);
     for (Int iy = 0; iy < domain.ny(); ++iy) {
@@ -332,6 +440,9 @@ void test_default_species_configuration() {
 int main() {
   std::cout << "=== Nutrient Diffusion Tests ===\n";
   test_uniform_field_is_fixed_point();
+  test_anisotropic_diffusion_invariants();
+  test_stride_sensitivity_is_ordered();
+  test_anisotropic_yz_residuals();
   test_slab_point_source_invariants();
   test_point_source_invariants_and_residual();
   test_diffusion_enable_and_coefficient_sensitivity();

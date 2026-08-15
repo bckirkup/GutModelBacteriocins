@@ -9,7 +9,9 @@ struct DomainParams {
   int nx;
   int ny;
   int nz;
-  double dx;
+  double dx_x;
+  double dx_y;
+  double dx_z;
   std::array<double, 3> lo;
   std::array<double, 3> extent;
   std::array<bool, 3> periodic;
@@ -46,7 +48,9 @@ struct VbfLaunchParams {
   int global_nx = 0;
   int ny = 0;
   int nz = 0;
-  double dx = 0.0;
+  double dx_x = 0.0;
+  double dx_y = 0.0;
+  double dx_z = 0.0;
   double nutrient_sink = 0.0;
   double carbon_sink_vmax = 0.0;
   double carbon_sink_km = 0.0;

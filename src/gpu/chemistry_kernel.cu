@@ -129,7 +129,7 @@ __global__ void vbf_coupling_kernel(int ncells,
   const int ix = params.owned_x_begin + rem % local_nx;
   const int storage_cell = iz * (params.storage_nx * params.ny)
       + iy * params.storage_nx + ix;
-  const double z_rel = (iz + 0.5) * params.dx;
+  const double z_rel = (iz + 0.5) * params.dx_z;
   const double z_weight = params.mucin_z_gradient_enabled
       ? exp(-z_rel / params.mucin_z_gradient_lambda)
       : 1.0;
@@ -147,7 +147,7 @@ __global__ void vbf_coupling_kernel(int ncells,
                     reac_oxygen, conc_oxygen,
                     reac_acetate,
                     reac_mucin, conc_mucin, vbf_totals,
-                    params.dx * params.dx * params.dx, dt);
+                    params.dx_x * params.dx_y * params.dx_z, dt);
 }
 
 }  // namespace

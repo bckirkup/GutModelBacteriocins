@@ -453,8 +453,7 @@ void test_metabolism_uptake_has_rate_units() {
 
   const Agent& agent = sim.agents()[0];
   const Real biomass_gain = agent.biomass - biomass_before;
-  const Real cell_volume = sim.domain().dx() * sim.domain().dx()
-      * sim.domain().dx();
+  const Real cell_volume = sim.domain().cell_volume();
   const Int carbon = chem.find(species::CARBON);
   const Real expected_rate = biomass_gain * cfg.fixes.metabolism.yield_carbon
       / (cell_volume * dt);
@@ -628,8 +627,7 @@ void test_siderophore_specific_rate_scaling() {
   chem.zero_reactions();
   metabolism.compute(1.0);
   const Real saturated_reimport = -chem.reac(i_ferric, cell);
-  const Real cell_volume = sim.domain().dx() * sim.domain().dx()
-      * sim.domain().dx();
+  const Real cell_volume = sim.domain().cell_volume();
   const Real expected_vmax = cfg.chem_env.siderophore.Vmax_reimport
       * agent.biomass / cell_volume;
   const Real saturation_error =
@@ -679,8 +677,7 @@ void test_siderophore_multi_agent_positivity() {
   const Real initial_ferric = 1.0e-6;
   const Real initial_apo = 1.0e-8;
   const Real iron = 1.0e-4;
-  const Real cell_volume = sim.domain().dx() * sim.domain().dx()
-      * sim.domain().dx();
+  const Real cell_volume = sim.domain().cell_volume();
   const Real total_production = cfg.chem_env.siderophore.chelation_rate
       * initial_apo * iron * static_cast<Real>(sim.agents().size());
   const Real expected_available = initial_ferric + total_production * 60.0;

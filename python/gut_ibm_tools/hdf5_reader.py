@@ -62,15 +62,22 @@ class GutIBMData:
     def domain_diagonal(self) -> float:
         """Return the physical domain diagonal from HDF5 metadata."""
         assert self._file is not None
-        grid_dx = float(self._file.attrs.get("grid_dx", 0.0))
+        legacy_dx = float(self._file.attrs.get("grid_dx", 0.0))
+        grid_dx = tuple(
+            float(self._file.attrs.get(name, legacy_dx))
+            for name in ("grid_dx_x", "grid_dx_y", "grid_dx_z")
+        )
         lengths = []
-        for axis, cells in (("x", self._nx), ("y", self._ny), ("z", self._nz)):
-            lo = self._file.attrs.get(f"domain_lo_{axis}")
-            hi = self._file.attrs.get(f"domain_hi_{axis}")
+        for axis, cells in enumerate(
+            (("x", self._nx), ("y", self._ny), ("z", self._nz))
+        ):
+            axis_name, cell_count = cells
+            lo = self._file.attrs.get(f"domain_lo_{axis_name}")
+            hi = self._file.attrs.get(f"domain_hi_{axis_name}")
             if lo is not None and hi is not None:
                 lengths.append(float(hi) - float(lo))
             else:
-                lengths.append(float(cells) * grid_dx)
+                lengths.append(float(cell_count) * grid_dx[axis])
         return float(np.linalg.norm(lengths))
 
     def get_summary(self, step: str) -> dict[str, Any]:

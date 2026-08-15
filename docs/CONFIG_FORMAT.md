@@ -103,6 +103,9 @@ Full parameter lists: [PARAMETERS.md](PARAMETERS.md).
   "domain_y": 0.001,
   "domain_z": 0.0001,
   "grid_dx": 2e-6,
+  "domain": {
+    "chemistry_stride": {"x": 1, "y": 1, "z": 1}
+  },
 
   "initial_strains": [
     {

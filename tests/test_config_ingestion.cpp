@@ -167,6 +167,33 @@ std::vector<Probe> build_probes() {
 
   // ── Domain ───────────────────────────────────────────────────────────────
   v.push_back(R("grid_dx", [](const SimulationConfig& c) { return c.domain.grid_dx; }));
+  v.push_back(I("chemistry_stride_x", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.chemistry_stride[0]);
+  }));
+  v.push_back(I("domain.chemistry_stride_x", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.chemistry_stride[0]);
+  }));
+  v.push_back(I("domain.chemistry_stride.x", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.chemistry_stride[0]);
+  }));
+  v.push_back(I("chemistry_stride_y", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.chemistry_stride[1]);
+  }));
+  v.push_back(I("domain.chemistry_stride_y", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.chemistry_stride[1]);
+  }));
+  v.push_back(I("domain.chemistry_stride.y", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.chemistry_stride[1]);
+  }));
+  v.push_back(I("chemistry_stride_z", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.chemistry_stride[2]);
+  }));
+  v.push_back(I("domain.chemistry_stride_z", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.chemistry_stride[2]);
+  }));
+  v.push_back(I("domain.chemistry_stride.z", [](const SimulationConfig& c) {
+    return static_cast<long long>(c.domain.chemistry_stride[2]);
+  }));
   v.push_back(R("domain_x", [](const SimulationConfig& c) { return c.domain.hi[0]; }));
   v.push_back(R("domain_y", [](const SimulationConfig& c) { return c.domain.hi[1]; }));
   v.push_back(R("domain_z", [](const SimulationConfig& c) { return c.domain.hi[2]; }));
@@ -450,7 +477,7 @@ std::vector<Probe> build_probes() {
 const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
-      "immigration", "chemistry",
+      "immigration", "chemistry", "domain", "chemistry_stride",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity"};

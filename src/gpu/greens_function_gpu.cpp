@@ -10,6 +10,7 @@
 
 #include "domain.h"
 #include "advection.h"
+#include <algorithm>
 #include <vector>
 #include <cmath>
 
@@ -22,7 +23,9 @@ gpu::DomainParams make_domain_params(const Domain& domain) {
   p.nx = domain.nx();
   p.ny = domain.ny();
   p.nz = domain.nz();
-  p.dx = domain.dx();
+  p.dx_x = domain.dx_x();
+  p.dx_y = domain.dx_y();
+  p.dx_z = domain.dx_z();
   p.lo[0] = domain.lo()[0];
   p.lo[1] = domain.lo()[1];
   p.lo[2] = domain.lo()[2];
@@ -94,13 +97,19 @@ bool launch_superpose(const Domain& domain,
   d_sz.upload(sz);
   d_params.upload(sp);
 
-  const auto span = static_cast<int>(std::ceil(cutoff_radius / domain.dx()));
+  const auto span_x = static_cast<int>(
+      std::ceil(cutoff_radius / domain.dx_x()));
+  const auto span_y = static_cast<int>(
+      std::ceil(cutoff_radius / domain.dx_y()));
+  const auto span_z = static_cast<int>(
+      std::ceil(cutoff_radius / domain.dx_z()));
   const auto dom = make_domain_params(domain);
   const auto adv_p = make_advection_params(adv);
 
   gpu::launch_superpose_kernel(
       d_sx.data(), d_sy.data(), d_sz.data(), d_params.data(), d_grid,
-      dom, adv_p, static_cast<int>(sources.size()), span, gpu_compute_stream());
+      dom, adv_p, static_cast<int>(sources.size()), span_x, span_y, span_z,
+      gpu_compute_stream());
 
   gpu_sync_compute();
   gpu_check_error("superpose_kernel");

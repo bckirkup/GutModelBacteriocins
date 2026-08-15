@@ -605,7 +605,7 @@ void QSSASolver::solve_nutrient_depletion(
 
   Int i_oxygen = chem.find(species::OXYGEN);
 
-  const Real cell_vol = domain_->dx() * domain_->dx() * domain_->dx();
+  const Real cell_vol = domain_->cell_volume();
 
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(dynamic)

@@ -454,6 +454,18 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   throw SimulationError("checkpoint restart requires HDF5 support");
 #else
   HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(h5_file, step);
+  if (snap.metadata.has_grid_spacing) {
+    const Vec3 expected = {
+        domain_.dx_x(), domain_.dx_y(), domain_.dx_z()};
+    for (Int axis = 0; axis < 3; ++axis) {
+      if (std::abs(snap.metadata.grid_spacing[static_cast<size_t>(axis)]
+                   - expected[static_cast<size_t>(axis)])
+          > 1.0e-12 * std::max(1.0, expected[static_cast<size_t>(axis)])) {
+        throw SimulationError(
+            "checkpoint chemistry spacing does not match requested stride");
+      }
+    }
+  }
   apply_checkpoint_snapshot(snap);
   dysbiosis_.configure(cfg_.dysbiosis_threshold,
                        cfg_.dysbiosis_sampling_interval,
@@ -1030,7 +1042,8 @@ void Simulation::step(Real dt) {
     gpu::launch_grid_coupling_kernel(
         gpu_.agents.x(), gpu_.agents.y(), gpu_.agents.z(),
         gpu_.agents.grid_cell(), gpu_.agents.state(),
-        domain_.lo()[0], domain_.lo()[1], domain_.lo()[2], domain_.dx(),
+        domain_.lo()[0], domain_.lo()[1], domain_.lo()[2],
+        domain_.dx_x(), domain_.dx_y(), domain_.dx_z(),
         domain_.nx(), domain_.ny(), domain_.nz(),
         agents_.size(), gpu_compute_stream());
     gpu_sync_compute();

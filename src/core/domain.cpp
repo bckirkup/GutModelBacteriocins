@@ -4,8 +4,10 @@
 
 #include "domain.h"
 #include "error.h"
-#include <cmath>
 #include <algorithm>
+#include <array>
+#include <cmath>
+#include <string>
 
 namespace gutibm {
 
@@ -14,12 +16,32 @@ void Domain::init(const DomainConfig& cfg) {
   lo_       = cfg.lo;
   hi_       = cfg.hi;
   periodic_ = cfg.periodic;
-  dx_       = cfg.grid_dx;
+  for (Int axis = 0; axis < 3; ++axis) {
+    if (cfg.chemistry_stride[static_cast<size_t>(axis)] < 1) {
+      throw ConfigError("chemistry stride must be at least 1 in every axis");
+    }
+    dx_[static_cast<size_t>(axis)] =
+        cfg.grid_dx * cfg.chemistry_stride[static_cast<size_t>(axis)];
+  }
 
   Vec3 sz = size();
-  nx_ = std::max(1, static_cast<Int>(std::round(sz[0] / dx_)));
-  ny_ = std::max(1, static_cast<Int>(std::round(sz[1] / dx_)));
-  nz_ = std::max(1, static_cast<Int>(std::round(sz[2] / dx_)));
+  const std::array<const char*, 3> axis_names = {"x", "y", "z"};
+  Int base_cells[3] = {};
+  for (Int axis = 0; axis < 3; ++axis) {
+    base_cells[axis] = std::max<Int>(1, static_cast<Int>(
+        std::round(sz[static_cast<size_t>(axis)] / cfg.grid_dx)));
+    const Int stride = cfg.chemistry_stride[static_cast<size_t>(axis)];
+    if (base_cells[axis] % stride != 0) {
+      throw ConfigError(
+          "chemistry stride for axis " + std::string(axis_names[axis])
+          + " does not divide base cell count "
+          + std::to_string(base_cells[axis]) + " (stride "
+          + std::to_string(stride) + ")");
+    }
+  }
+  nx_ = base_cells[0] / cfg.chemistry_stride[0];
+  ny_ = base_cells[1] / cfg.chemistry_stride[1];
+  nz_ = base_cells[2] / cfg.chemistry_stride[2];
   grid_halo_width_ = std::max(0, cfg.grid_halo_width);
 
 #ifdef GUTIBM_MPI
@@ -37,9 +59,9 @@ void Domain::init(const DomainConfig& cfg) {
 }
 
 void Domain::pos_to_grid(const Vec3& pos, Int& ix, Int& iy, Int& iz) const {
-  ix = static_cast<Int>(std::floor((pos[0] - lo_[0]) / dx_));
-  iy = static_cast<Int>(std::floor((pos[1] - lo_[1]) / dx_));
-  iz = static_cast<Int>(std::floor((pos[2] - lo_[2]) / dx_));
+  ix = static_cast<Int>(std::floor((pos[0] - lo_[0]) / dx_[0]));
+  iy = static_cast<Int>(std::floor((pos[1] - lo_[1]) / dx_[1]));
+  iz = static_cast<Int>(std::floor((pos[2] - lo_[2]) / dx_[2]));
   ix = std::clamp(ix, 0, nx_ - 1);
   iy = std::clamp(iy, 0, ny_ - 1);
   iz = std::clamp(iz, 0, nz_ - 1);
@@ -47,9 +69,9 @@ void Domain::pos_to_grid(const Vec3& pos, Int& ix, Int& iy, Int& iz) const {
 
 Vec3 Domain::cell_center(Int ix, Int iy, Int iz) const {
   return {
-    lo_[0] + (ix + 0.5) * dx_,
-    lo_[1] + (iy + 0.5) * dx_,
-    lo_[2] + (iz + 0.5) * dx_
+    lo_[0] + (ix + 0.5) * dx_[0],
+    lo_[1] + (iy + 0.5) * dx_[1],
+    lo_[2] + (iz + 0.5) * dx_[2]
   };
 }
 
@@ -88,8 +110,8 @@ void Domain::decompose() {
   Real global_lo = lo_[axis];
   Real global_hi = hi_[axis];
   const auto grid_range = grid_x_range_for_rank(nx_, nprocs_, rank_);
-  local_lo_x_ = global_lo + grid_range.first * dx_;
-  local_hi_x_ = global_lo + grid_range.second * dx_;
+  local_lo_x_ = global_lo + grid_range.first * dx_[0];
+  local_hi_x_ = global_lo + grid_range.second * dx_[0];
   if (rank_ == nprocs_ - 1) local_hi_x_ = global_hi;
 
   ghost_width_ = cfg_.ghost_width;
@@ -192,7 +214,8 @@ Int Domain::owner_rank(const Vec3& pos) const {
   if (nprocs_ <= 1) return 0;
   Int axis = cfg_.mpi_decomp_axis;
   Real global_lo = lo_[axis];
-  auto ix = static_cast<Int>(std::floor((pos[axis] - global_lo) / dx_));
+  auto ix = static_cast<Int>(
+      std::floor((pos[axis] - global_lo) / dx_[static_cast<size_t>(axis)]));
   ix = std::clamp(ix, 0, nx_ - 1);
   return grid_owner_rank_for_cell(nx_, nprocs_, ix);
 }

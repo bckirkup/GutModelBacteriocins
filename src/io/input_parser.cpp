@@ -103,6 +103,15 @@ Int parse_config_int(std::string_view key, const std::string& val) {
   }
 }
 
+Int parse_positive_config_int(std::string_view key, const std::string& val) {
+  const Int result = parse_config_int(key, val);
+  if (result < 1) {
+    throw ConfigError("config key '" + std::string(key)
+                      + "' must be an integer at least 1");
+  }
+  return result;
+}
+
 }  // namespace
 
 SimulationConfig InputParser::default_config() {
@@ -281,6 +290,21 @@ bool apply_time_key(SimulationConfig& cfg, std::string_view key, const std::stri
 
 bool apply_domain_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "grid_dx")              { cfg.domain.grid_dx = parse_config_real(key, val); return true; }
+  if (key == "chemistry_stride_x" || key == "domain.chemistry_stride_x"
+      || key == "domain.chemistry_stride.x") {
+    cfg.domain.chemistry_stride[0] = parse_positive_config_int(key, val);
+    return true;
+  }
+  if (key == "chemistry_stride_y" || key == "domain.chemistry_stride_y"
+      || key == "domain.chemistry_stride.y") {
+    cfg.domain.chemistry_stride[1] = parse_positive_config_int(key, val);
+    return true;
+  }
+  if (key == "chemistry_stride_z" || key == "domain.chemistry_stride_z"
+      || key == "domain.chemistry_stride.z") {
+    cfg.domain.chemistry_stride[2] = parse_positive_config_int(key, val);
+    return true;
+  }
   if (key == "domain_x")             { cfg.domain.hi[0] = parse_config_real(key, val); return true; }
   if (key == "domain_y")             { cfg.domain.hi[1] = parse_config_real(key, val); return true; }
   if (key == "domain_z")             { cfg.domain.hi[2] = parse_config_real(key, val); return true; }

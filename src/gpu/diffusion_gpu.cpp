@@ -85,7 +85,8 @@ PeriodicPcrCoeffs build_periodic_coeffs(int n, double alpha) {
 
 bool species_diffusion_eligible(const ChemicalSpec& spec, Real dt,
                                 const Domain& domain) {
-  return dt > 0.0 && domain.dx() > 0.0 && spec.diffusion_enabled
+  return dt > 0.0 && domain.dx_x() > 0.0 && domain.dx_y() > 0.0
+      && domain.dx_z() > 0.0 && spec.diffusion_enabled
       && spec.diff_coeff > 0.0 && spec.retardation > 0.0;
 }
 #endif
@@ -104,8 +105,13 @@ bool apply_species_diffusion_on_device(const Domain& domain,
   const int ncells = storage_nx * domain.ny() * domain.nz();
   if (ncells <= 0 || d_conc == nullptr) return false;
 
-  const Real dx2 = domain.dx() * domain.dx();
-  const Real alpha = (spec.diff_coeff / spec.retardation) * dt / dx2;
+  const Real effective_diffusion = spec.diff_coeff / spec.retardation;
+  const Real alpha_x = effective_diffusion * dt
+      / (domain.dx_x() * domain.dx_x());
+  const Real alpha_y = effective_diffusion * dt
+      / (domain.dx_y() * domain.dx_y());
+  const Real alpha_z = effective_diffusion * dt
+      / (domain.dx_z() * domain.dx_z());
   const bool preserve_gradient =
       spec.z_gradient_enabled && spec.z_gradient_lambda > 0.0;
   double diffusion_boundary = spec.boundary_conc;
@@ -113,14 +119,14 @@ bool apply_species_diffusion_on_device(const Domain& domain,
   if (phase != DiffusionPhase::SlabPostX) {
     gpu::launch_set_epithelial_boundary(
         d_conc, nx, ny, owned_x_begin, owned_x_end, spec.boundary_conc,
-        domain.dx() * domain.dx() * domain.dx(), d_injected_amount,
+        domain.cell_volume(), d_injected_amount,
         gpu_compute_stream());
     if (preserve_gradient) {
       gpu::launch_set_luminal_neumann(
           d_conc, nx, ny, nz, owned_x_begin, owned_x_end,
           gpu_compute_stream());
       gpu::launch_shift_z_gradient(
-          d_conc, nx, ny, nz, owned_x_begin, owned_x_end, domain.dx(),
+          d_conc, nx, ny, nz, owned_x_begin, owned_x_end, domain.dx_z(),
           spec.initial_conc, spec.z_gradient_lambda, spec.boundary_conc, -1.0,
           gpu_compute_stream());
     }
@@ -130,31 +136,31 @@ bool apply_species_diffusion_on_device(const Domain& domain,
   }
   if (preserve_gradient) diffusion_boundary = 0.0;
 
-  const PeriodicPcrCoeffs y_coeffs = build_periodic_coeffs(ny, alpha);
+  const PeriodicPcrCoeffs y_coeffs = build_periodic_coeffs(ny, alpha_y);
   DeviceBuffer<double> d_corr_y;
   d_corr_y.upload(y_coeffs.correction);
 
   if (phase == DiffusionPhase::Replicated) {
     const PeriodicPcrCoeffs x_coeffs =
-        build_periodic_coeffs(domain.nx(), alpha);
+        build_periodic_coeffs(domain.nx(), alpha_x);
     DeviceBuffer<double> d_corr_x;
     d_corr_x.upload(x_coeffs.correction);
     gpu::launch_diffuse_x_periodic(
-        d_conc, nx, ny, nz, alpha, x_coeffs.gamma, x_coeffs.corner,
+        d_conc, nx, ny, nz, alpha_x, x_coeffs.gamma, x_coeffs.corner,
         x_coeffs.denominator, d_corr_x.data(), gpu_compute_stream());
   }
   gpu::launch_diffuse_y_periodic(
-      d_conc, nx, ny, nz, owned_x_begin, owned_x_end, alpha,
+      d_conc, nx, ny, nz, owned_x_begin, owned_x_end, alpha_y,
       y_coeffs.gamma, y_coeffs.corner, y_coeffs.denominator,
       d_corr_y.data(), gpu_compute_stream());
   gpu::launch_diffuse_z_bounded(
-      d_conc, nx, ny, nz, owned_x_begin, owned_x_end, alpha, diffusion_boundary,
-      domain.dx() * domain.dx() * domain.dx(), d_injected_amount,
+      d_conc, nx, ny, nz, owned_x_begin, owned_x_end, alpha_z,
+      diffusion_boundary, domain.cell_volume(), d_injected_amount,
       gpu_compute_stream());
 
   if (preserve_gradient) {
     gpu::launch_shift_z_gradient(
-        d_conc, nx, ny, nz, owned_x_begin, owned_x_end, domain.dx(),
+        d_conc, nx, ny, nz, owned_x_begin, owned_x_end, domain.dx_z(),
         spec.initial_conc,
         spec.z_gradient_lambda, spec.boundary_conc, 1.0, gpu_compute_stream());
     gpu::launch_set_luminal_neumann(

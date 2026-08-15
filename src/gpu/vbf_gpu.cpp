@@ -45,7 +45,9 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   params.global_nx = domain.nx();
   params.ny = domain.ny();
   params.nz = domain.nz();
-  params.dx = domain.dx();
+  params.dx_x = domain.dx_x();
+  params.dx_y = domain.dx_y();
+  params.dx_z = domain.dx_z();
   params.nutrient_sink = cfg.nutrient_sink;
   params.carbon_sink_vmax = cfg.carbon_sink_vmax;
   params.carbon_sink_km = cfg.carbon_sink_km;

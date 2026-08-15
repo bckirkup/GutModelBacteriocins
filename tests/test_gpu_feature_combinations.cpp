@@ -150,6 +150,7 @@ void test_gpu_slab_equivalence_and_accounting() {
   base.chem_env.oxygen.enabled = true;
   base.chem_env.acetate.enabled = true;
   base.chem_env.mucin.enabled = true;
+  base.domain.chemistry_stride = {2, 2, 1};
 
   SimulationConfig cpu_cfg = base;
   cpu_cfg.gpu.enabled = false;
@@ -162,8 +163,10 @@ void test_gpu_slab_equivalence_and_accounting() {
 
   SimulationConfig slab_cfg = base;
   slab_cfg.chemistry_decomposition = "slab";
+  slab_cfg.domain.chemistry_stride = {2, 2, 1};
   slab_cfg.domain.grid_halo_width = static_cast<Int>(
-      std::ceil(slab_cfg.domain.ghost_width / slab_cfg.domain.grid_dx));
+      std::ceil(slab_cfg.domain.ghost_width / (
+          slab_cfg.domain.grid_dx * slab_cfg.domain.chemistry_stride[0])));
   Simulation slab = run_gpu_combo(slab_cfg);
 
   // Device and CPU directional diffusion use the same owned-cell arithmetic;

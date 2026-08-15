@@ -134,8 +134,7 @@ void FixMetabolism::apply_siderophore_chemistry(Real dt) {
       chem.find(species::FERRIC_ENTEROBACTIN);
   if (i_sid < 0 || i_ferric_enterobactin < 0) return;
 
-  const Real cell_volume = sim_.domain().dx() * sim_.domain().dx()
-      * sim_.domain().dx();
+  const Real cell_volume = sim_.domain().cell_volume();
   if (cell_volume <= 0.0) return;
 
   const Int num_cells = chem.ncells();
@@ -457,7 +456,7 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   Int i_iron   = chem.find(species::IRON);
   Int i_acetate = chem.find(species::ACETATE);
 
-  Real cell_vol = sim_.domain().dx() * sim_.domain().dx() * sim_.domain().dx();
+  Real cell_vol = sim_.domain().cell_volume();
 
   if (d_biomass <= 0.0 || dt <= 0.0) return;
 

@@ -18,7 +18,7 @@ __global__ void metabolism_kernel(
     const double* mu_max, const double* km_b12, const double* km_carbon,
     const double* receptor_expr, const double* ligand_affinity,
     const int* bi_loci_count, const double* plasmid_amelioration,
-    int num_agents, double dt, double dx, double cell_density,
+    int num_agents, double dt, double cell_volume, double cell_density,
     double km_iron_primary, double km_iron_iroN, double km_iron_iutA, double km_iron_fiu,
     double maintenance_rate, double metE_penalty, double metE_acetate_max_factor,
     double metE_acetate_km, double eut_max_penalty, double eut_km,
@@ -114,17 +114,16 @@ __global__ void metabolism_kernel(
   age[i] += dt;
 
   if (d_biomass <= 0.0 || dt <= 0.0) return;
-  double cell_vol = dx * dx * dx;
-  if (cell_vol <= 0.0) return;
+  if (cell_volume <= 0.0) return;
 
   if (reac_carbon) {
     const double uptake = d_biomass * yield_carbon;
-    atomicAdd(&reac_carbon[cell], -uptake / (cell_vol * dt));
+    atomicAdd(&reac_carbon[cell], -uptake / (cell_volume * dt));
     if (agent_uptake_totals) atomicAdd(&agent_uptake_totals[0], uptake);
   }
   if (reac_iron) {
     const double uptake = d_biomass * yield_iron;
-    atomicAdd(&reac_iron[cell], -uptake / (cell_vol * dt));
+    atomicAdd(&reac_iron[cell], -uptake / (cell_volume * dt));
     if (agent_uptake_totals) atomicAdd(&agent_uptake_totals[1], uptake);
   }
   // Spec 6 §3 — B12/corrinoid is not depleted (constant bioavailable pool).
@@ -142,7 +141,7 @@ void launch_metabolism_kernel(
     const double* mu_max, const double* km_b12, const double* km_carbon,
     const double* receptor_expr, const double* ligand_affinity,
     const int* bi_loci_count, const double* plasmid_amelioration,
-    int num_agents, double dt, double dx, double cell_density,
+    int num_agents, double dt, double cell_volume, double cell_density,
     double km_iron_primary, double km_iron_iroN, double km_iron_iutA, double km_iron_fiu,
     double maintenance_rate, double metE_penalty, double metE_acetate_max_factor,
     double metE_acetate_km, double eut_max_penalty, double eut_km,
@@ -162,7 +161,7 @@ void launch_metabolism_kernel(
       mu_realized, biomass, radius, mass, age,
       grid_cell, state, mu_max, km_b12, km_carbon,
       receptor_expr, ligand_affinity, bi_loci_count, plasmid_amelioration,
-      num_agents, dt, dx, cell_density,
+      num_agents, dt, cell_volume, cell_density,
       km_iron_primary, km_iron_iroN, km_iron_iutA, km_iron_fiu,
       maintenance_rate, metE_penalty, metE_acetate_max_factor,
       metE_acetate_km, eut_max_penalty, eut_km,

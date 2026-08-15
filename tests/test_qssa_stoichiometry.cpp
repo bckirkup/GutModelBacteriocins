@@ -105,7 +105,7 @@ DepletionResult run_depletion(const Domain& domain, Real q_consumption,
 
   DepletionResult r;
   r.consumption = std::max(mu_realized, 0.0);
-  r.cell_vol = domain.dx() * domain.dx() * domain.dx();
+  r.cell_vol = domain.cell_volume();
   r.reac_o2 = chem.reac(chem.find(species::OXYGEN), proto.grid_cell);
   r.reac_carbon = chem.reac(chem.find(species::CARBON), proto.grid_cell);
   r.reac_iron = chem.reac(chem.find(species::IRON), proto.grid_cell);

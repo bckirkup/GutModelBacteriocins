@@ -62,7 +62,8 @@ __global__ void apply_boundaries_kernel(double* conc, int nx, int ny, int nz,
 
 __global__ void grid_coupling_kernel(
     const double* x, const double* y, const double* z, int* grid_cell,
-    const int* state, double lo0, double lo1, double lo2, double dx,
+    const int* state, double lo0, double lo1, double lo2,
+    double dx_x, double dx_y, double dx_z,
     int nx, int ny, int nz, int num_agents) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
@@ -70,9 +71,9 @@ __global__ void grid_coupling_kernel(
     grid_cell[i] = -1;
     return;
   }
-  int ix = static_cast<int>((x[i] - lo0) / dx);
-  int iy = static_cast<int>((y[i] - lo1) / dx);
-  int iz = static_cast<int>((z[i] - lo2) / dx);
+  int ix = static_cast<int>((x[i] - lo0) / dx_x);
+  int iy = static_cast<int>((y[i] - lo1) / dx_y);
+  int iz = static_cast<int>((z[i] - lo2) / dx_z);
   ix = ix < 0 ? 0 : (ix >= nx ? nx - 1 : ix);
   iy = iy < 0 ? 0 : (iy >= ny ? ny - 1 : iy);
   iz = iz < 0 ? 0 : (iz >= nz ? nz - 1 : iz);
@@ -106,13 +107,15 @@ void launch_apply_boundaries_kernel(double* conc, int nx, int ny, int nz,
 
 void launch_grid_coupling_kernel(
     const double* x, const double* y, const double* z, int* grid_cell,
-    const int* state, double lo0, double lo1, double lo2, double dx,
+    const int* state, double lo0, double lo1, double lo2,
+    double dx_x, double dx_y, double dx_z,
     int nx, int ny, int nz, int num_agents, cudaStream_t stream) {
   if (num_agents <= 0) return;
   int block = 256;
   int grid = (num_agents + block - 1) / block;
   grid_coupling_kernel<<<grid, block, 0, stream>>>(
-      x, y, z, grid_cell, state, lo0, lo1, lo2, dx, nx, ny, nz, num_agents);
+      x, y, z, grid_cell, state, lo0, lo1, lo2, dx_x, dx_y, dx_z,
+      nx, ny, nz, num_agents);
 }
 
 }  // namespace gpu

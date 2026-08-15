@@ -413,6 +413,33 @@ void test_burst_release_tau_must_be_positive() {
   std::cout << "  test_burst_release_tau_must_be_positive: PASSED\n";
 }
 
+void test_chemistry_stride_requires_positive_integer() {
+  for (const std::string value : {"0", "-2", "1.5", "abc"}) {
+    SimulationConfig cfg = InputParser::default_config();
+    bool threw = false;
+    try {
+      (void)InputParser::apply_flat_key(cfg, "chemistry_stride_x", value);
+    } catch (const ConfigError&) {
+      threw = true;
+    }
+    assert(threw);
+  }
+  std::cout << "  test_chemistry_stride_requires_positive_integer: PASSED\n";
+}
+
+void test_json_chemistry_stride_errors_are_not_swallowed() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_bad_chemistry_stride.json";
+  bool threw = false;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+  assert(threw);
+  std::cout << "  test_json_chemistry_stride_errors_are_not_swallowed: PASSED\n";
+}
+
 void test_chemistry_decomposition_rejects_unimplemented_modes() {
   SimulationConfig cfg = InputParser::default_config();
   assert(cfg.chemistry_decomposition == "replicated");
@@ -452,6 +479,8 @@ int main() {
   test_gpu_enabled_fixture();
   test_strict_config_aborts_on_bad_numeric();
   test_burst_release_tau_must_be_positive();
+  test_chemistry_stride_requires_positive_integer();
+  test_json_chemistry_stride_errors_are_not_swallowed();
   test_chemistry_decomposition_rejects_unimplemented_modes();
   std::cout << "All input parser example tests passed.\n";
   return 0;

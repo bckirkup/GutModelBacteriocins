@@ -102,11 +102,11 @@ inline void assert_cell_aligned_slab_contract(const Domain& dom) {
   const auto [grid_begin, grid_end] =
       Domain::grid_x_range_for_rank(nx, nprocs, rank);
   const Real expected_lo =
-      dom.lo()[0] + static_cast<Real>(grid_begin) * dom.dx();
+      dom.lo()[0] + static_cast<Real>(grid_begin) * dom.dx_x();
   const Real expected_hi =
       rank == nprocs - 1
           ? dom.hi()[0]
-          : dom.lo()[0] + static_cast<Real>(grid_end) * dom.dx();
+          : dom.lo()[0] + static_cast<Real>(grid_end) * dom.dx_x();
   const Real boundary_tolerance = 1e-15;
   assert(std::abs(dom.local_lo_x() - expected_lo) < boundary_tolerance);
   assert(std::abs(dom.local_hi_x() - expected_hi) < boundary_tolerance);
@@ -132,7 +132,7 @@ inline void assert_cell_aligned_slab_contract(const Domain& dom) {
            < boundary_tolerance);
   }
   for (const Real boundary : all_local_lo) {
-    const Real scaled_boundary = (boundary - dom.lo()[0]) / dom.dx();
+    const Real scaled_boundary = (boundary - dom.lo()[0]) / dom.dx_x();
     assert(std::abs(scaled_boundary - std::round(scaled_boundary))
            < 1e-12);
   }
