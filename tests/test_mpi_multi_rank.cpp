@@ -15,6 +15,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <format>
 #include <iomanip>
 #include <iostream>
 #include <numbers>
@@ -119,6 +120,7 @@ void set_all_events(Simulation& sim, Int value) {
   events.washout_deaths = value;
   events.boundary_deaths = value;
   events.starvation_deaths = value;
+  events.lysis_deaths = value;
   events.divisions = value;
   events.conjugation_transfers = value;
   events.mutations = value;
@@ -167,14 +169,18 @@ void test_global_event_counter_reduction() {
     assert(read_event(file, prefix + "washout_deaths") == expected);
     assert(read_event(file, prefix + "boundary_deaths") == expected);
     assert(read_event(file, prefix + "starvation_deaths") == expected);
+    assert(read_event(file, prefix + "lysis_deaths") == expected);
     assert(read_event(file, prefix + "divisions") == expected);
     assert(read_event(file, prefix + "conjugation_transfers") == expected);
     assert(read_event(file, prefix + "mutations") == expected);
     assert(read_event(file, prefix + "immigrations") == expected);
     assert(read_event(file, prefix + "cumulative_washout_deaths") == expected);
+    assert(read_event(file, prefix + "cumulative_lysis_deaths") == expected);
     const std::string second_prefix = "summary/step_000002/events/";
     assert(read_event(file, second_prefix + "washout_deaths") == expected);
     assert(read_event(file, second_prefix + "cumulative_washout_deaths")
+           == 2 * expected);
+    assert(read_event(file, second_prefix + "cumulative_lysis_deaths")
            == 2 * expected);
     H5Fclose(file);
     std::cout << "  test_global_event_counter_reduction: PASSED\n";
@@ -187,8 +193,18 @@ void test_population_ledger_closure() {
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   SimulationConfig cfg = make_mpi_config(51002, 160);
-  cfg.time.total_time = cfg.time.bio_dt;
+  cfg.time.total_time = 6.0 * cfg.time.bio_dt;
   cfg.time.output_interval = cfg.time.total_time;
+  cfg.enabled_fixes = {"bacteriocin"};
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
+  cfg.initial_strains[0].plasmids = {"ColE1"};
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+  SimulationConfig::InitialStrain survivor = cfg.initial_strains[0];
+  survivor.plasmids.clear();
+  survivor.count = 80;
+  cfg.initial_strains[0].count = 80;
+  cfg.initial_strains.push_back(survivor);
   cfg.hdf5.enabled = true;
   cfg.hdf5.filename = resolve_shared_test_h5_path(
       "GUTIBM_MPI_LEDGER_H5", "mpi_population_ledger");
@@ -208,23 +224,68 @@ void test_population_ledger_closure() {
     hid_t file = H5Fopen(cfg.hdf5.filename.c_str(), H5F_ACC_RDONLY,
                          H5P_DEFAULT);
     assert(file >= 0);
-    const std::string prefix = "summary/step_000001/events/";
-    const Int divisions = read_event(file, prefix + "divisions");
-    const Int immigrations = read_event(file, prefix + "immigrations");
-    const Int washout = read_event(file, prefix + "washout_deaths");
-    const Int starvation = read_event(file, prefix + "starvation_deaths");
-    const Int colicin = read_event(file, prefix + "colicin_kills");
-    const Int cdi = read_event(file, prefix + "cdi_kills");
-    const Int boundary = read_event(file, prefix + "boundary_deaths");
-    const Int sos = read_event(file, prefix + "sos_inductions");
-    const Int n_total = read_event(
-        file, "summary/step_000001/n_total");
-    const Int ledger = initial + divisions + immigrations
-        - washout - starvation - colicin - cdi - boundary - n_total;
-    assert(ledger >= 0);
-    assert(ledger <= sos);
+    const std::string step_name =
+        std::format("step_{:06}", sim.step_count());
+    const auto ledger = gutibm::test::read_population_ledger(file, step_name);
+    gutibm::test::assert_population_ledger_closure(ledger, initial);
     H5Fclose(file);
-    std::cout << "  test_population_ledger_closure: PASSED\n";
+    std::cout << "  test_population_ledger_closure: PASSED"
+              << " (lysis_deaths=" << ledger.lysis << ")\n";
+  }
+}
+
+void test_bacteriocin_ghost_accounting() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  SimulationConfig cfg = make_mpi_config(51003, 2);
+  cfg.time.total_time = 6.0 * cfg.time.bio_dt;
+  cfg.time.output_interval = cfg.time.total_time;
+  cfg.enabled_fixes = {"bacteriocin"};
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+  cfg.hdf5.enabled = true;
+  cfg.hdf5.filename = resolve_shared_test_h5_path(
+      "GUTIBM_MPI_BACTERIOCIN_GHOST_H5", "mpi_bacteriocin_ghost");
+
+  Simulation sim;
+  sim.init(cfg);
+  while (sim.agents().size() > 0) {
+    sim.agents().remove(sim.agents().size() - 1);
+  }
+  if (rank == 0) {
+    Agent producer = Agent::create_default(
+        sim.agents().next_tag(), 1, {49.5e-6, 50.0e-6, 25.0e-6}, 5.0e-4);
+    const PlasmidEntry* plasmid = PlasmidLibrary::find("ColE1");
+    assert(plasmid != nullptr);
+    producer.genome.bi_loci.push_back(plasmid->cluster);
+    producer.identity.owner_rank = rank;
+    sim.agents().push_back(std::move(producer));
+  } else {
+    Agent survivor = Agent::create_default(
+        sim.agents().next_tag(), 2, {75.0e-6, 50.0e-6, 25.0e-6}, 5.0e-4);
+    survivor.identity.owner_rank = rank;
+    sim.agents().push_back(std::move(survivor));
+  }
+  sim.run();
+
+  if (rank == 0) {
+    hid_t file = H5Fopen(cfg.hdf5.filename.c_str(), H5F_ACC_RDONLY,
+                         H5P_DEFAULT);
+    assert(file >= 0);
+    const std::string step_name =
+        std::format("step_{:06}", sim.step_count());
+    const std::string prefix = "summary/" + step_name + "/events/";
+    const Int sos = read_event(file, prefix + "cumulative_sos_inductions");
+    const Int lysis = read_event(file, prefix + "cumulative_lysis_deaths");
+    assert(sos == 1);
+    assert(lysis == 1);
+    H5Fclose(file);
+    std::cout << "  test_bacteriocin_ghost_accounting: PASSED"
+              << " (sos_inductions=" << sos
+              << ", lysis_deaths=" << lysis << ")\n";
   }
 }
 
@@ -1098,6 +1159,7 @@ int main(int argc, char** argv) {
 #ifdef GUTIBM_HDF5
   test_global_event_counter_reduction();
   test_population_ledger_closure();
+  test_bacteriocin_ghost_accounting();
 #endif
 
   if (rank == 0) {

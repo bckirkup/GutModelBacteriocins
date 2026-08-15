@@ -45,6 +45,7 @@ class IndexSummary:
     boundary_deaths: int
     washout_deaths: int
     colicin_kills: int
+    lysis_deaths: int
     mean_carbon: float
     fingerprint: str
     has_agents_layer: bool
@@ -149,6 +150,7 @@ def summarize_hdf5(path: Path, *, index: int, seed: int | None) -> IndexSummary:
         boundary_deaths=_event_count(final, "boundary_deaths"),
         washout_deaths=_event_count(final, "washout_deaths"),
         colicin_kills=_event_count(final, "colicin_kills"),
+        lysis_deaths=_event_count(final, "lysis_deaths"),
         mean_carbon=float((final.get("chem") or {}).get("mean_carbon", 0.0)),
         fingerprint=_fingerprint(final, seed),
         has_agents_layer=has_agents,
@@ -230,8 +232,8 @@ def qa_array(
 def format_report(report: ArrayQaReport) -> str:
     """Human-readable table for CLI / docs paste."""
     lines = [
-        "index  seed   agents  t_final  boundary  washout  colicin  fingerprint        agents_h5",
-        "-----  -----  ------  -------  --------  -------  -------  -----------------  ---------",
+        "index  seed   agents  t_final  boundary  washout  colicin  lysis  fingerprint        agents_h5",
+        "-----  -----  ------  -------  --------  -------  -------  ------  -----------------  ---------",
     ]
     for row in report.rows:
         seed = "-" if row.seed is None else str(row.seed)
@@ -239,6 +241,7 @@ def format_report(report: ArrayQaReport) -> str:
             f"{row.index:<5d}  {seed:<5s}  {row.final_agents:<6d}  "
             f"{row.final_time_s:<7.0f}  {row.boundary_deaths:<8d}  "
             f"{row.washout_deaths:<7d}  {row.colicin_kills:<7d}  "
+            f"{row.lysis_deaths:<6d}  "
             f"{row.fingerprint:<17s}  {'yes' if row.has_agents_layer else 'no'}"
         )
     lines.append("")

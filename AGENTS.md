@@ -127,6 +127,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **Checkpoint resume mu_max wipe** | Fixed | Closed restarts wrote `mu_realized` but restore set `mu_max = mu_realized`. After Spot resume from a stressed snapshot (`mu≈5e-6`), growth could not recover and combinatorial washout killed the population in one step. Now persist/restore `/mu_max` (+ `/in_crypt`); legacy files fall back to strain `mu_max`. `init_from_checkpoint` also prints `GPU: ON` so `REQUIRE_GPU=1` no longer false-fails clean resumes. |
 | **MPI ghost reaction/uptake double count** | Fixed | Ghost agents are marked explicitly and excluded from owner-committed reaction writes, uptake accounting, oxygen depletion, and siderophore biomass aggregation before rank reductions. |
 | **MPI ghost division duplication** | Fixed | Ghost agents are excluded from division, so only the owning rank creates daughters before migration. |
+| **Uncounted SOS/phage lysis deaths** | Fixed | `lysis_deaths` records actual delayed SOS/phage deaths separately from induction counters and participates in global interval/cumulative event accounting and population closure. |
 | **Cross-boundary HGT to ghost recipient** | Open | Plasmid transfer from a local donor to a ghost recipient is lost when ghosts are cleared, under-counting cross-boundary conjugation. |
 
 When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colicin_E1` aliases still resolve) and assert `agent.genome.bi_loci.size() > 0`.

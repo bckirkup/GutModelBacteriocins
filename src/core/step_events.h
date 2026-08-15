@@ -38,6 +38,7 @@ struct StepEvents {
   Int washout_deaths = 0;
   Int boundary_deaths = 0;
   Int starvation_deaths = 0;
+  Int lysis_deaths = 0;
   Int divisions = 0;
   Int conjugation_transfers = 0;
   Int mutations = 0;
@@ -51,6 +52,7 @@ struct StepEvents {
     washout_deaths += other.washout_deaths;
     boundary_deaths += other.boundary_deaths;
     starvation_deaths += other.starvation_deaths;
+    lysis_deaths += other.lysis_deaths;
     divisions += other.divisions;
     conjugation_transfers += other.conjugation_transfers;
     mutations += other.mutations;

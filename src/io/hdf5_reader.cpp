@@ -288,6 +288,7 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   read_event("washout_deaths", meta.interval_events.washout_deaths);
   read_event("boundary_deaths", meta.interval_events.boundary_deaths);
   read_event("starvation_deaths", meta.interval_events.starvation_deaths);
+  read_event("lysis_deaths", meta.interval_events.lysis_deaths);
   read_event("divisions", meta.interval_events.divisions);
   read_event("conjugation_transfers", meta.interval_events.conjugation_transfers);
   read_event("mutations", meta.interval_events.mutations);
@@ -299,6 +300,7 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   read_event("cumulative_washout_deaths", meta.cumulative_events.washout_deaths);
   read_event("cumulative_boundary_deaths", meta.cumulative_events.boundary_deaths);
   read_event("cumulative_starvation_deaths", meta.cumulative_events.starvation_deaths);
+  read_event("cumulative_lysis_deaths", meta.cumulative_events.lysis_deaths);
   read_event("cumulative_divisions", meta.cumulative_events.divisions);
   read_event("cumulative_conjugation_transfers",
              meta.cumulative_events.conjugation_transfers);

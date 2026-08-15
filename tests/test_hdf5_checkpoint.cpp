@@ -14,6 +14,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
+#include <format>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -491,6 +492,41 @@ void test_checkpoint_fork_immigration(const std::string& filename) {
   std::cout << "  test_checkpoint_fork_immigration: PASSED\n";
 }
 
+void test_lysis_events_checkpoint_restore(const std::string& filename) {
+  SimulationConfig cfg = make_checkpoint_config(filename);
+  cfg.time.total_time = 360.0;
+  cfg.time.output_interval = 360.0;
+  cfg.hdf5.schedule.agents = 1;
+  cfg.hdf5.schedule.grid = 1;
+  cfg.hdf5.schedule.lineage = 1;
+  cfg.hdf5.schedule.genome = 1;
+  cfg.enabled_fixes = {"bacteriocin"};
+  cfg.fixes.bacteriocin.sos_basal_rate = 1.0;
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+
+  Simulation sim;
+  sim.init(cfg);
+  sim.run();
+
+  const std::string step_name =
+      std::format("step_{:06}", sim.step_count());
+  const HDF5CheckpointSnapshot snapshot =
+      HDF5Reader::load_snapshot(filename, step_name);
+  assert(snapshot.metadata.cumulative_events.lysis_deaths > 0);
+
+  SimulationConfig resume_cfg = cfg;
+  resume_cfg.hdf5.enabled = false;
+  resume_cfg.initial_strains.clear();
+  Simulation resumed;
+  resumed.init_from_checkpoint(resume_cfg, filename, step_name);
+  assert(resumed.cumulative_events().lysis_deaths
+         == snapshot.metadata.cumulative_events.lysis_deaths);
+  std::cout << "  test_lysis_events_checkpoint_restore: PASSED"
+            << " (lysis_deaths="
+            << snapshot.metadata.cumulative_events.lysis_deaths << ")\n";
+}
+
 #endif  // GUTIBM_HDF5
 
 }  // namespace
@@ -542,6 +578,10 @@ int main(int argc, char** argv) {
       resolve_shared_test_h5_path("GUTIBM_CHECKPOINT_IMMIGRATION_H5",
                                   "checkpoint_immigration");
   test_checkpoint_fork_immigration(immigration_filename);
+  const std::string lysis_filename =
+      resolve_shared_test_h5_path("GUTIBM_CHECKPOINT_LYSIS_H5",
+                                  "checkpoint_lysis");
+  test_lysis_events_checkpoint_restore(lysis_filename);
   if (rank == 0) {
     std::cout << "  test_hdf5_reader_api: PASSED\n";
     std::cout << "  test_checkpoint_restart: PASSED\n";
@@ -549,6 +589,7 @@ int main(int argc, char** argv) {
     std::cout << "  test_toxin_lumping_checkpoint_mismatch: PASSED\n";
     std::cout << "  test_species_subset_checkpoint_mismatch: PASSED\n";
     std::cout << "  test_slab_checkpoint_matches_uninterrupted: PASSED\n";
+    std::cout << "  test_lysis_events_checkpoint_restore: PASSED\n";
     std::cout << "All HDF5 checkpoint tests passed.\n";
   }
 #endif

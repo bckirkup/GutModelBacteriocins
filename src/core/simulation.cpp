@@ -606,7 +606,7 @@ void Simulation::prepare_step_events_for_summary() {
   event_ledger_.summary_events = event_ledger_.step_events;
 #ifdef GUTIBM_MPI
   if (domain_.nprocs() > 1) {
-    std::array<Int, 11> local = {
+    std::array<Int, 12> local = {
         event_ledger_.step_events.sos_inductions,
         event_ledger_.step_events.phage_inductions,
         event_ledger_.step_events.colicin_kills,
@@ -614,16 +614,17 @@ void Simulation::prepare_step_events_for_summary() {
         event_ledger_.step_events.washout_deaths,
         event_ledger_.step_events.boundary_deaths,
         event_ledger_.step_events.starvation_deaths,
+        event_ledger_.step_events.lysis_deaths,
         event_ledger_.step_events.divisions,
         event_ledger_.step_events.conjugation_transfers,
         event_ledger_.step_events.mutations,
         event_ledger_.step_events.immigrations};
-    std::array<Int, 11> global{};
+    std::array<Int, 12> global{};
     MPI_Allreduce(local.data(), global.data(), static_cast<int>(local.size()),
                   MPI_INT, MPI_SUM, MPI_COMM_WORLD);
     event_ledger_.summary_events = {
         global[0], global[1], global[2], global[3], global[4], global[5],
-        global[6], global[7], global[8], global[9], global[10]};
+        global[6], global[7], global[8], global[9], global[10], global[11]};
   }
 #endif
 }

@@ -224,7 +224,9 @@ p_sos = 1 - exp(-rate_total * dt)
   In lumped mode it reads the total `bacteriocin_lumped` burden, so toxin
   targeting other receptors can also drive SOS/ROS cross-induction. This is an
   explicit modelling cost of lumping.
-- After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`
+- After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`.
+  The event ledger records the resulting death as `lysis_deaths`; this is
+  separate from the `sos_inductions` and `phage_inductions` counters.
 
 ### b) Phage-mediated lysis (Group B colicins)
 
@@ -235,6 +237,8 @@ rate_per_s = phage_induction_rate / (ln(2) / mu_realized)
 ```
 
 On induction: `sos_timer = 60 s` (shorter lytic cycle), then burst release.
+The resulting death is included in `lysis_deaths`, while induction remains
+counted separately as `phage_inductions`.
 
 ### c) Continuous microcin secretion
 
@@ -579,6 +583,8 @@ After the physics module (advection + mechanics), agents that have moved past th
 ### Global Statistics
 `MPI_Allreduce` aggregates per-rank counts and growth rate sums to produce global agent count and mean growth rate. These are used for output and lineage tracking.
 HDF5 summary interval and cumulative event counters are likewise globally reduced once per summary, so they describe the same global population as `n_total`.
+Death-channel counters include `lysis_deaths` for actual SOS/phage lysis deaths;
+induction counters are not death counts.
 
 ### HDF5 Parallel I/O
 When `hdf5.parallel = true`, the file is opened with `H5Pset_fapl_mpio` and agent data is written using collective hyperslab operations — each rank writes its local agents at a computed offset. In slab chemistry mode, all ranks pack owned x-cells for grid output and rank 0 assembles the global datasets; halo planes are never written. Checkpoint/restart restores owned global cells and refreshes concentration halos. The GPU mirror remains unsupported with slab chemistry.

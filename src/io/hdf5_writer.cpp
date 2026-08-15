@@ -742,6 +742,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_event("washout_deaths", events.washout_deaths);
   write_event("boundary_deaths", events.boundary_deaths);
   write_event("starvation_deaths", events.starvation_deaths);
+  write_event("lysis_deaths", events.lysis_deaths);
   write_event("divisions", events.divisions);
   write_event("conjugation_transfers", events.conjugation_transfers);
   write_event("mutations", events.mutations);
@@ -761,6 +762,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_cumulative_event("washout_deaths", cumulative.washout_deaths);
   write_cumulative_event("boundary_deaths", cumulative.boundary_deaths);
   write_cumulative_event("starvation_deaths", cumulative.starvation_deaths);
+  write_cumulative_event("lysis_deaths", cumulative.lysis_deaths);
   write_cumulative_event("divisions", cumulative.divisions);
   write_cumulative_event("conjugation_transfers", cumulative.conjugation_transfers);
   write_cumulative_event("mutations", cumulative.mutations);

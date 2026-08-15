@@ -170,6 +170,52 @@ inline T hdf5_read_scalar(hid_t file, const std::string& path, hid_t h5_type) {
   return data[0];
 }
 
+struct PopulationLedger {
+  Int divisions;
+  Int immigrations;
+  Int washout;
+  Int starvation;
+  Int colicin;
+  Int cdi;
+  Int boundary;
+  Int lysis;
+  Int n_total;
+};
+
+inline PopulationLedger read_population_ledger(hid_t file,
+                                               const std::string& step) {
+  const std::string prefix = "summary/" + step + "/events/";
+  return {
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_divisions",
+                            H5T_NATIVE_INT32),
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_immigrations",
+                            H5T_NATIVE_INT32),
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_washout_deaths",
+                            H5T_NATIVE_INT32),
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_starvation_deaths",
+                            H5T_NATIVE_INT32),
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_colicin_kills",
+                            H5T_NATIVE_INT32),
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_cdi_kills",
+                            H5T_NATIVE_INT32),
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_boundary_deaths",
+                            H5T_NATIVE_INT32),
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_lysis_deaths",
+                            H5T_NATIVE_INT32),
+      hdf5_read_scalar<Int>(file, "summary/" + step + "/n_total",
+                            H5T_NATIVE_INT32),
+  };
+}
+
+inline void assert_population_ledger_closure(const PopulationLedger& ledger,
+                                             Int initial) {
+  const Int expected_final = initial + ledger.divisions + ledger.immigrations
+      - ledger.washout - ledger.starvation - ledger.colicin - ledger.cdi
+      - ledger.boundary - ledger.lysis;
+  assert(ledger.n_total == expected_final);
+  assert(ledger.lysis > 0);
+}
+
 inline std::vector<AgentSnapshot> read_agent_snapshots(hid_t file,
                                                        const std::string& step) {
   const std::string prefix = "agents/" + step + "/";
