@@ -28,6 +28,7 @@
 #include <cstring>
 #include <numeric>
 #include <iomanip>
+#include <set>
 #include "error.h"
 #include <utility>
 #ifdef GUTIBM_OPENMP
@@ -120,6 +121,143 @@ void validate_lumped_toxin_species(const SimulationConfig& cfg,
   }
 }
 
+bool fix_enabled(const SimulationConfig& cfg, std::string_view name) {
+  if (std::find(cfg.disabled_fixes.begin(),
+                cfg.disabled_fixes.end(), name)
+      != cfg.disabled_fixes.end()) {
+    return false;
+  }
+  return cfg.enabled_fixes.empty()
+      || std::find(cfg.enabled_fixes.begin(), cfg.enabled_fixes.end(), name)
+          != cfg.enabled_fixes.end();
+}
+
+void require_species(const ChemicalField& chem,
+                     std::string_view mechanism,
+                     const char* name,
+                     std::string_view enabling_key) {
+  if (chem.find(name) >= 0) return;
+  throw ConfigError(
+      "mechanism '" + std::string(mechanism) + "' requires species '" + name
+      + "'; enable " + std::string(enabling_key)
+      + " or repair chemistry.species_subset");
+}
+
+void validate_required_species(const SimulationConfig& cfg,
+                               const ChemicalField& chem) {
+  if (fix_enabled(cfg, "metabolism")) {
+    require_species(chem, "fix_metabolism", species::CARBON,
+                    "fixes.metabolism");
+    if (cfg.fixes.metabolism.iron_uptake_enabled) {
+      require_species(chem, "fix_metabolism", species::IRON,
+                      "fixes.metabolism.iron_uptake_enabled");
+    }
+    if (cfg.fixes.metabolism.b12_uptake_enabled) {
+      require_species(chem, "fix_metabolism", species::B12,
+                      "fixes.metabolism.b12_uptake_enabled");
+    }
+    if (cfg.chem_env.oxygen.enabled) {
+      require_species(chem, "fix_metabolism", species::OXYGEN,
+                      "oxygen.enabled");
+    }
+    if (cfg.chem_env.acetate.enabled) {
+      require_species(chem, "fix_metabolism", species::ACETATE,
+                      "acetate.enabled");
+    }
+    if (cfg.fixes.metabolism.eut_enabled) {
+      require_species(chem, "fix_metabolism", species::ETHANOLAMINE,
+                      "fixes.metabolism.eut_enabled");
+    }
+    if (cfg.chem_env.siderophore.enabled) {
+      require_species(chem, "fix_metabolism", species::SIDEROPHORE,
+                      "siderophore.enabled");
+      require_species(chem, "fix_metabolism",
+                      species::FERRIC_ENTEROBACTIN, "siderophore.enabled");
+      require_species(chem, "fix_metabolism", species::IRON,
+                      "siderophore.enabled");
+    }
+  }
+
+  if (fix_enabled(cfg, "receptor")) {
+    require_species(chem, "fix_receptor", species::B12, "fixes.receptor");
+    require_species(chem, "fix_receptor",
+                    species::FERRIC_ENTEROBACTIN, "fixes.receptor");
+    if (cfg.chem_env.ferrichrome.enabled) {
+      require_species(chem, "fix_receptor", species::FERRICHROME,
+                      "ferrichrome.enabled");
+    }
+    for (ReceptorType target : {ReceptorType::BtuB, ReceptorType::FepA,
+                                ReceptorType::CirA, ReceptorType::FhuA}) {
+      require_species(chem, "fix_receptor",
+                      species::bacteriocin_species_for(
+                          target, cfg.qssa.toxin_lumping == "lumped"),
+                      "fixes.receptor");
+    }
+  }
+
+  if (fix_enabled(cfg, "bacteriocin")) {
+    for (ReceptorType target : {ReceptorType::BtuB, ReceptorType::FepA,
+                                ReceptorType::CirA, ReceptorType::FhuA}) {
+      require_species(chem, "fix_bacteriocin",
+                      species::bacteriocin_species_for(
+                          target, cfg.qssa.toxin_lumping == "lumped"),
+                      "fixes.bacteriocin");
+    }
+  }
+
+  if (fix_enabled(cfg, "motility") && cfg.cell_bio.motility.enabled) {
+    require_species(chem, "fix_motility", species::CARBON,
+                    "motility.enabled");
+    if (cfg.chem_env.oxygen.enabled
+        && cfg.cell_bio.motility.aerotaxis_enabled) {
+      require_species(chem, "fix_motility", species::OXYGEN,
+                      "oxygen.enabled + motility.aerotaxis_enabled");
+    }
+    if (cfg.cell_bio.motility.mucin_drag_enabled) {
+      require_species(chem, "fix_motility", species::MUCIN,
+                      "mucin.enabled + motility.mucin_drag_enabled");
+    }
+    if (cfg.quorum_sensing.enabled
+        && cfg.quorum_sensing.ai2_chemotaxis_enabled) {
+      require_species(chem, "fix_motility", species::AI2,
+                      "quorum_sensing.ai2_chemotaxis_enabled");
+    }
+  }
+
+  if (fix_enabled(cfg, "quorum_sensing") && cfg.quorum_sensing.enabled) {
+    require_species(chem, "fix_quorum_sensing", species::AI2,
+                    "quorum_sensing.enabled");
+  }
+
+  const bool vbf_carbon_enabled =
+      cfg.vbf.mucin_liberation > 0.0
+      || cfg.vbf.carbon_sink_vmax > 0.0
+      || cfg.vbf.use_dynamic_mucin;
+  if (vbf_carbon_enabled) {
+    require_species(chem, "VBF", species::CARBON,
+                    "vbf.mucin_liberation or vbf.carbon_sink_vmax");
+  }
+  if (cfg.vbf.nutrient_sink > 0.0) {
+    require_species(chem, "VBF", species::IRON, "vbf.nutrient_sink");
+  }
+  if (cfg.chem_env.oxygen.enabled && cfg.chem_env.oxygen.vbf_sink > 0.0) {
+    require_species(chem, "VBF", species::OXYGEN, "oxygen.vbf_sink");
+  }
+  if (cfg.chem_env.acetate.enabled
+      && (cfg.chem_env.acetate.vbf_production > 0.0
+          || cfg.chem_env.acetate.vbf_consumption > 0.0
+          || cfg.chem_env.acetate.epithelial_uptake > 0.0)) {
+    require_species(chem, "VBF", species::ACETATE,
+                    "acetate.vbf_production / acetate.vbf_consumption");
+  }
+  if (cfg.chem_env.mucin.enabled
+      && (cfg.chem_env.mucin.secretion_rate > 0.0
+          || cfg.vbf.use_dynamic_mucin)) {
+    require_species(chem, "VBF", species::MUCIN,
+                    "mucin.enabled / vbf.use_dynamic_mucin");
+  }
+}
+
 void validate_checkpoint_toxin_species(
     const SimulationConfig& cfg,
     const HDF5CheckpointSnapshot& snap) {
@@ -139,6 +277,23 @@ void validate_checkpoint_toxin_species(
   if (cfg.qssa.toxin_lumping != "lumped" && (has_lumped || !has_receptor)) {
     throw ConfigError(
         "checkpoint bacteriocin species do not match toxin_lumping=per_receptor");
+  }
+}
+
+void validate_checkpoint_species_set(
+    const SimulationConfig& cfg,
+    const HDF5CheckpointSnapshot& snap) {
+  std::set<std::string, std::less<>> expected;
+  for (const auto& spec : cfg.chemicals) expected.insert(spec.name);
+  std::set<std::string, std::less<>> actual;
+  for (const auto& [name, values] : snap.grid.species) {
+    (void)values;
+    actual.insert(name);
+  }
+  if (expected != actual) {
+    throw ConfigError(
+        "checkpoint chemical species set does not match current "
+        "chemistry.species_subset");
   }
 }
 
@@ -324,6 +479,11 @@ void Simulation::init(const SimulationConfig& cfg) {
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
   InputParser::finalize_config(cfg_);
+  if (cfg_.gpu.enabled && cfg_.species_subset != "full") {
+    throw ConfigError(
+        "gpu_enabled=true is not supported with "
+        "chemistry.species_subset != full");
+  }
   immigration_.validate(cfg_.immigration,
                         static_cast<Int>(cfg_.initial_strains.size()));
   rng_.seed(cfg_.seed);
@@ -337,6 +497,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   // Chemical fields
   chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
   validate_lumped_toxin_species(cfg_, chem_);
+  validate_required_species(cfg_, chem_);
 
   // Advection
   advection_.init(cfg.advection, domain_);
@@ -367,7 +528,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   }
 
   // Register biological fixes via plugin registry
-  fixes_ = FixRegistry::create_all(*this, cfg);
+  fixes_ = FixRegistry::create_all(*this, cfg_);
 
   // Initialize fixes
   for (const auto& fix : fixes_) {
@@ -419,7 +580,15 @@ void Simulation::init(const SimulationConfig& cfg) {
               << "  Global density: "
               << global_density_cells_per_mL(domain_, mpi_ghost_.stats.global_agent_count)
               << " cells/mL\n"
-              << "  Chemical species: " << chem_.num_species() << "\n";
+              << "  Chemical species: " << chem_.num_species() << "\n"
+              << "  Chemistry species subset: " << cfg_.species_subset << "\n";
+    if (!cfg_.disabled_mechanisms.empty()) {
+      std::cout << "  Disabled mechanisms:";
+      for (const auto& mechanism : cfg_.disabled_mechanisms) {
+        std::cout << " " << mechanism;
+      }
+      std::cout << "\n";
+    }
     const std::string adaptive_dt_status = cfg.adaptive_dt.enabled
         ? std::format(" [{}s, {}s]", cfg.adaptive_dt.min, cfg.adaptive_dt.max)
         : "";
@@ -462,6 +631,11 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
   InputParser::finalize_config(cfg_);
+  if (cfg_.gpu.enabled && cfg_.species_subset != "full") {
+    throw ConfigError(
+        "gpu_enabled=true is not supported with "
+        "chemistry.species_subset != full");
+  }
   immigration_.validate(cfg_.immigration,
                         static_cast<Int>(cfg_.initial_strains.size()));
   rng_.seed(cfg_.seed);
@@ -471,12 +645,13 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   reject_unsupported_slab_surfaces(cfg_, domain_);
   chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
   validate_lumped_toxin_species(cfg_, chem_);
+  validate_required_species(cfg_, chem_);
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
   qssa_.init(cfg.qssa, domain_, advection_);
   lineage_.init(cfg.time.output_interval);
   hdf5_.init(cfg.hdf5, domain_);
-  fixes_ = FixRegistry::create_all(*this, cfg);
+  fixes_ = FixRegistry::create_all(*this, cfg_);
   for (const auto& fix : fixes_) {
     fix->init();
   }
@@ -495,6 +670,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   throw SimulationError("checkpoint restart requires HDF5 support");
 #else
   HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(h5_file, step);
+  validate_checkpoint_species_set(cfg_, snap);
   validate_checkpoint_toxin_species(cfg_, snap);
   if (snap.metadata.has_grid_spacing) {
     const Vec3 expected = {

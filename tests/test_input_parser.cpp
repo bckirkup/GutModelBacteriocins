@@ -509,6 +509,33 @@ void test_toxin_lumping_rejects_unknown_modes() {
   std::cout << "  test_toxin_lumping_rejects_unknown_modes: PASSED\n";
 }
 
+void test_species_subset_rejects_unknown_modes() {
+  SimulationConfig cfg = InputParser::default_config();
+  assert(cfg.species_subset == "full");
+  assert(InputParser::apply_flat_key(
+      cfg, "chemistry.species_subset", "nutrient_only"));
+  assert(cfg.species_subset == "nutrient_only");
+  bool threw = false;
+  try {
+    (void)InputParser::apply_flat_key(
+        cfg, "chemistry.species_subset", "unknown");
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+  assert(threw);
+
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_bad_species_subset.json";
+  threw = false;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+  assert(threw);
+  std::cout << "  test_species_subset_rejects_unknown_modes: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -536,6 +563,7 @@ int main() {
   test_chemistry_decomposition_rejects_unimplemented_modes();
   test_toxin_evaluation_rejects_unknown_modes();
   test_toxin_lumping_rejects_unknown_modes();
+  test_species_subset_rejects_unknown_modes();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }

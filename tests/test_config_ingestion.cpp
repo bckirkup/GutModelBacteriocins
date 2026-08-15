@@ -205,6 +205,12 @@ std::vector<Probe> build_probes() {
   v.push_back(S("chemistry.decomposition",
                 [](const SimulationConfig& c) { return c.chemistry_decomposition; },
                 "slab"));
+  v.push_back(S("species_subset",
+                [](const SimulationConfig& c) { return c.species_subset; },
+                "nutrient_only", false));
+  v.push_back(S("chemistry.species_subset",
+                [](const SimulationConfig& c) { return c.species_subset; },
+                "nutrient_only", false));
   v.push_back(S("toxin_evaluation",
                 [](const SimulationConfig& c) { return c.qssa.toxin_evaluation; },
                 "agents"));

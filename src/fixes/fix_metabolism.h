@@ -30,6 +30,11 @@
 namespace gutibm {
 
 struct MetabolismConfig {
+  // Derived from chemistry.species_subset; these are not parser keys.
+  // They disable optional uptake terms in carbon_only mode.
+  bool iron_uptake_enabled = true;
+  bool b12_uptake_enabled = true;
+  bool eut_enabled = true;
   Real division_threshold = 2.0;      // divide at 2x initial biomass
   Real death_threshold    = -0.01;    // net growth below this → death
   Real maintenance_rate   = 1.0e-5;   // maintenance (1/s)

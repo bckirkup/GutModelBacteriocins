@@ -15,6 +15,7 @@
 #include "simulation.h"
 
 #include <iostream>
+#include <algorithm>
 #include <string_view>
 #include <unordered_map>
 
@@ -103,6 +104,11 @@ std::vector<std::unique_ptr<Fix>> FixRegistry::create_all(Simulation& sim,
   std::vector<std::unique_ptr<Fix>> fixes;
   fixes.reserve(order.size());
   for (const auto& name : order) {
+    if (std::find(cfg.disabled_fixes.begin(),
+                  cfg.disabled_fixes.end(), name)
+        != cfg.disabled_fixes.end()) {
+      continue;
+    }
     auto it = factories.find(name);
     if (it == factories.end()) {
       std::cerr << "Warning: unknown fix '" << name << "' — skipping\n";
