@@ -111,6 +111,37 @@ void validate_checkpoint_genome(const HDF5CheckpointSnapshot& snap,
   }
 }
 
+void validate_lumped_toxin_species(const SimulationConfig& cfg,
+                                   const ChemicalField& chem) {
+  if (cfg.qssa.toxin_lumping != "lumped") return;
+  if (chem.find(species::BACTERIOCIN_LUMPED) < 0) {
+    throw ConfigError(
+        "toxin_lumping=lumped requires the bacteriocin_lumped species");
+  }
+}
+
+void validate_checkpoint_toxin_species(
+    const SimulationConfig& cfg,
+    const HDF5CheckpointSnapshot& snap) {
+  constexpr std::array<const char*, 4> receptor_names = {
+      species::BACTERIOCIN_BTUB, species::BACTERIOCIN_FEPA,
+      species::BACTERIOCIN_CIRA, species::BACTERIOCIN_FHUA};
+  const bool has_lumped =
+      snap.grid.species.contains(species::BACTERIOCIN_LUMPED);
+  bool has_receptor = true;
+  for (const char* name : receptor_names) {
+    has_receptor = has_receptor && snap.grid.species.contains(name);
+  }
+  if (cfg.qssa.toxin_lumping == "lumped" && (!has_lumped || has_receptor)) {
+    throw ConfigError(
+        "checkpoint bacteriocin species do not match toxin_lumping=lumped");
+  }
+  if (cfg.qssa.toxin_lumping != "lumped" && (has_lumped || !has_receptor)) {
+    throw ConfigError(
+        "checkpoint bacteriocin species do not match toxin_lumping=per_receptor");
+  }
+}
+
 void restore_receptor_fields(Agent& agent,
                              const HDF5CheckpointSnapshot& snap,
                              size_t agent_index) {
@@ -305,6 +336,7 @@ void Simulation::init(const SimulationConfig& cfg) {
 
   // Chemical fields
   chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
+  validate_lumped_toxin_species(cfg_, chem_);
 
   // Advection
   advection_.init(cfg.advection, domain_);
@@ -438,6 +470,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   domain_.init(cfg_.domain);
   reject_unsupported_slab_surfaces(cfg_, domain_);
   chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
+  validate_lumped_toxin_species(cfg_, chem_);
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
   qssa_.init(cfg.qssa, domain_, advection_);
@@ -462,6 +495,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   throw SimulationError("checkpoint restart requires HDF5 support");
 #else
   HDF5CheckpointSnapshot snap = HDF5Reader::load_snapshot(h5_file, step);
+  validate_checkpoint_toxin_species(cfg_, snap);
   if (snap.metadata.has_grid_spacing) {
     const Vec3 expected = {
         domain_.dx_x(), domain_.dx_y(), domain_.dx_z()};
@@ -1722,7 +1756,9 @@ Real Simulation::ros_induction_rate(const Agent& agent) const {
 }
 
 Real Simulation::local_nuclease_toxin(const Agent& agent) const {
-  Int i_btuB = chem_.find(species::BACTERIOCIN_BTUB);
+  const Int i_btuB = chem_.find(
+      species::bacteriocin_species_for(ReceptorType::BtuB,
+                                       qssa_.toxin_lumping()));
   if (i_btuB < 0 || agent.grid_cell < 0) return 0.0;
   return chem_.conc(i_btuB, agent.grid_cell);
 }

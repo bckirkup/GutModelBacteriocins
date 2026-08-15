@@ -172,6 +172,76 @@ Int find_chemical_spec(std::vector<ChemicalSpec>& chemicals, std::string_view na
   return -1;
 }
 
+bool matching_toxin_transport(const ChemicalSpec& lhs,
+                              const ChemicalSpec& rhs) {
+  // Exact equality is intentional: lumping one field requires identical
+  // transport and decay coefficients, not merely numerically close values.
+  return lhs.diff_coeff == rhs.diff_coeff
+      && lhs.retardation == rhs.retardation
+      && lhs.decay_rate == rhs.decay_rate;
+}
+
+void configure_toxin_species(SimulationConfig& cfg) {
+  constexpr std::array<const char*, 4> receptor_names = {
+      species::BACTERIOCIN_BTUB, species::BACTERIOCIN_FEPA,
+      species::BACTERIOCIN_CIRA, species::BACTERIOCIN_FHUA};
+  if (cfg.qssa.toxin_lumping != "lumped") return;
+
+  std::array<Int, receptor_names.size()> receptor_indices{};
+  Int receptor_count = 0;
+  for (size_t i = 0; i < receptor_names.size(); ++i) {
+    receptor_indices[i] =
+        find_chemical_spec(cfg.chemicals, receptor_names[i]);
+    if (receptor_indices[i] >= 0) ++receptor_count;
+  }
+  const Int lumped_idx =
+      find_chemical_spec(cfg.chemicals, species::BACTERIOCIN_LUMPED);
+  if (lumped_idx >= 0) {
+    if (receptor_count != 0) {
+      throw ConfigError(
+          "toxin_lumping=lumped cannot combine lumped and receptor fields");
+    }
+    return;
+  }
+  if (receptor_count != static_cast<Int>(receptor_names.size())) {
+    throw ConfigError(
+        "toxin_lumping=lumped requires the four bacteriocin specifications");
+  }
+
+  const ChemicalSpec& reference_spec =
+      cfg.chemicals[static_cast<size_t>(receptor_indices[0])];
+  for (size_t i = 1; i < receptor_indices.size(); ++i) {
+    const auto& spec =
+        cfg.chemicals[static_cast<size_t>(receptor_indices[i])];
+    if (!matching_toxin_transport(spec, reference_spec)) {
+      throw ConfigError(
+          "toxin_lumping=lumped requires matching diff_coeff, retardation, "
+          "and decay_rate for all bacteriocin specifications");
+    }
+  }
+
+  ChemicalSpec lumped = reference_spec;
+  lumped.name = species::BACTERIOCIN_LUMPED;
+  std::vector<ChemicalSpec> configured;
+  configured.reserve(cfg.chemicals.size() - receptor_names.size() + 1);
+  bool inserted = false;
+  for (const auto& spec : cfg.chemicals) {
+    const bool is_receptor =
+        std::find(std::begin(receptor_names), std::end(receptor_names),
+                  spec.name)
+        != std::end(receptor_names);
+    if (is_receptor) {
+      if (!inserted) {
+        configured.push_back(lumped);
+        inserted = true;
+      }
+      continue;
+    }
+    configured.push_back(spec);
+  }
+  cfg.chemicals = std::move(configured);
+}
+
 bool parse_bool_config(std::string_view val) {
   if (val == "1") return true;
   if (val == "0") return false;
@@ -256,6 +326,8 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         0.0, false, k_z_lambda, true);
   }
 
+  configure_toxin_species(cfg);
+
   // Spec 11 — AI-2 autoinducer (no z-gradient; agent-produced only)
   if (cfg.quorum_sensing.enabled) {
     const Int idx = find_chemical_spec(cfg.chemicals, species::AI2);
@@ -335,6 +407,15 @@ bool apply_chemistry_key(SimulationConfig& cfg, std::string_view key,
     }
     throw ConfigError(
         "invalid chemistry_decomposition: unknown mode '" + val + "'");
+  }
+  if (key == "chemistry.toxin_lumping" || key == "toxin_lumping") {
+    if (val == "per_receptor" || val == "lumped") {
+      cfg.qssa.toxin_lumping = val;
+      return true;
+    }
+    throw ConfigError(
+        "invalid toxin_lumping: expected 'per_receptor' or 'lumped', got '"
+        + val + "'");
   }
   return false;
 }

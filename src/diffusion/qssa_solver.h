@@ -47,6 +47,7 @@ struct QSSAConfig {
   // FMM / Barnes-Hut acceleration (far-field aggregation)
   bool use_fmm  = false;   // enable octree far-field acceleration
   std::string toxin_evaluation = "grid";
+  std::string toxin_lumping = "per_receptor";
   Real fmm_theta = 0.5;    // opening angle (0→exact, 1→fast/approximate)
   int  fmm_expansion_order = 2;  // 1=monopole, 2=dipole+quadrupole, 3=octupole
 
@@ -120,6 +121,7 @@ class QSSASolver {
   Real sampled_toxin_conc(Int agent_index, Int species_idx) const;
   Real sampled_toxin_max(Int species_idx) const;
   bool agent_sampling() const { return cfg_.toxin_evaluation == "agents"; }
+  bool toxin_lumping() const { return cfg_.toxin_lumping == "lumped"; }
 
   const GreensFunction& gf() const { return gf_; }
 
@@ -148,6 +150,18 @@ class QSSASolver {
       const std::vector<Real>& strength_factors,
       const AgentPool& agents,
       ReceptorType target);
+
+  // Lumped mode has one field over all sources, so both entry points do the
+  // same work regardless of which receptor target was requested.
+  void solve_lumped_bacteriocin_fields(
+      const AgentPool& agents,
+      const std::vector<Vec3>& sources,
+      const std::vector<GreensFunctionParams>& params,
+      const std::vector<Real>& strength_factors,
+      const AdvectionField& adv,
+      ChemicalField& chem,
+      ChemicalFieldGpu* chem_gpu,
+      bool materialize_grid);
 
   Int sampled_slot_for_species(Int species_idx) const;
   Real evaluate_sample(const SampledToxinField& field,

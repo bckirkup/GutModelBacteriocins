@@ -219,7 +219,11 @@ p_sos = 1 - exp(-rate_total * dt)
 ```
 
 - `just_divided` is set on parent and daughter during division in `fix_metabolism`, cleared at the start of each `Simulation::step()`
-- Cross-induction uses the `bacteriocin_BtuB` chemical field (nuclease colicin bursts route to BtuB-target field)
+- Cross-induction uses the `bacteriocin_BtuB` chemical field in the default
+  per-receptor model (nuclease colicin bursts route to the BtuB-target field).
+  In lumped mode it reads the total `bacteriocin_lumped` burden, so toxin
+  targeting other receptors can also drive SOS/ROS cross-induction. This is an
+  explicit modelling cost of lumping.
 - After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`
 
 ### b) Phage-mediated lysis (Group B colicins)
@@ -261,7 +265,8 @@ The effective diffusion coefficient: `D_eff = D_free / R`
 
 **The Double-Bind hypothesis:** TonB-dependent transporters serve dual roles as nutrient importers AND bacteriocin receptors. Cells cannot selectively block toxins without also losing nutrient uptake.
 
-**Four receptor systems modeled** (each reads its own QSSA toxin field):
+**Four receptor systems modeled** (each reads its own QSSA toxin field by
+default):
 
 | Receptor | Nutrient ligand | Toxin field | Toxin ligand | Kd_nutrient | Kd_toxin |
 |----------|----------------|-------------|--------------|-------------|----------|
@@ -473,7 +478,7 @@ Each directional pass solves a tridiagonal system in O(cells): x and y are perio
 
 ### Bacteriocin QSSA solver
 
-Bacteriocins remain on the analytical QSSA path because they are point-source bursts or continuous producer sources with receptor-specific Green's-function fields.
+Bacteriocins remain on the analytical QSSA path because they are point-source bursts or continuous producer sources with receptor-specific Green's-function fields. The default `chemistry.toxin_lumping = "per_receptor"` keeps separate BtuB, FepA, CirA, and FhuA fields. The scientific `lumped` variant instead superposes every toxin source into one `bacteriocin_lumped` field and makes all receptors read it, while retaining receptor-specific binding, toxin affinity, and immunity in the kill calculation. Its explicit modelling costs are that a colicin to which an agent is immune can still contribute to exposure through another receptor, and that the nuclease SOS/ROS cross-induction path sees total toxin burden rather than only nuclease-colicin/BtuB toxin.
 
 **Method:** At each biological timestep:
 1. Collect all active toxin sources (SOS-lysed cells as bursts, microcin producers as steady sources)

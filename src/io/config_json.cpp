@@ -575,6 +575,7 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         message.find("invalid immigration.") == 0
         || message.find("invalid chemistry_decomposition") == 0
         || message.find("invalid toxin_evaluation") == 0
+        || message.find("invalid toxin_lumping") == 0
         || message.find("chemistry stride") != std::string::npos
         || message.find("chemistry_stride") != std::string::npos) {
       throw;

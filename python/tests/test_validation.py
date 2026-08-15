@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import h5py
 import pytest
+
 from gut_ibm_tools import GutIBMData, validation
 
 
@@ -24,6 +26,24 @@ def test_validate_spatial_signatures_keys(sample_hdf5: Path) -> None:
     assert result["monochromatic_score"] > 0.7
     assert result["comet_tail_ratio"] > 1.0
     assert result["mean_exclusion_radius"] > 0.0
+
+
+@pytest.mark.parametrize("dataset_name", ["bacteriocin_BtuB", "bacteriocin_lumped"])
+def test_validate_spatial_signatures_accepts_toxin_dataset_names(
+    sample_hdf5: Path,
+    dataset_name: str,
+) -> None:
+    if dataset_name == "bacteriocin_lumped":
+        with h5py.File(sample_hdf5, "a") as handle:
+            for step in handle["grid"].values():
+                values = step["bacteriocin_BtuB"][:]
+                del step["bacteriocin_BtuB"]
+                step.create_dataset(dataset_name, data=values)
+
+    with GutIBMData(sample_hdf5) as data:
+        result = validation.validate_spatial_signatures(data, "step_000000")
+
+    assert result["comet_tail_ratio"] > 1.0
 
 
 def test_validate_genomic_signatures_retention(sample_hdf5: Path) -> None:
