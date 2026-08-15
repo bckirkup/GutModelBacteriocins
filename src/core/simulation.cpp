@@ -633,12 +633,17 @@ void Simulation::init_population(const SimulationConfig& cfg) {
   agents_.configure_tags(AgentPool::first_tag_for_rank(domain_.rank(), domain_.nprocs()),
                            AgentPool::tag_stride(domain_.nprocs()));
 
+  const Real z_min = cfg.initial_population.placement == "z_slab"
+      ? cfg.initial_population.z_min : domain_.lo()[2];
+  const Real z_max = cfg.initial_population.placement == "z_slab"
+      ? cfg.initial_population.z_max : domain_.hi()[2] * 0.5;
+
   for (const auto& strain : cfg.initial_strains) {
     for (Int i = 0; i < strain.count; ++i) {
       Vec3 pos = {
         rng_.uniform(domain_.lo()[0], domain_.hi()[0]),
         rng_.uniform(domain_.lo()[1], domain_.hi()[1]),
-        rng_.uniform(domain_.lo()[2], domain_.hi()[2] * 0.5)  // near epithelium
+        rng_.uniform(z_min, z_max)
       };
 
       // Only keep agents that belong to this rank's slab

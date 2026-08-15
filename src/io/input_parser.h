@@ -65,6 +65,12 @@ struct CellBiologyConfig {
   MotilityConfig motility;
 };
 
+struct InitialPopulationConfig {
+  std::string placement = "legacy";
+  Real z_min = 0.0;
+  Real z_max = 1.0e-6;
+};
+
 struct FixPluginsConfig {
   MetabolismConfig metabolism;
   ReceptorConfig receptor;
@@ -116,6 +122,7 @@ struct SimulationConfig {
     uint16_t cdi_immunity = 0;
   };
   std::vector<InitialStrain> initial_strains;
+  InitialPopulationConfig initial_population;
   std::vector<std::string> enabled_fixes;
   // Exact Fix names skipped by FixRegistry; audit labels belong below.
   std::vector<std::string> disabled_fixes;

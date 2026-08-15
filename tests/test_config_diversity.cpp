@@ -145,6 +145,7 @@ void test_fixture_configs_produce_distinct_fingerprints() {
       Scenario{"fix_tunables", "parser_fix_tunables.json"},
       Scenario{"fmm_peristaltic", "parser_fmm_peristaltic.json"},
       Scenario{"immigration", "parser_immigration.json"},
+      Scenario{"initial_population", "parser_initial_population.json"},
   };
 
   std::vector<std::pair<std::string, uint64_t>> fingerprints;

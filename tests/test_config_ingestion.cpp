@@ -29,6 +29,7 @@
 #include <functional>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <set>
 #include <sstream>
 #include <string>
@@ -77,6 +78,7 @@ struct Probe {
   BoolGet gb;
   StrGet gs;
   std::string sval;  // sentinel for string keys
+  double real_sentinel = std::numeric_limits<double>::quiet_NaN();
 };
 
 Probe R(std::string key, RealGet g, bool primary = true) {
@@ -85,6 +87,12 @@ Probe R(std::string key, RealGet g, bool primary = true) {
   p.kind = Kind::Real;
   p.primary = primary;
   p.gr = std::move(g);
+  return p;
+}
+
+Probe R(std::string key, RealGet g, double sentinel, bool primary = true) {
+  Probe p = R(std::move(key), std::move(g), primary);
+  p.real_sentinel = sentinel;
   return p;
 }
 
@@ -164,6 +172,23 @@ std::vector<Probe> build_probes() {
   v.push_back(S("immigration.schedule", [](const SimulationConfig& c) { return c.immigration.schedule; }, "continuous"));
   v.push_back(I("immigration.step", [](const SimulationConfig& c) { return static_cast<long long>(c.immigration.step); }));
   v.push_back(R("immigration.rate", [](const SimulationConfig& c) { return c.immigration.rate; }));
+
+  // ── Initial population ──────────────────────────────────────────────────
+  v.push_back(S("initial_population.placement",
+                [](const SimulationConfig& c) {
+                  return c.initial_population.placement;
+                },
+                "z_slab"));
+  v.push_back(R("initial_population.z_min",
+                [](const SimulationConfig& c) {
+                  return c.initial_population.z_min;
+                },
+                20e-6));
+  v.push_back(R("initial_population.z_max",
+                [](const SimulationConfig& c) {
+                  return c.initial_population.z_max;
+                },
+                40e-6));
 
   // ── Domain ───────────────────────────────────────────────────────────────
   v.push_back(R("grid_dx", [](const SimulationConfig& c) { return c.domain.grid_dx; }));
@@ -501,7 +526,7 @@ std::vector<Probe> build_probes() {
 const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
-      "immigration", "chemistry", "domain", "chemistry_stride",
+      "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity"};
@@ -533,7 +558,8 @@ std::string sentinel_scalar(const Probe& p, const SimulationConfig& def) {
   using enum Kind;
   switch (p.kind) {
     case Real:
-      return fmt_real(real_sentinel(p.gr(def)));
+      return fmt_real(std::isnan(p.real_sentinel)
+                          ? real_sentinel(p.gr(def)) : p.real_sentinel);
     case Int:
       return std::to_string(p.gi(def) + 7);
     case Bool:
@@ -550,8 +576,12 @@ void check_ingested(const Probe& p, const SimulationConfig& def, const Simulatio
   using enum Kind;
   switch (p.kind) {
     case Real: {
-      if (const double s = real_sentinel(p.gr(def));
-          !close(p.gr(got), s) || close(p.gr(got), p.gr(def))) {
+      if (const double s = std::isnan(p.real_sentinel)
+              ? real_sentinel(p.gr(def)) : p.real_sentinel;
+          !close(p.gr(got), s)
+              || (std::isnan(p.real_sentinel)
+                      ? close(p.gr(got), p.gr(def))
+                      : std::fabs(p.gr(got) - p.gr(def)) <= 1e-12)) {
         std::ostringstream m;
         m << "real key '" << p.key << "' got=" << p.gr(got) << " expected=" << s
           << " default=" << p.gr(def) << " (did not ingest into SimulationConfig)";

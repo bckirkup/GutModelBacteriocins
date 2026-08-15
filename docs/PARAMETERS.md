@@ -40,6 +40,19 @@ After constraint evaluation, `dt` is multiplied by `dt_safety` and clamped to `[
 
 When disabled (`adaptive_dt_enabled = false`), the fixed `bio_dt` is used as before.
 
+## Initial population
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `initial_population.placement` | `legacy` | — | `legacy` preserves the historical `[domain.lo.z, 0.5 * domain.hi.z]` founder band; `z_slab` uses explicit bounds |
+| `initial_population.z_min`, `initial_population.z_max` | — | m | Inclusive lower and exclusive upper bounds for the founder `z_slab`; both must lie inside the domain and `z_min < z_max` |
+
+The placement policy is scenario-wide and applies to every entry in
+`initial_strains`. With the default `legacy` policy, founder placement remains
+derived from the domain height for backward compatibility. Use `z_slab` when
+changing `domain_z` without moving founders, for example to keep them in the
+mucus layer while extending the lumen.
+
 ## Immigration
 
 | Parameter | Default | Units | Description |

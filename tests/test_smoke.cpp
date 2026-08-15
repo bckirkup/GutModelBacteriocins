@@ -110,6 +110,61 @@ void test_mini_simulation() {
             << " retention=" << retention << ")\n";
 }
 
+SimulationConfig initial_population_test_config(Real z_min, Real z_max) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo = {0, 0, 0};
+  cfg.domain.hi = {50e-6, 50e-6, 300e-6};
+  cfg.domain.grid_dx = 10e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.time.total_time = 60.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 60.0;
+  cfg.seed = 6123;
+  cfg.hdf5.enabled = false;
+  cfg.advection.mucus_thickness = 80e-6;
+  cfg.advection.distal_length = 300e-6;
+  cfg.advection.radial_turnover = 5400.0;
+  cfg.advection.distal_transit_time = 43200.0;
+  cfg.qssa.toxin_cutoff = 80e-6;
+  cfg.qssa.nutrient_cutoff = 40e-6;
+  cfg.initial_population.placement = "z_slab";
+  cfg.initial_population.z_min = z_min;
+  cfg.initial_population.z_max = z_max;
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain strain;
+  strain.type = 1;
+  strain.count = 20;
+  strain.mu_max = 5e-4;
+  cfg.initial_strains.push_back(strain);
+  return cfg;
+}
+
+void test_initial_population_placement() {
+  constexpr Real kMinZ = 4e-6;
+  constexpr Real kMaxZ = 9e-6;
+  Simulation narrow;
+  narrow.init(initial_population_test_config(kMinZ, kMaxZ));
+  assert(narrow.agents().size() == 20);
+  for (const Agent& agent : narrow.agents()) {
+    assert(agent.x[2] >= kMinZ);
+    assert(agent.x[2] <= kMaxZ);
+  }
+
+  Simulation floor;
+  floor.init(initial_population_test_config(4e-6, 9e-6));
+  floor.step(60.0);
+  Simulation lumen;
+  lumen.init(initial_population_test_config(150e-6, 155e-6));
+  lumen.step(60.0);
+  const Int floor_alive = floor.global_agent_count();
+  const Int lumen_alive = lumen.global_agent_count();
+  assert(floor_alive > lumen_alive);
+
+  std::cout << "  test_initial_population_placement: PASSED"
+            << " (floor_alive=" << floor_alive
+            << " lumen_alive=" << lumen_alive << ")\n";
+}
+
 void test_metabolism_integration() {
   // Verify growth actually changes biomass
   SimulationConfig cfg = InputParser::default_config();
@@ -699,6 +754,7 @@ void test_population_stop_after_extinction() {
 int main() {
   std::cout << "=== Smoke Tests ===\n";
   test_mini_simulation();
+  test_initial_population_placement();
   test_metabolism_integration();
   test_advection_moves_agents();
   test_receptor_killing();

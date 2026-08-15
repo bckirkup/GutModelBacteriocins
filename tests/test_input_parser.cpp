@@ -109,6 +109,33 @@ void test_immigration_fixture() {
   std::cout << "  test_immigration_fixture: PASSED\n";
 }
 
+void test_initial_population_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR) +
+                           "/tests/fixtures/parser_initial_population.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.initial_population.placement == "z_slab");
+  assert(std::abs(cfg.initial_population.z_min - 2e-6) < 1e-15);
+  assert(std::abs(cfg.initial_population.z_max - 12e-6) < 1e-15);
+  std::cout << "  test_initial_population_fixture: PASSED\n";
+}
+
+void test_initial_population_rejects_invalid_band() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR) +
+                           "/tests/fixtures/parser_initial_population.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  cfg.initial_population.z_min = 20e-6;
+  cfg.initial_population.z_max = 10e-6;
+  bool rejected = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    rejected = std::string(error.what()).find("initial_population.z_min") !=
+               std::string::npos;
+  }
+  assert(rejected);
+  std::cout << "  test_initial_population_rejects_invalid_band: PASSED\n";
+}
+
 void test_diversity_paradox_strains() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/examples/diversity_paradox/input.json";
   SimulationConfig cfg = InputParser::parse(path);
@@ -579,6 +606,8 @@ int main() {
   test_fmm_peristaltic_fixture();
   test_strain_fixture();
   test_immigration_fixture();
+  test_initial_population_fixture();
+  test_initial_population_rejects_invalid_band();
   test_diversity_paradox_strains();
   test_strain_spawn_integration();
   test_fixes_fixture();
