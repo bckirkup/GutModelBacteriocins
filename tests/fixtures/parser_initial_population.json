@@ -1,0 +1,14 @@
+{
+  "total_time": 120,
+  "bio_dt": 60,
+  "seed": 321,
+  "domain_z": 50e-6,
+  "initial_population": {
+    "placement": "z_slab",
+    "z_min": 2e-6,
+    "z_max": 12e-6
+  },
+  "initial_strains": [
+    {"type": 1, "count": 4, "mu_max": 5.5e-4, "plasmids": ["ColE1"]}
+  ]
+}

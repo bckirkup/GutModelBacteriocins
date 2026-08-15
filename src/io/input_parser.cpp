@@ -337,6 +337,23 @@ void apply_species_subset(SimulationConfig& cfg) {
 void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
 
+  if (cfg.initial_population.placement == "z_slab") {
+    if (cfg.initial_population.z_min < cfg.domain.lo[2]
+        || cfg.initial_population.z_min >= cfg.domain.hi[2]) {
+      throw ConfigError(
+          "initial_population.z_min must be inside the domain");
+    }
+    if (cfg.initial_population.z_max <= cfg.domain.lo[2]
+        || cfg.initial_population.z_max > cfg.domain.hi[2]) {
+      throw ConfigError(
+          "initial_population.z_max must be inside the domain");
+    }
+    if (cfg.initial_population.z_min >= cfg.initial_population.z_max) {
+      throw ConfigError(
+          "initial_population.z_min must be less than z_max");
+    }
+  }
+
   apply_species_subset(cfg);
 
   if (cfg.chem_env.oxygen.enabled) {
@@ -807,6 +824,27 @@ bool apply_immigration_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
+bool apply_initial_population_key(SimulationConfig& cfg,
+                                  std::string_view key,
+                                  const std::string& val) {
+  if (key == "initial_population.placement") {
+    if (val != "legacy" && val != "z_slab") {
+      throw ConfigError("invalid initial_population.placement: " + val);
+    }
+    cfg.initial_population.placement = val;
+    return true;
+  }
+  if (key == "initial_population.z_min") {
+    cfg.initial_population.z_min = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "initial_population.z_max") {
+    cfg.initial_population.z_max = parse_config_real(key, val);
+    return true;
+  }
+  return false;
+}
+
 bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "division_threshold")      { cfg.fixes.metabolism.division_threshold = parse_config_real(key, val); return true; }
   if (key == "maintenance_rate")        { cfg.fixes.metabolism.maintenance_rate = parse_config_real(key, val); return true; }
@@ -1113,7 +1151,7 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 27> k_flat_key_handlers = {
+constexpr std::array<FlatKeyHandler, 28> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_chemistry_key,
@@ -1130,6 +1168,7 @@ constexpr std::array<FlatKeyHandler, 27> k_flat_key_handlers = {
   apply_hdf5_key,
   apply_dt_key,
   apply_immigration_key,
+  apply_initial_population_key,
   apply_misc_key,
   apply_oxygen_key,
   apply_acetate_dyn_key,

@@ -346,19 +346,31 @@ class JsonCursor {
     }
   }
 
-  void parse_immigration_object(SimulationConfig& cfg) {
-    if (!match('{')) throw ConfigError("expected JSON object for immigration");
+  void parse_prefixed_object(SimulationConfig& cfg,
+                             std::string_view prefix,
+                             std::string_view name) {
+    if (!match('{')) {
+      throw ConfigError("expected JSON object for " + std::string(name));
+    }
     skip_ws();
     if (match('}')) return;
     while (true) {
       std::string key = parse_string();
       if (!match(':')) throw ConfigError("expected ':' in JSON object");
-      const std::string flat_key = "immigration." + key;
+      const std::string flat_key = std::string(prefix) + "." + key;
       apply_json_scalar(cfg, flat_key, *this);
       skip_ws();
       if (match('}')) break;
       if (!match(',')) throw ConfigError("expected ',' in JSON object");
     }
+  }
+
+  void parse_immigration_object(SimulationConfig& cfg) {
+    parse_prefixed_object(cfg, "immigration", "immigration");
+  }
+
+  void parse_initial_population_object(SimulationConfig& cfg) {
+    parse_prefixed_object(cfg, "initial_population", "initial_population");
   }
 
   void parse_chemistry_object(SimulationConfig& cfg) {
@@ -556,6 +568,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         cursor.parse_restart_object(cfg);
       } else if (key == "immigration") {
         cursor.parse_immigration_object(cfg);
+      } else if (key == "initial_population") {
+        cursor.parse_initial_population_object(cfg);
       } else if (key == "domain") {
         cursor.parse_domain_object(cfg);
       } else if (key == "chemistry") {
@@ -573,6 +587,7 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
   } catch (const ConfigError& ex) {
     if (const std::string message = ex.what();
         message.find("invalid immigration.") == 0
+        || message.find("invalid initial_population.") == 0
         || message.find("invalid chemistry_decomposition") == 0
         || message.find("invalid species_subset") == 0
         || message.find("invalid toxin_evaluation") == 0

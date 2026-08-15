@@ -753,6 +753,9 @@ void test_init_population_partitioned() {
   require_mpi_ranks(2);
 
   SimulationConfig cfg = make_mpi_config(4242, 40);
+  cfg.initial_population.placement = "z_slab";
+  cfg.initial_population.z_min = 0.0;
+  cfg.initial_population.z_max = 25e-6;
   Simulation sim;
   sim.init(cfg);
 
