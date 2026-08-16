@@ -389,7 +389,7 @@ void test_continuous_schedule_end_to_end() {
 
 struct EncounterResult {
   bool injected = false;
-  Int mortality_colicin = 0;
+  Int colicin_kills = 0;
   bool alive = false;
   Real distance_error = std::numeric_limits<Real>::max();
 };
@@ -466,7 +466,7 @@ EncounterResult run_bacteriocin_encounter(uint64_t seed, Real target_distance) {
       std::abs(std::sqrt(nearest_sq) - target_distance);
   const Int kills_before = sim.step_events().mortality_colicin;
   sim.step(60.0);
-  result.mortality_colicin = sim.step_events().mortality_colicin - kills_before;
+  result.colicin_kills = sim.step_events().mortality_colicin - kills_before;
   result.alive = std::ranges::any_of(
       sim.agents(), [type = sensitive.type](const Agent& agent) {
         return agent.identity.type == type && agent.state != PhenoState::DEAD;
@@ -491,8 +491,8 @@ void test_near_colony_kill_separation() {
     std::cout << std::format(
         "  encounter {} distance errors={:.3e}/{:.3e}\n", i,
         near.distance_error, far.distance_error);
-    near_kills += near.mortality_colicin;
-    far_kills += far.mortality_colicin;
+    near_kills += near.colicin_kills;
+    far_kills += far.colicin_kills;
   }
   std::cout << "  near/far colicin kills=" << near_kills << "/"
             << far_kills << "\n";

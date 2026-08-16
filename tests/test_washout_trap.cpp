@@ -391,9 +391,14 @@ std::pair<Int, Int> run_transport_loss(WashoutTrapMode mode, Real domain_z,
   for (Agent& agent : sim.agents()) {
     apply_trap_immigrant_profile(agent, 44e-6);
   }
-  sim.run();
-  const StepEvents& events = sim.cumulative_events();
-  return {events.outflow_boundary + events.outflow_washout,
+  Int total_outflow = 0;
+  const Int steps = static_cast<Int>(std::ceil(total_time / 60.0));
+  for (Int step = 0; step < steps && sim.global_agent_count() > 0; ++step) {
+    sim.step(60.0);
+    const StepEvents& events = sim.step_events();
+    total_outflow += events.outflow_boundary + events.outflow_washout;
+  }
+  return {total_outflow,
           sim.global_agent_count()};
 }
 
@@ -409,18 +414,23 @@ void test_washout_modes_have_distinct_low_flow_behavior() {
 void test_washout_modes_converge_at_high_flow() {
   const auto imposed = run_transport_loss(WashoutTrapMode::IMPOSED, 50e-6, 1.0, 60.0);
   const auto emergent = run_transport_loss(WashoutTrapMode::EMERGENT, 50e-6, 1.0, 60.0);
-  assert(imposed.second == emergent.second);
+  constexpr Int initial_agents = 8;
+  assert(imposed.first == emergent.first);
+  assert(imposed.first == initial_agents);
+  assert(emergent.first == initial_agents);
   assert(imposed.second == 0);
+  assert(emergent.second == 0);
   std::cout << "  test_washout_modes_converge_at_high_flow: PASSED\n";
 }
 
 void test_emergent_washout_is_geometry_sensitive() {
   const auto short_box = run_transport_loss(
-      WashoutTrapMode::EMERGENT, 50e-6, 5400.0, 600.0);
+      WashoutTrapMode::EMERGENT, 50e-6, 5400.0, 1200.0);
   const auto tall_box = run_transport_loss(
-      WashoutTrapMode::EMERGENT, 100e-6, 5400.0, 600.0);
-  assert(short_box.first >= tall_box.first);
-  assert(short_box.second <= tall_box.second);
+      WashoutTrapMode::EMERGENT, 100e-6, 5400.0, 1200.0);
+  assert(short_box.first > 0);
+  assert(short_box.first > tall_box.first);
+  assert(short_box.second < tall_box.second);
   std::cout << "  test_emergent_washout_is_geometry_sensitive: PASSED\n";
 }
 

@@ -127,6 +127,14 @@ void test_washout_trap_fixture() {
   std::cout << "  test_washout_trap_fixture: PASSED\n";
 }
 
+void test_washout_trap_advection_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR) +
+                           "/tests/fixtures/parser_washout_trap_advection.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.advection.washout_trap == WashoutTrapMode::IMPOSED);
+  std::cout << "  test_washout_trap_advection_fixture: PASSED\n";
+}
+
 void test_washout_trap_rejects_invalid_value() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR) +
                            "/tests/fixtures/parser_washout_trap_invalid.json";
@@ -632,6 +640,7 @@ int main() {
   test_immigration_fixture();
   test_initial_population_fixture();
   test_washout_trap_fixture();
+  test_washout_trap_advection_fixture();
   test_washout_trap_rejects_invalid_value();
   test_initial_population_rejects_invalid_band();
   test_diversity_paradox_strains();
