@@ -366,6 +366,8 @@ void test_fix_tunables_fixture() {
   assert(std::abs(cfg.fixes.mutation.bi_duplication_rate - 1e-4) < 1e-12);
   assert(cfg.fixes.mutation.max_bi_loci == 6);
   assert(std::abs(cfg.fixes.mutation.immunity_escape_prob - 0.75) < 1e-12);
+  assert(std::abs(cfg.fixes.metabolism.bacteriostasis_threshold - 2e-4)
+         < 1e-12);
   assert(cfg.hdf5.schedule.provenance == 7);
   std::cout << "  test_fix_tunables_fixture: PASSED\n";
 }

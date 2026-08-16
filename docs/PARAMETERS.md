@@ -622,9 +622,10 @@ The mechanics summary writes `mechanics/displacement_clamps` and
 `mechanics/cumulative_displacement_clamps` to expose use of the per-step
 displacement safety cap.
 
-`fixes.metabolism.death_threshold` is the bacteriostasis threshold used to
-classify the instantaneous `bacteriostatic_live_agents` stock. It does not
-cause starvation mortality.
+`fixes.metabolism.bacteriostasis_threshold` is the threshold used to classify
+the instantaneous `bacteriostatic_live_agents` stock. Its default of `1e-6 /s`
+identifies a viable non-reproducing state on the model's simulation horizons.
+It does not kill cells or cause starvation mortality.
 Each agent's accumulated mechanics displacement is capped at `0.1 * radius`
 per biological step.
 

@@ -24,6 +24,8 @@
   "max_bi_loci": 6,
   "immunity_escape_prob": 0.75,
 
+  "bacteriostasis_threshold": 2e-4,
+
   "fur.enabled": true,
   "fur.Km": 1e-6,
 

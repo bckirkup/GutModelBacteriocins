@@ -314,6 +314,7 @@ std::vector<Probe> build_probes() {
 
   // ── Metabolism Fix tunables ───────────────────────────────────────────────
   v.push_back(R("division_threshold", [](const SimulationConfig& c) { return c.fixes.metabolism.division_threshold; }));
+  v.push_back(R("bacteriostasis_threshold", [](const SimulationConfig& c) { return c.fixes.metabolism.bacteriostasis_threshold; }));
   v.push_back(R("maintenance_rate", [](const SimulationConfig& c) { return c.fixes.metabolism.maintenance_rate; }));
   v.push_back(R("metE_penalty", [](const SimulationConfig& c) { return c.fixes.metabolism.metE_penalty; }));
   v.push_back(R("metE_acetate_km", [](const SimulationConfig& c) { return c.fixes.metabolism.metE_acetate_km; }));
