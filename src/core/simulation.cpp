@@ -477,6 +477,9 @@ void Simulation::init(const SimulationConfig& cfg) {
   event_ledger_.step_events.reset();
   event_ledger_.summary_events.reset();
   event_ledger_.cumulative_events.reset();
+  event_ledger_.mechanics_step.reset();
+  event_ledger_.mechanics_summary.reset();
+  event_ledger_.mechanics_cumulative.reset();
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
   InputParser::finalize_config(cfg_);
@@ -629,6 +632,18 @@ void Simulation::prepare_step_events_for_summary() {
 #endif
 }
 
+void Simulation::prepare_mechanics_stats_for_summary() {
+  event_ledger_.mechanics_summary = event_ledger_.mechanics_step;
+#ifdef GUTIBM_MPI
+  if (domain_.nprocs() > 1) {
+    Int global = 0;
+    MPI_Allreduce(&event_ledger_.mechanics_step.displacement_clamps,
+                  &global, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+    event_ledger_.mechanics_summary.displacement_clamps = global;
+  }
+#endif
+}
+
 void Simulation::prepare_population_stocks_for_summary() {
   PopulationStocks local;
   for (const Agent& agent : agents_) {
@@ -690,6 +705,9 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   event_ledger_.step_events.reset();
   event_ledger_.summary_events.reset();
   event_ledger_.cumulative_events.reset();
+  event_ledger_.mechanics_step.reset();
+  event_ledger_.mechanics_summary.reset();
+  event_ledger_.mechanics_cumulative.reset();
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
   InputParser::finalize_config(cfg_);

@@ -35,12 +35,18 @@ __device__ inline void min_image_delta_device(double dx, double dy, double dz,
 
 __device__ inline void apply_pair_displacement_atomic(
     int i, int j, double nx, double ny, double nz, double force_mag, double dt,
-    double mi, double mj, double* dx, double* dy, double* dz) {
-  const double inv_mi = 1.0 / mi;
-  const double inv_mj = 1.0 / mj;
-  const double inv_sum = 1.0 / (inv_mi + inv_mj);
-  const double push_i = force_mag * dt * inv_mi * inv_mi * inv_sum;
-  const double push_j = force_mag * dt * inv_mj * inv_mj * inv_sum;
+    double radius_i, double radius_j, double viscosity,
+    double* dx, double* dy, double* dz) {
+  const double mobility_i =
+      1.0 / (6.0 * 3.141592653589793 * viscosity * radius_i);
+  const double mobility_j =
+      1.0 / (6.0 * 3.141592653589793 * viscosity * radius_j);
+  const double relative_displacement =
+      force_mag * dt * (mobility_i + mobility_j);
+  const double push_i = relative_displacement * mobility_i
+                        / (mobility_i + mobility_j);
+  const double push_j = relative_displacement * mobility_j
+                        / (mobility_i + mobility_j);
 
   atomicAdd(&dx[i], -nx * push_i);
   atomicAdd(&dy[i], -ny * push_i);
@@ -52,12 +58,18 @@ __device__ inline void apply_pair_displacement_atomic(
 
 __device__ inline void apply_adhesion_atomic(
     int i, int j, double nx, double ny, double nz, double adhesion_force,
-    double dt, double mi, double mj, double* dx, double* dy, double* dz) {
-  const double inv_mi = 1.0 / mi;
-  const double inv_mj = 1.0 / mj;
-  const double inv_sum = 1.0 / (inv_mi + inv_mj);
-  const double pull_i = adhesion_force * dt * inv_mi * inv_mi * inv_sum;
-  const double pull_j = adhesion_force * dt * inv_mj * inv_mj * inv_sum;
+    double dt, double radius_i, double radius_j, double viscosity,
+    double* dx, double* dy, double* dz) {
+  const double mobility_i =
+      1.0 / (6.0 * 3.141592653589793 * viscosity * radius_i);
+  const double mobility_j =
+      1.0 / (6.0 * 3.141592653589793 * viscosity * radius_j);
+  const double relative_displacement =
+      adhesion_force * dt * (mobility_i + mobility_j);
+  const double pull_i = relative_displacement * mobility_i
+                        / (mobility_i + mobility_j);
+  const double pull_j = relative_displacement * mobility_j
+                        / (mobility_i + mobility_j);
 
   atomicAdd(&dx[i], nx * pull_i);
   atomicAdd(&dy[i], ny * pull_i);
@@ -70,9 +82,10 @@ __device__ inline void apply_adhesion_atomic(
 }  // namespace
 
 __global__ void mechanics_clear_kernel(double* dx, double* dy, double* dz,
-                                       int num_agents) {
+                                       int* clamp_count, int num_agents) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
+  if (i == 0) *clamp_count = 0;
   dx[i] = 0.0;
   dy[i] = 0.0;
   dz[i] = 0.0;
@@ -80,15 +93,13 @@ __global__ void mechanics_clear_kernel(double* dx, double* dy, double* dz,
 
 __global__ void mechanics_forces_kernel(
     const double* x, const double* y, const double* z,
-    const double* radius, const double* mass, const int* state,
+    const double* radius, const int* state,
     const int* cell_offsets, const int* sorted_indices,
     double* dx, double* dy, double* dz,
     int num_agents, MechanicsLaunchParams params) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
   if (state[i] == 3) return;
-
-  const double mi = mass[i] < 1.0e-30 ? 1.0e-30 : mass[i];
 
   int ix = static_cast<int>((x[i] - params.lo0) / params.cell_size);
   int iy = static_cast<int>((y[i] - params.lo1) / params.cell_size);
@@ -128,7 +139,10 @@ __global__ void mechanics_forces_kernel(
           const double nx_dir = delta_x / d;
           const double ny_dir = delta_y / d;
           const double nz_dir = delta_z / d;
-          const double mj = mass[j] < 1.0e-30 ? 1.0e-30 : mass[j];
+          const double radius_i = radius[i] < 1.0e-30 ? 1.0e-30 : radius[i];
+          const double radius_j = radius[j] < 1.0e-30 ? 1.0e-30 : radius[j];
+          const double viscosity =
+              params.viscosity < 1.0e-30 ? 1.0e-30 : params.viscosity;
 
           const double overlap = sum_r - d;
           if (overlap > 0.0) {
@@ -137,7 +151,7 @@ __global__ void mechanics_forces_kernel(
                 : params.hertz_k * overlap;
             apply_pair_displacement_atomic(
                 i, j, nx_dir, ny_dir, nz_dir, force_mag, params.dt,
-                mi, mj, dx, dy, dz);
+                radius_i, radius_j, viscosity, dx, dy, dz);
           }
 
           if (params.adhesion_enabled) {
@@ -148,7 +162,7 @@ __global__ void mechanics_forces_kernel(
                   params.adhesion_strength * adhesion_frac;
               apply_adhesion_atomic(
                   i, j, nx_dir, ny_dir, nz_dir, adhesion_force, params.dt,
-                  mi, mj, dx, dy, dz);
+                  radius_i, radius_j, viscosity, dx, dy, dz);
             }
           }
         }
@@ -158,26 +172,63 @@ __global__ void mechanics_forces_kernel(
 }
 
 __global__ void mechanics_apply_kernel(double* x, double* y, double* z,
+                                       const double* radius,
                                        const double* dx, const double* dy,
-                                       const double* dz, int num_agents) {
+                                       const double* dz, int* clamp_count,
+                                       int num_agents,
+                                       MechanicsLaunchParams params) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
-  x[i] += dx[i];
-  y[i] += dy[i];
-  z[i] += dz[i];
+  double move_x = dx[i];
+  double move_y = dy[i];
+  double move_z = dz[i];
+  const double norm = sqrt(move_x * move_x + move_y * move_y
+                            + move_z * move_z);
+  const double limit = params.max_displacement_fraction * radius[i];
+  if (norm > limit && norm > 0.0) {
+    const double scale = limit / norm;
+    move_x *= scale;
+    move_y *= scale;
+    move_z *= scale;
+    atomicAdd(clamp_count, 1);
+  }
+  x[i] += move_x;
+  y[i] += move_y;
+  z[i] += move_z;
+  const double sx = params.hi0 - params.lo0;
+  const double sy = params.hi1 - params.lo1;
+  const double x_hi = nextafter(params.hi0, params.lo0);
+  const double y_hi = nextafter(params.hi1, params.lo1);
+  if (params.periodic_x) {
+    while (x[i] < params.lo0) x[i] += sx;
+    while (x[i] >= params.hi0) x[i] -= sx;
+  } else {
+    x[i] = x[i] < params.lo0 ? params.lo0
+        : (x[i] >= params.hi0 ? x_hi : x[i]);
+  }
+  if (params.periodic_y) {
+    while (y[i] < params.lo1) y[i] += sy;
+    while (y[i] >= params.hi1) y[i] -= sy;
+  } else {
+    y[i] = y[i] < params.lo1 ? params.lo1
+        : (y[i] >= params.hi1 ? y_hi : y[i]);
+  }
+  if (z[i] < params.lo2) z[i] = params.lo2;
 }
 
 void launch_mechanics_clear_kernel(double* dx, double* dy, double* dz,
-                                   int num_agents, cudaStream_t stream) {
+                                   int* clamp_count, int num_agents,
+                                   cudaStream_t stream) {
   if (num_agents <= 0) return;
   int block = 256;
   int grid = (num_agents + block - 1) / block;
-  mechanics_clear_kernel<<<grid, block, 0, stream>>>(dx, dy, dz, num_agents);
+  mechanics_clear_kernel<<<grid, block, 0, stream>>>(
+      dx, dy, dz, clamp_count, num_agents);
 }
 
 void launch_mechanics_forces_kernel(
     const double* x, const double* y, const double* z,
-    const double* radius, const double* mass, const int* state,
+    const double* radius, const int* state,
     const int* cell_offsets, const int* sorted_indices,
     double* dx, double* dy, double* dz,
     int num_agents, const MechanicsLaunchParams& params,
@@ -186,20 +237,22 @@ void launch_mechanics_forces_kernel(
   int block = 256;
   int grid = (num_agents + block - 1) / block;
   mechanics_forces_kernel<<<grid, block, 0, stream>>>(
-      x, y, z, radius, mass, state,
+      x, y, z, radius, state,
       cell_offsets, sorted_indices,
       dx, dy, dz, num_agents, params);
 }
 
 void launch_mechanics_apply_kernel(
     double* x, double* y, double* z,
+    const double* radius,
     const double* dx, const double* dy, const double* dz,
-    int num_agents, cudaStream_t stream) {
+    int* clamp_count, int num_agents,
+    const MechanicsLaunchParams& params, cudaStream_t stream) {
   if (num_agents <= 0) return;
   int block = 256;
   int grid = (num_agents + block - 1) / block;
   mechanics_apply_kernel<<<grid, block, 0, stream>>>(
-      x, y, z, dx, dy, dz, num_agents);
+      x, y, z, radius, dx, dy, dz, clamp_count, num_agents, params);
 }
 
 }  // namespace gpu

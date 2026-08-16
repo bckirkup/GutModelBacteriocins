@@ -104,6 +104,10 @@ void assert_schema(hid_t file, const std::string& step) {
   assert(hdf5_dataset_exists(file, "summary/" + step + "/step"));
   assert(hdf5_dataset_exists(file, "summary/" + step + "/num_agents"));
   assert(hdf5_dataset_exists(file, "summary/" + step + "/num_lineages"));
+  assert(hdf5_dataset_exists(file,
+                            "summary/" + step + "/mechanics/displacement_clamps"));
+  assert(hdf5_dataset_exists(
+      file, "summary/" + step + "/mechanics/cumulative_displacement_clamps"));
   assert(hdf5_dataset_exists(file, "lineage/" + step + "/btuB_expression"));
   assert(hdf5_dataset_exists(file, "lineage/" + step + "/num_bi_loci"));
   assert(hdf5_dataset_exists(file, "genome/" + step + "/parent_id"));

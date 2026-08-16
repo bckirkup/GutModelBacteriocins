@@ -615,6 +615,11 @@ concentration as the CirA linearized ligand when siderophore chemistry is enable
 
 **Hertzian contact model:** `F = hertz_k * overlap^(3/2)` where `overlap = r_i + r_j - d`. Calibrated from AFM measurements of bacterial elastic modulus (~0.1–1 MPa). Only applies when cells physically overlap (`overlap > 0`).
 
+Mechanical mobility uses the existing `vbf_viscosity` value, so that
+parameter also sets the Stokes drag scale for contact and adhesion relaxation.
+Each agent's accumulated mechanics displacement is capped at `0.1 * radius`
+per biological step.
+
 **EPS adhesion:** When enabled, cells within `adhesion_range` of contact experience an attractive force that decays linearly with gap distance. Models extracellular polymeric substance (EPS) bridging for biofilm-like clustering.
 
 ---
@@ -721,7 +726,7 @@ gpu_device_id 0
 |-----------|---------|-------|-------------|
 | `hdf5.filename` / `hdf5_file` | `gut_ibm_output.h5` | — | Output file path |
 | `hdf5.enabled` | true | — | Master switch (also off when all schedule intervals are 0) |
-| `hdf5.schedule.summary` | 1 | steps | Per-step summary stats + globally reduced interval and cumulative event counters, including `lysis_deaths`, plus the instantaneous `stocks/` group |
+| `hdf5.schedule.summary` | 1 | steps | Per-step summary stats + globally reduced interval and cumulative event counters, including `lysis_deaths`, plus instantaneous `stocks/` and `mechanics/` groups; the latter contains `displacement_clamps` and `cumulative_displacement_clamps` |
 | `hdf5.schedule.agents` | 5 | steps | Lightweight agent arrays |
 | `hdf5.schedule.grid` | 0 | steps | 3D chemical grids (0 = disabled) |
 | `hdf5.schedule.lineage` | 100 | steps | Lineage tracker arrays |

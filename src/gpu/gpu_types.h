@@ -81,6 +81,8 @@ struct MechanicsLaunchParams {
   int adhesion_enabled = 0;
   double adhesion_strength = 0.0;
   double adhesion_range = 0.0;
+  double viscosity = 0.0;
+  double max_displacement_fraction = 0.0;
   double dt = 0.0;
   double lo0 = 0.0;
   double lo1 = 0.0;

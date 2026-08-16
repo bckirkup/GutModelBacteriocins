@@ -533,6 +533,7 @@ void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const
 
   if (summary_due) {
     sim.prepare_step_events_for_summary();
+    sim.prepare_mechanics_stats_for_summary();
     sim.prepare_population_stocks_for_summary();
     const std::string path = "summary/" + step_name;
     ensure_group(fid, "summary", cfg_);
@@ -630,6 +631,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
 
   const auto num_lineages = count_live_lineages(agents);
   const auto& stocks = sim.population_stocks();
+  const auto& mechanics = sim.mechanics_summary_stats();
 
   write_scalar_dataset(fid, group + "/time", H5T_NATIVE_DOUBLE, &t);
   write_scalar_dataset(fid, group + "/dt", H5T_NATIVE_DOUBLE, &dt_val);
@@ -644,6 +646,16 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
                        H5T_NATIVE_INT32, &starving_live);
   write_scalar_dataset(fid, group + "/stocks/washout_trapped_live_agents",
                        H5T_NATIVE_INT32, &washout_trapped_live);
+  ensure_group(fid, group + "/mechanics", cfg_);
+  const int32_t displacement_clamps = mechanics.displacement_clamps;
+  const int32_t cumulative_displacement_clamps =
+      sim.mechanics_cumulative_stats().displacement_clamps
+      + displacement_clamps;
+  write_scalar_dataset(fid, group + "/mechanics/displacement_clamps",
+                       H5T_NATIVE_INT32, &displacement_clamps);
+  write_scalar_dataset(fid,
+                       group + "/mechanics/cumulative_displacement_clamps",
+                       H5T_NATIVE_INT32, &cumulative_displacement_clamps);
   const int32_t halt_reason = sim.halted_for_dysbiosis() ? 1 : 0;
   const double halt_density = sim.halt_density_cells_per_mL();
   write_scalar_dataset(fid, group + "/halt_reason_code",
