@@ -3,6 +3,7 @@
    
    Output structure:
      /file attrs: gutibm_version, nx, ny, nz, grid_dx[_x/_y/_z], domain_lo/hi
+     /run_provenance: resolved config, build identity, and run identity
      /summary/step_NNNNNN/   — scalars + event counters + chem summaries
      /agents/step_NNNNNN/    — lightweight per-agent arrays
      /grid/step_NNNNNN/      — 3D species datasets (optional gzip)
@@ -71,6 +72,7 @@ class HDF5Writer {
   void write_lineage_layer(const Simulation& sim, const std::string& step_group) const;
   void write_genome_layer(const Simulation& sim, const std::string& step_group) const;
   void write_provenance_layer(Simulation& sim, const std::string& step_group) const;
+  void write_run_provenance(const Simulation& sim) const;
   std::vector<const struct Agent*> output_agents(const Simulation& sim) const;
 
   HDF5Config cfg_;
@@ -87,6 +89,7 @@ class HDF5Writer {
   void initialize_file();
   int64_t file_id_ = -1;
 #endif
+  mutable bool run_provenance_written_ = false;
 };
 
 }  // namespace gutibm

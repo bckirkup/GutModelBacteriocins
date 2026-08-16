@@ -43,6 +43,13 @@ Before submitting, record:
 - the fork seed;
 - the question and planned observables.
 
+The checkpoint itself carries `/run_provenance/`. Read its
+`resolved_config`, code identity, MPI rank count, and (for Batch runs) optional
+image digest/job ID before forking. The JSON is parser-compatible and captures
+the finalized configuration rather than a selected-parameter summary. Keep
+this record with the origin SHA-256 and fork overlay. `/provenance/` is
+different: it contains per-kill provenance and does not identify the run.
+
 The seed is essential: a fork is a **population-state continuation**, not a
 bit-identical continuation. Tier-2 restart restores the population and
 chemistry, but RNG is reseeded from the fork job's seed.

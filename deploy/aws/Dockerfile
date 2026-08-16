@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 ARG CUDA_ARCHS=75;86;89
+ARG GUTIBM_GIT_SHA=unknown
 WORKDIR /src
 COPY . .
 
@@ -37,6 +38,7 @@ RUN CC=gcc-13 CXX=g++-13 cmake -B build \
       -DGUTIBM_USE_MPI=ON \
       -DGUTIBM_USE_HDF5=ON \
       -DGUTIBM_USE_CUDA=ON \
+      -DGUTIBM_GIT_SHA="${GUTIBM_GIT_SHA}" \
       -DCMAKE_BUILD_TYPE=Release \
       -DCMAKE_CUDA_HOST_COMPILER=g++-13 \
       -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHS}" \
