@@ -70,9 +70,10 @@ WORKDIR /opt/gutibm
 # Keep binaries owned by root (docker:S6504); gutibm may execute but not rewrite them.
 COPY --from=build --chown=root:root --chmod=755 /src/build/gut_ibm /opt/gutibm/gut_ibm
 COPY --chown=root:root --chmod=755 deploy/aws/entry.sh /opt/gutibm/entry.sh
+COPY --chown=root:root --chmod=755 deploy/aws/checkpoint_retention.sh /opt/gutibm/checkpoint_retention.sh
 # Strip CR in case entry.sh was checked out with Windows CRLF endings: a `\r` in
 # the shebang makes the container exit 127 ("/usr/bin/env: 'bash\r': not found").
-RUN sed -i 's/\r$//' /opt/gutibm/entry.sh
+RUN sed -i 's/\r$//' /opt/gutibm/entry.sh /opt/gutibm/checkpoint_retention.sh
 
 # Non-root runtime (docker:S6471). Work dir defaults to /tmp which is writable.
 USER gutibm
