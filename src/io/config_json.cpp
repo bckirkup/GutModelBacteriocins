@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <iostream>
 #include <sstream>
+#include <iomanip>
 #include <string_view>
 #include "error.h"
 #include <utility>
@@ -624,6 +625,283 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
               << " — falling back to legacy parser\n";
     return false;
   }
+}
+
+std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
+  std::ostringstream out;
+  out << std::setprecision(17);
+  bool first = true;
+  const auto key = [&out, &first](std::string_view name) {
+    if (!first) out << ',';
+    first = false;
+    out << '"' << name << "\":";
+  };
+  const auto string_value = [&out](const std::string& value) {
+    out << '"';
+    for (const char c : value) {
+      if (c == '\\' || c == '"') out << '\\';
+      if (c == '\n') out << "\\n";
+      else if (c == '\r') out << "\\r";
+      else if (c == '\t') out << "\\t";
+      else out << c;
+    }
+    out << '"';
+  };
+  const auto string_key = [&key, &string_value](std::string_view name,
+                                                 const std::string& value) {
+    key(name);
+    string_value(value);
+  };
+  const auto real_key = [&key, &out](std::string_view name, Real value) {
+    key(name);
+    out << value;
+  };
+  const auto int_key = [&key, &out](std::string_view name, auto value) {
+    key(name);
+    out << value;
+  };
+  const auto bool_key = [&key, &out](std::string_view name, bool value) {
+    key(name);
+    out << (value ? "true" : "false");
+  };
+
+  out << '{';
+  real_key("total_time", cfg.time.total_time);
+  real_key("bio_dt", cfg.time.bio_dt);
+  real_key("output_interval", cfg.time.output_interval);
+  int_key("seed", cfg.seed);
+  real_key("grid_dx", cfg.domain.grid_dx);
+  real_key("domain_x", cfg.domain.hi[0]);
+  real_key("domain_y", cfg.domain.hi[1]);
+  real_key("domain_z", cfg.domain.hi[2]);
+  real_key("hash_cell_size", cfg.domain.hash_cell_size);
+  real_key("ghost_width", cfg.domain.ghost_width);
+  int_key("domain.chemistry_stride_x", cfg.domain.chemistry_stride[0]);
+  int_key("domain.chemistry_stride_y", cfg.domain.chemistry_stride[1]);
+  int_key("domain.chemistry_stride_z", cfg.domain.chemistry_stride[2]);
+  int_key("domain.grid_halo_width", cfg.domain.grid_halo_width);
+  string_key("hdf5.file", cfg.hdf5.filename);
+  if (!cfg.checkpoint.file.empty()) {
+    string_key("checkpoint_file", cfg.checkpoint.file);
+  }
+  if (!cfg.checkpoint.step.empty()) {
+    string_key("checkpoint_step", cfg.checkpoint.step);
+  }
+  string_key("initial_population.placement", cfg.initial_population.placement);
+  real_key("initial_population.z_min", cfg.initial_population.z_min);
+  real_key("initial_population.z_max", cfg.initial_population.z_max);
+  bool_key("immigration.enabled", cfg.immigration.enabled);
+  int_key("immigration.count", cfg.immigration.count);
+  int_key("immigration.strain_index", cfg.immigration.strain_index);
+  string_key("immigration.placement", cfg.immigration.placement);
+  real_key("immigration.distance", cfg.immigration.distance);
+  real_key("immigration.distance_tolerance", cfg.immigration.distance_tolerance);
+  string_key("immigration.distance_reference", cfg.immigration.distance_reference);
+  real_key("immigration.z_min", cfg.immigration.z_min);
+  real_key("immigration.z_max", cfg.immigration.z_max);
+  string_key("immigration.schedule", cfg.immigration.schedule);
+  int_key("immigration.step", cfg.immigration.step);
+  real_key("immigration.rate", cfg.immigration.rate);
+  string_key("chemistry_decomposition", cfg.chemistry_decomposition);
+  string_key("species_subset", cfg.species_subset);
+  string_key("chemistry.toxin_evaluation", cfg.qssa.toxin_evaluation);
+  string_key("chemistry.toxin_lumping", cfg.qssa.toxin_lumping);
+  real_key("mucus_thickness", cfg.advection.mucus_thickness);
+  real_key("radial_turnover", cfg.advection.radial_turnover);
+  string_key("washout.trap", cfg.advection.washout_trap
+      == WashoutTrapMode::IMPOSED ? "imposed" : "emergent");
+  real_key("distal_transit", cfg.advection.distal_transit_time);
+  real_key("distal_length", cfg.advection.distal_length);
+  real_key("profile_alpha", cfg.advection.profile_alpha);
+  bool_key("taylor_aris_enabled", cfg.advection.taylor_aris_enabled);
+  bool_key("peristaltic_enabled", cfg.advection.peristaltic_enabled);
+  real_key("peristaltic_period", cfg.advection.peristaltic_period);
+  real_key("peristaltic_amplitude", cfg.advection.peristaltic_amplitude);
+  real_key("peristaltic_wavelength", cfg.advection.peristaltic_wavelength);
+  bool_key("crypts_enabled", cfg.advection.crypts_enabled);
+  real_key("crypt_depth", cfg.advection.crypt_depth);
+  real_key("crypt_exit_rate", cfg.advection.crypt_exit_rate);
+  real_key("crypt_entry_rate", cfg.advection.crypt_entry_rate);
+  int_key("crypt_carrying_capacity", cfg.advection.crypt_carrying_capacity);
+  real_key("vbf_density", cfg.vbf.density);
+  real_key("vbf_viscosity", cfg.vbf.viscosity);
+  real_key("vbf_drag_coeff", cfg.vbf.drag_coeff);
+  real_key("vbf_nutrient_sink", cfg.vbf.nutrient_sink);
+  real_key("vbf_mucin_liberation", cfg.vbf.mucin_liberation);
+  real_key("vbf_carrying_cap", cfg.vbf.carrying_cap);
+  bool_key("vbf_mucin_z_gradient", cfg.vbf.mucin_z_gradient_enabled);
+  real_key("vbf_mucin_z_lambda", cfg.vbf.mucin_z_gradient_lambda);
+  real_key("vbf_carbon_sink_vmax", cfg.vbf.carbon_sink_vmax);
+  real_key("vbf_carbon_sink_km", cfg.vbf.carbon_sink_km);
+  real_key("carbon_boundary_conc", cfg.carbon_boundary_conc);
+  bool_key("oxygen.enabled", cfg.chem_env.oxygen.enabled);
+  real_key("oxygen.epithelial_conc", cfg.chem_env.oxygen.epithelial_conc);
+  real_key("oxygen.D_free", cfg.chem_env.oxygen.D_free);
+  real_key("oxygen.Km", cfg.chem_env.oxygen.Km);
+  real_key("oxygen.boost_max", cfg.chem_env.oxygen.boost_max);
+  real_key("oxygen.q_consumption", cfg.chem_env.oxygen.q_consumption);
+  real_key("oxygen.q_maintenance", cfg.chem_env.oxygen.q_maintenance);
+  real_key("oxygen.vbf_sink", cfg.chem_env.oxygen.vbf_sink);
+  real_key("oxygen.k_ROS", cfg.chem_env.oxygen.k_ROS);
+  bool_key("acetate.enabled", cfg.chem_env.acetate.enabled);
+  real_key("acetate.D_free", cfg.chem_env.acetate.D_free);
+  real_key("acetate.vbf_production", cfg.chem_env.acetate.vbf_production);
+  real_key("acetate.vbf_consumption", cfg.chem_env.acetate.vbf_consumption);
+  real_key("acetate.overflow_threshold", cfg.chem_env.acetate.overflow_threshold);
+  real_key("acetate.overflow_rate", cfg.chem_env.acetate.overflow_rate);
+  real_key("acetate.scavenge_rate", cfg.chem_env.acetate.scavenge_rate);
+  real_key("acetate.scavenge_Km", cfg.chem_env.acetate.scavenge_Km);
+  real_key("acetate.epithelial_uptake", cfg.chem_env.acetate.epithelial_uptake);
+  bool_key("mucin.enabled", cfg.chem_env.mucin.enabled);
+  real_key("mucin.initial_conc", cfg.chem_env.mucin.initial_conc);
+  real_key("mucin.secretion_rate", cfg.chem_env.mucin.secretion_rate);
+  real_key("mucin.Km_degradation", cfg.chem_env.mucin.Km_degradation);
+  real_key("mucin.k_liberation", cfg.chem_env.mucin.k_liberation);
+  bool_key("protease.enabled", cfg.chem_env.protease.enabled);
+  real_key("protease.default_half_life", cfg.chem_env.protease.default_half_life);
+  real_key("protease.dilution_rate", cfg.chem_env.protease.dilution_rate);
+  bool_key("siderophore.enabled", cfg.chem_env.siderophore.enabled);
+  real_key("siderophore.secretion_rate", cfg.chem_env.siderophore.secretion_rate);
+  real_key("siderophore.D_free", cfg.chem_env.siderophore.D_free);
+  real_key("siderophore.chelation_rate", cfg.chem_env.siderophore.chelation_rate);
+  real_key("siderophore.Km_reimport", cfg.chem_env.siderophore.Km_reimport);
+  real_key("siderophore.Vmax_reimport", cfg.chem_env.siderophore.Vmax_reimport);
+  bool_key("ferrichrome.enabled", cfg.chem_env.ferrichrome.enabled);
+  real_key("ferrichrome.initial_conc", cfg.chem_env.ferrichrome.initial_conc);
+  real_key("ferrichrome.boundary_conc", cfg.chem_env.ferrichrome.boundary_conc);
+  bool_key("quorum_sensing.enabled", cfg.quorum_sensing.enabled);
+  real_key("quorum_sensing.ai2_basal_rate", cfg.quorum_sensing.ai2_basal_rate);
+  real_key("quorum_sensing.ai2_growth_coupled", cfg.quorum_sensing.ai2_growth_coupled);
+  real_key("quorum_sensing.lsr_vmax", cfg.quorum_sensing.lsr_vmax);
+  real_key("quorum_sensing.lsr_km", cfg.quorum_sensing.lsr_km);
+  real_key("quorum_sensing.ai2_D_free", cfg.quorum_sensing.ai2_D_free);
+  real_key("quorum_sensing.ai2_decay_rate", cfg.quorum_sensing.ai2_decay_rate);
+  bool_key("quorum_sensing.ai2_chemotaxis", cfg.quorum_sensing.ai2_chemotaxis_enabled);
+  real_key("quorum_sensing.chi_ai2", cfg.quorum_sensing.chi_ai2);
+  real_key("toxin_cutoff", cfg.qssa.toxin_cutoff);
+  real_key("nutrient_cutoff", cfg.qssa.nutrient_cutoff);
+  real_key("colicin_release_rate", cfg.qssa.colicin_release_rate);
+  real_key("microcin_secretion", cfg.qssa.microcin_secretion);
+  bool_key("use_fmm", cfg.qssa.use_fmm);
+  real_key("fmm_theta", cfg.qssa.fmm_theta);
+  int_key("fmm_expansion_order", cfg.qssa.fmm_expansion_order);
+  real_key("division_threshold", cfg.fixes.metabolism.division_threshold);
+  real_key("bacteriostasis_threshold", cfg.fixes.metabolism.bacteriostasis_threshold);
+  real_key("maintenance_rate", cfg.fixes.metabolism.maintenance_rate);
+  real_key("metE_penalty", cfg.fixes.metabolism.metE_penalty);
+  real_key("metE_acetate_km", cfg.fixes.metabolism.metE_acetate_km);
+  real_key("metE_acetate_max_factor", cfg.fixes.metabolism.metE_acetate_max_factor);
+  real_key("eut_km", cfg.fixes.metabolism.eut_km);
+  real_key("eut_max_penalty", cfg.fixes.metabolism.eut_max_penalty);
+  real_key("km_iron_primary", cfg.fixes.metabolism.km_iron_primary);
+  real_key("km_iron_iroN", cfg.fixes.metabolism.km_iron_iroN);
+  real_key("km_iron_iutA", cfg.fixes.metabolism.km_iron_iutA);
+  real_key("km_iron_fiu", cfg.fixes.metabolism.km_iron_fiu);
+  real_key("kd_b12_btuB", cfg.fixes.receptor.kd_b12_btuB);
+  real_key("kd_colicinE_btuB", cfg.fixes.receptor.kd_colicinE_btuB);
+  real_key("kd_enterobactin", cfg.fixes.receptor.kd_enterobactin);
+  real_key("kd_colicinB_fepA", cfg.fixes.receptor.kd_colicinB_fepA);
+  real_key("kd_lin_enterobactin", cfg.fixes.receptor.kd_lin_enterobactin);
+  real_key("kd_colicinIa_cirA", cfg.fixes.receptor.kd_colicinIa_cirA);
+  real_key("kill_rate_colicin", cfg.fixes.receptor.kill_rate_colicin);
+  real_key("kill_rate_microcin", cfg.fixes.receptor.kill_rate_microcin);
+  real_key("immunity_factor", cfg.fixes.receptor.immunity_factor);
+  real_key("sos_lysis_prob", cfg.fixes.bacteriocin.sos_lysis_prob);
+  real_key("sos_basal_rate", cfg.fixes.bacteriocin.sos_basal_rate);
+  real_key("retardation_basic", cfg.fixes.bacteriocin.retardation_basic);
+  real_key("retardation_acidic", cfg.fixes.bacteriocin.retardation_acidic);
+  real_key("retardation_neutral", cfg.fixes.bacteriocin.retardation_neutral);
+  real_key("D_free_colicin", cfg.fixes.bacteriocin.D_free_colicin);
+  real_key("burst_release_tau", cfg.fixes.bacteriocin.burst_release_tau);
+  real_key("microcin_mu_penalty", cfg.fixes.bacteriocin.microcin_mu_penalty);
+  real_key("sos_cross_induction_rate", cfg.fixes.bacteriocin.sos_cross_induction_rate);
+  real_key("pili_length", cfg.fixes.conjugation.pili_length);
+  real_key("base_transfer_rate", cfg.fixes.conjugation.base_transfer_rate);
+  real_key("shear_critical", cfg.fixes.conjugation.shear_critical);
+  real_key("plasmid_copy_cost", cfg.fixes.conjugation.plasmid_copy_cost);
+  bool_key("pili_heterogeneity", cfg.fixes.conjugation.pili_heterogeneity);
+  real_key("pili_length_min", cfg.fixes.conjugation.pili_length_min);
+  real_key("pili_length_max", cfg.fixes.conjugation.pili_length_max);
+  real_key("bi_duplication_rate", cfg.fixes.mutation.bi_duplication_rate);
+  real_key("bi_recombination_rate", cfg.fixes.mutation.bi_recombination_rate);
+  real_key("receptor_mutation_rate", cfg.fixes.mutation.receptor_mutation_rate);
+  real_key("super_killer_rate", cfg.fixes.mutation.super_killer_rate);
+  real_key("partial_resistance_rate", cfg.fixes.mutation.partial_resistance_rate);
+  real_key("receptor_reduction", cfg.fixes.mutation.receptor_reduction);
+  int_key("max_bi_loci", cfg.fixes.mutation.max_bi_loci);
+  real_key("immunity_escape_prob", cfg.fixes.mutation.immunity_escape_prob);
+  real_key("escape_affinity_lo", cfg.fixes.mutation.escape_affinity_lo);
+  real_key("escape_affinity_hi", cfg.fixes.mutation.escape_affinity_hi);
+  real_key("compensatory_rate", cfg.fixes.mutation.compensatory_rate);
+  real_key("compensatory_reduction", cfg.fixes.mutation.compensatory_reduction);
+  real_key("hertz_k", cfg.fixes.mechanics.hertz_k);
+  bool_key("hertzian_enabled", cfg.fixes.mechanics.hertzian_enabled);
+  bool_key("adhesion_enabled", cfg.fixes.mechanics.adhesion_enabled);
+  real_key("adhesion_strength", cfg.fixes.mechanics.adhesion_strength);
+  real_key("adhesion_range", cfg.fixes.mechanics.adhesion_range);
+  bool_key("gpu_enabled", cfg.gpu.enabled);
+  int_key("gpu_device_id", cfg.gpu.device_id);
+  bool_key("adaptive_dt_enabled", cfg.adaptive_dt.enabled);
+  real_key("dt_min", cfg.adaptive_dt.min);
+  real_key("dt_max", cfg.adaptive_dt.max);
+  real_key("dt_safety", cfg.adaptive_dt.safety);
+  real_key("dt_growth_limit", cfg.adaptive_dt.growth_limit);
+  bool_key("profile_steps", cfg.profile_steps);
+  real_key("dysbiosis_threshold", cfg.dysbiosis_threshold);
+  real_key("dysbiosis_sampling_interval", cfg.dysbiosis_sampling_interval);
+  int_key("dysbiosis_sample_count", cfg.dysbiosis_sample_count);
+  bool_key("restart.enabled", cfg.restart.enabled);
+  string_key("restart.directory", cfg.restart.directory);
+  int_key("restart.interval_steps", cfg.restart.interval_steps);
+  bool_key("hdf5.enabled", cfg.hdf5.enabled);
+  string_key("hdf5.compression", cfg.hdf5.compression);
+  int_key("hdf5.compression_level", cfg.hdf5.compression_level);
+  int_key("hdf5.schedule.summary", cfg.hdf5.schedule.summary);
+  int_key("hdf5.schedule.agents", cfg.hdf5.schedule.agents);
+  int_key("hdf5.schedule.grid", cfg.hdf5.schedule.grid);
+  int_key("hdf5.schedule.lineage", cfg.hdf5.schedule.lineage);
+  int_key("hdf5.schedule.genome", cfg.hdf5.schedule.genome);
+  int_key("hdf5.schedule.provenance", cfg.hdf5.schedule.provenance);
+  out << ",\"hdf5.schedule.grid_species\":[";
+  for (size_t i = 0; i < cfg.hdf5.schedule.grid_species.size(); ++i) {
+    if (i != 0) out << ',';
+    string_value(cfg.hdf5.schedule.grid_species[i]);
+  }
+  out << ']';
+  out << ",\"initial_strains\":[";
+  for (size_t i = 0; i < cfg.initial_strains.size(); ++i) {
+    if (i != 0) out << ',';
+    const auto& strain = cfg.initial_strains[i];
+    out << "{\"type\":" << strain.type
+        << ",\"count\":" << strain.count
+        << ",\"mu_max\":" << strain.mu_max
+        << ",\"conjugative\":" << (strain.conjugative ? "true" : "false")
+        << ",\"cdi_type\":" << strain.cdi_type
+        << ",\"cdi_immunity\":" << strain.cdi_immunity
+        << ",\"plasmids\":[";
+    for (size_t j = 0; j < strain.plasmids.size(); ++j) {
+      if (j != 0) out << ',';
+      string_value(strain.plasmids[j]);
+    }
+    out << "]}";
+  }
+  out << "],\"fixes\":[";
+  for (size_t i = 0; i < cfg.enabled_fixes.size(); ++i) {
+    if (i != 0) out << ',';
+    string_value(cfg.enabled_fixes[i]);
+  }
+  out << "],\"disabled_fixes\":[";
+  for (size_t i = 0; i < cfg.disabled_fixes.size(); ++i) {
+    if (i != 0) out << ',';
+    string_value(cfg.disabled_fixes[i]);
+  }
+  out << "],\"disabled_mechanisms\":[";
+  for (size_t i = 0; i < cfg.disabled_mechanisms.size(); ++i) {
+    if (i != 0) out << ',';
+    string_value(cfg.disabled_mechanisms[i]);
+  }
+  out << "]}";
+  return out.str();
 }
 
 }  // namespace gutibm

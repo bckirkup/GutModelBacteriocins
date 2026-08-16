@@ -789,6 +789,21 @@ HDF5 nested JSON example:
 
 File layout: `/summary/step_NNNNNN/`, `/agents/step_NNNNNN/`, `/grid/step_NNNNNN/` (3D, optional gzip), `/lineage/`, `/genome/`. File attributes include `gutibm_version=4`, `nx`, `ny`, `nz`, and `grid_dx_x`, `grid_dx_y`, `grid_dx_z`; legacy `grid_dx` remains readable.
 
+Every HDF5 file also contains a root-level `/run_provenance/` record written
+once when the file is first populated. `resolved_config` is the complete
+post-default, post-override configuration in parser-compatible JSON, so it
+can be saved and fed back to `gut_ibm` to reproduce or fork the run.
+`git_sha`, `version`, compile-time feature flags, and `mpi_rank_count` identify
+the binary and execution shape. `container_image_digest` and `job_id` are
+included only when supplied through `GUTIBM_IMAGE_DIGEST` and
+`AWS_BATCH_JOB_ID`; absent optional datasets are not fabricated.
+
+`/run_provenance/` is deliberately separate from `/provenance/`. The latter
+remains the per-kill mechanism record controlled by
+`hdf5.schedule.provenance`; it is not run identity or configuration metadata.
+The same run-provenance record is present in normal output files and closed
+midstream restart/checkpoint files.
+
 ---
 
 ## Fix Plugins

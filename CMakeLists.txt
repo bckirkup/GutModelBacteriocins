@@ -9,6 +9,31 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(GUTIBM_GIT_SHA "" CACHE STRING
+    "Git commit SHA to embed in run provenance (overrides autodetection)")
+if(NOT GUTIBM_GIT_SHA)
+  find_package(Git QUIET)
+  if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
+    execute_process(
+      COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_SOURCE_DIR}" rev-parse HEAD
+      OUTPUT_VARIABLE GUTIBM_GIT_SHA
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+      RESULT_VARIABLE GUTIBM_GIT_SHA_RESULT)
+    if(NOT GUTIBM_GIT_SHA_RESULT EQUAL 0)
+      set(GUTIBM_GIT_SHA "unknown")
+    endif()
+  else()
+    set(GUTIBM_GIT_SHA "unknown")
+  endif()
+endif()
+if(NOT GUTIBM_GIT_SHA)
+  set(GUTIBM_GIT_SHA "unknown")
+endif()
+add_compile_definitions(
+  GUTIBM_GIT_SHA="${GUTIBM_GIT_SHA}"
+  GUTIBM_VERSION="${PROJECT_VERSION}")
+
 # ── Options ──────────────────────────────────────────────────────────────
 option(GUTIBM_USE_MPI    "Enable MPI parallelism"   ON)
 option(GUTIBM_USE_HDF5   "Enable HDF5 output"       ON)

@@ -24,6 +24,11 @@ fi
 
 cd "${ROOT}"
 
+GUTIBM_GIT_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
+if [[ -z "${GUTIBM_GIT_SHA}" ]]; then
+  GUTIBM_GIT_SHA="unknown"
+fi
+
 echo "==> Ensure ECR repository exists"
 aws ecr describe-repositories --repository-names gutibm --region "${AWS_REGION}" >/dev/null 2>&1 \
   || aws ecr create-repository --repository-name gutibm --region "${AWS_REGION}" >/dev/null
@@ -33,7 +38,9 @@ aws ecr get-login-password --region "${AWS_REGION}" \
   | docker login --username AWS --password-stdin "${ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
 echo "==> docker build (this can take a long time the first time)"
-docker build -f deploy/aws/Dockerfile -t gutibm:cuda --build-arg 'CUDA_ARCHS=75;86;89' .
+docker build -f deploy/aws/Dockerfile -t gutibm:cuda \
+  --build-arg 'CUDA_ARCHS=75;86;89' \
+  --build-arg "GUTIBM_GIT_SHA=${GUTIBM_GIT_SHA}" .
 
 echo "==> tag + push ${IMAGE_URI}"
 docker tag gutibm:cuda "${IMAGE_URI}"

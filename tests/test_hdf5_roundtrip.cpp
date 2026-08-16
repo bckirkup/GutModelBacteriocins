@@ -6,6 +6,7 @@
 #include "input_parser.h"
 #include "plasmid.h"
 #include "hdf5_reader.h"
+#include "config_json.h"
 #include "path_utils.h"
 #include "hdf5_test_helpers.h"
 
@@ -19,6 +20,40 @@
 #include <vector>
 
 #ifdef GUTIBM_HDF5
+
+std::string read_string_dataset(hid_t file, const char* path) {
+  hid_t dataset = H5Dopen2(file, path, H5P_DEFAULT);
+  assert(dataset >= 0);
+  hid_t type = H5Dget_type(dataset);
+  char* value = nullptr;
+  assert(H5Dread(dataset, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, &value) >= 0);
+  const std::string result = value == nullptr ? "" : value;
+  H5free_memory(value);
+  H5Tclose(type);
+  H5Dclose(dataset);
+  return result;
+}
+
+void assert_run_provenance(hid_t file,
+                           const gutibm::SimulationConfig& expected) {
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/resolved_config"));
+  assert(gutibm::test::hdf5_dataset_exists(file, "run_provenance/git_sha"));
+  assert(gutibm::test::hdf5_dataset_exists(file, "run_provenance/version"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/mpi_rank_count"));
+  const std::string content =
+      read_string_dataset(file, "run_provenance/resolved_config");
+  gutibm::SimulationConfig restored = gutibm::InputParser::default_config();
+  assert(gutibm::ConfigJson::parse_document(restored, content));
+  gutibm::InputParser::finalize_config(restored);
+  assert(restored.domain.hi == expected.domain.hi);
+  assert(restored.domain.grid_dx == expected.domain.grid_dx);
+  assert(restored.time.bio_dt == expected.time.bio_dt);
+  assert(restored.seed == expected.seed);
+  assert(restored.chemistry_decomposition == expected.chemistry_decomposition);
+  assert(restored.initial_strains.size() == expected.initial_strains.size());
+}
 extern "C" {
 #include <hdf5.h>
 }
@@ -407,8 +442,25 @@ void run_roundtrip(bool parallel_io) {
   validate_step_schema(file, "step_000000");
   validate_step_metadata(file, "step_000000", 0, 0.0, 12);
   validate_step(file, "step_000002", sim, 2, 120.0);
+  assert_run_provenance(file, cfg);
+  const std::string original_config =
+      read_string_dataset(file, "run_provenance/resolved_config");
 
   H5Fclose(file);
+  SimulationConfig distinct_cfg = make_roundtrip_config(filename + ".distinct",
+                                                         false);
+  distinct_cfg.seed += 1;
+  Simulation distinct;
+  distinct.init(distinct_cfg);
+  distinct.run();
+  hid_t distinct_file =
+      H5Fopen(distinct_cfg.hdf5.filename.c_str(), H5F_ACC_RDONLY,
+              H5P_DEFAULT);
+  assert(distinct_file >= 0);
+  assert_run_provenance(distinct_file, distinct_cfg);
+  assert(original_config
+         != read_string_dataset(distinct_file, "run_provenance/resolved_config"));
+  H5Fclose(distinct_file);
 }
 
 #ifdef GUTIBM_MPI
@@ -443,6 +495,11 @@ void run_parallel_slab_grid_equivalence() {
       H5Fopen(replicated_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   assert(slab_file_id >= 0);
   assert(replicated_file_id >= 0);
+  assert_run_provenance(slab_file_id, slab_cfg);
+  assert_run_provenance(replicated_file_id, replicated_cfg);
+  assert(read_string_dataset(slab_file_id, "run_provenance/resolved_config")
+         != read_string_dataset(replicated_file_id,
+                                "run_provenance/resolved_config"));
   const std::string path = "grid/step_000000/carbon";
   hid_t slab_dataset = H5Dopen2(slab_file_id, path.c_str(), H5P_DEFAULT);
   hid_t replicated_dataset =

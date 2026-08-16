@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "species_names.h"
 #include "step_events.h"
+#include "config_json.h"
 #include "error.h"
 
 #ifdef GUTIBM_HDF5
@@ -34,6 +35,7 @@ extern "C" {
 #include <system_error>
 #include <string>
 #include <vector>
+#include <cstdlib>
 #include "error.h"
 
 namespace gutibm {
@@ -243,6 +245,24 @@ void write_file_attr(hid_t fid, const char* name, hid_t type, const void* value)
   H5Awrite(attr, type, value);
   H5Aclose(attr);
   H5Sclose(space);
+}
+
+void write_string_dataset(hid_t fid, const std::string& path,
+                          const std::string& value) {
+  hid_t type = H5Tcopy(H5T_C_S1);
+  H5Tset_size(type, H5T_VARIABLE);
+  hid_t space = H5Screate(H5S_SCALAR);
+  hid_t ds = H5Dcreate2(fid, path.c_str(), type, space,
+                        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  if (ds < 0) {
+    H5Eclear2(H5E_DEFAULT);
+    ds = H5Dopen2(fid, path.c_str(), H5P_DEFAULT);
+  }
+  const char* text = value.c_str();
+  if (ds >= 0) H5Dwrite(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, &text);
+  if (ds >= 0) H5Dclose(ds);
+  H5Sclose(space);
+  H5Tclose(type);
 }
 
 hid_t make_dataset_plist(const HDF5Config& cfg, const hsize_t* chunk_dims,
@@ -523,9 +543,67 @@ void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
 #endif
 }
 
+void HDF5Writer::write_run_provenance(const Simulation& sim) const {
+#ifdef GUTIBM_HDF5
+  if (run_provenance_written_ || !enabled_ || io_rank(cfg_) != 0
+      || file_id_ < 0) {
+    return;
+  }
+  const auto fid = static_cast<hid_t>(file_id_);
+  ensure_group(fid, "run_provenance", cfg_);
+  const auto config = ConfigJson::serialize_document(sim.config());
+  write_string_dataset(fid, "run_provenance/resolved_config", config);
+  write_string_dataset(fid, "run_provenance/git_sha", GUTIBM_GIT_SHA);
+  write_string_dataset(fid, "run_provenance/version", GUTIBM_VERSION);
+  const int32_t mpi_compiled =
+#ifdef GUTIBM_MPI
+      1;
+#else
+      0;
+#endif
+  const int32_t hdf5_compiled = 1;
+  const int32_t gpu_compiled =
+#ifdef GUTIBM_CUDA
+      1;
+#else
+      0;
+#endif
+  const int32_t openmp_compiled =
+#ifdef GUTIBM_OPENMP
+      1;
+#else
+      0;
+#endif
+  write_scalar_dataset(fid, "run_provenance/mpi_compiled",
+                       H5T_NATIVE_INT32, &mpi_compiled);
+  write_scalar_dataset(fid, "run_provenance/hdf5_compiled",
+                       H5T_NATIVE_INT32, &hdf5_compiled);
+  write_scalar_dataset(fid, "run_provenance/gpu_compiled",
+                       H5T_NATIVE_INT32, &gpu_compiled);
+  write_scalar_dataset(fid, "run_provenance/openmp_compiled",
+                       H5T_NATIVE_INT32, &openmp_compiled);
+  const int32_t rank_count = static_cast<int32_t>(mpi_nprocs_world());
+  write_scalar_dataset(fid, "run_provenance/mpi_rank_count",
+                       H5T_NATIVE_INT32, &rank_count);
+  const auto optional_env = [&fid](const char* name, const char* env_name) {
+    if (const char* value = std::getenv(env_name);
+        value != nullptr && value[0] != '\0') {
+      write_string_dataset(fid, std::string("run_provenance/") + name, value);
+    }
+  };
+  optional_env("container_image_digest", "GUTIBM_IMAGE_DIGEST");
+  optional_env("job_id", "AWS_BATCH_JOB_ID");
+  run_provenance_written_ = true;
+#else
+  (void)sim;
+#endif
+}
+
 void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const {
 #ifdef GUTIBM_HDF5
   if (!enabled_) return;
+
+  write_run_provenance(sim);
 
   const std::string step_name = std::format("step_{:06}", step);
   auto fid = static_cast<hid_t>(file_id_);
@@ -1325,13 +1403,15 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
 
   const fs::path out(path);
   const fs::path tmp = out.string() + ".tmp";
-  if (out.has_parent_path()) {
+  const bool writer_rank = io_rank(HDF5Config{}) == 0;
+  bool preparation_ok = true;
+  if (writer_rank && out.has_parent_path()) {
     std::error_code ec;
     fs::create_directories(out.parent_path(), ec);
     if (ec) {
       std::cerr << "Warning: cannot create restart directory '"
                 << out.parent_path().string() << "': " << ec.message() << "\n";
-      return false;
+      preparation_ok = false;
     }
   }
 
@@ -1354,13 +1434,19 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
     constexpr std::uint64_t kHeadroom = 1ULL << 30;
     const std::uint64_t need =
         std::max<std::uint64_t>((uncompressed_est / 4) + kHeadroom, 2ULL << 30);
-    if (!space_ec && si.available < need) {
+    if (writer_rank && !space_ec && si.available < need) {
       std::cerr << "Warning: refusing restart write to '" << path
                 << "': only " << (si.available >> 20)
                 << " MiB free, need ~" << (need >> 20) << " MiB\n";
-      return false;
+      preparation_ok = false;
     }
   }
+#ifdef GUTIBM_MPI
+  MPI_Bcast(&preparation_ok, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+  if (!preparation_ok) return false;
+#else
+  if (!preparation_ok) return false;
+#endif
 
   HDF5Config cfg;
   cfg.filename = tmp.string();
@@ -1402,25 +1488,32 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
   sim.chemical_field().flux_accounting() = saved_flux_accounting;
   writer.finalize();
 
-  std::error_code sz_ec;
-  if (const auto tmp_bytes = fs::file_size(tmp, sz_ec);
-      sz_ec || tmp_bytes < 4096 || H5Fis_hdf5(tmp.string().c_str()) <= 0) {
-    std::cerr << "Warning: restart tmp '" << tmp.string()
-              << "' is missing/unreadable after write (size="
-              << (sz_ec ? 0 : tmp_bytes) << ")\n";
-    fs::remove(tmp, sz_ec);
-    return false;
+  bool published = true;
+  if (writer_rank) {
+    std::error_code sz_ec;
+    if (const auto tmp_bytes = fs::file_size(tmp, sz_ec);
+        sz_ec || tmp_bytes < 4096 || H5Fis_hdf5(tmp.string().c_str()) <= 0) {
+      std::cerr << "Warning: restart tmp '" << tmp.string()
+                << "' is missing/unreadable after write (size="
+                << (sz_ec ? 0 : tmp_bytes) << ")\n";
+      fs::remove(tmp, sz_ec);
+      published = false;
+    } else {
+      std::error_code rename_ec;
+      fs::rename(tmp, out, rename_ec);
+      if (rename_ec) {
+        std::cerr << "Warning: failed to publish restart '" << path
+                  << "': " << rename_ec.message() << "\n";
+        fs::remove(tmp, rename_ec);
+        published = false;
+      }
+    }
   }
-
-  std::error_code rename_ec;
-  fs::rename(tmp, out, rename_ec);
-  if (rename_ec) {
-    std::cerr << "Warning: failed to publish restart '" << path
-              << "': " << rename_ec.message() << "\n";
-    fs::remove(tmp, rename_ec);
-    return false;
-  }
-  return true;
+#ifdef GUTIBM_MPI
+  MPI_Bcast(&published, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+  mpi_barrier(cfg);
+#endif
+  return published;
 #endif
 }
 

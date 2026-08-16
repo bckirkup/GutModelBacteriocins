@@ -33,6 +33,9 @@ class ConfigJson {
 
   // Parse a strict JSON config document into cfg. Returns true on success.
   static bool parse_document(SimulationConfig& cfg, const std::string& content);
+
+  // Serialize the finalized configuration in parser-compatible JSON.
+  static std::string serialize_document(const SimulationConfig& cfg);
 };
 
 }  // namespace gutibm

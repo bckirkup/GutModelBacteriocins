@@ -257,6 +257,27 @@ void test_checkpoint_restart(const std::string& filename) {
   assert(resumed.step_count() > ckpt.metadata.step);
 }
 
+void test_closed_restart_provenance(const std::string& filename) {
+  const std::string restart = filename + ".closed.h5";
+  SimulationConfig cfg = make_checkpoint_config(filename + ".live.h5");
+  cfg.time.total_time = 0.0;
+  Simulation sim;
+  sim.init(cfg);
+  assert(HDF5Writer::write_closed_restart(sim, restart, 0, 0.0,
+                                          cfg.time.bio_dt));
+#ifdef GUTIBM_MPI
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  if (rank != 0) return;
+#endif
+  hid_t file = H5Fopen(restart.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  assert(file >= 0);
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/resolved_config"));
+  assert(gutibm::test::hdf5_dataset_exists(file, "run_provenance/git_sha"));
+  H5Fclose(file);
+}
+
 void test_split_run_matches_uninterrupted(const std::string& filename) {
   SimulationConfig split_cfg = make_checkpoint_config(filename + ".split.h5");
   split_cfg.time.total_time = 60.0;
@@ -553,6 +574,7 @@ int main(int argc, char** argv) {
 
   if (rank == 0) std::cout << "=== HDF5 Checkpoint Restart Tests ===\n";
   test_checkpoint_restart(filename);
+  test_closed_restart_provenance(filename);
   test_split_run_matches_uninterrupted(filename);
   const std::string toxin_mismatch_per =
       resolve_shared_test_h5_path("GUTIBM_TOXIN_MISMATCH_PER_H5",

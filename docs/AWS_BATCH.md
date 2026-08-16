@@ -60,6 +60,14 @@ managed EC2** with `ECS_AL2023_NVIDIA` (or equivalent GPU AMI), job definition
 docker build → docker tag → aws ecr … push → aws batch submit-job
 ```
 
+The image build passes its source revision to CMake through the
+`GUTIBM_GIT_SHA` Docker build argument. HDF5 artifacts record that identity in
+`/run_provenance/` alongside the parser-compatible resolved configuration and
+runtime rank count. Batch supplies `AWS_BATCH_JOB_ID`; an image digest may be
+provided as `GUTIBM_IMAGE_DIGEST`. These optional runtime fields are omitted
+when unset. `/provenance/` remains per-kill provenance and is distinct from
+`/run_provenance/`.
+
 instead of `aws ecs run-task` / Fargate.
 
 ## Constraints from the code today
