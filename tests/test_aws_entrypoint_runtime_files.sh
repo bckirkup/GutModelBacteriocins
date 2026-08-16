@@ -25,7 +25,11 @@ for file in "${sourced_files[@]}"; do
   }
   copy_line="$(grep -E \
     "COPY .*deploy/aws/${file}[[:space:]]+${destination}([[:space:]]|$)" \
-    "${DOCKERFILE}")"
+    "${DOCKERFILE}" || true)"
+  [[ -n "${copy_line}" ]] || {
+    echo "Dockerfile does not install sourced file: ${file}" >&2
+    exit 1
+  }
   grep -Fq -- "--chown=root:root" <<<"${copy_line}" \
     || {
     echo "Dockerfile does not preserve root ownership for sourced file: ${file}" >&2
@@ -35,11 +39,7 @@ for file in "${sourced_files[@]}"; do
     echo "Dockerfile does not preserve executable permissions for sourced file: ${file}" >&2
     exit 1
   }
-  [[ -n "${copy_line}" ]] || {
-    echo "Dockerfile does not install sourced file: ${file}" >&2
-    exit 1
-  }
-  sed_line="$(grep -E "^[[:space:]]*RUN sed -i 's/\\\\r\\$//'" "${DOCKERFILE}")"
+  sed_line="$(grep -E "^[[:space:]]*RUN sed -i 's/\\\\r\\$//'" "${DOCKERFILE}" || true)"
   grep -Fq "${destination}" <<<"${sed_line}" || {
     echo "Dockerfile does not normalize sourced file line endings: ${file}" >&2
     exit 1
