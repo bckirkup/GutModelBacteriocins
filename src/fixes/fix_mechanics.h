@@ -24,6 +24,8 @@
 
 namespace gutibm {
 
+inline constexpr Real kMechanicsMaxDisplacementRadiusFraction = 0.1;
+
 struct MechanicsConfig {
   Real hertz_k = 1.0e-6;            // Hertzian spring constant (N/m^1.5)
   bool hertzian_enabled = true;      // Use Hertzian (true) vs linear (false)

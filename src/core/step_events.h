@@ -63,6 +63,16 @@ struct StepEvents {
   void reset() { *this = StepEvents{}; }
 };
 
+struct MechanicsStats {
+  Int displacement_clamps = 0;
+
+  void add(const MechanicsStats& other) {
+    displacement_clamps += other.displacement_clamps;
+  }
+
+  void reset() { *this = MechanicsStats{}; }
+};
+
 }  // namespace gutibm
 
 #endif  // GUTIBM_STEP_EVENTS_H

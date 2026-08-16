@@ -466,12 +466,18 @@ This is physically more accurate than a linear spring (`F ∝ overlap`) because:
 2. Matches AFM force-displacement curves on bacterial cells
 3. Prevents excessive interpenetration at large overlaps
 
-**Force application:** Equal-and-opposite impulses using reduced mass weighting:
+**Overdamped force application:** Mucus mechanics use Stokes mobility rather
+than inertial displacement. For each agent in a pair:
 ```
-push_i = F * dt / m_i * (m_j / (m_i + m_j))
-push_j = F * dt / m_j * (m_i / (m_i + m_j))
+mobility_i = 1 / (6 * pi * mu * r_i)
+delta_x_i = F * dt * mobility_i
 ```
-This ensures momentum conservation and correct size-dependent response.
+Here `mu` is the existing `vbf_viscosity` parameter, so the displacement
+relationship is `delta_x = F * dt / (6 * pi * mu * r)`. Pair movement remains
+equal and opposite, with each agent's share partitioned by its mobility rather
+than by mass. The total mechanics displacement accumulated by one agent in a
+biological step is capped at `0.1 * r` to prevent numerical explosions while
+retaining the clamp count in HDF5 output.
 
 **EPS-mediated adhesion (optional):**
 

@@ -104,6 +104,10 @@ class GutIBMData:
             out["spatial"] = {name: np.array(ds).item() for name, ds in grp["spatial"].items()}
         if "stocks" in grp:
             out["stocks"] = {name: np.array(ds).item() for name, ds in grp["stocks"].items()}
+        if "mechanics" in grp:
+            out["mechanics"] = {
+                name: np.array(ds).item() for name, ds in grp["mechanics"].items()
+            }
         return out
 
     def get_agents(self, step: str) -> dict[str, np.ndarray]:

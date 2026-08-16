@@ -13,13 +13,15 @@ namespace gutibm::test {
 
 inline Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
                                      const MechanicsConfig& mcfg = {},
-                                     bool gpu_enabled = false) {
+                                     bool gpu_enabled = false,
+                                     Real viscosity = 0.01) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.initial_strains.clear();
   cfg.domain.hi = {100e-6, 100e-6, 100e-6};
   cfg.domain.grid_dx = 10e-6;
   cfg.domain.hash_cell_size = 20e-6;
   cfg.fixes.mechanics = mcfg;
+  cfg.vbf.viscosity = viscosity;
   cfg.hdf5.enabled = false;
   cfg.gpu.enabled = gpu_enabled;
 

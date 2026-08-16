@@ -142,14 +142,30 @@ class Simulation {
     event_ledger_.window_start_time = time;
   }
   void prepare_step_events_for_summary();
+  void prepare_mechanics_stats_for_summary();
   void prepare_population_stocks_for_summary();
   const PopulationStocks& population_stocks() const {
     return event_ledger_.population_stocks;
   }
+  const MechanicsStats& mechanics_stats() const {
+    return event_ledger_.mechanics_summary;
+  }
+  MechanicsStats& mechanics_step_stats() {
+    return event_ledger_.mechanics_step;
+  }
+  const MechanicsStats& mechanics_summary_stats() const {
+    return event_ledger_.mechanics_summary;
+  }
+  const MechanicsStats& mechanics_cumulative_stats() const {
+    return event_ledger_.mechanics_cumulative;
+  }
   void commit_step_events_after_summary(Int step, Real time) {
     event_ledger_.cumulative_events.add(event_ledger_.summary_events);
+    event_ledger_.mechanics_cumulative.add(event_ledger_.mechanics_summary);
     event_ledger_.step_events.reset();
     event_ledger_.summary_events.reset();
+    event_ledger_.mechanics_step.reset();
+    event_ledger_.mechanics_summary.reset();
     event_ledger_.window_start_step = step + 1;
     event_ledger_.window_start_time = time;
   }
@@ -261,6 +277,9 @@ class Simulation {
     StepEvents step_events;
     StepEvents summary_events;
     StepEvents cumulative_events;
+    MechanicsStats mechanics_step;
+    MechanicsStats mechanics_summary;
+    MechanicsStats mechanics_cumulative;
     PopulationStocks population_stocks;
     Int window_start_step = 1;
     Real window_start_time = 0.0;
