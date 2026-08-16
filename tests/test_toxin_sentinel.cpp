@@ -27,7 +27,7 @@ using namespace gutibm;
 namespace {
 
 struct ChallengeResult {
-  Int colicin_kills = 0;
+  Int mortality_colicin = 0;
   Int divisions = 0;
   Int target_count = 100;
   Real target_toxin = 0.0;
@@ -136,18 +136,18 @@ ChallengeResult run_challenge(Int producer_count, Real target_distance) {
 
   hid_t file = H5Fopen(cfg.hdf5.filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   assert(file >= 0);
-  Int colicin_kills = 0;
+  Int mortality_colicin = 0;
   Int divisions = 0;
   for (Int step = 0; step <= 10; ++step) {
     const std::string prefix = std::format("summary/step_{:06}/events/", step);
     htri_t exists = 0;
     H5E_BEGIN_TRY {
-      exists = H5Lexists(file, (prefix + "colicin_kills").c_str(), H5P_DEFAULT);
+      exists = H5Lexists(file, (prefix + "mortality_colicin").c_str(), H5P_DEFAULT);
     } H5E_END_TRY;
     if (exists <= 0) {
       break;
     }
-    colicin_kills += read_event(file, prefix + "colicin_kills");
+    mortality_colicin += read_event(file, prefix + "mortality_colicin");
     divisions += read_event(file, prefix + "divisions");
   }
   const auto target_ix = static_cast<Int>(
@@ -194,7 +194,7 @@ ChallengeResult run_challenge(Int producer_count, Real target_distance) {
   H5Fclose(file);
 
   ChallengeResult result;
-  result.colicin_kills = colicin_kills;
+  result.mortality_colicin = mortality_colicin;
   result.divisions = divisions;
   result.target_toxin = target_toxin;
   result.greens_function_toxin = greens_function_toxin;
@@ -226,7 +226,7 @@ int main() {
     std::cout << std::setprecision(10);
     for (size_t i = 0; i < producer_counts.size(); ++i) {
       const Real simulated_fraction =
-          static_cast<Real>(results[i].colicin_kills) / results[i].target_count;
+          static_cast<Real>(results[i].mortality_colicin) / results[i].target_count;
       std::cout << "producers=" << producer_counts[i]
                 << " killed_fraction=" << simulated_fraction
                 << " expected_fraction=" << results[i].expected_kill_fraction
@@ -239,12 +239,12 @@ int main() {
 
     if (distance_index == 1U) {
       const Real simulated_fraction =
-          static_cast<Real>(results[2].colicin_kills)
+          static_cast<Real>(results[2].mortality_colicin)
           / results[2].target_count;
       const Real sampled_per_source =
           results[2].target_toxin / producer_counts[2];
-      assert(results[2].colicin_kills <= 5);
-      assert(results[3].colicin_kills >= 10);
+      assert(results[2].mortality_colicin <= 5);
+      assert(results[3].mortality_colicin >= 10);
       assert(std::abs(sampled_per_source / results[2].greens_function_toxin
                       - 1.0) <= 0.1);
       assert(std::abs(simulated_fraction

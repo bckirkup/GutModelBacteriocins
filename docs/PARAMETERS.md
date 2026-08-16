@@ -107,6 +107,7 @@ For `chemistry.decomposition=slab`, `domain.grid_halo_width` is the number of ch
 |-----------|---------|-------|-------------|
 | `advection.radial_turnover` | 5400 | s | Mucus radial turnover (1.5 h) |
 | `advection.mucus_thickness` | 100e-6 | m | Mucus layer depth |
+| `washout.trap` | `emergent` | — | `emergent` removes only at the luminal boundary; `imposed` retains the explicit `mu_realized < washout_rate(z)` comparison variant |
 | `advection.distal_transit_time` | 43200 | s | Peristaltic transit (12 h) |
 | `advection.distal_length` | 1e-3 | m | Domain length for transit calc |
 | `advection.profile_alpha` | 1.5 | — | Flow profile exponent |
@@ -617,6 +618,13 @@ concentration as the CirA linearized ligand when siderophore chemistry is enable
 
 Mechanical mobility uses the existing `vbf_viscosity` value, so that
 parameter also sets the Stokes drag scale for contact and adhesion relaxation.
+The mechanics summary writes `mechanics/displacement_clamps` and
+`mechanics/cumulative_displacement_clamps` to expose use of the per-step
+displacement safety cap.
+
+`fixes.metabolism.death_threshold` is the bacteriostasis threshold used to
+classify the instantaneous `bacteriostatic_live_agents` stock. It does not
+cause starvation mortality.
 Each agent's accumulated mechanics displacement is capped at `0.1 * radius`
 per biological step.
 
@@ -726,7 +734,7 @@ gpu_device_id 0
 |-----------|---------|-------|-------------|
 | `hdf5.filename` / `hdf5_file` | `gut_ibm_output.h5` | — | Output file path |
 | `hdf5.enabled` | true | — | Master switch (also off when all schedule intervals are 0) |
-| `hdf5.schedule.summary` | 1 | steps | Per-step summary stats + globally reduced interval and cumulative event counters, including `lysis_deaths`, plus instantaneous `stocks/` and `mechanics/` groups; the latter contains `displacement_clamps` and `cumulative_displacement_clamps` |
+| `hdf5.schedule.summary` | 1 | steps | Per-step summary stats + globally reduced interval and cumulative event counters, including `mortality_lysis`, plus instantaneous `stocks/` and `mechanics/` groups; the latter contains `displacement_clamps` and `cumulative_displacement_clamps` |
 | `hdf5.schedule.agents` | 5 | steps | Lightweight agent arrays |
 | `hdf5.schedule.grid` | 0 | steps | 3D chemical grids (0 = disabled) |
 | `hdf5.schedule.lineage` | 100 | steps | Lineage tracker arrays |

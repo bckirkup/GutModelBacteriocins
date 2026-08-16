@@ -193,11 +193,10 @@ int main() {
       read_double_vector(file, "provenance/step_000001/toxin_occupancy");
   const auto hazards =
       read_double_vector(file, "provenance/step_000001/toxin_hazard");
-  assert(read_scalar(file, "summary/step_000001/events/colicin_kills") == 1);
-  assert(read_scalar(file, "summary/step_000001/events/cdi_kills") == 0);
-  assert(read_scalar(file, "summary/step_000001/events/washout_deaths") == 0);
-  assert(read_scalar(file, "summary/step_000001/events/boundary_deaths") == 0);
-  assert(read_scalar(file, "summary/step_000001/events/starvation_deaths") == 0);
+  assert(read_scalar(file, "summary/step_000001/events/mortality_colicin") == 1);
+  assert(read_scalar(file, "summary/step_000001/events/mortality_cdi") == 0);
+  assert(read_scalar(file, "summary/step_000001/events/outflow_washout") == 0);
+  assert(read_scalar(file, "summary/step_000001/events/outflow_boundary") == 0);
   assert(read_scalar(file, "summary/step_000001/events/interval_start_step") == 1);
   assert(read_scalar(file, "summary/step_000001/events/interval_end_step") == 1);
   assert(read_double_scalar(
@@ -205,14 +204,13 @@ int main() {
   assert(read_double_scalar(
              file, "summary/step_000001/events/interval_end_time") == 60.0);
   assert(read_scalar(
-             file, "summary/step_000001/events/cumulative_colicin_kills") == 1);
+             file, "summary/step_000001/events/cumulative_mortality_colicin") == 1);
   assert(causes.size() == 1);
   assert(causes[0] == static_cast<int32_t>(ProvenanceCause::COLICIN));
   assert(count_cause(causes, ProvenanceCause::COLICIN) == 1);
   assert(count_cause(causes, ProvenanceCause::CDI) == 0);
   assert(count_cause(causes, ProvenanceCause::WASHOUT) == 0);
   assert(count_cause(causes, ProvenanceCause::BOUNDARY) == 0);
-  assert(count_cause(causes, ProvenanceCause::STARVATION) == 0);
   assert(count_cause(causes, ProvenanceCause::LYSIS) == 0);
   assert(concentrations.size() == 4);
   assert(occupancies.size() == 4);
@@ -237,7 +235,7 @@ int main() {
              "summary/step_000001/events/interval_end_step") == 1);
   assert(read_scalar(
              restart_file,
-             "summary/step_000001/events/cumulative_colicin_kills") == 1);
+             "summary/step_000001/events/cumulative_mortality_colicin") == 1);
   H5Fclose(restart_file);
 
   test_lysis_provenance();

@@ -14,10 +14,16 @@ namespace gutibm {
 
 class Domain;
 
+enum class WashoutTrapMode {
+  EMERGENT,
+  IMPOSED,
+};
+
 struct AdvectionConfig {
   // Radial mucus shedding (z-axis, epithelium→lumen)
   Real radial_turnover     = 5400.0;  // 1.5 h in seconds
   Real mucus_thickness     = 100.0e-6; // 100 um
+  WashoutTrapMode washout_trap = WashoutTrapMode::EMERGENT;
 
   // Distal peristaltic flow (x-axis, proximal→distal)
   Real distal_transit_time = 43200.0;  // 12 h in seconds

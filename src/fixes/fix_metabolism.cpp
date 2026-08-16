@@ -250,16 +250,6 @@ void FixMetabolism::apply_siderophore_reimport(
   }
 }
 
-void FixMetabolism::post_step(Real /*dt*/) {
-  auto& agents = sim_.agents();
-
-  for (Int i = agents.size() - 1; i >= 0; --i) {
-    Agent& a = agents[i];
-    if (a.state == PhenoState::DEAD) continue;
-    check_death(a);
-  }
-}
-
 void FixMetabolism::perform_divisions() {
   auto& agents = sim_.agents();
   std::vector<Agent> new_agents;
@@ -513,21 +503,6 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
     #pragma omp atomic
     #endif
     chem.reac_global(i_acetate, cell) -= scavenge;
-  }
-}
-
-void FixMetabolism::check_death(Agent& agent) {
-  if (agent.mu_realized < cfg_.death_threshold && agent.timers.age > 3600.0) {
-    agent.state = PhenoState::DEAD;
-    sim_.step_events().starvation_deaths++;
-    if (sim_.provenance_enabled()) {
-      KillProvenanceEvent event;
-      event.victim_id = agent.identity.tag;
-      event.position = agent.x;
-      event.strain = agent.identity.type;
-      event.cause = ProvenanceCause::STARVATION;
-      sim_.record_kill_provenance(event);
-    }
   }
 }
 

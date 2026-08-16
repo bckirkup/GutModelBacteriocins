@@ -71,7 +71,7 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
             summary.create_dataset("num_lineages", data=np.array(3, dtype=np.int32))
             stocks = summary.require_group("stocks")
             stocks.create_dataset(
-                "starving_live_agents", data=np.array(step_idx, dtype=np.int32)
+                "bacteriostatic_live_agents", data=np.array(step_idx, dtype=np.int32)
             )
             stocks.create_dataset(
                 "washout_trapped_live_agents",

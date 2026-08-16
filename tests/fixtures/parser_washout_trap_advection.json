@@ -1,0 +1,7 @@
+{
+  "advection": {
+    "washout": {
+      "trap": "imposed"
+    }
+  }
+}

@@ -174,7 +174,6 @@ struct PopulationLedger {
   Int divisions;
   Int immigrations;
   Int washout;
-  Int starvation;
   Int colicin;
   Int cdi;
   Int boundary;
@@ -190,17 +189,15 @@ inline PopulationLedger read_population_ledger(hid_t file,
                             H5T_NATIVE_INT32),
       hdf5_read_scalar<Int>(file, prefix + "cumulative_immigrations",
                             H5T_NATIVE_INT32),
-      hdf5_read_scalar<Int>(file, prefix + "cumulative_washout_deaths",
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_outflow_washout",
                             H5T_NATIVE_INT32),
-      hdf5_read_scalar<Int>(file, prefix + "cumulative_starvation_deaths",
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_mortality_colicin",
                             H5T_NATIVE_INT32),
-      hdf5_read_scalar<Int>(file, prefix + "cumulative_colicin_kills",
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_mortality_cdi",
                             H5T_NATIVE_INT32),
-      hdf5_read_scalar<Int>(file, prefix + "cumulative_cdi_kills",
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_outflow_boundary",
                             H5T_NATIVE_INT32),
-      hdf5_read_scalar<Int>(file, prefix + "cumulative_boundary_deaths",
-                            H5T_NATIVE_INT32),
-      hdf5_read_scalar<Int>(file, prefix + "cumulative_lysis_deaths",
+      hdf5_read_scalar<Int>(file, prefix + "cumulative_mortality_lysis",
                             H5T_NATIVE_INT32),
       hdf5_read_scalar<Int>(file, "summary/" + step + "/n_total",
                             H5T_NATIVE_INT32),
@@ -210,7 +207,7 @@ inline PopulationLedger read_population_ledger(hid_t file,
 inline void assert_population_ledger_closure(const PopulationLedger& ledger,
                                              Int initial) {
   const Int expected_final = initial + ledger.divisions + ledger.immigrations
-      - ledger.washout - ledger.starvation - ledger.colicin - ledger.cdi
+      - ledger.washout - ledger.colicin - ledger.cdi
       - ledger.boundary - ledger.lysis;
   assert(ledger.n_total == expected_final);
   assert(ledger.lysis > 0);

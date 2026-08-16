@@ -464,9 +464,9 @@ EncounterResult run_bacteriocin_encounter(uint64_t seed, Real target_distance) {
   }
   result.distance_error =
       std::abs(std::sqrt(nearest_sq) - target_distance);
-  const Int kills_before = sim.step_events().colicin_kills;
+  const Int kills_before = sim.step_events().mortality_colicin;
   sim.step(60.0);
-  result.colicin_kills = sim.step_events().colicin_kills - kills_before;
+  result.colicin_kills = sim.step_events().mortality_colicin - kills_before;
   result.alive = std::ranges::any_of(
       sim.agents(), [type = sensitive.type](const Agent& agent) {
         return agent.identity.type == type && agent.state != PhenoState::DEAD;

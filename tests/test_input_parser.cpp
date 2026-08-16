@@ -119,6 +119,38 @@ void test_initial_population_fixture() {
   std::cout << "  test_initial_population_fixture: PASSED\n";
 }
 
+void test_washout_trap_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR) +
+                           "/tests/fixtures/parser_washout_trap.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.advection.washout_trap == WashoutTrapMode::IMPOSED);
+  std::cout << "  test_washout_trap_fixture: PASSED\n";
+}
+
+void test_washout_trap_advection_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR) +
+                           "/tests/fixtures/parser_washout_trap_advection.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.advection.washout_trap == WashoutTrapMode::IMPOSED);
+  std::cout << "  test_washout_trap_advection_fixture: PASSED\n";
+}
+
+void test_washout_trap_rejects_invalid_value() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR) +
+                           "/tests/fixtures/parser_washout_trap_invalid.json";
+  bool threw = false;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError& ex) {
+    const std::string message = ex.what();
+    threw = message.find("washout.trap") != std::string::npos
+        && message.find("emergent") != std::string::npos
+        && message.find("imposed") != std::string::npos;
+  }
+  assert(threw);
+  std::cout << "  test_washout_trap_rejects_invalid_value: PASSED\n";
+}
+
 void test_initial_population_rejects_invalid_band() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR) +
                            "/tests/fixtures/parser_initial_population.json";
@@ -607,6 +639,9 @@ int main() {
   test_strain_fixture();
   test_immigration_fixture();
   test_initial_population_fixture();
+  test_washout_trap_fixture();
+  test_washout_trap_advection_fixture();
+  test_washout_trap_rejects_invalid_value();
   test_initial_population_rejects_invalid_band();
   test_diversity_paradox_strains();
   test_strain_spawn_integration();

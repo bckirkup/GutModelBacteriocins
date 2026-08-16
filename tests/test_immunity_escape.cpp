@@ -186,6 +186,8 @@ static ImmunityEscapeOutcome run_immunity_escape_scenario(bool enable_escape,
   cfg.hdf5.enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
   cfg.advection.distal_length = 100e-6;
+  // Keep this stress test on the explicit threshold-trap comparison variant.
+  cfg.advection.washout_trap = WashoutTrapMode::IMPOSED;
   cfg.qssa.toxin_cutoff = 50e-6;
   cfg.qssa.nutrient_cutoff = 25e-6;
   cfg.cell_bio.fur.enabled = false;

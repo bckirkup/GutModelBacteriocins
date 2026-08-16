@@ -298,6 +298,18 @@ void test_peristaltic_toggle_changes_fingerprint() {
   std::cout << "  test_peristaltic_toggle_changes_fingerprint: PASSED\n";
 }
 
+void test_washout_trap_modes_change_outcome() {
+  SimulationConfig imposed = growth_baseline(8011);
+  imposed.advection.washout_trap = WashoutTrapMode::IMPOSED;
+  imposed.advection.radial_turnover = 1.0e7;
+  imposed.initial_strains.clear();
+  imposed.initial_strains.push_back({2, 12, 1e-9, {}});
+  SimulationConfig emergent = imposed;
+  emergent.advection.washout_trap = WashoutTrapMode::EMERGENT;
+  assert(run_fingerprint(imposed) != run_fingerprint(emergent));
+  std::cout << "  test_washout_trap_modes_change_outcome: PASSED\n";
+}
+
 void test_same_config_is_reproducible() {
   SimulationConfig cfg = growth_baseline(9001);
   const uint64_t fp1 = run_fingerprint(cfg);
@@ -317,6 +329,7 @@ int main() {
   test_parsed_fix_list_is_honored();
   test_fix_tunables_reach_simulation();
   test_peristaltic_toggle_changes_fingerprint();
+  test_washout_trap_modes_change_outcome();
   test_same_config_is_reproducible();
   std::cout << "All config diversity tests passed.\n";
   return 0;

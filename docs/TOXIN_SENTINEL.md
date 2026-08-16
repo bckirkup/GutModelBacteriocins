@@ -39,12 +39,11 @@ the 15-step run.
 
 | Counter | Corrected units | Legacy toxin potency |
 |---------|---------------:|---------------------:|
-| `colicin_kills` | 0 | 3 |
-| `cdi_kills` | 0 | 0 |
-| `washout_deaths` | 60 | 60 |
-| `boundary_deaths` | 0 | 0 |
-| `starvation_deaths` | 0 | 0 |
-| `lysis_deaths` | 0 | 0 |
+| `mortality_colicin` | 0 | 3 |
+| `mortality_cdi` | 0 | 0 |
+| `outflow_washout` | 60 | 60 |
+| `outflow_boundary` | 0 | 0 |
+| `mortality_lysis` | 0 | 0 |
 | **Total counted deaths** | **60** | **63** |
 | `divisions` | **0** | **0** |
 
@@ -102,11 +101,11 @@ for by the coherence diagnosis. It uses the corrected default
 100-target cluster. ColE1 producers are placed at the same controlled
 location and forced into `SOS_INDUCED` with the model's 300 s lysis delay.
 Targets are placed either 10 µm or 50 µm away. Washout, motility, CDI,
-crypt migration, and mechanics are disabled so that `colicin_kills` is the
+crypt migration, and mechanics are disabled so that `mortality_colicin` is the
 unambiguous outcome counter; no production defaults are changed.
 
 The assay sweeps producer counts `{1, 10, 100, 1000, 10000}`. Fractions below
-are `colicin_kills / 100`; all runs had zero divisions.
+are `mortality_colicin / 100`; all runs had zero divisions.
 
 | Distance | Producers | Killed fraction | Expected fraction* |
 |---------:|----------:|----------------:|-------------------:|

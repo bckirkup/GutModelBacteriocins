@@ -713,6 +713,8 @@ void test_population_stop_after_extinction() {
   cfg.advection.crypts_enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
   cfg.advection.radial_turnover = 5400.0;
+  // This test specifically exercises the explicit threshold-trap variant.
+  cfg.advection.washout_trap = WashoutTrapMode::IMPOSED;
   cfg.advection.distal_length = 50e-6;
   cfg.advection.distal_transit_time = 43200.0;
   cfg.qssa.toxin_cutoff = 25e-6;
