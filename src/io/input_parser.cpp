@@ -534,6 +534,19 @@ bool apply_chemistry_key(SimulationConfig& cfg, std::string_view key,
 bool apply_advection_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "mucus_thickness")      { cfg.advection.mucus_thickness = parse_config_real(key, val); return true; }
   if (key == "radial_turnover")      { cfg.advection.radial_turnover = parse_config_real(key, val); return true; }
+  if (key == "washout.trap") {
+    if (val == "emergent") {
+      cfg.advection.washout_trap = WashoutTrapMode::EMERGENT;
+      return true;
+    }
+    if (val == "imposed") {
+      cfg.advection.washout_trap = WashoutTrapMode::IMPOSED;
+      return true;
+    }
+    throw ConfigError(
+        "invalid washout.trap: expected 'emergent' or 'imposed', got '"
+        + val + "'");
+  }
   if (key == "distal_transit")       { cfg.advection.distal_transit_time = parse_config_real(key, val); return true; }
   if (key == "distal_length")        { cfg.advection.distal_length = parse_config_real(key, val); return true; }
   if (key == "profile_alpha")        { cfg.advection.profile_alpha = parse_config_real(key, val); return true; }

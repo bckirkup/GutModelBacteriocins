@@ -52,7 +52,7 @@ void try_cdi_kill(Agent& victim, const Agent& attacker, Real kill_prob,
   if (!rng.bernoulli(kill_prob)) return;
   victim.state = PhenoState::DEAD;
   victim.timers.death_time = sim_time;
-  sim.step_events().cdi_kills++;
+  sim.step_events().mortality_cdi++;
   if (sim.provenance_enabled()) {
     KillProvenanceEvent event;
     event.victim_id = victim.identity.tag;

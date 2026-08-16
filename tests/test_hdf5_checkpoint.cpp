@@ -513,18 +513,18 @@ void test_lysis_events_checkpoint_restore(const std::string& filename) {
       std::format("step_{:06}", sim.step_count());
   const HDF5CheckpointSnapshot snapshot =
       HDF5Reader::load_snapshot(filename, step_name);
-  assert(snapshot.metadata.cumulative_events.lysis_deaths > 0);
+  assert(snapshot.metadata.cumulative_events.mortality_lysis > 0);
 
   SimulationConfig resume_cfg = cfg;
   resume_cfg.hdf5.enabled = false;
   resume_cfg.initial_strains.clear();
   Simulation resumed;
   resumed.init_from_checkpoint(resume_cfg, filename, step_name);
-  assert(resumed.cumulative_events().lysis_deaths
-         == snapshot.metadata.cumulative_events.lysis_deaths);
+  assert(resumed.cumulative_events().mortality_lysis
+         == snapshot.metadata.cumulative_events.mortality_lysis);
   std::cout << "  test_lysis_events_checkpoint_restore: PASSED"
-            << " (lysis_deaths="
-            << snapshot.metadata.cumulative_events.lysis_deaths << ")\n";
+            << " (mortality_lysis="
+            << snapshot.metadata.cumulative_events.mortality_lysis << ")\n";
 }
 
 #endif  // GUTIBM_HDF5

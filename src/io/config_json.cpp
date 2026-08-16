@@ -373,6 +373,24 @@ class JsonCursor {
     parse_prefixed_object(cfg, "initial_population", "initial_population");
   }
 
+  void parse_advection_object(SimulationConfig& cfg) {
+    if (!match('{')) throw ConfigError("expected JSON object for advection");
+    skip_ws();
+    if (match('}')) return;
+    while (true) {
+      std::string key = parse_string();
+      if (!match(':')) throw ConfigError("expected ':' in JSON object");
+      if (key == "washout") {
+        parse_prefixed_object(cfg, "washout", "advection.washout");
+      } else {
+        apply_json_scalar(cfg, "advection." + key, *this);
+      }
+      skip_ws();
+      if (match('}')) break;
+      if (!match(',')) throw ConfigError("expected ',' in JSON object");
+    }
+  }
+
   void parse_chemistry_object(SimulationConfig& cfg) {
     if (!match('{')) throw ConfigError("expected JSON object for chemistry");
     skip_ws();
@@ -572,6 +590,10 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         cursor.parse_initial_population_object(cfg);
       } else if (key == "domain") {
         cursor.parse_domain_object(cfg);
+      } else if (key == "advection") {
+        cursor.parse_advection_object(cfg);
+      } else if (key == "washout") {
+        cursor.parse_prefixed_object(cfg, "washout", "washout");
       } else if (key == "chemistry") {
         cursor.parse_chemistry_object(cfg);
       } else {
@@ -592,6 +614,7 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         || message.find("invalid species_subset") == 0
         || message.find("invalid toxin_evaluation") == 0
         || message.find("invalid toxin_lumping") == 0
+        || message.find("invalid washout.trap") == 0
         || message.find("chemistry stride") != std::string::npos
         || message.find("chemistry_stride") != std::string::npos
         || message.find("grid_halo_width") != std::string::npos) {

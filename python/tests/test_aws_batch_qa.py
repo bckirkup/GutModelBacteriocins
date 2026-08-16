@@ -22,9 +22,9 @@ def _write_summary_h5(
     path: Path,
     *,
     n_agents: int,
-    boundary_deaths: int,
-    washout_deaths: int = 0,
-    lysis_deaths: int = 0,
+    outflow_boundary: int,
+    outflow_washout: int = 0,
+    mortality_lysis: int = 0,
     mean_carbon: float = 0.002,
     with_agents: bool = False,
 ) -> None:
@@ -39,12 +39,13 @@ def _write_summary_h5(
         summary.create_dataset("n_total", data=np.array(n_agents, dtype=np.int32))
         summary.create_dataset("num_agents", data=np.array(n_agents, dtype=np.int32))
         events = summary.require_group("events")
-        events.create_dataset("boundary_deaths", data=np.array(boundary_deaths, dtype=np.int32))
-        events.create_dataset("washout_deaths", data=np.array(washout_deaths, dtype=np.int32))
-        events.create_dataset("colicin_kills", data=np.array(0, dtype=np.int32))
-        events.create_dataset("lysis_deaths", data=np.array(lysis_deaths, dtype=np.int32))
+        events.create_dataset("outflow_boundary", data=np.array(outflow_boundary, dtype=np.int32))
+        events.create_dataset("outflow_washout", data=np.array(outflow_washout, dtype=np.int32))
+        events.create_dataset("mortality_colicin", data=np.array(0, dtype=np.int32))
+        events.create_dataset("mortality_cdi", data=np.array(0, dtype=np.int32))
+        events.create_dataset("mortality_lysis", data=np.array(mortality_lysis, dtype=np.int32))
         stocks = summary.require_group("stocks")
-        stocks.create_dataset("starving_live_agents", data=np.array(2, dtype=np.int32))
+        stocks.create_dataset("bacteriostatic_live_agents", data=np.array(2, dtype=np.int32))
         stocks.create_dataset(
             "washout_trapped_live_agents", data=np.array(3, dtype=np.int32)
         )
@@ -91,8 +92,8 @@ class _FakeStore:
 def test_summarize_hdf5_fingerprint_changes_with_agents(tmp_path: Path) -> None:
     a = tmp_path / "a.h5"
     b = tmp_path / "b.h5"
-    _write_summary_h5(a, n_agents=13, boundary_deaths=7)
-    _write_summary_h5(b, n_agents=12, boundary_deaths=7)
+    _write_summary_h5(a, n_agents=13, outflow_boundary=7)
+    _write_summary_h5(b, n_agents=12, outflow_boundary=7)
     sa = summarize_hdf5(a, index=0, seed=4092)
     sb = summarize_hdf5(b, index=1, seed=4093)
     assert sa.final_agents == 13
@@ -113,7 +114,7 @@ def test_qa_array_distinct_seeds_and_report(
         child = store_root / str(index)
         child.mkdir(parents=True)
         h5 = child / "raw.h5"
-        _write_summary_h5(h5, n_agents=agents, boundary_deaths=deaths)
+        _write_summary_h5(h5, n_agents=agents, outflow_boundary=deaths)
         _gzip_file(h5, child / "output.h5.gz")
         (child / "input.json").write_text(
             json.dumps({"seed": seed, "gpu_enabled": True}),
@@ -133,8 +134,8 @@ def test_qa_array_distinct_seeds_and_report(
     assert report.distinct_seeds is True
     assert [row.seed for row in report.rows] == [4092, 4093]
     assert [row.final_agents for row in report.rows] == [13, 12]
-    assert [row.lysis_deaths for row in report.rows] == [0, 0]
-    assert [row.starving_live_agents for row in report.rows] == [2, 2]
+    assert [row.mortality_lysis for row in report.rows] == [0, 0]
+    assert [row.bacteriostatic_live_agents for row in report.rows] == [2, 2]
     assert [row.washout_trapped_live_agents for row in report.rows] == [3, 3]
     text = format_report(report)
     assert "4092" in text
@@ -152,7 +153,7 @@ def test_qa_array_fails_when_identical(
         child = store_root / str(index)
         child.mkdir(parents=True)
         h5 = child / "raw.h5"
-        _write_summary_h5(h5, n_agents=13, boundary_deaths=7)
+        _write_summary_h5(h5, n_agents=13, outflow_boundary=7)
         _gzip_file(h5, child / "output.h5.gz")
         (child / "input.json").write_text(json.dumps({"seed": 4092}), encoding="utf-8")
 

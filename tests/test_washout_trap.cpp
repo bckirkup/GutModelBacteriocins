@@ -33,6 +33,7 @@ SimulationConfig make_washout_horizon_config(unsigned seed, Real total_time) {
   cfg.advection.crypts_enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
   cfg.advection.radial_turnover = 5400.0;
+  cfg.advection.washout_trap = WashoutTrapMode::IMPOSED;
   cfg.advection.distal_length = 80e-6;
   cfg.advection.distal_transit_time = 43200.0;
   cfg.qssa.toxin_cutoff = 25e-6;
@@ -134,7 +135,7 @@ void test_long_horizon_trap_expels_cohort() {
   assert(sim.step_count() == 1);
   assert(std::abs(sim.time() - 60.0) < kTol);
 
-  Int cumulative_washout = sim.step_events().washout_deaths;
+  Int cumulative_washout = sim.step_events().outflow_washout;
   assert(cumulative_washout == kInitialCount);
 
   std::cout << "  test_long_horizon_trap_expels_cohort: PASSED"
@@ -187,7 +188,7 @@ void test_trap_monotonic_live_decline() {
 
   while (sim.time() < cfg.time.total_time && prev_live > 1) {
     sim.step(cfg.time.bio_dt);
-    cumulative_washout += sim.step_events().washout_deaths;
+    cumulative_washout += sim.step_events().outflow_washout;
     const Int live = count_live_agents(sim);
     assert(live <= prev_live);
     prev_live = live;
@@ -198,7 +199,7 @@ void test_trap_monotonic_live_decline() {
   assert(cumulative_washout > 0);
 
   std::cout << "  test_trap_monotonic_live_decline: PASSED"
-            << " (washout_deaths=" << cumulative_washout << ")\n";
+            << " (outflow_washout=" << cumulative_washout << ")\n";
 }
 
 void test_trap_vs_resident_fingerprints_differ() {
@@ -324,7 +325,7 @@ void test_population_stocks_are_instantaneous_and_ordered() {
       agent.mu_realized = 1.0e-4;
     }
     sim.prepare_population_stocks_for_summary();
-    assert(sim.population_stocks().starving_live == kCount);
+    assert(sim.population_stocks().bacteriostatic_live == kCount);
     trapped.push_back(sim.population_stocks().washout_trapped_live);
   }
 
@@ -346,15 +347,107 @@ void test_population_stocks_are_instantaneous_and_ordered() {
     agent.mu_realized = 1.0e-4;
   }
   sim.prepare_population_stocks_for_summary();
-  const Int initial_starving = sim.population_stocks().starving_live;
+  const Int initial_starving = sim.population_stocks().bacteriostatic_live;
   for (Agent& agent : sim.agents()) {
     agent.mu_realized = 5.0e-4;
   }
   sim.prepare_population_stocks_for_summary();
-  assert(initial_starving > sim.population_stocks().starving_live);
-  assert(sim.population_stocks().starving_live <= sim.global_agent_count());
+  assert(initial_starving > sim.population_stocks().bacteriostatic_live);
+  assert(sim.population_stocks().bacteriostatic_live <= sim.global_agent_count());
 
   std::cout << "  test_population_stocks_are_instantaneous_and_ordered: PASSED\n";
+}
+
+Int run_threshold_removal(WashoutTrapMode mode, Real turnover) {
+  SimulationConfig cfg = make_washout_horizon_config(16055, 60.0);
+  cfg.advection.washout_trap = mode;
+  cfg.advection.radial_turnover = turnover;
+  cfg.initial_strains.clear();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains.push_back({2, 8, 5e-4, {}});
+
+  Simulation sim;
+  sim.init(cfg);
+  for (Agent& agent : sim.agents()) {
+    agent.x[2] = 44e-6;
+    apply_trap_immigrant_profile(agent, 44e-6);
+  }
+  sim.step(60.0);
+  return sim.step_events().outflow_washout;
+}
+
+std::pair<Int, Int> run_transport_loss(WashoutTrapMode mode, Real domain_z,
+                                       Real turnover, Real total_time) {
+  SimulationConfig cfg = make_washout_horizon_config(16057, total_time);
+  cfg.domain.hi[2] = domain_z;
+  cfg.advection.washout_trap = mode;
+  cfg.advection.radial_turnover = turnover;
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains.clear();
+  cfg.initial_strains.push_back({2, 8, 1e-9, {}});
+
+  Simulation sim;
+  sim.init(cfg);
+  for (Agent& agent : sim.agents()) {
+    apply_trap_immigrant_profile(agent, 44e-6);
+  }
+  sim.run();
+  const StepEvents& events = sim.cumulative_events();
+  return {events.outflow_boundary + events.outflow_washout,
+          sim.global_agent_count()};
+}
+
+void test_washout_modes_have_distinct_low_flow_behavior() {
+  const Int imposed = run_threshold_removal(WashoutTrapMode::IMPOSED, 1.0e7);
+  const Int emergent = run_threshold_removal(WashoutTrapMode::EMERGENT, 1.0e7);
+  assert(imposed > 0);
+  assert(emergent == 0);
+
+  std::cout << "  test_washout_modes_have_distinct_low_flow_behavior: PASSED\n";
+}
+
+void test_washout_modes_converge_at_high_flow() {
+  const auto imposed = run_transport_loss(WashoutTrapMode::IMPOSED, 50e-6, 1.0, 60.0);
+  const auto emergent = run_transport_loss(WashoutTrapMode::EMERGENT, 50e-6, 1.0, 60.0);
+  assert(imposed.second == emergent.second);
+  assert(imposed.second == 0);
+  std::cout << "  test_washout_modes_converge_at_high_flow: PASSED\n";
+}
+
+void test_emergent_washout_is_geometry_sensitive() {
+  const auto short_box = run_transport_loss(
+      WashoutTrapMode::EMERGENT, 50e-6, 5400.0, 600.0);
+  const auto tall_box = run_transport_loss(
+      WashoutTrapMode::EMERGENT, 100e-6, 5400.0, 600.0);
+  assert(short_box.first >= tall_box.first);
+  assert(short_box.second <= tall_box.second);
+  std::cout << "  test_emergent_washout_is_geometry_sensitive: PASSED\n";
+}
+
+void test_starvation_is_viable_bacteriostasis() {
+  SimulationConfig cfg = make_washout_horizon_config(16056, 60.0);
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.death_threshold = 1.0;
+  cfg.initial_strains.clear();
+  cfg.initial_strains.push_back({2, 8, 5e-4, {}});
+
+  Simulation sim;
+  sim.init(cfg);
+  for (Agent& agent : sim.agents()) {
+    agent.timers.age = 7200.0;
+    agent.mu_realized = 0.0;
+  }
+  sim.step(60.0);
+  sim.prepare_population_stocks_for_summary();
+  assert(count_live_agents(sim) == 8);
+  assert(sim.population_stocks().bacteriostatic_live == 8);
+  assert(sim.step_events().outflow_boundary == 0);
+  assert(sim.step_events().outflow_washout == 0);
+  assert(sim.step_events().mortality_lysis == 0);
+  assert(sim.step_events().mortality_colicin == 0);
+  assert(sim.step_events().mortality_cdi == 0);
+
+  std::cout << "  test_starvation_is_viable_bacteriostasis: PASSED\n";
 }
 
 }  // namespace
@@ -369,6 +462,10 @@ int main() {
   test_radial_turnover_controls_washout_threshold();
   test_trap_profile_more_lethal_than_mild_downregulation();
   test_population_stocks_are_instantaneous_and_ordered();
+  test_washout_modes_have_distinct_low_flow_behavior();
+  test_washout_modes_converge_at_high_flow();
+  test_emergent_washout_is_geometry_sensitive();
+  test_starvation_is_viable_bacteriostasis();
   std::cout << "All washout trap regression tests passed.\n";
   return 0;
 }

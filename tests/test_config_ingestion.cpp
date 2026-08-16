@@ -258,6 +258,10 @@ std::vector<Probe> build_probes() {
   // ── Advection / crypts / peristalsis ──────────────────────────────────────
   v.push_back(R("mucus_thickness", [](const SimulationConfig& c) { return c.advection.mucus_thickness; }));
   v.push_back(R("radial_turnover", [](const SimulationConfig& c) { return c.advection.radial_turnover; }));
+  v.push_back(S("washout.trap", [](const SimulationConfig& c) {
+    return c.advection.washout_trap == WashoutTrapMode::IMPOSED
+        ? "imposed" : "emergent";
+  }, "imposed"));
   v.push_back(R("distal_transit", [](const SimulationConfig& c) { return c.advection.distal_transit_time; }));
   v.push_back(R("distal_length", [](const SimulationConfig& c) { return c.advection.distal_length; }));
   v.push_back(R("profile_alpha", [](const SimulationConfig& c) { return c.advection.profile_alpha; }));
@@ -527,6 +531,7 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
+      "advection", "washout",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity"};

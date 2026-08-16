@@ -115,12 +115,11 @@ void set_all_events(Simulation& sim, Int value) {
   StepEvents events;
   events.sos_inductions = value;
   events.phage_inductions = value;
-  events.colicin_kills = value;
-  events.cdi_kills = value;
-  events.washout_deaths = value;
-  events.boundary_deaths = value;
-  events.starvation_deaths = value;
-  events.lysis_deaths = value;
+  events.mortality_colicin = value;
+  events.mortality_cdi = value;
+  events.outflow_washout = value;
+  events.outflow_boundary = value;
+  events.mortality_lysis = value;
   events.divisions = value;
   events.conjugation_transfers = value;
   events.mutations = value;
@@ -164,23 +163,22 @@ void test_global_event_counter_reduction() {
     const std::string prefix = "summary/step_000001/events/";
     assert(read_event(file, prefix + "sos_inductions") == expected);
     assert(read_event(file, prefix + "phage_inductions") == expected);
-    assert(read_event(file, prefix + "colicin_kills") == expected);
-    assert(read_event(file, prefix + "cdi_kills") == expected);
-    assert(read_event(file, prefix + "washout_deaths") == expected);
-    assert(read_event(file, prefix + "boundary_deaths") == expected);
-    assert(read_event(file, prefix + "starvation_deaths") == expected);
-    assert(read_event(file, prefix + "lysis_deaths") == expected);
+    assert(read_event(file, prefix + "mortality_colicin") == expected);
+    assert(read_event(file, prefix + "mortality_cdi") == expected);
+    assert(read_event(file, prefix + "outflow_washout") == expected);
+    assert(read_event(file, prefix + "outflow_boundary") == expected);
+    assert(read_event(file, prefix + "mortality_lysis") == expected);
     assert(read_event(file, prefix + "divisions") == expected);
     assert(read_event(file, prefix + "conjugation_transfers") == expected);
     assert(read_event(file, prefix + "mutations") == expected);
     assert(read_event(file, prefix + "immigrations") == expected);
-    assert(read_event(file, prefix + "cumulative_washout_deaths") == expected);
-    assert(read_event(file, prefix + "cumulative_lysis_deaths") == expected);
+    assert(read_event(file, prefix + "cumulative_outflow_washout") == expected);
+    assert(read_event(file, prefix + "cumulative_mortality_lysis") == expected);
     const std::string second_prefix = "summary/step_000002/events/";
-    assert(read_event(file, second_prefix + "washout_deaths") == expected);
-    assert(read_event(file, second_prefix + "cumulative_washout_deaths")
+    assert(read_event(file, second_prefix + "outflow_washout") == expected);
+    assert(read_event(file, second_prefix + "cumulative_outflow_washout")
            == 2 * expected);
-    assert(read_event(file, second_prefix + "cumulative_lysis_deaths")
+    assert(read_event(file, second_prefix + "cumulative_mortality_lysis")
            == 2 * expected);
     H5Fclose(file);
     std::cout << "  test_global_event_counter_reduction: PASSED\n";
@@ -230,7 +228,7 @@ void test_population_ledger_closure() {
     gutibm::test::assert_population_ledger_closure(ledger, initial);
     H5Fclose(file);
     std::cout << "  test_population_ledger_closure: PASSED"
-              << " (lysis_deaths=" << ledger.lysis << ")\n";
+              << " (mortality_lysis=" << ledger.lysis << ")\n";
   }
 }
 
@@ -279,13 +277,13 @@ void test_bacteriocin_ghost_accounting() {
         std::format("step_{:06}", sim.step_count());
     const std::string prefix = "summary/" + step_name + "/events/";
     const Int sos = read_event(file, prefix + "cumulative_sos_inductions");
-    const Int lysis = read_event(file, prefix + "cumulative_lysis_deaths");
+    const Int lysis = read_event(file, prefix + "cumulative_mortality_lysis");
     assert(sos == 1);
     assert(lysis == 1);
     H5Fclose(file);
     std::cout << "  test_bacteriocin_ghost_accounting: PASSED"
               << " (sos_inductions=" << sos
-              << ", lysis_deaths=" << lysis << ")\n";
+              << ", mortality_lysis=" << lysis << ")\n";
   }
 }
 
@@ -308,7 +306,7 @@ void test_population_stocks_reduce_owned_agents() {
   sim.prepare_population_stocks_for_summary();
 
   const Int expected = sim.global_agent_count();
-  assert(sim.population_stocks().starving_live == expected);
+  assert(sim.population_stocks().bacteriostatic_live == expected);
   assert(sim.population_stocks().washout_trapped_live == 0);
   if (rank == 0) {
     std::cout << "  test_population_stocks_reduce_owned_agents: PASSED"

@@ -609,25 +609,24 @@ void Simulation::prepare_step_events_for_summary() {
   event_ledger_.summary_events = event_ledger_.step_events;
 #ifdef GUTIBM_MPI
   if (domain_.nprocs() > 1) {
-    std::array<Int, 12> local = {
+    std::array<Int, 11> local = {
         event_ledger_.step_events.sos_inductions,
         event_ledger_.step_events.phage_inductions,
-        event_ledger_.step_events.colicin_kills,
-        event_ledger_.step_events.cdi_kills,
-        event_ledger_.step_events.washout_deaths,
-        event_ledger_.step_events.boundary_deaths,
-        event_ledger_.step_events.starvation_deaths,
-        event_ledger_.step_events.lysis_deaths,
+        event_ledger_.step_events.mortality_colicin,
+        event_ledger_.step_events.mortality_cdi,
+        event_ledger_.step_events.outflow_washout,
+        event_ledger_.step_events.outflow_boundary,
+        event_ledger_.step_events.mortality_lysis,
         event_ledger_.step_events.divisions,
         event_ledger_.step_events.conjugation_transfers,
         event_ledger_.step_events.mutations,
         event_ledger_.step_events.immigrations};
-    std::array<Int, 12> global{};
+    std::array<Int, 11> global{};
     MPI_Allreduce(local.data(), global.data(), static_cast<int>(local.size()),
                   MPI_INT, MPI_SUM, MPI_COMM_WORLD);
     event_ledger_.summary_events = {
         global[0], global[1], global[2], global[3], global[4], global[5],
-        global[6], global[7], global[8], global[9], global[10], global[11]};
+        global[6], global[7], global[8], global[9], global[10]};
   }
 #endif
 }
@@ -649,7 +648,7 @@ void Simulation::prepare_population_stocks_for_summary() {
   for (const Agent& agent : agents_) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
     if (agent.mu_realized < cfg_.fixes.metabolism.death_threshold) {
-      ++local.starving_live;
+      ++local.bacteriostatic_live;
     }
     if (agent.mu_realized < advection_.washout_rate(agent.x[2])) {
       ++local.washout_trapped_live;
@@ -659,7 +658,7 @@ void Simulation::prepare_population_stocks_for_summary() {
 #ifdef GUTIBM_MPI
   if (domain_.nprocs() > 1) {
     const std::array<Int, 2> local_values = {
-        local.starving_live, local.washout_trapped_live};
+        local.bacteriostatic_live, local.washout_trapped_live};
     std::array<Int, 2> global_values{};
     MPI_Allreduce(local_values.data(), global_values.data(),
                   static_cast<int>(local_values.size()), MPI_INT, MPI_SUM,
@@ -1570,7 +1569,7 @@ void Simulation::check_washout() {
 
     if (a.x[2] >= z_max) {
       a.state = PhenoState::DEAD;
-      event_ledger_.step_events.boundary_deaths++;
+      event_ledger_.step_events.outflow_boundary++;
       if (provenance_enabled()) {
         KillProvenanceEvent event;
         event.victim_id = a.identity.tag;
@@ -1583,20 +1582,22 @@ void Simulation::check_washout() {
       continue;
     }
 
-    // Combinatorial Washout Trap: mu_realized < gamma_flow (VADI / EARI)
-    Real gamma = advection_.washout_rate(a.x[2]);
-    if (a.mu_realized < gamma) {
-      a.state = PhenoState::DEAD;
-      event_ledger_.step_events.washout_deaths++;
-      if (provenance_enabled()) {
-        KillProvenanceEvent event;
-        event.victim_id = a.identity.tag;
-        event.position = a.x;
-        event.strain = a.identity.type;
-        event.cause = ProvenanceCause::WASHOUT;
-        record_kill_provenance(event);
+    if (cfg_.advection.washout_trap == WashoutTrapMode::IMPOSED) {
+      // The imposed variant removes cells before transport reaches the lumen.
+      Real gamma = advection_.washout_rate(a.x[2]);
+      if (a.mu_realized < gamma) {
+        a.state = PhenoState::DEAD;
+        event_ledger_.step_events.outflow_washout++;
+        if (provenance_enabled()) {
+          KillProvenanceEvent event;
+          event.victim_id = a.identity.tag;
+          event.position = a.x;
+          event.strain = a.identity.type;
+          event.cause = ProvenanceCause::WASHOUT;
+          record_kill_provenance(event);
+        }
+        lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
       }
-      lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
     }
   }
 }

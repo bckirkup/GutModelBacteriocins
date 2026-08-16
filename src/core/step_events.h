@@ -15,8 +15,8 @@ enum class ProvenanceCause : Int {
   CDI = 1,
   WASHOUT = 2,
   BOUNDARY = 3,
-  STARVATION = 4,
   LYSIS = 5,
+  // Value 4 was STARVATION and is retired.
 };
 
 struct KillProvenanceEvent {
@@ -34,12 +34,11 @@ struct KillProvenanceEvent {
 struct StepEvents {
   Int sos_inductions = 0;
   Int phage_inductions = 0;
-  Int colicin_kills = 0;
-  Int cdi_kills = 0;
-  Int washout_deaths = 0;
-  Int boundary_deaths = 0;
-  Int starvation_deaths = 0;
-  Int lysis_deaths = 0;
+  Int mortality_colicin = 0;
+  Int mortality_cdi = 0;
+  Int outflow_washout = 0;
+  Int outflow_boundary = 0;
+  Int mortality_lysis = 0;
   Int divisions = 0;
   Int conjugation_transfers = 0;
   Int mutations = 0;
@@ -48,12 +47,11 @@ struct StepEvents {
   void add(const StepEvents& other) {
     sos_inductions += other.sos_inductions;
     phage_inductions += other.phage_inductions;
-    colicin_kills += other.colicin_kills;
-    cdi_kills += other.cdi_kills;
-    washout_deaths += other.washout_deaths;
-    boundary_deaths += other.boundary_deaths;
-    starvation_deaths += other.starvation_deaths;
-    lysis_deaths += other.lysis_deaths;
+    mortality_colicin += other.mortality_colicin;
+    mortality_cdi += other.mortality_cdi;
+    outflow_washout += other.outflow_washout;
+    outflow_boundary += other.outflow_boundary;
+    mortality_lysis += other.mortality_lysis;
     divisions += other.divisions;
     conjugation_transfers += other.conjugation_transfers;
     mutations += other.mutations;

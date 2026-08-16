@@ -36,7 +36,7 @@ struct MetabolismConfig {
   bool b12_uptake_enabled = true;
   bool eut_enabled = true;
   Real division_threshold = 2.0;      // divide at 2x initial biomass
-  Real death_threshold    = -0.01;    // net growth below this → death
+  Real death_threshold    = -0.01;    // net growth below this → bacteriostasis stock
   Real maintenance_rate   = 1.0e-5;   // maintenance (1/s)
   Real yield_carbon       = 0.5;      // carbon yield coefficient
   Real yield_iron         = 1.0e-6;   // iron yield (mol Fe / kg biomass)
@@ -65,7 +65,6 @@ class FixMetabolism : public Fix {
 
   void init() override;
   void compute(Real dt) override;
-  void post_step(Real dt) override;
 
  private:
   void compute_growth_rate(Agent& agent);
@@ -77,7 +76,6 @@ class FixMetabolism : public Fix {
                                   Int i_ferric_enterobactin, Int num_cells,
                                   Real cell_volume, Real dt);
   void perform_divisions();
-  void check_death(Agent& agent);
 
   MetabolismConfig cfg_;
   std::vector<Real> biomass_by_cell_;

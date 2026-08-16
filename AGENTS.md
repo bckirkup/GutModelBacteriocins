@@ -115,7 +115,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 
 | Issue | Status | Notes |
 |-------|--------|-------|
-| **#40 Metabolic washout** | Fixed | `check_washout()` uses `mu_realized < gamma_flow` |
+| **#40 Metabolic washout** | Fixed | `washout.trap=emergent` is the default and actual transport determines `outflow_boundary`; `imposed` retains the explicit comparison variant as `outflow_washout`. |
 | **#41 MPI state loss** | Fixed | `agent_transfer.cpp` serializes crypt, affinities, immunity escape |
 | **#42 Plasmid names** | Fixed | `PlasmidLibrary::find()` + aliases; warn on unknown names |
 | **#43 Multi-rank tests** | Fixed | `mpi_multi_rank` + `hdf5_roundtrip_parallel` CTest targets |
@@ -127,8 +127,8 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **Checkpoint resume mu_max wipe** | Fixed | Closed restarts wrote `mu_realized` but restore set `mu_max = mu_realized`. After Spot resume from a stressed snapshot (`mu≈5e-6`), growth could not recover and combinatorial washout killed the population in one step. Now persist/restore `/mu_max` (+ `/in_crypt`); legacy files fall back to strain `mu_max`. `init_from_checkpoint` also prints `GPU: ON` so `REQUIRE_GPU=1` no longer false-fails clean resumes. |
 | **MPI ghost reaction/uptake double count** | Fixed | Ghost agents are marked explicitly and excluded from owner-committed reaction writes, uptake accounting, oxygen depletion, and siderophore biomass aggregation before rank reductions. |
 | **MPI ghost division duplication** | Fixed | Ghost agents are excluded from division, so only the owning rank creates daughters before migration. |
-| **Uncounted SOS/phage lysis deaths** | Fixed | `lysis_deaths` records actual delayed SOS/phage deaths separately from induction counters and participates in global interval/cumulative event accounting and population closure. |
-| **Invisible non-growing population** | Fixed | Instantaneous `starving_live_agents` and `washout_trapped_live_agents` summary stocks expose live non-growing cells; they are not cumulative counters or population-closure terms. `ProvenanceCause` values are persisted in HDF5, so new causes must be appended and existing values must never be renumbered. |
+| **Uncounted SOS/phage lysis deaths** | Fixed | `mortality_lysis` records actual delayed SOS/phage deaths separately from induction counters and participates in global interval/cumulative event accounting and population closure. |
+| **Population-ledger semantics** | Fixed | Starvation does not kill: `death_threshold` classifies viable bacteriostatic cells, and `bacteriostatic_live_agents` plus `washout_trapped_live_agents` are instantaneous stocks, never closure counters. `washout.trap=emergent` is the default. Persisted `ProvenanceCause` values remain fixed; value 4, formerly starvation, is retired. |
 | **Founder placement scales with domain height** | Fixed | `initial_population.placement=z_slab` with explicit `z_min`/`z_max` keeps founders in a scenario-defined band; the default `legacy` policy preserves the historical band for compatibility. |
 | **Exploding inertial mechanics** | Fixed | The previous update used `Δx = F·dt/(2m)` as a displacement, so a 0.1 µm overlap could move a cell approximately 1.7 m in one 60 s step. Contact could eject cells from the domain, making every spatial observable and boundary/washout attribution produced before the overdamped fix suspect. Mechanics now uses Stokes mobility with `vbf_viscosity` and caps displacement at `0.1·r`. |
 | **Cross-boundary HGT to ghost recipient** | Open | Plasmid transfer from a local donor to a ghost recipient is lost when ghosts are cleared, under-counting cross-boundary conjugation. |

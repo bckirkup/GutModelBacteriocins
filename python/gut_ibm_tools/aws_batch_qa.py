@@ -42,11 +42,12 @@ class IndexSummary:
     seed: int | None
     final_agents: int
     final_time_s: float
-    boundary_deaths: int
-    washout_deaths: int
-    colicin_kills: int
-    lysis_deaths: int
-    starving_live_agents: int
+    outflow_boundary: int
+    outflow_washout: int
+    mortality_colicin: int
+    mortality_cdi: int
+    mortality_lysis: int
+    bacteriostatic_live_agents: int
     washout_trapped_live_agents: int
     mean_carbon: float
     fingerprint: str
@@ -156,11 +157,12 @@ def summarize_hdf5(path: Path, *, index: int, seed: int | None) -> IndexSummary:
         seed=seed,
         final_agents=int(final.get("n_total", final.get("num_agents", 0))),
         final_time_s=float(final.get("time", 0.0)),
-        boundary_deaths=_event_count(final, "boundary_deaths"),
-        washout_deaths=_event_count(final, "washout_deaths"),
-        colicin_kills=_event_count(final, "colicin_kills"),
-        lysis_deaths=_event_count(final, "lysis_deaths"),
-        starving_live_agents=_stock_count(final, "starving_live_agents"),
+        outflow_boundary=_event_count(final, "outflow_boundary"),
+        outflow_washout=_event_count(final, "outflow_washout"),
+        mortality_colicin=_event_count(final, "mortality_colicin"),
+        mortality_cdi=_event_count(final, "mortality_cdi"),
+        mortality_lysis=_event_count(final, "mortality_lysis"),
+        bacteriostatic_live_agents=_stock_count(final, "bacteriostatic_live_agents"),
         washout_trapped_live_agents=_stock_count(
             final, "washout_trapped_live_agents"
         ),
@@ -245,17 +247,18 @@ def qa_array(
 def format_report(report: ArrayQaReport) -> str:
     """Human-readable table for CLI / docs paste."""
     lines = [
-        "index  seed   agents  t_final  boundary  washout  colicin  lysis  starving  trapped  fingerprint        agents_h5",
-        "-----  -----  ------  -------  --------  -------  -------  ------  --------  -------  -----------------  ---------",
+        "index  seed   agents  t_final  out_bound  out_wash  mort_col  mort_cdi  mort_lys  bacterio  trapped  fingerprint        agents_h5",
+        "-----  -----  ------  -------  ---------  --------  --------  --------  --------  --------  -------  -----------------  ---------",
     ]
     for row in report.rows:
         seed = "-" if row.seed is None else str(row.seed)
         lines.append(
             f"{row.index:<5d}  {seed:<5s}  {row.final_agents:<6d}  "
-            f"{row.final_time_s:<7.0f}  {row.boundary_deaths:<8d}  "
-            f"{row.washout_deaths:<7d}  {row.colicin_kills:<7d}  "
-            f"{row.lysis_deaths:<6d}  "
-            f"{row.starving_live_agents:<8d}  "
+            f"{row.final_time_s:<7.0f}  {row.outflow_boundary:<8d}  "
+            f"{row.outflow_washout:<7d}  {row.mortality_colicin:<7d}  "
+            f"{row.mortality_cdi:<3d}  "
+            f"{row.mortality_lysis:<6d}  "
+            f"{row.bacteriostatic_live_agents:<8d}  "
             f"{row.washout_trapped_live_agents:<7d}  "
             f"{row.fingerprint:<17s}  {'yes' if row.has_agents_layer else 'no'}"
         )

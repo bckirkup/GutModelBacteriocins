@@ -43,7 +43,7 @@ SimulationConfig config() {
 }
 
 void populate_window(Simulation& sim, Int kills, Real boundary) {
-  sim.step_events().colicin_kills = kills;
+  sim.step_events().mortality_colicin = kills;
   sim.chemical_field().flux_accounting().boundary_interval[0] = boundary;
   sim.chemical_field().flux_accounting().vbf_source_interval[0] = boundary + 1.0;
   sim.chemical_field().flux_accounting().vbf_sink_interval[0] = boundary + 2.0;
@@ -58,8 +58,8 @@ void assert_window(const std::string& path, Int step, Int interval_kills,
   assert(file >= 0);
   const std::string prefix = "summary/step_" +
       (step == 1 ? std::string("000001") : std::string("000002"));
-  assert(scalar(file, prefix + "/events/colicin_kills") == interval_kills);
-  assert(scalar(file, prefix + "/events/cumulative_colicin_kills")
+  assert(scalar(file, prefix + "/events/mortality_colicin") == interval_kills);
+  assert(scalar(file, prefix + "/events/cumulative_mortality_colicin")
          == cumulative_kills);
   assert(scalar(file, prefix + "/events/interval_start_step")
          == static_cast<double>(step));
@@ -116,7 +116,7 @@ int main() {
   SimulationConfig resume_cfg = config();
   Simulation resumed;
   resumed.init_from_checkpoint(resume_cfg, first.string(), "");
-  assert(resumed.cumulative_events().colicin_kills == 2);
+  assert(resumed.cumulative_events().mortality_colicin == 2);
   populate_window(resumed, 5, 7.0);
   assert(HDF5Writer::write_closed_restart(
       resumed, second.string(), 2, 120.0, 60.0));

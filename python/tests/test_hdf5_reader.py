@@ -50,7 +50,7 @@ def test_get_grid_and_metadata(sample_hdf5: Path) -> None:
         assert meta["time"] == pytest.approx(0.0)
         assert meta["num_agents"] == 12
         summary = data.get_summary("step_000001")
-        assert summary["stocks"]["starving_live_agents"] == 1
+        assert summary["stocks"]["bacteriostatic_live_agents"] == 1
         assert summary["stocks"]["washout_trapped_live_agents"] == 1
 
 

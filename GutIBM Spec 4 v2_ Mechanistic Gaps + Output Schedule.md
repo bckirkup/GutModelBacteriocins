@@ -281,11 +281,10 @@ summary/step_NNNNNN:
   // Event counters (accumulated since last summary dump)
   events.sos_inductions: Int
   events.phage_inductions: Int
-  events.colicin_kills: Int
-  events.cdi_kills: Int
-  events.washout_deaths: Int
-  events.boundary_deaths: Int     // pushed past z_max
-  events.starvation_deaths: Int   // biomass below threshold
+  events.mortality_colicin: Int
+  events.mortality_cdi: Int
+  events.outflow_washout: Int
+  events.outflow_boundary: Int     // pushed past z_max
   events.divisions: Int
   events.conjugation_transfers: Int
   events.mutations: Int
@@ -312,11 +311,10 @@ Add to `Simulation`:
 struct StepEvents {
     Int sos_inductions = 0;
     Int phage_inductions = 0;
-    Int colicin_kills = 0;
-    Int cdi_kills = 0;
-    Int washout_deaths = 0;
-    Int boundary_deaths = 0;
-    Int starvation_deaths = 0;
+    Int mortality_colicin = 0;
+    Int mortality_cdi = 0;
+    Int outflow_washout = 0;
+    Int outflow_boundary = 0;
     Int divisions = 0;
     Int conjugation_transfers = 0;
     Int mutations = 0;
@@ -327,14 +325,13 @@ StepEvents step_events_;
 
 Each Fix increments the relevant counter during `compute()`:
 - `fix_bacteriocin`: `step_events_.sos_inductions++` on SOS trigger
-- `fix_receptor`: `step_events_.colicin_kills++` on kill
-- `fix_cdi`: `step_events_.cdi_kills++` on kill
+- `fix_receptor`: `step_events_.mortality_colicin++` on kill
+- `fix_cdi`: `step_events_.mortality_cdi++` on kill
 - `fix_metabolism`: `step_events_.divisions++` on division,
-  `step_events_.starvation_deaths++` on biomass death
 - `fix_conjugation`: `step_events_.conjugation_transfers++` on transfer
 - `fix_mutation`: `step_events_.mutations++` on any mutation
-- `check_washout()`: `step_events_.washout_deaths++` on mu < gamma death,
-  `step_events_.boundary_deaths++` on z >= z_max death
+- `check_washout()`: `step_events_.outflow_washout++` on mu < gamma death,
+  `step_events_.outflow_boundary++` on z >= z_max death
 
 The summary writer reads the accumulated counters and resets them after writing.
 If `summary` interval > 1, counters accumulate across multiple steps before dump.

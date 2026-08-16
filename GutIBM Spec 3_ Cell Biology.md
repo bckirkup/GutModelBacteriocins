@@ -263,7 +263,7 @@ When agent density within `cluster_radius` exceeds a threshold:
 - `test_fur_repression`: High iron → receptor at baseline
 - `test_fur_increases_susceptibility`: Low iron + colicin → higher kill rate
   than high iron + colicin
-- `test_cdi_kills_neighbor`: CDI+ agent kills adjacent CDI-susceptible agent
+- `test_mortality_cdi_neighbor`: CDI+ agent kills adjacent CDI-susceptible agent
 - `test_cdi_immunity_protects`: CDI+ agent does NOT kill immune neighbor
 - `test_cdi_corpse_barrier`: Accumulated dead cells reduce CDI efficiency
 - `test_motility_displacement`: Motile agent moves further than non-motile

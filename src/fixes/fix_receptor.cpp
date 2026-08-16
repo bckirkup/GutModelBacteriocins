@@ -63,7 +63,7 @@ void FixReceptor::compute(Real dt) {
     if (kill_probs[i] > 0.0 && rng.bernoulli(kill_probs[i])) {
       const KillAssessment assessment = assess_kill(a, i, dt);
       a.state = DEAD;
-      sim_.step_events().colicin_kills++;
+      sim_.step_events().mortality_colicin++;
       if (sim_.provenance_enabled()) {
         KillProvenanceEvent event;
         event.victim_id = a.identity.tag;

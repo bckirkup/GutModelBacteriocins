@@ -67,7 +67,7 @@ ProgressMetrics calculate_progress_metrics(Real sim_time,
 class Simulation {
  public:
   struct PopulationStocks {
-    Int starving_live = 0;
+    Int bacteriostatic_live = 0;
     Int washout_trapped_live = 0;
   };
 

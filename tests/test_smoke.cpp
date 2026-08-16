@@ -33,6 +33,7 @@ void test_mini_simulation() {
   cfg.advection.mucus_thickness = 50e-6;
   cfg.advection.distal_length   = 100e-6;
   cfg.advection.radial_turnover = 5400.0;
+  cfg.advection.washout_trap = WashoutTrapMode::IMPOSED;
   cfg.advection.distal_transit_time = 43200.0;
 
   // QSSA
@@ -124,6 +125,7 @@ SimulationConfig initial_population_test_config(Real z_min, Real z_max) {
   cfg.advection.mucus_thickness = 80e-6;
   cfg.advection.distal_length = 300e-6;
   cfg.advection.radial_turnover = 5400.0;
+  cfg.advection.washout_trap = WashoutTrapMode::IMPOSED;
   cfg.advection.distal_transit_time = 43200.0;
   cfg.qssa.toxin_cutoff = 80e-6;
   cfg.qssa.nutrient_cutoff = 40e-6;
@@ -713,6 +715,7 @@ void test_population_stop_after_extinction() {
   cfg.advection.crypts_enabled = false;
   cfg.advection.mucus_thickness = 50e-6;
   cfg.advection.radial_turnover = 5400.0;
+  cfg.advection.washout_trap = WashoutTrapMode::IMPOSED;
   cfg.advection.distal_length = 50e-6;
   cfg.advection.distal_transit_time = 43200.0;
   cfg.qssa.toxin_cutoff = 25e-6;

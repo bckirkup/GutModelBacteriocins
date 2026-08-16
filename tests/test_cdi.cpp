@@ -64,7 +64,7 @@ static Agent make_live_agent(Simulation& sim, Vec3 pos, uint16_t cdi_type,
   return a;
 }
 
-void test_cdi_kills_neighbor() {
+void test_mortality_cdi_neighbor() {
   auto sim = make_cdi_sim();
   Vec3 center = domain_center(sim);
   Real offset = 1.0e-6;
@@ -86,7 +86,7 @@ void test_cdi_kills_neighbor() {
   assert(sim.agents()[1].state == PhenoState::DEAD);
   assert(sim.agents()[1].timers.death_time >= 0.0);
 
-  std::cout << "  test_cdi_kills_neighbor: PASSED\n";
+  std::cout << "  test_mortality_cdi_neighbor: PASSED\n";
 }
 
 void test_cdi_immunity_protects() {
@@ -112,7 +112,7 @@ void test_cdi_immunity_protects() {
   std::cout << "  test_cdi_immunity_protects: PASSED\n";
 }
 
-static Int count_cdi_kills(bool with_barrier, Real offset) {
+static Int count_mortality_cdi(bool with_barrier, Real offset) {
   Simulation trial = make_cdi_sim();
   const Vec3 c = domain_center(trial);
 
@@ -146,8 +146,8 @@ static Int count_cdi_kills(bool with_barrier, Real offset) {
 
 void test_cdi_corpse_barrier() {
   const Real offset = 1.0e-6;
-  const Int kills_barrier = count_cdi_kills(true, offset);
-  const Int kills_clear = count_cdi_kills(false, offset);
+  const Int kills_barrier = count_mortality_cdi(true, offset);
+  const Int kills_clear = count_mortality_cdi(false, offset);
   assert(kills_clear > kills_barrier);
 
   std::cout << "  test_cdi_corpse_barrier: PASSED\n";
@@ -155,7 +155,7 @@ void test_cdi_corpse_barrier() {
 
 int main() {
   std::cout << "=== CDI Tests ===\n";
-  test_cdi_kills_neighbor();
+  test_mortality_cdi_neighbor();
   test_cdi_immunity_protects();
   test_cdi_corpse_barrier();
   std::cout << "All CDI tests passed.\n";

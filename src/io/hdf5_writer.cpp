@@ -640,10 +640,10 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_scalar_dataset(fid, group + "/num_lineages", H5T_NATIVE_INT32, &num_lineages);
   write_scalar_dataset(fid, group + "/num_agents", H5T_NATIVE_INT32, &n_total);
   ensure_group(fid, group + "/stocks", cfg_);
-  const int32_t starving_live = stocks.starving_live;
+  const int32_t bacteriostatic_live = stocks.bacteriostatic_live;
   const int32_t washout_trapped_live = stocks.washout_trapped_live;
-  write_scalar_dataset(fid, group + "/stocks/starving_live_agents",
-                       H5T_NATIVE_INT32, &starving_live);
+  write_scalar_dataset(fid, group + "/stocks/bacteriostatic_live_agents",
+                       H5T_NATIVE_INT32, &bacteriostatic_live);
   write_scalar_dataset(fid, group + "/stocks/washout_trapped_live_agents",
                        H5T_NATIVE_INT32, &washout_trapped_live);
   ensure_group(fid, group + "/mechanics", cfg_);
@@ -758,12 +758,11 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   };
   write_event("sos_inductions", events.sos_inductions);
   write_event("phage_inductions", events.phage_inductions);
-  write_event("colicin_kills", events.colicin_kills);
-  write_event("cdi_kills", events.cdi_kills);
-  write_event("washout_deaths", events.washout_deaths);
-  write_event("boundary_deaths", events.boundary_deaths);
-  write_event("starvation_deaths", events.starvation_deaths);
-  write_event("lysis_deaths", events.lysis_deaths);
+  write_event("mortality_colicin", events.mortality_colicin);
+  write_event("mortality_cdi", events.mortality_cdi);
+  write_event("outflow_washout", events.outflow_washout);
+  write_event("outflow_boundary", events.outflow_boundary);
+  write_event("mortality_lysis", events.mortality_lysis);
   write_event("divisions", events.divisions);
   write_event("conjugation_transfers", events.conjugation_transfers);
   write_event("mutations", events.mutations);
@@ -778,12 +777,11 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   };
   write_cumulative_event("sos_inductions", cumulative.sos_inductions);
   write_cumulative_event("phage_inductions", cumulative.phage_inductions);
-  write_cumulative_event("colicin_kills", cumulative.colicin_kills);
-  write_cumulative_event("cdi_kills", cumulative.cdi_kills);
-  write_cumulative_event("washout_deaths", cumulative.washout_deaths);
-  write_cumulative_event("boundary_deaths", cumulative.boundary_deaths);
-  write_cumulative_event("starvation_deaths", cumulative.starvation_deaths);
-  write_cumulative_event("lysis_deaths", cumulative.lysis_deaths);
+  write_cumulative_event("mortality_colicin", cumulative.mortality_colicin);
+  write_cumulative_event("mortality_cdi", cumulative.mortality_cdi);
+  write_cumulative_event("outflow_washout", cumulative.outflow_washout);
+  write_cumulative_event("outflow_boundary", cumulative.outflow_boundary);
+  write_cumulative_event("mortality_lysis", cumulative.mortality_lysis);
   write_cumulative_event("divisions", cumulative.divisions);
   write_cumulative_event("conjugation_transfers", cumulative.conjugation_transfers);
   write_cumulative_event("mutations", cumulative.mutations);

@@ -111,7 +111,7 @@ void test_population_ledger_closure() {
   gutibm::test::assert_population_ledger_closure(ledger, initial);
   H5Fclose(file);
   std::cout << "  test_population_ledger_closure: PASSED"
-            << " (lysis_deaths=" << ledger.lysis << ")\n";
+            << " (mortality_lysis=" << ledger.lysis << ")\n";
 #endif
 }
 
@@ -150,7 +150,7 @@ int main() {
   assert(divisions >= 0);
   const int32_t n_total = read_event(file, "summary/step_000001/n_total");
   const int32_t starving = read_stock(
-      file, "summary/step_000001/stocks/starving_live_agents");
+      file, "summary/step_000001/stocks/bacteriostatic_live_agents");
   const int32_t trapped = read_stock(
       file, "summary/step_000001/stocks/washout_trapped_live_agents");
   assert(starving >= 0);
