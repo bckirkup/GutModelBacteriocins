@@ -272,6 +272,12 @@ add_test(
 set_tests_properties(checkpoint_retention PROPERTIES LABELS "unit")
 
 add_test(
+  NAME aws_entrypoint_runtime_files
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_aws_entrypoint_runtime_files.sh"
+)
+set_tests_properties(aws_entrypoint_runtime_files PROPERTIES LABELS "unit")
+
+add_test(
   NAME process_group_signal
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_process_group_signal.sh"
 )
