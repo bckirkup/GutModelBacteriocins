@@ -647,7 +647,8 @@ void Simulation::prepare_population_stocks_for_summary() {
   PopulationStocks local;
   for (const Agent& agent : agents_) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
-    if (agent.mu_realized < cfg_.fixes.metabolism.death_threshold) {
+    if (agent.mu_realized
+        < cfg_.fixes.metabolism.bacteriostasis_threshold) {
       ++local.bacteriostatic_live;
     }
     if (agent.mu_realized < advection_.washout_rate(agent.x[2])) {

@@ -295,7 +295,7 @@ void test_population_stocks_reduce_owned_agents() {
   SimulationConfig cfg = make_mpi_config(51004, 4);
   cfg.time.total_time = cfg.time.bio_dt;
   cfg.time.output_interval = cfg.time.total_time;
-  cfg.fixes.metabolism.death_threshold = 1.0e-3;
+  cfg.fixes.metabolism.bacteriostasis_threshold = 1.0e-3;
   cfg.advection.radial_turnover = 1.0e12;
   cfg.advection.distal_transit_time = 1.0e12;
   cfg.hdf5.enabled = false;

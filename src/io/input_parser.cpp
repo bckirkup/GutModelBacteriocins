@@ -860,6 +860,7 @@ bool apply_initial_population_key(SimulationConfig& cfg,
 
 bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "division_threshold")      { cfg.fixes.metabolism.division_threshold = parse_config_real(key, val); return true; }
+  if (key == "bacteriostasis_threshold") { cfg.fixes.metabolism.bacteriostasis_threshold = parse_config_real(key, val); return true; }
   if (key == "maintenance_rate")        { cfg.fixes.metabolism.maintenance_rate = parse_config_real(key, val); return true; }
   if (key == "metE_penalty")            { cfg.fixes.metabolism.metE_penalty = parse_config_real(key, val); return true; }
   if (key == "metE_acetate_km")         { cfg.fixes.metabolism.metE_acetate_km = parse_config_real(key, val); return true; }

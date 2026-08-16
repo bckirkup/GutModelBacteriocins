@@ -310,7 +310,7 @@ void test_population_stocks_are_instantaneous_and_ordered() {
   for (const Real turnover : turnovers) {
     SimulationConfig cfg = make_washout_horizon_config(16053, 60.0);
     cfg.initial_strains.clear();
-    cfg.fixes.metabolism.death_threshold = 2.0e-4;
+    cfg.fixes.metabolism.bacteriostasis_threshold = 2.0e-4;
     cfg.advection.radial_turnover = turnover;
     SimulationConfig::InitialStrain strain;
     strain.type = 2;
@@ -334,7 +334,7 @@ void test_population_stocks_are_instantaneous_and_ordered() {
 
   SimulationConfig cfg = make_washout_horizon_config(16054, 60.0);
   cfg.initial_strains.clear();
-  cfg.fixes.metabolism.death_threshold = 2.0e-4;
+  cfg.fixes.metabolism.bacteriostasis_threshold = 2.0e-4;
   SimulationConfig::InitialStrain strain;
   strain.type = 2;
   strain.count = kCount;
@@ -434,10 +434,67 @@ void test_emergent_washout_is_geometry_sensitive() {
   std::cout << "  test_emergent_washout_is_geometry_sensitive: PASSED\n";
 }
 
+void test_bacteriostasis_threshold_default_is_reachable() {
+  SimulationConfig cfg = InputParser::default_config();
+  const Real threshold = cfg.fixes.metabolism.bacteriostasis_threshold;
+  assert(threshold > -cfg.fixes.metabolism.maintenance_rate);
+  assert(threshold < cfg.initial_strains.front().mu_max);
+
+  cfg.domain.lo = {0.0, 0.0, 0.0};
+  cfg.domain.hi = {80e-6, 80e-6, 50e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.initial_strains.clear();
+  cfg.initial_strains.push_back({2, 6, 5e-4, {}});
+  cfg.hdf5.enabled = false;
+  Simulation sim;
+  sim.init(cfg);
+  for (Agent& agent : sim.agents()) {
+    agent.mu_realized = 0.0;
+  }
+  sim.prepare_population_stocks_for_summary();
+  assert(sim.population_stocks().bacteriostatic_live == 6);
+
+  std::cout << "  test_bacteriostasis_threshold_default_is_reachable: PASSED\n";
+}
+
+void test_bacteriostasis_threshold_is_sensitive() {
+  const std::vector<Real> thresholds = {-4.0e-6, 2.0e-6, 1.0e-5};
+  const std::vector<Real> realized_mu = {
+      -5.0e-6, 0.0, 2.0e-6, 8.0e-6, 2.0e-5, 1.0e-4};
+  std::vector<Int> stock_counts;
+
+  for (const Real threshold : thresholds) {
+    SimulationConfig cfg = make_washout_horizon_config(16058, 60.0);
+    cfg.enabled_fixes = {"metabolism"};
+    cfg.fixes.metabolism.bacteriostasis_threshold = threshold;
+    cfg.initial_strains.clear();
+    cfg.initial_strains.push_back({2, 6, 5e-4, {}});
+
+    Simulation sim;
+    sim.init(cfg);
+    Int index = 0;
+    for (Agent& agent : sim.agents()) {
+      agent.mu_realized = realized_mu[static_cast<size_t>(index)];
+      ++index;
+    }
+    sim.prepare_population_stocks_for_summary();
+    stock_counts.push_back(sim.population_stocks().bacteriostatic_live);
+  }
+
+  assert(stock_counts[0] < stock_counts[1]);
+  assert(stock_counts[1] < stock_counts[2]);
+  assert(stock_counts[0] == 1);
+  assert(stock_counts[1] == 2);
+  assert(stock_counts[2] == 4);
+
+  std::cout << "  test_bacteriostasis_threshold_is_sensitive: PASSED\n";
+}
+
 void test_starvation_is_viable_bacteriostasis() {
   SimulationConfig cfg = make_washout_horizon_config(16056, 60.0);
   cfg.enabled_fixes = {"metabolism"};
-  cfg.fixes.metabolism.death_threshold = 1.0;
+  cfg.fixes.metabolism.bacteriostasis_threshold = 1.0;
   cfg.initial_strains.clear();
   cfg.initial_strains.push_back({2, 8, 5e-4, {}});
 
@@ -475,6 +532,8 @@ int main() {
   test_washout_modes_have_distinct_low_flow_behavior();
   test_washout_modes_converge_at_high_flow();
   test_emergent_washout_is_geometry_sensitive();
+  test_bacteriostasis_threshold_default_is_reachable();
+  test_bacteriostasis_threshold_is_sensitive();
   test_starvation_is_viable_bacteriostasis();
   std::cout << "All washout trap regression tests passed.\n";
   return 0;

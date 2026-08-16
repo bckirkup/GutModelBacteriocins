@@ -259,15 +259,16 @@ the configured burst inventory.
 Summary output includes two instantaneous live-population stocks:
 
 - `bacteriostatic_live_agents`: live agents with
-  `mu_realized < fixes.metabolism.death_threshold`;
+  `mu_realized < fixes.metabolism.bacteriostasis_threshold`;
 - `washout_trapped_live_agents`: live agents with
   `mu_realized < washout_rate(z)`, evaluated at each agent's own z.
 
 These are instantaneous stocks, not cumulative counters. They can fall as well
 as rise, are not part of population closure, and must never be summed over
 time. Bacteriostasis is a viable, non-growing state: falling below
-`death_threshold` does not kill a cell. Such a cell can leave only through
-outflow or an explicit mortality mechanism.
+`bacteriostasis_threshold` classifies a viable, non-reproducing state; it does
+not kill a cell. Such a cell can leave only through outflow or an explicit
+mortality mechanism.
 
 Washout has two labelled modes. In the default `emergent` mode, the
 washout-trapped predicate is an observation only; transport must carry the
