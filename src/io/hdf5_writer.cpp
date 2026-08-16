@@ -1442,7 +1442,9 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
     }
   }
 #ifdef GUTIBM_MPI
-  MPI_Bcast(&preparation_ok, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+  if (mpi_is_active()) {
+    MPI_Bcast(&preparation_ok, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+  }
   if (!preparation_ok) return false;
 #else
   if (!preparation_ok) return false;
@@ -1510,8 +1512,10 @@ bool HDF5Writer::write_closed_restart(Simulation& sim, const std::string& path,
     }
   }
 #ifdef GUTIBM_MPI
-  MPI_Bcast(&published, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
-  mpi_barrier(cfg);
+  if (mpi_is_active()) {
+    MPI_Bcast(&published, 1, MPI_C_BOOL, 0, MPI_COMM_WORLD);
+    mpi_barrier(cfg);
+  }
 #endif
   return published;
 #endif
