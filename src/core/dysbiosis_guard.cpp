@@ -45,10 +45,12 @@ bool DysbiosisGuard::observe(Real current_time, Real density_cells_per_mL) {
 
   halted_ = true;
   halt_density_cells_per_mL_ = density_cells_per_mL;
-  const size_t last = density_history_.size() - 1;
+  const size_t first =
+      density_history_.size() - static_cast<size_t>(sample_count_);
+  // Report the average net density rise across the accepted window.
   density_rate_cells_per_mL_per_s_ =
-      (density_history_[last] - density_history_[last - 1]) /
-      sampling_interval_;
+      (density_history_.back() - density_history_[first]) /
+      (static_cast<Real>(sample_count_ - 1) * sampling_interval_);
   return true;
 }
 
@@ -61,18 +63,31 @@ bool DysbiosisGuard::is_accelerating_window() const {
       density_history_.size() - static_cast<size_t>(sample_count_);
   for (size_t i = first; i < density_history_.size(); ++i) {
     if (density_history_[i] <= threshold_) return false;
-    if (i == first) continue;
-
-    const Real increment =
-        density_history_[i] - density_history_[i - 1];
-    if (increment <= 0.0) return false;
-    if (i == first + 1) continue;
-
-    const Real previous_increment =
-        density_history_[i - 1] - density_history_[i - 2];
-    if (increment < previous_increment) return false;
   }
-  return true;
+
+  const size_t increment_count =
+      static_cast<size_t>(sample_count_ - 1);
+  const size_t first_half_count = increment_count / 2;
+  const size_t second_half_count = increment_count - first_half_count;
+  Real first_half_sum = 0.0;
+  Real second_half_sum = 0.0;
+  for (size_t i = 0; i < increment_count; ++i) {
+    const Real increment =
+        density_history_[first + i + 1] - density_history_[first + i];
+    if (i < first_half_count) {
+      first_half_sum += increment;
+    } else {
+      second_half_sum += increment;
+    }
+  }
+
+  const Real first_half_mean =
+      first_half_sum / static_cast<Real>(first_half_count);
+  const Real second_half_mean =
+      second_half_sum / static_cast<Real>(second_half_count);
+  return density_history_.back() > density_history_[first] &&
+         first_half_mean > 0.0 && second_half_mean > 0.0 &&
+         second_half_mean >= first_half_mean;
 }
 
 }  // namespace gutibm
