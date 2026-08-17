@@ -150,7 +150,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 **OpenMP:** `openmp_parity` + `scripts/compare_openmp_parity.sh` (serial vs OpenMP deterministic + stochastic toxin-kill fingerprints)
 
-**GPU (CUDA job):** `greens_function_gpu`, `gpu_diffusion`, `gpu_chemical_field`, `gpu_feature_combinations`, `gpu_production_path`, `gpu_smoke`, `mpi_gpu_multi_rank`, `mpi_four_rank`, `cuda_aware_mpi_reaction` + `scripts/compare_gpu_parity.sh`.
+**GPU (CUDA job):** `greens_function_gpu`, `gpu_diffusion`, `gpu_chemical_field`, `gpu_feature_combinations`, `gpu_production_path`, `gpu_smoke`, `mpi_gpu_multi_rank`, `mpi_four_rank`, `cuda_aware_mpi_reaction`, `gpu_toxin_burst_parity` + `scripts/compare_gpu_parity.sh`. New `gpu`-labelled CTest targets must also be added to the explicit target list in `.github/workflows/ci.yml`; otherwise the CUDA job reports them as `Not Run`.
 
 **Benchmark:** `scaling_benchmark` (issue #55 smoke counts). The larger
 scaling sweeps are on-demand only via
