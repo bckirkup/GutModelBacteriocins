@@ -804,6 +804,9 @@ After termination, the same group records `termination_reason_code`,
 `halt_time`. A run that reaches `total_time` records
 `completed_total_time=1` and `termination_reason_code=0`; this makes a
 guard-censored artifact distinct from a complete-horizon artifact.
+The complete termination-code enumeration is `0` for reaching `total_time`,
+`1` for a dysbiosis guard halt, and `2` for another early exit such as the
+population-stop path.
 
 `/run_provenance/` is deliberately separate from `/provenance/`. The latter
 remains the per-kill mechanism record controlled by

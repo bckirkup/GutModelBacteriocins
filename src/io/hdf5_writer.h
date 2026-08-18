@@ -47,7 +47,7 @@ class HDF5Writer {
 
   void init(const HDF5Config& cfg, const class Domain& domain);
   void write_step(Simulation& sim, Int step, Real time, Real dt) const;
-  void write_halt_metadata(const Simulation& sim, Int step, Real time) const;
+  void write_halt_metadata(const Simulation& sim, Int step) const;
   void write_run_termination(const Simulation& sim, Int step, Real time) const;
   void finalize();
 

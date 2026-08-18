@@ -1275,7 +1275,7 @@ void Simulation::run() {
     if (!stopped_for_population) {
       const bool halted_for_dysbiosis = dysbiosis_threshold_exceeded(rank);
       if (halted_for_dysbiosis && hdf5_.is_enabled()) {
-        hdf5_.write_halt_metadata(*this, clock_.step_count, clock_.time);
+        hdf5_.write_halt_metadata(*this, clock_.step_count);
       }
     }
   }

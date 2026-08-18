@@ -599,8 +599,7 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
 #endif
 }
 
-void HDF5Writer::write_halt_metadata(const Simulation& sim, Int step,
-                                     Real time) const {
+void HDF5Writer::write_halt_metadata(const Simulation& sim, Int step) const {
 #ifdef GUTIBM_HDF5
   if (enabled_ && io_rank(cfg_) == 0 && file_id_ >= 0) {
     write_run_provenance(sim);
@@ -614,14 +613,12 @@ void HDF5Writer::write_halt_metadata(const Simulation& sim, Int step,
                          H5T_NATIVE_INT32, &halt_reason);
     write_scalar_dataset(fid, group + "/halt_density_cells_per_mL",
                          H5T_NATIVE_DOUBLE, &halt_density);
-    (void)time;
     H5Fflush(fid, H5F_SCOPE_LOCAL);
   }
   mpi_barrier(cfg_);
 #else
   (void)sim;
   (void)step;
-  (void)time;
 #endif
 }
 
