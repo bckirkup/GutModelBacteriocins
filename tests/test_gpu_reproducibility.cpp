@@ -182,10 +182,12 @@ int main() {
 
   const SimulationConfig metabolism_cfg =
       make_reproducibility_config(false);
+  Simulation metabolism_cpu_sim = run_case(metabolism_cfg, false);
+  Simulation metabolism_gpu_sim = run_case(metabolism_cfg, true);
   const BiomassSummary metabolism_cpu =
-      summarize(run_case(metabolism_cfg, false));
+      summarize(metabolism_cpu_sim);
   const BiomassSummary metabolism_gpu =
-      summarize(run_case(metabolism_cfg, true));
+      summarize(metabolism_gpu_sim);
   print_difference("siderophore_off_cpu_vs_gpu",
                    metabolism_cpu, metabolism_gpu);
   const Real cpu_gpu_absolute_difference =
@@ -206,7 +208,8 @@ int main() {
               << " tolerance=" << kCpuGpuRelativeTolerance << "\n";
     print_concentration_diagnostics(
         "siderophore_off_cpu_vs_gpu",
-        metabolism_cpu.chemical_field(), metabolism_gpu.chemical_field());
+        metabolism_cpu_sim.chemical_field(),
+        metabolism_gpu_sim.chemical_field());
   }
   assert(cpu_gpu_relative_difference <= kCpuGpuRelativeTolerance);
 
