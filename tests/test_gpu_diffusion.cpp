@@ -7,18 +7,19 @@
 #include "diffusion_gpu.h"
 #include "dispatch.h"
 #include "domain.h"
+#include "gpu_diagnostic_format.h"
 #include "species_names.h"
 #include "gpu_test_support.h"
 
 #include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <vector>
 
 using namespace gutibm;
+using gutibm::gpu_diagnostic::format_real;
 
 namespace {
 
@@ -75,20 +76,21 @@ void test_gpu_uniform_field_fixed_point() {
   if (!(max_diff < 1.0e-10)) {
     const auto& cpu_field = chem_cpu.conc_data().front();
     const auto [cpu_min_it, cpu_max_it] =
-        std::minmax_element(cpu_field.begin(), cpu_field.end());
+        std::ranges::minmax_element(cpu_field);
     Real cpu_sum = 0.0;
     for (const Real value : cpu_field) cpu_sum += value;
     const Real cpu_mean = cpu_sum / static_cast<Real>(cpu_field.size());
     const Real cpu_scale = std::max(
         {std::abs(*cpu_min_it), std::abs(cpu_mean), std::abs(*cpu_max_it),
          1.0e-30});
-    std::cerr << std::setprecision(std::numeric_limits<Real>::max_digits10)
-              << "[gpu_diag][gpu_diffusion][uniform_field] measured_max_diff="
-              << max_diff << " reference=0 abs_diff=" << max_diff
-              << " rel_diff=" << max_diff / cpu_scale
-              << " tolerance=1.0e-10 cpu_min=" << *cpu_min_it
-              << " cpu_mean=" << cpu_mean
-              << " cpu_max=" << *cpu_max_it << "\n";
+    std::cerr
+        << "[gpu_diag][gpu_diffusion][uniform_field] measured_max_diff="
+        << format_real(max_diff) << " reference=0 abs_diff="
+        << format_real(max_diff) << " rel_diff="
+        << format_real(max_diff / cpu_scale)
+        << " tolerance=1.0e-10 cpu_min=" << format_real(*cpu_min_it)
+        << " cpu_mean=" << format_real(cpu_mean)
+        << " cpu_max=" << format_real(*cpu_max_it) << "\n";
   }
   assert(max_diff < 1.0e-10);
 

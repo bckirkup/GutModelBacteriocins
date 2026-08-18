@@ -1,17 +1,18 @@
 #include "device.h"
 #include "input_parser.h"
 #include "simulation.h"
+#include "gpu_diagnostic_format.h"
 #include "gpu_test_support.h"
 
 #include <cassert>
 #include <array>
 #include <charconv>
 #include <cmath>
-#include <iomanip>
 #include <iostream>
 #include <limits>
 
 using namespace gutibm;
+using gutibm::gpu_diagnostic::format_real;
 
 namespace {
 
@@ -67,12 +68,6 @@ struct BiomassSummary {
   Real total_biomass = 0.0;
 };
 
-struct ConcentrationSummary {
-  Real minimum = std::numeric_limits<Real>::infinity();
-  Real mean = 0.0;
-  Real maximum = -std::numeric_limits<Real>::infinity();
-};
-
 BiomassSummary summarize(const Simulation& sim) {
   BiomassSummary summary;
   for (const Agent& agent : sim.agents()) {
@@ -85,40 +80,6 @@ BiomassSummary summarize(const Simulation& sim) {
   assert(summary.live > 0);
   assert(summary.total_biomass > 0.0);
   return summary;
-}
-
-ConcentrationSummary summarize_species(const ChemicalField& chem, Int species) {
-  ConcentrationSummary summary;
-  const Int cells = chem.global_ncells();
-  for (Int cell = 0; cell < cells; ++cell) {
-    const Real value = chem.conc_global(species, cell);
-    summary.minimum = std::min(summary.minimum, value);
-    summary.maximum = std::max(summary.maximum, value);
-    summary.mean += value;
-  }
-  summary.mean /= static_cast<Real>(cells);
-  return summary;
-}
-
-void print_concentration_diagnostics(const char* label,
-                                     const ChemicalField& cpu,
-                                     const ChemicalField& gpu) {
-  std::cerr << std::setprecision(std::numeric_limits<Real>::max_digits10)
-            << "[gpu_diag][gpu_reproducibility]["
-            << label << "][species]\n";
-  for (Int species = 0; species < cpu.num_species(); ++species) {
-    const ConcentrationSummary cpu_summary =
-        summarize_species(cpu, species);
-    const ConcentrationSummary gpu_summary =
-        summarize_species(gpu, species);
-    std::cerr << "  name=" << cpu.spec(species).name
-              << " cpu_min=" << cpu_summary.minimum
-              << " cpu_mean=" << cpu_summary.mean
-              << " cpu_max=" << cpu_summary.maximum
-              << " gpu_min=" << gpu_summary.minimum
-              << " gpu_mean=" << gpu_summary.mean
-              << " gpu_max=" << gpu_summary.maximum << "\n";
-  }
 }
 
 void print_difference(const char* label,
@@ -199,17 +160,16 @@ int main() {
   // the measured 4e-7--7e-7 offsets; repeated-GPU equality is checked above.
   constexpr Real kCpuGpuRelativeTolerance = 1.0e-5;
   if (!(cpu_gpu_relative_difference <= kCpuGpuRelativeTolerance)) {
-    std::cerr << std::setprecision(std::numeric_limits<Real>::max_digits10)
-              << "[gpu_diag][gpu_reproducibility]"
-              << " cpu_biomass=" << metabolism_cpu.total_biomass
-              << " gpu_biomass=" << metabolism_gpu.total_biomass
-              << " abs_diff=" << cpu_gpu_absolute_difference
-              << " rel_diff=" << cpu_gpu_relative_difference
-              << " tolerance=" << kCpuGpuRelativeTolerance << "\n";
-    print_concentration_diagnostics(
-        "siderophore_off_cpu_vs_gpu",
-        metabolism_cpu_sim.chemical_field(),
-        metabolism_gpu_sim.chemical_field());
+    std::cerr << "[gpu_diag][gpu_reproducibility]"
+              << " cpu_biomass=" << format_real(metabolism_cpu.total_biomass)
+              << " gpu_biomass=" << format_real(metabolism_gpu.total_biomass)
+              << " abs_diff=" << format_real(cpu_gpu_absolute_difference)
+              << " rel_diff=" << format_real(cpu_gpu_relative_difference)
+              << " tolerance=" << format_real(kCpuGpuRelativeTolerance)
+              << "\n";
+    gutibm::gpu_diagnostic::print_concentration_diagnostics(
+        "gpu_reproducibility", "siderophore_off_cpu_vs_gpu",
+        metabolism_cpu_sim.chemical_field(), metabolism_gpu_sim.chemical_field());
   }
   assert(cpu_gpu_relative_difference <= kCpuGpuRelativeTolerance);
 

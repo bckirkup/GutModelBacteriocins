@@ -6,15 +6,15 @@
 #include "input_parser.h"
 #include "dispatch.h"
 #include "device.h"
+#include "gpu_diagnostic_format.h"
 #include "gpu_test_support.h"
 #include <algorithm>
 #include <cmath>
-#include <iomanip>
 #include <iostream>
-#include <limits>
 #include <vector>
 
 using namespace gutibm;
+using gutibm::gpu_diagnostic::format_real;
 
 #ifdef GUTIBM_CUDA
 static Real fingerprint(const Simulation& sim) {
@@ -49,7 +49,6 @@ static void print_species_diagnostics(const Simulation& gpu,
                                       const std::vector<Real>& gpu_fp) {
   const auto& chem = gpu.chemical_field();
   std::cerr << "[gpu_diag][gpu_smoke][species]\n";
-  std::cerr << std::setprecision(std::numeric_limits<Real>::max_digits10);
   for (Int species = 0; species < chem.num_species(); ++species) {
     const Real absolute_difference =
         std::abs(cpu_fp[static_cast<size_t>(species)]
@@ -59,11 +58,11 @@ static void print_species_diagnostics(const Simulation& gpu,
     const Real relative_difference = absolute_difference / scale;
     std::cerr << "  name=" << chem.spec(species).name
               << " cpu_fingerprint="
-              << cpu_fp[static_cast<size_t>(species)]
+              << format_real(cpu_fp[static_cast<size_t>(species)])
               << " gpu_fingerprint="
-              << gpu_fp[static_cast<size_t>(species)]
-              << " abs_diff=" << absolute_difference
-              << " rel_diff=" << relative_difference << "\n";
+              << format_real(gpu_fp[static_cast<size_t>(species)])
+              << " abs_diff=" << format_real(absolute_difference)
+              << " rel_diff=" << format_real(relative_difference) << "\n";
   }
   std::cerr << "[gpu_diag][gpu_smoke][dispatch]"
             << " metabolism_gpu_steps="
@@ -158,15 +157,14 @@ int main() {
     chem_rel = std::max(chem_rel, species_rel);
   }
   if (rel > 0.05 || chem_rel > 0.05) {
-    std::cerr << std::setprecision(std::numeric_limits<Real>::max_digits10)
-              << "[gpu_diag][gpu_smoke] fp_cpu=" << fp_cpu
-              << " fp_gpu=" << fp_gpu
-              << " agent_abs_diff=" << std::abs(fp_cpu - fp_gpu)
-              << " agent_rel=" << rel
+    std::cerr << "[gpu_diag][gpu_smoke] fp_cpu=" << format_real(fp_cpu)
+              << " fp_gpu=" << format_real(fp_gpu)
+              << " agent_abs_diff=" << format_real(std::abs(fp_cpu - fp_gpu))
+              << " agent_rel=" << format_real(rel)
               << " agent_tolerance=0.05"
-              << " chem_abs_diff=" << chem_abs_diff
-              << " chem_scale=" << chem_scale
-              << " chem_rel=" << chem_rel
+              << " chem_abs_diff=" << format_real(chem_abs_diff)
+              << " chem_scale=" << format_real(chem_scale)
+              << " chem_rel=" << format_real(chem_rel)
               << " chem_tolerance=0.05\n";
     print_species_diagnostics(sim_gpu, chem_fp_cpu, chem_fp_gpu);
     std::cerr << "  test_gpu_smoke: FAILED (agent_rel=" << rel

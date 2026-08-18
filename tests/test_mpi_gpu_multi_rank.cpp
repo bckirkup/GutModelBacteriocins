@@ -97,8 +97,9 @@ void test_mpi_gpu_chemistry_identical_across_ranks() {
   }
   assert(positioned_boundary_agent);
   sim.run();
-  const auto metabolism_gpu_steps = sim.agents_gpu().metabolism_gpu_steps();
-  if (metabolism_gpu_steps <= 0) {
+  if (const auto metabolism_gpu_steps =
+          sim.agents_gpu().metabolism_gpu_steps();
+      metabolism_gpu_steps <= 0) {
     const Real metabolism_abs_diff =
         std::abs(static_cast<Real>(metabolism_gpu_steps));
     std::cerr << "[gpu_diag][mpi_gpu_multi_rank] rank=" << rank
