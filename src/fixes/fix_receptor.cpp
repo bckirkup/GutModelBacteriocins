@@ -31,9 +31,12 @@ void FixReceptor::compute(Real dt) {
     auto& ag = sim_.agents_gpu();
     ag.sync_from_host(agents);
     std::vector<double> gpu_probs;
+    const ToxinLumping toxin_lumping = sim_.qssa().toxin_lumping()
+        ? ToxinLumping::Lumped
+        : ToxinLumping::PerReceptor;
     if (gpu_compute_receptor_kill_probs_host_packed(
-            ag, agents, sim_.chem_gpu(), sim_.chemical_field(), cfg_, dt,
-            sim_.qssa().toxin_lumping(),
+            ag, agents, sim_.chem_gpu(), sim_.chemical_field(), cfg_,
+            toxin_lumping, dt,
             gpu_probs)) {
       for (Int i = 0; i < n; ++i) {
         kill_probs[i] = gpu_probs[static_cast<size_t>(i)];

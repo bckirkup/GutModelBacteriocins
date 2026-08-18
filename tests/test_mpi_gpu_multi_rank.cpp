@@ -35,8 +35,9 @@ namespace {
   cfg.hdf5.enabled = false;
   cfg.gpu.enabled = true;
   cfg.gpu.device_id = -1;
-  // This MPI fixture compares GPU metabolism across ranks; siderophore
-  // chemistry is CPU-authoritative and covered separately.
+  // Both Fur and siderophore chemistry disable the production GPU metabolism
+  // path; this fixture specifically exercises GPU metabolism across ranks.
+  cfg.cell_bio.fur.enabled = false;
   cfg.chem_env.siderophore.enabled = false;
   cfg.chem_env.oxygen.enabled = true;
   cfg.chem_env.acetate.enabled = true;
@@ -96,6 +97,21 @@ void test_mpi_gpu_chemistry_identical_across_ranks() {
   }
   assert(positioned_boundary_agent);
   sim.run();
+  if (const auto metabolism_gpu_steps =
+          sim.agents_gpu().metabolism_gpu_steps();
+      metabolism_gpu_steps <= 0) {
+    const Real metabolism_abs_diff =
+        std::abs(static_cast<Real>(metabolism_gpu_steps));
+    std::cerr << "[gpu_diag][mpi_gpu_multi_rank] rank=" << rank
+              << " measured_metabolism_gpu_steps=" << metabolism_gpu_steps
+              << " reference=0 abs_diff=" << metabolism_abs_diff
+              << " rel_diff=" << metabolism_abs_diff
+              << " tolerance=0 (strictly positive required)"
+              << " fur_enabled="
+              << sim.config().cell_bio.fur.enabled
+              << " siderophore_enabled="
+              << sim.config().chem_env.siderophore.enabled << "\n";
+  }
   assert(sim.agents_gpu().metabolism_gpu_steps() > 0);
 
   Real local = chemistry_checksum(sim);

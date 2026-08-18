@@ -1,6 +1,7 @@
 #include "device.h"
 #include "input_parser.h"
 #include "simulation.h"
+#include "gpu_diagnostic_format.h"
 #include "gpu_test_support.h"
 
 #include <cassert>
@@ -11,6 +12,7 @@
 #include <limits>
 
 using namespace gutibm;
+using gutibm::gpu_diagnostic::format_real;
 
 namespace {
 
@@ -141,10 +143,12 @@ int main() {
 
   const SimulationConfig metabolism_cfg =
       make_reproducibility_config(false);
+  Simulation metabolism_cpu_sim = run_case(metabolism_cfg, false);
+  Simulation metabolism_gpu_sim = run_case(metabolism_cfg, true);
   const BiomassSummary metabolism_cpu =
-      summarize(run_case(metabolism_cfg, false));
+      summarize(metabolism_cpu_sim);
   const BiomassSummary metabolism_gpu =
-      summarize(run_case(metabolism_cfg, true));
+      summarize(metabolism_gpu_sim);
   print_difference("siderophore_off_cpu_vs_gpu",
                    metabolism_cpu, metabolism_gpu);
   const Real cpu_gpu_absolute_difference =
@@ -155,6 +159,18 @@ int main() {
   // diffusion solves, not nondeterminism. The 1e-5 bound leaves headroom over
   // the measured 4e-7--7e-7 offsets; repeated-GPU equality is checked above.
   constexpr Real kCpuGpuRelativeTolerance = 1.0e-5;
+  if (!(cpu_gpu_relative_difference <= kCpuGpuRelativeTolerance)) {
+    std::cerr << "[gpu_diag][gpu_reproducibility]"
+              << " cpu_biomass=" << format_real(metabolism_cpu.total_biomass)
+              << " gpu_biomass=" << format_real(metabolism_gpu.total_biomass)
+              << " abs_diff=" << format_real(cpu_gpu_absolute_difference)
+              << " rel_diff=" << format_real(cpu_gpu_relative_difference)
+              << " tolerance=" << format_real(kCpuGpuRelativeTolerance)
+              << "\n";
+    gutibm::gpu_diagnostic::print_concentration_diagnostics(
+        "gpu_reproducibility", "siderophore_off_cpu_vs_gpu",
+        metabolism_cpu_sim.chemical_field(), metabolism_gpu_sim.chemical_field());
+  }
   assert(cpu_gpu_relative_difference <= kCpuGpuRelativeTolerance);
 
   std::cout << "GPU reproducibility diagnostic complete.\n";

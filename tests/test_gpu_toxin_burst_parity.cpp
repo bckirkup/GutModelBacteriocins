@@ -28,6 +28,39 @@ struct BurstRun {
   Int colicin_kills = 0;
 };
 
+#ifdef GUTIBM_CUDA
+void print_kill_diagnostic(const char* label,
+                           const std::vector<Real>& doses,
+                           const std::vector<Int>& cpu_kills,
+                           const std::vector<Int>& gpu_kills,
+                           Int target_count,
+                           Int measured) {
+  std::cerr << "[gpu_diag][gpu_toxin_burst_parity][" << label
+            << "] target_count=" << target_count << " doses=[";
+  for (size_t i = 0; i < doses.size(); ++i) {
+    if (i != 0) std::cerr << ", ";
+    std::cerr << doses[i];
+  }
+  std::cerr << "] cpu_kills=[";
+  for (size_t i = 0; i < cpu_kills.size(); ++i) {
+    if (i != 0) std::cerr << ", ";
+    std::cerr << cpu_kills[i];
+  }
+  std::cerr << "] gpu_kills=[";
+  for (size_t i = 0; i < gpu_kills.size(); ++i) {
+    if (i != 0) std::cerr << ", ";
+    std::cerr << gpu_kills[i];
+  }
+  const Real absolute_difference =
+      std::abs(static_cast<Real>(measured - target_count));
+  std::cerr << "] measured=" << measured
+            << " reference=" << target_count
+            << " abs_diff=" << absolute_difference
+            << " rel_diff=" << absolute_difference
+            << " tolerance=0\n";
+}
+#endif
+
 SimulationConfig make_config(bool gpu_enabled) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {100.0e-6, 100.0e-6, 50.0e-6};
@@ -155,8 +188,16 @@ int main() {
   assert(std::is_sorted(gpu_kills.begin(), gpu_kills.end()));
   constexpr Int target_count = 32;
   assert(cpu_kills.front() == 0);
+  if (gpu_kills.front() != 0) {
+    print_kill_diagnostic("gpu_zero_dose", strengths, cpu_kills, gpu_kills,
+                          target_count, gpu_kills.front());
+  }
   assert(gpu_kills.front() == 0);
   assert(cpu_kills.back() == target_count);
+  if (gpu_kills.back() != target_count) {
+    print_kill_diagnostic("gpu_max_dose", strengths, cpu_kills, gpu_kills,
+                          target_count, gpu_kills.back());
+  }
   assert(gpu_kills.back() == target_count);
   for (size_t i = 1; i + 1 < cpu_kills.size(); ++i) {
     // ULP-level reduction-order differences can flip one borderline stochastic

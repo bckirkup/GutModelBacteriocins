@@ -7,6 +7,7 @@
 #include "domain.h"
 #include "chemical_field.h"
 #include "chem_environment_config.h"
+#include "vbf_carbon_sink.h"
 #include <cmath>
 
 namespace gutibm {
@@ -18,24 +19,6 @@ Real dynamic_mucin_liberation(Real mucin_conc,
                               const MucinConfig& mucin_cfg) {
   const Real substrate = mucin_conc / (mucin_cfg.Km_degradation + mucin_conc);
   return mucin_cfg.k_liberation * vbf_cfg.density * substrate;
-}
-
-Real implicit_carbon_sink(Real concentration, Real vmax,
-                          Real km, Real dt) {
-  if (concentration <= 0.0 || vmax <= 0.0 || dt <= 0.0) {
-    return 0.0;
-  }
-  if (km <= 0.0) {
-    return concentration / dt;
-  }
-  const Real linear_term = km + dt * vmax - concentration;
-  const Real discriminant = linear_term * linear_term
-      + 4.0 * concentration * km;
-  const Real root = std::sqrt(discriminant);
-  const Real concentration_after_sink = linear_term >= 0.0
-      ? 2.0 * concentration * km / (linear_term + root)
-      : 0.5 * (-linear_term + root);
-  return (concentration - concentration_after_sink) / dt;
 }
 
 struct VbfSpeciesIndices {
@@ -91,7 +74,7 @@ void apply_carbon_sink(ChemicalField& chem, Int cell,
                        Real dt) {
   if (ctx.cfg.carbon_sink_vmax <= 0.0 || ctx.idx.carbon < 0) return;
   const Real c = chem.conc(ctx.idx.carbon, cell);
-  const Real sink = implicit_carbon_sink(
+  const Real sink = vbf::implicit_carbon_sink(
       c, ctx.cfg.carbon_sink_vmax, ctx.cfg.carbon_sink_km, dt);
   chem.reac(ctx.idx.carbon, cell) -= sink;
   if (totals != nullptr) totals->carbon_sink += sink * cell_volume * dt;

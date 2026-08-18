@@ -8,6 +8,7 @@
 #include "input_parser.h"
 #include "dispatch.h"
 #include "device.h"
+#include "gpu_diagnostic_format.h"
 #include "species_names.h"
 #include "gpu_test_support.h"
 #include <algorithm>
@@ -15,8 +16,10 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <limits>
 
 using namespace gutibm;
+using gutibm::gpu_diagnostic::format_real;
 
 namespace {
 
@@ -248,6 +251,21 @@ void test_gpu_siderophore_cpu_fallback() {
   constexpr Real kBiomassRelativeTolerance = 1.0e-5;
   std::cout << "  test_gpu_siderophore_cpu_fallback: biomass_rel_diff="
             << biomass_rel_diff << "\n";
+  if (!(biomass_rel_diff <= kBiomassRelativeTolerance)) {
+    const Real biomass_absolute_difference =
+        std::abs(gpu_biomass - cpu_biomass);
+    std::cerr << "[gpu_diag][gpu_feature_combinations]"
+              << " cpu_live=" << cpu_live << " gpu_live=" << gpu_live
+              << " cpu_biomass=" << format_real(cpu_biomass)
+              << " gpu_biomass=" << format_real(gpu_biomass)
+              << " abs_diff=" << format_real(biomass_absolute_difference)
+              << " rel_diff=" << format_real(biomass_rel_diff)
+              << " tolerance=" << format_real(kBiomassRelativeTolerance)
+              << "\n";
+    gutibm::gpu_diagnostic::print_concentration_diagnostics(
+        "gpu_feature_combinations", nullptr, cpu.chemical_field(),
+        gpu_cfg_sim.chemical_field());
+  }
   assert(biomass_rel_diff <= kBiomassRelativeTolerance);
 
   std::cout << "  test_gpu_siderophore_cpu_fallback: PASSED\n";
