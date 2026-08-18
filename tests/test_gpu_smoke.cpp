@@ -112,9 +112,16 @@ int main() {
 
   Real rel = std::abs(fp_cpu - fp_gpu) / std::max(std::abs(fp_cpu), 1e-30);
   Real chem_rel = 0.0;
+  Real chem_abs_diff = 0.0;
+  Real chem_scale = 1.0e-30;
   for (size_t species = 0; species < chem_fp_cpu.size(); ++species) {
-    const Real species_rel = std::abs(chem_fp_cpu[species] - chem_fp_gpu[species])
-        / std::max(std::abs(chem_fp_cpu[species]), 1e-30);
+    const Real species_abs_diff =
+        std::abs(chem_fp_cpu[species] - chem_fp_gpu[species]);
+    const Real species_scale = std::max(std::abs(chem_fp_cpu[species]),
+                                        1.0e-30);
+    const Real species_rel = species_abs_diff / species_scale;
+    chem_abs_diff = std::max(chem_abs_diff, species_abs_diff);
+    chem_scale = std::max(chem_scale, species_scale);
     chem_rel = std::max(chem_rel, species_rel);
   }
   if (rel > 0.05 || chem_rel > 0.05) {
@@ -124,6 +131,8 @@ int main() {
               << " agent_abs_diff=" << std::abs(fp_cpu - fp_gpu)
               << " agent_rel=" << rel
               << " agent_tolerance=0.05"
+              << " chem_abs_diff=" << chem_abs_diff
+              << " chem_scale=" << chem_scale
               << " chem_rel=" << chem_rel
               << " chem_tolerance=0.05\n";
     std::cerr << "  test_gpu_smoke: FAILED (agent_rel=" << rel
