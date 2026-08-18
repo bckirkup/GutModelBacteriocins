@@ -14,7 +14,9 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 
 using namespace gutibm;
 
@@ -248,6 +250,18 @@ void test_gpu_siderophore_cpu_fallback() {
   constexpr Real kBiomassRelativeTolerance = 1.0e-5;
   std::cout << "  test_gpu_siderophore_cpu_fallback: biomass_rel_diff="
             << biomass_rel_diff << "\n";
+  if (!(biomass_rel_diff <= kBiomassRelativeTolerance)) {
+    const Real biomass_absolute_difference =
+        std::abs(gpu_biomass - cpu_biomass);
+    std::cerr << std::setprecision(std::numeric_limits<Real>::max_digits10)
+              << "[gpu_diag][gpu_feature_combinations]"
+              << " cpu_live=" << cpu_live << " gpu_live=" << gpu_live
+              << " cpu_biomass=" << cpu_biomass
+              << " gpu_biomass=" << gpu_biomass
+              << " abs_diff=" << biomass_absolute_difference
+              << " rel_diff=" << biomass_rel_diff
+              << " tolerance=" << kBiomassRelativeTolerance << "\n";
+  }
   assert(biomass_rel_diff <= kBiomassRelativeTolerance);
 
   std::cout << "  test_gpu_siderophore_cpu_fallback: PASSED\n";

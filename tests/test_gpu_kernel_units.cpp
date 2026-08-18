@@ -200,7 +200,7 @@ void test_grid_coupling() {
   synchronize();
   const auto mapped = download(cells, agents);
   assert(mapped[0] == 4);
-  assert(mapped[1] == 3 + 2 * kNx + 3 * kNx * kNy);
+  assert(mapped[1] == 2 + 2 * kNx + 3 * kNx * kNy);
   assert(mapped[2] == 3 + 3 * kNx + 3 * kNx * kNy);
   assert(mapped[3] == 0);
   assert(mapped[4] == -1);

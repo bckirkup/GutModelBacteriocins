@@ -9,7 +9,9 @@
 #include "gpu_test_support.h"
 #include <algorithm>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 using namespace gutibm;
@@ -116,6 +118,14 @@ int main() {
     chem_rel = std::max(chem_rel, species_rel);
   }
   if (rel > 0.05 || chem_rel > 0.05) {
+    std::cerr << std::setprecision(std::numeric_limits<Real>::max_digits10)
+              << "[gpu_diag][gpu_smoke] fp_cpu=" << fp_cpu
+              << " fp_gpu=" << fp_gpu
+              << " agent_abs_diff=" << std::abs(fp_cpu - fp_gpu)
+              << " agent_rel=" << rel
+              << " agent_tolerance=0.05"
+              << " chem_rel=" << chem_rel
+              << " chem_tolerance=0.05\n";
     std::cerr << "  test_gpu_smoke: FAILED (agent_rel=" << rel
               << " chem_rel=" << chem_rel << ")\n";
     return 1;

@@ -7,6 +7,7 @@
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 
@@ -155,6 +156,15 @@ int main() {
   // diffusion solves, not nondeterminism. The 1e-5 bound leaves headroom over
   // the measured 4e-7--7e-7 offsets; repeated-GPU equality is checked above.
   constexpr Real kCpuGpuRelativeTolerance = 1.0e-5;
+  if (!(cpu_gpu_relative_difference <= kCpuGpuRelativeTolerance)) {
+    std::cerr << std::setprecision(std::numeric_limits<Real>::max_digits10)
+              << "[gpu_diag][gpu_reproducibility]"
+              << " cpu_biomass=" << metabolism_cpu.total_biomass
+              << " gpu_biomass=" << metabolism_gpu.total_biomass
+              << " abs_diff=" << cpu_gpu_absolute_difference
+              << " rel_diff=" << cpu_gpu_relative_difference
+              << " tolerance=" << kCpuGpuRelativeTolerance << "\n";
+  }
   assert(cpu_gpu_relative_difference <= kCpuGpuRelativeTolerance);
 
   std::cout << "GPU reproducibility diagnostic complete.\n";
