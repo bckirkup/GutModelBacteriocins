@@ -6,6 +6,7 @@
 #include "species_names.h"
 #include "simulation.h"
 #include "receptor_utils.h"
+#include <cassert>
 #include <cmath>
 #include <algorithm>
 #ifdef GUTIBM_OPENMP
@@ -103,6 +104,8 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   buffers.owned_global_x_end =
       cg.slab_mode() ? cg.owned_x_end() : sim.domain().nx();
   buffers.owned_storage_x_begin = cg.owned_storage_x_begin();
+  buffers.receptor_count = NUM_RECEPTORS;
+  assert(buffers.receptor_count == NUM_RECEPTORS);
   if (!ag.run_metabolism(
           sim.domain(), cfg, buffers, cg.agent_uptake_device(), dt,
           local_agent_count)) {
@@ -110,9 +113,8 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   }
   ag.sync_to_host(agents);
   ag.sync_receptor_expression_to_host(agents);
-  cg.sync_reactions_to_host(sim.chemical_field());
+  cg.accumulate_reactions_to_host(sim.chemical_field());
   cg.download_agent_uptake(sim.chemical_field());
-  sim.set_gpu_metabolism_active(true);
   return true;
 }
 
@@ -123,7 +125,6 @@ void FixMetabolism::compute(Real dt) {
     // Division stays in compute (same as CPU path) so fix_bacteriocin in this
     // biology pass can observe just_divided during the division timestep.
     apply_siderophore_chemistry(dt);
-    sim_.chem_gpu().sync_reactions_to_device(sim_.chemical_field());
     perform_divisions();
     return;
   }

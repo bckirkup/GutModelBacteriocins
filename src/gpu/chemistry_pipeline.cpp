@@ -48,8 +48,8 @@ bool sum_reactions_with_optional_device(ChemistryPipelineInput& in,
 
 ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real dt) {
   ChemistryPipelineResult result;
-  bool reactions_on_device = in.gpu_active && in.metabolism_on_gpu;
-  if (in.gpu_active && !reactions_on_device) {
+  bool reactions_on_device = false;
+  if (in.gpu_active) {
     in.chem_gpu.sync_reactions_to_device(in.chem);
     reactions_on_device = true;
   }

@@ -34,7 +34,8 @@ SimulationConfig make_config(Real iron, uint64_t seed) {
   cfg.chem_env.oxygen.enabled = true;
   cfg.fixes.metabolism.eut_enabled = true;
   cfg.fixes.metabolism.division_threshold = 100.0;
-  cfg.enabled_fixes = {"metabolism"};
+  cfg.quorum_sensing.enabled = true;
+  cfg.enabled_fixes = {"metabolism", "quorum_sensing"};
 
   for (auto& species : cfg.chemicals) {
     if (species.name == gutibm::species::IRON) {
@@ -97,6 +98,18 @@ Real mean_mu(const Simulation& simulation) {
   return value / static_cast<Real>(count);
 }
 
+Real maximum_ai2(const Simulation& simulation) {
+  const Int ai2 = simulation.chemical_field().find(species::AI2);
+  assert(ai2 >= 0);
+  Real maximum = 0.0;
+  for (Int cell = 0; cell < simulation.chemical_field().global_ncells();
+       ++cell) {
+    maximum = std::max(maximum,
+                       simulation.chemical_field().conc_global(ai2, cell));
+  }
+  return maximum;
+}
+
 void assert_parity(const Simulation& cpu, const Simulation& gpu) {
   constexpr Real tolerance = 5.0e-8;
   assert(cpu.agents().size() == gpu.agents().size());
@@ -127,6 +140,8 @@ void test_fur_siderophore_metabolism_parity() {
   Simulation cpu = run(config, false);
   Simulation gpu = run(config, true);
   assert(gpu.agents_gpu().metabolism_gpu_steps() > 0);
+  assert(maximum_ai2(cpu) > 0.0);
+  assert(maximum_ai2(gpu) > 0.0);
   assert_parity(cpu, gpu);
   std::cout << "  test_fur_siderophore_metabolism_parity: PASSED\n";
 }

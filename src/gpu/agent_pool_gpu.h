@@ -44,6 +44,7 @@ struct GpuMetabolismBuffers {
   int owned_global_x_begin = 0;
   int owned_global_x_end = 0;
   int owned_storage_x_begin = 0;
+  int receptor_count = 0;
 };
 
 class AgentPoolGpu {

@@ -21,7 +21,8 @@ __global__ void metabolism_kernel(
     double* receptor_expr, const double* receptor_expr_base,
     const double* ligand_affinity, const int* iron_receptor,
     const int* bi_loci_count, const double* plasmid_amelioration,
-    int num_agents, int agent_stride, double dt, double cell_volume,
+    int num_agents, int local_agent_count, int agent_stride,
+    int receptor_count, double dt, double cell_volume,
     double cell_density,
     double km_iron_primary, double km_iron_iroN, double km_iron_iutA, double km_iron_fiu,
     double maintenance_rate, double metE_penalty, double metE_acetate_max_factor,
@@ -47,6 +48,7 @@ __global__ void metabolism_kernel(
       grid_cell[i], global_nx, global_ny, storage_nx,
       owned_global_x_begin, owned_global_x_end, owned_storage_x_begin);
   if (cell < 0) {
+    if (i >= local_agent_count) return;
     mu_realized[i] = 0.0;
     return;
   }
@@ -60,7 +62,7 @@ __global__ void metabolism_kernel(
   if (fur_enabled && iron_uptake_enabled) {
     const double fur_factor = 1.0 + fur_upregulation_max * fur_Km
         / (fur_Km + S_iron);
-    for (int r = 0; r < 8; ++r) {
+    for (int r = 0; r < receptor_count; ++r) {
       const double base_expression =
           receptor_expr_base[r * agent_stride + i];
       receptor_expr[r * agent_stride + i] = iron_receptor[r]
@@ -68,6 +70,8 @@ __global__ void metabolism_kernel(
           : base_expression;
     }
   }
+
+  if (i >= local_agent_count) return;
 
   // receptor_expr / ligand_affinity are SoA: index = receptor * agent_stride
   // + agent (matches AgentPoolGpu::sync_from_host and receptor_kernel).
@@ -189,7 +193,8 @@ void launch_metabolism_kernel(
     double* receptor_expr, const double* receptor_expr_base,
     const double* ligand_affinity, const int* iron_receptor,
     const int* bi_loci_count, const double* plasmid_amelioration,
-    int num_agents, int agent_stride, double dt, double cell_volume,
+    int num_agents, int local_agent_count, int agent_stride,
+    int receptor_count, double dt, double cell_volume,
     double cell_density,
     double km_iron_primary, double km_iron_iroN, double km_iron_iutA, double km_iron_fiu,
     double maintenance_rate, double metE_penalty, double metE_acetate_max_factor,
@@ -218,7 +223,8 @@ void launch_metabolism_kernel(
       grid_cell, state, mu_max, km_b12, km_carbon,
       receptor_expr, receptor_expr_base, ligand_affinity, iron_receptor,
       bi_loci_count, plasmid_amelioration,
-      num_agents, agent_stride, dt, cell_volume, cell_density,
+      num_agents, local_agent_count, agent_stride, receptor_count, dt,
+      cell_volume, cell_density,
       km_iron_primary, km_iron_iroN, km_iron_iutA, km_iron_fiu,
       maintenance_rate, metE_penalty, metE_acetate_max_factor,
       metE_acetate_km, eut_max_penalty, eut_km,

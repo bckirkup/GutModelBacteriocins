@@ -8,6 +8,7 @@
 #include "dispatch.h"
 #include "device.h"
 #include "gpu_test_support.h"
+#include "fix_metabolism.h"
 
 #include <cassert>
 #include <cmath>
@@ -35,10 +36,8 @@ namespace {
   cfg.hdf5.enabled = false;
   cfg.gpu.enabled = true;
   cfg.gpu.device_id = -1;
-  // Both Fur and siderophore chemistry disable the production GPU metabolism
-  // path; this fixture specifically exercises GPU metabolism across ranks.
-  cfg.cell_bio.fur.enabled = false;
-  cfg.chem_env.siderophore.enabled = false;
+  cfg.cell_bio.fur.enabled = true;
+  cfg.chem_env.siderophore.enabled = true;
   cfg.chem_env.oxygen.enabled = true;
   cfg.chem_env.acetate.enabled = true;
   cfg.chem_env.mucin.enabled = true;
@@ -51,6 +50,7 @@ namespace {
   s.plasmids = {};
   s.conjugative = false;
   cfg.initial_strains.push_back(s);
+  cfg.enabled_fixes = {"metabolism"};
   return cfg;
 }
 
@@ -127,6 +127,46 @@ void test_mpi_gpu_chemistry_identical_across_ranks() {
 #endif
 }
 
+void test_mpi_gpu_ghost_receptor_parity() {
+  require_two_ranks();
+  const SimulationConfig cfg = make_mpi_gpu_config();
+  Simulation cpu;
+  Simulation gpu;
+  SimulationConfig cpu_cfg = cfg;
+  cpu_cfg.gpu.enabled = false;
+  cpu.init(cpu_cfg);
+  gpu.init(cfg);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  for (Simulation* simulation : {&cpu, &gpu}) {
+    for (Agent& agent : simulation->agents()) {
+      if (agent.state == PhenoState::DEAD) continue;
+      agent.x[0] = rank == 0
+          ? simulation->domain().local_hi_x()
+              - 0.5 * simulation->domain().ghost_width()
+          : simulation->domain().local_lo_x()
+              + 0.5 * simulation->domain().ghost_width();
+      break;
+    }
+    simulation->exchange_ghost_agents();
+    FixMetabolism metabolism(*simulation, cfg.fixes.metabolism);
+    metabolism.compute(60.0);
+  }
+
+  assert(cpu.agents().size() == gpu.agents().size());
+  bool found_ghost = false;
+  for (Int i = 0; i < cpu.agents().size(); ++i) {
+    if (!cpu.agents()[i].flags.is_ghost) continue;
+    found_ghost = true;
+    for (int receptor = 0; receptor < NUM_RECEPTORS; ++receptor) {
+      assert(std::abs(cpu.agents()[i].receptor_expr[receptor]
+                      - gpu.agents()[i].receptor_expr[receptor]) < 1.0e-12);
+    }
+  }
+  assert(found_ghost);
+}
+
 #endif  // GUTIBM_MPI
 
 }  // namespace
@@ -140,6 +180,7 @@ int main() {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   std::cout << "=== MPI GPU Multi-Rank Tests ===\n";
   test_mpi_gpu_chemistry_identical_across_ranks();
+  test_mpi_gpu_ghost_receptor_parity();
   if (rank == 0) {
     std::cout << "All MPI GPU multi-rank tests passed.\n";
   }
