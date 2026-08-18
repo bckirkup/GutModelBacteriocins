@@ -155,6 +155,7 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 `gpu_chemical_field`, `gpu_feature_combinations`, `gpu_production_path`,
 `gpu_smoke`, `gpu_reproducibility`, `gpu_scaling_benchmark`,
 `qssa_gpu_parity`, `gpu_toxin_burst_parity`, `gpu_nutrient_feedback`,
+`gpu_metabolism_fur`,
 `spatial_hash_gpu_csr`, `mechanics_gpu_parity`, `gpu_kernel_units`,
 `mpi_gpu_multi_rank`, and `cuda_aware_mpi_reaction`, plus
 `scripts/compare_gpu_parity.sh`. GPU-labelled CTest targets return CTest's skip
