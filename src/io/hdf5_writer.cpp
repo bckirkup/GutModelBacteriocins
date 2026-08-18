@@ -599,6 +599,72 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
 #endif
 }
 
+void HDF5Writer::write_halt_metadata(const Simulation& sim, Int step) const {
+#ifdef GUTIBM_HDF5
+  if (enabled_ && io_rank(cfg_) == 0 && file_id_ >= 0) {
+    write_run_provenance(sim);
+    const auto fid = static_cast<hid_t>(file_id_);
+    const std::string group = "summary/" + std::format("step_{:06}", step);
+    ensure_group(fid, "summary", cfg_);
+    ensure_group(fid, group, cfg_);
+    const int32_t halt_reason = sim.halted_for_dysbiosis() ? 1 : 0;
+    const double halt_density = sim.halt_density_cells_per_mL();
+    write_scalar_dataset(fid, group + "/halt_reason_code",
+                         H5T_NATIVE_INT32, &halt_reason);
+    write_scalar_dataset(fid, group + "/halt_density_cells_per_mL",
+                         H5T_NATIVE_DOUBLE, &halt_density);
+    H5Fflush(fid, H5F_SCOPE_LOCAL);
+  }
+  mpi_barrier(cfg_);
+#else
+  (void)sim;
+  (void)step;
+#endif
+}
+
+void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
+                                       Real time) const {
+#ifdef GUTIBM_HDF5
+  if (enabled_ && io_rank(cfg_) == 0 && file_id_ >= 0) {
+    write_run_provenance(sim);
+    const auto fid = static_cast<hid_t>(file_id_);
+    ensure_group(fid, "run_provenance", cfg_);
+    const int32_t halt_reason = sim.halted_for_dysbiosis() ? 1 : 0;
+    const double halt_density = sim.halt_density_cells_per_mL();
+    const int32_t halt_step = sim.halted_for_dysbiosis() ? step : 0;
+    const double halt_time = sim.halted_for_dysbiosis() ? time : 0.0;
+    const int32_t completed_total_time =
+        time >= sim.config().time.total_time ? 1 : 0;
+    const int32_t termination_reason =
+        sim.halted_for_dysbiosis() ? 1 : (completed_total_time != 0 ? 0 : 2);
+    const int32_t termination_step = step;
+    const double termination_time = time;
+    write_scalar_dataset(fid, "run_provenance/halt_reason_code",
+                         H5T_NATIVE_INT32, &halt_reason);
+    write_scalar_dataset(fid, "run_provenance/halt_density_cells_per_mL",
+                         H5T_NATIVE_DOUBLE, &halt_density);
+    write_scalar_dataset(fid, "run_provenance/halt_step",
+                         H5T_NATIVE_INT32, &halt_step);
+    write_scalar_dataset(fid, "run_provenance/halt_time",
+                         H5T_NATIVE_DOUBLE, &halt_time);
+    write_scalar_dataset(fid, "run_provenance/completed_total_time",
+                         H5T_NATIVE_INT32, &completed_total_time);
+    write_scalar_dataset(fid, "run_provenance/termination_reason_code",
+                         H5T_NATIVE_INT32, &termination_reason);
+    write_scalar_dataset(fid, "run_provenance/termination_step",
+                         H5T_NATIVE_INT32, &termination_step);
+    write_scalar_dataset(fid, "run_provenance/termination_time",
+                         H5T_NATIVE_DOUBLE, &termination_time);
+    H5Fflush(fid, H5F_SCOPE_LOCAL);
+  }
+  mpi_barrier(cfg_);
+#else
+  (void)sim;
+  (void)step;
+  (void)time;
+#endif
+}
+
 void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const {
 #ifdef GUTIBM_HDF5
   if (!enabled_) return;

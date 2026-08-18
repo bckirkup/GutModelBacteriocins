@@ -29,6 +29,12 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
         f.attrs["ny"] = ny
         f.attrs["nz"] = nz
         f.attrs["grid_dx"] = 5e-6
+        provenance = f.require_group("run_provenance")
+        provenance.create_dataset("halt_reason_code", data=np.array(0, dtype=np.int32))
+        provenance.create_dataset(
+            "halt_density_cells_per_mL", data=np.array(0.0, dtype=np.float64)
+        )
+        provenance.create_dataset("completed_total_time", data=np.array(1, dtype=np.int32))
 
         for step_idx in range(n_steps):
             step_name = f"step_{step_idx:06d}"
@@ -69,6 +75,10 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
             summary.create_dataset("n_total", data=np.array(n_agents, dtype=np.int32))
             summary.create_dataset("num_agents", data=np.array(n_agents, dtype=np.int32))
             summary.create_dataset("num_lineages", data=np.array(3, dtype=np.int32))
+            summary.create_dataset("halt_reason_code", data=np.array(0, dtype=np.int32))
+            summary.create_dataset(
+                "halt_density_cells_per_mL", data=np.array(0.0, dtype=np.float64)
+            )
             stocks = summary.require_group("stocks")
             stocks.create_dataset(
                 "bacteriostatic_live_agents", data=np.array(step_idx, dtype=np.int32)

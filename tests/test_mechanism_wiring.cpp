@@ -355,6 +355,10 @@ void test_dysbiosis_halt() {
   // Control: threshold disabled -> run proceeds through many steps.
   SimulationConfig ctrl = make_integration_cfg(50, 2024);
   ctrl.dysbiosis_threshold = 0.0;
+  const std::string ctrl_output =
+      resolve_test_h5_path("GUTIBM_DYSBIOSIS_CTRL_H5", "dysbiosis_ctrl");
+  ctrl.hdf5.enabled = true;
+  ctrl.hdf5.filename = ctrl_output;
   Simulation sim_ctrl;
   sim_ctrl.init(ctrl);
   sim_ctrl.run();
@@ -367,12 +371,15 @@ void test_dysbiosis_halt() {
   halt.dysbiosis_sampling_interval = 1.0;
   halt.dysbiosis_sample_count = 3;
   halt.fixes.metabolism.division_threshold = 1.01;
+  const std::string halt_output =
+      resolve_test_h5_path("GUTIBM_DYSBIOSIS_HALT_H5", "dysbiosis_halt");
+  halt.hdf5.enabled = true;
+  halt.hdf5.filename = halt_output;
   const std::string restart =
       resolve_test_h5_path("GUTIBM_DYSBIOSIS_RESTART_H5", "dysbiosis_restart");
   halt.restart.enabled = true;
   halt.restart.directory = std::filesystem::path(restart).parent_path().string();
   halt.restart.interval_steps = 100;
-  halt.hdf5.enabled = false;
   Simulation sim_halt;
   sim_halt.init(halt);
   for (Agent& agent : sim_halt.agents()) {
@@ -430,6 +437,79 @@ void test_dysbiosis_halt() {
   expect(reason == 1, "dysbiosis checkpoint must identify its halt reason");
   expect(std::abs(density - expected_density) < 1.0e-9 * expected_density,
          "dysbiosis checkpoint must preserve tripped density");
+  hid_t output = H5Fopen(halt_output.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  expect(output >= 0, "dysbiosis output must be readable");
+  hid_t run_reason = H5Dopen2(
+      output, "run_provenance/halt_reason_code", H5P_DEFAULT);
+  hid_t run_density = H5Dopen2(
+      output, "run_provenance/halt_density_cells_per_mL", H5P_DEFAULT);
+  hid_t run_step = H5Dopen2(output, "run_provenance/halt_step", H5P_DEFAULT);
+  hid_t run_time = H5Dopen2(output, "run_provenance/halt_time", H5P_DEFAULT);
+  int32_t run_reason_value = 0;
+  double run_density_value = 0.0;
+  int32_t run_step_value = 0;
+  double run_time_value = 0.0;
+  expect(run_reason >= 0 && run_density >= 0 && run_step >= 0 && run_time >= 0,
+         "dysbiosis output must contain run-level halt metadata");
+  H5Dread(run_reason, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &run_reason_value);
+  H5Dread(run_density, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &run_density_value);
+  H5Dread(run_step, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &run_step_value);
+  H5Dread(run_time, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &run_time_value);
+  H5Dclose(run_reason);
+  H5Dclose(run_density);
+  H5Dclose(run_step);
+  H5Dclose(run_time);
+  hid_t output_step_reason = H5Dopen2(
+      output, ("summary/" + step_name + "/halt_reason_code").c_str(),
+      H5P_DEFAULT);
+  hid_t output_step_density = H5Dopen2(
+      output, ("summary/" + step_name + "/halt_density_cells_per_mL").c_str(),
+      H5P_DEFAULT);
+  int32_t output_step_reason_value = 0;
+  double output_step_density_value = 0.0;
+  expect(output_step_reason >= 0 && output_step_density >= 0,
+         "final summary must contain populated halt metadata");
+  H5Dread(output_step_reason, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &output_step_reason_value);
+  H5Dread(output_step_density, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &output_step_density_value);
+  H5Dclose(output_step_reason);
+  H5Dclose(output_step_density);
+  H5Fclose(output);
+  expect(run_reason_value == 1,
+         "dysbiosis output must identify the run-level halt reason");
+  expect(run_density_value > halt.dysbiosis_threshold,
+         "run-level halt density must exceed the configured threshold");
+  expect(run_step_value == sim_halt.step_count(),
+         "run-level halt step must match the stopped simulation step");
+  expect(std::isfinite(run_time_value) && run_time_value > 0.0,
+         "run-level halt time must be finite and positive");
+  expect(output_step_reason_value == 1 &&
+             output_step_density_value > halt.dysbiosis_threshold,
+         "final summary must preserve the triggering halt metadata");
+  hid_t control = H5Fopen(ctrl_output.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  expect(control >= 0, "completed output must be readable");
+  hid_t control_reason = H5Dopen2(
+      control, "run_provenance/halt_reason_code", H5P_DEFAULT);
+  hid_t control_completed = H5Dopen2(
+      control, "run_provenance/completed_total_time", H5P_DEFAULT);
+  int32_t control_reason_value = 1;
+  int32_t control_completed_value = 0;
+  expect(control_reason >= 0 && control_completed >= 0,
+         "completed output must contain termination metadata");
+  H5Dread(control_reason, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &control_reason_value);
+  H5Dread(control_completed, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &control_completed_value);
+  H5Dclose(control_reason);
+  H5Dclose(control_completed);
+  H5Fclose(control);
+  expect(control_reason_value == 0 && control_completed_value == 1,
+         "completed output must record the unhalted full-horizon case");
 #endif
 
   std::cout << "  test_dysbiosis_halt: PASSED"

@@ -130,6 +130,13 @@ the halt metadata with the artifact:
 - `halt_reason_code`;
 - `halt_density_cells_per_mL`.
 
+The live output also records run-level termination metadata under
+`/run_provenance/`. `termination_reason_code=1` identifies a dysbiosis halt,
+with the triggering density, step, and time in `halt_density_cells_per_mL`,
+`halt_step`, and `halt_time`. A normally completed run records
+`completed_total_time=1` and `termination_reason_code=0`; this distinguishes a
+full-horizon run from an early exit with no dysbiosis halt.
+
 ## 5. Define what the fork measures
 
 State the toxin and the spatial observable before looking at results.

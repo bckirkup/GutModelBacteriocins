@@ -797,6 +797,16 @@ can be saved and fed back to `gut_ibm` to reproduce or fork the run.
 the binary and execution shape. `container_image_digest` and `job_id` are
 included only when supplied through `GUTIBM_IMAGE_DIGEST` and
 `AWS_BATCH_JOB_ID`; absent optional datasets are not fabricated.
+After termination, the same group records `termination_reason_code`,
+`termination_step`, and `termination_time`. A dysbiosis halt has
+`termination_reason_code=1` and additionally records
+`halt_reason_code=1`, `halt_density_cells_per_mL`, `halt_step`, and
+`halt_time`. A run that reaches `total_time` records
+`completed_total_time=1` and `termination_reason_code=0`; this makes a
+guard-censored artifact distinct from a complete-horizon artifact.
+The complete termination-code enumeration is `0` for reaching `total_time`,
+`1` for a dysbiosis guard halt, and `2` for another early exit such as the
+population-stop path.
 
 `/run_provenance/` is deliberately separate from `/provenance/`. The latter
 remains the per-kill mechanism record controlled by

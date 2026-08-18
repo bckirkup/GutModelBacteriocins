@@ -121,6 +121,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **#43 Multi-rank tests** | Fixed | `mpi_multi_rank` + `hdf5_roundtrip_parallel` CTest targets |
 | **#78 parse_real() silent zero** | Fixed | Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts |
 | **Dysbiosis guard noise sensitivity** | Fixed | The former per-sample strict-increase and non-deceleration criterion was effectively unfirable on stochastic trajectories: one density dip reset the seven-sample window. The guard now uses a positive net rise and aggregate half-window increment means while retaining the above-threshold requirement. |
+| **Dysbiosis halt artifact visibility** | Fixed | Run-level termination metadata is written under `/run_provenance/`, so guard-halted runs are distinguishable from full-horizon completions even when the final summary was written before the guard evaluation. |
 | **Carbon VBF overdraw** | Fixed | The Monod carbon sink is implicitly integrated and realized removal is reported; reaction clips are accounted. Agent-side uptake overdraw remains open because it requires growth feedback. |
 | GPU portability | Open | Production chemistry + mechanics on GPU; FMM M2L tree-walk on CPU; multi-GPU NCCL not wired |
 | Large-scale MPI scaling | Partial | `mpi_four_rank` CTest (`mpirun -np 4`, includes periodic-x ring); manual `mpirun -np 8+` on HPC |
