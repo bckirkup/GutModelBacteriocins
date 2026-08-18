@@ -1,6 +1,7 @@
 #include "device.h"
 #include "input_parser.h"
 #include "simulation.h"
+#include "gpu_test_support.h"
 
 #include <cassert>
 #include <array>
@@ -109,16 +110,13 @@ void print_difference(const char* label,
 
 int main() {
   std::cout << "=== GPU Reproducibility Diagnostic ===\n";
+  const int gpu_status = test::require_gpu("gpu_reproducibility");
+  if (gpu_status != 0) return gpu_status;
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
   return 0;
 #else
-  if (DeviceContext::device_count() <= 0) {
-    std::cout << "  SKIPPED (no CUDA device)\n";
-    return 0;
-  }
-
   const SimulationConfig fallback_cfg = make_reproducibility_config(true);
   const BiomassSummary fallback_gpu_a =
       summarize(run_case(fallback_cfg, true));

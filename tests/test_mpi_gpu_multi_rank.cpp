@@ -7,6 +7,7 @@
 #include "input_parser.h"
 #include "dispatch.h"
 #include "device.h"
+#include "gpu_test_support.h"
 
 #include <cassert>
 #include <cmath>
@@ -20,7 +21,7 @@ using namespace gutibm;
 
 namespace {
 
-SimulationConfig make_mpi_gpu_config() {
+[[maybe_unused]] SimulationConfig make_mpi_gpu_config() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {100e-6, 100e-6, 50e-6};
   cfg.domain.grid_dx = 5e-6;
@@ -60,7 +61,7 @@ void require_two_ranks() {
   assert(nprocs == 2);
 }
 
-Real chemistry_checksum(const Simulation& sim) {
+[[maybe_unused]] Real chemistry_checksum(const Simulation& sim) {
   Real sum = 0.0;
   const auto& chem = sim.chemical_field();
   for (Int s = 0; s < chem.num_species(); ++s) {
@@ -76,20 +77,10 @@ void test_mpi_gpu_chemistry_identical_across_ranks() {
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  const int gpu_status = test::require_gpu("mpi_gpu_multi_rank");
+  if (gpu_status != 0) return;
 
-#ifndef GUTIBM_CUDA
-  if (rank == 0) {
-    std::cout << "  test_mpi_gpu_chemistry_identical_across_ranks: SKIPPED (no CUDA)\n";
-  }
-  return;
-#else
-  if (DeviceContext::device_count() <= 0) {
-    if (rank == 0) {
-      std::cout << "  test_mpi_gpu_chemistry_identical_across_ranks: SKIPPED (no device)\n";
-    }
-    return;
-  }
-
+#ifdef GUTIBM_CUDA
   SimulationConfig cfg = make_mpi_gpu_config();
   Simulation sim;
   sim.init(cfg);
@@ -125,6 +116,8 @@ void test_mpi_gpu_chemistry_identical_across_ranks() {
 }  // namespace
 
 int main() {
+  const int gpu_status = test::require_gpu("mpi_gpu_multi_rank");
+  if (gpu_status != 0) return gpu_status;
 #ifdef GUTIBM_MPI
   MPI_Init(nullptr, nullptr);
   int rank = 0;
@@ -138,8 +131,6 @@ int main() {
   return 0;
 #else
   std::cout << "=== MPI GPU Multi-Rank Tests ===\n";
-  std::cout << "  SKIPPED (MPI not enabled)\n";
-  std::cout << "All MPI GPU multi-rank tests passed.\n";
-  return 0;
+  return 77;
 #endif
 }

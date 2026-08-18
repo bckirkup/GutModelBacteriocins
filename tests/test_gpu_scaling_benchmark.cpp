@@ -6,6 +6,7 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "dispatch.h"
+#include "gpu_test_support.h"
 
 #include <cassert>
 #include <iostream>
@@ -30,7 +31,7 @@ int mpi_rank() {
 #endif
 }
 
-SimulationConfig bench_config(int agent_count, bool gpu_enabled) {
+[[maybe_unused]] SimulationConfig bench_config(int agent_count, bool gpu_enabled) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.hdf5.enabled = false;
   cfg.time.total_time = 120.0;
@@ -61,6 +62,8 @@ SimulationConfig bench_config(int agent_count, bool gpu_enabled) {
 }  // namespace
 
 int main(int argc, char** argv) {
+  const int gpu_status = gutibm::test::require_gpu("gpu_scaling_benchmark");
+  if (gpu_status != 0) return gpu_status;
 #ifdef GUTIBM_MPI
   MPI_Init(&argc, &argv);
 #endif
@@ -73,10 +76,8 @@ int main(int argc, char** argv) {
   }
 
   std::cout << "=== GPU Scaling Benchmark Smoke ===\n";
-
 #ifndef GUTIBM_CUDA
-  std::cout << "  SKIPPED (CUDA not compiled in)\n";
-  return 0;
+  return 77;
 #else
   constexpr int kAgents = 200;
   constexpr int kSteps = 2;
@@ -95,10 +96,7 @@ int main(int argc, char** argv) {
   gcfg.enabled = true;
   gcfg.device_id = 0;
   gutibm::gpu_set_config(gcfg);
-  if (!gutibm::gpu_init_for_rank(0, 1)) {
-    std::cout << "  gpu: SKIPPED (no CUDA device)\n";
-    return 0;
-  }
+  if (!gutibm::gpu_init_for_rank(0, 1)) return 1;
 
   SimulationConfig cfg_gpu = bench_config(kAgents, true);
   Simulation sim_gpu;

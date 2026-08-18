@@ -6,6 +6,7 @@
 #include "input_parser.h"
 #include "dispatch.h"
 #include "device.h"
+#include "gpu_test_support.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -44,6 +45,8 @@ static std::vector<Real> chemical_fingerprints(const Simulation& sim) {
 
 int main() {
   std::cout << "=== GPU Smoke Test ===\n";
+  const int gpu_status = test::require_gpu("gpu_smoke");
+  if (gpu_status != 0) return gpu_status;
 
   SimulationConfig cfg = InputParser::default_config();
   cfg.time.total_time = 300.0;
@@ -72,12 +75,6 @@ int main() {
   std::cout << "All GPU smoke tests passed.\n";
   return 0;
 #else
-  if (DeviceContext::device_count() <= 0) {
-    std::cout << "  test_gpu_smoke: SKIPPED (no CUDA device)\n";
-    std::cout << "All GPU smoke tests passed.\n";
-    return 0;
-  }
-
   // CPU baseline
   cfg.gpu.enabled = false;
   Real fp_cpu = 0.0;

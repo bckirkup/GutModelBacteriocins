@@ -10,6 +10,7 @@
 #include "device.h"
 #include "diffusion_gpu.h"
 #include "domain.h"
+#include "gpu_test_support.h"
 
 #include <cassert>
 #include <cmath>
@@ -118,18 +119,14 @@ void test_gpu_fmm_hybrid_production_domain() {
 
 int main() {
   std::cout << "=== GPU Production Path Smoke Tests ===\n";
+  const int gpu_status = test::require_gpu("gpu_production_path");
+  if (gpu_status != 0) return gpu_status;
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
   std::cout << "All GPU production-path tests passed.\n";
   return 0;
 #else
-  if (DeviceContext::device_count() <= 0) {
-    std::cout << "  SKIPPED (no CUDA device)\n";
-    std::cout << "All GPU production-path tests passed.\n";
-    return 0;
-  }
-
   test_gpu_fmm_hybrid_production_domain();
 
   std::cout << "All GPU production-path tests passed.\n";

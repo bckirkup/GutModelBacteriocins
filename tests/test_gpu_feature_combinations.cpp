@@ -9,6 +9,7 @@
 #include "dispatch.h"
 #include "device.h"
 #include "species_names.h"
+#include "gpu_test_support.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -311,18 +312,14 @@ void test_gpu_slab_single_rank() {
 
 int main() {
   std::cout << "=== GPU Feature Combination Smoke Tests ===\n";
+  const int gpu_status = test::require_gpu("gpu_feature_combinations");
+  if (gpu_status != 0) return gpu_status;
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
   std::cout << "All GPU feature-combination tests passed.\n";
   return 0;
 #else
-  if (DeviceContext::device_count() <= 0) {
-    std::cout << "  SKIPPED (no CUDA device)\n";
-    std::cout << "All GPU feature-combination tests passed.\n";
-    return 0;
-  }
-
   test_gpu_full_chemical_environment();
   test_gpu_adaptive_dt_with_crypts();
   test_gpu_kitchen_sink_light();

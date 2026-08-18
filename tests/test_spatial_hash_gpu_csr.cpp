@@ -7,6 +7,7 @@
 #include "dispatch.h"
 #include "simulation.h"
 #include "input_parser.h"
+#include "gpu_test_support.h"
 
 #include <cassert>
 #include <iostream>
@@ -15,6 +16,8 @@ using namespace gutibm;
 
 int main() {
   std::cout << "=== Spatial Hash GPU CSR ===\n";
+  const int gpu_status = test::require_gpu("spatial_hash_gpu_csr");
+  if (gpu_status != 0) return gpu_status;
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
@@ -23,10 +26,7 @@ int main() {
   GpuConfig gcfg;
   gcfg.enabled = true;
   gpu_set_config(gcfg);
-  if (!gpu_init_for_rank(0, 1)) {
-    std::cout << "  SKIPPED (no CUDA device)\n";
-    return 0;
-  }
+  if (!gpu_init_for_rank(0, 1)) return 1;
 
   SimulationConfig cfg = InputParser::default_config();
   cfg.hdf5.enabled = false;

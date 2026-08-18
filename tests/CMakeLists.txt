@@ -71,7 +71,14 @@ function(gutibm_add_test name source)
   endif()
   add_test(NAME ${name} COMMAND ${exe})
   if(ARG_LABELS)
-    set_tests_properties(${name} PROPERTIES LABELS "${ARG_LABELS}")
+    if("gpu" IN_LIST ARG_LABELS)
+      set_tests_properties(${name} PROPERTIES
+        LABELS "${ARG_LABELS}"
+        SKIP_RETURN_CODE 77
+      )
+    else()
+      set_tests_properties(${name} PROPERTIES LABELS "${ARG_LABELS}")
+    endif()
   endif()
 endfunction()
 
@@ -213,13 +220,17 @@ if(GUTIBM_USE_MPI)
   add_executable(test_mpi_gpu_multi_rank test_mpi_gpu_multi_rank.cpp)
   gutibm_enable_test_assertions(test_mpi_gpu_multi_rank)
   target_link_libraries(test_mpi_gpu_multi_rank PRIVATE gutibm)
-  add_test(
-    NAME mpi_gpu_multi_rank
-    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
-            ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_gpu_multi_rank> ${MPIEXEC_POSTFLAGS}
-  )
+  if(GUTIBM_USE_CUDA)
+    set(mpi_gpu_multi_rank_command
+      ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+      ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_gpu_multi_rank> ${MPIEXEC_POSTFLAGS})
+  else()
+    set(mpi_gpu_multi_rank_command $<TARGET_FILE:test_mpi_gpu_multi_rank>)
+  endif()
+  add_test(NAME mpi_gpu_multi_rank COMMAND ${mpi_gpu_multi_rank_command})
   set_tests_properties(mpi_gpu_multi_rank PROPERTIES
     LABELS "integration;mpi;gpu"
+    SKIP_RETURN_CODE 77
     PASS_REGULAR_EXPRESSION "All MPI GPU multi-rank tests passed"
     RESOURCE_LOCK mpi
   )
@@ -227,14 +238,18 @@ if(GUTIBM_USE_MPI)
   add_executable(test_cuda_aware_mpi_reaction test_cuda_aware_mpi_reaction.cpp)
   gutibm_enable_test_assertions(test_cuda_aware_mpi_reaction)
   target_link_libraries(test_cuda_aware_mpi_reaction PRIVATE gutibm)
-  add_test(
-    NAME cuda_aware_mpi_reaction
-    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
-            --oversubscribe
-            ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_cuda_aware_mpi_reaction> ${MPIEXEC_POSTFLAGS}
-  )
+  if(GUTIBM_USE_CUDA)
+    set(cuda_aware_mpi_reaction_command
+      ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+      --oversubscribe
+      ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_cuda_aware_mpi_reaction> ${MPIEXEC_POSTFLAGS})
+  else()
+    set(cuda_aware_mpi_reaction_command $<TARGET_FILE:test_cuda_aware_mpi_reaction>)
+  endif()
+  add_test(NAME cuda_aware_mpi_reaction COMMAND ${cuda_aware_mpi_reaction_command})
   set_tests_properties(cuda_aware_mpi_reaction PROPERTIES
     LABELS "integration;mpi;gpu"
+    SKIP_RETURN_CODE 77
     PASS_REGULAR_EXPRESSION "All CUDA-aware MPI reaction tests passed"
     RESOURCE_LOCK mpi
   )
@@ -254,6 +269,13 @@ gutibm_add_test(gpu_toxin_burst_parity test_gpu_toxin_burst_parity.cpp LABELS "g
 gutibm_add_test(gpu_nutrient_feedback test_gpu_nutrient_feedback.cpp LABELS "gpu;integration")
 gutibm_add_test(spatial_hash_gpu_csr test_spatial_hash_gpu_csr.cpp LABELS "gpu")
 gutibm_add_test(mechanics_gpu_parity test_mechanics_gpu_parity.cpp LABELS "gpu")
+gutibm_add_test(gpu_kernel_units test_gpu_kernel_units.cpp LABELS "gpu")
+
+add_test(
+  NAME gpu_target_manifest
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_gpu_target_manifest.sh"
+)
+set_tests_properties(gpu_target_manifest PROPERTIES LABELS "unit")
 
 add_test(
   NAME rebuild_and_run_script

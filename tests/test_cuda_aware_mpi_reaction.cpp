@@ -9,6 +9,7 @@
 #include "dispatch.h"
 #include "device.h"
 #include "domain.h"
+#include "gpu_test_support.h"
 
 #include <cassert>
 #include <cmath>
@@ -37,20 +38,10 @@ void test_device_reduce_gated_without_env() {
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  const int gpu_status = test::require_gpu("cuda_aware_mpi_reaction");
+  if (gpu_status != 0) return;
 
-#ifndef GUTIBM_CUDA
-  if (rank == 0) {
-    std::cout << "  test_device_reduce_gated_without_env: SKIPPED (no CUDA)\n";
-  }
-  return;
-#else
-  if (DeviceContext::device_count() <= 0) {
-    if (rank == 0) {
-      std::cout << "  test_device_reduce_gated_without_env: SKIPPED (no device)\n";
-    }
-    return;
-  }
-
+#ifdef GUTIBM_CUDA
   unsetenv("GUTIBM_CUDA_AWARE_MPI");
 
   DomainConfig domain_cfg;
@@ -91,20 +82,10 @@ void test_device_reduce_matches_host_when_available() {
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  const int gpu_status = test::require_gpu("cuda_aware_mpi_reaction");
+  if (gpu_status != 0) return;
 
-#ifndef GUTIBM_CUDA
-  if (rank == 0) {
-    std::cout << "  test_device_reduce_matches_host_when_available: SKIPPED (no CUDA)\n";
-  }
-  return;
-#else
-  if (DeviceContext::device_count() <= 0) {
-    if (rank == 0) {
-      std::cout << "  test_device_reduce_matches_host_when_available: SKIPPED (no device)\n";
-    }
-    return;
-  }
-
+#ifdef GUTIBM_CUDA
   if (!cuda_aware_mpi_runtime_available()) {
     if (rank == 0) {
       std::cout << "  test_device_reduce_matches_host_when_available: SKIPPED"
@@ -177,6 +158,8 @@ void test_runtime_detection_reports_status() {
 }  // namespace
 
 int main(int argc, char** argv) {
+  const int gpu_status = test::require_gpu("cuda_aware_mpi_reaction");
+  if (gpu_status != 0) return gpu_status;
 #ifdef GUTIBM_MPI
   MPI_Init(&argc, &argv);
 
@@ -198,7 +181,7 @@ int main(int argc, char** argv) {
 #else
   (void)argc;
   (void)argv;
-  std::cout << "MPI disabled at build time — skipping CUDA-aware MPI tests.\n";
+  return 77;
 #endif
   return 0;
 }

@@ -151,7 +151,20 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 **OpenMP:** `openmp_parity` + `scripts/compare_openmp_parity.sh` (serial vs OpenMP deterministic + stochastic toxin-kill fingerprints)
 
-**GPU (CUDA job):** `greens_function_gpu`, `gpu_diffusion`, `gpu_chemical_field`, `gpu_feature_combinations`, `gpu_production_path`, `gpu_smoke`, `mpi_gpu_multi_rank`, `mpi_four_rank`, `cuda_aware_mpi_reaction`, `gpu_toxin_burst_parity` + `scripts/compare_gpu_parity.sh`. New `gpu`-labelled CTest targets must also be added to the explicit target list in `.github/workflows/ci.yml`; otherwise the CUDA job reports them as `Not Run`.
+**GPU (CUDA job):** `greens_function_gpu`, `gpu_diffusion`,
+`gpu_chemical_field`, `gpu_feature_combinations`, `gpu_production_path`,
+`gpu_smoke`, `gpu_reproducibility`, `gpu_scaling_benchmark`,
+`qssa_gpu_parity`, `gpu_toxin_burst_parity`, `gpu_nutrient_feedback`,
+`spatial_hash_gpu_csr`, `mechanics_gpu_parity`, `gpu_kernel_units`,
+`mpi_gpu_multi_rank`, and `cuda_aware_mpi_reaction`, plus
+`scripts/compare_gpu_parity.sh`. GPU-labelled CTest targets return CTest's skip
+code `77` when CUDA is not compiled or no physical device is available, so
+CTest reports them as `Skipped`, not `Passed`. Setting `REQUIRE_GPU=1` converts
+either condition into a named test failure; this variable is shared with
+`deploy/aws/entry.sh`, where it means the run must actually report GPU use.
+CUDA compilation alone is not equivalent to physical GPU execution. New
+`gpu`-labelled CTest targets must also be added to the explicit target list in
+`.github/workflows/ci.yml`; otherwise the CUDA job reports them as `Not Run`.
 
 **Benchmark:** `scaling_benchmark` (issue #55 smoke counts). The larger
 scaling sweeps are on-demand only via
