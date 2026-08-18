@@ -332,6 +332,7 @@ bool ChemicalFieldGpu::try_sum_reactions_on_device(ChemicalField& field) {
   (void)field;
   return false;
 #else
+  (void)field;
   if (!active_) return false;
   if (slab_mode_) return false;
 
@@ -364,7 +365,6 @@ bool ChemicalFieldGpu::try_sum_reactions_on_device(ChemicalField& field) {
 #endif
   }
 
-  sync_reactions_to_host(field);
   return true;
 #endif
 }

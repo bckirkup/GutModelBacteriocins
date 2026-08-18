@@ -93,6 +93,7 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   }
   ag.sync_to_host(agents);
   cg.download_agent_uptake(sim.chemical_field());
+  sim.set_gpu_metabolism_active(true);
   return true;
 }
 
