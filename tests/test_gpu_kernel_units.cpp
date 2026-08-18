@@ -270,7 +270,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth) {
       cells.data(), state.data(), mu_max.data(), km_b12.data(),
       km_carbon.data(), receptor.data(), ligand.data(), loci.data(),
       amelioration.data(), agents, 1.0, 1.0, 1.0, 0.1, 0.1, 0.1, 0.1, 0.0,
-      0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.2, 0.1, 0.1, 0, 0.0, 1.0,
+      0.0, 1.0, 0.0, 0.0, 0.0, 0.2, 0.1, 0.1, 0, 0.0, 1.0,
       oxygen.data(), uptake.data(), kNx, kNy, kNx, 0, kNx, 0, nullptr);
   synchronize();
   const auto reaction = download(reaction_carbon, kCells);
