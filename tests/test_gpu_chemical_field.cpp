@@ -8,6 +8,7 @@
 #include "dispatch.h"
 #include "domain.h"
 #include "species_names.h"
+#include "gpu_test_support.h"
 
 #include <array>
 #include <cassert>
@@ -180,6 +181,8 @@ void test_host_reaction_survives_gpu_round_trip() {
 
 int main() {
   std::cout << "=== GPU ChemicalField Facade Tests ===\n";
+  const int gpu_status = test::require_gpu("gpu_chemical_field");
+  if (gpu_status != 0) return gpu_status;
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
@@ -191,11 +194,7 @@ int main() {
   gcfg.device_id = 0;
   gpu_set_config(gcfg);
 
-  if (!gpu_init_for_rank(0, 1)) {
-    std::cout << "  SKIPPED (no CUDA device)\n";
-    std::cout << "All GPU chemical-field facade tests passed.\n";
-    return 0;
-  }
+  if (!gpu_init_for_rank(0, 1)) return 1;
 
   test_gpu_facade_diffusion_matches_cpu();
   test_gpu_facade_z_gradient_diffusion();

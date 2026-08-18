@@ -9,6 +9,7 @@
 #include "input_parser.h"
 #include "simulation.h"
 #include "species_names.h"
+#include "gpu_test_support.h"
 
 #include <algorithm>
 #include <cassert>
@@ -127,6 +128,8 @@ void compare_fields(const BurstRun& cpu, const BurstRun& gpu) {
 
 int main() {
   std::cout << "=== GPU Toxin Burst Parity ===\n";
+  const int gpu_status = test::require_gpu("gpu_toxin_burst_parity");
+  if (gpu_status != 0) return gpu_status;
 
 #ifndef GUTIBM_CUDA
   const BurstRun cpu = run_case(false, 1.0e-18);
@@ -136,15 +139,6 @@ int main() {
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
   return 0;
 #else
-  if (DeviceContext::device_count() <= 0) {
-    const BurstRun cpu = run_case(false, 1.0e-18);
-    assert(cpu.maximum > 0.0);
-    std::cout << "  CPU reference: max=" << cpu.maximum
-              << " kills=" << cpu.colicin_kills << "\n";
-    std::cout << "  SKIPPED (no CUDA device)\n";
-    return 0;
-  }
-
   const Real strength = 1.0e-18;
   const BurstRun cpu = run_case(false, strength);
   const BurstRun gpu = run_case(true, strength);

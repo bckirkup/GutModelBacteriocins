@@ -2,6 +2,7 @@
 #include "input_parser.h"
 #include "simulation.h"
 #include "species_names.h"
+#include "gpu_test_support.h"
 
 #include <algorithm>
 #include <cassert>
@@ -141,15 +142,12 @@ void run_path_checks(bool gpu) {
 
 int main() {
   run_path_checks(false);
+  const int gpu_status = test::require_gpu("gpu_nutrient_feedback");
+  if (gpu_status != 0) return gpu_status;
 #ifndef GUTIBM_CUDA
   std::cout << "GPU nutrient feedback checks passed (CPU only; CUDA not compiled in).\n";
   return 0;
 #else
-  if (DeviceContext::device_count() <= 0) {
-    std::cout << "GPU nutrient feedback checks passed (CPU only; no CUDA device).\n";
-    return 0;
-  }
-
   run_path_checks(true);
   std::cout << "GPU nutrient feedback tests passed.\n";
   return 0;

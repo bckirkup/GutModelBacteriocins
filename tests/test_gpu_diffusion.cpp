@@ -8,6 +8,7 @@
 #include "dispatch.h"
 #include "domain.h"
 #include "species_names.h"
+#include "gpu_test_support.h"
 
 #include <cassert>
 #include <cmath>
@@ -159,6 +160,8 @@ void test_gpu_z_gradient_background_fixed_point() {
 
 int main() {
   std::cout << "=== GPU Diffusion Parity Tests ===\n";
+  const int gpu_status = test::require_gpu("gpu_diffusion");
+  if (gpu_status != 0) return gpu_status;
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
@@ -170,11 +173,7 @@ int main() {
   gcfg.device_id = 0;
   gpu_set_config(gcfg);
 
-  if (!gpu_init_for_rank(0, 1)) {
-    std::cout << "  SKIPPED (no CUDA device)\n";
-    std::cout << "All GPU diffusion tests passed.\n";
-    return 0;
-  }
+  if (!gpu_init_for_rank(0, 1)) return 1;
 
   test_gpu_uniform_field_fixed_point();
   test_gpu_point_source_invariants();

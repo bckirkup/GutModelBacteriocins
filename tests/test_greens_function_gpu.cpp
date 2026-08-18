@@ -6,6 +6,7 @@
 #include "greens_function_gpu.h"
 #include "dispatch.h"
 #include "domain.h"
+#include "gpu_test_support.h"
 #include "advection.h"
 #include <cmath>
 #include <iostream>
@@ -23,6 +24,8 @@ static void cpu_superpose(const GreensFunction& gf,
 
 int main() {
   std::cout << "=== GPU Green's Function Tests ===\n";
+  const int gpu_status = test::require_gpu("greens_function_gpu");
+  if (gpu_status != 0) return gpu_status;
 
   DomainConfig dcfg;
   dcfg.lo = {0, 0, 0};
@@ -70,11 +73,7 @@ int main() {
   gcfg.device_id = 0;
   gpu_set_config(gcfg);
 
-  if (!gpu_init_for_rank(0, 1)) {
-    std::cout << "  test_gpu_gf_parity: SKIPPED (no CUDA device)\n";
-    std::cout << "All GPU Green's function tests passed.\n";
-    return 0;
-  }
+  if (!gpu_init_for_rank(0, 1)) return 1;
 
   // CPU reference (disable GPU dispatch temporarily)
   gcfg.enabled = false;

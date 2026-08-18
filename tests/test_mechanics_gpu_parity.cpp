@@ -8,6 +8,7 @@
 #include "dispatch.h"
 #include "device.h"
 #include "mechanics_test_helpers.h"
+#include "gpu_test_support.h"
 
 #include <cassert>
 #include <cmath>
@@ -19,15 +20,7 @@ using gutibm::test::make_two_agent_sim;
 namespace {
 
 void test_gpu_overlapping_agents_match_cpu() {
-#ifndef GUTIBM_CUDA
-  std::cout << "  test_gpu_overlapping_agents_match_cpu: SKIPPED (no CUDA)\n";
-  return;
-#else
-  if (DeviceContext::device_count() <= 0) {
-    std::cout << "  test_gpu_overlapping_agents_match_cpu: SKIPPED (no device)\n";
-    return;
-  }
-
+#ifdef GUTIBM_CUDA
   GpuConfig gcfg;
   gcfg.enabled = true;
   gpu_set_config(gcfg);
@@ -64,15 +57,7 @@ void test_gpu_overlapping_agents_match_cpu() {
 }
 
 void test_gpu_adhesion_match_cpu() {
-#ifndef GUTIBM_CUDA
-  std::cout << "  test_gpu_adhesion_match_cpu: SKIPPED (no CUDA)\n";
-  return;
-#else
-  if (DeviceContext::device_count() <= 0) {
-    std::cout << "  test_gpu_adhesion_match_cpu: SKIPPED (no device)\n";
-    return;
-  }
-
+#ifdef GUTIBM_CUDA
   GpuConfig gcfg;
   gcfg.enabled = true;
   gpu_set_config(gcfg);
@@ -113,6 +98,8 @@ void test_gpu_adhesion_match_cpu() {
 
 int main() {
   std::cout << "=== Mechanics GPU Parity Tests ===\n";
+  const int gpu_status = test::require_gpu("mechanics_gpu_parity");
+  if (gpu_status != 0) return gpu_status;
   test_gpu_overlapping_agents_match_cpu();
   test_gpu_adhesion_match_cpu();
   std::cout << "All mechanics GPU parity tests passed.\n";

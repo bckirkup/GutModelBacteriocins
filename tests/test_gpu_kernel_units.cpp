@@ -1,0 +1,820 @@
+#include "gpu_kernels.h"
+#include "gpu_test_support.h"
+
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cmath>
+#include <iostream>
+#include <numeric>
+#include <vector>
+
+#ifdef GUTIBM_CUDA
+#include "device_memory.h"
+#include <cuda_runtime.h>
+#endif
+
+namespace {
+
+#ifdef GUTIBM_CUDA
+
+using gutibm::DeviceBuffer;
+using gutibm::gpu::AdvectionParams;
+using gutibm::gpu::DomainParams;
+using gutibm::gpu::GfSourceParams;
+using gutibm::gpu::MechanicsLaunchParams;
+using gutibm::gpu::VbfLaunchParams;
+
+constexpr int kNx = 4;
+constexpr int kNy = 4;
+constexpr int kNz = 4;
+constexpr int kCells = kNx * kNy * kNz;
+constexpr double kPi = 3.14159265358979323846;
+constexpr double kTolerance = 1.0e-10;
+
+template <typename T>
+std::vector<T> download(const DeviceBuffer<T>& device, int count) {
+  std::vector<T> host(static_cast<size_t>(count));
+  device.download(host.data(), static_cast<size_t>(count));
+  return host;
+}
+
+void synchronize() {
+  const cudaError_t status = cudaDeviceSynchronize();
+  assert(status == cudaSuccess);
+}
+
+bool close(double lhs, double rhs, double tolerance = kTolerance) {
+  return std::abs(lhs - rhs) <= tolerance;
+}
+
+DomainParams domain_params() {
+  DomainParams domain{};
+  domain.nx = kNx;
+  domain.ny = kNy;
+  domain.nz = kNz;
+  domain.dx_x = 1.0;
+  domain.dx_y = 1.0;
+  domain.dx_z = 1.0;
+  domain.lo = {0.0, 0.0, 0.0};
+  domain.extent = {4.0, 4.0, 4.0};
+  domain.periodic = {true, true, false};
+  domain.z_lo = 0.0;
+  domain.z_hi = 4.0;
+  return domain;
+}
+
+AdvectionParams zero_advection() {
+  AdvectionParams advection{};
+  advection.h = 4.0;
+  advection.lo_z = 0.0;
+  advection.profile_alpha = 1.0;
+  return advection;
+}
+
+struct PeriodicCoefficients {
+  double gamma = 0.0;
+  double corner = 0.0;
+  double denominator = 1.0;
+  std::vector<double> correction;
+};
+
+PeriodicCoefficients periodic_coefficients(int size, double alpha) {
+  PeriodicCoefficients coefficients;
+  const double diagonal_value = 1.0 + 2.0 * alpha;
+  coefficients.gamma = -diagonal_value;
+  coefficients.corner = -alpha;
+
+  std::vector<double> lower(static_cast<size_t>(size - 1), -alpha);
+  std::vector<double> upper(static_cast<size_t>(size - 1), -alpha);
+  std::vector<double> diagonal(static_cast<size_t>(size), diagonal_value);
+  diagonal.front() -= coefficients.gamma;
+  diagonal.back() -=
+      coefficients.corner * coefficients.corner / coefficients.gamma;
+
+  coefficients.correction.assign(static_cast<size_t>(size), 0.0);
+  coefficients.correction.front() = coefficients.gamma;
+  coefficients.correction.back() = coefficients.corner;
+  for (int row = 1; row < size; ++row) {
+    const double multiplier = lower[static_cast<size_t>(row - 1)]
+        / diagonal[static_cast<size_t>(row - 1)];
+    diagonal[static_cast<size_t>(row)] -=
+        multiplier * upper[static_cast<size_t>(row - 1)];
+    coefficients.correction[static_cast<size_t>(row)] -=
+        multiplier * coefficients.correction[static_cast<size_t>(row - 1)];
+  }
+  coefficients.correction.back() /= diagonal.back();
+  for (int row = size - 2; row >= 0; --row) {
+    coefficients.correction[static_cast<size_t>(row)] =
+        (coefficients.correction[static_cast<size_t>(row)] -
+         upper[static_cast<size_t>(row)] *
+             coefficients.correction[static_cast<size_t>(row + 1)]) /
+        diagonal[static_cast<size_t>(row)];
+  }
+  coefficients.denominator =
+      1.0 + coefficients.correction.front() +
+      coefficients.corner * coefficients.correction.back() /
+          coefficients.gamma;
+  return coefficients;
+}
+
+void test_field_update() {
+  DeviceBuffer<double> concentration(kCells);
+  DeviceBuffer<double> reaction(kCells);
+  DeviceBuffer<double> clip(1);
+  std::vector<double> host_reaction(kCells, 0.0);
+  host_reaction[0] = -2.0;
+  concentration.upload(std::vector<double>(kCells, 1.0));
+  reaction.upload(host_reaction);
+  clip.upload(std::vector<double>{0.0});
+  gutibm::gpu::launch_field_update_kernel(
+      concentration.data(), reaction.data(), kCells, 1, 1.0, clip.data(), 1.0,
+      kNx, kNy, kNz, 0, kNx, nullptr);
+  synchronize();
+  assert(download(concentration, kCells)[0] == 0.0);
+  assert(close(download(clip, 1)[0], 1.0));
+
+  gutibm::gpu::launch_field_update_kernel(
+      concentration.data(), reaction.data(), kCells, 1, 1.0, clip.data(), 1.0,
+      kNx, kNy, kNz, 0, kNx, nullptr);
+  synchronize();
+  // Change-detector: the second deficit is 2.0, so cumulative clipping is 3.0.
+  assert(close(download(clip, 1)[0], 3.0));
+
+  const std::array<double, 3> dts{0.5, 1.0, 2.0};
+  double previous = 1.0;
+  for (const double dt : dts) {
+    concentration.upload(std::vector<double>(kCells, 1.0));
+    reaction.upload(std::vector<double>(kCells, 0.5));
+    gutibm::gpu::launch_field_update_kernel(
+        concentration.data(), reaction.data(), kCells, 1, dt, nullptr, 1.0,
+        kNx, kNy, kNz, 0, kNx, nullptr);
+    synchronize();
+    const double value = download(concentration, kCells)[0];
+    assert(value > previous);
+    previous = value;
+  }
+  concentration.upload(std::vector<double>(kCells, 1.0));
+  gutibm::gpu::launch_field_update_kernel(
+      concentration.data(), reaction.data(), kCells, 1, 0.0, nullptr, 1.0,
+      kNx, kNy, kNz, 0, kNx, nullptr);
+  synchronize();
+  assert(download(concentration, kCells)[0] == 1.0);
+}
+
+void test_apply_boundaries() {
+  DeviceBuffer<double> concentration(kCells);
+  DeviceBuffer<double> boundary(1);
+  concentration.upload(std::vector<double>(kCells, 0.25));
+  boundary.upload(std::vector<double>{0.75});
+  gutibm::gpu::launch_apply_boundaries_kernel(
+      concentration.data(), kNx, kNy, kNz, 1, boundary.data(), nullptr);
+  synchronize();
+  const auto result = download(concentration, kCells);
+  for (int iy = 0; iy < kNy; ++iy) {
+    for (int ix = 0; ix < kNx; ++ix) {
+      const int bottom = iy * kNx + ix;
+      const int interior = kNx * kNy + iy * kNx + ix;
+      const int top = (kNz - 1) * kNx * kNy + iy * kNx + ix;
+      assert(result[bottom] == 0.75);
+      assert(result[interior] == 0.25);
+      assert(result[top] == 0.25);
+    }
+  }
+}
+
+void test_grid_coupling() {
+  constexpr int agents = 5;
+  DeviceBuffer<double> x(agents);
+  DeviceBuffer<double> y(agents);
+  DeviceBuffer<double> z(agents);
+  DeviceBuffer<int> cells(agents);
+  DeviceBuffer<int> state(agents);
+  x.upload(std::vector<double>{0.1, 2.1, 3.9, -1.0, 1.0});
+  y.upload(std::vector<double>{1.1, 2.1, 3.9, 5.0, 0.0});
+  z.upload(std::vector<double>{0.1, 3.1, 3.9, 4.0, 2.0});
+  state.upload(std::vector<int>{0, 0, 0, 0, 3});
+  gutibm::gpu::launch_grid_coupling_kernel(
+      x.data(), y.data(), z.data(), cells.data(), state.data(), 0.0, 0.0, 0.0,
+      1.0, 1.0, 1.0, kNx, kNy, kNz, agents, nullptr);
+  synchronize();
+  const auto mapped = download(cells, agents);
+  assert(mapped[0] == 4);
+  assert(mapped[1] == 3 + 2 * kNx + 3 * kNx * kNy);
+  assert(mapped[2] == 3 + 3 * kNx + 3 * kNx * kNy);
+  assert(mapped[3] == 0);
+  assert(mapped[4] == -1);
+}
+
+struct MetabolismRun {
+  double carbon_reaction = 0.0;
+  double uptake = 0.0;
+};
+
+MetabolismRun run_metabolism(double seed, double maximum_growth) {
+  constexpr int agents = 2;
+  DeviceBuffer<double> concentration(kCells);
+  DeviceBuffer<double> iron(kCells);
+  DeviceBuffer<double> b12(kCells);
+  DeviceBuffer<double> acetate(kCells);
+  DeviceBuffer<double> eut(kCells);
+  DeviceBuffer<double> oxygen(kCells);
+  DeviceBuffer<double> reaction_carbon(kCells);
+  DeviceBuffer<double> reaction_iron(kCells);
+  DeviceBuffer<double> reaction_b12(kCells);
+  DeviceBuffer<double> mu(agents);
+  DeviceBuffer<double> biomass(agents);
+  DeviceBuffer<double> radius(agents);
+  DeviceBuffer<double> mass(agents);
+  DeviceBuffer<double> age(agents);
+  DeviceBuffer<double> mu_max(agents);
+  DeviceBuffer<double> km_b12(agents);
+  DeviceBuffer<double> km_carbon(agents);
+  DeviceBuffer<double> receptor(8 * agents);
+  DeviceBuffer<double> ligand(8 * agents);
+  DeviceBuffer<int> cells(agents);
+  DeviceBuffer<int> state(agents);
+  DeviceBuffer<int> loci(agents);
+  DeviceBuffer<double> amelioration(agents);
+  DeviceBuffer<double> uptake(2);
+
+  concentration.upload(std::vector<double>(kCells, 1.0));
+  iron.upload(std::vector<double>(kCells, 1.0));
+  b12.upload(std::vector<double>(kCells, 1.0));
+  acetate.upload(std::vector<double>(kCells, 0.0));
+  eut.upload(std::vector<double>(kCells, 0.0));
+  oxygen.upload(std::vector<double>(kCells, 0.0));
+  reaction_carbon.upload(std::vector<double>(kCells, seed));
+  reaction_iron.upload(std::vector<double>(kCells, 0.5));
+  reaction_b12.upload(std::vector<double>(kCells, 0.0));
+  mu.upload(std::vector<double>(agents, 0.0));
+  biomass.upload(std::vector<double>(agents, 1.0));
+  radius.upload(std::vector<double>(agents, 1.0));
+  mass.upload(std::vector<double>(agents, 1.0));
+  age.upload(std::vector<double>(agents, 0.0));
+  mu_max.upload(std::vector<double>(agents, maximum_growth));
+  km_b12.upload(std::vector<double>(agents, 0.1));
+  km_carbon.upload(std::vector<double>(agents, 0.1));
+  receptor.upload(std::vector<double>(8 * agents, 1.0));
+  ligand.upload(std::vector<double>(8 * agents, 1.0));
+  cells.upload(std::vector<int>{4, -1});
+  state.upload(std::vector<int>{0, 3});
+  loci.upload(std::vector<int>(agents, 0));
+  amelioration.upload(std::vector<double>(agents, 0.0));
+  uptake.upload(std::vector<double>(2, 0.0));
+
+  gutibm::gpu::launch_metabolism_kernel(
+      concentration.data(), iron.data(), b12.data(), acetate.data(), eut.data(),
+      reaction_carbon.data(), reaction_iron.data(), reaction_b12.data(),
+      mu.data(), biomass.data(), radius.data(), mass.data(), age.data(),
+      cells.data(), state.data(), mu_max.data(), km_b12.data(),
+      km_carbon.data(), receptor.data(), ligand.data(), loci.data(),
+      amelioration.data(), agents, 1.0, 1.0, 1.0, 0.1, 0.1, 0.1, 0.1, 0.0,
+      0.0, 1.0, 0.0, 0.0, 0.0, 0.2, 0.1, 0.1, 0, 0.0, 1.0,
+      oxygen.data(), uptake.data(), kNx, kNy, kNx, 0, kNx, 0, nullptr);
+  synchronize();
+  const auto reaction = download(reaction_carbon, kCells);
+  const auto uptake_host = download(uptake, 2);
+  return {reaction[4], uptake_host[0]};
+}
+
+void test_metabolism() {
+  const MetabolismRun zero_seed = run_metabolism(0.0, 1.0e-3);
+  const MetabolismRun seeded = run_metabolism(0.25, 1.0e-3);
+  assert(zero_seed.carbon_reaction < 0.0);
+  assert(close(seeded.carbon_reaction - zero_seed.carbon_reaction, 0.25));
+  const MetabolismRun low = run_metabolism(0.0, 5.0e-4);
+  const MetabolismRun high = run_metabolism(0.0, 2.0e-3);
+  assert(low.uptake < zero_seed.uptake);
+  assert(zero_seed.uptake < high.uptake);
+}
+
+void test_diffuse_x_periodic() {
+  const double alpha = 0.1;
+  const PeriodicCoefficients coefficients = periodic_coefficients(kNx, alpha);
+  DeviceBuffer<double> correction(kNx);
+  correction.upload(coefficients.correction);
+  DeviceBuffer<double> field(kCells);
+  field.upload(std::vector<double>(kCells, 2.0));
+  gutibm::gpu::launch_diffuse_x_periodic(
+      field.data(), kNx, kNy, kNz, alpha, coefficients.gamma,
+      coefficients.corner, coefficients.denominator, correction.data(), nullptr);
+  synchronize();
+  const auto uniform = download(field, kCells);
+  for (const double value : uniform) assert(close(value, 2.0));
+  assert(close(std::accumulate(uniform.begin(), uniform.end(), 0.0),
+               2.0 * kCells));
+
+  std::vector<double> mode(kCells, 0.0);
+  for (int iz = 0; iz < kNz; ++iz) {
+    for (int iy = 0; iy < kNy; ++iy) {
+      for (int ix = 0; ix < kNx; ++ix) {
+        mode[iz * kNx * kNy + iy * kNx + ix] =
+            std::sin(2.0 * kPi * ix / kNx);
+      }
+    }
+  }
+  field.upload(mode);
+  gutibm::gpu::launch_diffuse_x_periodic(
+      field.data(), kNx, kNy, kNz, alpha, coefficients.gamma,
+      coefficients.corner, coefficients.denominator, correction.data(), nullptr);
+  synchronize();
+  const auto result = download(field, kCells);
+  const double eigenvalue =
+      1.0 + 2.0 * alpha - 2.0 * alpha * std::cos(2.0 * kPi / kNx);
+  for (int cell = 0; cell < kCells; ++cell) {
+    assert(close(result[cell], mode[cell] / eigenvalue));
+  }
+}
+
+void test_diffuse_y_periodic() {
+  const double alpha = 0.1;
+  const PeriodicCoefficients coefficients = periodic_coefficients(kNy, alpha);
+  DeviceBuffer<double> correction(kNy);
+  correction.upload(coefficients.correction);
+  DeviceBuffer<double> field(kCells);
+  field.upload(std::vector<double>(kCells, 2.0));
+  gutibm::gpu::launch_diffuse_y_periodic(
+      field.data(), kNx, kNy, kNz, 0, kNx, alpha, coefficients.gamma,
+      coefficients.corner, coefficients.denominator, correction.data(), nullptr);
+  synchronize();
+  const auto uniform = download(field, kCells);
+  for (const double value : uniform) assert(close(value, 2.0));
+  assert(close(std::accumulate(uniform.begin(), uniform.end(), 0.0),
+               2.0 * kCells));
+
+  std::vector<double> mode(kCells, 0.0);
+  for (int iz = 0; iz < kNz; ++iz) {
+    for (int iy = 0; iy < kNy; ++iy) {
+      for (int ix = 0; ix < kNx; ++ix) {
+        mode[iz * kNx * kNy + iy * kNx + ix] =
+            std::sin(2.0 * kPi * iy / kNy);
+      }
+    }
+  }
+  field.upload(mode);
+  const double before = std::accumulate(mode.begin(), mode.end(), 0.0);
+  gutibm::gpu::launch_diffuse_y_periodic(
+      field.data(), kNx, kNy, kNz, 0, kNx, alpha, coefficients.gamma,
+      coefficients.corner, coefficients.denominator, correction.data(), nullptr);
+  synchronize();
+  const auto result = download(field, kCells);
+  const double after = std::accumulate(result.begin(), result.end(), 0.0);
+  assert(close(before, after));
+}
+
+void test_diffuse_z_bounded() {
+  DeviceBuffer<double> field(kCells);
+  DeviceBuffer<double> exchange(1);
+  field.upload(std::vector<double>(kCells, 2.0));
+  exchange.upload(std::vector<double>{0.0});
+  gutibm::gpu::launch_diffuse_z_bounded(
+      field.data(), kNx, kNy, kNz, 0, kNx, 0.1, 2.0, 1.0, exchange.data(),
+      nullptr);
+  synchronize();
+  for (const double value : download(field, kCells)) assert(close(value, 2.0));
+  assert(close(download(exchange, 1)[0], 0.0));
+}
+
+void test_set_epithelial_boundary() {
+  constexpr int storage_nx = 6;
+  constexpr int owned_x_begin = 1;
+  constexpr int owned_x_end = 3;
+  constexpr int storage_cells = storage_nx * kNy * kNz;
+  constexpr int face_cells = (owned_x_end - owned_x_begin) * kNy;
+  const std::array<double, 3> targets{0.0, 0.5, 1.0};
+  std::array<double, 3> injected{};
+  for (size_t run = 0; run < targets.size(); ++run) {
+    DeviceBuffer<double> field(storage_cells);
+    DeviceBuffer<double> accounting(1);
+    field.upload(std::vector<double>(storage_cells, 0.25));
+    accounting.upload(std::vector<double>{0.0});
+    gutibm::gpu::launch_set_epithelial_boundary(
+        field.data(), storage_nx, kNy, owned_x_begin, owned_x_end, targets[run],
+        2.0, accounting.data(), nullptr);
+    synchronize();
+    const auto result = download(field, storage_cells);
+    injected[run] = download(accounting, 1)[0];
+    for (int iy = 0; iy < kNy; ++iy) {
+      for (int ix = owned_x_begin; ix < owned_x_end; ++ix) {
+        const int boundary = iy * storage_nx + ix;
+        assert(result[boundary] == targets[run]);
+        for (int iz = 1; iz < kNz; ++iz) {
+          const int interior =
+              iz * kNy * storage_nx + iy * storage_nx + ix;
+          assert(result[interior] == 0.25);
+        }
+      }
+    }
+  }
+  assert(injected[0] < injected[1]);
+  assert(injected[1] < injected[2]);
+  assert(close(injected[2] / injected[1], 3.0));
+  assert(face_cells > 0);
+}
+
+void test_set_luminal_neumann() {
+  DeviceBuffer<double> field(kCells);
+  std::vector<double> initial(kCells, 0.0);
+  for (int iy = 0; iy < kNy; ++iy) {
+    for (int ix = 0; ix < kNx; ++ix) {
+      initial[(kNz - 2) * kNx * kNy + iy * kNx + ix] = 3.0;
+      initial[(kNz - 1) * kNx * kNy + iy * kNx + ix] = 7.0;
+    }
+  }
+  field.upload(initial);
+  gutibm::gpu::launch_set_luminal_neumann(
+      field.data(), kNx, kNy, kNz, 0, kNx, nullptr);
+  synchronize();
+  const auto result = download(field, kCells);
+  for (int iy = 0; iy < kNy; ++iy) {
+    for (int ix = 0; ix < kNx; ++ix) {
+      assert(result[(kNz - 1) * kNx * kNy + iy * kNx + ix] == 3.0);
+      assert(result[kNx + iy * kNx + ix] == 0.0);
+    }
+  }
+}
+
+void test_shift_z_gradient() {
+  DeviceBuffer<double> field(kCells);
+  field.upload(std::vector<double>(kCells, 0.0));
+  gutibm::gpu::launch_shift_z_gradient(
+      field.data(), kNx, kNy, kNz, 0, kNx, 1.0, 2.0, 2.0, 5.0, 1.0,
+      nullptr);
+  synchronize();
+  const auto result = download(field, kCells);
+  assert(close(result[0], 5.0));
+  assert(result[kNx * kNy] > result[2 * kNx * kNy]);
+  assert(result[2 * kNx * kNy] > result[3 * kNx * kNy]);
+  assert(close(result[3 * kNx * kNy], result[2 * kNx * kNy]));
+}
+
+void test_clamp_nonneg() {
+  DeviceBuffer<double> field(kCells);
+  std::vector<double> initial(kCells, 2.0);
+  initial[0] = -1.0;
+  field.upload(initial);
+  gutibm::gpu::launch_clamp_nonneg(
+      field.data(), kNx, kNy, kNz, 0, kNx, nullptr);
+  synchronize();
+  const auto result = download(field, kCells);
+  assert(result[0] == 0.0);
+  for (int cell = 1; cell < kCells; ++cell) assert(result[cell] == 2.0);
+}
+
+void test_superpose() {
+  const DomainParams domain = domain_params();
+  const AdvectionParams advection = zero_advection();
+  DeviceBuffer<double> x(2);
+  DeviceBuffer<double> y(2);
+  DeviceBuffer<double> z(2);
+  DeviceBuffer<GfSourceParams> params(2);
+  DeviceBuffer<double> one(kCells);
+  DeviceBuffer<double> two(kCells);
+  DeviceBuffer<double> combined(kCells);
+  x.upload(std::vector<double>{1.5, 2.5});
+  y.upload(std::vector<double>{1.5, 1.5});
+  z.upload(std::vector<double>{1.5, 1.5});
+  params.upload(std::vector<GfSourceParams>{{1.0, 1.0, 1.0, 0.0},
+                                             {1.0, 1.0, 1.0, 0.0}});
+  one.upload(std::vector<double>(kCells, 0.0));
+  two.upload(std::vector<double>(kCells, 0.0));
+  combined.upload(std::vector<double>(kCells, 0.0));
+  gutibm::gpu::launch_superpose_kernel(
+      x.data(), y.data(), z.data(), params.data(), one.data(), domain, advection,
+      1, 1, 1, 1, nullptr);
+  gutibm::gpu::launch_superpose_kernel(
+      x.data() + 1, y.data() + 1, z.data() + 1, params.data() + 1, two.data(),
+      domain, advection, 1, 1, 1, 1, nullptr);
+  gutibm::gpu::launch_superpose_kernel(
+      x.data(), y.data(), z.data(), params.data(), combined.data(), domain,
+      advection, 2, 1, 1, 1, nullptr);
+  synchronize();
+  const auto one_host = download(one, kCells);
+  const auto two_host = download(two, kCells);
+  const auto combined_host = download(combined, kCells);
+  for (int cell = 0; cell < kCells; ++cell) {
+    assert(close(combined_host[cell], one_host[cell] + two_host[cell]));
+  }
+  const int near_source = kNx * kNy + kNx;
+  const int far_source = kNx * kNy + kNx + 3;
+  assert(one_host[near_source] > one_host[far_source]);
+}
+
+void test_fmm_far_local() {
+  DeviceBuffer<double> local(1);
+  DeviceBuffer<double> center(3);
+  DeviceBuffer<int> cell_leaf(kCells);
+  DeviceBuffer<double> output(kCells);
+  local.upload(std::vector<double>{1.0});
+  center.upload(std::vector<double>{1.5, 1.5, 1.5});
+  cell_leaf.upload(std::vector<int>(kCells, 0));
+  output.upload(std::vector<double>(kCells, 0.0));
+  gutibm::gpu::launch_fmm_far_local_kernel(
+      local.data(), center.data(), cell_leaf.data(), nullptr, output.data(),
+      kCells, 1, 1, 0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, kNx, kNy, nullptr);
+  synchronize();
+  for (const double value : download(output, kCells)) assert(value == 1.0);
+  gutibm::gpu::launch_fmm_far_local_kernel(
+      local.data(), center.data(), cell_leaf.data(), nullptr, output.data(),
+      kCells, 1, 1, 0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, kNx, kNy, nullptr);
+  synchronize();
+  for (const double value : download(output, kCells)) assert(value == 2.0);
+}
+
+void test_vbf_coupling() {
+  constexpr int storage_nx = 6;
+  constexpr int storage_cells = storage_nx * kNy * kNz;
+  DeviceBuffer<double> reaction_carbon(storage_cells);
+  DeviceBuffer<double> reaction_iron(storage_cells);
+  DeviceBuffer<double> reaction_oxygen(storage_cells);
+  DeviceBuffer<double> reaction_acetate(storage_cells);
+  DeviceBuffer<double> reaction_mucin(storage_cells);
+  DeviceBuffer<double> concentration(storage_cells);
+  reaction_carbon.upload(std::vector<double>(storage_cells, 0.0));
+  reaction_iron.upload(std::vector<double>(storage_cells, 0.0));
+  reaction_oxygen.upload(std::vector<double>(storage_cells, 0.0));
+  reaction_acetate.upload(std::vector<double>(storage_cells, 0.0));
+  reaction_mucin.upload(std::vector<double>(storage_cells, 0.0));
+  concentration.upload(std::vector<double>(storage_cells, 1.0));
+  VbfLaunchParams parameters{};
+  parameters.storage_nx = storage_nx;
+  parameters.owned_x_begin = 1;
+  parameters.owned_x_end = 3;
+  parameters.global_nx = kNx;
+  parameters.ny = kNy;
+  parameters.nz = kNz;
+  parameters.dx_x = 1.0;
+  parameters.dx_y = 1.0;
+  parameters.dx_z = 1.0;
+  parameters.mucin_liberation = 0.1;
+  parameters.vbf_density = 1.0;
+  gutibm::gpu::launch_vbf_coupling_kernel(
+      2 * kNy * kNz, parameters, reaction_carbon.data(), concentration.data(),
+      reaction_iron.data(), concentration.data(), reaction_oxygen.data(),
+      concentration.data(), reaction_acetate.data(), reaction_mucin.data(),
+      concentration.data(), nullptr, 1.0, nullptr);
+  synchronize();
+  const auto result = download(reaction_carbon, storage_cells);
+  for (int iz = 0; iz < kNz; ++iz) {
+    for (int iy = 0; iy < kNy; ++iy) {
+      for (int ix = 1; ix < 3; ++ix) {
+        const int cell = iz * storage_nx * kNy + iy * storage_nx + ix;
+        assert(result[cell] > 0.0);
+      }
+    }
+  }
+}
+
+void test_o2_depletion() {
+  constexpr int storage_nx = 6;
+  constexpr int storage_cells = storage_nx * kNy * kNz;
+  DeviceBuffer<double> reaction(storage_cells);
+  DeviceBuffer<double> mu(2);
+  DeviceBuffer<int> cells(2);
+  DeviceBuffer<int> state(2);
+  reaction.upload(std::vector<double>(storage_cells, 0.0));
+  mu.upload(std::vector<double>{1.0, 1.0});
+  cells.upload(std::vector<int>{1, 1});
+  state.upload(std::vector<int>{0, 0});
+  gutibm::gpu::launch_o2_depletion_kernel(
+      reaction.data(), mu.data(), cells.data(), state.data(), 2, 0.5, 0.1, 1.0,
+      kNx, kNy, storage_nx, 1, 3, 1, nullptr);
+  synchronize();
+  const auto result = download(reaction, storage_cells);
+  // Change-detector: two agents each consume 0.5*1.0+0.1 = 0.6.
+  assert(close(result[1], -1.2));
+  assert(result[1] < 0.0);
+}
+
+void test_spatial_hash() {
+  constexpr int agents = 6;
+  DeviceBuffer<double> x(agents);
+  DeviceBuffer<double> y(agents);
+  DeviceBuffer<double> z(agents);
+  DeviceBuffer<int> state(agents);
+  DeviceBuffer<int> keys(agents);
+  DeviceBuffer<int> sorted(agents);
+  x.upload(std::vector<double>{0.0, 1.0, 3.999, 2.0, -1.0, 2.0});
+  y.upload(std::vector<double>{0.0, 1.0, 3.999, 0.0, 5.0, 0.0});
+  z.upload(std::vector<double>{0.0, 1.0, 3.999, 3.0, 4.0, 0.0});
+  state.upload(std::vector<int>{0, 0, 0, 0, 0, 3});
+  gutibm::gpu::launch_spatial_hash_build_kernel(
+      x.data(), y.data(), z.data(), state.data(), keys.data(), sorted.data(),
+      agents, 0.0, 0.0, 0.0, 1.0, kNx, kNy, kNz, nullptr);
+  synchronize();
+  const auto result = download(keys, agents);
+  assert(result[0] == 0);
+  assert(result[1] == 1 + kNx + kNx * kNy);
+  assert(result[2] == 3 + 3 * kNx + 3 * kNx * kNy);
+  assert(result[3] == 2 + 3 * kNx * kNy);
+  assert(result[4] == 3 * kNx + 3 * kNx * kNy);
+  // CSR offsets are built outside this wrapper; this test covers only keys.
+  assert(result[5] == -1);
+  const auto order = download(sorted, agents);
+  for (int agent = 0; agent < agents; ++agent) assert(order[agent] == agent);
+}
+
+MechanicsLaunchParams mechanics_parameters() {
+  MechanicsLaunchParams parameters{};
+  parameters.hertzian_enabled = 1;
+  parameters.hertz_k = 1.0;
+  parameters.viscosity = 1.0;
+  parameters.dt = 1.0;
+  parameters.max_displacement_fraction = 0.1;
+  parameters.cell_size = 1.0;
+  parameters.nx_cells = 1;
+  parameters.ny_cells = 1;
+  parameters.nz_cells = 1;
+  parameters.lo0 = 0.0;
+  parameters.lo1 = 0.0;
+  parameters.lo2 = 0.0;
+  parameters.hi0 = 4.0;
+  parameters.hi1 = 4.0;
+  parameters.hi2 = 4.0;
+  return parameters;
+}
+
+void test_mechanics_clear() {
+  DeviceBuffer<double> dx(2);
+  DeviceBuffer<double> dy(2);
+  DeviceBuffer<double> dz(2);
+  DeviceBuffer<int> clamp(1);
+  dx.upload(std::vector<double>{1.0, 2.0});
+  dy.upload(std::vector<double>{1.0, 2.0});
+  dz.upload(std::vector<double>{1.0, 2.0});
+  clamp.upload(std::vector<int>{4});
+  gutibm::gpu::launch_mechanics_clear_kernel(
+      dx.data(), dy.data(), dz.data(), clamp.data(), 2, nullptr);
+  synchronize();
+  for (const double value : download(dx, 2)) assert(value == 0.0);
+  for (const double value : download(dy, 2)) assert(value == 0.0);
+  for (const double value : download(dz, 2)) assert(value == 0.0);
+  assert(download(clamp, 1)[0] == 0);
+}
+
+void test_mechanics_forces() {
+  DeviceBuffer<double> x(2);
+  DeviceBuffer<double> y(2);
+  DeviceBuffer<double> z(2);
+  DeviceBuffer<double> radius(2);
+  DeviceBuffer<double> dx(2);
+  DeviceBuffer<double> dy(2);
+  DeviceBuffer<double> dz(2);
+  DeviceBuffer<int> state(2);
+  DeviceBuffer<int> offsets(2);
+  DeviceBuffer<int> sorted(2);
+  x.upload(std::vector<double>{0.5, 1.5});
+  y.upload(std::vector<double>{0.5, 0.5});
+  z.upload(std::vector<double>{0.5, 0.5});
+  radius.upload(std::vector<double>{0.5, 0.5});
+  state.upload(std::vector<int>{0, 0});
+  offsets.upload(std::vector<int>{0, 2});
+  sorted.upload(std::vector<int>{0, 1});
+  dx.upload(std::vector<double>(2, 0.0));
+  dy.upload(std::vector<double>(2, 0.0));
+  dz.upload(std::vector<double>(2, 0.0));
+  const MechanicsLaunchParams parameters = mechanics_parameters();
+  gutibm::gpu::launch_mechanics_forces_kernel(
+      x.data(), y.data(), z.data(), radius.data(), state.data(), offsets.data(),
+      sorted.data(), dx.data(), dy.data(), dz.data(), 2, parameters, nullptr);
+  synchronize();
+  for (const double value : download(dx, 2)) assert(value == 0.0);
+
+  x.upload(std::vector<double>{0.5, 1.500001});
+  dx.upload(std::vector<double>(2, 0.0));
+  gutibm::gpu::launch_mechanics_forces_kernel(
+      x.data(), y.data(), z.data(), radius.data(), state.data(), offsets.data(),
+      sorted.data(), dx.data(), dy.data(), dz.data(), 2, parameters, nullptr);
+  synchronize();
+  for (const double value : download(dx, 2)) assert(value == 0.0);
+
+  x.upload(std::vector<double>{0.5, 0.8});
+  gutibm::gpu::launch_mechanics_forces_kernel(
+      x.data(), y.data(), z.data(), radius.data(), state.data(), offsets.data(),
+      sorted.data(), dx.data(), dy.data(), dz.data(), 2, parameters, nullptr);
+  synchronize();
+  const auto force = download(dx, 2);
+  assert(force[0] < 0.0);
+  assert(force[1] > 0.0);
+}
+
+void test_mechanics_apply() {
+  DeviceBuffer<double> x(2);
+  DeviceBuffer<double> y(2);
+  DeviceBuffer<double> z(2);
+  DeviceBuffer<double> radius(2);
+  DeviceBuffer<double> dx(2);
+  DeviceBuffer<double> dy(2);
+  DeviceBuffer<double> dz(2);
+  DeviceBuffer<int> clamp(1);
+  x.upload(std::vector<double>{0.5, 0.8});
+  y.upload(std::vector<double>{0.5, 0.5});
+  z.upload(std::vector<double>{0.5, 0.5});
+  radius.upload(std::vector<double>{0.5, 0.5});
+  dx.upload(std::vector<double>{-1.0, 1.0});
+  dy.upload(std::vector<double>(2, 0.0));
+  dz.upload(std::vector<double>(2, 0.0));
+  clamp.upload(std::vector<int>{0});
+  const MechanicsLaunchParams parameters = mechanics_parameters();
+  gutibm::gpu::launch_mechanics_apply_kernel(
+      x.data(), y.data(), z.data(), radius.data(), dx.data(), dy.data(),
+      dz.data(), clamp.data(), 2, parameters, nullptr);
+  synchronize();
+  const auto moved = download(x, 2);
+  assert(close(moved[0], 0.45));
+  assert(close(moved[1], 0.85));
+  assert(download(clamp, 1)[0] == 2);
+}
+
+void test_receptor_kill_probability() {
+  DeviceBuffer<int> cell(1);
+  DeviceBuffer<int> state(1);
+  DeviceBuffer<double> receptor(8);
+  DeviceBuffer<double> ligand(8);
+  DeviceBuffer<double> toxin_affinity(8);
+  DeviceBuffer<double> immunity(4);
+  DeviceBuffer<double> toxin(1);
+  DeviceBuffer<double> competitor(1);
+  DeviceBuffer<double> zero(1);
+  DeviceBuffer<double> kill(1);
+  cell.upload(std::vector<int>{0});
+  state.upload(std::vector<int>{0});
+  receptor.upload(std::vector<double>(8, 1.0));
+  ligand.upload(std::vector<double>(8, 1.0));
+  toxin_affinity.upload(std::vector<double>(8, 1.0));
+  immunity.upload(std::vector<double>(4, 1.0));
+  zero.upload(std::vector<double>{0.0});
+  competitor.upload(std::vector<double>{0.0});
+  toxin.upload(std::vector<double>{1.0});
+  gutibm::gpu::launch_receptor_kill_prob_kernel(
+      cell.data(), state.data(), receptor.data(), ligand.data(),
+      toxin_affinity.data(), immunity.data(), toxin.data(), zero.data(),
+      zero.data(), zero.data(), competitor.data(), zero.data(), zero.data(),
+      kill.data(), 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+      1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
+  synchronize();
+  const double baseline = download(kill, 1)[0];
+  assert(baseline > 0.0 && baseline < 1.0);
+
+  competitor.upload(std::vector<double>{10.0});
+  gutibm::gpu::launch_receptor_kill_prob_kernel(
+      cell.data(), state.data(), receptor.data(), ligand.data(),
+      toxin_affinity.data(), immunity.data(), toxin.data(), zero.data(),
+      zero.data(), zero.data(), competitor.data(), zero.data(), zero.data(),
+      kill.data(), 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+      1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
+  synchronize();
+  assert(download(kill, 1)[0] < baseline);
+
+  toxin.upload(std::vector<double>{0.5});
+  competitor.upload(std::vector<double>{0.0});
+  gutibm::gpu::launch_receptor_kill_prob_kernel(
+      cell.data(), state.data(), receptor.data(), ligand.data(),
+      toxin_affinity.data(), immunity.data(), toxin.data(), zero.data(),
+      zero.data(), zero.data(), competitor.data(), zero.data(), zero.data(),
+      kill.data(), 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+      1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
+  synchronize();
+  assert(download(kill, 1)[0] < baseline);
+}
+
+template <typename Function>
+void run_case(const char* name, Function function) {
+  function();
+  std::cout << "  " << name << ": PASSED\n";
+}
+
+#endif
+
+}  // namespace
+
+int main() {
+  std::cout << "=== Direct GPU Kernel Unit Tests ===\n";
+  const int gpu_status = gutibm::test::require_gpu("gpu_kernel_units");
+  if (gpu_status != 0) return gpu_status;
+#ifdef GUTIBM_CUDA
+  run_case("launch_field_update_kernel", test_field_update);
+  run_case("launch_apply_boundaries_kernel", test_apply_boundaries);
+  run_case("launch_grid_coupling_kernel", test_grid_coupling);
+  run_case("launch_metabolism_kernel", test_metabolism);
+  run_case("launch_diffuse_x_periodic", test_diffuse_x_periodic);
+  run_case("launch_diffuse_y_periodic", test_diffuse_y_periodic);
+  run_case("launch_diffuse_z_bounded", test_diffuse_z_bounded);
+  run_case("launch_set_epithelial_boundary", test_set_epithelial_boundary);
+  run_case("launch_set_luminal_neumann", test_set_luminal_neumann);
+  run_case("launch_shift_z_gradient", test_shift_z_gradient);
+  run_case("launch_clamp_nonneg", test_clamp_nonneg);
+  run_case("launch_superpose_kernel", test_superpose);
+  run_case("launch_fmm_far_local_kernel", test_fmm_far_local);
+  run_case("launch_vbf_coupling_kernel", test_vbf_coupling);
+  run_case("launch_o2_depletion_kernel", test_o2_depletion);
+  run_case("launch_spatial_hash_build_kernel", test_spatial_hash);
+  run_case("launch_mechanics_clear_kernel", test_mechanics_clear);
+  run_case("launch_mechanics_forces_kernel", test_mechanics_forces);
+  run_case("launch_mechanics_apply_kernel", test_mechanics_apply);
+  run_case("launch_receptor_kill_prob_kernel", test_receptor_kill_probability);
+  std::cout << "All 20 GPU launch entry points were invoked directly.\n";
+  return 0;
+#endif
+}
