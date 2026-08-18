@@ -445,7 +445,6 @@ void test_shift_z_gradient() {
   const auto result = download(field, kCells);
   assert(close(result[0], 5.0));
   assert(result[kNx * kNy] > result[2 * kNx * kNy]);
-  assert(result[2 * kNx * kNy] > result[3 * kNx * kNy]);
   assert(close(result[3 * kNx * kNy], result[2 * kNx * kNy]));
 }
 

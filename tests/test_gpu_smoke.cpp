@@ -43,6 +43,39 @@ static std::vector<Real> chemical_fingerprints(const Simulation& sim) {
   }
   return fingerprints;
 }
+
+static void print_species_diagnostics(const Simulation& gpu,
+                                      const std::vector<Real>& cpu_fp,
+                                      const std::vector<Real>& gpu_fp) {
+  const auto& chem = gpu.chemical_field();
+  std::cerr << "[gpu_diag][gpu_smoke][species]\n";
+  std::cerr << std::setprecision(std::numeric_limits<Real>::max_digits10);
+  for (Int species = 0; species < chem.num_species(); ++species) {
+    const Real absolute_difference =
+        std::abs(cpu_fp[static_cast<size_t>(species)]
+                 - gpu_fp[static_cast<size_t>(species)]);
+    const Real scale = std::max(
+        std::abs(cpu_fp[static_cast<size_t>(species)]), 1.0e-30);
+    const Real relative_difference = absolute_difference / scale;
+    std::cerr << "  name=" << chem.spec(species).name
+              << " cpu_fingerprint="
+              << cpu_fp[static_cast<size_t>(species)]
+              << " gpu_fingerprint="
+              << gpu_fp[static_cast<size_t>(species)]
+              << " abs_diff=" << absolute_difference
+              << " rel_diff=" << relative_difference << "\n";
+  }
+  std::cerr << "[gpu_diag][gpu_smoke][dispatch]"
+            << " metabolism_gpu_steps="
+            << gpu.agents_gpu().metabolism_gpu_steps()
+            << " gpu_metabolism_active="
+            << gpu.gpu_metabolism_active()
+            << " chemistry_steps=unavailable"
+            << " reaction_application_steps=unavailable"
+            << " diffusion_steps=unavailable"
+            << " qssa_superposition_steps=unavailable"
+            << " mechanics_steps=unavailable\n";
+}
 #endif
 
 int main() {
@@ -135,6 +168,7 @@ int main() {
               << " chem_scale=" << chem_scale
               << " chem_rel=" << chem_rel
               << " chem_tolerance=0.05\n";
+    print_species_diagnostics(sim_gpu, chem_fp_cpu, chem_fp_gpu);
     std::cerr << "  test_gpu_smoke: FAILED (agent_rel=" << rel
               << " chem_rel=" << chem_rel << ")\n";
     return 1;
