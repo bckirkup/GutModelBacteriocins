@@ -211,6 +211,10 @@ class Simulation {
   Real compute_adaptive_dt() const;
 
   bool gpu_active() const { return gpu_.active; }
+  bool gpu_metabolism_active() const { return gpu_metabolism_active_; }
+  void set_gpu_metabolism_active(bool active) {
+    gpu_metabolism_active_ = active;
+  }
   bool halted_for_dysbiosis() const { return dysbiosis_.halted(); }
   Real halt_density_cells_per_mL() const {
     return dysbiosis_.halt_density_cells_per_mL();
@@ -343,6 +347,7 @@ class Simulation {
   StepProfile step_profile_;
 
   GpuState gpu_;
+  bool gpu_metabolism_active_ = false;
   DysbiosisGuard dysbiosis_;
 
   BacteriocinState bacteriocin_;

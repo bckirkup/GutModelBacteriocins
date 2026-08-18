@@ -12,6 +12,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <vector>
 
@@ -158,6 +159,25 @@ void test_gpu_facade_boundaries_diffusing_vs_static() {
   std::cout << "  test_gpu_facade_boundaries_diffusing_vs_static: PASSED\n";
 }
 
+void test_host_reaction_survives_gpu_round_trip() {
+  Domain domain = make_domain(4, 4, 4);
+  ChemicalField host;
+  host.init(domain, {static_species(0.2, 0.5)});
+  const Int reaction_cell = domain.cell_index(1, 1, 1);
+  host.reac(0, reaction_cell) = -0.125;
+
+  ChemicalFieldGpu chem_gpu;
+  chem_gpu.init(host);
+  chem_gpu.sync_reactions_to_device(host);
+  host.reac(0, reaction_cell) = 0.0;
+  chem_gpu.sync_reactions_to_host(host);
+
+  const Real expected = -0.125;
+  assert(std::memcmp(&host.reac(0, reaction_cell), &expected,
+                     sizeof(expected)) == 0);
+  std::cout << "  test_host_reaction_survives_gpu_round_trip: PASSED\n";
+}
+
 int main() {
   std::cout << "=== GPU ChemicalField Facade Tests ===\n";
 
@@ -180,6 +200,7 @@ int main() {
   test_gpu_facade_diffusion_matches_cpu();
   test_gpu_facade_z_gradient_diffusion();
   test_gpu_facade_boundaries_diffusing_vs_static();
+  test_host_reaction_survives_gpu_round_trip();
 
   std::cout << "All GPU chemical-field facade tests passed.\n";
   return 0;

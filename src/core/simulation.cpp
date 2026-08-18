@@ -1342,6 +1342,7 @@ void Simulation::step(Real dt) {
   if (gpu_.active) {
     gpu_.chem.zero_reactions_on_device();
   }
+  gpu_metabolism_active_ = false;
   chem_.zero_reactions();
 
   // Exchange ghost agents for cross-boundary neighbor queries
@@ -1471,6 +1472,7 @@ void Simulation::module_chemistry(Real dt) {
 
   ChemistryPipelineInput pipeline{
       .gpu_active = gpu_.active,
+      .metabolism_on_gpu = gpu_metabolism_active_,
       .agents_gpu = gpu_.agents,
       .chem_gpu = gpu_.chem,
       .chem = chem_,

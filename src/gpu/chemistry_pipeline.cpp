@@ -20,15 +20,20 @@ namespace gutibm {
 
 namespace {
 
-void sum_reactions_with_optional_device(ChemistryPipelineInput& in) {
+bool sum_reactions_with_optional_device(ChemistryPipelineInput& in,
+                                        bool reactions_on_device) {
   const auto t0 = std::chrono::steady_clock::now();
-  if (in.gpu_active && in.chem_gpu.try_sum_reactions_on_device(in.chem)) {
+  if (reactions_on_device
+      && in.chem_gpu.try_sum_reactions_on_device(in.chem)) {
     if (in.step_profile != nullptr) {
       const auto t1 = std::chrono::steady_clock::now();
       in.step_profile->mpi_reaction_reduce_s +=
           std::chrono::duration<double>(t1 - t0).count();
     }
-    return;
+    return true;
+  }
+  if (reactions_on_device) {
+    in.chem_gpu.sync_reactions_to_host(in.chem);
   }
   in.chem.sum_reactions_across_ranks();
   if (in.step_profile != nullptr) {
@@ -36,49 +41,58 @@ void sum_reactions_with_optional_device(ChemistryPipelineInput& in) {
     in.step_profile->mpi_reaction_reduce_s +=
         std::chrono::duration<double>(t1 - t0).count();
   }
+  return false;
 }
 
 }  // namespace
 
 ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real dt) {
   ChemistryPipelineResult result;
+  bool reactions_on_device = in.gpu_active && in.metabolism_on_gpu;
+  if (in.gpu_active && !reactions_on_device) {
+    in.chem_gpu.sync_reactions_to_device(in.chem);
+    reactions_on_device = true;
+  }
 
-  bool applied_o2_on_gpu = false;
+  bool oxygen_on_gpu = false;
   if (in.gpu_active) {
-    applied_o2_on_gpu = gpu_solve_nutrient_depletion(
+    oxygen_on_gpu = gpu_solve_nutrient_depletion(
         in.agents_gpu, in.num_agents, in.chem_gpu, in.chem,
         in.oxygen, in.domain);
   }
 
-  if (!applied_o2_on_gpu) {
-    if (in.gpu_active) {
+  if (!oxygen_on_gpu) {
+    if (reactions_on_device) {
       in.chem_gpu.sync_reactions_to_host(in.chem);
+      reactions_on_device = false;
     }
     in.qssa.solve_nutrient_depletion(in.agents, in.chem, in.oxygen);
-  } else if (in.gpu_active) {
-    in.chem_gpu.sync_reactions_to_host(in.chem);
   }
 
   // Sum rank-local agent reaction fields before adding the VBF contribution.
-  sum_reactions_with_optional_device(in);
+  const bool reactions_reduced_on_device =
+      sum_reactions_with_optional_device(in, reactions_on_device);
+  reactions_on_device = reactions_reduced_on_device;
   const Int carbon = in.chem.find(species::CARBON);
   const Int iron = in.chem.find(species::IRON);
   const Int oxygen = in.chem.find(species::OXYGEN);
   VbfFluxTotals vbf_totals;
   in.chem.sum_agent_uptake_across_ranks();
   in.chem.flux_accounting().commit_agent_uptake_step();
-  bool reactions_on_device = false;
   bool applied_vbf_on_gpu = false;
-  if (in.gpu_active && applied_o2_on_gpu) {
+  if (in.gpu_active && !reactions_on_device) {
     in.chem_gpu.sync_reactions_to_device(in.chem);
-    reactions_on_device = true;
+  }
+  if (in.gpu_active) {
     in.chem_gpu.reset_vbf_totals();
     applied_vbf_on_gpu = gpu_apply_vbf_coupling(
         in.chem_gpu, in.chem, in.domain, in.vbf,
         in.oxygen, in.acetate, in.mucin, vbf_totals, dt);
   }
   if (!applied_vbf_on_gpu) {
-    reactions_on_device = false;
+    if (reactions_on_device) {
+      in.chem_gpu.sync_reactions_to_host(in.chem);
+    }
     in.vbf.apply_nutrient_coupling(in.chem, in.domain, dt,
                                    in.oxygen, in.acetate, in.mucin,
                                    &vbf_totals);
@@ -116,16 +130,12 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     in.flux_accounting.add_interval(
         oxygen, 0.0, 0.0, vbf_totals.oxygen_sink, 0.0);
   }
-  if (in.gpu_active && !reactions_on_device) {
-    in.chem_gpu.sync_reactions_to_device(in.chem);
-    reactions_on_device = true;
-  }
-
-  if (in.gpu_active && !reactions_on_device) {
-    in.chem_gpu.sync_reactions_to_device(in.chem);
+  if (in.gpu_active && applied_vbf_on_gpu) {
     result.reactions_on_gpu = in.chem_gpu.apply_reactions(dt, in.domain);
     if (result.reactions_on_gpu) {
       in.chem_gpu.download_reaction_clip(in.chem);
+    } else {
+      in.chem_gpu.sync_reactions_to_host(in.chem);
     }
   }
 

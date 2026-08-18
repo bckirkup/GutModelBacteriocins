@@ -251,6 +251,7 @@ gutibm_add_test(gpu_reproducibility test_gpu_reproducibility.cpp LABELS "gpu;int
 gutibm_add_test(gpu_scaling_benchmark test_gpu_scaling_benchmark.cpp LABELS "gpu;benchmark")
 gutibm_add_test(qssa_gpu_parity test_qssa_gpu_parity.cpp LABELS "gpu")
 gutibm_add_test(gpu_toxin_burst_parity test_gpu_toxin_burst_parity.cpp LABELS "gpu;integration")
+gutibm_add_test(gpu_nutrient_feedback test_gpu_nutrient_feedback.cpp LABELS "gpu;integration")
 gutibm_add_test(spatial_hash_gpu_csr test_spatial_hash_gpu_csr.cpp LABELS "gpu")
 gutibm_add_test(mechanics_gpu_parity test_mechanics_gpu_parity.cpp LABELS "gpu")
 
