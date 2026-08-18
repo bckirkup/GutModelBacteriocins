@@ -752,7 +752,7 @@ void test_receptor_kill_probability() {
       toxin_affinity.data(), immunity.data(), toxin.data(), zero.data(),
       zero.data(), zero.data(), competitor.data(), zero.data(), zero.data(),
       kill.data(), 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-      1.0, 1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
+      1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
   synchronize();
   const double baseline = download(kill, 1)[0];
   assert(baseline > 0.0 && baseline < 1.0);
@@ -763,7 +763,7 @@ void test_receptor_kill_probability() {
       toxin_affinity.data(), immunity.data(), toxin.data(), zero.data(),
       zero.data(), zero.data(), competitor.data(), zero.data(), zero.data(),
       kill.data(), 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-      1.0, 1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
+      1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
   synchronize();
   assert(download(kill, 1)[0] < baseline);
 
@@ -774,7 +774,7 @@ void test_receptor_kill_probability() {
       toxin_affinity.data(), immunity.data(), toxin.data(), zero.data(),
       zero.data(), zero.data(), competitor.data(), zero.data(), zero.data(),
       kill.data(), 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
-      1.0, 1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
+      1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
   synchronize();
   assert(download(kill, 1)[0] < baseline);
 }

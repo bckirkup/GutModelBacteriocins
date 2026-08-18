@@ -44,6 +44,16 @@ else
 fi
 
 echo "=== Running parity test (skips GPU path when no device) ==="
+set +e
 "$BUILD_CUDA/tests/test_gpu_smoke"
+status=$?
+set -e
+if [[ "$status" -eq 77 ]]; then
+  echo "GPU parity skipped (no CUDA device)."
+  exit 0
+fi
+if [[ "$status" -ne 0 ]]; then
+  exit "$status"
+fi
 
 echo "GPU parity check passed."
