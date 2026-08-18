@@ -1,5 +1,6 @@
 #include "gpu_kernels.h"
 #include "gpu_test_support.h"
+#include "vbf_carbon_sink.h"
 
 #include <algorithm>
 #include <array>
@@ -565,6 +566,41 @@ void test_vbf_coupling() {
   }
 }
 
+void test_vbf_implicit_carbon_sink() {
+  DeviceBuffer<double> reaction_carbon(kCells);
+  DeviceBuffer<double> concentration(kCells);
+  reaction_carbon.upload(std::vector<double>(kCells, 0.0));
+  concentration.upload(std::vector<double>(kCells, 1.0e-4));
+
+  VbfLaunchParams parameters{};
+  parameters.storage_nx = kNx;
+  parameters.owned_x_begin = 0;
+  parameters.owned_x_end = kNx;
+  parameters.global_nx = kNx;
+  parameters.ny = kNy;
+  parameters.nz = kNz;
+  parameters.dx_x = 1.0;
+  parameters.dx_y = 1.0;
+  parameters.dx_z = 1.0;
+  parameters.carbon_sink_vmax = 5.0e-3;
+  parameters.carbon_sink_km = 1.0e-4;
+  constexpr double dt = 60.0;
+  const double expected_sink = gutibm::vbf::implicit_carbon_sink(
+      1.0e-4, parameters.carbon_sink_vmax, parameters.carbon_sink_km, dt);
+  const double explicit_sink = parameters.carbon_sink_vmax * 1.0e-4
+      / (parameters.carbon_sink_km + 1.0e-4);
+  assert(explicit_sink > 100.0 * expected_sink);
+
+  gutibm::gpu::launch_vbf_coupling_kernel(
+      kCells, parameters, reaction_carbon.data(), concentration.data(),
+      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+      dt, nullptr);
+  synchronize();
+  for (const double value : download(reaction_carbon, kCells)) {
+    assert(std::abs(value + expected_sink) < 1.0e-12);
+  }
+}
+
 void test_o2_depletion() {
   constexpr int storage_nx = 6;
   constexpr int storage_cells = storage_nx * kNy * kNz;
@@ -807,6 +843,8 @@ int main() {
   run_case("launch_superpose_kernel", test_superpose);
   run_case("launch_fmm_far_local_kernel", test_fmm_far_local);
   run_case("launch_vbf_coupling_kernel", test_vbf_coupling);
+  run_case("launch_vbf_coupling_kernel implicit carbon sink",
+           test_vbf_implicit_carbon_sink);
   run_case("launch_o2_depletion_kernel", test_o2_depletion);
   run_case("launch_spatial_hash_build_kernel", test_spatial_hash);
   run_case("launch_mechanics_clear_kernel", test_mechanics_clear);

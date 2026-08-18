@@ -1,4 +1,5 @@
 #include "gpu_kernels.h"
+#include "vbf_carbon_sink.h"
 #include <cuda_runtime.h>
 #include <cmath>
 
@@ -48,7 +49,8 @@ __device__ void apply_vbf_at_cell(int cell,
 
   if (reac_carbon && conc_carbon && p.carbon_sink_vmax > 0.0) {
     const double c = conc_carbon[cell];
-    const double sink = p.carbon_sink_vmax * c / (p.carbon_sink_km + c);
+    const double sink = vbf::implicit_carbon_sink(
+        c, p.carbon_sink_vmax, p.carbon_sink_km, dt);
     reac_carbon[cell] -= sink;
     if (vbf_totals) atomicAdd(&vbf_totals[1], sink * cell_volume * dt);
   }
