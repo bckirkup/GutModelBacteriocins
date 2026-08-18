@@ -134,6 +134,8 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     result.reactions_on_gpu = in.chem_gpu.apply_reactions(dt, in.domain);
     if (result.reactions_on_gpu) {
       in.chem_gpu.download_reaction_clip(in.chem);
+    } else {
+      in.chem_gpu.sync_reactions_to_host(in.chem);
     }
   }
 

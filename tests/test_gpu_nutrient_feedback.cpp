@@ -91,13 +91,14 @@ FeedbackResult run_feedback(Int count, bool gpu) {
   result.second_field = carbon_field(sim, carbon);
   result.final_mass = carbon_mass(sim, carbon);
 
-  const auto& accounting = sim.chemical_field().flux_accounting();
+  auto& accounting = sim.chemical_field().flux_accounting();
+  accounting.close_interval();
   const auto index = static_cast<size_t>(carbon);
-  result.uptake = accounting.agent_uptake_interval[index];
-  result.boundary = accounting.boundary_interval[index];
-  result.vbf_source = accounting.vbf_source_interval[index];
-  result.vbf_sink = accounting.vbf_sink_interval[index];
-  result.clipped = accounting.reaction_clip_interval[index];
+  result.uptake = accounting.agent_uptake_cumulative[index];
+  result.boundary = accounting.boundary_cumulative[index];
+  result.vbf_source = accounting.vbf_source_cumulative[index];
+  result.vbf_sink = accounting.vbf_sink_cumulative[index];
+  result.clipped = accounting.reaction_clip_cumulative[index];
   return result;
 }
 
