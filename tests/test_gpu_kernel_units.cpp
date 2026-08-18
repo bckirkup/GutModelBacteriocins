@@ -241,10 +241,10 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   DeviceBuffer<double> mu_max(agents);
   DeviceBuffer<double> km_b12(agents);
   DeviceBuffer<double> km_carbon(agents);
-  DeviceBuffer<double> receptor(NUM_RECEPTORS * agents);
-  DeviceBuffer<double> receptor_base(NUM_RECEPTORS * agents);
-  DeviceBuffer<double> ligand(NUM_RECEPTORS * agents);
-  DeviceBuffer<int> iron_receptor(NUM_RECEPTORS);
+  DeviceBuffer<double> receptor(gutibm::NUM_RECEPTORS * agents);
+  DeviceBuffer<double> receptor_base(gutibm::NUM_RECEPTORS * agents);
+  DeviceBuffer<double> ligand(gutibm::NUM_RECEPTORS * agents);
+  DeviceBuffer<int> iron_receptor(gutibm::NUM_RECEPTORS);
   DeviceBuffer<int> cells(agents);
   DeviceBuffer<int> state(agents);
   DeviceBuffer<int> loci(agents);
@@ -269,13 +269,14 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   mu_max.upload(std::vector<double>(agents, maximum_growth));
   km_b12.upload(std::vector<double>(agents, 0.1));
   km_carbon.upload(std::vector<double>(agents, 0.1));
-  receptor.upload(std::vector<double>(NUM_RECEPTORS * agents, 1.0));
-  receptor_base.upload(std::vector<double>(NUM_RECEPTORS * agents, 2.0));
-  ligand.upload(std::vector<double>(NUM_RECEPTORS * agents, 1.0));
-  std::vector<int> iron_receptor_flags(NUM_RECEPTORS, 0);
-  for (int receptor = 0; receptor < NUM_RECEPTORS; ++receptor) {
+  receptor.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
+  receptor_base.upload(
+      std::vector<double>(gutibm::NUM_RECEPTORS * agents, 2.0));
+  ligand.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
+  std::vector<int> iron_receptor_flags(gutibm::NUM_RECEPTORS, 0);
+  for (int receptor = 0; receptor < gutibm::NUM_RECEPTORS; ++receptor) {
     iron_receptor_flags[static_cast<size_t>(receptor)] =
-        is_iron_receptor(receptor) ? 1 : 0;
+        gutibm::is_iron_receptor(receptor) ? 1 : 0;
   }
   iron_receptor.upload(iron_receptor_flags);
   cells.upload(std::vector<int>{4, -1});
@@ -292,7 +293,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       cells.data(), state.data(), mu_max.data(), km_b12.data(),
       km_carbon.data(), receptor.data(), receptor_base.data(), ligand.data(),
       iron_receptor.data(), loci.data(),
-      amelioration.data(), agents, agents, agents, NUM_RECEPTORS,
+      amelioration.data(), agents, agents, agents, gutibm::NUM_RECEPTORS,
       1.0, 1.0, 1.0,
       0.1, 0.1, 0.1, 0.1,
       0.0, 0.0, 1.0, 0.0, 0.0, 0.2,
@@ -304,7 +305,8 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   synchronize();
   const auto reaction = download(reaction_carbon, kCells);
   const auto acetate_result = download(reaction_acetate, kCells);
-  const auto expression = download(receptor, NUM_RECEPTORS * agents);
+  const auto expression =
+      download(receptor, gutibm::NUM_RECEPTORS * agents);
   const auto biomass_result = download(biomass, agents);
   const auto mu_result = download(mu, agents);
   const auto uptake_host = download(uptake, 2);
