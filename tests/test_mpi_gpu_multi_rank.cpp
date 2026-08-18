@@ -35,8 +35,9 @@ namespace {
   cfg.hdf5.enabled = false;
   cfg.gpu.enabled = true;
   cfg.gpu.device_id = -1;
-  // This MPI fixture compares GPU metabolism across ranks; siderophore
-  // chemistry is CPU-authoritative and covered separately.
+  // Both Fur and siderophore chemistry disable the production GPU metabolism
+  // path; this fixture specifically exercises GPU metabolism across ranks.
+  cfg.cell_bio.fur.enabled = false;
   cfg.chem_env.siderophore.enabled = false;
   cfg.chem_env.oxygen.enabled = true;
   cfg.chem_env.acetate.enabled = true;

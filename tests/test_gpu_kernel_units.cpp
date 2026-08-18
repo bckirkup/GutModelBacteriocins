@@ -202,7 +202,7 @@ void test_grid_coupling() {
   assert(mapped[0] == 4);
   assert(mapped[1] == 2 + 2 * kNx + 3 * kNx * kNy);
   assert(mapped[2] == 3 + 3 * kNx + 3 * kNx * kNy);
-  assert(mapped[3] == 0);
+  assert(mapped[3] == (kNz - 1) * kNx * kNy + (kNy - 1) * kNx);
   assert(mapped[4] == -1);
 }
 

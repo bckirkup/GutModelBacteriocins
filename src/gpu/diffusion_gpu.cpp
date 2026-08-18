@@ -295,7 +295,7 @@ bool gpu_apply_species_diffusion(const Domain& domain,
   DeviceBuffer<double> d_conc;
   d_conc.upload(concentration);
   if (!apply_species_diffusion_on_device(
-          domain, spec, d_conc.data(), nullptr, dt, ncells, 0, domain.nx(),
+          domain, spec, d_conc.data(), nullptr, dt, domain.nx(), 0, domain.nx(),
           DiffusionPhase::Replicated)) {
     return false;
   }

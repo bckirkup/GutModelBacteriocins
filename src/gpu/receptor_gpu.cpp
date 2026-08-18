@@ -64,7 +64,7 @@ bool gpu_compute_receptor_kill_probs_host_packed(
     const ChemicalFieldGpu& chem_gpu,
     const ChemicalField& chem,
     const ReceptorConfig& cfg,
-    bool toxin_lumped,
+    ToxinLumping toxin_lumping,
     double dt,
     std::vector<double>& kill_probs_out) {
 
@@ -74,7 +74,7 @@ bool gpu_compute_receptor_kill_probs_host_packed(
   (void)chem_gpu;
   (void)chem;
   (void)cfg;
-  (void)toxin_lumped;
+  (void)toxin_lumping;
   (void)dt;
   (void)kill_probs_out;
   return false;
@@ -98,7 +98,7 @@ bool gpu_compute_receptor_kill_probs_host_packed(
   Int i_fepA = -1;
   Int i_cirA = -1;
   Int i_fhuA = -1;
-  if (toxin_lumped) {
+  if (toxin_lumping == ToxinLumping::Lumped) {
     const Int lumped_idx = chem.find(
         species::bacteriocin_species_for(ReceptorType::BtuB, true));
     i_btuB = lumped_idx;

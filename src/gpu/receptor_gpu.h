@@ -12,13 +12,18 @@ class ChemicalFieldGpu;
 class ChemicalField;
 struct ReceptorConfig;
 
+enum class ToxinLumping {
+  PerReceptor,
+  Lumped
+};
+
 bool gpu_compute_receptor_kill_probs_host_packed(
     const AgentPoolGpu& agents,
     const AgentPool& pool,
     const ChemicalFieldGpu& chem_gpu,
     const ChemicalField& chem,
     const ReceptorConfig& cfg,
-    bool toxin_lumped,
+    ToxinLumping toxin_lumping,
     double dt,
     std::vector<double>& kill_probs_out);
 
