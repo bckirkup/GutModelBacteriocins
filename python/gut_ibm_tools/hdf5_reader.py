@@ -108,7 +108,22 @@ class GutIBMData:
             out["mechanics"] = {
                 name: np.array(ds).item() for name, ds in grp["mechanics"].items()
             }
+        for name in ("halt_reason_code", "halt_density_cells_per_mL"):
+            if name in grp:
+                out[name] = read_scalar(name)
         return out
+
+    def get_run_provenance(self) -> dict[str, Any]:
+        """Return run-level provenance and termination metadata."""
+        assert self._file is not None
+        if "run_provenance" not in self._file:
+            return {}
+        group = self._file["run_provenance"]
+        result: dict[str, Any] = {}
+        for name, dataset in group.items():
+            value = np.array(dataset)
+            result[name] = value.item() if value.ndim == 0 else value
+        return result
 
     def get_agents(self, step: str) -> dict[str, np.ndarray]:
         """Return agent arrays for a given step."""
@@ -137,12 +152,16 @@ class GutIBMData:
     def get_metadata(self, step: str) -> dict[str, Any]:
         """Compatibility alias for summary scalars."""
         summary = self.get_summary(step)
-        return {
+        metadata = {
             "time": summary["time"],
             "step": summary["step"],
             "num_agents": summary["num_agents"],
             "num_lineages": summary.get("num_lineages", 0),
         }
+        for name in ("halt_reason_code", "halt_density_cells_per_mL"):
+            if name in summary:
+                metadata[name] = summary[name]
+        return metadata
 
     def get_lineage(self, step: str) -> dict[str, np.ndarray]:
         """Return lineage-tracking arrays for a given step."""

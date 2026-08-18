@@ -49,9 +49,14 @@ def test_get_grid_and_metadata(sample_hdf5: Path) -> None:
         meta = data.get_metadata("step_000000")
         assert meta["time"] == pytest.approx(0.0)
         assert meta["num_agents"] == 12
+        assert meta["halt_reason_code"] == 0
         summary = data.get_summary("step_000001")
         assert summary["stocks"]["bacteriostatic_live_agents"] == 1
         assert summary["stocks"]["washout_trapped_live_agents"] == 1
+        assert summary["halt_reason_code"] == 0
+        assert summary["halt_density_cells_per_mL"] == pytest.approx(0.0)
+        provenance = data.get_run_provenance()
+        assert provenance["completed_total_time"] == 1
 
 
 def test_get_lineage(sample_hdf5: Path) -> None:
