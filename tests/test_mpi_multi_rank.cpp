@@ -99,6 +99,46 @@ void test_chemical_field_layout_mapping() {
   }
 }
 
+void test_slab_delivery_boundary_accounting() {
+  require_mpi_ranks(2);
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  DomainConfig cfg;
+  cfg.lo = {0.0, 0.0, 0.0};
+  cfg.hi = {40e-6, 15e-6, 20e-6};
+  cfg.grid_dx = 5e-6;
+  cfg.grid_halo_width = 2;
+  Domain domain;
+  domain.init(cfg);
+
+  ChemicalSpec spec;
+  spec.name = "carbon";
+  spec.diff_coeff = 2.1e-9;
+  spec.initial_conc = 0.0;
+  spec.boundary_conc = 1.0;
+  spec.diffusion_enabled = true;
+  spec.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
+  spec.epithelial_flux = 1.0e-10;
+  ChemicalField chem;
+  chem.init(domain, {spec}, "slab");
+  chem.apply_diffusion(domain, 2.0);
+  chem.flux_accounting().commit_boundary_and_reaction_step();
+  chem.flux_accounting().close_interval();
+
+  const Real local_exchange =
+      chem.flux_accounting().boundary_cumulative.front();
+  Real global_exchange = 0.0;
+  MPI_Allreduce(&local_exchange, &global_exchange, 1, MPI_DOUBLE, MPI_SUM,
+                MPI_COMM_WORLD);
+  const Real expected = spec.epithelial_flux * domain.nx() * domain.ny()
+      * domain.dx_x() * domain.dx_y() * 2.0;
+  assert(std::abs(global_exchange - expected) < 1.0e-24);
+  if (rank == 0) {
+    std::cout << "  test_slab_delivery_boundary_accounting: PASSED\n";
+  }
+}
+
 #ifdef GUTIBM_HDF5
 
 int32_t read_event(hid_t file, const std::string& path) {
@@ -1171,6 +1211,7 @@ int main(int argc, char** argv) {
 
   test_reaction_sum_and_diffusion_are_rank_identical();
   test_chemical_field_layout_mapping();
+  test_slab_delivery_boundary_accounting();
   test_slab_chemistry_transpose_halos_and_ledger();
   test_cross_rank_bacteriocin_source_exchange();
   test_cross_rank_agent_toxin_sampling();

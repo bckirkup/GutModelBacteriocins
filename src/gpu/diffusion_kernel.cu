@@ -136,6 +136,39 @@ __device__ void solve_bounded_line(double* line,
   if (tid < n) line[tid] = s_rhs[tid];
 }
 
+__device__ void solve_delivery_line(double* line, double* pcr_base, int n,
+                                    double alpha, int boundary_mode,
+                                    double boundary_conc, double beta,
+                                    double flux_source, int tid) {
+  double* s_lower = pcr_base;
+  double* s_diag = pcr_base + blockDim.x;
+  double* s_upper = s_diag + blockDim.x;
+  double* s_rhs = s_upper + blockDim.x;
+
+  if (tid < n) {
+    s_lower[tid] = (tid == 0) ? 0.0 : -alpha;
+    s_upper[tid] = (tid == n - 1) ? 0.0 : -alpha;
+    s_diag[tid] = 1.0 + 2.0 * alpha;
+    if (tid == 0) {
+      s_diag[tid] = boundary_mode == 1
+          ? 1.0 + alpha + beta : 1.0 + alpha;
+    } else if (tid == n - 1) {
+      s_diag[tid] = 1.0 + alpha;
+    }
+    s_rhs[tid] = line[tid];
+    if (tid == 0) {
+      s_rhs[tid] += boundary_mode == 1
+          ? beta * boundary_conc : flux_source;
+    }
+  }
+
+  __syncthreads();
+  pcr_solve(s_lower, s_diag, s_upper, s_rhs, n, tid);
+  __syncthreads();
+
+  if (tid < n) line[tid] = s_rhs[tid];
+}
+
 __global__ void diffuse_x_periodic_kernel(double* conc,
                                           int nx,
                                           int ny,
@@ -213,6 +246,9 @@ __global__ void diffuse_z_bounded_kernel(double* conc,
                                          int owned_x_end,
                                          double alpha,
                                          double boundary_conc,
+                                         int boundary_mode,
+                                         double beta,
+                                         double flux_source,
                                          double cell_volume,
                                          double* face_exchange) {
   const int line_id = blockIdx.x;
@@ -220,7 +256,7 @@ __global__ void diffuse_z_bounded_kernel(double* conc,
   if (line_id >= local_nx * ny) return;
   const int ix = owned_x_begin + line_id / ny;
   const int iy = line_id % ny;
-  const int n = nz - 1;
+  const int n = boundary_mode == 0 ? nz - 1 : nz;
   if (n <= 0) return;
   const int tid = threadIdx.x;
 
@@ -229,20 +265,30 @@ __global__ void diffuse_z_bounded_kernel(double* conc,
   double* pcr_base = smem + blockDim.x;
 
   if (tid < n) {
-    line[tid] = conc[cell_index(ix, iy, tid + 1, storage_nx, ny)];
+    const int iz = boundary_mode == 0 ? tid + 1 : tid;
+    line[tid] = conc[cell_index(ix, iy, iz, storage_nx, ny)];
   }
   __syncthreads();
 
-  solve_bounded_line(line, pcr_base, n, alpha, boundary_conc, tid);
+  if (boundary_mode == 0) {
+    solve_bounded_line(line, pcr_base, n, alpha, boundary_conc, tid);
+  } else {
+    solve_delivery_line(line, pcr_base, n, alpha, boundary_mode,
+                        boundary_conc, beta, flux_source, tid);
+  }
   __syncthreads();
 
   if (tid == 0 && face_exchange != nullptr) {
-    atomicAdd(face_exchange,
-              alpha * (boundary_conc - line[0]) * cell_volume);
+    const double realized = boundary_mode == 1
+        ? beta * (boundary_conc - line[0]) * cell_volume
+        : flux_source * cell_volume;
+    atomicAdd(face_exchange, boundary_mode == 0
+        ? alpha * (boundary_conc - line[0]) * cell_volume : realized);
   }
 
   if (tid < n) {
-    conc[cell_index(ix, iy, tid + 1, storage_nx, ny)] = line[tid];
+    const int iz = boundary_mode == 0 ? tid + 1 : tid;
+    conc[cell_index(ix, iy, iz, storage_nx, ny)] = line[tid];
   }
 }
 
@@ -389,18 +435,22 @@ void launch_diffuse_z_bounded(double* conc,
                               int owned_x_end,
                               double alpha,
                               double boundary_conc,
+                              int boundary_mode,
+                              double beta,
+                              double flux_source,
                               double cell_volume,
                               double* face_exchange,
                               cudaStream_t stream) {
   const int local_nx = owned_x_end - owned_x_begin;
   if (local_nx <= 0 || ny <= 0 || nz <= 1) return;
-  const int n = nz - 1;
+  const int n = boundary_mode == 0 ? nz - 1 : nz;
   const int block = next_pow2(n);
   const int grid = local_nx * ny;
   const size_t smem = static_cast<size_t>(5 * block) * sizeof(double);
   diffuse_z_bounded_kernel<<<grid, block, smem, stream>>>(
       conc, storage_nx, ny, nz, owned_x_begin, owned_x_end, alpha,
-      boundary_conc, cell_volume, face_exchange);
+      boundary_conc, boundary_mode, beta, flux_source, cell_volume,
+      face_exchange);
 }
 
 void launch_set_epithelial_boundary(double* conc,

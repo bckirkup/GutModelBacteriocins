@@ -110,6 +110,45 @@ void test_reaction_sum_four_ranks() {
   }
 }
 
+void test_flux_delivery_four_ranks() {
+  require_mpi_ranks(4);
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  DomainConfig cfg;
+  cfg.lo = {0.0, 0.0, 0.0};
+  cfg.hi = {80e-6, 20e-6, 20e-6};
+  cfg.grid_dx = 5e-6;
+  cfg.grid_halo_width = 2;
+  Domain domain;
+  domain.init(cfg);
+
+  ChemicalSpec spec;
+  spec.name = "carbon";
+  spec.diff_coeff = 2.1e-9;
+  spec.boundary_conc = 1.0;
+  spec.diffusion_enabled = true;
+  spec.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
+  spec.epithelial_flux = 1.0e-10;
+  ChemicalField chem;
+  chem.init(domain, {spec}, "slab");
+  chem.apply_diffusion(domain, 2.0);
+  chem.flux_accounting().commit_boundary_and_reaction_step();
+  chem.flux_accounting().close_interval();
+
+  const Real local_exchange =
+      chem.flux_accounting().boundary_cumulative.front();
+  Real global_exchange = 0.0;
+  MPI_Allreduce(&local_exchange, &global_exchange, 1, MPI_DOUBLE, MPI_SUM,
+                MPI_COMM_WORLD);
+  const Real expected = spec.epithelial_flux * domain.nx() * domain.ny()
+      * domain.dx_x() * domain.dx_y() * 2.0;
+  assert(std::abs(global_exchange - expected) < 1.0e-24);
+  if (rank == 0) {
+    std::cout << "  test_flux_delivery_four_ranks: PASSED\n";
+  }
+}
+
 void test_init_population_partitioned_four_ranks() {
   require_mpi_ranks(4);
 
@@ -259,6 +298,7 @@ int main(int argc, char** argv) {
 
   test_four_rank_slab_decomposition();
   test_reaction_sum_four_ranks();
+  test_flux_delivery_four_ranks();
   test_init_population_partitioned_four_ranks();
   test_migration_across_four_ranks();
   test_multirank_simulation_steps_four_ranks();

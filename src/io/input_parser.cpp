@@ -444,6 +444,30 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
       spec.boundary_conc = 0.0;
     }
   }
+
+  const Int carbon_idx = find_chemical_spec(cfg.chemicals, species::CARBON);
+  if (carbon_idx >= 0) {
+    auto& carbon = cfg.chemicals[static_cast<size_t>(carbon_idx)];
+    carbon.epithelial_transfer_coeff = cfg.carbon_epithelial_transfer_coeff;
+    carbon.epithelial_flux = cfg.carbon_epithelial_flux;
+    if (cfg.carbon_epithelial_boundary == "dirichlet") {
+      carbon.epithelial_boundary_mode = EpithelialBoundaryMode::Dirichlet;
+    } else if (cfg.carbon_epithelial_boundary == "robin") {
+      carbon.epithelial_boundary_mode = EpithelialBoundaryMode::Robin;
+    } else if (cfg.carbon_epithelial_boundary == "flux") {
+      carbon.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
+    } else {
+      throw ConfigError(
+          "invalid carbon.epithelial_boundary: expected 'dirichlet', "
+          "'robin', or 'flux', got '" + cfg.carbon_epithelial_boundary + "'");
+    }
+    if (carbon.epithelial_boundary_mode != EpithelialBoundaryMode::Dirichlet
+        && carbon.z_gradient_enabled) {
+      throw ConfigError(
+          "carbon z-gradient cannot be combined with Robin or flux "
+          "epithelial boundary modes");
+    }
+  }
 }
 
 namespace {
@@ -609,6 +633,26 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
     for (auto& c : cfg.chemicals) {
       if (c.name == species::CARBON) { c.z_gradient_lambda = parse_config_real(key, val); return true; }
     }
+    return true;
+  }
+  if (key == "carbon.epithelial_boundary"
+      || key == "carbon_epithelial_boundary") {
+    if (val != "dirichlet" && val != "robin" && val != "flux") {
+      throw ConfigError(
+          "invalid " + std::string(key)
+          + ": expected 'dirichlet', 'robin', or 'flux', got '" + val + "'");
+    }
+    cfg.carbon_epithelial_boundary = val;
+    return true;
+  }
+  if (key == "carbon.epithelial_transfer_coeff"
+      || key == "carbon_epithelial_transfer_coeff") {
+    cfg.carbon_epithelial_transfer_coeff = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "carbon.epithelial_flux"
+      || key == "carbon_epithelial_flux") {
+    cfg.carbon_epithelial_flux = parse_config_real(key, val);
     return true;
   }
   if (key == "sos_lysis_prob")       { cfg.fixes.bacteriocin.sos_lysis_prob = parse_config_real(key, val); return true; }

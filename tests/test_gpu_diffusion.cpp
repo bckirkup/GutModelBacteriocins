@@ -45,6 +45,17 @@ ChemicalSpec diffusing_species(Real diffusion, Real initial, Real boundary) {
   return spec;
 }
 
+ChemicalSpec delivery_species(EpithelialBoundaryMode mode) {
+  ChemicalSpec spec = diffusing_species(2.1e-9, 0.0, 1.0);
+  spec.epithelial_boundary_mode = mode;
+  spec.z_gradient_enabled = false;
+  spec.epithelial_transfer_coeff =
+      mode == EpithelialBoundaryMode::Robin ? 2.0e-5 : 0.0;
+  spec.epithelial_flux =
+      mode == EpithelialBoundaryMode::Flux ? 1.0e-10 : 0.0;
+  return spec;
+}
+
 Real max_abs_diff(const std::vector<Real>& a, const std::vector<Real>& b) {
   Real max_diff = 0.0;
   const size_t n = std::min(a.size(), b.size());
@@ -181,6 +192,27 @@ void test_gpu_z_gradient_background_fixed_point() {
             << " (max_diff=" << max_diff << ")\n";
 }
 
+void test_gpu_delivery_boundary_modes() {
+  Domain domain = make_domain(4, 3, 8);
+  for (const auto mode : {EpithelialBoundaryMode::Robin,
+                          EpithelialBoundaryMode::Flux}) {
+    const ChemicalSpec spec = delivery_species(mode);
+    ChemicalField chem_cpu;
+    chem_cpu.init(domain, {spec});
+    for (Int cell = 0; cell < domain.ncells(); ++cell) {
+      chem_cpu.conc(0, cell) = 0.01 * static_cast<Real>(cell + 1);
+    }
+    std::vector<Real> conc_gpu;
+    copy_conc(chem_cpu, conc_gpu);
+    chem_cpu.apply_diffusion(domain, 60.0);
+    assert(gpu_apply_species_diffusion(domain, spec, conc_gpu, 60.0));
+    const Real max_diff = max_abs_diff(
+        chem_cpu.conc_data().front(), conc_gpu);
+    assert(max_diff < 1.0e-10);
+  }
+  std::cout << "  test_gpu_delivery_boundary_modes: PASSED\n";
+}
+
 int main() {
   std::cout << "=== GPU Diffusion Parity Tests ===\n";
   const int gpu_status = test::require_gpu("gpu_diffusion");
@@ -203,6 +235,7 @@ int main() {
   test_gpu_singleton_periodic_axes();
   test_gpu_dirichlet_neumann_boundary();
   test_gpu_z_gradient_background_fixed_point();
+  test_gpu_delivery_boundary_modes();
 
   std::cout << "All GPU diffusion tests passed.\n";
   return 0;

@@ -212,7 +212,9 @@ allocations. This memory behavior is not fixed.
 ### New diffusion / QSSA kernel
 1. Bacteriocins: add QSSA-compatible Green's-function logic in `src/diffusion/` and wire through `QSSASolver`
 2. Nutrients/small molecules: add stable implicit field logic in `src/fields/chemical_field.cpp`; never add an explicit biological-timestep stencil
-3. Preserve periodic x/y, epithelial Dirichlet z=0, and luminal zero-flux z boundary conditions
+3. Preserve periodic x/y and luminal zero-flux z conditions. Epithelial z=0
+   defaults to Dirichlet, with runtime-selectable Robin/flux delivery for
+   configured species; keep each mode's accounting and solver form consistent.
 4. Add analytic/invariant, coefficient/enable sensitivity, positivity, MPI, and GPU-parity tests
 
 ### MPI-sensitive changes

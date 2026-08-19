@@ -112,7 +112,8 @@ void launch_diffuse_y_periodic(double* conc, int storage_nx, int ny, int nz,
                                cudaStream_t stream);
 void launch_diffuse_z_bounded(double* conc, int storage_nx, int ny, int nz,
                               int owned_x_begin, int owned_x_end,
-                              double alpha, double boundary_conc,
+                              double alpha, double boundary_conc, int boundary_mode,
+                              double beta, double flux_source,
                               double cell_volume, double* face_exchange,
                               cudaStream_t stream);
 void launch_set_epithelial_boundary(double* conc, int storage_nx, int ny,

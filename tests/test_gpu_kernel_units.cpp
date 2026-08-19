@@ -432,8 +432,8 @@ void test_diffuse_z_bounded() {
   field.upload(std::vector<double>(kCells, 2.0));
   exchange.upload(std::vector<double>{0.0});
   gutibm::gpu::launch_diffuse_z_bounded(
-      field.data(), kNx, kNy, kNz, 0, kNx, 0.1, 2.0, 1.0, exchange.data(),
-      nullptr);
+      field.data(), kNx, kNy, kNz, 0, kNx, 0.1, 2.0, 0, 0.0, 0.0, 1.0,
+      exchange.data(), nullptr);
   synchronize();
   for (const double value : download(field, kCells)) assert(close(value, 2.0));
   assert(close(download(exchange, 1)[0], 0.0));

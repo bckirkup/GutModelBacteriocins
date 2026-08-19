@@ -89,6 +89,10 @@ bool species_diffusion_eligible(const ChemicalSpec& spec, Real dt,
       && domain.dx_z() > 0.0 && spec.diffusion_enabled
       && spec.diff_coeff > 0.0 && spec.retardation > 0.0;
 }
+
+int epithelial_boundary_mode(const ChemicalSpec& spec) {
+  return to_underlying(spec.epithelial_boundary_mode);
+}
 #endif
 
 #ifdef GUTIBM_CUDA
@@ -115,8 +119,13 @@ bool apply_species_diffusion_on_device(const Domain& domain,
   const bool preserve_gradient =
       spec.z_gradient_enabled && spec.z_gradient_lambda > 0.0;
   double diffusion_boundary = spec.boundary_conc;
+  const int boundary_mode = epithelial_boundary_mode(spec);
+  const Real beta = boundary_mode == 1
+      ? spec.epithelial_transfer_coeff * dt / domain.dx_z() : 0.0;
+  const Real flux_source = boundary_mode == 2
+      ? spec.epithelial_flux * dt / domain.dx_z() : 0.0;
 
-  if (phase != DiffusionPhase::SlabPostX) {
+  if (phase != DiffusionPhase::SlabPostX && boundary_mode == 0) {
     gpu::launch_set_epithelial_boundary(
         d_conc, nx, ny, owned_x_begin, owned_x_end, spec.boundary_conc,
         domain.cell_volume(), d_injected_amount,
@@ -155,7 +164,8 @@ bool apply_species_diffusion_on_device(const Domain& domain,
       d_corr_y.data(), gpu_compute_stream());
   gpu::launch_diffuse_z_bounded(
       d_conc, nx, ny, nz, owned_x_begin, owned_x_end, alpha_z,
-      diffusion_boundary, domain.cell_volume(), d_injected_amount,
+      diffusion_boundary, boundary_mode, beta, flux_source,
+      domain.cell_volume(), d_injected_amount,
       gpu_compute_stream());
 
   if (preserve_gradient) {
@@ -169,23 +179,27 @@ bool apply_species_diffusion_on_device(const Domain& domain,
 
   gpu::launch_clamp_nonneg(
       d_conc, nx, ny, nz, owned_x_begin, owned_x_end, gpu_compute_stream());
-  gpu::launch_set_epithelial_boundary(
-      d_conc, nx, ny, owned_x_begin, owned_x_end, spec.boundary_conc, 0.0,
-      nullptr,
-      gpu_compute_stream());
+  if (boundary_mode == 0) {
+    gpu::launch_set_epithelial_boundary(
+        d_conc, nx, ny, owned_x_begin, owned_x_end, spec.boundary_conc, 0.0,
+        nullptr, gpu_compute_stream());
+  }
   return true;
 }
 #endif
 
 }  // namespace
 
-bool gpu_diffusion_line_lengths_supported(const Domain& domain) {
+bool gpu_diffusion_line_lengths_supported(
+    const Domain& domain, EpithelialBoundaryMode mode) {
 #ifdef GUTIBM_CUDA
   const int max_line = gpu::diffusion_max_line_length();
   return domain.nx() <= max_line && domain.ny() <= max_line
-      && (domain.nz() - 1) <= max_line;
+      && (mode == EpithelialBoundaryMode::Dirichlet
+          ? domain.nz() - 1 : domain.nz()) <= max_line;
 #else
   (void)domain;
+  (void)mode;
   return false;
 #endif
 }
@@ -205,7 +219,8 @@ bool gpu_apply_species_diffusion_device(const Domain& domain,
 #else
   if (!gpu_runtime_enabled()) return false;
   if (!species_diffusion_eligible(spec, dt, domain)) return false;
-  if (!gpu_diffusion_line_lengths_supported(domain)) return false;
+  if (!gpu_diffusion_line_lengths_supported(
+          domain, spec.epithelial_boundary_mode)) return false;
   return apply_species_diffusion_on_device(
       domain, spec, d_conc, d_injected_amount, dt, domain.nx(), 0,
       domain.nx(), DiffusionPhase::Replicated);
@@ -225,7 +240,8 @@ bool gpu_apply_species_diffusion_slab_device(
   return false;
 #else
   if (!gpu_runtime_enabled() || !species_diffusion_eligible(spec, dt, domain)
-      || !gpu_diffusion_line_lengths_supported(domain)) {
+      || !gpu_diffusion_line_lengths_supported(
+             domain, spec.epithelial_boundary_mode)) {
     return false;
   }
   if (!apply_species_diffusion_on_device(
@@ -287,7 +303,8 @@ bool gpu_apply_species_diffusion(const Domain& domain,
 #else
   if (!gpu_runtime_enabled()) return false;
   if (!species_diffusion_eligible(spec, dt, domain)) return false;
-  if (!gpu_diffusion_line_lengths_supported(domain)) return false;
+  if (!gpu_diffusion_line_lengths_supported(
+          domain, spec.epithelial_boundary_mode)) return false;
 
   const int ncells = domain.ncells();
   if (ncells <= 0 || static_cast<int>(concentration.size()) < ncells) return false;
