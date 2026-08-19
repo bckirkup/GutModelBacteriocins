@@ -9,7 +9,9 @@
 #include "device.h"
 #include "gpu_test_support.h"
 #include "fix_metabolism.h"
+#include "gpu_diagnostic_format.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -19,6 +21,7 @@
 #endif
 
 using namespace gutibm;
+using gutibm::gpu_diagnostic::format_real;
 
 namespace {
 
@@ -160,11 +163,36 @@ void test_mpi_gpu_ghost_receptor_parity() {
     if (!cpu.agents()[i].flags.is_ghost) continue;
     found_ghost = true;
     for (int receptor = 0; receptor < NUM_RECEPTORS; ++receptor) {
-      assert(std::abs(cpu.agents()[i].receptor_expr[receptor]
-                      - gpu.agents()[i].receptor_expr[receptor]) < 1.0e-12);
+      const Real cpu_expression = cpu.agents()[i].receptor_expr[receptor];
+      const Real gpu_expression = gpu.agents()[i].receptor_expr[receptor];
+      const Real absolute_difference =
+          std::abs(cpu_expression - gpu_expression);
+      const Real scale =
+          std::max({1.0, std::abs(cpu_expression), std::abs(gpu_expression)});
+      const Real relative_difference = absolute_difference / scale;
+      std::cerr << "[gpu_diag][mpi_gpu_multi_rank][ghost]"
+                << " index=" << i
+                << " field=receptor_expr"
+                << " receptor=" << receptor
+                << " cpu=" << format_real(cpu_expression)
+                << " gpu=" << format_real(gpu_expression)
+                << " abs_diff=" << format_real(absolute_difference)
+                << " rel_diff=" << format_real(relative_difference) << "\n";
+      assert(absolute_difference < 1.0e-12);
     }
-    assert(std::abs(cpu.agents()[i].mu_realized
-                    - gpu.agents()[i].mu_realized) < 1.0e-12);
+    const Real cpu_mu = cpu.agents()[i].mu_realized;
+    const Real gpu_mu = gpu.agents()[i].mu_realized;
+    const Real absolute_difference = std::abs(cpu_mu - gpu_mu);
+    const Real scale = std::max({1.0, std::abs(cpu_mu), std::abs(gpu_mu)});
+    const Real relative_difference = absolute_difference / scale;
+    std::cerr << "[gpu_diag][mpi_gpu_multi_rank][ghost]"
+              << " index=" << i
+              << " field=mu_realized"
+              << " cpu=" << format_real(cpu_mu)
+              << " gpu=" << format_real(gpu_mu)
+              << " abs_diff=" << format_real(absolute_difference)
+              << " rel_diff=" << format_real(relative_difference) << "\n";
+    assert(absolute_difference < 1.0e-12);
   }
   assert(found_ghost);
 }

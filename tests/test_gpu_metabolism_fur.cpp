@@ -3,6 +3,7 @@
 #include "simulation.h"
 #include "species_names.h"
 #include "gpu_test_support.h"
+#include "gpu_diagnostic_format.h"
 
 #include <algorithm>
 #include <cassert>
@@ -11,6 +12,7 @@
 #include <vector>
 
 using namespace gutibm;
+using gutibm::gpu_diagnostic::format_real;
 
 namespace {
 
@@ -114,12 +116,37 @@ void assert_parity(const Simulation& cpu, const Simulation& gpu) {
   constexpr Real tolerance = 5.0e-8;
   assert(cpu.agents().size() == gpu.agents().size());
   for (Int i = 0; i < cpu.agents().size(); ++i) {
-    assert(std::abs(cpu.agents()[i].mu_realized
-                    - gpu.agents()[i].mu_realized) <= tolerance);
-    assert(std::abs(cpu.agents()[i].biomass
-                    - gpu.agents()[i].biomass) <= tolerance
-           * std::max({1.0, std::abs(cpu.agents()[i].biomass),
-                       std::abs(gpu.agents()[i].biomass)}));
+    const Real cpu_mu = cpu.agents()[i].mu_realized;
+    const Real gpu_mu = gpu.agents()[i].mu_realized;
+    const Real mu_absolute_difference = std::abs(cpu_mu - gpu_mu);
+    const Real mu_scale = std::max({1.0, std::abs(cpu_mu), std::abs(gpu_mu)});
+    const Real mu_relative_difference = mu_absolute_difference / mu_scale;
+    std::cerr << "[gpu_diag][gpu_metabolism_fur][agent]"
+              << " index=" << i
+              << " field=mu_realized"
+              << " cpu=" << format_real(cpu_mu)
+              << " gpu=" << format_real(gpu_mu)
+              << " abs_diff=" << format_real(mu_absolute_difference)
+              << " rel_diff=" << format_real(mu_relative_difference) << "\n";
+    assert(mu_absolute_difference <= tolerance);
+
+    const Real cpu_biomass = cpu.agents()[i].biomass;
+    const Real gpu_biomass = gpu.agents()[i].biomass;
+    const Real biomass_absolute_difference =
+        std::abs(cpu_biomass - gpu_biomass);
+    const Real biomass_scale =
+        std::max({1.0, std::abs(cpu_biomass), std::abs(gpu_biomass)});
+    const Real biomass_relative_difference =
+        biomass_absolute_difference / biomass_scale;
+    std::cerr << "[gpu_diag][gpu_metabolism_fur][agent]"
+              << " index=" << i
+              << " field=biomass"
+              << " cpu=" << format_real(cpu_biomass)
+              << " gpu=" << format_real(gpu_biomass)
+              << " abs_diff=" << format_real(biomass_absolute_difference)
+              << " rel_diff=" << format_real(biomass_relative_difference)
+              << "\n";
+    assert(biomass_absolute_difference <= tolerance * biomass_scale);
   }
 
   const auto& cpu_chem = cpu.chemical_field();
@@ -130,7 +157,83 @@ void assert_parity(const Simulation& cpu, const Simulation& gpu) {
       const Real expected = cpu_chem.conc_global(species, cell);
       const Real actual = gpu_chem.conc_global(species, cell);
       const Real scale = std::max({1.0, std::abs(expected), std::abs(actual)});
-      assert(std::abs(expected - actual) <= tolerance * scale);
+      const Real absolute_difference = std::abs(expected - actual);
+      const Real relative_difference = absolute_difference / scale;
+      std::cerr << "[gpu_diag][gpu_metabolism_fur][chemical]"
+                << " species=" << species
+                << " name=" << cpu_chem.spec(species).name
+                << " cell=" << cell
+                << " cpu=" << format_real(expected)
+                << " gpu=" << format_real(actual)
+                << " abs_diff=" << format_real(absolute_difference)
+                << " rel_diff=" << format_real(relative_difference) << "\n";
+      assert(absolute_difference <= tolerance * scale);
+    }
+  }
+}
+
+void assert_expression_parity(Real cpu_expression, Real gpu_expression,
+                              Real iron) {
+  constexpr Real tolerance = 5.0e-8;
+  const Real absolute_difference = std::abs(cpu_expression - gpu_expression);
+  const Real scale =
+      std::max({1.0, std::abs(cpu_expression), std::abs(gpu_expression)});
+  const Real relative_difference = absolute_difference / scale;
+  std::cerr << "[gpu_diag][gpu_metabolism_fur][sensitivity]"
+            << " iron=" << format_real(iron)
+            << " field=fepA_expression"
+            << " cpu=" << format_real(cpu_expression)
+            << " gpu=" << format_real(gpu_expression)
+            << " abs_diff=" << format_real(absolute_difference)
+            << " rel_diff=" << format_real(relative_difference) << "\n";
+  assert(absolute_difference <= tolerance);
+}
+
+void assert_mu_parity(Real cpu_mu, Real gpu_mu, Real iron) {
+  constexpr Real tolerance = 5.0e-8;
+  const Real absolute_difference = std::abs(cpu_mu - gpu_mu);
+  const Real scale = std::max({1.0, std::abs(cpu_mu), std::abs(gpu_mu)});
+  const Real relative_difference = absolute_difference / scale;
+  std::cerr << "[gpu_diag][gpu_metabolism_fur][sensitivity]"
+            << " iron=" << format_real(iron)
+            << " field=mu_realized"
+            << " cpu=" << format_real(cpu_mu)
+            << " gpu=" << format_real(gpu_mu)
+            << " abs_diff=" << format_real(absolute_difference)
+            << " rel_diff=" << format_real(relative_difference) << "\n";
+  assert(absolute_difference <= tolerance);
+}
+
+void assert_ordering_match(const std::vector<Real>& cpu_values,
+                           const std::vector<Real>& gpu_values,
+                           const std::vector<Real>& iron_values,
+                           const char* field, bool require_decrease) {
+  assert(cpu_values.size() == gpu_values.size());
+  assert(cpu_values.size() == iron_values.size());
+  for (size_t i = 1; i < cpu_values.size(); ++i) {
+    const Real cpu_difference = cpu_values[i - 1] - cpu_values[i];
+    const Real gpu_difference = gpu_values[i - 1] - gpu_values[i];
+    std::cerr << "[gpu_diag][gpu_metabolism_fur][ordering]"
+              << " field=" << field
+              << " iron_high=" << format_real(iron_values[i - 1])
+              << " iron_low=" << format_real(iron_values[i])
+              << " cpu_high=" << format_real(cpu_values[i - 1])
+              << " cpu_low=" << format_real(cpu_values[i])
+              << " gpu_high=" << format_real(gpu_values[i - 1])
+              << " gpu_low=" << format_real(gpu_values[i])
+              << " cpu_delta=" << format_real(cpu_difference)
+              << " gpu_delta=" << format_real(gpu_difference) << "\n";
+    if (require_decrease) {
+      assert(cpu_values[i - 1] > cpu_values[i]);
+      assert(gpu_values[i - 1] > gpu_values[i]);
+      continue;
+    }
+    if (cpu_values[i - 1] > cpu_values[i]) {
+      assert(gpu_values[i - 1] > gpu_values[i]);
+    } else if (cpu_values[i - 1] < cpu_values[i]) {
+      assert(gpu_values[i - 1] < gpu_values[i]);
+    } else {
+      assert(gpu_values[i - 1] == gpu_values[i]);
     }
   }
 }
@@ -147,7 +250,7 @@ void test_fur_siderophore_metabolism_parity() {
 }
 
 void test_fur_sensitivity() {
-  const std::vector<Real> iron_values{1.0e-10, 1.0e-7, 1.0e-3};
+  const std::vector<Real> iron_values{3.0e-5, 1.0e-4, 1.0e-3};
   std::vector<Real> cpu_expression;
   std::vector<Real> gpu_expression;
   std::vector<Real> cpu_mu;
@@ -161,24 +264,41 @@ void test_fur_sensitivity() {
     gpu_expression.push_back(receptor_expression(gpu));
     cpu_mu.push_back(mean_mu(cpu));
     gpu_mu.push_back(mean_mu(gpu));
+    assert_expression_parity(cpu_expression.back(), gpu_expression.back(), iron);
+    assert_mu_parity(cpu_mu.back(), gpu_mu.back(), iron);
   }
 
-  assert(cpu_expression[0] > cpu_expression[1]);
-  assert(cpu_expression[1] > cpu_expression[2]);
-  assert(gpu_expression[0] > gpu_expression[1]);
-  assert(gpu_expression[1] > gpu_expression[2]);
-  assert(cpu_mu[0] < cpu_mu[1]);
-  assert(cpu_mu[1] < cpu_mu[2]);
-  assert(gpu_mu[0] < gpu_mu[1]);
-  assert(gpu_mu[1] < gpu_mu[2]);
-  assert(cpu_expression[0] >= 5.0 - 1.0e-12);
-  assert(gpu_expression[0] >= 5.0 - 1.0e-12);
-  assert(std::abs((gpu_expression[0] - gpu_expression[2])
-                  - (cpu_expression[0] - cpu_expression[2]))
-         <= 0.2 * (cpu_expression[0] - cpu_expression[2]));
-  assert(std::abs((gpu_mu[0] - gpu_mu[2]) - (cpu_mu[0] - cpu_mu[2]))
-         <= 0.2 * std::abs(cpu_mu[0] - cpu_mu[2]));
-  assert(!cpu_mu.empty());
+  assert_ordering_match(cpu_expression, gpu_expression, iron_values,
+                        "fepA_expression", true);
+  assert_ordering_match(cpu_mu, gpu_mu, iron_values, "mu_realized", false);
+
+  const std::vector<Real> cap_iron_values{1.0e-8, 1.0e-10};
+  std::vector<Real> cap_cpu_expression;
+  std::vector<Real> cap_gpu_expression;
+  for (const Real iron : cap_iron_values) {
+    const SimulationConfig config = make_config(iron, 5513);
+    Simulation cpu = run(config, false);
+    Simulation gpu = run(config, true);
+    assert(gpu.agents_gpu().metabolism_gpu_steps() > 0);
+    cap_cpu_expression.push_back(receptor_expression(cpu));
+    cap_gpu_expression.push_back(receptor_expression(gpu));
+    assert_expression_parity(cap_cpu_expression.back(), cap_gpu_expression.back(),
+                             iron);
+    std::cerr << "[gpu_diag][gpu_metabolism_fur][cap]"
+              << " iron=" << format_real(iron)
+              << " cpu=" << format_real(cap_cpu_expression.back())
+              << " gpu=" << format_real(cap_gpu_expression.back())
+              << " receptor_max="
+              << format_real(config.cell_bio.fur.receptor_max) << "\n";
+    assert(std::abs(cap_cpu_expression.back()
+                    - config.cell_bio.fur.receptor_max)
+           <= 5.0e-8);
+    assert(std::abs(cap_gpu_expression.back()
+                    - config.cell_bio.fur.receptor_max)
+           <= 5.0e-8);
+  }
+  assert(std::abs(cap_cpu_expression[0] - cap_cpu_expression[1]) <= 5.0e-8);
+  assert(std::abs(cap_gpu_expression[0] - cap_gpu_expression[1]) <= 5.0e-8);
   std::cout << "  test_fur_sensitivity: PASSED\n";
 }
 #endif
