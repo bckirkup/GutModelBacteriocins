@@ -447,21 +447,22 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
 
   const Int carbon_idx = find_chemical_spec(cfg.chemicals, species::CARBON);
   if (carbon_idx >= 0) {
+    using enum EpithelialBoundaryMode;
     auto& carbon = cfg.chemicals[static_cast<size_t>(carbon_idx)];
     carbon.epithelial_transfer_coeff = cfg.carbon_epithelial_transfer_coeff;
     carbon.epithelial_flux = cfg.carbon_epithelial_flux;
     if (cfg.carbon_epithelial_boundary == "dirichlet") {
-      carbon.epithelial_boundary_mode = EpithelialBoundaryMode::Dirichlet;
+      carbon.epithelial_boundary_mode = Dirichlet;
     } else if (cfg.carbon_epithelial_boundary == "robin") {
-      carbon.epithelial_boundary_mode = EpithelialBoundaryMode::Robin;
+      carbon.epithelial_boundary_mode = Robin;
     } else if (cfg.carbon_epithelial_boundary == "flux") {
-      carbon.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
+      carbon.epithelial_boundary_mode = Flux;
     } else {
       throw ConfigError(
           "invalid carbon.epithelial_boundary: expected 'dirichlet', "
           "'robin', or 'flux', got '" + cfg.carbon_epithelial_boundary + "'");
     }
-    if (carbon.epithelial_boundary_mode != EpithelialBoundaryMode::Dirichlet
+    if (carbon.epithelial_boundary_mode != Dirichlet
         && carbon.z_gradient_enabled) {
       throw ConfigError(
           "carbon z-gradient cannot be combined with Robin or flux "

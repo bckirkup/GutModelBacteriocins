@@ -316,13 +316,15 @@ Real diffuse_bounded_z_delivery(
   const Int nx = domain.nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
-  const auto load_line = [&](Int ix, Int iy, std::vector<Real>& line) {
+  const auto load_line = [&concentration, &domain, nz](
+                             Int ix, Int iy, std::vector<Real>& line) {
     for (Int iz = 0; iz < nz; ++iz) {
       line[static_cast<size_t>(iz)] =
           concentration[static_cast<size_t>(domain.cell_index(ix, iy, iz))];
     }
   };
-  const auto store_line = [&](Int ix, Int iy,
+  const auto store_line = [&concentration, &domain, nz](
+                              Int ix, Int iy,
                               const std::vector<Real>& line) {
     for (Int iz = 0; iz < nz; ++iz) {
       concentration[static_cast<size_t>(domain.cell_index(ix, iy, iz))] =
@@ -915,14 +917,16 @@ Real diffuse_bounded_z_delivery_slab(
   const Int ny = domain.ny();
   const Int nz = domain.nz();
   const Int local_nx = domain.local_grid_nx();
-  const auto load_line = [&](Int ix, Int iy, std::vector<Real>& line) {
+  const auto load_line = [&concentration, storage_nx, halo_width, ny, nz](
+                             Int ix, Int iy, std::vector<Real>& line) {
     for (Int iz = 0; iz < nz; ++iz) {
       line[static_cast<size_t>(iz)] = concentration[
           static_cast<size_t>(slab_storage_index(
               halo_width + ix, iy, iz, storage_nx, ny))];
     }
   };
-  const auto store_line = [&](Int ix, Int iy,
+  const auto store_line = [&concentration, storage_nx, halo_width, ny, nz](
+                              Int ix, Int iy,
                               const std::vector<Real>& line) {
     for (Int iz = 0; iz < nz; ++iz) {
       concentration[static_cast<size_t>(slab_storage_index(
