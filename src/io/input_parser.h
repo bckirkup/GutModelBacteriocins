@@ -92,6 +92,9 @@ struct SimulationConfig {
   AdvectionConfig advection;
   VBFConfig vbf;
   Real carbon_boundary_conc = 5.0e-3;
+  std::string carbon_epithelial_boundary = "dirichlet";
+  Real carbon_epithelial_transfer_coeff = 0.0;
+  Real carbon_epithelial_flux = 0.0;
   std::vector<ChemicalSpec> chemicals;
   QSSAConfig qssa;
   FixPluginsConfig fixes;

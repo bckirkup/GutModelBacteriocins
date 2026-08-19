@@ -1,12 +1,11 @@
 #ifndef GUTIBM_DIFFUSION_GPU_H
 #define GUTIBM_DIFFUSION_GPU_H
 
+#include "chemical_field.h"
 #include "types.h"
 
 namespace gutibm {
 
-class ChemicalSpec;
-class ChemicalField;
 class Domain;
 
 enum class DiffusionPhase {
@@ -23,8 +22,10 @@ struct SlabDiffusionContext {
   Int owned_storage_x_end;
 };
 
-// True when nx, ny, and nz-1 fit the PCR shared-memory line limit.
-bool gpu_diffusion_line_lengths_supported(const Domain& domain);
+// True when the selected z solve fits the PCR shared-memory line limit.
+bool gpu_diffusion_line_lengths_supported(
+    const Domain& domain,
+    EpithelialBoundaryMode mode = EpithelialBoundaryMode::Dirichlet);
 
 // Apply one backward-Euler directional-splitting diffusion step for a single
 // species directly on a device concentration buffer. Mirrors

@@ -1,5 +1,6 @@
 #include "chemical_field.h"
 #include "domain.h"
+#include "error.h"
 #include "input_parser.h"
 #include "species_names.h"
 
@@ -33,6 +34,17 @@ ChemicalSpec diffusing_species(Real diffusion, Real initial, Real boundary) {
   spec.initial_conc = initial;
   spec.boundary_conc = boundary;
   spec.diffusion_enabled = true;
+  return spec;
+}
+
+ChemicalSpec delivery_species(EpithelialBoundaryMode mode, Real initial,
+                              Real boundary, Real transfer_coeff,
+                              Real flux) {
+  ChemicalSpec spec = diffusing_species(2.1e-9, initial, boundary);
+  spec.epithelial_boundary_mode = mode;
+  spec.epithelial_transfer_coeff = transfer_coeff;
+  spec.epithelial_flux = flux;
+  spec.z_gradient_enabled = false;
   return spec;
 }
 
@@ -414,6 +426,190 @@ void test_gradient_boundary_accounting_is_nonzero() {
   std::cout << "  test_gradient_boundary_accounting_is_nonzero: PASSED\n";
 }
 
+void advance_delivery(ChemicalField& chem, const Domain& domain, Int steps,
+                      Real dt) {
+  for (Int step = 0; step < steps; ++step) {
+    chem.apply_diffusion(domain, dt);
+    chem.flux_accounting().commit_boundary_and_reaction_step();
+    chem.flux_accounting().close_interval();
+  }
+}
+
+Real bottom_average(const ChemicalField& chem, const Domain& domain) {
+  Real total = 0.0;
+  for (Int iy = 0; iy < domain.ny(); ++iy) {
+    for (Int ix = 0; ix < domain.nx(); ++ix) {
+      total += chem.conc(
+          0, domain.cell_index(ix, iy, 0));
+    }
+  }
+  return total / static_cast<Real>(domain.nx() * domain.ny());
+}
+
+void test_delivery_boundary_conservation_and_sensitivity() {
+  Domain domain = make_domain(4, 3, 6);
+  for (const auto mode : {EpithelialBoundaryMode::Robin,
+                          EpithelialBoundaryMode::Flux}) {
+    ChemicalField chem;
+    chem.init(domain, {delivery_species(mode, 0.0, 1.0, 0.0, 0.0)});
+    for (Int cell = 0; cell < chem.ncells(); ++cell) {
+      chem.conc(0, cell) = 0.1 + 0.01 * static_cast<Real>(cell);
+    }
+    const Real before = inventory(chem, domain);
+    chem.apply_diffusion(domain, 30.0);
+    chem.flux_accounting().commit_boundary_and_reaction_step();
+    const Real after = inventory(chem, domain);
+    assert(std::abs(after - before) < 1.0e-12 * before);
+    assert(chem.flux_accounting().boundary_cumulative[0] == 0.0);
+  }
+
+  std::array<Real, 3> robin_bottom{};
+  std::array<Real, 3> robin_supply{};
+  const std::array<Real, 3> transfer_coeffs = {0.0, 2.0e-5, 1.0e-4};
+  for (size_t i = 0; i < transfer_coeffs.size(); ++i) {
+    ChemicalField chem;
+    chem.init(domain, {delivery_species(
+        EpithelialBoundaryMode::Robin, 0.0, 1.0,
+        transfer_coeffs[i], 0.0)});
+    advance_delivery(chem, domain, 50, 1.0);
+    robin_bottom[i] = bottom_average(chem, domain);
+    robin_supply[i] = chem.flux_accounting().boundary_cumulative[0];
+  }
+  assert(robin_bottom[0] < robin_bottom[1]);
+  assert(robin_bottom[1] < robin_bottom[2]);
+  assert(robin_supply[0] < robin_supply[1]);
+  assert(robin_supply[1] < robin_supply[2]);
+
+  std::array<Real, 3> flux_bottom{};
+  std::array<Real, 3> flux_supply{};
+  const std::array<Real, 3> fixed_fluxes = {0.0, 1.0e-10, 2.0e-10};
+  for (size_t i = 0; i < fixed_fluxes.size(); ++i) {
+    ChemicalField chem;
+    chem.init(domain, {delivery_species(
+        EpithelialBoundaryMode::Flux, 0.0, 1.0, 0.0, fixed_fluxes[i])});
+    advance_delivery(chem, domain, 50, 1.0);
+    flux_bottom[i] = bottom_average(chem, domain);
+    flux_supply[i] = chem.flux_accounting().boundary_cumulative[0];
+  }
+  assert(flux_bottom[0] < flux_bottom[1]);
+  assert(flux_bottom[1] < flux_bottom[2]);
+  assert(flux_supply[0] < flux_supply[1]);
+  assert(flux_supply[1] < flux_supply[2]);
+  std::cout << "  test_delivery_boundary_conservation_and_sensitivity: PASSED\n";
+}
+
+void test_delivery_boundary_limits_depletion_and_accounting() {
+  Domain domain = make_domain(4, 3, 6);
+  ChemicalField robin;
+  robin.init(domain, {delivery_species(
+      EpithelialBoundaryMode::Robin, 0.0, 1.0, 1.0e-1, 0.0)});
+  robin.apply_diffusion(domain, 1.0);
+  assert(std::abs(bottom_average(robin, domain) - 1.0) < 1.0e-3);
+
+  const Real flux = 1.0e-10;
+  ChemicalField flux_field;
+  flux_field.init(domain, {delivery_species(
+      EpithelialBoundaryMode::Flux, 0.0, 1.0, 0.0, flux)});
+  advance_delivery(flux_field, domain, 7, 1.0);
+  const Real expected = 7.0 * flux * domain.nx() * domain.ny()
+      * domain.dx_x() * domain.dx_y();
+  assert(std::abs(flux_field.flux_accounting().boundary_cumulative[0]
+                  - expected) < 1.0e-24);
+
+  ChemicalField control;
+  control.init(domain, {delivery_species(
+      EpithelialBoundaryMode::Flux, 0.1, 1.0, 0.0, 1.0e-14)});
+  const Real control_before = inventory(control, domain);
+  for (Int step = 0; step < 200; ++step) {
+    control.apply_diffusion(domain, 1.0);
+  }
+  const Real control_after = inventory(control, domain);
+  assert(control_after >= control_before);
+  const Real control_bottom = bottom_average(control, domain);
+
+  ChemicalField depleted;
+  depleted.init(domain, {delivery_species(
+      EpithelialBoundaryMode::Flux, 0.1, 1.0, 0.0, 1.0e-14)});
+  const Int sink_cell = domain.cell_index(1, 1, 2);
+  for (Int step = 0; step < 200; ++step) {
+    depleted.conc(0, sink_cell) =
+        std::max(0.0, depleted.conc(0, sink_cell) - 2.0e-2);
+    depleted.apply_diffusion(domain, 1.0);
+  }
+  assert(control_bottom - bottom_average(depleted, domain) > 0.05);
+  std::cout << "  test_delivery_boundary_limits_depletion_and_accounting: PASSED\n";
+}
+
+void test_delivery_boundary_slab_matches_replicated() {
+  DomainConfig cfg;
+  cfg.hi = {40.0e-6, 15.0e-6, 30.0e-6};
+  cfg.grid_dx = 5.0e-6;
+  cfg.grid_halo_width = 2;
+  Domain domain;
+  domain.init(cfg);
+  for (const auto mode : {EpithelialBoundaryMode::Robin,
+                          EpithelialBoundaryMode::Flux}) {
+    const ChemicalSpec spec = delivery_species(
+        mode, 0.0, 1.0, mode == EpithelialBoundaryMode::Robin ? 2.0e-5 : 0.0,
+        mode == EpithelialBoundaryMode::Flux ? 1.0e-10 : 0.0);
+    ChemicalField replicated;
+    ChemicalField slab;
+    replicated.init(domain, {spec});
+    slab.init(domain, {spec}, "slab");
+    for (Int cell = 0; cell < domain.ncells(); ++cell) {
+      const Real value = 0.01 * static_cast<Real>(cell + 1);
+      replicated.conc_global(0, cell) = value;
+      slab.conc_global(0, cell) = value;
+    }
+    replicated.apply_diffusion(domain, 2.0);
+    slab.apply_diffusion(domain, 2.0);
+    for (Int cell = 0; cell < domain.ncells(); ++cell) {
+      assert(std::abs(replicated.conc_global(0, cell)
+                      - slab.conc_global(0, cell)) < 1.0e-12);
+    }
+  }
+  std::cout << "  test_delivery_boundary_slab_matches_replicated: PASSED\n";
+}
+
+void test_dirichlet_default_is_unchanged() {
+  Domain domain = make_domain(4, 3, 6);
+  ChemicalSpec implicit_default = diffusing_species(2.1e-9, 0.0, 1.0);
+  ChemicalSpec explicit_dirichlet = implicit_default;
+  explicit_dirichlet.epithelial_boundary_mode =
+      EpithelialBoundaryMode::Dirichlet;
+  ChemicalField default_field;
+  ChemicalField explicit_field;
+  default_field.init(domain, {implicit_default});
+  explicit_field.init(domain, {explicit_dirichlet});
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    const Real value = 0.01 * static_cast<Real>(cell + 1);
+    default_field.conc(0, cell) = value;
+    explicit_field.conc(0, cell) = value;
+  }
+  default_field.apply_diffusion(domain, 2.0);
+  explicit_field.apply_diffusion(domain, 2.0);
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    assert(default_field.conc(0, cell) == explicit_field.conc(0, cell));
+  }
+  std::cout << "  test_dirichlet_default_is_unchanged: PASSED\n";
+}
+
+void test_delivery_boundary_rejects_gradient() {
+  Domain domain = make_domain(3, 2, 4);
+  ChemicalSpec spec = delivery_species(
+      EpithelialBoundaryMode::Robin, 0.0, 1.0, 1.0e-5, 0.0);
+  spec.z_gradient_enabled = true;
+  bool rejected = false;
+  try {
+    ChemicalField chem;
+    chem.init(domain, {spec});
+  } catch (const ConfigError&) {
+    rejected = true;
+  }
+  assert(rejected);
+  std::cout << "  test_delivery_boundary_rejects_gradient: PASSED\n";
+}
+
 void test_default_species_configuration() {
   const SimulationConfig cfg = InputParser::default_config();
   const auto diffusion_enabled = [&cfg](std::string_view name) {
@@ -452,6 +648,11 @@ int main() {
   test_boundary_accounting_closes_diffusion_only_inventory();
   test_boundary_accounting_is_boundary_concentration_sensitive();
   test_gradient_boundary_accounting_is_nonzero();
+  test_delivery_boundary_conservation_and_sensitivity();
+  test_delivery_boundary_limits_depletion_and_accounting();
+  test_delivery_boundary_slab_matches_replicated();
+  test_dirichlet_default_is_unchanged();
+  test_delivery_boundary_rejects_gradient();
   test_default_species_configuration();
   std::cout << "All nutrient diffusion tests passed.\n";
   return 0;

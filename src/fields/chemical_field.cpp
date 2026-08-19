@@ -235,6 +235,104 @@ Real diffuse_bounded_z(std::vector<Real>& concentration,
   return face_exchange;
 }
 
+class DeliveryBottomLineSolver {
+ public:
+  DeliveryBottomLineSolver(Int size, Real alpha,
+                           EpithelialBoundaryMode mode, Real beta)
+      : size_(size), alpha_(alpha), beta_(beta), mode_(mode) {
+    if (size_ <= 0) return;
+    std::vector lower(static_cast<size_t>(std::max(size_ - 1, 0)), -alpha_);
+    std::vector upper(static_cast<size_t>(std::max(size_ - 1, 0)), -alpha_);
+    std::vector diagonal(static_cast<size_t>(size_), 1.0 + 2.0 * alpha_);
+    diagonal.front() = mode_ == EpithelialBoundaryMode::Robin
+        ? 1.0 + alpha_ + beta_ : 1.0 + alpha_;
+    diagonal.back() = 1.0 + alpha_;
+    factorization_.factorize(lower, diagonal, upper);
+  }
+
+  void solve(std::vector<Real>& values, Real source) const {
+    if (size_ <= 0) return;
+    values.front() += source;
+    factorization_.solve_in_place(values);
+  }
+
+ private:
+  Int size_ = 0;
+  Real alpha_ = 0.0;
+  Real beta_ = 0.0;
+  EpithelialBoundaryMode mode_ = EpithelialBoundaryMode::Flux;
+  TridiagonalFactorization factorization_;
+};
+
+struct DeliveryBoundaryParameters {
+  Real boundary_conc = 0.0;
+  Real beta = 0.0;
+  Real flux_source = 0.0;
+  EpithelialBoundaryMode mode = EpithelialBoundaryMode::Flux;
+  Real cell_volume = 0.0;
+};
+
+template <typename LoadLine, typename StoreLine>
+Real diffuse_bounded_z_delivery_impl(
+    Int nx, Int ny, Int nz, Real alpha,
+    const DeliveryBoundaryParameters& params,
+    LoadLine load_line, StoreLine store_line) {
+  if (nz <= 0) return 0.0;
+
+  const DeliveryBottomLineSolver solver(nz, alpha, params.mode, params.beta);
+  Real face_exchange = 0.0;
+  #ifdef GUTIBM_OPENMP
+  #pragma omp parallel
+  #endif
+  {
+    std::vector<Real> line(static_cast<size_t>(nz));
+    #ifdef GUTIBM_OPENMP
+    #pragma omp for collapse(2) schedule(static)
+    #endif
+    for (Int iy = 0; iy < ny; ++iy) {
+      for (Int ix = 0; ix < nx; ++ix) {
+        load_line(ix, iy, line);
+        const Real source = params.mode == EpithelialBoundaryMode::Robin
+            ? params.beta * params.boundary_conc : params.flux_source;
+        solver.solve(line, source);
+        const Real realized = params.mode == EpithelialBoundaryMode::Robin
+            ? params.beta * (params.boundary_conc - line.front())
+                * params.cell_volume
+            : params.flux_source * params.cell_volume;
+        #ifdef GUTIBM_OPENMP
+        #pragma omp atomic
+        #endif
+        face_exchange += realized;
+        store_line(ix, iy, line);
+      }
+    }
+  }
+  return face_exchange;
+}
+
+Real diffuse_bounded_z_delivery(
+    std::vector<Real>& concentration, const Domain& domain, Real alpha,
+    const DeliveryBoundaryParameters& params) {
+  const Int nx = domain.nx();
+  const Int ny = domain.ny();
+  const Int nz = domain.nz();
+  const auto load_line = [&](Int ix, Int iy, std::vector<Real>& line) {
+    for (Int iz = 0; iz < nz; ++iz) {
+      line[static_cast<size_t>(iz)] =
+          concentration[static_cast<size_t>(domain.cell_index(ix, iy, iz))];
+    }
+  };
+  const auto store_line = [&](Int ix, Int iy,
+                              const std::vector<Real>& line) {
+    for (Int iz = 0; iz < nz; ++iz) {
+      concentration[static_cast<size_t>(domain.cell_index(ix, iy, iz))] =
+          line[static_cast<size_t>(iz)];
+    }
+  };
+  return diffuse_bounded_z_delivery_impl(
+      nx, ny, nz, alpha, params, load_line, store_line);
+}
+
 Real set_epithelial_boundary(std::vector<Real>& concentration,
                              const Domain& domain,
                              Real boundary_conc,
@@ -300,27 +398,49 @@ void clamp_nonnegative(std::vector<Real>& concentration) {
   }
 }
 
+void validate_chemical_decomposition(const Domain& domain,
+                                    std::string_view decomposition) {
+  if (decomposition != "replicated" && decomposition != "slab") {
+    throw ConfigError("invalid chemistry decomposition mode");
+  }
+  if (decomposition != "slab") return;
+
+  const auto required_halo = static_cast<Int>(
+      std::ceil(domain.ghost_width() / domain.dx_x()));
+  if (domain.grid_halo_width() < required_halo) {
+    throw ConfigError(
+        "slab chemistry requires grid_halo_width >= ceil(ghost_width / dx)");
+  }
+  if (domain.local_grid_nx() < domain.grid_halo_width()) {
+    throw ConfigError(
+        "slab chemistry requires each owned x-slab to be at least "
+        "grid_halo_width cells wide");
+  }
+}
+
+void validate_epithelial_delivery(const std::vector<ChemicalSpec>& specs) {
+  for (const auto& spec : specs) {
+    if (spec.epithelial_transfer_coeff < 0.0
+        || spec.epithelial_flux < 0.0) {
+      throw ConfigError(
+          "epithelial delivery coefficients and fluxes must be nonnegative");
+    }
+    if (spec.epithelial_boundary_mode != EpithelialBoundaryMode::Dirichlet
+        && spec.z_gradient_enabled) {
+      throw ConfigError(
+          "z_gradient_enabled cannot be combined with Robin or flux "
+          "epithelial boundary modes");
+    }
+  }
+}
+
 }  // namespace
 
 void ChemicalField::init(const Domain& domain,
                           const std::vector<ChemicalSpec>& specs,
                           std::string_view decomposition) {
-  if (decomposition != "replicated" && decomposition != "slab") {
-    throw ConfigError("invalid chemistry decomposition mode");
-  }
-  if (decomposition == "slab") {
-    const auto required_halo = static_cast<Int>(
-        std::ceil(domain.ghost_width() / domain.dx_x()));
-    if (domain.grid_halo_width() < required_halo) {
-      throw ConfigError(
-          "slab chemistry requires grid_halo_width >= ceil(ghost_width / dx)");
-    }
-    if (domain.local_grid_nx() < domain.grid_halo_width()) {
-      throw ConfigError(
-          "slab chemistry requires each owned x-slab to be at least "
-          "grid_halo_width cells wide");
-    }
-  }
+  validate_chemical_decomposition(domain, decomposition);
+  validate_epithelial_delivery(specs);
 
   domain_ = &domain;
   mode_ = decomposition == "slab"
@@ -788,6 +908,32 @@ Real diffuse_bounded_z_slab(
   return face_exchange;
 }
 
+Real diffuse_bounded_z_delivery_slab(
+    std::vector<Real>& concentration, const Domain& domain, Int storage_nx,
+    Int halo_width, Real alpha,
+    const DeliveryBoundaryParameters& params) {
+  const Int ny = domain.ny();
+  const Int nz = domain.nz();
+  const Int local_nx = domain.local_grid_nx();
+  const auto load_line = [&](Int ix, Int iy, std::vector<Real>& line) {
+    for (Int iz = 0; iz < nz; ++iz) {
+      line[static_cast<size_t>(iz)] = concentration[
+          static_cast<size_t>(slab_storage_index(
+              halo_width + ix, iy, iz, storage_nx, ny))];
+    }
+  };
+  const auto store_line = [&](Int ix, Int iy,
+                              const std::vector<Real>& line) {
+    for (Int iz = 0; iz < nz; ++iz) {
+      concentration[static_cast<size_t>(slab_storage_index(
+          halo_width + ix, iy, iz, storage_nx, ny))] =
+          line[static_cast<size_t>(iz)];
+    }
+  };
+  return diffuse_bounded_z_delivery_impl(
+      local_nx, ny, nz, alpha, params, load_line, store_line);
+}
+
 Real set_epithelial_boundary_slab(
     std::vector<Real>& concentration, const Domain& domain,
     Int storage_nx, Int halo_width, Real boundary_conc, Real cell_volume) {
@@ -886,9 +1032,12 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
     Real diffusion_boundary = chemical.boundary_conc;
 
     const Real cell_volume = domain.cell_volume();
-    flux_accounting_.add_boundary(
-        s, set_epithelial_boundary(concentration, domain,
-                                   chemical.boundary_conc, cell_volume));
+    if (chemical.epithelial_boundary_mode
+        == EpithelialBoundaryMode::Dirichlet) {
+      flux_accounting_.add_boundary(
+          s, set_epithelial_boundary(concentration, domain,
+                                     chemical.boundary_conc, cell_volume));
+    }
     if (preserve_gradient) {
       // The configured z-gradient is an environmental background profile.
       // Diffuse reaction-driven departures from it rather than erasing it.
@@ -902,18 +1051,36 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
 
     diffuse_periodic_x(concentration, domain, alpha_x);
     diffuse_periodic_y(concentration, domain, alpha_y);
-    flux_accounting_.add_boundary(
-        s, diffuse_bounded_z(concentration, domain, alpha_z,
-                             diffusion_boundary, cell_volume));
+    if (chemical.epithelial_boundary_mode
+        == EpithelialBoundaryMode::Dirichlet) {
+      flux_accounting_.add_boundary(
+          s, diffuse_bounded_z(concentration, domain, alpha_z,
+                               diffusion_boundary, cell_volume));
+    } else {
+      const Real beta = chemical.epithelial_boundary_mode
+          == EpithelialBoundaryMode::Robin
+          ? chemical.epithelial_transfer_coeff * dt / domain.dx_z() : 0.0;
+      const Real flux_source = chemical.epithelial_boundary_mode
+          == EpithelialBoundaryMode::Flux
+          ? chemical.epithelial_flux * dt / domain.dx_z() : 0.0;
+      flux_accounting_.add_boundary(
+          s, diffuse_bounded_z_delivery(
+                 concentration, domain, alpha_z,
+                 {chemical.boundary_conc, beta, flux_source,
+                  chemical.epithelial_boundary_mode, cell_volume}));
+    }
 
     if (preserve_gradient) {
       shift_z_gradient(concentration, chemical, domain, 1.0);
       set_luminal_neumann_boundary(concentration, domain);
     }
     clamp_nonnegative(concentration);
-    flux_accounting_.add_boundary(
-        s, set_epithelial_boundary(concentration, domain,
-                                   chemical.boundary_conc, cell_volume));
+    if (chemical.epithelial_boundary_mode
+        == EpithelialBoundaryMode::Dirichlet) {
+      flux_accounting_.add_boundary(
+          s, set_epithelial_boundary(concentration, domain,
+                                     chemical.boundary_conc, cell_volume));
+    }
   }
 }
 
@@ -967,8 +1134,25 @@ void ChemicalField::apply_bounded_z_diffusion(const Domain& domain, Real dt,
       chemical.diff_coeff / chemical.retardation;
   const Real alpha = effective_diffusion * dt
       / (domain.dx_z() * domain.dx_z());
-  diffuse_bounded_z(conc_[static_cast<size_t>(spec)], domain, alpha,
-                    chemical.boundary_conc, domain.cell_volume());
+  if (chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Dirichlet) {
+    flux_accounting_.add_boundary(
+        spec, diffuse_bounded_z(
+                  conc_[static_cast<size_t>(spec)], domain, alpha,
+                  chemical.boundary_conc, domain.cell_volume()));
+  } else {
+    const Real beta = chemical.epithelial_boundary_mode
+        == EpithelialBoundaryMode::Robin
+        ? chemical.epithelial_transfer_coeff * dt / domain.dx_z() : 0.0;
+    const Real flux_source = chemical.epithelial_boundary_mode
+        == EpithelialBoundaryMode::Flux
+        ? chemical.epithelial_flux * dt / domain.dx_z() : 0.0;
+    flux_accounting_.add_boundary(
+        spec, diffuse_bounded_z_delivery(
+                  conc_[static_cast<size_t>(spec)], domain, alpha,
+                  {chemical.boundary_conc, beta, flux_source,
+                   chemical.epithelial_boundary_mode, domain.cell_volume()}));
+  }
 }
 
 void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
@@ -991,10 +1175,13 @@ void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
         chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0;
     Real diffusion_boundary = chemical.boundary_conc;
     const Real cell_volume = domain.cell_volume();
-    flux_accounting_.add_boundary(
-        s, set_epithelial_boundary_slab(
-               concentration, domain, storage_nx_, halo_width_,
-               chemical.boundary_conc, cell_volume));
+    if (chemical.epithelial_boundary_mode
+        == EpithelialBoundaryMode::Dirichlet) {
+      flux_accounting_.add_boundary(
+          s, set_epithelial_boundary_slab(
+                 concentration, domain, storage_nx_, halo_width_,
+                 chemical.boundary_conc, cell_volume));
+    }
     if (preserve_gradient) {
       set_luminal_neumann_boundary_slab(
           concentration, domain, storage_nx_, halo_width_);
@@ -1006,10 +1193,25 @@ void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
         concentration, domain, storage_nx_, halo_width_, alpha_x);
     diffuse_periodic_y_slab(
         concentration, domain, storage_nx_, halo_width_, alpha_y);
-    flux_accounting_.add_boundary(
-        s, diffuse_bounded_z_slab(
-               concentration, domain, storage_nx_, halo_width_, alpha_z,
-               diffusion_boundary, cell_volume));
+    if (chemical.epithelial_boundary_mode
+        == EpithelialBoundaryMode::Dirichlet) {
+      flux_accounting_.add_boundary(
+          s, diffuse_bounded_z_slab(
+                 concentration, domain, storage_nx_, halo_width_, alpha_z,
+                 diffusion_boundary, cell_volume));
+    } else {
+      const Real beta = chemical.epithelial_boundary_mode
+          == EpithelialBoundaryMode::Robin
+          ? chemical.epithelial_transfer_coeff * dt / domain.dx_z() : 0.0;
+      const Real flux_source = chemical.epithelial_boundary_mode
+          == EpithelialBoundaryMode::Flux
+          ? chemical.epithelial_flux * dt / domain.dx_z() : 0.0;
+      flux_accounting_.add_boundary(
+          s, diffuse_bounded_z_delivery_slab(
+                 concentration, domain, storage_nx_, halo_width_, alpha_z,
+                 {chemical.boundary_conc, beta, flux_source,
+                  chemical.epithelial_boundary_mode, cell_volume}));
+    }
     if (preserve_gradient) {
       shift_z_gradient_slab(
           concentration, chemical, domain, storage_nx_, halo_width_, 1.0);
@@ -1018,10 +1220,13 @@ void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
     }
     clamp_nonnegative_slab(
         concentration, domain, storage_nx_, halo_width_);
-    flux_accounting_.add_boundary(
-        s, set_epithelial_boundary_slab(
-               concentration, domain, storage_nx_, halo_width_,
-               chemical.boundary_conc, cell_volume));
+    if (chemical.epithelial_boundary_mode
+        == EpithelialBoundaryMode::Dirichlet) {
+      flux_accounting_.add_boundary(
+          s, set_epithelial_boundary_slab(
+                 concentration, domain, storage_nx_, halo_width_,
+                 chemical.boundary_conc, cell_volume));
+    }
   }
 }
 
@@ -1073,7 +1278,11 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
 
     // z=0 (epithelial surface): Dirichlet for nutrients. When a z-gradient is
     // configured, this is the peak concentration at the epithelium.
-    apply_epithelial_boundary_layer(conc_, domain, s, bc, flux_accounting_);
+    if (specs_[s].epithelial_boundary_mode
+        == EpithelialBoundaryMode::Dirichlet) {
+      apply_epithelial_boundary_layer(
+          conc_, domain, s, bc, flux_accounting_);
+    }
 
     // The implicit z solve enforces the luminal zero-flux condition directly.
     // Non-diffusing fields retain the legacy mirrored top layer.
@@ -1087,10 +1296,13 @@ void ChemicalField::apply_boundaries_slab(const Domain& domain) {
   const Real cell_volume = domain.cell_volume();
   for (Int s = 0; s < nspec_; ++s) {
     auto& concentration = conc_[static_cast<size_t>(s)];
-    flux_accounting_.add_boundary(
-        s, set_epithelial_boundary_slab(
-               concentration, domain, storage_nx_, halo_width_,
-               specs_[s].boundary_conc, cell_volume));
+    if (specs_[s].epithelial_boundary_mode
+        == EpithelialBoundaryMode::Dirichlet) {
+      flux_accounting_.add_boundary(
+          s, set_epithelial_boundary_slab(
+                 concentration, domain, storage_nx_, halo_width_,
+                 specs_[s].boundary_conc, cell_volume));
+    }
     if (!specs_[s].diffusion_enabled && domain.nz() >= 2) {
       set_luminal_neumann_boundary_slab(
           concentration, domain, storage_nx_, halo_width_);

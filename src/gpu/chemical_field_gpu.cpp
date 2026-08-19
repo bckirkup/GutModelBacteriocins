@@ -237,7 +237,6 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   return false;
 #else
   if (!active_) return false;
-  if (!gpu_diffusion_line_lengths_supported(domain)) return false;
 
   bool applied = false;
   std::vector zero(static_cast<size_t>(nspec_), 0.0);
@@ -295,11 +294,13 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
   for (Int s = 0; s < nspec_; ++s) {
     const ChemicalSpec& spec = field.spec(s);
     double* d_conc = d_conc_[static_cast<size_t>(s)].data();
-    gpu::launch_set_epithelial_boundary(
-        d_conc, nx, ny, owned_storage_begin, owned_storage_end,
-        spec.boundary_conc,
-        domain.cell_volume(),
-        d_boundary_injected_.data() + s, gpu_compute_stream());
+    if (spec.epithelial_boundary_mode
+        == EpithelialBoundaryMode::Dirichlet) {
+      gpu::launch_set_epithelial_boundary(
+          d_conc, nx, ny, owned_storage_begin, owned_storage_end,
+          spec.boundary_conc, domain.cell_volume(),
+          d_boundary_injected_.data() + s, gpu_compute_stream());
+    }
     if (!spec.diffusion_enabled && nz >= 2) {
       gpu::launch_set_luminal_neumann(
           d_conc, nx, ny, nz,

@@ -29,9 +29,11 @@ was invisible for so long.
 | Agent uptake | `FixMetabolism::grow_agent()` writing negative reaction into `chem.reac` | strain `mu_max`, `K_carbon` |
 | **Epithelial boundary** | net exchange across the `z=0` face, including the clamp and implicit z-solve boundary exchange | `carbon.boundary_conc` or `carbon_boundary_conc` |
 
-The first three are bounded by parameters. The fourth is a **Dirichlet
+The first three are bounded by parameters. The fourth defaults to a **Dirichlet
 reservoir with no inventory behind it**: whatever the interior loses, the clamp
-restores, forever.
+restores, forever. Carbon can instead select a finite-rate `robin` or `flux`
+delivery variant at runtime; those variants meter epithelial supply through the
+bottom face.
 
 ## 2. Measured scale of each term (calibration defaults)
 
@@ -157,9 +159,9 @@ happens when the interior is richer than the boundary). `vbf_sink_*` and
 
 ## 5. How the numbers are obtained (and why it matters that they are cheap)
 
-- **Boundary flux is taken where the boundary is applied.** The accounting
-  adds two `O(nx·ny)` contributions per diffusing species to the existing
-  boundary channel:
+- **Boundary flux is taken where the boundary is applied.** For the default
+  Dirichlet mode, the accounting adds two `O(nx·ny)` contributions per
+  diffusing species to the existing boundary channel:
   1. the clamp-discard term
      `(boundary_conc - conc[idx]) · cell_volume` from
      `set_epithelial_boundary()`;
@@ -170,6 +172,11 @@ happens when the interior is richer than the boundary). `vbf_sink_*` and
   gradient-preserving path, `diffusion_boundary = 0` for the departure
   field; the resulting exchange is still part of the epithelial boundary
   channel.
+- **Finite-rate delivery is post-solve accounting.** Robin solves all `nz`
+  cells with `beta = k·dt/dx_z` and records
+  `beta·(C_epi - c0_after)·cell_volume` per bottom cell. Flux records
+  `J·area·dt` per bottom face. These realized amounts are added directly to
+  `boundary_cumulative`; no boundary clamp is applied in either mode.
 - **The prescribed z-gradient is deliberately excluded.** Its
   subtract-diffuse-re-add is linear superposition and adds no net mass; the
   departure-field exchange at the z=0 face is included in the z-solve
@@ -219,10 +226,13 @@ on for a whole campaign rather than switching it on for audits.
 - Agent-side uptake can still overdraw a cell because realized uptake is not
   yet fed back into growth. That remains an open follow-up and is not fixed
   here.
-- **Whether the boundary should be Dirichlet at all.** A flux (Neumann/Robin)
-  boundary calibrated to mucin turnover would give the epithelium a *delivery
-  rate* instead of an infinite pantry, which is what makes growth-versus-washout
-  a meaningful contest. This is a modelling decision, not a bug fix.
+- **Finite-rate epithelial delivery is implemented.** Set
+  `carbon.epithelial_boundary` (or `carbon_epithelial_boundary`) to `robin` or
+  `flux`. Robin uses `carbon.epithelial_transfer_coeff` in m/s and
+  `carbon.boundary_conc` as `C_epi`; flux uses
+  `carbon.epithelial_flux` in mol/m²/s. The default remains bit-compatible
+  Dirichlet. These modes cannot be combined with `carbon_z_gradient`, because
+  the gradient reference profile is pinned at the epithelial boundary.
 - **Whether `boundary_conc == K_carbon` is intentional.** It fixes realized μ at
   half-max near the epithelium by construction.
 - **Whether the VBF Monod sink has independent biological calibration** or was

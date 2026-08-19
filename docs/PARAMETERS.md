@@ -169,6 +169,9 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 | `ChemicalSpec.z_gradient_lambda` | 25e-6 | m | Characteristic decay length |
 | `carbon_z_gradient` | true | — | Config file key for carbon gradient |
 | `carbon_z_lambda` | 25e-6 | m | Config file key for carbon decay length |
+| `carbon.epithelial_boundary` / `carbon_epithelial_boundary` | `dirichlet` | — | Epithelial z=0 mode: fixed concentration, Robin delivery, or fixed flux |
+| `carbon.epithelial_transfer_coeff` / `carbon_epithelial_transfer_coeff` | 0 | m/s | Robin mass-transfer coefficient `k` |
+| `carbon.epithelial_flux` / `carbon_epithelial_flux` | 0 | mol/m²/s | Fixed epithelial delivery flux `J` |
 
 **Profile:** `C(z) = C_max * exp(-z_rel / lambda)` where `z_rel` is the distance from the epithelium (z=0).
 
@@ -176,7 +179,7 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 
 ### Nutrient Diffusion (Spec 7)
 
-Nutrients and small molecules use backward-Euler directional splitting in `ChemicalField::apply_diffusion`. Each x/y line is solved with periodic boundaries; z uses a fixed epithelial concentration at z=0 and zero flux at the luminal face. The solve is L-stable and concentrations are clamped nonnegative, so it runs once per biological timestep without explicit CFL substeps. When `z_gradient_enabled` is true, the configured exponential profile is treated as a prescribed environmental background and diffusion smooths departures from that profile.
+Nutrients and small molecules use backward-Euler directional splitting in `ChemicalField::apply_diffusion`. Each x/y line is solved with periodic boundaries and the luminal z face has zero flux. The epithelial z=0 face defaults to fixed concentration (`dirichlet`); `robin` uses `J = k(C_epi - c0)` and `flux` uses a fixed `J`, with the bottom cell included as an unknown in both delivery modes. The solve is L-stable and concentrations are clamped nonnegative, so it runs once per biological timestep without explicit CFL substeps. Boundary exchange is recorded after the solve in mol. `z_gradient_enabled` is incompatible with Robin and flux modes because its pinned reference profile assumes a Dirichlet boundary.
 
 | Species | Effective configuration | Diffusion enabled |
 |---------|-------------------------|-------------------|

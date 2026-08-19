@@ -106,6 +106,12 @@ struct NutrientFluxAccounting {
   }
 };
 
+enum class EpithelialBoundaryMode {
+  Dirichlet,
+  Robin,
+  Flux,
+};
+
 struct ChemicalSpec {
   std::string name;
   Real diff_coeff = 0.0;       // diffusion coefficient in free water (m^2/s)
@@ -121,6 +127,11 @@ struct ChemicalSpec {
   // Stable backward-Euler directional diffusion for nutrients/small molecules.
   // Toxin fields remain false because QSSA Green's functions handle them.
   bool diffusion_enabled = false;
+
+  EpithelialBoundaryMode epithelial_boundary_mode =
+      EpithelialBoundaryMode::Dirichlet;
+  Real epithelial_transfer_coeff = 0.0;  // Robin k (m/s)
+  Real epithelial_flux = 0.0;             // fixed flux J (mol/m^2/s)
 };
 
 class ChemicalField {

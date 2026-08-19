@@ -302,6 +302,23 @@ std::vector<Probe> build_probes() {
   v.push_back(R("carbon_z_lambda", [](const SimulationConfig& c) { return carbon_spec(c).z_gradient_lambda; }));
   add_ns_real(v, "carbon.boundary_conc", "carbon_boundary_conc",
               [](const SimulationConfig& c) { return c.carbon_boundary_conc; });
+  v.push_back(S("carbon.epithelial_boundary",
+                [](const SimulationConfig& c) {
+                  return c.carbon_epithelial_boundary;
+                }, "robin"));
+  v.push_back(S("carbon_epithelial_boundary",
+                [](const SimulationConfig& c) {
+                  return c.carbon_epithelial_boundary;
+                }, "flux", false));
+  add_ns_real(v, "carbon.epithelial_transfer_coeff",
+              "carbon_epithelial_transfer_coeff",
+              [](const SimulationConfig& c) {
+                return c.carbon_epithelial_transfer_coeff;
+              });
+  add_ns_real(v, "carbon.epithelial_flux", "carbon_epithelial_flux",
+              [](const SimulationConfig& c) {
+                return c.carbon_epithelial_flux;
+              });
   v.push_back(R("sos_lysis_prob", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_lysis_prob; }));
   v.push_back(R("sos_basal_rate", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_basal_rate; }));
   v.push_back(R("sos_cross_induction_rate", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_cross_induction_rate; }));

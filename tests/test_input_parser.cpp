@@ -342,6 +342,27 @@ void test_chem_env_fixture() {
   std::cout << "  test_chem_env_fixture: PASSED\n";
 }
 
+void test_epithelial_boundary_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_epithelial_boundary.json";
+  const SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.carbon_epithelial_boundary == "robin");
+  assert(std::abs(cfg.carbon_epithelial_transfer_coeff - 2.5e-5) < 1e-15);
+  assert(std::abs(cfg.carbon_epithelial_flux - 3.5e-7) < 1e-18);
+  bool found = false;
+  for (const auto& spec : cfg.chemicals) {
+    if (spec.name == "carbon") {
+      found = true;
+      assert(spec.epithelial_boundary_mode
+             == EpithelialBoundaryMode::Robin);
+      assert(std::abs(spec.epithelial_transfer_coeff - 2.5e-5) < 1e-15);
+      assert(std::abs(spec.epithelial_flux - 3.5e-7) < 1e-18);
+    }
+  }
+  assert(found);
+  std::cout << "  test_epithelial_boundary_fixture: PASSED\n";
+}
+
 void test_operating_envelope_fixture() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR) +
                            "/tests/fixtures/parser_operating_envelope.json";
@@ -632,6 +653,32 @@ void test_species_subset_rejects_unknown_modes() {
   std::cout << "  test_species_subset_rejects_unknown_modes: PASSED\n";
 }
 
+void test_epithelial_boundary_rejects_unknown_modes() {
+  SimulationConfig cfg = InputParser::default_config();
+  bool threw = false;
+  try {
+    (void)InputParser::apply_flat_key(
+        cfg, "carbon.epithelial_boundary", "unknown");
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+  assert(threw);
+  std::cout << "  test_epithelial_boundary_rejects_unknown_modes: PASSED\n";
+}
+
+void test_epithelial_boundary_rejects_gradient_conflict() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_epithelial_boundary_gradient_conflict.json";
+  bool threw = false;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError& error) {
+    threw = std::string(error.what()).find("z-gradient") != std::string::npos;
+  }
+  assert(threw);
+  std::cout << "  test_epithelial_boundary_rejects_gradient_conflict: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -649,6 +696,7 @@ int main() {
   test_strain_spawn_integration();
   test_fixes_fixture();
   test_chem_env_fixture();
+  test_epithelial_boundary_fixture();
   test_operating_envelope_fixture();
   test_fix_tunables_fixture();
   test_json_document_parser();
@@ -668,6 +716,8 @@ int main() {
   test_toxin_evaluation_rejects_unknown_modes();
   test_toxin_lumping_rejects_unknown_modes();
   test_species_subset_rejects_unknown_modes();
+  test_epithelial_boundary_rejects_unknown_modes();
+  test_epithelial_boundary_rejects_gradient_conflict();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }

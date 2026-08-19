@@ -1,0 +1,13 @@
+{
+  "total_time": 60,
+  "bio_dt": 60,
+  "domain_x": 50e-6,
+  "domain_y": 25e-6,
+  "domain_z": 25e-6,
+  "grid_dx": 5e-6,
+  "carbon.boundary_conc": 7e-3,
+  "carbon_z_gradient": false,
+  "carbon.epithelial_boundary": "robin",
+  "carbon.epithelial_transfer_coeff": 2.5e-5,
+  "carbon.epithelial_flux": 3.5e-7
+}

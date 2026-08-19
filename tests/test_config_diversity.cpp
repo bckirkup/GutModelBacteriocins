@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "sim_fingerprint.h"
+#include "species_names.h"
 
 #include <array>
 #include <cassert>
@@ -310,6 +311,36 @@ void test_washout_trap_modes_change_outcome() {
   std::cout << "  test_washout_trap_modes_change_outcome: PASSED\n";
 }
 
+void test_carbon_epithelial_boundary_changes_outcome() {
+  SimulationConfig dirichlet = growth_baseline(8021);
+  for (auto& chemical : dirichlet.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  SimulationConfig robin_low = dirichlet;
+  robin_low.carbon_epithelial_boundary = "robin";
+  robin_low.carbon_epithelial_transfer_coeff = 1.0e-6;
+
+  SimulationConfig robin_high = robin_low;
+  robin_high.carbon_epithelial_transfer_coeff = 1.0e-4;
+
+  SimulationConfig flux = dirichlet;
+  flux.carbon_epithelial_boundary = "flux";
+  flux.carbon_epithelial_flux = 1.0e-10;
+
+  const uint64_t fp_dirichlet = run_fingerprint(dirichlet);
+  const uint64_t fp_robin_low = run_fingerprint(robin_low);
+  const uint64_t fp_robin_high = run_fingerprint(robin_high);
+  const uint64_t fp_flux = run_fingerprint(flux);
+  assert(fp_dirichlet != fp_robin_low);
+  assert(fp_robin_low != fp_robin_high);
+  assert(fp_dirichlet != fp_flux);
+
+  std::cout << "  test_carbon_epithelial_boundary_changes_outcome: PASSED\n";
+}
+
 void test_same_config_is_reproducible() {
   SimulationConfig cfg = growth_baseline(9001);
   const uint64_t fp1 = run_fingerprint(cfg);
@@ -330,6 +361,7 @@ int main() {
   test_fix_tunables_reach_simulation();
   test_peristaltic_toggle_changes_fingerprint();
   test_washout_trap_modes_change_outcome();
+  test_carbon_epithelial_boundary_changes_outcome();
   test_same_config_is_reproducible();
   std::cout << "All config diversity tests passed.\n";
   return 0;
