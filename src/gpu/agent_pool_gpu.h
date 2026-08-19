@@ -22,6 +22,19 @@ struct GpuMetabolismBuffers {
   double* d_reac_carbon = nullptr;
   double* d_reac_iron = nullptr;
   double* d_reac_b12 = nullptr;
+  double* d_reac_acetate = nullptr;
+  int iron_uptake_enabled = 1;
+  int b12_uptake_enabled = 1;
+  int eut_enabled = 1;
+  int fur_enabled = 0;
+  double fur_Km = 0.0;
+  double fur_upregulation_max = 0.0;
+  double fur_receptor_max = 0.0;
+  int acetate_enabled = 0;
+  double acetate_overflow_threshold = 0.0;
+  double acetate_overflow_rate = 0.0;
+  double acetate_scavenge_rate = 0.0;
+  double acetate_scavenge_Km = 0.0;
   int o2_enabled = 0;
   double o2_boost_max = 0.0;
   double o2_Km = 0.0;
@@ -31,6 +44,7 @@ struct GpuMetabolismBuffers {
   int owned_global_x_begin = 0;
   int owned_global_x_end = 0;
   int owned_storage_x_begin = 0;
+  int receptor_count = 0;
 };
 
 class AgentPoolGpu {
@@ -38,6 +52,7 @@ class AgentPoolGpu {
   void resize(Int n);
   void sync_from_host(const AgentPool& pool);
   void sync_to_host(AgentPool& pool) const;
+  void sync_receptor_expression_to_host(AgentPool& pool) const;
 
   Int size() const { return size_; }
 
@@ -63,8 +78,10 @@ class AgentPoolGpu {
   double* km_carbon() { return d_km_carbon_.data(); }
   double* receptor_expr() { return d_receptor_expr_.data(); }
   const double* receptor_expr() const { return d_receptor_expr_.data(); }
+  const double* receptor_expr_base() const { return d_receptor_expr_base_.data(); }
   double* ligand_affinity() { return d_ligand_affinity_.data(); }
   const double* ligand_affinity() const { return d_ligand_affinity_.data(); }
+  const int* iron_receptor() const { return d_iron_receptor_.data(); }
   int*    bi_loci_count() { return d_bi_loci_count_.data(); }
   double* plasmid_amelioration() { return d_plasmid_amelioration_.data(); }
 
@@ -93,7 +110,9 @@ class AgentPoolGpu {
   DeviceBuffer<double> d_km_b12_;
   DeviceBuffer<double> d_km_carbon_;
   DeviceBuffer<double> d_receptor_expr_;
+  DeviceBuffer<double> d_receptor_expr_base_;
   DeviceBuffer<double> d_ligand_affinity_;
+  DeviceBuffer<int> d_iron_receptor_;
   DeviceBuffer<double> d_plasmid_amelioration_;
 };
 

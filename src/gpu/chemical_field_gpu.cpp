@@ -160,6 +160,18 @@ void ChemicalFieldGpu::sync_reactions_to_host(ChemicalField& field) {
   }
 }
 
+void ChemicalFieldGpu::accumulate_reactions_to_host(ChemicalField& field) {
+  if (!active_) return;
+  for (Int s = 0; s < nspec_; ++s) {
+    std::vector<double> device_reactions(static_cast<size_t>(ncells_));
+    d_reac_[static_cast<size_t>(s)].download(device_reactions);
+    for (Int c = 0; c < ncells_; ++c) {
+      field.reac(s, c) += device_reactions[static_cast<size_t>(c)];
+    }
+  }
+  zero_reactions_on_device();
+}
+
 void ChemicalFieldGpu::sync_species_concentrations_to_host(ChemicalField& field,
                                                            Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;

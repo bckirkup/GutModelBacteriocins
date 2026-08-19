@@ -6,6 +6,7 @@
 #include "species_names.h"
 #include "simulation.h"
 #include "receptor_utils.h"
+#include <cassert>
 #include <cmath>
 #include <algorithm>
 #ifdef GUTIBM_OPENMP
@@ -39,8 +40,6 @@ Real implicit_ferric_enterobactin_reimport(
 
 bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   if (!sim.gpu_active()) return false;
-  if (sim.config().cell_bio.fur.enabled) return false;
-  if (sim.config().chem_env.siderophore.enabled) return false;
 
   auto& agents = sim.agents();
   Int local_agent_count = 0;
@@ -65,35 +64,56 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   Int i_acetate = chem.find(species::ACETATE);
   Int i_eut = chem.find(species::ETHANOLAMINE);
   Int i_o2 = chem.find(species::OXYGEN);
-  if (const auto& o2cfg = sim.config().chem_env.oxygen;
-      !ag.run_metabolism(
-          sim.domain(), cfg,
-          {
-            i_carbon >= 0 ? cg.conc_device(i_carbon) : nullptr,
-            i_iron >= 0 ? cg.conc_device(i_iron) : nullptr,
-            i_b12 >= 0 ? cg.conc_device(i_b12) : nullptr,
-            i_acetate >= 0 ? cg.conc_device(i_acetate) : nullptr,
-            i_eut >= 0 ? cg.conc_device(i_eut) : nullptr,
-            o2cfg.enabled && i_o2 >= 0 ? cg.conc_device(i_o2) : nullptr,
-            i_carbon >= 0 ? cg.reac_device(i_carbon) : nullptr,
-            i_iron >= 0 ? cg.reac_device(i_iron) : nullptr,
-            i_b12 >= 0 ? cg.reac_device(i_b12) : nullptr,
-            o2cfg.enabled ? 1 : 0,
-            o2cfg.boost_max,
-            o2cfg.Km,
-            sim.domain().nx(),
-            sim.domain().ny(),
-            cg.storage_nx(),
-            cg.slab_mode() ? cg.owned_x_begin() : 0,
-            cg.slab_mode() ? cg.owned_x_end() : sim.domain().nx(),
-            cg.owned_storage_x_begin(),
-          },
-          cg.agent_uptake_device(), dt, local_agent_count)) {
+  const auto& o2cfg = sim.config().chem_env.oxygen;
+  const auto& fur_cfg = sim.config().cell_bio.fur;
+  const auto& acetate_cfg = sim.config().chem_env.acetate;
+  GpuMetabolismBuffers buffers;
+  buffers.d_conc_carbon = i_carbon >= 0 ? cg.conc_device(i_carbon) : nullptr;
+  buffers.d_conc_iron = i_iron >= 0 ? cg.conc_device(i_iron) : nullptr;
+  buffers.d_conc_b12 = i_b12 >= 0 ? cg.conc_device(i_b12) : nullptr;
+  buffers.d_conc_acetate =
+      i_acetate >= 0 ? cg.conc_device(i_acetate) : nullptr;
+  buffers.d_conc_eut = i_eut >= 0 ? cg.conc_device(i_eut) : nullptr;
+  buffers.d_conc_oxygen =
+      o2cfg.enabled && i_o2 >= 0 ? cg.conc_device(i_o2) : nullptr;
+  buffers.d_reac_carbon = i_carbon >= 0 ? cg.reac_device(i_carbon) : nullptr;
+  buffers.d_reac_iron = i_iron >= 0 ? cg.reac_device(i_iron) : nullptr;
+  buffers.d_reac_b12 = i_b12 >= 0 ? cg.reac_device(i_b12) : nullptr;
+  buffers.d_reac_acetate =
+      i_acetate >= 0 ? cg.reac_device(i_acetate) : nullptr;
+  buffers.iron_uptake_enabled = cfg.iron_uptake_enabled ? 1 : 0;
+  buffers.b12_uptake_enabled = cfg.b12_uptake_enabled ? 1 : 0;
+  buffers.eut_enabled = cfg.eut_enabled ? 1 : 0;
+  buffers.fur_enabled = fur_cfg.enabled ? 1 : 0;
+  buffers.fur_Km = fur_cfg.Km;
+  buffers.fur_upregulation_max = fur_cfg.upregulation_max;
+  buffers.fur_receptor_max = fur_cfg.receptor_max;
+  buffers.acetate_enabled = acetate_cfg.enabled ? 1 : 0;
+  buffers.acetate_overflow_threshold = acetate_cfg.overflow_threshold;
+  buffers.acetate_overflow_rate = acetate_cfg.overflow_rate;
+  buffers.acetate_scavenge_rate = acetate_cfg.scavenge_rate;
+  buffers.acetate_scavenge_Km = acetate_cfg.scavenge_Km;
+  buffers.o2_enabled = o2cfg.enabled ? 1 : 0;
+  buffers.o2_boost_max = o2cfg.boost_max;
+  buffers.o2_Km = o2cfg.Km;
+  buffers.global_nx = sim.domain().nx();
+  buffers.global_ny = sim.domain().ny();
+  buffers.storage_nx = cg.storage_nx();
+  buffers.owned_global_x_begin =
+      cg.slab_mode() ? cg.owned_x_begin() : 0;
+  buffers.owned_global_x_end =
+      cg.slab_mode() ? cg.owned_x_end() : sim.domain().nx();
+  buffers.owned_storage_x_begin = cg.owned_storage_x_begin();
+  buffers.receptor_count = NUM_RECEPTORS;
+  if (!ag.run_metabolism(
+          sim.domain(), cfg, buffers, cg.agent_uptake_device(), dt,
+          local_agent_count)) {
     return false;
   }
   ag.sync_to_host(agents);
+  ag.sync_receptor_expression_to_host(agents);
+  cg.accumulate_reactions_to_host(sim.chemical_field());
   cg.download_agent_uptake(sim.chemical_field());
-  sim.set_gpu_metabolism_active(true);
   return true;
 }
 
@@ -103,6 +123,7 @@ void FixMetabolism::compute(Real dt) {
   if (try_gpu_metabolism(sim_, cfg_, dt)) {
     // Division stays in compute (same as CPU path) so fix_bacteriocin in this
     // biology pass can observe just_divided during the division timestep.
+    apply_siderophore_chemistry(dt);
     perform_divisions();
     return;
   }

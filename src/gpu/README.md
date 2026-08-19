@@ -88,7 +88,8 @@ Simulation::step()
   ├─ GPU: sync agents/fields to device after MPI ghost exchange
   ├─ GPU: grid coupling (async stream)
   ├─ CPU: spatial hash rebuild (host)
-  ├─ GPU: FixMetabolism compute (Monod + biomass + O₂ boost; Fur pre-pass on host)
+  ├─ GPU: FixMetabolism compute (Monod + biomass + O₂ boost + Fur modulation +
+  │      acetate overflow/scavenging); siderophore field chemistry host-side
   ├─ GPU: QSSA bacteriocin near-field (`gpu_superpose_to_device`); FMM far-field GPU when locals ready
   ├─ GPU: chemistry_pipeline (O₂, VBF, reactions, diffusion)
   ├─ GPU: receptor kill-prob kernel (Bernoulli kills on host)
@@ -132,7 +133,10 @@ The existing OpenMP/serial CPU implementations are used unchanged.
 ## Not Yet on GPU
 
 - Barnes-Hut FMM octree traversal (`use_fmm=true` far-field M2L is CPU tree-walk; L-eval on GPU when locals ready)
-- Fur iron regulation (`fur.enabled` disables GPU metabolism)
+- Per-agent Fur receptor modulation and acetate overflow/scavenging run in the
+  metabolism kernel. Siderophore secretion, chelation, and ferric-enterobactin
+  reimport remain deliberately host-side because they aggregate per-cell field
+  chemistry.
 - CDI corpse mechanics participation
 - Conjugation, mutation, receptor kill RNG
 - HDF5 checkpoint I/O

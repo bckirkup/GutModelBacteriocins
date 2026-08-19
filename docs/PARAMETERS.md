@@ -413,7 +413,7 @@ At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty
 | `fur.upregulation_max` | 10.0 | — | Max fold-upregulation under iron starvation (Spec 6 §4.2; raised 4→10, still conservative vs measured 35–56× Fur-regulon induction; capped by `receptor_max`) |
 | `fur.receptor_max` | 5.0 | — | Cap on effective receptor expression |
 
-When enabled, iron-uptake receptors (FepA, FhuA, IroN, IutA, Fiu, CirA) are upregulated under low local iron, increasing colicin susceptibility (Vulnerability Paradox). Mutations modify `receptor_expr_base`; Fur scales effective `receptor_expr` each metabolism step. GPU metabolism fast-path is disabled when Fur or siderophore chemistry is enabled because those CPU-only biology paths must remain authoritative.
+When enabled, iron-uptake receptors (FepA, FhuA, IroN, IutA, Fiu, CirA) are upregulated under low local iron, increasing colicin susceptibility (Vulnerability Paradox). Mutations modify `receptor_expr_base`; Fur scales effective `receptor_expr` each metabolism step. Fur receptor modulation and per-agent acetate coupling run in the device metabolism path when GPU metabolism is active; per-cell siderophore field chemistry remains host-side.
 
 ---
 

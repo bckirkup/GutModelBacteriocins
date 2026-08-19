@@ -1,5 +1,6 @@
 #include "gpu_kernels.h"
 #include "gpu_test_support.h"
+#include "receptor_utils.h"
 #include "vbf_carbon_sink.h"
 
 #include <algorithm>
@@ -210,9 +211,17 @@ void test_grid_coupling() {
 struct MetabolismRun {
   double carbon_reaction = 0.0;
   double uptake = 0.0;
+  double fepA_expression = 0.0;
+  double noniron_expression = 0.0;
+  double acetate_reaction = 0.0;
+  double biomass = 0.0;
+  double mu = 0.0;
 };
 
-MetabolismRun run_metabolism(double seed, double maximum_growth) {
+MetabolismRun run_metabolism(double seed, double maximum_growth,
+                             bool fur_enabled = false,
+                             bool acetate_enabled = false,
+                             double iron_concentration = 1.0) {
   constexpr int agents = 2;
   DeviceBuffer<double> concentration(kCells);
   DeviceBuffer<double> iron(kCells);
@@ -223,6 +232,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth) {
   DeviceBuffer<double> reaction_carbon(kCells);
   DeviceBuffer<double> reaction_iron(kCells);
   DeviceBuffer<double> reaction_b12(kCells);
+  DeviceBuffer<double> reaction_acetate(kCells);
   DeviceBuffer<double> mu(agents);
   DeviceBuffer<double> biomass(agents);
   DeviceBuffer<double> radius(agents);
@@ -231,8 +241,10 @@ MetabolismRun run_metabolism(double seed, double maximum_growth) {
   DeviceBuffer<double> mu_max(agents);
   DeviceBuffer<double> km_b12(agents);
   DeviceBuffer<double> km_carbon(agents);
-  DeviceBuffer<double> receptor(8 * agents);
-  DeviceBuffer<double> ligand(8 * agents);
+  DeviceBuffer<double> receptor(gutibm::NUM_RECEPTORS * agents);
+  DeviceBuffer<double> receptor_base(gutibm::NUM_RECEPTORS * agents);
+  DeviceBuffer<double> ligand(gutibm::NUM_RECEPTORS * agents);
+  DeviceBuffer<int> iron_receptor(gutibm::NUM_RECEPTORS);
   DeviceBuffer<int> cells(agents);
   DeviceBuffer<int> state(agents);
   DeviceBuffer<int> loci(agents);
@@ -240,14 +252,15 @@ MetabolismRun run_metabolism(double seed, double maximum_growth) {
   DeviceBuffer<double> uptake(2);
 
   concentration.upload(std::vector<double>(kCells, 1.0));
-  iron.upload(std::vector<double>(kCells, 1.0));
+  iron.upload(std::vector<double>(kCells, iron_concentration));
   b12.upload(std::vector<double>(kCells, 1.0));
-  acetate.upload(std::vector<double>(kCells, 0.0));
+  acetate.upload(std::vector<double>(kCells, acetate_enabled ? 2.0 : 0.0));
   eut.upload(std::vector<double>(kCells, 0.0));
   oxygen.upload(std::vector<double>(kCells, 0.0));
   reaction_carbon.upload(std::vector<double>(kCells, seed));
   reaction_iron.upload(std::vector<double>(kCells, 0.5));
   reaction_b12.upload(std::vector<double>(kCells, 0.0));
+  reaction_acetate.upload(std::vector<double>(kCells, 0.0));
   mu.upload(std::vector<double>(agents, 0.0));
   biomass.upload(std::vector<double>(agents, 1.0));
   radius.upload(std::vector<double>(agents, 1.0));
@@ -256,8 +269,16 @@ MetabolismRun run_metabolism(double seed, double maximum_growth) {
   mu_max.upload(std::vector<double>(agents, maximum_growth));
   km_b12.upload(std::vector<double>(agents, 0.1));
   km_carbon.upload(std::vector<double>(agents, 0.1));
-  receptor.upload(std::vector<double>(8 * agents, 1.0));
-  ligand.upload(std::vector<double>(8 * agents, 1.0));
+  receptor.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
+  receptor_base.upload(
+      std::vector<double>(gutibm::NUM_RECEPTORS * agents, 2.0));
+  ligand.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
+  std::vector<int> iron_receptor_flags(gutibm::NUM_RECEPTORS, 0);
+  for (int receptor = 0; receptor < gutibm::NUM_RECEPTORS; ++receptor) {
+    iron_receptor_flags[static_cast<size_t>(receptor)] =
+        gutibm::is_iron_receptor(receptor) ? 1 : 0;
+  }
+  iron_receptor.upload(iron_receptor_flags);
   cells.upload(std::vector<int>{4, -1});
   state.upload(std::vector<int>{0, 3});
   loci.upload(std::vector<int>(agents, 0));
@@ -266,17 +287,31 @@ MetabolismRun run_metabolism(double seed, double maximum_growth) {
 
   gutibm::gpu::launch_metabolism_kernel(
       concentration.data(), iron.data(), b12.data(), acetate.data(), eut.data(),
-      reaction_carbon.data(), reaction_iron.data(), reaction_b12.data(),
+      oxygen.data(), reaction_carbon.data(), reaction_iron.data(),
+      reaction_b12.data(), reaction_acetate.data(),
       mu.data(), biomass.data(), radius.data(), mass.data(), age.data(),
       cells.data(), state.data(), mu_max.data(), km_b12.data(),
-      km_carbon.data(), receptor.data(), ligand.data(), loci.data(),
-      amelioration.data(), agents, 1.0, 1.0, 1.0, 0.1, 0.1, 0.1, 0.1, 0.0,
-      0.0, 1.0, 0.0, 0.0, 0.0, 0.2, 0.1, 0.1, 0, 0.0, 1.0,
-      oxygen.data(), uptake.data(), kNx, kNy, kNx, 0, kNx, 0, nullptr);
+      km_carbon.data(), receptor.data(), receptor_base.data(), ligand.data(),
+      iron_receptor.data(), loci.data(),
+      amelioration.data(), agents, agents, agents, gutibm::NUM_RECEPTORS,
+      1.0, 1.0, 1.0,
+      0.1, 0.1, 0.1, 0.1,
+      0.0, 0.0, 1.0, 0.0, 0.0, 0.2,
+      0.1, 0.1, 0.1,
+      1, 1, 1, fur_enabled ? 1 : 0, 1.0e-5, 10.0, 5.0,
+      acetate_enabled ? 1 : 0, 3.0e-4, 0.25, 0.1, 2.0,
+      0, 0.0, 1.0, uptake.data(),
+      kNx, kNy, kNx, 0, kNx, 0, nullptr);
   synchronize();
   const auto reaction = download(reaction_carbon, kCells);
+  const auto acetate_result = download(reaction_acetate, kCells);
+  const auto expression =
+      download(receptor, gutibm::NUM_RECEPTORS * agents);
+  const auto biomass_result = download(biomass, agents);
+  const auto mu_result = download(mu, agents);
   const auto uptake_host = download(uptake, 2);
-  return {reaction[4], uptake_host[0]};
+  return {reaction[4], uptake_host[0], expression[1 * agents],
+          expression[0], acetate_result[4], biomass_result[0], mu_result[0]};
 }
 
 void test_metabolism() {
@@ -288,6 +323,33 @@ void test_metabolism() {
   const MetabolismRun high = run_metabolism(0.0, 2.0e-3);
   assert(low.uptake < zero_seed.uptake);
   assert(zero_seed.uptake < high.uptake);
+}
+
+void test_metabolism_fur() {
+  const MetabolismRun result = run_metabolism(
+      0.0, 1.0e-3, true, false, 1.0e-6);
+  const double expected_factor = 1.0 + 10.0 * 1.0e-5
+      / (1.0e-5 + 1.0e-6);
+  assert(result.fepA_expression == 5.0);
+  assert(result.noniron_expression == 2.0);
+  assert(expected_factor * 2.0 > 5.0);
+  const MetabolismRun disabled = run_metabolism(
+      0.0, 1.0e-3, false, false, 1.0e-6);
+  assert(disabled.fepA_expression == 1.0);
+  assert(disabled.noniron_expression == 1.0);
+}
+
+void test_metabolism_acetate() {
+  const MetabolismRun result = run_metabolism(
+      0.0, 1.0e-3, false, true, 1.0);
+  const double updated_biomass = std::max(
+      result.biomass, 1.0e-20);
+  const double expected = result.mu > 3.0e-4
+      ? 0.25 * updated_biomass - 0.1 * 2.0 / (2.0 + 2.0)
+          * updated_biomass
+      : -0.1 * 2.0 / (2.0 + 2.0) * updated_biomass;
+  assert(close(result.acetate_reaction, expected));
+  assert(result.biomass > 1.0);
 }
 
 void test_diffuse_x_periodic() {
@@ -833,6 +895,8 @@ int main() {
   run_case("launch_apply_boundaries_kernel", test_apply_boundaries);
   run_case("launch_grid_coupling_kernel", test_grid_coupling);
   run_case("launch_metabolism_kernel", test_metabolism);
+  run_case("launch_metabolism_kernel Fur", test_metabolism_fur);
+  run_case("launch_metabolism_kernel acetate", test_metabolism_acetate);
   run_case("launch_diffuse_x_periodic", test_diffuse_x_periodic);
   run_case("launch_diffuse_y_periodic", test_diffuse_y_periodic);
   run_case("launch_diffuse_z_bounded", test_diffuse_z_bounded);
@@ -851,7 +915,7 @@ int main() {
   run_case("launch_mechanics_forces_kernel", test_mechanics_forces);
   run_case("launch_mechanics_apply_kernel", test_mechanics_apply);
   run_case("launch_receptor_kill_prob_kernel", test_receptor_kill_probability);
-  std::cout << "All 20 GPU launch entry points were invoked directly.\n";
+  std::cout << "All 22 GPU launch entry points were invoked directly.\n";
   return 0;
 #endif
 }

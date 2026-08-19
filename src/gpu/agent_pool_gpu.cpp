@@ -4,6 +4,9 @@
 #include "fix_metabolism.h"
 #include "gpu_kernels.h"
 #include "dispatch.h"
+#include "receptor_utils.h"
+
+#include <cassert>
 
 namespace gutibm {
 
@@ -24,7 +27,10 @@ void AgentPoolGpu::resize(Int n) {
   d_km_b12_.allocate(static_cast<size_t>(n));
   d_km_carbon_.allocate(static_cast<size_t>(n));
   d_receptor_expr_.allocate(static_cast<size_t>(NUM_RECEPTORS) * static_cast<size_t>(n));
+  d_receptor_expr_base_.allocate(
+      static_cast<size_t>(NUM_RECEPTORS) * static_cast<size_t>(n));
   d_ligand_affinity_.allocate(static_cast<size_t>(NUM_RECEPTORS) * static_cast<size_t>(n));
+  d_iron_receptor_.allocate(static_cast<size_t>(NUM_RECEPTORS));
   d_bi_loci_count_.allocate(static_cast<size_t>(n));
   d_plasmid_amelioration_.allocate(static_cast<size_t>(n));
 }
@@ -49,7 +55,10 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   std::vector<double> km_b12(n);
   std::vector<double> km_carbon(n);
   std::vector<double> receptor_expr(static_cast<size_t>(NUM_RECEPTORS) * n);
+  std::vector<double> receptor_expr_base(
+      static_cast<size_t>(NUM_RECEPTORS) * n);
   std::vector<double> ligand_affinity(static_cast<size_t>(NUM_RECEPTORS) * n);
+  std::vector<int> iron_receptor(static_cast<size_t>(NUM_RECEPTORS));
   std::vector<double> plasmid_amelioration(n);
 
   for (Int i = 0; i < n; ++i) {
@@ -73,8 +82,13 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
       // SoA layout: [receptor][agent]. GPU metabolism/receptor kernels index as
       // receptor_expr[r * n + i] — do not pack as AoS (i * NUM_RECEPTORS + r).
       receptor_expr[static_cast<size_t>(r) * n + i] = a.receptor_expr[r];
+      receptor_expr_base[static_cast<size_t>(r) * n + i] =
+          a.receptor_expr_base[r];
       ligand_affinity[static_cast<size_t>(r) * n + i] = a.genome.ligand_affinity[r];
     }
+  }
+  for (int r = 0; r < NUM_RECEPTORS; ++r) {
+    iron_receptor[static_cast<size_t>(r)] = is_iron_receptor(r) ? 1 : 0;
   }
 
   d_x_.upload(x);
@@ -91,7 +105,9 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   d_km_b12_.upload(km_b12);
   d_km_carbon_.upload(km_carbon);
   d_receptor_expr_.upload(receptor_expr);
+  d_receptor_expr_base_.upload(receptor_expr_base);
   d_ligand_affinity_.upload(ligand_affinity);
+  d_iron_receptor_.upload(iron_receptor);
   d_bi_loci_count_.upload(bi_loci_count);
   d_plasmid_amelioration_.upload(plasmid_amelioration);
 }
@@ -121,6 +137,22 @@ void AgentPoolGpu::sync_to_host(AgentPool& pool) const {
     a.mass = mass[i];
     a.timers.age = age[i];
     a.grid_cell = grid_cell[i];
+  }
+}
+
+void AgentPoolGpu::sync_receptor_expression_to_host(AgentPool& pool) const {
+  Int n = pool.size();
+  if (n <= 0 || n != size_) return;
+
+  std::vector<double> receptor_expr(
+      static_cast<size_t>(NUM_RECEPTORS) * n);
+  d_receptor_expr_.download(receptor_expr);
+  for (Int i = 0; i < n; ++i) {
+    Agent& agent = pool[i];
+    for (int r = 0; r < NUM_RECEPTORS; ++r) {
+      agent.receptor_expr[r] =
+          receptor_expr[static_cast<size_t>(r) * n + i];
+    }
   }
 }
 
@@ -157,24 +189,37 @@ bool AgentPoolGpu::run_metabolism(
   return false;
 #else
   if (!gpu_runtime_enabled() || size_ <= 0) return false;
+  assert(buffers.receptor_count == NUM_RECEPTORS);
 
   gpu::launch_metabolism_kernel(
       buffers.d_conc_carbon, buffers.d_conc_iron, buffers.d_conc_b12,
       buffers.d_conc_acetate, buffers.d_conc_eut,
+      buffers.d_conc_oxygen,
       buffers.d_reac_carbon, buffers.d_reac_iron, buffers.d_reac_b12,
+      buffers.d_reac_acetate,
       d_mu_realized_.data(), d_biomass_.data(), d_radius_.data(),
       d_mass_.data(), d_age_.data(),
       d_grid_cell_.data(), d_state_.data(),
       d_mu_max_.data(), d_km_b12_.data(), d_km_carbon_.data(),
-      d_receptor_expr_.data(), d_ligand_affinity_.data(),
+      d_receptor_expr_.data(), d_receptor_expr_base_.data(),
+      d_ligand_affinity_.data(), d_iron_receptor_.data(),
       d_bi_loci_count_.data(), d_plasmid_amelioration_.data(),
-      num_agents, dt, domain.cell_volume(), CELL_DENSITY_DEFAULT,
+      size_, num_agents, size_, buffers.receptor_count, dt,
+      domain.cell_volume(), CELL_DENSITY_DEFAULT,
       cfg.km_iron_primary, cfg.km_iron_iroN, cfg.km_iron_iutA, cfg.km_iron_fiu,
       cfg.maintenance_rate, cfg.metE_penalty, cfg.metE_acetate_max_factor,
       cfg.metE_acetate_km, cfg.eut_max_penalty, cfg.eut_km,
       cfg.yield_carbon, cfg.yield_iron, cfg.yield_b12,
+      buffers.iron_uptake_enabled,
+      buffers.b12_uptake_enabled,
+      buffers.eut_enabled,
+      buffers.fur_enabled,
+      buffers.fur_Km, buffers.fur_upregulation_max, buffers.fur_receptor_max,
+      buffers.acetate_enabled,
+      buffers.acetate_overflow_threshold, buffers.acetate_overflow_rate,
+      buffers.acetate_scavenge_rate, buffers.acetate_scavenge_Km,
       buffers.o2_enabled, buffers.o2_boost_max, buffers.o2_Km,
-      buffers.d_conc_oxygen, uptake_totals,
+      uptake_totals,
       domain.nx(), domain.ny(), buffers.storage_nx,
       buffers.owned_global_x_begin, buffers.owned_global_x_end,
       buffers.owned_storage_x_begin, gpu_compute_stream());
