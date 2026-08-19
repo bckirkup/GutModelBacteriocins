@@ -1,0 +1,78 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrAuth",
+      "Effect": "Allow",
+      "Action": "ecr:GetAuthorizationToken",
+      "Resource": "*"
+    },
+    {
+      "Sid": "EcrGutibmRepository",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:__REGION__:__ACCOUNT_ID__:repository/gutibm"
+    },
+    {
+      "Sid": "RegisterPracticeGpuDefinition",
+      "Effect": "Allow",
+      "Action": "batch:RegisterJobDefinition",
+      "Resource": "arn:aws:batch:__REGION__:__ACCOUNT_ID__:job-definition/gutibm-gputest*"
+    },
+    {
+      "Sid": "SubmitPracticeGpuJob",
+      "Effect": "Allow",
+      "Action": "batch:SubmitJob",
+      "Resource": [
+        "arn:aws:batch:__REGION__:__ACCOUNT_ID__:job-queue/gutibm-gpu-practice",
+        "arn:aws:batch:__REGION__:__ACCOUNT_ID__:job-definition/gutibm-gputest*"
+      ]
+    },
+    {
+      "Sid": "InspectPracticeGpuJobs",
+      "Effect": "Allow",
+      "Action": "batch:DescribeJobs",
+      "Resource": "*"
+    },
+    {
+      "Sid": "TerminatePracticeGpuJobs",
+      "Effect": "Allow",
+      "Action": "batch:TerminateJob",
+      "Resource": "arn:aws:batch:__REGION__:__ACCOUNT_ID__:job/*"
+    },
+    {
+      "Sid": "PassBatchRuntimeRoles",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::__ACCOUNT_ID__:role/gutibm-batch-job-role",
+        "arn:aws:iam::__ACCOUNT_ID__:role/gutibm-batch-execution-role"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "ReadPracticeGpuLogs",
+      "Effect": "Allow",
+      "Action": [
+        "logs:DescribeLogStreams",
+        "logs:GetLogEvents"
+      ],
+      "Resource": [
+        "arn:aws:logs:__REGION__:__ACCOUNT_ID__:log-group:/aws/batch/job",
+        "arn:aws:logs:__REGION__:__ACCOUNT_ID__:log-group:/aws/batch/job:*"
+      ]
+    }
+  ]
+}

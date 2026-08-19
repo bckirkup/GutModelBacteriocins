@@ -197,6 +197,67 @@ Do **not** start with Stage 3. Order:
 Only after 1b is boring: move CE to include `g5.2xlarge` / Spot-heavy and try
 one Stage 3 baseline seed.
 
+## GitHub Actions physical GPU verification
+
+The `gpu-device-tests` workflow is the verification of record for GPU
+behavior. For pull requests touching CUDA sources, GPU tests, or the GPU test
+image, it builds the same `deploy/aws/Dockerfile.gputest` image used by the
+manual T4 gate, pushes a commit-specific tag to ECR, registers a
+digest-pinned `gutibm-gputest` Batch job definition, and submits
+`REQUIRE_GPU=1 ctest -L gpu --output-on-failure` to the
+`gutibm-gpu-practice` queue. The runner requires both a successful Batch job
+and `GPUTEST_STATUS=0` in its CloudWatch log; a missing device, log stream, or
+status is a failure, never a skip.
+
+### One-time GitHub OIDC setup
+
+An AWS administrator must create the GitHub OIDC provider and least-privilege
+role once:
+
+```bash
+bash deploy/aws/08_setup_github_oidc.sh
+```
+
+The script creates or updates the role using
+`deploy/aws/policies/github-oidc-trust.json` and
+`deploy/aws/policies/github-oidc-permissions.json`. It prints a role ARN.
+Store that ARN as the repository **variable**
+`GUTIBM_AWS_GPU_DEVICE_ROLE_ARN` (not as a workflow secret). The trust policy
+allows this repository's pull-request and branch workflow subjects only.
+
+The permissions policy can push only to the `gutibm` ECR repository, register
+only `gutibm-gputest` definitions, submit/inspect device jobs on the
+practice queue, read the Batch CloudWatch log group, and pass the two existing
+Batch runtime roles. Campaign queues, campaign job definitions, campaign
+images, and campaign tags are explicitly outside the device-gate procedure.
+
+The workflow uses GitHub OIDC through
+`aws-actions/configure-aws-credentials`. If
+`GUTIBM_AWS_GPU_DEVICE_ROLE_ARN` is absent, it fails explicitly rather than
+skipping the physical-device gate. Its concurrency group is per Git ref so
+the four-vCPU practice compute environment is not oversubscribed.
+
+The complete procedure is also available for an authorized local run:
+
+```bash
+bash scripts/run_gpu_device_tests.sh
+```
+
+The script accepts `AWS_REGION`, `ECR_REPOSITORY`, `GUTIBM_IMAGE_TAG`,
+`BATCH_QUEUE`, and `BATCH_JOB_DEFINITION` overrides, but rejects campaign
+resource names and refuses to overwrite an existing image tag. It prints
+`IMAGE_BUILD_PUSH_SECONDS`, `BATCH_QUEUE_WAIT_SECONDS`,
+`BATCH_CONTAINER_SECONDS`, `BATCH_JOB_SECONDS`, and `END_TO_END_SECONDS` for
+cost and latency tracking. `BATCH_QUEUE_WAIT_SECONDS` covers Batch creation
+until container start, `BATCH_CONTAINER_SECONDS` covers the container attempt,
+and `BATCH_JOB_SECONDS` covers creation until the terminal state. If a
+workflow is cancelled while its job is non-terminal, the script terminates
+that submitted job before exiting.
+
+Fork pull requests are skipped because the workflow executes the pull
+request's Dockerfile inside the AWS account; same-repository pull requests and
+manual `workflow_dispatch` runs are eligible.
+
 ## Job model (campaigns)
 
 Prefer **Batch array index = one simulation** from a `batch_runner` manifest.

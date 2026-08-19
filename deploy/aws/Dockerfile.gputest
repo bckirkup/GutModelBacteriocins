@@ -1,0 +1,56 @@
+# GutIBM CUDA GPU-test image.
+#
+# This diagnostic image intentionally keeps the CUDA build tree and uses the
+# CUDA development base at runtime so ctest can execute every GPU-labelled
+# target. Pass GPU_TARGETS from the explicit cuda-compile target list in
+# .github/workflows/ci.yml rather than maintaining a second list here.
+
+ARG CUDA_VERSION=12.4.1
+ARG UBUNTU_VERSION=22.04
+
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu${UBUNTU_VERSION}
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential \
+      ca-certificates \
+      cmake \
+      libhdf5-mpi-dev \
+      libopenmpi-dev \
+      openmpi-bin \
+      software-properties-common \
+ && add-apt-repository -y ppa:ubuntu-toolchain-r/test \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends g++-13 gcc-13 \
+ && rm -rf /var/lib/apt/lists/*
+
+ARG CUDA_ARCHITECTURES=75
+ARG GPU_TARGETS
+ARG GUTIBM_GIT_SHA=unknown
+
+WORKDIR /src
+COPY CMakeLists.txt ./
+COPY src ./src
+COPY tests ./tests
+COPY examples ./examples
+
+RUN test -n "${GPU_TARGETS}" \
+ && CC=gcc-13 CXX=g++-13 cmake -B build \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DGUTIBM_USE_MPI=ON \
+      -DGUTIBM_USE_HDF5=ON \
+      -DGUTIBM_USE_CUDA=ON \
+      -DGUTIBM_GIT_SHA="${GUTIBM_GIT_SHA}" \
+      -DCMAKE_CUDA_HOST_COMPILER=g++-13 \
+      -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
+ && printf '%s\n' "${GPU_TARGETS}" \
+ | xargs cmake --build build -j"$(nproc)" --target
+
+RUN groupadd --gid 1000 gutibm \
+ && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash gutibm \
+ && chown -R gutibm:gutibm /src
+
+USER gutibm
+WORKDIR /src/build
+ENTRYPOINT ["/bin/bash"]
