@@ -246,8 +246,17 @@ bash scripts/run_gpu_device_tests.sh
 The script accepts `AWS_REGION`, `ECR_REPOSITORY`, `GUTIBM_IMAGE_TAG`,
 `BATCH_QUEUE`, and `BATCH_JOB_DEFINITION` overrides, but rejects campaign
 resource names and refuses to overwrite an existing image tag. It prints
-`IMAGE_BUILD_PUSH_SECONDS`, `BATCH_JOB_SECONDS`, and
-`END_TO_END_SECONDS` for cost and latency tracking.
+`IMAGE_BUILD_PUSH_SECONDS`, `BATCH_QUEUE_WAIT_SECONDS`,
+`BATCH_CONTAINER_SECONDS`, `BATCH_JOB_SECONDS`, and `END_TO_END_SECONDS` for
+cost and latency tracking. `BATCH_QUEUE_WAIT_SECONDS` covers Batch creation
+until container start, `BATCH_CONTAINER_SECONDS` covers the container attempt,
+and `BATCH_JOB_SECONDS` covers creation until the terminal state. If a
+workflow is cancelled while its job is non-terminal, the script terminates
+that submitted job before exiting.
+
+Fork pull requests are skipped because the workflow executes the pull
+request's Dockerfile inside the AWS account; same-repository pull requests and
+manual `workflow_dispatch` runs are eligible.
 
 ## Job model (campaigns)
 

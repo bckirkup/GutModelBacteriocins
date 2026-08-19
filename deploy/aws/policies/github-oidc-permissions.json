@@ -46,12 +46,7 @@
       "Sid": "TerminatePracticeGpuJobs",
       "Effect": "Allow",
       "Action": "batch:TerminateJob",
-      "Resource": "arn:aws:batch:__REGION__:__ACCOUNT_ID__:job/*",
-      "Condition": {
-        "StringEquals": {
-          "aws:ResourceTag/GutIBMWorkflow": "gpu-device-tests"
-        }
-      }
+      "Resource": "arn:aws:batch:__REGION__:__ACCOUNT_ID__:job/*"
     },
     {
       "Sid": "PassBatchRuntimeRoles",

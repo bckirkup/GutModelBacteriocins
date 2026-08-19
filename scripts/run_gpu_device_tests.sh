@@ -25,6 +25,11 @@ BATCH_JOB_DEFINITION="${BATCH_JOB_DEFINITION:-gutibm-gputest}"
 BATCH_LOG_GROUP="${BATCH_LOG_GROUP:-/aws/batch/job}"
 BATCH_POLL_SECONDS="${BATCH_POLL_SECONDS:-20}"
 BATCH_LOG_WAIT_SECONDS="${BATCH_LOG_WAIT_SECONDS:-300}"
+JOB_ID=""
+STATUS=""
+CLEANUP_RUNNING=0
+JOB_DEF_JSON=""
+LOG_FILE=""
 
 die() {
   echo "ERROR: $*" >&2
@@ -39,6 +44,57 @@ require_command aws
 require_command docker
 require_command git
 require_command jq
+
+terminate_submitted_job() {
+  local current_status
+  [[ -n "${JOB_ID}" && "${CLEANUP_RUNNING}" -eq 0 ]] || return 0
+  CLEANUP_RUNNING=1
+  current_status="$(aws batch describe-jobs \
+    --jobs "${JOB_ID}" \
+    --region "${AWS_REGION}" \
+    --query 'jobs[0].status' \
+    --output text 2>/dev/null || true)"
+  case "${current_status}" in
+    SUBMITTED|PENDING|RUNNABLE|STARTING|RUNNING)
+      echo "Terminating non-terminal Batch job ${JOB_ID} after local exit." >&2
+      aws batch terminate-job \
+        --job-id "${JOB_ID}" \
+        --reason "GPU device gate runner exited before job completion" \
+        --region "${AWS_REGION}" >/dev/null 2>&1 || \
+        echo "WARNING: could not terminate Batch job ${JOB_ID}" >&2
+      ;;
+  esac
+}
+
+cleanup_temp_files() {
+  if [[ -n "${JOB_DEF_JSON}" || -n "${LOG_FILE}" ]]; then
+    rm -f "${JOB_DEF_JSON}" "${LOG_FILE}" || \
+      echo "WARNING: could not remove temporary GPU gate files" >&2
+  fi
+}
+
+handle_exit() {
+  local exit_code=$?
+  trap - EXIT INT TERM
+  terminate_submitted_job
+  cleanup_temp_files
+  exit "${exit_code}"
+}
+
+handle_signal() {
+  local signal="$1"
+  trap - EXIT INT TERM
+  terminate_submitted_job
+  cleanup_temp_files
+  if [[ "${signal}" == "INT" ]]; then
+    exit 130
+  fi
+  exit 143
+}
+
+trap handle_exit EXIT
+trap 'handle_signal INT' INT
+trap 'handle_signal TERM' TERM
 
 [[ -f "${ROOT}/deploy/aws/Dockerfile.gputest" ]] \
   || die "missing deploy/aws/Dockerfile.gputest"
@@ -155,7 +211,6 @@ echo "IMAGE_BUILD_PUSH_SECONDS=${BUILD_PUSH_SECONDS}"
 
 JOB_DEF_JSON="$(mktemp)"
 LOG_FILE="$(mktemp)"
-trap 'rm -f "${JOB_DEF_JSON}" "${LOG_FILE}"' EXIT
 jq -n \
   --arg name "${BATCH_JOB_DEFINITION}" \
   --arg image "${IMAGE_REF}" \
@@ -218,13 +273,24 @@ while :; do
 done
 
 JOB_DETAILS="$(aws batch describe-jobs --jobs "${JOB_ID}" --region "${AWS_REGION}")"
+CREATED_MS="$(jq -r '.jobs[0].createdAt // empty' <<< "${JOB_DETAILS}")"
 STARTED_MS="$(jq -r '.jobs[0].startedAt // empty' <<< "${JOB_DETAILS}")"
 STOPPED_MS="$(jq -r '.jobs[0].stoppedAt // empty' <<< "${JOB_DETAILS}")"
-if [[ "${STARTED_MS}" =~ ^[0-9]+$ && "${STOPPED_MS}" =~ ^[0-9]+$ ]]; then
-  BATCH_JOB_SECONDS=$(( (STOPPED_MS - STARTED_MS) / 1000 ))
+if [[ "${CREATED_MS}" =~ ^[0-9]+$ && "${STARTED_MS}" =~ ^[0-9]+$ &&
+  "${STOPPED_MS}" =~ ^[0-9]+$ ]]; then
+  BATCH_QUEUE_WAIT_SECONDS="$(awk -v ms="$((STARTED_MS - CREATED_MS))" \
+    'BEGIN { printf "%.3f", ms / 1000 }')"
+  BATCH_CONTAINER_SECONDS="$(awk -v ms="$((STOPPED_MS - STARTED_MS))" \
+    'BEGIN { printf "%.3f", ms / 1000 }')"
+  BATCH_JOB_SECONDS="$(awk -v ms="$((STOPPED_MS - CREATED_MS))" \
+    'BEGIN { printf "%.3f", ms / 1000 }')"
 else
+  BATCH_QUEUE_WAIT_SECONDS="unknown"
+  BATCH_CONTAINER_SECONDS="unknown"
   BATCH_JOB_SECONDS=$(( $(date +%s) - SUBMIT_START ))
 fi
+echo "BATCH_QUEUE_WAIT_SECONDS=${BATCH_QUEUE_WAIT_SECONDS}"
+echo "BATCH_CONTAINER_SECONDS=${BATCH_CONTAINER_SECONDS}"
 echo "BATCH_JOB_SECONDS=${BATCH_JOB_SECONDS}"
 LOG_STREAM=""
 for _ in $(seq 0 5 "${BATCH_LOG_WAIT_SECONDS}"); do
