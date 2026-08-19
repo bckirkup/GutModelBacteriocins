@@ -70,8 +70,6 @@ __global__ void metabolism_kernel(
     }
   }
 
-  if (i >= local_agent_count) return;
-
   // receptor_expr / ligand_affinity are SoA: index = receptor * agent_stride
   // + agent (matches AgentPoolGpu::sync_from_host and receptor_kernel).
   double expr_fepA = receptor_expr[1 * agent_stride + i];
