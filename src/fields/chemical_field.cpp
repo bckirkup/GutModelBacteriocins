@@ -1113,8 +1113,10 @@ void ChemicalField::apply_bounded_z_diffusion(const Domain& domain, Real dt,
       / (domain.dx_z() * domain.dx_z());
   if (chemical.epithelial_boundary_mode
       == EpithelialBoundaryMode::Dirichlet) {
-    diffuse_bounded_z(conc_[static_cast<size_t>(spec)], domain, alpha,
-                      chemical.boundary_conc, domain.cell_volume());
+    flux_accounting_.add_boundary(
+        spec, diffuse_bounded_z(
+                  conc_[static_cast<size_t>(spec)], domain, alpha,
+                  chemical.boundary_conc, domain.cell_volume()));
   } else {
     const Real beta = chemical.epithelial_boundary_mode
         == EpithelialBoundaryMode::Robin

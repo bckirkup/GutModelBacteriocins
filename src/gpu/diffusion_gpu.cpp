@@ -90,9 +90,6 @@ bool species_diffusion_eligible(const ChemicalSpec& spec, Real dt,
       && spec.diff_coeff > 0.0 && spec.retardation > 0.0;
 }
 
-int epithelial_boundary_mode(const ChemicalSpec& spec) {
-  return to_underlying(spec.epithelial_boundary_mode);
-}
 #endif
 
 #ifdef GUTIBM_CUDA
@@ -119,13 +116,15 @@ bool apply_species_diffusion_on_device(const Domain& domain,
   const bool preserve_gradient =
       spec.z_gradient_enabled && spec.z_gradient_lambda > 0.0;
   double diffusion_boundary = spec.boundary_conc;
-  const int boundary_mode = epithelial_boundary_mode(spec);
-  const Real beta = boundary_mode == 1
+  const auto boundary_mode = spec.epithelial_boundary_mode;
+  const int boundary_mode_value = to_underlying(boundary_mode);
+  const Real beta = boundary_mode == EpithelialBoundaryMode::Robin
       ? spec.epithelial_transfer_coeff * dt / domain.dx_z() : 0.0;
-  const Real flux_source = boundary_mode == 2
+  const Real flux_source = boundary_mode == EpithelialBoundaryMode::Flux
       ? spec.epithelial_flux * dt / domain.dx_z() : 0.0;
 
-  if (phase != DiffusionPhase::SlabPostX && boundary_mode == 0) {
+  if (phase != DiffusionPhase::SlabPostX
+      && boundary_mode == EpithelialBoundaryMode::Dirichlet) {
     gpu::launch_set_epithelial_boundary(
         d_conc, nx, ny, owned_x_begin, owned_x_end, spec.boundary_conc,
         domain.cell_volume(), d_injected_amount,
@@ -164,7 +163,7 @@ bool apply_species_diffusion_on_device(const Domain& domain,
       d_corr_y.data(), gpu_compute_stream());
   gpu::launch_diffuse_z_bounded(
       d_conc, nx, ny, nz, owned_x_begin, owned_x_end, alpha_z,
-      diffusion_boundary, boundary_mode, beta, flux_source,
+      diffusion_boundary, boundary_mode_value, beta, flux_source,
       domain.cell_volume(), d_injected_amount,
       gpu_compute_stream());
 
@@ -179,7 +178,7 @@ bool apply_species_diffusion_on_device(const Domain& domain,
 
   gpu::launch_clamp_nonneg(
       d_conc, nx, ny, nz, owned_x_begin, owned_x_end, gpu_compute_stream());
-  if (boundary_mode == 0) {
+  if (boundary_mode == EpithelialBoundaryMode::Dirichlet) {
     gpu::launch_set_epithelial_boundary(
         d_conc, nx, ny, owned_x_begin, owned_x_end, spec.boundary_conc, 0.0,
         nullptr, gpu_compute_stream());

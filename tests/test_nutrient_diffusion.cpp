@@ -457,8 +457,10 @@ void test_delivery_boundary_conservation_and_sensitivity() {
     }
     const Real before = inventory(chem, domain);
     chem.apply_diffusion(domain, 30.0);
+    chem.flux_accounting().commit_boundary_and_reaction_step();
     const Real after = inventory(chem, domain);
     assert(std::abs(after - before) < 1.0e-12 * before);
+    assert(chem.flux_accounting().boundary_cumulative[0] == 0.0);
   }
 
   std::array<Real, 3> robin_bottom{};
@@ -514,16 +516,27 @@ void test_delivery_boundary_limits_depletion_and_accounting() {
   assert(std::abs(flux_field.flux_accounting().boundary_cumulative[0]
                   - expected) < 1.0e-24);
 
+  ChemicalField control;
+  control.init(domain, {delivery_species(
+      EpithelialBoundaryMode::Flux, 0.1, 1.0, 0.0, 1.0e-14)});
+  const Real control_before = inventory(control, domain);
+  for (Int step = 0; step < 200; ++step) {
+    control.apply_diffusion(domain, 1.0);
+  }
+  const Real control_after = inventory(control, domain);
+  assert(control_after >= control_before);
+  const Real control_bottom = bottom_average(control, domain);
+
   ChemicalField depleted;
   depleted.init(domain, {delivery_species(
       EpithelialBoundaryMode::Flux, 0.1, 1.0, 0.0, 1.0e-14)});
   const Int sink_cell = domain.cell_index(1, 1, 2);
   for (Int step = 0; step < 200; ++step) {
     depleted.conc(0, sink_cell) =
-        std::max(0.0, depleted.conc(0, sink_cell) - 2.0e-3);
+        std::max(0.0, depleted.conc(0, sink_cell) - 2.0e-2);
     depleted.apply_diffusion(domain, 1.0);
   }
-  assert(bottom_average(depleted, domain) < 0.8);
+  assert(control_bottom - bottom_average(depleted, domain) > 0.05);
   std::cout << "  test_delivery_boundary_limits_depletion_and_accounting: PASSED\n";
 }
 
