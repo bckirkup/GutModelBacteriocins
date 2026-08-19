@@ -191,6 +191,7 @@ allocations. This memory behavior is not fixed.
 | `gpu-parity` | CPU vs GPU fingerprint check via `compare_gpu_parity.sh` (#158) |
 | `openmp-parity` | Serial vs OpenMP deterministic + stochastic toxin-kill fingerprints |
 | `cuda-compile` | CUDA compile + GPU test targets (single arch, no duplicate parity rebuild) |
+| `gpu-device-tests` | Physical T4 GPU verification-of-record via AWS Batch (`REQUIRE_GPU=1 ctest -L gpu`) |
 | `eari-vadi-validation` | Short EARI/VADI + FISH invariant/bounds checks (#56, #25) |
 | `python-lint` | JSON syntax, ruff, pytest (fast), batch runner dry-run |
 

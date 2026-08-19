@@ -1,0 +1,50 @@
+name: GPU device tests
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/gpu/**"
+      - "tests/test_gpu*"
+      - "tests/test_mpi_gpu*"
+      - "deploy/aws/Dockerfile.gputest"
+      - "scripts/run_gpu_device_tests.sh"
+      - ".github/workflows/gpu-device-tests.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: gpu-device-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  gpu-device-tests:
+    name: GPU device tests (AWS Batch T4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require AWS OIDC role variable
+        env:
+          ROLE_ARN: ${{ vars.GUTIBM_AWS_GPU_DEVICE_ROLE_ARN }}
+        run: |
+          if [ -z "${ROLE_ARN}" ]; then
+            echo "ERROR: repository variable GUTIBM_AWS_GPU_DEVICE_ROLE_ARN is missing." >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: us-east-1
+          role-to-assume: ${{ vars.GUTIBM_AWS_GPU_DEVICE_ROLE_ARN }}
+
+      - name: Run GPU device gate
+        env:
+          AWS_REGION: us-east-1
+          GUTIBM_IMAGE_TAG: gputest-${{ github.sha }}-${{ github.run_id }}
+        run: bash scripts/run_gpu_device_tests.sh
