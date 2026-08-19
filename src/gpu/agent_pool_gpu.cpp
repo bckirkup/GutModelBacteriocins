@@ -6,6 +6,8 @@
 #include "dispatch.h"
 #include "receptor_utils.h"
 
+#include <cassert>
+
 namespace gutibm {
 
 void AgentPoolGpu::resize(Int n) {
@@ -187,6 +189,7 @@ bool AgentPoolGpu::run_metabolism(
   return false;
 #else
   if (!gpu_runtime_enabled() || size_ <= 0) return false;
+  assert(buffers.receptor_count == NUM_RECEPTORS);
 
   gpu::launch_metabolism_kernel(
       buffers.d_conc_carbon, buffers.d_conc_iron, buffers.d_conc_b12,

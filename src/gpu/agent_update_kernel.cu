@@ -48,7 +48,6 @@ __global__ void metabolism_kernel(
       grid_cell[i], global_nx, global_ny, storage_nx,
       owned_global_x_begin, owned_global_x_end, owned_storage_x_begin);
   if (cell < 0) {
-    if (i >= local_agent_count) return;
     mu_realized[i] = 0.0;
     return;
   }
@@ -141,6 +140,8 @@ __global__ void metabolism_kernel(
 
   mu -= maintenance_rate;
   mu_realized[i] = mu;
+
+  if (i >= local_agent_count) return;
 
   double d_biomass = mu * biomass[i] * dt;
   biomass[i] += d_biomass;

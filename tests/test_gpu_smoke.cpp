@@ -67,8 +67,6 @@ static void print_species_diagnostics(const Simulation& gpu,
   std::cerr << "[gpu_diag][gpu_smoke][dispatch]"
             << " metabolism_gpu_steps="
             << gpu.agents_gpu().metabolism_gpu_steps()
-            << " metabolism_gpu_steps="
-            << gpu.agents_gpu().metabolism_gpu_steps()
             << " chemistry_steps=unavailable"
             << " reaction_application_steps=unavailable"
             << " diffusion_steps=unavailable"

@@ -163,6 +163,8 @@ void test_mpi_gpu_ghost_receptor_parity() {
       assert(std::abs(cpu.agents()[i].receptor_expr[receptor]
                       - gpu.agents()[i].receptor_expr[receptor]) < 1.0e-12);
     }
+    assert(std::abs(cpu.agents()[i].mu_realized
+                    - gpu.agents()[i].mu_realized) < 1.0e-12);
   }
   assert(found_ghost);
 }

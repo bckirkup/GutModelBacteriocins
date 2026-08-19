@@ -105,7 +105,6 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
       cg.slab_mode() ? cg.owned_x_end() : sim.domain().nx();
   buffers.owned_storage_x_begin = cg.owned_storage_x_begin();
   buffers.receptor_count = NUM_RECEPTORS;
-  assert(buffers.receptor_count == NUM_RECEPTORS);
   if (!ag.run_metabolism(
           sim.domain(), cfg, buffers, cg.agent_uptake_device(), dt,
           local_agent_count)) {
