@@ -30,7 +30,10 @@ ARG GPU_TARGETS
 ARG GUTIBM_GIT_SHA=unknown
 
 WORKDIR /src
-COPY . .
+COPY CMakeLists.txt ./
+COPY src ./src
+COPY tests ./tests
+COPY examples ./examples
 
 RUN test -n "${GPU_TARGETS}" \
  && CC=gcc-13 CXX=g++-13 cmake -B build \
@@ -41,7 +44,13 @@ RUN test -n "${GPU_TARGETS}" \
       -DGUTIBM_GIT_SHA="${GUTIBM_GIT_SHA}" \
       -DCMAKE_CUDA_HOST_COMPILER=g++-13 \
       -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
- && cmake --build build -j"$(nproc)" --target ${GPU_TARGETS}
+ && printf '%s\n' "${GPU_TARGETS}" \
+ | xargs cmake --build build -j"$(nproc)" --target
 
+RUN groupadd --gid 1000 gutibm \
+ && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash gutibm \
+ && chown -R gutibm:gutibm /src
+
+USER gutibm
 WORKDIR /src/build
 ENTRYPOINT ["/bin/bash"]

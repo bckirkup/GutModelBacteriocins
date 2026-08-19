@@ -37,7 +37,9 @@ die() {
 }
 
 require_command() {
-  command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
+  local command_name="$1"
+  command -v "${command_name}" >/dev/null 2>&1 \
+    || die "required command not found: ${command_name}"
 }
 
 require_command aws
@@ -62,6 +64,10 @@ terminate_submitted_job() {
         --reason "GPU device gate runner exited before job completion" \
         --region "${AWS_REGION}" >/dev/null 2>&1 || \
         echo "WARNING: could not terminate Batch job ${JOB_ID}" >&2
+      ;;
+    *)
+      [[ -z "${current_status}" ]] || \
+        echo "WARNING: unexpected status during Batch cleanup: ${current_status}" >&2
       ;;
   esac
 }
