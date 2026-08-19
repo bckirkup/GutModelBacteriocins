@@ -153,22 +153,43 @@ void assert_parity(const Simulation& cpu, const Simulation& gpu) {
   const auto& gpu_chem = gpu.chemical_field();
   assert(cpu_chem.num_species() == gpu_chem.num_species());
   for (Int species = 0; species < cpu_chem.num_species(); ++species) {
+    Real maximum_absolute_difference = 0.0;
+    Real maximum_relative_difference = 0.0;
+    Int maximum_absolute_cell = -1;
+    Int maximum_relative_cell = -1;
     for (Int cell = 0; cell < cpu_chem.global_ncells(); ++cell) {
       const Real expected = cpu_chem.conc_global(species, cell);
       const Real actual = gpu_chem.conc_global(species, cell);
       const Real scale = std::max({1.0, std::abs(expected), std::abs(actual)});
       const Real absolute_difference = std::abs(expected - actual);
       const Real relative_difference = absolute_difference / scale;
-      std::cerr << "[gpu_diag][gpu_metabolism_fur][chemical]"
-                << " species=" << species
-                << " name=" << cpu_chem.spec(species).name
-                << " cell=" << cell
-                << " cpu=" << format_real(expected)
-                << " gpu=" << format_real(actual)
-                << " abs_diff=" << format_real(absolute_difference)
-                << " rel_diff=" << format_real(relative_difference) << "\n";
+      if (absolute_difference > maximum_absolute_difference) {
+        maximum_absolute_difference = absolute_difference;
+        maximum_absolute_cell = cell;
+      }
+      if (relative_difference > maximum_relative_difference) {
+        maximum_relative_difference = relative_difference;
+        maximum_relative_cell = cell;
+      }
+      if (absolute_difference > tolerance * scale) {
+        std::cerr << "[gpu_diag][gpu_metabolism_fur][chemical]"
+                  << " species=" << species
+                  << " name=" << cpu_chem.spec(species).name
+                  << " cell=" << cell
+                  << " cpu=" << format_real(expected)
+                  << " gpu=" << format_real(actual)
+                  << " abs_diff=" << format_real(absolute_difference)
+                  << " rel_diff=" << format_real(relative_difference) << "\n";
+      }
       assert(absolute_difference <= tolerance * scale);
     }
+    std::cerr << "[gpu_diag][gpu_metabolism_fur][chemical_summary]"
+              << " species=" << species
+              << " name=" << cpu_chem.spec(species).name
+              << " max_abs_diff=" << format_real(maximum_absolute_difference)
+              << " max_abs_cell=" << maximum_absolute_cell
+              << " max_rel_diff=" << format_real(maximum_relative_difference)
+              << " max_rel_cell=" << maximum_relative_cell << "\n";
   }
 }
 
