@@ -328,6 +328,13 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   read_flux("vbf_sink_cumulative", meta.flux_accounting.vbf_sink_cumulative);
   read_flux("agent_uptake_interval", meta.flux_accounting.agent_uptake_interval);
   read_flux("agent_uptake_cumulative", meta.flux_accounting.agent_uptake_cumulative);
+  read_flux("uptake_demand_interval", meta.flux_accounting.uptake_demand_interval);
+  read_flux("uptake_demand_cumulative",
+            meta.flux_accounting.uptake_demand_cumulative);
+  read_flux("uptake_limited_agents_interval",
+            meta.flux_accounting.uptake_limited_interval);
+  read_flux("uptake_limited_agents_cumulative",
+            meta.flux_accounting.uptake_limited_cumulative);
   read_flux("reaction_clip_interval",
             meta.flux_accounting.reaction_clip_interval);
   read_flux("reaction_clip_cumulative",

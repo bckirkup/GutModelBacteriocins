@@ -90,6 +90,8 @@ void launch_metabolism_kernel(
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
     double* agent_uptake_totals,
+    int uptake_limit_mode, double effective_diffusivity_carbon,
+    double effective_diffusivity_iron, double* uptake_limit_totals,
     int global_nx, int global_ny, int storage_nx,
     int owned_global_x_begin, int owned_global_x_end,
     int owned_storage_x_begin,

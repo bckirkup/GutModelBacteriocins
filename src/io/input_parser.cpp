@@ -445,6 +445,19 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
     }
   }
 
+  auto& metabolism = cfg.fixes.metabolism;
+  if (metabolism.uptake_limit == "none") {
+    metabolism.uptake_limit_mode = UptakeLimitMode::None;
+  } else if (metabolism.uptake_limit == "sherwood") {
+    metabolism.uptake_limit_mode = UptakeLimitMode::Sherwood;
+  } else if (metabolism.uptake_limit == "voxel") {
+    metabolism.uptake_limit_mode = UptakeLimitMode::Voxel;
+  } else {
+    throw ConfigError(
+        "invalid uptake_limit: expected 'none', 'sherwood', or 'voxel', got '"
+        + metabolism.uptake_limit + "'");
+  }
+
   const Int carbon_idx = find_chemical_spec(cfg.chemicals, species::CARBON);
   if (carbon_idx >= 0) {
     using enum EpithelialBoundaryMode;
@@ -916,6 +929,15 @@ bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std
   if (key == "km_iron_iroN")            { cfg.fixes.metabolism.km_iron_iroN = parse_config_real(key, val); return true; }
   if (key == "km_iron_iutA")            { cfg.fixes.metabolism.km_iron_iutA = parse_config_real(key, val); return true; }
   if (key == "km_iron_fiu")             { cfg.fixes.metabolism.km_iron_fiu = parse_config_real(key, val); return true; }
+  if (key == "uptake_limit" || key == "metabolism.uptake_limit") {
+    if (val == "none" || val == "sherwood" || val == "voxel") {
+      cfg.fixes.metabolism.uptake_limit = val;
+      return true;
+    }
+    throw ConfigError(
+        "invalid uptake_limit: expected 'none', 'sherwood', or 'voxel', got '"
+        + val + "'");
+  }
   return false;
 }
 

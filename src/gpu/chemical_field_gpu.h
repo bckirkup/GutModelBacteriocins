@@ -32,6 +32,11 @@ class ChemicalFieldGpu {
   bool apply_boundaries(const Domain& domain, ChemicalField& field);
   void reset_agent_uptake();
   void download_agent_uptake(ChemicalField& field);
+  void reset_uptake_limit_totals();
+  void download_uptake_limit_totals(ChemicalField& field);
+  double* uptake_limit_totals_device() {
+    return active_ ? d_uptake_limit_totals_.data() : nullptr;
+  }
   void reset_vbf_totals();
   double* vbf_totals_device();
   void download_vbf_totals(std::vector<double>& values);
@@ -78,6 +83,7 @@ class ChemicalFieldGpu {
   DeviceBuffer<double> d_boundary_conc_;
   DeviceBuffer<double> d_boundary_injected_;
   DeviceBuffer<double> d_agent_uptake_;
+  DeviceBuffer<double> d_uptake_limit_totals_;
   DeviceBuffer<double> d_vbf_totals_;
   DeviceBuffer<double> d_reaction_clip_;
 };

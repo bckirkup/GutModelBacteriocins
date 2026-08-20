@@ -45,6 +45,9 @@ struct GpuMetabolismBuffers {
   int owned_global_x_end = 0;
   int owned_storage_x_begin = 0;
   int receptor_count = 0;
+  double effective_diffusivity_carbon = 0.0;
+  double effective_diffusivity_iron = 0.0;
+  double* d_uptake_limit_totals = nullptr;
 };
 
 class AgentPoolGpu {

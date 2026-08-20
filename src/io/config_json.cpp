@@ -704,6 +704,7 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("immigration.rate", cfg.immigration.rate);
   string_key("chemistry_decomposition", cfg.chemistry_decomposition);
   string_key("species_subset", cfg.species_subset);
+  string_key("uptake_limit", cfg.fixes.metabolism.uptake_limit);
   string_key("chemistry.toxin_evaluation", cfg.qssa.toxin_evaluation);
   string_key("chemistry.toxin_lumping", cfg.qssa.toxin_lumping);
   real_key("mucus_thickness", cfg.advection.mucus_thickness);

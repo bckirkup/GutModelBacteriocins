@@ -30,6 +30,15 @@ struct NutrientFluxAccounting {
   std::vector<Real> reaction_clip_interval;
   std::vector<Real> reaction_clip_step;
   std::vector<Real> reaction_clip_cumulative;
+  // Uptake demanded by growth before the uptake-limitation cap is applied;
+  // agent_uptake_* holds the realized removal after the cap.
+  std::vector<Real> uptake_demand_interval;
+  std::vector<Real> uptake_demand_step;
+  std::vector<Real> uptake_demand_cumulative;
+  // Count of owned live agents whose cap bound for that species.
+  std::vector<Real> uptake_limited_interval;
+  std::vector<Real> uptake_limited_step;
+  std::vector<Real> uptake_limited_cumulative;
 
   void init(size_t species_count) {
     boundary_interval.assign(species_count, 0.0);
@@ -45,6 +54,12 @@ struct NutrientFluxAccounting {
     reaction_clip_interval.assign(species_count, 0.0);
     reaction_clip_step.assign(species_count, 0.0);
     reaction_clip_cumulative.assign(species_count, 0.0);
+    uptake_demand_interval.assign(species_count, 0.0);
+    uptake_demand_step.assign(species_count, 0.0);
+    uptake_demand_cumulative.assign(species_count, 0.0);
+    uptake_limited_interval.assign(species_count, 0.0);
+    uptake_limited_step.assign(species_count, 0.0);
+    uptake_limited_cumulative.assign(species_count, 0.0);
   }
 
   void add_interval(Int species, Real boundary, Real source, Real sink,
@@ -67,6 +82,20 @@ struct NutrientFluxAccounting {
     agent_uptake_step[static_cast<size_t>(species)] += amount;
   }
 
+  void add_uptake_demand(Int species, Real amount) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    uptake_demand_step[static_cast<size_t>(species)] += amount;
+  }
+
+  void add_uptake_limited(Int species, Real count) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    uptake_limited_step[static_cast<size_t>(species)] += count;
+  }
+
   void add_reaction_clip(Int species, Real amount) {
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
@@ -77,7 +106,11 @@ struct NutrientFluxAccounting {
   void commit_agent_uptake_step() {
     for (size_t i = 0; i < agent_uptake_step.size(); ++i) {
       agent_uptake_interval[i] += agent_uptake_step[i];
+      uptake_demand_interval[i] += uptake_demand_step[i];
+      uptake_limited_interval[i] += uptake_limited_step[i];
       agent_uptake_step[i] = 0.0;
+      uptake_demand_step[i] = 0.0;
+      uptake_limited_step[i] = 0.0;
     }
   }
 
@@ -96,11 +129,15 @@ struct NutrientFluxAccounting {
       vbf_source_cumulative[i] += vbf_source_interval[i];
       vbf_sink_cumulative[i] += vbf_sink_interval[i];
       agent_uptake_cumulative[i] += agent_uptake_interval[i];
+      uptake_demand_cumulative[i] += uptake_demand_interval[i];
+      uptake_limited_cumulative[i] += uptake_limited_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
       boundary_interval[i] = 0.0;
       vbf_source_interval[i] = 0.0;
       vbf_sink_interval[i] = 0.0;
       agent_uptake_interval[i] = 0.0;
+      uptake_demand_interval[i] = 0.0;
+      uptake_limited_interval[i] = 0.0;
       reaction_clip_interval[i] = 0.0;
     }
   }

@@ -216,12 +216,16 @@ struct MetabolismRun {
   double acetate_reaction = 0.0;
   double biomass = 0.0;
   double mu = 0.0;
+  double demand = 0.0;
+  double limited_agents = 0.0;
 };
 
 MetabolismRun run_metabolism(double seed, double maximum_growth,
                              bool fur_enabled = false,
                              bool acetate_enabled = false,
-                             double iron_concentration = 1.0) {
+                             double iron_concentration = 1.0,
+                             int uptake_limit_mode = 0,
+                             double effective_diffusivity = 0.0) {
   constexpr int agents = 2;
   DeviceBuffer<double> concentration(kCells);
   DeviceBuffer<double> iron(kCells);
@@ -250,6 +254,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   DeviceBuffer<int> loci(agents);
   DeviceBuffer<double> amelioration(agents);
   DeviceBuffer<double> uptake(2);
+  DeviceBuffer<double> uptake_limit(4);
 
   concentration.upload(std::vector<double>(kCells, 1.0));
   iron.upload(std::vector<double>(kCells, iron_concentration));
@@ -284,6 +289,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   loci.upload(std::vector<int>(agents, 0));
   amelioration.upload(std::vector<double>(agents, 0.0));
   uptake.upload(std::vector<double>(2, 0.0));
+  uptake_limit.upload(std::vector<double>(4, 0.0));
 
   gutibm::gpu::launch_metabolism_kernel(
       concentration.data(), iron.data(), b12.data(), acetate.data(), eut.data(),
@@ -301,6 +307,8 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       1, 1, 1, fur_enabled ? 1 : 0, 1.0e-5, 10.0, 5.0,
       acetate_enabled ? 1 : 0, 3.0e-4, 0.25, 0.1, 2.0,
       0, 0.0, 1.0, uptake.data(),
+      uptake_limit_mode, effective_diffusivity, effective_diffusivity,
+      uptake_limit.data(),
       kNx, kNy, kNx, 0, kNx, 0, nullptr);
   synchronize();
   const auto reaction = download(reaction_carbon, kCells);
@@ -310,8 +318,10 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   const auto biomass_result = download(biomass, agents);
   const auto mu_result = download(mu, agents);
   const auto uptake_host = download(uptake, 2);
+  const auto uptake_limit_host = download(uptake_limit, 4);
   return {reaction[4], uptake_host[0], expression[1 * agents],
-          expression[0], acetate_result[4], biomass_result[0], mu_result[0]};
+          expression[0], acetate_result[4], biomass_result[0], mu_result[0],
+          uptake_limit_host[0], uptake_limit_host[2]};
 }
 
 void test_metabolism() {
@@ -323,6 +333,23 @@ void test_metabolism() {
   const MetabolismRun high = run_metabolism(0.0, 2.0e-3);
   assert(low.uptake < zero_seed.uptake);
   assert(zero_seed.uptake < high.uptake);
+}
+
+void test_metabolism_uptake_limit() {
+  const MetabolismRun unlimited = run_metabolism(0.0, 1.0e-3);
+  const MetabolismRun capped =
+      run_metabolism(0.0, 1.0e-3, false, false, 1.0, 1, 1.0e-6);
+  const MetabolismRun voxel =
+      run_metabolism(0.0, 1.0e-3, false, false, 1.0, 2, 1.0e-6);
+  assert(unlimited.demand > 0.0);
+  assert(close(capped.demand, unlimited.demand));
+  assert(unlimited.limited_agents == 0.0);
+  assert(capped.limited_agents == 1.0);
+  assert(capped.uptake < unlimited.uptake);
+  assert(capped.uptake > 0.0);
+  assert(capped.mu < unlimited.mu);
+  assert(voxel.uptake >= capped.uptake);
+  assert(voxel.uptake <= unlimited.uptake);
 }
 
 void test_metabolism_fur() {
@@ -895,6 +922,8 @@ int main() {
   run_case("launch_apply_boundaries_kernel", test_apply_boundaries);
   run_case("launch_grid_coupling_kernel", test_grid_coupling);
   run_case("launch_metabolism_kernel", test_metabolism);
+  run_case("launch_metabolism_kernel uptake limit",
+           test_metabolism_uptake_limit);
   run_case("launch_metabolism_kernel Fur", test_metabolism_fur);
   run_case("launch_metabolism_kernel acetate", test_metabolism_acetate);
   run_case("launch_diffuse_x_periodic", test_diffuse_x_periodic);

@@ -1,0 +1,9 @@
+{
+  "total_time": 60,
+  "bio_dt": 60,
+  "domain_x": 50e-6,
+  "domain_y": 25e-6,
+  "domain_z": 25e-6,
+  "grid_dx": 5e-6,
+  "uptake_limit": "not_a_mode"
+}
