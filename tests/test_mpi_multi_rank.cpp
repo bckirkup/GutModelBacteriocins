@@ -742,6 +742,44 @@ void test_cross_rank_agent_toxin_sampling() {
                 MPI_COMM_WORLD);
   assert(minimum > 0.0);
 
+  ToxinBurstSource nuclease_burst;
+  nuclease_burst.pos = source_position;
+  const BICluster col_e2 = PlasmidLibrary::colicin_E2();
+  nuclease_burst.params.diff_coeff = col_e2.diff_coeff;
+  nuclease_burst.params.retardation = col_e2.retardation;
+  nuclease_burst.params.pI = col_e2.pI;
+  nuclease_burst.params.source_rate = 1.0e-18;
+  nuclease_burst.is_nuclease = true;
+  nuclease_burst.target = ReceptorType::BtuB;
+  const std::vector<ToxinBurstSource> bursts =
+      rank == 0 ? std::vector<ToxinBurstSource>{nuclease_burst}
+                : std::vector<ToxinBurstSource>{};
+  sim.qssa().solve_all_bacteriocin_fields(
+      sim.agents(), bursts, 0.0, cfg.chem_env.protease, sim.advection(),
+      sim.chemical_field(), nullptr, false);
+  const Real nuclease_sample = sim.qssa().sampled_nuclease_conc(0);
+  if (rank == 1) {
+    assert(nuclease_sample > 0.0);
+  }
+  Real minimum_nuclease = 0.0;
+  MPI_Allreduce(&nuclease_sample, &minimum_nuclease, 1, MPI_DOUBLE, MPI_MIN,
+                MPI_COMM_WORLD);
+  assert(minimum_nuclease > 0.0);
+
+  if (rank == 1) {
+    sim.agents()[0].flags.is_ghost = true;
+    sim.agents()[0].genome.bi_loci.push_back(col_e2);
+    BacteriocinConfig bacteriocin_cfg;
+    bacteriocin_cfg.sos_basal_rate = 0.0;
+    bacteriocin_cfg.sos_lysis_prob = 0.0;
+    bacteriocin_cfg.sos_cross_induction_rate = 1.0e9;
+    FixBacteriocin bacteriocin_fix(sim, bacteriocin_cfg);
+    bacteriocin_fix.compute(60.0);
+    assert(sim.agents()[0].state == PhenoState::NORMAL);
+    assert(sim.step_events().sos_inductions == 0);
+  }
+
+  MPI_Barrier(MPI_COMM_WORLD);
   if (rank == 0) {
     std::cout << "  test_cross_rank_agent_toxin_sampling: PASSED\n";
   }

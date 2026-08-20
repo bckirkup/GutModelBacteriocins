@@ -52,9 +52,11 @@ class FixBacteriocin : public Fix {
   void init() override;
   void compute(Real dt) override;
   void post_step(Real dt) override;
+  Real nuclease_cross_induction_rate(const Agent& agent,
+                                     Int agent_index) const;
 
  private:
-  void check_sos_induction(Agent& agent, Real dt);
+  void check_sos_induction(Agent& agent, Real dt, Int agent_index);
   void check_phage_induction(Agent& agent, const BICluster& bi, Real dt);
   void apply_microcin_secretion(Agent& agent, Real dt) const;
   void lyse_agent(Agent& agent);

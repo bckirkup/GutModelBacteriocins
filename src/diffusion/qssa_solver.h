@@ -119,6 +119,8 @@ class QSSASolver {
       const std::vector<Real>& strength_factors) const;
 
   Real sampled_toxin_conc(Int agent_index, Int species_idx) const;
+  Real sampled_nuclease_conc(Int agent_index) const;
+  Real sampled_nuclease_conc(Int agent_index, ReceptorType target) const;
   Real sampled_toxin_max(Int species_idx) const;
   bool agent_sampling() const { return cfg_.toxin_evaluation == "agents"; }
   bool toxin_lumping() const { return cfg_.toxin_lumping == "lumped"; }
@@ -145,6 +147,12 @@ class QSSASolver {
       ChemicalFieldGpu* chem_gpu = nullptr) const;
 
   void sample_bacteriocin_field(
+      const std::vector<Vec3>& sources,
+      const std::vector<GreensFunctionParams>& params,
+      const std::vector<Real>& strength_factors,
+      const AgentPool& agents,
+      ReceptorType target);
+  void sample_nuclease_field(
       const std::vector<Vec3>& sources,
       const std::vector<GreensFunctionParams>& params,
       const std::vector<Real>& strength_factors,
@@ -182,6 +190,8 @@ class QSSASolver {
   const AdvectionField* adv_ = nullptr;
   const AgentPool* sampled_agents_ = nullptr;
   mutable std::array<SampledToxinField, 4> sampled_fields_;
+  mutable std::array<SampledToxinField, 4> sampled_nuclease_fields_;
+  bool sampled_nuclease_sources_ = false;
   std::array<Int, 4> sampled_species_indices_{{-1, -1, -1, -1}};
 };
 

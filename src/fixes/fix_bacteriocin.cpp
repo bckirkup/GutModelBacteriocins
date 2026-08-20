@@ -4,6 +4,7 @@
 
 #include "fix_bacteriocin.h"
 #include "simulation.h"
+#include "species_names.h"
 #include "qssa_solver.h"
 #include <algorithm>
 #include <cmath>
@@ -32,14 +33,15 @@ bool FixBacteriocin::has_release_mode(const Agent& agent, ReleaseMode mode) cons
 void FixBacteriocin::compute(Real dt) {
   auto& agents = sim_.agents();
 
-  for (Agent& a : agents) {
+  for (Int agent_index = 0; agent_index < agents.size(); ++agent_index) {
+    Agent& a = agents[agent_index];
     // Ghosts participate in neighbor reads but biological state transitions
     // and event counters belong only to the owning rank.
     if (a.state == PhenoState::DEAD || a.flags.is_ghost) continue;
     if (a.genome.bi_loci.empty()) continue;
 
     if (has_release_mode(a, ReleaseMode::SOS_LYSIS)) {
-      check_sos_induction(a, dt);
+      check_sos_induction(a, dt, agent_index);
     }
 
     bool has_continuous = false;
@@ -77,7 +79,8 @@ void FixBacteriocin::apply_microcin_secretion(Agent& agent, Real /*dt*/) const {
   agent.flags.microcin_penalty_applied = true;
 }
 
-void FixBacteriocin::check_sos_induction(Agent& agent, Real dt) {
+void FixBacteriocin::check_sos_induction(Agent& agent, Real dt,
+                                         Int agent_index) {
   if (agent.state == PhenoState::SOS_INDUCED) return;
 
   const Real bio_dt = sim_.config().time.bio_dt;
@@ -87,8 +90,7 @@ void FixBacteriocin::check_sos_induction(Agent& agent, Real dt) {
     rate_total += cfg_.sos_lysis_prob / bio_dt;
   }
 
-  const Real nuclease_conc = sim_.local_nuclease_toxin(agent);
-  rate_total += cfg_.sos_cross_induction_rate * nuclease_conc;
+  rate_total += nuclease_cross_induction_rate(agent, agent_index);
 
   rate_total += sim_.ros_induction_rate(agent);
 
@@ -99,6 +101,37 @@ void FixBacteriocin::check_sos_induction(Agent& agent, Real dt) {
     agent.timers.sos_timer = k_sos_lysis_delay_s;
     sim_.step_events().sos_inductions++;
   }
+}
+
+Real FixBacteriocin::nuclease_cross_induction_rate(
+    const Agent& agent, Int agent_index) const {
+  const bool has_matching_immunity = std::ranges::any_of(
+      agent.genome.bi_loci, [](const BICluster& bi) {
+        return std::ranges::any_of(
+            species::BACTERIOCIN_RECEPTOR_TARGETS,
+            [&bi](ReceptorType target) { return bi.target == target; });
+      });
+  if (!has_matching_immunity) {
+    return cfg_.sos_cross_induction_rate
+        * sim_.local_nuclease_toxin(agent, agent_index);
+  }
+
+  Real rate = 0.0;
+  for (const ReceptorType target :
+       species::BACTERIOCIN_RECEPTOR_TARGETS) {
+    Real immunity_factor = 1.0;
+    for (const auto& bi : agent.genome.bi_loci) {
+      if (bi.target != target) continue;
+      const Real candidate =
+          sim_.config().fixes.receptor.immunity_factor
+          * bi.immunity_binding_affinity;
+      immunity_factor = std::min(immunity_factor, candidate);
+    }
+    rate += cfg_.sos_cross_induction_rate
+        * sim_.qssa().sampled_nuclease_conc(agent_index, target)
+        * immunity_factor;
+  }
+  return rate;
 }
 
 void FixBacteriocin::check_phage_induction(Agent& agent, const BICluster& bi, Real dt) {
