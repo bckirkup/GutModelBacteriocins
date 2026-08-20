@@ -45,6 +45,7 @@ SimulationConfig make_config(UptakeLimitMode mode) {
   for (auto& chemical : cfg.chemicals) {
     if (chemical.name == species::CARBON) {
       chemical.z_gradient_enabled = false;
+      chemical.retardation = 1.0e3;
       chemical.initial_conc = 1.0e-7;
       chemical.boundary_conc = 1.0e-7;
     }
