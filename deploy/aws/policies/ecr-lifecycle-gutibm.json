@@ -1,0 +1,26 @@
+{
+  "rules": [
+    {
+      "rulePriority": 10,
+      "description": "Untagged images are build residue; expire after a day.",
+      "selection": {
+        "tagStatus": "untagged",
+        "countType": "sinceImagePushed",
+        "countUnit": "days",
+        "countNumber": 1
+      },
+      "action": { "type": "expire" }
+    },
+    {
+      "rulePriority": 20,
+      "description": "gputest-* are ~4.4 GB disposable CUDA test images rebuilt per device-gate run; keep the newest 3.",
+      "selection": {
+        "tagStatus": "tagged",
+        "tagPrefixList": ["gputest"],
+        "countType": "imageCountMoreThan",
+        "countNumber": 3
+      },
+      "action": { "type": "expire" }
+    }
+  ]
+}

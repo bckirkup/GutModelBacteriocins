@@ -78,7 +78,13 @@
         "ecr:GetDownloadUrlForLayer",
         "ecr:InitiateLayerUpload",
         "ecr:PutImage",
-        "ecr:UploadLayerPart"
+        "ecr:UploadLayerPart",
+        "ecr:ListImages",
+        "ecr:BatchDeleteImage",
+        "ecr:GetLifecyclePolicy",
+        "ecr:PutLifecyclePolicy",
+        "ecr:GetLifecyclePolicyPreview",
+        "ecr:StartLifecyclePolicyPreview"
       ],
       "Resource": "arn:aws:ecr:*:994254241749:repository/gutibm"
     },
