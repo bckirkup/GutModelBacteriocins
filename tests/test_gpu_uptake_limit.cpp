@@ -32,6 +32,14 @@ SimulationConfig make_config(UptakeLimitMode mode) {
   cfg.domain.hi = {40e-6, 40e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  if (mode == UptakeLimitMode::Sherwood) {
+    cfg.fixes.metabolism.uptake_limit = "sherwood";
+  } else if (mode == UptakeLimitMode::Voxel) {
+    cfg.fixes.metabolism.uptake_limit = "voxel";
+  } else {
+    cfg.fixes.metabolism.uptake_limit = "none";
+  }
   cfg.fixes.metabolism.uptake_limit_mode = mode;
   cfg.enabled_fixes = {"metabolism"};
   for (auto& chemical : cfg.chemicals) {
