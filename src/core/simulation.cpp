@@ -2042,12 +2042,9 @@ Real Simulation::ros_induction_rate(const Agent& agent) const {
   return cfg_.chem_env.oxygen.k_ROS * local_O2(agent) * std::max(agent.mu_realized, 0.0);
 }
 
-Real Simulation::local_nuclease_toxin(const Agent& agent) const {
-  const Int i_btuB = chem_.find(
-      species::bacteriocin_species_for(ReceptorType::BtuB,
-                                       qssa_.toxin_lumping()));
-  if (i_btuB < 0 || agent.grid_cell < 0) return 0.0;
-  return chem_.conc(i_btuB, agent.grid_cell);
+Real Simulation::local_nuclease_toxin(const Agent& /*agent*/,
+                                      Int agent_index) const {
+  return qssa_.sampled_nuclease_conc(agent_index);
 }
 
 void Simulation::add_toxin_burst(const ToxinBurstSource& burst) {

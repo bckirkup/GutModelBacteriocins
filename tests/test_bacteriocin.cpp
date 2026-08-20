@@ -46,6 +46,20 @@ static Agent make_agent_at_center(Simulation& sim, Int type) {
   return a;
 }
 
+static ToxinBurstSource burst_from_cluster(
+    const BICluster& bi, const Vec3& position) {
+  ToxinBurstSource burst;
+  burst.pos = position;
+  burst.params.diff_coeff = bi.diff_coeff;
+  burst.params.retardation = bi.retardation;
+  burst.params.pI = bi.pI;
+  burst.params.source_rate = 1.0e-18;
+  burst.release_tau = 300.0;
+  burst.is_nuclease = bi.is_nuclease;
+  burst.target = bi.target;
+  return burst;
+}
+
 void test_pi_diffusion_classes() {
   auto e1 = PlasmidLibrary::colicin_E1();
   auto e2 = PlasmidLibrary::colicin_E2();
@@ -302,12 +316,17 @@ void test_cross_induction() {
   Agent a = make_agent_at_center(sim, 1);
   a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
   sim.agents().push_back(std::move(a));
-
-  Int i_btuB = sim.chemical_field().find(species::BACTERIOCIN_BTUB);
-  assert(i_btuB >= 0);
-  sim.chemical_field().conc(i_btuB, sim.agents()[0].grid_cell) = 1.0e-3;
+  ToxinBurstSource burst = burst_from_cluster(
+      PlasmidLibrary::colicin_E2(), sim.agents()[0].x);
+  burst.params.source_rate = 1.0e-12;
+  sim.add_toxin_burst(std::move(burst));
+  sim.qssa().solve_all_bacteriocin_fields(
+      sim.agents(), sim.toxin_bursts(), 0.0,
+      sim.config().chem_env.protease, sim.advection(),
+      sim.chemical_field(), nullptr, false);
 
   FixBacteriocin fix(sim, cfg);
+  assert(fix.nuclease_cross_induction_rate(sim.agents()[0], 0) > 0.0);
   fix.compute(60.0);
 
   assert(sim.agents()[0].state == PhenoState::SOS_INDUCED);

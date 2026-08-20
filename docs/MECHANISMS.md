@@ -213,17 +213,17 @@ SOS probability per biological timestep:
 ```
 rate_total = sos_basal_rate
            + (just_divided ? sos_lysis_prob / bio_dt : 0)
-           + sos_cross_induction_rate * [bacteriocin_BtuB]
+           + sos_cross_induction_rate * [nuclease_bacteriocin]
            + k_ROS * [O2] * mu_realized   (when oxygen.enabled)
 p_sos = 1 - exp(-rate_total * dt)
 ```
 
 - `just_divided` is set on parent and daughter during division in `fix_metabolism`, cleared at the start of each `Simulation::step()`
-- Cross-induction uses the `bacteriocin_BtuB` chemical field in the default
-  per-receptor model (nuclease colicin bursts route to the BtuB-target field).
-  In lumped mode it reads the total `bacteriocin_lumped` burden, so toxin
-  targeting other receptors can also drive SOS/ROS cross-induction. This is an
-  explicit modelling cost of lumping.
+- Cross-induction uses a per-agent QSSA exposure sampled from only
+  `is_nuclease` sources after MPI source exchange. It is receptor-agnostic and
+  therefore works identically for grid and agent toxin evaluation without
+  adding a chemical species. BI-locus immunity attenuates exposure from
+  nuclease toxins using the minimum matching immunity factor.
 - After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`.
   The event ledger records the resulting death as `mortality_lysis`; this is
   separate from the `sos_inductions` and `phage_inductions` counters.

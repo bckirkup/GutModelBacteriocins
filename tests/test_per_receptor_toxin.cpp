@@ -148,7 +148,20 @@ void test_receptor_specific_kill() {
   std::cout << "  test_receptor_specific_kill: PASSED\n";
 }
 
-void test_nuclease_cross_induction_uses_btuB_field() {
+ToxinBurstSource burst_from_cluster(const BICluster& bi, Vec3 position) {
+  ToxinBurstSource burst;
+  burst.pos = position;
+  burst.params.diff_coeff = bi.diff_coeff;
+  burst.params.retardation = bi.retardation;
+  burst.params.pI = bi.pI;
+  burst.params.source_rate = 1.0e-18;
+  burst.release_tau = 300.0;
+  burst.is_nuclease = bi.is_nuclease;
+  burst.target = bi.target;
+  return burst;
+}
+
+void test_nuclease_cross_induction_is_specific_and_immune() {
   BacteriocinConfig cfg;
   cfg.sos_basal_rate = 0.0;
   cfg.sos_lysis_prob = 0.0;
@@ -157,32 +170,53 @@ void test_nuclease_cross_induction_uses_btuB_field() {
   auto sim = make_tiny_sim();
   Vec3 pos = {50e-6, 50e-6, 25e-6};
   Agent a = agent_at(sim, pos, 1);
-  a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
-  Int cell = a.grid_cell;
   sim.agents().push_back(std::move(a));
-
-  auto& chem = sim.chemical_field();
-  chem.conc(chem.find(species::BACTERIOCIN_BTUB), cell) = 1.0e-3;
-  chem.conc(chem.find(species::BACTERIOCIN_FEPA), cell) = 1.0e-3;
+  sim.add_toxin_burst(
+      burst_from_cluster(PlasmidLibrary::colicin_E1(), pos));
+  sim.qssa().solve_all_bacteriocin_fields(
+      sim.agents(), sim.toxin_bursts(), 0.0, sim.config().chem_env.protease,
+      sim.advection(), sim.chemical_field(), nullptr, false);
 
   FixBacteriocin fix(sim, cfg);
-  fix.compute(60.0);
-  assert(sim.agents()[0].state == PhenoState::SOS_INDUCED);
+  assert(fix.nuclease_cross_induction_rate(sim.agents()[0], 0) == 0.0);
 
   auto sim2 = make_tiny_sim();
   Agent a2 = agent_at(sim2, pos, 1);
-  a2.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
-  Int cell2 = a2.grid_cell;
   sim2.agents().push_back(std::move(a2));
-  auto& chem2 = sim2.chemical_field();
-  chem2.conc(chem2.find(species::BACTERIOCIN_BTUB), cell2) = 0.0;
-  chem2.conc(chem2.find(species::BACTERIOCIN_FEPA), cell2) = 1.0e-3;
+  sim2.add_toxin_burst(
+      burst_from_cluster(PlasmidLibrary::colicin_E2(), pos));
+  sim2.qssa().solve_all_bacteriocin_fields(
+      sim2.agents(), sim2.toxin_bursts(), 0.0,
+      sim2.config().chem_env.protease, sim2.advection(),
+      sim2.chemical_field(), nullptr, false);
 
   FixBacteriocin fix2(sim2, cfg);
-  fix2.compute(60.0);
-  assert(sim2.agents()[0].state == PhenoState::NORMAL);
+  const Real unprotected_rate =
+      fix2.nuclease_cross_induction_rate(sim2.agents()[0], 0);
+  assert(unprotected_rate > 0.0);
 
-  std::cout << "  test_nuclease_cross_induction_uses_btuB_field: PASSED\n";
+  auto sim3 = make_tiny_sim();
+  Agent a3 = agent_at(sim3, pos, 1);
+  BICluster immune = PlasmidLibrary::colicin_E2();
+  immune.immunity_binding_affinity = 0.2;
+  a3.genome.bi_loci.push_back(immune);
+  sim3.agents().push_back(std::move(a3));
+  sim3.add_toxin_burst(
+      burst_from_cluster(PlasmidLibrary::colicin_E2(), pos));
+  sim3.qssa().solve_all_bacteriocin_fields(
+      sim3.agents(), sim3.toxin_bursts(), 0.0,
+      sim3.config().chem_env.protease, sim3.advection(),
+      sim3.chemical_field(), nullptr, false);
+  FixBacteriocin fix3(sim3, cfg);
+  const Real immune_rate =
+      fix3.nuclease_cross_induction_rate(sim3.agents()[0], 0);
+  const Real expected_factor =
+      sim3.config().fixes.receptor.immunity_factor
+      * immune.immunity_binding_affinity;
+  assert(std::abs(immune_rate - unprotected_rate * expected_factor)
+         <= 1.0e-12 * std::max(1.0, unprotected_rate));
+
+  std::cout << "  test_nuclease_cross_induction_is_specific_and_immune: PASSED\n";
 }
 
 int main() {
@@ -190,7 +224,7 @@ int main() {
   test_cole1_burst_routes_btuB();
   test_colb_burst_routes_fepA();
   test_receptor_specific_kill();
-  test_nuclease_cross_induction_uses_btuB_field();
+  test_nuclease_cross_induction_is_specific_and_immune();
   std::cout << "All per-receptor toxin tests passed.\n";
   return 0;
 }

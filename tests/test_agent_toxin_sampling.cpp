@@ -4,6 +4,7 @@
 
 #include "agent.h"
 #include "input_parser.h"
+#include "plasmid.h"
 #include "simulation.h"
 #include "species_names.h"
 #include <algorithm>
@@ -54,6 +55,16 @@ ToxinBurstSource source_at(Vec3 position) {
   source.params.retardation = 1.0;
   source.params.source_rate = 1e-18;
   source.params.decay_rate = 0.0;
+  return source;
+}
+
+ToxinBurstSource source_from_cluster(Vec3 position, const BICluster& bi) {
+  ToxinBurstSource source = source_at(position);
+  source.params.diff_coeff = bi.diff_coeff;
+  source.params.retardation = bi.retardation;
+  source.params.pI = bi.pI;
+  source.is_nuclease = bi.is_nuclease;
+  source.target = bi.target;
   return source;
 }
 
@@ -192,12 +203,55 @@ void test_sampling_caches_appended_agents() {
   std::cout << "  test_sampling_caches_appended_agents: PASSED\n";
 }
 
+void test_nuclease_sampling_specificity_sensitivity_and_bounds() {
+  auto sim = make_sim("agents");
+  add_target(sim, {55e-6, 65e-6, 65e-6});
+  add_target(sim, {45e-6, 65e-6, 65e-6});
+  add_target(sim, {35e-6, 65e-6, 65e-6});
+  const BICluster col_e1 = PlasmidLibrary::colicin_E1();
+  const BICluster col_e2 = PlasmidLibrary::colicin_E2();
+  const ToxinBurstSource non_nuclease =
+      source_from_cluster({65e-6, 65e-6, 65e-6}, col_e1);
+  solve(sim, non_nuclease);
+  assert(sim.qssa().sampled_nuclease_conc(0) == 0.0);
+
+  auto nuclease_sim = make_sim("agents");
+  add_target(nuclease_sim, {55e-6, 65e-6, 65e-6});
+  add_target(nuclease_sim, {45e-6, 65e-6, 65e-6});
+  add_target(nuclease_sim, {35e-6, 65e-6, 65e-6});
+  const ToxinBurstSource nuclease =
+      source_from_cluster({65e-6, 65e-6, 65e-6}, col_e2);
+  solve(nuclease_sim, nuclease);
+  const Real near = nuclease_sim.qssa().sampled_nuclease_conc(0);
+  const Real middle = nuclease_sim.qssa().sampled_nuclease_conc(1);
+  const Real far = nuclease_sim.qssa().sampled_nuclease_conc(2);
+  const Int toxin = nuclease_sim.chemical_field().find(
+      species::BACTERIOCIN_BTUB);
+  const Real total = nuclease_sim.qssa().sampled_toxin_conc(0, toxin);
+  assert(near > middle);
+  assert(middle > far);
+  assert(near > 0.0);
+  assert(near <= total + 1.0e-30);
+
+  auto grid_sim = make_sim("grid");
+  add_target(grid_sim, {55e-6, 65e-6, 65e-6});
+  solve(grid_sim, nuclease);
+  assert(grid_sim.qssa().sampled_nuclease_conc(0) > 0.0);
+
+  auto empty = make_sim("agents");
+  add_target(empty, {55e-6, 65e-6, 65e-6});
+  solve_without_sources(empty);
+  assert(empty.qssa().sampled_nuclease_conc(0) == 0.0);
+  std::cout << "  test_nuclease_sampling_specificity_sensitivity_and_bounds: PASSED\n";
+}
+
 int main() {
   test_cell_center_matches_grid();
   test_sampling_exactness_and_bounds();
   test_nonmaterialized_grid_is_zeroed();
   test_distance_ordering_and_fmm();
   test_sampling_caches_appended_agents();
+  test_nuclease_sampling_specificity_sensitivity_and_bounds();
   std::cout << "All agent toxin sampling tests passed.\n";
   return 0;
 }
