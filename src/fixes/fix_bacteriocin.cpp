@@ -105,17 +105,6 @@ void FixBacteriocin::check_sos_induction(Agent& agent, Real dt,
 
 Real FixBacteriocin::nuclease_cross_induction_rate(
     const Agent& agent, Int agent_index) const {
-  const bool has_matching_immunity = std::ranges::any_of(
-      agent.genome.bi_loci, [](const BICluster& bi) {
-        return std::ranges::any_of(
-            species::BACTERIOCIN_RECEPTOR_TARGETS,
-            [&bi](ReceptorType target) { return bi.target == target; });
-      });
-  if (!has_matching_immunity) {
-    return cfg_.sos_cross_induction_rate
-        * sim_.local_nuclease_toxin(agent, agent_index);
-  }
-
   Real rate = 0.0;
   for (const ReceptorType target :
        species::BACTERIOCIN_RECEPTOR_TARGETS) {

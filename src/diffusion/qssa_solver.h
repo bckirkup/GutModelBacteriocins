@@ -158,6 +158,13 @@ class QSSASolver {
       const std::vector<Real>& strength_factors,
       const AgentPool& agents,
       ReceptorType target);
+  void sample_nuclease_sources(
+      const std::vector<Vec3>& sources,
+      const std::vector<GreensFunctionParams>& params,
+      const std::vector<Real>& strength_factors,
+      const std::vector<bool>& is_nuclease,
+      const std::vector<ReceptorType>& targets,
+      const AgentPool& agents);
 
   // Lumped mode has one field over all sources, so both entry points do the
   // same work regardless of which receptor target was requested.

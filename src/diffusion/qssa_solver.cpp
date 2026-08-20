@@ -484,28 +484,8 @@ void QSSASolver::solve_bacteriocin_field(
   append_burst_sources(bursts, current_time, *domain_, buffers);
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
-
-  std::vector<Vec3> nuclease_sources;
-  std::vector<GreensFunctionParams> nuclease_params;
-  std::vector<Real> nuclease_strengths;
-  sampled_nuclease_sources_ = std::any_of(
-      is_nuclease.begin(), is_nuclease.end(), [](bool value) {
-        return value;
-      });
-  if (sampled_nuclease_sources_) {
-    for (ReceptorType nuclease_target :
-         species::BACTERIOCIN_RECEPTOR_TARGETS) {
-      filter_nuclease_sources_by_target(
-          all_sources, all_params, all_strengths, is_nuclease, all_targets,
-          nuclease_target, nuclease_sources, nuclease_params,
-          nuclease_strengths);
-      sample_nuclease_field(nuclease_sources, nuclease_params,
-                            nuclease_strengths, agents, nuclease_target);
-      nuclease_sources.clear();
-      nuclease_params.clear();
-      nuclease_strengths.clear();
-    }
-  }
+  sample_nuclease_sources(all_sources, all_params, all_strengths, is_nuclease,
+                          all_targets, agents);
 
   if (cfg_.toxin_lumping == "lumped") {
     solve_lumped_bacteriocin_fields(
@@ -609,28 +589,8 @@ void QSSASolver::solve_all_bacteriocin_fields(
   append_burst_sources(bursts, current_time, *domain_, buffers);
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
-
-  std::vector<Vec3> nuclease_sources;
-  std::vector<GreensFunctionParams> nuclease_params;
-  std::vector<Real> nuclease_strengths;
-  sampled_nuclease_sources_ = std::any_of(
-      is_nuclease.begin(), is_nuclease.end(), [](bool value) {
-        return value;
-      });
-  if (sampled_nuclease_sources_) {
-    for (ReceptorType nuclease_target :
-         species::BACTERIOCIN_RECEPTOR_TARGETS) {
-      filter_nuclease_sources_by_target(
-          all_sources, all_params, all_strengths, is_nuclease, all_targets,
-          nuclease_target, nuclease_sources, nuclease_params,
-          nuclease_strengths);
-      sample_nuclease_field(nuclease_sources, nuclease_params,
-                            nuclease_strengths, agents, nuclease_target);
-      nuclease_sources.clear();
-      nuclease_params.clear();
-      nuclease_strengths.clear();
-    }
-  }
+  sample_nuclease_sources(all_sources, all_params, all_strengths, is_nuclease,
+                          all_targets, agents);
 
   if (cfg_.toxin_lumping == "lumped") {
     solve_lumped_bacteriocin_fields(
@@ -774,6 +734,34 @@ void QSSASolver::sample_nuclease_field(
   for (Int i = 0; i < agents.size(); ++i) {
     field.samples[static_cast<size_t>(i)] =
         std::max(evaluate_sample(field, agents[i].x), 0.0);
+  }
+}
+
+void QSSASolver::sample_nuclease_sources(
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params,
+    const std::vector<Real>& strength_factors,
+    const std::vector<bool>& is_nuclease,
+    const std::vector<ReceptorType>& targets,
+    const AgentPool& agents) {
+  sampled_nuclease_sources_ = std::any_of(
+      is_nuclease.begin(), is_nuclease.end(), [](bool value) {
+        return value;
+      });
+  if (!sampled_nuclease_sources_) return;
+
+  std::vector<Vec3> nuclease_sources;
+  std::vector<GreensFunctionParams> nuclease_params;
+  std::vector<Real> nuclease_strengths;
+  for (ReceptorType target : species::BACTERIOCIN_RECEPTOR_TARGETS) {
+    filter_nuclease_sources_by_target(
+        sources, params, strength_factors, is_nuclease, targets, target,
+        nuclease_sources, nuclease_params, nuclease_strengths);
+    sample_nuclease_field(nuclease_sources, nuclease_params,
+                          nuclease_strengths, agents, target);
+    nuclease_sources.clear();
+    nuclease_params.clear();
+    nuclease_strengths.clear();
   }
 }
 
