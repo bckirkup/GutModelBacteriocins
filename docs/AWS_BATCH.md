@@ -453,6 +453,22 @@ See `deploy/aws/Dockerfile` and `entry.sh`. Multi-arch default
 - [x] Campaign instances: multi-AZ CE with single-GPU sizes that fit 8 vCPU / 28 GB / GPU=1
 - [x] Practice configs: `experiments/smoke_gpu.json`, `smoke_gpu_batch.json`
 
+### ECR image retention
+
+An administrator should install the `gutibm` ECR lifecycle policy from
+CloudShell after the repository accumulates disposable CUDA device-test
+images:
+
+```bash
+bash deploy/aws/09_ecr_retention.sh
+```
+
+The policy expires untagged images after one day and retains the newest three
+`gputest-*` images. It deliberately leaves the digest-pinned runtime images
+used by campaign and practice provenance untouched. Rerun
+`deploy/aws/06_setup_devin_role.sh` afterward so the Devin role can prune
+future leftovers.
+
 ### Phase 1 — CUDA smoke on Batch (done Jul 2026)
 
 - [x] Draft `deploy/aws/Dockerfile`, `entry.sh`
