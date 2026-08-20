@@ -1,4 +1,5 @@
 #include "gpu_kernels.h"
+#include "uptake_limit.h"
 #include <cuda_runtime.h>
 #include <cmath>
 
@@ -36,6 +37,8 @@ __global__ void metabolism_kernel(
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
     double* agent_uptake_totals,
+    int uptake_limit_mode, double effective_diffusivity_carbon,
+    double effective_diffusivity_iron, double* uptake_limit_totals,
     int global_nx, int global_ny, int storage_nx,
     int owned_global_x_begin, int owned_global_x_end,
     int owned_storage_x_begin) {
@@ -137,9 +140,41 @@ __global__ void metabolism_kernel(
   }
 
   mu -= maintenance_rate;
+
+  const double demanded_biomass = mu * biomass[i] * dt;
+  const double demanded_carbon = demanded_biomass > 0.0 && conc_carbon
+      ? demanded_biomass * yield_carbon : 0.0;
+  const double demanded_iron =
+      demanded_biomass > 0.0 && iron_uptake_enabled && conc_iron
+      ? demanded_biomass * yield_iron : 0.0;
+  const double fraction_carbon = uptake::limit_fraction(
+      uptake::allowed_uptake_mol(
+          uptake_limit_mode, conc_carbon ? conc_carbon[cell] : 0.0,
+          effective_diffusivity_carbon, radius[i], cell_volume, dt),
+      demanded_carbon);
+  const double fraction_iron = uptake::limit_fraction(
+      uptake::allowed_uptake_mol(
+          uptake_limit_mode, conc_iron ? conc_iron[cell] : 0.0,
+          effective_diffusivity_iron, radius[i], cell_volume, dt),
+      demanded_iron);
+  double funded = 1.0;
+  if (fraction_carbon < funded) funded = fraction_carbon;
+  if (fraction_iron < funded) funded = fraction_iron;
+  if (funded < 1.0) mu *= funded;
   mu_realized[i] = mu;
 
   if (i >= local_agent_count) return;
+
+  if (uptake_limit_totals) {
+    if (demanded_carbon > 0.0) {
+      atomicAdd(&uptake_limit_totals[0], demanded_carbon);
+      if (fraction_carbon < 1.0) atomicAdd(&uptake_limit_totals[2], 1.0);
+    }
+    if (demanded_iron > 0.0) {
+      atomicAdd(&uptake_limit_totals[1], demanded_iron);
+      if (fraction_iron < 1.0) atomicAdd(&uptake_limit_totals[3], 1.0);
+    }
+  }
 
   double d_biomass = mu * biomass[i] * dt;
   biomass[i] += d_biomass;
@@ -207,6 +242,8 @@ void launch_metabolism_kernel(
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
     double* agent_uptake_totals,
+    int uptake_limit_mode, double effective_diffusivity_carbon,
+    double effective_diffusivity_iron, double* uptake_limit_totals,
     int global_nx, int global_ny, int storage_nx,
     int owned_global_x_begin, int owned_global_x_end,
     int owned_storage_x_begin,
@@ -233,6 +270,8 @@ void launch_metabolism_kernel(
       acetate_enabled, acetate_overflow_threshold, acetate_overflow_rate,
       acetate_scavenge_rate, acetate_scavenge_Km,
       o2_enabled, o2_boost_max, o2_Km, agent_uptake_totals,
+      uptake_limit_mode, effective_diffusivity_carbon,
+      effective_diffusivity_iron, uptake_limit_totals,
       global_nx, global_ny, storage_nx, owned_global_x_begin,
       owned_global_x_end, owned_storage_x_begin);
 }

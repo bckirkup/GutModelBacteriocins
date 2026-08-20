@@ -342,6 +342,12 @@ std::vector<Probe> build_probes() {
   v.push_back(R("km_iron_iroN", [](const SimulationConfig& c) { return c.fixes.metabolism.km_iron_iroN; }));
   v.push_back(R("km_iron_iutA", [](const SimulationConfig& c) { return c.fixes.metabolism.km_iron_iutA; }));
   v.push_back(R("km_iron_fiu", [](const SimulationConfig& c) { return c.fixes.metabolism.km_iron_fiu; }));
+  v.push_back(S("uptake_limit",
+                [](const SimulationConfig& c) { return c.fixes.metabolism.uptake_limit; },
+                "sherwood"));
+  v.push_back(S("metabolism.uptake_limit",
+                [](const SimulationConfig& c) { return c.fixes.metabolism.uptake_limit; },
+                "voxel", false));
 
   // ── Mechanics Fix tunables ────────────────────────────────────────────────
   v.push_back(R("hertz_k", [](const SimulationConfig& c) { return c.fixes.mechanics.hertz_k; }));

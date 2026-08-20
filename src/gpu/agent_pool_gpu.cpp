@@ -220,6 +220,10 @@ bool AgentPoolGpu::run_metabolism(
       buffers.acetate_scavenge_rate, buffers.acetate_scavenge_Km,
       buffers.o2_enabled, buffers.o2_boost_max, buffers.o2_Km,
       uptake_totals,
+      to_underlying(cfg.uptake_limit_mode),
+      buffers.effective_diffusivity_carbon,
+      buffers.effective_diffusivity_iron,
+      buffers.d_uptake_limit_totals,
       domain.nx(), domain.ny(), buffers.storage_nx,
       buffers.owned_global_x_begin, buffers.owned_global_x_end,
       buffers.owned_storage_x_begin, gpu_compute_stream());

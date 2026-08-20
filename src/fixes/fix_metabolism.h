@@ -25,6 +25,8 @@
 
 #include "fix.h"
 #include "agent.h"
+#include "uptake_limit.h"
+#include <string>
 #include <vector>
 
 namespace gutibm {
@@ -57,6 +59,11 @@ struct MetabolismConfig {
   // Ethanolamine utilization: concentration-dependent penalty (Monod)
   Real eut_km             = 0.1e-3;   // half-saturation for eut utilization (mol/m³)
   Real eut_max_penalty    = 0.10;     // max penalty when ethanolamine abundant
+
+  // Agent-side uptake limitation model: "none", "sherwood", or "voxel".
+  std::string uptake_limit = "none";
+  // Resolved from uptake_limit by InputParser::finalize_config.
+  UptakeLimitMode uptake_limit_mode = UptakeLimitMode::None;
 };
 
 class FixMetabolism : public Fix {
@@ -68,6 +75,8 @@ class FixMetabolism : public Fix {
 
  private:
   void compute_growth_rate(Agent& agent);
+  Real uptake_limit_fraction(const Agent& agent, Real d_biomass, Real dt,
+                             bool record_diagnostics);
   void grow_agent(Agent& agent, Real dt);
   void apply_siderophore_chemistry(Real dt);
   void apply_siderophore_chelation(Int i_sid, Int i_iron,

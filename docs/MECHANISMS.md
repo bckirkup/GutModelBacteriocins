@@ -678,6 +678,8 @@ C(z) = C_max * exp(-z_rel / lambda_mucin)
 ```
 where `z_rel` is the distance from the epithelium and `lambda_mucin` is the characteristic decay length (~25 μm by default). The default Dirichlet boundary at z=0 maintains `boundary_conc` as the peak value. Carbon can opt into finite-rate delivery with `carbon.epithelial_boundary` (or its underscore alias): Robin uses `carbon.epithelial_transfer_coeff` and the existing `boundary_conc` as `C_epi`; flux uses `carbon.epithelial_flux`. The post-solve exchange is recorded in mol as `beta(C_epi - c0_after)V` for Robin or `J·A·dt` for flux.
 
+
+Agent uptake can be limited to what diffusion can deliver. With `uptake_limit=sherwood`, an agent's per-step uptake of a species is capped at `N_max = 4*pi*D_eff*r_agent*C_local` (Sherwood number 2 for an isolated sphere at rest), with `D_eff = D_free / retardation` taken from the same species record the field solver uses. The realized fraction is the Liebig minimum over the capped species (carbon and iron; the corrinoid pool is not depleted, Spec 6 §3), clamped to `[0, 1]`, and it scales the realized uptake, the biomass increment, and `mu_realized`, so division, bacteriostasis classification, and the washout/VADI `mu` versus `gamma_flow` comparison all see the funded rate. `uptake_limit=voxel` caps at the voxel content `C_local*V_cell` and exists only to measure the grid artifact by divergence from `sherwood`; it is not a biological model. `uptake_limit=none` is the default and leaves growth unfunded as before.
 ### VBF mucin liberation coupling
 When `mucin_z_gradient_enabled`, the monosaccharide release rate applied by the VBF also varies with z:
 ```

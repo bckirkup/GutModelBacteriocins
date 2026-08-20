@@ -895,7 +895,21 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     std::ranges::fill(flux.vbf_sink_interval, 0.0);
     std::ranges::fill(flux.agent_uptake_interval, 0.0);
     std::ranges::fill(flux.agent_uptake_step, 0.0);
+    std::ranges::fill(flux.uptake_demand_interval, 0.0);
+    std::ranges::fill(flux.uptake_demand_step, 0.0);
+    std::ranges::fill(flux.uptake_limited_interval, 0.0);
+    std::ranges::fill(flux.uptake_limited_step, 0.0);
     std::ranges::fill(flux.reaction_clip_step, 0.0);
+    const auto species_count = static_cast<size_t>(chem_.num_species());
+    const auto ensure_sized = [species_count](std::vector<Real>& values) {
+      if (values.size() != species_count) values.assign(species_count, 0.0);
+    };
+    ensure_sized(flux.uptake_demand_interval);
+    ensure_sized(flux.uptake_demand_step);
+    ensure_sized(flux.uptake_demand_cumulative);
+    ensure_sized(flux.uptake_limited_interval);
+    ensure_sized(flux.uptake_limited_step);
+    ensure_sized(flux.uptake_limited_cumulative);
     if (flux.reaction_clip_interval.size()
         != static_cast<size_t>(chem_.num_species())) {
       flux.reaction_clip_interval.assign(

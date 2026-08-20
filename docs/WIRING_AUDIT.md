@@ -22,7 +22,7 @@ that parses but never changes an outcome is *dead wiring*.
 
 | Species | Source(s) | Sink(s) | Loop closed? | Notes |
 |---------|-----------|---------|--------------|-------|
-| **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z=0 boundary | **Agent uptake `fix_metabolism.cpp grow_agent` (canonical, Spec 6)**; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1) | Yes | Implicit diffusion transports local source/sink changes with `D=5e-10 m²/s`; the metabolism Fix is the single per-agent uptake site. |
+| **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z=0 boundary | **Agent uptake `fix_metabolism.cpp grow_agent` (canonical, Spec 6)**; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1) | Yes | Implicit diffusion transports local source/sink changes with `D=5e-10 m²/s`; the metabolism Fix is the single per-agent uptake site. With `uptake_limit=sherwood` (or `voxel`) that uptake is capped and the funded fraction also scales `mu_realized`. |
 | **b12 / corrinoid** | z=0 boundary | **none — not consumed (Spec 6 §3)** | N/A (constant pool) | The ~1 µM bioavailable pool remains spatially uniform under implicit diffusion (`D=5e-10 m²/s`). |
 | **iron** | z=0 boundary; siderophore liberation; FeEnt reimport | VBF first-order sink `apply_iron_sink`; **agent uptake `grow_agent` (canonical, Spec 6)**; ferric-enterobactin reimport | Yes | Implicit diffusion (`D=7e-10 m²/s`) couples local depletion to the epithelial supply. |
 | **siderophore** | apo-enterobactin secretion | `grow_agent`: secretion and chelation consumption | Yes | Apo pool is consumed with iron to produce `ferric_enterobactin`. |

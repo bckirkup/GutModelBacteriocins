@@ -341,6 +341,34 @@ void test_carbon_epithelial_boundary_changes_outcome() {
   std::cout << "  test_carbon_epithelial_boundary_changes_outcome: PASSED\n";
 }
 
+void test_uptake_limit_changes_outcome() {
+  SimulationConfig none = growth_baseline(8031);
+  none.initial_strains[0].count = 24;
+  none.fixes.metabolism.maintenance_rate = 0.0;
+  for (auto& chemical : none.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.z_gradient_enabled = false;
+      chemical.retardation = 3.0e3;
+      chemical.initial_conc = 5.0e-2;
+      chemical.boundary_conc = 5.0e-2;
+    }
+  }
+  SimulationConfig sherwood = none;
+  sherwood.fixes.metabolism.uptake_limit = "sherwood";
+  sherwood.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Sherwood;
+  SimulationConfig voxel = none;
+  voxel.fixes.metabolism.uptake_limit = "voxel";
+  voxel.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Voxel;
+
+  const uint64_t fp_none = run_fingerprint(none);
+  const uint64_t fp_sherwood = run_fingerprint(sherwood);
+  const uint64_t fp_voxel = run_fingerprint(voxel);
+  assert(fp_none != fp_sherwood);
+  assert(fp_sherwood != fp_voxel);
+
+  std::cout << "  test_uptake_limit_changes_outcome: PASSED\n";
+}
+
 void test_same_config_is_reproducible() {
   SimulationConfig cfg = growth_baseline(9001);
   const uint64_t fp1 = run_fingerprint(cfg);
@@ -362,6 +390,7 @@ int main() {
   test_peristaltic_toggle_changes_fingerprint();
   test_washout_trap_modes_change_outcome();
   test_carbon_epithelial_boundary_changes_outcome();
+  test_uptake_limit_changes_outcome();
   test_same_config_is_reproducible();
   std::cout << "All config diversity tests passed.\n";
   return 0;

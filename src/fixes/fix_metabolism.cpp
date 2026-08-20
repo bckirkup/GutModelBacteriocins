@@ -56,6 +56,7 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   auto& ag = sim.agents_gpu();
   auto& cg = sim.chem_gpu();
   cg.reset_agent_uptake();
+  cg.reset_uptake_limit_totals();
   ag.sync_from_host(agents);
   const auto& chem = sim.chemical_field();
   Int i_carbon = chem.find(species::CARBON);
@@ -105,6 +106,17 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
       cg.slab_mode() ? cg.owned_x_end() : sim.domain().nx();
   buffers.owned_storage_x_begin = cg.owned_storage_x_begin();
   buffers.receptor_count = NUM_RECEPTORS;
+  if (i_carbon >= 0) {
+    const ChemicalSpec& carbon_spec = chem.spec(i_carbon);
+    buffers.effective_diffusivity_carbon = uptake::effective_diffusivity(
+        carbon_spec.diff_coeff, carbon_spec.retardation);
+  }
+  if (i_iron >= 0) {
+    const ChemicalSpec& iron_spec = chem.spec(i_iron);
+    buffers.effective_diffusivity_iron = uptake::effective_diffusivity(
+        iron_spec.diff_coeff, iron_spec.retardation);
+  }
+  buffers.d_uptake_limit_totals = cg.uptake_limit_totals_device();
   if (!ag.run_metabolism(
           sim.domain(), cfg, buffers, cg.agent_uptake_device(), dt,
           local_agent_count)) {
@@ -114,6 +126,7 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   ag.sync_receptor_expression_to_host(agents);
   cg.accumulate_reactions_to_host(sim.chemical_field());
   cg.download_agent_uptake(sim.chemical_field());
+  cg.download_uptake_limit_totals(sim.chemical_field());
   return true;
 }
 
@@ -135,7 +148,11 @@ void FixMetabolism::compute(Real dt) {
   for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
     compute_growth_rate(a);
-    if (a.flags.is_ghost) continue;
+    if (a.flags.is_ghost) {
+      const Real demanded_biomass = a.mu_realized * a.biomass * dt;
+      a.mu_realized *= uptake_limit_fraction(a, demanded_biomass, dt, false);
+      continue;
+    }
     grow_agent(a, dt);
   }
   apply_siderophore_chemistry(dt);
@@ -460,9 +477,52 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   agent.mu_realized = mu;
 }
 
+Real FixMetabolism::uptake_limit_fraction(
+    const Agent& agent, Real d_biomass, Real dt, bool record_diagnostics) {
+  const Int cell = agent.grid_cell;
+  if (cell < 0 || d_biomass <= 0.0 || dt <= 0.0) return 1.0;
+
+  auto& chem = sim_.chemical_field();
+  const Real cell_vol = sim_.domain().cell_volume();
+  const int mode = to_underlying(cfg_.uptake_limit_mode);
+  Real fraction = 1.0;
+
+  const auto limit_species = [&](Int index, Real yield) {
+    if (index < 0) return;
+    const Real demanded = d_biomass * yield;
+    if (demanded <= 0.0) return;
+    if (record_diagnostics) {
+      chem.flux_accounting().add_uptake_demand(index, demanded);
+    }
+    const ChemicalSpec& spec = chem.spec(index);
+    const Real allowed = uptake::allowed_uptake_mol(
+        mode, chem.conc_global(index, cell),
+        uptake::effective_diffusivity(spec.diff_coeff, spec.retardation),
+        agent.radius, cell_vol, dt);
+    const Real species_fraction = uptake::limit_fraction(allowed, demanded);
+    if (species_fraction < 1.0) {
+      if (record_diagnostics) {
+        chem.flux_accounting().add_uptake_limited(index, 1.0);
+      }
+      fraction = std::min(fraction, species_fraction);
+    }
+  };
+
+  limit_species(chem.find(species::CARBON), cfg_.yield_carbon);
+  if (cfg_.iron_uptake_enabled) {
+    limit_species(chem.find(species::IRON), cfg_.yield_iron);
+  }
+  return fraction;
+}
+
 void FixMetabolism::grow_agent(Agent& agent, Real dt) {
-  // Biomass increase
+  // Biomass increase, funded by the uptake the agent can actually acquire
   Real d_biomass = agent.mu_realized * agent.biomass * dt;
+  const Real funded = uptake_limit_fraction(agent, d_biomass, dt, true);
+  if (funded < 1.0) {
+    d_biomass *= funded;
+    agent.mu_realized *= funded;
+  }
   agent.biomass += d_biomass;
   agent.biomass = std::max(agent.biomass, 1.0e-20);
 

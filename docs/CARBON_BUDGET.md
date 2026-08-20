@@ -223,9 +223,19 @@ on for a whole campaign rather than switching it on for audits.
   field contains. The positivity-clip question for that VBF overdraw is
   therefore closed. The `reaction_clip_*` channel remains in every artifact so
   any residual clip is visible.
-- Agent-side uptake can still overdraw a cell because realized uptake is not
-  yet fed back into growth. That remains an open follow-up and is not fixed
-  here.
+- **Agent-side uptake limitation is implemented.** Set `uptake_limit` to
+  `sherwood` to cap each agent's per-step uptake of carbon and iron at the
+  quasi-steady diffusive delivery to its own surface,
+  `N_max = 4*pi*D_eff*r_agent*C_local` with `D_eff = D_free / retardation`, and
+  to fund the biomass increment and `mu_realized` at the resulting Liebig
+  minimum fraction. `uptake_limit=voxel` caps at the voxel content
+  `C_local*V_cell`; it is a diagnostic probe for the size of the `dx^3`/`dt`
+  discretization artifact, not a biological model. `none` remains the default
+  and reproduces the historical unfunded growth. Demanded uptake and the number
+  of agents whose cap bound are reported per species as
+  `nutrient_flux/uptake_demand_*` and
+  `nutrient_flux/uptake_limited_agents_*`, alongside realized
+  `agent_uptake_*`.
 - **Finite-rate epithelial delivery is implemented.** Set
   `carbon.epithelial_boundary` (or `carbon_epithelial_boundary`) to `robin` or
   `flux`. Robin uses `carbon.epithelial_transfer_coeff` in m/s and

@@ -679,6 +679,38 @@ void test_epithelial_boundary_rejects_gradient_conflict() {
   std::cout << "  test_epithelial_boundary_rejects_gradient_conflict: PASSED\n";
 }
 
+void test_uptake_limit_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_uptake_limit.json";
+  const SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.fixes.metabolism.uptake_limit == "sherwood");
+  assert(cfg.fixes.metabolism.uptake_limit_mode == UptakeLimitMode::Sherwood);
+  std::cout << "  test_uptake_limit_fixture: PASSED\n";
+}
+
+void test_uptake_limit_rejects_unknown_modes() {
+  SimulationConfig cfg = InputParser::default_config();
+  bool threw = false;
+  try {
+    (void)InputParser::apply_flat_key(cfg, "uptake_limit", "unknown");
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+  assert(threw);
+
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_bad_uptake_limit.json";
+  bool fixture_threw = false;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError& error) {
+    fixture_threw =
+        std::string(error.what()).find("uptake_limit") != std::string::npos;
+  }
+  assert(fixture_threw);
+  std::cout << "  test_uptake_limit_rejects_unknown_modes: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -718,6 +750,8 @@ int main() {
   test_species_subset_rejects_unknown_modes();
   test_epithelial_boundary_rejects_unknown_modes();
   test_epithelial_boundary_rejects_gradient_conflict();
+  test_uptake_limit_fixture();
+  test_uptake_limit_rejects_unknown_modes();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }
