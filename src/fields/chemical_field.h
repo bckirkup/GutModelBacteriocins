@@ -27,6 +27,12 @@ struct NutrientFluxAccounting {
   std::vector<Real> agent_uptake_interval;
   std::vector<Real> agent_uptake_step;
   std::vector<Real> agent_uptake_cumulative;
+  std::vector<Real> maintenance_interval;
+  std::vector<Real> maintenance_step;
+  std::vector<Real> maintenance_cumulative;
+  std::vector<Real> maintenance_shortfall_interval;
+  std::vector<Real> maintenance_shortfall_step;
+  std::vector<Real> maintenance_shortfall_cumulative;
   std::vector<Real> reaction_clip_interval;
   std::vector<Real> reaction_clip_step;
   std::vector<Real> reaction_clip_cumulative;
@@ -51,6 +57,12 @@ struct NutrientFluxAccounting {
     agent_uptake_interval.assign(species_count, 0.0);
     agent_uptake_step.assign(species_count, 0.0);
     agent_uptake_cumulative.assign(species_count, 0.0);
+    maintenance_interval.assign(species_count, 0.0);
+    maintenance_step.assign(species_count, 0.0);
+    maintenance_cumulative.assign(species_count, 0.0);
+    maintenance_shortfall_interval.assign(species_count, 0.0);
+    maintenance_shortfall_step.assign(species_count, 0.0);
+    maintenance_shortfall_cumulative.assign(species_count, 0.0);
     reaction_clip_interval.assign(species_count, 0.0);
     reaction_clip_step.assign(species_count, 0.0);
     reaction_clip_cumulative.assign(species_count, 0.0);
@@ -82,6 +94,21 @@ struct NutrientFluxAccounting {
     agent_uptake_step[static_cast<size_t>(species)] += amount;
   }
 
+  void add_maintenance(Int species, Real amount) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    maintenance_step[static_cast<size_t>(species)] += amount;
+  }
+
+  // Count of owned agents whose requested maintenance draw was short-funded.
+  void add_maintenance_shortfall(Int species, Real count) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    maintenance_shortfall_step[static_cast<size_t>(species)] += count;
+  }
+
   void add_uptake_demand(Int species, Real amount) {
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
@@ -106,9 +133,13 @@ struct NutrientFluxAccounting {
   void commit_agent_uptake_step() {
     for (size_t i = 0; i < agent_uptake_step.size(); ++i) {
       agent_uptake_interval[i] += agent_uptake_step[i];
+      maintenance_interval[i] += maintenance_step[i];
+      maintenance_shortfall_interval[i] += maintenance_shortfall_step[i];
       uptake_demand_interval[i] += uptake_demand_step[i];
       uptake_limited_interval[i] += uptake_limited_step[i];
       agent_uptake_step[i] = 0.0;
+      maintenance_step[i] = 0.0;
+      maintenance_shortfall_step[i] = 0.0;
       uptake_demand_step[i] = 0.0;
       uptake_limited_step[i] = 0.0;
     }
@@ -129,6 +160,8 @@ struct NutrientFluxAccounting {
       vbf_source_cumulative[i] += vbf_source_interval[i];
       vbf_sink_cumulative[i] += vbf_sink_interval[i];
       agent_uptake_cumulative[i] += agent_uptake_interval[i];
+      maintenance_cumulative[i] += maintenance_interval[i];
+      maintenance_shortfall_cumulative[i] += maintenance_shortfall_interval[i];
       uptake_demand_cumulative[i] += uptake_demand_interval[i];
       uptake_limited_cumulative[i] += uptake_limited_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
@@ -136,6 +169,8 @@ struct NutrientFluxAccounting {
       vbf_source_interval[i] = 0.0;
       vbf_sink_interval[i] = 0.0;
       agent_uptake_interval[i] = 0.0;
+      maintenance_interval[i] = 0.0;
+      maintenance_shortfall_interval[i] = 0.0;
       uptake_demand_interval[i] = 0.0;
       uptake_limited_interval[i] = 0.0;
       reaction_clip_interval[i] = 0.0;

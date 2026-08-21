@@ -389,6 +389,7 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | `metabolism.eut_km` | 0.1e-3 | mol/m³ | Ethanolamine half-saturation for eut utilization penalty |
 | `metabolism.eut_max_penalty` | 0.10 | — | Max eut penalty when ethanolamine abundant |
 | `metabolism.maintenance_rate` | 1e-5 | 1/s | Maintenance energy |
+| `metabolism.carbon_maintenance_rate` | 0.0 | mol C/(s·kg biomass) | Non-growth-associated carbon substrate consumption; independent of `maintenance_rate` |
 | `metabolism.km_iron_primary` | 10e-6 | mol/m³ | FepA iron Km (10 nM) |
 | `metabolism.km_iron_iroN` | 50e-6 | mol/m³ | IroN salmochelin Km (50 nM) |
 | `metabolism.km_iron_iutA` | 100e-6 | mol/m³ | IutA aerobactin Km (100 nM) |
@@ -405,6 +406,35 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 metE_eff = metE_penalty * (1 + (max_factor - 1) * [acetate] / (Km + [acetate]))
 ```
 At physiological colonic acetate (80 mM, Km = 40 mol/m³), the effective penalty rises from 5% to ~10%. At saturating acetate the penalty approaches 12.5% (`base × max_factor`). This strengthens the Combinatorial Washout Trap by increasing the metabolic cost of BtuB downregulation in acetate-rich environments.
+
+`maintenance_rate` is a growth-rate tax. It is distinct from
+`carbon_maintenance_rate`, which removes carbon substrate at
+`rate × biomass × dt` even when realized growth is zero or negative. The
+default carbon rate is exactly zero for backward compatibility.
+
+The non-growth-associated maintenance anchors are:
+
+- Pirt's maintenance coefficient is approximately `0.04 g glucose/gDW/h`,
+  or `0.22 mmol glucose/gDW/h`.
+- Varma & Palsson's independent W3110 NGAM cross-check is
+  `7.6 mmol ATP/gDW/h`; at approximately `30 ATP/glucose` aerobically this is
+  approximately `0.25 mmol glucose/gDW/h`. The two estimates agree within
+  approximately `15%`.
+- With `30%` dry fraction, `CELL_DENSITY_DEFAULT = 1100 kg/m³`, and glucose
+  molecular weight `180 g/mol`, the aerobic anchor is approximately
+  `2.1e-5 mol/(s·kg biomass)`, or `1.7e-20 mol/s` for the `8.14e-16 kg`
+  Sherwood-campaign agent.
+- At approximately `2 ATP/glucose` fermentatively, the anaerobic requirement is
+  approximately `15×` higher: `3.2e-4 mol/(s·kg)`, or
+  `2.6e-19 mol/s/cell`. This is the same order as the agent's full-growth
+  carbon demand of `2.0e-19 mol/s`.
+
+The future fermentation-fraction extension will interpolate between these
+aerobic and anaerobic anchors; this PR leaves that hook unimplemented.
+Finally, the default `yield_carbon = 0.5 mol/kg` is approximately `6.4×`
+cheaper than the literature comparison. Varma's `0.524 gDW/g glucose`, with
+`30%` dry fraction and `180 g/mol`, implies approximately `3.2 mol glucose per
+kg wet biomass`. The default yield remains unchanged.
 
 ---
 

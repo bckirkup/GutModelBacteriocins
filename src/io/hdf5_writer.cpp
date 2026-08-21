@@ -851,6 +851,15 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_flux("agent_uptake_cumulative",
              add_cumulative(flux.agent_uptake_cumulative,
                            flux.agent_uptake_interval));
+  write_flux("maintenance_interval", flux.maintenance_interval);
+  write_flux("maintenance_cumulative",
+             add_cumulative(flux.maintenance_cumulative,
+                           flux.maintenance_interval));
+  write_flux("maintenance_shortfall_interval",
+             flux.maintenance_shortfall_interval);
+  write_flux("maintenance_shortfall_cumulative",
+             add_cumulative(flux.maintenance_shortfall_cumulative,
+                           flux.maintenance_shortfall_interval));
   write_flux("uptake_demand_interval", flux.uptake_demand_interval);
   write_flux("uptake_demand_cumulative",
              add_cumulative(flux.uptake_demand_cumulative,

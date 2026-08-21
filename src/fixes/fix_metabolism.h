@@ -40,6 +40,7 @@ struct MetabolismConfig {
   Real division_threshold = 2.0;      // divide at 2x initial biomass
   Real bacteriostasis_threshold = 1.0e-6; // classify viable non-growing cells
   Real maintenance_rate   = 1.0e-5;   // maintenance (1/s)
+  Real carbon_maintenance_rate = 0.0; // non-growth carbon use (mol/(s kg))
   Real yield_carbon       = 0.5;      // carbon yield coefficient
   Real yield_iron         = 1.0e-6;   // iron yield (mol Fe / kg biomass)
   Real yield_b12          = 1.0e-9;   // B12 yield
@@ -77,6 +78,8 @@ class FixMetabolism : public Fix {
   void compute_growth_rate(Agent& agent);
   Real uptake_limit_fraction(const Agent& agent, Real d_biomass, Real dt,
                              bool record_diagnostics);
+  void charge_carbon_maintenance(Agent& agent, Real dt);
+  void prepare_carbon_maintenance();
   void grow_agent(Agent& agent, Real dt);
   void apply_siderophore_chemistry(Real dt);
   void apply_siderophore_chelation(Int i_sid, Int i_iron,
@@ -88,6 +91,7 @@ class FixMetabolism : public Fix {
 
   MetabolismConfig cfg_;
   std::vector<Real> biomass_by_cell_;
+  std::vector<Real> carbon_maintenance_available_;
   std::vector<Real> fepA_biomass_by_cell_;
   std::vector<Int> occupancy_by_cell_;
   std::vector<Real> chelation_by_cell_;

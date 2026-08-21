@@ -154,6 +154,20 @@ void test_new_config_names_reject_unknown_values() {
   std::cout << "  test_new_config_names_reject_unknown_values: PASSED\n";
 }
 
+void test_carbon_maintenance_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_carbon_maintenance.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(std::abs(cfg.fixes.metabolism.carbon_maintenance_rate - 2.0e-5)
+         < 1.0e-15);
+  const std::string resolved = ConfigJson::serialize_document(cfg);
+  SimulationConfig roundtrip = InputParser::default_config();
+  assert(ConfigJson::parse_document(roundtrip, resolved));
+  assert(std::abs(roundtrip.fixes.metabolism.carbon_maintenance_rate - 2.0e-5)
+         < 1.0e-15);
+  std::cout << "  test_carbon_maintenance_fixture: PASSED\n";
+}
+
 void test_immigration_fixture() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR) +
                            "/tests/fixtures/parser_immigration.json";
@@ -859,6 +873,7 @@ int main() {
   test_epithelial_boundary_rejects_gradient_conflict();
   test_uptake_limit_fixture();
   test_uptake_limit_rejects_unknown_modes();
+  test_carbon_maintenance_fixture();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }

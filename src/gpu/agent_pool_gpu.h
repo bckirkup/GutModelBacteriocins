@@ -48,6 +48,7 @@ struct GpuMetabolismBuffers {
   double effective_diffusivity_carbon = 0.0;
   double effective_diffusivity_iron = 0.0;
   double* d_uptake_limit_totals = nullptr;
+  double* d_maintenance_available = nullptr;
 };
 
 class AgentPoolGpu {

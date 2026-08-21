@@ -6,6 +6,7 @@
 #include "species_names.h"
 #include "simulation.h"
 #include "receptor_utils.h"
+#include "carbon_maintenance.h"
 #include <cassert>
 #include <cmath>
 #include <algorithm>
@@ -60,6 +61,9 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   ag.sync_from_host(agents);
   const auto& chem = sim.chemical_field();
   Int i_carbon = chem.find(species::CARBON);
+  if (cfg.carbon_maintenance_rate > 0.0) {
+    cg.prepare_maintenance(chem, i_carbon, sim.domain().cell_volume());
+  }
   Int i_iron = chem.find(species::IRON);
   Int i_b12 = chem.find(species::B12);
   Int i_acetate = chem.find(species::ACETATE);
@@ -117,6 +121,7 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
         iron_spec.diff_coeff, iron_spec.retardation);
   }
   buffers.d_uptake_limit_totals = cg.uptake_limit_totals_device();
+  buffers.d_maintenance_available = cg.maintenance_available_device();
   if (!ag.run_metabolism(
           sim.domain(), cfg, buffers, cg.agent_uptake_device(), dt,
           local_agent_count)) {
@@ -142,6 +147,7 @@ void FixMetabolism::compute(Real dt) {
   }
 
   auto& agents = sim_.agents();
+  prepare_carbon_maintenance();
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for schedule(static)
   #endif
@@ -153,6 +159,7 @@ void FixMetabolism::compute(Real dt) {
       a.mu_realized *= uptake_limit_fraction(a, demanded_biomass, dt, false);
       continue;
     }
+    charge_carbon_maintenance(a, dt);
     grow_agent(a, dt);
   }
   apply_siderophore_chemistry(dt);
@@ -160,6 +167,60 @@ void FixMetabolism::compute(Real dt) {
   // Division must run in compute (not post_step) so fix_bacteriocin in the same
   // biology pass can observe just_divided during the division timestep.
   perform_divisions();
+}
+
+void FixMetabolism::charge_carbon_maintenance(Agent& agent, Real dt) {
+  if (cfg_.carbon_maintenance_rate <= 0.0 || dt <= 0.0) return;
+  const Int cell = agent.grid_cell;
+  if (cell < 0) return;
+  auto& chem = sim_.chemical_field();
+  const Int carbon = chem.find(species::CARBON);
+  const Real cell_volume = sim_.domain().cell_volume();
+  if (carbon < 0 || cell_volume <= 0.0) return;
+  const Real requested_amount = carbon_maintenance::requested(
+      cfg_.carbon_maintenance_rate, agent.biomass, dt);
+  const Int storage_cell = chem.global_to_storage_cell(cell);
+  if (storage_cell < 0
+    || static_cast<size_t>(storage_cell)
+          >= carbon_maintenance_available_.size()) {
+    if (requested_amount > 0.0) {
+      chem.flux_accounting().add_maintenance_shortfall(carbon, 1.0);
+    }
+    return;
+  }
+  Real draw = 0.0;
+  #ifdef GUTIBM_OPENMP
+  #pragma omp critical(gutibm_carbon_maintenance)
+  #endif
+  {
+    Real& available = carbon_maintenance_available_[
+        static_cast<size_t>(storage_cell)];
+    draw = std::min(requested_amount, available);
+    available -= draw;
+  }
+  chem.flux_accounting().add_maintenance(carbon, draw);
+  if (requested_amount > draw) {
+    chem.flux_accounting().add_maintenance_shortfall(carbon, 1.0);
+  }
+  #ifdef GUTIBM_OPENMP
+  #pragma omp atomic
+  #endif
+  chem.reac_global(carbon, cell) -= draw / (cell_volume * dt);
+}
+
+void FixMetabolism::prepare_carbon_maintenance() {
+  carbon_maintenance_available_.clear();
+  if (cfg_.carbon_maintenance_rate <= 0.0) return;
+  const auto& chem = sim_.chemical_field();
+  const Int carbon = chem.find(species::CARBON);
+  const Real cell_volume = sim_.domain().cell_volume();
+  if (carbon < 0 || cell_volume <= 0.0) return;
+  carbon_maintenance_available_.resize(
+      static_cast<size_t>(chem.ncells()), 0.0);
+  for (Int cell = 0; cell < chem.ncells(); ++cell) {
+    carbon_maintenance_available_[static_cast<size_t>(cell)] =
+        carbon_maintenance::available(chem.conc(carbon, cell), cell_volume);
+  }
 }
 
 void FixMetabolism::apply_siderophore_chemistry(Real dt) {

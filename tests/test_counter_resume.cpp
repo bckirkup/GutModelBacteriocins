@@ -49,6 +49,8 @@ void populate_window(Simulation& sim, Int kills, Real boundary) {
   sim.chemical_field().flux_accounting().vbf_sink_interval[0] = boundary + 2.0;
   sim.chemical_field().flux_accounting().agent_uptake_interval[0] =
       boundary + 3.0;
+  sim.chemical_field().flux_accounting().maintenance_interval[0] =
+      boundary + 4.0;
 }
 
 void assert_window(const std::string& path, Int step, Int interval_kills,
@@ -83,6 +85,10 @@ void assert_window(const std::string& path, Int step, Int interval_kills,
                   - boundary_interval - 3.0) < 1e-12);
   assert(std::abs(scalar(file, prefix + "/nutrient_flux/agent_uptake_cumulative")
                   - boundary_cumulative - (step == 1 ? 3.0 : 6.0)) < 1e-12);
+  assert(std::abs(scalar(file, prefix + "/nutrient_flux/maintenance_interval")
+                  - boundary_interval - 4.0) < 1e-12);
+  assert(std::abs(scalar(file, prefix + "/nutrient_flux/maintenance_cumulative")
+                  - boundary_cumulative - (step == 1 ? 4.0 : 8.0)) < 1e-12);
   assert(scalar(file, prefix + "/nutrient_flux/interval_start_step")
          == static_cast<double>(step));
   assert(scalar(file, prefix + "/nutrient_flux/interval_end_step")

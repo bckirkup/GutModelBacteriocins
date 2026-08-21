@@ -7,6 +7,7 @@
 #include "gpu_kernels.h"
 #include "device_memory.h"
 #include "species_names.h"
+#include "carbon_maintenance.h"
 
 #include <cstdlib>
 
@@ -47,7 +48,8 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   }
   d_boundary_conc_.upload(bc);
   d_boundary_injected_.allocate(static_cast<size_t>(nspec_));
-  d_agent_uptake_.allocate(3);
+  d_agent_uptake_.allocate(4);
+  d_maintenance_available_.allocate(static_cast<size_t>(ncells_));
   d_uptake_limit_totals_.allocate(4);
   d_vbf_totals_.allocate(4);
   d_reaction_clip_.allocate(static_cast<size_t>(nspec_));
@@ -56,18 +58,33 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
 
 void ChemicalFieldGpu::reset_agent_uptake() {
   if (!active_) return;
-  d_agent_uptake_.upload(std::vector(3, 0.0));
+  d_agent_uptake_.upload(std::vector(4, 0.0));
 }
 
 void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) {
   if (!active_) return;
   gpu_sync_compute();
-  std::vector values(3, 0.0);
+  std::vector values(4, 0.0);
   d_agent_uptake_.download(values);
   const Int carbon = field.find(species::CARBON);
   const Int iron = field.find(species::IRON);
   if (carbon >= 0) field.flux_accounting().add_agent_uptake(carbon, values[0]);
   if (iron >= 0) field.flux_accounting().add_agent_uptake(iron, values[1]);
+  if (carbon >= 0) {
+    field.flux_accounting().add_maintenance(carbon, values[2]);
+    field.flux_accounting().add_maintenance_shortfall(carbon, values[3]);
+  }
+}
+
+void ChemicalFieldGpu::prepare_maintenance(
+    const ChemicalField& field, Int carbon, Real cell_volume) {
+  if (!active_ || carbon < 0 || cell_volume <= 0.0) return;
+  std::vector<double> available(static_cast<size_t>(ncells_), 0.0);
+  for (Int cell = 0; cell < ncells_; ++cell) {
+    available[static_cast<size_t>(cell)] = carbon_maintenance::available(
+        field.conc(carbon, cell), cell_volume);
+  }
+  d_maintenance_available_.upload(available);
 }
 
 void ChemicalFieldGpu::reset_uptake_limit_totals() {
