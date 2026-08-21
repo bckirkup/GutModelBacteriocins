@@ -601,7 +601,7 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
-      "advection", "washout",
+      "advection", "washout", "bacteriocin", "mucin_charge",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity", "receptor_expression", "receptor_genotype", "receptors",

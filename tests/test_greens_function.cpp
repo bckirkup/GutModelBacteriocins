@@ -93,12 +93,16 @@ void test_screening_lengths() {
   GreensFunction gf;
   setup_zero_flow(domain, adv, gf);
   const Vec3 source = {500e-6, 500e-6, 50e-6};
-  const Real col_e1 = fit_screening_length(gf, source, PlasmidLibrary::colicin_E1());
-  const Real col_b = fit_screening_length(gf, source, PlasmidLibrary::colicin_B());
+  const BICluster col_e1_bi = PlasmidLibrary::colicin_E1();
+  const BICluster col_b_bi = PlasmidLibrary::colicin_B();
+  const Real col_e1 = fit_screening_length(gf, source, col_e1_bi);
+  const Real col_b = fit_screening_length(gf, source, col_b_bi);
   const Real expected_e1 = std::sqrt(
-      (4.0e-11 / 50.0) / (std::numbers::ln2 / 1800.0));
+      (col_e1_bi.diff_coeff / col_e1_bi.retardation)
+      / (std::numbers::ln2 / col_e1_bi.protease_half_life));
   const Real expected_b = std::sqrt(
-      (4.0e-11 / 1.5) / (std::numbers::ln2 / 900.0));
+      (col_b_bi.diff_coeff / col_b_bi.retardation)
+      / (std::numbers::ln2 / col_b_bi.protease_half_life));
   assert(std::abs(col_e1 - expected_e1) / expected_e1 < 1.0e-10);
   assert(std::abs(col_b - expected_b) / expected_b < 1.0e-10);
   std::cout << "  test_screening_lengths: PASSED (ColE1=" << col_e1 * 1e6
