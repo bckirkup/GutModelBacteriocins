@@ -3,11 +3,13 @@
    ----------------------------------------------------------------------- */
 
 #include "fix_receptor.h"
+#include "fix_metabolism.h"
 #include "plasmid.h"
 #include "simulation.h"
 #include "input_parser.h"
 #include "species_names.h"
 #include "qssa_solver.h"
+#include <array>
 #include <algorithm>
 #include <cassert>
 #include <cmath>
@@ -16,10 +18,12 @@
 
 using namespace gutibm;
 
-static Simulation make_empty_sim(uint64_t seed = 42, bool siderophore = false) {
+static Simulation make_empty_sim(uint64_t seed = 42, bool siderophore = false,
+                                 bool provenance = false) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.initial_strains.clear();
-  cfg.hdf5.enabled = false;
+  cfg.hdf5.enabled = provenance;
+  cfg.hdf5.schedule.provenance = provenance ? 1 : 0;
   cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.seed = seed;
@@ -56,6 +60,132 @@ static void set_local_chemistry(Simulation& sim, Int cell,
   assert(i_tox >= 0 && i_b12 >= 0);
   chem.conc(i_tox, cell) = tox_conc;
   chem.conc(i_b12, cell) = b12_conc;
+}
+
+static Real measure_btuB_occupancy(Simulation& sim, Real b12_conc,
+                                   Real receptor_expression) {
+  Agent agent = make_susceptible_agent(sim);
+  agent.receptor_expr[to_underlying(ReceptorType::BtuB)] = receptor_expression;
+  agent.receptor_expr_base[to_underlying(ReceptorType::BtuB)] =
+      receptor_expression;
+  agent.genome.receptor_expression[to_underlying(ReceptorType::BtuB)] =
+      receptor_expression;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  const Int cell = agent.grid_cell;
+  set_local_chemistry(sim, cell, 1.0e-4, b12_conc);
+  const Int i_fepa = sim.chemical_field().find(species::BACTERIOCIN_FEPA);
+  assert(i_fepa >= 0);
+  sim.chemical_field().conc(i_fepa, cell) = 1.0e-4;
+  sim.agents().push_back(std::move(agent));
+
+  ReceptorConfig rcfg;
+  rcfg.kill_rate_colicin = 1.0;
+  FixReceptor fix(sim, rcfg);
+  fix.compute(60.0);
+
+  assert(sim.agents()[0].state == PhenoState::DEAD);
+  assert(sim.kill_provenance().size() == 1);
+  const auto& event = sim.kill_provenance().front();
+  assert(std::isfinite(event.toxin_occupancy[0]));
+  assert(std::isfinite(event.toxin_hazard[0]));
+  assert(event.toxin_occupancy[0] >= 0.0
+         && event.toxin_occupancy[0] <= 1.0);
+  assert(event.toxin_hazard[0] >= 0.0);
+  if (receptor_expression == 0.0) {
+    assert(event.toxin_hazard[0] == 0.0);
+  } else {
+    assert(event.toxin_hazard[0] > 0.0);
+  }
+  const Real occupancy = event.toxin_occupancy[0];
+  sim.agents().remove(0);
+  sim.clear_kill_provenance();
+  return occupancy;
+}
+
+struct GrowthMeasurement {
+  Real mu = 0.0;
+  Real monod_b12 = 0.0;
+};
+
+static GrowthMeasurement measure_b12_growth(Real b12_conc,
+                                            Real receptor_expression) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_strains.clear();
+  cfg.hdf5.enabled = false;
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.seed = 9200;
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent agent = make_susceptible_agent(sim);
+  const Int btu_b = to_underlying(ReceptorType::BtuB);
+  agent.receptor_expr[btu_b] = receptor_expression;
+  agent.receptor_expr_base[btu_b] = receptor_expression;
+  agent.genome.receptor_expression[btu_b] = receptor_expression;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  agent.receptor_expr[to_underlying(ReceptorType::CirA)] = 1.0;
+  const Int cell = agent.grid_cell;
+  auto& chem = sim.chemical_field();
+  const Int i_carbon = chem.find(species::CARBON);
+  const Int i_iron = chem.find(species::IRON);
+  const Int i_b12 = chem.find(species::B12);
+  assert(i_carbon >= 0 && i_iron >= 0 && i_b12 >= 0);
+  chem.conc(i_carbon, cell) = 1.0;
+  chem.conc(i_iron, cell) = 1.0;
+  chem.conc(i_b12, cell) = b12_conc;
+  const Real effective_expression = std::max(receptor_expression, 0.01);
+  const Real ligand_affinity = std::max(
+      agent.genome.ligand_affinity[to_underlying(ReceptorType::BtuB)], 0.01);
+  const Real km_b12 = agent.km.km_b12
+      / (effective_expression * ligand_affinity);
+  const Real monod_b12 = b12_conc / (km_b12 + b12_conc);
+  sim.agents().push_back(std::move(agent));
+
+  FixMetabolism fix(sim, sim.config().fixes.metabolism);
+  fix.compute(1.0);
+  const Real growth = sim.agents()[0].mu_realized;
+  assert(std::isfinite(growth));
+  return {growth, monod_b12};
+}
+
+void test_b12_concentration_sensitivity_and_receptor_knockout() {
+  auto occupancy_sim = make_empty_sim(9100, false, true);
+  const std::array<Real, 3> concentrations = {0.0, 1.0e-5, 1.0e-3};
+  std::array<Real, 3> occupancy{};
+  std::array<GrowthMeasurement, 3> growth{};
+  for (size_t i = 0; i < concentrations.size(); ++i) {
+    occupancy[i] = measure_btuB_occupancy(occupancy_sim, concentrations[i], 1.0);
+    growth[i] = measure_b12_growth(concentrations[i], 1.0);
+  }
+
+  assert(occupancy[0] > occupancy[1]);
+  assert(occupancy[1] > occupancy[2]);
+  assert(growth[0].monod_b12 < growth[1].monod_b12);
+  assert(growth[1].monod_b12 < growth[2].monod_b12);
+  assert(growth[0].mu < growth[1].mu);
+  assert(growth[1].mu < growth[2].mu);
+  for (const Real value : occupancy) {
+    assert(std::isfinite(value) && value >= 0.0 && value <= 1.0);
+  }
+  for (const GrowthMeasurement value : growth) {
+    assert(std::isfinite(value.mu));
+    assert(std::isfinite(value.monod_b12)
+           && value.monod_b12 >= 0.0 && value.monod_b12 <= 1.0);
+  }
+
+  const Real wild_type_occupancy = measure_btuB_occupancy(
+      occupancy_sim, 1.0e-3, 1.0);
+  const Real knockout_occupancy = measure_btuB_occupancy(
+      occupancy_sim, 1.0e-3, 0.0);
+  assert(wild_type_occupancy > 0.0);
+  assert(knockout_occupancy == 0.0);
+  const GrowthMeasurement wild_type_growth = measure_b12_growth(1.0e-3, 1.0);
+  const GrowthMeasurement knockout_growth = measure_b12_growth(1.0e-3, 0.0);
+  assert(knockout_growth.mu < wild_type_growth.mu);
+  assert(std::isfinite(knockout_growth.mu));
+
+  std::cout << "  test_b12_concentration_sensitivity_and_receptor_knockout: PASSED\n";
 }
 
 void test_high_toxin_kills_susceptible() {
@@ -351,6 +481,7 @@ int main() {
   test_high_toxin_kills_susceptible();
   test_immunity_reduces_lethality();
   test_ligand_competition_reduces_kill();
+  test_b12_concentration_sensitivity_and_receptor_knockout();
   test_partial_resistance_reduces_lethality();
   test_cira_uses_ferric_enterobactin_ligand();
   test_fepa_uses_ferric_enterobactin_not_iron();

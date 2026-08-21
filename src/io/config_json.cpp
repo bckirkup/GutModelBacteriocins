@@ -678,8 +678,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
 
     return true;
   } catch (const ConfigError& ex) {
-    if (const std::string message = ex.what();
-        message.find("invalid immigration.") == 0
+    const std::string message = ex.what();
+    if (message.find("invalid immigration.") == 0
         || message.find("invalid initial_population.") == 0
         || message.find("invalid chemistry_decomposition") == 0
         || message.find("invalid species_subset") == 0
@@ -688,11 +688,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         || message.find("invalid washout.trap") == 0
         || message.find("chemistry stride") != std::string::npos
         || message.find("chemistry_stride") != std::string::npos
-        || message.find("grid_halo_width") != std::string::npos) {
-      throw;
-    }
-    if (const std::string message = ex.what();
-        message.find("unknown receptor name") != std::string::npos
+        || message.find("grid_halo_width") != std::string::npos
+        || message.find("unknown receptor name") != std::string::npos
         || message.find("unknown plasmid name") != std::string::npos
         || message.find("plasmid override") != std::string::npos
         || message.find("unknown config key") != std::string::npos) {

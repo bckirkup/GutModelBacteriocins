@@ -9,6 +9,7 @@
 #include "advection.h"
 #include "error.h"
 #include "plasmid.h"
+#include <array>
 #include <cassert>
 #include <iostream>
 #include <cmath>
@@ -134,6 +135,68 @@ void test_core_halo_decay_ordering() {
   assert(e1_ratio < b_ratio);
   std::cout << "  test_core_halo_decay_ordering: PASSED (ColE1="
             << e1_ratio << " ColB=" << b_ratio << ")\n";
+}
+
+void test_plasmid_transport_override_sensitivity() {
+  Domain domain;
+  AdvectionField adv;
+  GreensFunction gf;
+  setup_zero_flow(domain, adv, gf);
+
+  const Vec3 source = {500e-6, 500e-6, 50e-6};
+  const Vec3 near = {510e-6, 500e-6, 50e-6};
+  const Vec3 far = {0.0, 500e-6, 50e-6};
+  const BICluster col_e1 = PlasmidLibrary::colicin_E1();
+
+  const auto concentration = [&gf, &source, &col_e1](
+                                 const Vec3& target,
+                                 Real diff_coeff,
+                                 Real retardation,
+                                 Real burst_size) {
+    GreensFunctionParams params;
+    params.diff_coeff = diff_coeff;
+    params.retardation = retardation;
+    params.source_rate = burst_size * 1.0e-18;
+    params.decay_rate = std::numbers::ln2 / col_e1.protease_half_life;
+    return gf.concentration(source, target, params);
+  };
+
+  const std::array<Real, 3> retardations = {1.2, 5.0, 50.0};
+  std::array<Real, 3> near_values{};
+  std::array<Real, 3> far_values{};
+  for (size_t i = 0; i < retardations.size(); ++i) {
+    near_values[i] = concentration(near, col_e1.diff_coeff,
+                                    retardations[i], 1.0);
+    far_values[i] = concentration(far, col_e1.diff_coeff,
+                                  retardations[i], 1.0);
+  }
+  assert(near_values[0] < near_values[1]);
+  assert(near_values[1] < near_values[2]);
+  assert(far_values[0] > far_values[1]);
+  assert(far_values[1] > far_values[2]);
+  for (const Real value : near_values) {
+    assert(std::isfinite(value) && value >= 0.0);
+  }
+  for (const Real value : far_values) {
+    assert(std::isfinite(value) && value >= 0.0);
+  }
+
+  const Real base = concentration(near, col_e1.diff_coeff,
+                                  col_e1.retardation, 1.0);
+  const Real half = concentration(near, col_e1.diff_coeff,
+                                  col_e1.retardation, 0.5);
+  const Real double_burst = concentration(near, col_e1.diff_coeff,
+                                           col_e1.retardation, 2.0);
+  assert(std::abs(half / base - 0.5) < 1.0e-12);
+  assert(std::abs(double_burst / base - 2.0) < 1.0e-12);
+
+  const Real ratio_base = concentration(near, col_e1.diff_coeff,
+                                        col_e1.retardation, 1.0);
+  const Real ratio_scaled = concentration(near, col_e1.diff_coeff * 0.5,
+                                          col_e1.retardation * 0.5, 1.0);
+  assert(std::abs(ratio_scaled / ratio_base - 1.0) < 1.0e-12);
+
+  std::cout << "  test_plasmid_transport_override_sensitivity: PASSED\n";
 }
 
 void test_radial_symmetry_no_flow() {
@@ -405,6 +468,7 @@ int main() {
   test_zero_decay_exact_regression();
   test_screening_lengths();
   test_core_halo_decay_ordering();
+  test_plasmid_transport_override_sensitivity();
   test_uninitialized_throws();
   test_radial_symmetry_no_flow();
   test_periodic_cutoff_and_minimum_image();
