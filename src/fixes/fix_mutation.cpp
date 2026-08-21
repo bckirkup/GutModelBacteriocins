@@ -182,6 +182,8 @@ BICluster FixMutation::create_novel_toxin(const BICluster& parent) {
 
   // Reclassify based on new pI
   novel.bclass = classify_by_pI(novel.pI);
+  novel.retardation = retardation_from_pI(
+      novel.pI, sim_.config().fixes.bacteriocin.mucin_charge);
 
   // Altered target receptor (may hijack a different TBDT)
   if (rng.bernoulli(0.3)) {

@@ -516,8 +516,21 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 | `bacteriocin.D_free_colicin` | 4e-11 | m^2/s | Free diffusion (~50kDa protein) |
 | `bacteriocin.burst_release_tau` | 300 | s | Exponential release timescale; total delivered dose is tau-invariant, while tau sets peak versus duration |
 | `bacteriocin.microcin_mu_penalty` | 0.03 | — | Growth cost of microcin secretion |
+| `bacteriocin.mucin_charge.r_min` | 1.2 | — | Minimum bacteriocin retardation |
+| `bacteriocin.mucin_charge.amplitude` | 60.0 | — | Maximum charge-driven retardation excess |
+| `bacteriocin.mucin_charge.dz_half` | 1.35 | pI − pH | Half-transition net-charge offset |
+| `bacteriocin.mucin_charge.width` | 1.0 | pI − pH | Sigmoid width in net-charge units |
+| `bacteriocin.mucin_charge.ph` | 7.0 | pH | Reference local mucus pH |
 
-Per-plasmid defaults in `PlasmidLibrary`: `release_mode`, `is_nuclease`, `retardation`, `diff_coeff`, `burst_size`, and `phage_induction_rate` (ColB/ColIa: 1e-4 /generation). Optional overrides use:
+For each library cluster, retardation is resolved from pI and local pH as:
+
+`R(pI) = r_min + amplitude / (1 + 10^((dz_half - (pI - pH)) / width))`
+
+The resolved value is serialized with the BI cluster and is therefore preserved
+through MPI transfer and checkpoint restore. Per-plasmid retardation overrides
+remain authoritative. Per-plasmid defaults in `PlasmidLibrary` also include
+`release_mode`, `is_nuclease`, `diff_coeff`, `burst_size`, and
+`phage_induction_rate` (ColB/ColIa: 1e-4 /generation). Optional overrides use:
 
 ```json
 "plasmid_overrides": {

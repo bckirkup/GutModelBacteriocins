@@ -93,12 +93,16 @@ void test_screening_lengths() {
   GreensFunction gf;
   setup_zero_flow(domain, adv, gf);
   const Vec3 source = {500e-6, 500e-6, 50e-6};
-  const Real col_e1 = fit_screening_length(gf, source, PlasmidLibrary::colicin_E1());
-  const Real col_b = fit_screening_length(gf, source, PlasmidLibrary::colicin_B());
+  const BICluster col_e1_bi = PlasmidLibrary::colicin_E1();
+  const BICluster col_b_bi = PlasmidLibrary::colicin_B();
+  const Real col_e1 = fit_screening_length(gf, source, col_e1_bi);
+  const Real col_b = fit_screening_length(gf, source, col_b_bi);
   const Real expected_e1 = std::sqrt(
-      (4.0e-11 / 50.0) / (std::numbers::ln2 / 1800.0));
+      (col_e1_bi.diff_coeff / col_e1_bi.retardation)
+      / (std::numbers::ln2 / col_e1_bi.protease_half_life));
   const Real expected_b = std::sqrt(
-      (4.0e-11 / 1.5) / (std::numbers::ln2 / 900.0));
+      (col_b_bi.diff_coeff / col_b_bi.retardation)
+      / (std::numbers::ln2 / col_b_bi.protease_half_life));
   assert(std::abs(col_e1 - expected_e1) / expected_e1 < 1.0e-10);
   assert(std::abs(col_b - expected_b) / expected_b < 1.0e-10);
   std::cout << "  test_screening_lengths: PASSED (ColE1=" << col_e1 * 1e6
@@ -195,6 +199,24 @@ void test_plasmid_transport_override_sensitivity() {
   const Real ratio_scaled = concentration(near, col_e1.diff_coeff * 0.5,
                                           col_e1.retardation * 0.5, 1.0);
   assert(std::abs(ratio_scaled / ratio_base - 1.0) < 1.0e-12);
+
+  const MucinChargeConfig mucin_charge;
+  std::array<Real, 3> pi_near{};
+  std::array<Real, 3> pi_far{};
+  const std::array<Real, 3> pIs = {6.0, 8.0, 10.0};
+  for (size_t i = 0; i < pIs.size(); ++i) {
+    const Real retardation = retardation_from_pI(pIs[i], mucin_charge);
+    pi_near[i] = concentration(near, col_e1.diff_coeff,
+                                retardation, 1.0);
+    pi_far[i] = concentration(far, col_e1.diff_coeff,
+                               retardation, 1.0);
+    assert(std::isfinite(pi_near[i]) && pi_near[i] >= 0.0);
+    assert(std::isfinite(pi_far[i]) && pi_far[i] >= 0.0);
+  }
+  assert(pi_near[0] < pi_near[1]);
+  assert(pi_near[1] < pi_near[2]);
+  assert(pi_far[0] > pi_far[1]);
+  assert(pi_far[1] > pi_far[2]);
 
   std::cout << "  test_plasmid_transport_override_sensitivity: PASSED\n";
 }

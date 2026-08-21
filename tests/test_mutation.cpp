@@ -133,6 +133,30 @@ void test_super_killer_immunity_escape() {
   std::cout << "  test_super_killer_immunity_escape: PASSED\n";
 }
 
+void test_super_killer_updates_retardation_after_pi_drift() {
+  MutationConfig cfg;
+  cfg.super_killer_rate = 1.0;
+  cfg.immunity_escape_prob = 0.0;
+
+  bool found_upward_drift = false;
+  for (uint64_t seed = 1; seed <= 100 && !found_upward_drift; ++seed) {
+    auto sim = make_empty_sim(seed);
+    Agent a = make_dividing_agent(sim);
+    const BICluster parent = a.genome.bi_loci.front();
+    sim.agents().push_back(std::move(a));
+
+    FixMutation fix(sim, cfg);
+    fix.compute(60.0);
+    const BICluster& novel = sim.agents()[0].genome.bi_loci.back();
+    if (novel.pI > parent.pI) {
+      assert(novel.retardation > parent.retardation);
+      found_upward_drift = true;
+    }
+  }
+  assert(found_upward_drift);
+  std::cout << "  test_super_killer_updates_retardation_after_pi_drift: PASSED\n";
+}
+
 void test_mutation_skips_aged_agents() {
   MutationConfig cfg;
   cfg.bi_duplication_rate = 1.0;
@@ -157,6 +181,7 @@ int main() {
   test_receptor_downregulation_reduces_expression();
   test_partial_resistance_sets_affinity();
   test_super_killer_immunity_escape();
+  test_super_killer_updates_retardation_after_pi_drift();
   test_mutation_skips_aged_agents();
   std::cout << "All mutation fix tests passed.\n";
   return 0;

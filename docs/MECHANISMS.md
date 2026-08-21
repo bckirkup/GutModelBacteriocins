@@ -294,14 +294,25 @@ resulting `washout_trapped_live_agents` stock is therefore meaningful. In
 `outflow_washout`, so that stock is approximately zero for those agents.
 Neither stock is a closure term.
 
-**pI-dependent diffusion classification:**
+**pI-dependent mucin retardation:**
 | Class | pI range | Retardation | Behavior |
 |-------|----------|-------------|----------|
-| Lethal Core | > 8.5 | R = 50 | Binds mucin glycoproteins, concentrates near producer |
-| Lethal Halo | < 7.0 | R = 1.5 | Repelled by anionic mucin, spreads widely |
-| Neutral | 7.0–8.5 | R = 5.0 | Intermediate diffusion |
+| Lethal Core | > 8.5 | High R | Binds mucin glycoproteins, concentrates near producer |
+| Lethal Halo | < 7.0 | Low R | Repelled by anionic mucin, spreads widely |
+| Neutral | 7.0–8.5 | Intermediate R | Intermediate diffusion |
 
-*Note:* The HALO threshold was raised from pI < 6.0 to pI < 7.0 (VADI §74) to correctly classify bacteriocins secreted as acidic complexes (e.g. Colicin E2 with Im2, net complex pI ≈ 6.5). The `classify_by_pI()` function in `src/genome/plasmid.h` is the single source of truth for these thresholds.
+Retardation is derived from net charge using the configured local pH:
+
+`R(pI) = r_min + amplitude / (1 + 10^((dz_half - (pI - pH)) / width))`
+
+With the defaults (`r_min=1.2`, `amplitude=60`, `dz_half=1.35`,
+`width=1`, `pH=7`), higher pI at fixed pH produces higher retardation,
+whereas higher pH at fixed pI produces lower retardation. The
+`classify_by_pI()` function remains the single source of truth for the
+Lethal Core/Halo class thresholds; class labels and transport retardation are
+resolved together when a BI cluster is created or mutated.
+
+*Note:* The HALO threshold was raised from pI < 6.0 to pI < 7.0 (VADI §74) to correctly classify bacteriocins secreted as acidic complexes (e.g. Colicin E2 with Im2, net complex pI ≈ 6.5).
 
 The effective diffusion coefficient: `D_eff = D_free / R`
 

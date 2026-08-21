@@ -94,6 +94,11 @@ void test_strain_fixture() {
   assert(std::abs(resident.receptor_expression.at("BtuB")) < 1e-15);
   assert(std::abs(resident.receptor_expression.at("FepA") - 0.35) < 1e-12);
   assert(std::abs(cfg.b12_initial_conc - 3e-4) < 1e-15);
+  assert(std::abs(cfg.fixes.bacteriocin.mucin_charge.r_min - 1.4) < 1e-12);
+  assert(std::abs(cfg.fixes.bacteriocin.mucin_charge.amplitude - 42.0) < 1e-12);
+  assert(std::abs(cfg.fixes.bacteriocin.mucin_charge.dz_half - 1.1) < 1e-12);
+  assert(std::abs(cfg.fixes.bacteriocin.mucin_charge.width - 0.8) < 1e-12);
+  assert(std::abs(cfg.fixes.bacteriocin.mucin_charge.ph - 6.8) < 1e-12);
   const auto b12 = std::find_if(
       cfg.chemicals.begin(), cfg.chemicals.end(),
       [](const ChemicalSpec& chemical) { return chemical.name == species::B12; });
@@ -109,6 +114,11 @@ void test_strain_fixture() {
   SimulationConfig roundtrip = InputParser::default_config();
   assert(ConfigJson::parse_document(roundtrip, resolved));
   assert(std::abs(roundtrip.b12_initial_conc - 3e-4) < 1e-15);
+  assert(std::abs(roundtrip.fixes.bacteriocin.mucin_charge.r_min - 1.4) < 1e-12);
+  assert(std::abs(roundtrip.fixes.bacteriocin.mucin_charge.amplitude - 42.0) < 1e-12);
+  assert(std::abs(roundtrip.fixes.bacteriocin.mucin_charge.dz_half - 1.1) < 1e-12);
+  assert(std::abs(roundtrip.fixes.bacteriocin.mucin_charge.width - 0.8) < 1e-12);
+  assert(std::abs(roundtrip.fixes.bacteriocin.mucin_charge.ph - 6.8) < 1e-12);
   const auto roundtrip_override = roundtrip.plasmid_overrides.find("ColE1");
   assert(roundtrip_override != roundtrip.plasmid_overrides.end());
   assert(roundtrip_override->second.retardation.has_value()

@@ -12,6 +12,14 @@
 
 namespace gutibm {
 
+struct MucinChargeConfig {
+  Real r_min = 1.2;
+  Real amplitude = 60.0;
+  Real dz_half = 1.35;
+  Real width = 1.0;
+  Real ph = 7.0;
+};
+
 struct PlasmidEntry {
   std::string name;
   BICluster cluster;
@@ -24,6 +32,8 @@ struct PlasmidEntry {
 // SINGLE SOURCE OF TRUTH for pI → BacteriocinClass. All other code must use
 // the pre-computed BICluster.bclass rather than re-classifying from pI.
 BacteriocinClass classify_by_pI(Real pI);
+
+Real retardation_from_pI(Real pI, const MucinChargeConfig& cfg);
 
 // Library of well-characterized E. coli bacteriocin systems
 class PlasmidLibrary {

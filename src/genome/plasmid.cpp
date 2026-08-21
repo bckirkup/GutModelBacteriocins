@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "plasmid.h"
+#include <cmath>
 #include <string_view>
 #include <unordered_map>
 
@@ -26,6 +27,13 @@ BacteriocinClass classify_by_pI(Real pI) {
   return NEUTRAL;
 }
 
+Real retardation_from_pI(Real pI, const MucinChargeConfig& cfg) {
+  const Real charge_exponent =
+      (cfg.dz_half - (pI - cfg.ph)) / cfg.width;
+  return cfg.r_min
+      + cfg.amplitude / (1.0 + std::pow(10.0, charge_exponent));
+}
+
 BICluster PlasmidLibrary::colicin_E1() {
   return BICluster{
     .toxin_id        = 1,
@@ -34,7 +42,7 @@ BICluster PlasmidLibrary::colicin_E1() {
     .bclass          = classify_by_pI(9.0),
     .pI              = 9.0,
     .diff_coeff      = 4.0e-11,    // ~50 kDa protein
-    .retardation     = 50.0,       // basic → binds mucin strongly
+    .retardation     = retardation_from_pI(9.0, MucinChargeConfig{}),
     .molecular_weight = 57000.0,
     .protease_half_life = 1800.0,
     .release_mode    = ReleaseMode::SOS_LYSIS,
@@ -53,7 +61,7 @@ BICluster PlasmidLibrary::colicin_E2() {
     .bclass          = classify_by_pI(6.5),
     .pI              = 6.5,        // complex pI (corrected per VADI review)
     .diff_coeff      = 3.5e-11,
-    .retardation     = 3.0,        // modest retardation
+    .retardation     = retardation_from_pI(6.5, MucinChargeConfig{}),
     .molecular_weight = 61500.0,    // toxin + immunity complex
     .protease_half_life = 1800.0,
     .release_mode    = ReleaseMode::SOS_LYSIS,
@@ -70,7 +78,7 @@ BICluster PlasmidLibrary::colicin_B() {
     .bclass          = classify_by_pI(5.4),
     .pI              = 5.4,
     .diff_coeff      = 4.0e-11,
-    .retardation     = 1.5,        // acidic → repelled by mucin
+    .retardation     = retardation_from_pI(5.4, MucinChargeConfig{}),
     .molecular_weight = 54800.0,
     .protease_half_life = 900.0,
     .release_mode    = ReleaseMode::PHAGE_LYSIS,
@@ -87,7 +95,7 @@ BICluster PlasmidLibrary::colicin_Ia() {
     .bclass          = classify_by_pI(7.2),
     .pI              = 7.2,
     .diff_coeff      = 4.0e-11,
-    .retardation     = 5.0,
+    .retardation     = retardation_from_pI(7.2, MucinChargeConfig{}),
     .molecular_weight = 69400.0,
     .protease_half_life = 2400.0,
     .release_mode    = ReleaseMode::PHAGE_LYSIS,
@@ -104,7 +112,7 @@ BICluster PlasmidLibrary::colicin_M() {
     .bclass          = classify_by_pI(9.3),
     .pI              = 9.3,
     .diff_coeff      = 5.0e-11,
-    .retardation     = 60.0,
+    .retardation     = retardation_from_pI(9.3, MucinChargeConfig{}),
     .molecular_weight = 29500.0,
     .protease_half_life = 900.0,
     .release_mode    = ReleaseMode::SOS_LYSIS,
@@ -120,7 +128,7 @@ BICluster PlasmidLibrary::microcin_V() {
     .bclass          = classify_by_pI(5.0),
     .pI              = 5.0,
     .diff_coeff      = 1.0e-10,    // small peptide → faster diffusion
-    .retardation     = 1.2,
+    .retardation     = retardation_from_pI(5.0, MucinChargeConfig{}),
     .molecular_weight = 8900.0,
     .protease_half_life = 7200.0,
     .release_mode    = ReleaseMode::CONTINUOUS,

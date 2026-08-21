@@ -701,6 +701,36 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
   return false;
 }
 
+bool apply_bacteriocin_key(SimulationConfig& cfg, std::string_view key,
+                           const std::string& val) {
+  if (key == "bacteriocin.mucin_charge.r_min") {
+    cfg.fixes.bacteriocin.mucin_charge.r_min =
+        parse_config_real(key, val);
+    return true;
+  }
+  if (key == "bacteriocin.mucin_charge.amplitude") {
+    cfg.fixes.bacteriocin.mucin_charge.amplitude =
+        parse_config_real(key, val);
+    return true;
+  }
+  if (key == "bacteriocin.mucin_charge.dz_half") {
+    cfg.fixes.bacteriocin.mucin_charge.dz_half =
+        parse_config_real(key, val);
+    return true;
+  }
+  if (key == "bacteriocin.mucin_charge.width") {
+    cfg.fixes.bacteriocin.mucin_charge.width =
+        parse_positive_config_real(key, val);
+    return true;
+  }
+  if (key == "bacteriocin.mucin_charge.ph") {
+    cfg.fixes.bacteriocin.mucin_charge.ph =
+        parse_config_real(key, val);
+    return true;
+  }
+  return false;
+}
+
 bool apply_plasmid_override_key(SimulationConfig& cfg,
                                 std::string_view key,
                                 const std::string& val) {
@@ -1294,7 +1324,7 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 29> k_flat_key_handlers = {
+constexpr std::array<FlatKeyHandler, 30> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_chemistry_key,
@@ -1302,6 +1332,7 @@ constexpr std::array<FlatKeyHandler, 29> k_flat_key_handlers = {
   apply_qssa_key,
   apply_vbf_key,
   apply_chemical_key,
+  apply_bacteriocin_key,
   apply_plasmid_override_key,
   apply_metabolism_key,
   apply_receptor_key,

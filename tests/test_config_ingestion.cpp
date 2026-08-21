@@ -310,6 +310,26 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) { return c.b12_initial_conc; }));
   v.push_back(R("corrinoid_initial_conc",
                 [](const SimulationConfig& c) { return c.b12_initial_conc; }, false));
+  v.push_back(R("bacteriocin.mucin_charge.r_min",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.r_min;
+                }));
+  v.push_back(R("bacteriocin.mucin_charge.amplitude",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.amplitude;
+                }));
+  v.push_back(R("bacteriocin.mucin_charge.dz_half",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.dz_half;
+                }));
+  v.push_back(R("bacteriocin.mucin_charge.width",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.width;
+                }));
+  v.push_back(R("bacteriocin.mucin_charge.ph",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.ph;
+                }));
   v.push_back(R("plasmid_overrides.ColE1.retardation",
                 [](const SimulationConfig& c) {
                   const auto it = c.plasmid_overrides.find("ColE1");
@@ -581,7 +601,7 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
-      "advection", "washout",
+      "advection", "washout", "bacteriocin", "mucin_charge",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity", "receptor_expression", "receptor_genotype", "receptors",
