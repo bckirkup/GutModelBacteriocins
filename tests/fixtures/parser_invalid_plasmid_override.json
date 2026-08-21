@@ -1,0 +1,5 @@
+{
+  "plasmid_overrides": {
+    "NotAPlasmid": {"retardation": 2.0}
+  }
+}

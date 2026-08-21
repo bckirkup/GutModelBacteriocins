@@ -302,6 +302,35 @@ std::vector<Probe> build_probes() {
   v.push_back(R("carbon_z_lambda", [](const SimulationConfig& c) { return carbon_spec(c).z_gradient_lambda; }));
   add_ns_real(v, "carbon.boundary_conc", "carbon_boundary_conc",
               [](const SimulationConfig& c) { return c.carbon_boundary_conc; });
+  v.push_back(R("b12.initial_conc",
+                [](const SimulationConfig& c) { return c.b12_initial_conc; }));
+  v.push_back(R("b12_initial_conc",
+                [](const SimulationConfig& c) { return c.b12_initial_conc; }, false));
+  v.push_back(R("corrinoid.initial_conc",
+                [](const SimulationConfig& c) { return c.b12_initial_conc; }));
+  v.push_back(R("corrinoid_initial_conc",
+                [](const SimulationConfig& c) { return c.b12_initial_conc; }, false));
+  v.push_back(R("plasmid_overrides.ColE1.retardation",
+                [](const SimulationConfig& c) {
+                  const auto it = c.plasmid_overrides.find("ColE1");
+                  return it == c.plasmid_overrides.end()
+                      || !it->second.retardation.has_value()
+                      ? 0.0 : *it->second.retardation;
+                }, 25.0));
+  v.push_back(R("plasmid_overrides.ColE1.diff_coeff",
+                [](const SimulationConfig& c) {
+                  const auto it = c.plasmid_overrides.find("ColE1");
+                  return it == c.plasmid_overrides.end()
+                      || !it->second.diff_coeff.has_value()
+                      ? 0.0 : *it->second.diff_coeff;
+                }, 8.0e-11));
+  v.push_back(R("plasmid_overrides.ColE1.burst_size",
+                [](const SimulationConfig& c) {
+                  const auto it = c.plasmid_overrides.find("ColE1");
+                  return it == c.plasmid_overrides.end()
+                      || !it->second.burst_size.has_value()
+                      ? 0.0 : *it->second.burst_size;
+                }, 2.0e5));
   v.push_back(S("carbon.epithelial_boundary",
                 [](const SimulationConfig& c) {
                   return c.carbon_epithelial_boundary;
@@ -322,9 +351,6 @@ std::vector<Probe> build_probes() {
   v.push_back(R("sos_lysis_prob", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_lysis_prob; }));
   v.push_back(R("sos_basal_rate", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_basal_rate; }));
   v.push_back(R("sos_cross_induction_rate", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_cross_induction_rate; }));
-  v.push_back(R("retardation_basic", [](const SimulationConfig& c) { return c.fixes.bacteriocin.retardation_basic; }));
-  v.push_back(R("retardation_acidic", [](const SimulationConfig& c) { return c.fixes.bacteriocin.retardation_acidic; }));
-  v.push_back(R("retardation_neutral", [](const SimulationConfig& c) { return c.fixes.bacteriocin.retardation_neutral; }));
   v.push_back(R("D_free_colicin", [](const SimulationConfig& c) { return c.fixes.bacteriocin.D_free_colicin; }));
   v.push_back(R("burst_release_tau", [](const SimulationConfig& c) { return c.fixes.bacteriocin.burst_release_tau; }));
   v.push_back(R("microcin_mu_penalty", [](const SimulationConfig& c) { return c.fixes.bacteriocin.microcin_mu_penalty; }));
@@ -558,7 +584,8 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
       "advection", "washout",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
-      "cdi_immunity"};
+      "cdi_immunity", "receptor_expression", "receptor_genotype", "receptors",
+      "plasmid_overrides"};
   return keys;
 }
 
@@ -669,6 +696,12 @@ void scan_source_keys(const std::string& path, std::set<std::string, std::less<>
     out.insert(src.substr(start, end - start));
     pos = end + 1;
   }
+  if (src.find("constexpr std::string_view prefix = \"plasmid_overrides.\"")
+      != std::string::npos) {
+    out.insert("plasmid_overrides.ColE1.retardation");
+    out.insert("plasmid_overrides.ColE1.diff_coeff");
+    out.insert("plasmid_overrides.ColE1.burst_size");
+  }
 }
 
 std::string source_path(const char* rel) {
@@ -738,8 +771,12 @@ void test_strain_and_array_keys() {
     "_comment": "strain + array key ingestion probe",
     "initial_strains": [
       {"type": 3, "count": 9, "mu_max": 7e-4, "plasmids": ["ColE1", "ColB"],
-       "conjugative": true, "cdi_type": 5, "cdi_immunity": 6}
+       "conjugative": true, "cdi_type": 5, "cdi_immunity": 6,
+       "receptor_expression": {"BtuB": 0.0, "FepA": 0.35}}
     ],
+    "plasmid_overrides": {
+      "ColE1": {"retardation": 25.0, "diff_coeff": 8e-11, "burst_size": 2e5}
+    },
     "fixes": ["metabolism", "mechanics"]
   })";
 
@@ -763,12 +800,32 @@ void test_strain_and_array_keys() {
     expect(s.conjugative, "strain 'conjugative' not ingested");
     expect(s.cdi_type == 5, "strain 'cdi_type' not ingested");
     expect(s.cdi_immunity == 6, "strain 'cdi_immunity' not ingested");
+    expect(s.receptor_expression.size() == 2,
+           "strain 'receptor_expression' not ingested");
+    expect(std::abs(s.receptor_expression.at("BtuB")) < 1e-15,
+           "strain BtuB expression not ingested");
+    expect(std::abs(s.receptor_expression.at("FepA") - 0.35) < 1e-12,
+           "strain FepA expression not ingested");
   }
 
   expect(cfg.enabled_fixes.size() == 2, "'fixes' array not ingested");
   if (cfg.enabled_fixes.size() == 2) {
     expect(cfg.enabled_fixes[0] == "metabolism" && cfg.enabled_fixes[1] == "mechanics",
            "'fixes' array contents not ingested");
+  }
+  const auto override_it = cfg.plasmid_overrides.find("ColE1");
+  expect(override_it != cfg.plasmid_overrides.end(),
+         "'plasmid_overrides' object not ingested");
+  if (override_it != cfg.plasmid_overrides.end()) {
+    expect(override_it->second.retardation.has_value()
+               && std::abs(*override_it->second.retardation - 25.0) < 1e-12,
+           "plasmid retardation override not ingested");
+    expect(override_it->second.diff_coeff.has_value()
+               && std::abs(*override_it->second.diff_coeff - 8e-11) < 1e-20,
+           "plasmid diffusion override not ingested");
+    expect(override_it->second.burst_size.has_value()
+               && std::abs(*override_it->second.burst_size - 2e5) < 1e-6,
+           "plasmid burst override not ingested");
   }
 
   std::cout << "  test_strain_and_array_keys: checked strain + array keys\n";

@@ -38,7 +38,7 @@ SimulationConfig config() {
   cfg.hdf5.enabled = false;
   cfg.restart.enabled = false;
   cfg.initial_strains.clear();
-  cfg.initial_strains.push_back({1, 1, 5e-4, {}});
+  cfg.initial_strains.push_back({1, 1, 5e-4, {}, false, 0, 0, {}});
   return cfg;
 }
 

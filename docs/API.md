@@ -248,7 +248,7 @@ class Fix {
 | Fix | Config struct | Key parameters |
 |-----|--------------|----------------|
 | `FixMetabolism` | `MetabolismConfig` | `division_threshold`, `metE_penalty`, `metE_acetate_km`, `metE_acetate_max_factor`, `eut_km`, `eut_max_penalty`, `maintenance_rate`, `km_iron_primary`, `km_iron_iroN`, `km_iron_iutA`, `km_iron_fiu` |
-| `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `retardation_basic/acidic/neutral`, `D_free_colicin`, `burst_release_tau`, `microcin_mu_penalty` |
+| `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `D_free_colicin`, `burst_release_tau`, `microcin_mu_penalty`; per-plasmid transport overrides are configured in `SimulationConfig` |
 | `FixReceptor` | `ReceptorConfig` | `kd_*` binding affinities, `kill_rate_colicin/microcin`, `immunity_factor` |
 | `FixConjugation` | `ConjugationConfig` | `base_transfer_prob`, `contact_radius`, `shear_crit` |
 | `FixMutation` | `MutationConfig` | Per-division rates for duplication, recombination, receptor downreg, partial resistance, super-killer, compensatory; `immunity_escape_prob`, `escape_affinity_lo/hi`, `missense_prob`, `missense_affinity_lo/hi` |

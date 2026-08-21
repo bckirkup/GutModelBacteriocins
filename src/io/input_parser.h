@@ -29,8 +29,10 @@
 
 #include <string>
 #include <string_view>
-#include <vector>
+#include <map>
+#include <optional>
 #include <unordered_map>
+#include <vector>
 #include <fstream>
 #include <sstream>
 
@@ -92,6 +94,7 @@ struct SimulationConfig {
   AdvectionConfig advection;
   VBFConfig vbf;
   Real carbon_boundary_conc = 5.0e-3;
+  Real b12_initial_conc = 1.0e-3;
   std::string carbon_epithelial_boundary = "dirichlet";
   Real carbon_epithelial_transfer_coeff = 0.0;
   Real carbon_epithelial_flux = 0.0;
@@ -123,7 +126,14 @@ struct SimulationConfig {
     bool conjugative = false;
     uint16_t cdi_type = 0;
     uint16_t cdi_immunity = 0;
+    std::map<std::string, Real> receptor_expression;
   };
+  struct PlasmidOverride {
+    std::optional<Real> retardation;
+    std::optional<Real> diff_coeff;
+    std::optional<Real> burst_size;
+  };
+  std::map<std::string, PlasmidOverride> plasmid_overrides;
   std::vector<InitialStrain> initial_strains;
   InitialPopulationConfig initial_population;
   std::vector<std::string> enabled_fixes;

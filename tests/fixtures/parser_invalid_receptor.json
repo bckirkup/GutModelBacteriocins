@@ -1,0 +1,9 @@
+{
+  "initial_strains": [
+    {
+      "type": 3,
+      "count": 1,
+      "receptor_expression": {"NotAReceptor": 0.0}
+    }
+  ]
+}

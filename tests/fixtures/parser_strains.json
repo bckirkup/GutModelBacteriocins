@@ -4,6 +4,14 @@
   "total_time": 7200,
   "bio_dt": 60,
   "seed": 7,
+  "b12.initial_conc": 0.0003,
+  "plasmid_overrides": {
+    "colicin_E1": {
+      "retardation": 25.0,
+      "diff_coeff": 8.0e-11,
+      "burst_size": 200000.0
+    }
+  },
 
   "initial_strains": [
     {
@@ -11,7 +19,11 @@
       "count": 12,
       "mu_max": 5.5e-4,
       "plasmids": ["ColE1"],
-      "conjugative": false
+      "conjugative": false,
+      "receptor_expression": {
+        "BtuB": 0.0,
+        "FepA": 0.35
+      }
     },
     {
       "type": 2,

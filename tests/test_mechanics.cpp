@@ -345,7 +345,7 @@ void test_dense_population_stays_contained() {
   cfg.initial_population.z_min = 40e-6;
   cfg.initial_population.z_max = 60e-6;
   cfg.initial_strains.push_back(
-      {0, 2 * kAgentPairs, 5.0e-4, {}, false, 0, 0});
+      {0, 2 * kAgentPairs, 5.0e-4, {}, false, 0, 0, {}});
 
   Simulation sim;
   sim.init(cfg);

@@ -27,11 +27,6 @@ struct BacteriocinConfig {
   Real sos_lysis_prob       = 0.01;    // 1% per division
   Real sos_basal_rate       = 1.0e-6;  // spontaneous SOS induction (1/s)
 
-  // Retardation factors based on pI
-  Real retardation_basic    = 50.0;    // pI > 8.5, bound to mucin
-  Real retardation_acidic   = 1.5;     // pI < 6.0, repelled by mucin
-  Real retardation_neutral  = 5.0;     // 6.0 <= pI <= 8.5
-
   // Free diffusion coefficient for ~50kDa protein (m^2/s)
   Real D_free_colicin       = 4.0e-11;
 
@@ -60,7 +55,6 @@ class FixBacteriocin : public Fix {
   void check_phage_induction(Agent& agent, const BICluster& bi, Real dt);
   void apply_microcin_secretion(Agent& agent, Real dt) const;
   void lyse_agent(Agent& agent);
-  Real retardation_for_pI(Real pI) const;
   bool has_release_mode(const Agent& agent, ReleaseMode mode) const;
 
   BacteriocinConfig cfg_;

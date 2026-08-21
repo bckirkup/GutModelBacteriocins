@@ -502,6 +502,7 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 | `receptor.kill_rate_colicin` | `kill_rate_colicin` | 1e-3 | 1/s | Single-hit colicin kill rate |
 | `receptor.kill_rate_microcin` | `kill_rate_microcin` | 5e-4 | 1/s | Microcin kill rate (slower) |
 | `receptor.cirA_linearized_fraction` | `cirA_linearized_fraction` | 0.3 | — | Fraction of ferric enterobactin represented as the CirA linearized ligand |
+| `chemical.b12_initial_conc` | `b12.initial_conc`, `b12_initial_conc`, `corrinoid.initial_conc`, `corrinoid_initial_conc` | 1e-3 | mol/m³ | Uniform initial and boundary concentration of the corrinoid/B12 pool |
 
 ---
 
@@ -511,15 +512,28 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 |-----------|---------|-------|-------------|
 | `bacteriocin.sos_lysis_prob` | 0.01 | — | SOS induction probability per division (active when `just_divided`) |
 | `bacteriocin.sos_basal_rate` | 1e-6 | 1/s | Spontaneous SOS rate |
-| `bacteriocin.sos_cross_induction_rate` | 1e3 | 1/s per mol/m³ | Nuclease provoker rate (reads BtuB field by default, total lumped field in lumped mode) |
-| `bacteriocin.retardation_basic` | 50.0 | — | R for pI > 8.5 (Lethal Core) |
-| `bacteriocin.retardation_acidic` | 1.5 | — | R for pI < 7.0 (Lethal Halo) |
-| `bacteriocin.retardation_neutral` | 5.0 | — | R for 7.0–8.5 |
+| `bacteriocin.sos_cross_induction_rate` | 1e3 | 1/s per mol/m³ | Nuclease provoker rate, applied to per-agent exposure sampled from nuclease BI sources |
 | `bacteriocin.D_free_colicin` | 4e-11 | m^2/s | Free diffusion (~50kDa protein) |
 | `bacteriocin.burst_release_tau` | 300 | s | Exponential release timescale; total delivered dose is tau-invariant, while tau sets peak versus duration |
 | `bacteriocin.microcin_mu_penalty` | 0.03 | — | Growth cost of microcin secretion |
 
-Per-plasmid defaults in `PlasmidLibrary`: `release_mode`, `is_nuclease`, `burst_size`, `phage_induction_rate` (ColB/ColIa: 1e-4 /generation).
+Per-plasmid defaults in `PlasmidLibrary`: `release_mode`, `is_nuclease`, `retardation`, `diff_coeff`, `burst_size`, and `phage_induction_rate` (ColB/ColIa: 1e-4 /generation). Optional overrides use:
+
+```json
+"plasmid_overrides": {
+  "ColE1": {
+    "retardation": 25.0,
+    "diff_coeff": 8.0e-11,
+    "burst_size": 200000.0
+  }
+}
+```
+
+Names resolve through `PlasmidLibrary::find()`, so existing aliases such as
+`colicin_E1` remain accepted and are emitted canonically. The removed global
+`retardation_basic`, `retardation_acidic`, and `retardation_neutral` keys are
+not used; per-plasmid retardation is authoritative. Unknown keys warn by
+default, while `GUTIBM_STRICT_CONFIG=1` makes them hard configuration errors.
 
 QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteriocin_FepA`, `bacteriocin_CirA`, `bacteriocin_FhuA`) by default. With `chemistry.toxin_lumping = "lumped"`, it instead maintains one `bacteriocin_lumped` field containing all sources, and all receptors read that field. Nuclease colicin bursts continue to use the BtuB cross-induction path in the default mode; lumped mode makes that path read total toxin burden as well. The lumped approximation means a colicin an agent is immune to can contribute to exposure through another receptor, and can also contribute to SOS/ROS cross-induction; these are intentional scientific costs of removing receptor-specific spatial targeting.
 
@@ -860,6 +874,7 @@ Each strain in `initial_strains` has:
 | `conjugative` | `false` | Whether the strain can initiate conjugation (HGT) |
 | `cdi_type` | `0` | CDI system identifier delivered by this strain (`0` = none); see [Contact-Dependent Inhibition](#contact-dependent-inhibition-spec-3) |
 | `cdi_immunity` | `0` | CDI immunity identifier this strain carries (`0` = none) |
+| `receptor_expression` | `{}` | Map of receptor names (`BtuB`, `FepA`, `Tsx`, `FhuA`, `IroN`, `Fiu`, `CirA`, `IutA`) to expression levels in `[0, 1]`; values below `0.2` make the founder resistant |
 
 Example:
 ```json

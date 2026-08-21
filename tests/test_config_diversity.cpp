@@ -304,7 +304,7 @@ void test_washout_trap_modes_change_outcome() {
   imposed.advection.washout_trap = WashoutTrapMode::IMPOSED;
   imposed.advection.radial_turnover = 1.0e7;
   imposed.initial_strains.clear();
-  imposed.initial_strains.push_back({2, 12, 1e-9, {}});
+  imposed.initial_strains.push_back({2, 12, 1e-9, {}, false, 0, 0, {}});
   SimulationConfig emergent = imposed;
   emergent.advection.washout_trap = WashoutTrapMode::EMERGENT;
   assert(run_fingerprint(imposed) != run_fingerprint(emergent));

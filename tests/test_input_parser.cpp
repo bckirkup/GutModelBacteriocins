@@ -3,9 +3,12 @@
    ----------------------------------------------------------------------- */
 
 #include "input_parser.h"
+#include "config_json.h"
 #include "simulation.h"
 #include "error.h"
+#include "species_names.h"
 #include <cassert>
+#include <algorithm>
 #include <iostream>
 #include <cmath>
 #include <string>
@@ -87,12 +90,58 @@ void test_strain_fixture() {
   assert(resident.plasmids.size() == 1);
   assert(resident.plasmids[0] == "ColE1");
   assert(resident.conjugative == false);
+  assert(resident.receptor_expression.size() == 2);
+  assert(std::abs(resident.receptor_expression.at("BtuB")) < 1e-15);
+  assert(std::abs(resident.receptor_expression.at("FepA") - 0.35) < 1e-12);
+  assert(std::abs(cfg.b12_initial_conc - 3e-4) < 1e-15);
+  const auto b12 = std::find_if(
+      cfg.chemicals.begin(), cfg.chemicals.end(),
+      [](const ChemicalSpec& chemical) { return chemical.name == species::B12; });
+  assert(b12 != cfg.chemicals.end());
+  assert(std::abs(b12->initial_conc - 3e-4) < 1e-15);
+  assert(std::abs(b12->boundary_conc - 3e-4) < 1e-15);
+  assert(cfg.plasmid_overrides.size() == 1);
+  const auto& colE1 = cfg.plasmid_overrides.at("ColE1");
+  assert(colE1.retardation.has_value() && std::abs(*colE1.retardation - 25.0) < 1e-12);
+  assert(colE1.diff_coeff.has_value() && std::abs(*colE1.diff_coeff - 8e-11) < 1e-20);
+  assert(colE1.burst_size.has_value() && std::abs(*colE1.burst_size - 2e5) < 1e-6);
+  const std::string resolved = ConfigJson::serialize_document(cfg);
+  SimulationConfig roundtrip = InputParser::default_config();
+  assert(ConfigJson::parse_document(roundtrip, resolved));
+  assert(std::abs(roundtrip.b12_initial_conc - 3e-4) < 1e-15);
+  const auto roundtrip_override = roundtrip.plasmid_overrides.find("ColE1");
+  assert(roundtrip_override != roundtrip.plasmid_overrides.end());
+  assert(roundtrip_override->second.retardation.has_value()
+         && std::abs(*roundtrip_override->second.retardation - 25.0) < 1e-12);
 
   const auto& immigrant = cfg.initial_strains[1];
   assert(immigrant.type == 2);
   assert(immigrant.count == 4);
   assert(immigrant.plasmids.empty());
   std::cout << "  test_strain_fixture: PASSED\n";
+}
+
+void test_new_config_names_reject_unknown_values() {
+  const std::string receptor_path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_invalid_receptor.json";
+  bool receptor_rejected = false;
+  try {
+    (void)InputParser::parse(receptor_path);
+  } catch (const ConfigError&) {
+    receptor_rejected = true;
+  }
+  assert(receptor_rejected);
+
+  const std::string plasmid_path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_invalid_plasmid_override.json";
+  bool plasmid_rejected = false;
+  try {
+    (void)InputParser::parse(plasmid_path);
+  } catch (const ConfigError&) {
+    plasmid_rejected = true;
+  }
+  assert(plasmid_rejected);
+  std::cout << "  test_new_config_names_reject_unknown_values: PASSED\n";
 }
 
 void test_immigration_fixture() {
@@ -190,10 +239,28 @@ void test_strain_spawn_integration() {
   sim.init(cfg);
 
   Int with_bi = 0;
+  Int resistant_with_knockout = 0;
+  Int with_transport_override = 0;
   for (const Agent& a : sim.agents()) {
-    if (!a.genome.bi_loci.empty()) ++with_bi;
+    if (!a.genome.bi_loci.empty()) {
+      ++with_bi;
+      const auto& bi = a.genome.bi_loci.front();
+      if (std::abs(bi.retardation - 25.0) < 1e-12
+          && std::abs(bi.diff_coeff - 8.0e-11) < 1e-20
+          && std::abs(bi.burst_size - 200000.0) < 1e-6) {
+        ++with_transport_override;
+      }
+    }
+    if (a.identity.type == 1
+        && std::abs(a.receptor_expr_base[to_underlying(ReceptorType::BtuB)]) < 1e-15
+        && a.state == PhenoState::RESISTANT
+        && std::abs(a.genome.receptor_expression[to_underlying(ReceptorType::BtuB)]) < 1e-15) {
+      ++resistant_with_knockout;
+    }
   }
   assert(with_bi > 0);
+  assert(with_transport_override == with_bi);
+  assert(resistant_with_knockout > 0);
   std::cout << "  test_strain_spawn_integration: PASSED\n";
 }
 
@@ -483,6 +550,34 @@ void test_strict_config_aborts_on_bad_numeric() {
   std::cout << "  test_strict_config_aborts_on_bad_numeric: PASSED\n";
 }
 
+void test_strict_config_aborts_on_unknown_key() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/_strict_unknown_key.json";
+  {
+    std::ofstream out(path);
+    out << "{\"strict_unknown_key\": 1}\n";
+  }
+  const char* previous = std::getenv("GUTIBM_STRICT_CONFIG");
+  const std::string saved = previous == nullptr ? "" : previous;
+  setenv("GUTIBM_STRICT_CONFIG", "1", 1);
+
+  bool threw = false;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError&) {
+    threw = true;
+  }
+
+  if (saved.empty()) {
+    unsetenv("GUTIBM_STRICT_CONFIG");
+  } else {
+    setenv("GUTIBM_STRICT_CONFIG", saved.c_str(), 1);
+  }
+  std::remove(path.c_str());
+  assert(threw);
+  std::cout << "  test_strict_config_aborts_on_unknown_key: PASSED\n";
+}
+
 void test_burst_release_tau_must_be_positive() {
   SimulationConfig cfg = InputParser::default_config();
   bool threw = false;
@@ -718,6 +813,7 @@ int main() {
   test_diversity_paradox_example();
   test_fmm_peristaltic_fixture();
   test_strain_fixture();
+  test_new_config_names_reject_unknown_values();
   test_immigration_fixture();
   test_initial_population_fixture();
   test_washout_trap_fixture();
@@ -738,6 +834,7 @@ int main() {
   test_unknown_key_warning_legacy();
   test_gpu_enabled_fixture();
   test_strict_config_aborts_on_bad_numeric();
+  test_strict_config_aborts_on_unknown_key();
   test_burst_release_tau_must_be_positive();
   test_chemistry_stride_requires_positive_integer();
   test_grid_halo_width_fixture();

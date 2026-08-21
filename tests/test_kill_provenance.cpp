@@ -167,8 +167,8 @@ int main() {
       + "/kill_provenance_restart";
   cfg.restart.interval_steps = 1;
   cfg.initial_strains.clear();
-  cfg.initial_strains.push_back({1, 1, 5e-4, {"MccV"}});
-  cfg.initial_strains.push_back({2, 1, 5e-4, {}});
+  cfg.initial_strains.push_back({1, 1, 5e-4, {"MccV"}, false, 0, 0, {}});
+  cfg.initial_strains.push_back({2, 1, 5e-4, {}, false, 0, 0, {}});
 
   Simulation sim;
   sim.init(cfg);

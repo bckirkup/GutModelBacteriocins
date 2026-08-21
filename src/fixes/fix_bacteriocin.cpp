@@ -180,10 +180,4 @@ void FixBacteriocin::lyse_agent(Agent& agent) {
                                        agent.genome.lineage_id);
 }
 
-Real FixBacteriocin::retardation_for_pI(Real pI) const {
-  if (pI > 8.5) return cfg_.retardation_basic;
-  if (pI < 6.0) return cfg_.retardation_acidic;
-  return cfg_.retardation_neutral;
-}
-
 }  // namespace gutibm
