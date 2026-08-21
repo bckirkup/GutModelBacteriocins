@@ -39,6 +39,13 @@ void warn_parse_failure(const char* kind,
   }
 }
 
+void warn_unknown_config_key(std::string_view key) {
+  std::cerr << "Warning: unknown config key '" << key << "' ignored\n";
+  if (strict_config_enabled()) {
+    throw ConfigError("unknown config key '" + std::string(key) + "'");
+  }
+}
+
 std::string trim_config(std::string_view s) {
   auto start = s.find_first_not_of(" \t\r\n");
   if (start == std::string_view::npos) return "";
@@ -122,7 +129,7 @@ SimulationConfig InputParser::default_config() {
   cfg.chemicals = {
     {species::CARBON,      5.0e-10, 1.0, 5.0e-3, cfg.carbon_boundary_conc, 0.0, true,  25.0e-6, true},
     {species::IRON,        7.0e-10, 1.0, 1.0e-4, 1.0e-4, 0.0, false, 25.0e-6, true},
-    {species::B12,         5.0e-10, 1.0, 1.0e-3, 1.0e-3, 0.0, false, 25.0e-6, true},
+    {species::B12,         5.0e-10, 1.0, cfg.b12_initial_conc, cfg.b12_initial_conc, 0.0, false, 25.0e-6, true},
     {species::BACTERIOCIN_BTUB, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
     {species::BACTERIOCIN_FEPA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
     {species::BACTERIOCIN_CIRA, 4.0e-11, 10.0, 0.0, 0.0, 1.0e-4, false, 25.0e-6, false},
@@ -649,6 +656,19 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
     }
     return true;
   }
+  if (key == "b12.initial_conc" || key == "b12_initial_conc"
+      || key == "corrinoid.initial_conc"
+      || key == "corrinoid_initial_conc") {
+    cfg.b12_initial_conc = parse_config_real(key, val);
+    for (auto& c : cfg.chemicals) {
+      if (c.name == species::B12) {
+        c.initial_conc = cfg.b12_initial_conc;
+        c.boundary_conc = cfg.b12_initial_conc;
+        return true;
+      }
+    }
+    return true;
+  }
   if (key == "carbon.epithelial_boundary"
       || key == "carbon_epithelial_boundary") {
     if (val != "dirichlet" && val != "robin" && val != "flux") {
@@ -675,13 +695,55 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
     cfg.fixes.bacteriocin.sos_cross_induction_rate = parse_config_real(key, val);
     return true;
   }
-  if (key == "retardation_basic")    { cfg.fixes.bacteriocin.retardation_basic = parse_config_real(key, val); return true; }
-  if (key == "retardation_acidic")   { cfg.fixes.bacteriocin.retardation_acidic = parse_config_real(key, val); return true; }
-  if (key == "retardation_neutral")  { cfg.fixes.bacteriocin.retardation_neutral = parse_config_real(key, val); return true; }
   if (key == "D_free_colicin")       { cfg.fixes.bacteriocin.D_free_colicin = parse_config_real(key, val); return true; }
   if (key == "burst_release_tau")    { cfg.fixes.bacteriocin.burst_release_tau = parse_positive_config_real(key, val); return true; }
   if (key == "microcin_mu_penalty")  { cfg.fixes.bacteriocin.microcin_mu_penalty = parse_config_real(key, val); return true; }
   return false;
+}
+
+bool apply_plasmid_override_key(SimulationConfig& cfg,
+                                std::string_view key,
+                                const std::string& val) {
+  constexpr std::string_view prefix = "plasmid_overrides.";
+  if (!key.starts_with(prefix)) return false;
+
+  const std::string_view remainder = key.substr(prefix.size());
+  const size_t separator = remainder.find('.');
+  if (separator == std::string_view::npos) {
+    throw ConfigError("plasmid override key must name a field");
+  }
+  const std::string plasmid_name(remainder.substr(0, separator));
+  const std::string field(remainder.substr(separator + 1));
+  const PlasmidEntry* entry = PlasmidLibrary::find(plasmid_name);
+  if (entry == nullptr) {
+    throw ConfigError("unknown plasmid name in override: " + plasmid_name);
+  }
+
+  const Real value = parse_config_real(key, val);
+  if (!std::isfinite(value) || value < 0.0
+      || (field == "retardation" && value == 0.0)
+      || (field == "diff_coeff" && value == 0.0)) {
+    throw ConfigError("plasmid override '" + std::string(key)
+                      + "' must be finite and nonnegative"
+                      + (field == "retardation" || field == "diff_coeff"
+                             ? " and positive"
+                             : ""));
+  }
+
+  auto& override_values = cfg.plasmid_overrides[entry->name];
+  if (field == "retardation") {
+    override_values.retardation = value;
+    return true;
+  }
+  if (field == "diff_coeff") {
+    override_values.diff_coeff = value;
+    return true;
+  }
+  if (field == "burst_size") {
+    override_values.burst_size = value;
+    return true;
+  }
+  throw ConfigError("unknown plasmid override field: " + field);
 }
 
 bool apply_receptor_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
@@ -1232,7 +1294,7 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 28> k_flat_key_handlers = {
+constexpr std::array<FlatKeyHandler, 29> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_chemistry_key,
@@ -1240,6 +1302,7 @@ constexpr std::array<FlatKeyHandler, 28> k_flat_key_handlers = {
   apply_qssa_key,
   apply_vbf_key,
   apply_chemical_key,
+  apply_plasmid_override_key,
   apply_metabolism_key,
   apply_receptor_key,
   apply_conjugation_key,
@@ -1303,7 +1366,7 @@ void parse_legacy_flat_keys(const std::string& content, SimulationConfig& cfg) {
     std::string val;
     if (!parse_legacy_key_value(line, key, val)) continue;
     if (!InputParser::apply_flat_key(cfg, key, val)) {
-      std::cerr << "Warning: unknown config key '" << key << "' ignored\n";
+      warn_unknown_config_key(key);
     }
   }
 }

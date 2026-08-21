@@ -105,8 +105,7 @@ void FixMutation::mutate_receptor(Agent& agent) {
   agent.genome.mutations++;
   sim_.step_events().mutations++;
 
-  // If expression is very low, mark as resistant
-  if (agent.receptor_expr_base[receptor] < 0.2) {
+  if (receptor_expression_is_resistant(agent.receptor_expr_base[receptor])) {
     agent.state = PhenoState::RESISTANT;
   }
 

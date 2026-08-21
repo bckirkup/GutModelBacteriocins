@@ -10,6 +10,8 @@
 #include <cstdint>
 #include <limits>
 #include <numbers>
+#include <optional>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -42,6 +44,23 @@ enum class ReceptorType : uint8_t {
   IutA  = 7,   // aerobactin (secondary iron uptake)
   NUM_RECEPTOR_TYPES
 };
+
+inline std::optional<ReceptorType> receptor_type_from_name(
+    std::string_view name) {
+  if (name == "BtuB") return ReceptorType::BtuB;
+  if (name == "FepA") return ReceptorType::FepA;
+  if (name == "Tsx") return ReceptorType::Tsx;
+  if (name == "FhuA") return ReceptorType::FhuA;
+  if (name == "IroN") return ReceptorType::IroN;
+  if (name == "Fiu") return ReceptorType::Fiu;
+  if (name == "CirA") return ReceptorType::CirA;
+  if (name == "IutA") return ReceptorType::IutA;
+  return std::nullopt;
+}
+
+inline bool receptor_expression_is_resistant(Real expression) {
+  return expression < 0.2;
+}
 
 // Bacteriocin classification by isoelectric point
 enum class BacteriocinClass : uint8_t {

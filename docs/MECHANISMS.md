@@ -231,6 +231,22 @@ The same death is also recorded in kill provenance with cause `LYSIS`.
 
 ### b) Phage-mediated lysis (Group B colicins)
 
+Founder strains may configure receptor genotype with a per-strain
+`receptor_expression` object mapping receptor names such as `BtuB` and `FepA`
+to expression levels in `[0, 1]`. These values initialize active and genomic
+receptor expression; values below `0.2` use the same resistant-state rule as
+mutation. B12/corrinoid initial and boundary concentrations are set together
+with `b12.initial_conc` (or its flat and `corrinoid` aliases).
+
+BI transport is controlled by each plasmid's library entry. The optional
+`plasmid_overrides` object can override `retardation`, `diff_coeff`, and
+`burst_size` per plasmid. Canonical names and legacy aliases resolve through
+`PlasmidLibrary::find()`, and transferred BI clusters retain the donor's
+configured values. The former global pI retardation keys are removed:
+per-plasmid retardation is authoritative. Unknown keys warn by default;
+`GUTIBM_STRICT_CONFIG=1` turns unrecognized keys into hard configuration
+failures.
+
 ColB and ColIa use prophage induction, not SOS suicide:
 
 ```

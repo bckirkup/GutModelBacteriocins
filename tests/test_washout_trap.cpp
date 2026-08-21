@@ -364,7 +364,7 @@ Int run_threshold_removal(WashoutTrapMode mode, Real turnover) {
   cfg.advection.radial_turnover = turnover;
   cfg.initial_strains.clear();
   cfg.enabled_fixes = {"metabolism"};
-  cfg.initial_strains.push_back({2, 8, 5e-4, {}});
+  cfg.initial_strains.push_back({2, 8, 5e-4, {}, false, 0, 0, {}});
 
   Simulation sim;
   sim.init(cfg);
@@ -384,7 +384,7 @@ std::pair<Int, Int> run_transport_loss(WashoutTrapMode mode, Real domain_z,
   cfg.advection.radial_turnover = turnover;
   cfg.enabled_fixes = {"metabolism"};
   cfg.initial_strains.clear();
-  cfg.initial_strains.push_back({2, 8, 1e-9, {}});
+  cfg.initial_strains.push_back({2, 8, 1e-9, {}, false, 0, 0, {}});
 
   Simulation sim;
   sim.init(cfg);
@@ -445,7 +445,7 @@ void test_bacteriostasis_threshold_default_is_reachable() {
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
   cfg.initial_strains.clear();
-  cfg.initial_strains.push_back({2, 6, 5e-4, {}});
+  cfg.initial_strains.push_back({2, 6, 5e-4, {}, false, 0, 0, {}});
   cfg.hdf5.enabled = false;
   Simulation sim;
   sim.init(cfg);
@@ -469,7 +469,7 @@ void test_bacteriostasis_threshold_is_sensitive() {
     cfg.enabled_fixes = {"metabolism"};
     cfg.fixes.metabolism.bacteriostasis_threshold = threshold;
     cfg.initial_strains.clear();
-    cfg.initial_strains.push_back({2, 6, 5e-4, {}});
+    cfg.initial_strains.push_back({2, 6, 5e-4, {}, false, 0, 0, {}});
 
     Simulation sim;
     sim.init(cfg);
@@ -496,7 +496,7 @@ void test_starvation_is_viable_bacteriostasis() {
   cfg.enabled_fixes = {"metabolism"};
   cfg.fixes.metabolism.bacteriostasis_threshold = 1.0;
   cfg.initial_strains.clear();
-  cfg.initial_strains.push_back({2, 8, 5e-4, {}});
+  cfg.initial_strains.push_back({2, 8, 5e-4, {}, false, 0, 0, {}});
 
   Simulation sim;
   sim.init(cfg);

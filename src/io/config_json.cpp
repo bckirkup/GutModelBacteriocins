@@ -6,6 +6,7 @@
 
 #include <cctype>
 #include <cstdint>
+#include <cmath>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -187,6 +188,62 @@ class JsonCursor {
     return out;
   }
 
+  void parse_receptor_expression_object(
+      std::map<std::string, Real>& expressions) {
+    if (!match('{')) throw ConfigError("expected receptor expression object");
+    skip_ws();
+    if (match('}')) return;
+    while (true) {
+      const std::string receptor_name = parse_string();
+      if (!match(':')) throw ConfigError("expected ':' in receptor expression");
+      const auto receptor = receptor_type_from_name(receptor_name);
+      if (!receptor.has_value()) {
+        throw ConfigError("unknown receptor name: " + receptor_name);
+      }
+      const Real expression = parse_number();
+      if (!std::isfinite(expression) || expression < 0.0 || expression > 1.0) {
+        throw ConfigError("receptor expression must be finite and in [0, 1]");
+      }
+      expressions[receptor_name] = expression;
+      skip_ws();
+      if (match('}')) break;
+      if (!match(',')) throw ConfigError("expected ',' in receptor expression");
+    }
+  }
+
+  void parse_plasmid_overrides_object(
+      SimulationConfig& cfg) {
+    if (!match('{')) throw ConfigError("expected plasmid overrides object");
+    skip_ws();
+    if (match('}')) return;
+    while (true) {
+      const std::string plasmid_name = parse_string();
+      if (!match(':')) throw ConfigError("expected ':' in plasmid override");
+      if (!match('{')) throw ConfigError("expected plasmid override object");
+      skip_ws();
+      if (!match('}')) {
+        while (true) {
+          const std::string field = parse_string();
+          if (!match(':')) throw ConfigError("expected ':' in plasmid override");
+          const Real value = parse_number();
+          std::ostringstream value_text;
+          value_text << std::setprecision(17) << value;
+          if (!InputParser::apply_flat_key(
+                  cfg, "plasmid_overrides." + plasmid_name + "." + field,
+                  value_text.str())) {
+            throw ConfigError("unknown plasmid override field: " + field);
+          }
+          skip_ws();
+          if (match('}')) break;
+          if (!match(',')) throw ConfigError("expected ',' in plasmid override");
+        }
+      }
+      skip_ws();
+      if (match('}')) break;
+      if (!match(',')) throw ConfigError("expected ',' in plasmid overrides");
+    }
+  }
+
   char peek() {
     skip_ws();
     return pos_ < text_.size() ? text_[pos_] : '\0';
@@ -256,6 +313,9 @@ class JsonCursor {
         strain.cdi_type = static_cast<uint16_t>(parse_number());
       } else if (key == "cdi_immunity") {
         strain.cdi_immunity = static_cast<uint16_t>(parse_number());
+      } else if (key == "receptor_expression"
+                 || key == "receptor_genotype" || key == "receptors") {
+        parse_receptor_expression_object(strain.receptor_expression);
       } else {
         skip_value();
       }
@@ -465,6 +525,10 @@ void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor
   // version mismatch, so surface it instead of silently ignoring it.
   if (!handled && !key.empty() && key.front() != '_') {
     std::cerr << "Warning: unknown config key '" << key << "' ignored\n";
+    const char* strict = std::getenv("GUTIBM_STRICT_CONFIG");
+    if (strict != nullptr && strict[0] != '\0' && strict[0] != '0') {
+      throw ConfigError("unknown config key '" + key + "'");
+    }
   }
 }
 
@@ -527,6 +591,10 @@ InitialStrainsParseResult ConfigJson::parse_initial_strains(const std::string& c
       }
     }
   } catch (const ConfigError& ex) {
+    const std::string message = ex.what();
+    if (message.find("unknown receptor name") != std::string::npos) {
+      throw;
+    }
     std::cerr << "Warning: failed to parse initial_strains: " << ex.what()
               << " — using default strains\n";
     result.found = false;
@@ -579,6 +647,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         cursor.skip_value();
       } else if (key == "initial_strains") {
         cfg.initial_strains = cursor.parse_strain_array();
+      } else if (key == "plasmid_overrides") {
+        cursor.parse_plasmid_overrides_object(cfg);
       } else if (key == "fixes") {
         cfg.enabled_fixes = cursor.parse_string_array();
       } else if (key == "hdf5") {
@@ -608,8 +678,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
 
     return true;
   } catch (const ConfigError& ex) {
-    if (const std::string message = ex.what();
-        message.find("invalid immigration.") == 0
+    const std::string message = ex.what();
+    if (message.find("invalid immigration.") == 0
         || message.find("invalid initial_population.") == 0
         || message.find("invalid chemistry_decomposition") == 0
         || message.find("invalid species_subset") == 0
@@ -618,7 +688,11 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         || message.find("invalid washout.trap") == 0
         || message.find("chemistry stride") != std::string::npos
         || message.find("chemistry_stride") != std::string::npos
-        || message.find("grid_halo_width") != std::string::npos) {
+        || message.find("grid_halo_width") != std::string::npos
+        || message.find("unknown receptor name") != std::string::npos
+        || message.find("unknown plasmid name") != std::string::npos
+        || message.find("plasmid override") != std::string::npos
+        || message.find("unknown config key") != std::string::npos) {
       throw;
     }
     std::cerr << "Warning: JSON config parse failed: " << ex.what()
@@ -809,9 +883,6 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("immunity_factor", cfg.fixes.receptor.immunity_factor);
   real_key("sos_lysis_prob", cfg.fixes.bacteriocin.sos_lysis_prob);
   real_key("sos_basal_rate", cfg.fixes.bacteriocin.sos_basal_rate);
-  real_key("retardation_basic", cfg.fixes.bacteriocin.retardation_basic);
-  real_key("retardation_acidic", cfg.fixes.bacteriocin.retardation_acidic);
-  real_key("retardation_neutral", cfg.fixes.bacteriocin.retardation_neutral);
   real_key("D_free_colicin", cfg.fixes.bacteriocin.D_free_colicin);
   real_key("burst_release_tau", cfg.fixes.bacteriocin.burst_release_tau);
   real_key("microcin_mu_penalty", cfg.fixes.bacteriocin.microcin_mu_penalty);
@@ -863,6 +934,7 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   int_key("hdf5.schedule.lineage", cfg.hdf5.schedule.lineage);
   int_key("hdf5.schedule.genome", cfg.hdf5.schedule.genome);
   int_key("hdf5.schedule.provenance", cfg.hdf5.schedule.provenance);
+  real_key("b12.initial_conc", cfg.b12_initial_conc);
   out << ",\"hdf5.schedule.grid_species\":[";
   for (size_t i = 0; i < cfg.hdf5.schedule.grid_species.size(); ++i) {
     if (i != 0) out << ',';
@@ -884,9 +956,37 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
       if (j != 0) out << ',';
       string_value(strain.plasmids[j]);
     }
-    out << "]}";
+    out << "],\"receptor_expression\":{";
+    size_t receptor_index = 0;
+    for (const auto& [name, expression] : strain.receptor_expression) {
+      if (receptor_index++ != 0) out << ',';
+      string_value(name);
+      out << ':' << expression;
+    }
+    out << "}}";
   }
-  out << "],\"fixes\":[";
+  out << "],\"plasmid_overrides\":{";
+  size_t plasmid_index = 0;
+  for (const auto& [name, values] : cfg.plasmid_overrides) {
+    if (plasmid_index++ != 0) out << ',';
+    string_value(name);
+    out << ":{";
+    bool first_value = true;
+    const auto emit_override = [&out, &first_value, &string_value](
+                                   std::string_view field,
+                                   const std::optional<Real>& value) {
+      if (!value.has_value()) return;
+      if (!first_value) out << ',';
+      first_value = false;
+      string_value(std::string(field));
+      out << ':' << *value;
+    };
+    emit_override("retardation", values.retardation);
+    emit_override("diff_coeff", values.diff_coeff);
+    emit_override("burst_size", values.burst_size);
+    out << '}';
+  }
+  out << "},\"fixes\":[";
   for (size_t i = 0; i < cfg.enabled_fixes.size(); ++i) {
     if (i != 0) out << ',';
     string_value(cfg.enabled_fixes[i]);
