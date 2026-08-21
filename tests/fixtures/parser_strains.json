@@ -5,6 +5,15 @@
   "bio_dt": 60,
   "seed": 7,
   "b12.initial_conc": 0.0003,
+  "bacteriocin": {
+    "mucin_charge": {
+      "r_min": 1.4,
+      "amplitude": 42.0,
+      "dz_half": 1.1,
+      "width": 0.8,
+      "ph": 6.8
+    }
+  },
   "plasmid_overrides": {
     "colicin_E1": {
       "retardation": 25.0,

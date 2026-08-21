@@ -196,6 +196,24 @@ void test_plasmid_transport_override_sensitivity() {
                                           col_e1.retardation * 0.5, 1.0);
   assert(std::abs(ratio_scaled / ratio_base - 1.0) < 1.0e-12);
 
+  const MucinChargeConfig mucin_charge;
+  std::array<Real, 3> pi_near{};
+  std::array<Real, 3> pi_far{};
+  const std::array<Real, 3> pIs = {6.0, 8.0, 10.0};
+  for (size_t i = 0; i < pIs.size(); ++i) {
+    const Real retardation = retardation_from_pI(pIs[i], mucin_charge);
+    pi_near[i] = concentration(near, col_e1.diff_coeff,
+                                retardation, 1.0);
+    pi_far[i] = concentration(far, col_e1.diff_coeff,
+                               retardation, 1.0);
+    assert(std::isfinite(pi_near[i]) && pi_near[i] >= 0.0);
+    assert(std::isfinite(pi_far[i]) && pi_far[i] >= 0.0);
+  }
+  assert(pi_near[0] < pi_near[1]);
+  assert(pi_near[1] < pi_near[2]);
+  assert(pi_far[0] > pi_far[1]);
+  assert(pi_far[1] > pi_far[2]);
+
   std::cout << "  test_plasmid_transport_override_sensitivity: PASSED\n";
 }
 

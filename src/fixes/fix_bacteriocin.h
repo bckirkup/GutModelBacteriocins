@@ -20,6 +20,7 @@
 
 #include "fix.h"
 #include "agent.h"
+#include "plasmid.h"
 
 namespace gutibm {
 
@@ -38,6 +39,8 @@ struct BacteriocinConfig {
 
   // Nuclease colicin cross-induction (provoker mechanism)
   Real sos_cross_induction_rate = 1.0e3;  // 1/s per mol/m³ nuclease toxin
+
+  MucinChargeConfig mucin_charge;
 };
 
 class FixBacteriocin : public Fix {

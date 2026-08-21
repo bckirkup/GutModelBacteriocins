@@ -467,6 +467,27 @@ class JsonCursor {
     }
   }
 
+  void parse_bacteriocin_object(SimulationConfig& cfg) {
+    if (!match('{')) {
+      throw ConfigError("expected JSON object for bacteriocin");
+    }
+    skip_ws();
+    if (match('}')) return;
+    while (true) {
+      const std::string key = parse_string();
+      if (!match(':')) throw ConfigError("expected ':' in JSON object");
+      if (key == "mucin_charge") {
+        parse_prefixed_object(cfg, "bacteriocin.mucin_charge",
+                              "bacteriocin.mucin_charge");
+      } else {
+        apply_json_scalar(cfg, "bacteriocin." + key, *this);
+      }
+      skip_ws();
+      if (match('}')) break;
+      if (!match(',')) throw ConfigError("expected ',' in JSON object");
+    }
+  }
+
   void parse_domain_object(SimulationConfig& cfg) {
     if (!match('{')) throw ConfigError("expected JSON object for domain");
     skip_ws();
@@ -667,6 +688,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         cursor.parse_prefixed_object(cfg, "washout", "washout");
       } else if (key == "chemistry") {
         cursor.parse_chemistry_object(cfg);
+      } else if (key == "bacteriocin") {
+        cursor.parse_bacteriocin_object(cfg);
       } else {
         apply_json_scalar(cfg, key, cursor);
       }
@@ -887,6 +910,16 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("burst_release_tau", cfg.fixes.bacteriocin.burst_release_tau);
   real_key("microcin_mu_penalty", cfg.fixes.bacteriocin.microcin_mu_penalty);
   real_key("sos_cross_induction_rate", cfg.fixes.bacteriocin.sos_cross_induction_rate);
+  real_key("bacteriocin.mucin_charge.r_min",
+           cfg.fixes.bacteriocin.mucin_charge.r_min);
+  real_key("bacteriocin.mucin_charge.amplitude",
+           cfg.fixes.bacteriocin.mucin_charge.amplitude);
+  real_key("bacteriocin.mucin_charge.dz_half",
+           cfg.fixes.bacteriocin.mucin_charge.dz_half);
+  real_key("bacteriocin.mucin_charge.width",
+           cfg.fixes.bacteriocin.mucin_charge.width);
+  real_key("bacteriocin.mucin_charge.ph",
+           cfg.fixes.bacteriocin.mucin_charge.ph);
   real_key("pili_length", cfg.fixes.conjugation.pili_length);
   real_key("base_transfer_rate", cfg.fixes.conjugation.base_transfer_rate);
   real_key("shear_critical", cfg.fixes.conjugation.shear_critical);

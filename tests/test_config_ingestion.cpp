@@ -310,6 +310,26 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) { return c.b12_initial_conc; }));
   v.push_back(R("corrinoid_initial_conc",
                 [](const SimulationConfig& c) { return c.b12_initial_conc; }, false));
+  v.push_back(R("bacteriocin.mucin_charge.r_min",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.r_min;
+                }));
+  v.push_back(R("bacteriocin.mucin_charge.amplitude",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.amplitude;
+                }));
+  v.push_back(R("bacteriocin.mucin_charge.dz_half",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.dz_half;
+                }));
+  v.push_back(R("bacteriocin.mucin_charge.width",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.width;
+                }));
+  v.push_back(R("bacteriocin.mucin_charge.ph",
+                [](const SimulationConfig& c) {
+                  return c.fixes.bacteriocin.mucin_charge.ph;
+                }));
   v.push_back(R("plasmid_overrides.ColE1.retardation",
                 [](const SimulationConfig& c) {
                   const auto it = c.plasmid_overrides.find("ColE1");

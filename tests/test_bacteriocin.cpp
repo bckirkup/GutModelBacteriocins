@@ -84,6 +84,69 @@ void test_pi_diffusion_classes() {
   std::cout << "  test_pi_diffusion_classes: PASSED\n";
 }
 
+void test_pi_retardation_sensitivity_and_calibration() {
+  const MucinChargeConfig cfg;
+  const std::array<Real, 5> pIs = {6.0, 7.0, 8.0, 9.0, 10.0};
+  Real previous = retardation_from_pI(pIs.front(), cfg);
+  for (size_t i = 1; i < pIs.size(); ++i) {
+    const Real current = retardation_from_pI(pIs[i], cfg);
+    assert(std::isfinite(current));
+    assert(current > previous);
+    previous = current;
+  }
+
+  for (int i = 0; i <= 18; ++i) {
+    const Real pI = 3.0 + static_cast<Real>(i) * 0.5;
+    const Real value = retardation_from_pI(pI, cfg);
+    assert(std::isfinite(value));
+    assert(value >= cfg.r_min);
+    assert(value <= cfg.r_min + cfg.amplitude);
+  }
+
+  MucinChargeConfig no_charge = cfg;
+  no_charge.amplitude = 0.0;
+  const Real constant = retardation_from_pI(3.0, no_charge);
+  for (const Real pI : pIs) {
+    assert(std::abs(retardation_from_pI(pI, no_charge) - constant) < 1e-12);
+  }
+
+  MucinChargeConfig alkaline = cfg;
+  alkaline.ph = 8.0;
+  assert(retardation_from_pI(8.0, alkaline)
+         < retardation_from_pI(8.0, cfg));
+  assert(retardation_from_pI(8.0, cfg)
+         < retardation_from_pI(8.0, MucinChargeConfig{
+             .r_min = cfg.r_min,
+             .amplitude = cfg.amplitude,
+             .dz_half = cfg.dz_half,
+             .width = cfg.width,
+             .ph = 6.0}));
+
+  struct Calibration {
+    Real pI;
+    Real library;
+    Real diff_coeff;
+  };
+  const std::array<Calibration, 6> calibration = {{
+      {5.0, 1.2, 1.0e-10},
+      {5.4, 1.5, 4.0e-11},
+      {6.5, 3.0, 3.5e-11},
+      {7.2, 5.0, 4.0e-11},
+      {9.0, 50.0, 4.0e-11},
+      {9.3, 60.0, 5.0e-11},
+  }};
+  for (const Calibration& row : calibration) {
+    const Real fitted = retardation_from_pI(row.pI, cfg);
+    // ColE2 uses the toxin-plus-Im2 complex pI, so this is a calibration
+    // change-detector with one expected off-curve library entry.
+    assert(std::abs(fitted - row.library) / row.library < 0.35);
+    const Real d_eff = row.diff_coeff / fitted;
+    assert(std::isfinite(d_eff) && d_eff > 0.0);
+  }
+
+  std::cout << "  test_pi_retardation_sensitivity_and_calibration: PASSED\n";
+}
+
 void test_microcin_mu_penalty() {
   BacteriocinConfig cfg;
   cfg.microcin_mu_penalty = 0.03;
@@ -380,6 +443,7 @@ void test_sos_lysis_post_step() {
 int main() {
   std::cout << "=== Bacteriocin Fix Tests ===\n";
   test_pi_diffusion_classes();
+  test_pi_retardation_sensitivity_and_calibration();
   test_microcin_mu_penalty();
   test_sos_induction_requires_bi_loci();
   test_sos_induction_high_basal_rate();

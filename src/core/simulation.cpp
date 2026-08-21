@@ -73,6 +73,8 @@ void assign_plasmids(Agent& agent,
       continue;
     }
     BICluster cluster = entry->cluster;
+    cluster.retardation = retardation_from_pI(
+        cluster.pI, cfg.fixes.bacteriocin.mucin_charge);
     if (const auto it = cfg.plasmid_overrides.find(entry->name);
         it != cfg.plasmid_overrides.end()) {
       const auto& values = it->second;
