@@ -85,7 +85,7 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
     gpu::launch_count_agents_per_cell_kernel(
         agents.grid_cell(), agents.state(), agents.is_ghost(), agents.size(),
         chem_gpu.agent_counts_device(),
-        params.global_nx, params.global_ny, params.global_nz, params.storage_nx,
+        params.global_nx, params.ny, params.nz, params.storage_nx,
         params.owned_global_x_begin, params.owned_global_x_end,
         params.owned_x_begin, gpu_compute_stream());
     params.agent_counts = chem_gpu.agent_counts_device();
