@@ -183,8 +183,7 @@ __global__ void metabolism_kernel(
     mu *= (1.0 - plasmid_cost);
   }
 
-  mu = fmax(0.0, mu) - maintenance_rate;
-  mu = fmax(0.0, mu);
+  mu -= maintenance_rate;
 
   const double demanded_biomass = mu * biomass[i] * dt;
   const double demanded_carbon = demanded_biomass > 0.0 && conc_carbon

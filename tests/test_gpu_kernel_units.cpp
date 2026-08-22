@@ -242,7 +242,8 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
                                  0.0, 0.0},
                              bool activate_second_agent = false,
                              double acetate_concentration = 2.0,
-                             double acetate_scavenge_rate = 0.1) {
+                             double acetate_scavenge_rate = 0.1,
+                             double maintenance_rate = 0.0) {
   constexpr int agents = 2;
   DeviceBuffer<double> concentration(kCells);
   DeviceBuffer<double> iron(kCells);
@@ -328,7 +329,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       amelioration.data(), agents, agents, agents, gutibm::NUM_RECEPTORS,
       1.0, 1.0, 1.0,
       0.1, 0.1, 0.1, 0.1,
-      0.0, 0.0, 1.0, carbon_maintenance_rate, 0.0, 0.0, 0.2,
+      maintenance_rate, 0.0, 1.0, carbon_maintenance_rate, 0.0, 0.0, 0.2,
       0.1, 0.1, 0.1,
       1, 1, 1, fur_enabled ? 1 : 0, 1.0e-5, 10.0, 5.0,
       acetate_enabled ? 1 : 0, 3.0e-4, 0.25, acetate_scavenge_rate, 2.0,
@@ -379,6 +380,18 @@ void test_metabolism() {
   const MetabolismRun high = run_metabolism(0.0, 2.0e-3);
   assert(low.uptake < zero_seed.uptake);
   assert(zero_seed.uptake < high.uptake);
+}
+
+void test_metabolism_negative_mu() {
+  const MetabolismRun result = run_metabolism(
+      0.0, 1.0e-3, false, false, 1.0, 0, 0.0, 0.0, false, 0.0,
+      std::array<double, 2>{0.0, 0.0}, false, 2.0, 0.1, 2.0e-3);
+  assert(std::isfinite(result.mu));
+  assert(result.mu < 0.0);
+  assert(std::isfinite(result.biomass));
+  assert(result.biomass < 1.0);
+  assert(close(result.carbon_reaction, 0.0));
+  assert(close(result.uptake, 0.0));
 }
 
 void test_metabolism_uptake_limit() {
@@ -1061,6 +1074,7 @@ int main() {
   run_case("launch_apply_boundaries_kernel", test_apply_boundaries);
   run_case("launch_grid_coupling_kernel", test_grid_coupling);
   run_case("launch_metabolism_kernel", test_metabolism);
+  run_case("launch_metabolism_kernel negative mu", test_metabolism_negative_mu);
   run_case("launch_metabolism_kernel uptake limit",
            test_metabolism_uptake_limit);
   run_case("launch_metabolism_kernel carbon maintenance",
