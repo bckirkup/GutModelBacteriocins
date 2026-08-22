@@ -42,6 +42,10 @@ struct MetabolismConfig {
   Real maintenance_rate   = 1.0e-5;   // maintenance (1/s)
   Real carbon_maintenance_rate = 0.0; // non-growth carbon use (mol/(s kg))
   Real yield_carbon       = 0.5;      // carbon yield coefficient
+  bool acid_inhibition_enabled = false;
+  Real acid_inhibition_max = 0.8;
+  Real acid_inhibition_Ki = 50.0;       // mol/m^3 undissociated acetate
+  Real acetate_pKa = 4.76;
   Real yield_iron         = 1.0e-6;   // iron yield (mol Fe / kg biomass)
   Real yield_b12          = 1.0e-9;   // B12 yield
 
@@ -75,12 +79,13 @@ class FixMetabolism : public Fix {
   void compute(Real dt) override;
 
  private:
-  void compute_growth_rate(Agent& agent);
+  void compute_growth_rate(Agent& agent, Real dt);
   Real uptake_limit_fraction(const Agent& agent, Real d_biomass, Real dt,
                              bool record_diagnostics);
   void charge_carbon_maintenance(Agent& agent, Real dt);
   void prepare_carbon_maintenance();
   void grow_agent(Agent& agent, Real dt);
+  Real realized_carbon_cost(const Agent& agent) const;
   void apply_siderophore_chemistry(Real dt);
   void apply_siderophore_chelation(Int i_sid, Int i_iron,
                                    Int i_ferric_enterobactin, Int num_cells);

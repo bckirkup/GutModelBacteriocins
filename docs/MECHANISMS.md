@@ -76,7 +76,7 @@ The QSSA solver deposits bacteriocin fields immediately before `fix_receptor` (s
 
 ## 1. fix_metabolism — Triple Monod Growth
 
-**Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics. When `oxygen.enabled`, an optional aerobic boost applies near the epithelium.
+**Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics. When `oxygen.enabled`, the legacy aerobic boost applies unless `oxygen.metabolic_switch_enabled` is true.
 
 **Equation:**
 ```
@@ -89,6 +89,23 @@ monod_O2_boost = 1 + boost_max * [O2] / (Km_O2 + [O2])
 mu *= monod_O2_boost
 ```
 Agents consume O₂ proportional to `mu_realized`. `Simulation::local_O2()` and `ros_induction_rate()` expose local O₂ for Spec 2 SOS coupling.
+
+When the metabolic switch is enabled, it supersedes the aerobic boost. Oxygen
+availability limits respiratory capacity, and the complementary fraction is
+fermentative; high growth at high oxygen can therefore enter aerobic overflow.
+The realized fermentation fraction relaxes over `oxygen.tau_metabolic_switch`
+and is inherited at division. It controls growth multiplier, carbon cost,
+growth-associated oxygen consumption, fermentative acetate, and the carbon
+maintenance factor. Basal oxygen maintenance remains unconditional. The
+fermentative acetate term replaces the legacy overflow term while scavenging
+is unchanged.
+
+Acid inhibition uses undissociated acetate via Henderson–Hasselbalch. Its pH
+comes from `bacteriocin.mucin_charge.ph`, the environment pH lever introduced
+for pI-derived retardation; no duplicate pH parameter is used. At pH 6 the
+undissociated fraction is approximately 5.4%, so physiological colonic
+acetate is generally below half-inhibition and the mechanism mainly acts in
+acidified microenvironments.
 
 **Graded iron uptake (Issue #10):** Rather than relying solely on FepA, iron acquisition uses four receptor systems in parallel with different affinities:
 

@@ -15,6 +15,16 @@ struct OxygenConfig {
   Real D_free = 2.1e-9;             // m^2/s
   Real Km = 1.0e-6;                 // mol/m^3 Monod half-saturation
   Real boost_max = 2.0;             // max aerobic growth multiplier - 1
+  bool metabolic_switch_enabled = false;
+  Real mu_crit = 3.0e-4;            // 1/s respiratory capacity
+  Real aerobic_mu_factor = 1.0;
+  Real anaerobic_mu_factor = 0.55;
+  // Multipliers on substrate-per-biomass yield (not biomass-per-substrate).
+  Real aerobic_carbon_cost_factor = 1.0;
+  Real anaerobic_carbon_cost_factor = 4.1;
+  Real tau_metabolic_switch = 3600.0; // s
+  Real ferm_acid_yield = 1.0;          // acetate per carbon-equivalent consumed
+  Real anaerobic_maintenance_factor = 15.0;
   // Pirt-style respiration: OUR_cell = q_consumption * mu_realized (growth-
   // associated) + q_maintenance (basal, density-coupled). The maintenance term
   // is what makes the O2 field track cell *density* rather than only growth:

@@ -402,6 +402,54 @@ std::vector<Probe> build_probes() {
   v.push_back(S("metabolism.uptake_limit",
                 [](const SimulationConfig& c) { return c.fixes.metabolism.uptake_limit; },
                 "voxel", false));
+  v.push_back(B("acid_inhibition_enabled",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acid_inhibition_enabled;
+                }));
+  v.push_back(R("acid_inhibition_max",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acid_inhibition_max;
+                }));
+  v.push_back(R("acid_inhibition_Ki",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acid_inhibition_Ki;
+                }));
+  v.push_back(R("acetate_pKa",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acetate_pKa;
+                }));
+  v.push_back(B("metabolism.acid_inhibition_enabled",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acid_inhibition_enabled;
+                }, false));
+  v.push_back(B("metabolism_acid_inhibition_enabled",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acid_inhibition_enabled;
+                }, false));
+  v.push_back(R("metabolism.acid_inhibition_max",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acid_inhibition_max;
+                }, 0.7, false));
+  v.push_back(R("metabolism_acid_inhibition_max",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acid_inhibition_max;
+                }, 0.6, false));
+  v.push_back(R("metabolism.acid_inhibition_Ki",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acid_inhibition_Ki;
+                }, 40.0, false));
+  v.push_back(R("metabolism_acid_inhibition_Ki",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acid_inhibition_Ki;
+                }, 30.0, false));
+  v.push_back(R("metabolism.acetate_pKa",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acetate_pKa;
+                }, 4.5, false));
+  v.push_back(R("metabolism_acetate_pKa",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.acetate_pKa;
+                }, 4.4, false));
 
   // ── Mechanics Fix tunables ────────────────────────────────────────────────
   v.push_back(R("hertz_k", [](const SimulationConfig& c) { return c.fixes.mechanics.hertz_k; }));
@@ -508,6 +556,45 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "oxygen.q_maintenance", "oxygen_q_maintenance", [](const SimulationConfig& c) { return c.chem_env.oxygen.q_maintenance; });
   add_ns_real(v, "oxygen.vbf_sink", "oxygen_vbf_sink", [](const SimulationConfig& c) { return c.chem_env.oxygen.vbf_sink; });
   add_ns_real(v, "oxygen.k_ROS", "oxygen_k_ROS", [](const SimulationConfig& c) { return c.chem_env.oxygen.k_ROS; });
+  add_ns_bool(v, "oxygen.metabolic_switch_enabled",
+              "oxygen_metabolic_switch_enabled",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.metabolic_switch_enabled;
+              });
+  add_ns_real(v, "oxygen.mu_crit", "oxygen_mu_crit",
+              [](const SimulationConfig& c) { return c.chem_env.oxygen.mu_crit; });
+  add_ns_real(v, "oxygen.aerobic_mu_factor", "oxygen_aerobic_mu_factor",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.aerobic_mu_factor;
+              });
+  add_ns_real(v, "oxygen.anaerobic_mu_factor", "oxygen_anaerobic_mu_factor",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.anaerobic_mu_factor;
+              });
+  add_ns_real(v, "oxygen.aerobic_carbon_cost_factor",
+              "oxygen_aerobic_carbon_cost_factor",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.aerobic_carbon_cost_factor;
+              });
+  add_ns_real(v, "oxygen.anaerobic_carbon_cost_factor",
+              "oxygen_anaerobic_carbon_cost_factor",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.anaerobic_carbon_cost_factor;
+              });
+  add_ns_real(v, "oxygen.tau_metabolic_switch",
+              "oxygen_tau_metabolic_switch",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.tau_metabolic_switch;
+              });
+  add_ns_real(v, "oxygen.ferm_acid_yield", "oxygen_ferm_acid_yield",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.ferm_acid_yield;
+              });
+  add_ns_real(v, "oxygen.anaerobic_maintenance_factor",
+              "oxygen_anaerobic_maintenance_factor",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.anaerobic_maintenance_factor;
+              });
 
   // ── Acetate (Spec 1) ──────────────────────────────────────────────────────
   add_ns_bool(v, "acetate.enabled", "acetate_enabled", [](const SimulationConfig& c) { return c.chem_env.acetate.enabled; });

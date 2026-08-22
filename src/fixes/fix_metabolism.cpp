@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "receptor_utils.h"
 #include "carbon_maintenance.h"
+#include "metabolic_mode.h"
 #include <cassert>
 #include <cmath>
 #include <algorithm>
@@ -101,6 +102,25 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   buffers.o2_enabled = o2cfg.enabled ? 1 : 0;
   buffers.o2_boost_max = o2cfg.boost_max;
   buffers.o2_Km = o2cfg.Km;
+  buffers.metabolic_switch_enabled = o2cfg.metabolic_switch_enabled ? 1 : 0;
+  buffers.mu_crit = o2cfg.mu_crit;
+  buffers.aerobic_mu_factor = o2cfg.aerobic_mu_factor;
+  buffers.anaerobic_mu_factor = o2cfg.anaerobic_mu_factor;
+  buffers.aerobic_carbon_cost_factor =
+      o2cfg.aerobic_carbon_cost_factor;
+  buffers.anaerobic_carbon_cost_factor =
+      o2cfg.anaerobic_carbon_cost_factor;
+  buffers.tau_metabolic_switch = o2cfg.tau_metabolic_switch;
+  buffers.ferm_acid_yield = o2cfg.ferm_acid_yield;
+  buffers.anaerobic_maintenance_factor =
+      o2cfg.anaerobic_maintenance_factor;
+  buffers.acid_inhibition_enabled =
+      cfg.acid_inhibition_enabled ? 1 : 0;
+  buffers.acid_inhibition_max = cfg.acid_inhibition_max;
+  buffers.acid_inhibition_Ki = cfg.acid_inhibition_Ki;
+  buffers.acetate_pKa = cfg.acetate_pKa;
+  buffers.environment_pH =
+      sim.config().fixes.bacteriocin.mucin_charge.ph;
   buffers.global_nx = sim.domain().nx();
   buffers.global_ny = sim.domain().ny();
   buffers.storage_nx = cg.storage_nx();
@@ -153,7 +173,7 @@ void FixMetabolism::compute(Real dt) {
   #endif
   for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
-    compute_growth_rate(a);
+    compute_growth_rate(a, dt);
     if (a.flags.is_ghost) {
       const Real demanded_biomass = a.mu_realized * a.biomass * dt;
       a.mu_realized *= uptake_limit_fraction(a, demanded_biomass, dt, false);
@@ -177,8 +197,13 @@ void FixMetabolism::charge_carbon_maintenance(Agent& agent, Real dt) {
   const Int carbon = chem.find(species::CARBON);
   const Real cell_volume = sim_.domain().cell_volume();
   if (carbon < 0 || cell_volume <= 0.0) return;
+  const auto& oxygen = sim_.config().chem_env.oxygen;
+  const Real maintenance_factor = oxygen.metabolic_switch_enabled
+      ? metabolic_mode::interpolate(1.0, oxygen.anaerobic_maintenance_factor,
+                                    agent.realized_fermentation_fraction)
+      : 1.0;
   const Real requested_amount = carbon_maintenance::requested(
-      cfg_.carbon_maintenance_rate, agent.biomass, dt);
+      cfg_.carbon_maintenance_rate * maintenance_factor, agent.biomass, dt);
   const Int storage_cell = chem.global_to_storage_cell(cell);
   if (storage_cell < 0
     || static_cast<size_t>(storage_cell)
@@ -407,7 +432,16 @@ void FixMetabolism::perform_divisions() {
   }
 }
 
-void FixMetabolism::compute_growth_rate(Agent& agent) {
+Real FixMetabolism::realized_carbon_cost(const Agent& agent) const {
+  const auto& oxygen = sim_.config().chem_env.oxygen;
+  if (!oxygen.metabolic_switch_enabled) return cfg_.yield_carbon;
+  return cfg_.yield_carbon * metabolic_mode::interpolate(
+      oxygen.aerobic_carbon_cost_factor,
+      oxygen.anaerobic_carbon_cost_factor,
+      agent.realized_fermentation_fraction);
+}
+
+void FixMetabolism::compute_growth_rate(Agent& agent, Real dt) {
   auto& chem = sim_.chemical_field();
   Int cell = agent.grid_cell;
   if (cell < 0) {
@@ -494,9 +528,36 @@ void FixMetabolism::compute_growth_rate(Agent& agent) {
   if (const auto& o2cfg = sim_.config().chem_env.oxygen; o2cfg.enabled) {
     if (Int i_o2 = chem.find(species::OXYGEN); i_o2 >= 0) {
       const Real s_o2 = chem.conc_global(i_o2, cell);
-      const Real monod_o2_boost =
-          1.0 + o2cfg.boost_max * s_o2 / (o2cfg.Km + s_o2);
-      mu *= monod_o2_boost;
+      if (o2cfg.metabolic_switch_enabled) {
+        const Real availability =
+            metabolic_mode::oxygen_availability(s_o2, o2cfg.Km);
+        const Real instantaneous = metabolic_mode::fermentation_fraction(
+            availability, mu, o2cfg.mu_crit);
+        agent.realized_fermentation_fraction = metabolic_mode::relax(
+            agent.realized_fermentation_fraction, instantaneous,
+            dt, o2cfg.tau_metabolic_switch);
+        mu *= metabolic_mode::interpolate(o2cfg.aerobic_mu_factor,
+                                          o2cfg.anaerobic_mu_factor,
+                                          agent.realized_fermentation_fraction);
+      } else {
+        const Real availability =
+            metabolic_mode::oxygen_availability(s_o2, o2cfg.Km);
+        const Real monod_o2_boost =
+            1.0 + o2cfg.boost_max * availability;
+        mu *= monod_o2_boost;
+      }
+    }
+  }
+
+  if (cfg_.acid_inhibition_enabled) {
+    const Int i_acetate = chem.find(species::ACETATE);
+    if (i_acetate >= 0) {
+      const Real acetate = chem.conc_global(i_acetate, cell);
+      const Real inhibition = metabolic_mode::acid_inhibition(
+          acetate, sim_.config().fixes.bacteriocin.mucin_charge.ph,
+          cfg_.acetate_pKa, cfg_.acid_inhibition_Ki,
+          cfg_.acid_inhibition_max);
+      mu *= 1.0 - inhibition;
     }
   }
 
@@ -569,7 +630,7 @@ Real FixMetabolism::uptake_limit_fraction(
     }
   };
 
-  limit_species(chem.find(species::CARBON), cfg_.yield_carbon);
+  limit_species(chem.find(species::CARBON), realized_carbon_cost(agent));
   if (cfg_.iron_uptake_enabled) {
     limit_species(chem.find(species::IRON), cfg_.yield_iron);
   }
@@ -607,9 +668,10 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   if (d_biomass <= 0.0 || dt <= 0.0) return;
 
   if (i_carbon >= 0 && cell_vol > 0.0) {
-    Real delta_c = d_biomass * cfg_.yield_carbon / (cell_vol * dt);
+    const Real carbon_yield = realized_carbon_cost(agent);
+    Real delta_c = d_biomass * carbon_yield / (cell_vol * dt);
     chem.flux_accounting().add_agent_uptake(
-        i_carbon, d_biomass * cfg_.yield_carbon);
+        i_carbon, d_biomass * carbon_yield);
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif
@@ -633,12 +695,25 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   const auto& acfg = sim_.config().chem_env.acetate;
   if (acfg.enabled && i_acetate >= 0 && cell_vol > 0.0) {
     const Real acetate_conc = chem.conc_global(i_acetate, cell);
-    if (agent.mu_realized > acfg.overflow_threshold) {
+    if (!sim_.config().chem_env.oxygen.metabolic_switch_enabled
+        && agent.mu_realized > acfg.overflow_threshold) {
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic
       #endif
       chem.reac_global(i_acetate, cell) +=
           acfg.overflow_rate * agent.biomass / cell_vol;
+    }
+    if (sim_.config().chem_env.oxygen.metabolic_switch_enabled) {
+      const Real acid =
+          sim_.config().chem_env.oxygen.ferm_acid_yield
+          * agent.realized_fermentation_fraction * d_biomass
+          * realized_carbon_cost(agent);
+      if (acid > 0.0) {
+        #ifdef GUTIBM_OPENMP
+        #pragma omp atomic
+        #endif
+        chem.reac_global(i_acetate, cell) += acid / (cell_vol * dt);
+      }
     }
     const Real scavenge = acfg.scavenge_rate * acetate_conc
         / (acfg.scavenge_Km + acetate_conc) * agent.biomass / cell_vol;

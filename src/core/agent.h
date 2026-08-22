@@ -53,6 +53,7 @@ struct Agent {
   Real   mu_realized;      // current realized growth rate after penalties
   Real   biomass;          // dry biomass (kg)
   Real   maintenance;      // maintenance energy coefficient
+  Real   realized_fermentation_fraction = 0.0;
 
   // ── Receptor state ────────────────────────────────────────────────────
   std::array<Real, NUM_RECEPTORS> receptor_expr_base;

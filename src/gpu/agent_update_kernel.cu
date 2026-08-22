@@ -1,6 +1,7 @@
 #include "gpu_kernels.h"
 #include "uptake_limit.h"
 #include "carbon_maintenance.h"
+#include "metabolic_mode.h"
 #include <cuda_runtime.h>
 #include <cmath>
 
@@ -35,6 +36,7 @@ __global__ void metabolism_kernel(
     double* reac_carbon, double* reac_iron, double* reac_b12,
     double* reac_acetate,
     double* mu_realized, double* biomass, double* radius, double* mass, double* age,
+    double* fermentation_fraction,
     const int* grid_cell, const int* state,
     const double* mu_max, const double* km_b12, const double* km_carbon,
     double* receptor_expr, const double* receptor_expr_base,
@@ -55,6 +57,13 @@ __global__ void metabolism_kernel(
     double acetate_overflow_rate, double acetate_scavenge_rate,
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
+    int metabolic_switch_enabled, double mu_crit,
+    double aerobic_mu_factor, double anaerobic_mu_factor,
+    double aerobic_carbon_cost_factor, double anaerobic_carbon_cost_factor,
+    double tau_metabolic_switch, double ferm_acid_yield,
+    double anaerobic_maintenance_factor,
+    int acid_inhibition_enabled, double acid_inhibition_max,
+    double acid_inhibition_Ki, double acetate_pKa, double environment_pH,
     double* agent_uptake_totals,
     double* maintenance_available,
     int uptake_limit_mode, double effective_diffusivity_carbon,
@@ -132,9 +141,24 @@ __global__ void metabolism_kernel(
 
   if (o2_enabled && conc_oxygen) {
     const double s_o2 = conc_oxygen[cell];
-    const double monod_o2_boost =
-        1.0 + o2_boost_max * s_o2 / (o2_Km + s_o2);
-    mu *= monod_o2_boost;
+    const double availability =
+        metabolic_mode::oxygen_availability(s_o2, o2_Km);
+    if (metabolic_switch_enabled != 0) {
+      const double instantaneous = metabolic_mode::fermentation_fraction(
+          availability, mu, mu_crit);
+      fermentation_fraction[i] = metabolic_mode::relax(
+          fermentation_fraction[i], instantaneous, dt, tau_metabolic_switch);
+      mu *= metabolic_mode::interpolate(
+          aerobic_mu_factor, anaerobic_mu_factor, fermentation_fraction[i]);
+    } else {
+      mu *= 1.0 + o2_boost_max * availability;
+    }
+  }
+  if (acid_inhibition_enabled != 0 && conc_acetate) {
+    const double inhibition = metabolic_mode::acid_inhibition(
+        conc_acetate[cell], environment_pH, acetate_pKa,
+        acid_inhibition_Ki, acid_inhibition_max);
+    mu *= 1.0 - inhibition;
   }
 
   if (expr_btuB < 0.5) {
@@ -159,11 +183,16 @@ __global__ void metabolism_kernel(
     mu *= (1.0 - plasmid_cost);
   }
 
-  mu -= maintenance_rate;
+  mu = fmax(0.0, mu) - maintenance_rate;
+  mu = fmax(0.0, mu);
 
   const double demanded_biomass = mu * biomass[i] * dt;
   const double demanded_carbon = demanded_biomass > 0.0 && conc_carbon
-      ? demanded_biomass * yield_carbon : 0.0;
+      ? demanded_biomass * yield_carbon
+        * (metabolic_switch_enabled != 0
+          ? metabolic_mode::interpolate(
+              aerobic_carbon_cost_factor, anaerobic_carbon_cost_factor,
+              fermentation_fraction[i]) : 1.0) : 0.0;
   const double demanded_iron =
       demanded_biomass > 0.0 && iron_uptake_enabled && conc_iron
       ? demanded_biomass * yield_iron : 0.0;
@@ -185,8 +214,11 @@ __global__ void metabolism_kernel(
 
   if (i >= local_agent_count) return;
 
+  const double maintenance_factor = metabolic_switch_enabled != 0
+      ? metabolic_mode::interpolate(1.0, anaerobic_maintenance_factor,
+                                    fermentation_fraction[i]) : 1.0;
   const double requested_maintenance = carbon_maintenance::requested(
-      carbon_maintenance_rate, biomass[i], dt);
+      carbon_maintenance_rate * maintenance_factor, biomass[i], dt);
   const double maintenance_draw = reserve_maintenance(
       maintenance_available, cell, requested_maintenance);
   if (maintenance_draw > 0.0 && reac_carbon && cell_volume > 0.0) {
@@ -223,7 +255,11 @@ __global__ void metabolism_kernel(
   if (cell_volume <= 0.0) return;
 
   if (reac_carbon) {
-    const double uptake = d_biomass * yield_carbon;
+    const double carbon_cost = metabolic_switch_enabled != 0
+        ? metabolic_mode::interpolate(
+            aerobic_carbon_cost_factor, anaerobic_carbon_cost_factor,
+            fermentation_fraction[i]) : 1.0;
+    const double uptake = d_biomass * yield_carbon * carbon_cost;
     atomicAdd(&reac_carbon[cell], -uptake / (cell_volume * dt));
     if (agent_uptake_totals) atomicAdd(&agent_uptake_totals[0], uptake);
   }
@@ -238,9 +274,20 @@ __global__ void metabolism_kernel(
   (void)yield_b12;
   if (acetate_enabled && reac_acetate) {
     const double acetate_conc = conc_acetate ? conc_acetate[cell] : 0.0;
-    if (mu_realized[i] > acetate_overflow_threshold) {
+    if (metabolic_switch_enabled == 0
+        && mu_realized[i] > acetate_overflow_threshold) {
       atomicAdd(&reac_acetate[cell],
                 acetate_overflow_rate * biomass[i] / cell_volume);
+    }
+    if (metabolic_switch_enabled != 0) {
+      const double acid = ferm_acid_yield * fermentation_fraction[i]
+          * d_biomass * yield_carbon
+          * metabolic_mode::interpolate(
+              aerobic_carbon_cost_factor, anaerobic_carbon_cost_factor,
+              fermentation_fraction[i]);
+      if (acid > 0.0) {
+        atomicAdd(&reac_acetate[cell], acid / (cell_volume * dt));
+      }
     }
     const double scavenge = acetate_scavenge_rate * acetate_conc
         / (acetate_scavenge_Km + acetate_conc)
@@ -256,6 +303,7 @@ void launch_metabolism_kernel(
     double* reac_carbon, double* reac_iron, double* reac_b12,
     double* reac_acetate,
     double* mu_realized, double* biomass, double* radius, double* mass, double* age,
+    double* fermentation_fraction,
     const int* grid_cell, const int* state,
     const double* mu_max, const double* km_b12, const double* km_carbon,
     double* receptor_expr, const double* receptor_expr_base,
@@ -276,6 +324,13 @@ void launch_metabolism_kernel(
     double acetate_overflow_rate, double acetate_scavenge_rate,
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
+    int metabolic_switch_enabled, double mu_crit,
+    double aerobic_mu_factor, double anaerobic_mu_factor,
+    double aerobic_carbon_cost_factor, double anaerobic_carbon_cost_factor,
+    double tau_metabolic_switch, double ferm_acid_yield,
+    double anaerobic_maintenance_factor,
+    int acid_inhibition_enabled, double acid_inhibition_max,
+    double acid_inhibition_Ki, double acetate_pKa, double environment_pH,
     double* agent_uptake_totals,
     double* maintenance_available,
     int uptake_limit_mode, double effective_diffusivity_carbon,
@@ -291,7 +346,7 @@ void launch_metabolism_kernel(
       conc_carbon, conc_iron, conc_b12, conc_acetate, conc_eut,
       conc_oxygen,
       reac_carbon, reac_iron, reac_b12, reac_acetate,
-      mu_realized, biomass, radius, mass, age,
+      mu_realized, biomass, radius, mass, age, fermentation_fraction,
       grid_cell, state, mu_max, km_b12, km_carbon,
       receptor_expr, receptor_expr_base, ligand_affinity, iron_receptor,
       bi_loci_count, plasmid_amelioration,
@@ -306,7 +361,13 @@ void launch_metabolism_kernel(
       fur_enabled, fur_Km, fur_upregulation_max, fur_receptor_max,
       acetate_enabled, acetate_overflow_threshold, acetate_overflow_rate,
       acetate_scavenge_rate, acetate_scavenge_Km,
-      o2_enabled, o2_boost_max, o2_Km, agent_uptake_totals,
+      o2_enabled, o2_boost_max, o2_Km,
+      metabolic_switch_enabled, mu_crit, aerobic_mu_factor,
+      anaerobic_mu_factor, aerobic_carbon_cost_factor,
+      anaerobic_carbon_cost_factor, tau_metabolic_switch, ferm_acid_yield,
+      anaerobic_maintenance_factor, acid_inhibition_enabled,
+      acid_inhibition_max, acid_inhibition_Ki, acetate_pKa, environment_pH,
+      agent_uptake_totals,
       maintenance_available,
       uptake_limit_mode, effective_diffusivity_carbon,
       effective_diffusivity_iron, uptake_limit_totals,

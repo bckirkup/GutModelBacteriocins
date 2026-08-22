@@ -855,6 +855,10 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     } else {
       a.mu_max = fallback_mu_max(cfg_, atoms.type[i]);
     }
+    if (i < atoms.realized_fermentation_fraction.size()) {
+      a.realized_fermentation_fraction =
+          std::clamp(atoms.realized_fermentation_fraction[i], 0.0, 1.0);
+    }
 
     a.genome.lineage_id = static_cast<TagID>(atoms.lineage[i]);
     a.genome.generation = static_cast<uint32_t>(lin.generation[i]);

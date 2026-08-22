@@ -82,6 +82,8 @@ function(gutibm_add_test name source)
   endif()
 endfunction()
 
+gutibm_add_test(metabolic_mode test_metabolic_mode.cpp LABELS "unit;metabolism")
+
 # ── Fast unit tests (default CI gate) ────────────────────────────────────
 gutibm_add_test(assertions_enabled test_assertions_enabled.cpp LABELS "unit")
 gutibm_add_test(progress_report test_progress_report.cpp LABELS "unit")

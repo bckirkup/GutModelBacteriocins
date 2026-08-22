@@ -1018,6 +1018,26 @@ bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std
         parse_config_real(key, val);
     return true;
   }
+  if (key == "acid_inhibition_enabled"
+      || key == "metabolism.acid_inhibition_enabled"
+      || key == "metabolism_acid_inhibition_enabled") {
+    cfg.fixes.metabolism.acid_inhibition_enabled = parse_bool_config(val); return true;
+  }
+  if (key == "acid_inhibition_max"
+      || key == "metabolism.acid_inhibition_max"
+      || key == "metabolism_acid_inhibition_max") {
+    cfg.fixes.metabolism.acid_inhibition_max = parse_config_real(key, val); return true;
+  }
+  if (key == "acid_inhibition_Ki"
+      || key == "metabolism.acid_inhibition_Ki"
+      || key == "metabolism_acid_inhibition_Ki") {
+    cfg.fixes.metabolism.acid_inhibition_Ki = parse_config_real(key, val); return true;
+  }
+  if (key == "acetate_pKa"
+      || key == "metabolism.acetate_pKa"
+      || key == "metabolism_acetate_pKa") {
+    cfg.fixes.metabolism.acetate_pKa = parse_config_real(key, val); return true;
+  }
   if (key == "metE_penalty")            { cfg.fixes.metabolism.metE_penalty = parse_config_real(key, val); return true; }
   if (key == "metE_acetate_km")         { cfg.fixes.metabolism.metE_acetate_km = parse_config_real(key, val); return true; }
   if (key == "metE_acetate_max_factor") { cfg.fixes.metabolism.metE_acetate_max_factor = parse_config_real(key, val); return true; }
@@ -1079,6 +1099,38 @@ bool apply_oxygen_key(SimulationConfig& cfg, std::string_view key, const std::st
   }
   if (key == "oxygen.boost_max" || key == "oxygen_boost_max") {
     cfg.chem_env.oxygen.boost_max = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.metabolic_switch_enabled"
+      || key == "oxygen_metabolic_switch_enabled") {
+    cfg.chem_env.oxygen.metabolic_switch_enabled = parse_bool_config(val); return true;
+  }
+  if (key == "oxygen.mu_crit" || key == "oxygen_mu_crit") {
+    cfg.chem_env.oxygen.mu_crit = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.aerobic_mu_factor" || key == "oxygen_aerobic_mu_factor") {
+    cfg.chem_env.oxygen.aerobic_mu_factor = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.anaerobic_mu_factor" || key == "oxygen_anaerobic_mu_factor") {
+    cfg.chem_env.oxygen.anaerobic_mu_factor = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.aerobic_carbon_cost_factor"
+      || key == "oxygen_aerobic_carbon_cost_factor") {
+    cfg.chem_env.oxygen.aerobic_carbon_cost_factor = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.anaerobic_carbon_cost_factor"
+      || key == "oxygen_anaerobic_carbon_cost_factor") {
+    cfg.chem_env.oxygen.anaerobic_carbon_cost_factor = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.tau_metabolic_switch"
+      || key == "oxygen_tau_metabolic_switch") {
+    cfg.chem_env.oxygen.tau_metabolic_switch = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.ferm_acid_yield" || key == "oxygen_ferm_acid_yield") {
+    cfg.chem_env.oxygen.ferm_acid_yield = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.anaerobic_maintenance_factor"
+      || key == "oxygen_anaerobic_maintenance_factor") {
+    cfg.chem_env.oxygen.anaerobic_maintenance_factor = parse_config_real(key, val); return true;
   }
   if (key == "oxygen.q_consumption" || key == "oxygen_q_consumption") {
     cfg.chem_env.oxygen.q_consumption = parse_config_real(key, val); return true;

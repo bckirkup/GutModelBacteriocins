@@ -82,11 +82,13 @@ __device__ void apply_vbf_at_cell(int cell,
 
 __global__ void o2_depletion_kernel(double* reac_oxygen,
                                     const double* mu_realized,
+                                    const double* fermentation_fraction,
                                     const int* grid_cell,
                                     const int* state,
                                     int num_agents,
                                     double q_consumption,
                                     double q_maintenance,
+                                    int metabolic_switch_enabled,
                                     double inv_cell_vol, int global_nx,
                                     int global_ny, int storage_nx,
                                     int owned_global_x_begin,
@@ -104,7 +106,10 @@ __global__ void o2_depletion_kernel(double* reac_oxygen,
   if (local_cell < 0) return;
 
   const double mu = mu_realized[i] > 0.0 ? mu_realized[i] : 0.0;
-  const double o2_use = q_consumption * mu + q_maintenance;
+  const double respiratory_fraction = metabolic_switch_enabled != 0
+      ? fmin(fmax(1.0 - fermentation_fraction[i], 0.0), 1.0) : 1.0;
+  const double o2_use = q_consumption * mu * respiratory_fraction
+      + q_maintenance;
   atomicAdd(reac_oxygen + local_cell, -o2_use * inv_cell_vol);
 }
 
@@ -156,11 +161,13 @@ __global__ void vbf_coupling_kernel(int ncells,
 
 void launch_o2_depletion_kernel(double* reac_oxygen,
                                 const double* mu_realized,
+                                const double* fermentation_fraction,
                                 const int* grid_cell,
                                 const int* state,
                                 int num_agents,
                                 double q_consumption,
                                 double q_maintenance,
+                                int metabolic_switch_enabled,
                                 double inv_cell_vol,
                                 int global_nx, int global_ny, int storage_nx,
                                 int owned_global_x_begin,
@@ -171,8 +178,9 @@ void launch_o2_depletion_kernel(double* reac_oxygen,
   const int block = 256;
   const int grid = (num_agents + block - 1) / block;
   o2_depletion_kernel<<<grid, block, 0, stream>>>(
-      reac_oxygen, mu_realized, grid_cell, state, num_agents,
-      q_consumption, q_maintenance, inv_cell_vol, global_nx, global_ny,
+      reac_oxygen, mu_realized, fermentation_fraction, grid_cell, state,
+      num_agents, q_consumption, q_maintenance, metabolic_switch_enabled,
+      inv_cell_vol, global_nx, global_ny,
       storage_nx, owned_global_x_begin, owned_global_x_end,
       owned_storage_x_begin);
 }
