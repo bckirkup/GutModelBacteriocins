@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "hdf5_writer.h"
+#include "gutibm_git_sha.h"
 #include "path_utils.h"
 #include "simulation.h"
 #include "species_names.h"

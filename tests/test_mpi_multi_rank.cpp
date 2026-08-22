@@ -1356,6 +1356,9 @@ void test_multirank_closure_violation_is_synchronized() {
   cfg.fixes.metabolism.uptake_limit = "delivery";
   cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
   cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.vbf.carbon_sink_vmax = 0.0;
   cfg.closure.zero_realization_grace_steps = 1;
   for (auto& chemical : cfg.chemicals) {
     if (chemical.name == species::CARBON) {

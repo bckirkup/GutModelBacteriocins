@@ -27,7 +27,9 @@ set(TEST_INCLUDE_DIRS
 
 # Shared static library — compile core once instead of per-test executable.
 add_library(gutibm STATIC ${LIB_SOURCES} ${LIB_CUDA_SOURCES})
+add_dependencies(gutibm gutibm_git_sha)
 target_include_directories(gutibm PUBLIC ${TEST_INCLUDE_DIRS})
+target_include_directories(gutibm PUBLIC ${CMAKE_BINARY_DIR}/generated)
 
 function(gutibm_enable_test_assertions target)
   if(MSVC)

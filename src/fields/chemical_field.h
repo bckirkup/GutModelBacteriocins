@@ -31,6 +31,7 @@ struct NutrientFluxAccounting {
   std::vector<Real> maintenance_interval;
   std::vector<Real> maintenance_step;
   std::vector<Real> maintenance_last_step;
+  std::vector<Real> maintenance_shortfall_last_step;
   std::vector<Real> maintenance_cumulative;
   std::vector<Real> maintenance_shortfall_interval;
   std::vector<Real> maintenance_shortfall_step;
@@ -71,6 +72,7 @@ struct NutrientFluxAccounting {
     maintenance_interval.assign(species_count, 0.0);
     maintenance_step.assign(species_count, 0.0);
     maintenance_last_step.assign(species_count, 0.0);
+    maintenance_shortfall_last_step.assign(species_count, 0.0);
     maintenance_cumulative.assign(species_count, 0.0);
     maintenance_shortfall_interval.assign(species_count, 0.0);
     maintenance_shortfall_step.assign(species_count, 0.0);
@@ -170,6 +172,7 @@ struct NutrientFluxAccounting {
       agent_uptake_last_step[i] = agent_uptake_step[i];
       uptake_demand_last_step[i] = uptake_demand_step[i];
       maintenance_last_step[i] = maintenance_step[i];
+      maintenance_shortfall_last_step[i] = maintenance_shortfall_step[i];
       agent_uptake_interval[i] += agent_uptake_step[i];
       maintenance_interval[i] += maintenance_step[i];
       maintenance_shortfall_interval[i] += maintenance_shortfall_step[i];

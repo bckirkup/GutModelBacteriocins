@@ -952,6 +952,7 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     ensure_sized(flux.maintenance_interval);
     ensure_sized(flux.maintenance_step);
     ensure_sized(flux.maintenance_last_step);
+    ensure_sized(flux.maintenance_shortfall_last_step);
     ensure_sized(flux.maintenance_cumulative);
     ensure_sized(flux.maintenance_shortfall_interval);
     ensure_sized(flux.maintenance_shortfall_step);
@@ -1300,14 +1301,23 @@ bool Simulation::dysbiosis_threshold_exceeded(int rank) {
 bool Simulation::closure_violation(std::string& detail) {
   const bool delivery_mode =
       cfg_.fixes.metabolism.uptake_limit == "delivery";
+  const bool delivery_gate = cfg_.closure.enforce_delivery_realization
+      && delivery_mode;
+  const bool reaction_gate = cfg_.closure.enforce_reaction_clip;
+  if (!delivery_gate && !reaction_gate) {
+    return false;
+  }
   const Int carbon = chem_.find(species::CARBON);
   bool local_violation = false;
   if (carbon >= 0) {
     const auto& flux = chem_.flux_accounting();
     const Real demand = flux.uptake_demand_for_step(carbon)
+        + flux.maintenance_last_step[static_cast<size_t>(carbon)]
+        + flux.maintenance_shortfall_last_step[
+            static_cast<size_t>(carbon)];
+    const Real realized = flux.agent_uptake_for_step(carbon)
         + flux.maintenance_last_step[static_cast<size_t>(carbon)];
-    const Real realized = flux.agent_uptake_for_step(carbon);
-    if (cfg_.closure.enforce_delivery_realization && delivery_mode) {
+    if (delivery_gate) {
       if (demand > 0.0 && realized == 0.0) {
         ++zero_realization_steps_;
       } else {
@@ -1324,7 +1334,7 @@ bool Simulation::closure_violation(std::string& detail) {
       zero_realization_steps_ = 0;
     }
 
-    if (cfg_.closure.enforce_reaction_clip && !local_violation) {
+    if (reaction_gate && !local_violation) {
       const Real clip = flux.reaction_clip_for_step(carbon);
       const Real tolerance =
           cfg_.closure.reaction_clip_tolerance_fraction *
@@ -1399,15 +1409,15 @@ int Simulation::run() {
 
     step(dt);
 
+    // Persist the triggering step before a closure violation breaks the loop.
+    write_hdf5_step(last_dt);
+
     if (closure_violation(termination_detail_)) {
       termination_cause_ = TerminationCause::ClosureViolation;
       break;
     }
 
     maybe_write_restart();
-
-    // HDF5 cadence is controlled solely by hdf5.schedule.* (per-layer intervals).
-    write_hdf5_step(last_dt);
 
     const auto wall_now = std::chrono::steady_clock::now();
     emit_heartbeat(wall_start, wall_now, next_heartbeat, heartbeat_emitted);
@@ -1463,11 +1473,13 @@ int Simulation::run() {
     Real retention = lineage_.resident_retention(cfg_.time.total_time * 0.5);
     const auto cause = termination_cause_name(termination_cause_);
     const bool complete = termination_cause_ == TerminationCause::HorizonReached;
+    const std::string detail = complete
+        ? "" : "  detail=" + termination_detail_;
     std::cout << "\nSimulation " << (complete ? "complete" : "ended early")
               << ": cause=" << cause
               << "  reached_time=" << clock_.time
               << "s  requested_time=" << cfg_.time.total_time
-              << "s  step=" << clock_.step_count << "\n"
+              << "s  step=" << clock_.step_count << detail << "\n"
               << "  Final global agents: " << mpi_ghost_.stats.global_agent_count << "\n"
               << "  Final global density: "
               << global_density_cells_per_mL(domain_, mpi_ghost_.stats.global_agent_count)

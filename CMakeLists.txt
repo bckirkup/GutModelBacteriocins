@@ -10,29 +10,17 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(GUTIBM_GIT_SHA "" CACHE STRING
-    "Git commit SHA to embed in run provenance (overrides autodetection)")
-if(NOT GUTIBM_GIT_SHA)
-  find_package(Git QUIET)
-  if(GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
-    execute_process(
-      COMMAND "${GIT_EXECUTABLE}" -C "${CMAKE_SOURCE_DIR}" rev-parse HEAD
-      OUTPUT_VARIABLE GUTIBM_GIT_SHA
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      ERROR_QUIET
-      RESULT_VARIABLE GUTIBM_GIT_SHA_RESULT)
-    if(NOT GUTIBM_GIT_SHA_RESULT EQUAL 0)
-      set(GUTIBM_GIT_SHA "unknown")
-    endif()
-  else()
-    set(GUTIBM_GIT_SHA "unknown")
-  endif()
-endif()
-if(NOT GUTIBM_GIT_SHA)
-  set(GUTIBM_GIT_SHA "unknown")
-endif()
-add_compile_definitions(
-  GUTIBM_GIT_SHA="${GUTIBM_GIT_SHA}"
-  GUTIBM_VERSION="${PROJECT_VERSION}")
+    "Git commit SHA override for run provenance (normally resolved at build time)")
+set(GUTIBM_GIT_SHA_HEADER "${CMAKE_BINARY_DIR}/generated/gutibm_git_sha.h")
+add_custom_target(gutibm_git_sha ALL
+  COMMAND "${CMAKE_COMMAND}"
+    "-DGUTIBM_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    "-DGUTIBM_OUTPUT=${GUTIBM_GIT_SHA_HEADER}"
+    "-DGUTIBM_GIT_SHA_OVERRIDE=${GUTIBM_GIT_SHA}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/generate_git_sha.cmake"
+  BYPRODUCTS "${GUTIBM_GIT_SHA_HEADER}"
+  VERBATIM)
+add_compile_definitions(GUTIBM_VERSION="${PROJECT_VERSION}")
 
 # ── Options ──────────────────────────────────────────────────────────────
 option(GUTIBM_USE_MPI    "Enable MPI parallelism"   ON)
@@ -94,8 +82,10 @@ if(GUTIBM_USE_CUDA)
 endif()
 
 add_executable(gut_ibm src/main.cpp ${SOURCES} ${GPU_CUDA_SOURCES})
+add_dependencies(gut_ibm gutibm_git_sha)
 
 target_include_directories(gut_ibm PRIVATE
+  ${CMAKE_BINARY_DIR}/generated
   ${CMAKE_SOURCE_DIR}/src
   ${CMAKE_SOURCE_DIR}/src/core
   ${CMAKE_SOURCE_DIR}/src/fields

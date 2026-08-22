@@ -9,6 +9,7 @@
 #include "config_json.h"
 #include "path_utils.h"
 #include "hdf5_test_helpers.h"
+#include "gutibm_git_sha.h"
 
 #include <array>
 #include <cassert>
@@ -39,6 +40,7 @@ void assert_run_provenance(hid_t file,
   assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/resolved_config"));
   assert(gutibm::test::hdf5_dataset_exists(file, "run_provenance/git_sha"));
+  assert(std::string(GUTIBM_GIT_SHA).size() > 0);
   assert(gutibm::test::hdf5_dataset_exists(file, "run_provenance/version"));
   assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/mpi_rank_count"));
@@ -55,6 +57,8 @@ void assert_run_provenance(hid_t file,
              H5T_NATIVE_INT32) == 0);
   assert(read_string_dataset(file, "run_provenance/termination_cause") ==
          "horizon_reached");
+  assert(read_string_dataset(file, "run_provenance/git_sha") ==
+         std::string(GUTIBM_GIT_SHA));
   assert(gutibm::test::hdf5_read_scalar<double>(
              file, "run_provenance/termination_wall_seconds",
              H5T_NATIVE_DOUBLE) >= 0.0);
