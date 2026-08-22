@@ -216,10 +216,19 @@ __global__ void metabolism_kernel(
   const double maintenance_factor = metabolic_switch_enabled != 0
       ? metabolic_mode::interpolate(1.0, anaerobic_maintenance_factor,
                                     fermentation_fraction[i]) : 1.0;
-  const double requested_maintenance = carbon_maintenance::requested(
-      carbon_maintenance_rate * maintenance_factor, biomass[i], dt);
-  const double maintenance_draw = reserve_maintenance(
-      maintenance_available, cell, requested_maintenance);
+  const double requested_maintenance = conc_carbon
+      ? carbon_maintenance::requested(
+          carbon_maintenance_rate * maintenance_factor, biomass[i], dt)
+      : 0.0;
+  const double allowed_maintenance = uptake::allowed_uptake_mol(
+      uptake_limit_mode, conc_carbon ? conc_carbon[cell] : 0.0,
+      effective_diffusivity_carbon, radius[i], cell_volume, dt);
+  const double maintenance_draw = uptake_limit_mode
+      == static_cast<int>(UptakeLimitMode::Voxel)
+      ? reserve_maintenance(maintenance_available, cell, requested_maintenance)
+      : allowed_maintenance < 0.0
+          ? requested_maintenance
+          : fmin(requested_maintenance, allowed_maintenance);
   if (maintenance_draw > 0.0 && reac_carbon && cell_volume > 0.0) {
     atomicAdd(&reac_carbon[cell], -maintenance_draw / (cell_volume * dt));
     if (agent_uptake_totals) {
@@ -227,7 +236,9 @@ __global__ void metabolism_kernel(
     }
   }
   if (requested_maintenance > maintenance_draw && agent_uptake_totals) {
-    atomicAdd(&agent_uptake_totals[3], 1.0);
+    atomicAdd(&agent_uptake_totals[3],
+              requested_maintenance - maintenance_draw);
+    if (uptake_limit_totals) atomicAdd(&uptake_limit_totals[4], 1.0);
   }
 
   if (uptake_limit_totals) {

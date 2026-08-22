@@ -160,6 +160,9 @@ int main() {
   const std::string flux_prefix = "summary/step_000001/nutrient_flux/";
   assert(dataset_exists(file, flux_prefix + "species_names"));
   assert(dataset_exists(file, flux_prefix + "boundary_area_flux_interval"));
+  assert(dataset_exists(file, flux_prefix + "maintenance_shortfall_interval"));
+  assert(dataset_exists(
+      file, flux_prefix + "maintenance_limited_agents_interval"));
   const std::vector<double> boundary =
       read_vector(file, flux_prefix + "boundary_interval");
   const std::vector<double> cumulative =

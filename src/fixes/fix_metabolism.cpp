@@ -62,7 +62,8 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   ag.sync_from_host(agents);
   const auto& chem = sim.chemical_field();
   Int i_carbon = chem.find(species::CARBON);
-  if (cfg.carbon_maintenance_rate > 0.0) {
+  if (cfg.carbon_maintenance_rate > 0.0
+      && cfg.uptake_limit_mode == UptakeLimitMode::Voxel) {
     cg.prepare_maintenance(chem, i_carbon, sim.domain().cell_volume());
   }
   Int i_iron = chem.find(species::IRON);
@@ -204,28 +205,36 @@ void FixMetabolism::charge_carbon_maintenance(Agent& agent, Real dt) {
       : 1.0;
   const Real requested_amount = carbon_maintenance::requested(
       cfg_.carbon_maintenance_rate * maintenance_factor, agent.biomass, dt);
-  const Int storage_cell = chem.global_to_storage_cell(cell);
-  if (storage_cell < 0
-    || static_cast<size_t>(storage_cell)
-          >= carbon_maintenance_available_.size()) {
-    if (requested_amount > 0.0) {
-      chem.flux_accounting().add_maintenance_shortfall(carbon, 1.0);
-    }
-    return;
-  }
   Real draw = 0.0;
-  #ifdef GUTIBM_OPENMP
-  #pragma omp critical(gutibm_carbon_maintenance)
-  #endif
-  {
-    Real& available = carbon_maintenance_available_[
-        static_cast<size_t>(storage_cell)];
-    draw = std::min(requested_amount, available);
-    available -= draw;
+  if (cfg_.uptake_limit_mode == UptakeLimitMode::Voxel) {
+    const Int storage_cell = chem.global_to_storage_cell(cell);
+    if (storage_cell >= 0
+        && static_cast<size_t>(storage_cell)
+               < carbon_maintenance_available_.size()) {
+      #ifdef GUTIBM_OPENMP
+      #pragma omp critical(gutibm_carbon_maintenance)
+      #endif
+      {
+        Real& available = carbon_maintenance_available_[
+            static_cast<size_t>(storage_cell)];
+        draw = std::min(requested_amount, available);
+        available -= draw;
+      }
+    }
+  } else {
+    const ChemicalSpec& spec = chem.spec(carbon);
+    const Real allowed = uptake::allowed_uptake_mol(
+        to_underlying(cfg_.uptake_limit_mode), chem.conc_global(carbon, cell),
+        uptake::effective_diffusivity(spec.diff_coeff, spec.retardation),
+        agent.radius, cell_volume, dt);
+    draw = allowed < 0.0
+        ? requested_amount : std::min(requested_amount, allowed);
   }
   chem.flux_accounting().add_maintenance(carbon, draw);
   if (requested_amount > draw) {
-    chem.flux_accounting().add_maintenance_shortfall(carbon, 1.0);
+    chem.flux_accounting().add_maintenance_shortfall(
+        carbon, requested_amount - draw);
+    chem.flux_accounting().add_maintenance_limited_agents(carbon, 1.0);
   }
   #ifdef GUTIBM_OPENMP
   #pragma omp atomic
@@ -235,7 +244,8 @@ void FixMetabolism::charge_carbon_maintenance(Agent& agent, Real dt) {
 
 void FixMetabolism::prepare_carbon_maintenance() {
   carbon_maintenance_available_.clear();
-  if (cfg_.carbon_maintenance_rate <= 0.0) return;
+  if (cfg_.carbon_maintenance_rate <= 0.0
+      || cfg_.uptake_limit_mode != UptakeLimitMode::Voxel) return;
   const auto& chem = sim_.chemical_field();
   const Int carbon = chem.find(species::CARBON);
   const Real cell_volume = sim_.domain().cell_volume();

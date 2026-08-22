@@ -227,6 +227,7 @@ struct MetabolismRun {
   double limited_agents = 0.0;
   double maintenance = 0.0;
   double maintenance_shortfall = 0.0;
+  double maintenance_limited_agents = 0.0;
 };
 
 MetabolismRun run_metabolism(double seed, double maximum_growth,
@@ -274,7 +275,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   DeviceBuffer<double> amelioration(agents);
   DeviceBuffer<double> uptake(4);
   DeviceBuffer<double> maintenance_available(kCells);
-  DeviceBuffer<double> uptake_limit(4);
+  DeviceBuffer<double> uptake_limit(5);
 
   concentration.upload(std::vector<double>(kCells, 1.0));
   iron.upload(std::vector<double>(kCells, iron_concentration));
@@ -315,7 +316,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   amelioration.upload(std::vector<double>(agents, 0.0));
   uptake.upload(std::vector<double>(4, 0.0));
   maintenance_available.upload(std::vector<double>(kCells, 1.0));
-  uptake_limit.upload(std::vector<double>(4, 0.0));
+  uptake_limit.upload(std::vector<double>(5, 0.0));
 
   gutibm::gpu::launch_metabolism_kernel(
       concentration.data(), iron.data(), b12.data(), acetate.data(), eut.data(),
@@ -349,7 +350,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   const auto mu_result = download(mu, agents);
   const auto fermentation_result = download(fermentation_fraction, agents);
   const auto uptake_host = download(uptake, 4);
-  const auto uptake_limit_host = download(uptake_limit, 4);
+  const auto uptake_limit_host = download(uptake_limit, 5);
   MetabolismRun result;
   result.carbon_reaction = reaction[4];
   result.carbon_reaction_agent1 = reaction[5];
@@ -368,6 +369,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   result.limited_agents = uptake_limit_host[2];
   result.maintenance = uptake_host[2];
   result.maintenance_shortfall = uptake_host[3];
+  result.maintenance_limited_agents = uptake_limit_host[4];
   return result;
 }
 
@@ -417,6 +419,19 @@ void test_metabolism_maintenance() {
   assert(result.maintenance > 0.0);
   assert(result.carbon_reaction < 0.0);
   assert(result.maintenance_shortfall == 0.0);
+  assert(result.maintenance_limited_agents == 0.0);
+}
+
+void test_metabolism_maintenance_uptake_limit() {
+  const MetabolismRun result = run_metabolism(
+      0.0, 0.0, false, false, 1.0, 1, 0.1, 10.0);
+  assert(std::isfinite(result.maintenance));
+  assert(std::isfinite(result.maintenance_shortfall));
+  assert(std::isfinite(result.maintenance_limited_agents));
+  assert(result.maintenance > 0.0);
+  assert(result.maintenance_shortfall > 0.0);
+  assert(result.maintenance_limited_agents == 1.0);
+  assert(result.maintenance + result.maintenance_shortfall > 9.0);
 }
 
 void test_metabolism_fur() {
@@ -1079,6 +1094,8 @@ int main() {
            test_metabolism_uptake_limit);
   run_case("launch_metabolism_kernel carbon maintenance",
            test_metabolism_maintenance);
+  run_case("launch_metabolism_kernel carbon maintenance uptake limit",
+           test_metabolism_maintenance_uptake_limit);
   run_case("launch_metabolism_kernel Fur", test_metabolism_fur);
   run_case("launch_metabolism_kernel acetate", test_metabolism_acetate);
   run_case("launch_metabolism_kernel metabolic mode",

@@ -33,6 +33,7 @@ SimulationConfig make_config(UptakeLimitMode mode) {
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.hash_cell_size = 10e-6;
   cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
   if (mode == UptakeLimitMode::Sherwood) {
     cfg.fixes.metabolism.uptake_limit = "sherwood";
   } else if (mode == UptakeLimitMode::Voxel) {
@@ -99,6 +100,23 @@ Real flux_value(const Simulation& simulation,
       + interval[static_cast<size_t>(carbon)];
 }
 
+struct MaintenanceLedger {
+  Real realized = 0.0;
+  Real shortfall = 0.0;
+  Real limited_agents = 0.0;
+};
+
+MaintenanceLedger maintenance_ledger(const Simulation& simulation) {
+  const auto& flux = simulation.chemical_field().flux_accounting();
+  return {
+      flux_value(simulation, flux.maintenance_cumulative,
+                 flux.maintenance_interval),
+      flux_value(simulation, flux.maintenance_shortfall_cumulative,
+                 flux.maintenance_shortfall_interval),
+      flux_value(simulation, flux.maintenance_limited_agents_cumulative,
+                 flux.maintenance_limited_agents_interval)};
+}
+
 void test_sherwood_parity() {
   const SimulationConfig config = make_config(UptakeLimitMode::Sherwood);
   Simulation cpu = run(config, false);
@@ -119,6 +137,8 @@ void test_sherwood_parity() {
                                       cpu_flux.uptake_limited_interval);
   const Real gpu_limited = flux_value(gpu, gpu_flux.uptake_limited_cumulative,
                                       gpu_flux.uptake_limited_interval);
+  const MaintenanceLedger cpu_maintenance = maintenance_ledger(cpu);
+  const MaintenanceLedger gpu_maintenance = maintenance_ledger(gpu);
 
   constexpr Real tolerance = 5.0e-8;
   const Real mu_residual = report_residual("total_mu_realized", total_mu(cpu),
@@ -129,12 +149,26 @@ void test_sherwood_parity() {
       report_residual("carbon_uptake_realized", cpu_realized, gpu_realized);
   const Real limited_residual =
       report_residual("carbon_uptake_limited_agents", cpu_limited, gpu_limited);
+  const Real maintenance_residual =
+      report_residual("maintenance_realized", cpu_maintenance.realized,
+                      gpu_maintenance.realized);
+  const Real shortfall_residual =
+      report_residual("maintenance_shortfall_mol", cpu_maintenance.shortfall,
+                      gpu_maintenance.shortfall);
+  const Real maintenance_limited_residual = report_residual(
+      "maintenance_limited_agents", cpu_maintenance.limited_agents,
+      gpu_maintenance.limited_agents);
 
   assert(mu_residual <= tolerance);
   assert(demand_residual <= tolerance);
   assert(realized_residual <= tolerance);
   assert(limited_residual <= tolerance);
+  assert(maintenance_residual <= tolerance);
+  assert(shortfall_residual <= tolerance);
+  assert(maintenance_limited_residual <= tolerance);
   assert(cpu_limited > 0.0);
+  assert(cpu_maintenance.shortfall > 0.0);
+  assert(cpu_maintenance.limited_agents > 0.0);
   assert(cpu_realized <= cpu_demand);
   assert(gpu_realized <= gpu_demand);
   std::cout << "  test_sherwood_parity: PASSED\n";
@@ -156,8 +190,17 @@ void test_none_mode_parity_and_absence_of_limitation() {
                                      cpu_flux.uptake_demand_interval);
   const Real cpu_realized = flux_value(cpu, cpu_flux.agent_uptake_cumulative,
                                        cpu_flux.agent_uptake_interval);
+  const MaintenanceLedger cpu_maintenance = maintenance_ledger(cpu);
+  const MaintenanceLedger gpu_maintenance = maintenance_ledger(gpu);
   const Real residual = report_residual("total_mu_realized", total_mu(cpu),
                                         total_mu(gpu));
+  assert(report_residual("maintenance_realized", cpu_maintenance.realized,
+                         gpu_maintenance.realized) <= 5.0e-8);
+  assert(report_residual("maintenance_shortfall_mol", cpu_maintenance.shortfall,
+                         gpu_maintenance.shortfall) <= 5.0e-8);
+  assert(report_residual("maintenance_limited_agents",
+                         cpu_maintenance.limited_agents,
+                         gpu_maintenance.limited_agents) <= 5.0e-8);
   std::cerr << "[gpu_diag][gpu_uptake_limit][none]"
             << " cpu_limited_agents=" << format_real(cpu_limited)
             << " gpu_limited_agents=" << format_real(gpu_limited)
@@ -166,6 +209,10 @@ void test_none_mode_parity_and_absence_of_limitation() {
   assert(residual <= 5.0e-8);
   assert(cpu_limited == 0.0);
   assert(gpu_limited == 0.0);
+  assert(cpu_maintenance.shortfall == 0.0);
+  assert(gpu_maintenance.shortfall == 0.0);
+  assert(cpu_maintenance.limited_agents == 0.0);
+  assert(gpu_maintenance.limited_agents == 0.0);
   assert(std::abs(cpu_realized - cpu_demand) <= 1.0e-12 * cpu_demand);
   std::cout << "  test_none_mode_parity_and_absence_of_limitation: PASSED\n";
 }

@@ -922,6 +922,8 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     std::ranges::fill(flux.maintenance_step, 0.0);
     std::ranges::fill(flux.maintenance_shortfall_interval, 0.0);
     std::ranges::fill(flux.maintenance_shortfall_step, 0.0);
+    std::ranges::fill(flux.maintenance_limited_agents_interval, 0.0);
+    std::ranges::fill(flux.maintenance_limited_agents_step, 0.0);
     std::ranges::fill(flux.uptake_demand_interval, 0.0);
     std::ranges::fill(flux.uptake_demand_step, 0.0);
     std::ranges::fill(flux.uptake_limited_interval, 0.0);
@@ -943,6 +945,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     ensure_sized(flux.maintenance_shortfall_interval);
     ensure_sized(flux.maintenance_shortfall_step);
     ensure_sized(flux.maintenance_shortfall_cumulative);
+    ensure_sized(flux.maintenance_limited_agents_interval);
+    ensure_sized(flux.maintenance_limited_agents_step);
+    ensure_sized(flux.maintenance_limited_agents_cumulative);
     if (flux.reaction_clip_interval.size()
         != static_cast<size_t>(chem_.num_species())) {
       flux.reaction_clip_interval.assign(
