@@ -8,7 +8,6 @@
 #include "agent_transfer.h"
 #include "fix_registry.h"
 #include "fix_motility.h"
-#include "fix_metabolism.h"
 #include "plasmid.h"
 #include "dispatch.h"
 #include "chemistry_pipeline.h"
@@ -1462,14 +1461,7 @@ void Simulation::step(Real dt) {
   module_chemistry(dt);
   profiler.lap(step_profile_.chemistry_s);
   for (const auto& fix : fixes_) {
-    if (fix->name() == "metabolism") {
-      auto* metabolism = dynamic_cast<FixMetabolism*>(fix.get());
-      if (metabolism != nullptr) {
-        metabolism->commit_delivery_uptake(dt);
-        chem_.sum_agent_uptake_across_ranks();
-        chem_.flux_accounting().commit_agent_uptake_step();
-      }
-    }
+    fix->post_chemistry(dt);
   }
 
   // 3. Physics module (advection + mechanics)

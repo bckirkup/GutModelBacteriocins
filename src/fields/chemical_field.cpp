@@ -887,7 +887,22 @@ Real ChemicalField::sink_realized_global(Int cell) const {
 }
 
 bool ChemicalField::has_sink_rate() const {
-  return std::ranges::any_of(sink_rate_, [](Real value) { return value > 0.0; });
+  const bool local = std::ranges::any_of(
+      sink_rate_, [](Real value) { return value > 0.0; });
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (initialized && !finalized) {
+    int local_value = local ? 1 : 0;
+    int global_value = 0;
+    MPI_Allreduce(&local_value, &global_value, 1, MPI_INT, MPI_MAX,
+                  MPI_COMM_WORLD);
+    return global_value != 0;
+  }
+#endif
+  return local;
 }
 
 void ChemicalField::sum_reactions_across_ranks() {

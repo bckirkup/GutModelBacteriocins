@@ -77,9 +77,10 @@ class FixMetabolism : public Fix {
 
   void init() override;
   void compute(Real dt) override;
-  void commit_delivery_uptake(Real dt);
+  void post_chemistry(Real dt) override;
 
  private:
+  void commit_delivery_uptake(Real dt);
   void compute_growth_rate(Agent& agent, Real dt);
   Real uptake_limit_fraction(const Agent& agent, Real d_biomass, Real dt,
                              bool record_diagnostics);

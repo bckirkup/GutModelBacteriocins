@@ -93,7 +93,11 @@ explicit reaction clipping. The realized removal is split among co-located
 agents in proportion to their demand, with maintenance paid before growth.
 Only the funded biomass increment and growth rate are committed. Unfunded
 requests are reported as uptake or maintenance shortfall rather than reaction
-clip. Ghost agents do not contribute sink coefficients or accounting writes.
+clip. Non-carbon growth chemistry from the funded increment is queued on the
+agent and emitted at the start of the next biology pass, before the next
+chemistry solve. This one-step lag matches the funding lag; carbon remains
+excluded from that queued reaction path. Ghost agents do not contribute sink
+coefficients or accounting writes.
 
 **Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics. When `oxygen.enabled`, the legacy aerobic boost applies unless `oxygen.metabolic_switch_enabled` is true.
 

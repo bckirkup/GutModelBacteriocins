@@ -57,6 +57,7 @@ struct Agent {
   Real   pending_growth_carbon = 0.0;
   Real   pending_maintenance_carbon = 0.0;
   Real   pending_biomass = 0.0;
+  Real   pending_growth_chemistry_biomass = 0.0;
 
   // ── Receptor state ────────────────────────────────────────────────────
   std::array<Real, NUM_RECEPTORS> receptor_expr_base;

@@ -9,7 +9,6 @@
 
 #include <cassert>
 #include <cmath>
-#include <iomanip>
 #include <iostream>
 #include <utility>
 #include <vector>
@@ -478,6 +477,97 @@ void test_delivery_density_brake() {
   std::cout << "  test_delivery_density_brake: PASSED\n";
 }
 
+void test_delivery_queues_noncarbon_chemistry_once() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  cfg.chem_env.acetate.enabled = true;
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.chem_env.oxygen.metabolic_switch_enabled = true;
+  cfg.chem_env.oxygen.tau_metabolic_switch = 1.0;
+  cfg.chem_env.oxygen.ferm_acid_yield = 1.0;
+  cfg.chem_env.oxygen.aerobic_carbon_cost_factor = 1.0;
+  cfg.chem_env.oxygen.anaerobic_carbon_cost_factor = 1.0;
+  cfg.chem_env.acetate.vbf_production = 0.0;
+  cfg.chem_env.acetate.vbf_consumption = 0.0;
+  cfg.chem_env.acetate.epithelial_uptake = 0.0;
+  cfg.chem_env.acetate.overflow_threshold = 1.0e9;
+  cfg.chem_env.acetate.scavenge_rate = 0.0;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.vbf.nutrient_sink = 0.0;
+  cfg.initial_strains[0].mu_max = 5.0e-4;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON
+        || chemical.name == species::IRON
+        || chemical.name == species::B12) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = 1.0e-6;
+      chemical.boundary_conc = 1.0e-6;
+    } else if (chemical.name == species::OXYGEN
+               || chemical.name == species::ACETATE) {
+      chemical.initial_conc = 0.0;
+      chemical.boundary_conc = 0.0;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  const Int cell = sim.agents()[0].grid_cell;
+  const Real initial_biomass = sim.agents()[0].biomass;
+  FixMetabolism fix(sim, sim.config().fixes.metabolism);
+  fix.compute(kDt);
+  sim.chemical_field().apply_diffusion(sim.domain(), kDt);
+  fix.post_chemistry(kDt);
+  const Real funded_biomass = sim.agents()[0].biomass - initial_biomass;
+  assert(funded_biomass > 0.0);
+  sim.chemical_field().zero_reactions();
+  fix.compute(kDt);
+  assert(funded_biomass > 0.0);
+  const auto& chem = sim.chemical_field();
+  const Int iron = chem.find(species::IRON);
+  const Int acetate = chem.find(species::ACETATE);
+  const Real volume = sim.domain().cell_volume();
+  const Real iron_draw = -chem.reac_global(iron, cell) * volume * kDt;
+  const Real acetate_production =
+      chem.reac_global(acetate, cell) * volume * kDt;
+  const Real expected_acid = funded_biomass
+      * sim.agents()[0].realized_fermentation_fraction
+      * cfg.fixes.metabolism.yield_carbon
+      * cfg.chem_env.oxygen.ferm_acid_yield;
+  assert(std::abs(iron_draw
+                  - funded_biomass * cfg.fixes.metabolism.yield_iron)
+         <= 1.0e-18);
+  assert(std::abs(acetate_production - expected_acid) <= 1.0e-18);
+  std::cout << "  test_delivery_queues_noncarbon_chemistry_once: PASSED\n";
+}
+
+void test_delivery_preserves_negative_growth() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.maintenance_rate = 2.0e-5;
+  cfg.initial_strains[0].mu_max = 1.0e-5;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON
+        || chemical.name == species::IRON) {
+      chemical.initial_conc = 1.0;
+      chemical.boundary_conc = 1.0;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  const Real initial_biomass = sim.agents()[0].biomass;
+  sim.step(kDt);
+  assert(sim.agents()[0].biomass < initial_biomass);
+  assert(sim.agents()[0].mu_realized < 0.0);
+  std::cout << "  test_delivery_preserves_negative_growth: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -490,6 +580,8 @@ int main() {
   test_delivery_is_positive_and_funds_only_removed_carbon();
   test_delivery_maintenance_reduces_growth();
   test_delivery_density_brake();
+  test_delivery_queues_noncarbon_chemistry_once();
+  test_delivery_preserves_negative_growth();
   std::cout << "All uptake limitation tests passed.\n";
   return 0;
 }
