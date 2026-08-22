@@ -714,7 +714,7 @@ void test_delivery_gradient_depletes_below_background() {
 }
 
 void test_delivery_gradient_sensitivity() {
-  const std::vector<Real> radii = {1.0e-9, 5.0e-9, 2.0e-8};
+  const std::vector radii = {1.0e-9, 5.0e-9, 2.0e-8};
   std::vector<Real> realized;
   for (Real radius : radii) {
     realized.push_back(
