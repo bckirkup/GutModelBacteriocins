@@ -1409,6 +1409,8 @@ int Simulation::run() {
 
     step(dt);
 
+    maybe_write_restart();
+
     // Persist the triggering step before a closure violation breaks the loop.
     write_hdf5_step(last_dt);
 
@@ -1416,8 +1418,6 @@ int Simulation::run() {
       termination_cause_ = TerminationCause::ClosureViolation;
       break;
     }
-
-    maybe_write_restart();
 
     const auto wall_now = std::chrono::steady_clock::now();
     emit_heartbeat(wall_start, wall_now, next_heartbeat, heartbeat_emitted);
