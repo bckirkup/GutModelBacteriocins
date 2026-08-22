@@ -245,6 +245,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   DeviceBuffer<double> radius(agents);
   DeviceBuffer<double> mass(agents);
   DeviceBuffer<double> age(agents);
+  DeviceBuffer<double> fermentation_fraction(agents);
   DeviceBuffer<double> mu_max(agents);
   DeviceBuffer<double> km_b12(agents);
   DeviceBuffer<double> km_carbon(agents);
@@ -275,6 +276,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   radius.upload(std::vector<double>(agents, 1.0));
   mass.upload(std::vector<double>(agents, 1.0));
   age.upload(std::vector<double>(agents, 0.0));
+  fermentation_fraction.upload(std::vector<double>(agents, 0.0));
   mu_max.upload(std::vector<double>(agents, maximum_growth));
   km_b12.upload(std::vector<double>(agents, 0.1));
   km_carbon.upload(std::vector<double>(agents, 0.1));
@@ -301,7 +303,8 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       oxygen.data(), reaction_carbon.data(), reaction_iron.data(),
       reaction_b12.data(), reaction_acetate.data(),
       mu.data(), biomass.data(), radius.data(), mass.data(), age.data(),
-      cells.data(), state.data(), mu_max.data(), km_b12.data(),
+      fermentation_fraction.data(), cells.data(), state.data(), mu_max.data(),
+      km_b12.data(),
       km_carbon.data(), receptor.data(), receptor_base.data(), ligand.data(),
       iron_receptor.data(), loci.data(),
       amelioration.data(), agents, agents, agents, gutibm::NUM_RECEPTORS,
@@ -710,15 +713,18 @@ void test_o2_depletion() {
   constexpr int storage_cells = storage_nx * kNy * kNz;
   DeviceBuffer<double> reaction(storage_cells);
   DeviceBuffer<double> mu(2);
+  DeviceBuffer<double> fermentation_fraction(2);
   DeviceBuffer<int> cells(2);
   DeviceBuffer<int> state(2);
   reaction.upload(std::vector<double>(storage_cells, 0.0));
   mu.upload(std::vector<double>{1.0, 1.0});
+  fermentation_fraction.upload(std::vector<double>{0.0, 0.0});
   cells.upload(std::vector<int>{1, 1});
   state.upload(std::vector<int>{0, 0});
   gutibm::gpu::launch_o2_depletion_kernel(
-      reaction.data(), mu.data(), cells.data(), state.data(), 2, 0.5, 0.1, 1.0,
-      kNx, kNy, storage_nx, 1, 3, 1, nullptr);
+      reaction.data(), mu.data(), fermentation_fraction.data(), cells.data(),
+      state.data(), 2, 0.5, 0.1, 0, 1.0, kNx, kNy, storage_nx, 1, 3, 1,
+      nullptr);
   synchronize();
   const auto result = download(reaction, storage_cells);
   // Change-detector: two agents each consume 0.5*1.0+0.1 = 0.6.
