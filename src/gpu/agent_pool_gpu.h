@@ -38,6 +38,20 @@ struct GpuMetabolismBuffers {
   int o2_enabled = 0;
   double o2_boost_max = 0.0;
   double o2_Km = 0.0;
+  int metabolic_switch_enabled = 0;
+  double mu_crit = 0.0;
+  double aerobic_mu_factor = 1.0;
+  double anaerobic_mu_factor = 1.0;
+  double aerobic_carbon_cost_factor = 1.0;
+  double anaerobic_carbon_cost_factor = 1.0;
+  double tau_metabolic_switch = 0.0;
+  double ferm_acid_yield = 0.0;
+  double anaerobic_maintenance_factor = 1.0;
+  int acid_inhibition_enabled = 0;
+  double acid_inhibition_max = 0.0;
+  double acid_inhibition_Ki = 0.0;
+  double acetate_pKa = 0.0;
+  double environment_pH = 7.0;
   int global_nx = 0;
   int global_ny = 0;
   int storage_nx = 0;
@@ -72,6 +86,7 @@ class AgentPoolGpu {
   const int* state() const { return d_state_.data(); }
   double* mu_realized() { return d_mu_realized_.data(); }
   const double* mu_realized() const { return d_mu_realized_.data(); }
+  double* fermentation_fraction() { return d_fermentation_fraction_.data(); }
   double* biomass() { return d_biomass_.data(); }
   const double* biomass() const { return d_biomass_.data(); }
   double* radius() { return d_radius_.data(); }
@@ -106,6 +121,7 @@ class AgentPoolGpu {
   DeviceBuffer<int> d_state_;
   DeviceBuffer<int> d_bi_loci_count_;
   DeviceBuffer<double> d_mu_realized_;
+  DeviceBuffer<double> d_fermentation_fraction_;
   DeviceBuffer<double> d_biomass_;
   DeviceBuffer<double> d_radius_;
   DeviceBuffer<double> d_mass_;

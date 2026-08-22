@@ -19,6 +19,7 @@ void AgentPoolGpu::resize(Int n) {
   d_grid_cell_.allocate(static_cast<size_t>(n));
   d_state_.allocate(static_cast<size_t>(n));
   d_mu_realized_.allocate(static_cast<size_t>(n));
+  d_fermentation_fraction_.allocate(static_cast<size_t>(n));
   d_biomass_.allocate(static_cast<size_t>(n));
   d_radius_.allocate(static_cast<size_t>(n));
   d_mass_.allocate(static_cast<size_t>(n));
@@ -47,6 +48,7 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   std::vector<int> state(n);
   std::vector<int> bi_loci_count(n);
   std::vector<double> mu_realized(n);
+  std::vector<double> fermentation_fraction(n);
   std::vector<double> biomass(n);
   std::vector<double> radius(n);
   std::vector<double> mass(n);
@@ -69,6 +71,7 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
     grid_cell[i] = a.grid_cell;
     state[i] = static_cast<int>(to_underlying(a.state));
     mu_realized[i] = a.mu_realized;
+    fermentation_fraction[i] = a.realized_fermentation_fraction;
     biomass[i] = a.biomass;
     radius[i] = a.radius;
     mass[i] = a.mass;
@@ -97,6 +100,7 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   d_grid_cell_.upload(grid_cell);
   d_state_.upload(state);
   d_mu_realized_.upload(mu_realized);
+  d_fermentation_fraction_.upload(fermentation_fraction);
   d_biomass_.upload(biomass);
   d_radius_.upload(radius);
   d_mass_.upload(mass);
@@ -117,12 +121,14 @@ void AgentPoolGpu::sync_to_host(AgentPool& pool) const {
   if (n <= 0 || n != size_) return;
 
   std::vector<double> mu_realized(n);
+  std::vector<double> fermentation_fraction(n);
   std::vector<double> biomass(n);
   std::vector<double> radius(n);
   std::vector<double> mass(n);
   std::vector<double> age(n);
   std::vector<int> grid_cell(n);
   d_mu_realized_.download(mu_realized);
+  d_fermentation_fraction_.download(fermentation_fraction);
   d_biomass_.download(biomass);
   d_radius_.download(radius);
   d_mass_.download(mass);
@@ -132,6 +138,7 @@ void AgentPoolGpu::sync_to_host(AgentPool& pool) const {
   for (Int i = 0; i < n; ++i) {
     Agent& a = pool[i];
     a.mu_realized = mu_realized[i];
+    a.realized_fermentation_fraction = fermentation_fraction[i];
     a.biomass = biomass[i];
     a.radius = radius[i];
     a.mass = mass[i];
@@ -199,6 +206,7 @@ bool AgentPoolGpu::run_metabolism(
       buffers.d_reac_acetate,
       d_mu_realized_.data(), d_biomass_.data(), d_radius_.data(),
       d_mass_.data(), d_age_.data(),
+      d_fermentation_fraction_.data(),
       d_grid_cell_.data(), d_state_.data(),
       d_mu_max_.data(), d_km_b12_.data(), d_km_carbon_.data(),
       d_receptor_expr_.data(), d_receptor_expr_base_.data(),
@@ -220,6 +228,15 @@ bool AgentPoolGpu::run_metabolism(
       buffers.acetate_overflow_threshold, buffers.acetate_overflow_rate,
       buffers.acetate_scavenge_rate, buffers.acetate_scavenge_Km,
       buffers.o2_enabled, buffers.o2_boost_max, buffers.o2_Km,
+      buffers.metabolic_switch_enabled, buffers.mu_crit,
+      buffers.aerobic_mu_factor, buffers.anaerobic_mu_factor,
+      buffers.aerobic_carbon_cost_factor,
+      buffers.anaerobic_carbon_cost_factor,
+      buffers.tau_metabolic_switch, buffers.ferm_acid_yield,
+      buffers.anaerobic_maintenance_factor,
+      buffers.acid_inhibition_enabled, buffers.acid_inhibition_max,
+      buffers.acid_inhibition_Ki, buffers.acetate_pKa,
+      buffers.environment_pH,
       uptake_totals,
       buffers.d_maintenance_available,
       to_underlying(cfg.uptake_limit_mode),

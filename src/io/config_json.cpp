@@ -836,6 +836,21 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("oxygen.epithelial_conc", cfg.chem_env.oxygen.epithelial_conc);
   real_key("oxygen.D_free", cfg.chem_env.oxygen.D_free);
   real_key("oxygen.Km", cfg.chem_env.oxygen.Km);
+  bool_key("oxygen.metabolic_switch_enabled",
+           cfg.chem_env.oxygen.metabolic_switch_enabled);
+  real_key("oxygen.mu_crit", cfg.chem_env.oxygen.mu_crit);
+  real_key("oxygen.aerobic_mu_factor", cfg.chem_env.oxygen.aerobic_mu_factor);
+  real_key("oxygen.anaerobic_mu_factor",
+           cfg.chem_env.oxygen.anaerobic_mu_factor);
+  real_key("oxygen.aerobic_carbon_cost_factor",
+           cfg.chem_env.oxygen.aerobic_carbon_cost_factor);
+  real_key("oxygen.anaerobic_carbon_cost_factor",
+           cfg.chem_env.oxygen.anaerobic_carbon_cost_factor);
+  real_key("oxygen.tau_metabolic_switch",
+           cfg.chem_env.oxygen.tau_metabolic_switch);
+  real_key("oxygen.ferm_acid_yield", cfg.chem_env.oxygen.ferm_acid_yield);
+  real_key("oxygen.anaerobic_maintenance_factor",
+           cfg.chem_env.oxygen.anaerobic_maintenance_factor);
   real_key("oxygen.boost_max", cfg.chem_env.oxygen.boost_max);
   real_key("oxygen.q_consumption", cfg.chem_env.oxygen.q_consumption);
   real_key("oxygen.q_maintenance", cfg.chem_env.oxygen.q_maintenance);
@@ -888,6 +903,11 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("maintenance_rate", cfg.fixes.metabolism.maintenance_rate);
   real_key("carbon_maintenance_rate",
            cfg.fixes.metabolism.carbon_maintenance_rate);
+  bool_key("acid_inhibition_enabled",
+           cfg.fixes.metabolism.acid_inhibition_enabled);
+  real_key("acid_inhibition_max", cfg.fixes.metabolism.acid_inhibition_max);
+  real_key("acid_inhibition_Ki", cfg.fixes.metabolism.acid_inhibition_Ki);
+  real_key("acetate_pKa", cfg.fixes.metabolism.acetate_pKa);
   real_key("metE_penalty", cfg.fixes.metabolism.metE_penalty);
   real_key("metE_acetate_km", cfg.fixes.metabolism.metE_acetate_km);
   real_key("metE_acetate_max_factor", cfg.fixes.metabolism.metE_acetate_max_factor);

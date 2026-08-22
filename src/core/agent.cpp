@@ -44,6 +44,7 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
   a.mu_realized   = mu_max_val;
   a.biomass       = a.mass;
   a.maintenance   = 0.0;
+  a.realized_fermentation_fraction = 0.0;
 
   a.receptor_expr_base.fill(1.0);
   a.receptor_expr = a.receptor_expr_base;
