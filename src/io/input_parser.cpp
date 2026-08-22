@@ -467,6 +467,13 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "'delivery', got '"
         + metabolism.uptake_limit + "'");
   }
+  if (cfg.gpu.enabled
+      && metabolism.uptake_limit_mode == UptakeLimitMode::Delivery) {
+    throw ConfigError(
+        "gpu_enabled=true cannot be combined with "
+        "metabolism.uptake_limit=\"delivery\": CUDA parity is not "
+        "implemented yet");
+  }
 
   const Int carbon_idx = find_chemical_spec(cfg.chemicals, species::CARBON);
   if (carbon_idx >= 0) {

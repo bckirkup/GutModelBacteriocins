@@ -79,8 +79,10 @@ The QSSA solver deposits bacteriocin fields immediately before `fix_receptor` (s
 ### Delivery-limited carbon uptake
 
 With `metabolism.uptake_limit: "delivery"`, requested growth and maintenance
-carbon are held until chemistry completes. Each owned agent contributes a
-first-order sink coefficient
+carbon are held until chemistry completes. This mode is CPU-only:
+`gpu_enabled=true` together with `metabolism.uptake_limit="delivery"` is
+rejected during config finalization because CUDA parity is not implemented
+yet. Each owned agent contributes a first-order sink coefficient
 
 ```
 k_agent = 4*pi*D_eff*r / V_cell
