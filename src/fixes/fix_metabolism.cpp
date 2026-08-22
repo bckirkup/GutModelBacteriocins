@@ -42,6 +42,7 @@ Real implicit_ferric_enterobactin_reimport(
 
 bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   if (!sim.gpu_active()) return false;
+  if (cfg.uptake_limit_mode == UptakeLimitMode::Delivery) return false;
 
   auto& agents = sim.agents();
   Int local_agent_count = 0;
@@ -175,19 +176,142 @@ void FixMetabolism::compute(Real dt) {
   for (Agent& a : agents) {
     if (a.state == PhenoState::DEAD) continue;
     compute_growth_rate(a, dt);
+    if (cfg_.uptake_limit_mode == UptakeLimitMode::Delivery
+        && !a.flags.is_ghost
+        && a.pending_growth_chemistry_biomass > 0.0) {
+      apply_growth_chemistry(a, a.pending_growth_chemistry_biomass, dt);
+      a.pending_growth_chemistry_biomass = 0.0;
+    }
+    a.pending_growth_carbon = 0.0;
+    a.pending_maintenance_carbon = 0.0;
+    a.pending_biomass = 0.0;
     if (a.flags.is_ghost) {
       const Real demanded_biomass = a.mu_realized * a.biomass * dt;
       a.mu_realized *= uptake_limit_fraction(a, demanded_biomass, dt, false);
       continue;
     }
     charge_carbon_maintenance(a, dt);
-    grow_agent(a, dt);
+    if (cfg_.uptake_limit_mode == UptakeLimitMode::Delivery) {
+      const Real d_biomass = a.mu_realized * a.biomass * dt;
+      const Real growth_demand = std::max(d_biomass, 0.0)
+          * realized_carbon_cost(a);
+      const Int carbon = sim_.chemical_field().find(species::CARBON);
+      if (carbon >= 0 && a.grid_cell >= 0) {
+        auto& chem = sim_.chemical_field();
+        const Real cell_volume = sim_.domain().cell_volume();
+        const Real concentration =
+            chem.conc_global(carbon, a.grid_cell);
+        const Real effective_diffusivity = uptake::effective_diffusivity(
+            chem.spec(carbon).diff_coeff, chem.spec(carbon).retardation);
+        const Real demand_maint = a.pending_maintenance_carbon;
+        const Real demand_total = growth_demand + demand_maint;
+        const Real k_agent = 4.0 * uptake::kPi * effective_diffusivity
+            * a.radius / cell_volume;
+        const Real cap = concentration > 0.0 && cell_volume > 0.0
+            ? demand_total / (concentration * cell_volume * dt) : k_agent;
+        const Real k_eff = std::min(k_agent, cap);
+        a.pending_growth_carbon = growth_demand;
+        a.pending_biomass = d_biomass;
+        chem.flux_accounting().add_uptake_demand(carbon, growth_demand);
+        chem.add_sink_rate_global(a.grid_cell, k_eff);
+      }
+    } else {
+      grow_agent(a, dt);
+    }
   }
   apply_siderophore_chemistry(dt);
 
   // Division must run in compute (not post_step) so fix_bacteriocin in the same
   // biology pass can observe just_divided during the division timestep.
   perform_divisions();
+}
+
+void FixMetabolism::commit_delivery_uptake(Real dt) {
+  if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery || dt <= 0.0) {
+    return;
+  }
+  auto& chem = sim_.chemical_field();
+  const Int carbon = chem.find(species::CARBON);
+  if (carbon < 0) return;
+  std::vector<Real> demand_by_cell(
+      static_cast<size_t>(chem.ncells()), 0.0);
+  for (const Agent& agent : sim_.agents()) {
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
+        || agent.grid_cell < 0) {
+      continue;
+    }
+    const Int storage = chem.global_to_storage_cell(agent.grid_cell);
+    if (storage >= 0) {
+      demand_by_cell[static_cast<size_t>(storage)] +=
+          agent.pending_growth_carbon + agent.pending_maintenance_carbon;
+    }
+  }
+  for (Agent& agent : sim_.agents()) {
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
+    const Real growth_demand = agent.pending_growth_carbon;
+    const Real maint_demand = agent.pending_maintenance_carbon;
+    const Real total_demand = growth_demand + maint_demand;
+    if (agent.pending_biomass < 0.0 && total_demand <= 0.0) {
+      agent.biomass = std::max(
+          agent.biomass + agent.pending_biomass, 1.0e-20);
+      const Real volume = agent.biomass / CELL_DENSITY_DEFAULT;
+      agent.radius = std::cbrt(3.0 * volume / (4.0 * PI));
+      agent.mass = agent.biomass;
+      agent.timers.age += dt;
+      continue;
+    }
+    if (agent.grid_cell < 0 || total_demand <= 0.0) {
+      agent.timers.age += dt;
+      continue;
+    }
+    const Int storage = chem.global_to_storage_cell(agent.grid_cell);
+    const Real cell_demand = storage >= 0
+        ? demand_by_cell[static_cast<size_t>(storage)] : 0.0;
+    const Real available = std::max(0.0, chem.sink_realized_global(
+        agent.grid_cell));
+    const Real share = cell_demand > 0.0
+        ? std::min(total_demand, available * total_demand / cell_demand)
+        : 0.0;
+    const Real maintenance_paid = std::min(maint_demand, share);
+    const Real growth_funded = std::min(
+        growth_demand, std::max(0.0, share - maintenance_paid));
+    const Real growth_fraction = growth_demand > 0.0
+        ? growth_funded / growth_demand : 0.0;
+    chem.flux_accounting().add_maintenance(carbon, maintenance_paid);
+    if (maint_demand > maintenance_paid) {
+      chem.flux_accounting().add_maintenance_shortfall(
+          carbon, maint_demand - maintenance_paid);
+      chem.flux_accounting().add_maintenance_limited_agents(carbon, 1.0);
+    }
+    chem.flux_accounting().add_agent_uptake(carbon, growth_funded);
+    if (growth_demand > growth_funded) {
+      chem.flux_accounting().add_uptake_shortfall(
+          carbon, growth_demand - growth_funded);
+    }
+    if (agent.pending_biomass < 0.0) {
+      agent.biomass += agent.pending_biomass;
+    } else if (agent.mu_realized > 0.0) {
+      agent.mu_realized *= growth_fraction;
+      agent.biomass += agent.pending_biomass * growth_fraction;
+    }
+    const Real d_biomass = agent.pending_biomass * growth_fraction;
+    agent.biomass = std::max(agent.biomass, 1.0e-20);
+    const Real volume = agent.biomass / CELL_DENSITY_DEFAULT;
+    agent.radius = std::cbrt(3.0 * volume / (4.0 * PI));
+    agent.mass = agent.biomass;
+    agent.timers.age += dt;
+    if (d_biomass > 0.0) {
+      agent.pending_growth_chemistry_biomass += d_biomass;
+    }
+  }
+}
+
+void FixMetabolism::post_chemistry(Real dt) {
+  if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery) return;
+  commit_delivery_uptake(dt);
+  auto& chem = sim_.chemical_field();
+  chem.sum_agent_uptake_across_ranks();
+  chem.flux_accounting().commit_agent_uptake_step();
 }
 
 void FixMetabolism::charge_carbon_maintenance(Agent& agent, Real dt) {
@@ -205,6 +329,10 @@ void FixMetabolism::charge_carbon_maintenance(Agent& agent, Real dt) {
       : 1.0;
   const Real requested_amount = carbon_maintenance::requested(
       cfg_.carbon_maintenance_rate * maintenance_factor, agent.biomass, dt);
+  if (cfg_.uptake_limit_mode == UptakeLimitMode::Delivery) {
+    agent.pending_maintenance_carbon = requested_amount;
+    return;
+  }
   Real draw = 0.0;
   if (cfg_.uptake_limit_mode == UptakeLimitMode::Voxel) {
     const Int storage_cell = chem.global_to_storage_cell(cell);
@@ -663,7 +791,11 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   agent.radius = std::cbrt(3.0 * vol / (4.0 * PI));
   agent.mass   = agent.biomass;
   agent.timers.age   += dt;
+  apply_growth_chemistry(agent, d_biomass, dt);
+}
 
+void FixMetabolism::apply_growth_chemistry(
+    Agent& agent, Real d_biomass, Real dt) {
   // Nutrient consumption and siderophore coupling from grid
   auto& chem = sim_.chemical_field();
   Int cell = agent.grid_cell;
@@ -680,12 +812,14 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   if (i_carbon >= 0 && cell_vol > 0.0) {
     const Real carbon_yield = realized_carbon_cost(agent);
     Real delta_c = d_biomass * carbon_yield / (cell_vol * dt);
-    chem.flux_accounting().add_agent_uptake(
-        i_carbon, d_biomass * carbon_yield);
-    #ifdef GUTIBM_OPENMP
-    #pragma omp atomic
-    #endif
-    chem.reac_global(i_carbon, cell) -= delta_c;
+    if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery) {
+      chem.flux_accounting().add_agent_uptake(
+          i_carbon, d_biomass * carbon_yield);
+      #ifdef GUTIBM_OPENMP
+      #pragma omp atomic
+      #endif
+      chem.reac_global(i_carbon, cell) -= delta_c;
+    }
   }
   if (cfg_.iron_uptake_enabled && i_iron >= 0 && cell_vol > 0.0) {
     Real delta_fe = d_biomass * cfg_.yield_iron / (cell_vol * dt);

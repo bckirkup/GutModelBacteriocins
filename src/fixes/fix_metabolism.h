@@ -65,7 +65,7 @@ struct MetabolismConfig {
   Real eut_km             = 0.1e-3;   // half-saturation for eut utilization (mol/m³)
   Real eut_max_penalty    = 0.10;     // max penalty when ethanolamine abundant
 
-  // Agent-side uptake limitation model: "none", "sherwood", or "voxel".
+  // Agent-side uptake limitation model.
   std::string uptake_limit = "none";
   // Resolved from uptake_limit by InputParser::finalize_config.
   UptakeLimitMode uptake_limit_mode = UptakeLimitMode::None;
@@ -77,14 +77,17 @@ class FixMetabolism : public Fix {
 
   void init() override;
   void compute(Real dt) override;
+  void post_chemistry(Real dt) override;
 
  private:
+  void commit_delivery_uptake(Real dt);
   void compute_growth_rate(Agent& agent, Real dt);
   Real uptake_limit_fraction(const Agent& agent, Real d_biomass, Real dt,
                              bool record_diagnostics);
   void charge_carbon_maintenance(Agent& agent, Real dt);
   void prepare_carbon_maintenance();
   void grow_agent(Agent& agent, Real dt);
+  void apply_growth_chemistry(Agent& agent, Real d_biomass, Real dt);
   Real realized_carbon_cost(const Agent& agent) const;
   void apply_siderophore_chemistry(Real dt);
   void apply_siderophore_chelation(Int i_sid, Int i_iron,

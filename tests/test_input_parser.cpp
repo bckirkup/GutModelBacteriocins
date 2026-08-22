@@ -820,9 +820,39 @@ void test_uptake_limit_fixture() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR)
       + "/tests/fixtures/parser_uptake_limit.json";
   const SimulationConfig cfg = InputParser::parse(path);
-  assert(cfg.fixes.metabolism.uptake_limit == "sherwood");
-  assert(cfg.fixes.metabolism.uptake_limit_mode == UptakeLimitMode::Sherwood);
+  assert(cfg.fixes.metabolism.uptake_limit == "delivery");
+  assert(cfg.fixes.metabolism.uptake_limit_mode == UptakeLimitMode::Delivery);
   std::cout << "  test_uptake_limit_fixture: PASSED\n";
+}
+
+void test_delivery_uptake_limit() {
+  SimulationConfig cfg = InputParser::default_config();
+  assert(InputParser::apply_flat_key(
+      cfg, "metabolism.uptake_limit", "delivery"));
+  InputParser::finalize_config(cfg);
+  assert(cfg.fixes.metabolism.uptake_limit == "delivery");
+  assert(cfg.fixes.metabolism.uptake_limit_mode
+         == UptakeLimitMode::Delivery);
+  std::cout << "  test_delivery_uptake_limit: PASSED\n";
+}
+
+void test_delivery_uptake_rejects_gpu() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.gpu.enabled = true;
+  assert(InputParser::apply_flat_key(
+      cfg, "metabolism.uptake_limit", "delivery"));
+  bool threw = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    const std::string message = error.what();
+    threw = message.find("gpu_enabled") != std::string::npos
+        && message.find("metabolism.uptake_limit") != std::string::npos
+        && message.find("CUDA parity is not implemented yet")
+            != std::string::npos;
+  }
+  assert(threw);
+  std::cout << "  test_delivery_uptake_rejects_gpu: PASSED\n";
 }
 
 void test_uptake_limit_rejects_unknown_modes() {
@@ -890,6 +920,8 @@ int main() {
   test_epithelial_boundary_rejects_unknown_modes();
   test_epithelial_boundary_rejects_gradient_conflict();
   test_uptake_limit_fixture();
+  test_delivery_uptake_limit();
+  test_delivery_uptake_rejects_gpu();
   test_uptake_limit_rejects_unknown_modes();
   test_carbon_maintenance_fixture();
   test_metabolic_mode_fixture();

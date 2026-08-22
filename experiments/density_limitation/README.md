@@ -143,6 +143,10 @@ Pirt endpoints. It should be a campaign axis, not a pinned constant.
 
 ## 6. Next experiment
 
+> **Superseded as the immediate next step — see §9.** The bracket below is still
+> the right experiment, but it cannot be run until the agent carbon sink is
+> actually applied to the field. It was not, in any run described above.
+
 Re-bracket delivery with the brake funded, before anything else:
 
 - flux multipliers **{0.06, 0.09, 0.12, 0.15, 0.20, 0.30} x J_dir**, centred on
@@ -203,3 +207,109 @@ clamped, the brake is again running below strength and the numbers mean nothing.
 - Local CUDA is unavailable in the dev environment, so `gpu_*` ctest targets
   skip locally. The hosted CUDA compile plus the physical-T4 gate are the only
   authoritative GPU evidence.
+
+## 9. Addendum: the sink was never applied to the field
+
+Before spending GPU hours on §6 I audited the carbon ledger of the six probe
+arms already in S3, and then re-measured at HEAD. Agent carbon draw is booked
+but not applied: `reaction_clip_cumulative[carbon]` accounts for essentially
+all of `agent_uptake + maintenance` in every arm ever run.
+
+Old probe arms (pre-#306, `a22e4e7`, last written step of each):
+
+| arm | N | uptake+maint (mol) | clipped (mol) | refused | demand/voxel content |
+|---|---:|---:|---:|---:|---:|
+| off_f018   | 160 | 1.245e-13 | 1.236e-13 | 0.993 | 102x |
+| maint_f018 | 160 | 1.252e-13 | 1.243e-13 | 0.993 | 102x |
+| full_f018  | 124 | 1.292e-13 | 1.284e-13 | 0.994 | 136x |
+| full_f030  | 368 | 2.859e-13 | 2.849e-13 | 0.997 |  93x |
+| full_f060  | 325 | 2.633e-13 | 2.628e-13 | 0.998 | 118x |
+| full_f100  | 378 | 2.323e-13 | 2.318e-13 | 0.998 |  98x |
+
+Four 1-hour arms at HEAD (post-#306, CPU serial, same base config as
+`full_f018`) locate the cause:
+
+| arm | N | uptake | maint | vbf_sink | clip | refused | limited |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| baseline           |  80 | 5.03e-15 | 5.54e-15 | 1.18e-13 | 1.05e-14 | 0.996 | 0 |
+| VBF sink off       | 159 | 4.18e-14 | 9.00e-15 | 0        | 4.96e-14 | 0.977 | 0 |
+| sherwood           |  80 | 5.03e-15 | 5.54e-15 | 1.18e-13 | 1.05e-14 | 0.996 | 0 |
+| sherwood + VBF off | 159 | 4.18e-14 | 9.00e-15 | 0        | 4.96e-14 | 0.977 | 0 |
+
+- The clip is **agent-side**: it stays at 0.98 with the flora sink entirely off.
+- `uptake_limit=sherwood` is **bit-identical** to `none` and binds on **zero**
+  agents. This is what §2's "86x slack" was: `4*pi*D_eff*r*C*dt` corresponds to
+  ~3e4 voxel-volumes of carbon at `grid_dx = 2 um` and `bio_dt = 60 s`, so the
+  cap sits three to four orders of magnitude above anything the voxel holds and
+  can never fire.
+- #306 is mechanically fine (`maintenance_shortfall = 0`), but ~99% of the
+  maintenance it books is then refused by the clip. §4's fix charged the draw
+  through a cap that never binds, one layer above the layer that discards it.
+- Lateral `chemistry_stride` coarsening is not an escape: the refused fraction
+  falls only 0.996 -> 0.758 (stride 8) -> 0.404 (stride 16), far slower than
+  1/volume, because co-located agents zero out whatever column they share.
+
+The cause is ordering, not parameters. Agent draw is a zero-order point sink
+written into `reac` and applied **explicitly before** diffusion
+(`conc += reac*dt`, then clipped at zero), so within-step resupply from the
+~77 um the carbon front covers in 60 s can never fund it. Growth is meanwhile
+authorized by a Monod read of concentration, so biomass was funded by carbon
+that was never removed from the field. **No coefficient — maintenance, yield,
+delivery — can produce a carrying capacity through a sink that is discarded.**
+Every density result above, including §5's `N*` arithmetic, describes an
+unbraked model.
+
+The fix now landing recasts the agent draw as first-order Sherwood removal,
+`k = 4*pi*D_eff*r/V_cell`, folded into the backward-Euler directional solves so
+it is positive by construction and funded by within-step diffusive resupply, and
+funds biomass only from removal the field actually paid, maintenance first.
+`reaction_clip[carbon] == 0` becomes an invariant rather than a counter.
+
+§5's `N*` values survive as the **supply-limited upper bound** on capacity, but
+they are no longer the only brake: delivery limitation is spatial, so crowding
+now reduces per-agent funding at fixed total supply. Expect the plateau at or
+below the §5 numbers, and treat the funded fraction (realized/requested) as the
+primary diagnostic of the §6 bracket — where it sits near 1, the brake is
+supply-limited as §5 assumes; where it falls, capacity is set by local delivery
+and `anaerobic_maintenance_factor` matters less than the geometry does.
+
+Lesson worth keeping: three consecutive fixes (#302, #306, this one) failed the
+same way — the mechanism was installed and booked, and nothing asserted the
+field had paid. Closure tests passed throughout because they carry the clip term
+in the balance, so a fully-refused sink balances perfectly.
+
+### 9.1 First measurement with the sink realized
+
+Same 1-hour base config, CPU serial, `uptake_limit="delivery"`:
+
+| arm | N (0 -> 3600 s) | uptake | demand | maint | clip | funded | maint-limited |
+|---|---|---:|---:|---:|---:|---:|---:|
+| delivery           | 80 -> 80  | 5.36e-16 | 2.59e-15 | 3.46e-15 | 0 | 0.207 | 3133 |
+| delivery + VBF off | 80 -> 134 | 2.84e-14 | 3.40e-14 | 7.58e-15 | 0 | 0.834 | 31 |
+
+`reaction_clip[carbon]` is exactly zero in both, as designed. The funded
+fraction is now the controlling variable, and it is **set by competition with
+the background flora**: 0.21 with the VBF sink on, 0.83 with it off, and it
+declines monotonically as the population grows (0.216 -> 0.207, 0.868 -> 0.834
+over the hour). That is a real density brake, and it acts through the field
+rather than through a coefficient.
+
+Two consequences for §6:
+
+- **The pass criterion "maintenance_limited_agents at or near zero" is now
+  wrong** and must not be carried forward. It was written when a maintenance
+  shortfall could only mean the brake was mis-wired. With the draw realized, a
+  shortfall is a physiological state — 3133 agent-steps out of ~4800 were
+  maintenance-limited in the arm with flora present, at a density well below the
+  guard. Replace it with: the plateau must be reached with the funded fraction
+  strictly inside (0, 1) and stable, and with `uptake_shortfall` and
+  `maintenance_shortfall` bounded rather than growing without limit.
+- **The bracket may need to widen upward, not downward.** §5 predicted a
+  guard-safe band at or below 0.15x on supply grounds alone. Delivery limitation
+  is an additional brake at fixed supply, so the flux that produces a plateau
+  near the guard may now be *higher* than §5's estimate. Run the §6 arms, but
+  read the funded fraction before committing seeds to a band.
+
+Delivery mode is CPU-only until CUDA parity lands; `gpu_enabled` with
+`uptake_limit="delivery"` is rejected at config time rather than silently
+falling back to the CPU metabolism path.

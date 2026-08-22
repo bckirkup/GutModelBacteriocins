@@ -350,6 +350,10 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   read_flux("uptake_demand_interval", meta.flux_accounting.uptake_demand_interval);
   read_flux("uptake_demand_cumulative",
             meta.flux_accounting.uptake_demand_cumulative);
+  read_flux("uptake_shortfall_interval",
+            meta.flux_accounting.uptake_shortfall_interval);
+  read_flux("uptake_shortfall_cumulative",
+            meta.flux_accounting.uptake_shortfall_cumulative);
   read_flux("uptake_limited_agents_interval",
             meta.flux_accounting.uptake_limited_interval);
   read_flux("uptake_limited_agents_cumulative",

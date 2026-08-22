@@ -44,6 +44,9 @@ struct NutrientFluxAccounting {
   std::vector<Real> uptake_demand_interval;
   std::vector<Real> uptake_demand_step;
   std::vector<Real> uptake_demand_cumulative;
+  std::vector<Real> uptake_shortfall_interval;
+  std::vector<Real> uptake_shortfall_step;
+  std::vector<Real> uptake_shortfall_cumulative;
   // Count of owned live agents whose cap bound for that species.
   std::vector<Real> uptake_limited_interval;
   std::vector<Real> uptake_limited_step;
@@ -75,6 +78,9 @@ struct NutrientFluxAccounting {
     uptake_demand_interval.assign(species_count, 0.0);
     uptake_demand_step.assign(species_count, 0.0);
     uptake_demand_cumulative.assign(species_count, 0.0);
+    uptake_shortfall_interval.assign(species_count, 0.0);
+    uptake_shortfall_step.assign(species_count, 0.0);
+    uptake_shortfall_cumulative.assign(species_count, 0.0);
     uptake_limited_interval.assign(species_count, 0.0);
     uptake_limited_step.assign(species_count, 0.0);
     uptake_limited_cumulative.assign(species_count, 0.0);
@@ -130,6 +136,13 @@ struct NutrientFluxAccounting {
     uptake_demand_step[static_cast<size_t>(species)] += amount;
   }
 
+  void add_uptake_shortfall(Int species, Real amount) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    uptake_shortfall_step[static_cast<size_t>(species)] += amount;
+  }
+
   void add_uptake_limited(Int species, Real count) {
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
@@ -152,12 +165,14 @@ struct NutrientFluxAccounting {
       maintenance_limited_agents_interval[i] +=
           maintenance_limited_agents_step[i];
       uptake_demand_interval[i] += uptake_demand_step[i];
+      uptake_shortfall_interval[i] += uptake_shortfall_step[i];
       uptake_limited_interval[i] += uptake_limited_step[i];
       agent_uptake_step[i] = 0.0;
       maintenance_step[i] = 0.0;
       maintenance_shortfall_step[i] = 0.0;
       maintenance_limited_agents_step[i] = 0.0;
       uptake_demand_step[i] = 0.0;
+      uptake_shortfall_step[i] = 0.0;
       uptake_limited_step[i] = 0.0;
     }
   }
@@ -182,6 +197,7 @@ struct NutrientFluxAccounting {
       maintenance_limited_agents_cumulative[i] +=
           maintenance_limited_agents_interval[i];
       uptake_demand_cumulative[i] += uptake_demand_interval[i];
+      uptake_shortfall_cumulative[i] += uptake_shortfall_interval[i];
       uptake_limited_cumulative[i] += uptake_limited_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
       boundary_interval[i] = 0.0;
@@ -192,6 +208,7 @@ struct NutrientFluxAccounting {
       maintenance_shortfall_interval[i] = 0.0;
       maintenance_limited_agents_interval[i] = 0.0;
       uptake_demand_interval[i] = 0.0;
+      uptake_shortfall_interval[i] = 0.0;
       uptake_limited_interval[i] = 0.0;
       reaction_clip_interval[i] = 0.0;
     }
@@ -307,6 +324,9 @@ class ChemicalField {
 
   // Reset reaction rates to zero each timestep
   void zero_reactions();
+  void add_sink_rate_global(Int cell, Real rate);
+  Real sink_realized_global(Int cell) const;
+  bool has_sink_rate() const;
 
   // Apply stable implicit diffusion for enabled nutrient species.
   void apply_diffusion(const Domain& domain, Real dt);
@@ -358,6 +378,8 @@ class ChemicalField {
   std::vector<ChemicalSpec> specs_;
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]
+  std::vector<Real> sink_rate_;            // [ncells], 1/s
+  std::vector<Real> sink_realized_;        // [ncells], mol this step
   NutrientFluxAccounting flux_accounting_;
 
   void apply_diffusion_slab(const Domain& domain, Real dt);

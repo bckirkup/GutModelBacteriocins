@@ -926,6 +926,8 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     std::ranges::fill(flux.maintenance_limited_agents_step, 0.0);
     std::ranges::fill(flux.uptake_demand_interval, 0.0);
     std::ranges::fill(flux.uptake_demand_step, 0.0);
+    std::ranges::fill(flux.uptake_shortfall_interval, 0.0);
+    std::ranges::fill(flux.uptake_shortfall_step, 0.0);
     std::ranges::fill(flux.uptake_limited_interval, 0.0);
     std::ranges::fill(flux.uptake_limited_step, 0.0);
     std::ranges::fill(flux.reaction_clip_step, 0.0);
@@ -936,6 +938,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     ensure_sized(flux.uptake_demand_interval);
     ensure_sized(flux.uptake_demand_step);
     ensure_sized(flux.uptake_demand_cumulative);
+    ensure_sized(flux.uptake_shortfall_interval);
+    ensure_sized(flux.uptake_shortfall_step);
+    ensure_sized(flux.uptake_shortfall_cumulative);
     ensure_sized(flux.uptake_limited_interval);
     ensure_sized(flux.uptake_limited_step);
     ensure_sized(flux.uptake_limited_cumulative);
@@ -1455,6 +1460,9 @@ void Simulation::step(Real dt) {
   // 2. Chemistry module (QSSA, instantaneous)
   module_chemistry(dt);
   profiler.lap(step_profile_.chemistry_s);
+  for (const auto& fix : fixes_) {
+    fix->post_chemistry(dt);
+  }
 
   // 3. Physics module (advection + mechanics)
   module_physics(dt);

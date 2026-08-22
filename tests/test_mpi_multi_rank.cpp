@@ -566,10 +566,83 @@ void assert_equal_ledgers(const Simulation& slab,
           replicated_flux.agent_uptake_step);
   compare("agent_uptake_cumulative", slab_flux.agent_uptake_cumulative,
           replicated_flux.agent_uptake_cumulative);
+  compare("maintenance_interval", slab_flux.maintenance_interval,
+          replicated_flux.maintenance_interval);
+  compare("maintenance_cumulative", slab_flux.maintenance_cumulative,
+          replicated_flux.maintenance_cumulative);
+  compare("uptake_demand_interval", slab_flux.uptake_demand_interval,
+          replicated_flux.uptake_demand_interval);
+  compare("uptake_demand_cumulative", slab_flux.uptake_demand_cumulative,
+          replicated_flux.uptake_demand_cumulative);
+  compare("uptake_shortfall_interval", slab_flux.uptake_shortfall_interval,
+          replicated_flux.uptake_shortfall_interval);
+  compare("uptake_shortfall_cumulative", slab_flux.uptake_shortfall_cumulative,
+          replicated_flux.uptake_shortfall_cumulative);
   compare("reaction_clip_interval", slab_flux.reaction_clip_interval,
           replicated_flux.reaction_clip_interval);
   compare("reaction_clip_cumulative", slab_flux.reaction_clip_cumulative,
           replicated_flux.reaction_clip_cumulative);
+}
+
+void test_delivery_sink_slab_matches_replicated() {
+  require_mpi_ranks(2);
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  DomainConfig cfg;
+  cfg.lo = {0.0, 0.0, 0.0};
+  cfg.hi = {40e-6, 15e-6, 15e-6};
+  cfg.grid_dx = 5e-6;
+  cfg.periodic = {true, true, false};
+  cfg.grid_halo_width = 2;
+  Domain domain;
+  domain.init(cfg);
+  ChemicalSpec spec;
+  spec.name = species::CARBON;
+  spec.diff_coeff = 2.1e-9;
+  spec.initial_conc = 1.0e-6;
+  spec.boundary_conc = 1.0e-6;
+  spec.diffusion_enabled = true;
+  ChemicalField slab;
+  ChemicalField replicated;
+  slab.init(domain, {spec}, "slab");
+  replicated.init(domain, {spec}, "replicated");
+  const Int target = domain.cell_index(1, 1, 1);
+  const Int carbon = 0;
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    replicated.conc_global(carbon, cell) = spec.initial_conc;
+    if (slab.owns_global_cell(cell)) {
+      slab.conc_global(carbon, cell) = spec.initial_conc;
+    }
+  }
+  replicated.add_sink_rate_global(target, 0.2);
+  if (domain.owner_rank(domain.cell_center(1, 1, 1)) == rank) {
+    slab.add_sink_rate_global(target, 0.2);
+  }
+  slab.apply_diffusion(domain, 60.0);
+  replicated.apply_diffusion(domain, 60.0);
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    if (!slab.owns_global_cell(cell)) continue;
+    const Real slab_value = slab.conc_global(carbon, cell);
+    const Real replicated_value = replicated.conc_global(carbon, cell);
+    assert(std::abs(slab_value - replicated_value)
+           <= 1.0e-12 * std::max(1.0, std::abs(replicated_value)));
+  }
+  Real slab_removed = 0.0;
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    if (slab.owns_global_cell(cell)) {
+      slab_removed += slab.sink_realized_global(cell);
+    }
+  }
+  Real global_slab_removed = 0.0;
+  MPI_Allreduce(&slab_removed, &global_slab_removed, 1, MPI_DOUBLE,
+                MPI_SUM, MPI_COMM_WORLD);
+  assert(std::abs(global_slab_removed
+                  - replicated.sink_realized_global(target))
+         <= 1.0e-12 * std::max(
+             1.0, std::abs(replicated.sink_realized_global(target))));
+  if (rank == 0) {
+    std::cout << "  test_delivery_sink_slab_matches_replicated: PASSED\n";
+  }
 }
 
 void test_reaction_sum_and_diffusion_are_rank_identical() {
@@ -1251,6 +1324,7 @@ int main(int argc, char** argv) {
   test_chemical_field_layout_mapping();
   test_slab_delivery_boundary_accounting();
   test_slab_chemistry_transpose_halos_and_ledger();
+  test_delivery_sink_slab_matches_replicated();
   test_cross_rank_bacteriocin_source_exchange();
   test_cross_rank_agent_toxin_sampling();
   test_slab_decomposition();

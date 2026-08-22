@@ -31,6 +31,11 @@ class Fix {
   // Called at end of each biological timestep (post-processing)
   virtual void post_step(Real /*dt*/) { /* default: no post-step action */ }
 
+  // Called after chemistry and before physics
+  virtual void post_chemistry(Real /*dt*/) {
+    /* default: no post-chemistry action */
+  }
+
   const std::string& name() const { return name_; }
 
  protected:

@@ -459,10 +459,20 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
     metabolism.uptake_limit_mode = UptakeLimitMode::Sherwood;
   } else if (metabolism.uptake_limit == "voxel") {
     metabolism.uptake_limit_mode = UptakeLimitMode::Voxel;
+  } else if (metabolism.uptake_limit == "delivery") {
+    metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
   } else {
     throw ConfigError(
-        "invalid uptake_limit: expected 'none', 'sherwood', or 'voxel', got '"
+        "invalid uptake_limit: expected 'none', 'sherwood', 'voxel', or "
+        "'delivery', got '"
         + metabolism.uptake_limit + "'");
+  }
+  if (cfg.gpu.enabled
+      && metabolism.uptake_limit_mode == UptakeLimitMode::Delivery) {
+    throw ConfigError(
+        "gpu_enabled=true cannot be combined with "
+        "metabolism.uptake_limit=\"delivery\": CUDA parity is not "
+        "implemented yet");
   }
 
   const Int carbon_idx = find_chemical_spec(cfg.chemicals, species::CARBON);
@@ -1048,12 +1058,14 @@ bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std
   if (key == "km_iron_iutA")            { cfg.fixes.metabolism.km_iron_iutA = parse_config_real(key, val); return true; }
   if (key == "km_iron_fiu")             { cfg.fixes.metabolism.km_iron_fiu = parse_config_real(key, val); return true; }
   if (key == "uptake_limit" || key == "metabolism.uptake_limit") {
-    if (val == "none" || val == "sherwood" || val == "voxel") {
+    if (val == "none" || val == "sherwood" || val == "voxel"
+        || val == "delivery") {
       cfg.fixes.metabolism.uptake_limit = val;
       return true;
     }
     throw ConfigError(
-        "invalid uptake_limit: expected 'none', 'sherwood', or 'voxel', got '"
+        "invalid uptake_limit: expected 'none', 'sherwood', 'voxel', or "
+        "'delivery', got '"
         + val + "'");
   }
   return false;
