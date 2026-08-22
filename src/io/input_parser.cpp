@@ -344,6 +344,15 @@ void apply_species_subset(SimulationConfig& cfg) {
 void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
 
+  if (cfg.closure.zero_realization_grace_steps < 0) {
+    throw ConfigError(
+        "closure.zero_realization_grace_steps must be nonnegative");
+  }
+  if (cfg.closure.reaction_clip_tolerance_fraction < 0.0) {
+    throw ConfigError(
+        "closure.reaction_clip_tolerance_fraction must be nonnegative");
+  }
+
   if (cfg.initial_population.placement == "z_slab") {
     if (cfg.initial_population.z_min < cfg.domain.lo[2]
         || cfg.initial_population.z_min >= cfg.domain.hi[2]) {
@@ -1018,6 +1027,32 @@ bool apply_initial_population_key(SimulationConfig& cfg,
   return false;
 }
 
+bool apply_closure_key(SimulationConfig& cfg, std::string_view key,
+                       const std::string& val) {
+  if (key == "closure.enforce_delivery_realization"
+      || key == "closure_enforce_delivery_realization") {
+    cfg.closure.enforce_delivery_realization = parse_bool_config(val);
+    return true;
+  }
+  if (key == "closure.zero_realization_grace_steps"
+      || key == "closure_zero_realization_grace_steps") {
+    cfg.closure.zero_realization_grace_steps = parse_config_int(key, val);
+    return true;
+  }
+  if (key == "closure.enforce_reaction_clip"
+      || key == "closure_enforce_reaction_clip") {
+    cfg.closure.enforce_reaction_clip = parse_bool_config(val);
+    return true;
+  }
+  if (key == "closure.reaction_clip_tolerance_fraction"
+      || key == "closure_reaction_clip_tolerance_fraction") {
+    cfg.closure.reaction_clip_tolerance_fraction =
+        parse_config_real(key, val);
+    return true;
+  }
+  return false;
+}
+
 bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "division_threshold")      { cfg.fixes.metabolism.division_threshold = parse_config_real(key, val); return true; }
   if (key == "bacteriostasis_threshold") { cfg.fixes.metabolism.bacteriostasis_threshold = parse_config_real(key, val); return true; }
@@ -1394,7 +1429,7 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 30> k_flat_key_handlers = {
+constexpr std::array<FlatKeyHandler, 31> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_chemistry_key,
@@ -1414,6 +1449,7 @@ constexpr std::array<FlatKeyHandler, 30> k_flat_key_handlers = {
   apply_dt_key,
   apply_immigration_key,
   apply_initial_population_key,
+  apply_closure_key,
   apply_misc_key,
   apply_oxygen_key,
   apply_acetate_dyn_key,

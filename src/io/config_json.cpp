@@ -680,6 +680,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
         cursor.parse_immigration_object(cfg);
       } else if (key == "initial_population") {
         cursor.parse_initial_population_object(cfg);
+      } else if (key == "closure") {
+        cursor.parse_prefixed_object(cfg, "closure", "closure");
       } else if (key == "domain") {
         cursor.parse_domain_object(cfg);
       } else if (key == "advection") {
@@ -977,6 +979,14 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("dysbiosis_threshold", cfg.dysbiosis_threshold);
   real_key("dysbiosis_sampling_interval", cfg.dysbiosis_sampling_interval);
   int_key("dysbiosis_sample_count", cfg.dysbiosis_sample_count);
+  bool_key("closure.enforce_delivery_realization",
+           cfg.closure.enforce_delivery_realization);
+  int_key("closure.zero_realization_grace_steps",
+          cfg.closure.zero_realization_grace_steps);
+  bool_key("closure.enforce_reaction_clip",
+           cfg.closure.enforce_reaction_clip);
+  real_key("closure.reaction_clip_tolerance_fraction",
+           cfg.closure.reaction_clip_tolerance_fraction);
   bool_key("restart.enabled", cfg.restart.enabled);
   string_key("restart.directory", cfg.restart.directory);
   int_key("restart.interval_steps", cfg.restart.interval_steps);

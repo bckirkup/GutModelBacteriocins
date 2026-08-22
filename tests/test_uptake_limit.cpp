@@ -614,6 +614,56 @@ void test_delivery_negative_growth_books_maintenance() {
   std::cout << "  test_delivery_negative_growth_books_maintenance: PASSED\n";
 }
 
+void test_delivery_maintenance_limited_runs_to_horizon() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains[0].count = 2;
+  cfg.initial_strains[0].mu_max = 5.0e-4;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.time.total_time = 600.0;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = 600.0;
+  cfg.closure.zero_realization_grace_steps = 1;
+  cfg.dysbiosis_threshold = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON
+        || chemical.name == species::IRON) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = 1.0e-7;
+      chemical.boundary_conc = 1.0e-7;
+      chemical.diff_coeff = 1.0e-12;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  sim.run();
+
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const auto index = static_cast<size_t>(carbon);
+  const Real maintenance = flux.maintenance_interval[index]
+      + flux.maintenance_cumulative[index];
+  const Real growth = flux.agent_uptake_interval[index]
+      + flux.agent_uptake_cumulative[index];
+  const Real shortfall = flux.maintenance_shortfall_interval[index]
+      + flux.maintenance_shortfall_cumulative[index];
+  assert(sim.termination_cause() == TerminationCause::HorizonReached);
+  assert(sim.step_count() == 10);
+  assert(maintenance > 0.0);
+  assert(growth == 0.0);
+  assert(shortfall > 0.0);
+  std::cout << "    maintenance=" << maintenance
+            << " growth=" << growth
+            << " shortfall=" << shortfall << "\n";
+  std::cout << "  test_delivery_maintenance_limited_runs_to_horizon: PASSED\n";
+}
+
 struct GradientDeliveryMeasurement {
   Real demand = 0.0;
   Real realized = 0.0;
@@ -754,6 +804,54 @@ void test_delivery_gradient_inertness_change_detectors() {
   std::cout << "  test_delivery_gradient_inertness_change_detectors: PASSED\n";
 }
 
+void test_delivery_zero_realization_closure() {
+  SimulationConfig cfg = base_config();
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.time.total_time = 600.0;
+  cfg.time.output_interval = 600.0;
+  cfg.closure.zero_realization_grace_steps = 1;
+  cfg.initial_strains.front().count = 2;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = 0.0;
+      chemical.boundary_conc = 0.0;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  const int status = sim.run();
+  assert(status != 0);
+  assert(sim.termination_cause() == TerminationCause::ClosureViolation);
+  assert(sim.step_count() == 2);
+  std::cout << "  test_delivery_zero_realization_closure: PASSED\n";
+}
+
+void test_none_mode_clip_does_not_close_by_default() {
+  SimulationConfig cfg = base_config();
+  cfg.initial_strains.front().count = 2;
+  cfg.fixes.metabolism.uptake_limit = "none";
+  cfg.time.total_time = 60.0;
+  cfg.time.output_interval = 60.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = 1.0e-12;
+      chemical.boundary_conc = 1.0e-12;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  assert(sim.run() == 0);
+  assert(sim.termination_cause() == TerminationCause::HorizonReached);
+  std::cout << "  test_none_mode_clip_does_not_close_by_default: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -769,11 +867,14 @@ int main() {
   test_delivery_queues_noncarbon_chemistry_once();
   test_delivery_preserves_negative_growth();
   test_delivery_negative_growth_books_maintenance();
+  test_delivery_maintenance_limited_runs_to_horizon();
   test_delivery_gradient_realizes_and_funds();
   test_delivery_gradient_large_lambda_matches_flat_profile();
   test_delivery_gradient_depletes_below_background();
   test_delivery_gradient_sensitivity();
   test_delivery_gradient_inertness_change_detectors();
+  test_delivery_zero_realization_closure();
+  test_none_mode_clip_does_not_close_by_default();
   std::cout << "All uptake limitation tests passed.\n";
   return 0;
 }

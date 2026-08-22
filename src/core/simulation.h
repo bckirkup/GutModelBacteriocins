@@ -46,6 +46,7 @@
 #include "agent_pool_gpu.h"
 #include "dispatch.h"
 #include "gpu_kernels.h"
+#include "termination.h"
 
 #include <memory>
 #include <chrono>
@@ -87,7 +88,7 @@ class Simulation {
                             const std::string& step = "");
 
   // Run the simulation
-  void run();
+  int run();
 
   // Single timestep
   void step(Real dt);
@@ -212,6 +213,9 @@ class Simulation {
 
   bool gpu_active() const { return gpu_.active; }
   bool halted_for_dysbiosis() const { return dysbiosis_.halted(); }
+  TerminationCause termination_cause() const { return termination_cause_; }
+  const std::string& termination_detail() const { return termination_detail_; }
+  double termination_wall_seconds() const { return termination_wall_seconds_; }
   Real halt_density_cells_per_mL() const {
     return dysbiosis_.halt_density_cells_per_mL();
   }
@@ -253,6 +257,7 @@ class Simulation {
   void update_lineage_snapshot_if_due();
   bool population_stop(int rank) const;
   bool dysbiosis_threshold_exceeded(int rank);
+  bool closure_violation(std::string& detail);
 
   // Module execution (NUFEB-inspired)
   void module_biology(Real dt);
@@ -347,6 +352,10 @@ class Simulation {
 
   BacteriocinState bacteriocin_;
   EventLedger event_ledger_;
+  TerminationCause termination_cause_ = TerminationCause::IncompleteUnknown;
+  std::string termination_detail_ = "run has not completed";
+  double termination_wall_seconds_ = 0.0;
+  Int zero_realization_steps_ = 0;
 };
 
 }  // namespace gutibm

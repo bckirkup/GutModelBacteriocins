@@ -106,6 +106,40 @@ Realized removal is calculated from the post-solve total and only the restored
 total is clamped; any resulting carbon truncation is recorded as a reaction
 clip. Ghost agents do not contribute sink coefficients or accounting writes.
 
+### Delivery closure auditing
+
+Delivery runs enable a closure guard by default. After each chemistry step,
+globally reduced carbon demand and realized removal are compared; consecutive
+steps with positive demand and zero realized removal beyond
+`closure.zero_realization_grace_steps` terminate with
+`closure_violation`. Set `closure.enforce_delivery_realization` to `false` to
+disable this guard. The optional
+`closure.enforce_reaction_clip` guard compares interval reaction clipping with
+`closure.reaction_clip_tolerance_fraction`; it defaults to `false` because
+legacy `uptake_limit: "none"` intentionally clips substantial requested
+carbon. Closure decisions are synchronized across MPI ranks and a closure
+violation returns a nonzero process status.
+
+Every run records one authoritative termination cause under
+`/run_provenance/termination_cause_code` and
+`/run_provenance/termination_cause`:
+
+| Code | Cause |
+|---:|---|
+| 0 | `horizon_reached` |
+| 1 | `dysbiosis_guard` |
+| 2 | `population_stop` |
+| 3 | `stop_requested` |
+| 4 | `closure_violation` |
+| 5 | `incomplete_unknown` |
+
+The pessimistic `incomplete_unknown` marker is flushed when provenance is
+created and is overwritten only when `Simulation::run()` reaches a recorded
+termination. Thus a crash or OOM kill remains distinguishable from a completed
+run. `termination_detail` carries a short diagnostic string and
+`termination_wall_seconds` records elapsed wall time; existing termination
+step/time datasets retain their historical meanings.
+
 **Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics. When `oxygen.enabled`, the legacy aerobic boost applies unless `oxygen.metabolic_switch_enabled` is true.
 
 **Equation:**

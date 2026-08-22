@@ -27,8 +27,11 @@ struct NutrientFluxAccounting {
   std::vector<Real> agent_uptake_interval;
   std::vector<Real> agent_uptake_step;
   std::vector<Real> agent_uptake_cumulative;
+  std::vector<Real> agent_uptake_last_step;
   std::vector<Real> maintenance_interval;
   std::vector<Real> maintenance_step;
+  std::vector<Real> maintenance_last_step;
+  std::vector<Real> maintenance_shortfall_last_step;
   std::vector<Real> maintenance_cumulative;
   std::vector<Real> maintenance_shortfall_interval;
   std::vector<Real> maintenance_shortfall_step;
@@ -39,11 +42,13 @@ struct NutrientFluxAccounting {
   std::vector<Real> reaction_clip_interval;
   std::vector<Real> reaction_clip_step;
   std::vector<Real> reaction_clip_cumulative;
+  std::vector<Real> reaction_clip_last_step;
   // Uptake demanded by growth before the uptake-limitation cap is applied;
   // agent_uptake_* holds the realized removal after the cap.
   std::vector<Real> uptake_demand_interval;
   std::vector<Real> uptake_demand_step;
   std::vector<Real> uptake_demand_cumulative;
+  std::vector<Real> uptake_demand_last_step;
   std::vector<Real> uptake_shortfall_interval;
   std::vector<Real> uptake_shortfall_step;
   std::vector<Real> uptake_shortfall_cumulative;
@@ -63,8 +68,11 @@ struct NutrientFluxAccounting {
     agent_uptake_interval.assign(species_count, 0.0);
     agent_uptake_step.assign(species_count, 0.0);
     agent_uptake_cumulative.assign(species_count, 0.0);
+    agent_uptake_last_step.assign(species_count, 0.0);
     maintenance_interval.assign(species_count, 0.0);
     maintenance_step.assign(species_count, 0.0);
+    maintenance_last_step.assign(species_count, 0.0);
+    maintenance_shortfall_last_step.assign(species_count, 0.0);
     maintenance_cumulative.assign(species_count, 0.0);
     maintenance_shortfall_interval.assign(species_count, 0.0);
     maintenance_shortfall_step.assign(species_count, 0.0);
@@ -75,9 +83,11 @@ struct NutrientFluxAccounting {
     reaction_clip_interval.assign(species_count, 0.0);
     reaction_clip_step.assign(species_count, 0.0);
     reaction_clip_cumulative.assign(species_count, 0.0);
+    reaction_clip_last_step.assign(species_count, 0.0);
     uptake_demand_interval.assign(species_count, 0.0);
     uptake_demand_step.assign(species_count, 0.0);
     uptake_demand_cumulative.assign(species_count, 0.0);
+    uptake_demand_last_step.assign(species_count, 0.0);
     uptake_shortfall_interval.assign(species_count, 0.0);
     uptake_shortfall_step.assign(species_count, 0.0);
     uptake_shortfall_cumulative.assign(species_count, 0.0);
@@ -159,6 +169,10 @@ struct NutrientFluxAccounting {
 
   void commit_agent_uptake_step() {
     for (size_t i = 0; i < agent_uptake_step.size(); ++i) {
+      agent_uptake_last_step[i] = agent_uptake_step[i];
+      uptake_demand_last_step[i] = uptake_demand_step[i];
+      maintenance_last_step[i] = maintenance_step[i];
+      maintenance_shortfall_last_step[i] = maintenance_shortfall_step[i];
       agent_uptake_interval[i] += agent_uptake_step[i];
       maintenance_interval[i] += maintenance_step[i];
       maintenance_shortfall_interval[i] += maintenance_shortfall_step[i];
@@ -177,8 +191,21 @@ struct NutrientFluxAccounting {
     }
   }
 
+  Real agent_uptake_for_step(Int species) const {
+    return agent_uptake_last_step[static_cast<size_t>(species)];
+  }
+
+  Real uptake_demand_for_step(Int species) const {
+    return uptake_demand_last_step[static_cast<size_t>(species)];
+  }
+
+  Real reaction_clip_for_step(Int species) const {
+    return reaction_clip_last_step[static_cast<size_t>(species)];
+  }
+
   void commit_boundary_and_reaction_step() {
     for (size_t i = 0; i < boundary_step.size(); ++i) {
+      reaction_clip_last_step[i] = reaction_clip_step[i];
       boundary_interval[i] += boundary_step[i];
       reaction_clip_interval[i] += reaction_clip_step[i];
       boundary_step[i] = 0.0;

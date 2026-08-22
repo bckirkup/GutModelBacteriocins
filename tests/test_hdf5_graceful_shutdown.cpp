@@ -52,11 +52,36 @@ int main() {
   sim.init(cfg);
   gutibm_request_stop();
   sim.run();
+  assert(sim.termination_cause() == TerminationCause::StopRequested);
 
   hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   assert(file >= 0);
   assert(H5Lexists(file, "summary/step_000000/time", H5P_DEFAULT) > 0);
   H5Fclose(file);
+
+  const std::string incomplete_filename =
+      resolve_test_h5_path("GUTIBM_INCOMPLETE_H5", "incomplete_marker");
+  cfg.hdf5.filename = incomplete_filename;
+  {
+    Simulation incomplete;
+    incomplete.init(cfg);
+    incomplete.step(60.0);
+    assert(incomplete.termination_cause() ==
+           TerminationCause::IncompleteUnknown);
+  }
+  hid_t incomplete_file =
+      H5Fopen(incomplete_filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+  assert(incomplete_file >= 0);
+  hid_t incomplete_cause = H5Dopen2(
+      incomplete_file, "run_provenance/termination_cause_code", H5P_DEFAULT);
+  int32_t incomplete_code = -1;
+  assert(incomplete_cause >= 0);
+  assert(H5Dread(incomplete_cause, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+                 H5P_DEFAULT, &incomplete_code) >= 0);
+  H5Dclose(incomplete_cause);
+  H5Fclose(incomplete_file);
+  assert(incomplete_code == static_cast<int32_t>(
+      to_underlying(TerminationCause::IncompleteUnknown)));
 
   const std::string restart_output = filename + ".restart_output";
   cfg.hdf5.filename = restart_output;

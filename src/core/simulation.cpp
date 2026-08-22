@@ -536,6 +536,7 @@ void Simulation::init(const SimulationConfig& cfg) {
 
   // HDF5 output
   hdf5_.init(cfg.hdf5, domain_);
+  hdf5_.write_run_provenance(*this);
 
   // GPU acceleration
   gpu_set_config(cfg.gpu);
@@ -750,6 +751,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   qssa_.init(cfg.qssa, domain_, advection_);
   lineage_.init(cfg.time.output_interval);
   hdf5_.init(cfg.hdf5, domain_);
+  hdf5_.write_run_provenance(*this);
   fixes_ = FixRegistry::create_all(*this, cfg_);
   for (const auto& fix : fixes_) {
     fix->init();
@@ -944,8 +946,13 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     ensure_sized(flux.uptake_limited_interval);
     ensure_sized(flux.uptake_limited_step);
     ensure_sized(flux.uptake_limited_cumulative);
+    ensure_sized(flux.agent_uptake_last_step);
+    ensure_sized(flux.uptake_demand_last_step);
+    ensure_sized(flux.reaction_clip_last_step);
     ensure_sized(flux.maintenance_interval);
     ensure_sized(flux.maintenance_step);
+    ensure_sized(flux.maintenance_last_step);
+    ensure_sized(flux.maintenance_shortfall_last_step);
     ensure_sized(flux.maintenance_cumulative);
     ensure_sized(flux.maintenance_shortfall_interval);
     ensure_sized(flux.maintenance_shortfall_step);
@@ -1291,7 +1298,74 @@ bool Simulation::dysbiosis_threshold_exceeded(int rank) {
   return true;
 }
 
-void Simulation::run() {
+bool Simulation::closure_violation(std::string& detail) {
+  const bool delivery_mode =
+      cfg_.fixes.metabolism.uptake_limit == "delivery";
+  const bool delivery_gate = cfg_.closure.enforce_delivery_realization
+      && delivery_mode;
+  const bool reaction_gate = cfg_.closure.enforce_reaction_clip;
+  if (!delivery_gate && !reaction_gate) {
+    return false;
+  }
+  const Int carbon = chem_.find(species::CARBON);
+  bool local_violation = false;
+  if (carbon >= 0) {
+    const auto& flux = chem_.flux_accounting();
+    const Real demand = flux.uptake_demand_for_step(carbon)
+        + flux.maintenance_last_step[static_cast<size_t>(carbon)]
+        + flux.maintenance_shortfall_last_step[
+            static_cast<size_t>(carbon)];
+    const Real realized = flux.agent_uptake_for_step(carbon)
+        + flux.maintenance_last_step[static_cast<size_t>(carbon)];
+    if (delivery_gate) {
+      if (demand > 0.0 && realized == 0.0) {
+        ++zero_realization_steps_;
+      } else {
+        zero_realization_steps_ = 0;
+      }
+      if (zero_realization_steps_ >
+          cfg_.closure.zero_realization_grace_steps) {
+        local_violation = true;
+        detail = std::format(
+            "species=carbon step={} demand={} realized_removal={}",
+            clock_.step_count, demand, realized);
+      }
+    } else {
+      zero_realization_steps_ = 0;
+    }
+
+    if (reaction_gate && !local_violation) {
+      const Real clip = flux.reaction_clip_for_step(carbon);
+      const Real tolerance =
+          cfg_.closure.reaction_clip_tolerance_fraction *
+          std::max(demand, std::numeric_limits<Real>::epsilon());
+      if (clip > tolerance) {
+        local_violation = true;
+        detail = std::format(
+            "species=carbon step={} reaction_clip={} tolerance={}",
+            clock_.step_count, clip, tolerance);
+      }
+    }
+  }
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) return local_violation;
+  int global_violation = local_violation ? 1 : 0;
+  MPI_Allreduce(MPI_IN_PLACE, &global_violation, 1, MPI_INT, MPI_MAX,
+                MPI_COMM_WORLD);
+  if (global_violation != 0 && !local_violation) {
+    detail = "closure violation reported by another MPI rank";
+  }
+  return global_violation != 0;
+#else
+  return local_violation;
+#endif
+}
+
+int Simulation::run() {
   int rank = domain_.rank();
   Real last_dt = cfg_.time.bio_dt;
   bool stopped_for_population = false;
@@ -1314,10 +1388,18 @@ void Simulation::run() {
   }
 
   stopped_for_population = population_stop(rank);
+  termination_cause_ = stopped_for_population
+      ? TerminationCause::PopulationStop : TerminationCause::IncompleteUnknown;
+  termination_detail_ = stopped_for_population
+      ? "population stop threshold reached" : "run in progress";
 
   while (!stopped_for_population && !dysbiosis_.halted() &&
          clock_.time < cfg_.time.total_time) {
-    if (gutibm_stop_requested()) break;
+    if (gutibm_stop_requested()) {
+      termination_cause_ = TerminationCause::StopRequested;
+      termination_detail_ = "stop requested before next timestep";
+      break;
+    }
 
     Real dt = compute_adaptive_dt();
     last_dt = dt;
@@ -1329,8 +1411,13 @@ void Simulation::run() {
 
     maybe_write_restart();
 
-    // HDF5 cadence is controlled solely by hdf5.schedule.* (per-layer intervals).
+    // Persist the triggering step before a closure violation breaks the loop.
     write_hdf5_step(last_dt);
+
+    if (closure_violation(termination_detail_)) {
+      termination_cause_ = TerminationCause::ClosureViolation;
+      break;
+    }
 
     const auto wall_now = std::chrono::steady_clock::now();
     emit_heartbeat(wall_start, wall_now, next_heartbeat, heartbeat_emitted);
@@ -1344,9 +1431,26 @@ void Simulation::run() {
     stopped_for_population = population_stop(rank);
     if (!stopped_for_population) {
       const bool halted_for_dysbiosis = dysbiosis_threshold_exceeded(rank);
+      if (halted_for_dysbiosis) {
+        termination_cause_ = TerminationCause::DysbiosisGuard;
+        termination_detail_ = "dysbiosis guard threshold exceeded";
+      }
       if (halted_for_dysbiosis && hdf5_.is_enabled()) {
         hdf5_.write_halt_metadata(*this, clock_.step_count);
       }
+    } else {
+      termination_cause_ = TerminationCause::PopulationStop;
+      termination_detail_ = "population stop threshold reached";
+    }
+  }
+
+  if (termination_cause_ == TerminationCause::IncompleteUnknown) {
+    if (clock_.time >= cfg_.time.total_time) {
+      termination_cause_ = TerminationCause::HorizonReached;
+      termination_detail_ = "requested simulation horizon reached";
+    } else if (dysbiosis_.halted()) {
+      termination_cause_ = TerminationCause::DysbiosisGuard;
+      termination_detail_ = "dysbiosis guard threshold exceeded";
     }
   }
 
@@ -1358,6 +1462,8 @@ void Simulation::run() {
     write_restart_now();
   }
 
+  termination_wall_seconds_ = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - wall_start).count();
   if (hdf5_.is_enabled()) {
     hdf5_.write_run_termination(*this, clock_.step_count, clock_.time);
   }
@@ -1365,7 +1471,15 @@ void Simulation::run() {
 
   if (rank == 0) {
     Real retention = lineage_.resident_retention(cfg_.time.total_time * 0.5);
-    std::cout << "\nSimulation complete.\n"
+    const auto cause = termination_cause_name(termination_cause_);
+    const bool complete = termination_cause_ == TerminationCause::HorizonReached;
+    const std::string detail = complete
+        ? "" : "  detail=" + termination_detail_;
+    std::cout << "\nSimulation " << (complete ? "complete" : "ended early")
+              << ": cause=" << cause
+              << "  reached_time=" << clock_.time
+              << "s  requested_time=" << cfg_.time.total_time
+              << "s  step=" << clock_.step_count << detail << "\n"
               << "  Final global agents: " << mpi_ghost_.stats.global_agent_count << "\n"
               << "  Final global density: "
               << global_density_cells_per_mL(domain_, mpi_ghost_.stats.global_agent_count)
@@ -1378,6 +1492,7 @@ void Simulation::run() {
       print_step_profile();
     }
   }
+  return termination_cause_ == TerminationCause::ClosureViolation ? 1 : 0;
 }
 
 void Simulation::step(Real dt) {
@@ -1544,6 +1659,8 @@ void Simulation::module_chemistry(Real dt) {
 
   ChemistryPipelineInput pipeline{
       .gpu_active = gpu_.active,
+      .delivery_mode = cfg_.fixes.metabolism.uptake_limit_mode
+          == UptakeLimitMode::Delivery,
       .agents_gpu = gpu_.agents,
       .chem_gpu = gpu_.chem,
       .chem = chem_,

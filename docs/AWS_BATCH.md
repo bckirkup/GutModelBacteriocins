@@ -506,6 +506,9 @@ future leftovers.
 ### Phase Observability
 
 - [x] Progress lines: `pct` / `rate` / `eta_s` in `simulation.cpp`
+- [x] Authoritative run termination: audit `/run_provenance/termination_cause_code`
+  (and `termination_cause`/`termination_detail`) rather than inferring
+  completion from a log line; code `5` means the run is incomplete/unknown.
 - [x] S3 `status.json` heartbeat from `entry.sh`
 - [x] `gut-ibm-aws-status` + richer `04_watch_job.sh`
 - [x] `gut-ibm-aws-estimate` checked-in us-east-1 price table

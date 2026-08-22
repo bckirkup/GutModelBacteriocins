@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "hdf5_writer.h"
+#include "gutibm_git_sha.h"
 #include "path_utils.h"
 #include "simulation.h"
 #include "species_names.h"
@@ -228,14 +229,15 @@ void write_scalar_dataset(hid_t fid, const std::string& path, hid_t h5_type,
                           const void* value) {
   hsize_t one = 1;
   hid_t space = H5Screate_simple(1, &one, nullptr);
-  hid_t ds = H5Dcreate2(fid, path.c_str(), h5_type, space,
-                        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  if (ds < 0) {
-    H5Eclear2(H5E_DEFAULT);
-    ds = H5Dopen2(fid, path.c_str(), H5P_DEFAULT);
+  const bool exists = H5Lexists(fid, path.c_str(), H5P_DEFAULT) > 0;
+  hid_t ds = exists
+      ? H5Dopen2(fid, path.c_str(), H5P_DEFAULT)
+      : H5Dcreate2(fid, path.c_str(), h5_type, space,
+                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+  if (ds >= 0) {
+    H5Dwrite(ds, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, value);
+    H5Dclose(ds);
   }
-  H5Dwrite(ds, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, value);
-  H5Dclose(ds);
   H5Sclose(space);
 }
 
@@ -252,12 +254,11 @@ void write_string_dataset(hid_t fid, const std::string& path,
   hid_t type = H5Tcopy(H5T_C_S1);
   H5Tset_size(type, H5T_VARIABLE);
   hid_t space = H5Screate(H5S_SCALAR);
-  hid_t ds = H5Dcreate2(fid, path.c_str(), type, space,
-                        H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  if (ds < 0) {
-    H5Eclear2(H5E_DEFAULT);
-    ds = H5Dopen2(fid, path.c_str(), H5P_DEFAULT);
-  }
+  const bool exists = H5Lexists(fid, path.c_str(), H5P_DEFAULT) > 0;
+  hid_t ds = exists
+      ? H5Dopen2(fid, path.c_str(), H5P_DEFAULT)
+      : H5Dcreate2(fid, path.c_str(), type, space,
+                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
   const char* text = value.c_str();
   if (ds >= 0) H5Dwrite(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, &text);
   if (ds >= 0) H5Dclose(ds);
@@ -585,6 +586,18 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
   const int32_t rank_count = static_cast<int32_t>(mpi_nprocs_world());
   write_scalar_dataset(fid, "run_provenance/mpi_rank_count",
                        H5T_NATIVE_INT32, &rank_count);
+  const int32_t incomplete_code =
+      static_cast<int32_t>(to_underlying(TerminationCause::IncompleteUnknown));
+  write_scalar_dataset(fid, "run_provenance/termination_cause_code",
+                       H5T_NATIVE_INT32, &incomplete_code);
+  write_string_dataset(fid, "run_provenance/termination_cause",
+                       std::string(termination_cause_name(
+                           TerminationCause::IncompleteUnknown)));
+  write_string_dataset(fid, "run_provenance/termination_detail",
+                       "run has not completed");
+  const double wall_seconds = 0.0;
+  write_scalar_dataset(fid, "run_provenance/termination_wall_seconds",
+                       H5T_NATIVE_DOUBLE, &wall_seconds);
   const auto optional_env = [&fid](const char* name, const char* env_name) {
     if (const char* value = std::getenv(env_name);
         value != nullptr && value[0] != '\0') {
@@ -593,6 +606,7 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
   };
   optional_env("container_image_digest", "GUTIBM_IMAGE_DIGEST");
   optional_env("job_id", "AWS_BATCH_JOB_ID");
+  H5Fflush(fid, H5F_SCOPE_LOCAL);
   run_provenance_written_ = true;
 #else
   (void)sim;
@@ -639,6 +653,8 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
         sim.halted_for_dysbiosis() ? 1 : (completed_total_time != 0 ? 0 : 2);
     const int32_t termination_step = step;
     const double termination_time = time;
+    const int32_t cause_code = static_cast<int32_t>(
+        to_underlying(sim.termination_cause()));
     write_scalar_dataset(fid, "run_provenance/halt_reason_code",
                          H5T_NATIVE_INT32, &halt_reason);
     write_scalar_dataset(fid, "run_provenance/halt_density_cells_per_mL",
@@ -655,6 +671,16 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
                          H5T_NATIVE_INT32, &termination_step);
     write_scalar_dataset(fid, "run_provenance/termination_time",
                          H5T_NATIVE_DOUBLE, &termination_time);
+    write_scalar_dataset(fid, "run_provenance/termination_cause_code",
+                         H5T_NATIVE_INT32, &cause_code);
+    write_string_dataset(fid, "run_provenance/termination_cause",
+                         std::string(termination_cause_name(
+                             sim.termination_cause())));
+    write_string_dataset(fid, "run_provenance/termination_detail",
+                         sim.termination_detail());
+    const double wall_seconds = sim.termination_wall_seconds();
+    write_scalar_dataset(fid, "run_provenance/termination_wall_seconds",
+                         H5T_NATIVE_DOUBLE, &wall_seconds);
     H5Fflush(fid, H5F_SCOPE_LOCAL);
   }
   mpi_barrier(cfg_);

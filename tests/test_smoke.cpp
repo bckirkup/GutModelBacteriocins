@@ -92,6 +92,7 @@ void test_mini_simulation() {
   // Basic sanity checks
   assert(sim.time() > 0.0);
   assert(sim.step_count() > 0);
+  assert(sim.termination_cause() == TerminationCause::HorizonReached);
 
   // Should still have some agents alive
   Int alive = 0;
@@ -694,6 +695,7 @@ void test_population_stop_at_init() {
   assert(sim.step_count() == 0);
   assert(sim.time() == 0.0);
   assert(sim.global_agent_count() == 1);
+  assert(sim.termination_cause() == TerminationCause::PopulationStop);
 
   std::cout << "  test_population_stop_at_init: PASSED\n";
 }
@@ -747,6 +749,7 @@ void test_population_stop_after_extinction() {
   assert(sim.global_agent_count() <= 1);
   assert(sim.step_count() == 1);
   assert(sim.time() == 60.0);
+  assert(sim.termination_cause() == TerminationCause::PopulationStop);
 
   std::cout << "  test_population_stop_after_extinction: PASSED"
             << " (global_agents=" << sim.global_agent_count()

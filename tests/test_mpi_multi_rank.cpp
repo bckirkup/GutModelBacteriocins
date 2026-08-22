@@ -1345,6 +1345,48 @@ void test_multirank_immigration_ownership() {
   }
 }
 
+void test_multirank_closure_violation_is_synchronized() {
+  require_mpi_ranks(2);
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  SimulationConfig cfg = make_mpi_config(9191, 2);
+  cfg.time.total_time = 600.0;
+  cfg.time.output_interval = 600.0;
+  cfg.hdf5.enabled = false;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.closure.zero_realization_grace_steps = 1;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = 0.0;
+      chemical.boundary_conc = 0.0;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  const int status = sim.run();
+  int min_status = status;
+  int max_status = status;
+  MPI_Allreduce(&status, &min_status, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(&status, &max_status, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+  const Int local_step = sim.step_count();
+  Int min_step = local_step;
+  Int max_step = local_step;
+  MPI_Allreduce(&local_step, &min_step, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_step, &max_step, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+  assert(min_status == 1 && max_status == 1);
+  assert(min_step == 2 && max_step == 2);
+  assert(sim.termination_cause() == TerminationCause::ClosureViolation);
+  if (rank == 0) {
+    std::cout << "  test_multirank_closure_violation_is_synchronized: PASSED\n";
+  }
+}
+
 #endif  // GUTIBM_MPI
 
 }  // namespace
@@ -1376,6 +1418,7 @@ int main(int argc, char** argv) {
   test_multirank_simulation_steps();
   test_adaptive_dt_is_rank_identical();
   test_multirank_immigration_ownership();
+  test_multirank_closure_violation_is_synchronized();
 #ifdef GUTIBM_HDF5
   test_global_event_counter_reduction();
   test_population_ledger_closure();

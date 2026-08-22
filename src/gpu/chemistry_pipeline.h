@@ -21,6 +21,7 @@ class QSSASolver;
 
 struct ChemistryPipelineInput {
   bool gpu_active = false;
+  bool delivery_mode = false;
   AgentPoolGpu& agents_gpu;
   ChemicalFieldGpu& chem_gpu;
   ChemicalField& chem;
