@@ -1,5 +1,6 @@
 #include "gpu_kernels.h"
 #include "gpu_test_support.h"
+#include "metabolic_mode.h"
 #include "receptor_utils.h"
 #include "vbf_carbon_sink.h"
 
@@ -210,12 +211,18 @@ void test_grid_coupling() {
 
 struct MetabolismRun {
   double carbon_reaction = 0.0;
+  double carbon_reaction_agent1 = 0.0;
   double uptake = 0.0;
   double fepA_expression = 0.0;
   double noniron_expression = 0.0;
   double acetate_reaction = 0.0;
+  double acetate_reaction_agent1 = 0.0;
   double biomass = 0.0;
+  double biomass_agent1 = 0.0;
   double mu = 0.0;
+  double mu_agent1 = 0.0;
+  double fermentation_fraction = 0.0;
+  double fermentation_fraction_agent1 = 0.0;
   double demand = 0.0;
   double limited_agents = 0.0;
   double maintenance = 0.0;
@@ -228,7 +235,15 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
                              double iron_concentration = 1.0,
                              int uptake_limit_mode = 0,
                              double effective_diffusivity = 0.0,
-                             double carbon_maintenance_rate = 0.0) {
+                             double carbon_maintenance_rate = 0.0,
+                             bool metabolic_switch_enabled = false,
+                             double oxygen_concentration = 0.0,
+                             std::array<double, 2> initial_fermentation = {
+                                 0.0, 0.0},
+                             bool activate_second_agent = false,
+                             double acetate_concentration = 2.0,
+                             double acetate_scavenge_rate = 0.1,
+                             double maintenance_rate = 0.0) {
   constexpr int agents = 2;
   DeviceBuffer<double> concentration(kCells);
   DeviceBuffer<double> iron(kCells);
@@ -245,6 +260,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   DeviceBuffer<double> radius(agents);
   DeviceBuffer<double> mass(agents);
   DeviceBuffer<double> age(agents);
+  DeviceBuffer<double> fermentation_fraction(agents);
   DeviceBuffer<double> mu_max(agents);
   DeviceBuffer<double> km_b12(agents);
   DeviceBuffer<double> km_carbon(agents);
@@ -263,9 +279,10 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   concentration.upload(std::vector<double>(kCells, 1.0));
   iron.upload(std::vector<double>(kCells, iron_concentration));
   b12.upload(std::vector<double>(kCells, 1.0));
-  acetate.upload(std::vector<double>(kCells, acetate_enabled ? 2.0 : 0.0));
+  acetate.upload(std::vector<double>(
+      kCells, acetate_enabled ? acetate_concentration : 0.0));
   eut.upload(std::vector<double>(kCells, 0.0));
-  oxygen.upload(std::vector<double>(kCells, 0.0));
+  oxygen.upload(std::vector<double>(kCells, oxygen_concentration));
   reaction_carbon.upload(std::vector<double>(kCells, seed));
   reaction_iron.upload(std::vector<double>(kCells, 0.5));
   reaction_b12.upload(std::vector<double>(kCells, 0.0));
@@ -275,6 +292,8 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   radius.upload(std::vector<double>(agents, 1.0));
   mass.upload(std::vector<double>(agents, 1.0));
   age.upload(std::vector<double>(agents, 0.0));
+  fermentation_fraction.upload(std::vector<double>{
+      initial_fermentation[0], initial_fermentation[1]});
   mu_max.upload(std::vector<double>(agents, maximum_growth));
   km_b12.upload(std::vector<double>(agents, 0.1));
   km_carbon.upload(std::vector<double>(agents, 0.1));
@@ -288,8 +307,10 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
         gutibm::is_iron_receptor(receptor) ? 1 : 0;
   }
   iron_receptor.upload(iron_receptor_flags);
-  cells.upload(std::vector<int>{4, -1});
-  state.upload(std::vector<int>{0, 3});
+  cells.upload(activate_second_agent ? std::vector<int>{4, 5}
+                                     : std::vector<int>{4, -1});
+  state.upload(activate_second_agent ? std::vector<int>{0, 0}
+                                     : std::vector<int>{0, 3});
   loci.upload(std::vector<int>(agents, 0));
   amelioration.upload(std::vector<double>(agents, 0.0));
   uptake.upload(std::vector<double>(4, 0.0));
@@ -301,17 +322,20 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       oxygen.data(), reaction_carbon.data(), reaction_iron.data(),
       reaction_b12.data(), reaction_acetate.data(),
       mu.data(), biomass.data(), radius.data(), mass.data(), age.data(),
-      cells.data(), state.data(), mu_max.data(), km_b12.data(),
+      fermentation_fraction.data(), cells.data(), state.data(), mu_max.data(),
+      km_b12.data(),
       km_carbon.data(), receptor.data(), receptor_base.data(), ligand.data(),
       iron_receptor.data(), loci.data(),
       amelioration.data(), agents, agents, agents, gutibm::NUM_RECEPTORS,
       1.0, 1.0, 1.0,
       0.1, 0.1, 0.1, 0.1,
-      0.0, 0.0, 1.0, carbon_maintenance_rate, 0.0, 0.0, 0.2,
+      maintenance_rate, 0.0, 1.0, carbon_maintenance_rate, 0.0, 0.0, 0.2,
       0.1, 0.1, 0.1,
       1, 1, 1, fur_enabled ? 1 : 0, 1.0e-5, 10.0, 5.0,
-      acetate_enabled ? 1 : 0, 3.0e-4, 0.25, 0.1, 2.0,
-      0, 0.0, 1.0, uptake.data(),
+      acetate_enabled ? 1 : 0, 3.0e-4, 0.25, acetate_scavenge_rate, 2.0,
+      metabolic_switch_enabled ? 1 : 0, 0.0, 1.0,
+      metabolic_switch_enabled ? 1 : 0, 3.0e-4, 1.0, 0.55, 1.0, 4.1,
+      0.0, 1.0, 15.0, 0, 0.8, 50.0, 4.76, 7.0, uptake.data(),
       maintenance_available.data(),
       uptake_limit_mode, effective_diffusivity, effective_diffusivity,
       uptake_limit.data(),
@@ -323,12 +347,28 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       download(receptor, gutibm::NUM_RECEPTORS * agents);
   const auto biomass_result = download(biomass, agents);
   const auto mu_result = download(mu, agents);
+  const auto fermentation_result = download(fermentation_fraction, agents);
   const auto uptake_host = download(uptake, 4);
   const auto uptake_limit_host = download(uptake_limit, 4);
-  return {reaction[4], uptake_host[0], expression[1 * agents],
-          expression[0], acetate_result[4], biomass_result[0], mu_result[0],
-          uptake_limit_host[0], uptake_limit_host[2], uptake_host[2],
-          uptake_host[3]};
+  MetabolismRun result;
+  result.carbon_reaction = reaction[4];
+  result.carbon_reaction_agent1 = reaction[5];
+  result.uptake = uptake_host[0];
+  result.fepA_expression = expression[1 * agents];
+  result.noniron_expression = expression[0];
+  result.acetate_reaction = acetate_result[4];
+  result.acetate_reaction_agent1 = acetate_result[5];
+  result.biomass = biomass_result[0];
+  result.biomass_agent1 = biomass_result[1];
+  result.mu = mu_result[0];
+  result.mu_agent1 = mu_result[1];
+  result.fermentation_fraction = fermentation_result[0];
+  result.fermentation_fraction_agent1 = fermentation_result[1];
+  result.demand = uptake_limit_host[0];
+  result.limited_agents = uptake_limit_host[2];
+  result.maintenance = uptake_host[2];
+  result.maintenance_shortfall = uptake_host[3];
+  return result;
 }
 
 void test_metabolism() {
@@ -340,6 +380,18 @@ void test_metabolism() {
   const MetabolismRun high = run_metabolism(0.0, 2.0e-3);
   assert(low.uptake < zero_seed.uptake);
   assert(zero_seed.uptake < high.uptake);
+}
+
+void test_metabolism_negative_mu() {
+  const MetabolismRun result = run_metabolism(
+      0.0, 1.0e-3, false, false, 1.0, 0, 0.0, 0.0, false, 0.0,
+      std::array<double, 2>{0.0, 0.0}, false, 2.0, 0.1, 2.0e-3);
+  assert(std::isfinite(result.mu));
+  assert(result.mu < 0.0);
+  assert(std::isfinite(result.biomass));
+  assert(result.biomass < 1.0);
+  assert(close(result.carbon_reaction, 0.0));
+  assert(close(result.uptake, 0.0));
 }
 
 void test_metabolism_uptake_limit() {
@@ -710,20 +762,105 @@ void test_o2_depletion() {
   constexpr int storage_cells = storage_nx * kNy * kNz;
   DeviceBuffer<double> reaction(storage_cells);
   DeviceBuffer<double> mu(2);
+  DeviceBuffer<double> fermentation_fraction(2);
   DeviceBuffer<int> cells(2);
   DeviceBuffer<int> state(2);
   reaction.upload(std::vector<double>(storage_cells, 0.0));
   mu.upload(std::vector<double>{1.0, 1.0});
+  fermentation_fraction.upload(std::vector<double>{0.0, 0.0});
   cells.upload(std::vector<int>{1, 1});
   state.upload(std::vector<int>{0, 0});
   gutibm::gpu::launch_o2_depletion_kernel(
-      reaction.data(), mu.data(), cells.data(), state.data(), 2, 0.5, 0.1, 1.0,
-      kNx, kNy, storage_nx, 1, 3, 1, nullptr);
+      reaction.data(), mu.data(), fermentation_fraction.data(), cells.data(),
+      state.data(), 2, 0.5, 0.1, 0, 1.0, kNx, kNy, storage_nx, 1, 3, 1,
+      nullptr);
   synchronize();
   const auto result = download(reaction, storage_cells);
   // Change-detector: two agents each consume 0.5*1.0+0.1 = 0.6.
   assert(close(result[1], -1.2));
   assert(result[1] < 0.0);
+}
+
+void test_o2_depletion_metabolic_mode() {
+  constexpr int storage_nx = 6;
+  constexpr int storage_cells = storage_nx * kNy * kNz;
+  constexpr double q_consumption = 0.5;
+  constexpr double q_maintenance = 0.1;
+  constexpr double mu = 1.0;
+  DeviceBuffer<double> reaction(storage_cells);
+  DeviceBuffer<double> mu_realized(3);
+  DeviceBuffer<double> fermentation_fraction(3);
+  DeviceBuffer<int> cells(3);
+  DeviceBuffer<int> state(3);
+  reaction.upload(std::vector<double>(storage_cells, 0.0));
+  mu_realized.upload(std::vector<double>(3, mu));
+  fermentation_fraction.upload(std::vector<double>{0.0, 0.5, 1.0});
+  cells.upload(std::vector<int>{1, 2, 3});
+  state.upload(std::vector<int>(3, 0));
+  gutibm::gpu::launch_o2_depletion_kernel(
+      reaction.data(), mu_realized.data(), fermentation_fraction.data(),
+      cells.data(), state.data(), 3, q_consumption, q_maintenance, 1, 1.0,
+      kNx, kNy, storage_nx, 0, kNx, 0, nullptr);
+  synchronize();
+  const auto result = download(reaction, storage_cells);
+  const double expected_aerobic = -(q_consumption * mu + q_maintenance);
+  const double expected_overflow =
+      -(q_consumption * mu * 0.5 + q_maintenance);
+  const double expected_fermentative = -q_maintenance;
+  assert(std::isfinite(result[1]));
+  assert(std::isfinite(result[2]));
+  assert(std::isfinite(result[3]));
+  assert(result[1] < result[2]);
+  assert(result[2] < result[3]);
+  assert(close(result[1], expected_aerobic));
+  assert(close(result[2], expected_overflow));
+  assert(close(result[3], expected_fermentative));
+}
+
+void test_metabolism_metabolic_mode() {
+  const std::array<double, 2> fractions{0.25, 0.75};
+  const MetabolismRun result = run_metabolism(
+      0.0, 1.0e-3, false, true, 1.0, 0, 0.0, 0.0, true, 0.0,
+      fractions, true, 0.0, 0.0);
+  const double aerobic_cost = gutibm::metabolic_mode::interpolate(
+      1.0, 4.1, result.fermentation_fraction);
+  const double fermentative_cost = gutibm::metabolic_mode::interpolate(
+      1.0, 4.1, result.fermentation_fraction_agent1);
+  const double aerobic_growth = result.biomass - 1.0;
+  const double fermentative_growth = result.biomass_agent1 - 1.0;
+  assert(aerobic_growth > 0.0);
+  assert(fermentative_growth > 0.0);
+  assert(result.fermentation_fraction >= 0.0);
+  assert(result.fermentation_fraction <= 1.0);
+  assert(result.fermentation_fraction_agent1 >= 0.0);
+  assert(result.fermentation_fraction_agent1 <= 1.0);
+  const double aerobic_observed_cost =
+      -result.carbon_reaction / aerobic_growth / 0.1;
+  const double fermentative_observed_cost =
+      -result.carbon_reaction_agent1 / fermentative_growth / 0.1;
+  assert(std::isfinite(aerobic_observed_cost));
+  assert(std::isfinite(fermentative_observed_cost));
+  assert(aerobic_observed_cost >= 0.0);
+  assert(fermentative_observed_cost >= 0.0);
+  assert(close(aerobic_observed_cost, aerobic_cost));
+  assert(close(fermentative_observed_cost, fermentative_cost));
+  assert(fermentative_observed_cost > aerobic_observed_cost);
+  const double aerobic_acid_per_growth =
+      result.acetate_reaction / aerobic_growth;
+  const double fermentative_acid_per_growth =
+      result.acetate_reaction_agent1 / fermentative_growth;
+  assert(std::isfinite(aerobic_acid_per_growth));
+  assert(std::isfinite(fermentative_acid_per_growth));
+  assert(aerobic_acid_per_growth >= 0.0);
+  assert(fermentative_acid_per_growth >= 0.0);
+  assert(aerobic_acid_per_growth <= 0.1 * aerobic_cost);
+  assert(fermentative_acid_per_growth <= 0.1 * fermentative_cost);
+  assert(close(aerobic_acid_per_growth,
+               result.fermentation_fraction * 0.1 * aerobic_cost));
+  assert(close(fermentative_acid_per_growth,
+               result.fermentation_fraction_agent1 * 0.1
+                   * fermentative_cost));
+  assert(fermentative_acid_per_growth > aerobic_acid_per_growth);
 }
 
 void test_spatial_hash() {
@@ -937,12 +1074,15 @@ int main() {
   run_case("launch_apply_boundaries_kernel", test_apply_boundaries);
   run_case("launch_grid_coupling_kernel", test_grid_coupling);
   run_case("launch_metabolism_kernel", test_metabolism);
+  run_case("launch_metabolism_kernel negative mu", test_metabolism_negative_mu);
   run_case("launch_metabolism_kernel uptake limit",
            test_metabolism_uptake_limit);
   run_case("launch_metabolism_kernel carbon maintenance",
            test_metabolism_maintenance);
   run_case("launch_metabolism_kernel Fur", test_metabolism_fur);
   run_case("launch_metabolism_kernel acetate", test_metabolism_acetate);
+  run_case("launch_metabolism_kernel metabolic mode",
+           test_metabolism_metabolic_mode);
   run_case("launch_diffuse_x_periodic", test_diffuse_x_periodic);
   run_case("launch_diffuse_y_periodic", test_diffuse_y_periodic);
   run_case("launch_diffuse_z_bounded", test_diffuse_z_bounded);
@@ -956,6 +1096,8 @@ int main() {
   run_case("launch_vbf_coupling_kernel implicit carbon sink",
            test_vbf_implicit_carbon_sink);
   run_case("launch_o2_depletion_kernel", test_o2_depletion);
+  run_case("launch_o2_depletion_kernel metabolic mode",
+           test_o2_depletion_metabolic_mode);
   run_case("launch_spatial_hash_build_kernel", test_spatial_hash);
   run_case("launch_mechanics_clear_kernel", test_mechanics_clear);
   run_case("launch_mechanics_forces_kernel", test_mechanics_forces);
