@@ -82,9 +82,17 @@ struct FixPluginsConfig {
   MechanicsConfig mechanics;
 };
 
+struct ClosureConfig {
+  bool enforce_delivery_realization = true;
+  Int zero_realization_grace_steps = 5;
+  bool enforce_reaction_clip = false;
+  Real reaction_clip_tolerance_fraction = 0.0;
+};
+
 struct SimulationConfig {
   TimeControlConfig time;
   AdaptiveTimestepConfig adaptive_dt;
+  ClosureConfig closure;
 
   DomainConfig domain;
   // Chemistry layout selector; stage 2a retains global storage in both modes.

@@ -34,7 +34,23 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
         provenance.create_dataset(
             "halt_density_cells_per_mL", data=np.array(0.0, dtype=np.float64)
         )
-        provenance.create_dataset("completed_total_time", data=np.array(1, dtype=np.int32))
+        provenance.create_dataset(
+            "completed_total_time", data=np.array(1, dtype=np.int32)
+        )
+        provenance.create_dataset(
+            "termination_cause_code", data=np.array(0, dtype=np.int32)
+        )
+        provenance.create_dataset("termination_cause", data="horizon_reached")
+        provenance.create_dataset("termination_detail", data="test horizon")
+        provenance.create_dataset(
+            "termination_wall_seconds", data=np.array(1.25, dtype=np.float64)
+        )
+        provenance.create_dataset(
+            "termination_step", data=np.array(n_steps - 1, dtype=np.int32)
+        )
+        provenance.create_dataset(
+            "termination_time", data=np.array((n_steps - 1) * 3600.0)
+        )
 
         for step_idx in range(n_steps):
             step_name = f"step_{step_idx:06d}"

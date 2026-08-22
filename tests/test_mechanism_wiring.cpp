@@ -395,6 +395,8 @@ void test_dysbiosis_halt() {
       static_cast<Real>(sim_halt.agents().size()) / (5.0e-13 * 1.0e6);
   expect(sim_halt.halted_for_dysbiosis(),
          "dysbiosis run must record the halt");
+  expect(sim_halt.termination_cause() == TerminationCause::DysbiosisGuard,
+         "dysbiosis run must record its termination cause");
   expect(std::abs(sim_halt.halt_density_cells_per_mL() - expected_density)
              < 1.0e-9 * expected_density,
          "dysbiosis density must use cubic metres to millilitres conversion");
@@ -497,19 +499,27 @@ void test_dysbiosis_halt() {
       control, "run_provenance/halt_reason_code", H5P_DEFAULT);
   hid_t control_completed = H5Dopen2(
       control, "run_provenance/completed_total_time", H5P_DEFAULT);
+  hid_t control_cause = H5Dopen2(
+      control, "run_provenance/termination_cause_code", H5P_DEFAULT);
   int32_t control_reason_value = 1;
   int32_t control_completed_value = 0;
-  expect(control_reason >= 0 && control_completed >= 0,
+  int32_t control_cause_value = -1;
+  expect(control_reason >= 0 && control_completed >= 0 && control_cause >= 0,
          "completed output must contain termination metadata");
   H5Dread(control_reason, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
           H5P_DEFAULT, &control_reason_value);
   H5Dread(control_completed, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
           H5P_DEFAULT, &control_completed_value);
+  H5Dread(control_cause, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL,
+          H5P_DEFAULT, &control_cause_value);
   H5Dclose(control_reason);
   H5Dclose(control_completed);
+  H5Dclose(control_cause);
   H5Fclose(control);
   expect(control_reason_value == 0 && control_completed_value == 1,
          "completed output must record the unhalted full-horizon case");
+  expect(control_cause_value == 0,
+         "completed output must record horizon termination cause");
 #endif
 
   std::cout << "  test_dysbiosis_halt: PASSED"

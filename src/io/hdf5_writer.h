@@ -48,6 +48,7 @@ class HDF5Writer {
   void init(const HDF5Config& cfg, const class Domain& domain);
   void write_step(Simulation& sim, Int step, Real time, Real dt) const;
   void write_halt_metadata(const Simulation& sim, Int step) const;
+  void write_run_provenance(const Simulation& sim) const;
   void write_run_termination(const Simulation& sim, Int step, Real time) const;
   void finalize();
 
@@ -74,7 +75,6 @@ class HDF5Writer {
   void write_lineage_layer(const Simulation& sim, const std::string& step_group) const;
   void write_genome_layer(const Simulation& sim, const std::string& step_group) const;
   void write_provenance_layer(Simulation& sim, const std::string& step_group) const;
-  void write_run_provenance(const Simulation& sim) const;
   std::vector<const struct Agent*> output_agents(const Simulation& sim) const;
 
   HDF5Config cfg_;

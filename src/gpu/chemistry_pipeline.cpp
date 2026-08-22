@@ -77,8 +77,10 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   const Int iron = in.chem.find(species::IRON);
   const Int oxygen = in.chem.find(species::OXYGEN);
   VbfFluxTotals vbf_totals;
-  in.chem.sum_agent_uptake_across_ranks();
-  in.chem.flux_accounting().commit_agent_uptake_step();
+  if (!in.delivery_mode) {
+    in.chem.sum_agent_uptake_across_ranks();
+    in.chem.flux_accounting().commit_agent_uptake_step();
+  }
   bool applied_vbf_on_gpu = false;
   if (in.gpu_active && !reactions_on_device) {
     in.chem_gpu.sync_reactions_to_device(in.chem);

@@ -545,6 +545,27 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return static_cast<long long>(c.dysbiosis_sample_count);
                 }));
+  add_ns_bool(v, "closure.enforce_delivery_realization",
+              "closure_enforce_delivery_realization",
+              [](const SimulationConfig& c) {
+                return c.closure.enforce_delivery_realization;
+              });
+  add_ns_int(v, "closure.zero_realization_grace_steps",
+             "closure_zero_realization_grace_steps",
+             [](const SimulationConfig& c) {
+               return static_cast<long long>(
+                   c.closure.zero_realization_grace_steps);
+             });
+  add_ns_bool(v, "closure.enforce_reaction_clip",
+              "closure_enforce_reaction_clip",
+              [](const SimulationConfig& c) {
+                return c.closure.enforce_reaction_clip;
+              });
+  add_ns_real(v, "closure.reaction_clip_tolerance_fraction",
+              "closure_reaction_clip_tolerance_fraction",
+              [](const SimulationConfig& c) {
+                return c.closure.reaction_clip_tolerance_fraction;
+              });
 
   // ── Oxygen (Spec 1) ───────────────────────────────────────────────────────
   add_ns_bool(v, "oxygen.enabled", "oxygen_enabled", [](const SimulationConfig& c) { return c.chem_env.oxygen.enabled; });
@@ -696,7 +717,7 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
-      "advection", "washout", "bacteriocin", "mucin_charge",
+      "advection", "washout", "closure", "bacteriocin", "mucin_charge",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity", "receptor_expression", "receptor_genotype", "receptors",

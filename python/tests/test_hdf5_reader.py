@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pytest
+
 from gut_ibm_tools import GutIBMData
 
 
@@ -57,6 +60,56 @@ def test_get_grid_and_metadata(sample_hdf5: Path) -> None:
         assert summary["halt_density_cells_per_mL"] == pytest.approx(0.0)
         provenance = data.get_run_provenance()
         assert provenance["completed_total_time"] == 1
+
+
+def test_get_termination_audit_horizon(sample_hdf5: Path) -> None:
+    with GutIBMData(sample_hdf5) as data:
+        audit = data.get_termination_audit()
+    assert audit["reached_horizon"] is True
+    assert audit["cause_code"] == 0
+    assert audit["cause"] == "horizon_reached"
+    assert audit["detail"] == "test horizon"
+    assert audit["step"] == 1
+    assert audit["time"] == pytest.approx(3600.0)
+
+
+def test_get_termination_audit_non_horizon_and_incomplete(
+    sample_hdf5: Path, tmp_path: Path
+) -> None:
+    output = tmp_path / "audit.h5"
+    shutil.copy2(sample_hdf5, output)
+    with h5py.File(output, "r+") as handle:
+        provenance = handle["run_provenance"]
+        del provenance["termination_cause_code"]
+        provenance.create_dataset(
+            "termination_cause_code", data=np.array(3, dtype=np.int32)
+        )
+        del provenance["termination_cause"]
+        provenance.create_dataset("termination_cause", data="stop_requested")
+        del provenance["termination_detail"]
+        provenance.create_dataset(
+            "termination_detail", data="stop requested before next timestep"
+        )
+    with GutIBMData(output) as data:
+        audit = data.get_termination_audit()
+    assert audit["reached_horizon"] is False
+    assert audit["cause_code"] == 3
+    assert audit["cause"] == "stop_requested"
+    assert audit["detail"] == "stop requested before next timestep"
+
+    with h5py.File(output, "r+") as handle:
+        provenance = handle["run_provenance"]
+        del provenance["termination_cause_code"]
+        provenance.create_dataset(
+            "termination_cause_code", data=np.array(5, dtype=np.int32)
+        )
+        del provenance["termination_cause"]
+        provenance.create_dataset("termination_cause", data="incomplete_unknown")
+    with GutIBMData(output) as data:
+        audit = data.get_termination_audit()
+    assert audit["reached_horizon"] is False
+    assert audit["cause_code"] == 5
+    assert audit["cause"] == "incomplete_unknown"
 
 
 def test_get_lineage(sample_hdf5: Path) -> None:

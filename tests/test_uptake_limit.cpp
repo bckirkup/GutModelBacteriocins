@@ -754,6 +754,51 @@ void test_delivery_gradient_inertness_change_detectors() {
   std::cout << "  test_delivery_gradient_inertness_change_detectors: PASSED\n";
 }
 
+void test_delivery_zero_realization_closure() {
+  SimulationConfig cfg = base_config();
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.time.total_time = 600.0;
+  cfg.time.output_interval = 600.0;
+  cfg.closure.zero_realization_grace_steps = 1;
+  cfg.initial_strains.front().count = 2;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = 0.0;
+      chemical.boundary_conc = 0.0;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  const int status = sim.run();
+  assert(status != 0);
+  assert(sim.termination_cause() == TerminationCause::ClosureViolation);
+  assert(sim.step_count() == 2);
+  std::cout << "  test_delivery_zero_realization_closure: PASSED\n";
+}
+
+void test_none_mode_clip_does_not_close_by_default() {
+  SimulationConfig cfg = base_config();
+  cfg.initial_strains.front().count = 2;
+  cfg.fixes.metabolism.uptake_limit = "none";
+  cfg.time.total_time = 60.0;
+  cfg.time.output_interval = 60.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = 1.0e-12;
+      chemical.boundary_conc = 1.0e-12;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  assert(sim.run() == 0);
+  assert(sim.termination_cause() == TerminationCause::HorizonReached);
+  std::cout << "  test_none_mode_clip_does_not_close_by_default: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -774,6 +819,8 @@ int main() {
   test_delivery_gradient_depletes_below_background();
   test_delivery_gradient_sensitivity();
   test_delivery_gradient_inertness_change_detectors();
+  test_delivery_zero_realization_closure();
+  test_none_mode_clip_does_not_close_by_default();
   std::cout << "All uptake limitation tests passed.\n";
   return 0;
 }

@@ -67,11 +67,11 @@ int main(int argc, char** argv) {
   } else {
     sim.init(cfg);
   }
-  sim.run();
+  const int exit_code = sim.run();
 
 #ifdef GUTIBM_MPI
   MPI_Finalize();
 #endif
 
-  return 0;
+  return exit_code;
 }

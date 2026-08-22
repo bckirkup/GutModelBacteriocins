@@ -122,8 +122,30 @@ class GutIBMData:
         result: dict[str, Any] = {}
         for name, dataset in group.items():
             value = np.array(dataset)
-            result[name] = value.item() if value.ndim == 0 else value
+            value = value.item() if value.ndim == 0 else value
+            if isinstance(value, bytes):
+                value = value.decode("utf-8")
+            result[name] = value
         return result
+
+    def get_termination_audit(self) -> dict[str, Any]:
+        """Return the authoritative horizon and termination assessment."""
+        provenance = self.get_run_provenance()
+        code = int(provenance.get("termination_cause_code", 5))
+        cause = provenance.get("termination_cause", "incomplete_unknown")
+        detail = provenance.get("termination_detail", "")
+        if isinstance(cause, bytes):
+            cause = cause.decode("utf-8")
+        if isinstance(detail, bytes):
+            detail = detail.decode("utf-8")
+        return {
+            "reached_horizon": code == 0,
+            "cause_code": code,
+            "cause": cause,
+            "detail": detail,
+            "step": provenance.get("termination_step"),
+            "time": provenance.get("termination_time"),
+        }
 
     def get_agents(self, step: str) -> dict[str, np.ndarray]:
         """Return agent arrays for a given step."""

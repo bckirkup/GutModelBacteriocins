@@ -42,6 +42,22 @@ void assert_run_provenance(hid_t file,
   assert(gutibm::test::hdf5_dataset_exists(file, "run_provenance/version"));
   assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/mpi_rank_count"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/termination_cause_code"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/termination_cause"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/termination_detail"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/termination_wall_seconds"));
+  assert(gutibm::test::hdf5_read_scalar<int32_t>(
+             file, "run_provenance/termination_cause_code",
+             H5T_NATIVE_INT32) == 0);
+  assert(read_string_dataset(file, "run_provenance/termination_cause") ==
+         "horizon_reached");
+  assert(gutibm::test::hdf5_read_scalar<double>(
+             file, "run_provenance/termination_wall_seconds",
+             H5T_NATIVE_DOUBLE) >= 0.0);
   const std::string content =
       read_string_dataset(file, "run_provenance/resolved_config");
   gutibm::SimulationConfig restored = gutibm::InputParser::default_config();
