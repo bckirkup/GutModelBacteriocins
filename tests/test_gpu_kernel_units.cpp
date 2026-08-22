@@ -218,6 +218,8 @@ struct MetabolismRun {
   double mu = 0.0;
   double demand = 0.0;
   double limited_agents = 0.0;
+  double maintenance = 0.0;
+  double maintenance_shortfall = 0.0;
 };
 
 MetabolismRun run_metabolism(double seed, double maximum_growth,
@@ -225,7 +227,8 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
                              bool acetate_enabled = false,
                              double iron_concentration = 1.0,
                              int uptake_limit_mode = 0,
-                             double effective_diffusivity = 0.0) {
+                             double effective_diffusivity = 0.0,
+                             double carbon_maintenance_rate = 0.0) {
   constexpr int agents = 2;
   DeviceBuffer<double> concentration(kCells);
   DeviceBuffer<double> iron(kCells);
@@ -253,7 +256,8 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   DeviceBuffer<int> state(agents);
   DeviceBuffer<int> loci(agents);
   DeviceBuffer<double> amelioration(agents);
-  DeviceBuffer<double> uptake(2);
+  DeviceBuffer<double> uptake(4);
+  DeviceBuffer<double> maintenance_available(kCells);
   DeviceBuffer<double> uptake_limit(4);
 
   concentration.upload(std::vector<double>(kCells, 1.0));
@@ -288,7 +292,8 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   state.upload(std::vector<int>{0, 3});
   loci.upload(std::vector<int>(agents, 0));
   amelioration.upload(std::vector<double>(agents, 0.0));
-  uptake.upload(std::vector<double>(2, 0.0));
+  uptake.upload(std::vector<double>(4, 0.0));
+  maintenance_available.upload(std::vector<double>(kCells, 1.0));
   uptake_limit.upload(std::vector<double>(4, 0.0));
 
   gutibm::gpu::launch_metabolism_kernel(
@@ -302,11 +307,12 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       amelioration.data(), agents, agents, agents, gutibm::NUM_RECEPTORS,
       1.0, 1.0, 1.0,
       0.1, 0.1, 0.1, 0.1,
-      0.0, 0.0, 1.0, 0.0, 0.0, 0.2,
+      0.0, 0.0, 1.0, carbon_maintenance_rate, 0.0, 0.0, 0.2,
       0.1, 0.1, 0.1,
       1, 1, 1, fur_enabled ? 1 : 0, 1.0e-5, 10.0, 5.0,
       acetate_enabled ? 1 : 0, 3.0e-4, 0.25, 0.1, 2.0,
       0, 0.0, 1.0, uptake.data(),
+      maintenance_available.data(),
       uptake_limit_mode, effective_diffusivity, effective_diffusivity,
       uptake_limit.data(),
       kNx, kNy, kNx, 0, kNx, 0, nullptr);
@@ -317,11 +323,12 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       download(receptor, gutibm::NUM_RECEPTORS * agents);
   const auto biomass_result = download(biomass, agents);
   const auto mu_result = download(mu, agents);
-  const auto uptake_host = download(uptake, 2);
+  const auto uptake_host = download(uptake, 4);
   const auto uptake_limit_host = download(uptake_limit, 4);
   return {reaction[4], uptake_host[0], expression[1 * agents],
           expression[0], acetate_result[4], biomass_result[0], mu_result[0],
-          uptake_limit_host[0], uptake_limit_host[2]};
+          uptake_limit_host[0], uptake_limit_host[2], uptake_host[2],
+          uptake_host[3]};
 }
 
 void test_metabolism() {
@@ -350,6 +357,14 @@ void test_metabolism_uptake_limit() {
   assert(capped.mu < unlimited.mu);
   assert(voxel.uptake >= capped.uptake);
   assert(voxel.uptake <= unlimited.uptake);
+}
+
+void test_metabolism_maintenance() {
+  const MetabolismRun result = run_metabolism(
+      0.0, 0.0, false, false, 1.0, 0, 0.0, 1.0e-2);
+  assert(result.maintenance > 0.0);
+  assert(result.carbon_reaction < 0.0);
+  assert(result.maintenance_shortfall == 0.0);
 }
 
 void test_metabolism_fur() {
@@ -924,6 +939,8 @@ int main() {
   run_case("launch_metabolism_kernel", test_metabolism);
   run_case("launch_metabolism_kernel uptake limit",
            test_metabolism_uptake_limit);
+  run_case("launch_metabolism_kernel carbon maintenance",
+           test_metabolism_maintenance);
   run_case("launch_metabolism_kernel Fur", test_metabolism_fur);
   run_case("launch_metabolism_kernel acetate", test_metabolism_acetate);
   run_case("launch_diffuse_x_periodic", test_diffuse_x_periodic);

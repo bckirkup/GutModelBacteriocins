@@ -643,6 +643,12 @@ void ChemicalField::sum_agent_uptake_across_ranks() {
                 flux_accounting_.agent_uptake_step.data(), nspec_,
                 MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE,
+                flux_accounting_.maintenance_step.data(), nspec_,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE,
+                flux_accounting_.maintenance_shortfall_step.data(), nspec_,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE,
                 flux_accounting_.uptake_demand_step.data(), nspec_,
                 MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(MPI_IN_PLACE,

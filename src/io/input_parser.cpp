@@ -1012,6 +1012,12 @@ bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std
   if (key == "division_threshold")      { cfg.fixes.metabolism.division_threshold = parse_config_real(key, val); return true; }
   if (key == "bacteriostasis_threshold") { cfg.fixes.metabolism.bacteriostasis_threshold = parse_config_real(key, val); return true; }
   if (key == "maintenance_rate")        { cfg.fixes.metabolism.maintenance_rate = parse_config_real(key, val); return true; }
+  if (key == "carbon_maintenance_rate"
+      || key == "metabolism.carbon_maintenance_rate") {
+    cfg.fixes.metabolism.carbon_maintenance_rate =
+        parse_config_real(key, val);
+    return true;
+  }
   if (key == "metE_penalty")            { cfg.fixes.metabolism.metE_penalty = parse_config_real(key, val); return true; }
   if (key == "metE_acetate_km")         { cfg.fixes.metabolism.metE_acetate_km = parse_config_real(key, val); return true; }
   if (key == "metE_acetate_max_factor") { cfg.fixes.metabolism.metE_acetate_max_factor = parse_config_real(key, val); return true; }

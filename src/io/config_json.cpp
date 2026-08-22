@@ -886,6 +886,8 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("division_threshold", cfg.fixes.metabolism.division_threshold);
   real_key("bacteriostasis_threshold", cfg.fixes.metabolism.bacteriostasis_threshold);
   real_key("maintenance_rate", cfg.fixes.metabolism.maintenance_rate);
+  real_key("carbon_maintenance_rate",
+           cfg.fixes.metabolism.carbon_maintenance_rate);
   real_key("metE_penalty", cfg.fixes.metabolism.metE_penalty);
   real_key("metE_acetate_km", cfg.fixes.metabolism.metE_acetate_km);
   real_key("metE_acetate_max_factor", cfg.fixes.metabolism.metE_acetate_max_factor);

@@ -194,6 +194,16 @@ by the biomass-scaled `Vmax` for all tested timesteps from `1e-6` through
 
 **Death:** Biomass below minimum threshold → cell dies.
 
+### Non-growth-associated carbon maintenance
+
+When `carbon_maintenance_rate` is nonzero, each owner agent removes
+`carbon_maintenance_rate × biomass × dt` mol of carbon from its voxel every
+biological step. This sink is independent of the growth-rate
+`maintenance_rate` tax and is applied to bacteriostatic or otherwise
+non-growing agents as well as growing agents. The requested draw is limited
+by the voxel's available carbon; any shortfall is recorded separately from
+growth uptake in nutrient-flux accounting.
+
 ---
 
 ## 2. fix_bacteriocin — Toxin Release (Spec 2)

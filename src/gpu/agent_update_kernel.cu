@@ -1,5 +1,6 @@
 #include "gpu_kernels.h"
 #include "uptake_limit.h"
+#include "carbon_maintenance.h"
 #include <cuda_runtime.h>
 #include <cmath>
 
@@ -9,6 +10,23 @@ namespace gpu {
 static constexpr double PI_M = 3.14159265358979323846;
 
 __device__ inline double maxd(double a, double b) { return a > b ? a : b; }
+
+__device__ inline double reserve_maintenance(
+    double* available, int cell, double requested) {
+  if (available == nullptr || requested <= 0.0) return 0.0;
+  auto* address = reinterpret_cast<unsigned long long*>(&available[cell]);
+  unsigned long long old_bits = atomicCAS(address, 0ULL, 0ULL);
+  while (true) {
+    const double old_value = __longlong_as_double(old_bits);
+    if (old_value <= 0.0) return 0.0;
+    const double draw = requested < old_value ? requested : old_value;
+    const unsigned long long new_bits = __double_as_longlong(old_value - draw);
+    const unsigned long long observed =
+        atomicCAS(address, old_bits, new_bits);
+    if (observed == old_bits) return draw;
+    old_bits = observed;
+  }
+}
 
 __global__ void metabolism_kernel(
     const double* conc_carbon, const double* conc_iron, const double* conc_b12,
@@ -27,6 +45,7 @@ __global__ void metabolism_kernel(
     double cell_density,
     double km_iron_primary, double km_iron_iroN, double km_iron_iutA, double km_iron_fiu,
     double maintenance_rate, double metE_penalty, double metE_acetate_max_factor,
+    double carbon_maintenance_rate,
     double metE_acetate_km, double eut_max_penalty, double eut_km,
     double yield_carbon, double yield_iron, double yield_b12,
     int iron_uptake_enabled, int b12_uptake_enabled, int eut_enabled,
@@ -37,6 +56,7 @@ __global__ void metabolism_kernel(
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
     double* agent_uptake_totals,
+    double* maintenance_available,
     int uptake_limit_mode, double effective_diffusivity_carbon,
     double effective_diffusivity_iron, double* uptake_limit_totals,
     int global_nx, int global_ny, int storage_nx,
@@ -165,6 +185,20 @@ __global__ void metabolism_kernel(
 
   if (i >= local_agent_count) return;
 
+  const double requested_maintenance = carbon_maintenance::requested(
+      carbon_maintenance_rate, biomass[i], dt);
+  const double maintenance_draw = reserve_maintenance(
+      maintenance_available, cell, requested_maintenance);
+  if (maintenance_draw > 0.0 && reac_carbon && cell_volume > 0.0) {
+    atomicAdd(&reac_carbon[cell], -maintenance_draw / (cell_volume * dt));
+    if (agent_uptake_totals) {
+      atomicAdd(&agent_uptake_totals[2], maintenance_draw);
+    }
+  }
+  if (requested_maintenance > maintenance_draw && agent_uptake_totals) {
+    atomicAdd(&agent_uptake_totals[3], 1.0);
+  }
+
   if (uptake_limit_totals) {
     if (demanded_carbon > 0.0) {
       atomicAdd(&uptake_limit_totals[0], demanded_carbon);
@@ -232,6 +266,7 @@ void launch_metabolism_kernel(
     double cell_density,
     double km_iron_primary, double km_iron_iroN, double km_iron_iutA, double km_iron_fiu,
     double maintenance_rate, double metE_penalty, double metE_acetate_max_factor,
+    double carbon_maintenance_rate,
     double metE_acetate_km, double eut_max_penalty, double eut_km,
     double yield_carbon, double yield_iron, double yield_b12,
     int iron_uptake_enabled, int b12_uptake_enabled, int eut_enabled,
@@ -242,6 +277,7 @@ void launch_metabolism_kernel(
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
     double* agent_uptake_totals,
+    double* maintenance_available,
     int uptake_limit_mode, double effective_diffusivity_carbon,
     double effective_diffusivity_iron, double* uptake_limit_totals,
     int global_nx, int global_ny, int storage_nx,
@@ -263,6 +299,7 @@ void launch_metabolism_kernel(
       cell_volume, cell_density,
       km_iron_primary, km_iron_iroN, km_iron_iutA, km_iron_fiu,
       maintenance_rate, metE_penalty, metE_acetate_max_factor,
+      carbon_maintenance_rate,
       metE_acetate_km, eut_max_penalty, eut_km,
       yield_carbon, yield_iron, yield_b12,
       iron_uptake_enabled, b12_uptake_enabled, eut_enabled,
@@ -270,6 +307,7 @@ void launch_metabolism_kernel(
       acetate_enabled, acetate_overflow_threshold, acetate_overflow_rate,
       acetate_scavenge_rate, acetate_scavenge_Km,
       o2_enabled, o2_boost_max, o2_Km, agent_uptake_totals,
+      maintenance_available,
       uptake_limit_mode, effective_diffusivity_carbon,
       effective_diffusivity_iron, uptake_limit_totals,
       global_nx, global_ny, storage_nx, owned_global_x_begin,
