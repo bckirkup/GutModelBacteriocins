@@ -594,8 +594,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent, Real dt) {
   }
 
   // Subtract maintenance
-  mu = std::max(0.0, mu) - cfg_.maintenance_rate;
-  mu = std::max(0.0, mu);
+  mu -= cfg_.maintenance_rate;
 
   agent.mu_realized = mu;
 }
@@ -705,8 +704,10 @@ void FixMetabolism::grow_agent(Agent& agent, Real dt) {
           acfg.overflow_rate * agent.biomass / cell_vol;
     }
     if (sim_.config().chem_env.oxygen.metabolic_switch_enabled) {
-      const Real acid = sim_.config().chem_env.oxygen.ferm_acid_yield
-          * agent.realized_fermentation_fraction * d_biomass * realized_carbon_cost(agent);
+      const Real acid =
+          sim_.config().chem_env.oxygen.ferm_acid_yield
+          * agent.realized_fermentation_fraction * d_biomass
+          * realized_carbon_cost(agent);
       if (acid > 0.0) {
         #ifdef GUTIBM_OPENMP
         #pragma omp atomic

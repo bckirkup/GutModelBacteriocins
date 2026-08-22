@@ -87,6 +87,9 @@ class AgentPoolGpu {
   double* mu_realized() { return d_mu_realized_.data(); }
   const double* mu_realized() const { return d_mu_realized_.data(); }
   double* fermentation_fraction() { return d_fermentation_fraction_.data(); }
+  const double* fermentation_fraction() const {
+    return d_fermentation_fraction_.data();
+  }
   double* biomass() { return d_biomass_.data(); }
   const double* biomass() const { return d_biomass_.data(); }
   double* radius() { return d_radius_.data(); }

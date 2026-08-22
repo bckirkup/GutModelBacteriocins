@@ -18,6 +18,7 @@ constexpr Real kDt = 60.0;
 
 SimulationConfig base_config() {
   SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {100.0e-6, 100.0e-6, 40.0e-6};
   cfg.hdf5.enabled = false;
   cfg.time.total_time = kDt;
   cfg.time.bio_dt = kDt;
@@ -125,12 +126,12 @@ void test_maintenance_sensitivity_and_shortfall() {
 
 TrajectoryResult run_trajectory(Real rate, bool set_rate = true) {
   SimulationConfig cfg = base_config();
-  cfg.time.total_time = 120.0;
+  cfg.time.total_time = 600.0;
   if (set_rate) cfg.fixes.metabolism.carbon_maintenance_rate = rate;
   cfg.initial_strains[0].count = 2;
   cfg.initial_strains[0].mu_max = 5.0e-4;
   for (auto& chemical : cfg.chemicals) {
-    if (chemical.name == species::CARBON) chemical.initial_conc = 1.0e-3;
+    if (chemical.name == species::CARBON) chemical.initial_conc = 1.0e-6;
   }
   Simulation sim;
   sim.init(cfg);
@@ -168,13 +169,14 @@ LedgerResult run_ledger_probe() {
 }
 
 void test_trajectory_sensitivity_and_zero_compatibility() {
-  const std::vector<Real> rates = {0.0, 1.0e-6, 1.0e-5, 1.0e-4};
+  const std::vector<Real> rates = {0.0, 1.0e-4, 1.0e-3, 1.0e-2};
   std::vector<TrajectoryResult> results;
   results.reserve(rates.size());
   for (const Real rate : rates) results.push_back(run_trajectory(rate));
   for (size_t i = 1; i < results.size(); ++i) {
     assert(results[i].biomass <= results[i - 1].biomass);
   }
+  assert(results.front().biomass > results.back().biomass);
   const TrajectoryResult absent = run_trajectory(0.0, false);
   assert(results[0].carbon == absent.carbon);
   assert(results[0].biomass == absent.biomass);
