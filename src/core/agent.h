@@ -54,6 +54,9 @@ struct Agent {
   Real   biomass;          // dry biomass (kg)
   Real   maintenance;      // maintenance energy coefficient
   Real   realized_fermentation_fraction = 0.0;
+  Real   pending_growth_carbon = 0.0;
+  Real   pending_maintenance_carbon = 0.0;
+  Real   pending_biomass = 0.0;
 
   // ── Receptor state ────────────────────────────────────────────────────
   std::array<Real, NUM_RECEPTORS> receptor_expr_base;

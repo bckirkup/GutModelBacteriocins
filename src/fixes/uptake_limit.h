@@ -17,6 +17,7 @@ enum class UptakeLimitMode : int {
   None = 0,
   Sherwood = 1,
   Voxel = 2,
+  Delivery = 3,
 };
 
 namespace uptake {

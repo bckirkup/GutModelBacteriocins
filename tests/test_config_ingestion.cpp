@@ -401,7 +401,7 @@ std::vector<Probe> build_probes() {
                 "sherwood"));
   v.push_back(S("metabolism.uptake_limit",
                 [](const SimulationConfig& c) { return c.fixes.metabolism.uptake_limit; },
-                "voxel", false));
+                "delivery", false));
   v.push_back(B("acid_inhibition_enabled",
                 [](const SimulationConfig& c) {
                   return c.fixes.metabolism.acid_inhibition_enabled;

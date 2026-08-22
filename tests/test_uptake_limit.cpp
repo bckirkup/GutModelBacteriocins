@@ -11,6 +11,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <utility>
 #include <vector>
 
 using namespace gutibm;
@@ -53,6 +54,7 @@ const char* mode_name(UptakeLimitMode mode) {
   switch (mode) {
     case UptakeLimitMode::Sherwood: return "sherwood";
     case UptakeLimitMode::Voxel:    return "voxel";
+    case UptakeLimitMode::Delivery: return "delivery";
     case UptakeLimitMode::None:     break;
   }
   return "none";
@@ -310,6 +312,172 @@ void test_limitation_severity_rises_with_agent_density() {
   std::cout << "  test_limitation_severity_rises_with_agent_density: PASSED\n";
 }
 
+void test_delivery_is_positive_and_funds_only_removed_carbon() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains[0].count = 2;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.initial_strains[0].mu_max = 5.0e-2;
+  cfg.time.total_time = 120.0;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = 120.0;
+  cfg.dysbiosis_threshold = 0.0;
+  cfg.carbon_boundary_conc = 1.0e-7;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e-7;
+      chemical.boundary_conc = 1.0e-7;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  std::vector<Real> initial_biomass_by_agent;
+  initial_biomass_by_agent.reserve(sim.agents().size());
+  for (Agent& agent : sim.agents()) {
+    initial_biomass_by_agent.push_back(agent.biomass);
+    agent.x = {7.5e-6, 7.5e-6, 12.5e-6};
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  const Real initial_biomass_agent = sim.agents()[0].biomass;
+  sim.run();
+  const auto& chem = sim.chemical_field();
+  const Int carbon = chem.find(species::CARBON);
+  const auto& flux = chem.flux_accounting();
+  const auto index = static_cast<size_t>(carbon);
+  const Real removed = flux.agent_uptake_cumulative[index]
+      + flux.maintenance_cumulative[index];
+  const Real demanded = flux.uptake_demand_cumulative[index];
+  assert(removed >= 0.0 && removed <= demanded + 1.0e-18);
+  assert(flux.reaction_clip_cumulative[index] == 0.0);
+  assert(flux.uptake_shortfall_cumulative[index] >= 0.0);
+  assert(sim.agents().size() == initial_biomass_by_agent.size());
+  Real committed_growth_carbon = 0.0;
+  for (size_t i = 0; i < initial_biomass_by_agent.size(); ++i) {
+    committed_growth_carbon +=
+        (sim.agents()[i].biomass - initial_biomass_by_agent[i])
+        * cfg.fixes.metabolism.yield_carbon;
+  }
+  assert(std::abs(committed_growth_carbon + flux.maintenance_cumulative[index]
+                  - removed) <= 1.0e-18);
+  assert(sim.agents()[0].biomass >= initial_biomass_agent);
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    assert(chem.conc_global(carbon, cell) >= 0.0);
+  }
+  std::cout << "  test_delivery_is_positive_and_funds_only_removed_carbon: PASSED\n";
+}
+
+void test_delivery_maintenance_reduces_growth() {
+  auto run_case = [](Real maintenance_rate) {
+    SimulationConfig cfg = base_config();
+    cfg.enabled_fixes = {"metabolism"};
+    cfg.initial_strains[0].count = 2;
+    cfg.vbf.carbon_sink_vmax = 0.0;
+    cfg.vbf.mucin_liberation = 0.0;
+    cfg.fixes.metabolism.uptake_limit = "delivery";
+    cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+    cfg.initial_strains[0].mu_max = 5.0e-5;
+    cfg.fixes.metabolism.carbon_maintenance_rate = maintenance_rate;
+    cfg.time.total_time = kDt;
+    cfg.time.bio_dt = kDt;
+    cfg.dysbiosis_threshold = 0.0;
+    cfg.carbon_boundary_conc = 1.0e-6;
+    for (auto& chemical : cfg.chemicals) {
+      if (chemical.name == species::CARBON) {
+        chemical.initial_conc = 1.0e-6;
+        chemical.boundary_conc = 1.0e-6;
+        chemical.diff_coeff = 1.0e-12;
+        chemical.z_gradient_enabled = false;
+      }
+    }
+    Simulation sim;
+    sim.init(cfg);
+    for (Agent& agent : sim.agents()) {
+      agent.x = {7.5e-6, 7.5e-6, 12.5e-6};
+      Int ix = 0;
+      Int iy = 0;
+      Int iz = 0;
+      sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+      agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+    }
+    const Real initial_biomass = sim.agents()[0].biomass;
+    sim.run();
+    const auto& flux = sim.chemical_field().flux_accounting();
+    const Int carbon = sim.chemical_field().find(species::CARBON);
+    const auto index = static_cast<size_t>(carbon);
+    const Real growth = sim.agents()[0].biomass - initial_biomass;
+    return std::pair<Real, Real>{flux.maintenance_interval[index], growth};
+  };
+  const auto low = run_case(1.0e-9);
+  const auto high = run_case(2.0e-9);
+  assert(high.first > low.first);
+  assert(high.second < low.second);
+  std::cout << "  test_delivery_maintenance_reduces_growth: PASSED\n";
+}
+
+Real delivery_density_funded_fraction(Int founders) {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains[0].count = founders;
+  cfg.initial_strains[0].mu_max = 2.0e-2;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 0.0;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = kDt;
+  cfg.dysbiosis_threshold = 0.0;
+  cfg.carbon_boundary_conc = 1.0e-6;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e-6;
+      chemical.boundary_conc = 1.0e-6;
+      chemical.diff_coeff = 1.0e-12;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  for (Agent& agent : sim.agents()) {
+    agent.x = {7.5e-6, 7.5e-6, 12.5e-6};
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  sim.run();
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const auto index = static_cast<size_t>(carbon);
+  const Real demand = flux.uptake_demand_interval[index];
+  const Real realized = flux.agent_uptake_interval[index];
+  assert(demand > 0.0);
+  return realized / demand;
+}
+
+void test_delivery_density_brake() {
+  const Real sparse = delivery_density_funded_fraction(2);
+  const Real medium = delivery_density_funded_fraction(8);
+  const Real dense = delivery_density_funded_fraction(32);
+  std::cout << "    delivery_density_funded_fraction=" << sparse << ", "
+            << medium << ", " << dense << "\n";
+  assert(std::isfinite(sparse) && std::isfinite(medium)
+         && std::isfinite(dense));
+  assert(sparse > medium);
+  assert(medium > dense);
+  assert(dense >= 0.0);
+  std::cout << "  test_delivery_density_brake: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -319,6 +487,9 @@ int main() {
   test_realized_uptake_respects_the_cap_and_the_field();
   test_none_mode_leaves_growth_unfunded();
   test_limitation_severity_rises_with_agent_density();
+  test_delivery_is_positive_and_funds_only_removed_carbon();
+  test_delivery_maintenance_reduces_growth();
+  test_delivery_density_brake();
   std::cout << "All uptake limitation tests passed.\n";
   return 0;
 }

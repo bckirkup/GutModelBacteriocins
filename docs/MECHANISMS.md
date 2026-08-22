@@ -76,6 +76,25 @@ The QSSA solver deposits bacteriocin fields immediately before `fix_receptor` (s
 
 ## 1. fix_metabolism — Triple Monod Growth
 
+### Delivery-limited carbon uptake
+
+With `metabolism.uptake_limit: "delivery"`, requested growth and maintenance
+carbon are held until chemistry completes. Each owned agent contributes a
+first-order sink coefficient
+
+```
+k_agent = 4*pi*D_eff*r / V_cell
+k_eff = min(k_agent, demand_total / (C_now*V_cell*dt))
+```
+
+to its grid cell. The sink is included on the diagonal of each directional
+backward-Euler diffusion solve, preserving nonnegative concentrations without
+explicit reaction clipping. The realized removal is split among co-located
+agents in proportion to their demand, with maintenance paid before growth.
+Only the funded biomass increment and growth rate are committed. Unfunded
+requests are reported as uptake or maintenance shortfall rather than reaction
+clip. Ghost agents do not contribute sink coefficients or accounting writes.
+
 **Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics. When `oxygen.enabled`, the legacy aerobic boost applies unless `oxygen.metabolic_switch_enabled` is true.
 
 **Equation:**
