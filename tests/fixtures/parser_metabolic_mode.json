@@ -1,0 +1,19 @@
+{
+  "_comment": "Metabolic mode and acid inhibition parser fixture",
+  "total_time": 600,
+  "bio_dt": 60,
+  "oxygen.enabled": true,
+  "oxygen.metabolic_switch_enabled": true,
+  "oxygen.mu_crit": 2.5e-4,
+  "oxygen.aerobic_mu_factor": 1.1,
+  "oxygen.anaerobic_mu_factor": 0.5,
+  "oxygen.aerobic_carbon_cost_factor": 1.2,
+  "oxygen.anaerobic_carbon_cost_factor": 4.4,
+  "oxygen.tau_metabolic_switch": 1800,
+  "oxygen.ferm_acid_yield": 0.9,
+  "oxygen.anaerobic_maintenance_factor": 12,
+  "acid_inhibition_enabled": true,
+  "acid_inhibition_max": 0.7,
+  "acid_inhibition_Ki": 45,
+  "acetate_pKa": 4.8
+}

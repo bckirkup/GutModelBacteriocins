@@ -309,7 +309,7 @@ Real field_mean(const ChemicalField& chem, Int species_idx) {
     }
   }
 #ifdef GUTIBM_MPI
-  if (chem.slab_mode()) {
+  if (chem.slab_mode() && mpi_is_active()) {
     Real global_sum = 0.0;
     Int global_n = 0;
     MPI_Allreduce(&sum, &global_sum, 1, MPI_DOUBLE, MPI_SUM,
@@ -336,7 +336,7 @@ Real field_max(const ChemicalField& chem, Int species_idx) {
     }
   }
 #ifdef GUTIBM_MPI
-  if (chem.slab_mode()) {
+  if (chem.slab_mode() && mpi_is_active()) {
     Real global_max = 0.0;
     MPI_Allreduce(&mx, &global_max, 1, MPI_DOUBLE, MPI_MAX,
                   MPI_COMM_WORLD);
@@ -744,7 +744,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
         ? sim.qssa().sampled_toxin_max(idx)
         : field_max(chem, idx);
 #ifdef GUTIBM_MPI
-    if (sim.qssa().agent_sampling()) {
+    if (sim.qssa().agent_sampling() && mpi_is_active()) {
       Real global_value = 0.0;
       MPI_Allreduce(&value, &global_value, 1, MPI_DOUBLE, MPI_MAX,
                     MPI_COMM_WORLD);
@@ -763,6 +763,26 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   const double max_fhuA = toxin_max(
       species::bacteriocin_species_for(ReceptorType::FhuA, lumped));
 
+  double local_fermentation_sum = 0.0;
+  Int local_fermentation_count = 0;
+  for (const Agent& agent : sim.agents()) {
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
+    local_fermentation_sum += agent.realized_fermentation_fraction;
+    ++local_fermentation_count;
+  }
+  double global_fermentation_sum = local_fermentation_sum;
+  Int global_fermentation_count = local_fermentation_count;
+#ifdef GUTIBM_MPI
+  if (mpi_is_active()) {
+    MPI_Allreduce(&local_fermentation_sum, &global_fermentation_sum, 1,
+                  MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+    MPI_Allreduce(&local_fermentation_count, &global_fermentation_count, 1,
+                  MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  }
+#endif
+  const double mean_fermentation = global_fermentation_count > 0
+      ? global_fermentation_sum / global_fermentation_count : 0.0;
+
   if (io_rank(cfg_) == 0 && file_id_ >= 0) {
   auto fid = static_cast<hid_t>(file_id_);
   const auto& agents = sim.agents();
@@ -772,7 +792,6 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   const double dt_val = dt;
   const int32_t step_val = step;
   const auto n_total = static_cast<int32_t>(sim.global_agent_count());
-
   const auto num_lineages = count_live_lineages(agents);
   const auto& stocks = sim.population_stocks();
   const auto& mechanics = sim.mechanics_summary_stats();
@@ -783,6 +802,8 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_scalar_dataset(fid, group + "/n_total", H5T_NATIVE_INT32, &n_total);
   write_scalar_dataset(fid, group + "/num_lineages", H5T_NATIVE_INT32, &num_lineages);
   write_scalar_dataset(fid, group + "/num_agents", H5T_NATIVE_INT32, &n_total);
+  write_scalar_dataset(fid, group + "/mean_realized_fermentation_fraction",
+                       H5T_NATIVE_DOUBLE, &mean_fermentation);
   ensure_group(fid, group + "/stocks", cfg_);
   const int32_t bacteriostatic_live = stocks.bacteriostatic_live;
   const int32_t washout_trapped_live = stocks.washout_trapped_live;
@@ -1057,6 +1078,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   std::vector<double> z(static_cast<size_t>(n));
   std::vector<double> mu(static_cast<size_t>(n));
   std::vector<double> mu_max(static_cast<size_t>(n));
+  std::vector<double> realized_fermentation_fraction(static_cast<size_t>(n));
   std::vector<double> biomass(static_cast<size_t>(n));
   std::vector<int32_t> in_crypt(static_cast<size_t>(n));
   std::vector<int32_t> n_bi(static_cast<size_t>(n));
@@ -1075,6 +1097,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
     z[idx] = a.x[2];
     mu[idx] = a.mu_realized;
     mu_max[idx] = a.mu_max;
+    realized_fermentation_fraction[idx] = a.realized_fermentation_fraction;
     biomass[idx] = a.biomass;
     in_crypt[idx] = a.flags.in_crypt ? 1 : 0;
     n_bi[idx] = static_cast<int32_t>(a.genome.bi_loci.size());
@@ -1094,6 +1117,9 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   write_dataset_1d(fid, group + "/z", H5T_NATIVE_DOUBLE, z.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/mu_realized", H5T_NATIVE_DOUBLE, mu.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/mu_max", H5T_NATIVE_DOUBLE, mu_max.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/realized_fermentation_fraction",
+                   H5T_NATIVE_DOUBLE, realized_fermentation_fraction.data(),
+                   local_n, cfg_);
   write_dataset_1d(fid, group + "/biomass", H5T_NATIVE_DOUBLE, biomass.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/in_crypt", H5T_NATIVE_INT32, in_crypt.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/n_bi_loci", H5T_NATIVE_INT32, n_bi.data(), local_n, cfg_);

@@ -390,6 +390,19 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | `metabolism.eut_max_penalty` | 0.10 | — | Max eut penalty when ethanolamine abundant |
 | `metabolism.maintenance_rate` | 1e-5 | 1/s | Maintenance energy |
 | `metabolism.carbon_maintenance_rate` | 0.0 | mol C/(s·kg biomass) | Non-growth-associated carbon substrate consumption; independent of `maintenance_rate` |
+| `oxygen.metabolic_switch_enabled` | false | bool | Replace legacy oxygen boost with respiratory, overflow, and fermentative metabolism |
+| `oxygen.mu_crit` | 3.0e-4 | 1/s | Respiratory capacity threshold |
+| `oxygen.aerobic_mu_factor` | 1.0 | multiplier | Growth factor at zero fermentation |
+| `oxygen.anaerobic_mu_factor` | 0.55 | multiplier | Growth factor at full fermentation |
+| `oxygen.aerobic_carbon_cost_factor` | 1.0 | multiplier | Multiplier on substrate-per-biomass carbon cost |
+| `oxygen.anaerobic_carbon_cost_factor` | 4.1 | multiplier | Fermentative multiplier on substrate-per-biomass carbon cost |
+| `oxygen.tau_metabolic_switch` | 3600 | s | Realized metabolic-state time constant |
+| `oxygen.ferm_acid_yield` | 1.0 | acetate/carbon-equivalent | Literal acetate yield from fermentation |
+| `oxygen.anaerobic_maintenance_factor` | 15.0 | multiplier | Maintenance factor at full fermentation |
+| `acid_inhibition_enabled` | false | bool | Enable undissociated-acetate growth inhibition |
+| `acid_inhibition_max` | 0.8 | fraction | Maximum acid inhibition |
+| `acid_inhibition_Ki` | 50 | mol/m³ | Half-inhibition concentration of undissociated acetate |
+| `acetate_pKa` | 4.76 | pH units | Acetate dissociation pKa |
 | `metabolism.km_iron_primary` | 10e-6 | mol/m³ | FepA iron Km (10 nM) |
 | `metabolism.km_iron_iroN` | 50e-6 | mol/m³ | IroN salmochelin Km (50 nM) |
 | `metabolism.km_iron_iutA` | 100e-6 | mol/m³ | IutA aerobactin Km (100 nM) |
@@ -429,8 +442,18 @@ The non-growth-associated maintenance anchors are:
   `2.6e-19 mol/s/cell`. This is the same order as the agent's full-growth
   carbon demand of `2.0e-19 mol/s`.
 
-The future fermentation-fraction extension will interpolate between these
-aerobic and anaerobic anchors; this PR leaves that hook unimplemented.
+When `oxygen.metabolic_switch_enabled` is enabled, carbon maintenance
+interpolates between these aerobic and anaerobic anchors using the realized
+fermentation fraction. With the switch disabled, the configured maintenance
+rate is unchanged.
+
+Fermentative secretion currently writes literal acetate. Canonical mixed-acid
+fermentation is approximately `1 acetate + 1 ethanol + 2 formate per glucose`;
+a lumped total-acid model would therefore be near three acid equivalents and
+would require a lower effective pKa. This implementation deliberately models
+acetate only. The separate `agent_carbon_coupling` proposal is not implemented;
+the measured carbon maintenance sink is the model's density-coupled substrate
+draw.
 Finally, the default `yield_carbon = 0.5 mol/kg` is approximately `6.4×`
 cheaper than the literature comparison. Varma's `0.524 gDW/g glucose`, with
 `30%` dry fraction and `180 g/mol`, implies approximately `3.2 mol glucose per

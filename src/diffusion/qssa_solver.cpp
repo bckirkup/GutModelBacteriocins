@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "qssa_solver.h"
+#include "metabolic_mode.h"
 #include "species_names.h"
 #include "fmm.h"
 #include "fmm_gpu.h"
@@ -930,7 +931,11 @@ void QSSASolver::solve_nutrient_depletion(
       // Pirt respiration: growth-associated + basal maintenance. The
       // maintenance term is applied per living cell regardless of growth, so
       // the O2 field tracks agent density (a non-growing cell still respires).
-      const Real o2_use = oxygen.q_consumption * std::max(a.mu_realized, 0.0)
+      const Real respiratory_fraction = oxygen.metabolic_switch_enabled
+          ? 1.0 - a.realized_fermentation_fraction : 1.0;
+      const Real o2_use = oxygen.q_consumption
+                            * std::max(a.mu_realized, 0.0)
+                            * std::clamp(respiratory_fraction, 0.0, 1.0)
                         + oxygen.q_maintenance;
       #ifdef GUTIBM_OPENMP
       #pragma omp atomic

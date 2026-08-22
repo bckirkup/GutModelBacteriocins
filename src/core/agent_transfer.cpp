@@ -32,6 +32,7 @@ struct AgentMetabolismXfer {
   double mu_realized;
   double biomass;
   double maintenance;
+  double realized_fermentation_fraction;
   std::array<double, NUM_RECEPTORS> receptor_expr;
   std::array<double, NUM_RECEPTORS> receptor_expr_base;
   double km_iron;
@@ -117,6 +118,8 @@ void pack_agent(const Agent& a, AgentTransferData& d) {
   d.metabolism.mu_realized = a.mu_realized;
   d.metabolism.biomass = a.biomass;
   d.metabolism.maintenance = a.maintenance;
+  d.metabolism.realized_fermentation_fraction =
+      a.realized_fermentation_fraction;
   for (int k = 0; k < NUM_RECEPTORS; ++k)
     d.metabolism.receptor_expr[k] = a.receptor_expr[k];
   for (int k = 0; k < NUM_RECEPTORS; ++k)
@@ -186,6 +189,8 @@ Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_d
   a.mu_realized = d.metabolism.mu_realized;
   a.biomass = d.metabolism.biomass;
   a.maintenance = d.metabolism.maintenance;
+  a.realized_fermentation_fraction =
+      d.metabolism.realized_fermentation_fraction;
   for (int k = 0; k < NUM_RECEPTORS; ++k)
     a.receptor_expr[k] = d.metabolism.receptor_expr[k];
   for (int k = 0; k < NUM_RECEPTORS; ++k)

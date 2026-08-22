@@ -168,6 +168,24 @@ void test_carbon_maintenance_fixture() {
   std::cout << "  test_carbon_maintenance_fixture: PASSED\n";
 }
 
+void test_metabolic_mode_fixture() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/parser_metabolic_mode.json";
+  const SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.chem_env.oxygen.metabolic_switch_enabled);
+  assert(std::abs(cfg.chem_env.oxygen.mu_crit - 2.5e-4) < 1e-12);
+  assert(std::abs(cfg.chem_env.oxygen.anaerobic_carbon_cost_factor - 4.4)
+         < 1e-12);
+  assert(cfg.fixes.metabolism.acid_inhibition_enabled);
+  assert(std::abs(cfg.fixes.metabolism.acid_inhibition_Ki - 45.0) < 1e-12);
+  const std::string resolved = ConfigJson::serialize_document(cfg);
+  SimulationConfig roundtrip = InputParser::default_config();
+  assert(ConfigJson::parse_document(roundtrip, resolved));
+  assert(roundtrip.chem_env.oxygen.metabolic_switch_enabled);
+  assert(roundtrip.fixes.metabolism.acid_inhibition_enabled);
+  std::cout << "  test_metabolic_mode_fixture: PASSED\n";
+}
+
 void test_immigration_fixture() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR) +
                            "/tests/fixtures/parser_immigration.json";
@@ -874,6 +892,7 @@ int main() {
   test_uptake_limit_fixture();
   test_uptake_limit_rejects_unknown_modes();
   test_carbon_maintenance_fixture();
+  test_metabolic_mode_fixture();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }
