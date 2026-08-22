@@ -47,9 +47,38 @@ trajectory is comparable to the arms already analysed in ../probe/.
 """
 
 import argparse
+import importlib.util
 import json
 import os
 import pathlib
+import sys
+import types
+
+_REPO_PYTHON = pathlib.Path(__file__).resolve().parents[3] / "python"
+sys.path.insert(0, str(_REPO_PYTHON))
+
+try:
+    from gut_ibm_tools.path_utils import (
+        prepare_output_file,
+        validate_input_path,
+    )
+except ModuleNotFoundError as error:
+    if error.name != "h5py":
+        raise
+    package = types.ModuleType("gut_ibm_tools")
+    package.__path__ = [str(_REPO_PYTHON / "gut_ibm_tools")]
+    sys.modules["gut_ibm_tools"] = package
+    module_path = _REPO_PYTHON / "gut_ibm_tools" / "path_utils.py"
+    spec = importlib.util.spec_from_file_location(
+        "gut_ibm_tools.path_utils", module_path
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {module_path}") from error
+    path_utils = importlib.util.module_from_spec(spec)
+    sys.modules["gut_ibm_tools.path_utils"] = path_utils
+    spec.loader.exec_module(path_utils)
+    prepare_output_file = path_utils.prepare_output_file
+    validate_input_path = path_utils.validate_input_path
 
 SEED = 1001
 HORIZON_S = 21600  # 6 h; blocking fraction is a per-interval diagnostic
@@ -64,8 +93,7 @@ ARMS = [
 
 
 def main(base_config: pathlib.Path, out_root: pathlib.Path) -> None:
-    base = json.loads(base_config.read_text())
-    out_root.mkdir(parents=True, exist_ok=True)
+    base = json.loads(validate_input_path(base_config).read_text())
 
     for tag, coupling, demand_fraction in ARMS:
         cfg = dict(base)
@@ -94,8 +122,8 @@ def main(base_config: pathlib.Path, out_root: pathlib.Path) -> None:
         ]
 
         arm_dir = out_root / tag
-        arm_dir.mkdir(parents=True, exist_ok=True)
-        (arm_dir / "input.json").write_text(json.dumps(cfg, indent=1) + "\n")
+        output_file = prepare_output_file(arm_dir / "input.json")
+        output_file.write_text(json.dumps(cfg, indent=1) + "\n")
         print(f"{tag}: agent_carbon_coupling={coupling:.3e} "
               f"({demand_fraction:.2f}x demand) -> {arm_dir/'input.json'}")
 
