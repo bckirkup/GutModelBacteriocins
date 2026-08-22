@@ -383,6 +383,8 @@ class ChemicalField {
   NutrientFluxAccounting flux_accounting_;
 
   void apply_diffusion_slab(const Domain& domain, Real dt);
+  void apply_diffusion_species(const Domain& domain, Real dt, Int spec);
+  void apply_diffusion_slab_species(const Domain& domain, Real dt, Int spec);
   void apply_boundaries_slab(const Domain& domain);
 };
 

@@ -6,6 +6,7 @@
 #include "domain.h"
 #include "error.h"
 #include "species_names.h"
+#include "tridiagonal_factorization.h"
 #include <algorithm>
 #include <cmath>
 #include <numeric>
@@ -19,44 +20,12 @@ namespace gutibm {
 
 namespace {
 
-class TridiagonalFactorization {
- public:
-  void factorize(const std::vector<Real>& lower,
-                 const std::vector<Real>& diagonal,
-                 const std::vector<Real>& upper) {
-    diagonal_ = diagonal;
-    upper_ = upper;
-    multipliers_.assign(lower.size(), 0.0);
-    for (size_t i = 1; i < diagonal_.size(); ++i) {
-      const Real multiplier = lower[i - 1] / diagonal_[i - 1];
-      multipliers_[i - 1] = multiplier;
-      diagonal_[i] -= multiplier * upper_[i - 1];
-    }
-  }
-
-  void solve_in_place(std::vector<Real>& values) const {
-    for (size_t i = 1; i < values.size(); ++i) {
-      values[i] -= multipliers_[i - 1] * values[i - 1];
-    }
-    values.back() /= diagonal_.back();
-    for (size_t i = values.size() - 1; i > 0; --i) {
-      values[i - 1] =
-          (values[i - 1] - upper_[i - 1] * values[i]) / diagonal_[i - 1];
-    }
-  }
-
- private:
-  std::vector<Real> diagonal_;
-  std::vector<Real> upper_;
-  std::vector<Real> multipliers_;
-};
-
 void solve_tridiagonal_with_diagonal(
     std::vector<Real>& values, const std::vector<Real>& diagonal,
     Real alpha, Real first_source = 0.0) {
   if (values.empty()) return;
   std::vector<Real> diag = diagonal;
-  std::vector<Real> upper(diag.size() > 1 ? diag.size() - 1 : 0, -alpha);
+  std::vector upper(diag.size() > 1 ? diag.size() - 1 : 0, -alpha);
   values.front() += first_source;
   for (size_t i = 1; i < diag.size(); ++i) {
     const Real multiplier = -alpha / diag[i - 1];
@@ -91,17 +60,17 @@ void solve_periodic_with_sink(
   }
   const Real corner = -alpha;
   const Real gamma = -(1.0 + 2.0 * alpha + sink[0]);
-  std::vector<Real> diagonal(n);
+  std::vector diagonal(n, 0.0);
   for (size_t i = 0; i < n; ++i) {
     diagonal[i] = 1.0 + 2.0 * alpha + sink[i];
   }
   diagonal[0] -= gamma;
   diagonal[n - 1] -= corner * corner / gamma;
   TridiagonalFactorization factorization;
-  std::vector<Real> lower(n - 1, -alpha);
-  std::vector<Real> upper(n - 1, -alpha);
+  std::vector lower(n - 1, -alpha);
+  std::vector upper(n - 1, -alpha);
   factorization.factorize(lower, diagonal, upper);
-  std::vector<Real> correction(n, 0.0);
+  std::vector correction(n, 0.0);
   correction[0] = gamma;
   correction[n - 1] = corner;
   factorization.solve_in_place(correction);
@@ -356,10 +325,18 @@ Real diffuse_bounded_z(std::vector<Real>& concentration,
   return face_exchange;
 }
 
+struct DeliveryBoundaryParameters {
+  Real boundary_conc = 0.0;
+  Real beta = 0.0;
+  Real flux_source = 0.0;
+  EpithelialBoundaryMode mode = EpithelialBoundaryMode::Flux;
+  Real cell_volume = 0.0;
+};
+
 Real diffuse_bounded_z_delivery(
     std::vector<Real>& concentration, const std::vector<Real>& sink_rate,
     std::vector<Real>& realized, const Domain& domain, Real alpha,
-    Real boundary_conc, Real cell_volume, Real sink_dt) {
+    const DeliveryBoundaryParameters& params, Real sink_dt) {
   const Int nx = domain.nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
@@ -382,14 +359,14 @@ Real diffuse_bounded_z_delivery(
       }
       diagonal.back() = 1.0 + alpha + sink.back();
       solve_tridiagonal_with_diagonal(line, diagonal, alpha,
-                                      alpha * boundary_conc);
+                                      alpha * params.boundary_conc);
       for (Int iz = 1; iz < nz; ++iz) {
         const Int cell = domain.cell_index(ix, iy, iz);
         concentration[static_cast<size_t>(cell)] =
             line[static_cast<size_t>(iz - 1)];
         realized[static_cast<size_t>(cell)] +=
             sink[static_cast<size_t>(iz - 1)]
-            * line[static_cast<size_t>(iz - 1)] * cell_volume;
+            * line[static_cast<size_t>(iz - 1)] * params.cell_volume;
       }
     }
   }
@@ -425,13 +402,62 @@ class DeliveryBottomLineSolver {
   TridiagonalFactorization factorization_;
 };
 
-struct DeliveryBoundaryParameters {
-  Real boundary_conc = 0.0;
-  Real beta = 0.0;
-  Real flux_source = 0.0;
-  EpithelialBoundaryMode mode = EpithelialBoundaryMode::Flux;
-  Real cell_volume = 0.0;
+struct DeliveryGridParameters {
+  Int nx = 0;
+  Int ny = 0;
+  Int nz = 0;
+  Real alpha = 0.0;
 };
+
+template <typename LoadLine, typename StoreLine, typename LoadSink,
+          typename AddRealized>
+struct DeliveryLineOperations {
+  LoadLine load_line;
+  StoreLine store_line;
+  LoadSink load_sink;
+  AddRealized add_realized;
+};
+
+template <typename LoadLine, typename StoreLine, typename LoadSink,
+          typename AddRealized>
+void solve_delivery_z_line(
+    Int ix, Int iy, const DeliveryGridParameters& grid,
+    const DeliveryBoundaryParameters& params, Real sink_dt,
+    const DeliveryLineOperations<LoadLine, StoreLine, LoadSink, AddRealized>&
+        operations,
+    Real& face_exchange) {
+  std::vector<Real> line(static_cast<size_t>(grid.nz));
+  std::vector<Real> sink(static_cast<size_t>(grid.nz));
+  std::vector diagonal(static_cast<size_t>(grid.nz), 0.0);
+  operations.load_line(ix, iy, line);
+  operations.load_sink(ix, iy, sink);
+  for (Int iz = 0; iz < grid.nz; ++iz) {
+    diagonal[static_cast<size_t>(iz)] =
+        1.0 + 2.0 * grid.alpha
+        + sink[static_cast<size_t>(iz)] * sink_dt;
+  }
+  diagonal.front() += params.mode == EpithelialBoundaryMode::Robin
+      ? -grid.alpha + params.beta : -grid.alpha;
+  diagonal.back() -= grid.alpha;
+  const Real source = params.mode == EpithelialBoundaryMode::Robin
+      ? params.beta * params.boundary_conc : params.flux_source;
+  solve_tridiagonal_with_diagonal(line, diagonal, grid.alpha, source);
+  const Real boundary_realized =
+      params.mode == EpithelialBoundaryMode::Robin
+          ? params.beta * (params.boundary_conc - line.front())
+              * params.cell_volume
+          : params.flux_source * params.cell_volume;
+  #ifdef GUTIBM_OPENMP
+  #pragma omp atomic
+  #endif
+  face_exchange += boundary_realized;
+  for (Int iz = 0; iz < grid.nz; ++iz) {
+    const auto index = static_cast<size_t>(iz);
+    operations.store_line(ix, iy, iz, line[index]);
+    operations.add_realized(
+        ix, iy, iz, sink[index] * sink_dt * line[index] * params.cell_volume);
+  }
+}
 
 template <typename LoadLine, typename StoreLine>
 Real diffuse_bounded_z_delivery_impl(
@@ -499,10 +525,13 @@ Real diffuse_bounded_z_delivery(
 template <typename LoadLine, typename StoreLine, typename LoadSink,
           typename AddRealized>
 Real diffuse_bounded_z_delivery_with_sink_impl(
-    Int nx, Int ny, Int nz, Real alpha,
+    const DeliveryGridParameters& grid,
     const DeliveryBoundaryParameters& params, Real sink_dt,
     LoadLine load_line, StoreLine store_line, LoadSink load_sink,
     AddRealized add_realized) {
+  const Int nx = grid.nx;
+  const Int ny = grid.ny;
+  const Int nz = grid.nz;
   if (nz <= 0) return 0.0;
 
   Real face_exchange = 0.0;
@@ -510,44 +539,15 @@ Real diffuse_bounded_z_delivery_with_sink_impl(
   #pragma omp parallel
   #endif
   {
-    std::vector<Real> line(static_cast<size_t>(nz));
-    std::vector<Real> sink(static_cast<size_t>(nz));
-    std::vector<Real> diagonal(static_cast<size_t>(nz));
+    const DeliveryLineOperations<LoadLine, StoreLine, LoadSink, AddRealized>
+        operations{load_line, store_line, load_sink, add_realized};
     #ifdef GUTIBM_OPENMP
     #pragma omp for collapse(2) schedule(static)
     #endif
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
-        load_line(ix, iy, line);
-        load_sink(ix, iy, sink);
-        for (Int iz = 0; iz < nz; ++iz) {
-          diagonal[static_cast<size_t>(iz)] =
-              1.0 + 2.0 * alpha
-              + sink[static_cast<size_t>(iz)] * sink_dt;
-        }
-        diagonal.front() += params.mode == EpithelialBoundaryMode::Robin
-            ? -alpha + params.beta : -alpha;
-        diagonal.back() -= alpha;
-        const Real source = params.mode == EpithelialBoundaryMode::Robin
-            ? params.beta * params.boundary_conc : params.flux_source;
-        solve_tridiagonal_with_diagonal(
-            line, diagonal, alpha, source);
-        const Real boundary_realized =
-            params.mode == EpithelialBoundaryMode::Robin
-                ? params.beta * (params.boundary_conc - line.front())
-                    * params.cell_volume
-                : params.flux_source * params.cell_volume;
-        #ifdef GUTIBM_OPENMP
-        #pragma omp atomic
-        #endif
-        face_exchange += boundary_realized;
-        for (Int iz = 0; iz < nz; ++iz) {
-          const auto index = static_cast<size_t>(iz);
-          store_line(ix, iy, iz, line[index]);
-          add_realized(
-              ix, iy, iz,
-              sink[index] * sink_dt * line[index] * params.cell_volume);
-        }
+        solve_delivery_z_line(
+            ix, iy, grid, params, sink_dt, operations, face_exchange);
       }
     }
   }
@@ -585,7 +585,7 @@ Real diffuse_bounded_z_delivery_with_sink(
     realized[static_cast<size_t>(domain.cell_index(ix, iy, iz))] += amount;
   };
   return diffuse_bounded_z_delivery_with_sink_impl(
-      nx, ny, nz, alpha, params, sink_dt, load_line, store_line, load_sink,
+      {nx, ny, nz, alpha}, params, sink_dt, load_line, store_line, load_sink,
       add_realized);
 }
 
@@ -982,154 +982,45 @@ Int slab_storage_index(
   return iz * storage_nx * ny + iy * storage_nx + local_ix;
 }
 
-void diffuse_periodic_x_slab(
-    std::vector<Real>& concentration, const Domain& domain,
-    Int storage_nx, Int halo_width, Real alpha,
-    const std::vector<Real>* sink_rate = nullptr,
-    std::vector<Real>* realized = nullptr, Real sink_dt = 0.0,
-    Real cell_volume = 0.0) {
+struct SlabTransportContext {
+  std::vector<Real>& concentration;
+  const Domain& domain;
+  Int storage_nx;
+  Int halo_width;
+  Real alpha;
+  const std::vector<Real>* sink_rate = nullptr;
+  std::vector<Real>* realized = nullptr;
+  Real sink_dt = 0.0;
+  Real cell_volume = 0.0;
+};
+
+void diffuse_periodic_x_slab_single(
+    const SlabTransportContext& context, const PeriodicLineSolver& solver) {
+  auto& concentration = context.concentration;
+  const auto& domain = context.domain;
+  const Int storage_nx = context.storage_nx;
+  const Int halo_width = context.halo_width;
+  const Real alpha = context.alpha;
+  const auto* sink_rate = context.sink_rate;
+  auto* realized = context.realized;
+  const Real sink_dt = context.sink_dt;
+  const Real cell_volume = context.cell_volume;
   const Int nx = domain.nx();
   const Int ny = domain.ny();
-  const Int nz = domain.nz();
-  const Int local_nx = domain.local_grid_nx();
-  const PeriodicLineSolver solver(nx, alpha);
-  const Int line_count = ny * nz;
-  const Int process_count = domain.nprocs();
-  std::vector<Int> line_counts(static_cast<size_t>(process_count), 0);
-  std::vector<Int> line_displacements(static_cast<size_t>(process_count), 0);
-  std::vector<Int> x_counts(static_cast<size_t>(process_count), 0);
-  std::vector<Int> x_displacements(static_cast<size_t>(process_count), 0);
-  for (Int rank = 0; rank < process_count; ++rank) {
-    const auto [begin, end] =
-        Domain::grid_x_range_for_rank(nx, process_count, rank);
-    x_counts[static_cast<size_t>(rank)] = end - begin;
-    x_displacements[static_cast<size_t>(rank)] = begin;
-    line_counts[static_cast<size_t>(rank)] =
-        (line_count + process_count - rank - 1) / process_count;
-    line_displacements[static_cast<size_t>(rank)] =
-        rank == 0 ? 0 : line_displacements[static_cast<size_t>(rank - 1)]
-            + line_counts[static_cast<size_t>(rank - 1)];
-  }
-
-  if (process_count == 1) {
-    for (Int line_id = 0; line_id < line_count; ++line_id) {
-      const Int iy = line_id % ny;
-      const Int iz = line_id / ny;
-      std::vector<Real> line(static_cast<size_t>(nx));
-      std::vector<Real> sink(static_cast<size_t>(nx), 0.0);
-      for (Int ix = 0; ix < local_nx; ++ix) {
-        const Int cell = slab_storage_index(
-            halo_width + ix, iy, iz, storage_nx, ny);
-        line[static_cast<size_t>(ix)] =
-            concentration[static_cast<size_t>(cell)];
-        if (sink_rate != nullptr) {
-          sink[static_cast<size_t>(ix)] =
-              (*sink_rate)[static_cast<size_t>(cell)] * sink_dt;
-        }
-      }
-      if (sink_rate != nullptr) {
-        solve_periodic_with_sink(line, sink, alpha);
-      } else {
-        solver.solve(line);
-      }
-      for (Int ix = 0; ix < local_nx; ++ix) {
-        const Int cell = slab_storage_index(
-            halo_width + ix, iy, iz, storage_nx, ny);
-        concentration[static_cast<size_t>(cell)] = line[static_cast<size_t>(ix)];
-        if (realized != nullptr) {
-          (*realized)[static_cast<size_t>(cell)] +=
-              sink[static_cast<size_t>(ix)] * line[static_cast<size_t>(ix)]
-              * cell_volume;
-        }
-      }
-    }
-    return;
-  }
-
-#ifdef GUTIBM_MPI
-  std::vector<Int> send_counts(static_cast<size_t>(process_count), 0);
-  std::vector<Int> send_displacements(
-      static_cast<size_t>(process_count), 0);
-  std::vector<Int> recv_counts(static_cast<size_t>(process_count), 0);
-  std::vector<Int> recv_displacements(
-      static_cast<size_t>(process_count), 0);
-  for (Int rank = 0; rank < process_count; ++rank) {
-    send_counts[static_cast<size_t>(rank)] =
-        line_counts[static_cast<size_t>(rank)] * local_nx;
-    send_displacements[static_cast<size_t>(rank)] =
-        rank == 0 ? 0 : send_displacements[static_cast<size_t>(rank - 1)]
-            + send_counts[static_cast<size_t>(rank - 1)];
-    recv_counts[static_cast<size_t>(rank)] =
-        line_counts[static_cast<size_t>(domain.rank())]
-        * x_counts[static_cast<size_t>(rank)];
-    recv_displacements[static_cast<size_t>(rank)] =
-        rank == 0 ? 0 : recv_displacements[static_cast<size_t>(rank - 1)]
-            + recv_counts[static_cast<size_t>(rank - 1)];
-  }
-  const std::vector<Int> gathered_displacements = recv_displacements;
-
-  const Int send_total = std::accumulate(send_counts.begin(),
-                                         send_counts.end(), 0);
-  const Int recv_total = std::accumulate(recv_counts.begin(),
-                                         recv_counts.end(), 0);
-  std::vector<Real> send_buffer(static_cast<size_t>(send_total));
-  std::vector<Real> recv_buffer(static_cast<size_t>(recv_total));
-  std::vector<Real> sink_send_buffer;
-  std::vector<Real> sink_recv_buffer;
-  if (sink_rate != nullptr) {
-    sink_send_buffer.resize(static_cast<size_t>(send_total));
-    sink_recv_buffer.resize(static_cast<size_t>(recv_total));
-  }
-  for (Int destination = 0; destination < process_count; ++destination) {
-    Int offset = send_displacements[static_cast<size_t>(destination)];
-    for (Int line_id = destination; line_id < line_count;
-         line_id += process_count) {
-      const Int iy = line_id % ny;
-      const Int iz = line_id / ny;
-      for (Int ix = 0; ix < local_nx; ++ix) {
-        const Int cell = slab_storage_index(
-            halo_width + ix, iy, iz, storage_nx, ny);
-        send_buffer[static_cast<size_t>(offset + ix)] =
-            concentration[static_cast<size_t>(cell)];
-        if (sink_rate != nullptr) {
-          sink_send_buffer[static_cast<size_t>(offset + ix)] =
-              (*sink_rate)[static_cast<size_t>(cell)] * sink_dt;
-        }
-      }
-      offset += local_nx;
-    }
-  }
-  MPI_Alltoallv(send_buffer.data(), send_counts.data(),
-                send_displacements.data(), MPI_DOUBLE,
-                recv_buffer.data(), recv_counts.data(),
-                recv_displacements.data(), MPI_DOUBLE,
-                MPI_COMM_WORLD);
-  if (sink_rate != nullptr) {
-    MPI_Alltoallv(sink_send_buffer.data(), send_counts.data(),
-                  send_displacements.data(), MPI_DOUBLE,
-                  sink_recv_buffer.data(), recv_counts.data(),
-                  recv_displacements.data(), MPI_DOUBLE,
-                  MPI_COMM_WORLD);
-  }
-
-  std::vector<Real> solved_buffer(static_cast<size_t>(recv_total));
-  const Int local_rank = domain.rank();
-  for (Int line_index = 0; line_index < line_counts[static_cast<size_t>(local_rank)];
-       ++line_index) {
+  const Int line_count = ny * domain.nz();
+  for (Int line_id = 0; line_id < line_count; ++line_id) {
+    const Int iy = line_id % ny;
+    const Int iz = line_id / ny;
     std::vector<Real> line(static_cast<size_t>(nx));
-    std::vector<Real> sink(static_cast<size_t>(nx), 0.0);
-    for (Int source = 0; source < process_count; ++source) {
-      const Int segment_offset =
-          gathered_displacements[static_cast<size_t>(source)]
-          + line_index * x_counts[static_cast<size_t>(source)];
-      std::copy_n(recv_buffer.begin() + segment_offset,
-                  x_counts[static_cast<size_t>(source)],
-                  line.begin() + x_displacements[static_cast<size_t>(source)]);
+    std::vector sink(static_cast<size_t>(nx), 0.0);
+    for (Int ix = 0; ix < nx; ++ix) {
+      const Int cell = slab_storage_index(
+          halo_width + ix, iy, iz, storage_nx, ny);
+      line[static_cast<size_t>(ix)] =
+          concentration[static_cast<size_t>(cell)];
       if (sink_rate != nullptr) {
-        std::copy_n(
-            sink_recv_buffer.begin() + segment_offset,
-            x_counts[static_cast<size_t>(source)],
-            sink.begin() + x_displacements[static_cast<size_t>(source)]);
+        sink[static_cast<size_t>(ix)] =
+            (*sink_rate)[static_cast<size_t>(cell)] * sink_dt;
       }
     }
     if (sink_rate != nullptr) {
@@ -1137,86 +1028,285 @@ void diffuse_periodic_x_slab(
     } else {
       solver.solve(line);
     }
-    for (Int destination = 0; destination < process_count; ++destination) {
+    for (Int ix = 0; ix < nx; ++ix) {
+      const Int cell = slab_storage_index(
+          halo_width + ix, iy, iz, storage_nx, ny);
+      concentration[static_cast<size_t>(cell)] = line[static_cast<size_t>(ix)];
+      if (realized != nullptr) {
+        (*realized)[static_cast<size_t>(cell)] +=
+            sink[static_cast<size_t>(ix)] * line[static_cast<size_t>(ix)]
+            * cell_volume;
+      }
+    }
+  }
+}
+
+#ifdef GUTIBM_MPI
+struct SlabPeriodicXLayout {
+  Int nx = 0;
+  Int ny = 0;
+  Int local_nx = 0;
+  Int line_count = 0;
+  Int process_count = 0;
+  Int local_rank = 0;
+  std::vector<Int> line_counts;
+  std::vector<Int> line_displacements;
+  std::vector<Int> x_counts;
+  std::vector<Int> x_displacements;
+  std::vector<Int> send_counts;
+  std::vector<Int> send_displacements;
+  std::vector<Int> recv_counts;
+  std::vector<Int> recv_displacements;
+};
+
+struct SlabPeriodicXBuffers {
+  std::vector<Real> send;
+  std::vector<Real> recv;
+  std::vector<Real> solved;
+  std::vector<Real> sink_send;
+  std::vector<Real> sink_recv;
+};
+
+SlabPeriodicXLayout make_slab_periodic_x_layout(
+    const Domain& domain, Int nx) {
+  SlabPeriodicXLayout layout;
+  layout.nx = nx;
+  layout.ny = domain.ny();
+  layout.local_nx = domain.local_grid_nx();
+  layout.line_count = layout.ny * domain.nz();
+  layout.process_count = domain.nprocs();
+  layout.local_rank = domain.rank();
+  const auto count = static_cast<size_t>(layout.process_count);
+  layout.line_counts.assign(count, 0);
+  layout.line_displacements.assign(count, 0);
+  layout.x_counts.assign(count, 0);
+  layout.x_displacements.assign(count, 0);
+  for (Int rank = 0; rank < layout.process_count; ++rank) {
+    const auto [begin, end] =
+        Domain::grid_x_range_for_rank(nx, layout.process_count, rank);
+    layout.x_counts[static_cast<size_t>(rank)] = end - begin;
+    layout.x_displacements[static_cast<size_t>(rank)] = begin;
+    layout.line_counts[static_cast<size_t>(rank)] =
+        (layout.line_count + layout.process_count - rank - 1)
+        / layout.process_count;
+    if (rank > 0) {
+      layout.line_displacements[static_cast<size_t>(rank)] =
+          layout.line_displacements[static_cast<size_t>(rank - 1)]
+          + layout.line_counts[static_cast<size_t>(rank - 1)];
+    }
+  }
+  layout.send_counts.assign(count, 0);
+  layout.send_displacements.assign(count, 0);
+  layout.recv_counts.assign(count, 0);
+  layout.recv_displacements.assign(count, 0);
+  for (Int rank = 0; rank < layout.process_count; ++rank) {
+    layout.send_counts[static_cast<size_t>(rank)] =
+        layout.line_counts[static_cast<size_t>(rank)] * layout.local_nx;
+    layout.recv_counts[static_cast<size_t>(rank)] =
+        layout.line_counts[static_cast<size_t>(layout.local_rank)]
+        * layout.x_counts[static_cast<size_t>(rank)];
+    if (rank > 0) {
+      layout.send_displacements[static_cast<size_t>(rank)] =
+          layout.send_displacements[static_cast<size_t>(rank - 1)]
+          + layout.send_counts[static_cast<size_t>(rank - 1)];
+      layout.recv_displacements[static_cast<size_t>(rank)] =
+          layout.recv_displacements[static_cast<size_t>(rank - 1)]
+          + layout.recv_counts[static_cast<size_t>(rank - 1)];
+    }
+  }
+  return layout;
+}
+
+void pack_slab_periodic_x_line(
+    const SlabTransportContext& context,
+    const SlabPeriodicXLayout& layout, Int iy, Int iz, Int offset,
+    SlabPeriodicXBuffers& buffers) {
+  const auto& concentration = context.concentration;
+  const auto* sink_rate = context.sink_rate;
+  const Int storage_nx = context.storage_nx;
+  const Int halo_width = context.halo_width;
+  for (Int ix = 0; ix < layout.local_nx; ++ix) {
+    const Int cell = slab_storage_index(
+        halo_width + ix, iy, iz, storage_nx, layout.ny);
+    buffers.send[static_cast<size_t>(offset + ix)] =
+        concentration[static_cast<size_t>(cell)];
+    if (sink_rate != nullptr) {
+      buffers.sink_send[static_cast<size_t>(offset + ix)] =
+          (*sink_rate)[static_cast<size_t>(cell)] * context.sink_dt;
+    }
+  }
+}
+
+void pack_slab_periodic_x(
+    const SlabTransportContext& context,
+    const SlabPeriodicXLayout& layout, SlabPeriodicXBuffers& buffers) {
+  for (Int destination = 0; destination < layout.process_count;
+       ++destination) {
+    Int offset = layout.send_displacements[static_cast<size_t>(destination)];
+    for (Int line_id = destination; line_id < layout.line_count;
+         line_id += layout.process_count) {
+      pack_slab_periodic_x_line(
+          context, layout, line_id % layout.ny, line_id / layout.ny, offset,
+          buffers);
+      offset += layout.local_nx;
+    }
+  }
+}
+
+void solve_slab_periodic_x_lines(
+    const SlabTransportContext& context,
+    const SlabPeriodicXLayout& layout, const PeriodicLineSolver& solver,
+    SlabPeriodicXBuffers& buffers) {
+  const auto* sink_rate = context.sink_rate;
+  std::vector sink(static_cast<size_t>(layout.nx), 0.0);
+  const auto gathered_displacements = layout.recv_displacements;
+  for (Int line_index = 0;
+       line_index < layout.line_counts[static_cast<size_t>(layout.local_rank)];
+       ++line_index) {
+    std::vector line(static_cast<size_t>(layout.nx), 0.0);
+    for (Int source = 0; source < layout.process_count; ++source) {
+      const Int segment_offset =
+          gathered_displacements[static_cast<size_t>(source)]
+          + line_index * layout.x_counts[static_cast<size_t>(source)];
+      std::copy_n(
+          buffers.recv.begin() + segment_offset,
+          layout.x_counts[static_cast<size_t>(source)],
+          line.begin() + layout.x_displacements[static_cast<size_t>(source)]);
+      if (sink_rate != nullptr) {
+        std::copy_n(
+            buffers.sink_recv.begin() + segment_offset,
+            layout.x_counts[static_cast<size_t>(source)],
+            sink.begin() + layout.x_displacements[static_cast<size_t>(source)]);
+      }
+    }
+    if (sink_rate != nullptr) {
+      solve_periodic_with_sink(line, sink, context.alpha);
+    } else {
+      solver.solve(line);
+    }
+    for (Int destination = 0; destination < layout.process_count;
+         ++destination) {
       const Int segment_offset =
           gathered_displacements[static_cast<size_t>(destination)]
-          + line_index * x_counts[static_cast<size_t>(destination)];
-      std::copy_n(line.begin() + x_displacements[static_cast<size_t>(destination)],
-                  x_counts[static_cast<size_t>(destination)],
-                  solved_buffer.begin() + segment_offset);
+          + line_index * layout.x_counts[static_cast<size_t>(destination)];
+      std::copy_n(
+          line.begin() + layout.x_displacements[static_cast<size_t>(destination)],
+          layout.x_counts[static_cast<size_t>(destination)],
+          buffers.solved.begin() + segment_offset);
     }
   }
+}
 
-  std::fill(send_counts.begin(), send_counts.end(), 0);
-  std::fill(send_displacements.begin(), send_displacements.end(), 0);
-  std::fill(recv_counts.begin(), recv_counts.end(), 0);
-  std::fill(recv_displacements.begin(), recv_displacements.end(), 0);
-  for (Int rank = 0; rank < process_count; ++rank) {
-    send_counts[static_cast<size_t>(rank)] =
-        line_counts[static_cast<size_t>(local_rank)]
-        * x_counts[static_cast<size_t>(rank)];
-    recv_counts[static_cast<size_t>(rank)] =
-        line_counts[static_cast<size_t>(rank)] * local_nx;
-    if (rank > 0) {
-      send_displacements[static_cast<size_t>(rank)] =
-          send_displacements[static_cast<size_t>(rank - 1)]
-          + send_counts[static_cast<size_t>(rank - 1)];
-      recv_displacements[static_cast<size_t>(rank)] =
-          recv_displacements[static_cast<size_t>(rank - 1)]
-          + recv_counts[static_cast<size_t>(rank - 1)];
+void store_slab_periodic_x_line(
+    const SlabTransportContext& context,
+    const SlabPeriodicXLayout& layout, Int iy, Int iz, Int offset,
+    const SlabPeriodicXBuffers& buffers) {
+  auto& concentration = context.concentration;
+  auto* realized = context.realized;
+  const auto* sink_rate = context.sink_rate;
+  const Int storage_nx = context.storage_nx;
+  const Int halo_width = context.halo_width;
+  for (Int ix = 0; ix < layout.local_nx; ++ix) {
+    const Int cell = slab_storage_index(
+        halo_width + ix, iy, iz, storage_nx, layout.ny);
+    concentration[static_cast<size_t>(cell)] =
+        buffers.recv[static_cast<size_t>(offset + ix)];
+    if (realized != nullptr) {
+      (*realized)[static_cast<size_t>(cell)] +=
+          (*sink_rate)[static_cast<size_t>(cell)] * context.sink_dt
+          * concentration[static_cast<size_t>(cell)] * context.cell_volume;
     }
   }
-  const Int solved_total = std::accumulate(send_counts.begin(),
-                                           send_counts.end(), 0);
-  const Int output_total = std::accumulate(recv_counts.begin(),
-                                           recv_counts.end(), 0);
-  send_buffer.assign(static_cast<size_t>(solved_total), 0.0);
-  recv_buffer.assign(static_cast<size_t>(output_total), 0.0);
-  for (Int destination = 0; destination < process_count; ++destination) {
-    const Int segment_length = x_counts[static_cast<size_t>(destination)];
-    Int offset = send_displacements[static_cast<size_t>(destination)];
+}
+
+void diffuse_periodic_x_slab_mpi(
+    const SlabTransportContext& context, const PeriodicLineSolver& solver) {
+  const auto& domain = context.domain;
+  const SlabPeriodicXLayout layout =
+      make_slab_periodic_x_layout(domain, domain.nx());
+  SlabPeriodicXBuffers buffers;
+  const auto solved_total = std::accumulate(
+      layout.recv_counts.begin(), layout.recv_counts.end(), 0);
+  const auto output_total = std::accumulate(
+      layout.send_counts.begin(), layout.send_counts.end(), 0);
+  buffers.send.resize(static_cast<size_t>(output_total));
+  buffers.recv.resize(static_cast<size_t>(solved_total));
+  buffers.solved.resize(static_cast<size_t>(solved_total));
+  if (context.sink_rate != nullptr) {
+    buffers.sink_send.resize(static_cast<size_t>(output_total));
+    buffers.sink_recv.resize(static_cast<size_t>(solved_total));
+  }
+  pack_slab_periodic_x(context, layout, buffers);
+  MPI_Alltoallv(
+      buffers.send.data(), layout.send_counts.data(),
+      layout.send_displacements.data(), MPI_DOUBLE, buffers.recv.data(),
+      layout.recv_counts.data(), layout.recv_displacements.data(), MPI_DOUBLE,
+      MPI_COMM_WORLD);
+  if (context.sink_rate != nullptr) {
+    MPI_Alltoallv(
+        buffers.sink_send.data(), layout.send_counts.data(),
+        layout.send_displacements.data(), MPI_DOUBLE, buffers.sink_recv.data(),
+        layout.recv_counts.data(), layout.recv_displacements.data(), MPI_DOUBLE,
+        MPI_COMM_WORLD);
+  }
+  solve_slab_periodic_x_lines(context, layout, solver, buffers);
+  const auto output_counts = layout.recv_counts;
+  const auto output_displacements = layout.recv_displacements;
+  const auto solved_counts = layout.send_counts;
+  const auto solved_displacements = layout.send_displacements;
+  const auto gathered_displacements = layout.recv_displacements;
+  buffers.send.assign(
+      static_cast<size_t>(std::accumulate(
+          output_counts.begin(), output_counts.end(), 0)), 0.0);
+  buffers.recv.assign(
+      static_cast<size_t>(std::accumulate(
+          solved_counts.begin(), solved_counts.end(), 0)), 0.0);
+  for (Int destination = 0; destination < layout.process_count;
+       ++destination) {
+    const Int segment_length =
+        layout.x_counts[static_cast<size_t>(destination)];
+    Int offset = output_displacements[static_cast<size_t>(destination)];
     for (Int line_index = 0;
-         line_index < line_counts[static_cast<size_t>(local_rank)];
+         line_index < layout.line_counts[static_cast<size_t>(layout.local_rank)];
          ++line_index) {
       const Int source_offset =
           gathered_displacements[static_cast<size_t>(destination)]
           + line_index * segment_length;
-      std::copy_n(solved_buffer.begin() + source_offset, segment_length,
-                  send_buffer.begin() + offset);
+      std::copy_n(
+          buffers.solved.begin() + source_offset, segment_length,
+          buffers.send.begin() + offset);
       offset += segment_length;
     }
   }
-  MPI_Alltoallv(send_buffer.data(), send_counts.data(),
-                send_displacements.data(), MPI_DOUBLE,
-                recv_buffer.data(), recv_counts.data(),
-                recv_displacements.data(), MPI_DOUBLE,
-                MPI_COMM_WORLD);
-  for (Int source = 0; source < process_count; ++source) {
-    Int offset = recv_displacements[static_cast<size_t>(source)];
-    for (Int line_id = source; line_id < line_count;
-         line_id += process_count) {
-      const Int iy = line_id % ny;
-      const Int iz = line_id / ny;
-      for (Int ix = 0; ix < local_nx; ++ix) {
-        const Int cell = slab_storage_index(
-            halo_width + ix, iy, iz, storage_nx, ny);
-        concentration[static_cast<size_t>(cell)] =
-            recv_buffer[static_cast<size_t>(offset + ix)];
-        if (realized != nullptr) {
-          (*realized)[static_cast<size_t>(cell)] +=
-              (*sink_rate)[static_cast<size_t>(cell)] * sink_dt
-              * concentration[static_cast<size_t>(cell)] * cell_volume;
-        }
-      }
-      offset += local_nx;
+  MPI_Alltoallv(
+      buffers.send.data(), output_counts.data(), output_displacements.data(),
+      MPI_DOUBLE, buffers.recv.data(), solved_counts.data(),
+      solved_displacements.data(), MPI_DOUBLE, MPI_COMM_WORLD);
+  for (Int source = 0; source < layout.process_count; ++source) {
+    Int offset = layout.send_displacements[static_cast<size_t>(source)];
+    for (Int line_id = source; line_id < layout.line_count;
+         line_id += layout.process_count) {
+      store_slab_periodic_x_line(
+          context, layout, line_id % layout.ny, line_id / layout.ny, offset,
+          buffers);
+      offset += layout.local_nx;
     }
   }
+}
+#endif
+
+void diffuse_periodic_x_slab(
+    const SlabTransportContext& context) {
+  const PeriodicLineSolver solver(
+      context.domain.nx(), context.alpha);
+  if (context.domain.nprocs() == 1) {
+    diffuse_periodic_x_slab_single(context, solver);
+    return;
+  }
+#ifdef GUTIBM_MPI
+  diffuse_periodic_x_slab_mpi(context, solver);
 #else
-  (void)concentration;
-  (void)domain;
-  (void)storage_nx;
-  (void)halo_width;
-  (void)alpha;
+  (void)solver;
 #endif
 }
 
@@ -1246,9 +1336,16 @@ void diffuse_periodic_y_slab(
 }
 
 void diffuse_periodic_y_slab_delivery(
-    std::vector<Real>& concentration, const std::vector<Real>& sink_rate,
-    std::vector<Real>& realized, const Domain& domain, Int storage_nx,
-    Int halo_width, Real alpha, Real sink_dt, Real cell_volume) {
+    const SlabTransportContext& context) {
+  auto& concentration = context.concentration;
+  const auto& domain = context.domain;
+  const auto& sink_rate = *context.sink_rate;
+  auto& realized = *context.realized;
+  const Int storage_nx = context.storage_nx;
+  const Int halo_width = context.halo_width;
+  const Real alpha = context.alpha;
+  const Real sink_dt = context.sink_dt;
+  const Real cell_volume = context.cell_volume;
   const Int nx = domain.local_grid_nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
@@ -1307,10 +1404,16 @@ Real diffuse_bounded_z_slab(
 }
 
 Real diffuse_bounded_z_slab_delivery(
-    std::vector<Real>& concentration, const std::vector<Real>& sink_rate,
-    std::vector<Real>& realized, const Domain& domain, Int storage_nx,
-    Int halo_width, Real alpha, Real boundary_conc, Real cell_volume,
-    Real sink_dt) {
+    const SlabTransportContext& context, Real boundary_conc) {
+  auto& concentration = context.concentration;
+  const auto& domain = context.domain;
+  const auto& sink_rate = *context.sink_rate;
+  auto& realized = *context.realized;
+  const Int storage_nx = context.storage_nx;
+  const Int halo_width = context.halo_width;
+  const Real alpha = context.alpha;
+  const Real cell_volume = context.cell_volume;
+  const Real sink_dt = context.sink_dt;
   const Int nx = domain.local_grid_nx();
   const Int ny = domain.ny();
   const Int nz = domain.nz();
@@ -1378,10 +1481,16 @@ Real diffuse_bounded_z_delivery_slab(
 }
 
 Real diffuse_bounded_z_delivery_with_sink_slab(
-    std::vector<Real>& concentration, const std::vector<Real>& sink_rate,
-    std::vector<Real>& realized, const Domain& domain, Int storage_nx,
-    Int halo_width, Real alpha, const DeliveryBoundaryParameters& params,
-    Real sink_dt) {
+    const SlabTransportContext& context,
+    const DeliveryBoundaryParameters& params) {
+  auto& concentration = context.concentration;
+  const auto& sink_rate = *context.sink_rate;
+  auto& realized = *context.realized;
+  const auto& domain = context.domain;
+  const Int storage_nx = context.storage_nx;
+  const Int halo_width = context.halo_width;
+  const Real alpha = context.alpha;
+  const Real sink_dt = context.sink_dt;
   const Int ny = domain.ny();
   const Int nz = domain.nz();
   const Int local_nx = domain.local_grid_nx();
@@ -1412,7 +1521,7 @@ Real diffuse_bounded_z_delivery_with_sink_slab(
         halo_width + ix, iy, iz, storage_nx, ny))] += amount;
   };
   return diffuse_bounded_z_delivery_with_sink_impl(
-      local_nx, ny, nz, alpha, params, sink_dt, load_line, store_line,
+      {local_nx, ny, nz, alpha}, params, sink_dt, load_line, store_line,
       load_sink, add_realized);
 }
 
@@ -1481,6 +1590,241 @@ void clamp_nonnegative_slab(
   }
 }
 
+struct ReplicatedDiffusionContext {
+  std::vector<Real>& concentration;
+  const Domain& domain;
+  const ChemicalSpec& chemical;
+  NutrientFluxAccounting& flux;
+  std::vector<Real>& sink_rate;
+  std::vector<Real>& sink_realized;
+  Int spec;
+  Real dt;
+  Real alpha_x;
+  Real alpha_y;
+  Real alpha_z;
+  Real cell_volume;
+  Real diffusion_boundary;
+  bool preserve_gradient;
+  bool delivery;
+};
+
+void prepare_replicated_diffusion(ReplicatedDiffusionContext& context) {
+  if (context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Dirichlet) {
+    context.flux.add_boundary(
+        context.spec, set_epithelial_boundary(
+            context.concentration, context.domain,
+            context.chemical.boundary_conc, context.cell_volume));
+  }
+  if (!context.preserve_gradient) return;
+  set_luminal_neumann_boundary(context.concentration, context.domain);
+  shift_z_gradient(
+      context.concentration, context.chemical, context.domain, -1.0);
+  context.diffusion_boundary = 0.0;
+}
+
+void transport_replicated_periodic(
+    const ReplicatedDiffusionContext& context) {
+  if (context.delivery) {
+    const Real sink_dt = context.dt / 3.0;
+    diffuse_periodic_x_delivery(
+        context.concentration, context.sink_rate, context.sink_realized,
+        context.domain, context.alpha_x, sink_dt, context.cell_volume);
+    diffuse_periodic_y_delivery(
+        context.concentration, context.sink_rate, context.sink_realized,
+        context.domain, context.alpha_y, sink_dt, context.cell_volume);
+  } else {
+    diffuse_periodic_x(
+        context.concentration, context.domain, context.alpha_x);
+    diffuse_periodic_y(
+        context.concentration, context.domain, context.alpha_y);
+  }
+}
+
+Real transport_replicated_z(
+    const ReplicatedDiffusionContext& context) {
+  if (context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Dirichlet) {
+    return context.delivery
+        ? diffuse_bounded_z_delivery(
+              context.concentration, context.sink_rate,
+              context.sink_realized, context.domain, context.alpha_z,
+              {context.diffusion_boundary, 0.0, 0.0,
+               EpithelialBoundaryMode::Dirichlet, context.cell_volume},
+              context.dt / 3.0)
+        : diffuse_bounded_z(
+              context.concentration, context.domain, context.alpha_z,
+              context.diffusion_boundary, context.cell_volume);
+  }
+  const Real beta = context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Robin
+      ? context.chemical.epithelial_transfer_coeff * context.dt
+          / context.domain.dx_z() : 0.0;
+  const Real flux_source = context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Flux
+      ? context.chemical.epithelial_flux * context.dt
+          / context.domain.dx_z() : 0.0;
+  const Real boundary = context.delivery
+      ? diffuse_bounded_z_delivery_with_sink(
+            context.concentration, context.sink_rate,
+            context.sink_realized, context.domain, context.alpha_z,
+            {context.chemical.boundary_conc, beta, flux_source,
+             context.chemical.epithelial_boundary_mode, context.cell_volume},
+            context.dt / 3.0)
+      : diffuse_bounded_z_delivery(
+            context.concentration, context.domain, context.alpha_z,
+            {context.chemical.boundary_conc, beta, flux_source,
+             context.chemical.epithelial_boundary_mode, context.cell_volume});
+  return boundary;
+}
+
+void transport_replicated_diffusion(
+    ReplicatedDiffusionContext& context) {
+  transport_replicated_periodic(context);
+  context.flux.add_boundary(
+      context.spec, transport_replicated_z(context));
+}
+
+void finish_replicated_diffusion(ReplicatedDiffusionContext& context) {
+  if (context.preserve_gradient) {
+    shift_z_gradient(
+        context.concentration, context.chemical, context.domain, 1.0);
+    set_luminal_neumann_boundary(context.concentration, context.domain);
+  }
+  clamp_nonnegative(context.concentration);
+  if (context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Dirichlet) {
+    context.flux.add_boundary(
+        context.spec, set_epithelial_boundary(
+            context.concentration, context.domain,
+            context.chemical.boundary_conc, context.cell_volume));
+  }
+}
+
+struct SlabDiffusionContext {
+  std::vector<Real>& concentration;
+  const Domain& domain;
+  const ChemicalSpec& chemical;
+  NutrientFluxAccounting& flux;
+  std::vector<Real>& sink_rate;
+  std::vector<Real>& sink_realized;
+  Int storage_nx;
+  Int halo_width;
+  Int spec;
+  Real dt;
+  Real alpha_x;
+  Real alpha_y;
+  Real alpha_z;
+  Real cell_volume;
+  Real diffusion_boundary;
+  bool preserve_gradient;
+  bool delivery;
+};
+
+void prepare_slab_diffusion(SlabDiffusionContext& context) {
+  if (context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Dirichlet) {
+    context.flux.add_boundary(
+        context.spec, set_epithelial_boundary_slab(
+            context.concentration, context.domain, context.storage_nx,
+            context.halo_width, context.chemical.boundary_conc,
+            context.cell_volume));
+  }
+  if (!context.preserve_gradient) return;
+  set_luminal_neumann_boundary_slab(
+      context.concentration, context.domain, context.storage_nx,
+      context.halo_width);
+  shift_z_gradient_slab(
+      context.concentration, context.chemical, context.domain,
+      context.storage_nx, context.halo_width, -1.0);
+  context.diffusion_boundary = 0.0;
+}
+
+void transport_slab_periodic(const SlabDiffusionContext& context) {
+  const SlabTransportContext transport{
+      context.concentration, context.domain, context.storage_nx,
+      context.halo_width, context.alpha_x,
+      context.delivery ? &context.sink_rate : nullptr,
+      context.delivery ? &context.sink_realized : nullptr,
+      context.dt / 3.0, context.cell_volume};
+  diffuse_periodic_x_slab(transport);
+  if (context.delivery) {
+    diffuse_periodic_y_slab_delivery(
+        {context.concentration, context.domain, context.storage_nx,
+         context.halo_width, context.alpha_y, &context.sink_rate,
+         &context.sink_realized, context.dt / 3.0, context.cell_volume});
+  } else {
+    diffuse_periodic_y_slab(
+        context.concentration, context.domain, context.storage_nx,
+        context.halo_width, context.alpha_y);
+  }
+}
+
+Real transport_slab_z(const SlabDiffusionContext& context) {
+  const SlabTransportContext z_transport{
+      context.concentration, context.domain, context.storage_nx,
+      context.halo_width, context.alpha_z,
+      context.delivery ? &context.sink_rate : nullptr,
+      context.delivery ? &context.sink_realized : nullptr,
+      context.dt / 3.0, context.cell_volume};
+  if (context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Dirichlet) {
+    const Real boundary = context.delivery
+        ? diffuse_bounded_z_slab_delivery(
+              z_transport, context.diffusion_boundary)
+        : diffuse_bounded_z_slab(
+              context.concentration, context.domain, context.storage_nx,
+              context.halo_width, context.alpha_z,
+              context.diffusion_boundary, context.cell_volume);
+    return boundary;
+  }
+  const Real beta = context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Robin
+      ? context.chemical.epithelial_transfer_coeff * context.dt
+          / context.domain.dx_z() : 0.0;
+  const Real flux_source = context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Flux
+      ? context.chemical.epithelial_flux * context.dt
+          / context.domain.dx_z() : 0.0;
+  const DeliveryBoundaryParameters boundary_params{
+      context.chemical.boundary_conc, beta, flux_source,
+      context.chemical.epithelial_boundary_mode, context.cell_volume};
+  const Real boundary = context.delivery
+      ? diffuse_bounded_z_delivery_with_sink_slab(
+            z_transport, boundary_params)
+      : diffuse_bounded_z_delivery_slab(
+            context.concentration, context.domain, context.storage_nx,
+            context.halo_width, context.alpha_z, boundary_params);
+  return boundary;
+}
+
+void transport_slab_diffusion(SlabDiffusionContext& context) {
+  transport_slab_periodic(context);
+  context.flux.add_boundary(context.spec, transport_slab_z(context));
+}
+
+void finish_slab_diffusion(SlabDiffusionContext& context) {
+  if (context.preserve_gradient) {
+    shift_z_gradient_slab(
+        context.concentration, context.chemical, context.domain,
+        context.storage_nx, context.halo_width, 1.0);
+    set_luminal_neumann_boundary_slab(
+        context.concentration, context.domain, context.storage_nx,
+        context.halo_width);
+  }
+  clamp_nonnegative_slab(
+      context.concentration, context.domain, context.storage_nx,
+      context.halo_width);
+  if (context.chemical.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Dirichlet) {
+    context.flux.add_boundary(
+        context.spec, set_epithelial_boundary_slab(
+            context.concentration, context.domain, context.storage_nx,
+            context.halo_width, context.chemical.boundary_conc,
+            context.cell_volume));
+  }
+}
+
 }  // namespace
 
 void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
@@ -1490,100 +1834,34 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
     apply_diffusion_slab(domain, dt);
     return;
   }
-
   for (Int s = 0; s < nspec_; ++s) {
-    const ChemicalSpec& chemical = specs_[s];
-    if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
-        || chemical.retardation <= 0.0) {
-      continue;
-    }
-
-    // Explicit diffusion would be catastrophically unstable at the biological
-    // timestep (alpha is 5,040 for O2 at dx=5 um, dt=60 s). Backward-Euler
-    // directional splitting is L-stable, positivity-preserving, and O(N).
-    const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
-    const Real alpha_x = effective_diffusion * dt
-        / (domain.dx_x() * domain.dx_x());
-    const Real alpha_y = effective_diffusion * dt
-        / (domain.dx_y() * domain.dx_y());
-    const Real alpha_z = effective_diffusion * dt
-        / (domain.dx_z() * domain.dx_z());
-    auto& concentration = conc_[s];
-    const bool preserve_gradient =
-        chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0;
-    Real diffusion_boundary = chemical.boundary_conc;
-
-    const Real cell_volume = domain.cell_volume();
-    if (chemical.epithelial_boundary_mode
-        == EpithelialBoundaryMode::Dirichlet) {
-      flux_accounting_.add_boundary(
-          s, set_epithelial_boundary(concentration, domain,
-                                     chemical.boundary_conc, cell_volume));
-    }
-    if (preserve_gradient) {
-      // The configured z-gradient is an environmental background profile.
-      // Diffuse reaction-driven departures from it rather than erasing it.
-      // Its reintroduction is a prescribed bulk profile, not epithelial
-      // Dirichlet injection, so it is intentionally excluded from the
-      // boundary flux counter.
-      set_luminal_neumann_boundary(concentration, domain);
-      shift_z_gradient(concentration, chemical, domain, -1.0);
-      diffusion_boundary = 0.0;
-    }
-
-    const bool delivery = s == find(species::CARBON) && has_sink_rate();
-    if (delivery) {
-      const Real sink_dt = dt / 3.0;
-      diffuse_periodic_x_delivery(
-          concentration, sink_rate_, sink_realized_, domain, alpha_x,
-          sink_dt, cell_volume);
-      diffuse_periodic_y_delivery(
-          concentration, sink_rate_, sink_realized_, domain, alpha_y,
-          sink_dt, cell_volume);
-    } else {
-      diffuse_periodic_x(concentration, domain, alpha_x);
-      diffuse_periodic_y(concentration, domain, alpha_y);
-    }
-    if (chemical.epithelial_boundary_mode
-        == EpithelialBoundaryMode::Dirichlet) {
-      flux_accounting_.add_boundary(
-          s, delivery
-              ? diffuse_bounded_z_delivery(
-                    concentration, sink_rate_, sink_realized_, domain,
-                    alpha_z, diffusion_boundary, cell_volume, dt / 3.0)
-              : diffuse_bounded_z(concentration, domain, alpha_z,
-                                  diffusion_boundary, cell_volume));
-    } else {
-      const Real beta = chemical.epithelial_boundary_mode
-          == EpithelialBoundaryMode::Robin
-          ? chemical.epithelial_transfer_coeff * dt / domain.dx_z() : 0.0;
-      const Real flux_source = chemical.epithelial_boundary_mode
-          == EpithelialBoundaryMode::Flux
-          ? chemical.epithelial_flux * dt / domain.dx_z() : 0.0;
-      flux_accounting_.add_boundary(
-          s, delivery
-              ? diffuse_bounded_z_delivery_with_sink(
-                    concentration, sink_rate_, sink_realized_, domain, alpha_z,
-                    {chemical.boundary_conc, beta, flux_source,
-                     chemical.epithelial_boundary_mode, cell_volume}, dt / 3.0)
-              : diffuse_bounded_z_delivery(
-                    concentration, domain, alpha_z,
-                    {chemical.boundary_conc, beta, flux_source,
-                     chemical.epithelial_boundary_mode, cell_volume}));
-    }
-
-    if (preserve_gradient) {
-      shift_z_gradient(concentration, chemical, domain, 1.0);
-      set_luminal_neumann_boundary(concentration, domain);
-    }
-    clamp_nonnegative(concentration);
-    if (chemical.epithelial_boundary_mode
-        == EpithelialBoundaryMode::Dirichlet) {
-      flux_accounting_.add_boundary(
-          s, set_epithelial_boundary(concentration, domain,
-                                     chemical.boundary_conc, cell_volume));
-    }
+    apply_diffusion_species(domain, dt, s);
   }
+}
+
+void ChemicalField::apply_diffusion_species(
+    const Domain& domain, Real dt, Int s) {
+  const ChemicalSpec& chemical = specs_[s];
+  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
+      || chemical.retardation <= 0.0) {
+    return;
+  }
+  const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
+  const Real alpha_x = effective_diffusion * dt
+      / (domain.dx_x() * domain.dx_x());
+  const Real alpha_y = effective_diffusion * dt
+      / (domain.dx_y() * domain.dx_y());
+  const Real alpha_z = effective_diffusion * dt
+      / (domain.dx_z() * domain.dx_z());
+  ReplicatedDiffusionContext context{
+      conc_[s], domain, chemical, flux_accounting_, sink_rate_,
+      sink_realized_, s, dt, alpha_x, alpha_y, alpha_z,
+      domain.cell_volume(), chemical.boundary_conc,
+      chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
+      s == find(species::CARBON) && has_sink_rate()};
+  prepare_replicated_diffusion(context);
+  transport_replicated_diffusion(context);
+  finish_replicated_diffusion(context);
 }
 
 void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt) {
@@ -1604,8 +1882,9 @@ void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt,
   const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt
       / (domain.dx_x() * domain.dx_x());
   if (mode_ == DecompositionMode::Slab) {
-    diffuse_periodic_x_slab(conc_[static_cast<size_t>(spec)], domain,
-                            storage_nx_, halo_width_, alpha);
+    diffuse_periodic_x_slab(
+        {conc_[static_cast<size_t>(spec)], domain, storage_nx_, halo_width_,
+         alpha});
   } else {
     diffuse_periodic_x(conc_[static_cast<size_t>(spec)], domain, alpha);
   }
@@ -1659,101 +1938,34 @@ void ChemicalField::apply_bounded_z_diffusion(const Domain& domain, Real dt,
 
 void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
   for (Int s = 0; s < nspec_; ++s) {
-    const ChemicalSpec& chemical = specs_[s];
-    if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
-        || chemical.retardation <= 0.0) {
-      continue;
-    }
-    const Real effective_diffusion =
-        chemical.diff_coeff / chemical.retardation;
-    const Real alpha_x = effective_diffusion * dt
-        / (domain.dx_x() * domain.dx_x());
-    const Real alpha_y = effective_diffusion * dt
-        / (domain.dx_y() * domain.dx_y());
-    const Real alpha_z = effective_diffusion * dt
-        / (domain.dx_z() * domain.dx_z());
-    auto& concentration = conc_[static_cast<size_t>(s)];
-    const bool preserve_gradient =
-        chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0;
-    Real diffusion_boundary = chemical.boundary_conc;
-    const Real cell_volume = domain.cell_volume();
-    if (chemical.epithelial_boundary_mode
-        == EpithelialBoundaryMode::Dirichlet) {
-      flux_accounting_.add_boundary(
-          s, set_epithelial_boundary_slab(
-                 concentration, domain, storage_nx_, halo_width_,
-                 chemical.boundary_conc, cell_volume));
-    }
-    if (preserve_gradient) {
-      set_luminal_neumann_boundary_slab(
-          concentration, domain, storage_nx_, halo_width_);
-      shift_z_gradient_slab(
-          concentration, chemical, domain, storage_nx_, halo_width_, -1.0);
-      diffusion_boundary = 0.0;
-    }
-    const bool delivery = s == find(species::CARBON) && has_sink_rate();
-    if (delivery) {
-      diffuse_periodic_x_slab(
-          concentration, domain, storage_nx_, halo_width_, alpha_x,
-          &sink_rate_, &sink_realized_, dt / 3.0, cell_volume);
-    } else {
-      diffuse_periodic_x_slab(
-          concentration, domain, storage_nx_, halo_width_, alpha_x);
-    }
-    if (delivery) {
-      diffuse_periodic_y_slab_delivery(
-          concentration, sink_rate_, sink_realized_, domain, storage_nx_,
-          halo_width_, alpha_y, dt / 3.0, cell_volume);
-    } else {
-      diffuse_periodic_y_slab(
-          concentration, domain, storage_nx_, halo_width_, alpha_y);
-    }
-    if (chemical.epithelial_boundary_mode
-        == EpithelialBoundaryMode::Dirichlet) {
-      flux_accounting_.add_boundary(
-          s, delivery
-              ? diffuse_bounded_z_slab_delivery(
-                    concentration, sink_rate_, sink_realized_, domain,
-                    storage_nx_, halo_width_, alpha_z, diffusion_boundary,
-                    cell_volume, dt / 3.0)
-              : diffuse_bounded_z_slab(
-                    concentration, domain, storage_nx_, halo_width_, alpha_z,
-                    diffusion_boundary, cell_volume));
-    } else {
-      const Real beta = chemical.epithelial_boundary_mode
-          == EpithelialBoundaryMode::Robin
-          ? chemical.epithelial_transfer_coeff * dt / domain.dx_z() : 0.0;
-      const Real flux_source = chemical.epithelial_boundary_mode
-          == EpithelialBoundaryMode::Flux
-          ? chemical.epithelial_flux * dt / domain.dx_z() : 0.0;
-      flux_accounting_.add_boundary(
-          s, delivery
-              ? diffuse_bounded_z_delivery_with_sink_slab(
-                    concentration, sink_rate_, sink_realized_, domain,
-                    storage_nx_, halo_width_, alpha_z,
-                    {chemical.boundary_conc, beta, flux_source,
-                     chemical.epithelial_boundary_mode, cell_volume}, dt / 3.0)
-              : diffuse_bounded_z_delivery_slab(
-                    concentration, domain, storage_nx_, halo_width_, alpha_z,
-                    {chemical.boundary_conc, beta, flux_source,
-                     chemical.epithelial_boundary_mode, cell_volume}));
-    }
-    if (preserve_gradient) {
-      shift_z_gradient_slab(
-          concentration, chemical, domain, storage_nx_, halo_width_, 1.0);
-      set_luminal_neumann_boundary_slab(
-          concentration, domain, storage_nx_, halo_width_);
-    }
-    clamp_nonnegative_slab(
-        concentration, domain, storage_nx_, halo_width_);
-    if (chemical.epithelial_boundary_mode
-        == EpithelialBoundaryMode::Dirichlet) {
-      flux_accounting_.add_boundary(
-          s, set_epithelial_boundary_slab(
-                 concentration, domain, storage_nx_, halo_width_,
-                 chemical.boundary_conc, cell_volume));
-    }
+    apply_diffusion_slab_species(domain, dt, s);
   }
+}
+
+void ChemicalField::apply_diffusion_slab_species(
+    const Domain& domain, Real dt, Int s) {
+  const ChemicalSpec& chemical = specs_[s];
+  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
+      || chemical.retardation <= 0.0) {
+    return;
+  }
+  const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
+  const Real alpha_x = effective_diffusion * dt
+      / (domain.dx_x() * domain.dx_x());
+  const Real alpha_y = effective_diffusion * dt
+      / (domain.dx_y() * domain.dx_y());
+  const Real alpha_z = effective_diffusion * dt
+      / (domain.dx_z() * domain.dx_z());
+  SlabDiffusionContext context{
+      conc_[static_cast<size_t>(s)], domain, chemical, flux_accounting_,
+      sink_rate_, sink_realized_, storage_nx_, halo_width_, s, dt,
+      alpha_x, alpha_y, alpha_z, domain.cell_volume(),
+      chemical.boundary_conc,
+      chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
+      s == find(species::CARBON) && has_sink_rate()};
+  prepare_slab_diffusion(context);
+  transport_slab_diffusion(context);
+  finish_slab_diffusion(context);
 }
 
 namespace {

@@ -80,14 +80,20 @@ class FixMetabolism : public Fix {
   void post_chemistry(Real dt) override;
 
  private:
+  void compute_agent(Agent& agent, Real dt);
+  void prepare_delivery_uptake(Agent& agent, Real dt);
   void commit_delivery_uptake(Real dt);
+  void collect_delivery_demands(std::vector<Real>& demand_by_cell);
+  void commit_delivery_agent(
+      Agent& agent, const std::vector<Real>& demand_by_cell, Int carbon,
+      Real dt);
   void compute_growth_rate(Agent& agent, Real dt);
   Real uptake_limit_fraction(const Agent& agent, Real d_biomass, Real dt,
                              bool record_diagnostics);
   void charge_carbon_maintenance(Agent& agent, Real dt);
   void prepare_carbon_maintenance();
   void grow_agent(Agent& agent, Real dt);
-  void apply_growth_chemistry(Agent& agent, Real d_biomass, Real dt);
+  void apply_growth_chemistry(const Agent& agent, Real d_biomass, Real dt);
   Real realized_carbon_cost(const Agent& agent) const;
   void apply_siderophore_chemistry(Real dt);
   void apply_siderophore_chelation(Int i_sid, Int i_iron,
