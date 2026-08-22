@@ -614,6 +614,146 @@ void test_delivery_negative_growth_books_maintenance() {
   std::cout << "  test_delivery_negative_growth_books_maintenance: PASSED\n";
 }
 
+struct GradientDeliveryMeasurement {
+  Real demand = 0.0;
+  Real realized = 0.0;
+  Real funded_fraction = 0.0;
+  Real total_concentration = 0.0;
+  Real background_concentration = 0.0;
+};
+
+GradientDeliveryMeasurement run_gradient_delivery(
+    bool gradient_enabled, Real gradient_lambda, Real radius) {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.initial_strains[0].mu_max = 5.0e-4;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.dysbiosis_threshold = 0.0;
+  constexpr Real initial_concentration = 1.0e-3;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = initial_concentration;
+      chemical.boundary_conc = initial_concentration;
+      chemical.z_gradient_enabled = gradient_enabled;
+      chemical.z_gradient_lambda = gradient_lambda;
+    } else if (chemical.name == species::IRON) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = initial_concentration;
+      chemical.boundary_conc = initial_concentration;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent& agent = sim.agents()[0];
+  agent.radius = radius;
+  agent.outer_radius = radius * 1.05;
+  agent.km.km_carbon = 1.0e-9;
+  const Int cell = agent.grid_cell;
+  Int ix = 0;
+  Int iy = 0;
+  Int iz = 0;
+  sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+  const Real z_rel = (iz + 0.5) * sim.domain().dx_z();
+  sim.step(kDt);
+
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const auto index = static_cast<size_t>(carbon);
+  const Real demand = flux.uptake_demand_interval[index];
+  const Real realized = flux.agent_uptake_interval[index];
+  GradientDeliveryMeasurement result;
+  result.demand = demand;
+  result.realized = realized;
+  result.funded_fraction = demand > 0.0 ? realized / demand : 0.0;
+  result.total_concentration =
+      sim.chemical_field().conc_global(carbon, cell);
+  result.background_concentration = initial_concentration
+      * std::exp(-z_rel / gradient_lambda);
+  (void)ix;
+  (void)iy;
+  return result;
+}
+
+void test_delivery_gradient_realizes_and_funds() {
+  const GradientDeliveryMeasurement result =
+      run_gradient_delivery(true, 10.0e-6, 5.0e-7);
+  assert(result.demand > 0.0);
+  assert(result.realized > 0.0);
+  assert(result.funded_fraction > 0.0);
+  std::cout << "    gradient_realized=" << result.realized
+            << " demand=" << result.demand << "\n";
+  std::cout << "  test_delivery_gradient_realizes_and_funds: PASSED\n";
+}
+
+void test_delivery_gradient_large_lambda_matches_flat_profile() {
+  const GradientDeliveryMeasurement gradient =
+      run_gradient_delivery(true, 1.0e9, 5.0e-7);
+  const GradientDeliveryMeasurement flat =
+      run_gradient_delivery(false, 1.0e9, 5.0e-7);
+  const Real tolerance = 1.0e-10;
+  assert(std::abs(gradient.realized - flat.realized)
+         <= tolerance * std::max(flat.realized, 1.0e-30));
+  assert(std::abs(gradient.funded_fraction - flat.funded_fraction)
+         <= tolerance * std::max(flat.funded_fraction, 1.0e-30));
+  std::cout << "  test_delivery_gradient_large_lambda_matches_flat_profile: PASSED\n";
+}
+
+void test_delivery_gradient_depletes_below_background() {
+  const GradientDeliveryMeasurement result =
+      run_gradient_delivery(true, 10.0e-6, 2.0e-6);
+  assert(result.realized > 0.0);
+  assert(result.total_concentration < result.background_concentration);
+  std::cout << "  test_delivery_gradient_depletes_below_background: PASSED\n";
+}
+
+void test_delivery_gradient_sensitivity() {
+  const std::vector<Real> radii = {1.0e-9, 5.0e-9, 2.0e-8};
+  std::vector<Real> realized;
+  for (Real radius : radii) {
+    realized.push_back(
+        run_gradient_delivery(true, 10.0e-6, radius).realized);
+  }
+  assert(realized[0] > 0.0);
+  assert(realized[0] < realized[1]);
+  assert(realized[1] < realized[2]);
+  std::cout << "    gradient_realized_by_radius=" << realized[0] << ", "
+            << realized[1] << ", " << realized[2] << "\n";
+  std::cout << "  test_delivery_gradient_sensitivity: PASSED\n";
+}
+
+void test_delivery_gradient_inertness_change_detectors() {
+  const Measurement flat =
+      measure_single_agent(UptakeLimitMode::Delivery, 1.0e-6, 5.0e-7, 1.0);
+  assert(flat.realized == flat.field_removal);
+  assert(flat.realized >= 0.0);
+
+  SimulationConfig cfg = base_config();
+  cfg.fixes.metabolism.uptake_limit = "none";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::None;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.z_gradient_enabled = true;
+      chemical.z_gradient_lambda = 10.0e-6;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  const Real initial_biomass = sim.agents()[0].biomass;
+  sim.step(kDt);
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  assert(sim.agents()[0].biomass > initial_biomass);
+  assert(sim.chemical_field().flux_accounting().agent_uptake_step[
+             static_cast<size_t>(carbon)] == 0.0);
+  std::cout << "  test_delivery_gradient_inertness_change_detectors: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -629,6 +769,11 @@ int main() {
   test_delivery_queues_noncarbon_chemistry_once();
   test_delivery_preserves_negative_growth();
   test_delivery_negative_growth_books_maintenance();
+  test_delivery_gradient_realizes_and_funds();
+  test_delivery_gradient_large_lambda_matches_flat_profile();
+  test_delivery_gradient_depletes_below_background();
+  test_delivery_gradient_sensitivity();
+  test_delivery_gradient_inertness_change_detectors();
   std::cout << "All uptake limitation tests passed.\n";
   return 0;
 }
