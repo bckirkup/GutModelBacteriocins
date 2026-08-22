@@ -67,9 +67,13 @@ MaintenanceResult carbon_maintenance_step(SimulationConfig cfg, Real rate,
                                               UptakeLimitMode::None) {
   cfg.fixes.metabolism.carbon_maintenance_rate = rate;
   cfg.fixes.metabolism.uptake_limit_mode = mode;
-  cfg.fixes.metabolism.uptake_limit = mode == UptakeLimitMode::Voxel
-      ? "voxel"
-      : mode == UptakeLimitMode::Sherwood ? "sherwood" : "none";
+  if (mode == UptakeLimitMode::Voxel) {
+    cfg.fixes.metabolism.uptake_limit = "voxel";
+  } else if (mode == UptakeLimitMode::Sherwood) {
+    cfg.fixes.metabolism.uptake_limit = "sherwood";
+  } else {
+    cfg.fixes.metabolism.uptake_limit = "none";
+  }
   for (auto& chemical : cfg.chemicals) {
     if (chemical.name == species::CARBON) {
       chemical.initial_conc = carbon_concentration;
