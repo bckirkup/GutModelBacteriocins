@@ -840,12 +840,13 @@ void test_metabolism_metabolic_mode() {
   assert(std::isfinite(fermentative_acid_per_growth));
   assert(aerobic_acid_per_growth >= 0.0);
   assert(fermentative_acid_per_growth >= 0.0);
-  assert(aerobic_acid_per_growth <= aerobic_cost);
-  assert(fermentative_acid_per_growth <= fermentative_cost);
+  assert(aerobic_acid_per_growth <= 0.1 * aerobic_cost);
+  assert(fermentative_acid_per_growth <= 0.1 * fermentative_cost);
   assert(close(aerobic_acid_per_growth,
-               result.fermentation_fraction * aerobic_cost));
+               result.fermentation_fraction * 0.1 * aerobic_cost));
   assert(close(fermentative_acid_per_growth,
-               result.fermentation_fraction_agent1 * fermentative_cost));
+               result.fermentation_fraction_agent1 * 0.1
+                   * fermentative_cost));
   assert(fermentative_acid_per_growth > aerobic_acid_per_growth);
 }
 
