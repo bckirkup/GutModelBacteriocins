@@ -98,8 +98,13 @@ requests are reported as uptake or maintenance shortfall rather than reaction
 clip. Non-carbon growth chemistry from the funded increment is queued on the
 agent and emitted at the start of the next biology pass, before the next
 chemistry solve. This one-step lag matches the funding lag; carbon remains
-excluded from that queued reaction path. Ghost agents do not contribute sink
-coefficients or accounting writes.
+excluded from that queued reaction path. When gradient preservation is enabled,
+transport solves for the perturbation `P` after subtracting the static profile
+`G(z)`, while delivery acts on total concentration `P + G(z)`: each implicit
+sink solve keeps its diagonal unchanged and adds `-s*G` to the right-hand side.
+Realized removal is calculated from the post-solve total and only the restored
+total is clamped; any resulting carbon truncation is recorded as a reaction
+clip. Ghost agents do not contribute sink coefficients or accounting writes.
 
 **Biological basis:** *E. coli* growth in the gut requires carbon (mucin-derived monosaccharides), iron (via siderophores through multiple TBDTs), and vitamin B12 (via BtuB). Growth rate follows multiplicative Monod kinetics. When `oxygen.enabled`, the legacy aerobic boost applies unless `oxygen.metabolic_switch_enabled` is true.
 

@@ -640,8 +640,47 @@ void test_delivery_sink_slab_matches_replicated() {
                   - replicated.sink_realized_global(target))
          <= 1.0e-12 * std::max(
              1.0, std::abs(replicated.sink_realized_global(target))));
+
+  ChemicalSpec gradient_spec = spec;
+  gradient_spec.z_gradient_enabled = true;
+  gradient_spec.z_gradient_lambda = 10.0e-6;
+  ChemicalField gradient_slab;
+  ChemicalField gradient_replicated;
+  gradient_slab.init(domain, {gradient_spec}, "slab");
+  gradient_replicated.init(domain, {gradient_spec}, "replicated");
+  gradient_replicated.add_sink_rate_global(target, 0.2);
+  if (domain.owner_rank(domain.cell_center(1, 1, 1)) == rank) {
+    gradient_slab.add_sink_rate_global(target, 0.2);
+  }
+  gradient_slab.apply_diffusion(domain, 60.0);
+  gradient_replicated.apply_diffusion(domain, 60.0);
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    if (!gradient_slab.owns_global_cell(cell)) continue;
+    const Real slab_value = gradient_slab.conc_global(carbon, cell);
+    const Real replicated_value =
+        gradient_replicated.conc_global(carbon, cell);
+    assert(std::abs(slab_value - replicated_value)
+           <= 1.0e-12 * std::max(1.0, std::abs(replicated_value)));
+  }
+  Real gradient_slab_removed = 0.0;
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    if (gradient_slab.owns_global_cell(cell)) {
+      gradient_slab_removed += gradient_slab.sink_realized_global(cell);
+    }
+  }
+  Real global_gradient_slab_removed = 0.0;
+  MPI_Allreduce(&gradient_slab_removed, &global_gradient_slab_removed, 1,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  assert(global_gradient_slab_removed > 0.0);
+  assert(std::abs(global_gradient_slab_removed
+                  - gradient_replicated.sink_realized_global(target))
+         <= 1.0e-12 * std::max(
+             1.0, std::abs(
+                 gradient_replicated.sink_realized_global(target))));
   if (rank == 0) {
-    std::cout << "  test_delivery_sink_slab_matches_replicated: PASSED\n";
+    std::cout << "  test_delivery_sink_slab_matches_replicated: PASSED"
+              << " (gradient_removed=" << global_gradient_slab_removed
+              << ")\n";
   }
 }
 
