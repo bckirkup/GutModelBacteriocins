@@ -28,6 +28,7 @@ struct NutrientFluxAccounting {
   std::vector<Real> agent_uptake_step;
   std::vector<Real> agent_uptake_cumulative;
   std::vector<Real> agent_uptake_last_step;
+  std::vector<Real> nutrient_blocking_fraction;
   std::vector<Real> maintenance_interval;
   std::vector<Real> maintenance_step;
   std::vector<Real> maintenance_last_step;
@@ -69,6 +70,7 @@ struct NutrientFluxAccounting {
     agent_uptake_step.assign(species_count, 0.0);
     agent_uptake_cumulative.assign(species_count, 0.0);
     agent_uptake_last_step.assign(species_count, 0.0);
+    nutrient_blocking_fraction.assign(species_count, 0.0);
     maintenance_interval.assign(species_count, 0.0);
     maintenance_step.assign(species_count, 0.0);
     maintenance_last_step.assign(species_count, 0.0);
@@ -165,6 +167,17 @@ struct NutrientFluxAccounting {
     #pragma omp atomic
     #endif
     reaction_clip_step[static_cast<size_t>(species)] += amount;
+  }
+
+  void refresh_nutrient_blocking_fraction() {
+    nutrient_blocking_fraction.resize(agent_uptake_interval.size(), 0.0);
+    for (size_t i = 0; i < nutrient_blocking_fraction.size(); ++i) {
+      const Real agent_removal =
+          agent_uptake_interval[i] + maintenance_interval[i];
+      const Real total = agent_removal + vbf_sink_interval[i];
+      nutrient_blocking_fraction[i] =
+          total > 0.0 ? agent_removal / total : 0.0;
+    }
   }
 
   void commit_agent_uptake_step() {

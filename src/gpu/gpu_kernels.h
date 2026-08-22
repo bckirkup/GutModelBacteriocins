@@ -175,6 +175,12 @@ void launch_vbf_coupling_kernel(int ncells,
                                 double* vbf_totals,
                                 double dt,
                                 cudaStream_t stream);
+void launch_count_agents_per_cell_kernel(
+    const int* grid_cell, const int* state, const int* is_ghost,
+    int num_agents, int* counts,
+    int global_nx, int global_ny, int global_nz, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin, cudaStream_t stream);
 
 void launch_fmm_far_local_kernel(
     const double* leaf_local,

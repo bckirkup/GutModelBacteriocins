@@ -42,6 +42,8 @@ class ChemicalFieldGpu {
   void reset_vbf_totals();
   double* vbf_totals_device();
   void download_vbf_totals(std::vector<double>& values);
+  void reset_agent_counts();
+  int* agent_counts_device();
   double* agent_uptake_device() {
     return active_ ? d_agent_uptake_.data() : nullptr;
   }
@@ -58,6 +60,7 @@ class ChemicalFieldGpu {
 
   bool active() const { return active_; }
   Int storage_nx() const { return storage_nx_; }
+  Int ncells() const { return ncells_; }
   Int global_nx() const { return global_nx_; }
   Int global_ny() const { return global_ny_; }
   Int global_nz() const { return global_nz_; }
@@ -92,6 +95,7 @@ class ChemicalFieldGpu {
   DeviceBuffer<double> d_uptake_limit_totals_;
   DeviceBuffer<double> d_vbf_totals_;
   DeviceBuffer<double> d_reaction_clip_;
+  DeviceBuffer<int> d_agent_counts_;
 };
 
 }  // namespace gutibm

@@ -171,6 +171,9 @@ undissociated fraction is approximately 5.4%, so physiological colonic
 acetate is generally below half-inhibition and the mechanism mainly acts in
 acidified microenvironments.
 
+See [`SPEC12_DENSITY_LIMITATION.md`](SPEC12_DENSITY_LIMITATION.md) for the
+amended Spec 12 mechanism and implementation contract.
+
 **Graded iron uptake (Issue #10):** Rather than relying solely on FepA, iron acquisition uses four receptor systems in parallel with different affinities:
 
 | Receptor | Siderophore | Km (nM) | Role |
@@ -784,6 +787,14 @@ than the local field contains. That realized amount is written both into the
 carbon reaction rate and `vbf_sink` accounting. Any residual reaction
 positivity clip is recorded separately in the nutrient-flux summary. Agent-side
 uptake remains an independent pathway and can still overdraw a cell.
+
+With `vbf.agent_carbon_coupling` nonzero, the VBF `vmax` in each voxel gains
+`agent_carbon_coupling * n_owned_live_agents / V_cell`. The default zero keeps
+the historical sink unchanged; ghost and dead agents are excluded. The
+nutrient-flux summary reports the derived blocking fraction. Its numerator is
+realized agent carbon removal, `agent_uptake + maintenance`; unpaid
+maintenance shortfall is excluded. The denominator is that realized agent
+removal plus realized VBF sink removal.
 
 ---
 

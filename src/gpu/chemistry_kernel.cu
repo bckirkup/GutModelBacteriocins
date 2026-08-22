@@ -47,10 +47,16 @@ __device__ void apply_vbf_at_cell(int cell,
     }
   }
 
-  if (reac_carbon && conc_carbon && p.carbon_sink_vmax > 0.0) {
+  const double local_vmax = p.carbon_sink_vmax
+      + (p.agent_carbon_coupling != 0.0 && p.agent_counts != nullptr
+          ? p.agent_carbon_coupling * static_cast<double>(p.agent_counts[cell])
+              / (p.dx_x * p.dx_y * p.dx_z)
+          : 0.0);
+  if (reac_carbon && conc_carbon && local_vmax > 0.0) {
     const double c = conc_carbon[cell];
     const double sink = vbf::implicit_carbon_sink(
-        c, p.carbon_sink_vmax, p.carbon_sink_km, dt);
+        c, local_vmax,
+            p.carbon_sink_km, dt);
     reac_carbon[cell] -= sink;
     if (vbf_totals) atomicAdd(&vbf_totals[1], sink * cell_volume * dt);
   }
@@ -159,6 +165,22 @@ __global__ void vbf_coupling_kernel(int ncells,
 
 }  // namespace
 
+__global__ void count_agents_per_cell_kernel(
+    const int* grid_cell, const int* state, const int* is_ghost,
+    int num_agents, int* counts,
+    int global_nx, int global_ny, int global_nz, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= num_agents || state[i] == 3 || is_ghost[i] != 0) return;
+  if (grid_cell[i] < 0
+      || grid_cell[i] >= global_nx * global_ny * global_nz) return;
+  const int storage_cell = map_global_cell_to_storage(
+      grid_cell[i], global_nx, global_ny, storage_nx,
+      owned_global_x_begin, owned_global_x_end, owned_storage_x_begin);
+  if (storage_cell >= 0) atomicAdd(&counts[storage_cell], 1);
+}
+
 void launch_o2_depletion_kernel(double* reac_oxygen,
                                 const double* mu_realized,
                                 const double* fermentation_fraction,
@@ -209,6 +231,22 @@ void launch_vbf_coupling_kernel(int ncells,
       reac_oxygen, conc_oxygen,
       reac_acetate,
       reac_mucin, conc_mucin, vbf_totals, dt);
+}
+
+void launch_count_agents_per_cell_kernel(
+    const int* grid_cell, const int* state, const int* is_ghost,
+    int num_agents, int* counts,
+    int global_nx, int global_ny, int global_nz, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin, cudaStream_t stream) {
+  if (num_agents <= 0) return;
+  const int block = 256;
+  const int grid = (num_agents + block - 1) / block;
+  count_agents_per_cell_kernel<<<grid, block, 0, stream>>>(
+      grid_cell, state, is_ghost, num_agents, counts,
+      global_nx, global_ny, global_nz,
+      storage_nx,
+      owned_global_x_begin, owned_global_x_end, owned_storage_x_begin);
 }
 
 }  // namespace gpu

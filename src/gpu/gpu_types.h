@@ -48,12 +48,16 @@ struct VbfLaunchParams {
   int global_nx = 0;
   int ny = 0;
   int nz = 0;
+  int owned_global_x_begin = 0;
+  int owned_global_x_end = 0;
   double dx_x = 0.0;
   double dx_y = 0.0;
   double dx_z = 0.0;
   double nutrient_sink = 0.0;
   double carbon_sink_vmax = 0.0;
   double carbon_sink_km = 0.0;
+  double agent_carbon_coupling = 0.0;
+  int* agent_counts = nullptr;
   int use_dynamic_mucin = 0;
   int mucin_z_gradient_enabled = 0;
   double mucin_z_gradient_lambda = 0.0;
