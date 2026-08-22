@@ -59,8 +59,8 @@ sys.path.insert(0, str(_REPO_PYTHON))
 
 try:
     from gut_ibm_tools.path_utils import (
-        prepare_output_file,
         validate_input_path,
+        write_json_file,
     )
 except ModuleNotFoundError as error:
     if error.name != "h5py":
@@ -77,8 +77,8 @@ except ModuleNotFoundError as error:
     path_utils = importlib.util.module_from_spec(spec)
     sys.modules["gut_ibm_tools.path_utils"] = path_utils
     spec.loader.exec_module(path_utils)
-    prepare_output_file = path_utils.prepare_output_file
     validate_input_path = path_utils.validate_input_path
+    write_json_file = path_utils.write_json_file
 
 SEED = 1001
 HORIZON_S = 21600  # 6 h; blocking fraction is a per-interval diagnostic
@@ -94,38 +94,44 @@ ARMS = [
 
 def main(base_config: pathlib.Path, out_root: pathlib.Path) -> None:
     base = json.loads(validate_input_path(base_config).read_text())
+    out_root = out_root.expanduser().resolve()
+    out_root.mkdir(parents=True, exist_ok=True)
+    previous_cwd = pathlib.Path.cwd()
+    os.chdir(out_root)
 
-    for tag, coupling, demand_fraction in ARMS:
-        cfg = dict(base)
-        cfg["total_time"] = HORIZON_S
-        cfg["seed"] = SEED
-        cfg["gpu_enabled"] = False
-        cfg["uptake_limit"] = "delivery"
-        cfg["vbf_agent_carbon_coupling"] = coupling
-        cfg["hdf5_file"] = "output.h5"
-        cfg["_comment"] = [
-            "agent_carbon_coupling probe for merged #312 (Spec 12 Change 1).",
-            "Measurement run, not calibration: nothing here is being fitted.",
-            (f"vbf.agent_carbon_coupling = {coupling:.3e} mol/s/agent = "
-             f"{demand_fraction:.2f}x the measured per-agent carbon demand "
-             f"{PER_AGENT_DEMAND:.1e} mol/s. Spec 12's own 1e-16 is ~2000x "
-             "full per-agent demand at grid_dx=2um and is not swept here."),
-            ("uptake_limit=delivery so growth is funded only by realized "
-             "field removal; delivery rejects gpu_enabled, so this is a CPU "
-             "arm and arms must run sequentially (~2.7 GB RSS each)."),
-            ("Read per arm: nutrient blocking fraction (the observable), "
-             "population trajectory and plateau, funded fraction, "
-             "maintenance shortfall, carbon in occupied vs empty voxels, "
-             "and /run_provenance termination cause."),
-            ("A closure_violation halt in the highest arm is the expected "
-             "signature of voxel starvation, not a defect."),
-        ]
+    try:
+        for tag, coupling, demand_fraction in ARMS:
+            cfg = dict(base)
+            cfg["total_time"] = HORIZON_S
+            cfg["seed"] = SEED
+            cfg["gpu_enabled"] = False
+            cfg["uptake_limit"] = "delivery"
+            cfg["vbf_agent_carbon_coupling"] = coupling
+            cfg["hdf5_file"] = "output.h5"
+            cfg["_comment"] = [
+                "agent_carbon_coupling probe for merged #312 (Spec 12 Change 1).",
+                "Measurement run, not calibration: nothing here is being fitted.",
+                (f"vbf.agent_carbon_coupling = {coupling:.3e} mol/s/agent = "
+                 f"{demand_fraction:.2f}x the measured per-agent carbon demand "
+                 f"{PER_AGENT_DEMAND:.1e} mol/s. Spec 12's own 1e-16 is ~2000x "
+                 "full per-agent demand at grid_dx=2um and is not swept here."),
+                ("uptake_limit=delivery so growth is funded only by realized "
+                 "field removal; delivery rejects gpu_enabled, so this is a CPU "
+                 "arm and arms must run sequentially (~2.7 GB RSS each)."),
+                ("Read per arm: nutrient blocking fraction (the observable), "
+                 "population trajectory and plateau, funded fraction, "
+                 "maintenance shortfall, carbon in occupied vs empty voxels, "
+                 "and /run_provenance termination cause."),
+                ("A closure_violation halt in the highest arm is the expected "
+                 "signature of voxel starvation, not a defect."),
+            ]
 
-        arm_dir = out_root / tag
-        output_file = prepare_output_file(arm_dir / "input.json")
-        output_file.write_text(json.dumps(cfg, indent=1) + "\n")
-        print(f"{tag}: agent_carbon_coupling={coupling:.3e} "
-              f"({demand_fraction:.2f}x demand) -> {arm_dir/'input.json'}")
+            output_path = pathlib.Path(tag) / "input.json"
+            write_json_file(output_path, cfg, indent=1)
+            print(f"{tag}: agent_carbon_coupling={coupling:.3e} "
+                  f"({demand_fraction:.2f}x demand) -> {out_root/output_path}")
+    finally:
+        os.chdir(previous_cwd)
 
 
 if __name__ == "__main__":
