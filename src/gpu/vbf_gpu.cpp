@@ -7,6 +7,8 @@
 #include "gpu_kernels.h"
 #include "species_names.h"
 #include "vbf.h"
+#include "agent_pool_gpu.h"
+#include "device_memory.h"
 #include <vector>
 
 #ifdef GUTIBM_CUDA
@@ -22,6 +24,7 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
                             const OxygenConfig& oxygen,
                             const AcetateConfig& acetate,
                             const MucinConfig& mucin,
+                            const AgentPoolGpu& agents,
                             VbfFluxTotals& totals, Real dt) {
 #ifndef GUTIBM_CUDA
   (void)chem_gpu;
@@ -31,6 +34,7 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   (void)oxygen;
   (void)acetate;
   (void)mucin;
+  (void)agents;
   (void)totals;
   (void)dt;
   return false;
@@ -45,12 +49,15 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   params.global_nx = domain.nx();
   params.ny = domain.ny();
   params.nz = domain.nz();
+  params.owned_global_x_begin = domain.local_grid_x_begin();
+  params.owned_global_x_end = domain.local_grid_x_end();
   params.dx_x = domain.dx_x();
   params.dx_y = domain.dx_y();
   params.dx_z = domain.dx_z();
   params.nutrient_sink = cfg.nutrient_sink;
   params.carbon_sink_vmax = cfg.carbon_sink_vmax;
   params.carbon_sink_km = cfg.carbon_sink_km;
+  params.agent_carbon_coupling = cfg.agent_carbon_coupling;
   params.use_dynamic_mucin = cfg.use_dynamic_mucin ? 1 : 0;
   params.mucin_z_gradient_enabled = cfg.mucin_z_gradient_enabled ? 1 : 0;
   params.mucin_z_gradient_lambda = cfg.mucin_z_gradient_lambda;
@@ -72,6 +79,19 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   const Int i_oxygen = chem.find(species::OXYGEN);
   const Int i_acetate = chem.find(species::ACETATE);
   const Int i_mucin = chem.find(species::MUCIN);
+  DeviceBuffer<int> agent_counts(static_cast<size_t>(chem_gpu.ncells()));
+#ifdef GUTIBM_CUDA
+  cudaMemsetAsync(agent_counts.data(), 0,
+                  static_cast<size_t>(chem_gpu.ncells()) * sizeof(int),
+                  gpu_compute_stream());
+  gpu::launch_count_agents_per_cell_kernel(
+      agents.grid_cell(), agents.state(), agents.is_ghost(), agents.size(),
+      agent_counts.data(),
+      params.global_nx, params.global_ny, params.global_nz, params.storage_nx,
+      params.owned_global_x_begin, params.owned_global_x_end,
+      params.owned_x_begin, gpu_compute_stream());
+  params.agent_counts = agent_counts.data();
+#endif
 
   gpu::launch_vbf_coupling_kernel(
       (params.owned_x_end - params.owned_x_begin) * domain.ny() * domain.nz(),

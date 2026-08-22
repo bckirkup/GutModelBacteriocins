@@ -9,6 +9,7 @@ class ChemicalField;
 class ChemicalFieldGpu;
 class Domain;
 class VBF;
+class AgentPoolGpu;
 
 struct AcetateConfig;
 struct MucinConfig;
@@ -22,6 +23,7 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
                             const OxygenConfig& oxygen,
                             const AcetateConfig& acetate,
                             const MucinConfig& mucin,
+                            const AgentPoolGpu& agents,
                             VbfFluxTotals& totals, Real dt);
 
 }  // namespace gutibm

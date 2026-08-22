@@ -59,6 +59,9 @@ def test_get_grid_and_metadata(sample_hdf5: Path) -> None:
         assert summary["halt_density_cells_per_mL"] == pytest.approx(0.0)
         provenance = data.get_run_provenance()
         assert provenance["completed_total_time"] == 1
+        flux = data.get_nutrient_flux("step_000001")
+        assert flux["nutrient_blocking_fraction"][0] == pytest.approx(1.0)
+        assert flux["nutrient_blocking_fraction"][1] == pytest.approx(0.0)
 
 
 def test_get_termination_audit_horizon(sample_hdf5: Path) -> None:

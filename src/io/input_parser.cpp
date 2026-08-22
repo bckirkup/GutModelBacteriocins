@@ -649,6 +649,12 @@ bool apply_vbf_key(SimulationConfig& cfg, std::string_view key, const std::strin
   if (key == "vbf_mucin_z_lambda")   { cfg.vbf.mucin_z_gradient_lambda = parse_config_real(key, val); return true; }
   if (key == "vbf_carbon_sink_vmax") { cfg.vbf.carbon_sink_vmax = parse_config_real(key, val); return true; }
   if (key == "vbf_carbon_sink_km")   { cfg.vbf.carbon_sink_km = parse_config_real(key, val); return true; }
+  if (key == "vbf_agent_carbon_coupling"
+      || key == "vbf.agent_carbon_coupling"
+      || key == "agent_carbon_coupling") {
+    cfg.vbf.agent_carbon_coupling = parse_config_real(key, val);
+    return true;
+  }
   return false;
 }
 

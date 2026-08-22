@@ -10,6 +10,7 @@
 #define GUTIBM_VBF_H
 
 #include "types.h"
+#include <vector>
 
 namespace gutibm {
 
@@ -57,6 +58,9 @@ struct VBFConfig {
   // restore the pre-Spec-6 unbounded-accumulation behavior.
   Real carbon_sink_vmax = 5.5e-5;   // mol/m^3/s max VBF carbon consumption
   Real carbon_sink_km   = 1.0e-4;   // mol/m^3 half-saturation
+  // Additional VBF carbon competition per owned agent in a voxel.
+  // Zero preserves the historical spatially uniform sink.
+  Real agent_carbon_coupling = 0.0; // mol/s per agent
 };
 
 class VBF {
@@ -71,7 +75,8 @@ class VBF {
                                 const OxygenConfig& oxygen,
                                 const AcetateConfig& acetate,
                                 const MucinConfig& mucin,
-                                VbfFluxTotals* totals = nullptr) const;
+                                VbfFluxTotals* totals = nullptr,
+                                const std::vector<Int>& agent_counts = {}) const;
 
   // Compute drag force on an agent at position with velocity
   Vec3 drag_force(const Vec3& agent_vel) const;

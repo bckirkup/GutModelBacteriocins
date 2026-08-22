@@ -58,6 +58,7 @@ class ChemicalFieldGpu {
 
   bool active() const { return active_; }
   Int storage_nx() const { return storage_nx_; }
+  Int ncells() const { return ncells_; }
   Int global_nx() const { return global_nx_; }
   Int global_ny() const { return global_ny_; }
   Int global_nz() const { return global_nz_; }

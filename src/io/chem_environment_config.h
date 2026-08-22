@@ -16,7 +16,7 @@ struct OxygenConfig {
   Real Km = 1.0e-6;                 // mol/m^3 Monod half-saturation
   Real boost_max = 2.0;             // max aerobic growth multiplier - 1
   bool metabolic_switch_enabled = false;
-  Real mu_crit = 3.0e-4;            // 1/s respiratory capacity
+  Real mu_crit = 9.7e-5;            // 0.35 h^-1 acetate-overflow onset
   Real aerobic_mu_factor = 1.0;
   Real anaerobic_mu_factor = 0.55;
   // Multipliers on substrate-per-biomass yield (not biomass-per-substrate).

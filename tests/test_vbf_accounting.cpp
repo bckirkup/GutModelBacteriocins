@@ -24,7 +24,8 @@ struct SinkMeasurement {
 };
 
 SinkMeasurement measure_sink(const Domain& domain, const ChemicalSpec& carbon,
-                             const VBFConfig& vbf_cfg, Real dt) {
+                             const VBFConfig& vbf_cfg, Real dt,
+                             const std::vector<Int>& agent_counts = {}) {
   ChemicalField chem;
   chem.init(domain, {carbon});
   const Int carbon_index = chem.find(species::CARBON);
@@ -35,7 +36,7 @@ SinkMeasurement measure_sink(const Domain& domain, const ChemicalSpec& carbon,
   MucinConfig mucin;
   VbfFluxTotals totals;
   vbf.apply_nutrient_coupling(
-      chem, domain, dt, oxygen, acetate, mucin, &totals);
+      chem, domain, dt, oxygen, acetate, mucin, &totals, agent_counts);
 
   const Real cell_volume = domain.cell_volume();
   const Real updated = chem.conc(carbon_index, 0)
@@ -162,6 +163,41 @@ int main() {
     }
   }
   test_implicit_sink_mass_closure(domain, carbon);
+  std::vector<Int> empty_counts(static_cast<size_t>(domain.ncells()), 0);
+  std::vector<Int> dense_counts = empty_counts;
+  dense_counts[0] = 1;
+  const std::array<Real, 4> coupling_values = {
+      0.0, 1.0e-21, 1.0e-20, 1.0e-19};
+  std::array<Real, 4> dense_empty_gaps{};
+  for (size_t i = 0; i < coupling_values.size(); ++i) {
+    VBFConfig coupling_cfg = vbf_cfg;
+    coupling_cfg.agent_carbon_coupling = coupling_values[i];
+    const auto empty = measure_sink(
+        domain, carbon, coupling_cfg, dt, empty_counts);
+    const auto dense = measure_sink(
+        domain, carbon, coupling_cfg, dt, dense_counts);
+    dense_empty_gaps[i] =
+        empty.updated_concentration - dense.updated_concentration;
+    assert(i == 0
+           || dense.updated_concentration < empty.updated_concentration);
+    if (i > 0) {
+      assert(dense_empty_gaps[i] >= dense_empty_gaps[i - 1]);
+    }
+  }
+  std::cout << "PASS: agent-density VBF coupling is monotone\n";
+  NutrientFluxAccounting flux;
+  flux.init(1);
+  flux.agent_uptake_interval[0] = 2.0;
+  flux.refresh_nutrient_blocking_fraction();
+  assert(std::abs(flux.nutrient_blocking_fraction[0] - 1.0) < 1.0e-15);
+  flux.vbf_sink_interval[0] = 2.0;
+  flux.refresh_nutrient_blocking_fraction();
+  assert(std::abs(flux.nutrient_blocking_fraction[0] - 0.5) < 1.0e-15);
+  flux.agent_uptake_interval[0] = 0.0;
+  flux.vbf_sink_interval[0] = 0.0;
+  flux.refresh_nutrient_blocking_fraction();
+  assert(std::abs(flux.nutrient_blocking_fraction[0]) < 1.0e-15);
+  std::cout << "PASS: nutrient blocking fraction tracks agent/VBF uptake\n";
 #ifdef GUTIBM_CUDA
   GpuConfig gpu_cfg;
   gpu_cfg.enabled = true;

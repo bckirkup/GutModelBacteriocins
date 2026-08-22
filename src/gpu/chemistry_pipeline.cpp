@@ -76,6 +76,15 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   const Int carbon = in.chem.find(species::CARBON);
   const Int iron = in.chem.find(species::IRON);
   const Int oxygen = in.chem.find(species::OXYGEN);
+  std::vector<Int> agent_counts(
+      static_cast<size_t>(in.domain.ncells()), 0);
+  for (const Agent& agent : in.agents) {
+    if (agent.state != PhenoState::DEAD && !agent.flags.is_ghost
+        && agent.grid_cell >= 0
+        && agent.grid_cell < in.domain.ncells()) {
+      ++agent_counts[static_cast<size_t>(agent.grid_cell)];
+    }
+  }
   VbfFluxTotals vbf_totals;
   if (!in.delivery_mode) {
     in.chem.sum_agent_uptake_across_ranks();
@@ -89,7 +98,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     in.chem_gpu.reset_vbf_totals();
     applied_vbf_on_gpu = gpu_apply_vbf_coupling(
         in.chem_gpu, in.chem, in.domain, in.vbf,
-        in.oxygen, in.acetate, in.mucin, vbf_totals, dt);
+        in.oxygen, in.acetate, in.mucin, in.agents_gpu, vbf_totals, dt);
   }
   if (!applied_vbf_on_gpu) {
     if (reactions_on_device) {
@@ -97,7 +106,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     }
     in.vbf.apply_nutrient_coupling(in.chem, in.domain, dt,
                                    in.oxygen, in.acetate, in.mucin,
-                                   &vbf_totals);
+                                   &vbf_totals, agent_counts);
   }
   if (carbon >= 0) {
 #ifdef GUTIBM_MPI

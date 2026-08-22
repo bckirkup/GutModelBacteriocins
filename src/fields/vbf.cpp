@@ -71,11 +71,24 @@ void apply_carbon_sink(ChemicalField& chem, Int cell,
                        const VbfCellContext& ctx,
                        VbfFluxTotals* totals,
                        Real cell_volume,
-                       Real dt) {
-  if (ctx.cfg.carbon_sink_vmax <= 0.0 || ctx.idx.carbon < 0) return;
+                       Real dt,
+                       Int agent_count) {
+  if (ctx.idx.carbon < 0) return;
   const Real c = chem.conc(ctx.idx.carbon, cell);
+  if (ctx.cfg.agent_carbon_coupling == 0.0) {
+    if (ctx.cfg.carbon_sink_vmax <= 0.0) return;
+    const Real sink = vbf::implicit_carbon_sink(
+        c, ctx.cfg.carbon_sink_vmax, ctx.cfg.carbon_sink_km, dt);
+    chem.reac(ctx.idx.carbon, cell) -= sink;
+    if (totals != nullptr) totals->carbon_sink += sink * cell_volume * dt;
+    return;
+  }
+  const Real vmax = ctx.cfg.carbon_sink_vmax
+      + ctx.cfg.agent_carbon_coupling * static_cast<Real>(agent_count)
+          / cell_volume;
+  if (vmax <= 0.0) return;
   const Real sink = vbf::implicit_carbon_sink(
-      c, ctx.cfg.carbon_sink_vmax, ctx.cfg.carbon_sink_km, dt);
+      c, vmax, ctx.cfg.carbon_sink_km, dt);
   chem.reac(ctx.idx.carbon, cell) -= sink;
   if (totals != nullptr) totals->carbon_sink += sink * cell_volume * dt;
 }
@@ -131,9 +144,10 @@ void apply_vbf_at_cell(ChemicalField& chem, Int cell,
                        const VbfCellContext& ctx,
                        VbfFluxTotals* totals,
                        Real cell_volume,
-                       Real dt) {
+                       Real dt,
+                       Int agent_count) {
   apply_carbon_source(chem, cell, ctx, totals, cell_volume, dt);
-  apply_carbon_sink(chem, cell, ctx, totals, cell_volume, dt);
+  apply_carbon_sink(chem, cell, ctx, totals, cell_volume, dt, agent_count);
   apply_iron_sink(chem, cell, ctx, totals, cell_volume, dt);
   apply_oxygen_sink(chem, cell, ctx, totals, cell_volume, dt);
   apply_acetate_coupling(chem, cell, ctx);
@@ -170,7 +184,8 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
                                    const OxygenConfig& oxygen,
                                    const AcetateConfig& acetate,
                                    const MucinConfig& mucin,
-                                   VbfFluxTotals* totals) const {
+                                   VbfFluxTotals* totals,
+                                   const std::vector<Int>& agent_counts) const {
   const VbfSpeciesIndices idx = find_vbf_species(chem);
 
   const Int nx = domain.nx();
@@ -192,8 +207,11 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
              ix < domain.local_grid_x_end(); ++ix) {
           const Int global_cell = domain.cell_index(ix, iy, iz);
           const Int storage_cell = chem.global_to_storage_cell(global_cell);
+          const Int agent_count = global_cell >= 0
+              && global_cell < static_cast<Int>(agent_counts.size())
+              ? agent_counts[static_cast<size_t>(global_cell)] : 0;
           apply_vbf_at_cell(chem, storage_cell, ctx, totals,
-                            cell_volume, dt);
+                            cell_volume, dt, agent_count);
         }
       }
     }
@@ -213,7 +231,12 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
         apply_vbf_at_cell(chem, domain.cell_index(ix, iy, iz), ctx,
-                          totals, cell_volume, dt);
+                          totals, cell_volume, dt,
+                          (domain.cell_index(ix, iy, iz) >= 0
+                           && domain.cell_index(ix, iy, iz)
+                               < static_cast<Int>(agent_counts.size()))
+                              ? agent_counts[static_cast<size_t>(
+                                  domain.cell_index(ix, iy, iz))] : 0);
       }
     }
   }

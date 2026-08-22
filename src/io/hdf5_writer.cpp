@@ -854,7 +854,8 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_scalar_dataset(fid, group + "/halt_density_cells_per_mL",
                        H5T_NATIVE_DOUBLE, &halt_density);
   ensure_group(fid, group + "/nutrient_flux", cfg_);
-  const auto& flux = sim.chemical_field().flux_accounting();
+  auto& flux = sim.chemical_field().flux_accounting();
+  flux.refresh_nutrient_blocking_fraction();
   const auto write_flux = [&](const char* name,
                               const std::vector<Real>& values) {
     write_dataset_1d_serial(fid, group + "/nutrient_flux/" + name,
@@ -898,6 +899,8 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_flux("agent_uptake_cumulative",
              add_cumulative(flux.agent_uptake_cumulative,
                            flux.agent_uptake_interval));
+  write_flux("nutrient_blocking_fraction",
+             flux.nutrient_blocking_fraction);
   write_flux("maintenance_interval", flux.maintenance_interval);
   write_flux("maintenance_cumulative",
              add_cumulative(flux.maintenance_cumulative,

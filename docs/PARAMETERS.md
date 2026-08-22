@@ -253,6 +253,7 @@ change).
 | `vbf.mucin_z_gradient_lambda` | 25e-6 | m | Liberation decay length from epithelium |
 | `vbf_carbon_sink_vmax` | 5.5e-5 | mol/m³/s | Monod carbon consumption by the anaerobic majority (Spec 5 §1 / Spec 6 §1). Activated by default: set just above the mucin liberation rate (5e-5) so bulk carbon settles to a ~1 mM equilibrium instead of accumulating without bound. `0` restores pre-Spec-6 unbounded accumulation |
 | `vbf_carbon_sink_km` | 1e-4 | mol/m³ | Half-saturation for the VBF carbon sink |
+| `vbf.agent_carbon_coupling` | 0.0 | mol/s/agent | Additional VBF carbon competition proportional to owned live-agent density; zero preserves the historical sink. For 2 µm cells (8 fL), use demand-anchored values such as 0, 1e-21, 1e-20, and 1e-19 mol/s/agent; values large enough to starve a voxel are expected to trigger the delivery closure gate. |
 
 **Mucin liberation profile:** When `mucin_z_gradient_enabled`, the liberation rate varies as:
 `rate(z) = mucin_liberation * exp(-z_rel / mucin_z_gradient_lambda)`
@@ -391,7 +392,7 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | `metabolism.maintenance_rate` | 1e-5 | 1/s | Maintenance energy |
 | `metabolism.carbon_maintenance_rate` | 0.0 | mol C/(s·kg biomass) | Non-growth-associated carbon substrate consumption; independent of `maintenance_rate` |
 | `oxygen.metabolic_switch_enabled` | false | bool | Replace legacy oxygen boost with respiratory, overflow, and fermentative metabolism |
-| `oxygen.mu_crit` | 3.0e-4 | 1/s | Respiratory capacity threshold |
+| `oxygen.mu_crit` | 9.7e-5 | 1/s | Respiratory capacity threshold; with `resp_capacity = f_O2 * mu_crit / max(mu, mu_crit)`, this 0.35 h⁻¹ onset keeps the growth-rate/overflow axis active for example strains with `mu_max = 5.5e-4 /s` |
 | `oxygen.aerobic_mu_factor` | 1.0 | multiplier | Growth factor at zero fermentation |
 | `oxygen.anaerobic_mu_factor` | 0.55 | multiplier | Growth factor at full fermentation |
 | `oxygen.aerobic_carbon_cost_factor` | 1.0 | multiplier | Multiplier on substrate-per-biomass carbon cost |
@@ -451,13 +452,25 @@ Fermentative secretion currently writes literal acetate. Canonical mixed-acid
 fermentation is approximately `1 acetate + 1 ethanol + 2 formate per glucose`;
 a lumped total-acid model would therefore be near three acid equivalents and
 would require a lower effective pKa. This implementation deliberately models
-acetate only. The separate `agent_carbon_coupling` proposal is not implemented;
+acetate only. The implemented `agent_carbon_coupling` parameter adds a
+per-owned-agent VBF carbon sink; see
+[`SPEC12_DENSITY_LIMITATION.md`](SPEC12_DENSITY_LIMITATION.md) for sizing and
+closure-gate interactions.
 the measured carbon maintenance sink is the model's density-coupled substrate
 draw.
 Finally, the default `yield_carbon = 0.5 mol/kg` is approximately `6.4×`
 cheaper than the literature comparison. Varma's `0.524 gDW/g glucose`, with
 `30%` dry fraction and `180 g/mol`, implies approximately `3.2 mol glucose per
 kg wet biomass`. The default yield remains unchanged.
+
+The acid-inhibition `Ki` above is expressed in undissociated acetate units.
+The cited Russell & Diez-Gonzalez threshold is approximately 50 mM
+undissociated acid, matching the repository's 50 mol/m³ default. The amended
+specification's 20 mol/m³ total-acetate value would be about 1.1 mol/m³
+undissociated at pH 6, roughly 45 times more sensitive, so it is not adopted.
+Likewise, `oxygen.ferm_acid_yield` is acetate per carbon-equivalent consumed,
+not acetate per mole of glucose; the specification's 0.67 mol/mol-glucose
+quantity is therefore different rather than contradictory.
 
 ---
 

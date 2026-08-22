@@ -833,6 +833,7 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("vbf_mucin_z_lambda", cfg.vbf.mucin_z_gradient_lambda);
   real_key("vbf_carbon_sink_vmax", cfg.vbf.carbon_sink_vmax);
   real_key("vbf_carbon_sink_km", cfg.vbf.carbon_sink_km);
+  real_key("vbf.agent_carbon_coupling", cfg.vbf.agent_carbon_coupling);
   real_key("carbon_boundary_conc", cfg.carbon_boundary_conc);
   bool_key("oxygen.enabled", cfg.chem_env.oxygen.enabled);
   real_key("oxygen.epithelial_conc", cfg.chem_env.oxygen.epithelial_conc);

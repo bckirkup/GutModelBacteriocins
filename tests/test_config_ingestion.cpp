@@ -296,6 +296,18 @@ std::vector<Probe> build_probes() {
   v.push_back(R("vbf_mucin_z_lambda", [](const SimulationConfig& c) { return c.vbf.mucin_z_gradient_lambda; }));
   v.push_back(R("vbf_carbon_sink_vmax", [](const SimulationConfig& c) { return c.vbf.carbon_sink_vmax; }));
   v.push_back(R("vbf_carbon_sink_km", [](const SimulationConfig& c) { return c.vbf.carbon_sink_km; }));
+  v.push_back(R("vbf_agent_carbon_coupling",
+                [](const SimulationConfig& c) {
+                  return c.vbf.agent_carbon_coupling;
+                }));
+  v.push_back(R("vbf.agent_carbon_coupling",
+                [](const SimulationConfig& c) {
+                  return c.vbf.agent_carbon_coupling;
+                }));
+  v.push_back(R("agent_carbon_coupling",
+                [](const SimulationConfig& c) {
+                  return c.vbf.agent_carbon_coupling;
+                }));
 
   // ── Carbon z-gradient + bacteriocin SOS ───────────────────────────────────
   v.push_back(B("carbon_z_gradient", [](const SimulationConfig& c) { return carbon_spec(c).z_gradient_enabled; }));

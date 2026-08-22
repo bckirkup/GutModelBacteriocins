@@ -147,6 +147,14 @@ class GutIBMData:
             "time": provenance.get("termination_time"),
         }
 
+    def get_nutrient_flux(self, step: str) -> dict[str, np.ndarray]:
+        """Return per-species nutrient flux diagnostics for a summary step."""
+        assert self._file is not None
+        path = f"summary/{step}/nutrient_flux"
+        if path not in self._file:
+            return {}
+        return {name: np.array(dataset) for name, dataset in self._file[path].items()}
+
     def get_agents(self, step: str) -> dict[str, np.ndarray]:
         """Return agent arrays for a given step."""
         assert self._file is not None
