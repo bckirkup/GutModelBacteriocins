@@ -152,6 +152,61 @@ void test_simulation_carbon_cost_direction() {
   std::cout << "  test_simulation_carbon_cost_direction: PASSED\n";
 }
 
+void test_mu_crit_overflow_sensitivity() {
+  SimulationConfig cfg = simulation_config();
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.chem_env.oxygen.metabolic_switch_enabled = true;
+  cfg.chem_env.oxygen.tau_metabolic_switch = 1.0;
+  cfg.chem_env.oxygen.aerobic_mu_factor = 1.0;
+  cfg.chem_env.oxygen.anaerobic_mu_factor = 1.0;
+  cfg.chem_env.acetate.enabled = true;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  cfg.initial_strains[0].count = 2;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  set_agent_cells(sim);
+  set_species(sim, species::CARBON, 1.0);
+  set_species(sim, species::OXYGEN, 1.0e30);
+  set_species(sim, species::ACETATE, 0.0);
+  sim.agents()[0].mu_max = 5.5e-4;
+  sim.agents()[1].mu_max = 1.0e-5;
+
+  FixMetabolism fix(sim, sim.config().fixes.metabolism);
+  fix.compute(kDt);
+
+  const gutibm::Int acetate = sim.chemical_field().find(species::ACETATE);
+  const Real volume = sim.domain().cell_volume();
+  const Real above_acetate = sim.chemical_field().reac_global(
+      acetate, sim.agents()[0].grid_cell) * volume * kDt;
+  const Real below_acetate = sim.chemical_field().reac_global(
+      acetate, sim.agents()[1].grid_cell) * volume * kDt;
+  const Real mu_crit = sim.config().chem_env.oxygen.mu_crit;
+  int above_threshold = 0;
+  for (const Agent& agent : sim.agents()) {
+    if (agent.mu_realized > mu_crit) ++above_threshold;
+  }
+  std::cout << "  mu_crit=" << mu_crit
+            << " fraction_above=" << static_cast<Real>(above_threshold)
+                / static_cast<Real>(sim.agents().size())
+            << " mu_above=" << sim.agents()[0].mu_realized
+            << " mu_below=" << sim.agents()[1].mu_realized
+            << " ferm_above="
+                << sim.agents()[0].realized_fermentation_fraction
+            << " ferm_below="
+                << sim.agents()[1].realized_fermentation_fraction
+            << "\n";
+  assert(sim.agents()[0].mu_realized > mu_crit);
+  assert(sim.agents()[1].mu_realized < mu_crit);
+  assert(sim.agents()[0].realized_fermentation_fraction > 0.1);
+  assert(sim.agents()[1].realized_fermentation_fraction < 1.0e-12);
+  assert(above_acetate > 0.0);
+  assert(std::abs(below_acetate) < 1.0e-30);
+  std::cout << "  test_mu_crit_overflow_sensitivity: PASSED\n";
+}
+
 Real run_acid_probe(Real acetate, Real ph) {
   SimulationConfig cfg = simulation_config();
   cfg.chem_env.oxygen.enabled = false;
@@ -385,6 +440,7 @@ int main() {
 
   test_simulation_backward_compatibility();
   test_simulation_carbon_cost_direction();
+  test_mu_crit_overflow_sensitivity();
   test_simulation_acid_inhibition();
   test_simulation_maintenance_coupling();
   test_simulation_inertia();

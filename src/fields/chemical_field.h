@@ -172,9 +172,11 @@ struct NutrientFluxAccounting {
   void refresh_nutrient_blocking_fraction() {
     nutrient_blocking_fraction.resize(agent_uptake_interval.size(), 0.0);
     for (size_t i = 0; i < nutrient_blocking_fraction.size(); ++i) {
-      const Real total = agent_uptake_interval[i] + vbf_sink_interval[i];
+      const Real agent_removal =
+          agent_uptake_interval[i] + maintenance_interval[i];
+      const Real total = agent_removal + vbf_sink_interval[i];
       nutrient_blocking_fraction[i] =
-          total > 0.0 ? agent_uptake_interval[i] / total : 0.0;
+          total > 0.0 ? agent_removal / total : 0.0;
     }
   }
 

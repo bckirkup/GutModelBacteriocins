@@ -7,6 +7,8 @@
 #include "species_names.h"
 #include "vbf.h"
 #include "vbf_gpu.h"
+#include "input_parser.h"
+#include "simulation.h"
 
 #include <array>
 #include <cassert>
@@ -22,6 +24,66 @@ struct SinkMeasurement {
   Real amount = 0.0;
   Real updated_concentration = 0.0;
 };
+
+enum class AgentPopulationState {
+  Live,
+  Dead,
+  Ghost,
+};
+
+Real run_agent_density_probe(AgentPopulationState population_state) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.lo = {0.0, 0.0, 0.0};
+  cfg.domain.hi = {16.0e-6, 16.0e-6, 16.0e-6};
+  cfg.domain.grid_dx = 2.0e-6;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.total_time = 60.0;
+  cfg.hdf5.enabled = false;
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.vbf.carbon_sink_vmax = 2.0e-7;
+  cfg.vbf.carbon_sink_km = 1.0e-4;
+  cfg.vbf.agent_carbon_coupling = 1.0e-21;
+  for (auto& spec : cfg.chemicals) {
+    if (spec.name == species::CARBON) {
+      spec.initial_conc = 1.0e-4;
+      spec.boundary_conc = 1.0e-4;
+      spec.diffusion_enabled = false;
+    }
+  }
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain strain;
+  strain.type = 1;
+  strain.count = 2;
+  strain.mu_max = 0.0;
+  cfg.initial_strains.push_back(strain);
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  const Vec3 position = {
+      sim.domain().lo()[0] + 0.5 * sim.domain().dx_x(),
+      sim.domain().lo()[1] + 0.5 * sim.domain().dx_y(),
+      sim.domain().lo()[2] + 1.5 * sim.domain().dx_z()};
+  const Int occupied_cell = sim.domain().cell_index(0, 0, 1);
+  for (Agent& agent : sim.agents()) {
+    agent.x = position;
+    agent.grid_cell = occupied_cell;
+    if (population_state == AgentPopulationState::Dead) {
+      agent.state = PhenoState::DEAD;
+    } else if (population_state == AgentPopulationState::Ghost) {
+      agent.flags.is_ghost = true;
+    }
+  }
+  sim.step(cfg.time.bio_dt);
+
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const Int empty_cell = sim.domain().cell_index(1, 0, 1);
+  return sim.chemical_field().conc(carbon, empty_cell)
+      - sim.chemical_field().conc(carbon, occupied_cell);
+}
 
 SinkMeasurement measure_sink(const Domain& domain, const ChemicalSpec& carbon,
                              const VBFConfig& vbf_cfg, Real dt,
@@ -193,11 +255,29 @@ int main() {
   flux.vbf_sink_interval[0] = 2.0;
   flux.refresh_nutrient_blocking_fraction();
   assert(std::abs(flux.nutrient_blocking_fraction[0] - 0.5) < 1.0e-15);
+  flux.maintenance_interval[0] = 6.0;
+  flux.refresh_nutrient_blocking_fraction();
+  assert(std::abs(flux.nutrient_blocking_fraction[0] - 0.8) < 1.0e-15);
+  flux.maintenance_shortfall_interval[0] = 100.0;
+  flux.refresh_nutrient_blocking_fraction();
+  assert(std::abs(flux.nutrient_blocking_fraction[0] - 0.8) < 1.0e-15);
   flux.agent_uptake_interval[0] = 0.0;
+  flux.maintenance_interval[0] = 0.0;
+  flux.maintenance_shortfall_interval[0] = 0.0;
   flux.vbf_sink_interval[0] = 0.0;
   flux.refresh_nutrient_blocking_fraction();
   assert(std::abs(flux.nutrient_blocking_fraction[0]) < 1.0e-15);
   std::cout << "PASS: nutrient blocking fraction tracks agent/VBF uptake\n";
+  const Real live_gap = run_agent_density_probe(AgentPopulationState::Live);
+  const Real dead_gap = run_agent_density_probe(AgentPopulationState::Dead);
+  const Real ghost_gap = run_agent_density_probe(AgentPopulationState::Ghost);
+  std::cerr << "  histogram gaps: live=" << live_gap
+            << " dead=" << dead_gap << " ghost=" << ghost_gap << "\n";
+  assert(live_gap > 1.0e-12);
+  assert(std::abs(dead_gap) < 1.0e-15);
+  assert(std::abs(ghost_gap) < 1.0e-15);
+  std::cout << "PASS: live agents populate VBF density histogram; "
+            << "dead/ghost agents are excluded\n";
 #ifdef GUTIBM_CUDA
   GpuConfig gpu_cfg;
   gpu_cfg.enabled = true;

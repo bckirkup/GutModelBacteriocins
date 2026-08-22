@@ -791,8 +791,10 @@ uptake remains an independent pathway and can still overdraw a cell.
 With `vbf.agent_carbon_coupling` nonzero, the VBF `vmax` in each voxel gains
 `agent_carbon_coupling * n_owned_live_agents / V_cell`. The default zero keeps
 the historical sink unchanged; ghost and dead agents are excluded. The
-nutrient-flux summary reports the derived blocking fraction,
-`agent_uptake / (agent_uptake + vbf_sink)`.
+nutrient-flux summary reports the derived blocking fraction. Its numerator is
+realized agent carbon removal, `agent_uptake + maintenance`; unpaid
+maintenance shortfall is excluded. The denominator is that realized agent
+removal plus realized VBF sink removal.
 
 ---
 

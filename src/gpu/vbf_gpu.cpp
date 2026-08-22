@@ -79,18 +79,17 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   const Int i_oxygen = chem.find(species::OXYGEN);
   const Int i_acetate = chem.find(species::ACETATE);
   const Int i_mucin = chem.find(species::MUCIN);
-  DeviceBuffer<int> agent_counts(static_cast<size_t>(chem_gpu.ncells()));
 #ifdef GUTIBM_CUDA
-  cudaMemsetAsync(agent_counts.data(), 0,
-                  static_cast<size_t>(chem_gpu.ncells()) * sizeof(int),
-                  gpu_compute_stream());
-  gpu::launch_count_agents_per_cell_kernel(
-      agents.grid_cell(), agents.state(), agents.is_ghost(), agents.size(),
-      agent_counts.data(),
-      params.global_nx, params.global_ny, params.global_nz, params.storage_nx,
-      params.owned_global_x_begin, params.owned_global_x_end,
-      params.owned_x_begin, gpu_compute_stream());
-  params.agent_counts = agent_counts.data();
+  if (cfg.agent_carbon_coupling != 0.0) {
+    chem_gpu.reset_agent_counts();
+    gpu::launch_count_agents_per_cell_kernel(
+        agents.grid_cell(), agents.state(), agents.is_ghost(), agents.size(),
+        chem_gpu.agent_counts_device(),
+        params.global_nx, params.global_ny, params.global_nz, params.storage_nx,
+        params.owned_global_x_begin, params.owned_global_x_end,
+        params.owned_x_begin, gpu_compute_stream());
+    params.agent_counts = chem_gpu.agent_counts_device();
+  }
 #endif
 
   gpu::launch_vbf_coupling_kernel(

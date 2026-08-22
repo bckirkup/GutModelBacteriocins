@@ -76,15 +76,6 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   const Int carbon = in.chem.find(species::CARBON);
   const Int iron = in.chem.find(species::IRON);
   const Int oxygen = in.chem.find(species::OXYGEN);
-  std::vector<Int> agent_counts(
-      static_cast<size_t>(in.domain.ncells()), 0);
-  for (const Agent& agent : in.agents) {
-    if (agent.state != PhenoState::DEAD && !agent.flags.is_ghost
-        && agent.grid_cell >= 0
-        && agent.grid_cell < in.domain.ncells()) {
-      ++agent_counts[static_cast<size_t>(agent.grid_cell)];
-    }
-  }
   VbfFluxTotals vbf_totals;
   if (!in.delivery_mode) {
     in.chem.sum_agent_uptake_across_ranks();
@@ -103,6 +94,17 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   if (!applied_vbf_on_gpu) {
     if (reactions_on_device) {
       in.chem_gpu.sync_reactions_to_host(in.chem);
+    }
+    std::vector<Int> agent_counts;
+    if (in.vbf.config().agent_carbon_coupling != 0.0) {
+      agent_counts.assign(static_cast<size_t>(in.domain.ncells()), 0);
+      for (const Agent& agent : in.agents) {
+        if (agent.state != PhenoState::DEAD && !agent.flags.is_ghost
+            && agent.grid_cell >= 0
+            && agent.grid_cell < in.domain.ncells()) {
+          ++agent_counts[static_cast<size_t>(agent.grid_cell)];
+        }
+      }
     }
     in.vbf.apply_nutrient_coupling(in.chem, in.domain, dt,
                                    in.oxygen, in.acetate, in.mucin,

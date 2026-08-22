@@ -53,6 +53,7 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   d_uptake_limit_totals_.allocate(5);
   d_vbf_totals_.allocate(4);
   d_reaction_clip_.allocate(static_cast<size_t>(nspec_));
+  d_agent_counts_.allocate(static_cast<size_t>(ncells_));
   sync_to_device(field);
 }
 
@@ -122,6 +123,21 @@ double* ChemicalFieldGpu::vbf_totals_device() {
 void ChemicalFieldGpu::download_vbf_totals(std::vector<double>& values) {
   if (!active_) return;
   d_vbf_totals_.download(values);
+}
+
+void ChemicalFieldGpu::reset_agent_counts() {
+#ifndef GUTIBM_CUDA
+  return;
+#else
+  if (!active_) return;
+  cudaMemsetAsync(d_agent_counts_.data(), 0,
+                  static_cast<size_t>(ncells_) * sizeof(int),
+                  gpu_compute_stream());
+#endif
+}
+
+int* ChemicalFieldGpu::agent_counts_device() {
+  return active_ ? d_agent_counts_.data() : nullptr;
 }
 
 void ChemicalFieldGpu::reset_reaction_clip() {
