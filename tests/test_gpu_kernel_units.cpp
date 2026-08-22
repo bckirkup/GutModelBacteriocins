@@ -810,9 +810,9 @@ void test_metabolism_metabolic_mode() {
       0.0, 1.0e-3, false, true, 1.0, 0, 0.0, 0.0, true, 0.0,
       fractions, true, 0.0, 0.0);
   const double aerobic_cost = gutibm::metabolic_mode::interpolate(
-      1.0, 4.1, fractions[0]);
+      1.0, 4.1, result.fermentation_fraction);
   const double fermentative_cost = gutibm::metabolic_mode::interpolate(
-      1.0, 4.1, fractions[1]);
+      1.0, 4.1, result.fermentation_fraction_agent1);
   const double aerobic_growth = result.biomass - 1.0;
   const double fermentative_growth = result.biomass_agent1 - 1.0;
   assert(aerobic_growth > 0.0);
@@ -842,9 +842,10 @@ void test_metabolism_metabolic_mode() {
   assert(fermentative_acid_per_growth >= 0.0);
   assert(aerobic_acid_per_growth <= aerobic_cost);
   assert(fermentative_acid_per_growth <= fermentative_cost);
-  assert(close(aerobic_acid_per_growth, fractions[0] * aerobic_cost));
+  assert(close(aerobic_acid_per_growth,
+               result.fermentation_fraction * aerobic_cost));
   assert(close(fermentative_acid_per_growth,
-               fractions[1] * fermentative_cost));
+               result.fermentation_fraction_agent1 * fermentative_cost));
   assert(fermentative_acid_per_growth > aerobic_acid_per_growth);
 }
 
