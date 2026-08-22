@@ -2,7 +2,7 @@
 
 Living kanban for open work on [GutModelBacteriocins](https://github.com/bckirkup/GutModelBacteriocins).
 
-**Last updated:** 2026-07-11
+**Last updated:** 2026-08-13
 
 ## One-click setup (local)
 
@@ -30,9 +30,14 @@ This creates GitHub labels, milestones, a Projects v2 board, and links open issu
 
 ---
 
-## Current board state (Jul 2026)
+## Current board state (Aug 2026)
 
-The Jun 2026 queue (#40–#81, #25, #29, #33, #55) is **closed**. Post–GPU ROI work (#154–#161) is complete through PRs #162–#167.
+The Jul/Aug 2026 implementation wave (#256–#306, with #303 superseded before
+merge) is **closed**. It completed the MPI ownership and ledger work, the
+physical-T4 GPU gate and the device defects it exposed, provenance and halt
+reason output, finite-rate epithelial delivery, carbon accounting, the RPS
+configuration surface, pI-driven transport, and the Pirt/metabolic-mode
+maintenance mechanisms.
 
 ### In Review
 
@@ -40,7 +45,9 @@ _None_
 
 ### Ready (recommended next bundles)
 
-_None — P6 science/CI backlog cleared._
+| Issue | Title | Track | Priority |
+|-------|-------|-------|----------|
+| — | Delivery re-bracket after the maintenance-budget fix; see [density-limitation README §6](../experiments/density_limitation/README.md#6-next-experiment) | `track:campaign` | high |
 
 ### Backlog
 
@@ -63,6 +70,29 @@ _None — P6 science/CI backlog cleared._
 | #159 | Sub-quadratic FMM M2L | #164 |
 | #160 | Metabolic washout trap long-horizon regression | #167 |
 | #161 | OpenMP stochastic toxin-kill parity | (PR pending) |
+
+### Done (Aug 2026 wave)
+
+| Issue | Title | PR |
+|-------|-------|-----|
+| #256 | Remove nightly benchmark | #256 |
+| #257 | Boundary-flux accounting | #257 |
+| #258 | Implicit carbon sink and reaction-clip accounting | #258 |
+| #259 | Remove trajectory goldens | #259 |
+| #260–#268 | Chemistry decomposition, cross-rank toxin sources, slab invariants/storage, shared MPI paths, and per-axis chemistry stride | #260–#268 |
+| #269–#273 | GPU slab chemistry, agent-sampled QSSA, toxin lumping/species subset, and grid-halo configuration | #269–#273 |
+| #274–#282 | Nested batch overrides, MPI event counters, process-group smoke, counted lysis, founder placement, population stocks, overdamped mechanics, and population-ledger semantics | #274–#282 |
+| #283 | Reachable bacteriostasis threshold | #283 |
+| #284–#287 | Runtime entrypoint packaging, run provenance, AWS quota/log reads, and noise-tolerant dysbiosis guard | #284–#287 |
+| #288–#290 | GPU toxin-burst parity, halt provenance, and host reaction-loss accounting | #288–#290 |
+| #291–#294 | Direct GPU kernel tests, device diagnostics, GPU Fur metabolism, and the physical T4 device gate | #291–#294 |
+| #295–#298 | Finite-rate epithelial boundaries, Sonar cleanup, transport-limited uptake, and ECR image retention | #295–#298 |
+| #299 | Nuclease-only SOS induction and immunity | #299 |
+| #300 | RPS strain and plasmid configuration surface | #300 |
+| #301 | pI-derived mucin retardation | #301 |
+| #302 | Pirt carbon maintenance sink | #302 |
+| #304–#305 | Oxygen-dependent metabolic modes, acid inhibition, CUDA signatures, and negative-growth host/device parity | #304–#305 |
+| #306 | Maintenance routing through uptake limits and corrected carbon-ledger semantics | #306 |
 
 ### Done (Jun 2026 wave — reference)
 
