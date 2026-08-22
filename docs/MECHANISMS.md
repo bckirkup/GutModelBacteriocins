@@ -217,9 +217,13 @@ When `carbon_maintenance_rate` is nonzero, each owner agent removes
 `carbon_maintenance_rate × biomass × dt` mol of carbon from its voxel every
 biological step. This sink is independent of the growth-rate
 `maintenance_rate` tax and is applied to bacteriostatic or otherwise
-non-growing agents as well as growing agents. The requested draw is limited
-by the voxel's available carbon; any shortfall is recorded separately from
-growth uptake in nutrient-flux accounting.
+non-growing agents as well as growing agents. Its budget follows the
+configured `uptake_limit` model: `none` charges the full request, `sherwood`
+applies the same quasi-steady diffusive delivery cap as growth uptake, and
+`voxel` limits the request to instantaneous voxel stock with a per-voxel
+reservation. The unfunded amount is recorded in mol as
+`maintenance_shortfall_*`; the separately reported
+`maintenance_limited_agents_*` fields count agent-steps that were capped.
 
 ---
 

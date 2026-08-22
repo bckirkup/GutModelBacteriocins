@@ -51,6 +51,10 @@ void populate_window(Simulation& sim, Int kills, Real boundary) {
       boundary + 3.0;
   sim.chemical_field().flux_accounting().maintenance_interval[0] =
       boundary + 4.0;
+  sim.chemical_field().flux_accounting().maintenance_shortfall_interval[0] =
+      boundary + 5.0;
+  sim.chemical_field().flux_accounting().maintenance_limited_agents_interval[0] =
+      boundary + 6.0;
 }
 
 void assert_window(const std::string& path, Int step, Int interval_kills,
@@ -89,6 +93,20 @@ void assert_window(const std::string& path, Int step, Int interval_kills,
                   - boundary_interval - 4.0) < 1e-12);
   assert(std::abs(scalar(file, prefix + "/nutrient_flux/maintenance_cumulative")
                   - boundary_cumulative - (step == 1 ? 4.0 : 8.0)) < 1e-12);
+  assert(std::abs(scalar(file,
+                         prefix + "/nutrient_flux/maintenance_shortfall_interval")
+                  - boundary_interval - 5.0) < 1e-12);
+  assert(std::abs(scalar(file,
+                         prefix + "/nutrient_flux/maintenance_shortfall_cumulative")
+                  - boundary_cumulative - (step == 1 ? 5.0 : 10.0)) < 1e-12);
+  assert(std::abs(scalar(
+                     file,
+                     prefix + "/nutrient_flux/maintenance_limited_agents_interval")
+                  - boundary_interval - 6.0) < 1e-12);
+  assert(std::abs(scalar(
+                     file,
+                     prefix + "/nutrient_flux/maintenance_limited_agents_cumulative")
+                  - boundary_cumulative - (step == 1 ? 6.0 : 12.0)) < 1e-12);
   assert(scalar(file, prefix + "/nutrient_flux/interval_start_step")
          == static_cast<double>(step));
   assert(scalar(file, prefix + "/nutrient_flux/interval_end_step")

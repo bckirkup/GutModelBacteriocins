@@ -236,6 +236,12 @@ on for a whole campaign rather than switching it on for audits.
   `nutrient_flux/uptake_demand_*` and
   `nutrient_flux/uptake_limited_agents_*`, alongside realized
   `agent_uptake_*`.
+  Carbon maintenance uses the same `uptake_limit` model: `none` charges the
+  full request, `sherwood` uses the same diffusive delivery cap as growth,
+  and `voxel` retains instantaneous voxel-stock reservation. The
+  `maintenance_shortfall_*` fields are unfunded carbon in mol, not agent
+  counts; `maintenance_limited_agents_*` contains the corresponding
+  clamped-agent count.
 - **Finite-rate epithelial delivery is implemented.** Set
   `carbon.epithelial_boundary` (or `carbon_epithelial_boundary`) to `robin` or
   `flux`. Robin uses `carbon.epithelial_transfer_coeff` in m/s and

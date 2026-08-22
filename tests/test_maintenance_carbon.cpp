@@ -2,6 +2,7 @@
 #include "simulation.h"
 #include "species_names.h"
 #include "fix_metabolism.h"
+#include "uptake_limit.h"
 
 #include <algorithm>
 #include <cassert>
@@ -42,6 +43,7 @@ SimulationConfig base_config() {
 struct MaintenanceResult {
   Real draw = 0.0;
   Real shortfall = 0.0;
+  Real limited_agents = 0.0;
   Real biomass = 0.0;
   Real carbon_reaction = 0.0;
 };
@@ -54,12 +56,20 @@ struct TrajectoryResult {
 struct LedgerResult {
   Real biomass = 0.0;
   Real maintenance = 0.0;
+  Real shortfall = 0.0;
+  Real limited_agents = 0.0;
   Real expected = 0.0;
 };
 
 MaintenanceResult carbon_maintenance_step(SimulationConfig cfg, Real rate,
-                                          Real carbon_concentration) {
+                                          Real carbon_concentration,
+                                          UptakeLimitMode mode =
+                                              UptakeLimitMode::None) {
   cfg.fixes.metabolism.carbon_maintenance_rate = rate;
+  cfg.fixes.metabolism.uptake_limit_mode = mode;
+  cfg.fixes.metabolism.uptake_limit = mode == UptakeLimitMode::Voxel
+      ? "voxel"
+      : mode == UptakeLimitMode::Sherwood ? "sherwood" : "none";
   for (auto& chemical : cfg.chemicals) {
     if (chemical.name == species::CARBON) {
       chemical.initial_conc = carbon_concentration;
@@ -79,6 +89,7 @@ MaintenanceResult carbon_maintenance_step(SimulationConfig cfg, Real rate,
   return {
       flux.maintenance_step[static_cast<size_t>(carbon)],
       flux.maintenance_shortfall_step[static_cast<size_t>(carbon)],
+      flux.maintenance_limited_agents_step[static_cast<size_t>(carbon)],
       biomass,
       reaction};
 }
@@ -111,16 +122,24 @@ void test_maintenance_sensitivity_and_shortfall() {
   std::vector<Real> draws;
   draws.reserve(rates.size());
   for (const Real rate : rates) {
-    draws.push_back(carbon_maintenance_step(base_config(), rate, 1.0).draw);
+    const MaintenanceResult result =
+        carbon_maintenance_step(base_config(), rate, 1.0);
+    assert(std::isfinite(result.draw));
+    assert(result.draw >= 0.0);
+    draws.push_back(result.draw);
   }
   assert(std::is_sorted(draws.begin(), draws.end()));
   assert(draws.back() > draws.front());
 
   const MaintenanceResult result =
-      carbon_maintenance_step(base_config(), 1.0e10, 1.0e-30);
+      carbon_maintenance_step(base_config(), 1.0e10, 1.0e-30,
+                              UptakeLimitMode::Voxel);
   assert(result.draw >= 0.0);
   assert(1.0e-30 + result.carbon_reaction * kDt >= -1.0e-45);
-  assert(result.shortfall == 1.0);
+  assert(result.shortfall > 0.0);
+  assert(std::isfinite(result.shortfall));
+  assert(std::isfinite(result.limited_agents));
+  assert(result.limited_agents > 0.0);
   std::cout << "  test_maintenance_sensitivity_and_shortfall: PASSED\n";
 }
 
@@ -149,7 +168,15 @@ LedgerResult run_ledger_probe() {
   SimulationConfig cfg = base_config();
   cfg.time.total_time = 600.0;
   cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-6;
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Voxel;
+  cfg.fixes.metabolism.uptake_limit = "voxel";
   cfg.initial_strains[0].mu_max = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e-30;
+      chemical.boundary_conc = 0.0;
+    }
+  }
   Simulation sim;
   sim.init(cfg);
   const Real biomass = sim.agents()[0].biomass;
@@ -163,8 +190,12 @@ LedgerResult run_ledger_probe() {
   }
   const Int carbon = sim.chemical_field().find(species::CARBON);
   assert(carbon >= 0);
-  return {biomass, sim.chemical_field().flux_accounting()
-                        .maintenance_cumulative[static_cast<size_t>(carbon)],
+  const auto& flux = sim.chemical_field().flux_accounting();
+  return {biomass,
+          flux.maintenance_cumulative[static_cast<size_t>(carbon)],
+          flux.maintenance_shortfall_cumulative[static_cast<size_t>(carbon)],
+          flux.maintenance_limited_agents_cumulative[
+              static_cast<size_t>(carbon)],
           expected};
 }
 
@@ -185,9 +216,27 @@ void test_trajectory_sensitivity_and_zero_compatibility() {
 
 void test_maintenance_ledger_closure() {
   const LedgerResult result = run_ledger_probe();
-  assert(std::abs(result.maintenance - result.expected)
+  assert(result.maintenance > 0.0);
+  assert(result.shortfall > 0.0);
+  assert(result.limited_agents > 0.0);
+  assert(std::isfinite(result.limited_agents));
+  assert(std::abs(result.maintenance + result.shortfall - result.expected)
          <= result.expected * 1.0e-12);
   std::cout << "  test_maintenance_ledger_closure: PASSED\n";
+}
+
+void test_uptake_limit_mode_contrast() {
+  constexpr Real rate = 1.0e10;
+  constexpr Real concentration = 1.0e-30;
+  const MaintenanceResult none = carbon_maintenance_step(
+      base_config(), rate, concentration, UptakeLimitMode::None);
+  const MaintenanceResult voxel = carbon_maintenance_step(
+      base_config(), rate, concentration, UptakeLimitMode::Voxel);
+  assert(none.draw > voxel.draw);
+  assert(voxel.shortfall > 0.0);
+  assert(std::isfinite(none.draw));
+  assert(std::isfinite(voxel.draw));
+  std::cout << "  test_uptake_limit_mode_contrast: PASSED\n";
 }
 
 }  // namespace
@@ -199,6 +248,7 @@ int main() {
   test_maintenance_sensitivity_and_shortfall();
   test_trajectory_sensitivity_and_zero_compatibility();
   test_maintenance_ledger_closure();
+  test_uptake_limit_mode_contrast();
   std::cout << "All carbon maintenance tests passed.\n";
   return 0;
 }

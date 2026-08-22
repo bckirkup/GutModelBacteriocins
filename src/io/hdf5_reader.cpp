@@ -343,6 +343,10 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
             meta.flux_accounting.maintenance_shortfall_interval);
   read_flux("maintenance_shortfall_cumulative",
             meta.flux_accounting.maintenance_shortfall_cumulative);
+  read_flux("maintenance_limited_agents_interval",
+            meta.flux_accounting.maintenance_limited_agents_interval);
+  read_flux("maintenance_limited_agents_cumulative",
+            meta.flux_accounting.maintenance_limited_agents_cumulative);
   read_flux("uptake_demand_interval", meta.flux_accounting.uptake_demand_interval);
   read_flux("uptake_demand_cumulative",
             meta.flux_accounting.uptake_demand_cumulative);
