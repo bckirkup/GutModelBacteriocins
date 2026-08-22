@@ -356,7 +356,8 @@ void test_delivery_is_positive_and_funds_only_removed_carbon() {
   assert(removed >= 0.0 && removed <= demanded + 1.0e-18);
   assert(flux.reaction_clip_cumulative[index] == 0.0);
   assert(flux.uptake_shortfall_cumulative[index] >= 0.0);
-  assert(sim.agents().size() == initial_biomass_by_agent.size());
+  assert(static_cast<size_t>(sim.agents().size())
+         == initial_biomass_by_agent.size());
   Real committed_growth_carbon = 0.0;
   for (size_t i = 0; i < initial_biomass_by_agent.size(); ++i) {
     committed_growth_carbon +=
@@ -372,51 +373,54 @@ void test_delivery_is_positive_and_funds_only_removed_carbon() {
   std::cout << "  test_delivery_is_positive_and_funds_only_removed_carbon: PASSED\n";
 }
 
+std::pair<Real, Real> run_delivery_maintenance_case(Real maintenance_rate) {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains[0].count = 2;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.initial_strains[0].mu_max = 5.0e-5;
+  cfg.fixes.metabolism.carbon_maintenance_rate = maintenance_rate;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.dysbiosis_threshold = 0.0;
+  cfg.carbon_boundary_conc = 1.0e-6;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e-6;
+      chemical.boundary_conc = 1.0e-6;
+      chemical.diff_coeff = 1.0e-12;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  for (Agent& agent : sim.agents()) {
+    agent.x = {7.5e-6, 7.5e-6, 12.5e-6};
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  const Real initial_biomass = sim.agents()[0].biomass;
+  sim.run();
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const auto index = static_cast<size_t>(carbon);
+  const Real growth = sim.agents()[0].biomass - initial_biomass;
+  return {flux.maintenance_interval[index], growth};
+}
+
 void test_delivery_maintenance_reduces_growth() {
-  auto run_case = [](Real maintenance_rate) {
-    SimulationConfig cfg = base_config();
-    cfg.enabled_fixes = {"metabolism"};
-    cfg.initial_strains[0].count = 2;
-    cfg.vbf.carbon_sink_vmax = 0.0;
-    cfg.vbf.mucin_liberation = 0.0;
-    cfg.fixes.metabolism.uptake_limit = "delivery";
-    cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
-    cfg.initial_strains[0].mu_max = 5.0e-5;
-    cfg.fixes.metabolism.carbon_maintenance_rate = maintenance_rate;
-    cfg.time.total_time = kDt;
-    cfg.time.bio_dt = kDt;
-    cfg.dysbiosis_threshold = 0.0;
-    cfg.carbon_boundary_conc = 1.0e-6;
-    for (auto& chemical : cfg.chemicals) {
-      if (chemical.name == species::CARBON) {
-        chemical.initial_conc = 1.0e-6;
-        chemical.boundary_conc = 1.0e-6;
-        chemical.diff_coeff = 1.0e-12;
-        chemical.z_gradient_enabled = false;
-      }
-    }
-    Simulation sim;
-    sim.init(cfg);
-    for (Agent& agent : sim.agents()) {
-      agent.x = {7.5e-6, 7.5e-6, 12.5e-6};
-      Int ix = 0;
-      Int iy = 0;
-      Int iz = 0;
-      sim.domain().pos_to_grid(agent.x, ix, iy, iz);
-      agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
-    }
-    const Real initial_biomass = sim.agents()[0].biomass;
-    sim.run();
-    const auto& flux = sim.chemical_field().flux_accounting();
-    const Int carbon = sim.chemical_field().find(species::CARBON);
-    const auto index = static_cast<size_t>(carbon);
-    const Real growth = sim.agents()[0].biomass - initial_biomass;
-    return std::pair<Real, Real>{flux.maintenance_interval[index], growth};
-  };
-  const auto low = run_case(1.0e-9);
-  const auto high = run_case(2.0e-9);
-  assert(high.first > low.first);
-  assert(high.second < low.second);
+  const auto [low_maintenance, low_growth] =
+      run_delivery_maintenance_case(1.0e-9);
+  const auto [high_maintenance, high_growth] =
+      run_delivery_maintenance_case(2.0e-9);
+  assert(high_maintenance > low_maintenance);
+  assert(high_growth < low_growth);
   std::cout << "  test_delivery_maintenance_reduces_growth: PASSED\n";
 }
 
@@ -568,6 +572,48 @@ void test_delivery_preserves_negative_growth() {
   std::cout << "  test_delivery_preserves_negative_growth: PASSED\n";
 }
 
+void test_delivery_negative_growth_books_maintenance() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.maintenance_rate = 2.0e-5;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
+  cfg.initial_strains[0].mu_max = 1.0e-5;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON
+        || chemical.name == species::IRON) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = 1.0e-7;
+      chemical.boundary_conc = 1.0e-7;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const Int cell = sim.agents()[0].grid_cell;
+  const Real initial_biomass = sim.agents()[0].biomass;
+  sim.step(kDt);
+
+  const auto& chem = sim.chemical_field();
+  const auto& flux = chem.flux_accounting();
+  const auto index = static_cast<size_t>(carbon);
+  const Real realized = chem.sink_realized_global(cell);
+  const Real maintenance = flux.maintenance_interval[index];
+  const Real growth = flux.agent_uptake_interval[index];
+  const Real maintenance_shortfall =
+      flux.maintenance_shortfall_interval[index];
+  assert(sim.agents()[0].biomass < initial_biomass);
+  assert(sim.agents()[0].mu_realized < 0.0);
+  assert(maintenance > 0.0);
+  assert(maintenance_shortfall > 0.0);
+  assert(std::abs(maintenance + growth - realized)
+         <= 1.0e-12 * std::max(realized, 1.0e-30));
+  std::cout << "  test_delivery_negative_growth_books_maintenance: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -582,6 +628,7 @@ int main() {
   test_delivery_density_brake();
   test_delivery_queues_noncarbon_chemistry_once();
   test_delivery_preserves_negative_growth();
+  test_delivery_negative_growth_books_maintenance();
   std::cout << "All uptake limitation tests passed.\n";
   return 0;
 }
