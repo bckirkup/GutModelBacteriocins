@@ -331,12 +331,12 @@ void FixMetabolism::commit_delivery_agent(
     Agent& agent, const std::vector<Real>& demand_by_cell, Int carbon,
     Real dt) {
   auto& chem = sim_.chemical_field();
-  if (agent.pending_biomass < 0.0) {
+  const Real total_demand =
+      agent.pending_growth_carbon + agent.pending_maintenance_carbon;
+  if (agent.pending_biomass < 0.0 && total_demand <= 0.0) {
     apply_delivery_shrinkage(agent, dt);
     return;
   }
-  const Real total_demand =
-      agent.pending_growth_carbon + agent.pending_maintenance_carbon;
   if (agent.grid_cell < 0 || total_demand <= 0.0) {
     agent.timers.age += dt;
     return;
@@ -347,7 +347,11 @@ void FixMetabolism::commit_delivery_agent(
   const DeliveryFunding funding = calculate_delivery_funding(
       agent, cell_demand, chem.sink_realized_global(agent.grid_cell));
   record_delivery_funding(chem, carbon, agent, funding);
-  apply_delivery_funding(agent, funding, dt);
+  if (agent.pending_biomass < 0.0) {
+    apply_delivery_shrinkage(agent, dt);
+  } else {
+    apply_delivery_funding(agent, funding, dt);
+  }
   if (agent.pending_biomass > 0.0) {
     agent.pending_growth_chemistry_biomass +=
         agent.pending_biomass * funding.growth_fraction;

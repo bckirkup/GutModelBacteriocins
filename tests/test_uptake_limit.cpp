@@ -572,6 +572,48 @@ void test_delivery_preserves_negative_growth() {
   std::cout << "  test_delivery_preserves_negative_growth: PASSED\n";
 }
 
+void test_delivery_negative_growth_books_maintenance() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.maintenance_rate = 2.0e-5;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
+  cfg.initial_strains[0].mu_max = 1.0e-5;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON
+        || chemical.name == species::IRON) {
+      chemical.z_gradient_enabled = false;
+      chemical.initial_conc = 1.0e-7;
+      chemical.boundary_conc = 1.0e-7;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const Int cell = sim.agents()[0].grid_cell;
+  const Real initial_biomass = sim.agents()[0].biomass;
+  sim.step(kDt);
+
+  const auto& chem = sim.chemical_field();
+  const auto& flux = chem.flux_accounting();
+  const auto index = static_cast<size_t>(carbon);
+  const Real realized = chem.sink_realized_global(cell);
+  const Real maintenance = flux.maintenance_interval[index];
+  const Real growth = flux.agent_uptake_interval[index];
+  const Real maintenance_shortfall =
+      flux.maintenance_shortfall_interval[index];
+  assert(sim.agents()[0].biomass < initial_biomass);
+  assert(sim.agents()[0].mu_realized < 0.0);
+  assert(maintenance > 0.0);
+  assert(maintenance_shortfall > 0.0);
+  assert(std::abs(maintenance + growth - realized)
+         <= 1.0e-12 * std::max(realized, 1.0e-30));
+  std::cout << "  test_delivery_negative_growth_books_maintenance: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -586,6 +628,7 @@ int main() {
   test_delivery_density_brake();
   test_delivery_queues_noncarbon_chemistry_once();
   test_delivery_preserves_negative_growth();
+  test_delivery_negative_growth_books_maintenance();
   std::cout << "All uptake limitation tests passed.\n";
   return 0;
 }
