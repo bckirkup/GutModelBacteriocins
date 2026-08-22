@@ -31,6 +31,7 @@ ARG GUTIBM_GIT_SHA=unknown
 
 WORKDIR /src
 COPY CMakeLists.txt ./
+COPY cmake ./cmake
 COPY src ./src
 COPY tests ./tests
 COPY examples ./examples
