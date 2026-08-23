@@ -132,13 +132,12 @@ EpithelialBoundaryMode parse_epithelial_boundary_mode(
 void configure_epithelial_boundary(
     ChemicalSpec& spec, std::string_view species_name,
     std::string_view boundary_key, const std::string& boundary,
-    Real transfer_coeff, Real flux, bool require_positive_transfer) {
+    Real transfer_coeff, Real flux) {
   spec.epithelial_transfer_coeff = transfer_coeff;
   spec.epithelial_flux = flux;
   spec.epithelial_boundary_mode =
       parse_epithelial_boundary_mode(boundary_key, boundary);
-  if (require_positive_transfer
-      && spec.epithelial_boundary_mode == EpithelialBoundaryMode::Robin
+  if (spec.epithelial_boundary_mode == EpithelialBoundaryMode::Robin
       && transfer_coeff <= 0.0) {
     throw ConfigError(
         std::string(species_name) + ".epithelial_transfer_coeff must be "
@@ -602,17 +601,21 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
     configure_epithelial_boundary(
         carbon, "carbon", "carbon.epithelial_boundary",
         cfg.carbon_epithelial_boundary,
-        cfg.carbon_epithelial_transfer_coeff, cfg.carbon_epithelial_flux,
-        false);
+        cfg.carbon_epithelial_transfer_coeff, cfg.carbon_epithelial_flux);
   }
   const Int oxygen_idx = find_chemical_spec(cfg.chemicals, species::OXYGEN);
   if (oxygen_idx >= 0) {
     auto& oxygen = cfg.chemicals[static_cast<size_t>(oxygen_idx)];
+    const auto oxygen_boundary_mode = parse_epithelial_boundary_mode(
+        "oxygen.epithelial_boundary", cfg.oxygen_epithelial_boundary);
+    oxygen.initial_conc =
+        oxygen_boundary_mode == EpithelialBoundaryMode::Dirichlet
+        ? cfg.chem_env.oxygen.epithelial_conc : 0.0;
+    oxygen.boundary_conc = cfg.chem_env.oxygen.epithelial_conc;
     configure_epithelial_boundary(
         oxygen, "oxygen", "oxygen.epithelial_boundary",
         cfg.oxygen_epithelial_boundary,
-        cfg.oxygen_epithelial_transfer_coeff, cfg.oxygen_epithelial_flux,
-        true);
+        cfg.oxygen_epithelial_transfer_coeff, cfg.oxygen_epithelial_flux);
   }
 }
 

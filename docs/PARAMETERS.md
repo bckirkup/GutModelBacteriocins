@@ -350,7 +350,11 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
 | `oxygen.enabled` | false | — | Enable oxygen chemical species and aerobic growth boost |
-| `oxygen.epithelial_conc` | 55e-6 | mol/m³ | Dirichlet O₂ at epithelium (~0.042 mmHg; 42 mmHg would imply ~5.5e-2 mol/m³) |
+| `oxygen.epithelial_conc` | 55e-6 | mol/m³ | Dirichlet O₂ at epithelium (~0.042 mmHg); under Robin, the tissue-side reservoir concentration |
+| `oxygen.epithelial_boundary` / `oxygen_epithelial_boundary` | `dirichlet` | — | Epithelial z=0 mode: fixed concentration, Robin delivery, or fixed flux |
+| `oxygen.epithelial_transfer_coeff` / `oxygen_epithelial_transfer_coeff` | 0 | m/s | Robin mass-transfer coefficient `k`; must be positive for Robin. The sourced experiment value is `1.2e-6 m/s`, not a new default |
+| `oxygen.epithelial_flux` / `oxygen_epithelial_flux` | 0 | mol/m²/s | Fixed epithelial delivery flux `J` for flux mode |
+| `oxygen.z_gradient` / `oxygen_z_gradient` | true | — | Imposed exponential z-profile toggle; must be false for Robin or flux |
 | `oxygen.respiration_driver` | `ambient` | — | Fermentation-mode driver: `ambient` preserves concentration-based switching; `funded` uses realized growth-O₂ delivery and requires oxygen delivery uptake with `metabolism.uptake_limit=delivery` |
 | `oxygen.D_free` | 2.1e-9 | m²/s | O₂ diffusion coefficient |
 | `oxygen.Km` | 1e-6 | mol/m³ | Monod half-saturation for aerobic boost |
@@ -364,8 +368,10 @@ The default `oxygen.epithelial_conc = 55e-6 mol/m³` is approximately
 `0.042 mmHg` dissolved oxygen, not the approximately `42 mmHg` stated by the
 former comment. A dissolved concentration corresponding to approximately
 `42 mmHg` would be about `5.5e-2 mol/m³`. The numerical default remains
-unchanged in this PR; adopting the physiological value is deferred. Demonstration
-runs will set the physiological value explicitly by configuration.
+unchanged; experiment configurations may set the sourced tissue-side value
+`C_tissue = 5.0e-2 mol/m³` explicitly. The sourced Robin transfer coefficient
+is `k = 1.2e-6 m/s` (rat mucus+mucosa permeability); neither value is a new
+default.
 
 ---
 

@@ -63,6 +63,50 @@ void test_oxygen_z_gradient_init() {
   std::cout << "  test_oxygen_z_gradient_init: PASSED\n";
 }
 
+void test_oxygen_boundary_initialization() {
+  constexpr Real reservoir = 5.0e-2;
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {5e-6, 5e-6, 20e-6};
+  dcfg.grid_dx = 5e-6;
+  Domain domain;
+  domain.init(dcfg);
+
+  SimulationConfig robin_cfg = InputParser::default_config();
+  robin_cfg.chem_env.oxygen.enabled = true;
+  robin_cfg.chem_env.oxygen.epithelial_conc = reservoir;
+  robin_cfg.oxygen_epithelial_boundary = "robin";
+  robin_cfg.oxygen_epithelial_transfer_coeff = 1.2e-6;
+  robin_cfg.oxygen_z_gradient_enabled = false;
+  InputParser::finalize_config(robin_cfg);
+
+  ChemicalField robin_field;
+  robin_field.init(domain, robin_cfg.chemicals);
+  const Int robin_oxygen = robin_field.find("oxygen");
+  assert(robin_oxygen >= 0);
+  for (Int cell = 0; cell < robin_field.ncells(); ++cell) {
+    assert(robin_field.conc(robin_oxygen, cell) == 0.0);
+    assert(robin_field.conc(robin_oxygen, cell) != reservoir);
+  }
+
+  SimulationConfig dirichlet_cfg = InputParser::default_config();
+  dirichlet_cfg.chem_env.oxygen.enabled = true;
+  dirichlet_cfg.chem_env.oxygen.epithelial_conc = reservoir;
+  InputParser::finalize_config(dirichlet_cfg);
+
+  ChemicalField dirichlet_field;
+  dirichlet_field.init(domain, dirichlet_cfg.chemicals);
+  const Int dirichlet_oxygen = dirichlet_field.find("oxygen");
+  assert(dirichlet_oxygen >= 0);
+  const Real expected = reservoir
+      * std::exp(-0.5 * domain.dx_z() / 25.0e-6);
+  assert(std::abs(dirichlet_field.conc(
+      dirichlet_oxygen, domain.cell_index(0, 0, 0)) - expected)
+         / expected < 1.0e-12);
+
+  std::cout << "  test_oxygen_boundary_initialization: PASSED\n";
+}
+
 void test_oxygen_config_sensitivity() {
   SimulationConfig cfg_off = InputParser::default_config();
   cfg_off.chem_env.oxygen.enabled = false;
@@ -143,6 +187,7 @@ int main() {
   std::cout << "=== Oxygen Gradient Tests ===\n";
   test_oxygen_species_registered();
   test_oxygen_z_gradient_init();
+  test_oxygen_boundary_initialization();
   test_oxygen_config_sensitivity();
   test_oxygen_delivery_non_gradient_clip_accounting();
   test_oxygen_delivery_gradient_accounting();
