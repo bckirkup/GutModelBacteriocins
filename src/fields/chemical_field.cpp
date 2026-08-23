@@ -999,7 +999,6 @@ void ChemicalField::add_sink_rate_global(Int spec, Int cell, Real rate) {
   if (spec < 0 || spec >= nspec_ || storage_cell < 0 || rate <= 0.0) {
     return;
   }
-  specs_[static_cast<size_t>(spec)].delivery_enabled = true;
   #ifdef GUTIBM_OPENMP
   #pragma omp atomic
   #endif
