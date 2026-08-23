@@ -224,7 +224,7 @@ void test_delivery_step_mass_closure_dirichlet_refill() {
 
   const Real after = inventory(chem, domain);
   const auto& flux = chem.flux_accounting();
-  const size_t index = static_cast<size_t>(species_index);
+  const auto index = static_cast<size_t>(species_index);
   const Real residual = before + flux.boundary_last_step[index]
       + flux.gradient_source_last_step[index]
       - flux.agent_uptake_last_step[index]

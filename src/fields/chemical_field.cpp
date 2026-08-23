@@ -8,9 +8,10 @@
 #include "species_names.h"
 #include "tridiagonal_factorization.h"
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <cmath>
 #include <cstdlib>
-#include <iomanip>
 #include <iostream>
 #include <numeric>
 #include <string>
@@ -50,7 +51,19 @@ Int nutrient_debug_transport_step() {
   return step;
 }
 
-Int nutrient_debug_step = 0;
+Int& nutrient_debug_step_counter() {
+  static Int step = 0;
+  return step;
+}
+
+std::string debug_real(Real value) {
+  std::array<char, 64> buffer{};
+  const auto result = std::to_chars(
+      buffer.data(), buffer.data() + buffer.size(), value,
+      std::chars_format::general, 17);
+  return result.ec == std::errc{}
+      ? std::string(buffer.data(), result.ptr) : std::string{};
+}
 
 void solve_tridiagonal_with_diagonal(
     std::vector<Real>& values, const std::vector<Real>& diagonal,
@@ -1033,7 +1046,7 @@ void ChemicalField::zero_reactions() {
     std::ranges::fill(sink_realized_[s], 0.0);
   }
   if (!nutrient_debug_enabled() || domain_ == nullptr) return;
-  ++nutrient_debug_step;
+  ++nutrient_debug_step_counter();
   debug_initial_content_.resize(static_cast<size_t>(nspec_));
   for (Int s = 0; s < nspec_; ++s) {
     debug_initial_content_[static_cast<size_t>(s)] =
@@ -1230,6 +1243,61 @@ struct SlabTransportContext {
   Real sink_dt = 0.0;
   Real cell_volume = 0.0;
 };
+
+struct SlabDeliveryLineContext {
+  std::vector<Real>& concentration;
+  std::vector<Real>& realized;
+  const std::vector<Real>& sink_rate;
+  const Domain& domain;
+  Int storage_nx = 0;
+  Int halo_width = 0;
+  Real alpha = 0.0;
+  Real boundary_conc = 0.0;
+  Real cell_volume = 0.0;
+  Real sink_dt = 0.0;
+  const ChemicalSpec* gradient_spec = nullptr;
+};
+
+void solve_slab_delivery_line(
+    const SlabDeliveryLineContext& context, Int ix, Int iy,
+    Real& face_exchange) {
+  const Int nz = context.domain.nz();
+  const Int ny = context.domain.ny();
+  std::vector<Real> line(static_cast<size_t>(nz - 1));
+  std::vector<Real> sink(static_cast<size_t>(nz - 1));
+  for (Int iz = 1; iz < nz; ++iz) {
+    const Int cell = slab_storage_index(
+        context.halo_width + ix, iy, iz, context.storage_nx, ny);
+    line[static_cast<size_t>(iz - 1)] =
+        context.concentration[static_cast<size_t>(cell)];
+    sink[static_cast<size_t>(iz - 1)] =
+        context.sink_rate[static_cast<size_t>(cell)] * context.sink_dt;
+  }
+  std::vector<Real> gradient(static_cast<size_t>(nz - 1), 0.0);
+  apply_gradient_sink(
+      line, sink, gradient, context.gradient_spec, context.domain, 1);
+  std::vector diagonal(static_cast<size_t>(nz - 1), 0.0);
+  for (Int iz = 1; iz < nz; ++iz) {
+    diagonal[static_cast<size_t>(iz - 1)] =
+        1.0 + 2.0 * context.alpha + sink[static_cast<size_t>(iz - 1)];
+  }
+  diagonal.back() = 1.0 + context.alpha + sink.back();
+  solve_tridiagonal_with_diagonal(
+      line, diagonal, context.alpha,
+      context.alpha * context.boundary_conc);
+  face_exchange += context.alpha
+      * (context.boundary_conc - line.front()) * context.cell_volume;
+  for (Int iz = 1; iz < nz; ++iz) {
+    const Int cell = slab_storage_index(
+        context.halo_width + ix, iy, iz, context.storage_nx, ny);
+    const auto index = static_cast<size_t>(iz - 1);
+    context.concentration[static_cast<size_t>(cell)] = line[index];
+    const Real total = context.gradient_spec != nullptr
+        ? line[index] + gradient[index] : line[index];
+    context.realized[static_cast<size_t>(cell)] +=
+        sink[index] * std::max(total, 0.0) * context.cell_volume;
+  }
+}
 
 void diffuse_periodic_x_slab_single(
     const SlabTransportContext& context, const PeriodicLineSolver& solver) {
@@ -1704,70 +1772,12 @@ Real diffuse_bounded_z_slab_delivery(
   const Int nz = domain.nz();
   if (nz <= 1) return 0.0;
   Real face_exchange = 0.0;
-  struct LineContext {
-    std::vector<Real>& concentration;
-    std::vector<Real>& realized;
-    const std::vector<Real>& sink_rate;
-    const Domain& domain;
-    Int storage_nx = 0;
-    Int halo_width = 0;
-    Real alpha = 0.0;
-    Real boundary_conc = 0.0;
-    Real cell_volume = 0.0;
-    Real sink_dt = 0.0;
-    const ChemicalSpec* gradient_spec = nullptr;
-  };
-  LineContext line_context{
+  const SlabDeliveryLineContext line_context{
       concentration, realized, sink_rate, domain, storage_nx, halo_width,
       alpha, boundary_conc, cell_volume, sink_dt, gradient_spec};
-  const auto solve_line = [&line_context, &face_exchange](Int ix, Int iy) {
-    const Int nz = line_context.domain.nz();
-    const Int ny = line_context.domain.ny();
-    std::vector<Real> line(static_cast<size_t>(nz - 1));
-    std::vector<Real> sink(static_cast<size_t>(nz - 1));
-    for (Int iz = 1; iz < nz; ++iz) {
-      const Int cell = slab_storage_index(
-          line_context.halo_width + ix, iy, iz,
-          line_context.storage_nx, ny);
-      line[static_cast<size_t>(iz - 1)] =
-          line_context.concentration[static_cast<size_t>(cell)];
-      sink[static_cast<size_t>(iz - 1)] =
-          line_context.sink_rate[static_cast<size_t>(cell)]
-          * line_context.sink_dt;
-    }
-    std::vector<Real> gradient(static_cast<size_t>(nz - 1), 0.0);
-    apply_gradient_sink(
-        line, sink, gradient, line_context.gradient_spec,
-        line_context.domain, 1);
-    std::vector diagonal(static_cast<size_t>(nz - 1), 0.0);
-    for (Int iz = 1; iz < nz; ++iz) {
-      diagonal[static_cast<size_t>(iz - 1)] =
-          1.0 + 2.0 * line_context.alpha
-          + sink[static_cast<size_t>(iz - 1)];
-    }
-    diagonal.back() = 1.0 + line_context.alpha + sink.back();
-    solve_tridiagonal_with_diagonal(
-        line, diagonal, line_context.alpha,
-        line_context.alpha * line_context.boundary_conc);
-    face_exchange += line_context.alpha
-        * (line_context.boundary_conc - line.front())
-        * line_context.cell_volume;
-    for (Int iz = 1; iz < nz; ++iz) {
-      const Int cell = slab_storage_index(
-          line_context.halo_width + ix, iy, iz,
-          line_context.storage_nx, ny);
-      const size_t index = static_cast<size_t>(iz - 1);
-      line_context.concentration[static_cast<size_t>(cell)] = line[index];
-      const Real total = line_context.gradient_spec != nullptr
-          ? line[index] + gradient[index] : line[index];
-      line_context.realized[static_cast<size_t>(cell)] +=
-          sink[index] * std::max(total, 0.0)
-          * line_context.cell_volume;
-    }
-  };
   for (Int iy = 0; iy < ny; ++iy) {
     for (Int ix = 0; ix < nx; ++ix) {
-      solve_line(ix, iy);
+      solve_slab_delivery_line(line_context, ix, iy, face_exchange);
     }
   }
   return face_exchange;
@@ -1990,7 +2000,7 @@ struct DebugStageSnapshot {
 
 bool debug_stage_enabled(const ChemicalSpec& chemical) {
   return nutrient_debug_enabled()
-      && nutrient_debug_step == nutrient_debug_transport_step()
+      && nutrient_debug_step_counter() == nutrient_debug_transport_step()
       && (chemical.name == species::OXYGEN
           || chemical.name == species::CARBON);
 }
@@ -2010,24 +2020,32 @@ DebugStageSnapshot debug_snapshot(
   return snapshot;
 }
 
+void print_debug_stage(
+    const ChemicalSpec& chemical, const Domain& domain,
+    std::string_view stage, const DebugStageSnapshot& before,
+    const DebugStageSnapshot& after) {
+  if (domain.rank() != 0) return;
+  std::cout << "NUTRIENT_STAGE step=" << nutrient_debug_step_counter()
+            << " species=" << chemical.name
+            << " stage=" << stage
+            << " before_content=" << debug_real(before.content)
+            << " after_content=" << debug_real(after.content)
+            << " content_delta=" << debug_real(
+                   after.content - before.content)
+            << " sink_realized_delta="
+            << debug_real(after.sink_realized - before.sink_realized)
+            << " boundary_delta=" << debug_real(
+                   after.boundary - before.boundary)
+            << '\n';
+}
+
 void emit_debug_stage(
     const ReplicatedDiffusionContext& context, std::string_view stage,
     const DebugStageSnapshot& before) {
-  if (!debug_stage_enabled(context.chemical) || context.domain.rank() != 0) {
-    return;
-  }
+  if (!debug_stage_enabled(context.chemical)) return;
   const DebugStageSnapshot after = debug_snapshot(context);
-  std::cout << std::setprecision(17)
-            << "NUTRIENT_STAGE step=" << nutrient_debug_step
-            << " species=" << context.chemical.name
-            << " stage=" << stage
-            << " before_content=" << before.content
-            << " after_content=" << after.content
-            << " content_delta=" << after.content - before.content
-            << " sink_realized_delta="
-            << after.sink_realized - before.sink_realized
-            << " boundary_delta=" << after.boundary - before.boundary
-            << '\n';
+  print_debug_stage(
+      context.chemical, context.domain, stage, before, after);
 }
 
 void prepare_replicated_diffusion(ReplicatedDiffusionContext& context) {
@@ -2226,9 +2244,9 @@ DebugStageSnapshot debug_snapshot(const SlabDiffusionContext& context) {
       context.flux.boundary_step[static_cast<size_t>(context.spec)]};
 #ifdef GUTIBM_MPI
   if (context.domain.nprocs() > 1) {
-    Real values[3] = {snapshot.content, snapshot.sink_realized,
-                      snapshot.boundary};
-    MPI_Allreduce(MPI_IN_PLACE, values, 3, MPI_DOUBLE, MPI_SUM,
+    std::array<Real, 3> values{
+        snapshot.content, snapshot.sink_realized, snapshot.boundary};
+    MPI_Allreduce(MPI_IN_PLACE, values.data(), 3, MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
     snapshot = {values[0], values[1], values[2]};
   }
@@ -2239,21 +2257,10 @@ DebugStageSnapshot debug_snapshot(const SlabDiffusionContext& context) {
 void emit_debug_stage(
     const SlabDiffusionContext& context, std::string_view stage,
     const DebugStageSnapshot& before) {
-  if (!debug_stage_enabled(context.chemical) || context.domain.rank() != 0) {
-    return;
-  }
+  if (!debug_stage_enabled(context.chemical)) return;
   const DebugStageSnapshot after = debug_snapshot(context);
-  std::cout << std::setprecision(17)
-            << "NUTRIENT_STAGE step=" << nutrient_debug_step
-            << " species=" << context.chemical.name
-            << " stage=" << stage
-            << " before_content=" << before.content
-            << " after_content=" << after.content
-            << " content_delta=" << after.content - before.content
-            << " sink_realized_delta="
-            << after.sink_realized - before.sink_realized
-            << " boundary_delta=" << after.boundary - before.boundary
-            << '\n';
+  print_debug_stage(
+      context.chemical, context.domain, stage, before, after);
 }
 
 void prepare_slab_diffusion(SlabDiffusionContext& context) {
@@ -2651,7 +2658,7 @@ void ChemicalField::apply_boundaries_slab(const Domain& domain) {
 }
 
 void ChemicalField::debug_report_step(const Domain& domain) const {
-  if (!nutrient_debug_enabled() || nutrient_debug_step <= 0
+  if (!nutrient_debug_enabled() || nutrient_debug_step_counter() <= 0
       || debug_initial_content_.size() != static_cast<size_t>(nspec_)) {
     return;
   }
@@ -2661,7 +2668,7 @@ void ChemicalField::debug_report_step(const Domain& domain) const {
   for (const Int s : {oxygen, carbon}) {
     if (s < 0 || s >= nspec_) continue;
     Real initial = debug_initial_content_[static_cast<size_t>(s)];
-    Real final = mode_ == DecompositionMode::Slab
+    Real after_content = mode_ == DecompositionMode::Slab
         ? owned_content_slab(
               conc_[static_cast<size_t>(s)], domain, storage_nx_,
               halo_width_, domain.cell_volume())
@@ -2676,30 +2683,34 @@ void ChemicalField::debug_report_step(const Domain& domain) const {
         && domain.nprocs() > 1) {
       MPI_Allreduce(MPI_IN_PLACE, &initial, 1, MPI_DOUBLE, MPI_SUM,
                     MPI_COMM_WORLD);
-      MPI_Allreduce(MPI_IN_PLACE, &final, 1, MPI_DOUBLE, MPI_SUM,
+      MPI_Allreduce(MPI_IN_PLACE, &after_content, 1, MPI_DOUBLE, MPI_SUM,
                     MPI_COMM_WORLD);
     }
 #endif
-    const size_t index = static_cast<size_t>(s);
+    const auto index = static_cast<size_t>(s);
     const Real residual = initial + flux.boundary_last_step[index]
         + flux.gradient_source_last_step[index]
         - flux.agent_uptake_last_step[index] - flux.maintenance_last_step[index]
         - flux.vbf_sink_last_step[index]
-        + flux.reaction_clip_last_step[index] - final;
+        + flux.reaction_clip_last_step[index] - after_content;
     if (domain.rank() == 0) {
-      std::cout << std::setprecision(17)
-                << "NUTRIENT_STEP step=" << nutrient_debug_step
+      std::cout << "NUTRIENT_STEP step=" << nutrient_debug_step_counter()
                 << " species=" << specs_[index].name
-                << " owned_content_before=" << initial
-                << " owned_content_after=" << final
-                << " boundary_step=" << flux.boundary_last_step[index]
+                << " owned_content_before=" << debug_real(initial)
+                << " owned_content_after=" << debug_real(after_content)
+                << " boundary_step="
+                << debug_real(flux.boundary_last_step[index])
                 << " gradient_source_step="
-                << flux.gradient_source_last_step[index]
-                << " agent_uptake_step=" << flux.agent_uptake_last_step[index]
-                << " maintenance_step=" << flux.maintenance_last_step[index]
-                << " vbf_sink_step=" << flux.vbf_sink_last_step[index]
-                << " reaction_clip_step=" << flux.reaction_clip_last_step[index]
-                << " residual=" << residual << '\n';
+                << debug_real(flux.gradient_source_last_step[index])
+                << " agent_uptake_step="
+                << debug_real(flux.agent_uptake_last_step[index])
+                << " maintenance_step="
+                << debug_real(flux.maintenance_last_step[index])
+                << " vbf_sink_step="
+                << debug_real(flux.vbf_sink_last_step[index])
+                << " reaction_clip_step="
+                << debug_real(flux.reaction_clip_last_step[index])
+                << " residual=" << debug_real(residual) << '\n';
     }
   }
 }
