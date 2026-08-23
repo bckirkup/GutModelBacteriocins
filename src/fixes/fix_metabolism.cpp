@@ -40,38 +40,39 @@ void apply_delivery_shrinkage(Agent& agent, Real dt) {
 }
 
 DeliveryFunding calculate_delivery_funding(
-    const Agent& agent, Real cell_demand, Real realized) {
-  const Real total_demand =
-      agent.pending_growth_carbon + agent.pending_maintenance_carbon;
+    Real growth_demand, Real maintenance_demand,
+    Real cell_demand, Real realized) {
+  const Real total_demand = growth_demand + maintenance_demand;
   const Real available = std::max(0.0, realized);
   const Real share = cell_demand > 0.0
       ? std::min(total_demand, available * total_demand / cell_demand) : 0.0;
   DeliveryFunding funding;
-  funding.maintenance_paid = std::min(
-      agent.pending_maintenance_carbon, share);
+  funding.maintenance_paid = std::min(maintenance_demand, share);
   funding.growth_funded = std::min(
-      agent.pending_growth_carbon,
+      growth_demand,
       std::max(0.0, share - funding.maintenance_paid));
-  funding.growth_fraction = agent.pending_growth_carbon > 0.0
-      ? funding.growth_funded / agent.pending_growth_carbon : 0.0;
+  funding.growth_fraction = growth_demand > 0.0
+      ? funding.growth_funded / growth_demand : 0.0;
   return funding;
 }
 
 void record_delivery_funding(
-    ChemicalField& chem, Int carbon, const Agent& agent,
-    const DeliveryFunding& funding) {
-  const Real growth_demand = agent.pending_growth_carbon;
-  const Real maint_demand = agent.pending_maintenance_carbon;
-  chem.flux_accounting().add_maintenance(carbon, funding.maintenance_paid);
+    ChemicalField& chem, Int species_index, Real growth_demand,
+    Real maint_demand, const DeliveryFunding& funding) {
+  chem.flux_accounting().add_maintenance(
+      species_index, funding.maintenance_paid);
   if (maint_demand > funding.maintenance_paid) {
     chem.flux_accounting().add_maintenance_shortfall(
-        carbon, maint_demand - funding.maintenance_paid);
-    chem.flux_accounting().add_maintenance_limited_agents(carbon, 1.0);
+        species_index, maint_demand - funding.maintenance_paid);
+    chem.flux_accounting().add_maintenance_limited_agents(
+        species_index, 1.0);
   }
-  chem.flux_accounting().add_agent_uptake(carbon, funding.growth_funded);
+  chem.flux_accounting().add_agent_uptake(
+      species_index, funding.growth_funded);
   if (growth_demand > funding.growth_funded) {
     chem.flux_accounting().add_uptake_shortfall(
-        carbon, growth_demand - funding.growth_funded);
+        species_index, growth_demand - funding.growth_funded);
+    chem.flux_accounting().add_uptake_limited(species_index, 1.0);
   }
 }
 
@@ -257,6 +258,8 @@ void FixMetabolism::compute_agent(Agent& agent, Real dt) {
   agent.pending_growth_carbon = 0.0;
   agent.pending_maintenance_carbon = 0.0;
   agent.pending_biomass = 0.0;
+  agent.pending_oxygen_growth = 0.0;
+  agent.pending_oxygen_maintenance = 0.0;
   if (agent.flags.is_ghost) {
     const Real demanded_biomass = agent.mu_realized * agent.biomass * dt;
     agent.mu_realized *= uptake_limit_fraction(
@@ -266,6 +269,9 @@ void FixMetabolism::compute_agent(Agent& agent, Real dt) {
   charge_carbon_maintenance(agent, dt);
   if (cfg_.uptake_limit_mode == UptakeLimitMode::Delivery) {
     prepare_delivery_uptake(agent, dt);
+    if (sim_.config().chem_env.oxygen.delivery_uptake_enabled) {
+      prepare_delivery_oxygen(agent, dt);
+    }
     return;
   }
   grow_agent(agent, dt);
@@ -293,7 +299,36 @@ void FixMetabolism::prepare_delivery_uptake(Agent& agent, Real dt) {
   agent.pending_growth_carbon = growth_demand;
   agent.pending_biomass = d_biomass;
   chem.flux_accounting().add_uptake_demand(carbon, growth_demand);
-  chem.add_sink_rate_global(agent.grid_cell, k_eff);
+  chem.add_sink_rate_global(carbon, agent.grid_cell, k_eff);
+}
+
+void FixMetabolism::prepare_delivery_oxygen(Agent& agent, Real dt) {
+  auto& chem = sim_.chemical_field();
+  const Int oxygen = chem.find(species::OXYGEN);
+  if (oxygen < 0 || agent.grid_cell < 0 || dt <= 0.0) return;
+  const auto& oxygen_cfg = sim_.config().chem_env.oxygen;
+  const Real respiratory_fraction = oxygen_cfg.metabolic_switch_enabled
+      ? 1.0 - agent.realized_fermentation_fraction : 1.0;
+  const Real growth_demand = oxygen_cfg.q_consumption
+      * std::max(agent.mu_realized, 0.0)
+      * std::clamp(respiratory_fraction, 0.0, 1.0) * dt;
+  const Real maintenance_demand = oxygen_cfg.q_maintenance * dt;
+  const Real demand_total = growth_demand + maintenance_demand;
+  const Real cell_volume = sim_.domain().cell_volume();
+  const Real concentration = chem.total_conc_global(
+      oxygen, agent.grid_cell, sim_.domain());
+  const ChemicalSpec& oxygen_spec = chem.spec(oxygen);
+  const Real effective_diffusivity = uptake::effective_diffusivity(
+      oxygen_spec.diff_coeff, oxygen_spec.retardation);
+  const Real k_agent = 4.0 * uptake::kPi * effective_diffusivity
+      * agent.radius / cell_volume;
+  const Real cap = concentration > 0.0 && cell_volume > 0.0
+      ? demand_total / (concentration * cell_volume * dt) : k_agent;
+  const Real k_eff = std::min(k_agent, cap);
+  agent.pending_oxygen_growth = growth_demand;
+  agent.pending_oxygen_maintenance = maintenance_demand;
+  chem.flux_accounting().add_uptake_demand(oxygen, growth_demand);
+  chem.add_sink_rate_global(oxygen, agent.grid_cell, k_eff);
 }
 
 void FixMetabolism::commit_delivery_uptake(Real dt) {
@@ -308,6 +343,18 @@ void FixMetabolism::commit_delivery_uptake(Real dt) {
   for (Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
     commit_delivery_agent(agent, demand_by_cell, carbon, dt);
+  }
+  const Int oxygen = chem.find(species::OXYGEN);
+  if (oxygen >= 0
+      && sim_.config().chem_env.oxygen.delivery_uptake_enabled) {
+    std::vector oxygen_demand_by_cell(
+        static_cast<size_t>(chem.ncells()), 0.0);
+    collect_delivery_oxygen_demands(oxygen_demand_by_cell);
+    for (Agent& agent : sim_.agents()) {
+      if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
+      commit_delivery_oxygen_agent(
+          agent, oxygen_demand_by_cell, oxygen);
+    }
   }
 }
 
@@ -345,8 +392,11 @@ void FixMetabolism::commit_delivery_agent(
   const Real cell_demand = storage >= 0
       ? demand_by_cell[static_cast<size_t>(storage)] : 0.0;
   const DeliveryFunding funding = calculate_delivery_funding(
-      agent, cell_demand, chem.sink_realized_global(agent.grid_cell));
-  record_delivery_funding(chem, carbon, agent, funding);
+      agent.pending_growth_carbon, agent.pending_maintenance_carbon,
+      cell_demand, chem.sink_realized_global(carbon, agent.grid_cell));
+  record_delivery_funding(
+      chem, carbon, agent.pending_growth_carbon,
+      agent.pending_maintenance_carbon, funding);
   if (agent.pending_biomass < 0.0) {
     apply_delivery_shrinkage(agent, dt);
   } else {
@@ -356,6 +406,39 @@ void FixMetabolism::commit_delivery_agent(
     agent.pending_growth_chemistry_biomass +=
         agent.pending_biomass * funding.growth_fraction;
   }
+}
+
+void FixMetabolism::collect_delivery_oxygen_demands(
+    std::vector<Real>& demand_by_cell) {
+  auto& chem = sim_.chemical_field();
+  for (const Agent& agent : sim_.agents()) {
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
+        || agent.grid_cell < 0) {
+      continue;
+    }
+    const Int storage = chem.global_to_storage_cell(agent.grid_cell);
+    if (storage >= 0) {
+      demand_by_cell[static_cast<size_t>(storage)] +=
+          agent.pending_oxygen_growth + agent.pending_oxygen_maintenance;
+    }
+  }
+}
+
+void FixMetabolism::commit_delivery_oxygen_agent(
+    Agent& agent, const std::vector<Real>& demand_by_cell, Int oxygen) {
+  auto& chem = sim_.chemical_field();
+  const Real growth_demand = agent.pending_oxygen_growth;
+  const Real maintenance_demand = agent.pending_oxygen_maintenance;
+  const Real total_demand = growth_demand + maintenance_demand;
+  if (agent.grid_cell < 0 || total_demand <= 0.0) return;
+  const Int storage = chem.global_to_storage_cell(agent.grid_cell);
+  const Real cell_demand = storage >= 0
+      ? demand_by_cell[static_cast<size_t>(storage)] : 0.0;
+  const DeliveryFunding funding = calculate_delivery_funding(
+      growth_demand, maintenance_demand, cell_demand,
+      chem.sink_realized_global(oxygen, agent.grid_cell));
+  record_delivery_funding(
+      chem, oxygen, growth_demand, maintenance_demand, funding);
 }
 
 void FixMetabolism::post_chemistry(Real dt) {

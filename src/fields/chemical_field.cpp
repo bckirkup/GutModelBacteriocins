@@ -827,8 +827,11 @@ void ChemicalField::init(const Domain& domain,
 
   conc_.resize(nspec_);
   reac_.resize(nspec_);
-  sink_rate_.assign(static_cast<size_t>(ncells_), 0.0);
-  sink_realized_.assign(static_cast<size_t>(ncells_), 0.0);
+  sink_rate_.assign(static_cast<size_t>(nspec_),
+                    std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
+  sink_realized_.assign(static_cast<size_t>(nspec_),
+                        std::vector<Real>(
+                            static_cast<size_t>(ncells_), 0.0));
   for (Int s = 0; s < nspec_; ++s) {
     conc_[s].assign(ncells_, specs_[s].initial_conc);
     reac_[s].assign(ncells_, 0.0);
@@ -974,29 +977,57 @@ void ChemicalField::exchange_concentration_halos() {
 void ChemicalField::zero_reactions() {
   for (Int s = 0; s < nspec_; ++s) {
     std::ranges::fill(reac_[s], 0.0);
+    std::ranges::fill(sink_rate_[s], 0.0);
+    std::ranges::fill(sink_realized_[s], 0.0);
   }
-  std::ranges::fill(sink_rate_, 0.0);
-  std::ranges::fill(sink_realized_, 0.0);
 }
 
-void ChemicalField::add_sink_rate_global(Int cell, Real rate) {
+Real ChemicalField::total_conc_global(
+    Int spec, Int cell, const Domain& domain) const {
+  const Real perturbation = conc_global(spec, cell);
+  const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
+  if (!chemical.z_gradient_enabled || chemical.z_gradient_lambda <= 0.0) {
+    return perturbation;
+  }
+  const Int cells_per_z = domain.nx() * domain.ny();
+  const Int iz = cells_per_z > 0 ? cell / cells_per_z : 0;
+  return perturbation + z_gradient_reference(chemical, domain, iz);
+}
+
+void ChemicalField::add_sink_rate_global(Int spec, Int cell, Real rate) {
   const Int storage_cell = global_to_storage_cell(cell);
-  if (storage_cell < 0 || rate <= 0.0) return;
+  if (spec < 0 || spec >= nspec_ || storage_cell < 0 || rate <= 0.0) {
+    return;
+  }
   #ifdef GUTIBM_OPENMP
   #pragma omp atomic
   #endif
-  sink_rate_[static_cast<size_t>(storage_cell)] += rate;
+  sink_rate_[static_cast<size_t>(spec)][static_cast<size_t>(storage_cell)]
+      += rate;
+}
+
+void ChemicalField::add_sink_rate_global(Int cell, Real rate) {
+  const Int carbon = find(species::CARBON);
+  if (carbon >= 0) add_sink_rate_global(carbon, cell, rate);
+}
+
+Real ChemicalField::sink_realized_global(Int spec, Int cell) const {
+  const Int storage_cell = global_to_storage_cell(cell);
+  if (spec < 0 || spec >= nspec_ || storage_cell < 0) return 0.0;
+  return sink_realized_[static_cast<size_t>(spec)]
+      [static_cast<size_t>(storage_cell)];
 }
 
 Real ChemicalField::sink_realized_global(Int cell) const {
-  const Int storage_cell = global_to_storage_cell(cell);
-  return storage_cell >= 0 ? sink_realized_[static_cast<size_t>(storage_cell)]
-                           : 0.0;
+  const Int carbon = find(species::CARBON);
+  return carbon >= 0 ? sink_realized_global(carbon, cell) : 0.0;
 }
 
-bool ChemicalField::has_sink_rate() const {
+bool ChemicalField::has_sink_rate(Int spec) const {
+  if (spec < 0 || spec >= nspec_) return false;
   const bool local = std::ranges::any_of(
-      sink_rate_, [](Real value) { return value > 0.0; });
+      sink_rate_[static_cast<size_t>(spec)],
+      [](Real value) { return value > 0.0; });
 #ifdef GUTIBM_MPI
   int initialized = 0;
   int finalized = 0;
@@ -1011,6 +1042,11 @@ bool ChemicalField::has_sink_rate() const {
   }
 #endif
   return local;
+}
+
+bool ChemicalField::has_sink_rate() const {
+  const Int carbon = find(species::CARBON);
+  return carbon >= 0 && has_sink_rate(carbon);
 }
 
 void ChemicalField::sum_reactions_across_ranks() {
@@ -1029,8 +1065,10 @@ void ChemicalField::sum_reactions_across_ranks() {
     MPI_Allreduce(MPI_IN_PLACE, reaction.data(), ncells_, MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
   }
-  MPI_Allreduce(MPI_IN_PLACE, sink_rate_.data(), ncells_, MPI_DOUBLE, MPI_SUM,
-                MPI_COMM_WORLD);
+  for (auto& sink : sink_rate_) {
+    MPI_Allreduce(MPI_IN_PLACE, sink.data(), ncells_, MPI_DOUBLE, MPI_SUM,
+                  MPI_COMM_WORLD);
+  }
 #endif
 }
 
@@ -1079,6 +1117,7 @@ void ChemicalField::sum_accounting_across_ranks() {
                   MPI_COMM_WORLD);
   };
   reduce(flux_accounting_.boundary_step);
+  reduce(flux_accounting_.gradient_source_step);
   reduce(flux_accounting_.reaction_clip_step);
 #endif
 }
@@ -1088,6 +1127,31 @@ namespace {
 Int slab_storage_index(
     Int local_ix, Int iy, Int iz, Int storage_nx, Int ny) {
   return iz * storage_nx * ny + iy * storage_nx + local_ix;
+}
+
+Real owned_content(const std::vector<Real>& concentration,
+                   const Domain& domain, Real cell_volume) {
+  Real content = 0.0;
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    content += concentration[static_cast<size_t>(cell)] * cell_volume;
+  }
+  return content;
+}
+
+Real owned_content_slab(const std::vector<Real>& concentration,
+                        const Domain& domain, Int storage_nx,
+                        Int halo_width, Real cell_volume) {
+  Real content = 0.0;
+  for (Int iz = 0; iz < domain.nz(); ++iz) {
+    for (Int iy = 0; iy < domain.ny(); ++iy) {
+      for (Int ix = 0; ix < domain.local_grid_nx(); ++ix) {
+        const Int cell = slab_storage_index(
+            halo_width + ix, iy, iz, storage_nx, domain.ny());
+        content += concentration[static_cast<size_t>(cell)] * cell_volume;
+      }
+    }
+  }
+  return content;
 }
 
 struct SlabTransportContext {
@@ -1859,9 +1923,21 @@ void prepare_replicated_diffusion(ReplicatedDiffusionContext& context) {
             context.chemical.boundary_conc, context.cell_volume));
   }
   if (!context.preserve_gradient) return;
+  const Real before_luminal = owned_content(
+      context.concentration, context.domain, context.cell_volume);
   set_luminal_neumann_boundary(context.concentration, context.domain);
+  context.flux.add_gradient_source(
+      context.spec,
+      owned_content(context.concentration, context.domain, context.cell_volume)
+          - before_luminal);
+  const Real before_profile = owned_content(
+      context.concentration, context.domain, context.cell_volume);
   shift_z_gradient(
       context.concentration, context.chemical, context.domain, -1.0);
+  context.flux.add_gradient_source(
+      context.spec,
+      owned_content(context.concentration, context.domain, context.cell_volume)
+          - before_profile);
   context.diffusion_boundary = 0.0;
 }
 
@@ -1933,11 +2009,23 @@ void transport_replicated_diffusion(
 
 void finish_replicated_diffusion(ReplicatedDiffusionContext& context) {
   if (context.preserve_gradient) {
+    const Real before_profile = owned_content(
+        context.concentration, context.domain, context.cell_volume);
     shift_z_gradient(
         context.concentration, context.chemical, context.domain, 1.0);
+    context.flux.add_gradient_source(
+        context.spec,
+        owned_content(context.concentration, context.domain, context.cell_volume)
+            - before_profile);
+    const Real before_luminal = owned_content(
+        context.concentration, context.domain, context.cell_volume);
     set_luminal_neumann_boundary(context.concentration, context.domain);
+    context.flux.add_gradient_source(
+        context.spec,
+        owned_content(context.concentration, context.domain, context.cell_volume)
+            - before_luminal);
   }
-  if (context.delivery && context.preserve_gradient) {
+  if (context.delivery) {
     clamp_delivery_total(
         context.concentration, context.cell_volume,
         context.flux, context.spec);
@@ -1984,12 +2072,28 @@ void prepare_slab_diffusion(SlabDiffusionContext& context) {
             context.cell_volume));
   }
   if (!context.preserve_gradient) return;
+  const Real before_luminal = owned_content_slab(
+      context.concentration, context.domain, context.storage_nx,
+      context.halo_width, context.cell_volume);
   set_luminal_neumann_boundary_slab(
       context.concentration, context.domain, context.storage_nx,
       context.halo_width);
+  context.flux.add_gradient_source(
+      context.spec,
+      owned_content_slab(
+          context.concentration, context.domain, context.storage_nx,
+          context.halo_width, context.cell_volume) - before_luminal);
+  const Real before_profile = owned_content_slab(
+      context.concentration, context.domain, context.storage_nx,
+      context.halo_width, context.cell_volume);
   shift_z_gradient_slab(
       context.concentration, context.chemical, context.domain,
       context.storage_nx, context.halo_width, -1.0);
+  context.flux.add_gradient_source(
+      context.spec,
+      owned_content_slab(
+          context.concentration, context.domain, context.storage_nx,
+          context.halo_width, context.cell_volume) - before_profile);
   context.diffusion_boundary = 0.0;
 }
 
@@ -2061,14 +2165,30 @@ void transport_slab_diffusion(SlabDiffusionContext& context) {
 
 void finish_slab_diffusion(SlabDiffusionContext& context) {
   if (context.preserve_gradient) {
+    const Real before_profile = owned_content_slab(
+        context.concentration, context.domain, context.storage_nx,
+        context.halo_width, context.cell_volume);
     shift_z_gradient_slab(
         context.concentration, context.chemical, context.domain,
         context.storage_nx, context.halo_width, 1.0);
+    context.flux.add_gradient_source(
+        context.spec,
+        owned_content_slab(
+            context.concentration, context.domain, context.storage_nx,
+            context.halo_width, context.cell_volume) - before_profile);
+    const Real before_luminal = owned_content_slab(
+        context.concentration, context.domain, context.storage_nx,
+        context.halo_width, context.cell_volume);
     set_luminal_neumann_boundary_slab(
         context.concentration, context.domain, context.storage_nx,
         context.halo_width);
+    context.flux.add_gradient_source(
+        context.spec,
+        owned_content_slab(
+            context.concentration, context.domain, context.storage_nx,
+            context.halo_width, context.cell_volume) - before_luminal);
   }
-  if (context.delivery && context.preserve_gradient) {
+  if (context.delivery) {
     clamp_delivery_total_slab(
         context.concentration, context.domain, context.storage_nx,
         context.halo_width, context.cell_volume, context.flux, context.spec);
@@ -2116,11 +2236,12 @@ void ChemicalField::apply_diffusion_species(
   const Real alpha_z = effective_diffusion * dt
       / (domain.dx_z() * domain.dx_z());
   ReplicatedDiffusionContext context{
-      conc_[s], domain, chemical, flux_accounting_, sink_rate_,
-      sink_realized_, s, dt, alpha_x, alpha_y, alpha_z,
+      conc_[s], domain, chemical, flux_accounting_,
+      sink_rate_[static_cast<size_t>(s)],
+      sink_realized_[static_cast<size_t>(s)], s, dt, alpha_x, alpha_y, alpha_z,
       domain.cell_volume(), chemical.boundary_conc,
       chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
-      s == find(species::CARBON) && has_sink_rate(),
+      chemical.delivery_enabled && has_sink_rate(s),
       (chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0)
           ? &chemical : nullptr};
   prepare_replicated_diffusion(context);
@@ -2222,11 +2343,12 @@ void ChemicalField::apply_diffusion_slab_species(
       / (domain.dx_z() * domain.dx_z());
   SlabDiffusionContext context{
       conc_[static_cast<size_t>(s)], domain, chemical, flux_accounting_,
-      sink_rate_, sink_realized_, storage_nx_, halo_width_, s, dt,
+      sink_rate_[static_cast<size_t>(s)],
+      sink_realized_[static_cast<size_t>(s)], storage_nx_, halo_width_, s, dt,
       alpha_x, alpha_y, alpha_z, domain.cell_volume(),
       chemical.boundary_conc,
       chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
-      s == find(species::CARBON) && has_sink_rate(),
+      chemical.delivery_enabled && has_sink_rate(s),
       (chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0)
           ? &chemical : nullptr};
   prepare_slab_diffusion(context);

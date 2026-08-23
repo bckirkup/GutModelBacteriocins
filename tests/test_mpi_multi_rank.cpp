@@ -515,7 +515,8 @@ void assert_equal_ledgers(const Simulation& slab,
       replicated.chemical_field().flux_accounting();
   const auto compare = [](const char* name,
                           const std::vector<Real>& slab_values,
-                          const std::vector<Real>& replicated_values) {
+                          const std::vector<Real>& replicated_values,
+                          Real absolute_tolerance = 0.0) {
     assert(slab_values.size() == replicated_values.size());
     for (size_t species = 0; species < slab_values.size(); ++species) {
       Real slab_min = 0.0;
@@ -536,7 +537,8 @@ void assert_equal_ledgers(const Simulation& slab,
       // slab reduces rank-local partials, while replicated sweeps the grid.
       const Real scale = std::max(
           std::max(std::abs(slab_min), std::abs(replicated_min)), 1.0e-300);
-      if (std::abs(slab_min - replicated_min) > 1.0e-12 * scale) {
+      if (std::abs(slab_min - replicated_min)
+          > std::max(1.0e-12 * scale, absolute_tolerance)) {
         int rank = 0;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         if (rank == 0) {
@@ -545,13 +547,18 @@ void assert_equal_ledgers(const Simulation& slab,
                     << slab_min << " vs " << replicated_min << '\n';
         }
       }
-      assert(std::abs(slab_min - replicated_min) <= 1.0e-12 * scale);
+      assert(std::abs(slab_min - replicated_min)
+             <= std::max(1.0e-12 * scale, absolute_tolerance));
     }
   };
   compare("boundary_interval", slab_flux.boundary_interval,
           replicated_flux.boundary_interval);
   compare("boundary_cumulative", slab_flux.boundary_cumulative,
           replicated_flux.boundary_cumulative);
+  compare("gradient_source_interval", slab_flux.gradient_source_interval,
+          replicated_flux.gradient_source_interval, 1.0e-28);
+  compare("gradient_source_cumulative", slab_flux.gradient_source_cumulative,
+          replicated_flux.gradient_source_cumulative, 1.0e-28);
   compare("vbf_source_interval", slab_flux.vbf_source_interval,
           replicated_flux.vbf_source_interval);
   compare("vbf_source_cumulative", slab_flux.vbf_source_cumulative,
@@ -644,6 +651,7 @@ void test_delivery_sink_slab_matches_replicated() {
   ChemicalSpec gradient_spec = spec;
   gradient_spec.z_gradient_enabled = true;
   gradient_spec.z_gradient_lambda = 10.0e-6;
+  gradient_spec.delivery_enabled = true;
   ChemicalField gradient_slab;
   ChemicalField gradient_replicated;
   gradient_slab.init(domain, {gradient_spec}, "slab");
@@ -671,12 +679,53 @@ void test_delivery_sink_slab_matches_replicated() {
   Real global_gradient_slab_removed = 0.0;
   MPI_Allreduce(&gradient_slab_removed, &global_gradient_slab_removed, 1,
                 MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  const Real local_gradient_source =
+      gradient_slab.flux_accounting().gradient_source_step.front();
+  Real global_gradient_source = 0.0;
+  MPI_Allreduce(&local_gradient_source, &global_gradient_source, 1,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  assert(std::abs(global_gradient_source
+                  - gradient_replicated.flux_accounting()
+                      .gradient_source_step.front())
+         <= 1.0e-12 * std::max(
+             1.0, std::abs(
+                 gradient_replicated.flux_accounting()
+                     .gradient_source_step.front())));
   assert(global_gradient_slab_removed > 0.0);
   assert(std::abs(global_gradient_slab_removed
                   - gradient_replicated.sink_realized_global(target))
          <= 1.0e-12 * std::max(
              1.0, std::abs(
                  gradient_replicated.sink_realized_global(target))));
+
+  ChemicalSpec oxygen_spec = spec;
+  oxygen_spec.name = species::OXYGEN;
+  oxygen_spec.delivery_enabled = true;
+  ChemicalField oxygen_slab;
+  ChemicalField oxygen_replicated;
+  oxygen_slab.init(domain, {oxygen_spec}, "slab");
+  oxygen_replicated.init(domain, {oxygen_spec}, "replicated");
+  oxygen_replicated.add_sink_rate_global(0, target, 0.2);
+  if (domain.owner_rank(domain.cell_center(1, 1, 1)) == rank) {
+    oxygen_slab.add_sink_rate_global(0, target, 0.2);
+  }
+  oxygen_slab.apply_diffusion(domain, 60.0);
+  oxygen_replicated.apply_diffusion(domain, 60.0);
+  Real oxygen_slab_removed = 0.0;
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    if (oxygen_slab.owns_global_cell(cell)) {
+      oxygen_slab_removed += oxygen_slab.sink_realized_global(0, cell);
+    }
+  }
+  Real global_oxygen_slab_removed = 0.0;
+  MPI_Allreduce(&oxygen_slab_removed, &global_oxygen_slab_removed, 1,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  assert(global_oxygen_slab_removed > 0.0);
+  assert(std::abs(global_oxygen_slab_removed
+                  - oxygen_replicated.sink_realized_global(0, target))
+         <= 1.0e-12 * std::max(
+             1.0, std::abs(
+                 oxygen_replicated.sink_realized_global(0, target))));
   if (rank == 0) {
     std::cout << "  test_delivery_sink_slab_matches_replicated: PASSED"
               << " (gradient_removed=" << global_gradient_slab_removed

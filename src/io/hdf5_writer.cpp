@@ -879,6 +879,7 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   }
   H5Sclose(name_space);
   write_flux("boundary_interval", flux.boundary_interval);
+  write_flux("gradient_source_interval", flux.gradient_source_interval);
   const auto add_cumulative = [](const std::vector<Real>& prior,
                                  const std::vector<Real>& interval) {
     std::vector values(prior.size(), 0.0);
@@ -889,6 +890,9 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   };
   write_flux("boundary_cumulative",
              add_cumulative(flux.boundary_cumulative, flux.boundary_interval));
+  write_flux("gradient_source_cumulative",
+             add_cumulative(flux.gradient_source_cumulative,
+                           flux.gradient_source_interval));
   write_flux("vbf_source_interval", flux.vbf_source_interval);
   write_flux("vbf_source_cumulative",
              add_cumulative(flux.vbf_source_cumulative, flux.vbf_source_interval));

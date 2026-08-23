@@ -312,6 +312,43 @@ void test_o2_tracks_density_over_background() {
             << " many=" << o2_many << ")\n";
 }
 
+void test_o2_delivery_accounting_closes() {
+  SimulationConfig cfg = make_integration_cfg(12, 333);
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.chem_env.oxygen.delivery_uptake_enabled = true;
+  cfg.chem_env.oxygen.vbf_sink = 0.0;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  sim.step(60.0);
+
+  const ChemicalField& chem = sim.chemical_field();
+  const Int oxygen = chem.find(species::OXYGEN);
+  expect(oxygen >= 0, "oxygen delivery mode must register oxygen");
+  if (oxygen < 0) return;
+  const auto& flux = chem.flux_accounting();
+  const Real demand = flux.uptake_demand_interval[
+      static_cast<size_t>(oxygen)];
+  const Real realized = flux.agent_uptake_interval[
+      static_cast<size_t>(oxygen)]
+      + flux.maintenance_interval[static_cast<size_t>(oxygen)];
+  expect(realized <= demand + flux.maintenance_interval[
+      static_cast<size_t>(oxygen)] + 1.0e-30,
+         "realized oxygen removal must not exceed oxygen demand");
+  Real sink_realized = 0.0;
+  for (Int cell = 0; cell < chem.ncells(); ++cell) {
+    sink_realized += chem.sink_realized_global(oxygen, cell);
+  }
+  expect(std::abs(realized - sink_realized) <= 1.0e-24,
+         "oxygen ledger must match realized delivery sink");
+  expect(flux.reaction_clip_interval[static_cast<size_t>(oxygen)] < 1.0e-18,
+         "delivery-mode oxygen reaction clips must be near zero");
+  std::cout << "  test_o2_delivery_accounting_closes: PASSED"
+            << " (demand=" << demand << " realized=" << realized << ")\n";
+}
+
 // ── Spec 6 §3 — corrinoid (B12) is a constant bioavailable pool, NOT a
 // depletable field. The anaerobic majority produces total corrinoids (~1 uM)
 // far faster than E. coli consumes them, so neither the VBF nor the agents may
@@ -885,6 +922,7 @@ int main() {
   test_carbon_sink_sensitivity();
   test_o2_consumption_wired();
   test_o2_tracks_density_over_background();
+  test_o2_delivery_accounting_closes();
   test_corrinoid_field_constant();
   test_dysbiosis_halt();
   test_metabolism_uptake_has_rate_units();

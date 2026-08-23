@@ -72,6 +72,8 @@ void assert_run_provenance(hid_t file,
   assert(restored.time.bio_dt == expected.time.bio_dt);
   assert(restored.seed == expected.seed);
   assert(restored.chemistry_decomposition == expected.chemistry_decomposition);
+  assert(restored.chem_env.oxygen.delivery_uptake_enabled
+         == expected.chem_env.oxygen.delivery_uptake_enabled);
   assert(restored.initial_strains.size() == expected.initial_strains.size());
 }
 extern "C" {
@@ -116,6 +118,9 @@ SimulationConfig make_roundtrip_config(std::string_view filename, bool parallel)
   cfg.hdf5.schedule.genome = 1;
   cfg.hdf5.schedule.grid_species = {"all"};
   cfg.hdf5.parallel = parallel;
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.chem_env.oxygen.delivery_uptake_enabled = true;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
   cfg.advection.mucus_thickness = 25e-6;
   cfg.advection.distal_length = 50e-6;
   cfg.qssa.toxin_cutoff = 25e-6;

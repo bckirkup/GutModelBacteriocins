@@ -20,6 +20,9 @@ struct NutrientFluxAccounting {
   std::vector<Real> boundary_interval;
   std::vector<Real> boundary_step;
   std::vector<Real> boundary_cumulative;
+  std::vector<Real> gradient_source_interval;
+  std::vector<Real> gradient_source_step;
+  std::vector<Real> gradient_source_cumulative;
   std::vector<Real> vbf_source_interval;
   std::vector<Real> vbf_source_cumulative;
   std::vector<Real> vbf_sink_interval;
@@ -62,6 +65,9 @@ struct NutrientFluxAccounting {
     boundary_interval.assign(species_count, 0.0);
     boundary_step.assign(species_count, 0.0);
     boundary_cumulative.assign(species_count, 0.0);
+    gradient_source_interval.assign(species_count, 0.0);
+    gradient_source_step.assign(species_count, 0.0);
+    gradient_source_cumulative.assign(species_count, 0.0);
     vbf_source_interval.assign(species_count, 0.0);
     vbf_source_cumulative.assign(species_count, 0.0);
     vbf_sink_interval.assign(species_count, 0.0);
@@ -109,6 +115,13 @@ struct NutrientFluxAccounting {
 
   void add_boundary(Int species, Real amount) {
     boundary_step[static_cast<size_t>(species)] += amount;
+  }
+
+  void add_gradient_source(Int species, Real amount) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    gradient_source_step[static_cast<size_t>(species)] += amount;
   }
 
   void add_agent_uptake(Int species, Real amount) {
@@ -220,8 +233,10 @@ struct NutrientFluxAccounting {
     for (size_t i = 0; i < boundary_step.size(); ++i) {
       reaction_clip_last_step[i] = reaction_clip_step[i];
       boundary_interval[i] += boundary_step[i];
+      gradient_source_interval[i] += gradient_source_step[i];
       reaction_clip_interval[i] += reaction_clip_step[i];
       boundary_step[i] = 0.0;
+      gradient_source_step[i] = 0.0;
       reaction_clip_step[i] = 0.0;
     }
   }
@@ -229,6 +244,7 @@ struct NutrientFluxAccounting {
   void close_interval() {
     for (size_t i = 0; i < boundary_interval.size(); ++i) {
       boundary_cumulative[i] += boundary_interval[i];
+      gradient_source_cumulative[i] += gradient_source_interval[i];
       vbf_source_cumulative[i] += vbf_source_interval[i];
       vbf_sink_cumulative[i] += vbf_sink_interval[i];
       agent_uptake_cumulative[i] += agent_uptake_interval[i];
@@ -241,6 +257,7 @@ struct NutrientFluxAccounting {
       uptake_limited_cumulative[i] += uptake_limited_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
       boundary_interval[i] = 0.0;
+      gradient_source_interval[i] = 0.0;
       vbf_source_interval[i] = 0.0;
       vbf_sink_interval[i] = 0.0;
       agent_uptake_interval[i] = 0.0;
@@ -281,6 +298,7 @@ struct ChemicalSpec {
       EpithelialBoundaryMode::Dirichlet;
   Real epithelial_transfer_coeff = 0.0;  // Robin k (m/s)
   Real epithelial_flux = 0.0;             // fixed flux J (mol/m^2/s)
+  bool delivery_enabled = false;         // agent delivery sink participates
 };
 
 class ChemicalField {
@@ -321,6 +339,7 @@ class ChemicalField {
     assert(storage_cell >= 0);
     return conc_[spec][storage_cell];
   }
+  Real total_conc_global(Int spec, Int cell, const Domain& domain) const;
   Real& conc_global(Int spec, Int cell) {
     const Int storage_cell = global_to_storage_cell(cell);
     assert(storage_cell >= 0);
@@ -364,8 +383,11 @@ class ChemicalField {
 
   // Reset reaction rates to zero each timestep
   void zero_reactions();
+  void add_sink_rate_global(Int spec, Int cell, Real rate);
   void add_sink_rate_global(Int cell, Real rate);
+  Real sink_realized_global(Int spec, Int cell) const;
   Real sink_realized_global(Int cell) const;
+  bool has_sink_rate(Int spec) const;
   bool has_sink_rate() const;
 
   // Apply stable implicit diffusion for enabled nutrient species.
@@ -418,8 +440,8 @@ class ChemicalField {
   std::vector<ChemicalSpec> specs_;
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]
-  std::vector<Real> sink_rate_;            // [ncells], 1/s
-  std::vector<Real> sink_realized_;        // [ncells], mol this step
+  std::vector<std::vector<Real>> sink_rate_;      // [species][ncells], 1/s
+  std::vector<std::vector<Real>> sink_realized_;  // [species][ncells], mol this step
   NutrientFluxAccounting flux_accounting_;
 
   void apply_diffusion_slab(const Domain& domain, Real dt);

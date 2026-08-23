@@ -164,6 +164,12 @@ maintenance factor. Basal oxygen maintenance remains unconditional. The
 fermentative acetate term replaces the legacy overflow term while scavenging
 is unchanged.
 
+When `metabolism.uptake_limit` is `delivery` and
+`oxygen.delivery_uptake_enabled` is true, growth-associated and maintenance
+respiration use the same per-agent implicit delivery sink as carbon. Realized
+oxygen removal is distributed in proportion to per-agent respiratory demand;
+the explicit QSSA oxygen sink remains the default when the flag is false.
+
 Acid inhibition uses undissociated acetate via Henderson–Hasselbalch. Its pH
 comes from `bacteriocin.mucin_charge.ph`, the environment pH lever introduced
 for pI-derived retardation; no duplicate pH parameter is used. At pH 6 the
