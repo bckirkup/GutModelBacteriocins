@@ -109,6 +109,10 @@ struct SimulationConfig {
   std::string carbon_epithelial_boundary = "dirichlet";
   Real carbon_epithelial_transfer_coeff = 0.0;
   Real carbon_epithelial_flux = 0.0;
+  std::string oxygen_epithelial_boundary = "dirichlet";
+  Real oxygen_epithelial_transfer_coeff = 1.2e-6;
+  Real oxygen_epithelial_flux = 0.0;
+  bool oxygen_z_gradient_enabled = true;
   std::vector<ChemicalSpec> chemicals;
   QSSAConfig qssa;
   FixPluginsConfig fixes;

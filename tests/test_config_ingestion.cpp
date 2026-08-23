@@ -629,6 +629,27 @@ std::vector<Probe> build_probes() {
                 },
                 false));
   add_ns_real(v, "oxygen.epithelial_conc", "oxygen_epithelial_conc", [](const SimulationConfig& c) { return c.chem_env.oxygen.epithelial_conc; });
+  v.push_back(S("oxygen.epithelial_boundary",
+                [](const SimulationConfig& c) {
+                  return c.oxygen_epithelial_boundary;
+                }, "robin"));
+  v.push_back(S("oxygen_epithelial_boundary",
+                [](const SimulationConfig& c) {
+                  return c.oxygen_epithelial_boundary;
+                }, "flux", false));
+  add_ns_real(v, "oxygen.epithelial_transfer_coeff",
+              "oxygen_epithelial_transfer_coeff",
+              [](const SimulationConfig& c) {
+                return c.oxygen_epithelial_transfer_coeff;
+              });
+  add_ns_real(v, "oxygen.epithelial_flux", "oxygen_epithelial_flux",
+              [](const SimulationConfig& c) {
+                return c.oxygen_epithelial_flux;
+              });
+  add_ns_bool(v, "oxygen.z_gradient", "oxygen_z_gradient",
+              [](const SimulationConfig& c) {
+                return c.oxygen_z_gradient_enabled;
+              });
   add_ns_real(v, "oxygen.D_free", "oxygen_D_free", [](const SimulationConfig& c) { return c.chem_env.oxygen.D_free; });
   add_ns_real(v, "oxygen.Km", "oxygen_Km", [](const SimulationConfig& c) { return c.chem_env.oxygen.Km; });
   add_ns_real(v, "oxygen.boost_max", "oxygen_boost_max", [](const SimulationConfig& c) { return c.chem_env.oxygen.boost_max; });

@@ -119,6 +119,40 @@ Int parse_positive_config_int(std::string_view key, const std::string& val) {
   return result;
 }
 
+EpithelialBoundaryMode parse_epithelial_boundary_mode(
+    std::string_view key, const std::string& value) {
+  if (value == "dirichlet") return EpithelialBoundaryMode::Dirichlet;
+  if (value == "robin") return EpithelialBoundaryMode::Robin;
+  if (value == "flux") return EpithelialBoundaryMode::Flux;
+  throw ConfigError(
+      "invalid " + std::string(key)
+      + ": expected 'dirichlet', 'robin', or 'flux', got '" + value + "'");
+}
+
+void configure_epithelial_boundary(
+    ChemicalSpec& spec, std::string_view species_name,
+    std::string_view boundary_key, const std::string& boundary,
+    Real transfer_coeff, Real flux, bool require_positive_transfer) {
+  spec.epithelial_transfer_coeff = transfer_coeff;
+  spec.epithelial_flux = flux;
+  spec.epithelial_boundary_mode =
+      parse_epithelial_boundary_mode(boundary_key, boundary);
+  if (require_positive_transfer
+      && spec.epithelial_boundary_mode == EpithelialBoundaryMode::Robin
+      && transfer_coeff <= 0.0) {
+    throw ConfigError(
+        std::string(species_name) + ".epithelial_transfer_coeff must be "
+        "positive for Robin epithelial boundary mode");
+  }
+  if (spec.epithelial_boundary_mode != EpithelialBoundaryMode::Dirichlet
+      && spec.z_gradient_enabled) {
+    throw ConfigError(
+        std::string(species_name)
+        + " z-gradient cannot be combined with Robin or flux "
+          "epithelial boundary modes");
+  }
+}
+
 }  // namespace
 
 SimulationConfig InputParser::default_config() {
@@ -409,10 +443,13 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
           species::OXYGEN, cfg.chem_env.oxygen.D_free, 1.0,
           cfg.chem_env.oxygen.epithelial_conc, cfg.chem_env.oxygen.epithelial_conc,
           0.0, true, k_z_lambda, true);
+      cfg.chemicals.back().z_gradient_enabled =
+          cfg.oxygen_z_gradient_enabled;
     } else {
       auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
       spec.diff_coeff = cfg.chem_env.oxygen.D_free;
       spec.diffusion_enabled = true;
+      spec.z_gradient_enabled = cfg.oxygen_z_gradient_enabled;
     }
   }
 
@@ -561,27 +598,21 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
 
   const Int carbon_idx = find_chemical_spec(cfg.chemicals, species::CARBON);
   if (carbon_idx >= 0) {
-    using enum EpithelialBoundaryMode;
     auto& carbon = cfg.chemicals[static_cast<size_t>(carbon_idx)];
-    carbon.epithelial_transfer_coeff = cfg.carbon_epithelial_transfer_coeff;
-    carbon.epithelial_flux = cfg.carbon_epithelial_flux;
-    if (cfg.carbon_epithelial_boundary == "dirichlet") {
-      carbon.epithelial_boundary_mode = Dirichlet;
-    } else if (cfg.carbon_epithelial_boundary == "robin") {
-      carbon.epithelial_boundary_mode = Robin;
-    } else if (cfg.carbon_epithelial_boundary == "flux") {
-      carbon.epithelial_boundary_mode = Flux;
-    } else {
-      throw ConfigError(
-          "invalid carbon.epithelial_boundary: expected 'dirichlet', "
-          "'robin', or 'flux', got '" + cfg.carbon_epithelial_boundary + "'");
-    }
-    if (carbon.epithelial_boundary_mode != Dirichlet
-        && carbon.z_gradient_enabled) {
-      throw ConfigError(
-          "carbon z-gradient cannot be combined with Robin or flux "
-          "epithelial boundary modes");
-    }
+    configure_epithelial_boundary(
+        carbon, "carbon", "carbon.epithelial_boundary",
+        cfg.carbon_epithelial_boundary,
+        cfg.carbon_epithelial_transfer_coeff, cfg.carbon_epithelial_flux,
+        false);
+  }
+  const Int oxygen_idx = find_chemical_spec(cfg.chemicals, species::OXYGEN);
+  if (oxygen_idx >= 0) {
+    auto& oxygen = cfg.chemicals[static_cast<size_t>(oxygen_idx)];
+    configure_epithelial_boundary(
+        oxygen, "oxygen", "oxygen.epithelial_boundary",
+        cfg.oxygen_epithelial_boundary,
+        cfg.oxygen_epithelial_transfer_coeff, cfg.oxygen_epithelial_flux,
+        true);
   }
 }
 
@@ -771,11 +802,7 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
   }
   if (key == "carbon.epithelial_boundary"
       || key == "carbon_epithelial_boundary") {
-    if (val != "dirichlet" && val != "robin" && val != "flux") {
-      throw ConfigError(
-          "invalid " + std::string(key)
-          + ": expected 'dirichlet', 'robin', or 'flux', got '" + val + "'");
-    }
+    (void)parse_epithelial_boundary_mode(key, val);
     cfg.carbon_epithelial_boundary = val;
     return true;
   }
@@ -787,6 +814,10 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
   if (key == "carbon.epithelial_flux"
       || key == "carbon_epithelial_flux") {
     cfg.carbon_epithelial_flux = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "oxygen.z_gradient" || key == "oxygen_z_gradient") {
+    cfg.oxygen_z_gradient_enabled = parse_bool_config(val);
     return true;
   }
   if (key == "sos_lysis_prob")       { cfg.fixes.bacteriocin.sos_lysis_prob = parse_config_real(key, val); return true; }
@@ -1236,6 +1267,22 @@ bool apply_oxygen_key(SimulationConfig& cfg, std::string_view key, const std::st
   }
   if (key == "oxygen.epithelial_conc" || key == "oxygen_epithelial_conc") {
     cfg.chem_env.oxygen.epithelial_conc = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.epithelial_boundary"
+      || key == "oxygen_epithelial_boundary") {
+    (void)parse_epithelial_boundary_mode(key, val);
+    cfg.oxygen_epithelial_boundary = val;
+    return true;
+  }
+  if (key == "oxygen.epithelial_transfer_coeff"
+      || key == "oxygen_epithelial_transfer_coeff") {
+    cfg.oxygen_epithelial_transfer_coeff = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "oxygen.epithelial_flux"
+      || key == "oxygen_epithelial_flux") {
+    cfg.oxygen_epithelial_flux = parse_config_real(key, val);
+    return true;
   }
   if (key == "oxygen.delivery_uptake_enabled"
       || key == "oxygen_delivery_uptake_enabled") {
