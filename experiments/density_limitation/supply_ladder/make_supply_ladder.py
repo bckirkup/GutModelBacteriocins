@@ -50,36 +50,17 @@ import importlib.util
 import json
 import os
 import pathlib
-import sys
-import types
 
 _REPO_PYTHON = pathlib.Path(__file__).resolve().parents[3] / "python"
-sys.path.insert(0, str(_REPO_PYTHON))
-
-try:
-    from gut_ibm_tools.path_utils import (
-        validate_input_path,
-        validate_output_path,
-        write_json_file,
-    )
-except ModuleNotFoundError as error:
-    if error.name != "h5py":
-        raise
-    package = types.ModuleType("gut_ibm_tools")
-    package.__path__ = [str(_REPO_PYTHON / "gut_ibm_tools")]
-    sys.modules["gut_ibm_tools"] = package
-    module_path = _REPO_PYTHON / "gut_ibm_tools" / "path_utils.py"
-    spec = importlib.util.spec_from_file_location(
-        "gut_ibm_tools.path_utils", module_path
-    )
-    if spec is None or spec.loader is None:
-        raise ImportError(f"cannot load {module_path}") from error
-    path_utils = importlib.util.module_from_spec(spec)
-    sys.modules["gut_ibm_tools.path_utils"] = path_utils
-    spec.loader.exec_module(path_utils)
-    validate_input_path = path_utils.validate_input_path
-    validate_output_path = path_utils.validate_output_path
-    write_json_file = path_utils.write_json_file
+_PATH_UTILS = _REPO_PYTHON / "gut_ibm_tools" / "path_utils.py"
+_SPEC = importlib.util.spec_from_file_location("gutibm_path_utils", _PATH_UTILS)
+if _SPEC is None or _SPEC.loader is None:
+    raise ImportError(f"cannot load {_PATH_UTILS}")
+_PATH_UTILS_MODULE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(_PATH_UTILS_MODULE)
+validate_input_path = _PATH_UTILS_MODULE.validate_input_path
+validate_output_path = _PATH_UTILS_MODULE.validate_output_path
+write_json_file = _PATH_UTILS_MODULE.write_json_file
 
 SEED = 1001
 HORIZON_S = 86400  # 24 h; capacity needs a plateau, not a transient
