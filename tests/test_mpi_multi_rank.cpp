@@ -644,6 +644,7 @@ void test_delivery_sink_slab_matches_replicated() {
   ChemicalSpec gradient_spec = spec;
   gradient_spec.z_gradient_enabled = true;
   gradient_spec.z_gradient_lambda = 10.0e-6;
+  gradient_spec.delivery_enabled = true;
   ChemicalField gradient_slab;
   ChemicalField gradient_replicated;
   gradient_slab.init(domain, {gradient_spec}, "slab");
