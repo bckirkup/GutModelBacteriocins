@@ -44,14 +44,24 @@ When disabled (`adaptive_dt_enabled = false`), the fixed `bio_dt` is used as bef
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `initial_population.placement` | `legacy` | — | `legacy` preserves the historical `[domain.lo.z, 0.5 * domain.hi.z]` founder band; `z_slab` uses explicit bounds |
+| `initial_population.placement` | `legacy` | — | `legacy` preserves the historical `[domain.lo.z, 0.5 * domain.hi.z]` founder band; `z_slab` uses explicit bounds; `anatomic` uses anatomy-derived truncated-exponential depth |
 | `initial_population.z_min`, `initial_population.z_max` | — | m | Inclusive lower and exclusive upper bounds for the founder `z_slab`; both must lie inside the domain and `z_min < z_max` |
+| `initial_population.anatomic_exclusion_floor` | 20e-6 | m | Hard minimum founder depth for `anatomic`; no founder is placed below the epithelial exclusion zone |
+| `initial_population.anatomic_exponential_scale` | 40e-6 | m | Exponential depth scale above the exclusion floor for `anatomic`; must be positive |
+| `initial_population.anatomic_outer_extent` | 150e-6 | m | Exclusive outer truncation for `anatomic`; draws at or above this depth are rejected and resampled, and the extent must exceed the exclusion floor |
 
 The placement policy is scenario-wide and applies to every entry in
 `initial_strains`. With the default `legacy` policy, founder placement remains
 derived from the domain height for backward compatibility. Use `z_slab` when
 changing `domain_z` without moving founders, for example to keep them in the
-mucus layer while extending the lumen.
+mucus layer while extending the lumen. Use `anatomic` to apply the hard 20 µm
+epithelial exclusion, a 40 µm exponential depth distribution, and 150 µm
+outer truncation. The latter two values describe anatomy reported by
+Swidsinski FISH observations and Duncan/Mondragón-Palomino outer-mucus
+enrichment; they are not fitted to simulation trajectories. Anatomic founders
+never enter crypts because healthy FISH observations constrain crypt absence.
+x and y remain uniform. Immigration has separate placement handling and is not
+changed by this policy.
 
 ## Immigration
 

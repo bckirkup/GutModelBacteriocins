@@ -54,6 +54,36 @@ constant. Every rank draws identical event counts and candidates. The owning
 rank alone constructs each cell, using its stride-allocated `AgentPool` tag;
 this guarantees globally unique IDs without migration duplicates.
 
+## Founder Placement
+
+The default `initial_population.placement: legacy` policy is retained for
+backward compatibility: it samples founder z positions uniformly from
+`[domain.lo.z, 0.5 * domain.hi.z)`. The `z_slab` policy samples uniformly from
+its explicit `initial_population.z_min` and `z_max` bounds.
+
+The anatomy-derived `anatomic` policy is available for E. coli founders. It
+keeps x and y uniform over the domain, and samples depth as
+
+```
+z = anatomic_exclusion_floor + Exponential(anatomic_exponential_scale)
+```
+
+with the draw rejected and resampled while `z >= anatomic_outer_extent`.
+Resampling, rather than clamping, avoids creating an artificial probability
+spike at the outer truncation point. The defaults are a 20 µm hard epithelial
+exclusion floor, a 40 µm exponential scale, and a 150 µm outer extent. No
+founder is marked as `in_crypt` under this policy, even when the configured
+crypt geometry includes its sampled position.
+
+These values are anatomy-derived rather than fitted parameters: the 20 µm
+floor represents the Enterobacteriaceae-free epithelial gap observed by
+Swidsinski et al. using FISH, while the 150 µm outer-mucus extent reflects the
+enrichment described by Duncan and Mondragón-Palomino. The absence of crypt
+founders is a data-driven constraint from healthy FISH observations, not an
+implementation limitation. Immigration currently has separate placement
+handling; applying the anatomy policy to reseeding is a future consistency
+decision.
+
 ---
 
 ## Fix Architecture (NUFEB-inspired)

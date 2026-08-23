@@ -235,7 +235,7 @@ class Simulation {
   // Initialization helpers
   void init_population(const SimulationConfig& cfg);
   Agent create_strain_agent(const SimulationConfig::InitialStrain& strain,
-                            Vec3 pos);
+                            Vec3 pos, bool tag_crypt = true);
   void apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap);
   void update_grid_coupling();
   void rebuild_spatial_hash();

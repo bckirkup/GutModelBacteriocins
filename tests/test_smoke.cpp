@@ -7,10 +7,13 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "plasmid.h"
+#include "random.h"
 #include "types.h"
+#include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <cmath>
+#include <vector>
 
 using namespace gutibm;
 
@@ -164,6 +167,85 @@ void test_initial_population_placement() {
   std::cout << "  test_initial_population_placement: PASSED"
             << " (floor_alive=" << floor_alive
             << " lumen_alive=" << lumen_alive << ")\n";
+}
+
+SimulationConfig anatomy_population_test_config(Int count) {
+  SimulationConfig cfg = initial_population_test_config(4e-6, 9e-6);
+  cfg.initial_population.placement = "anatomic";
+  cfg.initial_population.anatomic_exclusion_floor = 20e-6;
+  cfg.initial_population.anatomic_exponential_scale = 40e-6;
+  cfg.initial_population.anatomic_outer_extent = 150e-6;
+  cfg.advection.crypts_enabled = true;
+  cfg.advection.crypt_depth = 100e-6;
+  cfg.initial_strains[0].count = count;
+  return cfg;
+}
+
+void test_anatomic_population_distribution() {
+  constexpr Int kSampleCount = 12000;
+  const SimulationConfig cfg = anatomy_population_test_config(kSampleCount);
+  Simulation sim;
+  sim.init(cfg);
+  assert(sim.agents().size() == kSampleCount);
+
+  std::vector<Real> depths;
+  depths.reserve(static_cast<size_t>(kSampleCount));
+  for (const Agent& agent : sim.agents()) {
+    assert(agent.x[2] >= cfg.initial_population.anatomic_exclusion_floor);
+    assert(agent.x[2] < cfg.initial_population.anatomic_outer_extent);
+    assert(!agent.flags.in_crypt);
+    depths.push_back(agent.x[2]);
+  }
+  std::sort(depths.begin(), depths.end());
+  const Real median = depths[depths.size() / 2];
+  const Real quantile90 = depths[(depths.size() * 9) / 10];
+  const Real quantile95 = depths[(depths.size() * 19) / 20];
+  Int near_outer = 0;
+  for (const Real depth : depths) {
+    if (depth >= 145e-6) ++near_outer;
+  }
+  assert(median > 40e-6 && median < 55e-6);
+  assert(quantile90 > 85e-6 && quantile90 < 115e-6);
+  assert(quantile95 > 105e-6 && quantile95 < 135e-6);
+  assert(near_outer < kSampleCount / 60);
+
+  Simulation repeat;
+  repeat.init(cfg);
+  assert(repeat.agents().size() == sim.agents().size());
+  for (size_t i = 0; i < depths.size(); ++i) {
+    assert(sim.agents()[static_cast<Int>(i)].x
+           == repeat.agents()[static_cast<Int>(i)].x);
+  }
+  std::cout << "  test_anatomic_population_distribution: PASSED"
+            << " (median=" << median
+            << " q90=" << quantile90
+            << " q95=" << quantile95 << ")\n";
+}
+
+void test_legacy_and_z_slab_rng_compatibility() {
+  constexpr Int kCount = 8;
+  for (const char* placement : {"legacy", "z_slab"}) {
+    SimulationConfig cfg = initial_population_test_config(40e-6, 60e-6);
+    cfg.initial_population.placement = placement;
+    cfg.initial_strains[0].count = kCount;
+    cfg.cell_bio.motility.enabled = false;
+    Simulation sim;
+    sim.init(cfg);
+
+    RNG expected(cfg.seed);
+    const Real expected_z_min = placement == std::string("legacy")
+        ? cfg.domain.lo[2] : cfg.initial_population.z_min;
+    const Real expected_z_max = placement == std::string("legacy")
+        ? cfg.domain.hi[2] * 0.5 : cfg.initial_population.z_max;
+    for (Int i = 0; i < kCount; ++i) {
+      const Vec3 expected_position = {
+          expected.uniform(cfg.domain.lo[0], cfg.domain.hi[0]),
+          expected.uniform(cfg.domain.lo[1], cfg.domain.hi[1]),
+          expected.uniform(expected_z_min, expected_z_max)};
+      assert(sim.agents()[i].x == expected_position);
+    }
+  }
+  std::cout << "  test_legacy_and_z_slab_rng_compatibility: PASSED\n";
 }
 
 void test_metabolism_integration() {
@@ -760,6 +842,8 @@ int main() {
   std::cout << "=== Smoke Tests ===\n";
   test_mini_simulation();
   test_initial_population_placement();
+  test_anatomic_population_distribution();
+  test_legacy_and_z_slab_rng_compatibility();
   test_metabolism_integration();
   test_advection_moves_agents();
   test_receptor_killing();

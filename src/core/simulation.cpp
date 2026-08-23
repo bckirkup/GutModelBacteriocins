@@ -696,6 +696,7 @@ void Simulation::init_population(const SimulationConfig& cfg) {
   agents_.configure_tags(AgentPool::first_tag_for_rank(domain_.rank(), domain_.nprocs()),
                            AgentPool::tag_stride(domain_.nprocs()));
 
+  const bool anatomic = cfg.initial_population.placement == "anatomic";
   const Real z_min = cfg.initial_population.placement == "z_slab"
       ? cfg.initial_population.z_min : domain_.lo()[2];
   const Real z_max = cfg.initial_population.placement == "z_slab"
@@ -705,14 +706,22 @@ void Simulation::init_population(const SimulationConfig& cfg) {
     for (Int i = 0; i < strain.count; ++i) {
       Vec3 pos = {
         rng_.uniform(domain_.lo()[0], domain_.hi()[0]),
-        rng_.uniform(domain_.lo()[1], domain_.hi()[1]),
-        rng_.uniform(z_min, z_max)
+        rng_.uniform(domain_.lo()[1], domain_.hi()[1]), 0.0
       };
+      if (anatomic) {
+        do {
+          pos[2] = cfg.initial_population.anatomic_exclusion_floor
+              + rng_.exponential(
+                  1.0 / cfg.initial_population.anatomic_exponential_scale);
+        } while (pos[2] >= cfg.initial_population.anatomic_outer_extent);
+      } else {
+        pos[2] = rng_.uniform(z_min, z_max);
+      }
 
       // Only keep agents that belong to this rank's slab
       if (!domain_.is_local(pos)) continue;
 
-      Agent a = create_strain_agent(strain, pos);
+      Agent a = create_strain_agent(strain, pos, !anatomic);
       agents_.push_back(std::move(a));
     }
   }
@@ -991,7 +1000,7 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 }
 
 Agent Simulation::create_strain_agent(
-    const SimulationConfig::InitialStrain& strain, Vec3 pos) {
+    const SimulationConfig::InitialStrain& strain, Vec3 pos, bool tag_crypt) {
   Agent agent = Agent::create_default(agents_.next_tag(), strain.type, pos,
                                       strain.mu_max);
   agent.identity.owner_rank = domain_.rank();
@@ -1011,7 +1020,7 @@ Agent Simulation::create_strain_agent(
   }
   agent.genome.cdi_type = strain.cdi_type;
   agent.genome.cdi_immunity = strain.cdi_immunity;
-  tag_crypt_resident(agent, advection_);
+  if (tag_crypt) tag_crypt_resident(agent, advection_);
   if (cfg_.cell_bio.motility.enabled) {
     FixMotility::init_agent_motility(agent, cfg_.cell_bio.motility,
                                      rng_);

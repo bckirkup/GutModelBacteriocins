@@ -6,7 +6,10 @@
   "initial_population": {
     "placement": "z_slab",
     "z_min": 2e-6,
-    "z_max": 12e-6
+    "z_max": 12e-6,
+    "anatomic_exclusion_floor": 21e-6,
+    "anatomic_exponential_scale": 42e-6,
+    "anatomic_outer_extent": 145e-6
   },
   "initial_strains": [
     {"type": 1, "count": 4, "mu_max": 5.5e-4, "plasmids": ["ColE1"]}
