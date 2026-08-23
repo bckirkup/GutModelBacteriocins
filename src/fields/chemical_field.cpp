@@ -2690,6 +2690,7 @@ void ChemicalField::debug_report_step(const Domain& domain) const {
     const auto index = static_cast<size_t>(s);
     const Real residual = initial + flux.boundary_last_step[index]
         + flux.gradient_source_last_step[index]
+        + flux.vbf_source_last_step[index]
         - flux.agent_uptake_last_step[index] - flux.maintenance_last_step[index]
         - flux.vbf_sink_last_step[index]
         + flux.reaction_clip_last_step[index] - after_content;
@@ -2702,6 +2703,8 @@ void ChemicalField::debug_report_step(const Domain& domain) const {
                 << debug_real(flux.boundary_last_step[index])
                 << " gradient_source_step="
                 << debug_real(flux.gradient_source_last_step[index])
+                << " vbf_source_step="
+                << debug_real(flux.vbf_source_last_step[index])
                 << " agent_uptake_step="
                 << debug_real(flux.agent_uptake_last_step[index])
                 << " maintenance_step="

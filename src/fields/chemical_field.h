@@ -26,6 +26,8 @@ struct NutrientFluxAccounting {
   std::vector<Real> gradient_source_last_step;
   std::vector<Real> gradient_source_cumulative;
   std::vector<Real> vbf_source_interval;
+  std::vector<Real> vbf_source_step;
+  std::vector<Real> vbf_source_last_step;
   std::vector<Real> vbf_source_cumulative;
   std::vector<Real> vbf_sink_interval;
   std::vector<Real> vbf_sink_step;
@@ -75,6 +77,8 @@ struct NutrientFluxAccounting {
     gradient_source_last_step.assign(species_count, 0.0);
     gradient_source_cumulative.assign(species_count, 0.0);
     vbf_source_interval.assign(species_count, 0.0);
+    vbf_source_step.assign(species_count, 0.0);
+    vbf_source_last_step.assign(species_count, 0.0);
     vbf_source_cumulative.assign(species_count, 0.0);
     vbf_sink_interval.assign(species_count, 0.0);
     vbf_sink_step.assign(species_count, 0.0);
@@ -117,6 +121,7 @@ struct NutrientFluxAccounting {
     const auto index = static_cast<size_t>(species);
     boundary_interval[index] += boundary;
     vbf_source_interval[index] += source;
+    vbf_source_step[index] += source;
     vbf_sink_interval[index] += sink;
     vbf_sink_step[index] += sink;
     agent_uptake_interval[index] += uptake;
@@ -242,6 +247,7 @@ struct NutrientFluxAccounting {
     for (size_t i = 0; i < boundary_step.size(); ++i) {
       boundary_last_step[i] = boundary_step[i];
       gradient_source_last_step[i] = gradient_source_step[i];
+      vbf_source_last_step[i] = vbf_source_step[i];
       vbf_sink_last_step[i] = vbf_sink_step[i];
       reaction_clip_last_step[i] = reaction_clip_step[i];
       boundary_interval[i] += boundary_step[i];
@@ -249,6 +255,7 @@ struct NutrientFluxAccounting {
       reaction_clip_interval[i] += reaction_clip_step[i];
       boundary_step[i] = 0.0;
       gradient_source_step[i] = 0.0;
+      vbf_source_step[i] = 0.0;
       vbf_sink_step[i] = 0.0;
       reaction_clip_step[i] = 0.0;
     }

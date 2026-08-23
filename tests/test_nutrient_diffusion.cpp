@@ -1,9 +1,11 @@
 #include "chemical_field.h"
+#include "chem_environment_config.h"
 #include "agent.h"
 #include "domain.h"
 #include "error.h"
 #include "input_parser.h"
 #include "species_names.h"
+#include "vbf.h"
 
 #include <algorithm>
 #include <cassert>
@@ -74,6 +76,7 @@ struct DeliveryClosureResult {
   Real final = 0.0;
   Real boundary = 0.0;
   Real gradient_source = 0.0;
+  Real vbf_source = 0.0;
   Real agent_uptake = 0.0;
   Real maintenance = 0.0;
   Real vbf_sink = 0.0;
@@ -101,6 +104,15 @@ DeliveryClosureResult run_delivery_closure(
       1, 1, {2.5e-6, 2.5e-6, 12.5e-6}, 0.0);
   agent.grid_cell = agent_cell;
   const Real cell_volume = domain.cell_volume();
+  VBFConfig vbf_config;
+  vbf_config.mucin_liberation = 5.0e-5;
+  vbf_config.carbon_sink_vmax = 0.0;
+  vbf_config.nutrient_sink = 0.0;
+  VBF vbf;
+  vbf.init(vbf_config, domain);
+  OxygenConfig oxygen;
+  AcetateConfig acetate;
+  MucinConfig mucin;
 
   DeliveryClosureResult result;
   result.initial = total_inventory(chem, domain, species_index);
@@ -111,6 +123,22 @@ DeliveryClosureResult run_delivery_closure(
     const Real sink_rate = demand / (concentration * cell_volume * dt);
     chem.flux_accounting().add_uptake_demand(species_index, demand);
     chem.add_sink_rate_global(species_index, agent.grid_cell, sink_rate);
+    VbfFluxTotals vbf_totals;
+    vbf.apply_nutrient_coupling(
+        chem, domain, dt, oxygen, acetate, mucin, &vbf_totals);
+    chem.flux_accounting().add_interval(
+        species_index, 0.0, vbf_totals.carbon_source,
+        vbf_totals.carbon_sink, 0.0);
+    for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+      if (!chem.owns_global_cell(cell)) continue;
+      const Real updated = chem.conc_global(species_index, cell)
+          + chem.reac_global(species_index, cell) * dt;
+      if (updated < 0.0) {
+        chem.flux_accounting().add_reaction_clip(
+            species_index, -updated * cell_volume);
+      }
+      chem.conc_global(species_index, cell) = std::max(updated, 0.0);
+    }
 
     chem.apply_diffusion(domain, dt);
     Real realized = 0.0;
@@ -136,6 +164,8 @@ DeliveryClosureResult run_delivery_closure(
       static_cast<size_t>(species_index)];
   result.gradient_source = flux.gradient_source_cumulative[
       static_cast<size_t>(species_index)];
+  result.vbf_source = flux.vbf_source_cumulative[
+      static_cast<size_t>(species_index)];
   result.agent_uptake = flux.agent_uptake_cumulative[
       static_cast<size_t>(species_index)];
   result.maintenance = flux.maintenance_cumulative[
@@ -145,6 +175,7 @@ DeliveryClosureResult run_delivery_closure(
   result.reaction_clip = flux.reaction_clip_cumulative[
       static_cast<size_t>(species_index)];
   const Real lhs = result.initial + result.boundary + result.gradient_source
+      + result.vbf_source
       - result.agent_uptake
       - result.maintenance - result.vbf_sink + result.reaction_clip;
   result.residual = lhs - result.final;
@@ -170,6 +201,7 @@ void test_delivery_mass_closure_gradient_parameterization() {
               << " final=" << result.final
               << " boundary=" << result.boundary
               << " gradient_source=" << result.gradient_source
+              << " vbf_source=" << result.vbf_source
               << " agent_uptake=" << result.agent_uptake
               << " maintenance=" << result.maintenance
               << " vbf_sink=" << result.vbf_sink
@@ -227,6 +259,7 @@ void test_delivery_step_mass_closure_dirichlet_refill() {
   const auto index = static_cast<size_t>(species_index);
   const Real residual = before + flux.boundary_last_step[index]
       + flux.gradient_source_last_step[index]
+      + flux.vbf_source_last_step[index]
       - flux.agent_uptake_last_step[index]
       - flux.maintenance_last_step[index]
       - flux.vbf_sink_last_step[index]
@@ -239,9 +272,95 @@ void test_delivery_step_mass_closure_dirichlet_refill() {
             << " alpha=" << diffusion * dt
                 / (domain.dx_z() * domain.dx_z())
             << " boundary_step=" << flux.boundary_last_step[index]
+            << " vbf_source_step=" << flux.vbf_source_last_step[index]
             << " realized=" << realized
             << " residual=" << residual
             << " relative_residual=" << relative_residual << "\n";
+  assert(relative_residual <= 1.0e-12);
+}
+
+void test_delivery_step_mass_closure_vbf_source() {
+  constexpr Real dt = 60.0;
+  constexpr Real diffusion = 4.166666666666667e-9;
+  constexpr Real initial = 1.0e-3;
+  constexpr Real boundary = 1.0e-3;
+  constexpr Real gradient_lambda = 5.0e-6;
+  constexpr Real sink_rate = 1.0e3;
+  Domain domain = make_domain(1, 1, 6);
+  ChemicalSpec spec = diffusing_species(
+      diffusion, initial, boundary);
+  spec.name = species::CARBON;
+  spec.delivery_enabled = true;
+  spec.z_gradient_enabled = true;
+  spec.z_gradient_lambda = gradient_lambda;
+
+  ChemicalField chem;
+  chem.init(domain, {spec});
+  const Int species_index = chem.find(species::CARBON);
+  const Int sink_cell = domain.cell_index(0, 0, 1);
+  VBFConfig vbf_config;
+  vbf_config.mucin_liberation = 5.0e-5;
+  vbf_config.carbon_sink_vmax = 0.0;
+  vbf_config.nutrient_sink = 0.0;
+  VBF vbf;
+  vbf.init(vbf_config, domain);
+  OxygenConfig oxygen;
+  AcetateConfig acetate;
+  MucinConfig mucin;
+
+  chem.zero_reactions();
+  const Real before = inventory(chem, domain);
+  chem.add_sink_rate_global(species_index, sink_cell, sink_rate);
+  VbfFluxTotals vbf_totals;
+  vbf.apply_nutrient_coupling(
+      chem, domain, dt, oxygen, acetate, mucin, &vbf_totals);
+  chem.flux_accounting().add_interval(
+      species_index, 0.0, vbf_totals.carbon_source,
+      vbf_totals.carbon_sink, 0.0);
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    const Real updated = chem.conc_global(species_index, cell)
+        + chem.reac_global(species_index, cell) * dt;
+    if (updated < 0.0) {
+      chem.flux_accounting().add_reaction_clip(
+          species_index, -updated * domain.cell_volume());
+    }
+    chem.conc_global(species_index, cell) = std::max(updated, 0.0);
+  }
+  chem.apply_diffusion(domain, dt);
+
+  Real realized = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    if (chem.owns_global_cell(cell)) {
+      realized += chem.sink_realized_global(species_index, cell);
+    }
+  }
+  chem.flux_accounting().add_agent_uptake(species_index, realized);
+  chem.flux_accounting().commit_agent_uptake_step();
+  chem.flux_accounting().commit_boundary_and_reaction_step();
+
+  const Real after = inventory(chem, domain);
+  const auto& flux = chem.flux_accounting();
+  const auto index = static_cast<size_t>(species_index);
+  const Real vbf_source = flux.vbf_source_last_step[index];
+  const Real residual = before + flux.boundary_last_step[index]
+      + flux.gradient_source_last_step[index] + vbf_source
+      - flux.agent_uptake_last_step[index]
+      - flux.maintenance_last_step[index]
+      - flux.vbf_sink_last_step[index]
+      + flux.reaction_clip_last_step[index] - after;
+  const Real residual_without_vbf_source = residual - vbf_source;
+  const Real scale = std::max(
+      {std::abs(before), std::abs(after), std::abs(realized),
+       std::abs(vbf_source), 1.0e-300});
+  const Real relative_residual = std::abs(residual) / scale;
+
+  std::cout << "  test_delivery_step_mass_closure_vbf_source:"
+            << " vbf_source_step=" << vbf_source
+            << " pre_fix_residual=" << residual_without_vbf_source
+            << " residual=" << residual
+            << " relative_residual=" << relative_residual << "\n";
+  assert(vbf_source > 0.0);
+  assert(std::abs(residual_without_vbf_source) > 1.0e-12 * scale);
   assert(relative_residual <= 1.0e-12);
 }
 
@@ -844,6 +963,7 @@ int main() {
   test_delivery_boundary_rejects_gradient();
   test_delivery_mass_closure_gradient_parameterization();
   test_delivery_step_mass_closure_dirichlet_refill();
+  test_delivery_step_mass_closure_vbf_source();
   test_default_species_configuration();
   std::cout << "All nutrient diffusion tests passed.\n";
   return 0;
