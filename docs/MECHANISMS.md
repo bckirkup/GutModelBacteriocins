@@ -174,6 +174,9 @@ acidified microenvironments.
 See [`SPEC12_DENSITY_LIMITATION.md`](SPEC12_DENSITY_LIMITATION.md) for the
 amended Spec 12 mechanism and implementation contract.
 
+See the proposed multi-scale architecture (not yet implemented) in
+[`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md) and [`SPEC13_IMPLEMENTATION_REVIEW.md`](SPEC13_IMPLEMENTATION_REVIEW.md).
+
 **Graded iron uptake (Issue #10):** Rather than relying solely on FepA, iron acquisition uses four receptor systems in parallel with different affinities:
 
 | Receptor | Siderophore | Km (nM) | Role |

@@ -463,6 +463,11 @@ cheaper than the literature comparison. Varma's `0.524 gDW/g glucose`, with
 `30%` dry fraction and `180 g/mol`, implies approximately `3.2 mol glucose per
 kg wet biomass`. The default yield remains unchanged.
 
+The proposed multi-scale architecture, which would make these patch-level
+parameters per-patch and per-segment, is not implemented; see
+[`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md) and
+[`SPEC13_IMPLEMENTATION_REVIEW.md`](SPEC13_IMPLEMENTATION_REVIEW.md).
+
 The acid-inhibition `Ki` above is expressed in undissociated acetate units.
 The cited Russell & Diez-Gonzalez threshold is approximately 50 mM
 undissociated acid, matching the repository's 50 mol/m³ default. The amended
