@@ -483,7 +483,10 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "'funded', got '"
         + cfg.chem_env.oxygen.respiration_driver + "'");
   }
-  if (cfg.chem_env.oxygen.respiration_driver == "funded"
+  cfg.chem_env.oxygen.respiration_driver_mode =
+      cfg.chem_env.oxygen.respiration_driver == "funded"
+          ? RespirationDriver::Funded : RespirationDriver::Ambient;
+  if (cfg.chem_env.oxygen.respiration_driver_mode == RespirationDriver::Funded
       && (!cfg.chem_env.oxygen.delivery_uptake_enabled
           || metabolism.uptake_limit_mode != UptakeLimitMode::Delivery)) {
     throw ConfigError(
@@ -491,7 +494,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "oxygen.delivery_uptake_enabled=true and "
         "metabolism.uptake_limit=\"delivery\"");
   }
-  if (cfg.chem_env.oxygen.respiration_driver == "funded"
+  if (cfg.chem_env.oxygen.respiration_driver_mode == RespirationDriver::Funded
       && cfg.gpu.enabled) {
     throw ConfigError(
         "oxygen.respiration_driver=\"funded\" cannot be combined with "

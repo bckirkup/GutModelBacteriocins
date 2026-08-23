@@ -441,12 +441,10 @@ void FixMetabolism::commit_delivery_oxygen_agent(
   record_delivery_funding(
       chem, oxygen, growth_demand, maintenance_demand, funding);
   const auto& oxygen_cfg = sim_.config().chem_env.oxygen;
-  if (oxygen_cfg.respiration_driver == "funded"
+  if (oxygen_cfg.respiration_driver_mode == RespirationDriver::Funded
       && oxygen_cfg.metabolic_switch_enabled
       && growth_demand > 0.0) {
-    const Real capacity = metabolic_mode::clamp01(
-        funding.growth_funded / growth_demand);
-    const Real instantaneous = 1.0 - capacity;
+    const Real instantaneous = 1.0 - funding.growth_fraction;
     agent.realized_fermentation_fraction = metabolic_mode::relax(
         agent.realized_fermentation_fraction, instantaneous,
         dt, oxygen_cfg.tau_metabolic_switch);
@@ -816,7 +814,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent, Real dt) {
       if (o2cfg.metabolic_switch_enabled) {
         const Real availability =
             metabolic_mode::oxygen_availability(s_o2, o2cfg.Km);
-        if (o2cfg.respiration_driver == "ambient") {
+        if (o2cfg.respiration_driver_mode == RespirationDriver::Ambient) {
           const Real instantaneous = metabolic_mode::fermentation_fraction(
               availability, mu, o2cfg.mu_crit);
           agent.realized_fermentation_fraction = metabolic_mode::relax(
