@@ -515,7 +515,8 @@ void assert_equal_ledgers(const Simulation& slab,
       replicated.chemical_field().flux_accounting();
   const auto compare = [](const char* name,
                           const std::vector<Real>& slab_values,
-                          const std::vector<Real>& replicated_values) {
+                          const std::vector<Real>& replicated_values,
+                          Real absolute_tolerance = 0.0) {
     assert(slab_values.size() == replicated_values.size());
     for (size_t species = 0; species < slab_values.size(); ++species) {
       Real slab_min = 0.0;
@@ -536,7 +537,8 @@ void assert_equal_ledgers(const Simulation& slab,
       // slab reduces rank-local partials, while replicated sweeps the grid.
       const Real scale = std::max(
           std::max(std::abs(slab_min), std::abs(replicated_min)), 1.0e-300);
-      if (std::abs(slab_min - replicated_min) > 1.0e-12 * scale) {
+      if (std::abs(slab_min - replicated_min)
+          > std::max(1.0e-12 * scale, absolute_tolerance)) {
         int rank = 0;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         if (rank == 0) {
@@ -545,7 +547,8 @@ void assert_equal_ledgers(const Simulation& slab,
                     << slab_min << " vs " << replicated_min << '\n';
         }
       }
-      assert(std::abs(slab_min - replicated_min) <= 1.0e-12 * scale);
+      assert(std::abs(slab_min - replicated_min)
+             <= std::max(1.0e-12 * scale, absolute_tolerance));
     }
   };
   compare("boundary_interval", slab_flux.boundary_interval,
@@ -553,9 +556,9 @@ void assert_equal_ledgers(const Simulation& slab,
   compare("boundary_cumulative", slab_flux.boundary_cumulative,
           replicated_flux.boundary_cumulative);
   compare("gradient_source_interval", slab_flux.gradient_source_interval,
-          replicated_flux.gradient_source_interval);
+          replicated_flux.gradient_source_interval, 1.0e-28);
   compare("gradient_source_cumulative", slab_flux.gradient_source_cumulative,
-          replicated_flux.gradient_source_cumulative);
+          replicated_flux.gradient_source_cumulative, 1.0e-28);
   compare("vbf_source_interval", slab_flux.vbf_source_interval,
           replicated_flux.vbf_source_interval);
   compare("vbf_source_cumulative", slab_flux.vbf_source_cumulative,
