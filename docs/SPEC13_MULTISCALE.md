@@ -72,30 +72,43 @@ occupancy to reproduce `1e4`–`1e5` CFU/mL at segment scale, which is the
 transient-clonal-cluster picture the spec is built on. The ladder is therefore
 an input to Layer 2, not a failed validation.
 
-**The revision's own mucosal numbers disagree with the ones that forced the
-above retraction, by 2–4 orders, and which is right decides whether there is a
-density problem at all.** The revised regional table gives mucosal bacteria as
-`10^7.4` 16S copies/mg with an Enterobacteriaceae fraction of ~1.3%, i.e.
-`3.3e5` copies/mg. E. coli carries seven rRNA operons, and 1 mg of biopsy ≈ 1
-µL, so that is ~`5e7` cells/mL of *biopsy tissue* (~`3e8`/mL if one assumes one
-copy per cell). Because the denominator is tissue mass while the bacteria sit in
-the surface mucus, the mucus-referenced density is **higher** still. The
-culture-based figure from the same anatomical site (Elliott et al. 2013, 230
-CFU/biopsy → `4.6e4`–`2.3e5` CFU/mL) is 2–4 orders *lower*.
+**The revision's two mucosal numbers differ by 100–1000x, and the project lead
+has adjudicated which one the model is held to.** The revised regional table
+gives mucosal bacteria as `10^7.4` 16S copies/mg with an Enterobacteriaceae
+fraction of ~1.3%, i.e. `10^5.5` copies/mg; at ~7 rRNA operons per
+Enterobacteriaceae genome and 1 mg of biopsy ≈ 1 µL that is ~`4.5e4` cells/mg,
+i.e. ~`4.5e7` cells/mL of *biopsy tissue*. The culture figure from the same
+anatomical site (Elliott et al. 2013, 230 CFU per 20 mg biopsy, assigned to a
+100–500 µm mucus layer over a 0.1 cm² footprint) is `4.6e4`–`2.3e5` CFU/mL of
+mucus.
 
-The consequence is not cosmetic. Against the molecular estimate, the measured
-carbon-limited patch capacity of ~`1e7` cells/mL (PR #314) is within a factor of
-~5 of the mucosal density — the model is roughly right and density limitation is
-the binding constraint. Against the culture estimate it is ~100x too high and
-some additional loss mechanism must hold the population two orders below its
-carbon capacity. The same choice moves the stool target: the revision states
-`1e6`–`1e8` CFU/g, where the figure used earlier in this project was `1e5`.
-Plausible reconciliations (poor CFU recovery from gel-embedded and VBNC cells;
-16S copies including dead and extracellular DNA; different dilution
-assumptions) are not adjudicated here. **Until it is adjudicated, no model
-result should be reported against a single mucosal density**: report the value
-and its distance from *both* estimates, and treat any claim that depends on
-which one is correct as conditional.
+**The gap is real and is not an error in either assay — they measure different
+quantities.** The qPCR is family-level (Klebsiella, Enterobacter, Citrobacter,
+Proteus and unculturable lineages included), counts dead cells, VBNC cells and
+extracellular DNA, and is normalised per mg of *tissue* (epithelium and lamina
+propria included). The culture count is viable, colony-forming, mucosa-associated
+E. coli.
+
+**Decision of record (lead, 2026-08-23): the model represents viable,
+metabolically active E. coli in outer mucus, so it is parameterised and
+validated against culture counts.**
+
+| Quantity | Value | Role in the model |
+|---|---|---|
+| Healthy viable E. coli in mucus | `1e4`–`1e5` CFU/mL (Elliott) | the operating range |
+| Dysbiosis guard | `1e6` CFU/mL viable (Elliott inflamed CD ≈ `5e5`–`3e6`) | engineering bound, not a phase transition |
+| Stool | `1e6`–`1e8` CFU/g viable, by selective plating | Layer 3 validation target |
+| Total Enterobacteriaceae 16S signal | ~`1e7`/mL (Ahmed) | **a different quantity; not represented** |
+| Enterobacteriaceae fraction ~1–2%, axially flat (Ahmed) | relative, family level | constrains S10 flatness only |
+
+Two consequences follow for the existing results. First, the measured
+carbon-limited patch capacity of ~`1e7` cells/mL (PR #314) is ~100x above the
+healthy operating range, so the loss-set hypothesis stands: something other than
+carbon supply holds mucosal E. coli two orders below its carbon capacity, and
+Layer 2 occupancy is the candidate. Second, the Ahmed ~1–2% figure is a *family*
+fraction of a *molecular* community and therefore cannot be used to size the
+agent population or to set an initial N; it may only be used as an axial-shape
+constraint.
 
 **Agreements worth recording**, so they are not re-litigated: the spec's
 anaerobic µ ratio (0.55x aerobic, Varma & Palsson) is already the repository

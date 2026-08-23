@@ -284,15 +284,41 @@ in the code rather than in the spec:
   `5.5e-5`, so an occupied voxel can only be funded by within-step resupply —
   which is precisely what an explicit pre-diffusion sink cannot do.
 
-This is measurable, not arguable: per-species reaction clips are already
-accounted (`add_reaction_clip`), so an O₂-enabled arm reports directly whether
-respiration is being refused. Do that measurement before adopting any apical O₂
-value, since a clipped sink would make the aerobic axis inert regardless of the
-boundary chosen — the same failure mode as the pre-#308 carbon sink and the
-inert `sherwood` cap. Note that `oxygen.enabled` defaults to `false`, so the
-measurement has to be made on an O₂-enabled arm; the coupling probe
-(`experiments/density_limitation/probe`) already switches oxygen and the
-metabolic switch together and is the natural place to read the clip counter.
+**This has now been measured, and the sink is refused in full.** Per-species
+reaction clips are already accounted (`add_reaction_clip`), and all fifteen
+supply-ladder arms (PR #314) ran with `oxygen.enabled = true` and the metabolic
+switch on, so the measurement needed no new runs — see
+`experiments/density_limitation/oxygen_audit/`. At 24 h, cumulative oxygen
+reaction clip is `5.7e-12` mol at N=28 rising to `8.2e-10` mol at N=6317, which
+is **1.2–1.4x an independent estimate of total respiratory demand** (integrating
+`q_maintenance·N + q_consumption·µ·(1−ferm)·N` over the trajectory) and
+`5e3`–`5e5` times the **total oxygen ever delivered across the epithelial
+boundary** (`1.1e-15`–`1.6e-15` mol). Carbon clip is exactly `0` in the same
+arms, so this is oxygen-specific and not a general closure failure.
+
+Consequences, all confirmed in the same data:
+
+- *The oxygen field is static.* Mean O₂ is `4.586e-6 mol/m³` at N=28 and
+  `4.584e-6` at N=6317 — a 0.04% difference across a 200x population range, and
+  unchanged from step 0. Agents cannot deplete oxygen at all, so there is no
+  oxygen gradient, no anoxic core, and no density feedback through O₂.
+- *The Spec 12 phase plane is one-dimensional in practice.* With a static field,
+  `f_O2 = C/(Km+C) = 0.821` everywhere and always, so the only live term in
+  `resp_capacity = f_O2 · mu_crit / max(µ, mu_crit)` is µ. The fermentation
+  fractions reported in #313 and #314 (0.33 → 0.79 with density) are therefore
+  **growth-rate driven, not O₂ driven**; the earlier description of them as
+  "purely O₂-driven" is withdrawn.
+- *Correcting the 10³ unit offset does not fix it.* At `5.5e-2 mol/m³` a voxel
+  holds `4.4e-19` mol while one agent demands `6e-17` mol per 60 s step — still
+  ~100x the voxel inventory. Oxygen needs the same delivery-limited implicit
+  treatment as carbon (#308/#310); no boundary value rescues an explicit
+  pre-diffusion sink.
+
+So S11 is not a spec question but an implementation prerequisite: **no apical O₂
+value should be adopted, and no O₂-dependent Layer 2/3 result should be
+believed, until oxygen has an `uptake_limit`-style delivery path and the units
+are reconciled.** The oxygen-dependent parts of Spec 12 (`mu_crit`, the
+overflow axis, `anaerobic_mu_factor`) remain untested by any run to date.
 
 ## 4. Undefined interfaces that must be decided before code
 
