@@ -75,15 +75,52 @@ GPU path is where non-reproducibility enters.
 These are the places where Spec 13 adds a mechanism the repository already has
 in another form. Each must be *resolved*, not added alongside.
 
-**S1 — Loss double-counting (highest risk).** The repository already loses
-agents through peristaltic `advection`, through washout with
-`washout.trap=emergent` (actual transport decides `outflow_boundary`), and
-through `crypt_exit_rate`. Spec 13's contraction event is a fourth loss channel
-over the same physics. Resolution: at Layer 2, a patch's *internal* washout must
-be switched off and contraction becomes the sole export term, or contraction is
-defined as a modulation of the existing advection field rather than an agent
-sink. The population ledger must show one debit per lost agent; the closure test
-is what proves it.
+**S1 — Two loss channels with different reseeding kernels (revised).** An
+earlier draft of this review called Spec 13's contraction a redundant fourth
+loss channel and proposed merging it with washout. That was wrong, and the
+project lead's objection is the correct physics: washout and matrix failure are
+different events with different fates for the cell.
+
+- *Washout* is single-cell detachment into flow. The cell tumbles in the lumen
+  and its probability of founding a new patch is low.
+- *Contraction* is failure of the mucin gel. A gel fragment departs with its
+  clonal cluster intact, so what arrives downstream is a multi-cell seed with a
+  substantially higher establishment probability, and with a composition (which
+  clones travelled together) that matters for bacteriocin interference.
+
+Both therefore coexist at Layer 2, and the modelling requirement is not one
+merged channel but **two channels feeding one luminal pool with distinct
+reseeding kernels** — `p_establish(single)` << `p_establish(fragment)`, with
+fragment size and composition carried along.
+
+What is actually in the code today, which is narrower than that earlier draft
+implied (`src/core/simulation.cpp`, washout stage):
+
+- In the default `emergent` mode there is exactly **one** departure event: an
+  agent that transport has carried to `z >= z_max` is set `DEAD`, booked as
+  `outflow_boundary`, and recorded through `lineage_.record_washout`. Advection
+  is what moves it there; it is not a second, separate sink. `outflow_washout`
+  only exists in the non-default `imposed` mode, where the `mu < gamma`
+  comparison removes cells before transport reaches the lumen — the two modes
+  are alternatives, never both.
+- Agents with `flags.in_crypt` are skipped entirely, which is the existing
+  refuge behaviour (see S2).
+- Departure is **terminal**: the agent is deleted at the boundary. There is no
+  export pool and no reattachment, i.e. the model currently hard-codes
+  `p_reattach = 0` for the one channel it has.
+
+So the real gap is the opposite of double-counting: the model has a single
+terminal single-cell loss and no representation of cluster-preserving
+fragmentation at all. Layer 2 must add (i) a luminal pool that receives
+departures instead of deleting them, (ii) contraction as a second, fragment-wise
+departure, and (iii) two reattachment probabilities. Only one thing must not be
+double-counted — an agent already carried past `z_max` by advection in a step
+must not also be taken by that step's contraction event; the population ledger
+must show one debit per departing agent, and the closure test is what proves it.
+
+Usefully, `outflow_boundary` is already the flux the Layer 3 shedding
+observable needs — today it is a death counter, and it becomes a stool-export
+rate once the pool exists to receive it.
 
 **S2 — Crypt refuge represented twice.** Today a crypt is a per-agent flag with
 entry/exit rates and a carrying capacity (`flags.in_crypt`, persisted through
@@ -175,19 +212,25 @@ Each phase ends in a measurement that can fail. No phase calibrates a parameter
 to match an observation.
 
 **Phase 0 — this document.** Spec committed, seams named, interfaces decided.
-Deliverable: agreement on G1/G2 and on the S1 loss resolution. No code.
+Deliverable: agreement on G1/G2, on the S1 two-channel loss model, and on the
+Layer 2 formulation question (patch count vs occupancy probability, G5). No
+code.
 
 **Phase 1 — Layer 2 with lookup patches (CPU).** Patch registry, contraction as
-a `post_step` Bernoulli event, luminal pool with reattachment and distal loss,
-occupancy as a first-class observable, tabulated growth/capacity from the #314
-ladder, and the 1% live-patch audit gate. Off by default.
+a `post_step` Bernoulli event, a luminal pool fed by both departure channels of
+S1 with separate single-cell and fragment reattachment probabilities and distal
+loss, occupancy as a first-class observable, tabulated growth/capacity from
+the #314 ladder, and the 1% live-patch audit gate. Off by default.
 *Falsifiable result:* does any physiological contraction rate / disruption
 fraction combination produce a stationary occupancy in the 0.1–1% band with
 segment mean `1e4`–`1e5` CFU/mL? If nothing does, Spec 13's central claim is
-wrong and we will know inside one phase.
-*Gates:* population-ledger closure across patches and pool; loss booked once
-(S1); reproducibility under fixed seed and patch-order permutation (G3);
-checkpoint round-trip of pool and occupancy (G4).
+wrong and we will know inside one phase. The discriminating parameter is the
+fragment-vs-single establishment ratio of S1, since it is what decides whether
+reseeding can balance loss at low occupancy; report the result against it.
+*Gates:* population-ledger closure across patches and pool; each departing
+agent debited exactly once and attributed to one channel (S1); reproducibility
+under fixed seed and patch-order permutation (G3); checkpoint round-trip of
+pool and occupancy (G4).
 
 **Phase 2 — live patches where structure matters.** Promote occupied patches
 from lookup to live `Simulation` instances, with the audit gate measuring the
