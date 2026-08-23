@@ -125,11 +125,13 @@ rate once the pool exists to receive it.
 **S2 — Crypt refuge represented twice.** Today a crypt is a per-agent flag with
 entry/exit rates and a carrying capacity (`flags.in_crypt`, persisted through
 MPI transfer and checkpoints). Spec 13 wants a crypt to be a *patch type* with
-its own O₂ and shear. These are alternative models of one refuge. Recommendation:
-keep the agent-level crypt for within-patch structure, and let the patch type
-set only boundary conditions and disruption probability — with a test asserting
-that a crypt-type patch and an in-crypt agent do not both discount the same
-disruption.
+its own O₂ and shear. These are alternative models of one refuge.
+
+Resolved by S6: patch type is a property of the **host location**, so the patch
+type carries the location's boundary conditions and disruption probability,
+while the agent-level `in_crypt` flag remains within-patch structure. A test
+must assert that a crypt-*type* patch and an `in_crypt` agent do not both
+discount the same disruption event.
 
 **S3 — VBF heterogeneity.** Layer 3 wants regional VBF density; today VBF is one
 global config. Also note that `vbf.density` cannot serve as the total-bacteria
@@ -155,6 +157,46 @@ flagged every configuration in this session on day one.
 A single blooming patch must not terminate a 200-patch run. Layer 2 needs a
 per-patch status distinct from the run-level cause, with a run-level cause
 reserved for "too many patches invalid".
+
+**S6 — Patch type is host anatomy, not a stochastic label.** A location's
+character is fixed by the host: a crypt is a crypt at every contraction, with
+its own depth, O₂ at base, shear protection and mucus thickness, and proximal
+vs distal position is likewise fixed. Consequences:
+
+- Patch type is **persistent per-patch identity**, assigned once at
+  initialization and checkpointed (G4), never re-drawn per contraction event.
+- The *fractions* of each type, and the per-type boundary conditions, are
+  anatomical inputs that can be sourced independently (crypt density per unit
+  area, mucus thickness, epithelial O₂). They are therefore **not free
+  parameters available for fitting** to an occupancy target.
+- Occupancy is conditional on type, which changes the observable: the segment
+  mean is a type-weighted sum `Σ_t f_t · occ_t · density_t`, not a single
+  occupancy number. The interesting and falsifiable version of Spec 13's claim
+  is that persistent occupancy concentrates in crypt patches acting as refuges
+  while exposed patches are mostly empty and transiently reseeded — which is a
+  much sharper prediction than an aggregate 0.1–1%.
+
+**S7 — The anatomy is axially non-uniform, so Layer 3 is a gradient, not a
+chain of interchangeable segments.** Crypt density, mucus thickness, epithelial
+O₂, VBF density, pH and contraction frequency all vary proximal→distal.
+Therefore the S6 quantities are **functions of axial position**: `f_t(x)` and
+the per-type boundary conditions both vary, and the type-weighted mean becomes
+`Σ_t f_t(x) · occ_t(x) · density_t(x)`. Consequences:
+
+- Comparisons must state their axial position. A biopsy-derived density is a
+  measurement *somewhere*, and the model's answer at the wrong `x` is not a
+  disagreement.
+- Shedding is dominated by conditions at the distal end rather than by an
+  average patch, so retention time and stool flux are sensitive to the distal
+  end of the profile specifically — the least well-characterised end.
+- The gradient must be specified as a **profile with sourced endpoints and a
+  stated interpolation** (e.g. monotone in mucus thickness and crypt density
+  between proximal and distal anchors). A per-segment table of independent
+  values would make every segment a free parameter, which is the fitting route
+  this project has explicitly refused.
+- A same-parameters sanity arm (gradient collapsed to uniform) belongs in the
+  Layer 3 gates, so the gradient's contribution is separable from the rest of
+  the mechanism.
 
 ## 4. Undefined interfaces that must be decided before code
 
@@ -195,11 +237,14 @@ resume wipe. Agent serialization itself is reusable as-is
 (`agent_transfer.cpp` already packs crypt state, affinities, immunity escape and
 genome), and the luminal pool should use it rather than a second format.
 
-**G5 — Statistical power.** With 9–25 patches and 0.1–1% occupancy, the
-expected number of occupied patches is `<<1`: the default patch count cannot
-estimate the statistic it exists to produce. Layer 2 needs either
-`O(10^2–10^3)` patches or a many-seed occupancy-*probability* formulation, and
-the choice must be made before any result is quoted.
+**G5 — Statistical power, stratified by type.** With 9–25 patches and 0.1–1%
+occupancy, the expected number of occupied patches is `<<1`: the spec's default
+patch count cannot estimate the statistic it exists to produce. Given S6 this
+resolves to a **type-stratified** formulation: occupancy is estimated per patch
+type, with enough patches (or enough seeds) per type for the rarest type that
+carries signal, and the type fractions taken from anatomy rather than chosen for
+convenience. Aggregate occupancy is then a derived quantity, and no aggregate
+number should be quoted without its per-type breakdown.
 
 **G6 — Mucus volume vs surface density.** Reported observables should include a
 surface density (CFU/cm²) alongside volumetric, since the biopsy-derived numbers
@@ -237,9 +282,12 @@ from lookup to live `Simulation` instances, with the audit gate measuring the
 substitution error. *Result:* the discrepancy between tabulated and live patch
 trajectories, which bounds every Phase 1 conclusion.
 
-**Phase 3 — Layer 3 chain.** Per-segment parameter sets, unidirectional luminal
-transit, distal shedding as an emergent output. *Result:* retention time and
-shedding rate against independent data not used to set any parameter.
+**Phase 3 — Layer 3 gradient.** Axial profiles for the S6/S7 anatomical
+quantities (sourced endpoints plus a stated interpolation, not per-segment free
+values), unidirectional luminal transit, distal shedding as an emergent output.
+*Result:* retention time and shedding rate against independent data not used to
+set any parameter, reported at a stated axial position, with a
+gradient-collapsed-to-uniform arm to separate the gradient's contribution.
 
 **Phase 4 — perturbation and competition.** Antibiotic PK/PD (Spec 13 §
 antibiotic module) and only then the bacteriocin producer/sensitive/resistant
