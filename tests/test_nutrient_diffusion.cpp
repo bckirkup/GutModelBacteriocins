@@ -71,6 +71,21 @@ Real total_inventory(const ChemicalField& chem, const Domain& domain,
   return total;
 }
 
+Real diffuse_and_commit_uptake(
+    ChemicalField& chem, const Domain& domain, Int species_index, Real dt) {
+  chem.apply_diffusion(domain, dt);
+  Real realized = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    if (chem.owns_global_cell(cell)) {
+      realized += chem.sink_realized_global(species_index, cell);
+    }
+  }
+  chem.flux_accounting().add_agent_uptake(species_index, realized);
+  chem.flux_accounting().commit_agent_uptake_step();
+  chem.flux_accounting().commit_boundary_and_reaction_step();
+  return realized;
+}
+
 struct DeliveryClosureResult {
   Real initial = 0.0;
   Real final = 0.0;
@@ -242,17 +257,8 @@ void test_delivery_step_mass_closure_dirichlet_refill() {
   chem.zero_reactions();
   const Real before = inventory(chem, domain);
   chem.add_sink_rate_global(species_index, sink_cell, sink_rate);
-  chem.apply_diffusion(domain, dt);
-
-  Real realized = 0.0;
-  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
-    if (chem.owns_global_cell(cell)) {
-      realized += chem.sink_realized_global(species_index, cell);
-    }
-  }
-  chem.flux_accounting().add_agent_uptake(species_index, realized);
-  chem.flux_accounting().commit_agent_uptake_step();
-  chem.flux_accounting().commit_boundary_and_reaction_step();
+  const Real realized =
+      diffuse_and_commit_uptake(chem, domain, species_index, dt);
 
   const Real after = inventory(chem, domain);
   const auto& flux = chem.flux_accounting();
@@ -326,17 +332,8 @@ void test_delivery_step_mass_closure_vbf_source() {
     }
     chem.conc_global(species_index, cell) = std::max(updated, 0.0);
   }
-  chem.apply_diffusion(domain, dt);
-
-  Real realized = 0.0;
-  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
-    if (chem.owns_global_cell(cell)) {
-      realized += chem.sink_realized_global(species_index, cell);
-    }
-  }
-  chem.flux_accounting().add_agent_uptake(species_index, realized);
-  chem.flux_accounting().commit_agent_uptake_step();
-  chem.flux_accounting().commit_boundary_and_reaction_step();
+  const Real realized =
+      diffuse_and_commit_uptake(chem, domain, species_index, dt);
 
   const Real after = inventory(chem, domain);
   const auto& flux = chem.flux_accounting();
