@@ -581,6 +581,16 @@ std::vector<Probe> build_probes() {
 
   // ── Oxygen (Spec 1) ───────────────────────────────────────────────────────
   add_ns_bool(v, "oxygen.enabled", "oxygen_enabled", [](const SimulationConfig& c) { return c.chem_env.oxygen.enabled; });
+  v.push_back(B("oxygen.delivery_uptake_enabled",
+                [](const SimulationConfig& c) {
+                  return c.chem_env.oxygen.delivery_uptake_enabled;
+                },
+                false));
+  v.push_back(B("oxygen_delivery_uptake_enabled",
+                [](const SimulationConfig& c) {
+                  return c.chem_env.oxygen.delivery_uptake_enabled;
+                },
+                false));
   add_ns_real(v, "oxygen.epithelial_conc", "oxygen_epithelial_conc", [](const SimulationConfig& c) { return c.chem_env.oxygen.epithelial_conc; });
   add_ns_real(v, "oxygen.D_free", "oxygen_D_free", [](const SimulationConfig& c) { return c.chem_env.oxygen.D_free; });
   add_ns_real(v, "oxygen.Km", "oxygen_Km", [](const SimulationConfig& c) { return c.chem_env.oxygen.Km; });

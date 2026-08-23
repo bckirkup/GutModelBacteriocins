@@ -281,6 +281,7 @@ struct ChemicalSpec {
       EpithelialBoundaryMode::Dirichlet;
   Real epithelial_transfer_coeff = 0.0;  // Robin k (m/s)
   Real epithelial_flux = 0.0;             // fixed flux J (mol/m^2/s)
+  bool delivery_enabled = false;         // agent delivery sink participates
 };
 
 class ChemicalField {
@@ -321,6 +322,7 @@ class ChemicalField {
     assert(storage_cell >= 0);
     return conc_[spec][storage_cell];
   }
+  Real total_conc_global(Int spec, Int cell, const Domain& domain) const;
   Real& conc_global(Int spec, Int cell) {
     const Int storage_cell = global_to_storage_cell(cell);
     assert(storage_cell >= 0);
@@ -364,8 +366,11 @@ class ChemicalField {
 
   // Reset reaction rates to zero each timestep
   void zero_reactions();
+  void add_sink_rate_global(Int spec, Int cell, Real rate);
   void add_sink_rate_global(Int cell, Real rate);
+  Real sink_realized_global(Int spec, Int cell) const;
   Real sink_realized_global(Int cell) const;
+  bool has_sink_rate(Int spec) const;
   bool has_sink_rate() const;
 
   // Apply stable implicit diffusion for enabled nutrient species.
@@ -418,8 +423,8 @@ class ChemicalField {
   std::vector<ChemicalSpec> specs_;
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]
-  std::vector<Real> sink_rate_;            // [ncells], 1/s
-  std::vector<Real> sink_realized_;        // [ncells], mol this step
+  std::vector<std::vector<Real>> sink_rate_;      // [species][ncells], 1/s
+  std::vector<std::vector<Real>> sink_realized_;  // [species][ncells], mol this step
   NutrientFluxAccounting flux_accounting_;
 
   void apply_diffusion_slab(const Domain& domain, Real dt);

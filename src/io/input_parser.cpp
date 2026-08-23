@@ -476,6 +476,27 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "'delivery', got '"
         + metabolism.uptake_limit + "'");
   }
+  if (cfg.chem_env.oxygen.delivery_uptake_enabled
+      && metabolism.uptake_limit_mode != UptakeLimitMode::Delivery) {
+    throw ConfigError(
+        "oxygen.delivery_uptake_enabled=true requires "
+        "metabolism.uptake_limit=\"delivery\"");
+  }
+  for (auto& spec : cfg.chemicals) {
+    spec.delivery_enabled = false;
+  }
+  if (metabolism.uptake_limit_mode == UptakeLimitMode::Delivery) {
+    const Int carbon = find_chemical_spec(cfg.chemicals, species::CARBON);
+    if (carbon >= 0) {
+      cfg.chemicals[static_cast<size_t>(carbon)].delivery_enabled = true;
+    }
+    if (cfg.chem_env.oxygen.delivery_uptake_enabled) {
+      const Int oxygen = find_chemical_spec(cfg.chemicals, species::OXYGEN);
+      if (oxygen >= 0) {
+        cfg.chemicals[static_cast<size_t>(oxygen)].delivery_enabled = true;
+      }
+    }
+  }
   if (cfg.gpu.enabled
       && metabolism.uptake_limit_mode == UptakeLimitMode::Delivery) {
     throw ConfigError(
@@ -1143,6 +1164,11 @@ bool apply_oxygen_key(SimulationConfig& cfg, std::string_view key, const std::st
   }
   if (key == "oxygen.epithelial_conc" || key == "oxygen_epithelial_conc") {
     cfg.chem_env.oxygen.epithelial_conc = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.delivery_uptake_enabled"
+      || key == "oxygen_delivery_uptake_enabled") {
+    cfg.chem_env.oxygen.delivery_uptake_enabled = parse_bool_config(val);
+    return true;
   }
   if (key == "oxygen.D_free" || key == "oxygen_D_free") {
     cfg.chem_env.oxygen.D_free = parse_config_real(key, val); return true;

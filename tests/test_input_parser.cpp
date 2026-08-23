@@ -836,6 +836,43 @@ void test_delivery_uptake_limit() {
   std::cout << "  test_delivery_uptake_limit: PASSED\n";
 }
 
+void test_oxygen_delivery_uptake_config() {
+  SimulationConfig cfg = InputParser::default_config();
+  assert(!cfg.chem_env.oxygen.delivery_uptake_enabled);
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.delivery_uptake_enabled", "true"));
+  cfg.chem_env.oxygen.enabled = true;
+  assert(InputParser::apply_flat_key(
+      cfg, "metabolism.uptake_limit", "delivery"));
+  InputParser::finalize_config(cfg);
+  assert(cfg.chem_env.oxygen.delivery_uptake_enabled);
+  const Int oxygen = [&cfg]() {
+    for (Int i = 0; i < static_cast<Int>(cfg.chemicals.size()); ++i) {
+      if (cfg.chemicals[static_cast<size_t>(i)].name == species::OXYGEN) {
+        return i;
+      }
+    }
+    return static_cast<Int>(-1);
+  }();
+  assert(oxygen >= 0);
+  assert(cfg.chemicals[static_cast<size_t>(oxygen)].delivery_enabled);
+  std::cout << "  test_oxygen_delivery_uptake_config: PASSED\n";
+}
+
+void test_oxygen_delivery_uptake_requires_delivery() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.chem_env.oxygen.delivery_uptake_enabled = true;
+  bool threw = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    threw = std::string(error.what()).find(
+        "oxygen.delivery_uptake_enabled") != std::string::npos;
+  }
+  assert(threw);
+  std::cout << "  test_oxygen_delivery_uptake_requires_delivery: PASSED\n";
+}
+
 void test_delivery_uptake_rejects_gpu() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.gpu.enabled = true;
@@ -921,6 +958,8 @@ int main() {
   test_epithelial_boundary_rejects_gradient_conflict();
   test_uptake_limit_fixture();
   test_delivery_uptake_limit();
+  test_oxygen_delivery_uptake_config();
+  test_oxygen_delivery_uptake_requires_delivery();
   test_delivery_uptake_rejects_gpu();
   test_uptake_limit_rejects_unknown_modes();
   test_carbon_maintenance_fixture();

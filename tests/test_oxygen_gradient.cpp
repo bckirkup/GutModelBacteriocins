@@ -82,11 +82,70 @@ void test_oxygen_config_sensitivity() {
   std::cout << "  test_oxygen_config_sensitivity: PASSED\n";
 }
 
+void test_oxygen_delivery_non_gradient_clip_accounting() {
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {20e-6, 20e-6, 20e-6};
+  dcfg.grid_dx = 5e-6;
+  Domain domain;
+  domain.init(dcfg);
+
+  ChemicalSpec oxygen;
+  oxygen.name = "oxygen";
+  oxygen.diff_coeff = 2.1e-9;
+  oxygen.initial_conc = 1.0e-3;
+  oxygen.boundary_conc = 1.0e-3;
+  oxygen.diffusion_enabled = true;
+  oxygen.delivery_enabled = true;
+
+  ChemicalField chem;
+  chem.init(domain, {oxygen});
+  const Int cell = domain.cell_index(1, 1, 1);
+  chem.add_sink_rate_global(0, cell, 0.2);
+  chem.apply_diffusion(domain, 60.0);
+
+  assert(chem.sink_realized_global(0, cell) > 0.0);
+  const auto& flux = chem.flux_accounting();
+  assert(flux.reaction_clip_interval[0] == 0.0);
+  std::cout << "  test_oxygen_delivery_non_gradient_clip_accounting: PASSED\n";
+}
+
+void test_oxygen_delivery_gradient_accounting() {
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {20e-6, 20e-6, 100e-6};
+  dcfg.grid_dx = 5e-6;
+  Domain domain;
+  domain.init(dcfg);
+
+  ChemicalSpec oxygen;
+  oxygen.name = "oxygen";
+  oxygen.diff_coeff = 2.1e-9;
+  oxygen.initial_conc = 55.0e-6;
+  oxygen.boundary_conc = 55.0e-6;
+  oxygen.z_gradient_enabled = true;
+  oxygen.z_gradient_lambda = 25.0e-6;
+  oxygen.diffusion_enabled = true;
+  oxygen.delivery_enabled = true;
+
+  ChemicalField chem;
+  chem.init(domain, {oxygen});
+  const Int cell = domain.cell_index(1, 1, 1);
+  chem.add_sink_rate_global(0, cell, 0.2);
+  chem.apply_diffusion(domain, 60.0);
+
+  assert(chem.sink_realized_global(0, cell) > 0.0);
+  assert(chem.flux_accounting().reaction_clip_interval[0] == 0.0);
+  std::cout << "  test_oxygen_delivery_gradient_accounting: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Oxygen Gradient Tests ===\n";
   test_oxygen_species_registered();
   test_oxygen_z_gradient_init();
   test_oxygen_config_sensitivity();
+  test_oxygen_delivery_non_gradient_clip_accounting();
+  test_oxygen_delivery_gradient_accounting();
   std::cout << "All oxygen gradient tests passed.\n";
   return 0;
 }

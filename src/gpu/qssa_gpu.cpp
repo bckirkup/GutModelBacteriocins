@@ -32,6 +32,7 @@ bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents,
 #else
   if (!gpu_runtime_enabled() || !chem_gpu.active()) return false;
   if (!oxygen.enabled) return true;
+  if (oxygen.delivery_uptake_enabled) return false;
 
   const Int i_oxygen = chem.find(species::OXYGEN);
   if (i_oxygen < 0) return true;

@@ -340,7 +340,7 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
 | `oxygen.enabled` | false | — | Enable oxygen chemical species and aerobic growth boost |
-| `oxygen.epithelial_conc` | 55e-6 | mol/m³ | Dirichlet O₂ at epithelium (~42 mmHg) |
+| `oxygen.epithelial_conc` | 55e-6 | mol/m³ | Dirichlet O₂ at epithelium (~0.042 mmHg; 42 mmHg would imply ~5.5e-2 mol/m³) |
 | `oxygen.D_free` | 2.1e-9 | m²/s | O₂ diffusion coefficient |
 | `oxygen.Km` | 1e-6 | mol/m³ | Monod half-saturation for aerobic boost |
 | `oxygen.boost_max` | 2.0 | — | Max growth multiplier above fermentation baseline |
@@ -348,6 +348,13 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | `oxygen.q_maintenance` | 1e-18 | mol/s/cell | Basal (density-coupled) agent O₂ respiration, applied per living cell regardless of growth so the field tracks agent density |
 | `oxygen.vbf_sink` | 1e-3 | 1/s | VBF background O₂ uptake — **first-order** rate constant (`reac −= vbf_sink × [O₂]`), not a zero-order removal |
 | `oxygen.k_ROS` | 1e2 | — | ROS induction rate coefficient (Spec 2 hook) |
+
+The default `oxygen.epithelial_conc = 55e-6 mol/m³` is approximately
+`0.042 mmHg` dissolved oxygen, not the approximately `42 mmHg` stated by the
+former comment. A dissolved concentration corresponding to approximately
+`42 mmHg` would be about `5.5e-2 mol/m³`. The numerical default remains
+unchanged in this PR; adopting the physiological value is deferred. Demonstration
+runs will set the physiological value explicitly by configuration.
 
 ---
 

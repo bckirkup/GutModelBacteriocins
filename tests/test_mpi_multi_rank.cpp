@@ -677,6 +677,35 @@ void test_delivery_sink_slab_matches_replicated() {
          <= 1.0e-12 * std::max(
              1.0, std::abs(
                  gradient_replicated.sink_realized_global(target))));
+
+  ChemicalSpec oxygen_spec = spec;
+  oxygen_spec.name = species::OXYGEN;
+  oxygen_spec.delivery_enabled = true;
+  ChemicalField oxygen_slab;
+  ChemicalField oxygen_replicated;
+  oxygen_slab.init(domain, {oxygen_spec}, "slab");
+  oxygen_replicated.init(domain, {oxygen_spec}, "replicated");
+  oxygen_replicated.add_sink_rate_global(0, target, 0.2);
+  if (domain.owner_rank(domain.cell_center(1, 1, 1)) == rank) {
+    oxygen_slab.add_sink_rate_global(0, target, 0.2);
+  }
+  oxygen_slab.apply_diffusion(domain, 60.0);
+  oxygen_replicated.apply_diffusion(domain, 60.0);
+  Real oxygen_slab_removed = 0.0;
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    if (oxygen_slab.owns_global_cell(cell)) {
+      oxygen_slab_removed += oxygen_slab.sink_realized_global(0, cell);
+    }
+  }
+  Real global_oxygen_slab_removed = 0.0;
+  MPI_Allreduce(&oxygen_slab_removed, &global_oxygen_slab_removed, 1,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  assert(global_oxygen_slab_removed > 0.0);
+  assert(std::abs(global_oxygen_slab_removed
+                  - oxygen_replicated.sink_realized_global(0, target))
+         <= 1.0e-12 * std::max(
+             1.0, std::abs(
+                 oxygen_replicated.sink_realized_global(0, target))));
   if (rank == 0) {
     std::cout << "  test_delivery_sink_slab_matches_replicated: PASSED"
               << " (gradient_removed=" << global_gradient_slab_removed

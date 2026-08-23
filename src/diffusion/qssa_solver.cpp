@@ -927,7 +927,8 @@ void QSSASolver::solve_nutrient_depletion(
     // (double-counting); they have been removed. Corrinoid (B12) is no longer
     // depleted at all. This function now applies only agent O2 respiration,
     // which has no counterpart in the metabolism Fix.
-    if (oxygen.enabled && i_oxygen >= 0 && cell_vol > 0.0) {
+    if (oxygen.enabled && !oxygen.delivery_uptake_enabled
+        && i_oxygen >= 0 && cell_vol > 0.0) {
       // Pirt respiration: growth-associated + basal maintenance. The
       // maintenance term is applied per living cell regardless of growth, so
       // the O2 field tracks agent density (a non-growing cell still respires).
