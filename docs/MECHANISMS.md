@@ -170,6 +170,25 @@ respiration use the same per-agent implicit delivery sink as carbon. Realized
 oxygen removal is distributed in proportion to per-agent respiratory demand;
 the explicit QSSA oxygen sink remains the default when the flag is false.
 
+`oxygen.respiration_driver` selects how that realized fermentation fraction is
+updated. The default `ambient` driver preserves the concentration-based
+behavior above. With `funded`, the fraction is driven by the funded growth-O₂
+capacity:
+
+```
+capacity = clamp01(funded_growth_o2 / demanded_growth_o2)
+instantaneous_fermentation = 1 - capacity
+```
+
+Funded mode requires `oxygen.delivery_uptake_enabled=true` and
+`metabolism.uptake_limit="delivery"`; it is rejected otherwise because no
+funded quantity exists. The mode is **one step lagged**: this step's growth-O₂
+demand is computed from the previous step's fermentation fraction, and this
+step's realized delivery updates the fraction for the next step. If demanded
+growth O₂ is zero, the ratio is undefined and the fraction is left unchanged.
+Funded respiration is CPU-only and is rejected with GPU execution.
+This switch does not change `oxygen.epithelial_conc`.
+
 Acid inhibition uses undissociated acetate via Henderson–Hasselbalch. Its pH
 comes from `bacteriocin.mucin_charge.ph`, the environment pH lever introduced
 for pI-derived retardation; no duplicate pH parameter is used. At pH 6 the

@@ -7,6 +7,7 @@
 #include "species_names.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -69,6 +70,87 @@ struct Trajectory {
   std::vector<Real> carbon;
   std::vector<Real> biomass;
 };
+
+struct RespirationProbe {
+  Real fraction = 0.0;
+  Real growth_demand = 0.0;
+  Real funded_growth = 0.0;
+};
+
+RespirationProbe run_respiration_probe(
+    const std::string& driver, Real oxygen_concentration,
+    bool zero_growth = false) {
+  SimulationConfig cfg = simulation_config();
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.chem_env.oxygen.delivery_uptake_enabled = true;
+  cfg.chem_env.oxygen.respiration_driver = driver;
+  cfg.chem_env.oxygen.metabolic_switch_enabled = true;
+  cfg.chem_env.oxygen.tau_metabolic_switch = 1.0;
+  cfg.chem_env.oxygen.q_consumption = 1.0e-15;
+  cfg.chem_env.oxygen.q_maintenance = 0.0;
+  cfg.chem_env.oxygen.vbf_sink = 0.0;
+  cfg.chem_env.oxygen.epithelial_conc = oxygen_concentration;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  set_species(sim, species::CARBON, zero_growth ? 0.0 : 1.0);
+  set_species(sim, species::OXYGEN, oxygen_concentration);
+  if (zero_growth) {
+    sim.agents()[0].realized_fermentation_fraction = 0.37;
+  }
+  sim.step(kDt);
+
+  const gutibm::Int oxygen = sim.chemical_field().find(species::OXYGEN);
+  const gutibm::Int cell = sim.agents()[0].grid_cell;
+  RespirationProbe result;
+  result.fraction = sim.agents()[0].realized_fermentation_fraction;
+  result.growth_demand = sim.agents()[0].pending_oxygen_growth;
+  result.funded_growth = sim.chemical_field().sink_realized_global(
+      oxygen, cell);
+  return result;
+}
+
+void test_funded_respiration_graded_and_bounded() {
+  const std::array<Real, 4> concentrations = {
+      0.0, 1.0e-5, 1.0e-3, 1.0e-1};
+  std::array<Real, 4> fractions{};
+  for (size_t i = 0; i < concentrations.size(); ++i) {
+    const RespirationProbe probe = run_respiration_probe(
+        "funded", concentrations[i]);
+    fractions[i] = probe.fraction;
+    assert(std::isfinite(probe.fraction));
+    assert(probe.fraction >= 0.0 && probe.fraction <= 1.0);
+    assert(probe.funded_growth <= probe.growth_demand + 1.0e-30);
+  }
+  assert(fractions[0] > fractions[1]);
+  assert(fractions[1] > fractions[2]);
+  assert(fractions[2] > fractions[3]);
+  assert(fractions[0] - fractions[3] > 0.5);
+  std::cout << "  test_funded_respiration_graded_and_bounded: PASSED\n";
+}
+
+void test_funded_respiration_discriminates_from_ambient() {
+  const RespirationProbe ambient = run_respiration_probe(
+      "ambient", 55.0e-6);
+  const RespirationProbe funded = run_respiration_probe(
+      "funded", 55.0e-6);
+  assert(ambient.fraction < 0.2);
+  assert(funded.fraction > ambient.fraction + 0.2);
+  std::cout << "  test_funded_respiration_discriminates_from_ambient: PASSED\n";
+}
+
+void test_funded_respiration_zero_demand_preserves_state() {
+  const RespirationProbe probe = run_respiration_probe(
+      "funded", 55.0e-6, true);
+  assert(std::abs(probe.fraction - 0.37) < 1.0e-12);
+  assert(probe.growth_demand <= 0.0);
+  assert(probe.funded_growth <= probe.growth_demand + 1.0e-30);
+  std::cout << "  test_funded_respiration_zero_demand_preserves_state: PASSED\n";
+}
 
 Trajectory run_compatibility(bool explicit_disabled_keys) {
   SimulationConfig cfg = simulation_config();
@@ -439,6 +521,9 @@ int main() {
   std::cout << "  helper_algebra: PASSED\n";
 
   test_simulation_backward_compatibility();
+  test_funded_respiration_graded_and_bounded();
+  test_funded_respiration_discriminates_from_ambient();
+  test_funded_respiration_zero_demand_preserves_state();
   test_simulation_carbon_cost_direction();
   test_mu_crit_overflow_sensitivity();
   test_simulation_acid_inhibition();

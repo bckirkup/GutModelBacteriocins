@@ -91,7 +91,8 @@ class FixMetabolism : public Fix {
       Agent& agent, const std::vector<Real>& demand_by_cell, Int carbon,
       Real dt);
   void commit_delivery_oxygen_agent(
-      Agent& agent, const std::vector<Real>& demand_by_cell, Int oxygen);
+      Agent& agent, const std::vector<Real>& demand_by_cell, Int oxygen,
+      Real dt);
   void compute_growth_rate(Agent& agent, Real dt);
   Real uptake_limit_fraction(const Agent& agent, Real d_biomass, Real dt,
                              bool record_diagnostics);

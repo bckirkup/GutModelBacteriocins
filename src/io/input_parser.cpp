@@ -476,6 +476,27 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "'delivery', got '"
         + metabolism.uptake_limit + "'");
   }
+  if (cfg.chem_env.oxygen.respiration_driver != "ambient"
+      && cfg.chem_env.oxygen.respiration_driver != "funded") {
+    throw ConfigError(
+        "invalid oxygen.respiration_driver: expected 'ambient' or "
+        "'funded', got '"
+        + cfg.chem_env.oxygen.respiration_driver + "'");
+  }
+  if (cfg.chem_env.oxygen.respiration_driver == "funded"
+      && (!cfg.chem_env.oxygen.delivery_uptake_enabled
+          || metabolism.uptake_limit_mode != UptakeLimitMode::Delivery)) {
+    throw ConfigError(
+        "oxygen.respiration_driver=\"funded\" requires "
+        "oxygen.delivery_uptake_enabled=true and "
+        "metabolism.uptake_limit=\"delivery\"");
+  }
+  if (cfg.chem_env.oxygen.respiration_driver == "funded"
+      && cfg.gpu.enabled) {
+    throw ConfigError(
+        "oxygen.respiration_driver=\"funded\" cannot be combined with "
+        "gpu_enabled=true: funded oxygen delivery is CPU-only");
+  }
   if (cfg.chem_env.oxygen.delivery_uptake_enabled
       && metabolism.uptake_limit_mode != UptakeLimitMode::Delivery) {
     throw ConfigError(
@@ -1168,6 +1189,16 @@ bool apply_oxygen_key(SimulationConfig& cfg, std::string_view key, const std::st
   if (key == "oxygen.delivery_uptake_enabled"
       || key == "oxygen_delivery_uptake_enabled") {
     cfg.chem_env.oxygen.delivery_uptake_enabled = parse_bool_config(val);
+    return true;
+  }
+  if (key == "oxygen.respiration_driver"
+      || key == "oxygen_respiration_driver") {
+    if (val != "ambient" && val != "funded") {
+      throw ConfigError(
+          "invalid oxygen.respiration_driver: expected 'ambient' or "
+          "'funded', got '" + val + "'");
+    }
+    cfg.chem_env.oxygen.respiration_driver = val;
     return true;
   }
   if (key == "oxygen.D_free" || key == "oxygen_D_free") {

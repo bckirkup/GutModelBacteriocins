@@ -353,7 +353,7 @@ void FixMetabolism::commit_delivery_uptake(Real dt) {
     for (Agent& agent : sim_.agents()) {
       if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
       commit_delivery_oxygen_agent(
-          agent, oxygen_demand_by_cell, oxygen);
+          agent, oxygen_demand_by_cell, oxygen, dt);
     }
   }
 }
@@ -425,7 +425,8 @@ void FixMetabolism::collect_delivery_oxygen_demands(
 }
 
 void FixMetabolism::commit_delivery_oxygen_agent(
-    Agent& agent, const std::vector<Real>& demand_by_cell, Int oxygen) {
+    Agent& agent, const std::vector<Real>& demand_by_cell, Int oxygen,
+    Real dt) {
   auto& chem = sim_.chemical_field();
   const Real growth_demand = agent.pending_oxygen_growth;
   const Real maintenance_demand = agent.pending_oxygen_maintenance;
@@ -439,6 +440,17 @@ void FixMetabolism::commit_delivery_oxygen_agent(
       chem.sink_realized_global(oxygen, agent.grid_cell));
   record_delivery_funding(
       chem, oxygen, growth_demand, maintenance_demand, funding);
+  const auto& oxygen_cfg = sim_.config().chem_env.oxygen;
+  if (oxygen_cfg.respiration_driver == "funded"
+      && oxygen_cfg.metabolic_switch_enabled
+      && growth_demand > 0.0) {
+    const Real capacity = metabolic_mode::clamp01(
+        funding.growth_funded / growth_demand);
+    const Real instantaneous = 1.0 - capacity;
+    agent.realized_fermentation_fraction = metabolic_mode::relax(
+        agent.realized_fermentation_fraction, instantaneous,
+        dt, oxygen_cfg.tau_metabolic_switch);
+  }
 }
 
 void FixMetabolism::post_chemistry(Real dt) {
@@ -804,11 +816,13 @@ void FixMetabolism::compute_growth_rate(Agent& agent, Real dt) {
       if (o2cfg.metabolic_switch_enabled) {
         const Real availability =
             metabolic_mode::oxygen_availability(s_o2, o2cfg.Km);
-        const Real instantaneous = metabolic_mode::fermentation_fraction(
-            availability, mu, o2cfg.mu_crit);
-        agent.realized_fermentation_fraction = metabolic_mode::relax(
-            agent.realized_fermentation_fraction, instantaneous,
-            dt, o2cfg.tau_metabolic_switch);
+        if (o2cfg.respiration_driver == "ambient") {
+          const Real instantaneous = metabolic_mode::fermentation_fraction(
+              availability, mu, o2cfg.mu_crit);
+          agent.realized_fermentation_fraction = metabolic_mode::relax(
+              agent.realized_fermentation_fraction, instantaneous,
+              dt, o2cfg.tau_metabolic_switch);
+        }
         mu *= metabolic_mode::interpolate(o2cfg.aerobic_mu_factor,
                                           o2cfg.anaerobic_mu_factor,
                                           agent.realized_fermentation_fraction);
