@@ -189,6 +189,62 @@ void test_delivery_mass_closure_gradient_parameterization() {
   assert(oxygen_gradient.relative_residual <= tolerance);
 }
 
+void test_delivery_step_mass_closure_dirichlet_refill() {
+  constexpr Real dt = 60.0;
+  constexpr Real diffusion = 4.166666666666667e-9;
+  constexpr Real initial = 1.0e-3;
+  constexpr Real boundary = 1.0e-3;
+  constexpr Real gradient_lambda = 5.0e-6;
+  constexpr Real sink_rate = 1.0e3;
+  Domain domain = make_domain(1, 1, 6);
+  ChemicalSpec spec = diffusing_species(
+      diffusion, initial, boundary);
+  spec.delivery_enabled = true;
+  spec.z_gradient_enabled = true;
+  spec.z_gradient_lambda = gradient_lambda;
+
+  ChemicalField chem;
+  chem.init(domain, {spec});
+  const Int species_index = chem.find(species::OXYGEN);
+  const Int sink_cell = domain.cell_index(0, 0, 1);
+  chem.zero_reactions();
+  const Real before = inventory(chem, domain);
+  chem.add_sink_rate_global(species_index, sink_cell, sink_rate);
+  chem.apply_diffusion(domain, dt);
+
+  Real realized = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    if (chem.owns_global_cell(cell)) {
+      realized += chem.sink_realized_global(species_index, cell);
+    }
+  }
+  chem.flux_accounting().add_agent_uptake(species_index, realized);
+  chem.flux_accounting().commit_agent_uptake_step();
+  chem.flux_accounting().commit_boundary_and_reaction_step();
+
+  const Real after = inventory(chem, domain);
+  const auto& flux = chem.flux_accounting();
+  const auto index = static_cast<size_t>(species_index);
+  const Real residual = before + flux.boundary_last_step[index]
+      + flux.gradient_source_last_step[index]
+      - flux.agent_uptake_last_step[index]
+      - flux.maintenance_last_step[index]
+      - flux.vbf_sink_last_step[index]
+      + flux.reaction_clip_last_step[index] - after;
+  const Real scale = std::max(
+      {std::abs(before), std::abs(after), std::abs(realized), 1.0e-300});
+  const Real relative_residual = std::abs(residual) / scale;
+
+  std::cout << "  test_delivery_step_mass_closure_dirichlet_refill:"
+            << " alpha=" << diffusion * dt
+                / (domain.dx_z() * domain.dx_z())
+            << " boundary_step=" << flux.boundary_last_step[index]
+            << " realized=" << realized
+            << " residual=" << residual
+            << " relative_residual=" << relative_residual << "\n";
+  assert(relative_residual <= 1.0e-12);
+}
+
 void test_anisotropic_diffusion_invariants() {
   DomainConfig cfg;
   cfg.lo = {0.0, 0.0, 0.0};
@@ -679,7 +735,8 @@ void test_delivery_boundary_slab_matches_replicated() {
   cfg.grid_halo_width = 2;
   Domain domain;
   domain.init(cfg);
-  for (const auto mode : {EpithelialBoundaryMode::Robin,
+  for (const auto mode : {EpithelialBoundaryMode::Dirichlet,
+                          EpithelialBoundaryMode::Robin,
                           EpithelialBoundaryMode::Flux}) {
     const ChemicalSpec spec = delivery_species(
         mode, 0.0, 1.0, mode == EpithelialBoundaryMode::Robin ? 2.0e-5 : 0.0,
@@ -786,6 +843,7 @@ int main() {
   test_dirichlet_default_is_unchanged();
   test_delivery_boundary_rejects_gradient();
   test_delivery_mass_closure_gradient_parameterization();
+  test_delivery_step_mass_closure_dirichlet_refill();
   test_default_species_configuration();
   std::cout << "All nutrient diffusion tests passed.\n";
   return 0;
