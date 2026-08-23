@@ -185,7 +185,7 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return c.initial_population.placement;
                 },
-                "z_slab"));
+                "anatomic"));
   v.push_back(R("initial_population.z_min",
                 [](const SimulationConfig& c) {
                   return c.initial_population.z_min;
@@ -196,6 +196,24 @@ std::vector<Probe> build_probes() {
                   return c.initial_population.z_max;
                 },
                 40e-6));
+  add_ns_real(
+      v, "initial_population.anatomic_exclusion_floor",
+      "initial_population_anatomic_exclusion_floor",
+      [](const SimulationConfig& c) {
+        return c.initial_population.anatomic_exclusion_floor;
+      });
+  add_ns_real(
+      v, "initial_population.anatomic_exponential_scale",
+      "initial_population_anatomic_exponential_scale",
+      [](const SimulationConfig& c) {
+        return c.initial_population.anatomic_exponential_scale;
+      });
+  add_ns_real(
+      v, "initial_population.anatomic_outer_extent",
+      "initial_population_anatomic_outer_extent",
+      [](const SimulationConfig& c) {
+        return c.initial_population.anatomic_outer_extent;
+      });
 
   // ── Domain ───────────────────────────────────────────────────────────────
   v.push_back(R("grid_dx", [](const SimulationConfig& c) { return c.domain.grid_dx; }));

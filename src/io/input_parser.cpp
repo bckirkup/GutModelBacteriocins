@@ -353,6 +353,21 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "closure.reaction_clip_tolerance_fraction must be nonnegative");
   }
 
+  if (cfg.initial_population.anatomic_exclusion_floor < 0.0) {
+    throw ConfigError(
+        "initial_population.anatomic_exclusion_floor must be nonnegative");
+  }
+  if (cfg.initial_population.anatomic_exponential_scale <= 0.0) {
+    throw ConfigError(
+        "initial_population.anatomic_exponential_scale must be positive");
+  }
+  if (cfg.initial_population.anatomic_outer_extent
+      <= cfg.initial_population.anatomic_exclusion_floor) {
+    throw ConfigError(
+        "initial_population.anatomic_outer_extent must be greater than "
+        "anatomic_exclusion_floor");
+  }
+
   if (cfg.initial_population.placement == "z_slab") {
     if (cfg.initial_population.z_min < cfg.domain.lo[2]
         || cfg.initial_population.z_min >= cfg.domain.hi[2]) {
@@ -1061,7 +1076,7 @@ bool apply_initial_population_key(SimulationConfig& cfg,
                                   std::string_view key,
                                   const std::string& val) {
   if (key == "initial_population.placement") {
-    if (val != "legacy" && val != "z_slab") {
+    if (val != "legacy" && val != "z_slab" && val != "anatomic") {
       throw ConfigError("invalid initial_population.placement: " + val);
     }
     cfg.initial_population.placement = val;
@@ -1073,6 +1088,24 @@ bool apply_initial_population_key(SimulationConfig& cfg,
   }
   if (key == "initial_population.z_max") {
     cfg.initial_population.z_max = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "initial_population.anatomic_exclusion_floor"
+      || key == "initial_population_anatomic_exclusion_floor") {
+    cfg.initial_population.anatomic_exclusion_floor =
+        parse_config_real(key, val);
+    return true;
+  }
+  if (key == "initial_population.anatomic_exponential_scale"
+      || key == "initial_population_anatomic_exponential_scale") {
+    cfg.initial_population.anatomic_exponential_scale =
+        parse_config_real(key, val);
+    return true;
+  }
+  if (key == "initial_population.anatomic_outer_extent"
+      || key == "initial_population_anatomic_outer_extent") {
+    cfg.initial_population.anatomic_outer_extent =
+        parse_config_real(key, val);
     return true;
   }
   return false;

@@ -789,6 +789,12 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   string_key("initial_population.placement", cfg.initial_population.placement);
   real_key("initial_population.z_min", cfg.initial_population.z_min);
   real_key("initial_population.z_max", cfg.initial_population.z_max);
+  real_key("initial_population.anatomic_exclusion_floor",
+           cfg.initial_population.anatomic_exclusion_floor);
+  real_key("initial_population.anatomic_exponential_scale",
+           cfg.initial_population.anatomic_exponential_scale);
+  real_key("initial_population.anatomic_outer_extent",
+           cfg.initial_population.anatomic_outer_extent);
   bool_key("immigration.enabled", cfg.immigration.enabled);
   int_key("immigration.count", cfg.immigration.count);
   int_key("immigration.strain_index", cfg.immigration.strain_index);

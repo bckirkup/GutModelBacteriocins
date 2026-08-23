@@ -71,6 +71,9 @@ struct InitialPopulationConfig {
   std::string placement = "legacy";
   Real z_min = 0.0;
   Real z_max = 1.0e-6;
+  Real anatomic_exclusion_floor = 20.0e-6;
+  Real anatomic_exponential_scale = 40.0e-6;
+  Real anatomic_outer_extent = 150.0e-6;
 };
 
 struct FixPluginsConfig {

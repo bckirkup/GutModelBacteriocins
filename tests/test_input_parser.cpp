@@ -207,6 +207,21 @@ void test_initial_population_fixture() {
   assert(cfg.initial_population.placement == "z_slab");
   assert(std::abs(cfg.initial_population.z_min - 2e-6) < 1e-15);
   assert(std::abs(cfg.initial_population.z_max - 12e-6) < 1e-15);
+  assert(std::abs(cfg.initial_population.anatomic_exclusion_floor - 21e-6)
+         < 1e-15);
+  assert(std::abs(cfg.initial_population.anatomic_exponential_scale - 42e-6)
+         < 1e-15);
+  assert(std::abs(cfg.initial_population.anatomic_outer_extent - 145e-6)
+         < 1e-15);
+  const std::string serialized = ConfigJson::serialize_document(cfg);
+  SimulationConfig roundtrip = InputParser::default_config();
+  assert(ConfigJson::parse_document(roundtrip, serialized));
+  assert(std::abs(roundtrip.initial_population.anatomic_exclusion_floor
+                  - 21e-6) < 1e-15);
+  assert(std::abs(roundtrip.initial_population.anatomic_exponential_scale
+                  - 42e-6) < 1e-15);
+  assert(std::abs(roundtrip.initial_population.anatomic_outer_extent
+                  - 145e-6) < 1e-15);
   std::cout << "  test_initial_population_fixture: PASSED\n";
 }
 
@@ -257,6 +272,47 @@ void test_initial_population_rejects_invalid_band() {
   }
   assert(rejected);
   std::cout << "  test_initial_population_rejects_invalid_band: PASSED\n";
+}
+
+void test_anatomic_population_rejects_invalid_values() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_population.placement = "anatomic";
+
+  cfg.initial_population.anatomic_exponential_scale = 0.0;
+  bool rejected_scale = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    rejected_scale = std::string(error.what()).find(
+        "initial_population.anatomic_exponential_scale") != std::string::npos;
+  }
+  assert(rejected_scale);
+
+  cfg = InputParser::default_config();
+  cfg.initial_population.placement = "anatomic";
+  cfg.initial_population.anatomic_outer_extent =
+      cfg.initial_population.anatomic_exclusion_floor;
+  bool rejected_extent = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    rejected_extent = std::string(error.what()).find(
+        "initial_population.anatomic_outer_extent") != std::string::npos;
+  }
+  assert(rejected_extent);
+
+  cfg = InputParser::default_config();
+  cfg.initial_population.placement = "anatomic";
+  cfg.initial_population.anatomic_exclusion_floor = -1.0;
+  bool rejected_floor = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    rejected_floor = std::string(error.what()).find(
+        "initial_population.anatomic_exclusion_floor") != std::string::npos;
+  }
+  assert(rejected_floor);
+  std::cout << "  test_anatomic_population_rejects_invalid_values: PASSED\n";
 }
 
 void test_diversity_paradox_strains() {
@@ -958,6 +1014,7 @@ int main() {
   test_washout_trap_advection_fixture();
   test_washout_trap_rejects_invalid_value();
   test_initial_population_rejects_invalid_band();
+  test_anatomic_population_rejects_invalid_values();
   test_diversity_paradox_strains();
   test_strain_spawn_integration();
   test_fixes_fixture();
