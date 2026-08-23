@@ -919,6 +919,8 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     std::ranges::fill(flux.gradient_source_interval, 0.0);
     std::ranges::fill(flux.gradient_source_step, 0.0);
     std::ranges::fill(flux.vbf_source_interval, 0.0);
+    std::ranges::fill(flux.vbf_source_step, 0.0);
+    std::ranges::fill(flux.vbf_source_last_step, 0.0);
     std::ranges::fill(flux.vbf_sink_interval, 0.0);
     std::ranges::fill(flux.agent_uptake_interval, 0.0);
     std::ranges::fill(flux.agent_uptake_step, 0.0);
@@ -942,6 +944,8 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     ensure_sized(flux.uptake_demand_interval);
     ensure_sized(flux.gradient_source_interval);
     ensure_sized(flux.gradient_source_step);
+    ensure_sized(flux.vbf_source_step);
+    ensure_sized(flux.vbf_source_last_step);
     ensure_sized(flux.gradient_source_cumulative);
     ensure_sized(flux.uptake_demand_step);
     ensure_sized(flux.uptake_demand_cumulative);
