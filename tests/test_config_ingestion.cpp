@@ -142,6 +142,13 @@ void add_ns_int(std::vector<Probe>& v, const char* dotted, const char* under, co
   v.push_back(I(under, g, false));
 }
 
+void add_ns_string(std::vector<Probe>& v, const char* dotted,
+                   const char* under, const StrGet& g,
+                   const char* sentinel) {
+  v.push_back(S(dotted, g, sentinel, false));
+  v.push_back(S(under, g, sentinel, false));
+}
+
 const ChemicalSpec& carbon_spec(const SimulationConfig& c) {
   for (const auto& s : c.chemicals) {
     if (s.name == "carbon") return s;
@@ -581,6 +588,11 @@ std::vector<Probe> build_probes() {
 
   // ── Oxygen (Spec 1) ───────────────────────────────────────────────────────
   add_ns_bool(v, "oxygen.enabled", "oxygen_enabled", [](const SimulationConfig& c) { return c.chem_env.oxygen.enabled; });
+  add_ns_string(v, "oxygen.respiration_driver", "oxygen_respiration_driver",
+                [](const SimulationConfig& c) {
+                  return c.chem_env.oxygen.respiration_driver;
+                },
+                "funded");
   v.push_back(B("oxygen.delivery_uptake_enabled",
                 [](const SimulationConfig& c) {
                   return c.chem_env.oxygen.delivery_uptake_enabled;

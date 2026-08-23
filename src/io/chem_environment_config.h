@@ -6,13 +6,21 @@
 #define GUTIBM_CHEM_ENVIRONMENT_CONFIG_H
 
 #include "types.h"
+#include <string>
 
 namespace gutibm {
+
+enum class RespirationDriver : int {
+  Ambient = 0,
+  Funded = 1,
+};
 
 struct OxygenConfig {
   bool enabled = false;
   Real epithelial_conc = 55.0e-6;   // mol/m^3 (~0.042 mmHg; 42 mmHg ≈ 5.5e-2 mol/m^3)
   bool delivery_uptake_enabled = false;
+  std::string respiration_driver = "ambient";
+  RespirationDriver respiration_driver_mode = RespirationDriver::Ambient;
   Real D_free = 2.1e-9;             // m^2/s
   Real Km = 1.0e-6;                 // mol/m^3 Monod half-saturation
   Real boost_max = 2.0;             // max aerobic growth multiplier - 1

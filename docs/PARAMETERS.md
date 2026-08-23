@@ -341,6 +341,7 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 |-----------|---------|-------|-------------|
 | `oxygen.enabled` | false | — | Enable oxygen chemical species and aerobic growth boost |
 | `oxygen.epithelial_conc` | 55e-6 | mol/m³ | Dirichlet O₂ at epithelium (~0.042 mmHg; 42 mmHg would imply ~5.5e-2 mol/m³) |
+| `oxygen.respiration_driver` | `ambient` | — | Fermentation-mode driver: `ambient` preserves concentration-based switching; `funded` uses realized growth-O₂ delivery and requires oxygen delivery uptake with `metabolism.uptake_limit=delivery` |
 | `oxygen.D_free` | 2.1e-9 | m²/s | O₂ diffusion coefficient |
 | `oxygen.Km` | 1e-6 | mol/m³ | Monod half-saturation for aerobic boost |
 | `oxygen.boost_max` | 2.0 | — | Max growth multiplier above fermentation baseline |

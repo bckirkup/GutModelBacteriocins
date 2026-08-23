@@ -839,6 +839,8 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("oxygen.epithelial_conc", cfg.chem_env.oxygen.epithelial_conc);
   bool_key("oxygen.delivery_uptake_enabled",
            cfg.chem_env.oxygen.delivery_uptake_enabled);
+  string_key("oxygen.respiration_driver",
+             cfg.chem_env.oxygen.respiration_driver);
   real_key("oxygen.D_free", cfg.chem_env.oxygen.D_free);
   real_key("oxygen.Km", cfg.chem_env.oxygen.Km);
   bool_key("oxygen.metabolic_switch_enabled",
