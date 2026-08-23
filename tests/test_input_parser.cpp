@@ -277,6 +277,7 @@ void test_initial_population_rejects_invalid_band() {
 void test_anatomic_population_rejects_invalid_values() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.initial_population.placement = "anatomic";
+  cfg.domain.hi[2] = 300e-6;
 
   cfg.initial_population.anatomic_exponential_scale = 0.0;
   bool rejected_scale = false;
@@ -290,6 +291,7 @@ void test_anatomic_population_rejects_invalid_values() {
 
   cfg = InputParser::default_config();
   cfg.initial_population.placement = "anatomic";
+  cfg.domain.hi[2] = 300e-6;
   cfg.initial_population.anatomic_outer_extent =
       cfg.initial_population.anatomic_exclusion_floor;
   bool rejected_extent = false;
@@ -303,6 +305,7 @@ void test_anatomic_population_rejects_invalid_values() {
 
   cfg = InputParser::default_config();
   cfg.initial_population.placement = "anatomic";
+  cfg.domain.hi[2] = 300e-6;
   cfg.initial_population.anatomic_exclusion_floor = -1.0;
   bool rejected_floor = false;
   try {
@@ -312,6 +315,30 @@ void test_anatomic_population_rejects_invalid_values() {
         "initial_population.anatomic_exclusion_floor") != std::string::npos;
   }
   assert(rejected_floor);
+
+  cfg = InputParser::default_config();
+  cfg.initial_population.placement = "anatomic";
+  cfg.initial_population.anatomic_exclusion_floor = cfg.domain.hi[2];
+  bool rejected_floor_outside_domain = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    rejected_floor_outside_domain = std::string(error.what()).find(
+        "initial_population.anatomic_exclusion_floor") != std::string::npos;
+  }
+  assert(rejected_floor_outside_domain);
+
+  cfg = InputParser::default_config();
+  cfg.initial_population.placement = "anatomic";
+  cfg.initial_population.anatomic_outer_extent = cfg.domain.hi[2] + 1e-6;
+  bool rejected_extent_outside_domain = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    rejected_extent_outside_domain = std::string(error.what()).find(
+        "initial_population.anatomic_outer_extent") != std::string::npos;
+  }
+  assert(rejected_extent_outside_domain);
   std::cout << "  test_anatomic_population_rejects_invalid_values: PASSED\n";
 }
 

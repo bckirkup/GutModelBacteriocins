@@ -368,6 +368,21 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "anatomic_exclusion_floor");
   }
 
+  if (cfg.initial_population.placement == "anatomic") {
+    if (cfg.initial_population.anatomic_exclusion_floor < cfg.domain.lo[2]
+        || cfg.initial_population.anatomic_exclusion_floor >= cfg.domain.hi[2]) {
+      throw ConfigError(
+          "initial_population.anatomic_exclusion_floor must be inside the "
+          "domain");
+    }
+    if (cfg.initial_population.anatomic_outer_extent <= cfg.domain.lo[2]
+        || cfg.initial_population.anatomic_outer_extent > cfg.domain.hi[2]) {
+      throw ConfigError(
+          "initial_population.anatomic_outer_extent must be inside the "
+          "domain");
+    }
+  }
+
   if (cfg.initial_population.placement == "z_slab") {
     if (cfg.initial_population.z_min < cfg.domain.lo[2]
         || cfg.initial_population.z_min >= cfg.domain.hi[2]) {

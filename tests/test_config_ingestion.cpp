@@ -196,24 +196,30 @@ std::vector<Probe> build_probes() {
                   return c.initial_population.z_max;
                 },
                 40e-6));
-  add_ns_real(
-      v, "initial_population.anatomic_exclusion_floor",
-      "initial_population_anatomic_exclusion_floor",
+  const auto anatomic_exclusion_floor =
       [](const SimulationConfig& c) {
         return c.initial_population.anatomic_exclusion_floor;
-      });
-  add_ns_real(
-      v, "initial_population.anatomic_exponential_scale",
-      "initial_population_anatomic_exponential_scale",
+      };
+  const auto anatomic_exponential_scale =
       [](const SimulationConfig& c) {
         return c.initial_population.anatomic_exponential_scale;
-      });
-  add_ns_real(
-      v, "initial_population.anatomic_outer_extent",
-      "initial_population_anatomic_outer_extent",
+      };
+  const auto anatomic_outer_extent =
       [](const SimulationConfig& c) {
         return c.initial_population.anatomic_outer_extent;
-      });
+      };
+  v.push_back(R("initial_population.anatomic_exclusion_floor",
+                anatomic_exclusion_floor, 30e-6));
+  v.push_back(R("initial_population_anatomic_exclusion_floor",
+                anatomic_exclusion_floor, 30e-6, false));
+  v.push_back(R("initial_population.anatomic_exponential_scale",
+                anatomic_exponential_scale, 60e-6));
+  v.push_back(R("initial_population_anatomic_exponential_scale",
+                anatomic_exponential_scale, 60e-6, false));
+  v.push_back(R("initial_population.anatomic_outer_extent",
+                anatomic_outer_extent, 200e-6));
+  v.push_back(R("initial_population_anatomic_outer_extent",
+                anatomic_outer_extent, 200e-6, false));
 
   // ── Domain ───────────────────────────────────────────────────────────────
   v.push_back(R("grid_dx", [](const SimulationConfig& c) { return c.domain.grid_dx; }));
@@ -252,7 +258,8 @@ std::vector<Probe> build_probes() {
   }));
   v.push_back(R("domain_x", [](const SimulationConfig& c) { return c.domain.hi[0]; }));
   v.push_back(R("domain_y", [](const SimulationConfig& c) { return c.domain.hi[1]; }));
-  v.push_back(R("domain_z", [](const SimulationConfig& c) { return c.domain.hi[2]; }));
+  v.push_back(R("domain_z", [](const SimulationConfig& c) { return c.domain.hi[2]; },
+                600e-6));
   v.push_back(R("hash_cell_size", [](const SimulationConfig& c) { return c.domain.hash_cell_size; }));
   v.push_back(R("ghost_width", [](const SimulationConfig& c) { return c.domain.ghost_width; }));
   v.push_back(S("chemistry_decomposition",
