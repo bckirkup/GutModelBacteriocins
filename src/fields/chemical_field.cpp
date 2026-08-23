@@ -1117,6 +1117,7 @@ void ChemicalField::sum_accounting_across_ranks() {
                   MPI_COMM_WORLD);
   };
   reduce(flux_accounting_.boundary_step);
+  reduce(flux_accounting_.gradient_source_step);
   reduce(flux_accounting_.reaction_clip_step);
 #endif
 }
@@ -1126,6 +1127,31 @@ namespace {
 Int slab_storage_index(
     Int local_ix, Int iy, Int iz, Int storage_nx, Int ny) {
   return iz * storage_nx * ny + iy * storage_nx + local_ix;
+}
+
+Real owned_content(const std::vector<Real>& concentration,
+                   const Domain& domain, Real cell_volume) {
+  Real content = 0.0;
+  for (Int cell = 0; cell < domain.ncells(); ++cell) {
+    content += concentration[static_cast<size_t>(cell)] * cell_volume;
+  }
+  return content;
+}
+
+Real owned_content_slab(const std::vector<Real>& concentration,
+                        const Domain& domain, Int storage_nx,
+                        Int halo_width, Real cell_volume) {
+  Real content = 0.0;
+  for (Int iz = 0; iz < domain.nz(); ++iz) {
+    for (Int iy = 0; iy < domain.ny(); ++iy) {
+      for (Int ix = 0; ix < domain.local_grid_nx(); ++ix) {
+        const Int cell = slab_storage_index(
+            halo_width + ix, iy, iz, storage_nx, domain.ny());
+        content += concentration[static_cast<size_t>(cell)] * cell_volume;
+      }
+    }
+  }
+  return content;
 }
 
 struct SlabTransportContext {
@@ -1897,9 +1923,21 @@ void prepare_replicated_diffusion(ReplicatedDiffusionContext& context) {
             context.chemical.boundary_conc, context.cell_volume));
   }
   if (!context.preserve_gradient) return;
+  const Real before_luminal = owned_content(
+      context.concentration, context.domain, context.cell_volume);
   set_luminal_neumann_boundary(context.concentration, context.domain);
+  context.flux.add_gradient_source(
+      context.spec,
+      owned_content(context.concentration, context.domain, context.cell_volume)
+          - before_luminal);
+  const Real before_profile = owned_content(
+      context.concentration, context.domain, context.cell_volume);
   shift_z_gradient(
       context.concentration, context.chemical, context.domain, -1.0);
+  context.flux.add_gradient_source(
+      context.spec,
+      owned_content(context.concentration, context.domain, context.cell_volume)
+          - before_profile);
   context.diffusion_boundary = 0.0;
 }
 
@@ -1971,9 +2009,21 @@ void transport_replicated_diffusion(
 
 void finish_replicated_diffusion(ReplicatedDiffusionContext& context) {
   if (context.preserve_gradient) {
+    const Real before_profile = owned_content(
+        context.concentration, context.domain, context.cell_volume);
     shift_z_gradient(
         context.concentration, context.chemical, context.domain, 1.0);
+    context.flux.add_gradient_source(
+        context.spec,
+        owned_content(context.concentration, context.domain, context.cell_volume)
+            - before_profile);
+    const Real before_luminal = owned_content(
+        context.concentration, context.domain, context.cell_volume);
     set_luminal_neumann_boundary(context.concentration, context.domain);
+    context.flux.add_gradient_source(
+        context.spec,
+        owned_content(context.concentration, context.domain, context.cell_volume)
+            - before_luminal);
   }
   if (context.delivery) {
     clamp_delivery_total(
@@ -2022,12 +2072,28 @@ void prepare_slab_diffusion(SlabDiffusionContext& context) {
             context.cell_volume));
   }
   if (!context.preserve_gradient) return;
+  const Real before_luminal = owned_content_slab(
+      context.concentration, context.domain, context.storage_nx,
+      context.halo_width, context.cell_volume);
   set_luminal_neumann_boundary_slab(
       context.concentration, context.domain, context.storage_nx,
       context.halo_width);
+  context.flux.add_gradient_source(
+      context.spec,
+      owned_content_slab(
+          context.concentration, context.domain, context.storage_nx,
+          context.halo_width, context.cell_volume) - before_luminal);
+  const Real before_profile = owned_content_slab(
+      context.concentration, context.domain, context.storage_nx,
+      context.halo_width, context.cell_volume);
   shift_z_gradient_slab(
       context.concentration, context.chemical, context.domain,
       context.storage_nx, context.halo_width, -1.0);
+  context.flux.add_gradient_source(
+      context.spec,
+      owned_content_slab(
+          context.concentration, context.domain, context.storage_nx,
+          context.halo_width, context.cell_volume) - before_profile);
   context.diffusion_boundary = 0.0;
 }
 
@@ -2099,12 +2165,28 @@ void transport_slab_diffusion(SlabDiffusionContext& context) {
 
 void finish_slab_diffusion(SlabDiffusionContext& context) {
   if (context.preserve_gradient) {
+    const Real before_profile = owned_content_slab(
+        context.concentration, context.domain, context.storage_nx,
+        context.halo_width, context.cell_volume);
     shift_z_gradient_slab(
         context.concentration, context.chemical, context.domain,
         context.storage_nx, context.halo_width, 1.0);
+    context.flux.add_gradient_source(
+        context.spec,
+        owned_content_slab(
+            context.concentration, context.domain, context.storage_nx,
+            context.halo_width, context.cell_volume) - before_profile);
+    const Real before_luminal = owned_content_slab(
+        context.concentration, context.domain, context.storage_nx,
+        context.halo_width, context.cell_volume);
     set_luminal_neumann_boundary_slab(
         context.concentration, context.domain, context.storage_nx,
         context.halo_width);
+    context.flux.add_gradient_source(
+        context.spec,
+        owned_content_slab(
+            context.concentration, context.domain, context.storage_nx,
+            context.halo_width, context.cell_volume) - before_luminal);
   }
   if (context.delivery) {
     clamp_delivery_total_slab(

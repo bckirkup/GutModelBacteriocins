@@ -330,6 +330,10 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   };
   read_flux("boundary_interval", meta.flux_accounting.boundary_interval);
   read_flux("boundary_cumulative", meta.flux_accounting.boundary_cumulative);
+  read_flux("gradient_source_interval",
+            meta.flux_accounting.gradient_source_interval);
+  read_flux("gradient_source_cumulative",
+            meta.flux_accounting.gradient_source_cumulative);
   read_flux("vbf_source_interval", meta.flux_accounting.vbf_source_interval);
   read_flux("vbf_source_cumulative", meta.flux_accounting.vbf_source_cumulative);
   read_flux("vbf_sink_interval", meta.flux_accounting.vbf_sink_interval);

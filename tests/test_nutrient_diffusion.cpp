@@ -1,4 +1,5 @@
 #include "chemical_field.h"
+#include "agent.h"
 #include "domain.h"
 #include "error.h"
 #include "input_parser.h"
@@ -55,6 +56,137 @@ Real inventory(const ChemicalField& chem, const Domain& domain) {
     total += chem.conc(0, cell) * cell_volume;
   }
   return total;
+}
+
+Real total_inventory(const ChemicalField& chem, const Domain& domain,
+                     Int species_index) {
+  Real total = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    if (!chem.owns_global_cell(cell)) continue;
+    total += chem.conc_global(species_index, cell)
+        * domain.cell_volume();
+  }
+  return total;
+}
+
+struct DeliveryClosureResult {
+  Real initial = 0.0;
+  Real final = 0.0;
+  Real boundary = 0.0;
+  Real gradient_source = 0.0;
+  Real agent_uptake = 0.0;
+  Real maintenance = 0.0;
+  Real vbf_sink = 0.0;
+  Real reaction_clip = 0.0;
+  Real residual = 0.0;
+  Real relative_residual = 0.0;
+};
+
+DeliveryClosureResult run_delivery_closure(
+    std::string_view species_name, bool gradient_enabled) {
+  constexpr Real dt = 60.0;
+  constexpr Int steps = 8;
+  Domain domain = make_domain(1, 1, 6);
+  ChemicalSpec spec = diffusing_species(1.0e-20, 1.0e-3, 1.0e-3);
+  spec.name = std::string(species_name);
+  spec.delivery_enabled = true;
+  spec.z_gradient_enabled = gradient_enabled;
+  spec.z_gradient_lambda = 5.0e-6;
+
+  ChemicalField chem;
+  chem.init(domain, {spec});
+  const Int species_index = chem.find(spec.name);
+  const Int agent_cell = domain.cell_index(0, 0, 2);
+  Agent agent = Agent::create_default(
+      1, 1, {2.5e-6, 2.5e-6, 12.5e-6}, 0.0);
+  agent.grid_cell = agent_cell;
+  const Real cell_volume = domain.cell_volume();
+
+  DeliveryClosureResult result;
+  result.initial = total_inventory(chem, domain, species_index);
+  for (Int step = 0; step < steps; ++step) {
+    chem.zero_reactions();
+    const Real concentration = chem.conc_global(species_index, agent.grid_cell);
+    const Real demand = 0.25 * concentration * cell_volume;
+    const Real sink_rate = demand / (concentration * cell_volume * dt);
+    chem.flux_accounting().add_uptake_demand(species_index, demand);
+    chem.add_sink_rate_global(species_index, agent.grid_cell, sink_rate);
+
+    chem.apply_diffusion(domain, dt);
+    Real realized = 0.0;
+    for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+      if (chem.owns_global_cell(cell)) {
+        realized += chem.sink_realized_global(species_index, cell);
+      }
+    }
+    chem.flux_accounting().add_agent_uptake(species_index, realized);
+    chem.flux_accounting().add_uptake_shortfall(
+        species_index, std::max(demand - realized, 0.0));
+    if (realized + 1.0e-30 < demand) {
+      chem.flux_accounting().add_uptake_limited(species_index, 1.0);
+    }
+    chem.flux_accounting().commit_agent_uptake_step();
+    chem.flux_accounting().commit_boundary_and_reaction_step();
+    chem.flux_accounting().close_interval();
+  }
+
+  result.final = total_inventory(chem, domain, species_index);
+  const auto& flux = chem.flux_accounting();
+  result.boundary = flux.boundary_cumulative[
+      static_cast<size_t>(species_index)];
+  result.gradient_source = flux.gradient_source_cumulative[
+      static_cast<size_t>(species_index)];
+  result.agent_uptake = flux.agent_uptake_cumulative[
+      static_cast<size_t>(species_index)];
+  result.maintenance = flux.maintenance_cumulative[
+      static_cast<size_t>(species_index)];
+  result.vbf_sink = flux.vbf_sink_cumulative[
+      static_cast<size_t>(species_index)];
+  result.reaction_clip = flux.reaction_clip_cumulative[
+      static_cast<size_t>(species_index)];
+  const Real lhs = result.initial + result.boundary + result.gradient_source
+      - result.agent_uptake
+      - result.maintenance - result.vbf_sink + result.reaction_clip;
+  result.residual = lhs - result.final;
+  const Real scale = std::max(
+      {std::abs(lhs), std::abs(result.final), 1.0e-300});
+  result.relative_residual = std::abs(result.residual) / scale;
+  return result;
+}
+
+void test_delivery_mass_closure_gradient_parameterization() {
+  const DeliveryClosureResult no_gradient =
+      run_delivery_closure(species::CARBON, false);
+  const DeliveryClosureResult carbon_gradient =
+      run_delivery_closure(species::CARBON, true);
+  const DeliveryClosureResult oxygen_no_gradient =
+      run_delivery_closure(species::OXYGEN, false);
+  const DeliveryClosureResult oxygen_gradient =
+      run_delivery_closure(species::OXYGEN, true);
+
+  const auto report = [](std::string_view label,
+                         const DeliveryClosureResult& result) {
+    std::cout << "  " << label << " initial=" << result.initial
+              << " final=" << result.final
+              << " boundary=" << result.boundary
+              << " gradient_source=" << result.gradient_source
+              << " agent_uptake=" << result.agent_uptake
+              << " maintenance=" << result.maintenance
+              << " vbf_sink=" << result.vbf_sink
+              << " reaction_clip=" << result.reaction_clip
+              << " residual=" << result.residual
+              << " relative_residual=" << result.relative_residual << "\n";
+  };
+  report("carbon_gradient_off", no_gradient);
+  report("carbon_gradient_on", carbon_gradient);
+  report("oxygen_gradient_off", oxygen_no_gradient);
+  report("oxygen_gradient_on", oxygen_gradient);
+
+  constexpr Real tolerance = 1.0e-6;
+  assert(no_gradient.relative_residual <= tolerance);
+  assert(carbon_gradient.relative_residual <= tolerance);
+  assert(oxygen_no_gradient.relative_residual <= tolerance);
+  assert(oxygen_gradient.relative_residual <= tolerance);
 }
 
 void test_anisotropic_diffusion_invariants() {
@@ -653,6 +785,7 @@ int main() {
   test_delivery_boundary_slab_matches_replicated();
   test_dirichlet_default_is_unchanged();
   test_delivery_boundary_rejects_gradient();
+  test_delivery_mass_closure_gradient_parameterization();
   test_default_species_configuration();
   std::cout << "All nutrient diffusion tests passed.\n";
   return 0;

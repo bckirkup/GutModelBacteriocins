@@ -161,6 +161,7 @@ int main() {
   assert(dataset_exists(file, flux_prefix + "species_names"));
   assert(dataset_exists(file, flux_prefix + "boundary_area_flux_interval"));
   assert(dataset_exists(file, flux_prefix + "maintenance_shortfall_interval"));
+  assert(dataset_exists(file, flux_prefix + "gradient_source_interval"));
   assert(dataset_exists(
       file, flux_prefix + "maintenance_limited_agents_interval"));
   const std::vector<double> boundary =

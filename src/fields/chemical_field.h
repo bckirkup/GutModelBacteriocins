@@ -20,6 +20,9 @@ struct NutrientFluxAccounting {
   std::vector<Real> boundary_interval;
   std::vector<Real> boundary_step;
   std::vector<Real> boundary_cumulative;
+  std::vector<Real> gradient_source_interval;
+  std::vector<Real> gradient_source_step;
+  std::vector<Real> gradient_source_cumulative;
   std::vector<Real> vbf_source_interval;
   std::vector<Real> vbf_source_cumulative;
   std::vector<Real> vbf_sink_interval;
@@ -62,6 +65,9 @@ struct NutrientFluxAccounting {
     boundary_interval.assign(species_count, 0.0);
     boundary_step.assign(species_count, 0.0);
     boundary_cumulative.assign(species_count, 0.0);
+    gradient_source_interval.assign(species_count, 0.0);
+    gradient_source_step.assign(species_count, 0.0);
+    gradient_source_cumulative.assign(species_count, 0.0);
     vbf_source_interval.assign(species_count, 0.0);
     vbf_source_cumulative.assign(species_count, 0.0);
     vbf_sink_interval.assign(species_count, 0.0);
@@ -109,6 +115,13 @@ struct NutrientFluxAccounting {
 
   void add_boundary(Int species, Real amount) {
     boundary_step[static_cast<size_t>(species)] += amount;
+  }
+
+  void add_gradient_source(Int species, Real amount) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    gradient_source_step[static_cast<size_t>(species)] += amount;
   }
 
   void add_agent_uptake(Int species, Real amount) {
@@ -220,8 +233,10 @@ struct NutrientFluxAccounting {
     for (size_t i = 0; i < boundary_step.size(); ++i) {
       reaction_clip_last_step[i] = reaction_clip_step[i];
       boundary_interval[i] += boundary_step[i];
+      gradient_source_interval[i] += gradient_source_step[i];
       reaction_clip_interval[i] += reaction_clip_step[i];
       boundary_step[i] = 0.0;
+      gradient_source_step[i] = 0.0;
       reaction_clip_step[i] = 0.0;
     }
   }
@@ -229,6 +244,7 @@ struct NutrientFluxAccounting {
   void close_interval() {
     for (size_t i = 0; i < boundary_interval.size(); ++i) {
       boundary_cumulative[i] += boundary_interval[i];
+      gradient_source_cumulative[i] += gradient_source_interval[i];
       vbf_source_cumulative[i] += vbf_source_interval[i];
       vbf_sink_cumulative[i] += vbf_sink_interval[i];
       agent_uptake_cumulative[i] += agent_uptake_interval[i];
@@ -241,6 +257,7 @@ struct NutrientFluxAccounting {
       uptake_limited_cumulative[i] += uptake_limited_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
       boundary_interval[i] = 0.0;
+      gradient_source_interval[i] = 0.0;
       vbf_source_interval[i] = 0.0;
       vbf_sink_interval[i] = 0.0;
       agent_uptake_interval[i] = 0.0;

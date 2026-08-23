@@ -552,6 +552,10 @@ void assert_equal_ledgers(const Simulation& slab,
           replicated_flux.boundary_interval);
   compare("boundary_cumulative", slab_flux.boundary_cumulative,
           replicated_flux.boundary_cumulative);
+  compare("gradient_source_interval", slab_flux.gradient_source_interval,
+          replicated_flux.gradient_source_interval);
+  compare("gradient_source_cumulative", slab_flux.gradient_source_cumulative,
+          replicated_flux.gradient_source_cumulative);
   compare("vbf_source_interval", slab_flux.vbf_source_interval,
           replicated_flux.vbf_source_interval);
   compare("vbf_source_cumulative", slab_flux.vbf_source_cumulative,
@@ -672,6 +676,18 @@ void test_delivery_sink_slab_matches_replicated() {
   Real global_gradient_slab_removed = 0.0;
   MPI_Allreduce(&gradient_slab_removed, &global_gradient_slab_removed, 1,
                 MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  const Real local_gradient_source =
+      gradient_slab.flux_accounting().gradient_source_step.front();
+  Real global_gradient_source = 0.0;
+  MPI_Allreduce(&local_gradient_source, &global_gradient_source, 1,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  assert(std::abs(global_gradient_source
+                  - gradient_replicated.flux_accounting()
+                      .gradient_source_step.front())
+         <= 1.0e-12 * std::max(
+             1.0, std::abs(
+                 gradient_replicated.flux_accounting()
+                     .gradient_source_step.front())));
   assert(global_gradient_slab_removed > 0.0);
   assert(std::abs(global_gradient_slab_removed
                   - gradient_replicated.sink_realized_global(target))
