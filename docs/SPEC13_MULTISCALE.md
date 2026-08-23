@@ -7,6 +7,27 @@ intention and vision, not a detailed instruction**: the numbers in the body are
 starting points, and where the repository's own units contradict them the
 annotation says so rather than the code silently following.
 
+## Revision
+
+The body below is the **revised** Spec 13 (2026-08-23), which replaces the
+original Layer 3 wholesale. What changed:
+
+- Layer 3 is **three evidence-classed colonic regions**, not a chain of 5–10
+  interchangeable segments — the justification being that the human data only
+  distinguish three (Ahmed et al. 2007).
+- Each region gains a **luminal growth compartment**: detached cells replicate
+  anaerobically in transit. This is a new population, not a transport pool.
+- Mucosal-to-luminal transfer is split into three named mechanisms (mucus
+  turnover, contraction-driven detachment, growth-edge shedding) and stool
+  CFU/g becomes an emergent output of a stated wall-to-stool equation.
+- The regional table is sourced per row, and explicitly records that the
+  Enterobacteriaceae fraction shows **no significant proximal–distal gradient**
+  (P=0.09).
+
+Unchanged from the previous revision: Layers 1 and 2, the patch types, the
+disruption model, and every prediction. The Ahmed et al. 2007 reference appears
+twice in the body's reference list; reproduced as received.
+
 ## Status
 
 **Nothing in this spec is implemented.** Layer 1 is the existing single-patch
@@ -23,6 +44,7 @@ stable referent.
 | Crypt refuge patch type | Partly exists, but as an **agent flag**, not a patch: `advection.crypts_enabled`, `crypt_depth`, `crypt_entry_rate`, `crypt_exit_rate`, `crypt_carrying_capacity`, and per-agent `flags.in_crypt` (persisted across MPI transfer and checkpoints). Spec 13 instead wants a crypt to be a whole patch with its own boundary conditions. Resolved in the review (S2/S6): patch type is a *host location* property carrying boundary conditions and disruption probability, the agent flag stays as within-patch structure, and no disruption event may be discounted twice. |
 | Contraction-driven loss | **Absent, and distinct from washout.** The default `emergent` washout has exactly one departure event — an agent advected to `z >= z_max` is deleted and booked as `outflow_boundary` — which is single-cell detachment with reattachment hard-coded to zero. Spec 13's contraction is matrix failure: a gel fragment leaves with its clonal cluster intact and a much higher establishment probability. The two coexist with different reseeding kernels; see S1 in the review. |
 | Agent transfer between patches | Reusable — `agent_transfer.cpp` already serializes an agent with crypt state, affinities, immunity escape and genome for MPI migration. The luminal pool needs exactly this serialization, not a new one. |
+| Luminal growth compartment (Layer 3) | **Absent, and it is not the luminal pool of S1.** The pool S1 asks for is a transport buffer; this is a replicating population with its own carbon, acetate and anaerobic yield. At `1e8` CFU/g over ~100 g of content it cannot be agents, so it has to be per-lineage counts with a growth term — which means the `agent_transfer.cpp` serialization reuse noted above covers reattachment only, not residence. See S8 in the review. |
 | Regional gradients (Layer 3) | Configurable per run today (O₂ flux, mucus geometry, pH, VBF vmax are all config keys), but there is no mechanism for *several* parameter sets to coexist in one simulation — and per S7 what is needed is not several independent sets but an **axial profile** with sourced endpoints and a stated interpolation, since per-segment free values would make every segment a fitted parameter. |
 | Multi-level dysbiosis guard | Not implemented. The current guard is a single global density threshold with a 7-sample / 300 s trajectory window (`dysbiosis_threshold`, `dysbiosis_sampling_interval`, `dysbiosis_sample_count`). |
 | Antibiotic module | Not implemented. Mortality accounting exists and is closure-checked (`mortality_lysis` and the population ledger), so a new kill pathway has a correct place to book deaths. |
@@ -49,6 +71,44 @@ occupied fraction × patch density — the same number requires ~0.1–1% patch
 occupancy to reproduce `1e4`–`1e5` CFU/mL at segment scale, which is the
 transient-clonal-cluster picture the spec is built on. The ladder is therefore
 an input to Layer 2, not a failed validation.
+
+**The revision's two mucosal numbers differ by 100–1000x, and the project lead
+has adjudicated which one the model is held to.** The revised regional table
+gives mucosal bacteria as `10^7.4` 16S copies/mg with an Enterobacteriaceae
+fraction of ~1.3%, i.e. `10^5.5` copies/mg; at ~7 rRNA operons per
+Enterobacteriaceae genome and 1 mg of biopsy ≈ 1 µL that is ~`4.5e4` cells/mg,
+i.e. ~`4.5e7` cells/mL of *biopsy tissue*. The culture figure from the same
+anatomical site (Elliott et al. 2013, 230 CFU per 20 mg biopsy, assigned to a
+100–500 µm mucus layer over a 0.1 cm² footprint) is `4.6e4`–`2.3e5` CFU/mL of
+mucus.
+
+**The gap is real and is not an error in either assay — they measure different
+quantities.** The qPCR is family-level (Klebsiella, Enterobacter, Citrobacter,
+Proteus and unculturable lineages included), counts dead cells, VBNC cells and
+extracellular DNA, and is normalised per mg of *tissue* (epithelium and lamina
+propria included). The culture count is viable, colony-forming, mucosa-associated
+E. coli.
+
+**Decision of record (lead, 2026-08-23): the model represents viable,
+metabolically active E. coli in outer mucus, so it is parameterised and
+validated against culture counts.**
+
+| Quantity | Value | Role in the model |
+|---|---|---|
+| Healthy viable E. coli in mucus | `1e4`–`1e5` CFU/mL (Elliott) | the operating range |
+| Dysbiosis guard | `1e6` CFU/mL viable (Elliott inflamed CD ≈ `5e5`–`3e6`) | engineering bound, not a phase transition |
+| Stool | `1e6`–`1e8` CFU/g viable, by selective plating | Layer 3 validation target |
+| Total Enterobacteriaceae 16S signal | ~`1e7`/mL (Ahmed) | **a different quantity; not represented** |
+| Enterobacteriaceae fraction ~1–2%, axially flat (Ahmed) | relative, family level | constrains S10 flatness only |
+
+Two consequences follow for the existing results. First, the measured
+carbon-limited patch capacity of ~`1e7` cells/mL (PR #314) is ~100x above the
+healthy operating range, so the loss-set hypothesis stands: something other than
+carbon supply holds mucosal E. coli two orders below its carbon capacity, and
+Layer 2 occupancy is the candidate. Second, the Ahmed ~1–2% figure is a *family*
+fraction of a *molecular* community and therefore cannot be used to size the
+agent population or to set an initial N; it may only be used as an axial-shape
+constraint.
 
 **Agreements worth recording**, so they are not re-litigated: the spec's
 anaerobic µ ratio (0.55x aerobic, Varma & Palsson) is already the repository
@@ -144,32 +204,95 @@ Layer 2 manages:
 | Luminal transit (washout) half-life | 2–8 hours | Colonic transit time |
 | Reattachment probability per transit | 0.01–0.10 | Mucus adhesion; sweep |
 
-### Layer 3: Colonic Section (~cm, a chain of segments)
+### Layer 3: Colonic Section (~cm to whole colon)
 
-A **linear chain of M segments** (default M = 5–10) representing the
-proximal-to-distal colonic axis. Each segment is one Layer 2 mucus-segment
-simulation.
+Three **colonic regions** (not six segments — the data only distinguish three
+evidence classes; Ahmed et al. 2007, doi:10.1128/aem.01143-07), each
+containing one Layer 2 mucus-segment simulation plus a **luminal growth
+compartment**.
 
-Layer 3 manages:
-- **Regional gradients**: Each segment has position-dependent parameters:
+The luminal compartment is essential: mucosal detachment alone produces only
+~10⁷ CFU/g stool, but observed stool E. coli is ~10⁸ CFU/g. Luminal
+replication during transit accounts for the ~10× amplification.
 
-| Parameter | Proximal | Mid | Distal |
-|---|---|---|---|
-| Epithelial O₂ flux | Higher (~5 µM) | Moderate (~3 µM) | Lower (~1 µM) |
-| Mucus thickness | 50–100 µm | 100–200 µm | 150–400 µm |
-| Crypt density | Higher | Moderate | Lower |
-| Crypt occupancy by E. coli | ~10–16% | ~5% | <1% |
-| VBF density | Moderate | High | Highest |
-| pH | ~6.5 | ~6.8 | ~7.0 |
-| Contraction frequency | Higher | Moderate | Lower |
+#### Regional parameterization
 
-- **Luminal flow**: Unidirectional, proximal → distal. Agents lost from one
-  segment's luminal pool can seed the next segment downstream. Transit time
-  between segments: 1–4 hours (total colonic transit 12–36 h).
-- **Stool output**: Agents exiting the most distal segment are "shed in stool."
-  The shedding rate is an emergent model output, not an input.
+All values from direct human measurements except where noted.
 
----
+| Parameter | Region 1: Cecum/Ascending | Region 2: Transverse | Region 3: Desc/Sigmoid/Rectum | Source |
+|---|---|---|---|---|
+| Content state | Liquid/slurry | Semisolid | Formed | Anatomy |
+| Water content | ~90–95% | ~85–92% | ~70–80% | Constrained by stool 74.6% |
+| pH | 6.0–6.5 | 6.4–6.8 | 6.6–7.0 | Diet-dependent; ±0.3–0.5 |
+| Mucosal bacteria (log₁₀ 16S/mg) | 7.4 (6.8–7.9) | 7.3 (6.9–8.0) | 7.5 (6.9–8.1) | Ahmed et al. 2007 |
+| Enterobacteria fraction | ~1.3% | ~2.5% | ~0.8% | Ahmed et al. 2007 (P=0.09, NS) |
+| Crypt occupancy by E. coli | ~10–16% | ~5% | <1% | Swidsinski 2005 (mouse) |
+| Epithelial O₂ (tissue side) | 30 mmHg serosal | Not measured | 39 mmHg (sigmoid) | Electrode |
+| Epithelial O₂ (apical surface) | Broad prior: 2–10 mmHg | 2–10 mmHg | 2–10 mmHg | No segment data |
+| Luminal O₂ | 1–10 mmHg | ~1 mmHg | ~1 mmHg | EPR oximetry |
+| Inner mucus (bacteria-free) | 40–100 µm | 40–100 µm | 40–100 µm | Swidsinski 2007 |
+| Outer mucus (colonized) | 0–200 µm, patchy | 0–200 µm | 0–200 µm | Heterogeneous |
+| Dominant motility | Mixing + retrograde | Bidirectional | Rhythmic 2–6/min + storage | Manometry |
+| Segment transit time | ~8–15 h | ~5–10 h | ~5–15 h | Total 25–40 h |
+
+HAPCs: ~6/day total, 95% antegrade, 80% daytime, 120 mmHg, propagate >30 cm.
+Cyclic motor patterns: 2–6/min, local mixing over 3–5 cm haustral segments.
+Retrograde patterns: ~6→35 per 2h postprandially.
+
+Note: Enterobacteria fraction does NOT show a significant proximal-distal
+gradient (P=0.09). Initialize E. coli at ~1–2% of mucosal community
+uniformly, with wide individual-level uncertainty (0.1–5%).
+
+#### Luminal growth compartment
+
+Each region contains a luminal compartment representing bacteria detached
+from mucus and growing in transit:
+
+- **Growth rate**: µ_anaerobic × Monod(carbon_lumen) × (1 - acid_inhibition).
+  Luminal E. coli grows anaerobically (no O₂ in lumen) at the lower yield.
+  Growth in liquid proximal content is faster than in formed distal content.
+- **Inflow**: mucosal detachment + upstream region outflow.
+- **Outflow**: downstream region inflow (or stool for Region 3).
+- **Mixing**: well-mixed within each region (haustral churning at 2–6/min).
+
+#### Mucosal-to-luminal transfer
+
+Three mechanisms deliver mucosal bacteria to the lumen:
+
+1. **Mucus turnover**: Outer mucus residence ~1–3 h. First-order:
+   k_mucus = 0.3–1.0 /h.
+
+2. **Contraction-driven detachment**: Superimposed on mucus turnover.
+   k_contract = k₀ + α_HAPC × I_HAPC(t), where I_HAPC is stochastic ~6/day.
+
+3. **Growth-edge shedding**: Daughter cells at colony-lumen interface displaced
+   into flow. J_growth = f_edge × µ × N_mucosal. f_edge uncertain (0–1).
+
+#### Wall-to-stool equation
+
+Stool CFU/g is an emergent prediction:
+
+```
+C_stool = N_lumen_region3(t_defecation) / M_stool
+
+N_lumen,i+1 = (N_lumen,i × survival + k_detach,i+1 × N_mucosal,i+1 × A_i+1)
+              × exp(r_luminal,i+1 × T_transit,i+1)
+```
+
+Stool output constraints (validation targets, NOT inputs):
+- Wet stool: 100–200 g/day (median 128 g/day)
+- Water content: ~75%
+- Defecation frequency: ~1.2/day
+- Total fecal bacteria: ~0.35–3.2×10¹¹ cells/g
+- E. coli: ~10⁶–10⁸ CFU/g (healthy human range)
+
+#### Inter-region coupling
+
+- **Continuous drift**: Luminal content moves distally at ~cm/h.
+- **HAPCs** (~6/day): Mass antegrade transfer >30 cm per event.
+- **Retrograde patterns**: Proximal retention, increase postprandially.
+- **Luminal reattachment**: Bacteria can reattach to mucus downstream.
+  p_attach = p₀ × (1 - occupancy_fraction).
 
 ## Biophysical Parameterization (Inputs)
 
@@ -420,3 +543,15 @@ competition. Nature Microbiology. doi:10.1038/s41564-025-02162-w
 Baertschi, Jordi, Yilmaz et al. 2026. Strain-level ecological filtering governs
 microbial colonization of the human gut. Cell Reports.
 doi:10.1016/j.celrep.2026.115629
+
+Ahmed et al. 2007. Mucosa-associated bacterial diversity in relation to human
+terminal ileum and colonic biopsy samples. Appl Environ Microbiol.
+doi:10.1128/aem.01143-07
+
+Ahmed et al. 2007. Mucosa-associated bacterial diversity in relation to human
+terminal ileum and colonic biopsy samples. Appl Environ Microbiol.
+doi:10.1128/aem.01143-07
+
+Greter et al. 2026. Emergent spatial structure in the gut microbiota is driven
+by bacterial growth and gut contractions. PLOS Biology.
+doi:10.1371/journal.pbio.3003772
