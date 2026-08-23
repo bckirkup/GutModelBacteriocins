@@ -46,8 +46,40 @@ Each arm holds ~2.7 GB RSS; run them strictly one at a time.
 """
 
 import argparse
+import importlib.util
 import json
+import os
 import pathlib
+import sys
+import types
+
+_REPO_PYTHON = pathlib.Path(__file__).resolve().parents[3] / "python"
+sys.path.insert(0, str(_REPO_PYTHON))
+
+try:
+    from gut_ibm_tools.path_utils import (
+        validate_input_path,
+        validate_output_path,
+        write_json_file,
+    )
+except ModuleNotFoundError as error:
+    if error.name != "h5py":
+        raise
+    package = types.ModuleType("gut_ibm_tools")
+    package.__path__ = [str(_REPO_PYTHON / "gut_ibm_tools")]
+    sys.modules["gut_ibm_tools"] = package
+    module_path = _REPO_PYTHON / "gut_ibm_tools" / "path_utils.py"
+    spec = importlib.util.spec_from_file_location(
+        "gut_ibm_tools.path_utils", module_path
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {module_path}") from error
+    path_utils = importlib.util.module_from_spec(spec)
+    sys.modules["gut_ibm_tools.path_utils"] = path_utils
+    spec.loader.exec_module(path_utils)
+    validate_input_path = path_utils.validate_input_path
+    validate_output_path = path_utils.validate_output_path
+    write_json_file = path_utils.write_json_file
 
 SEED = 1001
 HORIZON_S = 86400  # 24 h; capacity needs a plateau, not a transient
@@ -64,48 +96,53 @@ def arm_tag(supply: float, flora: float) -> str:
 
 
 def main(base_config: pathlib.Path, out_root: pathlib.Path) -> None:
-    base = json.loads(base_config.read_text())
-    out_root.mkdir(parents=True, exist_ok=True)
+    base = json.loads(validate_input_path(base_config).read_text())
+    out_root = out_root.expanduser().resolve()
+    out_root = validate_output_path(out_root / "input.json").parent
+    previous_cwd = pathlib.Path.cwd()
+    os.chdir(out_root)
 
-    for supply in SUPPLY:
-        for flora in FLORA:
-            cfg = dict(base)
-            cfg["total_time"] = HORIZON_S
-            cfg["seed"] = SEED
-            cfg["gpu_enabled"] = False
-            cfg["uptake_limit"] = "delivery"
-            cfg["carbon_z_gradient"] = False
-            cfg["carbon.epithelial_flux"] = J_DIR * supply
-            cfg["vbf_carbon_sink_vmax"] = VBF_VMAX * flora
-            cfg["dysbiosis_threshold"] = GUARD_CELLS_PER_ML
-            cfg["hdf5_file"] = "output.h5"
-            cfg["_comment"] = [
-                "Carbon supply x flora-competition ladder, delivery mode.",
-                "Measurement run: nothing here is fitted or calibrated.",
-                (f"supply = {supply:g}x J_dir "
-                 f"(carbon.epithelial_flux = {J_DIR * supply:.4e}); "
-                 "1.00x is the literature directly-measured flux, higher "
-                 "multipliers are supra-physiological probes of the capacity "
-                 "curve, not claims about the colon."),
-                (f"flora = {flora:g}x vbf_carbon_sink_vmax "
-                 f"({VBF_VMAX * flora:.3e}); at 1.00x the flora takes ~98.6% "
-                 "of realized carbon removal, so this axis raises the agents' "
-                 "share without inventing host flux. 0.0 bounds capacity."),
-                (f"dysbiosis_threshold raised to {GUARD_CELLS_PER_ML:.0e} "
-                 "cells/mL so a high arm plateaus instead of halting on the "
-                 "guard; any plateau above 1e8 cells/mL is guard-exceeding "
-                 "and is not a physiological population."),
-                ("Read per arm: N_plateau over the final quarter and its "
-                 "slope, nutrient blocking fraction, funded fraction, "
-                 "maintenance shortfall, reaction clip, and "
-                 "/run_provenance termination cause."),
-            ]
+    try:
+        for supply in SUPPLY:
+            for flora in FLORA:
+                cfg = dict(base)
+                cfg["total_time"] = HORIZON_S
+                cfg["seed"] = SEED
+                cfg["gpu_enabled"] = False
+                cfg["uptake_limit"] = "delivery"
+                cfg["carbon_z_gradient"] = False
+                cfg["carbon.epithelial_flux"] = J_DIR * supply
+                cfg["vbf_carbon_sink_vmax"] = VBF_VMAX * flora
+                cfg["dysbiosis_threshold"] = GUARD_CELLS_PER_ML
+                cfg["hdf5_file"] = "output.h5"
+                cfg["_comment"] = [
+                    "Carbon supply x flora-competition ladder, delivery mode.",
+                    "Measurement run: nothing here is fitted or calibrated.",
+                    (f"supply = {supply:g}x J_dir "
+                     f"(carbon.epithelial_flux = {J_DIR * supply:.4e}); "
+                     "1.00x is the literature directly-measured flux, higher "
+                     "multipliers are supra-physiological probes of the capacity "
+                     "curve, not claims about the colon."),
+                    (f"flora = {flora:g}x vbf_carbon_sink_vmax "
+                     f"({VBF_VMAX * flora:.3e}); at 1.00x the flora takes ~98.6% "
+                     "of realized carbon removal, so this axis raises the agents' "
+                     "share without inventing host flux. 0.0 bounds capacity."),
+                    (f"dysbiosis_threshold raised to {GUARD_CELLS_PER_ML:.0e} "
+                     "cells/mL so a high arm plateaus instead of halting on the "
+                     "guard; any plateau above 1e8 cells/mL is guard-exceeding "
+                     "and is not a physiological population."),
+                    ("Read per arm: N_plateau over the final quarter and its "
+                     "slope, nutrient blocking fraction, funded fraction, "
+                     "maintenance shortfall, reaction clip, and "
+                     "/run_provenance termination cause."),
+                ]
 
-            arm_dir = out_root / arm_tag(supply, flora)
-            arm_dir.mkdir(parents=True, exist_ok=True)
-            (arm_dir / "input.json").write_text(json.dumps(cfg, indent=1) + "\n")
-            print(f"{arm_tag(supply, flora)}: supply={supply:g}x "
-                  f"flora={flora:g}x -> {arm_dir / 'input.json'}")
+                output_path = pathlib.Path(arm_tag(supply, flora)) / "input.json"
+                write_json_file(output_path, cfg, indent=1)
+                print(f"{arm_tag(supply, flora)}: supply={supply:g}x "
+                      f"flora={flora:g}x -> {out_root / output_path}")
+    finally:
+        os.chdir(previous_cwd)
 
 
 if __name__ == "__main__":
