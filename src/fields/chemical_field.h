@@ -19,13 +19,17 @@ class Domain;
 struct NutrientFluxAccounting {
   std::vector<Real> boundary_interval;
   std::vector<Real> boundary_step;
+  std::vector<Real> boundary_last_step;
   std::vector<Real> boundary_cumulative;
   std::vector<Real> gradient_source_interval;
   std::vector<Real> gradient_source_step;
+  std::vector<Real> gradient_source_last_step;
   std::vector<Real> gradient_source_cumulative;
   std::vector<Real> vbf_source_interval;
   std::vector<Real> vbf_source_cumulative;
   std::vector<Real> vbf_sink_interval;
+  std::vector<Real> vbf_sink_step;
+  std::vector<Real> vbf_sink_last_step;
   std::vector<Real> vbf_sink_cumulative;
   std::vector<Real> agent_uptake_interval;
   std::vector<Real> agent_uptake_step;
@@ -45,8 +49,8 @@ struct NutrientFluxAccounting {
   std::vector<Real> maintenance_limited_agents_cumulative;
   std::vector<Real> reaction_clip_interval;
   std::vector<Real> reaction_clip_step;
-  std::vector<Real> reaction_clip_cumulative;
   std::vector<Real> reaction_clip_last_step;
+  std::vector<Real> reaction_clip_cumulative;
   // Uptake demanded by growth before the uptake-limitation cap is applied;
   // agent_uptake_* holds the realized removal after the cap.
   std::vector<Real> uptake_demand_interval;
@@ -64,13 +68,17 @@ struct NutrientFluxAccounting {
   void init(size_t species_count) {
     boundary_interval.assign(species_count, 0.0);
     boundary_step.assign(species_count, 0.0);
+    boundary_last_step.assign(species_count, 0.0);
     boundary_cumulative.assign(species_count, 0.0);
     gradient_source_interval.assign(species_count, 0.0);
     gradient_source_step.assign(species_count, 0.0);
+    gradient_source_last_step.assign(species_count, 0.0);
     gradient_source_cumulative.assign(species_count, 0.0);
     vbf_source_interval.assign(species_count, 0.0);
     vbf_source_cumulative.assign(species_count, 0.0);
     vbf_sink_interval.assign(species_count, 0.0);
+    vbf_sink_step.assign(species_count, 0.0);
+    vbf_sink_last_step.assign(species_count, 0.0);
     vbf_sink_cumulative.assign(species_count, 0.0);
     agent_uptake_interval.assign(species_count, 0.0);
     agent_uptake_step.assign(species_count, 0.0);
@@ -90,8 +98,8 @@ struct NutrientFluxAccounting {
     maintenance_limited_agents_cumulative.assign(species_count, 0.0);
     reaction_clip_interval.assign(species_count, 0.0);
     reaction_clip_step.assign(species_count, 0.0);
-    reaction_clip_cumulative.assign(species_count, 0.0);
     reaction_clip_last_step.assign(species_count, 0.0);
+    reaction_clip_cumulative.assign(species_count, 0.0);
     uptake_demand_interval.assign(species_count, 0.0);
     uptake_demand_step.assign(species_count, 0.0);
     uptake_demand_cumulative.assign(species_count, 0.0);
@@ -110,6 +118,7 @@ struct NutrientFluxAccounting {
     boundary_interval[index] += boundary;
     vbf_source_interval[index] += source;
     vbf_sink_interval[index] += sink;
+    vbf_sink_step[index] += sink;
     agent_uptake_interval[index] += uptake;
   }
 
@@ -231,12 +240,16 @@ struct NutrientFluxAccounting {
 
   void commit_boundary_and_reaction_step() {
     for (size_t i = 0; i < boundary_step.size(); ++i) {
+      boundary_last_step[i] = boundary_step[i];
+      gradient_source_last_step[i] = gradient_source_step[i];
+      vbf_sink_last_step[i] = vbf_sink_step[i];
       reaction_clip_last_step[i] = reaction_clip_step[i];
       boundary_interval[i] += boundary_step[i];
       gradient_source_interval[i] += gradient_source_step[i];
       reaction_clip_interval[i] += reaction_clip_step[i];
       boundary_step[i] = 0.0;
       gradient_source_step[i] = 0.0;
+      vbf_sink_step[i] = 0.0;
       reaction_clip_step[i] = 0.0;
     }
   }
@@ -402,6 +415,10 @@ class ChemicalField {
   // Apply boundary conditions
   void apply_boundaries(const Domain& domain);
 
+  // Optional per-step diagnostics, enabled only by
+  // GUTIBM_DEBUG_NUTRIENT_LEDGER.
+  void debug_report_step(const Domain& domain) const;
+
   // Sum rank-local agent reaction fields before spatial diffusion.
   void sum_reactions_across_ranks();
   void sum_agent_uptake_across_ranks();
@@ -443,6 +460,7 @@ class ChemicalField {
   std::vector<std::vector<Real>> sink_rate_;      // [species][ncells], 1/s
   std::vector<std::vector<Real>> sink_realized_;  // [species][ncells], mol this step
   NutrientFluxAccounting flux_accounting_;
+  std::vector<Real> debug_initial_content_;
 
   void apply_diffusion_slab(const Domain& domain, Real dt);
   void apply_diffusion_species(const Domain& domain, Real dt, Int spec);

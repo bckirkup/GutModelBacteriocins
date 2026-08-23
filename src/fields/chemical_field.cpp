@@ -9,7 +9,11 @@
 #include "tridiagonal_factorization.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <iomanip>
+#include <iostream>
 #include <numeric>
+#include <string>
 #include <vector>
 
 #ifdef GUTIBM_MPI
@@ -23,6 +27,30 @@ namespace {
 Real z_gradient_reference(const ChemicalSpec& spec,
                           const Domain& domain,
                           Int iz);
+Real owned_content(const std::vector<Real>& concentration,
+                   const Domain& domain, Real cell_volume);
+Real owned_content_slab(const std::vector<Real>& concentration,
+                        const Domain& domain, Int storage_nx,
+                        Int halo_width, Real cell_volume);
+
+bool nutrient_debug_enabled() {
+  static const bool enabled = [] {
+    const char* value = std::getenv("GUTIBM_DEBUG_NUTRIENT_LEDGER");
+    return value != nullptr && value[0] != '\0' && value[0] != '0';
+  }();
+  return enabled;
+}
+
+Int nutrient_debug_transport_step() {
+  static const Int step = [] {
+    const char* value =
+        std::getenv("GUTIBM_DEBUG_NUTRIENT_TRANSPORT_STEP");
+    return value != nullptr && value[0] != '\0' ? std::atoi(value) : 1;
+  }();
+  return step;
+}
+
+Int nutrient_debug_step = 0;
 
 void solve_tridiagonal_with_diagonal(
     std::vector<Real>& values, const std::vector<Real>& diagonal,
@@ -398,8 +426,34 @@ struct ReplicatedDeliveryLineContext {
   const DeliverySinkParameters& sink;
 };
 
+Real delivery_face_exchange(
+    Real alpha, const DeliveryBoundaryParameters& params,
+    const std::vector<Real>& line) {
+  if (params.mode == EpithelialBoundaryMode::Robin) {
+    return params.beta * (params.boundary_conc - line.front())
+        * params.cell_volume;
+  }
+  if (params.mode == EpithelialBoundaryMode::Flux) {
+    return params.flux_source * params.cell_volume;
+  }
+  return alpha * (params.boundary_conc - line.front())
+      * params.cell_volume;
+}
+
+Real delivery_boundary_source(
+    Real alpha, const DeliveryBoundaryParameters& params) {
+  if (params.mode == EpithelialBoundaryMode::Robin) {
+    return params.beta * params.boundary_conc;
+  }
+  if (params.mode == EpithelialBoundaryMode::Flux) {
+    return params.flux_source;
+  }
+  return alpha * params.boundary_conc;
+}
+
 void solve_replicated_delivery_z_line(
-    Int ix, Int iy, ReplicatedDeliveryLineContext& context) {
+    Int ix, Int iy, ReplicatedDeliveryLineContext& context,
+    Real& face_exchange) {
   const Int nz = context.domain.nz();
   std::vector<Real> line(static_cast<size_t>(nz - 1));
   std::vector<Real> sink(static_cast<size_t>(nz - 1));
@@ -424,6 +478,8 @@ void solve_replicated_delivery_z_line(
   solve_tridiagonal_with_diagonal(
       line, diagonal, context.alpha,
       context.alpha * context.boundary.boundary_conc);
+  face_exchange += delivery_face_exchange(
+      context.alpha, context.boundary, line);
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = context.domain.cell_index(ix, iy, iz);
     const size_t index = static_cast<size_t>(iz - 1);
@@ -445,12 +501,14 @@ Real diffuse_bounded_z_delivery(
   if (nz <= 1) return 0.0;
   ReplicatedDeliveryLineContext line_context{
       concentration, domain, alpha, params, sink_params};
+  Real face_exchange = 0.0;
   for (Int iy = 0; iy < ny; ++iy) {
     for (Int ix = 0; ix < nx; ++ix) {
-      solve_replicated_delivery_z_line(ix, iy, line_context);
+      solve_replicated_delivery_z_line(
+          ix, iy, line_context, face_exchange);
     }
   }
-  return 0.0;
+  return face_exchange;
 }
 
 class DeliveryBottomLineSolver {
@@ -529,14 +587,11 @@ void solve_delivery_z_line(
   diagonal.front() += params.mode == EpithelialBoundaryMode::Robin
       ? -grid.alpha + params.beta : -grid.alpha;
   diagonal.back() -= grid.alpha;
-  const Real source = params.mode == EpithelialBoundaryMode::Robin
-      ? params.beta * params.boundary_conc : params.flux_source;
+  const Real source = delivery_boundary_source(
+      grid.alpha, params);
   solve_tridiagonal_with_diagonal(line, diagonal, grid.alpha, source);
-  const Real boundary_realized =
-      params.mode == EpithelialBoundaryMode::Robin
-          ? params.beta * (params.boundary_conc - line.front())
-              * params.cell_volume
-          : params.flux_source * params.cell_volume;
+  const Real boundary_realized = delivery_face_exchange(
+      grid.alpha, params, line);
   #ifdef GUTIBM_OPENMP
   #pragma omp atomic
   #endif
@@ -574,13 +629,10 @@ Real diffuse_bounded_z_delivery_impl(
     for (Int iy = 0; iy < ny; ++iy) {
       for (Int ix = 0; ix < nx; ++ix) {
         load_line(ix, iy, line);
-        const Real source = params.mode == EpithelialBoundaryMode::Robin
-            ? params.beta * params.boundary_conc : params.flux_source;
+        const Real source = delivery_boundary_source(alpha, params);
         solver.solve(line, source);
-        const Real realized = params.mode == EpithelialBoundaryMode::Robin
-            ? params.beta * (params.boundary_conc - line.front())
-                * params.cell_volume
-            : params.flux_source * params.cell_volume;
+        const Real realized = delivery_face_exchange(
+            alpha, params, line);
         #ifdef GUTIBM_OPENMP
         #pragma omp atomic
         #endif
@@ -979,6 +1031,18 @@ void ChemicalField::zero_reactions() {
     std::ranges::fill(reac_[s], 0.0);
     std::ranges::fill(sink_rate_[s], 0.0);
     std::ranges::fill(sink_realized_[s], 0.0);
+  }
+  if (!nutrient_debug_enabled() || domain_ == nullptr) return;
+  ++nutrient_debug_step;
+  debug_initial_content_.resize(static_cast<size_t>(nspec_));
+  for (Int s = 0; s < nspec_; ++s) {
+    debug_initial_content_[static_cast<size_t>(s)] =
+        mode_ == DecompositionMode::Slab
+        ? owned_content_slab(
+              conc_[static_cast<size_t>(s)], *domain_, storage_nx_,
+              halo_width_, domain_->cell_volume())
+        : owned_content(
+              conc_[static_cast<size_t>(s)], *domain_, domain_->cell_volume());
   }
 }
 
@@ -1639,6 +1703,7 @@ Real diffuse_bounded_z_slab_delivery(
   const Int ny = domain.ny();
   const Int nz = domain.nz();
   if (nz <= 1) return 0.0;
+  Real face_exchange = 0.0;
   struct LineContext {
     std::vector<Real>& concentration;
     std::vector<Real>& realized;
@@ -1655,7 +1720,7 @@ Real diffuse_bounded_z_slab_delivery(
   LineContext line_context{
       concentration, realized, sink_rate, domain, storage_nx, halo_width,
       alpha, boundary_conc, cell_volume, sink_dt, gradient_spec};
-  const auto solve_line = [&line_context](Int ix, Int iy) {
+  const auto solve_line = [&line_context, &face_exchange](Int ix, Int iy) {
     const Int nz = line_context.domain.nz();
     const Int ny = line_context.domain.ny();
     std::vector<Real> line(static_cast<size_t>(nz - 1));
@@ -1684,6 +1749,9 @@ Real diffuse_bounded_z_slab_delivery(
     solve_tridiagonal_with_diagonal(
         line, diagonal, line_context.alpha,
         line_context.alpha * line_context.boundary_conc);
+    face_exchange += line_context.alpha
+        * (line_context.boundary_conc - line.front())
+        * line_context.cell_volume;
     for (Int iz = 1; iz < nz; ++iz) {
       const Int cell = slab_storage_index(
           line_context.halo_width + ix, iy, iz,
@@ -1702,7 +1770,7 @@ Real diffuse_bounded_z_slab_delivery(
       solve_line(ix, iy);
     }
   }
-  return 0.0;
+  return face_exchange;
 }
 
 Real diffuse_bounded_z_delivery_slab(
@@ -1914,30 +1982,85 @@ struct ReplicatedDiffusionContext {
   const ChemicalSpec* gradient_spec;
 };
 
+struct DebugStageSnapshot {
+  Real content = 0.0;
+  Real sink_realized = 0.0;
+  Real boundary = 0.0;
+};
+
+bool debug_stage_enabled(const ChemicalSpec& chemical) {
+  return nutrient_debug_enabled()
+      && nutrient_debug_step == nutrient_debug_transport_step()
+      && (chemical.name == species::OXYGEN
+          || chemical.name == species::CARBON);
+}
+
+Real sum_realized(const std::vector<Real>& realized) {
+  return std::accumulate(realized.begin(), realized.end(), 0.0);
+}
+
+DebugStageSnapshot debug_snapshot(
+    const ReplicatedDiffusionContext& context) {
+  if (!debug_stage_enabled(context.chemical)) return {};
+  DebugStageSnapshot snapshot{
+      owned_content(context.concentration, context.domain,
+                    context.cell_volume),
+      sum_realized(context.sink_realized),
+      context.flux.boundary_step[static_cast<size_t>(context.spec)]};
+  return snapshot;
+}
+
+void emit_debug_stage(
+    const ReplicatedDiffusionContext& context, std::string_view stage,
+    const DebugStageSnapshot& before) {
+  if (!debug_stage_enabled(context.chemical) || context.domain.rank() != 0) {
+    return;
+  }
+  const DebugStageSnapshot after = debug_snapshot(context);
+  std::cout << std::setprecision(17)
+            << "NUTRIENT_STAGE step=" << nutrient_debug_step
+            << " species=" << context.chemical.name
+            << " stage=" << stage
+            << " before_content=" << before.content
+            << " after_content=" << after.content
+            << " content_delta=" << after.content - before.content
+            << " sink_realized_delta="
+            << after.sink_realized - before.sink_realized
+            << " boundary_delta=" << after.boundary - before.boundary
+            << '\n';
+}
+
 void prepare_replicated_diffusion(ReplicatedDiffusionContext& context) {
   if (context.chemical.epithelial_boundary_mode
       == EpithelialBoundaryMode::Dirichlet) {
+    const DebugStageSnapshot before = debug_snapshot(context);
+    const Real boundary = set_epithelial_boundary(
+        context.concentration, context.domain,
+        context.chemical.boundary_conc, context.cell_volume);
     context.flux.add_boundary(
-        context.spec, set_epithelial_boundary(
-            context.concentration, context.domain,
-            context.chemical.boundary_conc, context.cell_volume));
+        context.spec, boundary);
+    emit_debug_stage(context, "epithelial_dirichlet_pin_prepare", before);
   }
   if (!context.preserve_gradient) return;
   const Real before_luminal = owned_content(
       context.concentration, context.domain, context.cell_volume);
+  const DebugStageSnapshot luminal_snapshot = debug_snapshot(context);
   set_luminal_neumann_boundary(context.concentration, context.domain);
   context.flux.add_gradient_source(
       context.spec,
       owned_content(context.concentration, context.domain, context.cell_volume)
           - before_luminal);
+  emit_debug_stage(context, "luminal_neumann_prepare", luminal_snapshot);
   const Real before_profile = owned_content(
       context.concentration, context.domain, context.cell_volume);
+  const DebugStageSnapshot profile_snapshot = debug_snapshot(context);
   shift_z_gradient(
       context.concentration, context.chemical, context.domain, -1.0);
   context.flux.add_gradient_source(
       context.spec,
       owned_content(context.concentration, context.domain, context.cell_volume)
           - before_profile);
+  emit_debug_stage(context, "profile_subtract", profile_snapshot);
   context.diffusion_boundary = 0.0;
 }
 
@@ -1948,10 +2071,14 @@ void transport_replicated_periodic(
         context.sink_rate, context.sink_realized, context.dt / 3.0,
         context.cell_volume,
         context.preserve_gradient ? &context.chemical : nullptr};
+    const DebugStageSnapshot before_x = debug_snapshot(context);
     diffuse_periodic_x_delivery(
         context.concentration, context.domain, context.alpha_x, sink_params);
+    emit_debug_stage(context, "x_delivery_solve", before_x);
+    const DebugStageSnapshot before_y = debug_snapshot(context);
     diffuse_periodic_y_delivery(
         context.concentration, context.domain, context.alpha_y, sink_params);
+    emit_debug_stage(context, "y_delivery_solve", before_y);
   } else {
     diffuse_periodic_x(
         context.concentration, context.domain, context.alpha_x);
@@ -2003,27 +2130,34 @@ Real transport_replicated_z(
 void transport_replicated_diffusion(
     ReplicatedDiffusionContext& context) {
   transport_replicated_periodic(context);
+  const DebugStageSnapshot before_z = debug_snapshot(context);
+  const Real boundary = transport_replicated_z(context);
   context.flux.add_boundary(
-      context.spec, transport_replicated_z(context));
+      context.spec, boundary);
+  emit_debug_stage(context, "z_delivery_solve", before_z);
 }
 
 void finish_replicated_diffusion(ReplicatedDiffusionContext& context) {
   if (context.preserve_gradient) {
     const Real before_profile = owned_content(
         context.concentration, context.domain, context.cell_volume);
+    const DebugStageSnapshot profile_snapshot = debug_snapshot(context);
     shift_z_gradient(
         context.concentration, context.chemical, context.domain, 1.0);
     context.flux.add_gradient_source(
         context.spec,
         owned_content(context.concentration, context.domain, context.cell_volume)
             - before_profile);
+    emit_debug_stage(context, "profile_restore", profile_snapshot);
     const Real before_luminal = owned_content(
         context.concentration, context.domain, context.cell_volume);
+    const DebugStageSnapshot luminal_snapshot = debug_snapshot(context);
     set_luminal_neumann_boundary(context.concentration, context.domain);
     context.flux.add_gradient_source(
         context.spec,
         owned_content(context.concentration, context.domain, context.cell_volume)
             - before_luminal);
+    emit_debug_stage(context, "luminal_neumann_finish", luminal_snapshot);
   }
   if (context.delivery) {
     clamp_delivery_total(
@@ -2034,10 +2168,13 @@ void finish_replicated_diffusion(ReplicatedDiffusionContext& context) {
   }
   if (context.chemical.epithelial_boundary_mode
       == EpithelialBoundaryMode::Dirichlet) {
+    const DebugStageSnapshot before = debug_snapshot(context);
+    const Real boundary = set_epithelial_boundary(
+        context.concentration, context.domain,
+        context.chemical.boundary_conc, context.cell_volume);
     context.flux.add_boundary(
-        context.spec, set_epithelial_boundary(
-            context.concentration, context.domain,
-            context.chemical.boundary_conc, context.cell_volume));
+        context.spec, boundary);
+    emit_debug_stage(context, "epithelial_dirichlet_pin_finish", before);
   }
 }
 
@@ -2062,19 +2199,80 @@ struct SlabDiffusionContext {
   const ChemicalSpec* gradient_spec;
 };
 
+Real sum_realized(
+    const std::vector<Real>& realized, const Domain& domain,
+    Int storage_nx, Int halo_width) {
+  Real total = 0.0;
+  for (Int iz = 0; iz < domain.nz(); ++iz) {
+    for (Int iy = 0; iy < domain.ny(); ++iy) {
+      for (Int ix = 0; ix < domain.local_grid_nx(); ++ix) {
+        total += realized[static_cast<size_t>(slab_storage_index(
+            halo_width + ix, iy, iz, storage_nx, domain.ny()))];
+      }
+    }
+  }
+  return total;
+}
+
+DebugStageSnapshot debug_snapshot(const SlabDiffusionContext& context) {
+  if (!debug_stage_enabled(context.chemical)) return {};
+  DebugStageSnapshot snapshot{
+      owned_content_slab(
+          context.concentration, context.domain, context.storage_nx,
+          context.halo_width, context.cell_volume),
+      sum_realized(
+          context.sink_realized, context.domain, context.storage_nx,
+          context.halo_width),
+      context.flux.boundary_step[static_cast<size_t>(context.spec)]};
+#ifdef GUTIBM_MPI
+  if (context.domain.nprocs() > 1) {
+    Real values[3] = {snapshot.content, snapshot.sink_realized,
+                      snapshot.boundary};
+    MPI_Allreduce(MPI_IN_PLACE, values, 3, MPI_DOUBLE, MPI_SUM,
+                  MPI_COMM_WORLD);
+    snapshot = {values[0], values[1], values[2]};
+  }
+#endif
+  return snapshot;
+}
+
+void emit_debug_stage(
+    const SlabDiffusionContext& context, std::string_view stage,
+    const DebugStageSnapshot& before) {
+  if (!debug_stage_enabled(context.chemical) || context.domain.rank() != 0) {
+    return;
+  }
+  const DebugStageSnapshot after = debug_snapshot(context);
+  std::cout << std::setprecision(17)
+            << "NUTRIENT_STAGE step=" << nutrient_debug_step
+            << " species=" << context.chemical.name
+            << " stage=" << stage
+            << " before_content=" << before.content
+            << " after_content=" << after.content
+            << " content_delta=" << after.content - before.content
+            << " sink_realized_delta="
+            << after.sink_realized - before.sink_realized
+            << " boundary_delta=" << after.boundary - before.boundary
+            << '\n';
+}
+
 void prepare_slab_diffusion(SlabDiffusionContext& context) {
   if (context.chemical.epithelial_boundary_mode
       == EpithelialBoundaryMode::Dirichlet) {
+    const DebugStageSnapshot before = debug_snapshot(context);
+    const Real boundary = set_epithelial_boundary_slab(
+        context.concentration, context.domain, context.storage_nx,
+        context.halo_width, context.chemical.boundary_conc,
+        context.cell_volume);
     context.flux.add_boundary(
-        context.spec, set_epithelial_boundary_slab(
-            context.concentration, context.domain, context.storage_nx,
-            context.halo_width, context.chemical.boundary_conc,
-            context.cell_volume));
+        context.spec, boundary);
+    emit_debug_stage(context, "epithelial_dirichlet_pin_prepare", before);
   }
   if (!context.preserve_gradient) return;
   const Real before_luminal = owned_content_slab(
       context.concentration, context.domain, context.storage_nx,
       context.halo_width, context.cell_volume);
+  const DebugStageSnapshot luminal_snapshot = debug_snapshot(context);
   set_luminal_neumann_boundary_slab(
       context.concentration, context.domain, context.storage_nx,
       context.halo_width);
@@ -2083,9 +2281,11 @@ void prepare_slab_diffusion(SlabDiffusionContext& context) {
       owned_content_slab(
           context.concentration, context.domain, context.storage_nx,
           context.halo_width, context.cell_volume) - before_luminal);
+  emit_debug_stage(context, "luminal_neumann_prepare", luminal_snapshot);
   const Real before_profile = owned_content_slab(
       context.concentration, context.domain, context.storage_nx,
       context.halo_width, context.cell_volume);
+  const DebugStageSnapshot profile_snapshot = debug_snapshot(context);
   shift_z_gradient_slab(
       context.concentration, context.chemical, context.domain,
       context.storage_nx, context.halo_width, -1.0);
@@ -2094,6 +2294,7 @@ void prepare_slab_diffusion(SlabDiffusionContext& context) {
       owned_content_slab(
           context.concentration, context.domain, context.storage_nx,
           context.halo_width, context.cell_volume) - before_profile);
+  emit_debug_stage(context, "profile_subtract", profile_snapshot);
   context.diffusion_boundary = 0.0;
 }
 
@@ -2105,13 +2306,17 @@ void transport_slab_periodic(const SlabDiffusionContext& context) {
       context.delivery ? &context.sink_realized : nullptr,
       context.delivery ? context.gradient_spec : nullptr,
       context.dt / 3.0, context.cell_volume};
+  const DebugStageSnapshot before_x = debug_snapshot(context);
   diffuse_periodic_x_slab(transport);
+  emit_debug_stage(context, "x_delivery_solve", before_x);
   if (context.delivery) {
+    const DebugStageSnapshot before_y = debug_snapshot(context);
     diffuse_periodic_y_slab_delivery(
         {context.concentration, context.domain, context.storage_nx,
          context.halo_width, context.alpha_y, &context.sink_rate,
          &context.sink_realized, context.gradient_spec,
          context.dt / 3.0, context.cell_volume});
+    emit_debug_stage(context, "y_delivery_solve", before_y);
   } else {
     diffuse_periodic_y_slab(
         context.concentration, context.domain, context.storage_nx,
@@ -2160,7 +2365,9 @@ Real transport_slab_z(const SlabDiffusionContext& context) {
 
 void transport_slab_diffusion(SlabDiffusionContext& context) {
   transport_slab_periodic(context);
+  const DebugStageSnapshot before_z = debug_snapshot(context);
   context.flux.add_boundary(context.spec, transport_slab_z(context));
+  emit_debug_stage(context, "z_delivery_solve", before_z);
 }
 
 void finish_slab_diffusion(SlabDiffusionContext& context) {
@@ -2168,6 +2375,7 @@ void finish_slab_diffusion(SlabDiffusionContext& context) {
     const Real before_profile = owned_content_slab(
         context.concentration, context.domain, context.storage_nx,
         context.halo_width, context.cell_volume);
+    const DebugStageSnapshot profile_snapshot = debug_snapshot(context);
     shift_z_gradient_slab(
         context.concentration, context.chemical, context.domain,
         context.storage_nx, context.halo_width, 1.0);
@@ -2176,9 +2384,11 @@ void finish_slab_diffusion(SlabDiffusionContext& context) {
         owned_content_slab(
             context.concentration, context.domain, context.storage_nx,
             context.halo_width, context.cell_volume) - before_profile);
+    emit_debug_stage(context, "profile_restore", profile_snapshot);
     const Real before_luminal = owned_content_slab(
         context.concentration, context.domain, context.storage_nx,
         context.halo_width, context.cell_volume);
+    const DebugStageSnapshot luminal_snapshot = debug_snapshot(context);
     set_luminal_neumann_boundary_slab(
         context.concentration, context.domain, context.storage_nx,
         context.halo_width);
@@ -2187,6 +2397,7 @@ void finish_slab_diffusion(SlabDiffusionContext& context) {
         owned_content_slab(
             context.concentration, context.domain, context.storage_nx,
             context.halo_width, context.cell_volume) - before_luminal);
+    emit_debug_stage(context, "luminal_neumann_finish", luminal_snapshot);
   }
   if (context.delivery) {
     clamp_delivery_total_slab(
@@ -2199,11 +2410,14 @@ void finish_slab_diffusion(SlabDiffusionContext& context) {
   }
   if (context.chemical.epithelial_boundary_mode
       == EpithelialBoundaryMode::Dirichlet) {
+    const DebugStageSnapshot before = debug_snapshot(context);
+    const Real boundary = set_epithelial_boundary_slab(
+        context.concentration, context.domain, context.storage_nx,
+        context.halo_width, context.chemical.boundary_conc,
+        context.cell_volume);
     context.flux.add_boundary(
-        context.spec, set_epithelial_boundary_slab(
-            context.concentration, context.domain, context.storage_nx,
-            context.halo_width, context.chemical.boundary_conc,
-            context.cell_volume));
+        context.spec, boundary);
+    emit_debug_stage(context, "epithelial_dirichlet_pin_finish", before);
   }
 }
 
@@ -2432,6 +2646,60 @@ void ChemicalField::apply_boundaries_slab(const Domain& domain) {
     if (!specs_[s].diffusion_enabled && domain.nz() >= 2) {
       set_luminal_neumann_boundary_slab(
           concentration, domain, storage_nx_, halo_width_);
+    }
+  }
+}
+
+void ChemicalField::debug_report_step(const Domain& domain) const {
+  if (!nutrient_debug_enabled() || nutrient_debug_step <= 0
+      || debug_initial_content_.size() != static_cast<size_t>(nspec_)) {
+    return;
+  }
+  const auto& flux = flux_accounting_;
+  const Int oxygen = find(species::OXYGEN);
+  const Int carbon = find(species::CARBON);
+  for (const Int s : {oxygen, carbon}) {
+    if (s < 0 || s >= nspec_) continue;
+    Real initial = debug_initial_content_[static_cast<size_t>(s)];
+    Real final = mode_ == DecompositionMode::Slab
+        ? owned_content_slab(
+              conc_[static_cast<size_t>(s)], domain, storage_nx_,
+              halo_width_, domain.cell_volume())
+        : owned_content(
+              conc_[static_cast<size_t>(s)], domain, domain.cell_volume());
+#ifdef GUTIBM_MPI
+    int initialized = 0;
+    int finalized = 0;
+    MPI_Initialized(&initialized);
+    MPI_Finalized(&finalized);
+    if (initialized && !finalized && mode_ == DecompositionMode::Slab
+        && domain.nprocs() > 1) {
+      MPI_Allreduce(MPI_IN_PLACE, &initial, 1, MPI_DOUBLE, MPI_SUM,
+                    MPI_COMM_WORLD);
+      MPI_Allreduce(MPI_IN_PLACE, &final, 1, MPI_DOUBLE, MPI_SUM,
+                    MPI_COMM_WORLD);
+    }
+#endif
+    const size_t index = static_cast<size_t>(s);
+    const Real residual = initial + flux.boundary_last_step[index]
+        + flux.gradient_source_last_step[index]
+        - flux.agent_uptake_last_step[index] - flux.maintenance_last_step[index]
+        - flux.vbf_sink_last_step[index]
+        + flux.reaction_clip_last_step[index] - final;
+    if (domain.rank() == 0) {
+      std::cout << std::setprecision(17)
+                << "NUTRIENT_STEP step=" << nutrient_debug_step
+                << " species=" << specs_[index].name
+                << " owned_content_before=" << initial
+                << " owned_content_after=" << final
+                << " boundary_step=" << flux.boundary_last_step[index]
+                << " gradient_source_step="
+                << flux.gradient_source_last_step[index]
+                << " agent_uptake_step=" << flux.agent_uptake_last_step[index]
+                << " maintenance_step=" << flux.maintenance_last_step[index]
+                << " vbf_sink_step=" << flux.vbf_sink_last_step[index]
+                << " reaction_clip_step=" << flux.reaction_clip_last_step[index]
+                << " residual=" << residual << '\n';
     }
   }
 }

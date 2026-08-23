@@ -1583,6 +1583,7 @@ void Simulation::step(Real dt) {
   for (const auto& fix : fixes_) {
     fix->post_chemistry(dt);
   }
+  chem_.debug_report_step(domain_);
 
   // 3. Physics module (advection + mechanics)
   module_physics(dt);
