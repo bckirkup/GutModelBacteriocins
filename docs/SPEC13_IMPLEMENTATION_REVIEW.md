@@ -198,6 +198,102 @@ the per-type boundary conditions both vary, and the type-weighted mean becomes
   Layer 3 gates, so the gradient's contribution is separable from the rest of
   the mechanism.
 
+**S8 — The luminal growth compartment is a population, not a pool, and cannot
+be agents.** The revised Layer 3 has detached cells *replicating* in transit,
+which is what supplies the ~10x amplification between mucosal detachment and
+stool. Consequences:
+
+- Magnitude forbids agents: `1e8` CFU/g over ~100 g of content is `1e10` cells
+  per region. The compartment must be **per-lineage counts** with an anaerobic
+  growth term, so the S1 luminal pool splits into a transport buffer (agents,
+  briefly) and a residence compartment (counts).
+- Composition still has to survive, because the bacteriocin question needs to
+  know which clones travelled and grew together. Counts must therefore be
+  indexed by lineage/BI-locus genotype, not aggregated, and reattachment must
+  instantiate an agent from a count with its genotype intact. The
+  `agent_transfer.cpp` serialization covers that instantiation; it does not
+  cover residence.
+- Growth in the compartment competes for luminal carbon and produces acetate,
+  so the compartment needs its own scalar chemistry with the same yield and
+  acid-inhibition parameters as Layer 1 — implemented once and shared, or the
+  two layers will disagree about physiology.
+- The population ledger must extend across the mucosa/lumen boundary: a
+  departure is a transfer, not a death, and luminal division and washout to
+  stool are new ledger events. The existing closure machinery is the right home
+  for this and must be extended rather than bypassed.
+
+**S9 — The wall-to-stool equation is degenerate against its only target.**
+`C_stool` is set by `k_mucus` (0.3–1.0/h), `k_0` and `α_HAPC`, `f_edge`
+(explicitly 0–1, i.e. unconstrained), `r_luminal`, `T_transit` and `p_0` —
+seven quantities, several with an order of range, against one validation number
+(`1e6`–`1e8` CFU/g, itself two orders wide). Many combinations reproduce it, so
+agreement with stool CFU/g is **not evidence** for any of them. Before Phase 3
+is run, additional independent observables must be nominated, e.g.:
+
+- *Burstiness.* HAPCs are ~6/day, 95% antegrade, 80% daytime. Contraction-driven
+  detachment therefore predicts a pulsed shedding time series with a diurnal
+  envelope, while mucus turnover alone predicts a smooth one. The temporal
+  structure of shedding discriminates the mechanisms; the mean does not.
+- *Growth state in transit.* A luminal amplification of ~10x over 25–40 h
+  implies a specific actively-dividing fraction on arrival, which is measurable
+  independently of CFU/g.
+- *Recovery kinematics.* The time to re-establish stool counts after clearance
+  is set by reattachment and mucosal regrowth, not by the steady-state balance,
+  so it constrains a different combination of the same parameters.
+
+Report Phase 3 against a *set* of observables and state which parameter
+combination each one pins. A single-number match must not be presented as
+validation.
+
+**S10 — The axial abundance gradient is not supported, which makes flatness a
+prediction rather than an input.** The revision records that the
+Enterobacteriaceae fraction does **not** vary significantly proximal→distal
+(P=0.09) and instructs uniform initialization at ~1–2% (0.1–5% individual
+range). This narrows S7 rather than contradicting it: the *physiology* gradients
+(mucus, pH, transit, motility, O₂ prior) remain, but E. coli *abundance* must
+not be tuned axially. The corresponding test is sharp and worth stating as a
+Phase 3 gate: with those gradients imposed, the model must produce a
+**mucosally flat** Enterobacteriaceae fraction while stool counts are set by the
+distal luminal compartment. A model that produces a strong mucosal axial
+gradient is wrong even if its stool number is right.
+
+**S11 — The revision's apical O₂ prior is 4–20x below the repository default,
+and the O₂ sink is the one uptake path that never got the delivery fix.** The
+revision distinguishes tissue-side electrode values (30 mmHg serosal, 39 mmHg
+sigmoid) from the apical mucus surface, for which it states there are **no
+segment data** and offers a broad prior of 2–10 mmHg. The repository default is
+`oxygen.epithelial_conc = 55.0e-6` annotated `~42 mmHg` — i.e. the tissue-side
+number used as the apical boundary condition, which is the boundary that drives
+the entire Spec 12 aerobic/overflow phase plane.
+
+Two further things need settling before that boundary is trusted, both grounded
+in the code rather than in the spec:
+
+- *The value and its own annotation disagree by 10³.* The field's units are SI
+  (`mol/m³`; `grid_dx = 2e-6 m`, `cell_volume = 8e-18 m³`), and 42 mmHg of
+  dissolved O₂ is ~55 µM = `5.5e-2 mol/m³`, not `5.5e-5`. `Km = 1.0e-6 mol/m³`
+  (1 nM, against a literature O₂ affinity of ~0.1–1 µM) carries the same 10³
+  offset, so the Monod *ratio* is preserved while the absolute O₂ inventory is
+  not — and respiration is booked in absolute moles per cell.
+- *Agent respiration is an explicit zero-order sink, clipped before diffusion.*
+  `apply_agent_reactions` does `reac(oxygen, cell) -= o2_use / cell_vol` with
+  `o2_use = q_consumption·µ·(1−ferm) + q_maintenance`; there is no `uptake_limit`
+  path for oxygen. That is exactly the defect class fixed for carbon in #308 and
+  #310, unfixed here. At `q_maintenance = 1e-18 mol/s/cell` over an 8 fL voxel
+  this demands `~7.5 mol/m³` per 60 s step against a boundary value of
+  `5.5e-5`, so an occupied voxel can only be funded by within-step resupply —
+  which is precisely what an explicit pre-diffusion sink cannot do.
+
+This is measurable, not arguable: per-species reaction clips are already
+accounted (`add_reaction_clip`), so an O₂-enabled arm reports directly whether
+respiration is being refused. Do that measurement before adopting any apical O₂
+value, since a clipped sink would make the aerobic axis inert regardless of the
+boundary chosen — the same failure mode as the pre-#308 carbon sink and the
+inert `sherwood` cap. Note that `oxygen.enabled` defaults to `false`, so the
+measurement has to be made on an O₂-enabled arm; the coupling probe
+(`experiments/density_limitation/probe`) already switches oxygen and the
+metabolic switch together and is the natural place to read the clip counter.
+
 ## 4. Undefined interfaces that must be decided before code
 
 **G1 — What is a patch instance?** Three options, with the costs that decide it:
