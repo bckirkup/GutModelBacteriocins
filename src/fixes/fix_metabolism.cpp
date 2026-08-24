@@ -361,6 +361,12 @@ void FixMetabolism::commit_delivery_uptake(Real dt) {
     carbon_demand_by_cell[static_cast<size_t>(agent.grid_cell)] +=
         agent.pending_carbon_funding;
   }
+  if (!chem.slab_mode()) {
+    // Replicated fields reduce prescribed draws globally, so pro-rata
+    // denominators must include every rank's non-ghost agents. Slab fields
+    // retain rank-local denominators because each rank owns its agent cells.
+    chem.sum_values_across_ranks(carbon_demand_by_cell);
+  }
   for (Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
     const Real total_demand = agent.pending_growth_carbon
@@ -407,6 +413,12 @@ void FixMetabolism::commit_delivery_uptake(Real dt) {
           || agent.grid_cell < 0) continue;
       oxygen_demand_by_cell[static_cast<size_t>(agent.grid_cell)] +=
           agent.pending_oxygen_funding;
+    }
+    if (!chem.slab_mode()) {
+      // Replicated fields reduce prescribed draws globally, so pro-rata
+      // denominators must include every rank's non-ghost agents. Slab fields
+      // retain rank-local denominators because each rank owns its agent cells.
+      chem.sum_values_across_ranks(oxygen_demand_by_cell);
     }
     for (Agent& agent : sim_.agents()) {
       if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;

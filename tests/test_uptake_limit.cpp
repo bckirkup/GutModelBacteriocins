@@ -615,6 +615,61 @@ void test_delivery_is_positive_and_funds_only_removed_carbon() {
   std::cout << "  test_delivery_is_positive_and_funds_only_removed_carbon: PASSED\n";
 }
 
+void test_delivery_shared_voxel_funding_does_not_exceed_removal() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains[0].count = 2;
+  cfg.initial_strains[0].mu_max = 5.0e-2;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = kDt;
+  cfg.dysbiosis_threshold = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e2;
+      chemical.boundary_conc = 1.0e2;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  const std::array<Real, 3> shared_cell = {
+      7.5e-6, 7.5e-6, 12.5e-6};
+  for (Agent& agent : sim.agents()) {
+    agent.x = shared_cell;
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  sim.step(kDt);
+
+  const auto& chem = sim.chemical_field();
+  const Int carbon = chem.find(species::CARBON);
+  Real funded = 0.0;
+  for (const Agent& agent : sim.agents()) {
+    if (agent.state != PhenoState::DEAD && !agent.flags.is_ghost) {
+      funded += agent.pending_carbon_funding;
+    }
+  }
+  Real realized = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    realized += chem.sink_realized_global(carbon, cell);
+  }
+  assert(funded > 0.0);
+  assert(realized > 0.0);
+  assert(funded <= realized
+         + 1.0e-12 * std::max(realized, 1.0e-30));
+  std::cout << "  test_delivery_shared_voxel_funding_does_not_exceed_removal:"
+            << " PASSED\n";
+}
+
 std::pair<Real, Real> run_delivery_maintenance_case(Real maintenance_rate) {
   SimulationConfig cfg = base_config();
   cfg.enabled_fixes = {"metabolism"};
@@ -1115,6 +1170,7 @@ int main() {
   test_none_mode_leaves_growth_unfunded();
   test_limitation_severity_rises_with_agent_density();
   test_delivery_is_positive_and_funds_only_removed_carbon();
+  test_delivery_shared_voxel_funding_does_not_exceed_removal();
   test_delivery_maintenance_reduces_growth();
   test_delivery_density_brake();
   test_delivery_queues_noncarbon_chemistry_once();
