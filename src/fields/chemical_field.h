@@ -66,6 +66,9 @@ struct NutrientFluxAccounting {
   std::vector<Real> uptake_limited_interval;
   std::vector<Real> uptake_limited_step;
   std::vector<Real> uptake_limited_cumulative;
+  std::vector<Real> delivery_reduction_interval;
+  std::vector<Real> delivery_reduction_step;
+  std::vector<Real> delivery_reduction_cumulative;
 
   void init(size_t species_count) {
     boundary_interval.assign(species_count, 0.0);
@@ -114,6 +117,9 @@ struct NutrientFluxAccounting {
     uptake_limited_interval.assign(species_count, 0.0);
     uptake_limited_step.assign(species_count, 0.0);
     uptake_limited_cumulative.assign(species_count, 0.0);
+    delivery_reduction_interval.assign(species_count, 0.0);
+    delivery_reduction_step.assign(species_count, 0.0);
+    delivery_reduction_cumulative.assign(species_count, 0.0);
   }
 
   void add_interval(Int species, Real boundary, Real source, Real sink,
@@ -221,6 +227,7 @@ struct NutrientFluxAccounting {
       uptake_demand_interval[i] += uptake_demand_step[i];
       uptake_shortfall_interval[i] += uptake_shortfall_step[i];
       uptake_limited_interval[i] += uptake_limited_step[i];
+      delivery_reduction_interval[i] += delivery_reduction_step[i];
       agent_uptake_step[i] = 0.0;
       maintenance_step[i] = 0.0;
       maintenance_shortfall_step[i] = 0.0;
@@ -228,6 +235,7 @@ struct NutrientFluxAccounting {
       uptake_demand_step[i] = 0.0;
       uptake_shortfall_step[i] = 0.0;
       uptake_limited_step[i] = 0.0;
+      delivery_reduction_step[i] = 0.0;
     }
   }
 
@@ -275,6 +283,7 @@ struct NutrientFluxAccounting {
       uptake_demand_cumulative[i] += uptake_demand_interval[i];
       uptake_shortfall_cumulative[i] += uptake_shortfall_interval[i];
       uptake_limited_cumulative[i] += uptake_limited_interval[i];
+      delivery_reduction_cumulative[i] += delivery_reduction_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
       boundary_interval[i] = 0.0;
       gradient_source_interval[i] = 0.0;
@@ -287,6 +296,7 @@ struct NutrientFluxAccounting {
       uptake_demand_interval[i] = 0.0;
       uptake_shortfall_interval[i] = 0.0;
       uptake_limited_interval[i] = 0.0;
+      delivery_reduction_interval[i] = 0.0;
       reaction_clip_interval[i] = 0.0;
     }
   }
@@ -404,6 +414,7 @@ class ChemicalField {
   // Reset reaction rates to zero each timestep
   void zero_reactions();
   void add_sink_rate_global(Int spec, Int cell, Real rate);
+  void add_prescribed_sink_global(Int spec, Int cell, Real amount);
   void add_vbf_sink_rate_global(Int spec, Int cell, Real rate);
   void split_delivery_sink_realized(Int spec);
   void add_sink_rate_global(Int cell, Real rate);
@@ -412,6 +423,8 @@ class ChemicalField {
   Real total_sink_realized_global(Int spec, Int cell) const;
   Real vbf_sink_realized_global(Int spec, Int cell) const;
   Real vbf_sink_realized(Int spec) const;
+  Real prescribed_sink_global(Int spec, Int cell) const;
+  void add_delivery_reduction(Int spec, Real amount);
   bool has_sink_rate(Int spec) const;
   bool has_sink_rate() const;
 
@@ -433,7 +446,9 @@ class ChemicalField {
 
   // Sum rank-local agent reaction fields before spatial diffusion.
   void sum_reactions_across_ranks();
+  void sum_prescribed_sinks_across_ranks();
   void sum_agent_uptake_across_ranks();
+  void sum_values_across_ranks(std::vector<Real>& values) const;
   void sum_accounting_across_ranks();
 
   // Get species index by name
@@ -474,6 +489,8 @@ class ChemicalField {
   std::vector<std::vector<Real>> sink_realized_;  // agent share, mol this step
   std::vector<std::vector<Real>> total_sink_realized_;  // total, mol this step
   std::vector<std::vector<Real>> vbf_sink_realized_;  // VBF share, mol this step
+  std::vector<std::vector<Real>> prescribed_sink_;  // agent draw, mol this step
+  std::vector<bool> prescribed_active_;
   NutrientFluxAccounting flux_accounting_;
   std::vector<Real> debug_initial_content_;
 
@@ -481,6 +498,7 @@ class ChemicalField {
   void apply_diffusion_species(const Domain& domain, Real dt, Int spec);
   void apply_diffusion_slab_species(const Domain& domain, Real dt, Int spec);
   void apply_boundaries_slab(const Domain& domain);
+  void finalize_delivery_realized(Int spec);
 };
 
 }  // namespace gutibm

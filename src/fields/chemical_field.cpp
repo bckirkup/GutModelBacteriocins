@@ -86,13 +86,17 @@ void solve_tridiagonal_with_diagonal(
 
 void solve_periodic_with_sink(
     std::vector<Real>& values, const std::vector<Real>& sink, Real alpha,
-    const std::vector<Real>* gradient_profile = nullptr) {
+    const std::vector<Real>* gradient_profile = nullptr,
+    const std::vector<Real>* prescribed = nullptr) {
   const size_t n = values.size();
   if (n == 0) return;
   if (gradient_profile != nullptr) {
     for (size_t i = 0; i < n; ++i) {
       values[i] -= sink[i] * (*gradient_profile)[i];
     }
+  }
+  if (prescribed != nullptr) {
+    for (size_t i = 0; i < n; ++i) values[i] -= (*prescribed)[i];
   }
   if (n == 1) {
     values[0] /= 1.0 + sink[0];
@@ -283,7 +287,65 @@ struct DeliverySinkParameters {
   Real sink_dt = 0.0;
   Real cell_volume = 0.0;
   const ChemicalSpec* gradient_spec = nullptr;
+  const std::vector<Real>* prescribed_mass = nullptr;
 };
+
+template <typename OwnsCell, typename StorageCell>
+bool has_negative_owned_cell(
+    const std::vector<Real>& concentration, Int global_ncells,
+    OwnsCell owns_cell, StorageCell storage_cell) {
+  for (Int cell = 0; cell < global_ncells; ++cell) {
+    if (!owns_cell(cell)) continue;
+    const Int storage = storage_cell(cell);
+    if (storage >= 0
+        && concentration[static_cast<size_t>(storage)] < 0.0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+template <typename OwnsCell, typename StorageCell>
+Real reduce_negative_prescribed_cells(
+    const std::vector<Real>& concentration,
+    std::vector<Real>& prescribed, Int global_ncells, Int attempt,
+    Int max_retries, OwnsCell owns_cell, StorageCell storage_cell) {
+  Real reduced = 0.0;
+  for (Int cell = 0; cell < global_ncells; ++cell) {
+    if (!owns_cell(cell)) continue;
+    const Int storage = storage_cell(cell);
+    if (storage < 0
+        || concentration[static_cast<size_t>(storage)] >= 0.0) {
+      continue;
+    }
+    const auto index = static_cast<size_t>(storage);
+    const Real old = prescribed[index];
+    prescribed[index] = attempt == max_retries ? 0.0 : old * 0.5;
+    reduced += old - prescribed[index];
+  }
+  return reduced;
+}
+
+struct DeliveryRetryResult {
+  bool negative_after_solve = false;
+  Real reduced = 0.0;
+};
+
+template <typename Restore, typename Solve, typename HasNegative,
+          typename Reduce>
+DeliveryRetryResult run_delivery_retries(
+    Int max_retries, Restore restore, Solve solve,
+    HasNegative has_negative, Reduce reduce) {
+  DeliveryRetryResult result;
+  for (Int attempt = 0; attempt <= max_retries; ++attempt) {
+    if (attempt > 0) restore();
+    solve();
+    result.negative_after_solve = has_negative();
+    if (!result.negative_after_solve) break;
+    result.reduced += reduce(attempt, max_retries);
+  }
+  return result;
+}
 
 void apply_gradient_sink(std::vector<Real>& line,
                          const std::vector<Real>& sink,
@@ -308,6 +370,44 @@ void fill_gradient_profile(std::vector<Real>& gradient,
   std::fill(gradient.begin(), gradient.end(), value);
 }
 
+void load_periodic_x_delivery_line(
+    std::vector<Real>& line, std::vector<Real>& sink,
+    std::vector<Real>& prescribed, const std::vector<Real>& concentration,
+    const Domain& domain, Int iy, Int iz,
+    const DeliverySinkParameters& sink_params) {
+  for (Int ix = 0; ix < domain.nx(); ++ix) {
+    const Int cell = domain.cell_index(ix, iy, iz);
+    const auto index = static_cast<size_t>(ix);
+    line[index] = concentration[static_cast<size_t>(cell)];
+    sink[index] = sink_params.sink_rate[static_cast<size_t>(cell)]
+        * sink_params.sink_dt;
+    if (sink_params.prescribed_mass != nullptr) {
+      prescribed[index] =
+          (*sink_params.prescribed_mass)[static_cast<size_t>(cell)]
+          / (3.0 * sink_params.cell_volume);
+    }
+  }
+}
+
+void load_periodic_y_delivery_line(
+    std::vector<Real>& line, std::vector<Real>& sink,
+    std::vector<Real>& prescribed, const std::vector<Real>& concentration,
+    const Domain& domain, Int ix, Int iz,
+    const DeliverySinkParameters& sink_params) {
+  for (Int iy = 0; iy < domain.ny(); ++iy) {
+    const Int cell = domain.cell_index(ix, iy, iz);
+    const auto index = static_cast<size_t>(iy);
+    line[index] = concentration[static_cast<size_t>(cell)];
+    sink[index] = sink_params.sink_rate[static_cast<size_t>(cell)]
+        * sink_params.sink_dt;
+    if (sink_params.prescribed_mass != nullptr) {
+      prescribed[index] =
+          (*sink_params.prescribed_mass)[static_cast<size_t>(cell)]
+          / (3.0 * sink_params.cell_volume);
+    }
+  }
+}
+
 void diffuse_periodic_x_delivery(
     std::vector<Real>& concentration, const Domain& domain, Real alpha,
     const DeliverySinkParameters& sink_params) {
@@ -316,20 +416,18 @@ void diffuse_periodic_x_delivery(
   const Int nz = domain.nz();
   for (Int iz = 0; iz < nz; ++iz) {
     for (Int iy = 0; iy < ny; ++iy) {
-      std::vector<Real> line(static_cast<size_t>(nx));
-      std::vector<Real> sink(static_cast<size_t>(nx));
-      for (Int ix = 0; ix < nx; ++ix) {
-        const Int cell = domain.cell_index(ix, iy, iz);
-        line[static_cast<size_t>(ix)] = concentration[static_cast<size_t>(cell)];
-        sink[static_cast<size_t>(ix)] =
-            sink_params.sink_rate[static_cast<size_t>(cell)]
-            * sink_params.sink_dt;
-      }
+      std::vector line(static_cast<size_t>(nx), 0.0);
+      std::vector sink(static_cast<size_t>(nx), 0.0);
+      std::vector prescribed(static_cast<size_t>(nx), 0.0);
+      load_periodic_x_delivery_line(
+          line, sink, prescribed, concentration, domain, iy, iz,
+          sink_params);
       std::vector<Real> gradient(static_cast<size_t>(nx), 0.0);
       fill_gradient_profile(gradient, sink_params.gradient_spec, domain, iz);
       solve_periodic_with_sink(
           line, sink, alpha,
-          sink_params.gradient_spec != nullptr ? &gradient : nullptr);
+          sink_params.gradient_spec != nullptr ? &gradient : nullptr,
+          sink_params.prescribed_mass != nullptr ? &prescribed : nullptr);
       for (Int ix = 0; ix < nx; ++ix) {
         const Int cell = domain.cell_index(ix, iy, iz);
         concentration[static_cast<size_t>(cell)] = line[static_cast<size_t>(ix)];
@@ -353,20 +451,18 @@ void diffuse_periodic_y_delivery(
   const Int nz = domain.nz();
   for (Int iz = 0; iz < nz; ++iz) {
     for (Int ix = 0; ix < nx; ++ix) {
-      std::vector<Real> line(static_cast<size_t>(ny));
-      std::vector<Real> sink(static_cast<size_t>(ny));
-      for (Int iy = 0; iy < ny; ++iy) {
-        const Int cell = domain.cell_index(ix, iy, iz);
-        line[static_cast<size_t>(iy)] = concentration[static_cast<size_t>(cell)];
-        sink[static_cast<size_t>(iy)] =
-            sink_params.sink_rate[static_cast<size_t>(cell)]
-            * sink_params.sink_dt;
-      }
+      std::vector line(static_cast<size_t>(ny), 0.0);
+      std::vector sink(static_cast<size_t>(ny), 0.0);
+      std::vector prescribed(static_cast<size_t>(ny), 0.0);
+      load_periodic_y_delivery_line(
+          line, sink, prescribed, concentration, domain, ix, iz,
+          sink_params);
       std::vector<Real> gradient(static_cast<size_t>(ny), 0.0);
       fill_gradient_profile(gradient, sink_params.gradient_spec, domain, iz);
       solve_periodic_with_sink(
           line, sink, alpha,
-          sink_params.gradient_spec != nullptr ? &gradient : nullptr);
+          sink_params.gradient_spec != nullptr ? &gradient : nullptr,
+          sink_params.prescribed_mass != nullptr ? &prescribed : nullptr);
       for (Int iy = 0; iy < ny; ++iy) {
         const Int cell = domain.cell_index(ix, iy, iz);
         concentration[static_cast<size_t>(cell)] = line[static_cast<size_t>(iy)];
@@ -561,23 +657,25 @@ struct DeliveryGridParameters {
 };
 
 template <typename LoadLine, typename StoreLine, typename LoadSink,
-          typename LoadProfile, typename AddRealized>
+          typename LoadPrescribed, typename LoadProfile, typename AddRealized>
 struct DeliveryLineOperations {
   LoadLine load_line;
   StoreLine store_line;
   LoadSink load_sink;
+  LoadPrescribed load_prescribed;
   LoadProfile load_profile;
   AddRealized add_realized;
   Real sink_dt = 0.0;
 };
 
 template <typename LoadLine, typename StoreLine, typename LoadSink,
-          typename LoadProfile, typename AddRealized>
+          typename LoadPrescribed, typename LoadProfile, typename AddRealized>
 void solve_delivery_z_line(
     Int ix, Int iy, const DeliveryGridParameters& grid,
     const DeliveryBoundaryParameters& params,
     const DeliveryLineOperations<
-        LoadLine, StoreLine, LoadSink, LoadProfile, AddRealized>& operations,
+        LoadLine, StoreLine, LoadSink, LoadPrescribed, LoadProfile,
+        AddRealized>& operations,
     Real& face_exchange) {
   std::vector<Real> line(static_cast<size_t>(grid.nz));
   std::vector<Real> sink(static_cast<size_t>(grid.nz));
@@ -585,12 +683,17 @@ void solve_delivery_z_line(
   std::vector diagonal(static_cast<size_t>(grid.nz), 0.0);
   operations.load_line(ix, iy, line);
   operations.load_sink(ix, iy, sink);
+  std::vector prescribed(static_cast<size_t>(grid.nz), 0.0);
+  operations.load_prescribed(ix, iy, prescribed);
   const bool has_gradient = operations.load_profile(ix, iy, gradient);
   if (has_gradient) {
     for (Int iz = 0; iz < grid.nz; ++iz) {
     const auto index = static_cast<size_t>(iz);
       line[index] -= sink[index] * operations.sink_dt * gradient[index];
     }
+  }
+  for (Int iz = 0; iz < grid.nz; ++iz) {
+    line[static_cast<size_t>(iz)] -= prescribed[static_cast<size_t>(iz)];
   }
   for (Int iz = 0; iz < grid.nz; ++iz) {
     diagonal[static_cast<size_t>(iz)] =
@@ -683,12 +786,13 @@ Real diffuse_bounded_z_delivery(
 }
 
 template <typename LoadLine, typename StoreLine, typename LoadSink,
-          typename LoadProfile, typename AddRealized>
+          typename LoadPrescribed, typename LoadProfile, typename AddRealized>
 Real diffuse_bounded_z_delivery_with_sink_impl(
     const DeliveryGridParameters& grid,
     const DeliveryBoundaryParameters& params,
     const DeliveryLineOperations<
-        LoadLine, StoreLine, LoadSink, LoadProfile, AddRealized>& operations) {
+        LoadLine, StoreLine, LoadSink, LoadPrescribed, LoadProfile,
+        AddRealized>& operations) {
   const Int nx = grid.nx;
   const Int ny = grid.ny;
   const Int nz = grid.nz;
@@ -739,6 +843,18 @@ Real diffuse_bounded_z_delivery_with_sink(
               static_cast<size_t>(domain.cell_index(ix, iy, iz))];
     }
   };
+  const auto load_prescribed = [&sink_params, &domain, nz](
+                                   Int ix, Int iy,
+                                   std::vector<Real>& line) {
+    for (Int iz = 0; iz < nz; ++iz) {
+      const Int cell = domain.cell_index(ix, iy, iz);
+      line[static_cast<size_t>(iz)] =
+          sink_params.prescribed_mass == nullptr
+              ? 0.0
+              : (*sink_params.prescribed_mass)[static_cast<size_t>(cell)]
+                    / (3.0 * sink_params.cell_volume);
+    }
+  };
   const auto load_profile = [gradient_spec = sink_params.gradient_spec,
                              &domain, nz](
                                  Int, Int, std::vector<Real>& line) {
@@ -755,9 +871,10 @@ Real diffuse_bounded_z_delivery_with_sink(
   };
   const DeliveryLineOperations<
       decltype(load_line), decltype(store_line), decltype(load_sink),
-      decltype(load_profile), decltype(add_realized)>
-      operations{load_line, store_line, load_sink, load_profile, add_realized,
-                 sink_params.sink_dt};
+      decltype(load_prescribed), decltype(load_profile),
+      decltype(add_realized)>
+      operations{load_line, store_line, load_sink, load_prescribed,
+                 load_profile, add_realized, sink_params.sink_dt};
   return diffuse_bounded_z_delivery_with_sink_impl(
       {nx, ny, nz, alpha}, params, operations);
 }
@@ -906,6 +1023,10 @@ void ChemicalField::init(const Domain& domain,
   vbf_sink_realized_.assign(
       static_cast<size_t>(nspec_),
       std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
+  prescribed_sink_.assign(
+      static_cast<size_t>(nspec_),
+      std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
+  prescribed_active_.assign(static_cast<size_t>(nspec_), false);
   for (Int s = 0; s < nspec_; ++s) {
     conc_[s].assign(ncells_, specs_[s].initial_conc);
     reac_[s].assign(ncells_, 0.0);
@@ -1056,6 +1177,8 @@ void ChemicalField::zero_reactions() {
     std::ranges::fill(sink_realized_[s], 0.0);
     std::ranges::fill(total_sink_realized_[s], 0.0);
     std::ranges::fill(vbf_sink_realized_[s], 0.0);
+    std::ranges::fill(prescribed_sink_[s], 0.0);
+    prescribed_active_[static_cast<size_t>(s)] = false;
   }
   if (!nutrient_debug_enabled() || domain_ == nullptr) return;
   ++nutrient_debug_step_counter();
@@ -1093,6 +1216,37 @@ void ChemicalField::add_sink_rate_global(Int spec, Int cell, Real rate) {
   #endif
   sink_rate_[static_cast<size_t>(spec)][static_cast<size_t>(storage_cell)]
       += rate;
+}
+
+void ChemicalField::add_prescribed_sink_global(
+    Int spec, Int cell, Real amount) {
+  const Int storage_cell = global_to_storage_cell(cell);
+  if (spec < 0 || spec >= nspec_ || storage_cell < 0
+      || !owns_global_cell(cell) || amount <= 0.0) {
+    return;
+  }
+  #ifdef GUTIBM_OPENMP
+  #pragma omp atomic
+  #endif
+  prescribed_sink_[static_cast<size_t>(spec)]
+      [static_cast<size_t>(storage_cell)] += amount;
+  prescribed_active_[static_cast<size_t>(spec)] = true;
+}
+
+Real ChemicalField::prescribed_sink_global(Int spec, Int cell) const {
+  const Int storage_cell = global_to_storage_cell(cell);
+  if (spec < 0 || spec >= nspec_ || storage_cell < 0) return 0.0;
+  return prescribed_sink_[static_cast<size_t>(spec)]
+      [static_cast<size_t>(storage_cell)];
+}
+
+void ChemicalField::add_delivery_reduction(Int spec, Real amount) {
+  if (spec < 0 || spec >= nspec_ || amount <= 0.0) return;
+  #ifdef GUTIBM_OPENMP
+  #pragma omp atomic
+  #endif
+  flux_accounting_.delivery_reduction_step[
+      static_cast<size_t>(spec)] += amount;
 }
 
 void ChemicalField::add_vbf_sink_rate_global(Int spec, Int cell, Real rate) {
@@ -1227,6 +1381,9 @@ void ChemicalField::sum_agent_uptake_across_ranks() {
   MPI_Initialized(&initialized);
   MPI_Finalized(&finalized);
   if (!initialized || finalized) return;
+  int ranks = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+  if (ranks <= 1) return;
   MPI_Allreduce(MPI_IN_PLACE,
                 flux_accounting_.agent_uptake_step.data(), nspec_,
                 MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
@@ -1248,6 +1405,57 @@ void ChemicalField::sum_agent_uptake_across_ranks() {
   MPI_Allreduce(MPI_IN_PLACE,
                 flux_accounting_.uptake_limited_step.data(), nspec_,
                 MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE,
+                flux_accounting_.delivery_reduction_step.data(), nspec_,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+#endif
+}
+
+void ChemicalField::sum_prescribed_sinks_across_ranks() {
+#ifdef GUTIBM_MPI
+  if (mode_ == DecompositionMode::Slab) return;
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) return;
+  int ranks = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+  if (ranks <= 1) return;
+  for (auto& prescribed : prescribed_sink_) {
+    MPI_Allreduce(MPI_IN_PLACE, prescribed.data(), ncells_, MPI_DOUBLE,
+                  MPI_SUM, MPI_COMM_WORLD);
+  }
+  std::vector active(static_cast<size_t>(nspec_), 0);
+  for (Int s = 0; s < nspec_; ++s) {
+    active[static_cast<size_t>(s)] =
+        prescribed_active_[static_cast<size_t>(s)] ? 1 : 0;
+  }
+  MPI_Allreduce(
+      MPI_IN_PLACE, active.data(), nspec_, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+  for (Int s = 0; s < nspec_; ++s) {
+    prescribed_active_[static_cast<size_t>(s)] =
+        active[static_cast<size_t>(s)] != 0;
+  }
+#endif
+}
+
+void ChemicalField::sum_values_across_ranks(
+    std::vector<Real>& values) const {
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) return;
+  int ranks = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+  if (ranks <= 1 || values.empty()) return;
+  MPI_Allreduce(
+      MPI_IN_PLACE, values.data(), static_cast<int>(values.size()),
+      MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+#else
+  (void)values;
 #endif
 }
 
@@ -1313,6 +1521,7 @@ struct SlabTransportContext {
   const ChemicalSpec* gradient_spec = nullptr;
   Real sink_dt = 0.0;
   Real cell_volume = 0.0;
+  const std::vector<Real>* prescribed_mass = nullptr;
 };
 
 struct SlabDeliveryLineContext {
@@ -1328,6 +1537,28 @@ struct SlabDeliveryLineContext {
   Real sink_dt = 0.0;
   const ChemicalSpec* gradient_spec = nullptr;
 };
+
+void load_slab_periodic_x_delivery_line(
+    std::vector<Real>& line, std::vector<Real>& sink,
+    std::vector<Real>& prescribed, const SlabTransportContext& context,
+    Int iy, Int iz) {
+  for (Int ix = 0; ix < context.domain.nx(); ++ix) {
+    const Int cell = slab_storage_index(
+        context.halo_width + ix, iy, iz, context.storage_nx,
+        context.domain.ny());
+    const auto index = static_cast<size_t>(ix);
+    line[index] = context.concentration[static_cast<size_t>(cell)];
+    if (context.sink_rate != nullptr) {
+      sink[index] = (*context.sink_rate)[static_cast<size_t>(cell)]
+          * context.sink_dt;
+    }
+    if (context.prescribed_mass != nullptr) {
+      prescribed[index] =
+          (*context.prescribed_mass)[static_cast<size_t>(cell)]
+          / (3.0 * context.cell_volume);
+    }
+  }
+}
 
 void solve_slab_delivery_line(
     const SlabDeliveryLineContext& context, Int ix, Int iy,
@@ -1388,19 +1619,12 @@ void diffuse_periodic_x_slab_single(
   for (Int line_id = 0; line_id < line_count; ++line_id) {
     const Int iy = line_id % ny;
     const Int iz = line_id / ny;
-    std::vector<Real> line(static_cast<size_t>(nx));
+    std::vector line(static_cast<size_t>(nx), 0.0);
     std::vector sink(static_cast<size_t>(nx), 0.0);
-    for (Int ix = 0; ix < nx; ++ix) {
-      const Int cell = slab_storage_index(
-          halo_width + ix, iy, iz, storage_nx, ny);
-      line[static_cast<size_t>(ix)] =
-          concentration[static_cast<size_t>(cell)];
-    if (sink_rate != nullptr) {
-      sink[static_cast<size_t>(ix)] =
-          (*sink_rate)[static_cast<size_t>(cell)] * sink_dt;
-      }
-    }
-    if (sink_rate != nullptr) {
+    std::vector prescribed(static_cast<size_t>(nx), 0.0);
+    load_slab_periodic_x_delivery_line(
+        line, sink, prescribed, context, iy, iz);
+    if (sink_rate != nullptr || context.prescribed_mass != nullptr) {
       std::vector<Real> gradient;
       if (gradient_spec != nullptr) {
         gradient.assign(
@@ -1409,7 +1633,8 @@ void diffuse_periodic_x_slab_single(
       }
       solve_periodic_with_sink(
           line, sink, alpha,
-          gradient_spec != nullptr ? &gradient : nullptr);
+          gradient_spec != nullptr ? &gradient : nullptr,
+          context.prescribed_mass != nullptr ? &prescribed : nullptr);
     } else {
       solver.solve(line);
     }
@@ -1917,6 +2142,19 @@ Real diffuse_bounded_z_delivery_with_sink_slab(
               halo_width + ix, iy, iz, storage_nx, ny))];
     }
   };
+  const auto load_prescribed = [
+      &context, storage_nx, halo_width, ny, nz](
+      Int ix, Int iy, std::vector<Real>& line) {
+    for (Int iz = 0; iz < nz; ++iz) {
+      const Int cell = slab_storage_index(
+          halo_width + ix, iy, iz, storage_nx, ny);
+      line[static_cast<size_t>(iz)] =
+          context.prescribed_mass == nullptr
+              ? 0.0
+              : (*context.prescribed_mass)[static_cast<size_t>(cell)]
+                    / (3.0 * context.cell_volume);
+    }
+  };
   const auto* gradient_spec = context.gradient_spec;
   const auto load_profile = [gradient_spec, &domain, nz](
                                  Int, Int, std::vector<Real>& line) {
@@ -1934,9 +2172,10 @@ Real diffuse_bounded_z_delivery_with_sink_slab(
   };
   const DeliveryLineOperations<
       decltype(load_line), decltype(store_line), decltype(load_sink),
-      decltype(load_profile), decltype(add_realized)>
-      operations{load_line, store_line, load_sink, load_profile, add_realized,
-                 sink_dt};
+      decltype(load_prescribed), decltype(load_profile),
+      decltype(add_realized)>
+      operations{load_line, store_line, load_sink, load_prescribed,
+                 load_profile, add_realized, sink_dt};
   return diffuse_bounded_z_delivery_with_sink_impl(
       {local_nx, ny, nz, alpha}, params, operations);
 }
@@ -2061,6 +2300,8 @@ struct ReplicatedDiffusionContext {
   bool preserve_gradient;
   bool delivery;
   const ChemicalSpec* gradient_spec;
+  const std::vector<Real>* prescribed_mass;
+  bool prescribed_active;
 };
 
 struct DebugStageSnapshot {
@@ -2159,7 +2400,8 @@ void transport_replicated_periodic(
     const DeliverySinkParameters sink_params{
         context.sink_rate, context.sink_realized, context.dt / 3.0,
         context.cell_volume,
-        context.preserve_gradient ? &context.chemical : nullptr};
+        context.preserve_gradient ? &context.chemical : nullptr,
+        context.prescribed_mass};
     const DebugStageSnapshot before_x = debug_snapshot(context);
     diffuse_periodic_x_delivery(
         context.concentration, context.domain, context.alpha_x, sink_params);
@@ -2187,7 +2429,8 @@ Real transport_replicated_z(
            EpithelialBoundaryMode::Dirichlet, context.cell_volume},
           {context.sink_rate, context.sink_realized, context.dt / 3.0,
            context.cell_volume,
-           context.preserve_gradient ? &context.chemical : nullptr});
+           context.preserve_gradient ? &context.chemical : nullptr,
+           context.prescribed_mass});
     }
     return diffuse_bounded_z(
         context.concentration, context.domain, context.alpha_z,
@@ -2208,7 +2451,8 @@ Real transport_replicated_z(
          context.chemical.epithelial_boundary_mode, context.cell_volume},
         {context.sink_rate, context.sink_realized, context.dt / 3.0,
          context.cell_volume,
-         context.preserve_gradient ? &context.chemical : nullptr});
+         context.preserve_gradient ? &context.chemical : nullptr,
+         context.prescribed_mass});
   }
   return diffuse_bounded_z_delivery(
       context.concentration, context.domain, context.alpha_z,
@@ -2248,12 +2492,12 @@ void finish_replicated_diffusion(ReplicatedDiffusionContext& context) {
             - before_luminal);
     emit_debug_stage(context, "luminal_neumann_finish", luminal_snapshot);
   }
-  if (context.delivery) {
+  if (!context.delivery) {
+    clamp_nonnegative(context.concentration);
+  } else if (!context.prescribed_active) {
     clamp_delivery_total(
         context.concentration, context.cell_volume,
         context.flux, context.spec);
-  } else {
-    clamp_nonnegative(context.concentration);
   }
   if (context.chemical.epithelial_boundary_mode
       == EpithelialBoundaryMode::Dirichlet) {
@@ -2286,6 +2530,8 @@ struct SlabDiffusionContext {
   bool preserve_gradient;
   bool delivery;
   const ChemicalSpec* gradient_spec;
+  const std::vector<Real>* prescribed_mass;
+  bool prescribed_active;
 };
 
 Real sum_realized(
@@ -2383,7 +2629,7 @@ void transport_slab_periodic(const SlabDiffusionContext& context) {
       context.delivery ? &context.sink_rate : nullptr,
       context.delivery ? &context.sink_realized : nullptr,
       context.delivery ? context.gradient_spec : nullptr,
-      context.dt / 3.0, context.cell_volume};
+      context.dt / 3.0, context.cell_volume, context.prescribed_mass};
   const DebugStageSnapshot before_x = debug_snapshot(context);
   diffuse_periodic_x_slab(transport);
   emit_debug_stage(context, "x_delivery_solve", before_x);
@@ -2393,7 +2639,8 @@ void transport_slab_periodic(const SlabDiffusionContext& context) {
         {context.concentration, context.domain, context.storage_nx,
          context.halo_width, context.alpha_y, &context.sink_rate,
          &context.sink_realized, context.gradient_spec,
-         context.dt / 3.0, context.cell_volume});
+         context.dt / 3.0, context.cell_volume,
+         context.prescribed_mass});
     emit_debug_stage(context, "y_delivery_solve", before_y);
   } else {
     diffuse_periodic_y_slab(
@@ -2409,7 +2656,7 @@ Real transport_slab_z(const SlabDiffusionContext& context) {
       context.delivery ? &context.sink_rate : nullptr,
       context.delivery ? &context.sink_realized : nullptr,
       context.delivery ? context.gradient_spec : nullptr,
-      context.dt / 3.0, context.cell_volume};
+      context.dt / 3.0, context.cell_volume, context.prescribed_mass};
   if (context.chemical.epithelial_boundary_mode
       == EpithelialBoundaryMode::Dirichlet) {
     const Real boundary = context.delivery
@@ -2477,14 +2724,15 @@ void finish_slab_diffusion(SlabDiffusionContext& context) {
             context.halo_width, context.cell_volume) - before_luminal);
     emit_debug_stage(context, "luminal_neumann_finish", luminal_snapshot);
   }
-  if (context.delivery) {
-    clamp_delivery_total_slab(
-        context.concentration, context.domain, context.storage_nx,
-        context.halo_width, context.cell_volume, context.flux, context.spec);
-  } else {
+  if (!context.delivery) {
     clamp_nonnegative_slab(
         context.concentration, context.domain, context.storage_nx,
         context.halo_width);
+  } else if (!context.prescribed_active) {
+    clamp_delivery_total_slab(
+        context.concentration, context.domain, context.storage_nx,
+        context.halo_width, context.cell_volume,
+        context.flux, context.spec);
   }
   if (context.chemical.epithelial_boundary_mode
       == EpithelialBoundaryMode::Dirichlet) {
@@ -2504,6 +2752,7 @@ void finish_slab_diffusion(SlabDiffusionContext& context) {
 void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   if (dt <= 0.0 || domain.dx_x() <= 0.0 || domain.dx_y() <= 0.0
       || domain.dx_z() <= 0.0) return;
+  sum_prescribed_sinks_across_ranks();
   if (mode_ == DecompositionMode::Slab) {
     apply_diffusion_slab(domain, dt);
     return;
@@ -2534,13 +2783,67 @@ void ChemicalField::apply_diffusion_species(
       alpha_z,
       domain.cell_volume(), chemical.boundary_conc,
       chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
-      chemical.delivery_enabled && has_sink_rate(s),
+      chemical.delivery_enabled,
       (chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0)
-          ? &chemical : nullptr};
-  prepare_replicated_diffusion(context);
-  transport_replicated_diffusion(context);
-  finish_replicated_diffusion(context);
-  if (context.delivery) split_delivery_sink_realized(s);
+          ? &chemical : nullptr,
+      &prescribed_sink_[static_cast<size_t>(s)],
+      prescribed_active_[static_cast<size_t>(s)]};
+  if (!context.delivery) {
+    prepare_replicated_diffusion(context);
+    transport_replicated_diffusion(context);
+    finish_replicated_diffusion(context);
+    return;
+  }
+  constexpr Int kMaxDeliveryRetries = 2;
+  const auto concentration_snapshot = conc_[static_cast<size_t>(s)];
+  const auto flux_snapshot = flux_accounting_;
+  const auto restore = [&] {
+      conc_[static_cast<size_t>(s)] = concentration_snapshot;
+      flux_accounting_ = flux_snapshot;
+  };
+  const auto solve = [&] {
+    prepare_replicated_diffusion(context);
+    transport_replicated_diffusion(context);
+    finish_replicated_diffusion(context);
+  };
+  const auto has_negative = [&] {
+    return has_negative_owned_cell(
+        conc_[static_cast<size_t>(s)], global_ncells_,
+        [this](Int cell) { return owns_global_cell(cell); },
+        [this](Int cell) { return global_to_storage_cell(cell); });
+  };
+  const auto reduce = [&](Int attempt, Int max_retries) {
+    auto& prescribed = prescribed_sink_[static_cast<size_t>(s)];
+    return reduce_negative_prescribed_cells(
+        conc_[static_cast<size_t>(s)], prescribed, global_ncells_, attempt,
+        max_retries,
+        [this](Int cell) { return owns_global_cell(cell); },
+        [this](Int cell) { return global_to_storage_cell(cell); });
+  };
+  const DeliveryRetryResult retry = run_delivery_retries(
+      kMaxDeliveryRetries, restore, solve, has_negative, reduce);
+  if (retry.negative_after_solve) {
+    restore();
+    solve();
+  }
+  add_delivery_reduction(s, retry.reduced);
+  split_delivery_sink_realized(s);
+  finalize_delivery_realized(s);
+}
+
+void ChemicalField::finalize_delivery_realized(Int spec) {
+  for (Int cell = 0; cell < global_ncells_; ++cell) {
+    if (!owns_global_cell(cell)) continue;
+    const Int storage = global_to_storage_cell(cell);
+    if (storage < 0) continue;
+    const auto index = static_cast<size_t>(storage);
+    if (prescribed_active_[static_cast<size_t>(spec)]) {
+      const Real agent = prescribed_sink_[static_cast<size_t>(spec)][index];
+      sink_realized_[static_cast<size_t>(spec)][index] = agent;
+      total_sink_realized_[static_cast<size_t>(spec)][index] =
+          vbf_sink_realized_[static_cast<size_t>(spec)][index] + agent;
+    }
+  }
 }
 
 void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt) {
@@ -2643,13 +2946,52 @@ void ChemicalField::apply_diffusion_slab_species(
       alpha_x, alpha_y, alpha_z, domain.cell_volume(),
       chemical.boundary_conc,
       chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
-      chemical.delivery_enabled && has_sink_rate(s),
+      chemical.delivery_enabled,
       (chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0)
-          ? &chemical : nullptr};
-  prepare_slab_diffusion(context);
-  transport_slab_diffusion(context);
-  finish_slab_diffusion(context);
-  if (context.delivery) split_delivery_sink_realized(s);
+          ? &chemical : nullptr,
+      &prescribed_sink_[static_cast<size_t>(s)],
+      prescribed_active_[static_cast<size_t>(s)]};
+  if (!context.delivery) {
+    prepare_slab_diffusion(context);
+    transport_slab_diffusion(context);
+    finish_slab_diffusion(context);
+    return;
+  }
+  constexpr Int kMaxDeliveryRetries = 2;
+  const auto concentration_snapshot = conc_[static_cast<size_t>(s)];
+  const auto flux_snapshot = flux_accounting_;
+  const auto restore = [&] {
+      conc_[static_cast<size_t>(s)] = concentration_snapshot;
+      flux_accounting_ = flux_snapshot;
+  };
+  const auto solve = [&] {
+    prepare_slab_diffusion(context);
+    transport_slab_diffusion(context);
+    finish_slab_diffusion(context);
+  };
+  const auto has_negative = [&] {
+    return has_negative_owned_cell(
+        conc_[static_cast<size_t>(s)], global_ncells_,
+        [this](Int cell) { return owns_global_cell(cell); },
+        [this](Int cell) { return global_to_storage_cell(cell); });
+  };
+  const auto reduce = [&](Int attempt, Int max_retries) {
+    auto& prescribed = prescribed_sink_[static_cast<size_t>(s)];
+    return reduce_negative_prescribed_cells(
+        conc_[static_cast<size_t>(s)], prescribed, global_ncells_, attempt,
+        max_retries,
+        [this](Int cell) { return owns_global_cell(cell); },
+        [this](Int cell) { return global_to_storage_cell(cell); });
+  };
+  const DeliveryRetryResult retry = run_delivery_retries(
+      kMaxDeliveryRetries, restore, solve, has_negative, reduce);
+  if (retry.negative_after_solve) {
+    restore();
+    solve();
+  }
+  add_delivery_reduction(s, retry.reduced);
+  split_delivery_sink_realized(s);
+  finalize_delivery_realized(s);
 }
 
 namespace {

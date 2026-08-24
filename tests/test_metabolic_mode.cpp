@@ -79,14 +79,14 @@ struct RespirationProbe {
 
 RespirationProbe run_respiration_probe(
     const std::string& driver, Real oxygen_concentration,
-    bool zero_growth = false) {
+    bool zero_growth = false, Real q_consumption = 1.0e-15) {
   SimulationConfig cfg = simulation_config();
   cfg.chem_env.oxygen.enabled = true;
   cfg.chem_env.oxygen.delivery_uptake_enabled = true;
   cfg.chem_env.oxygen.respiration_driver = driver;
   cfg.chem_env.oxygen.metabolic_switch_enabled = true;
   cfg.chem_env.oxygen.tau_metabolic_switch = 1.0;
-  cfg.chem_env.oxygen.q_consumption = 1.0e-15;
+  cfg.chem_env.oxygen.q_consumption = q_consumption;
   cfg.chem_env.oxygen.q_maintenance = 0.0;
   cfg.chem_env.oxygen.vbf_sink = 0.0;
   cfg.chem_env.oxygen.epithelial_conc = oxygen_concentration;
@@ -116,7 +116,10 @@ RespirationProbe run_respiration_probe(
 
 void test_funded_respiration_graded_and_bounded() {
   const std::array<Real, 4> concentrations = {
-      0.0, 1.0e-5, 1.0e-3, 1.0e-1};
+      0.0, 1.0e-6, 2.5e-6, 5.0e-6};
+  // With D=2.1e-9 m^2/s, r=0.5e-6 m, and dt=60 s, C* =
+  // demand / (4*pi*D*r*dt) ~= 5.15e-6 mol/m^3, so this ladder brackets
+  // the analytic funding transition.
   std::array<Real, 4> fractions{};
   for (size_t i = 0; i < concentrations.size(); ++i) {
     const RespirationProbe probe = run_respiration_probe(
@@ -130,14 +133,19 @@ void test_funded_respiration_graded_and_bounded() {
   assert(fractions[1] > fractions[2]);
   assert(fractions[2] > fractions[3]);
   assert(fractions[0] - fractions[3] > 0.5);
+  const RespirationProbe supplied = run_respiration_probe(
+      "funded", 55.0e-6);
+  assert(std::abs(supplied.funded_growth - supplied.growth_demand)
+         <= 1.0e-12 * std::max(supplied.growth_demand, 1.0e-30));
+  assert(supplied.fraction < 0.05);
   std::cout << "  test_funded_respiration_graded_and_bounded: PASSED\n";
 }
 
 void test_funded_respiration_discriminates_from_ambient() {
   const RespirationProbe ambient = run_respiration_probe(
-      "ambient", 55.0e-6);
+      "ambient", 55.0e-6, false, 1.0e-13);
   const RespirationProbe funded = run_respiration_probe(
-      "funded", 55.0e-6);
+      "funded", 55.0e-6, false, 1.0e-13);
   assert(ambient.fraction < 0.2);
   assert(funded.fraction > ambient.fraction + 0.2);
   std::cout << "  test_funded_respiration_discriminates_from_ambient: PASSED\n";
