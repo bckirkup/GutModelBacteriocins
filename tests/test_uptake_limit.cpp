@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "species_names.h"
 
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -25,6 +26,16 @@ struct Measurement {
   Real realized = 0.0;
   Real limited_agents = 0.0;
   Real field_removal = 0.0;
+};
+
+struct DeliveryStepMeasurement {
+  Real demand = 0.0;
+  Real funded = 0.0;
+  Real ceiling = 0.0;
+  Real field_removal = 0.0;
+  Real min_concentration = 0.0;
+  Real funded_fraction = 0.0;
+  Real delivery_reduction = 0.0;
 };
 
 SimulationConfig base_config() {
@@ -116,6 +127,230 @@ Real funded_fraction(UptakeLimitMode mode, Real carbon_conc, Real radius,
       UptakeLimitMode::None, carbon_conc, radius, retardation);
   assert(unlimited.mu_realized > 0.0);
   return limited.mu_realized / unlimited.mu_realized;
+}
+
+DeliveryStepMeasurement measure_delivery_step(
+    Real grid_dx, Real dt, Real concentration, Real mu_max = 1.0e-2,
+    Real radius = 5.0e-7, Real boundary_concentration = -1.0) {
+  SimulationConfig cfg = base_config();
+  cfg.domain.grid_dx = grid_dx;
+  cfg.domain.hi = {4.0 * grid_dx, 4.0 * grid_dx, 4.0 * grid_dx};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.carbon_maintenance_rate = 0.0;
+  cfg.initial_strains.front().mu_max = mu_max;
+  cfg.time.total_time = dt;
+  cfg.time.bio_dt = dt;
+  cfg.time.output_interval = dt;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = concentration;
+      chemical.boundary_conc = boundary_concentration >= 0.0
+          ? boundary_concentration : concentration;
+      chemical.diff_coeff = 5.0e-10;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  auto& agent = sim.agents()[0];
+  agent.radius = radius;
+  agent.outer_radius = radius * 1.05;
+  agent.km.km_carbon = 1.0e-9;
+  const Real initial_radius = agent.radius;
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const Int cell = agent.grid_cell;
+  const Real pre_step_concentration =
+      sim.chemical_field().total_conc_global(
+          carbon, cell, sim.domain());
+  const Real effective_diffusivity =
+      sim.chemical_field().spec(carbon).diff_coeff
+      / sim.chemical_field().spec(carbon).retardation;
+  sim.step(dt);
+
+  const auto& chem = sim.chemical_field();
+  const auto& flux = chem.flux_accounting();
+  const auto index = static_cast<size_t>(carbon);
+  DeliveryStepMeasurement result;
+  result.demand = flux.uptake_demand_interval[index];
+  result.funded = flux.agent_uptake_interval[index];
+  result.ceiling = uptake::allowed_uptake_mol(
+      static_cast<int>(UptakeLimitMode::Sherwood), pre_step_concentration,
+      effective_diffusivity, initial_radius, sim.domain().cell_volume(), dt);
+  for (Int global_cell = 0;
+       global_cell < chem.global_ncells(); ++global_cell) {
+    result.field_removal += chem.sink_realized_global(carbon, global_cell);
+    result.min_concentration = global_cell == 0
+        ? chem.conc_global(carbon, global_cell)
+        : std::min(result.min_concentration,
+                   chem.conc_global(carbon, global_cell));
+  }
+  result.funded_fraction = result.demand > 0.0
+      ? result.funded / result.demand : 0.0;
+  result.delivery_reduction =
+      flux.delivery_reduction_interval[index]
+      + flux.delivery_reduction_cumulative[index];
+  return result;
+}
+
+void test_delivery_resolution_and_timestep_invariance() {
+  const DeliveryStepMeasurement fine =
+      measure_delivery_step(2.0e-6, 60.0, 1.0e2, 1.0e1);
+  const DeliveryStepMeasurement coarse =
+      measure_delivery_step(6.0e-6, 60.0, 1.0e2, 1.0e1);
+  const DeliveryStepMeasurement short_step =
+      measure_delivery_step(2.0e-6, 10.0, 1.0e2, 1.0e1);
+  assert(fine.demand > 0.0);
+  assert(coarse.demand > 0.0);
+  assert(short_step.demand > 0.0);
+  assert(fine.delivery_reduction == 0.0);
+  assert(coarse.delivery_reduction == 0.0);
+  assert(short_step.delivery_reduction == 0.0);
+  assert(std::abs(fine.funded_fraction - coarse.funded_fraction) <= 0.05);
+  assert(std::abs(fine.funded_fraction - short_step.funded_fraction) <= 0.05);
+  std::cout << "    delivery fractions 2um/6um/10s="
+            << fine.funded_fraction << "/" << coarse.funded_fraction << "/"
+            << short_step.funded_fraction << "\n";
+  std::cout << "  test_delivery_resolution_and_timestep_invariance: PASSED\n";
+}
+
+void test_delivery_funding_matches_demand_or_ceiling() {
+  const DeliveryStepMeasurement demand_limited =
+      measure_delivery_step(5.0e-6, 60.0, 1.0e2, 1.0e-6);
+  // C* = demand / (4*pi*D*r*dt) ~= 0.63 mol/m^3 for the high-demand arm;
+  // 0.1 mol/m^3 is below that transition and is therefore ceiling-limited.
+  const DeliveryStepMeasurement ceiling_limited =
+      measure_delivery_step(5.0e-6, 60.0, 1.0e-1, 1.0e1);
+  assert(demand_limited.demand < demand_limited.ceiling);
+  assert(std::abs(demand_limited.funded - demand_limited.demand)
+         <= 1.0e-12 * std::max(demand_limited.demand, 1.0e-30));
+  assert(ceiling_limited.demand > ceiling_limited.ceiling);
+  assert(std::abs(ceiling_limited.funded - ceiling_limited.ceiling)
+         <= 1.0e-12 * std::max(ceiling_limited.ceiling, 1.0e-30));
+  std::cout << "  test_delivery_funding_matches_demand_or_ceiling: PASSED\n";
+}
+
+void test_delivery_concentration_response_and_positivity() {
+  const std::vector<Real> concentrations = {
+      1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4};
+  std::vector<Real> fractions;
+  fractions.reserve(concentrations.size());
+  for (const Real concentration : concentrations) {
+    const DeliveryStepMeasurement result =
+        measure_delivery_step(5.0e-6, 60.0, concentration);
+    assert(std::isfinite(result.funded));
+    assert(std::isfinite(result.min_concentration));
+    assert(result.min_concentration >= 0.0);
+    fractions.push_back(result.funded_fraction);
+  }
+  for (size_t i = 0; i + 1 < fractions.size(); ++i) {
+    assert(fractions[i] <= fractions[i + 1]);
+  }
+  assert(fractions.back() > fractions.front());
+  std::cout << "  test_delivery_concentration_response_and_positivity: PASSED\n";
+}
+
+void test_delivery_exact_removal_and_depletion_cap() {
+  const DeliveryStepMeasurement supplied =
+      measure_delivery_step(5.0e-6, 60.0, 1.0e2);
+  const DeliveryStepMeasurement starved =
+      measure_delivery_step(5.0e-6, 60.0, 1.0e-12, 1.0e1,
+                            5.0e-7, 0.0);
+  assert(std::abs(supplied.field_removal - supplied.funded)
+         <= 1.0e-12 * std::max(supplied.funded, 1.0e-30));
+  assert(supplied.delivery_reduction == 0.0);
+  assert(std::abs(starved.field_removal - starved.funded)
+         <= 1.0e-12 * std::max(starved.funded, 1.0e-30));
+  assert(starved.funded < std::min(starved.demand, starved.ceiling));
+  assert(starved.min_concentration >= 0.0);
+  assert(starved.delivery_reduction > 0.0);
+  std::cout << "  test_delivery_exact_removal_and_depletion_cap: PASSED\n";
+}
+
+std::pair<Real, Real> run_delivery_adjacent_agents(
+    bool reverse_order, bool starved, Real& reduction) {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains[0].count = 2;
+  cfg.initial_strains[0].mu_max = 1.0e-2;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = kDt;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = starved ? 1.0e-12 : 1.0e2;
+      chemical.boundary_conc = starved ? 0.0 : 1.0e2;
+      chemical.diff_coeff = 5.0e-10;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  const std::array<Real, 3> cell_one = {7.5e-6, 7.5e-6, 12.5e-6};
+  const std::array<Real, 3> cell_two = {12.5e-6, 7.5e-6, 12.5e-6};
+  for (size_t i = 0; i < sim.agents().size(); ++i) {
+    Agent& agent = sim.agents()[i];
+    const bool first_is_cell_two = reverse_order && i == 0;
+    agent.x = first_is_cell_two || (!reverse_order && i == 1)
+        ? cell_two : cell_one;
+    agent.mu_max = agent.x[0] == cell_one[0] ? 1.0e-2 : 5.0e-3;
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  sim.step(kDt);
+
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  reduction = flux.delivery_reduction_interval[static_cast<size_t>(carbon)]
+      + flux.delivery_reduction_cumulative[static_cast<size_t>(carbon)];
+  std::pair<Real, Real> funding{};
+  for (const Agent& agent : sim.agents()) {
+    if (agent.x[0] < 10.0e-6) {
+      funding.first = agent.pending_carbon_funding;
+    } else {
+      funding.second = agent.pending_carbon_funding;
+    }
+  }
+  return funding;
+}
+
+void test_delivery_adjacent_agents_are_order_independent() {
+  Real forward_reduction = 0.0;
+  Real reverse_reduction = 0.0;
+  const auto forward = run_delivery_adjacent_agents(
+      false, false, forward_reduction);
+  const auto reverse = run_delivery_adjacent_agents(
+      true, false, reverse_reduction);
+  assert(forward.first > 0.0);
+  assert(forward.second > 0.0);
+  assert(std::abs(forward.first - reverse.first)
+         <= 1.0e-12 * std::max(forward.first, 1.0e-30));
+  assert(std::abs(forward.second - reverse.second)
+         <= 1.0e-12 * std::max(forward.second, 1.0e-30));
+  assert(forward_reduction == 0.0);
+  assert(reverse_reduction == 0.0);
+  const auto starved_forward = run_delivery_adjacent_agents(
+      false, true, forward_reduction);
+  const auto starved_reverse = run_delivery_adjacent_agents(
+      true, true, reverse_reduction);
+  assert(forward_reduction > 0.0);
+  assert(reverse_reduction > 0.0);
+  assert(std::abs(starved_forward.first - starved_reverse.first)
+         <= 1.0e-12 * std::max(starved_forward.first, 1.0e-30));
+  assert(std::abs(starved_forward.second - starved_reverse.second)
+         <= 1.0e-12 * std::max(starved_forward.second, 1.0e-30));
+  std::cout << "  test_delivery_adjacent_agents_are_order_independent: PASSED\n";
 }
 
 bool finite_and_nonnegative(const Measurement& m) {
@@ -351,11 +586,16 @@ void test_delivery_is_positive_and_funds_only_removed_carbon() {
   const auto& flux = chem.flux_accounting();
   const auto index = static_cast<size_t>(carbon);
   const Real removed = flux.agent_uptake_cumulative[index]
-      + flux.maintenance_cumulative[index];
-  const Real demanded = flux.uptake_demand_cumulative[index];
+      + flux.agent_uptake_interval[index]
+      + flux.maintenance_cumulative[index]
+      + flux.maintenance_interval[index];
+  const Real demanded = flux.uptake_demand_cumulative[index]
+      + flux.uptake_demand_interval[index];
   assert(removed >= 0.0 && removed <= demanded + 1.0e-18);
-  assert(flux.reaction_clip_cumulative[index] == 0.0);
-  assert(flux.uptake_shortfall_cumulative[index] >= 0.0);
+  assert(flux.reaction_clip_cumulative[index]
+         + flux.reaction_clip_interval[index] == 0.0);
+  assert(flux.uptake_shortfall_cumulative[index]
+         + flux.uptake_shortfall_interval[index] >= 0.0);
   assert(static_cast<size_t>(sim.agents().size())
          == initial_biomass_by_agent.size());
   Real committed_growth_carbon = 0.0;
@@ -364,7 +604,9 @@ void test_delivery_is_positive_and_funds_only_removed_carbon() {
         (sim.agents()[i].biomass - initial_biomass_by_agent[i])
         * cfg.fixes.metabolism.yield_carbon;
   }
-  assert(std::abs(committed_growth_carbon + flux.maintenance_cumulative[index]
+  assert(std::abs(committed_growth_carbon
+                  + flux.maintenance_cumulative[index]
+                  + flux.maintenance_interval[index]
                   - removed) <= 1.0e-18);
   assert(sim.agents()[0].biomass >= initial_biomass_agent);
   for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
@@ -381,7 +623,9 @@ std::pair<Real, Real> run_delivery_maintenance_case(Real maintenance_rate) {
   cfg.vbf.mucin_liberation = 0.0;
   cfg.fixes.metabolism.uptake_limit = "delivery";
   cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
-  cfg.initial_strains[0].mu_max = 5.0e-5;
+  // Keep growth demand large enough that maintenance competes for the
+  // deliberately supply-limited carbon fixture.
+  cfg.initial_strains[0].mu_max = 5.0e-3;
   cfg.fixes.metabolism.carbon_maintenance_rate = maintenance_rate;
   cfg.time.total_time = kDt;
   cfg.time.bio_dt = kDt;
@@ -600,7 +844,11 @@ void test_delivery_negative_growth_books_maintenance() {
   const auto& chem = sim.chemical_field();
   const auto& flux = chem.flux_accounting();
   const auto index = static_cast<size_t>(carbon);
-  const Real realized = chem.sink_realized_global(cell);
+  Real realized = 0.0;
+  for (Int global_cell = 0;
+       global_cell < chem.global_ncells(); ++global_cell) {
+    realized += chem.sink_realized_global(carbon, global_cell);
+  }
   const Real maintenance = flux.maintenance_interval[index];
   const Real growth = flux.agent_uptake_interval[index];
   const Real maintenance_shortfall =
@@ -856,6 +1104,11 @@ void test_none_mode_clip_does_not_close_by_default() {
 
 int main() {
   std::cout << "=== Uptake Limitation Tests ===\n";
+  test_delivery_resolution_and_timestep_invariance();
+  test_delivery_funding_matches_demand_or_ceiling();
+  test_delivery_concentration_response_and_positivity();
+  test_delivery_exact_removal_and_depletion_cap();
+  test_delivery_adjacent_agents_are_order_independent();
   test_funded_fraction_falls_with_local_concentration();
   test_funded_fraction_falls_with_radius_and_diffusivity();
   test_realized_uptake_respects_the_cap_and_the_field();

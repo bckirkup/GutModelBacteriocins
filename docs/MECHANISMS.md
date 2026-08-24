@@ -112,29 +112,19 @@ With `metabolism.uptake_limit: "delivery"`, requested growth and maintenance
 carbon are held until chemistry completes. This mode is CPU-only:
 `gpu_enabled=true` together with `metabolism.uptake_limit="delivery"` is
 rejected during config finalization because CUDA parity is not implemented
-yet. Each owned agent contributes a first-order sink coefficient
-
-```
-k_agent = 4*pi*D_eff*r / V_cell
-k_eff = min(k_agent, demand_total / (C_now*V_cell*dt))
-```
-
-to its grid cell. The sink is included on the diagonal of each directional
-backward-Euler diffusion solve, preserving nonnegative concentrations without
-explicit reaction clipping. The realized removal is split among co-located
-agents in proportion to their demand, with maintenance paid before growth.
-Only the funded biomass increment and growth rate are committed. Unfunded
-requests are reported as uptake or maintenance shortfall rather than reaction
-clip. Non-carbon growth chemistry from the funded increment is queued on the
-agent and emitted at the start of the next biology pass, before the next
-chemistry solve. This one-step lag matches the funding lag; carbon remains
-excluded from that queued reaction path. When gradient preservation is enabled,
-transport solves for the perturbation `P` after subtracting the static profile
-`G(z)`, while delivery acts on total concentration `P + G(z)`: each implicit
-sink solve keeps its diagonal unchanged and adds `-s*G` to the right-hand side.
-Realized removal is calculated from the post-solve total and only the restored
-total is clamped; any resulting carbon truncation is recorded as a reaction
-clip. Ghost agents do not contribute sink coefficients or accounting writes.
+yet. Each owned agent contributes an analytic prescribed mass
+`min(demand_total, Sherwood)` to its cell. The aggregate is applied as a
+zero-order right-hand-side draw, `-F_cell/(3*V_cell)`, in each directional
+backward-Euler solve. This is not the retired legacy zero-order sink: that sink
+was applied and clipped to voxel content before diffusion, while this sink is
+inside implicit diffusion and is capped at analytic diffusive delivery rather
+than unbounded demand. The implicit solve therefore supplies the diffusive
+neighbourhood rather than restricting the draw to the agent's voxel, with no
+conductance or `k/3` splitting bias. Realized removal equals funded uptake by
+construction. If a genuinely starved neighbourhood would become negative, the
+prescribed draws are reduced deterministically and the solve is retried; the
+reduction is metered in the nutrient ledger. Ghost agents do not contribute
+prescribed draws or accounting writes.
 
 ### Delivery closure auditing
 
@@ -705,7 +695,7 @@ The adhesion force decays linearly to zero at `adhesion_range`, preventing long-
 
 An explicit 3-D stencil is unusable at the biological timestep: for O₂ at `D = 2.1e-9 m²/s`, `dt = 60 s`, and `dx = 5 µm`, the diffusion number is `D·dt/dx² = 5040`, versus the explicit stability limit `1/6`. GutIBM therefore uses backward-Euler directional splitting for enabled nutrient fields.
 
-Each directional pass solves a tridiagonal system in O(cells): x and y are periodic and the luminal z face has zero flux. The epithelial z=0 face defaults to a fixed concentration (`dirichlet`); configured species may instead use `robin`, `J = k(C_epi - c0)`, or `flux`, a fixed delivery rate in mol/m²/s. Delivery modes solve all `nz` cells with the epithelial cell as an unknown and record the realized post-solve exchange in the nutrient ledger. The method is L-stable; concentrations are clamped nonnegative after the solve, so no diffusion substeps are required. For species with a configured exponential z-gradient, diffusion acts on departures from that prescribed background profile rather than erasing it; the gradient is rejected with Robin or flux because its pinned reference assumes a Dirichlet boundary. The chemistry order is rank-local agent reactions → MPI sum → global VBF coupling → concentration update → implicit diffusion → boundary enforcement. On GPU-active steps, host-written reactions are uploaded before any device reaction kernel runs, so the device reaction buffer is the single accumulated source for the step; resulting concentrations are synchronized back to the host after device integration.
+Each directional pass solves a tridiagonal system in O(cells): x and y are periodic and the luminal z face has zero flux. The epithelial z=0 face defaults to a fixed concentration (`dirichlet`); configured species may instead use `robin`, `J = k(C_epi - c0)`, or `flux`, a fixed delivery rate in mol/m²/s. Delivery modes solve all `nz` cells with the epithelial cell as an unknown and record the realized post-solve exchange in the nutrient ledger. The method is L-stable; non-delivery reactions are clamped nonnegative after the solve, while prescribed delivery retries from a pre-solve snapshot rather than clipping a draw. For species with a configured exponential z-gradient, diffusion acts on departures from that prescribed background profile rather than erasing it; the gradient is rejected with Robin or flux because its pinned reference assumes a Dirichlet boundary. The chemistry order is rank-local agent reactions → MPI sum → global VBF coupling → concentration update → implicit diffusion → boundary enforcement. On GPU-active steps, host-written reactions are uploaded before any device reaction kernel runs, so the device reaction buffer is the single accumulated source for the step; resulting concentrations are synchronized back to the host after device integration.
 
 ### Bacteriocin QSSA solver
 
@@ -882,7 +872,20 @@ C(z) = C_max * exp(-z_rel / lambda_mucin)
 where `z_rel` is the distance from the epithelium and `lambda_mucin` is the characteristic decay length (~25 μm by default). The default Dirichlet boundary at z=0 maintains `boundary_conc` as the peak value. Carbon can opt into finite-rate delivery with `carbon.epithelial_boundary` (or its underscore alias): Robin uses `carbon.epithelial_transfer_coeff` and the existing `boundary_conc` as `C_epi`; flux uses `carbon.epithelial_flux`. The post-solve exchange is recorded in mol as `beta(C_epi - c0_after)V` for Robin or `J·A·dt` for flux. Oxygen exposes the same boundary keys; in Robin mode its `epithelial_conc` is the tissue-side reservoir rather than the imposed mucus-surface concentration, and its imposed oxygen profile must be disabled because the surface value is predicted by delivery and consumption.
 
 
-Agent uptake can be limited to what diffusion can deliver. With `uptake_limit=sherwood`, an agent's per-step uptake of a species is capped at `N_max = 4*pi*D_eff*r_agent*C_local` (Sherwood number 2 for an isolated sphere at rest), with `D_eff = D_free / retardation` taken from the same species record the field solver uses. The realized fraction is the Liebig minimum over the capped species (carbon and iron; the corrinoid pool is not depleted, Spec 6 §3), clamped to `[0, 1]`, and it scales the realized uptake, the biomass increment, and `mu_realized`, so division, bacteriostasis classification, and the washout/VADI `mu` versus `gamma_flow` comparison all see the funded rate. `uptake_limit=voxel` caps at the voxel content `C_local*V_cell` and exists only to measure the grid artifact by divergence from `sherwood`; it is not a biological model. `uptake_limit=none` is the default and leaves growth unfunded as before.
+Agent uptake can be limited to what diffusion can deliver. With
+`uptake_limit=sherwood`, an agent's per-step uptake is capped at
+`N_max = 4*pi*D_eff*r_agent*C_local*dt` (Sherwood number 2 for an isolated
+sphere at rest), with `D_eff = D_free / retardation` taken from the same
+species record the field solver uses. Delivery mode uses that same ceiling as
+a prescribed mass inside the implicit nutrient solve. The realized fraction is
+the Liebig minimum over the capped species (carbon and iron; the corrinoid
+pool is not depleted, Spec 6 §3), clamped to `[0, 1]`, and it scales the
+realized uptake, the biomass increment, and `mu_realized`, so division,
+bacteriostasis classification, and the washout/VADI `mu` versus `gamma_flow`
+comparison all see the funded rate. `uptake_limit=voxel` caps at the voxel
+content `C_local*V_cell` and exists only to measure the grid artifact by
+divergence from `sherwood`; it is not a biological model. `uptake_limit=none`
+is the default and leaves growth unfunded as before.
 ### VBF mucin liberation coupling
 When `mucin_z_gradient_enabled`, the monosaccharide release rate applied by the VBF also varies with z:
 ```
