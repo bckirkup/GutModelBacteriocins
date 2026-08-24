@@ -142,7 +142,7 @@ def scaled_strains(base: dict, scale: float) -> list:
     if scale == 1.0:
         return strains
     for strain in strains:
-        strain["count"] = max(1, int(round(strain["count"] * scale)))
+        strain["count"] = max(1, round(strain["count"] * scale))
     return strains
 
 
