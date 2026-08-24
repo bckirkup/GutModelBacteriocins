@@ -886,6 +886,23 @@ void test_epithelial_boundary_rejects_unknown_modes() {
   std::cout << "  test_epithelial_boundary_rejects_unknown_modes: PASSED\n";
 }
 
+void test_epithelial_boundary_rejects_nonpositive_transfer() {
+  SimulationConfig cfg = InputParser::default_config();
+  assert(InputParser::apply_flat_key(cfg, "carbon_z_gradient", "false"));
+  cfg.carbon_epithelial_boundary = "robin";
+  cfg.carbon_epithelial_transfer_coeff = 0.0;
+  bool threw = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    threw = std::string(error.what()).find(
+        "carbon.epithelial_transfer_coeff") != std::string::npos;
+  }
+  assert(threw);
+  std::cout
+      << "  test_epithelial_boundary_rejects_nonpositive_transfer: PASSED\n";
+}
+
 void test_epithelial_boundary_rejects_gradient_conflict() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR)
       + "/tests/fixtures/parser_epithelial_boundary_gradient_conflict.json";
@@ -897,6 +914,83 @@ void test_epithelial_boundary_rejects_gradient_conflict() {
   }
   assert(threw);
   std::cout << "  test_epithelial_boundary_rejects_gradient_conflict: PASSED\n";
+}
+
+void test_oxygen_epithelial_boundary_configuration() {
+  const SimulationConfig defaults = InputParser::default_config();
+  assert(std::abs(defaults.oxygen_epithelial_transfer_coeff) < 1e-30);
+
+  SimulationConfig cfg = InputParser::default_config();
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.epithelial_boundary", "robin"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.epithelial_transfer_coeff", "1.2e-6"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.epithelial_conc", "5.0e-2"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen_z_gradient", "false"));
+  cfg.chem_env.oxygen.enabled = true;
+  InputParser::finalize_config(cfg);
+
+  assert(cfg.oxygen_epithelial_boundary == "robin");
+  assert(std::abs(cfg.oxygen_epithelial_transfer_coeff - 1.2e-6) < 1e-15);
+  const auto it = std::ranges::find_if(
+      cfg.chemicals, [](const ChemicalSpec& spec) {
+        return spec.name == species::OXYGEN;
+      });
+  assert(it != cfg.chemicals.end());
+  assert(it->epithelial_boundary_mode == EpithelialBoundaryMode::Robin);
+  assert(std::abs(it->epithelial_transfer_coeff - 1.2e-6) < 1e-15);
+  assert(std::abs(it->boundary_conc - 5.0e-2) < 1e-15);
+  assert(!it->z_gradient_enabled);
+
+  const std::string serialized = ConfigJson::serialize_document(cfg);
+  SimulationConfig roundtrip = InputParser::default_config();
+  assert(ConfigJson::parse_document(roundtrip, serialized));
+  assert(roundtrip.oxygen_epithelial_boundary == "robin");
+  assert(std::abs(roundtrip.oxygen_epithelial_transfer_coeff - 1.2e-6)
+         < 1e-15);
+  assert(std::abs(roundtrip.oxygen_epithelial_flux) < 1e-30);
+  assert(!roundtrip.oxygen_z_gradient_enabled);
+  std::cout << "  test_oxygen_epithelial_boundary_configuration: PASSED\n";
+}
+
+void test_oxygen_epithelial_boundary_rejections() {
+  auto expect_rejection = [](
+      const char* mode, const char* transfer, const char* gradient,
+      std::string_view message) {
+    SimulationConfig cfg = InputParser::default_config();
+    assert(InputParser::apply_flat_key(
+        cfg, "oxygen.epithelial_boundary", mode));
+    assert(InputParser::apply_flat_key(
+        cfg, "oxygen.epithelial_transfer_coeff", transfer));
+    assert(InputParser::apply_flat_key(
+        cfg, "oxygen_z_gradient", gradient));
+    cfg.chem_env.oxygen.enabled = true;
+    bool threw = false;
+    try {
+      InputParser::finalize_config(cfg);
+    } catch (const ConfigError& error) {
+      threw = std::string(error.what()).find(message) != std::string::npos;
+    }
+    assert(threw);
+  };
+
+  bool invalid_mode_threw = false;
+  try {
+    SimulationConfig cfg = InputParser::default_config();
+    (void)InputParser::apply_flat_key(
+        cfg, "oxygen.epithelial_boundary", "unknown");
+  } catch (const ConfigError& error) {
+    invalid_mode_threw =
+        std::string(error.what()).find("oxygen.epithelial_boundary")
+        != std::string::npos;
+  }
+  assert(invalid_mode_threw);
+  expect_rejection("robin", "0.0", "false",
+                   "oxygen.epithelial_transfer_coeff");
+  expect_rejection("robin", "1.2e-6", "true", "oxygen z-gradient");
+  std::cout << "  test_oxygen_epithelial_boundary_rejections: PASSED\n";
 }
 
 void test_uptake_limit_fixture() {
@@ -1068,7 +1162,10 @@ int main() {
   test_toxin_lumping_rejects_unknown_modes();
   test_species_subset_rejects_unknown_modes();
   test_epithelial_boundary_rejects_unknown_modes();
+  test_epithelial_boundary_rejects_nonpositive_transfer();
   test_epithelial_boundary_rejects_gradient_conflict();
+  test_oxygen_epithelial_boundary_configuration();
+  test_oxygen_epithelial_boundary_rejections();
   test_uptake_limit_fixture();
   test_delivery_uptake_limit();
   test_oxygen_delivery_uptake_config();

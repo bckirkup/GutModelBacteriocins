@@ -5,5 +5,6 @@
   "domain_y": 25e-6,
   "domain_z": 25e-6,
   "grid_dx": 5e-6,
-  "carbon.epithelial_boundary": "robin"
+  "carbon.epithelial_boundary": "robin",
+  "carbon.epithelial_transfer_coeff": 1.2e-6
 }

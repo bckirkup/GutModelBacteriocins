@@ -843,6 +843,11 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("carbon_boundary_conc", cfg.carbon_boundary_conc);
   bool_key("oxygen.enabled", cfg.chem_env.oxygen.enabled);
   real_key("oxygen.epithelial_conc", cfg.chem_env.oxygen.epithelial_conc);
+  string_key("oxygen.epithelial_boundary", cfg.oxygen_epithelial_boundary);
+  real_key("oxygen.epithelial_transfer_coeff",
+           cfg.oxygen_epithelial_transfer_coeff);
+  real_key("oxygen.epithelial_flux", cfg.oxygen_epithelial_flux);
+  bool_key("oxygen.z_gradient", cfg.oxygen_z_gradient_enabled);
   bool_key("oxygen.delivery_uptake_enabled",
            cfg.chem_env.oxygen.delivery_uptake_enabled);
   string_key("oxygen.respiration_driver",

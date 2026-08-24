@@ -101,15 +101,21 @@ struct DeliveryClosureResult {
 };
 
 DeliveryClosureResult run_delivery_closure(
-    std::string_view species_name, bool gradient_enabled) {
+    std::string_view species_name, bool gradient_enabled,
+    EpithelialBoundaryMode boundary_mode = EpithelialBoundaryMode::Dirichlet,
+    Real boundary_conc = 1.0e-3, Real transfer_coeff = 0.0) {
   constexpr Real dt = 60.0;
   constexpr Int steps = 8;
   Domain domain = make_domain(1, 1, 6);
   ChemicalSpec spec = diffusing_species(1.0e-20, 1.0e-3, 1.0e-3);
   spec.name = std::string(species_name);
+  spec.boundary_conc = boundary_conc;
   spec.delivery_enabled = true;
   spec.z_gradient_enabled = gradient_enabled;
   spec.z_gradient_lambda = 5.0e-6;
+  spec.epithelial_boundary_mode = boundary_mode;
+  spec.epithelial_transfer_coeff = transfer_coeff;
+  spec.epithelial_flux = 0.0;
 
   ChemicalField chem;
   chem.init(domain, {spec});
@@ -209,6 +215,9 @@ void test_delivery_mass_closure_gradient_parameterization() {
       run_delivery_closure(species::OXYGEN, false);
   const DeliveryClosureResult oxygen_gradient =
       run_delivery_closure(species::OXYGEN, true);
+  const DeliveryClosureResult oxygen_robin = run_delivery_closure(
+      species::OXYGEN, false, EpithelialBoundaryMode::Robin,
+      5.0e-2, 1.2e-6);
 
   const auto report = [](std::string_view label,
                          const DeliveryClosureResult& result) {
@@ -228,12 +237,15 @@ void test_delivery_mass_closure_gradient_parameterization() {
   report("carbon_gradient_on", carbon_gradient);
   report("oxygen_gradient_off", oxygen_no_gradient);
   report("oxygen_gradient_on", oxygen_gradient);
+  report("oxygen_robin", oxygen_robin);
 
   constexpr Real tolerance = 1.0e-6;
   assert(no_gradient.relative_residual <= tolerance);
   assert(carbon_gradient.relative_residual <= tolerance);
   assert(oxygen_no_gradient.relative_residual <= tolerance);
   assert(oxygen_gradient.relative_residual <= tolerance);
+  assert(oxygen_robin.boundary > 0.0);
+  assert(oxygen_robin.relative_residual <= tolerance);
 }
 
 void test_delivery_step_mass_closure_dirichlet_refill() {
