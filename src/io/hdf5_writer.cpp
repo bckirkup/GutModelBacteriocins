@@ -903,6 +903,10 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_flux("agent_uptake_cumulative",
              add_cumulative(flux.agent_uptake_cumulative,
                            flux.agent_uptake_interval));
+  write_flux("delivery_refund_interval", flux.delivery_refund_interval);
+  write_flux("delivery_refund_cumulative",
+             add_cumulative(flux.delivery_refund_cumulative,
+                           flux.delivery_refund_interval));
   write_flux("nutrient_blocking_fraction",
              flux.nutrient_blocking_fraction);
   write_flux("maintenance_interval", flux.maintenance_interval);

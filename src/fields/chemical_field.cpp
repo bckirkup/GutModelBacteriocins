@@ -1095,6 +1095,45 @@ void ChemicalField::add_sink_rate_global(Int spec, Int cell, Real rate) {
       += rate;
 }
 
+void ChemicalField::refund_delivery_global(
+    Int spec, Int cell, Real amount) {
+  const Int storage_cell = global_to_storage_cell(cell);
+  if (spec < 0 || spec >= nspec_ || storage_cell < 0
+      || !owns_global_cell(cell) || amount <= 0.0) {
+    return;
+  }
+  const Real volume = domain_ != nullptr ? domain_->cell_volume() : 0.0;
+  if (volume <= 0.0) return;
+  conc_[static_cast<size_t>(spec)][static_cast<size_t>(storage_cell)] +=
+      amount / volume;
+  if (mode_ == DecompositionMode::Slab
+      || domain_ == nullptr || domain_->rank() == 0) {
+    flux_accounting_.add_delivery_refund(spec, amount);
+  }
+}
+
+void ChemicalField::sum_delivery_values_across_ranks(
+    std::vector<Real>& values) const {
+#ifdef GUTIBM_MPI
+  if (mode_ == DecompositionMode::Slab
+      || values.size() != static_cast<size_t>(ncells_)) {
+    return;
+  }
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) return;
+  int ranks = 1;
+  MPI_Comm_size(MPI_COMM_WORLD, &ranks);
+  if (ranks <= 1) return;
+  MPI_Allreduce(MPI_IN_PLACE, values.data(), ncells_, MPI_DOUBLE, MPI_SUM,
+                MPI_COMM_WORLD);
+#else
+  (void)values;
+#endif
+}
+
 void ChemicalField::add_vbf_sink_rate_global(Int spec, Int cell, Real rate) {
   const Int storage_cell = global_to_storage_cell(cell);
   if (spec < 0 || spec >= nspec_ || storage_cell < 0 || rate <= 0.0) {
@@ -1248,6 +1287,11 @@ void ChemicalField::sum_agent_uptake_across_ranks() {
   MPI_Allreduce(MPI_IN_PLACE,
                 flux_accounting_.uptake_limited_step.data(), nspec_,
                 MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  if (mode_ == DecompositionMode::Slab) {
+    MPI_Allreduce(MPI_IN_PLACE,
+                  flux_accounting_.delivery_refund_step.data(), nspec_,
+                  MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  }
 #endif
 }
 
@@ -2763,10 +2807,13 @@ void ChemicalField::debug_report_step(const Domain& domain) const {
     }
 #endif
     const auto index = static_cast<size_t>(s);
+    const Real delivery_refund = flux.delivery_refund_last_step[index];
+    // The refund is already represented in after_content after returning it.
     const Real residual = initial + flux.boundary_last_step[index]
         + flux.gradient_source_last_step[index]
         + flux.vbf_source_last_step[index]
-        - flux.agent_uptake_last_step[index] - flux.maintenance_last_step[index]
+        - flux.agent_uptake_last_step[index]
+        - flux.maintenance_last_step[index]
         - flux.vbf_sink_last_step[index]
         + flux.reaction_clip_last_step[index] - after_content;
     if (domain.rank() == 0) {
@@ -2786,6 +2833,8 @@ void ChemicalField::debug_report_step(const Domain& domain) const {
                 << debug_real(flux.maintenance_last_step[index])
                 << " vbf_sink_step="
                 << debug_real(flux.vbf_sink_last_step[index])
+                << " delivery_refund_step="
+                << debug_real(delivery_refund)
                 << " reaction_clip_step="
                 << debug_real(flux.reaction_clip_last_step[index])
                 << " residual=" << debug_real(residual) << '\n';

@@ -37,6 +37,10 @@ struct NutrientFluxAccounting {
   std::vector<Real> agent_uptake_step;
   std::vector<Real> agent_uptake_cumulative;
   std::vector<Real> agent_uptake_last_step;
+  std::vector<Real> delivery_refund_interval;
+  std::vector<Real> delivery_refund_step;
+  std::vector<Real> delivery_refund_last_step;
+  std::vector<Real> delivery_refund_cumulative;
   std::vector<Real> nutrient_blocking_fraction;
   std::vector<Real> maintenance_interval;
   std::vector<Real> maintenance_step;
@@ -88,6 +92,10 @@ struct NutrientFluxAccounting {
     agent_uptake_step.assign(species_count, 0.0);
     agent_uptake_cumulative.assign(species_count, 0.0);
     agent_uptake_last_step.assign(species_count, 0.0);
+    delivery_refund_interval.assign(species_count, 0.0);
+    delivery_refund_step.assign(species_count, 0.0);
+    delivery_refund_last_step.assign(species_count, 0.0);
+    delivery_refund_cumulative.assign(species_count, 0.0);
     nutrient_blocking_fraction.assign(species_count, 0.0);
     maintenance_interval.assign(species_count, 0.0);
     maintenance_step.assign(species_count, 0.0);
@@ -143,6 +151,14 @@ struct NutrientFluxAccounting {
     #pragma omp atomic
     #endif
     agent_uptake_step[static_cast<size_t>(species)] += amount;
+  }
+
+  void add_delivery_refund(Int species, Real amount) {
+    if (amount <= 0.0) return;
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    delivery_refund_step[static_cast<size_t>(species)] += amount;
   }
 
   void add_maintenance(Int species, Real amount) {
@@ -221,7 +237,10 @@ struct NutrientFluxAccounting {
       uptake_demand_interval[i] += uptake_demand_step[i];
       uptake_shortfall_interval[i] += uptake_shortfall_step[i];
       uptake_limited_interval[i] += uptake_limited_step[i];
+      delivery_refund_last_step[i] = delivery_refund_step[i];
+      delivery_refund_interval[i] += delivery_refund_step[i];
       agent_uptake_step[i] = 0.0;
+      delivery_refund_step[i] = 0.0;
       maintenance_step[i] = 0.0;
       maintenance_shortfall_step[i] = 0.0;
       maintenance_limited_agents_step[i] = 0.0;
@@ -275,6 +294,7 @@ struct NutrientFluxAccounting {
       uptake_demand_cumulative[i] += uptake_demand_interval[i];
       uptake_shortfall_cumulative[i] += uptake_shortfall_interval[i];
       uptake_limited_cumulative[i] += uptake_limited_interval[i];
+      delivery_refund_cumulative[i] += delivery_refund_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
       boundary_interval[i] = 0.0;
       gradient_source_interval[i] = 0.0;
@@ -287,6 +307,7 @@ struct NutrientFluxAccounting {
       uptake_demand_interval[i] = 0.0;
       uptake_shortfall_interval[i] = 0.0;
       uptake_limited_interval[i] = 0.0;
+      delivery_refund_interval[i] = 0.0;
       reaction_clip_interval[i] = 0.0;
     }
   }
@@ -404,6 +425,8 @@ class ChemicalField {
   // Reset reaction rates to zero each timestep
   void zero_reactions();
   void add_sink_rate_global(Int spec, Int cell, Real rate);
+  void refund_delivery_global(Int spec, Int cell, Real amount);
+  void sum_delivery_values_across_ranks(std::vector<Real>& values) const;
   void add_vbf_sink_rate_global(Int spec, Int cell, Real rate);
   void split_delivery_sink_realized(Int spec);
   void add_sink_rate_global(Int cell, Real rate);

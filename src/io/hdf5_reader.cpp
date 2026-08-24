@@ -340,6 +340,10 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   read_flux("vbf_sink_cumulative", meta.flux_accounting.vbf_sink_cumulative);
   read_flux("agent_uptake_interval", meta.flux_accounting.agent_uptake_interval);
   read_flux("agent_uptake_cumulative", meta.flux_accounting.agent_uptake_cumulative);
+  read_flux("delivery_refund_interval",
+            meta.flux_accounting.delivery_refund_interval);
+  read_flux("delivery_refund_cumulative",
+            meta.flux_accounting.delivery_refund_cumulative);
   read_flux("nutrient_blocking_fraction",
             meta.flux_accounting.nutrient_blocking_fraction);
   read_flux("maintenance_interval", meta.flux_accounting.maintenance_interval);
