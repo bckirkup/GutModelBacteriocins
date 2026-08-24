@@ -134,14 +134,18 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
         iron, 0.0, 0.0, vbf_totals.iron_sink, 0.0);
   }
   if (oxygen >= 0) {
+    const bool oxygen_delivery =
+        in.chem.spec(oxygen).delivery_enabled;
 #ifdef GUTIBM_MPI
-    if (in.chem.slab_mode() && in.domain.nprocs() > 1) {
+    if (!oxygen_delivery && in.chem.slab_mode() && in.domain.nprocs() > 1) {
       MPI_Allreduce(MPI_IN_PLACE, &vbf_totals.oxygen_sink, 1, MPI_DOUBLE,
                     MPI_SUM, MPI_COMM_WORLD);
     }
 #endif
-    in.flux_accounting.add_interval(
-        oxygen, 0.0, 0.0, vbf_totals.oxygen_sink, 0.0);
+    if (!oxygen_delivery) {
+      in.flux_accounting.add_interval(
+          oxygen, 0.0, 0.0, vbf_totals.oxygen_sink, 0.0);
+    }
   }
   if (in.gpu_active && applied_vbf_on_gpu) {
     result.reactions_on_gpu = in.chem_gpu.apply_reactions(dt, in.domain);
@@ -198,6 +202,17 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     if (in.gpu_active) {
       in.chem_gpu.sync_concentrations_to_device(in.chem);
     }
+  }
+
+  if (oxygen >= 0 && in.chem.spec(oxygen).delivery_enabled) {
+    Real vbf_realized = in.chem.vbf_sink_realized(oxygen);
+#ifdef GUTIBM_MPI
+    if (in.chem.slab_mode() && in.domain.nprocs() > 1) {
+      MPI_Allreduce(MPI_IN_PLACE, &vbf_realized, 1, MPI_DOUBLE, MPI_SUM,
+                    MPI_COMM_WORLD);
+    }
+#endif
+    in.flux_accounting.add_interval(oxygen, 0.0, 0.0, vbf_realized, 0.0);
   }
 
   if (in.gpu_active) {

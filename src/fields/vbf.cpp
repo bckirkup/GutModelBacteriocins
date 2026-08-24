@@ -114,6 +114,12 @@ void apply_oxygen_sink(ChemicalField& chem, Int cell,
                        Real cell_volume,
                        Real dt) {
   if (!ctx.oxygen.enabled || ctx.idx.oxygen < 0) return;
+  const ChemicalSpec& oxygen_spec = chem.spec(ctx.idx.oxygen);
+  if (oxygen_spec.delivery_enabled) {
+    chem.add_vbf_sink_rate_global(
+        ctx.idx.oxygen, cell, ctx.oxygen.vbf_sink);
+    return;
+  }
   // First-order background O2 consumption by the anaerobic majority:
   // reac -= vbf_sink * [O2] (1/s rate constant), mirroring the iron sink. A
   // zero-order (constant mol/m^3/s) removal removes O2 that may not be present,

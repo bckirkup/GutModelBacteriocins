@@ -404,9 +404,14 @@ class ChemicalField {
   // Reset reaction rates to zero each timestep
   void zero_reactions();
   void add_sink_rate_global(Int spec, Int cell, Real rate);
+  void add_vbf_sink_rate_global(Int spec, Int cell, Real rate);
+  void split_delivery_sink_realized(Int spec);
   void add_sink_rate_global(Int cell, Real rate);
   Real sink_realized_global(Int spec, Int cell) const;
   Real sink_realized_global(Int cell) const;
+  Real total_sink_realized_global(Int spec, Int cell) const;
+  Real vbf_sink_realized_global(Int spec, Int cell) const;
+  Real vbf_sink_realized(Int spec) const;
   bool has_sink_rate(Int spec) const;
   bool has_sink_rate() const;
 
@@ -465,7 +470,10 @@ class ChemicalField {
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]
   std::vector<std::vector<Real>> sink_rate_;      // [species][ncells], 1/s
-  std::vector<std::vector<Real>> sink_realized_;  // [species][ncells], mol this step
+  std::vector<std::vector<Real>> vbf_sink_rate_;  // [species][ncells], 1/s
+  std::vector<std::vector<Real>> sink_realized_;  // agent share, mol this step
+  std::vector<std::vector<Real>> total_sink_realized_;  // total, mol this step
+  std::vector<std::vector<Real>> vbf_sink_realized_;  // VBF share, mol this step
   NutrientFluxAccounting flux_accounting_;
   std::vector<Real> debug_initial_content_;
 
