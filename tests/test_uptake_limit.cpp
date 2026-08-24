@@ -178,7 +178,7 @@ DeliveryStepMeasurement measure_delivery_step(
   result.demand = flux.uptake_demand_interval[index];
   result.funded = flux.agent_uptake_interval[index];
   result.ceiling = uptake::allowed_uptake_mol(
-      static_cast<int>(UptakeLimitMode::Sherwood), pre_step_concentration,
+      to_underlying(UptakeLimitMode::Sherwood), pre_step_concentration,
       effective_diffusivity, initial_radius, sim.domain().cell_volume(), dt);
   for (Int global_cell = 0;
        global_cell < chem.global_ncells(); ++global_cell) {
@@ -234,7 +234,7 @@ void test_delivery_funding_matches_demand_or_ceiling() {
 }
 
 void test_delivery_concentration_response_and_positivity() {
-  const std::vector<Real> concentrations = {
+  const std::vector concentrations = {
       1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4};
   std::vector<Real> fractions;
   fractions.reserve(concentrations.size());
@@ -328,28 +328,30 @@ std::pair<Real, Real> run_delivery_adjacent_agents(
 void test_delivery_adjacent_agents_are_order_independent() {
   Real forward_reduction = 0.0;
   Real reverse_reduction = 0.0;
-  const auto forward = run_delivery_adjacent_agents(
+  const auto [forward_left, forward_right] = run_delivery_adjacent_agents(
       false, false, forward_reduction);
-  const auto reverse = run_delivery_adjacent_agents(
+  const auto [reverse_left, reverse_right] = run_delivery_adjacent_agents(
       true, false, reverse_reduction);
-  assert(forward.first > 0.0);
-  assert(forward.second > 0.0);
-  assert(std::abs(forward.first - reverse.first)
-         <= 1.0e-12 * std::max(forward.first, 1.0e-30));
-  assert(std::abs(forward.second - reverse.second)
-         <= 1.0e-12 * std::max(forward.second, 1.0e-30));
+  assert(forward_left > 0.0);
+  assert(forward_right > 0.0);
+  assert(std::abs(forward_left - reverse_left)
+         <= 1.0e-12 * std::max(forward_left, 1.0e-30));
+  assert(std::abs(forward_right - reverse_right)
+         <= 1.0e-12 * std::max(forward_right, 1.0e-30));
   assert(forward_reduction == 0.0);
   assert(reverse_reduction == 0.0);
-  const auto starved_forward = run_delivery_adjacent_agents(
+  const auto [starved_forward_left, starved_forward_right] =
+      run_delivery_adjacent_agents(
       false, true, forward_reduction);
-  const auto starved_reverse = run_delivery_adjacent_agents(
+  const auto [starved_reverse_left, starved_reverse_right] =
+      run_delivery_adjacent_agents(
       true, true, reverse_reduction);
   assert(forward_reduction > 0.0);
   assert(reverse_reduction > 0.0);
-  assert(std::abs(starved_forward.first - starved_reverse.first)
-         <= 1.0e-12 * std::max(starved_forward.first, 1.0e-30));
-  assert(std::abs(starved_forward.second - starved_reverse.second)
-         <= 1.0e-12 * std::max(starved_forward.second, 1.0e-30));
+  assert(std::abs(starved_forward_left - starved_reverse_left)
+         <= 1.0e-12 * std::max(starved_forward_left, 1.0e-30));
+  assert(std::abs(starved_forward_right - starved_reverse_right)
+         <= 1.0e-12 * std::max(starved_forward_right, 1.0e-30));
   std::cout << "  test_delivery_adjacent_agents_are_order_independent: PASSED\n";
 }
 
@@ -892,7 +894,6 @@ void test_delivery_negative_growth_books_maintenance() {
   Simulation sim;
   sim.init(cfg);
   const Int carbon = sim.chemical_field().find(species::CARBON);
-  const Int cell = sim.agents()[0].grid_cell;
   const Real initial_biomass = sim.agents()[0].biomass;
   sim.step(kDt);
 

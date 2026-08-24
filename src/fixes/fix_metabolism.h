@@ -84,6 +84,8 @@ class FixMetabolism : public Fix {
   void prepare_delivery_uptake(Agent& agent, Real dt);
   void prepare_delivery_oxygen(Agent& agent, Real dt);
   void commit_delivery_uptake(Real dt);
+  void commit_delivery_carbon(Real dt, Int carbon);
+  void commit_delivery_oxygen(Real dt, Int oxygen);
   void compute_growth_rate(Agent& agent, Real dt);
   Real uptake_limit_fraction(const Agent& agent, Real d_biomass, Real dt,
                              bool record_diagnostics);
