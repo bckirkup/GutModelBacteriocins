@@ -161,6 +161,71 @@ void test_implicit_sink_mass_closure(const Domain& domain,
          < 1.0e-12 * scale);
 }
 
+void test_implicit_oxygen_sink_split(const Domain& domain) {
+  constexpr Real dt = 60.0;
+  constexpr Real agent_rate = 0.25;
+  constexpr Real vbf_rate = 3.4;
+  ChemicalSpec oxygen;
+  oxygen.name = species::OXYGEN;
+  oxygen.diff_coeff = 2.1e-9;
+  oxygen.initial_conc = 1.0e-3;
+  oxygen.boundary_conc = 0.0;
+  oxygen.diffusion_enabled = true;
+  oxygen.delivery_enabled = true;
+
+  ChemicalField chem;
+  chem.init(domain, {oxygen});
+  const Int oxygen_index = chem.find(species::OXYGEN);
+  const Int target = domain.cell_index(0, 0, 1);
+  chem.zero_reactions();
+  chem.add_sink_rate_global(oxygen_index, target, agent_rate);
+
+  VBFConfig vbf_config;
+  vbf_config.mucin_liberation = 0.0;
+  vbf_config.carbon_sink_vmax = 0.0;
+  vbf_config.nutrient_sink = 0.0;
+  VBF vbf;
+  vbf.init(vbf_config, domain);
+  OxygenConfig oxygen_config;
+  oxygen_config.enabled = true;
+  oxygen_config.vbf_sink = vbf_rate;
+  AcetateConfig acetate;
+  MucinConfig mucin;
+  vbf.apply_nutrient_coupling(
+      chem, domain, dt, oxygen_config, acetate, mucin);
+  chem.apply_diffusion(domain, dt);
+
+  Real total = 0.0;
+  Real agent = 0.0;
+  Real vbf_realized = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    if (!chem.owns_global_cell(cell)) continue;
+    assert(chem.conc_global(oxygen_index, cell) >= 0.0);
+    total += chem.total_sink_realized_global(oxygen_index, cell);
+    agent += chem.sink_realized_global(oxygen_index, cell);
+    vbf_realized += chem.vbf_sink_realized_global(oxygen_index, cell);
+  }
+  assert(chem.flux_accounting().reaction_clip_step[
+             static_cast<size_t>(oxygen_index)] == 0.0);
+  assert(total > 0.0);
+  assert(std::abs(agent + vbf_realized - total)
+         <= 1.0e-14 * std::max(total, 1.0e-30));
+
+  const Real target_total =
+      chem.total_sink_realized_global(oxygen_index, target);
+  const Real expected_agent = target_total * agent_rate
+      / (agent_rate + vbf_rate);
+  const Real expected_vbf = target_total * vbf_rate
+      / (agent_rate + vbf_rate);
+  assert(std::abs(chem.sink_realized_global(oxygen_index, target)
+                  - expected_agent)
+         <= 1.0e-14 * std::max(expected_agent, 1.0e-30));
+  assert(std::abs(chem.vbf_sink_realized_global(oxygen_index, target)
+                  - expected_vbf)
+         <= 1.0e-14 * std::max(expected_vbf, 1.0e-30));
+  std::cout << "PASS: implicit oxygen VBF sink is positive and proportional\n";
+}
+
 }  // namespace
 
 int main() {
@@ -225,6 +290,7 @@ int main() {
     }
   }
   test_implicit_sink_mass_closure(domain, carbon);
+  test_implicit_oxygen_sink_split(domain);
   std::vector<Int> empty_counts(static_cast<size_t>(domain.ncells()), 0);
   std::vector<Int> dense_counts = empty_counts;
   dense_counts[0] = 1;

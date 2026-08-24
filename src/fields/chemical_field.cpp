@@ -894,9 +894,18 @@ void ChemicalField::init(const Domain& domain,
   reac_.resize(nspec_);
   sink_rate_.assign(static_cast<size_t>(nspec_),
                     std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
+  vbf_sink_rate_.assign(
+      static_cast<size_t>(nspec_),
+      std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
   sink_realized_.assign(static_cast<size_t>(nspec_),
                         std::vector<Real>(
                             static_cast<size_t>(ncells_), 0.0));
+  total_sink_realized_.assign(
+      static_cast<size_t>(nspec_),
+      std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
+  vbf_sink_realized_.assign(
+      static_cast<size_t>(nspec_),
+      std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
   for (Int s = 0; s < nspec_; ++s) {
     conc_[s].assign(ncells_, specs_[s].initial_conc);
     reac_[s].assign(ncells_, 0.0);
@@ -1043,7 +1052,10 @@ void ChemicalField::zero_reactions() {
   for (Int s = 0; s < nspec_; ++s) {
     std::ranges::fill(reac_[s], 0.0);
     std::ranges::fill(sink_rate_[s], 0.0);
+    std::ranges::fill(vbf_sink_rate_[s], 0.0);
     std::ranges::fill(sink_realized_[s], 0.0);
+    std::ranges::fill(total_sink_realized_[s], 0.0);
+    std::ranges::fill(vbf_sink_realized_[s], 0.0);
   }
   if (!nutrient_debug_enabled() || domain_ == nullptr) return;
   ++nutrient_debug_step_counter();
@@ -1083,6 +1095,40 @@ void ChemicalField::add_sink_rate_global(Int spec, Int cell, Real rate) {
       += rate;
 }
 
+void ChemicalField::add_vbf_sink_rate_global(Int spec, Int cell, Real rate) {
+  const Int storage_cell = global_to_storage_cell(cell);
+  if (spec < 0 || spec >= nspec_ || storage_cell < 0 || rate <= 0.0) {
+    return;
+  }
+  #ifdef GUTIBM_OPENMP
+  #pragma omp atomic
+  #endif
+  vbf_sink_rate_[static_cast<size_t>(spec)]
+                [static_cast<size_t>(storage_cell)] += rate;
+  #ifdef GUTIBM_OPENMP
+  #pragma omp atomic
+  #endif
+  sink_rate_[static_cast<size_t>(spec)]
+            [static_cast<size_t>(storage_cell)] += rate;
+}
+
+void ChemicalField::split_delivery_sink_realized(Int spec) {
+  if (spec < 0 || spec >= nspec_) return;
+  for (Int cell = 0; cell < global_ncells_; ++cell) {
+    if (!owns_global_cell(cell)) continue;
+    const Int storage_cell = global_to_storage_cell(cell);
+    if (storage_cell < 0) continue;
+    const auto index = static_cast<size_t>(storage_cell);
+    const Real total_rate = sink_rate_[static_cast<size_t>(spec)][index];
+    const Real vbf_rate = vbf_sink_rate_[static_cast<size_t>(spec)][index];
+    const Real total = total_sink_realized_[static_cast<size_t>(spec)][index];
+    const Real vbf_share = total_rate > 0.0
+        ? total * std::clamp(vbf_rate / total_rate, 0.0, 1.0) : 0.0;
+    vbf_sink_realized_[static_cast<size_t>(spec)][index] = vbf_share;
+    sink_realized_[static_cast<size_t>(spec)][index] = total - vbf_share;
+  }
+}
+
 void ChemicalField::add_sink_rate_global(Int cell, Real rate) {
   const Int carbon = find(species::CARBON);
   if (carbon >= 0) add_sink_rate_global(carbon, cell, rate);
@@ -1098,6 +1144,31 @@ Real ChemicalField::sink_realized_global(Int spec, Int cell) const {
 Real ChemicalField::sink_realized_global(Int cell) const {
   const Int carbon = find(species::CARBON);
   return carbon >= 0 ? sink_realized_global(carbon, cell) : 0.0;
+}
+
+Real ChemicalField::total_sink_realized_global(Int spec, Int cell) const {
+  const Int storage_cell = global_to_storage_cell(cell);
+  if (spec < 0 || spec >= nspec_ || storage_cell < 0) return 0.0;
+  return total_sink_realized_[static_cast<size_t>(spec)]
+      [static_cast<size_t>(storage_cell)];
+}
+
+Real ChemicalField::vbf_sink_realized_global(Int spec, Int cell) const {
+  const Int storage_cell = global_to_storage_cell(cell);
+  if (spec < 0 || spec >= nspec_ || storage_cell < 0) return 0.0;
+  return vbf_sink_realized_[static_cast<size_t>(spec)]
+      [static_cast<size_t>(storage_cell)];
+}
+
+Real ChemicalField::vbf_sink_realized(Int spec) const {
+  if (spec < 0 || spec >= nspec_) return 0.0;
+  Real total = 0.0;
+  for (Int cell = 0; cell < global_ncells_; ++cell) {
+    if (owns_global_cell(cell)) {
+      total += vbf_sink_realized_global(spec, cell);
+    }
+  }
+  return total;
 }
 
 bool ChemicalField::has_sink_rate(Int spec) const {
@@ -2459,7 +2530,8 @@ void ChemicalField::apply_diffusion_species(
   ReplicatedDiffusionContext context{
       conc_[s], domain, chemical, flux_accounting_,
       sink_rate_[static_cast<size_t>(s)],
-      sink_realized_[static_cast<size_t>(s)], s, dt, alpha_x, alpha_y, alpha_z,
+      total_sink_realized_[static_cast<size_t>(s)], s, dt, alpha_x, alpha_y,
+      alpha_z,
       domain.cell_volume(), chemical.boundary_conc,
       chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
       chemical.delivery_enabled && has_sink_rate(s),
@@ -2468,6 +2540,7 @@ void ChemicalField::apply_diffusion_species(
   prepare_replicated_diffusion(context);
   transport_replicated_diffusion(context);
   finish_replicated_diffusion(context);
+  if (context.delivery) split_delivery_sink_realized(s);
 }
 
 void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt) {
@@ -2565,7 +2638,8 @@ void ChemicalField::apply_diffusion_slab_species(
   SlabDiffusionContext context{
       conc_[static_cast<size_t>(s)], domain, chemical, flux_accounting_,
       sink_rate_[static_cast<size_t>(s)],
-      sink_realized_[static_cast<size_t>(s)], storage_nx_, halo_width_, s, dt,
+      total_sink_realized_[static_cast<size_t>(s)], storage_nx_, halo_width_, s,
+      dt,
       alpha_x, alpha_y, alpha_z, domain.cell_volume(),
       chemical.boundary_conc,
       chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
@@ -2575,6 +2649,7 @@ void ChemicalField::apply_diffusion_slab_species(
   prepare_slab_diffusion(context);
   transport_slab_diffusion(context);
   finish_slab_diffusion(context);
+  if (context.delivery) split_delivery_sink_realized(s);
 }
 
 namespace {
