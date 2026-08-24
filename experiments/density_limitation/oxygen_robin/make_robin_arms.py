@@ -139,8 +139,6 @@ ARMS = {
 
 def scaled_strains(base: dict, scale: float) -> list:
     strains = json.loads(json.dumps(base["initial_strains"]))
-    if scale == 1.0:
-        return strains
     for strain in strains:
         strain["count"] = max(1, round(strain["count"] * scale))
     return strains
