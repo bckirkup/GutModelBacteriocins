@@ -418,6 +418,9 @@ void test_slab_chemistry_transpose_halos_and_ledger() {
   simulation_cfg.domain.periodic = {true, true, false};
   simulation_cfg.domain.grid_halo_width = 2;
   simulation_cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  simulation_cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   Simulation slab_simulation;
   slab_simulation.init(simulation_cfg);
   slab_simulation.run();

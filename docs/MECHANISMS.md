@@ -912,7 +912,10 @@ approximately 250-fold below the far field at 2 µm grid spacing, but only
 approximately 1.4-fold below it at 6 µm. A positive
 `delivery_far_field_radius` instead uses a volume-weighted mean over cell
 centres inside the radius, including the agent cell with its actual volume
-weight. The same spherical support is used for prescribed delivery
+weight. Delivery-mode runs now use a 10 µm support by default. At that
+radius, single-cell physical depletion is approximately 0.008% of the
+far-field concentration, so the support regularizes the unresolved sink
+rather than doing biological work. The same spherical support is used for prescribed delivery
 deposition: the funded mass is divided uniformly across included cell
 centres, with the complete mass renormalized over cells remaining inside the
 domain when the support reaches a nonperiodic z boundary. Periodic x/y
@@ -924,7 +927,17 @@ well inside the diffusive reach. Radius zero remains intentionally compatible
 but grid-dependent: it reads the own voxel and deposits the full prescribed
 mass in that single voxel. Positive radii are refused in slab chemistry
 because distributed deposition into halo cells cannot preserve ownership and
-mass accounting safely; replicated chemistry is required.
+mass accounting safely; slab configurations must explicitly set
+`metabolism.delivery_far_field_radius=0.0` to opt into the grid-dependent
+single-voxel model. The parser and simulation initialization both refuse a
+positive radius in slab chemistry. This changes shipped behaviour: delivery
+mode now deposits over a 10 µm support by default. Previously reported
+supply-limited carrying capacities, including the carbon ladder in #314, were
+measured under single-voxel deposition and therefore move under this default.
+In the settled 80-founder, ROS-off, six-hour population campaign, support-on
+final populations were 201/207/204 at 2/4/6 µm with funded oxygen fraction
+0.988 at all three resolutions; support-off final populations were 76/123/171
+with funded fractions 0.620/0.901/0.948.
 ### VBF mucin liberation coupling
 When `mucin_z_gradient_enabled`, the monosaccharide release rate applied by the VBF also varies with z:
 ```

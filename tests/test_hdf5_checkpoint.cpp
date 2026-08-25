@@ -384,6 +384,9 @@ void test_species_subset_checkpoint_mismatch(
 void test_slab_checkpoint_matches_uninterrupted(const std::string& filename) {
   SimulationConfig split_cfg = make_checkpoint_config(filename + ".split.h5");
   split_cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  split_cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   split_cfg.domain.grid_halo_width = 2;
   split_cfg.time.total_time = 60.0;
 

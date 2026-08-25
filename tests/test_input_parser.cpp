@@ -752,6 +752,10 @@ void test_grid_halo_width_requires_positive_integer() {
 }
 
 void test_delivery_far_field_radius_parser_and_slab_refusal() {
+  const SimulationConfig defaults = InputParser::default_config();
+  assert(std::abs(defaults.fixes.metabolism.delivery_far_field_radius - 1.0e-5)
+         < 1.0e-18);
+
   SimulationConfig negative = InputParser::default_config();
   assert(InputParser::apply_flat_key(
       negative, "delivery_far_field_radius", "-1e-6"));
@@ -792,8 +796,8 @@ void test_delivery_far_field_radius_parser_and_slab_refusal() {
   } catch (const ConfigError& error) {
     const std::string message = error.what();
     refused = message.find("delivery_far_field_radius") != std::string::npos
-        && message.find("grid_dx") != std::string::npos
-        && message.find("halo") != std::string::npos;
+        && message.find(std::to_string(5.0e-6)) != std::string::npos
+        && message.find("single-voxel") != std::string::npos;
   }
   assert(refused);
   slab.domain.grid_halo_width = 8;
@@ -805,6 +809,23 @@ void test_delivery_far_field_radius_parser_and_slab_refusal() {
     refused = true;
   }
   assert(refused);
+  SimulationConfig runtime = InputParser::default_config();
+  runtime.chemistry_decomposition = "slab";
+  runtime.fixes.metabolism.delivery_far_field_radius = 1.0e-5;
+  runtime.hdf5.enabled = false;
+  bool runtime_refused = false;
+  try {
+    Simulation simulation;
+    simulation.init(runtime);
+  } catch (const ConfigError& error) {
+    const std::string message = error.what();
+    runtime_refused = message.find("delivery_far_field_radius") != std::string::npos
+        && message.find(std::to_string(1.0e-5)) != std::string::npos
+        && message.find("metabolism.delivery_far_field_radius = 0.0")
+               != std::string::npos
+        && message.find("single-voxel") != std::string::npos;
+  }
+  assert(runtime_refused);
   std::cout << "  test_delivery_far_field_radius_parser_and_slab_refusal:"
             << " PASSED\n";
 }

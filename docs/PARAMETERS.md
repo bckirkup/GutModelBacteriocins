@@ -183,7 +183,17 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 | `carbon.epithelial_transfer_coeff` / `carbon_epithelial_transfer_coeff` | 0 | m/s | Robin mass-transfer coefficient `k` |
 | `carbon.epithelial_flux` / `carbon_epithelial_flux` | 0 | mol/m²/s | Fixed epithelial delivery flux `J` |
 | `uptake_limit` / `metabolism.uptake_limit` | `none` | — | Agent-side uptake limitation model: `none` (unfunded growth, default), `sherwood` (per-agent diffusive delivery cap using the configured delivery concentration), or `voxel` (diagnostic-only voxel-content cap, not biology) |
-| `delivery_far_field_radius` / `metabolism.delivery_far_field_radius` | `0.0` | m | Shared delivery neighborhood radius. Zero uses the agent's own voxel for compatibility and deposits in that voxel. Positive values use a uniform spherical support for both the volume-weighted Sherwood concentration read and prescribed delivery deposition; supports clipped by nonperiodic z boundaries are renormalized over included cells. Positive values are refused with slab chemistry because distributed deposition cannot be represented safely there. |
+| `delivery_far_field_radius` / `metabolism.delivery_far_field_radius` | `1.0e-5` | m | Shared delivery neighborhood radius, defaulting to a 10 µm physical support for both the volume-weighted Sherwood concentration read and prescribed delivery deposition. A single-cell depletion at 10 µm is approximately 0.008% of far-field concentration, so this radius is not doing biological work. Supports clipped by nonperiodic z boundaries are renormalized over included cells. Positive values are refused with slab chemistry; slab configurations must explicitly set this key to `0.0` to opt into the grid-dependent single-voxel model. |
+
+This default changes shipped delivery-mode behavior: prescribed mass is now
+deposited over a 10 µm support unless radius zero is selected explicitly.
+Settled population-scale measurements (80 founders, ROS off, six hours) found
+support-on final populations of 201/207/204 at 2/4/6 µm, with funded oxygen
+fraction 0.988 at all three resolutions. The corresponding support-off values
+were final populations 76/123/171 and funded fractions 0.620/0.901/0.948.
+Previously reported supply-limited carrying capacities, including the carbon
+ladder in #314, were measured under single-voxel deposition and move under
+this default.
 
 **Profile:** `C(z) = C_max * exp(-z_rel / lambda)` where `z_rel` is the distance from the epithelium (z=0).
 

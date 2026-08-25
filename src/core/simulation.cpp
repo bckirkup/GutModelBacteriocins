@@ -51,6 +51,20 @@ void reject_unsupported_slab_surfaces(
   (void)domain;
 }
 
+void reject_unsupported_delivery_configuration(const SimulationConfig& cfg) {
+  if (cfg.chemistry_decomposition != "slab"
+      || cfg.fixes.metabolism.delivery_far_field_radius <= 0.0) {
+    return;
+  }
+  throw ConfigError(
+      "metabolism.delivery_far_field_radius="
+      + std::to_string(cfg.fixes.metabolism.delivery_far_field_radius)
+      + " is unsupported for regularized delivery deposition in slab "
+        "chemistry; slab configurations must set "
+        "metabolism.delivery_far_field_radius = 0.0 to opt into the "
+        "grid-dependent single-voxel delivery model");
+}
+
 Real global_density_cells_per_mL(const Domain& domain, Int global_agents) {
   const Vec3 size = domain.size();
   const Real volume_m3 = size[0] * size[1] * size[2];
@@ -501,6 +515,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   event_ledger_.mechanics_cumulative.reset();
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
+  reject_unsupported_delivery_configuration(cfg_);
   InputParser::finalize_config(cfg_);
   if (cfg_.gpu.enabled && cfg_.species_subset != "full") {
     throw ConfigError(
@@ -761,6 +776,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   event_ledger_.mechanics_cumulative.reset();
   event_ledger_.window_start_step = 1;
   event_ledger_.window_start_time = 0.0;
+  reject_unsupported_delivery_configuration(cfg_);
   InputParser::finalize_config(cfg_);
   if (cfg_.gpu.enabled && cfg_.species_subset != "full") {
     throw ConfigError(

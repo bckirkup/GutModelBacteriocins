@@ -548,16 +548,13 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
   }
   if (cfg.chemistry_decomposition == "slab"
       && metabolism.delivery_far_field_radius > 0.0) {
-    const Real halo_depth = static_cast<Real>(cfg.domain.grid_halo_width)
-        * cfg.domain.grid_dx;
     throw ConfigError(
         "metabolism.delivery_far_field_radius="
         + std::to_string(metabolism.delivery_far_field_radius)
         + " is unsupported for regularized delivery deposition in slab "
-          "chemistry (grid_dx="
-        + std::to_string(cfg.domain.grid_dx) + ", halo depth="
-        + std::to_string(halo_depth) + ", grid_halo_width="
-        + std::to_string(cfg.domain.grid_halo_width) + ")");
+          "chemistry; slab configurations must set "
+          "metabolism.delivery_far_field_radius = 0.0 to opt into the "
+          "grid-dependent single-voxel delivery model");
   }
   if (cfg.chem_env.oxygen.respiration_driver != "ambient"
       && cfg.chem_env.oxygen.respiration_driver != "funded") {

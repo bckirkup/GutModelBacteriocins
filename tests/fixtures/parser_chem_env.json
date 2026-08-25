@@ -15,6 +15,8 @@
   "chemistry": {
     "decomposition": "slab"
   },
+  "_delivery_comment": "Slab opts into grid-dependent single-voxel delivery because it cannot represent regularized support.",
+  "metabolism.delivery_far_field_radius": 0.0,
 
   "oxygen.enabled": true,
   "oxygen.epithelial_conc": 60e-6,
