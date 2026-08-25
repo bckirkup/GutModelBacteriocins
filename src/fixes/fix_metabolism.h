@@ -27,6 +27,7 @@
 #include "agent.h"
 #include "uptake_limit.h"
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace gutibm {
@@ -85,7 +86,9 @@ class FixMetabolism : public Fix {
  private:
   void compute_agent(Agent& agent, Real dt);
   Real delivery_concentration(const Agent& agent, Int species_index) const;
-  std::vector<Int> delivery_support_cells(const Agent& agent) const;
+  std::vector<Int> enumerate_delivery_support_cells(const Agent& agent) const;
+  const std::vector<Int>& delivery_support_cells(const Agent& agent) const;
+  void prepare_delivery_support_cache();
   void add_delivery_mass(
       Int species_index, const Agent& agent, Real amount) const;
   Real delivery_field_funding(
@@ -119,6 +122,8 @@ class FixMetabolism : public Fix {
   std::vector<Int> occupancy_by_cell_;
   std::vector<Real> chelation_by_cell_;
   std::vector<Int> touched_cells_;
+  mutable std::unordered_map<TagID, std::vector<Int>>
+      delivery_support_cache_;
 };
 
 }  // namespace gutibm

@@ -33,7 +33,7 @@ Real FixMetabolism::delivery_concentration(
     return chem.total_conc_global(species_index, agent.grid_cell, domain);
   }
 
-  const std::vector<Int> support = delivery_support_cells(agent);
+  const auto& support = delivery_support_cells(agent);
   Real concentration_sum = 0.0;
   for (const Int cell : support) {
     concentration_sum += chem.total_conc_global(
@@ -44,7 +44,7 @@ Real FixMetabolism::delivery_concentration(
       : concentration_sum / static_cast<Real>(support.size());
 }
 
-std::vector<Int> FixMetabolism::delivery_support_cells(
+std::vector<Int> FixMetabolism::enumerate_delivery_support_cells(
     const Agent& agent) const {
   const auto& domain = sim_.domain();
   const Real radius = cfg_.delivery_far_field_radius;
@@ -104,11 +104,38 @@ std::vector<Int> FixMetabolism::delivery_support_cells(
   return support;
 }
 
+const std::vector<Int>& FixMetabolism::delivery_support_cells(
+    const Agent& agent) const {
+  const auto cached = delivery_support_cache_.find(agent.identity.tag);
+  if (cached != delivery_support_cache_.end()) {
+    return cached->second;
+  }
+  const auto result = delivery_support_cache_.emplace(
+      agent.identity.tag, enumerate_delivery_support_cells(agent));
+  return result.first->second;
+}
+
+void FixMetabolism::prepare_delivery_support_cache() {
+  delivery_support_cache_.clear();
+  if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery
+      || cfg_.delivery_far_field_radius <= 0.0) {
+    return;
+  }
+  for (const Agent& agent : sim_.agents()) {
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
+        || agent.grid_cell < 0) {
+      continue;
+    }
+    delivery_support_cache_.emplace(
+        agent.identity.tag, enumerate_delivery_support_cells(agent));
+  }
+}
+
 void FixMetabolism::add_delivery_mass(
     Int species_index, const Agent& agent, Real amount) const {
   if (amount <= 0.0) return;
   auto& chem = sim_.chemical_field();
-  const std::vector<Int> support = delivery_support_cells(agent);
+  const auto& support = delivery_support_cells(agent);
   if (support.empty()) return;
   const Real per_cell = amount / static_cast<Real>(support.size());
   Real deposited = 0.0;
@@ -125,7 +152,7 @@ Real FixMetabolism::delivery_field_funding(
     const std::vector<Real>& requested_by_cell) const {
   if (amount <= 0.0) return 0.0;
   const auto& chem = sim_.chemical_field();
-  const std::vector<Int> support = delivery_support_cells(agent);
+  const auto& support = delivery_support_cells(agent);
   if (support.empty()) return 0.0;
   const Real per_cell = amount / static_cast<Real>(support.size());
   Real deposited = 0.0;
@@ -351,6 +378,7 @@ void FixMetabolism::compute(Real dt) {
     return;
   }
 
+  prepare_delivery_support_cache();
   auto& agents = sim_.agents();
   prepare_carbon_maintenance();
   #ifdef GUTIBM_OPENMP
@@ -486,12 +514,13 @@ void FixMetabolism::commit_delivery_carbon(Real dt, Int carbon) {
   for (const Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
         || agent.grid_cell < 0) continue;
+    if (agent.pending_carbon_funding <= 0.0) continue;
     if (cfg_.delivery_far_field_radius <= 0.0) {
       carbon_demand_by_cell[static_cast<size_t>(agent.grid_cell)] +=
           agent.pending_carbon_funding;
       continue;
     }
-    const std::vector<Int> support = delivery_support_cells(agent);
+    const auto& support = delivery_support_cells(agent);
     const Real per_cell = support.empty() ? 0.0
         : agent.pending_carbon_funding / static_cast<Real>(support.size());
     Real deposited = 0.0;
@@ -510,7 +539,11 @@ void FixMetabolism::commit_delivery_carbon(Real dt, Int carbon) {
     chem.sum_values_across_ranks(carbon_demand_by_cell);
   }
   for (Agent& agent : sim_.agents()) {
-    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
+        || agent.grid_cell < 0) {
+      agent.pending_carbon_funding = 0.0;
+      continue;
+    }
     const Real total_demand = agent.pending_growth_carbon
         + agent.pending_maintenance_carbon;
     if (agent.pending_biomass < 0.0 && total_demand <= 0.0) {
@@ -560,12 +593,13 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
   for (const Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
         || agent.grid_cell < 0) continue;
+    if (agent.pending_oxygen_funding <= 0.0) continue;
     if (cfg_.delivery_far_field_radius <= 0.0) {
       oxygen_demand_by_cell[static_cast<size_t>(agent.grid_cell)] +=
           agent.pending_oxygen_funding;
       continue;
     }
-    const std::vector<Int> support = delivery_support_cells(agent);
+    const auto& support = delivery_support_cells(agent);
     const Real per_cell = support.empty() ? 0.0
         : agent.pending_oxygen_funding / static_cast<Real>(support.size());
     Real deposited = 0.0;
@@ -584,7 +618,12 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
     chem.sum_values_across_ranks(oxygen_demand_by_cell);
   }
   for (Agent& agent : sim_.agents()) {
-    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
+        || agent.grid_cell < 0) {
+      agent.pending_oxygen_funding = 0.0;
+      agent.respired_oxygen_rate = 0.0;
+      continue;
+    }
     const Real growth_demand = agent.pending_oxygen_growth;
     const Real maintenance_demand = agent.pending_oxygen_maintenance;
     if (const Real total_demand =
