@@ -8,6 +8,7 @@
 #include "input_parser.h"
 #include "sim_fingerprint.h"
 #include "species_names.h"
+#include "config_json.h"
 
 #include <array>
 #include <cassert>
@@ -188,6 +189,24 @@ void test_seed_and_fix_subset_change_outcomes() {
   assert(fp_subset != fp_a);
 
   std::cout << "  test_seed_and_fix_subset_change_outcomes: PASSED\n";
+}
+
+void test_ros_driver_config_diversity() {
+  SimulationConfig ambient = growth_baseline(7011);
+  SimulationConfig funded = ambient;
+  funded.chem_env.oxygen.enabled = true;
+  funded.chem_env.oxygen.ros_driver = "funded";
+  funded.chem_env.oxygen.delivery_uptake_enabled = true;
+  funded.chem_env.oxygen.k_ROS_respiratory = 1.0;
+  funded.fixes.metabolism.uptake_limit = "delivery";
+  InputParser::finalize_config(funded);
+
+  assert(ambient.chem_env.oxygen.ros_driver
+         != funded.chem_env.oxygen.ros_driver);
+  assert(ConfigJson::serialize_document(ambient)
+         != ConfigJson::serialize_document(funded));
+  assert(run_fingerprint(ambient) != run_fingerprint(funded));
+  std::cout << "  test_ros_driver_config_diversity: PASSED\n";
 }
 
 void test_parsed_fix_list_is_honored() {
@@ -385,6 +404,7 @@ int main() {
   test_fixture_configs_produce_distinct_fingerprints();
   test_example_configs_differ();
   test_seed_and_fix_subset_change_outcomes();
+  test_ros_driver_config_diversity();
   test_parsed_fix_list_is_honored();
   test_fix_tunables_reach_simulation();
   test_peristaltic_toggle_changes_fingerprint();

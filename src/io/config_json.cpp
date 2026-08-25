@@ -852,6 +852,7 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
            cfg.chem_env.oxygen.delivery_uptake_enabled);
   string_key("oxygen.respiration_driver",
              cfg.chem_env.oxygen.respiration_driver);
+  string_key("oxygen.ros_driver", cfg.chem_env.oxygen.ros_driver);
   real_key("oxygen.D_free", cfg.chem_env.oxygen.D_free);
   real_key("oxygen.Km", cfg.chem_env.oxygen.Km);
   bool_key("oxygen.metabolic_switch_enabled",
@@ -874,6 +875,8 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("oxygen.q_maintenance", cfg.chem_env.oxygen.q_maintenance);
   real_key("oxygen.vbf_sink", cfg.chem_env.oxygen.vbf_sink);
   real_key("oxygen.k_ROS", cfg.chem_env.oxygen.k_ROS);
+  real_key("oxygen.k_ROS_respiratory",
+           cfg.chem_env.oxygen.k_ROS_respiratory);
   bool_key("acetate.enabled", cfg.chem_env.acetate.enabled);
   real_key("acetate.D_free", cfg.chem_env.acetate.D_free);
   real_key("acetate.vbf_production", cfg.chem_env.acetate.vbf_production);

@@ -57,6 +57,15 @@ std::vector<double> read_vector(hid_t file, const std::string& path) {
   H5Dclose(dset);
   return values;
 }
+
+double read_real(hid_t file, const std::string& path) {
+  hid_t dset = H5Dopen2(file, path.c_str(), H5P_DEFAULT);
+  assert(dset >= 0);
+  double value = 0.0;
+  H5Dread(dset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &value);
+  H5Dclose(dset);
+  return value;
+}
 #endif
 
 }  // namespace
@@ -172,6 +181,19 @@ int main() {
   assert(boundary.size() == cumulative.size());
   assert(dataset_exists(file, flux_prefix + "interval_start_time"));
   assert(dataset_exists(file, flux_prefix + "interval_end_time"));
+  const std::string event_prefix = "summary/step_000001/events/";
+  assert(dataset_exists(file, event_prefix + "sos_basal_rate"));
+  assert(dataset_exists(file, event_prefix + "sos_post_division_rate"));
+  assert(dataset_exists(
+      file, event_prefix + "sos_nuclease_cross_induction_rate"));
+  assert(dataset_exists(file, event_prefix + "sos_ros_rate"));
+  const double rate_sum =
+      read_real(file, event_prefix + "sos_basal_rate")
+      + read_real(file, event_prefix + "sos_post_division_rate")
+      + read_real(file, event_prefix + "sos_nuclease_cross_induction_rate")
+      + read_real(file, event_prefix + "sos_ros_rate");
+  assert(std::abs(rate_sum
+      - read_real(file, event_prefix + "sos_rate_total")) <= 1.0e-15);
 
   H5Fclose(file);
   test_population_ledger_closure();

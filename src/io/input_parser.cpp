@@ -566,6 +566,29 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "oxygen.respiration_driver=\"funded\" cannot be combined with "
         "gpu_enabled=true: funded oxygen delivery is CPU-only");
   }
+  if (cfg.chem_env.oxygen.ros_driver != "ambient"
+      && cfg.chem_env.oxygen.ros_driver != "funded") {
+    throw ConfigError(
+        "invalid oxygen.ros_driver: expected 'ambient' or 'funded', got '"
+        + cfg.chem_env.oxygen.ros_driver + "'");
+  }
+  cfg.chem_env.oxygen.ros_driver_mode =
+      cfg.chem_env.oxygen.ros_driver == "funded"
+          ? RosDriver::Funded : RosDriver::Ambient;
+  if (cfg.chem_env.oxygen.ros_driver_mode == RosDriver::Funded
+      && (!cfg.chem_env.oxygen.delivery_uptake_enabled
+          || metabolism.uptake_limit_mode != UptakeLimitMode::Delivery)) {
+    throw ConfigError(
+        "oxygen.ros_driver=\"funded\" requires "
+        "oxygen.delivery_uptake_enabled=true and "
+        "metabolism.uptake_limit=\"delivery\"");
+  }
+  if (cfg.chem_env.oxygen.ros_driver_mode == RosDriver::Funded
+      && cfg.chem_env.oxygen.k_ROS_respiratory <= 0.0) {
+    throw ConfigError(
+        "oxygen.ros_driver=\"funded\" requires "
+        "oxygen.k_ROS_respiratory > 0");
+  }
   if (cfg.chem_env.oxygen.delivery_uptake_enabled
       && metabolism.uptake_limit_mode != UptakeLimitMode::Delivery) {
     throw ConfigError(
@@ -1302,6 +1325,15 @@ bool apply_oxygen_key(SimulationConfig& cfg, std::string_view key, const std::st
     cfg.chem_env.oxygen.respiration_driver = val;
     return true;
   }
+  if (key == "oxygen.ros_driver" || key == "oxygen_ros_driver") {
+    if (val != "ambient" && val != "funded") {
+      throw ConfigError(
+          "invalid oxygen.ros_driver: expected 'ambient' or 'funded', got '"
+          + val + "'");
+    }
+    cfg.chem_env.oxygen.ros_driver = val;
+    return true;
+  }
   if (key == "oxygen.D_free" || key == "oxygen_D_free") {
     cfg.chem_env.oxygen.D_free = parse_config_real(key, val); return true;
   }
@@ -1354,6 +1386,11 @@ bool apply_oxygen_key(SimulationConfig& cfg, std::string_view key, const std::st
   }
   if (key == "oxygen.k_ROS" || key == "oxygen_k_ROS") {
     cfg.chem_env.oxygen.k_ROS = parse_config_real(key, val); return true;
+  }
+  if (key == "oxygen.k_ROS_respiratory"
+      || key == "oxygen_k_ROS_respiratory") {
+    cfg.chem_env.oxygen.k_ROS_respiratory = parse_config_real(key, val);
+    return true;
   }
   return false;
 }

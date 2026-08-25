@@ -64,6 +64,7 @@ struct Agent {
   Real   pending_oxygen_maintenance = 0.0;
   Real   pending_oxygen_ceiling = 0.0;
   Real   pending_oxygen_funding = 0.0;
+  Real   respired_oxygen_rate = 0.0;  // funded respiratory O2 flux (mol/s)
 
   // ── Receptor state ────────────────────────────────────────────────────
   std::array<Real, NUM_RECEPTORS> receptor_expr_base;

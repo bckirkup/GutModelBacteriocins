@@ -991,6 +991,18 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_event("conjugation_transfers", events.conjugation_transfers);
   write_event("mutations", events.mutations);
   write_event("immigrations", events.immigrations);
+  const auto write_rate = [&](const char* name, Real value) {
+    write_scalar_dataset(fid, group + std::string("/events/") + name,
+                         H5T_NATIVE_DOUBLE, &value);
+  };
+  write_rate("sos_basal_rate", events.sos_basal_rate);
+  write_rate("sos_post_division_rate", events.sos_post_division_rate);
+  write_rate("sos_nuclease_cross_induction_rate",
+             events.sos_nuclease_cross_induction_rate);
+  write_rate("sos_ros_rate", events.sos_ros_rate);
+  write_rate("sos_rate_total", events.sos_basal_rate
+      + events.sos_post_division_rate
+      + events.sos_nuclease_cross_induction_rate + events.sos_ros_rate);
 
   StepEvents cumulative = sim.cumulative_events();
   cumulative.add(events);
@@ -1010,6 +1022,16 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_cumulative_event("conjugation_transfers", cumulative.conjugation_transfers);
   write_cumulative_event("mutations", cumulative.mutations);
   write_cumulative_event("immigrations", cumulative.immigrations);
+  write_rate("cumulative_sos_basal_rate", cumulative.sos_basal_rate);
+  write_rate("cumulative_sos_post_division_rate",
+             cumulative.sos_post_division_rate);
+  write_rate("cumulative_sos_nuclease_cross_induction_rate",
+             cumulative.sos_nuclease_cross_induction_rate);
+  write_rate("cumulative_sos_ros_rate", cumulative.sos_ros_rate);
+  write_rate("cumulative_sos_rate_total", cumulative.sos_basal_rate
+      + cumulative.sos_post_division_rate
+      + cumulative.sos_nuclease_cross_induction_rate
+      + cumulative.sos_ros_rate);
 
   const int32_t interval_start_step = sim.event_window_start_step();
   const int32_t interval_end_step = step;
@@ -1121,6 +1143,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   std::vector<double> mu(static_cast<size_t>(n));
   std::vector<double> mu_max(static_cast<size_t>(n));
   std::vector<double> realized_fermentation_fraction(static_cast<size_t>(n));
+  std::vector<double> respired_oxygen_rate(static_cast<size_t>(n));
   std::vector<double> biomass(static_cast<size_t>(n));
   std::vector<int32_t> in_crypt(static_cast<size_t>(n));
   std::vector<int32_t> n_bi(static_cast<size_t>(n));
@@ -1140,6 +1163,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
     mu[idx] = a.mu_realized;
     mu_max[idx] = a.mu_max;
     realized_fermentation_fraction[idx] = a.realized_fermentation_fraction;
+    respired_oxygen_rate[idx] = a.respired_oxygen_rate;
     biomass[idx] = a.biomass;
     in_crypt[idx] = a.flags.in_crypt ? 1 : 0;
     n_bi[idx] = static_cast<int32_t>(a.genome.bi_loci.size());
@@ -1161,6 +1185,9 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   write_dataset_1d(fid, group + "/mu_max", H5T_NATIVE_DOUBLE, mu_max.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/realized_fermentation_fraction",
                    H5T_NATIVE_DOUBLE, realized_fermentation_fraction.data(),
+                   local_n, cfg_);
+  write_dataset_1d(fid, group + "/respired_oxygen_rate",
+                   H5T_NATIVE_DOUBLE, respired_oxygen_rate.data(),
                    local_n, cfg_);
   write_dataset_1d(fid, group + "/biomass", H5T_NATIVE_DOUBLE, biomass.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/in_crypt", H5T_NATIVE_INT32, in_crypt.data(), local_n, cfg_);

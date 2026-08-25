@@ -1079,6 +1079,46 @@ void test_funded_respiration_requires_delivery() {
   std::cout << "  test_funded_respiration_requires_delivery: PASSED\n";
 }
 
+void test_funded_ros_requires_delivery_and_positive_yield() {
+  SimulationConfig cfg = InputParser::default_config();
+  bool invalid_driver_threw = false;
+  try {
+    (void)InputParser::apply_flat_key(cfg, "oxygen.ros_driver", "invalid");
+  } catch (const ConfigError& error) {
+    invalid_driver_threw =
+        std::string(error.what()).find("oxygen.ros_driver") != std::string::npos;
+  }
+  assert(invalid_driver_threw);
+
+  assert(InputParser::apply_flat_key(cfg, "oxygen.ros_driver", "funded"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.k_ROS_respiratory", "1.0"));
+  bool threw = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    threw = std::string(error.what()).find(
+        "oxygen.ros_driver=\"funded\"") != std::string::npos;
+  }
+  assert(threw);
+
+  cfg = InputParser::default_config();
+  assert(InputParser::apply_flat_key(cfg, "oxygen.ros_driver", "funded"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.delivery_uptake_enabled", "true"));
+  assert(InputParser::apply_flat_key(
+      cfg, "metabolism.uptake_limit", "delivery"));
+  threw = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    threw = std::string(error.what()).find(
+        "oxygen.k_ROS_respiratory") != std::string::npos;
+  }
+  assert(threw);
+  std::cout << "  test_funded_ros_requires_delivery_and_positive_yield: PASSED\n";
+}
+
 void test_delivery_uptake_rejects_gpu() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.gpu.enabled = true;
@@ -1171,6 +1211,7 @@ int main() {
   test_oxygen_delivery_uptake_config();
   test_oxygen_delivery_uptake_requires_delivery();
   test_funded_respiration_requires_delivery();
+  test_funded_ros_requires_delivery_and_positive_yield();
   test_delivery_uptake_rejects_gpu();
   test_uptake_limit_rejects_unknown_modes();
   test_carbon_maintenance_fixture();

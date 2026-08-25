@@ -11,6 +11,7 @@
 #include "advection.h"
 #include "chemical_field.h"
 #include "species_names.h"
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -440,6 +441,38 @@ void test_sos_lysis_post_step() {
   std::cout << "  test_sos_lysis_post_step: PASSED\n";
 }
 
+void test_ros_funded_rate_sensitivity_and_zero_cases() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_strains.clear();
+  cfg.hdf5.enabled = false;
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.chem_env.oxygen.delivery_uptake_enabled = true;
+  cfg.chem_env.oxygen.ros_driver = "funded";
+  cfg.chem_env.oxygen.k_ROS_respiratory = 2.0;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent agent = make_agent_at_center(sim, 1);
+  sim.agents().push_back(std::move(agent));
+  Agent& probe = sim.agents()[sim.agents().size() - 1];
+  probe.biomass = 1.0e-15;
+  const std::array<Real, 4> fluxes = {0.0, 1.0e-20, 2.0e-20, 4.0e-20};
+  Real previous = -1.0;
+  for (const Real flux : fluxes) {
+    probe.respired_oxygen_rate = flux;
+    const Real rate = sim.ros_induction_rate(probe);
+    assert(rate >= previous);
+    previous = rate;
+  }
+  probe.respired_oxygen_rate = 0.0;
+  assert(sim.ros_induction_rate(probe) == 0.0);
+  std::cout << "  test_ros_funded_rate_sensitivity_and_zero_cases: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Bacteriocin Fix Tests ===\n";
   test_pi_diffusion_classes();
@@ -456,6 +489,7 @@ int main() {
   test_cross_induction();
   test_per_colicin_burst_size();
   test_sos_lysis_post_step();
+  test_ros_funded_rate_sensitivity_and_zero_cases();
   std::cout << "All bacteriocin fix tests passed.\n";
   return 0;
 }

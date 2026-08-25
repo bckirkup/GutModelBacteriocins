@@ -15,12 +15,19 @@ enum class RespirationDriver : int {
   Funded = 1,
 };
 
+enum class RosDriver : int {
+  Ambient = 0,
+  Funded = 1,
+};
+
 struct OxygenConfig {
   bool enabled = false;
   Real epithelial_conc = 55.0e-6;   // mol/m^3 (~0.042 mmHg; 42 mmHg ≈ 5.5e-2 mol/m^3)
   bool delivery_uptake_enabled = false;
   std::string respiration_driver = "ambient";
   RespirationDriver respiration_driver_mode = RespirationDriver::Ambient;
+  std::string ros_driver = "ambient";
+  RosDriver ros_driver_mode = RosDriver::Ambient;
   Real D_free = 2.1e-9;             // m^2/s
   Real Km = 1.0e-6;                 // mol/m^3 Monod half-saturation
   Real boost_max = 2.0;             // max aerobic growth multiplier - 1
@@ -46,6 +53,7 @@ struct OxygenConfig {
   // interior in one bio step and masking per-agent respiration.
   Real vbf_sink = 1.0e-3;           // 1/s first-order background O2 uptake rate
   Real k_ROS = 1.0e2;               // ROS-driven SOS rate coefficient
+  Real k_ROS_respiratory = 0.0;     // dimensionless funded respiratory ROS yield
 };
 
 struct AcetateConfig {

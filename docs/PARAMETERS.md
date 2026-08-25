@@ -356,13 +356,15 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | `oxygen.epithelial_flux` / `oxygen_epithelial_flux` | 0 | mol/m²/s | Fixed epithelial delivery flux `J` for flux mode |
 | `oxygen.z_gradient` / `oxygen_z_gradient` | true | — | Imposed exponential z-profile toggle; must be false for Robin or flux |
 | `oxygen.respiration_driver` | `ambient` | — | Fermentation-mode driver: `ambient` preserves concentration-based switching; `funded` uses realized growth-O₂ delivery and requires oxygen delivery uptake with `metabolism.uptake_limit=delivery` |
+| `oxygen.ros_driver` | `ambient` | — | SOS ROS driver: `ambient` uses ambient voxel oxygen (the compatibility default); `funded` uses funded respiratory oxygen flux and requires oxygen delivery uptake with `metabolism.uptake_limit=delivery` |
 | `oxygen.D_free` | 2.1e-9 | m²/s | O₂ diffusion coefficient |
 | `oxygen.Km` | 1e-6 | mol/m³ | Monod half-saturation for aerobic boost |
 | `oxygen.boost_max` | 2.0 | — | Max growth multiplier above fermentation baseline |
 | `oxygen.q_consumption` | 1e-14 | mol/cell | Growth-associated agent O₂ consumption (× μ_realized) |
 | `oxygen.q_maintenance` | 1e-18 | mol/s/cell | Basal (density-coupled) agent O₂ respiration, applied per living cell regardless of growth so the field tracks agent density |
 | `oxygen.vbf_sink` | 1e-3 | 1/s | VBF background O₂ uptake — **first-order** rate constant (`reac −= vbf_sink × [O₂]`), not a zero-order removal |
-| `oxygen.k_ROS` | 1e2 | — | ROS induction rate coefficient (Spec 2 hook) |
+| `oxygen.k_ROS` | 1e2 | — | Uncited ambient-path ROS induction coefficient. Its units are not established in the existing documentation; its product with ambient oxygen concentration set mortality in every run to date. |
+| `oxygen.k_ROS_respiratory` | 0.0 | — | Dimensionless funded ROS-induction yield per unit specific respiratory oxygen flux; required to be positive with `oxygen.ros_driver=funded` |
 
 The default `oxygen.epithelial_conc = 55e-6 mol/m³` is approximately
 `0.042 mmHg` dissolved oxygen, not the approximately `42 mmHg` stated by the

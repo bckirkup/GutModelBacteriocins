@@ -618,6 +618,11 @@ std::vector<Probe> build_probes() {
                   return c.chem_env.oxygen.respiration_driver;
                 },
                 "funded");
+  add_ns_string(v, "oxygen.ros_driver", "oxygen_ros_driver",
+                [](const SimulationConfig& c) {
+                  return c.chem_env.oxygen.ros_driver;
+                },
+                "funded");
   v.push_back(B("oxygen.delivery_uptake_enabled",
                 [](const SimulationConfig& c) {
                   return c.chem_env.oxygen.delivery_uptake_enabled;
@@ -657,6 +662,10 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "oxygen.q_maintenance", "oxygen_q_maintenance", [](const SimulationConfig& c) { return c.chem_env.oxygen.q_maintenance; });
   add_ns_real(v, "oxygen.vbf_sink", "oxygen_vbf_sink", [](const SimulationConfig& c) { return c.chem_env.oxygen.vbf_sink; });
   add_ns_real(v, "oxygen.k_ROS", "oxygen_k_ROS", [](const SimulationConfig& c) { return c.chem_env.oxygen.k_ROS; });
+  add_ns_real(v, "oxygen.k_ROS_respiratory", "oxygen_k_ROS_respiratory",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.k_ROS_respiratory;
+              });
   add_ns_bool(v, "oxygen.metabolic_switch_enabled",
               "oxygen_metabolic_switch_enabled",
               [](const SimulationConfig& c) {
