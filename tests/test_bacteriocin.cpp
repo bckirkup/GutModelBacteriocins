@@ -441,7 +441,7 @@ void test_sos_lysis_post_step() {
   std::cout << "  test_sos_lysis_post_step: PASSED\n";
 }
 
-void test_ros_funded_rate_sensitivity_and_zero_cases() {
+static SimulationConfig funded_ros_config() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.initial_strains.clear();
   cfg.hdf5.enabled = false;
@@ -450,8 +450,13 @@ void test_ros_funded_rate_sensitivity_and_zero_cases() {
   cfg.chem_env.oxygen.enabled = true;
   cfg.chem_env.oxygen.delivery_uptake_enabled = true;
   cfg.chem_env.oxygen.ros_driver = "funded";
-  cfg.chem_env.oxygen.k_ROS_respiratory = 2.0;
   cfg.fixes.metabolism.uptake_limit = "delivery";
+  return cfg;
+}
+
+void test_ros_funded_absolute_rate_sensitivity() {
+  SimulationConfig cfg = funded_ros_config();
+  cfg.chem_env.oxygen.k_ROS_funded = 2.0;
   InputParser::finalize_config(cfg);
 
   Simulation sim;
@@ -460,17 +465,61 @@ void test_ros_funded_rate_sensitivity_and_zero_cases() {
   sim.agents().push_back(std::move(agent));
   Agent& probe = sim.agents()[sim.agents().size() - 1];
   probe.biomass = 1.0e-15;
-  const std::array<Real, 4> fluxes = {0.0, 1.0e-20, 2.0e-20, 4.0e-20};
-  Real previous = -1.0;
+  const std::array<Real, 3> fluxes = {1.0e-20, 2.0e-20, 4.0e-20};
+  std::array<Real, 3> rates = {};
+  size_t index = 0;
   for (const Real flux : fluxes) {
     probe.respired_oxygen_rate = flux;
-    const Real rate = sim.ros_induction_rate(probe);
-    assert(rate >= previous);
-    previous = rate;
+    rates[index++] = sim.ros_induction_rate(probe);
   }
+  assert(rates[1] > rates[0] * 1.9);
+  assert(rates[2] > rates[1] * 1.9);
+  assert(std::abs(rates[2] / rates[0] - 4.0) < 1.0e-12);
+
+  probe.biomass = 1.0e-14;
+  probe.respired_oxygen_rate = 2.0e-20;
+  const Real larger_biomass_rate = sim.ros_induction_rate(probe);
+  probe.biomass = 1.0e-15;
+  const Real smaller_biomass_rate = sim.ros_induction_rate(probe);
+  assert(std::abs(larger_biomass_rate - smaller_biomass_rate) < 1.0e-30);
+
+  probe.biomass = 0.0;
+  assert(sim.ros_induction_rate(probe) > 0.0);
   probe.respired_oxygen_rate = 0.0;
   assert(sim.ros_induction_rate(probe) == 0.0);
-  std::cout << "  test_ros_funded_rate_sensitivity_and_zero_cases: PASSED\n";
+  std::cout << "  test_ros_funded_absolute_rate_sensitivity: PASSED\n";
+}
+
+void test_ros_funded_specific_rate_preserved() {
+  SimulationConfig cfg = funded_ros_config();
+  cfg.chem_env.oxygen.k_ROS_respiratory = 2.0;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent agent = make_agent_at_center(sim, 1);
+  sim.agents().push_back(std::move(agent));
+  Agent& probe = sim.agents()[sim.agents().size() - 1];
+  probe.respired_oxygen_rate = 2.0e-20;
+  probe.biomass = 1.0e-15;
+  const Real smaller_biomass_rate = sim.ros_induction_rate(probe);
+  probe.biomass = 1.0e-14;
+  const Real larger_biomass_rate = sim.ros_induction_rate(probe);
+  assert(smaller_biomass_rate > larger_biomass_rate * 9.9);
+  assert(smaller_biomass_rate < larger_biomass_rate * 10.1);
+  std::cout << "  test_ros_funded_specific_rate_preserved: PASSED\n";
+}
+
+void test_ros_funded_generation_round_trip() {
+  constexpr Real q_o2_per_generation = 1.63e-14;
+  const std::array<Real, 3> probabilities = {0.01, 0.02, 0.05};
+  for (const Real probability : probabilities) {
+    const Real coefficient =
+        -std::log1p(-probability) / q_o2_per_generation;
+    assert(std::abs(coefficient * q_o2_per_generation
+                    + std::log1p(-probability)) < 1.0e-14);
+  }
+  std::cout << "  test_ros_funded_generation_round_trip: PASSED\n";
 }
 
 int main() {
@@ -489,7 +538,9 @@ int main() {
   test_cross_induction();
   test_per_colicin_burst_size();
   test_sos_lysis_post_step();
-  test_ros_funded_rate_sensitivity_and_zero_cases();
+  test_ros_funded_absolute_rate_sensitivity();
+  test_ros_funded_specific_rate_preserved();
+  test_ros_funded_generation_round_trip();
   std::cout << "All bacteriocin fix tests passed.\n";
   return 0;
 }
