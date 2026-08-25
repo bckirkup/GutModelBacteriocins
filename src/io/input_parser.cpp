@@ -547,17 +547,16 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "metabolism.delivery_far_field_radius must be non-negative");
   }
   if (cfg.chemistry_decomposition == "slab"
-      && metabolism.delivery_far_field_radius
-          > static_cast<Real>(cfg.domain.grid_halo_width)
-              * cfg.domain.grid_dx) {
+      && metabolism.delivery_far_field_radius > 0.0) {
     const Real halo_depth = static_cast<Real>(cfg.domain.grid_halo_width)
         * cfg.domain.grid_dx;
     throw ConfigError(
         "metabolism.delivery_far_field_radius="
         + std::to_string(metabolism.delivery_far_field_radius)
-        + " exceeds slab chemical halo depth="
-        + std::to_string(halo_depth) + " (grid_dx="
-        + std::to_string(cfg.domain.grid_dx) + ", grid_halo_width="
+        + " is unsupported for regularized delivery deposition in slab "
+          "chemistry (grid_dx="
+        + std::to_string(cfg.domain.grid_dx) + ", halo depth="
+        + std::to_string(halo_depth) + ", grid_halo_width="
         + std::to_string(cfg.domain.grid_halo_width) + ")");
   }
   if (cfg.chem_env.oxygen.respiration_driver != "ambient"

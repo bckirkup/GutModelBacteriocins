@@ -796,6 +796,15 @@ void test_delivery_far_field_radius_parser_and_slab_refusal() {
         && message.find("halo") != std::string::npos;
   }
   assert(refused);
+  slab.domain.grid_halo_width = 8;
+  slab.fixes.metabolism.delivery_far_field_radius = 1.0e-6;
+  refused = false;
+  try {
+    InputParser::finalize_config(slab);
+  } catch (const ConfigError&) {
+    refused = true;
+  }
+  assert(refused);
   std::cout << "  test_delivery_far_field_radius_parser_and_slab_refusal:"
             << " PASSED\n";
 }
