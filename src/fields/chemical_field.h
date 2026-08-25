@@ -10,6 +10,7 @@
 #include "delivery_support.h"
 #include <algorithm>
 #include <cassert>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -364,6 +365,13 @@ struct NutrientFluxAccounting {
   }
 };
 
+struct DeliveryRetryResult {
+  bool negative_after_solve = false;
+  Real retry_events = 0.0;
+  Real delivery_reduction = 0.0;
+  Real rationing_factor = 1.0;
+};
+
 enum class EpithelialBoundaryMode {
   Dirichlet,
   Robin,
@@ -564,6 +572,16 @@ class ChemicalField {
   void apply_diffusion_slab(const Domain& domain, Real dt);
   void apply_diffusion_species(const Domain& domain, Real dt, Int spec);
   void apply_diffusion_slab_species(const Domain& domain, Real dt, Int spec);
+  DeliveryRetryResult run_delivery_rationing_for_species(
+      Int species, const Domain& domain,
+      const std::vector<Real>& concentration_snapshot,
+      const NutrientFluxAccounting& flux_snapshot,
+      const std::vector<Real>& realized_snapshot,
+      const std::vector<Real>& prescribed_snapshot,
+      const std::function<void()>& solve);
+  void record_delivery_rationing(
+      Int species, const ChemicalSpec& chemical,
+      const DeliveryRetryResult& result);
   void apply_boundaries_slab(const Domain& domain);
   void finalize_delivery_realized(Int spec);
 };

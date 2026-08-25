@@ -851,7 +851,7 @@ void test_invalid_cell_agent_cannot_claim_delivery_funding() {
 
   const Int carbon = sim.chemical_field().find(species::CARBON);
   const auto& flux = sim.chemical_field().flux_accounting();
-  const size_t index = static_cast<size_t>(carbon);
+  const auto index = static_cast<size_t>(carbon);
   Real realized = 0.0;
   for (Int cell = 0;
        cell < sim.chemical_field().global_ncells(); ++cell) {
@@ -918,7 +918,7 @@ DeliveryRationingMeasurement measure_delivery_rationing(Int agent_count) {
 
   const auto& chem = sim.chemical_field();
   const auto& flux = chem.flux_accounting();
-  const size_t index = static_cast<size_t>(carbon);
+  const auto index = static_cast<size_t>(carbon);
   DeliveryRationingMeasurement result;
   result.demand = flux.uptake_demand_interval[index];
   result.funded = flux.agent_uptake_interval[index];

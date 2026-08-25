@@ -50,8 +50,9 @@ Real FixMetabolism::delivery_concentration(
 std::vector<Int> FixMetabolism::enumerate_delivery_support_cells(
     const Agent& agent) const {
   const auto& domain = sim_.domain();
-  const Real radius = cfg_.delivery_far_field_radius;
-  if (radius <= 0.0) return {agent.grid_cell};
+  if (const auto radius = cfg_.delivery_far_field_radius; radius <= 0.0) {
+    return {agent.grid_cell};
+  }
   ensure_delivery_support_stencil();
   std::vector<Int> support;
   enumerate_physical_delivery_ball(
