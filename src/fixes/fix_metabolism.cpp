@@ -106,13 +106,23 @@ std::vector<Int> FixMetabolism::enumerate_delivery_support_cells(
 
 const std::vector<Int>& FixMetabolism::delivery_support_cells(
     const Agent& agent) const {
-  const auto cached = delivery_support_cache_.find(agent.identity.tag);
+  auto cached = delivery_support_cache_.find(agent.identity.tag);
   if (cached != delivery_support_cache_.end()) {
     return cached->second;
   }
-  const auto result = delivery_support_cache_.emplace(
-      agent.identity.tag, enumerate_delivery_support_cells(agent));
-  return result.first->second;
+  // The cache is populated before the OpenMP biology loop. Keep an
+  // unexpected miss safe if a caller is added to that loop later.
+#ifdef GUTIBM_OPENMP
+#pragma omp critical(delivery_support_cache_insert)
+#endif
+  {
+    cached = delivery_support_cache_.find(agent.identity.tag);
+    if (cached == delivery_support_cache_.end()) {
+      cached = delivery_support_cache_.emplace(
+          agent.identity.tag, enumerate_delivery_support_cells(agent)).first;
+    }
+  }
+  return cached->second;
 }
 
 void FixMetabolism::prepare_delivery_support_cache() {
@@ -121,6 +131,7 @@ void FixMetabolism::prepare_delivery_support_cache() {
       || cfg_.delivery_far_field_radius <= 0.0) {
     return;
   }
+  delivery_support_cache_.reserve(sim_.agents().size());
   for (const Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
         || agent.grid_cell < 0) {

@@ -10,6 +10,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <utility>
 #include <vector>
@@ -1029,6 +1030,7 @@ void test_regularized_delivery_reduces_depletion_retries() {
 struct ResolutionFundingMeasurement {
   Real funded = 0.0;
   Real demanded = 0.0;
+  Real delivery_reduction = 0.0;
 };
 
 ResolutionFundingMeasurement measure_regularized_resolution_funding(
@@ -1039,7 +1041,7 @@ ResolutionFundingMeasurement measure_regularized_resolution_funding(
   cfg.fixes.metabolism.uptake_limit = "delivery";
   cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
   cfg.fixes.metabolism.delivery_far_field_radius = far_field_radius;
-  cfg.initial_strains.front().mu_max = 1.0e3;
+  cfg.initial_strains.front().mu_max = 1.0e-4;
   cfg.time.total_time = kDt;
   cfg.time.bio_dt = kDt;
   cfg.time.output_interval = kDt;
@@ -1047,9 +1049,9 @@ ResolutionFundingMeasurement measure_regularized_resolution_funding(
   cfg.vbf.mucin_liberation = 0.0;
   for (auto& chemical : cfg.chemicals) {
     if (chemical.name == species::CARBON) {
-      chemical.initial_conc = 1.0e-6;
-      chemical.boundary_conc = 1.0e-6;
-      chemical.diff_coeff = 5.0e-10;
+      chemical.initial_conc = 1.0e-4;
+      chemical.boundary_conc = 1.0e-4;
+      chemical.diff_coeff = 1.0e-12;
       chemical.z_gradient_enabled = false;
     }
   }
@@ -1058,36 +1060,26 @@ ResolutionFundingMeasurement measure_regularized_resolution_funding(
   sim.init(cfg);
   Agent& agent = sim.agents()[0];
   agent.x = {61.0e-6, 61.0e-6, 61.0e-6};
-  agent.radius = 5.0e-7;
+  agent.radius = 5.0e-6;
   agent.outer_radius = agent.radius * 1.05;
-  agent.km.km_carbon = 0.0;
+  agent.km.km_carbon = 1.0e-9;
   Int ix = 0;
   Int iy = 0;
   Int iz = 0;
   sim.domain().pos_to_grid(agent.x, ix, iy, iz);
   agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
   const Int carbon = sim.chemical_field().find(species::CARBON);
-  const Real profile_width = 0.8e-6;
   for (Int cell = 0;
        cell < sim.chemical_field().global_ncells(); ++cell) {
-    const Int cell_ix = cell % sim.domain().nx();
-    const Int cell_iy = (cell / sim.domain().nx()) % sim.domain().ny();
-    const Int cell_iz =
-        cell / (sim.domain().nx() * sim.domain().ny());
-    const Vec3 center = sim.domain().cell_center(
-        cell_ix, cell_iy, cell_iz);
-    const Real distance_sq = sim.domain().min_image_dist_sq(
-        agent.x, center);
-    sim.chemical_field().conc_global(carbon, cell) =
-        1.0e-8 + (1.0e-6 - 1.0e-8)
-        * (1.0 - std::exp(-distance_sq
-                          / (2.0 * profile_width * profile_width)));
+    sim.chemical_field().conc_global(carbon, cell) = 1.0e-4;
   }
   sim.step(kDt);
   const auto& flux = sim.chemical_field().flux_accounting();
   const size_t index = static_cast<size_t>(carbon);
   return {flux.agent_uptake_interval[index],
-          flux.uptake_demand_interval[index]};
+          flux.uptake_demand_interval[index],
+          flux.delivery_reduction_interval[index]
+              + flux.delivery_reduction_cumulative[index]};
 }
 
 void test_regularized_delivery_funding_resolution_invariance() {
@@ -1095,6 +1087,7 @@ void test_regularized_delivery_funding_resolution_invariance() {
       2.0e-6, 4.0e-6, 6.0e-6};
   std::vector<Real> regularized;
   std::vector<Real> own_voxel;
+  std::cout << std::setprecision(12);
   for (const Real resolution : resolutions) {
     const ResolutionFundingMeasurement far_field =
         measure_regularized_resolution_funding(resolution, 10.0e-6);
@@ -1102,8 +1095,19 @@ void test_regularized_delivery_funding_resolution_invariance() {
         measure_regularized_resolution_funding(resolution, 0.0);
     assert(far_field.demanded > 0.0);
     assert(own.demanded > 0.0);
+    const Real own_fraction = own.funded / own.demanded;
+    assert(own_fraction > 0.0);
+    assert(own_fraction < 1.0);
+    assert(own.delivery_reduction > 0.0);
+    std::cout << "    resolution " << resolution
+              << " radius 10um funded/demand="
+              << far_field.funded / far_field.demanded
+              << " reduction=" << far_field.delivery_reduction
+              << ", radius 0 funded/demand="
+              << own_fraction
+              << " reduction=" << own.delivery_reduction << "\n";
     regularized.push_back(far_field.funded / far_field.demanded);
-    own_voxel.push_back(own.funded / own.demanded);
+    own_voxel.push_back(own_fraction);
   }
   const Real regularized_span = *std::max_element(
       regularized.begin(), regularized.end())
