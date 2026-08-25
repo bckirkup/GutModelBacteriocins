@@ -173,6 +173,12 @@ int main() {
   assert(dataset_exists(file, flux_prefix + "gradient_source_interval"));
   assert(dataset_exists(
       file, flux_prefix + "maintenance_limited_agents_interval"));
+  assert(dataset_exists(file, flux_prefix + "delivery_reduction_interval"));
+  assert(dataset_exists(file, flux_prefix + "delivery_reduction_cumulative"));
+  assert(dataset_exists(
+      file, flux_prefix + "delivery_retry_events_interval"));
+  assert(dataset_exists(
+      file, flux_prefix + "delivery_retry_events_cumulative"));
   const std::vector<double> boundary =
       read_vector(file, flux_prefix + "boundary_interval");
   const std::vector<double> cumulative =

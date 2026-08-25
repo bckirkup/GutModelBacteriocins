@@ -989,6 +989,12 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     ensure_sized(flux.uptake_limited_interval);
     ensure_sized(flux.uptake_limited_step);
     ensure_sized(flux.uptake_limited_cumulative);
+    ensure_sized(flux.delivery_reduction_interval);
+    ensure_sized(flux.delivery_reduction_step);
+    ensure_sized(flux.delivery_reduction_cumulative);
+    ensure_sized(flux.delivery_retry_events_interval);
+    ensure_sized(flux.delivery_retry_events_step);
+    ensure_sized(flux.delivery_retry_events_cumulative);
     ensure_sized(flux.agent_uptake_last_step);
     ensure_sized(flux.uptake_demand_last_step);
     ensure_sized(flux.reaction_clip_last_step);

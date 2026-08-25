@@ -69,6 +69,9 @@ struct NutrientFluxAccounting {
   std::vector<Real> delivery_reduction_interval;
   std::vector<Real> delivery_reduction_step;
   std::vector<Real> delivery_reduction_cumulative;
+  std::vector<Real> delivery_retry_events_interval;
+  std::vector<Real> delivery_retry_events_step;
+  std::vector<Real> delivery_retry_events_cumulative;
 
   void init(size_t species_count) {
     boundary_interval.assign(species_count, 0.0);
@@ -120,6 +123,9 @@ struct NutrientFluxAccounting {
     delivery_reduction_interval.assign(species_count, 0.0);
     delivery_reduction_step.assign(species_count, 0.0);
     delivery_reduction_cumulative.assign(species_count, 0.0);
+    delivery_retry_events_interval.assign(species_count, 0.0);
+    delivery_retry_events_step.assign(species_count, 0.0);
+    delivery_retry_events_cumulative.assign(species_count, 0.0);
   }
 
   void add_interval(Int species, Real boundary, Real source, Real sink,
@@ -195,6 +201,13 @@ struct NutrientFluxAccounting {
     uptake_limited_step[static_cast<size_t>(species)] += count;
   }
 
+  void add_delivery_retry_events(Int species, Real count) {
+    #ifdef GUTIBM_OPENMP
+    #pragma omp atomic
+    #endif
+    delivery_retry_events_step[static_cast<size_t>(species)] += count;
+  }
+
   void add_reaction_clip(Int species, Real amount) {
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
@@ -228,6 +241,7 @@ struct NutrientFluxAccounting {
       uptake_shortfall_interval[i] += uptake_shortfall_step[i];
       uptake_limited_interval[i] += uptake_limited_step[i];
       delivery_reduction_interval[i] += delivery_reduction_step[i];
+      delivery_retry_events_interval[i] += delivery_retry_events_step[i];
       agent_uptake_step[i] = 0.0;
       maintenance_step[i] = 0.0;
       maintenance_shortfall_step[i] = 0.0;
@@ -236,6 +250,7 @@ struct NutrientFluxAccounting {
       uptake_shortfall_step[i] = 0.0;
       uptake_limited_step[i] = 0.0;
       delivery_reduction_step[i] = 0.0;
+      delivery_retry_events_step[i] = 0.0;
     }
   }
 
@@ -284,6 +299,8 @@ struct NutrientFluxAccounting {
       uptake_shortfall_cumulative[i] += uptake_shortfall_interval[i];
       uptake_limited_cumulative[i] += uptake_limited_interval[i];
       delivery_reduction_cumulative[i] += delivery_reduction_interval[i];
+      delivery_retry_events_cumulative[i] +=
+          delivery_retry_events_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
       boundary_interval[i] = 0.0;
       gradient_source_interval[i] = 0.0;
@@ -297,6 +314,7 @@ struct NutrientFluxAccounting {
       uptake_shortfall_interval[i] = 0.0;
       uptake_limited_interval[i] = 0.0;
       delivery_reduction_interval[i] = 0.0;
+      delivery_retry_events_interval[i] = 0.0;
       reaction_clip_interval[i] = 0.0;
     }
   }

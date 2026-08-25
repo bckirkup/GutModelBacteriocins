@@ -104,20 +104,24 @@ void assert_flux_parity(const ChemicalField& reference,
   const auto& expected = reference.flux_accounting();
   const auto& actual = candidate.flux_accounting();
   const std::array<const std::vector<Real> NutrientFluxAccounting::*,
-                   5> fields = {
+                   7> fields = {
       &NutrientFluxAccounting::boundary_interval,
       &NutrientFluxAccounting::vbf_source_interval,
       &NutrientFluxAccounting::vbf_sink_interval,
       &NutrientFluxAccounting::agent_uptake_interval,
       &NutrientFluxAccounting::reaction_clip_interval,
+      &NutrientFluxAccounting::delivery_reduction_interval,
+      &NutrientFluxAccounting::delivery_retry_events_interval,
   };
   const std::array<const std::vector<Real> NutrientFluxAccounting::*,
-                   5> cumulative_fields = {
+                   7> cumulative_fields = {
       &NutrientFluxAccounting::boundary_cumulative,
       &NutrientFluxAccounting::vbf_source_cumulative,
       &NutrientFluxAccounting::vbf_sink_cumulative,
       &NutrientFluxAccounting::agent_uptake_cumulative,
       &NutrientFluxAccounting::reaction_clip_cumulative,
+      &NutrientFluxAccounting::delivery_reduction_cumulative,
+      &NutrientFluxAccounting::delivery_retry_events_cumulative,
   };
   for (Int s = 0; s < reference.num_species(); ++s) {
     for (size_t i = 0; i < fields.size(); ++i) {
