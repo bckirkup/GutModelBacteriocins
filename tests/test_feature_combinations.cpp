@@ -355,6 +355,9 @@ void test_kitchen_sink() {
 void test_slab_io_support_and_gpu() {
   SimulationConfig io_cfg = make_combo_config(2010);
   io_cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  io_cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   io_cfg.domain.grid_halo_width = 2;
   io_cfg.hdf5.enabled = true;
   io_cfg.hdf5.filename = "slab_feature_support.h5";
@@ -370,6 +373,9 @@ void test_slab_io_support_and_gpu() {
 
   SimulationConfig gpu_cfg = make_combo_config(2012);
   gpu_cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  gpu_cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   gpu_cfg.domain.grid_halo_width = 2;
   gpu_cfg.gpu.enabled = true;
   bool initialized = false;
@@ -387,6 +393,9 @@ void test_slab_io_support_and_gpu() {
 void test_slab_single_rank_biology() {
   SimulationConfig cfg = make_combo_config(2011);
   cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   cfg.domain.grid_halo_width = 2;
   cfg.time.total_time = cfg.time.bio_dt;
   Simulation sim = run_combo(cfg);
@@ -404,6 +413,9 @@ void test_slab_replicated_fingerprint_equivalence() {
 
   SimulationConfig slab_cfg = replicated_cfg;
   slab_cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  slab_cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   slab_cfg.domain.grid_halo_width = 2;
   Simulation slab;
   slab.init(slab_cfg);

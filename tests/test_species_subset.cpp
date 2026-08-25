@@ -99,6 +99,9 @@ void test_subset_composition() {
     cfg.domain.grid_dx = 5e-6;
     if (mode == "slab") {
       cfg.chemistry_decomposition = "slab";
+      // Slab cannot represent regularized support; opt into grid-dependent
+      // single-voxel delivery explicitly.
+      cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
       cfg.domain.grid_halo_width = 2;
     } else {
       cfg.qssa.toxin_evaluation = "agents";

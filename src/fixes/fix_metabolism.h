@@ -70,7 +70,7 @@ struct MetabolismConfig {
   std::string uptake_limit = "none";
   // Radius shared by the delivery concentration read and prescribed sink.
   // Zero preserves the historical agent-voxel behavior.
-  Real delivery_far_field_radius = 0.0;
+  Real delivery_far_field_radius = 1.0e-5;
   // Resolved from uptake_limit by InputParser::finalize_config.
   UptakeLimitMode uptake_limit_mode = UptakeLimitMode::None;
 };

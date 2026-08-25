@@ -92,6 +92,8 @@ RespirationProbe run_respiration_probe(
   cfg.chem_env.oxygen.vbf_sink = 0.0;
   cfg.chem_env.oxygen.epithelial_conc = oxygen_concentration;
   cfg.fixes.metabolism.uptake_limit = "delivery";
+  // This test compares the agent-cell sink with respiration funding.
+  cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   cfg.fixes.metabolism.maintenance_rate = 0.0;
   cfg.fixes.metabolism.division_threshold = 1.0e9;
   InputParser::finalize_config(cfg);

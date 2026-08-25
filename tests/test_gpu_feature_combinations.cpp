@@ -171,6 +171,9 @@ void test_gpu_slab_equivalence_and_accounting() {
 
   SimulationConfig slab_cfg = base;
   slab_cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  slab_cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   slab_cfg.domain.chemistry_stride = {2, 2, 1};
   slab_cfg.domain.grid_halo_width = static_cast<Int>(
       std::ceil(slab_cfg.domain.ghost_width / (
@@ -324,6 +327,9 @@ void test_gpu_kitchen_sink_light() {
 void test_gpu_slab_single_rank() {
   SimulationConfig cfg = make_combo_config(3005);
   cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   cfg.domain.grid_halo_width = static_cast<Int>(
       std::ceil(cfg.domain.ghost_width / cfg.domain.grid_dx));
   Simulation sim = run_gpu_combo(cfg);

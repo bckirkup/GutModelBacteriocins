@@ -955,6 +955,9 @@ std::string source_path(const char* rel) {
 void test_every_flat_key_ingests_via_apply() {
   const std::vector<Probe> probes = build_probes();
   const SimulationConfig def = InputParser::default_config();
+  expect(std::abs(def.fixes.metabolism.delivery_far_field_radius - 1.0e-5)
+             < 1.0e-18,
+         "delivery_far_field_radius default changed unexpectedly");
 
   for (const Probe& p : probes) {
     SimulationConfig cfg = def;
@@ -974,6 +977,9 @@ void test_every_flat_key_ingests_via_json_document() {
 
   std::ostringstream doc;
   doc << "{\n  \"_comment\": \"exhaustive config ingestion probe\"";
+  // Keep the generated slab probe compatible with the unsupported
+  // regularized-delivery decomposition.
+  doc << ",\n  \"metabolism.delivery_far_field_radius\": 0.0";
   for (const Probe& p : probes) {
     if (!p.primary) continue;
     doc << ",\n  \"" << p.key << "\": ";

@@ -256,6 +256,9 @@ void run_slab_grid_pattern() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.seed = 97531;
   cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   cfg.domain.hi = {20e-6, 15e-6, 10e-6};
   cfg.domain.grid_dx = 5e-6;
   cfg.domain.grid_halo_width = static_cast<Int>(
@@ -499,6 +502,9 @@ void run_parallel_slab_grid_equivalence() {
 
   SimulationConfig slab_cfg = make_roundtrip_config(slab_file, false);
   slab_cfg.chemistry_decomposition = "slab";
+  // Slab cannot represent regularized support; opt into grid-dependent
+  // single-voxel delivery explicitly.
+  slab_cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   slab_cfg.domain.grid_halo_width = 2;
   {
     Simulation slab;
