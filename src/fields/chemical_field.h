@@ -399,7 +399,8 @@ class ChemicalField {
   ChemicalField() = default;
 
   void init(const Domain& domain, const std::vector<ChemicalSpec>& specs,
-            std::string_view decomposition = "replicated");
+            std::string_view decomposition = "replicated",
+            Real delivery_far_field_radius = 0.0);
 
   Int num_species() const { return nspec_; }
   Int ncells() const { return ncells_; }
@@ -538,6 +539,7 @@ class ChemicalField {
   Int global_nz_ = 0;
   Int owned_x_begin_ = 0;
   Int owned_x_end_ = 0;
+  Real delivery_far_field_radius_ = 0.0;
   Int halo_width_ = 0;
   Int storage_nx_ = 0;
   DecompositionMode mode_ = DecompositionMode::Replicated;

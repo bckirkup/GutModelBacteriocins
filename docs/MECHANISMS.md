@@ -122,15 +122,20 @@ than unbounded demand. The implicit solve therefore supplies the diffusive
 neighbourhood rather than restricting the draw to the agent's voxel, with no
 conductance or `k/3` splitting bias. Realized removal equals funded uptake by
 construction. If a genuinely starved neighbourhood would become negative,
-local prescribed draws are reduced first and the solve is retried. If local
-reductions do not restore positivity, the original prescribed field is
-restored and one global scalar factor is bisected for 12 iterations; the
-largest feasible factor is applied uniformly. MPI feasibility decisions are
-collective, so every rank performs the same solves. The delivery-reduction
-ledger is exactly original prescribed mass minus final prescribed mass, and
-retry events include local and bisection solves. If non-delivery sources still
-leave a negative owned cell at factor zero, the run continues, emits a
-species/step/minimum/count diagnostic, and increments the per-species
+local prescribed draws are reduced first and the solve is retried. Each local
+retry halves prescribed mass in the physical delivery-radius neighbourhood of
+every negative owned cell, using periodic x/y and clipped z support semantics.
+The local pass runs for up to eight attempts and stops early when no affected
+prescribed value can be changed. If local reductions do not restore positivity,
+the original prescribed field is restored and one global scalar factor is
+bisected for 12 iterations; the largest feasible factor is applied uniformly
+as the final guarantee. MPI feasibility decisions are collective, so every
+rank performs the same solves. The delivery-reduction ledger is exactly
+original prescribed mass minus final prescribed mass, and retry events include
+local and bisection solves. The emitted rationing factor is the minimum
+per-cell factor over owned cells in the interval, not a mean. If non-delivery
+sources still leave a negative owned cell at factor zero, the run continues,
+emits a species/step/minimum/count diagnostic, and increments the per-species
 infeasible-step counter. Ghost agents do not contribute prescribed draws or
 accounting writes.
 

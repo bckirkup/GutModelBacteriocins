@@ -185,6 +185,27 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 | `uptake_limit` / `metabolism.uptake_limit` | `none` | — | Agent-side uptake limitation model: `none` (unfunded growth, default), `sherwood` (per-agent diffusive delivery cap using the configured delivery concentration), or `voxel` (diagnostic-only voxel-content cap, not biology) |
 | `delivery_far_field_radius` / `metabolism.delivery_far_field_radius` | `1.0e-5` | m | Shared delivery neighborhood radius, defaulting to a 10 µm physical support for both the volume-weighted Sherwood concentration read and prescribed delivery deposition. A single-cell depletion at 10 µm is approximately 0.008% of far-field concentration, so this radius is not doing biological work. Supports clipped by nonperiodic z boundaries are renormalized over included cells. Positive values are refused with slab chemistry; slab configurations must explicitly set this key to `0.0` to opt into the grid-dependent single-voxel model. |
 
+When delivery-mode prescribed sinks would make an owned concentration
+negative, rationing first acts locally: for up to eight retries, prescribed
+mass is halved in the physical `delivery_far_field_radius` neighbourhood of
+every negative owned cell. The neighbourhood uses the delivery support
+geometry (periodic x/y and clipped z), rather than a voxel-count radius. If
+the local pass cannot change any affected prescribed value or does not restore
+positivity, a uniform global factor is used only as a final guarantee. Its
+largest feasible value is found by 12 bisection iterations and applied
+uniformly. Feasibility decisions are collective under MPI.
+
+`delivery_reduction` is the original owned prescribed mass minus the final
+owned prescribed mass. Retry events include both local and bisection solves.
+The emitted rationing factor is the minimum factor among owned cells in the
+interval, not a mean. If non-delivery sources remain negative at global factor
+zero, the run continues, emits a diagnostic, and increments the infeasible
+counter. In replicated chemistry, delivery reduction is combined with
+`MPI_MAX` because every rank holds the same global field; in slab chemistry,
+owned-cell reductions use `MPI_SUM`. Collective retry and infeasible counters
+use `MPI_MAX`, while rationing factors use `MPI_MIN`. These delivery counters
+are reduced once per chemistry step.
+
 This default changes shipped delivery-mode behavior: prescribed mass is now
 deposited over a 10 µm support unless radius zero is selected explicitly.
 Settled population-scale measurements (80 founders, ROS off, six hours) found

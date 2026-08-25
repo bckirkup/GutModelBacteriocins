@@ -533,7 +533,8 @@ void Simulation::init(const SimulationConfig& cfg) {
   reject_unsupported_slab_surfaces(cfg_, domain_);
 
   // Chemical fields
-  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
+  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition,
+             cfg_.fixes.metabolism.delivery_far_field_radius);
   validate_lumped_toxin_species(cfg_, chem_);
   validate_required_species(cfg_, chem_);
 
@@ -790,7 +791,8 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
 
   domain_.init(cfg_.domain);
   reject_unsupported_slab_surfaces(cfg_, domain_);
-  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
+  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition,
+             cfg_.fixes.metabolism.delivery_far_field_radius);
   validate_lumped_toxin_species(cfg_, chem_);
   validate_required_species(cfg_, chem_);
   advection_.init(cfg.advection, domain_);
