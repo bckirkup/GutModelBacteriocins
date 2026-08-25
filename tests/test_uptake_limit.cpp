@@ -36,6 +36,7 @@ struct DeliveryStepMeasurement {
   Real min_concentration = 0.0;
   Real funded_fraction = 0.0;
   Real delivery_reduction = 0.0;
+  Real delivery_retry_events = 0.0;
 };
 
 SimulationConfig base_config() {
@@ -193,6 +194,9 @@ DeliveryStepMeasurement measure_delivery_step(
   result.delivery_reduction =
       flux.delivery_reduction_interval[index]
       + flux.delivery_reduction_cumulative[index];
+  result.delivery_retry_events =
+      flux.delivery_retry_events_interval[index]
+      + flux.delivery_retry_events_cumulative[index];
   return result;
 }
 
@@ -207,8 +211,11 @@ void test_delivery_resolution_and_timestep_invariance() {
   assert(coarse.demand > 0.0);
   assert(short_step.demand > 0.0);
   assert(fine.delivery_reduction == 0.0);
+  assert(fine.delivery_retry_events == 0.0);
   assert(coarse.delivery_reduction == 0.0);
+  assert(coarse.delivery_retry_events == 0.0);
   assert(short_step.delivery_reduction == 0.0);
+  assert(short_step.delivery_retry_events == 0.0);
   assert(std::abs(fine.funded_fraction - coarse.funded_fraction) <= 0.05);
   assert(std::abs(fine.funded_fraction - short_step.funded_fraction) <= 0.05);
   std::cout << "    delivery fractions 2um/6um/10s="
@@ -262,11 +269,16 @@ void test_delivery_exact_removal_and_depletion_cap() {
   assert(std::abs(supplied.field_removal - supplied.funded)
          <= 1.0e-12 * std::max(supplied.funded, 1.0e-30));
   assert(supplied.delivery_reduction == 0.0);
+  assert(supplied.delivery_retry_events == 0.0);
   assert(std::abs(starved.field_removal - starved.funded)
          <= 1.0e-12 * std::max(starved.funded, 1.0e-30));
   assert(starved.funded < std::min(starved.demand, starved.ceiling));
   assert(starved.min_concentration >= 0.0);
   assert(starved.delivery_reduction > 0.0);
+  assert(starved.delivery_retry_events > 0.0);
+  assert(std::abs(starved.delivery_reduction
+                  - (starved.ceiling - starved.funded))
+         <= 1.0e-12 * std::max(starved.ceiling, 1.0e-30));
   std::cout << "  test_delivery_exact_removal_and_depletion_cap: PASSED\n";
 }
 

@@ -585,6 +585,22 @@ void assert_equal_ledgers(const Simulation& slab,
           replicated_flux.uptake_shortfall_interval);
   compare("uptake_shortfall_cumulative", slab_flux.uptake_shortfall_cumulative,
           replicated_flux.uptake_shortfall_cumulative);
+  compare("delivery_reduction_interval",
+          slab_flux.delivery_reduction_interval,
+          replicated_flux.delivery_reduction_interval);
+  compare("delivery_reduction_step", slab_flux.delivery_reduction_step,
+          replicated_flux.delivery_reduction_step);
+  compare("delivery_reduction_cumulative",
+          slab_flux.delivery_reduction_cumulative,
+          replicated_flux.delivery_reduction_cumulative);
+  compare("delivery_retry_events_interval",
+          slab_flux.delivery_retry_events_interval,
+          replicated_flux.delivery_retry_events_interval);
+  compare("delivery_retry_events_step", slab_flux.delivery_retry_events_step,
+          replicated_flux.delivery_retry_events_step);
+  compare("delivery_retry_events_cumulative",
+          slab_flux.delivery_retry_events_cumulative,
+          replicated_flux.delivery_retry_events_cumulative);
   compare("reaction_clip_interval", slab_flux.reaction_clip_interval,
           replicated_flux.reaction_clip_interval);
   compare("reaction_clip_cumulative", slab_flux.reaction_clip_cumulative,

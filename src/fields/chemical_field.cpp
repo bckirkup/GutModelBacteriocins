@@ -329,6 +329,7 @@ Real reduce_negative_prescribed_cells(
 struct DeliveryRetryResult {
   bool negative_after_solve = false;
   Real reduced = 0.0;
+  Real retry_events = 0.0;
 };
 
 template <typename Restore, typename Solve, typename HasNegative,
@@ -342,6 +343,7 @@ DeliveryRetryResult run_delivery_retries(
     solve();
     result.negative_after_solve = has_negative();
     if (!result.negative_after_solve) break;
+    result.retry_events += 1.0;
     result.reduced += reduce(attempt, max_retries);
   }
   return result;
@@ -1408,6 +1410,9 @@ void ChemicalField::sum_agent_uptake_across_ranks() {
   MPI_Allreduce(MPI_IN_PLACE,
                 flux_accounting_.delivery_reduction_step.data(), nspec_,
                 MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(MPI_IN_PLACE,
+                flux_accounting_.delivery_retry_events_step.data(), nspec_,
+                MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 #endif
 }
 
@@ -1475,6 +1480,8 @@ void ChemicalField::sum_accounting_across_ranks() {
   reduce(flux_accounting_.boundary_step);
   reduce(flux_accounting_.gradient_source_step);
   reduce(flux_accounting_.reaction_clip_step);
+  reduce(flux_accounting_.delivery_reduction_step);
+  reduce(flux_accounting_.delivery_retry_events_step);
 #endif
 }
 
@@ -2827,6 +2834,7 @@ void ChemicalField::apply_diffusion_species(
     solve();
   }
   add_delivery_reduction(s, retry.reduced);
+  flux_accounting_.add_delivery_retry_events(s, retry.retry_events);
   split_delivery_sink_realized(s);
   finalize_delivery_realized(s);
 }
@@ -2990,6 +2998,7 @@ void ChemicalField::apply_diffusion_slab_species(
     solve();
   }
   add_delivery_reduction(s, retry.reduced);
+  flux_accounting_.add_delivery_retry_events(s, retry.retry_events);
   split_delivery_sink_realized(s);
   finalize_delivery_realized(s);
 }
