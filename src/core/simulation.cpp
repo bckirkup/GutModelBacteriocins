@@ -644,9 +644,31 @@ void Simulation::prepare_step_events_for_summary() {
     std::array<Int, 11> global{};
     MPI_Allreduce(local.data(), global.data(), static_cast<int>(local.size()),
                   MPI_INT, MPI_SUM, MPI_COMM_WORLD);
-    event_ledger_.summary_events = {
-        global[0], global[1], global[2], global[3], global[4], global[5],
-        global[6], global[7], global[8], global[9], global[10]};
+    event_ledger_.summary_events.sos_inductions = global[0];
+    event_ledger_.summary_events.phage_inductions = global[1];
+    event_ledger_.summary_events.mortality_colicin = global[2];
+    event_ledger_.summary_events.mortality_cdi = global[3];
+    event_ledger_.summary_events.outflow_washout = global[4];
+    event_ledger_.summary_events.outflow_boundary = global[5];
+    event_ledger_.summary_events.mortality_lysis = global[6];
+    event_ledger_.summary_events.divisions = global[7];
+    event_ledger_.summary_events.conjugation_transfers = global[8];
+    event_ledger_.summary_events.mutations = global[9];
+    event_ledger_.summary_events.immigrations = global[10];
+    const std::array<Real, 4> local_rates = {
+        event_ledger_.step_events.sos_basal_rate,
+        event_ledger_.step_events.sos_post_division_rate,
+        event_ledger_.step_events.sos_nuclease_cross_induction_rate,
+        event_ledger_.step_events.sos_ros_rate};
+    std::array<Real, 4> global_rates{};
+    MPI_Allreduce(local_rates.data(), global_rates.data(),
+                  static_cast<int>(local_rates.size()), MPI_DOUBLE, MPI_SUM,
+                  MPI_COMM_WORLD);
+    event_ledger_.summary_events.sos_basal_rate = global_rates[0];
+    event_ledger_.summary_events.sos_post_division_rate = global_rates[1];
+    event_ledger_.summary_events.sos_nuclease_cross_induction_rate =
+        global_rates[2];
+    event_ledger_.summary_events.sos_ros_rate = global_rates[3];
   }
 #endif
 }
@@ -869,6 +891,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     if (i < atoms.realized_fermentation_fraction.size()) {
       a.realized_fermentation_fraction =
           std::clamp(atoms.realized_fermentation_fraction[i], 0.0, 1.0);
+    }
+    if (i < atoms.respired_oxygen_rate.size()) {
+      a.respired_oxygen_rate = atoms.respired_oxygen_rate[i];
     }
 
     a.genome.lineage_id = static_cast<TagID>(atoms.lineage[i]);
@@ -2234,6 +2259,14 @@ Real Simulation::local_O2(const Agent& agent) const {
 
 Real Simulation::ros_induction_rate(const Agent& agent) const {
   if (!cfg_.chem_env.oxygen.enabled) return 0.0;
+  if (cfg_.chem_env.oxygen.ros_driver_mode == RosDriver::Funded) {
+    if (agent.biomass <= 0.0 || agent.respired_oxygen_rate <= 0.0) {
+      return 0.0;
+    }
+    return cfg_.chem_env.oxygen.k_ROS_respiratory
+        * agent.respired_oxygen_rate
+        / agent.biomass;
+  }
   return cfg_.chem_env.oxygen.k_ROS * local_O2(agent) * std::max(agent.mu_realized, 0.0);
 }
 

@@ -84,15 +84,23 @@ void FixBacteriocin::check_sos_induction(Agent& agent, Real dt,
   if (agent.state == PhenoState::SOS_INDUCED) return;
 
   const Real bio_dt = sim_.config().time.bio_dt;
-  Real rate_total = cfg_.sos_basal_rate;
+  const Real basal_rate = cfg_.sos_basal_rate;
+  const Real post_division_rate = agent.flags.just_divided && bio_dt > 0.0
+      ? cfg_.sos_lysis_prob / bio_dt : 0.0;
+  const Real nuclease_rate = nuclease_cross_induction_rate(agent, agent_index);
+  // Funded metabolism commits respiratory oxygen in post_chemistry, while
+  // this fix runs during biology; funded ROS therefore intentionally uses the
+  // previous step's committed rate.
+  const Real ros_rate = sim_.ros_induction_rate(agent);
+  sim_.step_events().sos_basal_rate += basal_rate;
+  sim_.step_events().sos_post_division_rate += post_division_rate;
+  sim_.step_events().sos_nuclease_cross_induction_rate += nuclease_rate;
+  sim_.step_events().sos_ros_rate += ros_rate;
+  Real rate_total = basal_rate;
 
-  if (agent.flags.just_divided && bio_dt > 0.0) {
-    rate_total += cfg_.sos_lysis_prob / bio_dt;
-  }
-
-  rate_total += nuclease_cross_induction_rate(agent, agent_index);
-
-  rate_total += sim_.ros_induction_rate(agent);
+  rate_total += post_division_rate;
+  rate_total += nuclease_rate;
+  rate_total += ros_rate;
 
   const Real p_sos = 1.0 - std::exp(-rate_total * dt);
 

@@ -437,6 +437,7 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
     const Real maintenance_demand = agent.pending_oxygen_maintenance;
     if (const Real total_demand =
             growth_demand + maintenance_demand; total_demand <= 0.0) {
+      agent.respired_oxygen_rate = 0.0;
       continue;
     }
     const Real cell_requested = agent.grid_cell >= 0
@@ -459,6 +460,8 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
           agent.realized_fermentation_fraction, instantaneous,
           dt, oxygen_cfg.tau_metabolic_switch);
     }
+    agent.respired_oxygen_rate =
+        (funding.growth_funded + funding.maintenance_paid) / dt;
   }
 }
 

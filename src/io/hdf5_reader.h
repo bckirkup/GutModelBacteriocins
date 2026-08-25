@@ -45,6 +45,7 @@ struct HDF5CheckpointAgents {
   // Optional (empty when absent in older checkpoints).
   std::vector<double>  mu_max;
   std::vector<double>  realized_fermentation_fraction;
+  std::vector<double>  respired_oxygen_rate;
   std::vector<int32_t> in_crypt;
   std::vector<int64_t> lineage;
 };

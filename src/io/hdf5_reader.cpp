@@ -145,6 +145,10 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
     out.realized_fermentation_fraction = read_dataset_1d<double>(
         file, prefix + "realized_fermentation_fraction", H5T_NATIVE_DOUBLE);
   }
+  if (link_exists(file, prefix + "respired_oxygen_rate")) {
+    out.respired_oxygen_rate = read_dataset_1d<double>(
+        file, prefix + "respired_oxygen_rate", H5T_NATIVE_DOUBLE);
+  }
   if (link_exists(file, prefix + "in_crypt")) {
     out.in_crypt =
         read_dataset_1d<int32_t>(file, prefix + "in_crypt", H5T_NATIVE_INT32);
@@ -166,6 +170,10 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
   if (!out.realized_fermentation_fraction.empty()
       && out.realized_fermentation_fraction.size() != out.id.size()) {
     throw HDF5Error("inconsistent realized fermentation length in agents/" + step);
+  }
+  if (!out.respired_oxygen_rate.empty()
+      && out.respired_oxygen_rate.size() != out.id.size()) {
+    throw HDF5Error("inconsistent respired oxygen rate length in agents/" + step);
   }
   if (!out.in_crypt.empty() && out.in_crypt.size() != out.id.size()) {
     throw HDF5Error("inconsistent in_crypt length in agents/" + step);
@@ -312,6 +320,25 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
              meta.cumulative_events.conjugation_transfers);
   read_event("cumulative_mutations", meta.cumulative_events.mutations);
   read_event("cumulative_immigrations", meta.cumulative_events.immigrations);
+  const auto read_rate = [&](const std::string& name, Real& value) {
+    if (link_exists(file, events + name)) {
+      value = read_scalar<double>(file, events + name, H5T_NATIVE_DOUBLE);
+    }
+  };
+  read_rate("sos_basal_rate", meta.interval_events.sos_basal_rate);
+  read_rate("sos_post_division_rate",
+            meta.interval_events.sos_post_division_rate);
+  read_rate("sos_nuclease_cross_induction_rate",
+            meta.interval_events.sos_nuclease_cross_induction_rate);
+  read_rate("sos_ros_rate", meta.interval_events.sos_ros_rate);
+  read_rate("cumulative_sos_basal_rate",
+            meta.cumulative_events.sos_basal_rate);
+  read_rate("cumulative_sos_post_division_rate",
+            meta.cumulative_events.sos_post_division_rate);
+  read_rate("cumulative_sos_nuclease_cross_induction_rate",
+            meta.cumulative_events.sos_nuclease_cross_induction_rate);
+  read_rate("cumulative_sos_ros_rate",
+            meta.cumulative_events.sos_ros_rate);
   if (link_exists(file, events + "interval_start_step")) {
     meta.event_window_start_step =
         read_scalar<int32_t>(file, events + "interval_start_step", H5T_NATIVE_INT32);

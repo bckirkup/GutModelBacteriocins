@@ -43,6 +43,10 @@ struct StepEvents {
   Int conjugation_transfers = 0;
   Int mutations = 0;
   Int immigrations = 0;
+  Real sos_basal_rate = 0.0;
+  Real sos_post_division_rate = 0.0;
+  Real sos_nuclease_cross_induction_rate = 0.0;
+  Real sos_ros_rate = 0.0;
 
   void add(const StepEvents& other) {
     sos_inductions += other.sos_inductions;
@@ -56,6 +60,10 @@ struct StepEvents {
     conjugation_transfers += other.conjugation_transfers;
     mutations += other.mutations;
     immigrations += other.immigrations;
+    sos_basal_rate += other.sos_basal_rate;
+    sos_post_division_rate += other.sos_post_division_rate;
+    sos_nuclease_cross_induction_rate += other.sos_nuclease_cross_induction_rate;
+    sos_ros_rate += other.sos_ros_rate;
   }
 
   void reset() { *this = StepEvents{}; }

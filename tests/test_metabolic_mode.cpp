@@ -75,6 +75,7 @@ struct RespirationProbe {
   Real fraction = 0.0;
   Real growth_demand = 0.0;
   Real funded_growth = 0.0;
+  Real respired_oxygen_rate = 0.0;
 };
 
 RespirationProbe run_respiration_probe(
@@ -111,6 +112,7 @@ RespirationProbe run_respiration_probe(
   result.growth_demand = sim.agents()[0].pending_oxygen_growth;
   result.funded_growth = sim.chemical_field().sink_realized_global(
       oxygen, cell);
+  result.respired_oxygen_rate = sim.agents()[0].respired_oxygen_rate;
   return result;
 }
 
@@ -128,11 +130,18 @@ void test_funded_respiration_graded_and_bounded() {
     assert(std::isfinite(probe.fraction));
     assert(probe.fraction >= 0.0 && probe.fraction <= 1.0);
     assert(probe.funded_growth <= probe.growth_demand + 1.0e-30);
+    assert(std::abs(probe.respired_oxygen_rate
+                    - probe.funded_growth / kDt)
+           <= 1.0e-30);
   }
   assert(fractions[0] > fractions[1]);
   assert(fractions[1] > fractions[2]);
   assert(fractions[2] > fractions[3]);
   assert(fractions[0] - fractions[3] > 0.5);
+  const RespirationProbe fully_fermentative = run_respiration_probe(
+      "funded", 0.0);
+  assert(fully_fermentative.fraction > 0.99);
+  assert(fully_fermentative.respired_oxygen_rate == 0.0);
   const RespirationProbe supplied = run_respiration_probe(
       "funded", 55.0e-6);
   assert(std::abs(supplied.funded_growth - supplied.growth_demand)
@@ -157,6 +166,7 @@ void test_funded_respiration_zero_demand_preserves_state() {
   assert(std::abs(probe.fraction - 0.37) < 1.0e-12);
   assert(probe.growth_demand <= 0.0);
   assert(probe.funded_growth <= probe.growth_demand + 1.0e-30);
+  assert(probe.respired_oxygen_rate == 0.0);
   std::cout << "  test_funded_respiration_zero_demand_preserves_state: PASSED\n";
 }
 

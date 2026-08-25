@@ -372,7 +372,7 @@ SOS probability per biological timestep:
 rate_total = sos_basal_rate
            + (just_divided ? sos_lysis_prob / bio_dt : 0)
            + sos_cross_induction_rate * [nuclease_bacteriocin]
-           + k_ROS * [O2] * mu_realized   (when oxygen.enabled)
+           + ROS_rate
 p_sos = 1 - exp(-rate_total * dt)
 ```
 
@@ -383,8 +383,26 @@ p_sos = 1 - exp(-rate_total * dt)
   adding a chemical species. BI-locus immunity attenuates exposure from
   nuclease toxins using the minimum matching immunity factor.
 - After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`.
-  The event ledger records the resulting death as `mortality_lysis`; this is
-  separate from the `sos_inductions` and `phage_inductions` counters.
+
+The ROS driver is selected by `oxygen.ros_driver`. The default `ambient`
+driver preserves the historical term
+`oxygen.k_ROS * local_O2 * mu_realized`, where `local_O2` is the ambient
+voxel concentration and is not a funded uptake amount. With
+`oxygen.ros_driver = funded`, the ROS term is
+
+```
+ROS_rate = oxygen.k_ROS_respiratory
+           * respired_oxygen_rate / biomass
+```
+
+`respired_oxygen_rate` is the funded growth plus maintenance respiratory
+oxygen flux in mol/s, committed by delivery-limited metabolism and divided by
+the agent biomass amount. Funded ROS uses the value committed by the previous
+step: metabolism commits funded oxygen in `post_chemistry`, while
+`FixBacteriocin` runs during biology. This one-step lag is intentional and
+accepted.
+The event ledger records the resulting death as `mortality_lysis`; this is
+separate from the `sos_inductions` and `phage_inductions` counters.
 The same death is also recorded in kill provenance with cause `LYSIS`.
 
 ### b) Phage-mediated lysis (Group B colicins)
