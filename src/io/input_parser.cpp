@@ -542,6 +542,24 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "'delivery', got '"
         + metabolism.uptake_limit + "'");
   }
+  if (metabolism.delivery_far_field_radius < 0.0) {
+    throw ConfigError(
+        "metabolism.delivery_far_field_radius must be non-negative");
+  }
+  if (cfg.chemistry_decomposition == "slab"
+      && metabolism.delivery_far_field_radius
+          > static_cast<Real>(cfg.domain.grid_halo_width)
+              * cfg.domain.grid_dx) {
+    const Real halo_depth = static_cast<Real>(cfg.domain.grid_halo_width)
+        * cfg.domain.grid_dx;
+    throw ConfigError(
+        "metabolism.delivery_far_field_radius="
+        + std::to_string(metabolism.delivery_far_field_radius)
+        + " exceeds slab chemical halo depth="
+        + std::to_string(halo_depth) + " (grid_dx="
+        + std::to_string(cfg.domain.grid_dx) + ", grid_halo_width="
+        + std::to_string(cfg.domain.grid_halo_width) + ")");
+  }
   if (cfg.chem_env.oxygen.respiration_driver != "ambient"
       && cfg.chem_env.oxygen.respiration_driver != "funded") {
     throw ConfigError(
@@ -1216,6 +1234,13 @@ bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std
   if (key == "carbon_maintenance_rate"
       || key == "metabolism.carbon_maintenance_rate") {
     cfg.fixes.metabolism.carbon_maintenance_rate =
+        parse_config_real(key, val);
+    return true;
+  }
+  if (key == "delivery_far_field_radius"
+      || key == "metabolism.delivery_far_field_radius"
+      || key == "metabolism_delivery_far_field_radius") {
+    cfg.fixes.metabolism.delivery_far_field_radius =
         parse_config_real(key, val);
     return true;
   }

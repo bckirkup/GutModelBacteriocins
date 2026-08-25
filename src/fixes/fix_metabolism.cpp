@@ -8,6 +8,7 @@
 #include "receptor_utils.h"
 #include "carbon_maintenance.h"
 #include "metabolic_mode.h"
+#include "error.h"
 #include <cassert>
 #include <cmath>
 #include <algorithm>
@@ -23,6 +24,77 @@ FixMetabolism::FixMetabolism(Simulation& sim, const MetabolismConfig& cfg)
     : Fix("metabolism", sim), cfg_(cfg) {}
 
 void FixMetabolism::init() { /* no-op: parameters set via cfg_ at construction */ }
+
+Real FixMetabolism::delivery_concentration(
+    const Agent& agent, Int species_index) const {
+  const auto& chem = sim_.chemical_field();
+  const auto& domain = sim_.domain();
+  const Real radius = cfg_.delivery_far_field_radius;
+  if (radius <= 0.0) {
+    return chem.total_conc_global(species_index, agent.grid_cell, domain);
+  }
+
+  Int center_ix = 0;
+  Int center_iy = 0;
+  Int center_iz = 0;
+  domain.pos_to_grid(agent.x, center_ix, center_iy, center_iz);
+  const Int x_span = static_cast<Int>(
+      std::ceil(radius / domain.dx_x())) + 1;
+  const Int y_span = static_cast<Int>(
+      std::ceil(radius / domain.dx_y())) + 1;
+  const Int z_span = static_cast<Int>(
+      std::ceil(radius / domain.dx_z())) + 1;
+  const auto& periodic = domain.config().periodic;
+  const bool all_x = 2 * x_span + 1 >= domain.nx();
+  const bool all_y = 2 * y_span + 1 >= domain.ny();
+  const Real cell_volume = domain.cell_volume();
+  Real concentration_sum = 0.0;
+  Real volume_sum = 0.0;
+
+  const Int x_begin = all_x ? 0 : center_ix - x_span;
+  const Int x_end = all_x ? domain.nx() - 1 : center_ix + x_span;
+  const Int y_begin = all_y ? 0 : center_iy - y_span;
+  const Int y_end = all_y ? domain.ny() - 1 : center_iy + y_span;
+  const Int z_begin = std::max(0, center_iz - z_span);
+  const Int z_end = std::min(domain.nz() - 1, center_iz + z_span);
+  for (Int ix = x_begin; ix <= x_end; ++ix) {
+    Int candidate_ix = ix;
+    if (periodic[0]) {
+      candidate_ix %= domain.nx();
+      if (candidate_ix < 0) candidate_ix += domain.nx();
+    } else if (candidate_ix < 0 || candidate_ix >= domain.nx()) {
+      continue;
+    }
+    for (Int iy = y_begin; iy <= y_end; ++iy) {
+      Int candidate_iy = iy;
+      if (periodic[1]) {
+        candidate_iy %= domain.ny();
+        if (candidate_iy < 0) candidate_iy += domain.ny();
+      } else if (candidate_iy < 0 || candidate_iy >= domain.ny()) {
+        continue;
+      }
+      for (Int iz = z_begin; iz <= z_end; ++iz) {
+        const Int cell = domain.cell_index(candidate_ix, candidate_iy, iz);
+        const Vec3 center = domain.cell_center(
+            candidate_ix, candidate_iy, iz);
+        if (domain.min_image_dist_sq(agent.x, center) > radius * radius) {
+          continue;
+        }
+        if (chem.slab_mode()
+            && !chem.owns_global_cell(cell)
+            && !chem.global_cell_in_halo(cell)) {
+          throw SimulationError(
+              "delivery_far_field_radius neighborhood exceeds the local "
+              "chemical halo");
+        }
+        concentration_sum += chem.total_conc_global(
+            species_index, cell, domain) * cell_volume;
+        volume_sum += cell_volume;
+      }
+    }
+  }
+  return volume_sum > 0.0 ? concentration_sum / volume_sum : 0.0;
+}
 
 namespace {
 
@@ -287,8 +359,7 @@ void FixMetabolism::prepare_delivery_uptake(Agent& agent, Real dt) {
   const Int carbon = chem.find(species::CARBON);
   if (carbon < 0 || agent.grid_cell < 0) return;
   const Real cell_volume = sim_.domain().cell_volume();
-  const Real concentration = chem.total_conc_global(
-      carbon, agent.grid_cell, sim_.domain());
+  const Real concentration = delivery_concentration(agent, carbon);
   const ChemicalSpec& carbon_spec = chem.spec(carbon);
   const Real effective_diffusivity = uptake::effective_diffusivity(
       carbon_spec.diff_coeff, carbon_spec.retardation);
@@ -325,8 +396,7 @@ void FixMetabolism::prepare_delivery_oxygen(Agent& agent, Real dt) {
   const Real maintenance_demand = oxygen_cfg.q_maintenance * dt;
   const Real demand_total = growth_demand + maintenance_demand;
   const Real cell_volume = sim_.domain().cell_volume();
-  const Real concentration = chem.total_conc_global(
-      oxygen, agent.grid_cell, sim_.domain());
+  const Real concentration = delivery_concentration(agent, oxygen);
   const ChemicalSpec& oxygen_spec = chem.spec(oxygen);
   const Real effective_diffusivity = uptake::effective_diffusivity(
       oxygen_spec.diff_coeff, oxygen_spec.retardation);

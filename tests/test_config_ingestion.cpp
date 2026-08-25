@@ -623,6 +623,16 @@ std::vector<Probe> build_probes() {
                   return c.chem_env.oxygen.ros_driver;
                 },
                 "funded");
+  add_ns_real(v, "delivery_far_field_radius",
+              "metabolism_delivery_far_field_radius",
+              [](const SimulationConfig& c) {
+                return c.fixes.metabolism.delivery_far_field_radius;
+              });
+  v.push_back(R("metabolism.delivery_far_field_radius",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.delivery_far_field_radius;
+                },
+                3.7e-6, false));
   v.push_back(B("oxygen.delivery_uptake_enabled",
                 [](const SimulationConfig& c) {
                   return c.chem_env.oxygen.delivery_uptake_enabled;

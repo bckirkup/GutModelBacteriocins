@@ -132,12 +132,14 @@ Real funded_fraction(UptakeLimitMode mode, Real carbon_conc, Real radius,
 
 DeliveryStepMeasurement measure_delivery_step(
     Real grid_dx, Real dt, Real concentration, Real mu_max = 1.0e-2,
-    Real radius = 5.0e-7, Real boundary_concentration = -1.0) {
+    Real radius = 5.0e-7, Real boundary_concentration = -1.0,
+    Real far_field_radius = 0.0) {
   SimulationConfig cfg = base_config();
   cfg.domain.grid_dx = grid_dx;
   cfg.domain.hi = {4.0 * grid_dx, 4.0 * grid_dx, 4.0 * grid_dx};
   cfg.fixes.metabolism.uptake_limit = "delivery";
   cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = far_field_radius;
   cfg.fixes.metabolism.carbon_maintenance_rate = 0.0;
   cfg.initial_strains.front().mu_max = mu_max;
   cfg.time.total_time = dt;
@@ -198,6 +200,122 @@ DeliveryStepMeasurement measure_delivery_step(
       flux.delivery_retry_events_interval[index]
       + flux.delivery_retry_events_cumulative[index];
   return result;
+}
+
+Real run_resolution_probe(Real grid_dx, Real far_field_radius) {
+  SimulationConfig cfg = base_config();
+  cfg.domain.grid_dx = grid_dx;
+  cfg.domain.hi = {120.0e-6, 120.0e-6, 120.0e-6};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = far_field_radius;
+  cfg.initial_strains.front().mu_max = 1.0e3;
+  cfg.time.total_time = 120.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.output_interval = 120.0;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e-6;
+      chemical.boundary_conc = 1.0e-6;
+      chemical.diff_coeff = 5.0e-10;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent& agent = sim.agents()[0];
+  agent.x = {61.0e-6, 61.0e-6, 61.0e-6};
+  agent.biomass = agent.mass;
+  agent.radius = 5.0e-7;
+  agent.outer_radius = agent.radius * 1.05;
+  agent.km.km_carbon = 0.0;
+  Int ix = 0;
+  Int iy = 0;
+  Int iz = 0;
+  sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+  agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const Real profile_width = 0.8e-6;
+  for (Int cell = 0; cell < sim.chemical_field().global_ncells(); ++cell) {
+    const Int cell_ix = cell % sim.domain().nx();
+    const Int cell_iy = (cell / sim.domain().nx()) % sim.domain().ny();
+    const Int cell_iz = cell / (sim.domain().nx() * sim.domain().ny());
+    const Vec3 center = sim.domain().cell_center(cell_ix, cell_iy, cell_iz);
+    const Real distance_sq = sim.domain().min_image_dist_sq(
+        agent.x, center);
+    sim.chemical_field().conc_global(carbon, cell) =
+        1.0e-8 + (1.0e-6 - 1.0e-8)
+        * (1.0 - std::exp(-distance_sq
+                          / (2.0 * profile_width * profile_width)));
+  }
+  sim.step(60.0);
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const auto index = static_cast<size_t>(carbon);
+  return flux.agent_uptake_interval[index]
+      / std::max(flux.uptake_demand_interval[index], 1.0e-30);
+}
+
+void test_far_field_resolution_invariance_and_anti_vacuity() {
+  const std::vector<Real> resolutions = {2.0e-6, 4.0e-6, 6.0e-6};
+  std::vector<Real> far_field;
+  std::vector<Real> own_voxel;
+  for (const Real resolution : resolutions) {
+    far_field.push_back(run_resolution_probe(resolution, 10.0e-6));
+    own_voxel.push_back(run_resolution_probe(resolution, 0.0));
+  }
+  const Real far_span = *std::max_element(
+      far_field.begin(), far_field.end())
+      - *std::min_element(far_field.begin(), far_field.end());
+  const Real own_span = *std::max_element(
+      own_voxel.begin(), own_voxel.end())
+      - *std::min_element(own_voxel.begin(), own_voxel.end());
+  const Real far_scale = std::max(
+      *std::max_element(far_field.begin(), far_field.end()), 1.0e-30);
+  const Real own_scale = std::max(
+      *std::max_element(own_voxel.begin(), own_voxel.end()), 1.0e-30);
+  std::cout << "    far-field fractions 2um/4um/6um="
+            << far_field[0] << "/" << far_field[1] << "/" << far_field[2]
+            << "\n";
+  std::cout << "    own-voxel fractions 2um/4um/6um="
+            << own_voxel[0] << "/" << own_voxel[1] << "/" << own_voxel[2]
+            << "\n";
+  assert(far_span / far_scale <= 0.10);
+  assert(own_span / own_scale > 0.20);
+  assert(own_span / own_scale > 2.0 * far_span / far_scale);
+  std::cout << "  test_far_field_resolution_invariance_and_anti_vacuity:"
+            << " PASSED\n";
+}
+
+void test_far_field_uniform_field_invariant() {
+  const DeliveryStepMeasurement own = measure_delivery_step(
+      5.0e-6, 60.0, 1.0e-4, 1.0e1, 5.0e-7, -1.0, 0.0);
+  const DeliveryStepMeasurement near = measure_delivery_step(
+      5.0e-6, 60.0, 1.0e-4, 1.0e1, 5.0e-7, -1.0, 5.0e-6);
+  const DeliveryStepMeasurement far = measure_delivery_step(
+      5.0e-6, 60.0, 1.0e-4, 1.0e1, 5.0e-7, -1.0, 10.0e-6);
+  assert(std::abs(own.funded_fraction - near.funded_fraction) <= 1.0e-12);
+  assert(std::abs(own.funded_fraction - far.funded_fraction) <= 1.0e-12);
+  std::cout << "  test_far_field_uniform_field_invariant: PASSED\n";
+}
+
+void test_far_field_concentration_monotonicity() {
+  const std::vector<Real> concentrations = {
+      1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4};
+  std::vector<Real> fractions;
+  fractions.reserve(concentrations.size());
+  for (const Real concentration : concentrations) {
+    const DeliveryStepMeasurement result = measure_delivery_step(
+        5.0e-6, 60.0, concentration, 1.0e1, 5.0e-7, -1.0, 10.0e-6);
+    fractions.push_back(result.funded_fraction);
+  }
+  for (size_t i = 0; i + 1 < fractions.size(); ++i) {
+    assert(fractions[i] <= fractions[i + 1]);
+  }
+  assert(fractions.back() > fractions.front());
+  std::cout << "  test_far_field_concentration_monotonicity: PASSED\n";
 }
 
 void test_delivery_resolution_and_timestep_invariance() {
@@ -636,6 +754,7 @@ void test_delivery_shared_voxel_funding_does_not_exceed_removal() {
   cfg.initial_strains[0].mu_max = 5.0e-2;
   cfg.fixes.metabolism.uptake_limit = "delivery";
   cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = 5.0e-6;
   cfg.vbf.carbon_sink_vmax = 0.0;
   cfg.vbf.mucin_liberation = 0.0;
   cfg.time.total_time = kDt;
@@ -1173,6 +1292,9 @@ void test_none_mode_clip_does_not_close_by_default() {
 int main() {
   std::cout << "=== Uptake Limitation Tests ===\n";
   test_delivery_resolution_and_timestep_invariance();
+  test_far_field_resolution_invariance_and_anti_vacuity();
+  test_far_field_uniform_field_invariant();
+  test_far_field_concentration_monotonicity();
   test_delivery_funding_matches_demand_or_ceiling();
   test_delivery_concentration_response_and_positivity();
   test_delivery_exact_removal_and_depletion_cap();
