@@ -179,6 +179,14 @@ int main() {
       file, flux_prefix + "delivery_retry_events_interval"));
   assert(dataset_exists(
       file, flux_prefix + "delivery_retry_events_cumulative"));
+  assert(dataset_exists(
+      file, flux_prefix + "delivery_rationing_factor_interval"));
+  assert(dataset_exists(
+      file, flux_prefix + "delivery_rationing_factor_cumulative"));
+  assert(dataset_exists(
+      file, flux_prefix + "delivery_infeasible_interval"));
+  assert(dataset_exists(
+      file, flux_prefix + "delivery_infeasible_cumulative"));
   const std::vector<double> boundary =
       read_vector(file, flux_prefix + "boundary_interval");
   const std::vector<double> cumulative =

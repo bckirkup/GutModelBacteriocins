@@ -25,6 +25,7 @@
 
 #include "fix.h"
 #include "agent.h"
+#include "delivery_support.h"
 #include "uptake_limit.h"
 #include <string>
 #include <unordered_map>
@@ -87,6 +88,7 @@ class FixMetabolism : public Fix {
   void compute_agent(Agent& agent, Real dt);
   Real delivery_concentration(const Agent& agent, Int species_index) const;
   std::vector<Int> enumerate_delivery_support_cells(const Agent& agent) const;
+  void ensure_delivery_support_stencil() const;
   const std::vector<Int>& delivery_support_cells(const Agent& agent) const;
   void prepare_delivery_support_cache();
   void add_delivery_mass(
@@ -124,6 +126,7 @@ class FixMetabolism : public Fix {
   std::vector<Int> touched_cells_;
   mutable std::unordered_map<TagID, std::vector<Int>>
       delivery_support_cache_;
+  mutable DeliverySupportStencil delivery_support_stencil_;
 };
 
 }  // namespace gutibm

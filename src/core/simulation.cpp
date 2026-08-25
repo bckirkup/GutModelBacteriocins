@@ -533,7 +533,8 @@ void Simulation::init(const SimulationConfig& cfg) {
   reject_unsupported_slab_surfaces(cfg_, domain_);
 
   // Chemical fields
-  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
+  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition,
+             cfg_.fixes.metabolism.delivery_far_field_radius);
   validate_lumped_toxin_species(cfg_, chem_);
   validate_required_species(cfg_, chem_);
 
@@ -790,7 +791,8 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
 
   domain_.init(cfg_.domain);
   reject_unsupported_slab_surfaces(cfg_, domain_);
-  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition);
+  chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition,
+             cfg_.fixes.metabolism.delivery_far_field_radius);
   validate_lumped_toxin_species(cfg_, chem_);
   validate_required_species(cfg_, chem_);
   advection_.init(cfg.advection, domain_);
@@ -1011,6 +1013,20 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     ensure_sized(flux.delivery_retry_events_interval);
     ensure_sized(flux.delivery_retry_events_step);
     ensure_sized(flux.delivery_retry_events_cumulative);
+    if (flux.delivery_rationing_factor_interval.size()
+        != species_count) {
+      flux.delivery_rationing_factor_interval.assign(species_count, 1.0);
+    }
+    if (flux.delivery_rationing_factor_step.size() != species_count) {
+      flux.delivery_rationing_factor_step.assign(species_count, 1.0);
+    }
+    if (flux.delivery_rationing_factor_cumulative.size()
+        != species_count) {
+      flux.delivery_rationing_factor_cumulative.assign(species_count, 1.0);
+    }
+    ensure_sized(flux.delivery_infeasible_interval);
+    ensure_sized(flux.delivery_infeasible_step);
+    ensure_sized(flux.delivery_infeasible_cumulative);
     ensure_sized(flux.agent_uptake_last_step);
     ensure_sized(flux.uptake_demand_last_step);
     ensure_sized(flux.reaction_clip_last_step);

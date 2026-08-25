@@ -12,6 +12,7 @@
 #include <cmath>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <utility>
 #include <vector>
 
@@ -850,7 +851,7 @@ void test_invalid_cell_agent_cannot_claim_delivery_funding() {
 
   const Int carbon = sim.chemical_field().find(species::CARBON);
   const auto& flux = sim.chemical_field().flux_accounting();
-  const size_t index = static_cast<size_t>(carbon);
+  const auto index = static_cast<size_t>(carbon);
   Real realized = 0.0;
   for (Int cell = 0;
        cell < sim.chemical_field().global_ncells(); ++cell) {
@@ -862,6 +863,184 @@ void test_invalid_cell_agent_cannot_claim_delivery_funding() {
   assert(valid.pending_carbon_funding > 0.0);
   std::cout << "  test_invalid_cell_agent_cannot_claim_delivery_funding:"
             << " PASSED\n";
+}
+
+struct DeliveryRationingMeasurement {
+  Real demand = 0.0;
+  Real funded = 0.0;
+  Real field_removal = 0.0;
+  Real min_concentration = 0.0;
+  Real rationing_factor = 1.0;
+  Real delivery_reduction = 0.0;
+};
+
+DeliveryRationingMeasurement measure_delivery_rationing(Int agent_count) {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains.front().count = agent_count;
+  cfg.initial_strains.front().mu_max = 1.0e-2;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = 10.0e-6;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  cfg.domain.grid_dx = 4.0e-6;
+  cfg.domain.hash_cell_size = 10.0e-6;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = kDt;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e-7;
+      chemical.boundary_conc = 1.0e-7;
+      chemical.diff_coeff = 1.0e-12;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  const Vec3 center = {10.0e-6, 10.0e-6, 10.0e-6};
+  for (Agent& agent : sim.agents()) {
+    agent.x = center;
+    agent.radius = 5.0e-6;
+    agent.outer_radius = agent.radius * 1.05;
+    agent.km.km_carbon = 1.0e-9;
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  sim.step(kDt);
+
+  const auto& chem = sim.chemical_field();
+  const auto& flux = chem.flux_accounting();
+  const auto index = static_cast<size_t>(carbon);
+  DeliveryRationingMeasurement result;
+  result.demand = flux.uptake_demand_interval[index];
+  result.funded = flux.agent_uptake_interval[index];
+  result.rationing_factor =
+      flux.delivery_rationing_factor_interval[index];
+  result.delivery_reduction = flux.delivery_reduction_interval[index];
+  result.min_concentration = std::numeric_limits<Real>::infinity();
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    result.min_concentration = std::min(
+        result.min_concentration, chem.conc_global(carbon, cell));
+    result.field_removal += chem.sink_realized_global(carbon, cell);
+  }
+  return result;
+}
+
+void test_delivery_positivity_rationing_is_sensitive_and_conservative() {
+  const DeliveryRationingMeasurement sparse =
+      measure_delivery_rationing(1);
+  const DeliveryRationingMeasurement dense =
+      measure_delivery_rationing(50);
+  assert(sparse.min_concentration >= 0.0);
+  assert(dense.min_concentration >= 0.0);
+  assert(sparse.rationing_factor == 1.0);
+  assert(sparse.delivery_reduction == 0.0);
+  assert(dense.rationing_factor < 1.0);
+  assert(dense.delivery_reduction > 0.0);
+  assert(sparse.funded <= sparse.demand
+         + 1.0e-12 * std::max(sparse.demand, 1.0e-30));
+  assert(dense.funded <= dense.demand
+         + 1.0e-12 * std::max(dense.demand, 1.0e-30));
+  assert(std::abs(sparse.funded - sparse.field_removal)
+         <= 1.0e-10 * std::max(sparse.field_removal, 1.0e-30));
+  assert(std::abs(dense.funded - dense.field_removal)
+         <= 1.0e-10 * std::max(dense.field_removal, 1.0e-30));
+  std::cout << "    positivity sparse/dense factor="
+            << sparse.rationing_factor << "/" << dense.rationing_factor
+            << ", min concentration=" << sparse.min_concentration << "/"
+            << dense.min_concentration << "\n";
+  std::cout << "  test_delivery_positivity_rationing_is_sensitive_and_"
+               "conservative: PASSED\n";
+}
+
+void test_delivery_rationing_is_local() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains.front().count = 51;
+  cfg.initial_strains.front().mu_max = 1.0e3;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = 10.0e-6;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  cfg.domain.hi = {100.0e-6, 20.0e-6, 20.0e-6};
+  cfg.domain.grid_dx = 5.0e-6;
+  cfg.domain.hash_cell_size = 10.0e-6;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = kDt;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 0.0;
+      chemical.boundary_conc = 0.0;
+      chemical.diff_coeff = 1.0e-12;
+      chemical.z_gradient_enabled = false;
+      chemical.delivery_enabled = true;
+      chemical.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  const Vec3 starved_position = {20.0e-6, 10.0e-6, 15.0e-6};
+  const Vec3 supplied_position = {80.0e-6, 10.0e-6, 15.0e-6};
+  for (size_t i = 0; i < sim.agents().size(); ++i) {
+    Agent& agent = sim.agents()[i];
+    agent.x = i < 50 ? starved_position : supplied_position;
+    agent.radius = 5.0e-6;
+    agent.outer_radius = agent.radius * 1.05;
+    agent.km.km_carbon = 1.0e-9;
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  for (Int cell = 0; cell < sim.domain().ncells(); ++cell) {
+    sim.chemical_field().conc_global(carbon, cell) = 1.0e-7;
+    const Int ix = cell % sim.domain().nx();
+    if (ix >= 14) {
+      sim.chemical_field().conc_global(carbon, cell) = 1.0e-4;
+    }
+  }
+
+  sim.step(kDt);
+
+  const auto& chem = sim.chemical_field();
+  const auto& flux = chem.flux_accounting();
+  const size_t index = static_cast<size_t>(carbon);
+  Real minimum = std::numeric_limits<Real>::infinity();
+  Real field_removal = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    minimum = std::min(minimum, chem.conc_global(carbon, cell));
+    field_removal += chem.sink_realized_global(carbon, cell);
+  }
+  const Real starved_funding = sim.agents()[0].pending_carbon_funding;
+  const Real supplied_funding = sim.agents()[50].pending_carbon_funding;
+  const Real total_funding = flux.agent_uptake_interval[index];
+  assert(flux.delivery_retry_events_interval[index] > 0.0);
+  assert(flux.delivery_rationing_factor_interval[index] < 1.0);
+  assert(minimum >= 0.0);
+  assert(supplied_funding > starved_funding * 1.5);
+  assert(total_funding <= flux.uptake_demand_interval[index]
+         + 1.0e-12 * std::max(
+             flux.uptake_demand_interval[index], 1.0e-30));
+  assert(std::abs(field_removal - total_funding)
+         <= 1.0e-10 * std::max(field_removal, 1.0e-30));
+  std::cout << "    local funding starved/supplied="
+            << starved_funding << "/" << supplied_funding
+            << ", minimum concentration=" << minimum << "\n";
+  std::cout << "  test_delivery_rationing_is_local: PASSED\n";
 }
 
 struct RegularizedDeliveryMeasurement {
@@ -1636,6 +1815,8 @@ int main() {
   test_delivery_is_positive_and_funds_only_removed_carbon();
   test_delivery_shared_voxel_funding_does_not_exceed_removal();
   test_invalid_cell_agent_cannot_claim_delivery_funding();
+  test_delivery_positivity_rationing_is_sensitive_and_conservative();
+  test_delivery_rationing_is_local();
   test_regularized_delivery_mass_is_conservative();
   test_regularized_delivery_reduces_depletion_retries();
   test_regularized_delivery_funding_resolution_invariance();

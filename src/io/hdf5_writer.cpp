@@ -100,6 +100,15 @@ void mpi_barrier(const HDF5Config& cfg) {
   if (mpi_multi_rank()) mpi_barrier_world();
 }
 
+std::vector<Real> elementwise_min(
+    const std::vector<Real>& left, const std::vector<Real>& right) {
+  std::vector<Real> result(left.size(), 1.0);
+  for (size_t i = 0; i < result.size(); ++i) {
+    result[i] = std::min(left[i], right[i]);
+  }
+  return result;
+}
+
 void ensure_group(hid_t fid, const std::string& path, const HDF5Config& cfg) {
   if (io_rank(cfg) == 0 && fid >= 0) {
     hid_t g = -1;
@@ -941,6 +950,16 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_flux("delivery_retry_events_cumulative",
              add_cumulative(flux.delivery_retry_events_cumulative,
                            flux.delivery_retry_events_interval));
+  write_flux("delivery_rationing_factor_interval",
+             flux.delivery_rationing_factor_interval);
+  write_flux("delivery_rationing_factor_cumulative",
+             elementwise_min(flux.delivery_rationing_factor_cumulative,
+                             flux.delivery_rationing_factor_interval));
+  write_flux("delivery_infeasible_interval",
+             flux.delivery_infeasible_interval);
+  write_flux("delivery_infeasible_cumulative",
+             add_cumulative(flux.delivery_infeasible_cumulative,
+                            flux.delivery_infeasible_interval));
   write_flux("reaction_clip_interval", flux.reaction_clip_interval);
   write_flux("reaction_clip_cumulative",
              add_cumulative(flux.reaction_clip_cumulative,

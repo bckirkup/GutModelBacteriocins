@@ -604,6 +604,18 @@ void assert_equal_ledgers(const Simulation& slab,
   compare("delivery_retry_events_cumulative",
           slab_flux.delivery_retry_events_cumulative,
           replicated_flux.delivery_retry_events_cumulative);
+  compare("delivery_rationing_factor_interval",
+          slab_flux.delivery_rationing_factor_interval,
+          replicated_flux.delivery_rationing_factor_interval);
+  compare("delivery_rationing_factor_cumulative",
+          slab_flux.delivery_rationing_factor_cumulative,
+          replicated_flux.delivery_rationing_factor_cumulative);
+  compare("delivery_infeasible_interval",
+          slab_flux.delivery_infeasible_interval,
+          replicated_flux.delivery_infeasible_interval);
+  compare("delivery_infeasible_cumulative",
+          slab_flux.delivery_infeasible_cumulative,
+          replicated_flux.delivery_infeasible_cumulative);
   compare("reaction_clip_interval", slab_flux.reaction_clip_interval,
           replicated_flux.reaction_clip_interval);
   compare("reaction_clip_cumulative", slab_flux.reaction_clip_cumulative,
