@@ -912,10 +912,19 @@ approximately 250-fold below the far field at 2 µm grid spacing, but only
 approximately 1.4-fold below it at 6 µm. A positive
 `delivery_far_field_radius` instead uses a volume-weighted mean over cell
 centres inside the radius, including the agent cell with its actual volume
-weight. This path only reads concentrations; prescribed delivery mass remains
-withdrawn from `agent.grid_cell`. In slab chemistry, the parser rejects a
-radius larger than the configured concentration-halo depth rather than
-truncating the neighborhood.
+weight. The same spherical support is used for prescribed delivery
+deposition: the funded mass is divided uniformly across included cell
+centres, with the complete mass renormalized over cells remaining inside the
+domain when the support reaches a nonperiodic z boundary. Periodic x/y
+coordinates wrap as in the concentration read. The grid cannot resolve the
+sub-micron depletion boundary layer around a cell, so this regularizes the
+point sink over a physical, grid-independent support; the approximately
+500 µm diffusion length over 60 s makes a support of approximately 10 µm
+well inside the diffusive reach. Radius zero remains intentionally compatible
+but grid-dependent: it reads the own voxel and deposits the full prescribed
+mass in that single voxel. Positive radii are refused in slab chemistry
+because distributed deposition into halo cells cannot preserve ownership and
+mass accounting safely; replicated chemistry is required.
 ### VBF mucin liberation coupling
 When `mucin_z_gradient_enabled`, the monosaccharide release rate applied by the VBF also varies with z:
 ```

@@ -10,6 +10,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <iomanip>
 #include <iostream>
 #include <utility>
 #include <vector>
@@ -803,6 +804,334 @@ void test_delivery_shared_voxel_funding_does_not_exceed_removal() {
             << " PASSED\n";
 }
 
+void test_invalid_cell_agent_cannot_claim_delivery_funding() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains[0].count = 2;
+  cfg.initial_strains[0].mu_max = 5.0e-2;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = 5.0e-6;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = kDt;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e2;
+      chemical.boundary_conc = 1.0e2;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  const Vec3 shared_position = {7.5e-6, 7.5e-6, 12.5e-6};
+  Agent& valid = sim.agents()[0];
+  Agent& invalid = sim.agents()[1];
+  for (Agent& agent : sim.agents()) {
+    agent.x = shared_position;
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  invalid.grid_cell = -1;
+
+  FixMetabolism fix(sim, sim.config().fixes.metabolism);
+  fix.compute(kDt);
+  invalid.pending_growth_carbon = valid.pending_growth_carbon;
+  invalid.pending_carbon_funding = valid.pending_carbon_funding;
+  sim.chemical_field().apply_diffusion(sim.domain(), kDt);
+  fix.post_chemistry(kDt);
+
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const size_t index = static_cast<size_t>(carbon);
+  Real realized = 0.0;
+  for (Int cell = 0;
+       cell < sim.chemical_field().global_ncells(); ++cell) {
+    realized += sim.chemical_field().sink_realized_global(carbon, cell);
+  }
+  assert(invalid.pending_carbon_funding == 0.0);
+  assert(flux.agent_uptake_interval[index] <= realized
+         + 1.0e-12 * std::max(realized, 1.0e-30));
+  assert(valid.pending_carbon_funding > 0.0);
+  std::cout << "  test_invalid_cell_agent_cannot_claim_delivery_funding:"
+            << " PASSED\n";
+}
+
+struct RegularizedDeliveryMeasurement {
+  Real prescribed = 0.0;
+  Real realized = 0.0;
+  Int nonzero_cells = 0;
+  bool wraps_x = false;
+};
+
+RegularizedDeliveryMeasurement measure_regularized_delivery(
+    const Vec3& position) {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = 6.0e-6;
+  cfg.initial_strains.front().mu_max = 1.0e1;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = kDt;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e2;
+      chemical.boundary_conc = 1.0e2;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent& agent = sim.agents()[0];
+  agent.x = position;
+  agent.radius = 5.0e-7;
+  agent.outer_radius = agent.radius * 1.05;
+  agent.km.km_carbon = 1.0e-9;
+  Int ix = 0;
+  Int iy = 0;
+  Int iz = 0;
+  sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+  agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  sim.step(kDt);
+
+  RegularizedDeliveryMeasurement result;
+  const auto& chem = sim.chemical_field();
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    const Real prescribed = chem.prescribed_sink_global(carbon, cell);
+    const Real realized = chem.sink_realized_global(carbon, cell);
+    result.prescribed += prescribed;
+    result.realized += realized;
+    result.nonzero_cells += prescribed > 0.0 ? 1 : 0;
+    const Int cell_ix = cell % sim.domain().nx();
+    if (prescribed > 0.0
+        && (cell_ix == 0 || cell_ix == sim.domain().nx() - 1)) {
+      result.wraps_x = true;
+    }
+  }
+  return result;
+}
+
+void test_regularized_delivery_mass_is_conservative() {
+  const RegularizedDeliveryMeasurement lower =
+      measure_regularized_delivery({0.1e-6, 10.0e-6, 0.1e-6});
+  const RegularizedDeliveryMeasurement upper =
+      measure_regularized_delivery({0.1e-6, 10.0e-6, 19.9e-6});
+  assert(lower.prescribed > 0.0);
+  assert(upper.prescribed > 0.0);
+  assert(lower.nonzero_cells > 1);
+  assert(upper.nonzero_cells > 1);
+  assert(lower.realized > 0.0);
+  assert(upper.realized > 0.0);
+  assert(lower.prescribed <= upper.prescribed
+         + 1.0e-12 * std::max(upper.prescribed, 1.0e-30));
+  assert(lower.realized <= lower.prescribed
+         + 1.0e-12 * std::max(lower.prescribed, 1.0e-30));
+  assert(upper.realized <= upper.prescribed
+         + 1.0e-12 * std::max(upper.prescribed, 1.0e-30));
+  assert(std::abs(lower.realized - lower.prescribed)
+         <= 1.0e-12 * std::max(lower.prescribed, 1.0e-30));
+  assert(std::abs(upper.realized - upper.prescribed)
+         <= 1.0e-12 * std::max(upper.prescribed, 1.0e-30));
+  assert(lower.wraps_x);
+  std::cout << "  test_regularized_delivery_mass_is_conservative: PASSED\n";
+}
+
+std::pair<Real, Real> run_regularized_retry_case(Real support_radius) {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = support_radius;
+  cfg.initial_strains.front().count = 1;
+  cfg.initial_strains.front().mu_max = 1.0e1;
+  cfg.domain.grid_dx = 2.0e-6;
+  cfg.domain.hash_cell_size = 4.0e-6;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  constexpr Int kRetrySteps = 10;
+  cfg.time.total_time = kRetrySteps * kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = cfg.time.total_time;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e-9;
+      chemical.boundary_conc = 1.0e-9;
+      chemical.diff_coeff = 1.0e-12;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+  Simulation sim;
+  sim.init(cfg);
+  for (Agent& agent : sim.agents()) {
+    agent.radius = 2.0e-6;
+    agent.km.km_carbon = 1.0e-9;
+    agent.x = {7.5e-6, 7.5e-6, 7.5e-6};
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  for (Int step = 0; step < kRetrySteps; ++step) {
+    sim.agents()[0].radius = 2.0e-6;
+    sim.step(kDt);
+    if (step + 1 < kRetrySteps) {
+      const Int carbon = sim.chemical_field().find(species::CARBON);
+      for (Int cell = 0;
+           cell < sim.chemical_field().global_ncells(); ++cell) {
+        sim.chemical_field().conc_global(carbon, cell) = 1.0e-9;
+      }
+      for (Agent& agent : sim.agents()) {
+        agent.mu_realized = agent.mu_max;
+      }
+    }
+  }
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const auto index = static_cast<size_t>(carbon);
+  const auto& flux = sim.chemical_field().flux_accounting();
+  return {
+      flux.delivery_reduction_interval[index]
+          + flux.delivery_reduction_cumulative[index],
+      flux.delivery_retry_events_interval[index]
+          + flux.delivery_retry_events_cumulative[index]};
+}
+
+void test_regularized_delivery_reduces_depletion_retries() {
+  const auto radius_zero = run_regularized_retry_case(0.0);
+  const auto radius_ten = run_regularized_retry_case(10.0e-6);
+  std::cout << "    retry reductions radius 0/10um="
+            << radius_zero.first << "/" << radius_ten.first
+            << ", events=" << radius_zero.second << "/" << radius_ten.second
+            << "\n";
+  assert(radius_zero.first > 0.0);
+  assert(radius_zero.second > 0.0);
+  assert(radius_ten.first >= 0.0);
+  assert(radius_ten.second >= 0.0);
+  assert(radius_zero.first >= 10.0 * std::max(radius_ten.first, 1.0e-30));
+  assert(radius_zero.second >= 10.0 * std::max(radius_ten.second, 1.0));
+  std::cout << "  test_regularized_delivery_reduces_depletion_retries: PASSED\n";
+}
+
+struct ResolutionFundingMeasurement {
+  Real funded = 0.0;
+  Real demanded = 0.0;
+  Real delivery_reduction = 0.0;
+};
+
+ResolutionFundingMeasurement measure_regularized_resolution_funding(
+    Real grid_dx, Real far_field_radius) {
+  SimulationConfig cfg = base_config();
+  cfg.domain.grid_dx = grid_dx;
+  cfg.domain.hi = {120.0e-6, 120.0e-6, 120.0e-6};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = far_field_radius;
+  cfg.initial_strains.front().mu_max = 1.0e-4;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = kDt;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 1.0e-4;
+      chemical.boundary_conc = 1.0e-4;
+      chemical.diff_coeff = 1.0e-12;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent& agent = sim.agents()[0];
+  agent.x = {61.0e-6, 61.0e-6, 61.0e-6};
+  agent.radius = 5.0e-6;
+  agent.outer_radius = agent.radius * 1.05;
+  agent.km.km_carbon = 1.0e-9;
+  Int ix = 0;
+  Int iy = 0;
+  Int iz = 0;
+  sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+  agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  for (Int cell = 0;
+       cell < sim.chemical_field().global_ncells(); ++cell) {
+    sim.chemical_field().conc_global(carbon, cell) = 1.0e-4;
+  }
+  sim.step(kDt);
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const size_t index = static_cast<size_t>(carbon);
+  return {flux.agent_uptake_interval[index],
+          flux.uptake_demand_interval[index],
+          flux.delivery_reduction_interval[index]
+              + flux.delivery_reduction_cumulative[index]};
+}
+
+void test_regularized_delivery_funding_resolution_invariance() {
+  const std::vector<Real> resolutions = {
+      2.0e-6, 4.0e-6, 6.0e-6};
+  std::vector<Real> regularized;
+  std::vector<Real> own_voxel;
+  std::cout << std::setprecision(12);
+  for (const Real resolution : resolutions) {
+    const ResolutionFundingMeasurement far_field =
+        measure_regularized_resolution_funding(resolution, 10.0e-6);
+    const ResolutionFundingMeasurement own =
+        measure_regularized_resolution_funding(resolution, 0.0);
+    assert(far_field.demanded > 0.0);
+    assert(own.demanded > 0.0);
+    const Real own_fraction = own.funded / own.demanded;
+    assert(own_fraction > 0.0);
+    assert(own_fraction < 1.0);
+    assert(own.delivery_reduction > 0.0);
+    std::cout << "    resolution " << resolution
+              << " radius 10um funded/demand="
+              << far_field.funded / far_field.demanded
+              << " reduction=" << far_field.delivery_reduction
+              << ", radius 0 funded/demand="
+              << own_fraction
+              << " reduction=" << own.delivery_reduction << "\n";
+    regularized.push_back(far_field.funded / far_field.demanded);
+    own_voxel.push_back(own_fraction);
+  }
+  const Real regularized_span = *std::max_element(
+      regularized.begin(), regularized.end())
+      - *std::min_element(regularized.begin(), regularized.end());
+  const Real own_span = *std::max_element(
+      own_voxel.begin(), own_voxel.end())
+      - *std::min_element(own_voxel.begin(), own_voxel.end());
+  const Real regularized_scale = std::max(
+      *std::max_element(regularized.begin(), regularized.end()),
+      1.0e-30);
+  const Real own_scale = std::max(
+      *std::max_element(own_voxel.begin(), own_voxel.end()), 1.0e-30);
+  std::cout << "    realized funded fractions radius 10um 2/4/6um="
+            << regularized[0] << "/" << regularized[1] << "/"
+            << regularized[2] << "\n";
+  std::cout << "    realized funded fractions radius 0 2/4/6um="
+            << own_voxel[0] << "/" << own_voxel[1] << "/"
+            << own_voxel[2] << "\n";
+  assert(regularized_span / regularized_scale <= 0.05);
+  assert(own_span / own_scale > 0.20);
+  std::cout << "  test_regularized_delivery_funding_resolution_invariance:"
+            << " PASSED\n";
+}
+
 std::pair<Real, Real> run_delivery_maintenance_case(Real maintenance_rate) {
   SimulationConfig cfg = base_config();
   cfg.enabled_fixes = {"metabolism"};
@@ -1306,6 +1635,10 @@ int main() {
   test_limitation_severity_rises_with_agent_density();
   test_delivery_is_positive_and_funds_only_removed_carbon();
   test_delivery_shared_voxel_funding_does_not_exceed_removal();
+  test_invalid_cell_agent_cannot_claim_delivery_funding();
+  test_regularized_delivery_mass_is_conservative();
+  test_regularized_delivery_reduces_depletion_retries();
+  test_regularized_delivery_funding_resolution_invariance();
   test_delivery_maintenance_reduces_growth();
   test_delivery_density_brake();
   test_delivery_queues_noncarbon_chemistry_once();

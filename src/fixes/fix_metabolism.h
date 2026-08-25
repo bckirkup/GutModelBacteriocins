@@ -27,6 +27,7 @@
 #include "agent.h"
 #include "uptake_limit.h"
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace gutibm {
@@ -67,8 +68,8 @@ struct MetabolismConfig {
 
   // Agent-side uptake limitation model.
   std::string uptake_limit = "none";
-  // Radius of the concentration neighborhood used by the delivery ceiling.
-  // Zero preserves the historical agent-voxel concentration.
+  // Radius shared by the delivery concentration read and prescribed sink.
+  // Zero preserves the historical agent-voxel behavior.
   Real delivery_far_field_radius = 0.0;
   // Resolved from uptake_limit by InputParser::finalize_config.
   UptakeLimitMode uptake_limit_mode = UptakeLimitMode::None;
@@ -85,6 +86,14 @@ class FixMetabolism : public Fix {
  private:
   void compute_agent(Agent& agent, Real dt);
   Real delivery_concentration(const Agent& agent, Int species_index) const;
+  std::vector<Int> enumerate_delivery_support_cells(const Agent& agent) const;
+  const std::vector<Int>& delivery_support_cells(const Agent& agent) const;
+  void prepare_delivery_support_cache();
+  void add_delivery_mass(
+      Int species_index, const Agent& agent, Real amount) const;
+  Real delivery_field_funding(
+      Int species_index, const Agent& agent, Real amount,
+      const std::vector<Real>& requested_by_cell) const;
   void prepare_delivery_uptake(Agent& agent, Real dt);
   void prepare_delivery_oxygen(Agent& agent, Real dt);
   void commit_delivery_uptake(Real dt);
@@ -113,6 +122,8 @@ class FixMetabolism : public Fix {
   std::vector<Int> occupancy_by_cell_;
   std::vector<Real> chelation_by_cell_;
   std::vector<Int> touched_cells_;
+  mutable std::unordered_map<TagID, std::vector<Int>>
+      delivery_support_cache_;
 };
 
 }  // namespace gutibm

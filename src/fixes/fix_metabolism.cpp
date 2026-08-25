@@ -29,10 +29,26 @@ Real FixMetabolism::delivery_concentration(
     const Agent& agent, Int species_index) const {
   const auto& chem = sim_.chemical_field();
   const auto& domain = sim_.domain();
-  const Real radius = cfg_.delivery_far_field_radius;
-  if (radius <= 0.0) {
+  if (cfg_.delivery_far_field_radius <= 0.0) {
     return chem.total_conc_global(species_index, agent.grid_cell, domain);
   }
+
+  const auto& support = delivery_support_cells(agent);
+  Real concentration_sum = 0.0;
+  for (const Int cell : support) {
+    concentration_sum += chem.total_conc_global(
+        species_index, cell, domain);
+  }
+  return support.empty()
+      ? 0.0
+      : concentration_sum / static_cast<Real>(support.size());
+}
+
+std::vector<Int> FixMetabolism::enumerate_delivery_support_cells(
+    const Agent& agent) const {
+  const auto& domain = sim_.domain();
+  const Real radius = cfg_.delivery_far_field_radius;
+  if (radius <= 0.0) return {agent.grid_cell};
 
   Int center_ix = 0;
   Int center_iy = 0;
@@ -47,9 +63,8 @@ Real FixMetabolism::delivery_concentration(
   const auto& periodic = domain.config().periodic;
   const bool all_x = 2 * x_span + 1 >= domain.nx();
   const bool all_y = 2 * y_span + 1 >= domain.ny();
-  const Real cell_volume = domain.cell_volume();
-  Real concentration_sum = 0.0;
-  Real volume_sum = 0.0;
+  const Real radius_sq = radius * radius;
+  std::vector<Int> support;
 
   const Int x_begin = all_x ? 0 : center_ix - x_span;
   const Int x_end = all_x ? domain.nx() - 1 : center_ix + x_span;
@@ -77,23 +92,94 @@ Real FixMetabolism::delivery_concentration(
         const Int cell = domain.cell_index(candidate_ix, candidate_iy, iz);
         const Vec3 center = domain.cell_center(
             candidate_ix, candidate_iy, iz);
-        if (domain.min_image_dist_sq(agent.x, center) > radius * radius) {
-          continue;
+        if (domain.min_image_dist_sq(agent.x, center) <= radius_sq) {
+          support.push_back(cell);
         }
-        if (chem.slab_mode()
-            && !chem.owns_global_cell(cell)
-            && !chem.global_cell_in_halo(cell)) {
-          throw SimulationError(
-              "delivery_far_field_radius neighborhood exceeds the local "
-              "chemical halo");
-        }
-        concentration_sum += chem.total_conc_global(
-            species_index, cell, domain) * cell_volume;
-        volume_sum += cell_volume;
       }
     }
   }
-  return volume_sum > 0.0 ? concentration_sum / volume_sum : 0.0;
+  if (support.empty() && agent.grid_cell >= 0) {
+    support.push_back(agent.grid_cell);
+  }
+  return support;
+}
+
+const std::vector<Int>& FixMetabolism::delivery_support_cells(
+    const Agent& agent) const {
+  auto cached = delivery_support_cache_.find(agent.identity.tag);
+  if (cached != delivery_support_cache_.end()) {
+    return cached->second;
+  }
+  // The cache is populated before the OpenMP biology loop. Keep an
+  // unexpected miss safe if a caller is added to that loop later.
+#ifdef GUTIBM_OPENMP
+#pragma omp critical(delivery_support_cache_insert)
+#endif
+  {
+    cached = delivery_support_cache_.find(agent.identity.tag);
+    if (cached == delivery_support_cache_.end()) {
+      cached = delivery_support_cache_.emplace(
+          agent.identity.tag, enumerate_delivery_support_cells(agent)).first;
+    }
+  }
+  return cached->second;
+}
+
+void FixMetabolism::prepare_delivery_support_cache() {
+  delivery_support_cache_.clear();
+  if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery
+      || cfg_.delivery_far_field_radius <= 0.0) {
+    return;
+  }
+  delivery_support_cache_.reserve(sim_.agents().size());
+  for (const Agent& agent : sim_.agents()) {
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
+        || agent.grid_cell < 0) {
+      continue;
+    }
+    delivery_support_cache_.emplace(
+        agent.identity.tag, enumerate_delivery_support_cells(agent));
+  }
+}
+
+void FixMetabolism::add_delivery_mass(
+    Int species_index, const Agent& agent, Real amount) const {
+  if (amount <= 0.0) return;
+  auto& chem = sim_.chemical_field();
+  const auto& support = delivery_support_cells(agent);
+  if (support.empty()) return;
+  const Real per_cell = amount / static_cast<Real>(support.size());
+  Real deposited = 0.0;
+  for (size_t i = 0; i < support.size(); ++i) {
+    const Real share = i + 1 == support.size()
+        ? amount - deposited : per_cell;
+    chem.add_prescribed_sink_global(species_index, support[i], share);
+    deposited += share;
+  }
+}
+
+Real FixMetabolism::delivery_field_funding(
+    Int species_index, const Agent& agent, Real amount,
+    const std::vector<Real>& requested_by_cell) const {
+  if (amount <= 0.0) return 0.0;
+  const auto& chem = sim_.chemical_field();
+  const auto& support = delivery_support_cells(agent);
+  if (support.empty()) return 0.0;
+  const Real per_cell = amount / static_cast<Real>(support.size());
+  Real deposited = 0.0;
+  Real funding = 0.0;
+  for (size_t i = 0; i < support.size(); ++i) {
+    const Real share = i + 1 == support.size()
+        ? amount - deposited : per_cell;
+    const Int cell = support[i];
+    const Real requested = requested_by_cell[static_cast<size_t>(cell)];
+    if (requested > 0.0) {
+      funding += chem.prescribed_sink_global(species_index, cell)
+          * (share / requested);
+    }
+    deposited += share;
+  }
+  return funding;
 }
 
 namespace {
@@ -303,6 +389,7 @@ void FixMetabolism::compute(Real dt) {
     return;
   }
 
+  prepare_delivery_support_cache();
   auto& agents = sim_.agents();
   prepare_carbon_maintenance();
   #ifdef GUTIBM_OPENMP
@@ -380,7 +467,7 @@ void FixMetabolism::prepare_delivery_uptake(Agent& agent, Real dt) {
   // whereas this draw is inside implicit diffusion and is capped analytically.
   // It has no conductance or k/3 splitting bias; the solve supplies its
   // diffusive neighbourhood rather than restricting uptake to the agent voxel.
-  chem.add_prescribed_sink_global(carbon, agent.grid_cell, ceiling);
+  add_delivery_mass(carbon, agent, ceiling);
 }
 
 void FixMetabolism::prepare_delivery_oxygen(Agent& agent, Real dt) {
@@ -414,7 +501,7 @@ void FixMetabolism::prepare_delivery_oxygen(Agent& agent, Real dt) {
   // it is inside implicit diffusion, not clipped to one voxel, and is capped
   // at analytic diffusive delivery rather than unbounded demand. It has no
   // conductance or k/3 splitting bias; the solve supplies the neighbourhood.
-  chem.add_prescribed_sink_global(oxygen, agent.grid_cell, ceiling);
+  add_delivery_mass(oxygen, agent, ceiling);
 }
 
 void FixMetabolism::commit_delivery_uptake(Real dt) {
@@ -438,8 +525,23 @@ void FixMetabolism::commit_delivery_carbon(Real dt, Int carbon) {
   for (const Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
         || agent.grid_cell < 0) continue;
-    carbon_demand_by_cell[static_cast<size_t>(agent.grid_cell)] +=
-        agent.pending_carbon_funding;
+    if (agent.pending_carbon_funding <= 0.0) continue;
+    if (cfg_.delivery_far_field_radius <= 0.0) {
+      carbon_demand_by_cell[static_cast<size_t>(agent.grid_cell)] +=
+          agent.pending_carbon_funding;
+      continue;
+    }
+    const auto& support = delivery_support_cells(agent);
+    const Real per_cell = support.empty() ? 0.0
+        : agent.pending_carbon_funding / static_cast<Real>(support.size());
+    Real deposited = 0.0;
+    for (size_t i = 0; i < support.size(); ++i) {
+      const Real share = i + 1 == support.size()
+          ? agent.pending_carbon_funding - deposited : per_cell;
+      const Int cell = support[i];
+      carbon_demand_by_cell[static_cast<size_t>(cell)] += share;
+      deposited += share;
+    }
   }
   if (!chem.slab_mode()) {
     // Replicated fields reduce prescribed draws globally, so pro-rata
@@ -448,7 +550,11 @@ void FixMetabolism::commit_delivery_carbon(Real dt, Int carbon) {
     chem.sum_values_across_ranks(carbon_demand_by_cell);
   }
   for (Agent& agent : sim_.agents()) {
-    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
+        || agent.grid_cell < 0) {
+      agent.pending_carbon_funding = 0.0;
+      continue;
+    }
     const Real total_demand = agent.pending_growth_carbon
         + agent.pending_maintenance_carbon;
     if (agent.pending_biomass < 0.0 && total_demand <= 0.0) {
@@ -459,13 +565,19 @@ void FixMetabolism::commit_delivery_carbon(Real dt, Int carbon) {
       agent.timers.age += dt;
       continue;
     }
-    const Real cell_requested =
-        agent.grid_cell >= 0
-        ? carbon_demand_by_cell[static_cast<size_t>(agent.grid_cell)] : 0.0;
-    const Real field_funding = cell_requested > 0.0 && carbon >= 0
-        ? chem.prescribed_sink_global(carbon, agent.grid_cell)
-            * (agent.pending_carbon_funding / cell_requested)
-        : 0.0;
+    Real field_funding = 0.0;
+    if (cfg_.delivery_far_field_radius <= 0.0) {
+      const Real cell_requested = agent.grid_cell >= 0
+          ? carbon_demand_by_cell[static_cast<size_t>(agent.grid_cell)] : 0.0;
+      field_funding = cell_requested > 0.0 && carbon >= 0
+          ? chem.prescribed_sink_global(carbon, agent.grid_cell)
+              * (agent.pending_carbon_funding / cell_requested)
+          : 0.0;
+    } else {
+      field_funding = delivery_field_funding(
+          carbon, agent, agent.pending_carbon_funding,
+          carbon_demand_by_cell);
+    }
     agent.pending_carbon_funding = field_funding;
     const DeliveryFunding funding = calculate_delivery_funding(
         agent.pending_growth_carbon, agent.pending_maintenance_carbon,
@@ -492,8 +604,23 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
   for (const Agent& agent : sim_.agents()) {
     if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
         || agent.grid_cell < 0) continue;
-    oxygen_demand_by_cell[static_cast<size_t>(agent.grid_cell)] +=
-        agent.pending_oxygen_funding;
+    if (agent.pending_oxygen_funding <= 0.0) continue;
+    if (cfg_.delivery_far_field_radius <= 0.0) {
+      oxygen_demand_by_cell[static_cast<size_t>(agent.grid_cell)] +=
+          agent.pending_oxygen_funding;
+      continue;
+    }
+    const auto& support = delivery_support_cells(agent);
+    const Real per_cell = support.empty() ? 0.0
+        : agent.pending_oxygen_funding / static_cast<Real>(support.size());
+    Real deposited = 0.0;
+    for (size_t i = 0; i < support.size(); ++i) {
+      const Real share = i + 1 == support.size()
+          ? agent.pending_oxygen_funding - deposited : per_cell;
+      const Int cell = support[i];
+      oxygen_demand_by_cell[static_cast<size_t>(cell)] += share;
+      deposited += share;
+    }
   }
   if (!chem.slab_mode()) {
     // Replicated fields reduce prescribed draws globally, so pro-rata
@@ -502,7 +629,12 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
     chem.sum_values_across_ranks(oxygen_demand_by_cell);
   }
   for (Agent& agent : sim_.agents()) {
-    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost) continue;
+    if (agent.state == PhenoState::DEAD || agent.flags.is_ghost
+        || agent.grid_cell < 0) {
+      agent.pending_oxygen_funding = 0.0;
+      agent.respired_oxygen_rate = 0.0;
+      continue;
+    }
     const Real growth_demand = agent.pending_oxygen_growth;
     const Real maintenance_demand = agent.pending_oxygen_maintenance;
     if (const Real total_demand =
@@ -510,12 +642,19 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
       agent.respired_oxygen_rate = 0.0;
       continue;
     }
-    const Real cell_requested = agent.grid_cell >= 0
-        ? oxygen_demand_by_cell[static_cast<size_t>(agent.grid_cell)] : 0.0;
-    const Real field_funding = cell_requested > 0.0
-        ? chem.prescribed_sink_global(oxygen, agent.grid_cell)
-            * (agent.pending_oxygen_funding / cell_requested)
-        : 0.0;
+    Real field_funding = 0.0;
+    if (cfg_.delivery_far_field_radius <= 0.0) {
+      const Real cell_requested = agent.grid_cell >= 0
+          ? oxygen_demand_by_cell[static_cast<size_t>(agent.grid_cell)] : 0.0;
+      field_funding = cell_requested > 0.0
+          ? chem.prescribed_sink_global(oxygen, agent.grid_cell)
+              * (agent.pending_oxygen_funding / cell_requested)
+          : 0.0;
+    } else {
+      field_funding = delivery_field_funding(
+          oxygen, agent, agent.pending_oxygen_funding,
+          oxygen_demand_by_cell);
+    }
     agent.pending_oxygen_funding = field_funding;
     const DeliveryFunding funding = calculate_delivery_funding(
         growth_demand, maintenance_demand,
