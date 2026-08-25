@@ -7,6 +7,7 @@
 #define GUTIBM_CHEMICAL_microcin_penalty_applied_H
 
 #include "types.h"
+#include "delivery_support.h"
 #include <algorithm>
 #include <cassert>
 #include <string>
@@ -540,6 +541,9 @@ class ChemicalField {
   Int owned_x_begin_ = 0;
   Int owned_x_end_ = 0;
   Real delivery_far_field_radius_ = 0.0;
+  DeliverySupportStencil delivery_support_stencil_;
+  std::vector<char> delivery_affected_mask_;
+  std::vector<Int> delivery_affected_cells_;
   Int halo_width_ = 0;
   Int storage_nx_ = 0;
   DecompositionMode mode_ = DecompositionMode::Replicated;

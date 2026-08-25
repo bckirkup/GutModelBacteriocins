@@ -964,8 +964,8 @@ void test_delivery_positivity_rationing_is_sensitive_and_conservative() {
 void test_delivery_rationing_is_local() {
   SimulationConfig cfg = base_config();
   cfg.enabled_fixes = {"metabolism"};
-  cfg.initial_strains.front().count = 2;
-  cfg.initial_strains.front().mu_max = 1.0e-2;
+  cfg.initial_strains.front().count = 51;
+  cfg.initial_strains.front().mu_max = 1.0e3;
   cfg.fixes.metabolism.uptake_limit = "delivery";
   cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
   cfg.fixes.metabolism.delivery_far_field_radius = 10.0e-6;
@@ -980,21 +980,23 @@ void test_delivery_rationing_is_local() {
   cfg.vbf.mucin_liberation = 0.0;
   for (auto& chemical : cfg.chemicals) {
     if (chemical.name == species::CARBON) {
-      chemical.initial_conc = 1.0e-12;
-      chemical.boundary_conc = 1.0e-12;
+      chemical.initial_conc = 0.0;
+      chemical.boundary_conc = 0.0;
       chemical.diff_coeff = 1.0e-12;
       chemical.z_gradient_enabled = false;
+      chemical.delivery_enabled = true;
+      chemical.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
     }
   }
 
   Simulation sim;
   sim.init(cfg);
-  const Vec3 starved_position = {20.0e-6, 10.0e-6, 10.0e-6};
-  const Vec3 supplied_position = {80.0e-6, 10.0e-6, 10.0e-6};
+  const Vec3 starved_position = {20.0e-6, 10.0e-6, 15.0e-6};
+  const Vec3 supplied_position = {80.0e-6, 10.0e-6, 15.0e-6};
   for (size_t i = 0; i < sim.agents().size(); ++i) {
     Agent& agent = sim.agents()[i];
-    agent.x = i == 0 ? starved_position : supplied_position;
-    agent.radius = 5.0e-7;
+    agent.x = i < 50 ? starved_position : supplied_position;
+    agent.radius = 5.0e-6;
     agent.outer_radius = agent.radius * 1.05;
     agent.km.km_carbon = 1.0e-9;
     Int ix = 0;
@@ -1005,7 +1007,7 @@ void test_delivery_rationing_is_local() {
   }
   const Int carbon = sim.chemical_field().find(species::CARBON);
   for (Int cell = 0; cell < sim.domain().ncells(); ++cell) {
-    sim.chemical_field().conc_global(carbon, cell) = 1.0e-12;
+    sim.chemical_field().conc_global(carbon, cell) = 1.0e-7;
     const Int ix = cell % sim.domain().nx();
     if (ix >= 14) {
       sim.chemical_field().conc_global(carbon, cell) = 1.0e-4;
@@ -1024,8 +1026,10 @@ void test_delivery_rationing_is_local() {
     field_removal += chem.sink_realized_global(carbon, cell);
   }
   const Real starved_funding = sim.agents()[0].pending_carbon_funding;
-  const Real supplied_funding = sim.agents()[1].pending_carbon_funding;
+  const Real supplied_funding = sim.agents()[50].pending_carbon_funding;
   const Real total_funding = flux.agent_uptake_interval[index];
+  assert(flux.delivery_retry_events_interval[index] > 0.0);
+  assert(flux.delivery_rationing_factor_interval[index] < 1.0);
   assert(minimum >= 0.0);
   assert(supplied_funding > starved_funding * 1.5);
   assert(total_funding <= flux.uptake_demand_interval[index]

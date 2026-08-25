@@ -186,11 +186,14 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 | `delivery_far_field_radius` / `metabolism.delivery_far_field_radius` | `1.0e-5` | m | Shared delivery neighborhood radius, defaulting to a 10 µm physical support for both the volume-weighted Sherwood concentration read and prescribed delivery deposition. A single-cell depletion at 10 µm is approximately 0.008% of far-field concentration, so this radius is not doing biological work. Supports clipped by nonperiodic z boundaries are renormalized over included cells. Positive values are refused with slab chemistry; slab configurations must explicitly set this key to `0.0` to opt into the grid-dependent single-voxel model. |
 
 When delivery-mode prescribed sinks would make an owned concentration
-negative, rationing first acts locally: for up to eight retries, prescribed
+negative, rationing first acts locally: for up to four retries, prescribed
 mass is halved in the physical `delivery_far_field_radius` neighbourhood of
 every negative owned cell. The neighbourhood uses the delivery support
-geometry (periodic x/y and clipped z), rather than a voxel-count radius. If
-the local pass cannot change any affected prescribed value or does not restore
+geometry (periodic x/y and clipped z), rather than a voxel-count radius. If more
+than one quarter of owned cells are negative, the local pass is skipped
+because dilation of a domain-wide deficit
+covers the domain and would reproduce global rationing at higher cost. If the
+local pass cannot change any affected prescribed value or does not restore
 positivity, a uniform global factor is used only as a final guarantee. Its
 largest feasible value is found by 12 bisection iterations and applied
 uniformly. Feasibility decisions are collective under MPI.

@@ -24,7 +24,9 @@ namespace gutibm {
 FixMetabolism::FixMetabolism(Simulation& sim, const MetabolismConfig& cfg)
     : Fix("metabolism", sim), cfg_(cfg) {}
 
-void FixMetabolism::init() { /* no-op: parameters set via cfg_ at construction */ }
+void FixMetabolism::init() {
+  ensure_delivery_support_stencil();
+}
 
 Real FixMetabolism::delivery_concentration(
     const Agent& agent, Int species_index) const {
@@ -50,12 +52,22 @@ std::vector<Int> FixMetabolism::enumerate_delivery_support_cells(
   const auto& domain = sim_.domain();
   const Real radius = cfg_.delivery_far_field_radius;
   if (radius <= 0.0) return {agent.grid_cell};
-  std::vector<Int> support =
-      enumerate_physical_delivery_ball(domain, agent.x, radius);
+  ensure_delivery_support_stencil();
+  std::vector<Int> support;
+  enumerate_physical_delivery_ball(
+      domain, agent.x, delivery_support_stencil_, support);
   if (support.empty() && agent.grid_cell >= 0) {
     support.push_back(agent.grid_cell);
   }
   return support;
+}
+
+void FixMetabolism::ensure_delivery_support_stencil() const {
+  if (!delivery_support_stencil_.matches(
+          sim_.domain(), cfg_.delivery_far_field_radius)) {
+    delivery_support_stencil_ = make_delivery_support_stencil(
+        sim_.domain(), cfg_.delivery_far_field_radius);
+  }
 }
 
 const std::vector<Int>& FixMetabolism::delivery_support_cells(

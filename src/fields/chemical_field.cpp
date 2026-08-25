@@ -307,12 +307,46 @@ bool has_negative_owned_cell(
 }
 
 template <typename OwnsCell, typename StorageCell>
+Real owned_negative_fraction(
+    const std::vector<Real>& concentration, Int global_ncells,
+    OwnsCell owns_cell, StorageCell storage_cell) {
+  Real negative = 0.0;
+  Real owned = 0.0;
+  for (Int cell = 0; cell < global_ncells; ++cell) {
+    if (!owns_cell(cell)) continue;
+    const Int storage = storage_cell(cell);
+    if (storage < 0) continue;
+    owned += 1.0;
+    negative += concentration[static_cast<size_t>(storage)] < 0.0 ? 1.0 : 0.0;
+  }
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (initialized && !finalized) {
+    Real totals[2] = {negative, owned};
+    MPI_Allreduce(MPI_IN_PLACE, totals, 2, MPI_DOUBLE, MPI_SUM,
+                  MPI_COMM_WORLD);
+    negative = totals[0];
+    owned = totals[1];
+  }
+#endif
+  return owned > 0.0 ? negative / owned : 0.0;
+}
+
+template <typename OwnsCell, typename StorageCell>
 Real reduce_prescribed_near_negative_cells(
     const std::vector<Real>& concentration,
-    std::vector<Real>& prescribed, const Domain& domain, Real radius,
-    Int global_ncells, OwnsCell owns_cell, StorageCell storage_cell) {
+    std::vector<Real>& prescribed, const Domain& domain,
+    const DeliverySupportStencil& stencil, std::vector<char>& affected,
+    std::vector<Int>& affected_cells, Int global_ncells,
+    OwnsCell owns_cell, StorageCell storage_cell) {
   Real reduced = 0.0;
-  std::vector<char> affected(prescribed.size(), 0);
+  for (const Int affected_storage : affected_cells) {
+    affected[static_cast<size_t>(affected_storage)] = 0;
+  }
+  affected_cells.clear();
   for (Int cell = 0; cell < global_ncells; ++cell) {
     if (!owns_cell(cell)) continue;
     const Int storage = storage_cell(cell);
@@ -324,12 +358,19 @@ Real reduce_prescribed_near_negative_cells(
     const Int yz = cell / domain.nx();
     const Int iz = yz / domain.ny();
     const Int iy = yz % domain.ny();
-    const Vec3 center = domain.cell_center(ix, iy, iz);
-    const std::vector<Int> support = radius > 0.0
-        ? enumerate_physical_delivery_ball(domain, center, radius)
-        : std::vector<Int>{cell};
-    for (const Int affected_cell : support) {
-      if (!owns_cell(affected_cell)) continue;
+    if (stencil.radius <= 0.0) {
+      affected[static_cast<size_t>(storage)] = 1;
+      affected_cells.push_back(storage);
+      continue;
+    }
+    for (const auto& offset : stencil.offsets) {
+      if (!offset.within_radius) continue;
+      Int affected_cell = -1;
+      if (!delivery_support_target(
+              domain, ix, iy, iz, offset, affected_cell)
+          || !owns_cell(affected_cell)) {
+        continue;
+      }
       const Int affected_storage = storage_cell(affected_cell);
       if (affected_storage < 0
           || static_cast<size_t>(affected_storage) >= prescribed.size()) {
@@ -338,10 +379,14 @@ Real reduce_prescribed_near_negative_cells(
       const size_t index = static_cast<size_t>(affected_storage);
       if (affected[index] != 0) continue;
       affected[index] = 1;
-      const Real old = prescribed[index];
-      prescribed[index] = old * 0.5;
-      reduced += old - prescribed[index];
+      affected_cells.push_back(affected_storage);
     }
+  }
+  for (const Int affected_storage : affected_cells) {
+    const size_t index = static_cast<size_t>(affected_storage);
+    const Real old = prescribed[index];
+    prescribed[index] = old * 0.5;
+    reduced += old - prescribed[index];
   }
   return reduced;
 }
@@ -353,28 +398,35 @@ struct DeliveryRetryResult {
   Real rationing_factor = 1.0;
 };
 
-constexpr Int kMaxDeliveryLocalRetries = 8;  // Fixed local feasibility pass.
+constexpr Int kMaxDeliveryLocalRetries = 4;  // Bounded local feasibility pass.
+// Above 25%, dilation covers the domain and only adds global-equivalent work.
+constexpr Real kMaxNegativeFractionForLocalRationing = 0.25;
 constexpr Int kDeliveryBisectionIterations = 12;  // Fixed feasibility search.
 
 template <typename Restore, typename RestoreOriginal, typename Solve,
-          typename HasNegative, typename Reduce, typename Prescribed,
-          typename OwnedSum, typename Ratio>
+          typename HasNegative, typename NegativeFraction, typename Reduce,
+          typename Prescribed, typename OwnedSum, typename Ratio>
 DeliveryRetryResult run_delivery_rationing(
     const std::vector<Real>& original, Restore restore,
     RestoreOriginal restore_original, Solve solve, HasNegative has_negative,
-    Reduce reduce, Prescribed prescribed, OwnedSum owned_sum, Ratio ratio) {
+    NegativeFraction negative_fraction, Reduce reduce, Prescribed prescribed,
+    OwnedSum owned_sum, Ratio ratio) {
   DeliveryRetryResult result;
   solve();
   result.negative_after_solve = has_negative();
-  for (Int attempt = 0;
-       result.negative_after_solve && attempt < kMaxDeliveryLocalRetries;
-       ++attempt) {
-    const Real reduced = reduce();
-    if (reduced <= 0.0) break;
-    restore();
-    solve();
-    result.retry_events += 1.0;
-    result.negative_after_solve = has_negative();
+  const Real negative_fraction_value = result.negative_after_solve
+      ? negative_fraction() : 0.0;
+  if (negative_fraction_value <= kMaxNegativeFractionForLocalRationing) {
+    for (Int attempt = 0;
+         result.negative_after_solve && attempt < kMaxDeliveryLocalRetries;
+         ++attempt) {
+      const Real reduced = reduce();
+      if (reduced <= 0.0) break;
+      restore();
+      solve();
+      result.retry_events += 1.0;
+      result.negative_after_solve = has_negative();
+    }
   }
   if (result.negative_after_solve) {
     restore_original();
@@ -1161,6 +1213,10 @@ void ChemicalField::init(const Domain& domain,
   nspec_  = static_cast<Int>(specs.size());
   ncells_ = storage_nx_ * global_ny_ * global_nz_;
   flux_accounting_.init(specs.size());
+  delivery_support_stencil_ =
+      make_delivery_support_stencil(domain, delivery_far_field_radius_);
+  delivery_affected_mask_.assign(static_cast<size_t>(ncells_), 0);
+  delivery_affected_cells_.reserve(static_cast<size_t>(ncells_));
 
   conc_.resize(nspec_);
   reac_.resize(nspec_);
@@ -2928,6 +2984,15 @@ void finish_slab_diffusion(SlabDiffusionContext& context) {
 void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   if (dt <= 0.0 || domain.dx_x() <= 0.0 || domain.dx_y() <= 0.0
       || domain.dx_z() <= 0.0) return;
+  if (!delivery_support_stencil_.matches(
+          domain, delivery_far_field_radius_)) {
+    delivery_support_stencil_ =
+        make_delivery_support_stencil(domain, delivery_far_field_radius_);
+    delivery_affected_mask_.assign(
+        static_cast<size_t>(ncells_), 0);
+    delivery_affected_cells_.clear();
+    delivery_affected_cells_.reserve(static_cast<size_t>(ncells_));
+  }
   sum_prescribed_sinks_across_ranks();
   if (mode_ == DecompositionMode::Slab) {
     apply_diffusion_slab(domain, dt);
@@ -2994,11 +3059,18 @@ void ChemicalField::apply_diffusion_species(
         [this](Int cell) { return owns_global_cell(cell); },
         [this](Int cell) { return global_to_storage_cell(cell); }));
   };
+  const auto negative_fraction = [&] {
+    return owned_negative_fraction(
+        conc_[static_cast<size_t>(s)], global_ncells_,
+        [this](Int cell) { return owns_global_cell(cell); },
+        [this](Int cell) { return global_to_storage_cell(cell); });
+  };
   const auto reduce = [&]() {
     auto& prescribed = prescribed_sink_[static_cast<size_t>(s)];
     return reduce_prescribed_near_negative_cells(
         conc_[static_cast<size_t>(s)], prescribed, domain,
-        delivery_far_field_radius_, global_ncells_,
+        delivery_support_stencil_, delivery_affected_mask_,
+        delivery_affected_cells_, global_ncells_,
         [this](Int cell) { return owns_global_cell(cell); },
         [this](Int cell) { return global_to_storage_cell(cell); });
   };
@@ -3020,7 +3092,7 @@ void ChemicalField::apply_diffusion_species(
   };
   DeliveryRetryResult final_retry = run_delivery_rationing(
       prescribed_snapshot, restore, restore_original, solve, has_negative,
-      reduce, prescribed, owned_sum, ratio);
+      negative_fraction, reduce, prescribed, owned_sum, ratio);
   if (final_retry.negative_after_solve) {
     const auto [minimum, count] = negative_diagnostics(
         conc_[static_cast<size_t>(s)], global_ncells_,
@@ -3201,11 +3273,18 @@ void ChemicalField::apply_diffusion_slab_species(
         [this](Int cell) { return owns_global_cell(cell); },
         [this](Int cell) { return global_to_storage_cell(cell); }));
   };
+  const auto negative_fraction = [&] {
+    return owned_negative_fraction(
+        conc_[static_cast<size_t>(s)], global_ncells_,
+        [this](Int cell) { return owns_global_cell(cell); },
+        [this](Int cell) { return global_to_storage_cell(cell); });
+  };
   const auto reduce = [&]() {
     auto& prescribed = prescribed_sink_[static_cast<size_t>(s)];
     return reduce_prescribed_near_negative_cells(
         conc_[static_cast<size_t>(s)], prescribed, domain,
-        delivery_far_field_radius_, global_ncells_,
+        delivery_support_stencil_, delivery_affected_mask_,
+        delivery_affected_cells_, global_ncells_,
         [this](Int cell) { return owns_global_cell(cell); },
         [this](Int cell) { return global_to_storage_cell(cell); });
   };
@@ -3227,7 +3306,7 @@ void ChemicalField::apply_diffusion_slab_species(
   };
   DeliveryRetryResult final_retry = run_delivery_rationing(
       prescribed_snapshot, restore, restore_original, solve, has_negative,
-      reduce, prescribed, owned_sum, ratio);
+      negative_fraction, reduce, prescribed, owned_sum, ratio);
   if (final_retry.negative_after_solve) {
     const auto [minimum, count] = negative_diagnostics(
         conc_[static_cast<size_t>(s)], global_ncells_,

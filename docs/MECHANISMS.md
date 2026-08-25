@@ -125,12 +125,15 @@ construction. If a genuinely starved neighbourhood would become negative,
 local prescribed draws are reduced first and the solve is retried. Each local
 retry halves prescribed mass in the physical delivery-radius neighbourhood of
 every negative owned cell, using periodic x/y and clipped z support semantics.
-The local pass runs for up to eight attempts and stops early when no affected
-prescribed value can be changed. If local reductions do not restore positivity,
-the original prescribed field is restored and one global scalar factor is
-bisected for 12 iterations; the largest feasible factor is applied uniformly
-as the final guarantee. MPI feasibility decisions are collective, so every
-rank performs the same solves. The delivery-reduction ledger is exactly
+The local pass runs for up to four attempts and stops early when no affected
+prescribed value can be changed. When more than one quarter of owned cells are
+negative, the local pass is skipped: dilation of a domain-wide deficit covers
+the domain and would reproduce the global rationing at higher cost. If local
+reductions do not restore positivity, the original prescribed field is
+restored and one global scalar factor is bisected for 12 iterations; the
+largest feasible factor is applied uniformly as the final guarantee. MPI
+feasibility decisions are collective, including the negative-cell fraction,
+so every rank performs the same solves. The delivery-reduction ledger is exactly
 original prescribed mass minus final prescribed mass, and retry events include
 local and bisection solves. The emitted rationing factor is the minimum
 per-cell factor over owned cells in the interval, not a mean. If non-delivery
