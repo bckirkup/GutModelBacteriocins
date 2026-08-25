@@ -924,6 +924,8 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("maintenance_rate", cfg.fixes.metabolism.maintenance_rate);
   real_key("carbon_maintenance_rate",
            cfg.fixes.metabolism.carbon_maintenance_rate);
+  real_key("delivery_far_field_radius",
+           cfg.fixes.metabolism.delivery_far_field_radius);
   bool_key("acid_inhibition_enabled",
            cfg.fixes.metabolism.acid_inhibition_enabled);
   real_key("acid_inhibition_max", cfg.fixes.metabolism.acid_inhibition_max);

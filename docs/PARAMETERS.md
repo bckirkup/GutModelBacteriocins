@@ -182,7 +182,8 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 | `carbon.epithelial_boundary` / `carbon_epithelial_boundary` | `dirichlet` | — | Epithelial z=0 mode: fixed concentration, Robin delivery, or fixed flux |
 | `carbon.epithelial_transfer_coeff` / `carbon_epithelial_transfer_coeff` | 0 | m/s | Robin mass-transfer coefficient `k` |
 | `carbon.epithelial_flux` / `carbon_epithelial_flux` | 0 | mol/m²/s | Fixed epithelial delivery flux `J` |
-| `uptake_limit` / `metabolism.uptake_limit` | `none` | — | Agent-side uptake limitation model: `none` (unfunded growth, default), `sherwood` (per-agent diffusive delivery cap `4*pi*D_eff*r*C_local`), or `voxel` (diagnostic-only voxel-content cap, not biology) |
+| `uptake_limit` / `metabolism.uptake_limit` | `none` | — | Agent-side uptake limitation model: `none` (unfunded growth, default), `sherwood` (per-agent diffusive delivery cap using the configured delivery concentration), or `voxel` (diagnostic-only voxel-content cap, not biology) |
+| `delivery_far_field_radius` / `metabolism.delivery_far_field_radius` | `0.0` | m | Delivery-ceiling concentration neighborhood. Zero uses the agent's own voxel for compatibility; positive values use a volume-weighted read-only neighborhood average for carbon and oxygen. Slab mode refuses radii beyond the configured concentration halo. |
 
 **Profile:** `C(z) = C_max * exp(-z_rel / lambda)` where `z_rel` is the distance from the epithelium (z=0).
 

@@ -67,6 +67,9 @@ struct MetabolismConfig {
 
   // Agent-side uptake limitation model.
   std::string uptake_limit = "none";
+  // Radius of the concentration neighborhood used by the delivery ceiling.
+  // Zero preserves the historical agent-voxel concentration.
+  Real delivery_far_field_radius = 0.0;
   // Resolved from uptake_limit by InputParser::finalize_config.
   UptakeLimitMode uptake_limit_mode = UptakeLimitMode::None;
 };
@@ -81,6 +84,7 @@ class FixMetabolism : public Fix {
 
  private:
   void compute_agent(Agent& agent, Real dt);
+  Real delivery_concentration(const Agent& agent, Int species_index) const;
   void prepare_delivery_uptake(Agent& agent, Real dt);
   void prepare_delivery_oxygen(Agent& agent, Real dt);
   void commit_delivery_uptake(Real dt);

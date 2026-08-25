@@ -903,7 +903,19 @@ bacteriostasis classification, and the washout/VADI `mu` versus `gamma_flow`
 comparison all see the funded rate. `uptake_limit=voxel` caps at the voxel
 content `C_local*V_cell` and exists only to measure the grid artifact by
 divergence from `sherwood`; it is not a biological model. `uptake_limit=none`
-is the default and leaves growth unfunded as before.
+is the default and leaves growth unfunded as before. The Sherwood relation is
+defined using a far-field concentration. For compatibility,
+`delivery_far_field_radius=0` evaluates it at the agent's own voxel, which
+double-counts local depletion and therefore introduces a resolution-dependent
+ceiling. In campaign measurements the own-voxel concentration was
+approximately 250-fold below the far field at 2 µm grid spacing, but only
+approximately 1.4-fold below it at 6 µm. A positive
+`delivery_far_field_radius` instead uses a volume-weighted mean over cell
+centres inside the radius, including the agent cell with its actual volume
+weight. This path only reads concentrations; prescribed delivery mass remains
+withdrawn from `agent.grid_cell`. In slab chemistry, the parser rejects a
+radius larger than the configured concentration-halo depth rather than
+truncating the neighborhood.
 ### VBF mucin liberation coupling
 When `mucin_z_gradient_enabled`, the monosaccharide release rate applied by the VBF also varies with z:
 ```

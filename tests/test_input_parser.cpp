@@ -751,6 +751,55 @@ void test_grid_halo_width_requires_positive_integer() {
   std::cout << "  test_grid_halo_width_requires_positive_integer: PASSED\n";
 }
 
+void test_delivery_far_field_radius_parser_and_slab_refusal() {
+  SimulationConfig negative = InputParser::default_config();
+  assert(InputParser::apply_flat_key(
+      negative, "delivery_far_field_radius", "-1e-6"));
+  bool negative_refused = false;
+  try {
+    InputParser::finalize_config(negative);
+  } catch (const ConfigError& error) {
+    negative_refused = std::string(error.what()).find(
+        "delivery_far_field_radius") != std::string::npos;
+  }
+  assert(negative_refused);
+
+  SimulationConfig flat = InputParser::default_config();
+  assert(InputParser::apply_flat_key(
+      flat, "delivery_far_field_radius", "1e-5"));
+  assert(std::abs(flat.fixes.metabolism.delivery_far_field_radius - 1.0e-5)
+         < 1.0e-18);
+  SimulationConfig namespaced = InputParser::default_config();
+  assert(InputParser::apply_flat_key(
+      namespaced, "metabolism.delivery_far_field_radius", "2e-5"));
+  assert(std::abs(namespaced.fixes.metabolism.delivery_far_field_radius - 2.0e-5)
+         < 1.0e-18);
+
+  SimulationConfig json = InputParser::default_config();
+  assert(ConfigJson::parse_document(
+      json, R"({"delivery_far_field_radius":3e-5})"));
+  assert(std::abs(json.fixes.metabolism.delivery_far_field_radius - 3.0e-5)
+         < 1.0e-18);
+
+  SimulationConfig slab = InputParser::default_config();
+  slab.chemistry_decomposition = "slab";
+  slab.domain.grid_dx = 2.0e-6;
+  slab.domain.grid_halo_width = 2;
+  slab.fixes.metabolism.delivery_far_field_radius = 5.0e-6;
+  bool refused = false;
+  try {
+    InputParser::finalize_config(slab);
+  } catch (const ConfigError& error) {
+    const std::string message = error.what();
+    refused = message.find("delivery_far_field_radius") != std::string::npos
+        && message.find("grid_dx") != std::string::npos
+        && message.find("halo") != std::string::npos;
+  }
+  assert(refused);
+  std::cout << "  test_delivery_far_field_radius_parser_and_slab_refusal:"
+            << " PASSED\n";
+}
+
 void test_json_grid_halo_width_errors_are_not_swallowed() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR)
       + "/tests/fixtures/parser_bad_grid_halo_width.json";
@@ -1195,6 +1244,7 @@ int main() {
   test_chemistry_stride_requires_positive_integer();
   test_grid_halo_width_fixture();
   test_grid_halo_width_requires_positive_integer();
+  test_delivery_far_field_radius_parser_and_slab_refusal();
   test_json_grid_halo_width_errors_are_not_swallowed();
   test_json_chemistry_stride_errors_are_not_swallowed();
   test_chemistry_decomposition_rejects_unimplemented_modes();
