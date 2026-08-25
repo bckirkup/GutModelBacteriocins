@@ -399,6 +399,14 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
             meta.flux_accounting.delivery_retry_events_interval);
   read_flux("delivery_retry_events_cumulative",
             meta.flux_accounting.delivery_retry_events_cumulative);
+  read_flux("delivery_rationing_factor_interval",
+            meta.flux_accounting.delivery_rationing_factor_interval);
+  read_flux("delivery_rationing_factor_cumulative",
+            meta.flux_accounting.delivery_rationing_factor_cumulative);
+  read_flux("delivery_infeasible_interval",
+            meta.flux_accounting.delivery_infeasible_interval);
+  read_flux("delivery_infeasible_cumulative",
+            meta.flux_accounting.delivery_infeasible_cumulative);
   read_flux("reaction_clip_interval",
             meta.flux_accounting.reaction_clip_interval);
   read_flux("reaction_clip_cumulative",

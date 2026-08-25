@@ -7,6 +7,7 @@
 #define GUTIBM_CHEMICAL_microcin_penalty_applied_H
 
 #include "types.h"
+#include <algorithm>
 #include <cassert>
 #include <string>
 #include <string_view>
@@ -72,6 +73,12 @@ struct NutrientFluxAccounting {
   std::vector<Real> delivery_retry_events_interval;
   std::vector<Real> delivery_retry_events_step;
   std::vector<Real> delivery_retry_events_cumulative;
+  std::vector<Real> delivery_rationing_factor_interval;
+  std::vector<Real> delivery_rationing_factor_step;
+  std::vector<Real> delivery_rationing_factor_cumulative;
+  std::vector<Real> delivery_infeasible_interval;
+  std::vector<Real> delivery_infeasible_step;
+  std::vector<Real> delivery_infeasible_cumulative;
 
   void init(size_t species_count) {
     boundary_interval.assign(species_count, 0.0);
@@ -126,6 +133,12 @@ struct NutrientFluxAccounting {
     delivery_retry_events_interval.assign(species_count, 0.0);
     delivery_retry_events_step.assign(species_count, 0.0);
     delivery_retry_events_cumulative.assign(species_count, 0.0);
+    delivery_rationing_factor_interval.assign(species_count, 1.0);
+    delivery_rationing_factor_step.assign(species_count, 1.0);
+    delivery_rationing_factor_cumulative.assign(species_count, 1.0);
+    delivery_infeasible_interval.assign(species_count, 0.0);
+    delivery_infeasible_step.assign(species_count, 0.0);
+    delivery_infeasible_cumulative.assign(species_count, 0.0);
   }
 
   void add_interval(Int species, Real boundary, Real source, Real sink,
@@ -208,6 +221,24 @@ struct NutrientFluxAccounting {
     delivery_retry_events_step[static_cast<size_t>(species)] += count;
   }
 
+  void add_delivery_rationing_factor(Int species, Real factor) {
+    if (species < 0
+        || static_cast<size_t>(species)
+            >= delivery_rationing_factor_step.size()) {
+      return;
+    }
+    auto& value = delivery_rationing_factor_step[static_cast<size_t>(species)];
+    value = std::min(value, std::clamp(factor, 0.0, 1.0));
+  }
+
+  void add_delivery_infeasible(Int species, Real count) {
+    if (species < 0
+        || static_cast<size_t>(species) >= delivery_infeasible_step.size()) {
+      return;
+    }
+    delivery_infeasible_step[static_cast<size_t>(species)] += count;
+  }
+
   void add_reaction_clip(Int species, Real amount) {
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
@@ -242,6 +273,10 @@ struct NutrientFluxAccounting {
       uptake_limited_interval[i] += uptake_limited_step[i];
       delivery_reduction_interval[i] += delivery_reduction_step[i];
       delivery_retry_events_interval[i] += delivery_retry_events_step[i];
+      delivery_rationing_factor_interval[i] = std::min(
+          delivery_rationing_factor_interval[i],
+          delivery_rationing_factor_step[i]);
+      delivery_infeasible_interval[i] += delivery_infeasible_step[i];
       agent_uptake_step[i] = 0.0;
       maintenance_step[i] = 0.0;
       maintenance_shortfall_step[i] = 0.0;
@@ -251,6 +286,8 @@ struct NutrientFluxAccounting {
       uptake_limited_step[i] = 0.0;
       delivery_reduction_step[i] = 0.0;
       delivery_retry_events_step[i] = 0.0;
+      delivery_rationing_factor_step[i] = 1.0;
+      delivery_infeasible_step[i] = 0.0;
     }
   }
 
@@ -301,6 +338,10 @@ struct NutrientFluxAccounting {
       delivery_reduction_cumulative[i] += delivery_reduction_interval[i];
       delivery_retry_events_cumulative[i] +=
           delivery_retry_events_interval[i];
+      delivery_rationing_factor_cumulative[i] = std::min(
+          delivery_rationing_factor_cumulative[i],
+          delivery_rationing_factor_interval[i]);
+      delivery_infeasible_cumulative[i] += delivery_infeasible_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
       boundary_interval[i] = 0.0;
       gradient_source_interval[i] = 0.0;
@@ -315,6 +356,8 @@ struct NutrientFluxAccounting {
       uptake_limited_interval[i] = 0.0;
       delivery_reduction_interval[i] = 0.0;
       delivery_retry_events_interval[i] = 0.0;
+      delivery_rationing_factor_interval[i] = 1.0;
+      delivery_infeasible_interval[i] = 0.0;
       reaction_clip_interval[i] = 0.0;
     }
   }

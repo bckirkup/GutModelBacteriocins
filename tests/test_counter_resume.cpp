@@ -127,6 +127,25 @@ void assert_window(const std::string& path, Int step, Int interval_kills,
                      file,
                      prefix + "/nutrient_flux/delivery_retry_events_cumulative")
                   - boundary_cumulative - (step == 1 ? 8.0 : 16.0)) < 1e-12);
+  assert(std::abs(scalar(
+                     file,
+                     prefix
+                         + "/nutrient_flux/delivery_rationing_factor_interval")
+                  - 1.0) < 1e-12);
+  assert(std::abs(scalar(
+                     file,
+                     prefix
+                         + "/nutrient_flux/delivery_rationing_factor_cumulative")
+                  - 1.0) < 1e-12);
+  assert(std::abs(scalar(
+                     file,
+                     prefix + "/nutrient_flux/delivery_infeasible_interval"))
+         < 1e-12);
+  assert(std::abs(scalar(
+                     file,
+                     prefix
+                         + "/nutrient_flux/delivery_infeasible_cumulative"))
+         < 1e-12);
   assert(scalar(file, prefix + "/nutrient_flux/interval_start_step")
          == static_cast<double>(step));
   assert(scalar(file, prefix + "/nutrient_flux/interval_end_step")

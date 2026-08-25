@@ -104,7 +104,7 @@ void assert_flux_parity(const ChemicalField& reference,
   const auto& expected = reference.flux_accounting();
   const auto& actual = candidate.flux_accounting();
   const std::array<const std::vector<Real> NutrientFluxAccounting::*,
-                   7> fields = {
+                   9> fields = {
       &NutrientFluxAccounting::boundary_interval,
       &NutrientFluxAccounting::vbf_source_interval,
       &NutrientFluxAccounting::vbf_sink_interval,
@@ -112,9 +112,11 @@ void assert_flux_parity(const ChemicalField& reference,
       &NutrientFluxAccounting::reaction_clip_interval,
       &NutrientFluxAccounting::delivery_reduction_interval,
       &NutrientFluxAccounting::delivery_retry_events_interval,
+      &NutrientFluxAccounting::delivery_rationing_factor_interval,
+      &NutrientFluxAccounting::delivery_infeasible_interval,
   };
   const std::array<const std::vector<Real> NutrientFluxAccounting::*,
-                   7> cumulative_fields = {
+                   9> cumulative_fields = {
       &NutrientFluxAccounting::boundary_cumulative,
       &NutrientFluxAccounting::vbf_source_cumulative,
       &NutrientFluxAccounting::vbf_sink_cumulative,
@@ -122,6 +124,8 @@ void assert_flux_parity(const ChemicalField& reference,
       &NutrientFluxAccounting::reaction_clip_cumulative,
       &NutrientFluxAccounting::delivery_reduction_cumulative,
       &NutrientFluxAccounting::delivery_retry_events_cumulative,
+      &NutrientFluxAccounting::delivery_rationing_factor_cumulative,
+      &NutrientFluxAccounting::delivery_infeasible_cumulative,
   };
   for (Int s = 0; s < reference.num_species(); ++s) {
     for (size_t i = 0; i < fields.size(); ++i) {

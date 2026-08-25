@@ -1011,6 +1011,20 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     ensure_sized(flux.delivery_retry_events_interval);
     ensure_sized(flux.delivery_retry_events_step);
     ensure_sized(flux.delivery_retry_events_cumulative);
+    if (flux.delivery_rationing_factor_interval.size()
+        != species_count) {
+      flux.delivery_rationing_factor_interval.assign(species_count, 1.0);
+    }
+    if (flux.delivery_rationing_factor_step.size() != species_count) {
+      flux.delivery_rationing_factor_step.assign(species_count, 1.0);
+    }
+    if (flux.delivery_rationing_factor_cumulative.size()
+        != species_count) {
+      flux.delivery_rationing_factor_cumulative.assign(species_count, 1.0);
+    }
+    ensure_sized(flux.delivery_infeasible_interval);
+    ensure_sized(flux.delivery_infeasible_step);
+    ensure_sized(flux.delivery_infeasible_cumulative);
     ensure_sized(flux.agent_uptake_last_step);
     ensure_sized(flux.uptake_demand_last_step);
     ensure_sized(flux.reaction_clip_last_step);

@@ -1007,3 +1007,15 @@ Example:
   "conjugative": false
 }
 ```
+
+Delivery-mode chemistry first retries a negative solve with local reductions in
+the affected cells. If local reductions cannot restore positivity, it bisects
+a single global prescribed-mass factor for 12 iterations and applies the
+largest feasible factor. MPI feasibility decisions are collective.
+`delivery_reduction_*` remains the original owned prescribed mass minus the
+final owned prescribed mass; retry counters include local and bisection solves.
+The nutrient-flux summary also emits the minimum rationing factor over the
+interval and run, plus an infeasible-step counter for negativity that remains
+at factor zero. Delivery uptake is CPU-only; GPU plus delivery uptake is
+rejected during configuration because GPU chemistry does not implement the
+same rationing loop.

@@ -941,6 +941,24 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_flux("delivery_retry_events_cumulative",
              add_cumulative(flux.delivery_retry_events_cumulative,
                            flux.delivery_retry_events_interval));
+  write_flux("delivery_rationing_factor_interval",
+             flux.delivery_rationing_factor_interval);
+  const auto min_cumulative = [](const std::vector<Real>& prior,
+                                 const std::vector<Real>& interval) {
+    std::vector values(prior.size(), 1.0);
+    for (size_t i = 0; i < values.size(); ++i) {
+      values[i] = std::min(prior[i], interval[i]);
+    }
+    return values;
+  };
+  write_flux("delivery_rationing_factor_cumulative",
+             min_cumulative(flux.delivery_rationing_factor_cumulative,
+                            flux.delivery_rationing_factor_interval));
+  write_flux("delivery_infeasible_interval",
+             flux.delivery_infeasible_interval);
+  write_flux("delivery_infeasible_cumulative",
+             add_cumulative(flux.delivery_infeasible_cumulative,
+                            flux.delivery_infeasible_interval));
   write_flux("reaction_clip_interval", flux.reaction_clip_interval);
   write_flux("reaction_clip_cumulative",
              add_cumulative(flux.reaction_clip_cumulative,

@@ -121,10 +121,18 @@ inside implicit diffusion and is capped at analytic diffusive delivery rather
 than unbounded demand. The implicit solve therefore supplies the diffusive
 neighbourhood rather than restricting the draw to the agent's voxel, with no
 conductance or `k/3` splitting bias. Realized removal equals funded uptake by
-construction. If a genuinely starved neighbourhood would become negative, the
-prescribed draws are reduced deterministically and the solve is retried; the
-reduction is metered in the nutrient ledger. Ghost agents do not contribute
-prescribed draws or accounting writes.
+construction. If a genuinely starved neighbourhood would become negative,
+local prescribed draws are reduced first and the solve is retried. If local
+reductions do not restore positivity, the original prescribed field is
+restored and one global scalar factor is bisected for 12 iterations; the
+largest feasible factor is applied uniformly. MPI feasibility decisions are
+collective, so every rank performs the same solves. The delivery-reduction
+ledger is exactly original prescribed mass minus final prescribed mass, and
+retry events include local and bisection solves. If non-delivery sources still
+leave a negative owned cell at factor zero, the run continues, emits a
+species/step/minimum/count diagnostic, and increments the per-species
+infeasible-step counter. Ghost agents do not contribute prescribed draws or
+accounting writes.
 
 ### Delivery closure auditing
 
@@ -713,7 +721,7 @@ The adhesion force decays linearly to zero at `adhesion_range`, preventing long-
 
 An explicit 3-D stencil is unusable at the biological timestep: for O₂ at `D = 2.1e-9 m²/s`, `dt = 60 s`, and `dx = 5 µm`, the diffusion number is `D·dt/dx² = 5040`, versus the explicit stability limit `1/6`. GutIBM therefore uses backward-Euler directional splitting for enabled nutrient fields.
 
-Each directional pass solves a tridiagonal system in O(cells): x and y are periodic and the luminal z face has zero flux. The epithelial z=0 face defaults to a fixed concentration (`dirichlet`); configured species may instead use `robin`, `J = k(C_epi - c0)`, or `flux`, a fixed delivery rate in mol/m²/s. Delivery modes solve all `nz` cells with the epithelial cell as an unknown and record the realized post-solve exchange in the nutrient ledger. The method is L-stable; non-delivery reactions are clamped nonnegative after the solve, while prescribed delivery retries from a pre-solve snapshot rather than clipping a draw. For species with a configured exponential z-gradient, diffusion acts on departures from that prescribed background profile rather than erasing it; the gradient is rejected with Robin or flux because its pinned reference assumes a Dirichlet boundary. The chemistry order is rank-local agent reactions → MPI sum → global VBF coupling → concentration update → implicit diffusion → boundary enforcement. On GPU-active steps, host-written reactions are uploaded before any device reaction kernel runs, so the device reaction buffer is the single accumulated source for the step; resulting concentrations are synchronized back to the host after device integration.
+Each directional pass solves a tridiagonal system in O(cells): x and y are periodic and the luminal z face has zero flux. The epithelial z=0 face defaults to a fixed concentration (`dirichlet`); configured species may instead use `robin`, `J = k(C_epi - c0)`, or `flux`, a fixed delivery rate in mol/m²/s. Delivery modes solve all `nz` cells with the epithelial cell as an unknown and record the realized post-solve exchange in the nutrient ledger. The method is L-stable; non-delivery reactions are clamped nonnegative after the solve, while prescribed delivery uses the local-then-global positivity rationing described above rather than clipping a draw. For species with a configured exponential z-gradient, diffusion acts on departures from that prescribed background profile rather than erasing it; the gradient is rejected with Robin or flux because its pinned reference assumes a Dirichlet boundary. The chemistry order is rank-local agent reactions → MPI sum → global VBF coupling → concentration update → implicit diffusion → boundary enforcement. On GPU-active steps, host-written reactions are uploaded before any device reaction kernel runs, so the device reaction buffer is the single accumulated source for the step; resulting concentrations are synchronized back to the host after device integration. Delivery uptake remains explicitly CPU-only because the GPU diffusion path has no equivalent prescribed-sink retry/rationing loop; configuration finalization rejects that unsupported combination rather than silently diverging.
 
 ### Bacteriocin QSSA solver
 
