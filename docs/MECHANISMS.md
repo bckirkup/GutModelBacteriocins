@@ -436,6 +436,7 @@ stress, and SOS-independent operon regulation are not represented explicitly,
 so a fitted coefficient stands in for several routes. The intended validation
 target is in-vivo colicin-mediated displacement kinetics at Spec 13 scale,
 not a scalar lysis fraction.
+
 The event ledger records the resulting death as `mortality_lysis`; this is
 separate from the `sos_inductions` and `phage_inductions` counters.
 The same death is also recorded in kill provenance with cause `LYSIS`.

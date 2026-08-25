@@ -512,13 +512,34 @@ void test_ros_funded_specific_rate_preserved() {
 
 void test_ros_funded_generation_round_trip() {
   constexpr Real q_o2_per_generation = 1.63e-14;
+  constexpr Real generation_time = 8172.0;
   const std::array<Real, 3> probabilities = {0.01, 0.02, 0.05};
+  std::vector<Real> hazards;
+  hazards.reserve(probabilities.size());
   for (const Real probability : probabilities) {
-    const Real coefficient =
+    SimulationConfig cfg = funded_ros_config();
+    cfg.chem_env.oxygen.k_ROS_funded =
         -std::log1p(-probability) / q_o2_per_generation;
-    assert(std::abs(coefficient * q_o2_per_generation
-                    + std::log1p(-probability)) < 1.0e-14);
+    InputParser::finalize_config(cfg);
+
+    Simulation sim;
+    sim.init(cfg);
+    Agent agent = make_agent_at_center(sim, 1);
+    sim.agents().push_back(std::move(agent));
+    Agent& probe = sim.agents()[sim.agents().size() - 1];
+    probe.respired_oxygen_rate = q_o2_per_generation / generation_time;
+    const Real hazard = sim.ros_induction_rate(probe);
+    const Real integrated_hazard = hazard * generation_time;
+    const Real target_hazard = -std::log1p(-probability);
+    assert(std::abs(integrated_hazard - target_hazard) / target_hazard
+           < 1.0e-9);
+    const Real recovered_probability = 1.0 - std::exp(-integrated_hazard);
+    assert(std::abs(recovered_probability - probability) / probability
+           < 1.0e-9);
+    hazards.push_back(hazard);
   }
+  assert(hazards[1] > hazards[0]);
+  assert(hazards[2] > hazards[1]);
   std::cout << "  test_ros_funded_generation_round_trip: PASSED\n";
 }
 
