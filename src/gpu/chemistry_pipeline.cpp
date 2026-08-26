@@ -105,6 +105,18 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
           ++agent_counts[static_cast<size_t>(agent.grid_cell)];
         }
       }
+#ifdef GUTIBM_MPI
+      int mpi_initialized = 0;
+      int mpi_finalized = 0;
+      MPI_Initialized(&mpi_initialized);
+      MPI_Finalized(&mpi_finalized);
+      if (mpi_initialized && !mpi_finalized && in.domain.nprocs() > 1
+          && !in.chem.slab_mode()) {
+        // The coupling config is identical on every rank, so all ranks enter.
+        MPI_Allreduce(MPI_IN_PLACE, agent_counts.data(), in.domain.ncells(),
+                      MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+      }
+#endif
     }
     in.vbf.apply_nutrient_coupling(in.chem, in.domain, dt,
                                    in.oxygen, in.acetate, in.mucin,

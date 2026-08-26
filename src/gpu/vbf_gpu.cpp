@@ -42,6 +42,11 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   if (!gpu_runtime_enabled() || !chem_gpu.active()) return false;
 
   const VBFConfig& cfg = vbf.config();
+  if (cfg.agent_carbon_coupling != 0.0 && !chem.slab_mode()
+      && domain.nprocs() > 1) {
+    // Device agent counts are rank-local; use the globally reduced CPU path.
+    return false;
+  }
   gpu::VbfLaunchParams params;
   params.storage_nx = chem_gpu.storage_nx();
   params.owned_x_begin = chem_gpu.owned_storage_x_begin();
