@@ -95,6 +95,10 @@ densities. Carbon-limited growth here is therefore set by the field's
 capacity ladder should sweep the terms that set the gradient (mucin liberation,
 the VBF sink) rather than the uptake mode.
 
+That 99.5% measurement was demand-limited, so the previously permissive
+delivery cap did not bind and the number stands. Any delivery-limited carbon
+funding number measured before the gradient double-count fix was overstated.
+
 ## 4. Methodological lessons that cost time
 
 - **Per-agent invariance does not imply population-scale invariance.** #334

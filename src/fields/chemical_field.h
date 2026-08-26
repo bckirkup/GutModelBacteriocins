@@ -440,7 +440,6 @@ class ChemicalField {
     assert(storage_cell >= 0);
     return conc_[spec][storage_cell];
   }
-  Real total_conc_global(Int spec, Int cell, const Domain& domain) const;
   Real& conc_global(Int spec, Int cell) {
     const Int storage_cell = global_to_storage_cell(cell);
     assert(storage_cell >= 0);
