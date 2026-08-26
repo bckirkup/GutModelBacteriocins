@@ -44,6 +44,32 @@ def cause_of(fh):
     return str(np.asarray(value).reshape(-1)[0])
 
 
+def cell_seconds(fh, keys):
+    times = []
+    counts = []
+    for key in keys:
+        record = fh["summary"][key]
+        times.append(scalar(record["nutrient_flux"]["interval_end_time"]))
+        counts.append(scalar(record["n_total"]))
+    return sum(
+        0.5 * (n0 + n1) * (t1 - t0)
+        for (t0, n0), (t1, n1) in zip(
+            zip(times, counts), zip(times[1:], counts[1:])
+        )
+    )
+
+
+def minimum_oxygen(fh):
+    if "grid" not in fh:
+        return float("nan")
+    minima = [
+        float(np.min(fh["grid"][key]["oxygen"][()]))
+        for key in sorted_keys(fh["grid"])
+        if "oxygen" in fh["grid"][key]
+    ]
+    return min(minima) if minima else float("nan")
+
+
 def analyze(arm):
     cfg = json.loads((ROOT / arm / "input.json").read_text())
     with h5py.File(ROOT / arm / "output.h5", "r") as fh:
@@ -51,67 +77,82 @@ def analyze(arm):
         last = fh["summary"][keys[-1]]
         flux = last["nutrient_flux"]
         ox = species_names(flux).index("oxygen")
-
-        # cell-seconds: trapezoidal integral of N over the summary trajectory
-        times, counts = [], []
-        for key in keys:
-            rec = fh["summary"][key]
-            times.append(scalar(rec["nutrient_flux"]["interval_end_time"]))
-            counts.append(scalar(rec["n_total"]))
-        cell_seconds = 0.0
-        for (t0, n0), (t1, n1) in zip(zip(times, counts), zip(times[1:], counts[1:])):
-            cell_seconds += 0.5 * (n0 + n1) * (t1 - t0)
+        cell_seconds_total = cell_seconds(fh, keys)
 
         events = last["events"]
-        divisions = scalar(events["cumulative_divisions"]) \
-            if "cumulative_divisions" in events else 0.0
+        divisions = (
+            scalar(events["cumulative_divisions"])
+            if "cumulative_divisions" in events
+            else 0.0
+        )
         funded = (field(flux, "agent_uptake_cumulative", ox)
                   + field(flux, "maintenance_cumulative", ox))
-        mu = scalar(last["mean_mu_realized"]) \
-            if "mean_mu_realized" in last else float("nan")
+        mu = (
+            scalar(last["mean_mu_realized"])
+            if "mean_mu_realized" in last
+            else float("nan")
+        )
 
         # worst rationing factor seen anywhere in the run (minimum semantics)
-        factor = min(field(fh["summary"][k]["nutrient_flux"],
-                           "delivery_rationing_factor_cumulative", ox, 1.0)
-                     for k in keys)
-        infeasible = max(field(fh["summary"][k]["nutrient_flux"],
-                               "delivery_infeasible_cumulative", ox, 0.0)
-                         for k in keys)
+        factor = min(
+            field(
+                fh["summary"][key]["nutrient_flux"],
+                "delivery_rationing_factor_cumulative",
+                ox,
+                1.0,
+            )
+            for key in keys
+        )
+        infeasible = max(
+            field(
+                fh["summary"][key]["nutrient_flux"],
+                "delivery_infeasible_cumulative",
+                ox,
+                0.0,
+            )
+            for key in keys
+        )
 
-        min_oxygen = float("nan")
-        if "grid" in fh:
-            grid_keys = sorted_keys(fh["grid"])
-            mins = []
-            for key in grid_keys:
-                node = fh["grid"][key]
-                if "oxygen" in node:
-                    mins.append(float(np.min(node["oxygen"][()])))
-            if mins:
-                min_oxygen = min(mins)
-
-        t_gen_div = cell_seconds / divisions if divisions > 0 else float("nan")
-        t_gen_mu = math.log(2.0) / mu if mu and mu > 0 else float("nan")
+        t_gen_div = (
+            cell_seconds_total / divisions
+            if divisions > 0
+            else float("nan")
+        )
+        t_gen_mu = (
+            math.log(2.0) / mu
+            if mu and mu > 0
+            else float("nan")
+        )
+        demanded = field(flux, "uptake_demand_cumulative", ox)
         return {
             "arm": arm,
             "grid_dx_um": cfg["grid_dx"] * 1e6,
             "founders": cfg["initial_strains"][0]["count"],
             "final_N": scalar(last["n_total"]),
             "divisions": divisions,
-            "cell_seconds": cell_seconds,
+            "cell_seconds": cell_seconds_total,
             "funded_oxygen": funded,
-            "demanded_oxygen": field(flux, "uptake_demand_cumulative", ox),
-            "funded_fraction": (funded / field(flux, "uptake_demand_cumulative", ox)
-                                if field(flux, "uptake_demand_cumulative", ox) else float("nan")),
-            "o2_per_cell_s": funded / cell_seconds if cell_seconds > 0 else float("nan"),
+            "demanded_oxygen": demanded,
+            "funded_fraction": (
+                funded / demanded if demanded else float("nan")
+            ),
+            "o2_per_cell_s": (
+                funded / cell_seconds_total
+                if cell_seconds_total > 0
+                else float("nan")
+            ),
             "T_gen_div_h": t_gen_div / 3600.0,
             "T_gen_mu_h": t_gen_mu / 3600.0,
             "Q_div": funded / divisions if divisions > 0 else float("nan"),
-    "Q_mu": (funded / cell_seconds * t_gen_mu
-             if cell_seconds > 0 and math.isfinite(t_gen_mu) else float("nan")),
+            "Q_mu": (
+                funded / cell_seconds_total * t_gen_mu
+                if cell_seconds_total > 0 and math.isfinite(t_gen_mu)
+                else float("nan")
+            ),
             "rationing_factor": factor,
             "infeasible": infeasible,
             "clips_oxygen": field(flux, "reaction_clip_cumulative", ox),
-            "min_oxygen": min_oxygen,
+            "min_oxygen": minimum_oxygen(fh),
             "termination": cause_of(fh),
         }
 
@@ -129,14 +170,14 @@ for r in rows:
 
 
 def spread(subset, key):
-    vals = [r[key] for r in subset if r[key] == r[key]]
+    vals = [r[key] for r in subset if not math.isnan(r[key])]
     return max(vals) / min(vals) if vals and min(vals) > 0 else float("nan")
 
 
 grid_arm = [r for r in rows if r["founders"] == 2]
 print(f"\ngrid invariance at 2 founders: Q_div spread = {spread(grid_arm, 'Q_div'):.3f}"
       f", Q_mu spread = {spread(grid_arm, 'Q_mu'):.3f}")
-ladder = sorted((r for r in rows if r["grid_dx_um"] == 4.0),
+ladder = sorted((r for r in rows if math.isclose(r["grid_dx_um"], 4.0)),
                 key=lambda r: r["founders"])
 print("density ladder at 4 um: "
       + ", ".join(f"N0={r['founders']} Q_div={r['Q_div']:.3e} "

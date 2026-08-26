@@ -77,7 +77,7 @@ def find_dataset_paths(file, fragment):
 
 def parse_wrapper_wall(path):
     matches = re.findall(
-        r"wrapper_wall_seconds=([0-9]+(?:\.[0-9]+)?)", path.read_text()
+        r"wrapper_wall_seconds=(\d+(?:\.\d+)?)", path.read_text()
     )
     return float(matches[-1]) if matches else math.nan
 
@@ -95,215 +95,211 @@ def grid_agent_cells(grid, agents, nutrient, dx):
     return result
 
 
+def summary_row(record):
+    flux = record["nutrient_flux"]
+    names = species_names(flux)
+    oxygen = names.index("oxygen")
+    carbon = names.index("carbon")
+    events = record["events"]
+    stocks = record["stocks"]
+    chem = record["chem"]
+    component_names = (
+        "sos_basal_rate",
+        "sos_post_division_rate",
+        "sos_nuclease_cross_induction_rate",
+        "sos_ros_rate",
+    )
+    components = {name: event_rate(events, name) for name in component_names}
+    cumulative_components = {
+        name: event_rate(events, f"cumulative_{name}")
+        for name in component_names
+    }
+    return {
+        "step": integer(record["step"]),
+        "time_s": scalar(record["time"]),
+        "N": integer(record["n_total"]),
+        "mean_fermentation_fraction": scalar(
+            record["mean_realized_fermentation_fraction"]
+        ),
+        "funded_growth_oxygen": flux_value(
+            flux, "agent_uptake_cumulative", oxygen
+        ),
+        "demanded_growth_oxygen": flux_value(
+            flux, "uptake_demand_cumulative", oxygen
+        ),
+        "funded_growth_oxygen_interval": flux_value(
+            flux, "agent_uptake_interval", oxygen
+        ),
+        "demanded_growth_oxygen_interval": flux_value(
+            flux, "uptake_demand_interval", oxygen
+        ),
+        "funded_maintenance_oxygen": flux_value(
+            flux, "maintenance_cumulative", oxygen
+        ),
+        "demanded_maintenance_oxygen": (
+            flux_value(flux, "maintenance_cumulative", oxygen)
+            + flux_value(flux, "maintenance_shortfall_cumulative", oxygen)
+        ),
+        "maintenance_oxygen_shortfall": flux_value(
+            flux, "maintenance_shortfall_cumulative", oxygen
+        ),
+        "agent_growth_oxygen_removal": flux_value(
+            flux, "agent_uptake_cumulative", oxygen
+        ),
+        "agent_maintenance_oxygen_removal": flux_value(
+            flux, "maintenance_cumulative", oxygen
+        ),
+        "flora_oxygen_removal": flux_value(
+            flux, "vbf_sink_cumulative", oxygen
+        ),
+        "boundary_oxygen_delivery": flux_value(
+            flux, "boundary_cumulative", oxygen
+        ),
+        "oxygen_reaction_clips": flux_value(
+            flux, "reaction_clip_cumulative", oxygen
+        ),
+        "funded_growth_carbon": flux_value(
+            flux, "agent_uptake_cumulative", carbon
+        ),
+        "demanded_growth_carbon": flux_value(
+            flux, "uptake_demand_cumulative", carbon
+        ),
+        "funded_maintenance_carbon": flux_value(
+            flux, "maintenance_cumulative", carbon
+        ),
+        "demanded_maintenance_carbon": (
+            flux_value(flux, "maintenance_cumulative", carbon)
+            + flux_value(flux, "maintenance_shortfall_cumulative", carbon)
+        ),
+        "maintenance_carbon_shortfall": flux_value(
+            flux, "maintenance_shortfall_cumulative", carbon
+        ),
+        "agent_growth_carbon_removal": flux_value(
+            flux, "agent_uptake_cumulative", carbon
+        ),
+        "agent_maintenance_carbon_removal": flux_value(
+            flux, "maintenance_cumulative", carbon
+        ),
+        "carbon_reaction_clips": flux_value(
+            flux, "reaction_clip_cumulative", carbon
+        ),
+        "divisions": event_count(events, "cumulative_divisions"),
+        "sos_inductions": event_count(events, "cumulative_sos_inductions"),
+        "mortality_lysis": event_count(events, "cumulative_mortality_lysis"),
+        "mortality_colicin": event_count(
+            events, "cumulative_mortality_colicin"
+        ),
+        "mortality_cdi": event_count(events, "cumulative_mortality_cdi"),
+        "outflow_washout": event_count(
+            events, "cumulative_outflow_washout"
+        ),
+        "outflow_boundary": event_count(
+            events, "cumulative_outflow_boundary"
+        ),
+        "immigrations": event_count(events, "cumulative_immigrations"),
+        "bacteriostatic_live_agents": event_count(
+            stocks, "bacteriostatic_live_agents"
+        ),
+        "washout_trapped_live_agents": event_count(
+            stocks, "washout_trapped_live_agents"
+        ),
+        "acetate_mean": (
+            scalar(chem["mean_acetate"])
+            if "mean_acetate" in chem
+            else math.nan
+        ),
+        "mean_oxygen": scalar(chem["mean_oxygen"]),
+        "mean_carbon": scalar(chem["mean_carbon"]),
+        "sos_components_interval": components,
+        "sos_components_cumulative": cumulative_components,
+        "sos_rate_total_interval": event_rate(events, "sos_rate_total"),
+        "sos_rate_total_cumulative": event_rate(
+            events, "cumulative_sos_rate_total"
+        ),
+    }
+
+
+def add_sos_per_agent(rows):
+    total_live_steps = sum(row["N"] for row in rows)
+    for row in rows:
+        row["sos_components_interval_per_live_agent"] = {
+            name: value / row["N"] if row["N"] else math.nan
+            for name, value in row["sos_components_interval"].items()
+        }
+        row["sos_components_cumulative_per_live_agent_step"] = {
+            name: value / total_live_steps if total_live_steps else math.nan
+            for name, value in row["sos_components_cumulative"].items()
+        }
+
+
+def agent_trajectory(file, config):
+    trajectory = []
+    for key in ordered_keys(file["agents"]):
+        agents = file["agents"][key]
+        step = (
+            integer(agents["step"])
+            if "step" in agents
+            else int(key.rsplit("_", 1)[1])
+        )
+        trajectory.append(
+            {
+                "step": step,
+                "time_s": (
+                    scalar(agents["time"])
+                    if "time" in agents
+                    else step * config["bio_dt"]
+                ),
+                "live_agents": len(agents["id"][:]),
+                "mean_biomass": mean_or_nan(
+                    np.asarray(agents["biomass"][:])
+                ),
+                "mean_mu_realized": mean_or_nan(
+                    np.asarray(agents["mu_realized"][:])
+                ),
+            }
+        )
+    return trajectory
+
+
+def final_grid_metrics(file, config):
+    last_grid_key = ordered_keys(file["grid"])[-1]
+    grid = file["grid"][last_grid_key]
+    matching_agents = file["agents"].get(last_grid_key, None)
+    result = {}
+    for nutrient in ("oxygen", "carbon", "acetate"):
+        if nutrient not in grid:
+            continue
+        values = np.asarray(grid[nutrient][:])
+        mean = float(values.mean())
+        cells = grid_agent_cells(
+            grid, matching_agents, nutrient, config["grid_dx"]
+        )
+        result[nutrient] = {
+            "domain_mean": mean,
+            "domain_minimum": float(values.min()),
+            "agent_cells": cells,
+            "agent_cell_ratios": [
+                value / mean if mean else math.nan for value in cells
+            ],
+        }
+    return result
+
+
 def analyze_arm(arm):
     arm_dir = ROOT / arm
     config = json.loads((arm_dir / "input.json").read_text())
     path = arm_dir / "output.h5"
     with h5py.File(path, "r") as file:
-        rows = []
-        for key in ordered_keys(file["summary"]):
-            record = file["summary"][key]
-            flux = record["nutrient_flux"]
-            names = species_names(flux)
-            oxygen = names.index("oxygen")
-            carbon = names.index("carbon")
-            events = record["events"]
-            stocks = record["stocks"]
-            chem = record["chem"]
-            component_names = (
-                "sos_basal_rate",
-                "sos_post_division_rate",
-                "sos_nuclease_cross_induction_rate",
-                "sos_ros_rate",
-            )
-            components = {
-                name: event_rate(events, name) for name in component_names
-            }
-            cumulative_components = {
-                name: event_rate(events, f"cumulative_{name}")
-                for name in component_names
-            }
-            rows.append(
-                {
-                    "step": integer(record["step"]),
-                    "time_s": scalar(record["time"]),
-                    "N": integer(record["n_total"]),
-                    "mean_fermentation_fraction": scalar(
-                        record["mean_realized_fermentation_fraction"]
-                    ),
-                    "funded_growth_oxygen": flux_value(
-                        flux, "agent_uptake_cumulative", oxygen
-                    ),
-                    "demanded_growth_oxygen": flux_value(
-                        flux, "uptake_demand_cumulative", oxygen
-                    ),
-                    "funded_growth_oxygen_interval": flux_value(
-                        flux, "agent_uptake_interval", oxygen
-                    ),
-                    "demanded_growth_oxygen_interval": flux_value(
-                        flux, "uptake_demand_interval", oxygen
-                    ),
-                    "funded_maintenance_oxygen": flux_value(
-                        flux, "maintenance_cumulative", oxygen
-                    ),
-                    "demanded_maintenance_oxygen": (
-                        flux_value(flux, "maintenance_cumulative", oxygen)
-                        + flux_value(
-                            flux, "maintenance_shortfall_cumulative", oxygen
-                        )
-                    ),
-                    "maintenance_oxygen_shortfall": flux_value(
-                        flux, "maintenance_shortfall_cumulative", oxygen
-                    ),
-                    "agent_growth_oxygen_removal": flux_value(
-                        flux, "agent_uptake_cumulative", oxygen
-                    ),
-                    "agent_maintenance_oxygen_removal": flux_value(
-                        flux, "maintenance_cumulative", oxygen
-                    ),
-                    "flora_oxygen_removal": flux_value(
-                        flux, "vbf_sink_cumulative", oxygen
-                    ),
-                    "boundary_oxygen_delivery": flux_value(
-                        flux, "boundary_cumulative", oxygen
-                    ),
-                    "oxygen_reaction_clips": flux_value(
-                        flux, "reaction_clip_cumulative", oxygen
-                    ),
-                    "funded_growth_carbon": flux_value(
-                        flux, "agent_uptake_cumulative", carbon
-                    ),
-                    "demanded_growth_carbon": flux_value(
-                        flux, "uptake_demand_cumulative", carbon
-                    ),
-                    "funded_maintenance_carbon": flux_value(
-                        flux, "maintenance_cumulative", carbon
-                    ),
-                    "demanded_maintenance_carbon": (
-                        flux_value(flux, "maintenance_cumulative", carbon)
-                        + flux_value(
-                            flux, "maintenance_shortfall_cumulative", carbon
-                        )
-                    ),
-                    "maintenance_carbon_shortfall": flux_value(
-                        flux, "maintenance_shortfall_cumulative", carbon
-                    ),
-                    "agent_growth_carbon_removal": flux_value(
-                        flux, "agent_uptake_cumulative", carbon
-                    ),
-                    "agent_maintenance_carbon_removal": flux_value(
-                        flux, "maintenance_cumulative", carbon
-                    ),
-                    "carbon_reaction_clips": flux_value(
-                        flux, "reaction_clip_cumulative", carbon
-                    ),
-                    "divisions": event_count(events, "cumulative_divisions"),
-                    "sos_inductions": event_count(
-                        events, "cumulative_sos_inductions"
-                    ),
-                    "mortality_lysis": event_count(
-                        events, "cumulative_mortality_lysis"
-                    ),
-                    "mortality_colicin": event_count(
-                        events, "cumulative_mortality_colicin"
-                    ),
-                    "mortality_cdi": event_count(
-                        events, "cumulative_mortality_cdi"
-                    ),
-                    "outflow_washout": event_count(
-                        events, "cumulative_outflow_washout"
-                    ),
-                    "outflow_boundary": event_count(
-                        events, "cumulative_outflow_boundary"
-                    ),
-                    "immigrations": event_count(
-                        events, "cumulative_immigrations"
-                    ),
-                    "bacteriostatic_live_agents": event_count(
-                        stocks, "bacteriostatic_live_agents"
-                    ),
-                    "washout_trapped_live_agents": event_count(
-                        stocks, "washout_trapped_live_agents"
-                    ),
-                    "acetate_mean": (
-                        scalar(chem["mean_acetate"])
-                        if "mean_acetate" in chem
-                        else math.nan
-                    ),
-                    "mean_oxygen": scalar(chem["mean_oxygen"]),
-                    "mean_carbon": scalar(chem["mean_carbon"]),
-                    "sos_components_interval": components,
-                    "sos_components_cumulative": cumulative_components,
-                    "sos_rate_total_interval": event_rate(
-                        events, "sos_rate_total"
-                    ),
-                    "sos_rate_total_cumulative": event_rate(
-                        events, "cumulative_sos_rate_total"
-                    ),
-                }
-            )
+        rows = [
+            summary_row(file["summary"][key])
+            for key in ordered_keys(file["summary"])
+        ]
 
         first = rows[0]
         final = rows[-1]
-        total_live_steps = sum(row["N"] for row in rows)
-        for row in rows:
-            row["sos_components_interval_per_live_agent"] = {
-                name: (
-                    value / row["N"] if row["N"] else math.nan
-                )
-                for name, value in row["sos_components_interval"].items()
-            }
-            row["sos_components_cumulative_per_live_agent_step"] = {
-                name: (
-                    value / total_live_steps if total_live_steps else math.nan
-                )
-                for name, value in row["sos_components_cumulative"].items()
-            }
-
-        agent_trajectory = []
-        for key in ordered_keys(file["agents"]):
-            agents = file["agents"][key]
-            agent_step = (
-                integer(agents["step"])
-                if "step" in agents
-                else int(key.rsplit("_", 1)[1])
-            )
-            agent_trajectory.append(
-                {
-                    "step": agent_step,
-                    "time_s": scalar(agents["time"])
-                    if "time" in agents
-                    else agent_step * config["bio_dt"],
-                    "live_agents": len(agents["id"][:]),
-                    "mean_biomass": mean_or_nan(
-                        np.asarray(agents["biomass"][:])
-                    ),
-                    "mean_mu_realized": mean_or_nan(
-                        np.asarray(agents["mu_realized"][:])
-                    ),
-                }
-            )
-
-        last_grid_key = ordered_keys(file["grid"])[-1]
-        grid = file["grid"][last_grid_key]
-        matching_agents = file["agents"].get(last_grid_key, None)
-        final_grid = {}
-        for nutrient in ("oxygen", "carbon", "acetate"):
-            if nutrient not in grid:
-                continue
-            values = np.asarray(grid[nutrient][:])
-            mean = float(values.mean())
-            cells = grid_agent_cells(
-                grid, matching_agents, nutrient, config["grid_dx"]
-            )
-            final_grid[nutrient] = {
-                "domain_mean": mean,
-                "domain_minimum": float(values.min()),
-                "agent_cells": cells,
-                "agent_cell_ratios": [
-                    value / mean if mean else math.nan for value in cells
-                ],
-            }
+        add_sos_per_agent(rows)
+        agent_rows = agent_trajectory(file, config)
+        final_grid = final_grid_metrics(file, config)
 
         loss_channels = {
             "mortality_lysis": final["mortality_lysis"],
@@ -525,7 +521,7 @@ def analyze_arm(arm):
                     "live_agents": item["live_agents"],
                     "mean_mu_realized": item["mean_mu_realized"],
                 }
-                for item in agent_trajectory
+                for item in agent_rows
             ],
             "mean_biomass_trajectory": [
                 {
@@ -534,7 +530,7 @@ def analyze_arm(arm):
                     "live_agents": item["live_agents"],
                     "mean_biomass": item["mean_biomass"],
                 }
-                for item in agent_trajectory
+                for item in agent_rows
             ],
             "live_agent_stocks": [
                 {
