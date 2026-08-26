@@ -4,7 +4,7 @@
 
 Massively parallel 3D Individual-based Model (IbM) for simulating
 *Enterobacteriaceae* population dynamics and genomic diversity in the colonic
-mucus layer. C++17 core with Python analysis tools. Built on NUFEB-2
+mucus layer. C++20 core with Python analysis tools. Built on NUFEB-2
 framework philosophy with MPI domain decomposition and HDF5 I/O.
 
 **Version:** 0.1.0 (early research prototype — not production-HPC-ready)
@@ -89,6 +89,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | `src/io/input_parser.cpp` | JSON + legacy flat-key config parser |
 | `src/io/hdf5_writer.cpp` | Parallel HDF5 output + genome checkpoint groups |
 | `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
+| `docs/DELIVERY_ROS_CAMPAIGN.md` | Consolidated delivery/ROS campaign findings and retired claims |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
 | `python/gut_ibm_tools/colony.py` and `spatial_stats.py` | Colony catalogs and 3-D spatial observables |
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `batch_scan/`, `scaling_benchmark/` |
@@ -123,6 +124,9 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **Dysbiosis guard noise sensitivity** | Fixed | The former per-sample strict-increase and non-deceleration criterion was effectively unfirable on stochastic trajectories: one density dip reset the seven-sample window. The guard now uses a positive net rise and aggregate half-window increment means while retaining the above-threshold requirement. |
 | **Dysbiosis halt artifact visibility** | Fixed | Run-level termination metadata is written under `/run_provenance/`, so guard-halted runs are distinguishable from full-horizon completions even when the final summary was written before the guard evaluation. |
 | **Carbon VBF overdraw** | Fixed | The Monod carbon sink is implicitly integrated on both host and CUDA paths from one shared closed-form helper, and realized removal is reported; reaction clips are accounted. Agent-side uptake overdraw is closed by the `uptake_limit` model: `delivery` integrates the per-agent first-order sink with diffusion and funds growth only from realized removal; `sherwood` caps per-agent per-step uptake at the quasi-steady diffusive delivery `4*pi*D_eff*r*C_local`, funds the biomass increment and `mu_realized` at the same fraction, and reports demanded uptake plus bound-agent counts; `voxel` is a diagnostic-only grid-artifact probe and `none` (default) keeps the historical unfunded behaviour. The legacy zero-order agent sink could not brake density because it was clipped before diffusion in a single voxel, so nearly all requested carbon was never removed from the field. Under gradient-preserving transport, delivery must use total `P+G(z)` while solving the perturbation `P`; the sink RHS includes `-sG`, realized uptake reads the total, and total-concentration reaction clips are accounted. |
+| **Ambient ROS mortality** | Fixed | ROS-driven SOS induction was priced as `k_ROS × [O₂]_ambient × mu_realized` — oxygen no cell acquired — and with the uncited `k_ROS = 1e2` it accounted for 99.5% of cumulative SOS hazard and for every population loss in the oxygen series (#332). A funded driver prices induction from each agent's funded respiratory oxygen flux, in either a specific (kg/mol) or absolute (mol⁻¹, per-generation calibratable) normalization (#339), and the four SOS hazard components are emitted per step. The ambient path is retained and is still the default; see `docs/DELIVERY_ROS_CAMPAIGN.md`. |
+| **Delivery rationing accepted negative fields** | Fixed | Prescribed delivery mass was removed unconditionally and, after two retries, a negative solve was accepted, so the field borrowed against undelivered supply (min oxygen `-9.9e-6` at 500 agents) while remaining mass-exact — a positivity failure, not an accounting one (#338). Rationing now iterates to feasibility, local reductions first and a global bisection guarantee second, never accepts a negative solve, and reports a per-species rationing factor. |
+| **Shipped defaults predate the delivery/ROS campaign** | Open | Defaults still select the retired mortality path and leave funded uptake off: `oxygen.ros_driver=ambient` with the uncited `oxygen.k_ROS=1e2`, and `metabolism.uptake_limit=none`, so the 10 µm delivery support is inert unless a config opts in. A run from defaults reproduces pre-#332 behaviour. Choosing the shipped defaults is a pending scientific decision, not a code defect. |
 | **Truncated-run indistinguishability** | Fixed | `/run_provenance/termination_cause_code` is pessimistically written as `incomplete_unknown` and overwritten only at an explicit run termination; stdout names the cause and distinguishes early exits. |
 | GPU portability | Open | Production chemistry + mechanics on GPU; FMM M2L tree-walk on CPU; multi-GPU NCCL not wired |
 | Large-scale MPI scaling | Partial | `mpi_four_rank` CTest (`mpirun -np 4`, includes periodic-x ring); manual `mpirun -np 8+` on HPC |
@@ -142,11 +146,11 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 ### C++ (CTest)
 
-**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, nutrient diffusion, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), qssa stoichiometry, bacteriocin, receptor, mutation.
+**Fast unit (`ctest -L unit -LE slow`):** spatial hash, Green's functions, agent/plasmid, iron fallback, octree, FMM, conjugation, z-gradient, nutrient diffusion, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), qssa stoichiometry, bacteriocin, receptor, mutation, uptake limitation.
 
 **Slow unit:** mechanics, immunity escape.
 
-**Integration (`ctest -L integration`):** smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), mechanism wiring (cross-spec mass-balance + directional coupling; see `docs/WIRING_AUDIT.md`), HDF5 round-trip, HDF5 checkpoint restart, washout trap long-horizon regression (`washout_trap`, issue #160).
+**Integration (`ctest -L integration`):** smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), mechanism wiring (cross-spec mass-balance + directional coupling; see `docs/WIRING_AUDIT.md`), population-scale delivery resolution (`uptake_limit_population_resolution`), HDF5 round-trip, HDF5 checkpoint restart, washout trap long-horizon regression (`washout_trap`, issue #160).
 
 **MPI:** `mpi_multi_rank` (`mpirun -np 2`), `mpi_four_rank` (`mpirun -np 4`), `mpi_gpu_multi_rank` (2-rank + `gpu_enabled`), `cuda_aware_mpi_reaction` (CUDA-aware device Allreduce when available), `hdf5_roundtrip_parallel`.
 
@@ -279,7 +283,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 
 ## Code Conventions
 
-- C++17 with modern idioms (smart pointers, RAII, move semantics)
+- C++20 with modern idioms (smart pointers, RAII, move semantics)
 - CMake build system; sources GLOB'd — no manual source list for new `.cpp` in `src/`
 - MPI for parallelism (guard all MPI calls with rank checks)
 - HDF5 for I/O (parallel HDF5 when MPI enabled)
