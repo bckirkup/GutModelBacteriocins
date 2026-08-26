@@ -7,7 +7,9 @@
 #include <cassert>
 #include <cmath>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -22,8 +24,9 @@ using gutibm::test::require_mpi_ranks;
 namespace {
 
 constexpr Real kCoupling = 1.0e-20;
-constexpr Real kFieldTolerance = 1.0e-9;
+constexpr Real kFieldTolerance = 1.0e-12;
 constexpr Real kContrastMargin = 1.0e-8;
+constexpr Int kAgentCount = 512;
 
 struct ProbeResult {
   Int global_agents = 0;
@@ -33,7 +36,7 @@ struct ProbeResult {
 };
 
 SimulationConfig make_density_config(Real coupling) {
-  SimulationConfig cfg = make_mpi_config(73017, 512);
+  SimulationConfig cfg = make_mpi_config(73017, kAgentCount);
   cfg.initial_strains[0].count = 0;
   cfg.time.total_time = cfg.time.bio_dt;
   cfg.vbf.carbon_sink_vmax = 0.0;
@@ -56,9 +59,9 @@ SimulationConfig make_density_config(Real coupling) {
 }
 
 void populate_deterministic(Simulation& sim) {
-  sim.agents().reserve(512);
+  sim.agents().reserve(kAgentCount);
   const Vec3 lo = sim.domain().lo();
-  for (Int index = 0; index < 512; ++index) {
+  for (Int index = 0; index < kAgentCount; ++index) {
     const Int ix = index % sim.domain().nx();
     const Int iy = (index / sim.domain().nx()) % sim.domain().ny();
     const Int iz = (index / (sim.domain().nx() * sim.domain().ny()))
@@ -113,6 +116,7 @@ ProbeResult run_probe(Real coupling) {
 void write_mpi_result(const std::string& path, const ProbeResult& result) {
   std::ofstream output(path);
   assert(output);
+  output << std::setprecision(std::numeric_limits<Real>::max_digits10);
   output << result.global_agents << " " << result.occupied_cells << "\n";
   output << result.carbon.size() << "\n";
   for (const Real value : result.carbon) {
@@ -183,8 +187,6 @@ void run_serial(const std::string& path) {
         max_serial_difference,
         std::abs(coupled.carbon[cell] - expected.carbon[cell]));
   }
-  std::cout << "  serial agreement candidate: max_field_difference="
-            << max_serial_difference << "\n";
   assert(max_serial_difference <= kFieldTolerance);
 
   const ProbeResult uncoupled = run_probe(0.0);
