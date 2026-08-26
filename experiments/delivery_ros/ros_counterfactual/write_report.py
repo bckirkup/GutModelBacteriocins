@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
 
-root = Path('/home/ubuntu/gutibm-campaign/ros-counterfactual')
-data = json.loads((root/'metrics.json').read_text())
+metrics_path = Path('/home/ubuntu/gutibm-campaign/ros-counterfactual/metrics.json')
+report_path = Path('/home/ubuntu/gutibm-campaign/ros-counterfactual/REPORT.md')
+data = json.loads(metrics_path.read_text())
 arms = data['arms']
 
 def f(v):
@@ -64,5 +65,5 @@ for x in arms:
             lines.append(row([t,n.get('N','—'),d.get('divisions','—'),m.get('mean_mu_realized','—'),b.get('mean_biomass','—'),s.get('bacteriostatic_live_agents','—'),s.get('washout_trapped_live_agents','—')]))
     lines.append('')
 lines += ['## Invalid superseded arm', '', '- `B_ros0_res2` 100-founder output is excluded from `arms` metrics.', '- Preserved at `invalid_B_ros0_res2_100_founders/` and recorded in `metrics.json` under `invalid_arms`.', '- Reason: first dispatch used 80 strain-1 founders plus 20 strain-2 founders instead of 60 + 20 = 80 total.', '']
-(root/'REPORT.md').write_text('\n'.join(lines))
-print(root/'REPORT.md')
+report_path.write_text('\n'.join(lines))
+print(report_path)

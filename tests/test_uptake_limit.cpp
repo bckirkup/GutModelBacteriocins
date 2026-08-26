@@ -11,6 +11,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <format>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -1380,7 +1381,7 @@ PopulationResolutionMeasurement measure_population_resolution(
     }
   }
   result.divisions = sim.cumulative_events().divisions;
-  result.final_agents = static_cast<Int>(sim.agents().size());
+  result.final_agents = sim.agents().size();
   return result;
 }
 
@@ -1434,36 +1435,29 @@ Real relative_resolution_difference(Real lower, Real upper) {
   assert(voxel_demand_difference > 3.0 * regularized_demand_difference);
   assert(voxel_biomass_difference > 3.0 * regularized_biomass_difference);
 
-  std::cout << std::setprecision(12)
-            << "    population resolution measurements:\n"
-            << "      radius 10um, 2um grid: funded="
-            << regularized_2um.funded
-            << " demanded=" << regularized_2um.demanded
-            << " initial_biomass=" << regularized_2um.initial_biomass
-            << " biomass=" << regularized_2um.biomass
-            << " divisions=" << regularized_2um.divisions << "\n"
-            << "      radius 10um, 6um grid: funded="
-            << regularized_6um.funded
-            << " demanded=" << regularized_6um.demanded
-            << " initial_biomass=" << regularized_6um.initial_biomass
-            << " biomass=" << regularized_6um.biomass
-            << " divisions=" << regularized_6um.divisions << "\n"
-            << "      radius 0, 2um grid: funded=" << voxel_2um.funded
-            << " demanded=" << voxel_2um.demanded
-            << " initial_biomass=" << voxel_2um.initial_biomass
-            << " biomass=" << voxel_2um.biomass
-            << " divisions=" << voxel_2um.divisions << "\n"
-            << "      radius 0, 6um grid: funded=" << voxel_6um.funded
-            << " demanded=" << voxel_6um.demanded
-            << " initial_biomass=" << voxel_6um.initial_biomass
-            << " biomass=" << voxel_6um.biomass
-            << " divisions=" << voxel_6um.divisions << "\n"
-            << "      relative spreads funded/demanded/biomass: regularized="
-            << regularized_funded_difference << "/"
-            << regularized_demand_difference << "/"
-            << regularized_biomass_difference << ", radius 0="
-            << voxel_funded_difference << "/" << voxel_demand_difference
-            << "/" << voxel_biomass_difference << "\n";
+  std::cout << std::format(
+      "    population resolution measurements:\n"
+      "      radius 10um, 2um grid: funded={:.12g} demanded={:.12g} "
+      "initial_biomass={:.12g} biomass={:.12g} divisions={}\n"
+      "      radius 10um, 6um grid: funded={:.12g} demanded={:.12g} "
+      "initial_biomass={:.12g} biomass={:.12g} divisions={}\n"
+      "      radius 0, 2um grid: funded={:.12g} demanded={:.12g} "
+      "initial_biomass={:.12g} biomass={:.12g} divisions={}\n"
+      "      radius 0, 6um grid: funded={:.12g} demanded={:.12g} "
+      "initial_biomass={:.12g} biomass={:.12g} divisions={}\n"
+      "      relative spreads funded/demanded/biomass: regularized={:.12g}/"
+      "{:.12g}/{:.12g}, radius 0={:.12g}/{:.12g}/{:.12g}\n",
+      regularized_2um.funded, regularized_2um.demanded,
+      regularized_2um.initial_biomass, regularized_2um.biomass,
+      regularized_2um.divisions, regularized_6um.funded,
+      regularized_6um.demanded, regularized_6um.initial_biomass,
+      regularized_6um.biomass, regularized_6um.divisions, voxel_2um.funded,
+      voxel_2um.demanded, voxel_2um.initial_biomass, voxel_2um.biomass,
+      voxel_2um.divisions, voxel_6um.funded, voxel_6um.demanded,
+      voxel_6um.initial_biomass, voxel_6um.biomass, voxel_6um.divisions,
+      regularized_funded_difference, regularized_demand_difference,
+      regularized_biomass_difference, voxel_funded_difference,
+      voxel_demand_difference, voxel_biomass_difference);
   std::cout << "  test_population_scale_delivery_resolution_invariance:"
             << " PASSED\n";
 }
