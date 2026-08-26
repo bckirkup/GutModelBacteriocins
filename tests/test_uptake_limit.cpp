@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "species_names.h"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
@@ -1311,6 +1312,151 @@ void test_regularized_delivery_funding_resolution_invariance() {
             << " PASSED\n";
 }
 
+struct PopulationResolutionMeasurement {
+  Real funded = 0.0;
+  Real demanded = 0.0;
+  Real biomass = 0.0;
+  Int divisions = 0;
+  Int final_agents = 0;
+};
+
+PopulationResolutionMeasurement measure_population_resolution(
+    Real grid_dx, Real far_field_radius) {
+  SimulationConfig cfg = base_config();
+  cfg.seed = 1001;
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.domain.lo = {0.0, 0.0, 0.0};
+  cfg.domain.hi = {180.0e-6, 180.0e-6, 108.0e-6};
+  cfg.domain.grid_dx = grid_dx;
+  cfg.domain.hash_cell_size = 10.0e-6;
+  cfg.initial_population.placement = "anatomic";
+  cfg.initial_population.anatomic_exclusion_floor = 20.0e-6;
+  cfg.initial_population.anatomic_outer_extent = 100.0e-6;
+  cfg.initial_strains.front().count = 20;
+  cfg.initial_strains.front().mu_max = 5.0e-4;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = far_field_radius;
+  cfg.fixes.metabolism.division_threshold = 2.0;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.dysbiosis_threshold = 0.0;
+  cfg.advection.radial_turnover = 1.0e100;
+  cfg.advection.distal_transit_time = 1.0e100;
+  constexpr Int kPopulationSteps = 360;
+  cfg.time.total_time = kPopulationSteps * kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = cfg.time.total_time;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = 5.0e-3;
+      chemical.boundary_conc = 5.0e-3;
+      chemical.diff_coeff = 1.0e-12;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  sim.run();
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const auto index = static_cast<size_t>(carbon);
+  const auto& flux = sim.chemical_field().flux_accounting();
+  PopulationResolutionMeasurement result;
+  result.funded = flux.agent_uptake_cumulative[index]
+      + flux.agent_uptake_interval[index];
+  result.demanded = flux.uptake_demand_cumulative[index]
+      + flux.uptake_demand_interval[index];
+  for (const Agent& agent : sim.agents()) {
+    if (agent.state != PhenoState::DEAD && !agent.flags.is_ghost) {
+      result.biomass += agent.biomass;
+    }
+  }
+  result.divisions = sim.cumulative_events().divisions;
+  result.final_agents = static_cast<Int>(sim.agents().size());
+  return result;
+}
+
+Real relative_resolution_difference(Real lower, Real upper) {
+  return std::abs(upper - lower)
+      / std::max(0.5 * (std::abs(lower) + std::abs(upper)), 1.0e-30);
+}
+
+void test_population_scale_delivery_resolution_invariance() {
+  const PopulationResolutionMeasurement regularized_2um =
+      measure_population_resolution(2.0e-6, 10.0e-6);
+  const PopulationResolutionMeasurement regularized_6um =
+      measure_population_resolution(6.0e-6, 10.0e-6);
+  const PopulationResolutionMeasurement voxel_2um =
+      measure_population_resolution(2.0e-6, 0.0);
+  const PopulationResolutionMeasurement voxel_6um =
+      measure_population_resolution(6.0e-6, 0.0);
+
+  const Real regularized_funded_difference =
+      relative_resolution_difference(
+          regularized_2um.funded, regularized_6um.funded);
+  const Real regularized_demand_difference =
+      relative_resolution_difference(
+          regularized_2um.demanded, regularized_6um.demanded);
+  const Real regularized_biomass_difference =
+      relative_resolution_difference(
+          regularized_2um.biomass, regularized_6um.biomass);
+  const Real voxel_funded_difference =
+      relative_resolution_difference(voxel_2um.funded, voxel_6um.funded);
+  const Real voxel_demand_difference =
+      relative_resolution_difference(voxel_2um.demanded, voxel_6um.demanded);
+  const Real voxel_biomass_difference =
+      relative_resolution_difference(voxel_2um.biomass, voxel_6um.biomass);
+
+  assert(regularized_2um.funded > 0.0);
+  assert(regularized_2um.demanded > regularized_2um.funded);
+  assert(regularized_2um.biomass > 0.0);
+  assert(regularized_2um.divisions == regularized_6um.divisions);
+  assert(regularized_funded_difference <= 0.015);
+  assert(regularized_demand_difference <= 0.015);
+  assert(regularized_biomass_difference <= 0.012);
+
+  assert(voxel_2um.funded > 0.0);
+  assert(voxel_2um.demanded > voxel_2um.funded);
+  assert(voxel_2um.biomass > 0.0);
+  assert(voxel_funded_difference >= 0.10);
+  assert(voxel_demand_difference >= 0.10);
+  assert(voxel_biomass_difference >= 0.10);
+  assert(voxel_funded_difference > 3.0 * regularized_funded_difference);
+  assert(voxel_demand_difference > 3.0 * regularized_demand_difference);
+  assert(voxel_biomass_difference > 3.0 * regularized_biomass_difference);
+
+  std::cout << std::setprecision(12)
+            << "    population resolution measurements:\n"
+            << "      radius 10um, 2um grid: funded="
+            << regularized_2um.funded
+            << " demanded=" << regularized_2um.demanded
+            << " biomass=" << regularized_2um.biomass
+            << " divisions=" << regularized_2um.divisions << "\n"
+            << "      radius 10um, 6um grid: funded="
+            << regularized_6um.funded
+            << " demanded=" << regularized_6um.demanded
+            << " biomass=" << regularized_6um.biomass
+            << " divisions=" << regularized_6um.divisions << "\n"
+            << "      radius 0, 2um grid: funded=" << voxel_2um.funded
+            << " demanded=" << voxel_2um.demanded
+            << " biomass=" << voxel_2um.biomass
+            << " divisions=" << voxel_2um.divisions << "\n"
+            << "      radius 0, 6um grid: funded=" << voxel_6um.funded
+            << " demanded=" << voxel_6um.demanded
+            << " biomass=" << voxel_6um.biomass
+            << " divisions=" << voxel_6um.divisions << "\n"
+            << "      relative spreads funded/demanded/biomass: regularized="
+            << regularized_funded_difference << "/"
+            << regularized_demand_difference << "/"
+            << regularized_biomass_difference << ", radius 0="
+            << voxel_funded_difference << "/" << voxel_demand_difference
+            << "/" << voxel_biomass_difference << "\n";
+  std::cout << "  test_population_scale_delivery_resolution_invariance:"
+            << " PASSED\n";
+}
+
 std::pair<Real, Real> run_delivery_maintenance_case(Real maintenance_rate) {
   SimulationConfig cfg = base_config();
   cfg.enabled_fixes = {"metabolism"};
@@ -1798,6 +1944,9 @@ void test_none_mode_clip_does_not_close_by_default() {
 }  // namespace
 
 int main() {
+#ifdef GUTIBM_POPULATION_RESOLUTION_ONLY
+  test_population_scale_delivery_resolution_invariance();
+#else
   std::cout << "=== Uptake Limitation Tests ===\n";
   test_delivery_resolution_and_timestep_invariance();
   test_far_field_resolution_invariance_and_anti_vacuity();
@@ -1834,5 +1983,6 @@ int main() {
   test_delivery_zero_realization_closure();
   test_none_mode_clip_does_not_close_by_default();
   std::cout << "All uptake limitation tests passed.\n";
+#endif
   return 0;
 }

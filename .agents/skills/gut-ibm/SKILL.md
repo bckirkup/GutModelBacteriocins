@@ -16,6 +16,11 @@ cmake .. -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON
 make -j$(nproc)
 ```
 
+Serial Release + HDF5 build instructions, the mandatory `g++-13`, and the
+serial `-DHDF5_ROOT=.../hdf5/serial` setting are maintained in
+`.agents/skills/testing-gutibm/SKILL.md`; use that guide rather than duplicating
+the environment-specific recipe here.
+
 Debug build with warnings (run before every commit):
 
 ```bash
@@ -63,53 +68,106 @@ ctest -L 'integration|slow|benchmark' -LE gpu   # integration job
 ctest -L gpu                                     # CUDA job only
 ```
 
-CTest targets (2- and 4-rank MPI tests included):
+CTest targets (including custom script and MPI targets; inventory from
+`tests/CMakeLists.txt`):
 
-| Test | File | Focus |
-|------|------|-------|
-| `spatial_hash` | `test_spatial_hash.cpp` | Insert, query, clear |
-| `greens_function` | `test_greens_function.cpp` | Radial symmetry, comet-tail, pI classes |
-| `agent` | `test_agent.cpp` | Agent pool, plasmid library |
-| `iron_fallback` | `test_iron_fallback.cpp` | Secondary iron receptors |
-| `octree` | `test_octree.cpp` | Barnes-Hut FMM vs exact GF |
-| `fmm` | `test_fmm.cpp` | Higher-order FMM accuracy |
-| `conjugation` | `test_conjugation.cpp` | Pili length heterogeneity |
-| `smoke` | `test_smoke.cpp` | End-to-end mini simulation |
-| `washout_trap` | `test_washout_trap.cpp` | Long-horizon VADI metabolic washout regression (#160) |
-| `config_diversity` | `test_config_diversity.cpp` | Distinct fingerprints across configs |
-| `z_gradient` | `test_z_gradient.cpp` | Z-dependent nutrient gradients |
-| `nutrient_diffusion` | `test_nutrient_diffusion.cpp` | Implicit residual/invariant checks, stability, boundaries, sensitivity |
-| `domain_decomp` | `test_domain_decomp.cpp` | Slab logic (single rank) |
-| `acetate_mete` | `test_acetate_mete.cpp` | Acetate inhibition of MetE |
-| `protease_decay` | `test_protease_decay.cpp` | Protease half-life decay on burst sources |
-| `oxygen_gradient` | `test_oxygen_gradient.cpp` | O₂ species registration and z-gradient |
-| `O2_growth_boost` | `test_O2_growth_boost.cpp` | Aerobic metabolism boost near epithelium |
-| `mucin_liberation` | `test_mucin_liberation.cpp` | Dynamic mucin → carbon liberation |
-| `advection_peristaltic` | `test_advection_peristaltic.cpp` | Peristaltic velocity modulation |
-| `immunity_escape` | `test_immunity_escape.cpp` | Affinity-neutralization matrix |
-| `mechanics` | `test_mechanics.cpp` | Hertzian contact, adhesion |
-| `ethanolamine` | `test_ethanolamine.cpp` | Nutrient-conditional eut penalty |
-| `openmp_parity` | `test_openmp_parity.cpp` | Determinism + cross-build deterministic/stochastic fingerprints |
-| `adaptive_dt` | `test_adaptive_dt.cpp` | Adaptive timestep selection |
-| `agent_transfer` | `test_agent_transfer.cpp` | MPI pack/unpack round-trip |
-| `fix_registry` | `test_fix_registry.cpp` | Default Fix plugin registration |
-| `input_parser` | `test_input_parser.cpp` | Example JSON config files |
-| `bacteriocin` | `test_bacteriocin.cpp` | SOS lysis / secretion unit tests |
-| `receptor` | `test_receptor.cpp` | TBDT binding / killing unit tests |
-| `mutation` | `test_mutation.cpp` | BI locus evolution unit tests |
-| `hdf5_roundtrip` | `test_hdf5_roundtrip.cpp` | Writer/reader schema parity |
-| `hdf5_checkpoint` | `test_hdf5_checkpoint.cpp` | Checkpoint restart |
-| `mpi_multi_rank` | `test_mpi_multi_rank.cpp` | 2-rank agent migration |
-| `mpi_four_rank` | `test_mpi_four_rank.cpp` | 4-rank slab, reaction sum, migration |
-| `cuda_aware_mpi_reaction` | `test_cuda_aware_mpi_reaction.cpp` | CUDA-aware device reaction reduce (#156) |
-| `scaling_benchmark` | `test_scaling_benchmark.cpp` | Agent-count timing smoke |
-| `greens_function_gpu` | `test_greens_function_gpu.cpp` | GPU vs CPU GF parity (CUDA build) |
-| `gpu_diffusion` | `test_gpu_diffusion.cpp` | GPU vs CPU nutrient diffusion parity (max diff < 1e-10) |
-| `gpu_chemical_field` | `test_gpu_chemical_field.cpp` | ChemicalFieldGpu facade vs CPU (diffusion + boundaries) |
-| `gpu_feature_combinations` | `test_gpu_feature_combinations.cpp` | Spec 8 combo scenarios with GPU enabled |
-| `gpu_production_path` | `test_gpu_production_path.cpp` | FMM hybrid + production-scale domain on GPU |
-| `gpu_smoke` | `test_gpu_smoke.cpp` | Short CPU vs GPU simulation fingerprint |
-| `mpi_gpu_multi_rank` | `test_mpi_gpu_multi_rank.cpp` | 2-rank MPI + GPU chemistry checksum parity |
+| Test | Labels | Focus |
+|------|--------|-------|
+| `metabolic_mode` | unit, metabolism | Metabolism mode selection |
+| `assertions_enabled` | unit | Test assertions remain enabled |
+| `progress_report` | unit | Progress output |
+| `dysbiosis_guardrail` | unit | Dysbiosis guard thresholds |
+| `spatial_hash` | unit | Insert, query, clear |
+| `greens_function` | unit | Radial symmetry and boundary kernels |
+| `agent` | unit | Agent pool and plasmid library |
+| `iron_fallback` | unit | Secondary iron receptors |
+| `octree` | unit | Barnes-Hut FMM versus exact Green's function |
+| `fmm` | unit | Higher-order FMM accuracy |
+| `qssa_stoichiometry` | unit | QSSA reaction stoichiometry |
+| `conjugation` | unit | Pili length heterogeneity and transfer |
+| `z_gradient` | unit | Z-dependent nutrient gradients |
+| `nutrient_diffusion` | unit | Implicit diffusion residuals and invariants |
+| `domain_decomp` | unit | Slab decomposition logic |
+| `acetate_mete` | unit | Acetate inhibition of MetE |
+| `protease_decay` | unit | Protease half-life decay |
+| `oxygen_gradient` | unit | Oxygen registration and z-gradient |
+| `O2_growth_boost` | unit | Aerobic metabolism boost |
+| `mucin_liberation` | unit | Mucin-to-carbon liberation |
+| `mechanism_wiring` | integration | Cross-mechanism mass balance and coupling |
+| `advection_peristaltic` | unit | Peristaltic velocity modulation |
+| `ethanolamine` | unit | Nutrient-conditional EUT penalty |
+| `adaptive_dt` | unit | Adaptive timestep selection |
+| `agent_transfer` | unit | Agent pack/unpack round-trip |
+| `gpu_receptor_layout` | unit | GPU receptor layout |
+| `fix_registry` | unit | Fix plugin registration |
+| `path_utils` | unit | Safe path handling |
+| `input_parser` | unit | Example and parser configurations |
+| `config_ingestion` | unit | Every parser key reaches `SimulationConfig` |
+| `kill_provenance` | unit | Kill provenance metadata |
+| `counter_resume` | unit | Counter persistence and resume |
+| `vbf_accounting` | unit | VBF source/sink accounting |
+| `data_defaults` | unit | Analysis data defaults |
+| `bacteriocin` | unit | SOS lysis and secretion |
+| `per_receptor_toxin` | unit | Per-receptor toxin behavior |
+| `toxin_lumping` | unit | Toxin lumping behavior |
+| `species_subset` | unit | Species-subset configuration |
+| `agent_toxin_sampling` | unit | Agent toxin sampling |
+| `siderophore_depletion` | unit | Siderophore depletion |
+| `receptor` | unit | TBDT binding and killing |
+| `mutation` | unit | BI-locus evolution |
+| `fur` | unit | Fur regulation |
+| `uptake_limit` | unit | Agent uptake limitation |
+| `uptake_limit_population_resolution` | integration, slow | Population-scale delivery resolution |
+| `maintenance_carbon` | unit, integration | Maintenance carbon funding |
+| `cdi` | unit | Contact-dependent inhibition |
+| `motility` | unit | Motility and taxis |
+| `quorum_sensing` | unit | AI-2 quorum sensing |
+| `immigration` | unit | Immigration schedules |
+| `scaling_benchmark` | benchmark, slow | Agent-count timing smoke |
+| `mechanics` | unit, slow | Hertzian contact and adhesion |
+| `immunity_escape` | unit, slow | Affinity-neutralization matrix |
+| `smoke` | integration | End-to-end mini simulation |
+| `toxin_sentinel` | integration, science | Toxin sentinel invariants |
+| `washout_trap` | integration, slow, science | Long-horizon metabolic washout |
+| `feature_combinations` | integration | Feature-combination scenarios |
+| `config_diversity` | integration | Distinct config fingerprints |
+| `openmp_parity` | openmp | Serial/OpenMP fingerprints |
+| `hdf5_roundtrip` | integration, hdf5 | HDF5 writer/reader parity |
+| `hdf5_checkpoint` | integration, hdf5 | HDF5 checkpoint writing |
+| `hdf5_restart` | integration, hdf5 | C++ checkpoint restart |
+| `hdf5_schedule` | integration, hdf5 | HDF5 schedule handling |
+| `hdf5_compression` | integration, hdf5 | HDF5 compression |
+| `hdf5_live_agents` | integration, hdf5 | Live-agent HDF5 output |
+| `summary_events` | integration, hdf5 | Summary event output |
+| `hdf5_graceful_shutdown` | integration, hdf5 | Graceful HDF5 shutdown |
+| `hdf5_roundtrip_parallel` | integration, mpi, hdf5 | Parallel HDF5 round-trip |
+| `hdf5_checkpoint_parallel` | integration, mpi, hdf5 | Parallel HDF5 checkpoint |
+| `mpi_multi_rank` | integration, mpi | Two-rank migration |
+| `mpi_four_rank` | integration, mpi | Four-rank slab and migration |
+| `mpi_gpu_multi_rank` | integration, mpi, gpu | MPI plus GPU chemistry |
+| `cuda_aware_mpi_reaction` | integration, mpi, gpu | CUDA-aware MPI reaction reduction |
+| `greens_function_gpu` | gpu | GPU/CPU Green's-function parity |
+| `gpu_diffusion` | gpu | GPU/CPU nutrient diffusion parity |
+| `gpu_chemical_field` | gpu | GPU chemical-field facade parity |
+| `gpu_feature_combinations` | gpu, integration | GPU feature combinations |
+| `gpu_production_path` | gpu, integration | Production GPU chemistry path |
+| `gpu_smoke` | gpu | CPU/GPU smoke fingerprint |
+| `gpu_reproducibility` | gpu, integration | GPU reproducibility |
+| `gpu_scaling_benchmark` | gpu, benchmark | GPU scaling smoke |
+| `qssa_gpu_parity` | gpu | GPU QSSA parity |
+| `gpu_toxin_burst_parity` | gpu, integration | GPU toxin burst parity |
+| `gpu_nutrient_feedback` | gpu, integration | GPU nutrient feedback |
+| `gpu_metabolism_fur` | gpu, integration | GPU metabolism/Fur |
+| `gpu_uptake_limit` | gpu, integration | GPU uptake limitation |
+| `spatial_hash_gpu_csr` | gpu | GPU spatial hash CSR |
+| `mechanics_gpu_parity` | gpu | GPU mechanics parity |
+| `gpu_kernel_units` | gpu | GPU kernel units |
+| `gpu_target_manifest` | unit | GPU target manifest |
+| `rebuild_and_run_script` | unit | Rebuild-and-run script |
+| `aws_capacity_script` | unit | AWS capacity script |
+| `checkpoint_retention` | unit | Checkpoint retention |
+| `aws_entrypoint_runtime_files` | unit | AWS entrypoint runtime files |
+| `process_group_signal` | unit | Process-group signal handling |
 
 ## Run Simulation
 
@@ -190,7 +248,9 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 
 1. Bacteriocins: add QSSA Green's-function logic in `src/diffusion/` and wire it through `QSSASolver`; use Method of Images and consider FMM for large source counts.
 2. Nutrients/small molecules: add stable implicit field logic in `src/fields/chemical_field.cpp`; do not use an explicit stencil at `bio_dt`.
-3. Preserve periodic x/y, epithelial Dirichlet z=0, and luminal zero-flux z boundaries.
+3. Preserve periodic x/y and luminal zero-flux z conditions. Epithelial z=0
+   defaults to Dirichlet, with runtime-selectable Robin/flux delivery per
+   configured species; keep each mode's accounting and solver form consistent.
 4. Sum rank-local reaction grids before global VBF coupling and diffusion.
 5. Add analytic residual/invariant checks plus enable/coefficient sensitivity, positivity, MPI-equality, and CPU/GPU parity coverage.
 
@@ -226,6 +286,20 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `use_fmm`, `fmm_theta`, `fmm_expansion_order` | Barnes-Hut FMM |
 | `peristaltic_enabled`, `peristaltic_period`, … | Peristaltic advection |
 | `oxygen.enabled`, `oxygen.epithelial_conc`, … | O₂ field and aerobic boost (Spec 1) |
+| `oxygen.delivery_uptake_enabled` | Oxygen delivery uptake; default `false`, requires delivery uptake mode |
+| `oxygen.ros_driver` | ROS driver; default `ambient`, supported values `ambient` and `funded` |
+| `oxygen.k_ROS` | Ambient ROS coefficient; default `1.0e2` |
+| `oxygen.k_ROS_respiratory` | Funded specific-flux ROS coefficient; default `0.0` |
+| `oxygen.k_ROS_funded` | Funded absolute-flux ROS coefficient in mol⁻¹; default `0.0` |
+| `carbon.epithelial_boundary` | Carbon z=0 boundary; default `dirichlet`, with `robin`/`flux` supported |
+| `carbon.epithelial_transfer_coeff` | Carbon Robin transfer coefficient; default `0.0`, positive when Robin is selected |
+| `carbon.epithelial_flux` | Carbon epithelial flux; default `0.0` |
+| `oxygen.epithelial_boundary` | Oxygen z=0 boundary; default `dirichlet`, with `robin`/`flux` supported |
+| `oxygen.epithelial_transfer_coeff` | Oxygen Robin transfer coefficient; default `0.0`, positive when Robin is selected |
+| `oxygen.epithelial_flux` | Oxygen epithelial flux; default `0.0` |
+| `metabolism.uptake_limit` | Agent uptake cap; default `none`, supported `none`, `voxel`, `sherwood`, `delivery` |
+| `metabolism.delivery_far_field_radius` | Physical delivery support; default `10 µm`; positive values are refused for slab chemistry, which requires explicit `0.0` |
+| `initial_population.placement` | Founder placement; default `legacy`, with `anatomic` and `z_slab` also supported |
 | `acetate.enabled`, `acetate.vbf_production`, … | Dynamic acetate (Spec 1) |
 | `mucin.enabled`, `mucin.initial_conc`, … | Mucin polymer field (Spec 1) |
 | `protease.enabled`, `protease.default_half_life`, … | Protease toxin decay (Spec 1) |
@@ -290,7 +364,10 @@ follow-up implementation.
 ### HDF5 output
 
 - Writer: `src/io/hdf5_writer.cpp` — parallel when MPI enabled
-- **No C++ checkpoint restart** — write-only; Python `GutIBMData` reads output
+- Reader: `src/io/hdf5_reader.cpp`; `Simulation::init_from_checkpoint` restores
+  C++ checkpoints selected through `checkpoint.*` or closed `restart.*`
+  configuration. The `hdf5_checkpoint` and `hdf5_restart` CTest targets cover
+  these paths.
 - Layout per step: `atoms/`, `grid/`, `metadata/`, `lineage/`
 - Disable in tests: `cfg.hdf5.enabled = false`
 
