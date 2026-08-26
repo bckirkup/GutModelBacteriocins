@@ -399,7 +399,33 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | `oxygen.q_maintenance` | 1e-18 | mol/s/cell | Basal (density-coupled) agent O₂ respiration, applied per living cell regardless of growth so the field tracks agent density |
 | `oxygen.vbf_sink` | 1e-3 | 1/s | VBF background O₂ uptake — **first-order** rate constant (`reac −= vbf_sink × [O₂]`), not a zero-order removal |
 | `oxygen.k_ROS` | 1e2 | — | Uncited ambient-path ROS induction coefficient. Its units are not established in the existing documentation; its product with ambient oxygen concentration set mortality in every run to date. |
-| `oxygen.k_ROS_respiratory` | 0.0 | — | Dimensionless funded ROS-induction yield per unit specific respiratory oxygen flux; required to be positive with `oxygen.ros_driver=funded` |
+| `oxygen.k_ROS_respiratory` | 0.0 | kg/mol | Funded ROS-induction coefficient for specific respiratory oxygen flux (`respired_oxygen_rate / biomass`); mutually exclusive with `oxygen.k_ROS_funded` and required to be positive if that normalization is selected |
+| `oxygen.k_ROS_funded` | 0.0 | mol⁻¹ | Funded ROS-induction coefficient for absolute respiratory oxygen flux (`respired_oxygen_rate`); mutually exclusive with `oxygen.k_ROS_respiratory` and required to be positive if that normalization is selected |
+
+With `oxygen.ros_driver = funded`, exactly one of
+`oxygen.k_ROS_respiratory` and `oxygen.k_ROS_funded` must be positive.
+`k_ROS_funded` is the calibration normalization:
+
+```
+h = k_ROS_funded × Q_O2_funded_rate
+P_lysis = 1 − exp(−k_ROS_funded × Q_O2_per_gen)
+```
+
+This is a phenomenological coefficient calibrated to **in-vitro** spontaneous
+colicin lysis (1–8% expressing fraction and approximately 0.9% spontaneous
+SOS-positive; Mulec et al., Šmid et al., Pennington & Rosenberg 2007), applied
+out of domain to gut mucus where no direct per-cell spontaneous lysis
+measurement exists. The campaign measurement
+`Q_O2_per_gen = 1.63e-14 mol` was obtained on merged main at two founders with
+10 µm delivery support and was grid-invariant to 0.4% across 2/4/6 µm.
+The corresponding `k_ROS_funded` sweep is `6.2e11`, `1.24e12`, and `3.1e12`
+mol⁻¹ for 1%, 2%, and 5% lysis per generation, respectively.
+
+`Q_O2_per_gen` is defined only in the uncrowded regime: it rises to
+`2.3e-14 mol` by 20 founders, and the delivery rationing factor halves at 80
+founders. Funded oxygen splits approximately 50/50 between growth and
+maintenance, so approximately half of `Q_O2_per_gen` is a per-generation
+constant while the other half scales with generation time.
 
 The default `oxygen.epithelial_conc = 55e-6 mol/m³` is approximately
 `0.042 mmHg` dissolved oxygen, not the approximately `42 mmHg` stated by the

@@ -877,6 +877,7 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("oxygen.k_ROS", cfg.chem_env.oxygen.k_ROS);
   real_key("oxygen.k_ROS_respiratory",
            cfg.chem_env.oxygen.k_ROS_respiratory);
+  real_key("oxygen.k_ROS_funded", cfg.chem_env.oxygen.k_ROS_funded);
   bool_key("acetate.enabled", cfg.chem_env.acetate.enabled);
   real_key("acetate.D_free", cfg.chem_env.acetate.D_free);
   real_key("acetate.vbf_production", cfg.chem_env.acetate.vbf_production);

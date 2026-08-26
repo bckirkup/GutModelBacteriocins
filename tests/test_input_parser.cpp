@@ -1169,15 +1169,41 @@ void test_funded_ros_requires_delivery_and_positive_yield() {
   }
   assert(invalid_driver_threw);
 
+  bool threw = false;
+  cfg = InputParser::default_config();
   assert(InputParser::apply_flat_key(cfg, "oxygen.ros_driver", "funded"));
   assert(InputParser::apply_flat_key(
       cfg, "oxygen.k_ROS_respiratory", "1.0"));
-  bool threw = false;
+  threw = false;
   try {
     InputParser::finalize_config(cfg);
   } catch (const ConfigError& error) {
-    threw = std::string(error.what()).find(
-        "oxygen.ros_driver=\"funded\"") != std::string::npos;
+    const std::string message = error.what();
+    threw = message.find("oxygen.delivery_uptake_enabled=true")
+        != std::string::npos
+        && message.find("metabolism.uptake_limit=\"delivery\"")
+        != std::string::npos;
+  }
+  assert(threw);
+
+  cfg = InputParser::default_config();
+  assert(InputParser::apply_flat_key(cfg, "oxygen.ros_driver", "funded"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.k_ROS_respiratory", "1.0"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.k_ROS_funded", "1.0"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.delivery_uptake_enabled", "true"));
+  assert(InputParser::apply_flat_key(
+      cfg, "metabolism.uptake_limit", "delivery"));
+  threw = false;
+  try {
+    InputParser::finalize_config(cfg);
+  } catch (const ConfigError& error) {
+    const std::string message = error.what();
+    threw = message.find("exactly one") != std::string::npos
+        && message.find("oxygen.k_ROS_funded") != std::string::npos
+        && message.find("ambiguous") != std::string::npos;
   }
   assert(threw);
 
@@ -1191,10 +1217,24 @@ void test_funded_ros_requires_delivery_and_positive_yield() {
   try {
     InputParser::finalize_config(cfg);
   } catch (const ConfigError& error) {
-    threw = std::string(error.what()).find(
-        "oxygen.k_ROS_respiratory") != std::string::npos;
+    const std::string message = error.what();
+    threw = message.find("exactly one") != std::string::npos
+        && message.find("oxygen.k_ROS_respiratory") != std::string::npos
+        && message.find("oxygen.k_ROS_funded") != std::string::npos
+        && message.find("neither") != std::string::npos;
   }
   assert(threw);
+
+  cfg = InputParser::default_config();
+  assert(InputParser::apply_flat_key(cfg, "oxygen.ros_driver", "funded"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.delivery_uptake_enabled", "true"));
+  assert(InputParser::apply_flat_key(
+      cfg, "metabolism.uptake_limit", "delivery"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.k_ROS_funded", "1.0"));
+  InputParser::finalize_config(cfg);
+  assert(cfg.chem_env.oxygen.k_ROS_funded == 1.0);
   std::cout << "  test_funded_ros_requires_delivery_and_positive_yield: PASSED\n";
 }
 

@@ -598,10 +598,18 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "metabolism.uptake_limit=\"delivery\"");
   }
   if (cfg.chem_env.oxygen.ros_driver_mode == RosDriver::Funded
-      && cfg.chem_env.oxygen.k_ROS_respiratory <= 0.0) {
+      && (cfg.chem_env.oxygen.k_ROS_respiratory > 0.0)
+          == (cfg.chem_env.oxygen.k_ROS_funded > 0.0)) {
+    if (cfg.chem_env.oxygen.k_ROS_respiratory > 0.0) {
+      throw ConfigError(
+          "oxygen.ros_driver=\"funded\" requires exactly one of "
+          "oxygen.k_ROS_respiratory or oxygen.k_ROS_funded to be positive; "
+          "both are set and the normalization is ambiguous");
+    }
     throw ConfigError(
-        "oxygen.ros_driver=\"funded\" requires "
-        "oxygen.k_ROS_respiratory > 0");
+        "oxygen.ros_driver=\"funded\" requires exactly one of "
+        "oxygen.k_ROS_respiratory or oxygen.k_ROS_funded to be positive; "
+        "neither key is positive");
   }
   if (cfg.chem_env.oxygen.delivery_uptake_enabled
       && metabolism.uptake_limit_mode != UptakeLimitMode::Delivery) {
@@ -1411,6 +1419,11 @@ bool apply_oxygen_key(SimulationConfig& cfg, std::string_view key, const std::st
   if (key == "oxygen.k_ROS_respiratory"
       || key == "oxygen_k_ROS_respiratory") {
     cfg.chem_env.oxygen.k_ROS_respiratory = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "oxygen.k_ROS_funded"
+      || key == "oxygen_k_ROS_funded") {
+    cfg.chem_env.oxygen.k_ROS_funded = parse_config_real(key, val);
     return true;
   }
   return false;

@@ -681,6 +681,10 @@ std::vector<Probe> build_probes() {
               [](const SimulationConfig& c) {
                 return c.chem_env.oxygen.k_ROS_respiratory;
               });
+  add_ns_real(v, "oxygen.k_ROS_funded", "oxygen_k_ROS_funded",
+              [](const SimulationConfig& c) {
+                return c.chem_env.oxygen.k_ROS_funded;
+              });
   add_ns_bool(v, "oxygen.metabolic_switch_enabled",
               "oxygen_metabolic_switch_enabled",
               [](const SimulationConfig& c) {

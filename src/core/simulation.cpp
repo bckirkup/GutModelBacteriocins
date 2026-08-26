@@ -2298,9 +2298,14 @@ Real Simulation::local_O2(const Agent& agent) const {
 Real Simulation::ros_induction_rate(const Agent& agent) const {
   if (!cfg_.chem_env.oxygen.enabled) return 0.0;
   if (cfg_.chem_env.oxygen.ros_driver_mode == RosDriver::Funded) {
-    if (agent.biomass <= 0.0 || agent.respired_oxygen_rate <= 0.0) {
+    if (agent.respired_oxygen_rate <= 0.0) {
       return 0.0;
     }
+    if (cfg_.chem_env.oxygen.k_ROS_funded > 0.0) {
+      return cfg_.chem_env.oxygen.k_ROS_funded
+          * agent.respired_oxygen_rate;
+    }
+    if (agent.biomass <= 0.0) return 0.0;
     return cfg_.chem_env.oxygen.k_ROS_respiratory
         * agent.respired_oxygen_rate
         / agent.biomass;

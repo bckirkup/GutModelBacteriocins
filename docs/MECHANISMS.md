@@ -411,12 +411,32 @@ ROS_rate = oxygen.k_ROS_respiratory
            * respired_oxygen_rate / biomass
 ```
 
-`respired_oxygen_rate` is the funded growth plus maintenance respiratory
-oxygen flux in mol/s, committed by delivery-limited metabolism and divided by
-the agent biomass amount. Funded ROS uses the value committed by the previous
-step: metabolism commits funded oxygen in `post_chemistry`, while
+This is the specific-flux normalization: `k_ROS_respiratory` has units of
+kg/mol, and `respired_oxygen_rate` is the funded growth plus maintenance
+respiratory oxygen flux in mol/s, committed by delivery-limited metabolism and
+divided by the agent biomass amount. Alternatively, when
+`oxygen.k_ROS_funded > 0`, funded mode uses the absolute-flux normalization:
+
+```
+ROS_rate = oxygen.k_ROS_funded * respired_oxygen_rate
+```
+
+Here `k_ROS_funded` has units of mol⁻¹ and the coefficient is calibrated
+directly against funded oxygen per generation, without biomass or
+`mu_realized` normalization. Funded ROS uses the value committed by the
+previous step: metabolism commits funded oxygen in `post_chemistry`, while
 `FixBacteriocin` runs during biology. This one-step lag is intentional and
-accepted.
+accepted. Exactly one of `oxygen.k_ROS_respiratory` and
+`oxygen.k_ROS_funded` must be positive in funded mode. The absolute form is
+the normalization used for the per-generation calibration described in
+`docs/PARAMETERS.md`.
+
+Respiratory ROS is only one SOS/colicin induction route. Bile salts, nutrient
+stress, and SOS-independent operon regulation are not represented explicitly,
+so a fitted coefficient stands in for several routes. The intended validation
+target is in-vivo colicin-mediated displacement kinetics at Spec 13 scale,
+not a scalar lysis fraction.
+
 The event ledger records the resulting death as `mortality_lysis`; this is
 separate from the `sos_inductions` and `phage_inductions` counters.
 The same death is also recorded in kill provenance with cause `LYSIS`.
