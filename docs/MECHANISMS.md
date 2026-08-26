@@ -400,10 +400,15 @@ p_sos = 1 - exp(-rate_total * dt)
   nuclease toxins using the minimum matching immunity factor.
 - After SOS induction: 5-minute delay (`sos_timer = 300 s`), then lysis with per-colicin `burst_size`.
 
-The ROS driver is selected by `oxygen.ros_driver`. The default `ambient`
-driver preserves the historical term
+The ROS driver is selected by `oxygen.ros_driver`. The `ambient` driver
+retains the historical term
 `oxygen.k_ROS * local_O2 * mu_realized`, where `local_O2` is the ambient
-voxel concentration and is not a funded uptake amount. With
+voxel concentration and is not a funded uptake amount. Its shipped
+coefficient default is `oxygen.k_ROS = 0.0`, so ambient ROS mortality is
+disabled unless a positive coefficient is explicitly configured. This default
+retires an uncited coefficient whose `k_ROS = 1e2` product with oxygen no cell
+paid for accounted for 99.5% of cumulative SOS hazard and every population
+loss in the oxygen series (#332). With
 `oxygen.ros_driver = funded`, the ROS term is
 
 ```

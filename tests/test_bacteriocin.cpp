@@ -454,6 +454,70 @@ static SimulationConfig funded_ros_config() {
   return cfg;
 }
 
+static SimulationConfig ambient_ros_config() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_strains.clear();
+  cfg.hdf5.enabled = false;
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.chem_env.oxygen.ros_driver = "ambient";
+  return cfg;
+}
+
+static Real ambient_ros_rate(Real k_ros) {
+  SimulationConfig cfg = ambient_ros_config();
+  cfg.chem_env.oxygen.k_ROS = k_ros;
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent agent = make_agent_at_center(sim, 1);
+  sim.agents().push_back(std::move(agent));
+  Agent& probe = sim.agents()[sim.agents().size() - 1];
+  probe.mu_realized = 1.0e-4;
+  assert(sim.local_O2(probe) > 0.0);
+  return sim.ros_induction_rate(probe);
+}
+
+void test_ros_ambient_default_is_disabled() {
+  SimulationConfig cfg = ambient_ros_config();
+  assert(cfg.chem_env.oxygen.k_ROS == 0.0);
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent agent = make_agent_at_center(sim, 1);
+  sim.agents().push_back(std::move(agent));
+  Agent& probe = sim.agents()[sim.agents().size() - 1];
+  probe.mu_realized = 1.0e-4;
+  assert(sim.local_O2(probe) > 0.0);
+  // CHANGE DETECTOR: the shipped default intentionally retires ambient ROS mortality.
+  assert(sim.ros_induction_rate(probe) == 0.0);
+
+  std::cout << "  test_ros_ambient_default_is_disabled: PASSED\n";
+}
+
+void test_ros_ambient_explicit_rate_sensitivity() {
+  const std::array<Real, 3> coefficients = {1.0e1, 1.0e2, 2.0e2};
+  std::array<Real, 3> rates = {};
+  size_t index = 0;
+  for (const Real coefficient : coefficients) {
+    rates[index++] = ambient_ros_rate(coefficient);
+  }
+
+  assert(rates[0] > 0.0);
+  assert(rates[1] > 0.0);
+  assert(rates[2] > 0.0);
+  assert(rates[1] > rates[0] * 9.9);
+  assert(rates[2] > rates[1] * 1.9);
+  assert(std::abs(rates[1] / rates[0] - 10.0) < 1.0e-12);
+  assert(std::abs(rates[2] / rates[1] - 2.0) < 1.0e-12);
+
+  std::cout << "  test_ros_ambient_explicit_rate_sensitivity: rates="
+            << rates[0] << "," << rates[1] << "," << rates[2] << "\n";
+}
+
 void test_ros_funded_absolute_rate_sensitivity() {
   SimulationConfig cfg = funded_ros_config();
   cfg.chem_env.oxygen.k_ROS_funded = 2.0;
@@ -559,6 +623,8 @@ int main() {
   test_cross_induction();
   test_per_colicin_burst_size();
   test_sos_lysis_post_step();
+  test_ros_ambient_default_is_disabled();
+  test_ros_ambient_explicit_rate_sensitivity();
   test_ros_funded_absolute_rate_sensitivity();
   test_ros_funded_specific_rate_preserved();
   test_ros_funded_generation_round_trip();
