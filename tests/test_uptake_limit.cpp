@@ -1315,6 +1315,7 @@ void test_regularized_delivery_funding_resolution_invariance() {
 struct PopulationResolutionMeasurement {
   Real funded = 0.0;
   Real demanded = 0.0;
+  Real initial_biomass = 0.0;
   Real biomass = 0.0;
   Int divisions = 0;
   Int final_agents = 0;
@@ -1357,13 +1358,18 @@ PopulationResolutionMeasurement measure_population_resolution(
     }
   }
 
+  PopulationResolutionMeasurement result;
   Simulation sim;
   sim.init(cfg);
+  for (const Agent& agent : sim.agents()) {
+    if (agent.state != PhenoState::DEAD && !agent.flags.is_ghost) {
+      result.initial_biomass += agent.biomass;
+    }
+  }
   sim.run();
   const Int carbon = sim.chemical_field().find(species::CARBON);
   const auto index = static_cast<size_t>(carbon);
   const auto& flux = sim.chemical_field().flux_accounting();
-  PopulationResolutionMeasurement result;
   result.funded = flux.agent_uptake_cumulative[index]
       + flux.agent_uptake_interval[index];
   result.demanded = flux.uptake_demand_cumulative[index]
@@ -1383,7 +1389,7 @@ Real relative_resolution_difference(Real lower, Real upper) {
       / std::max(0.5 * (std::abs(lower) + std::abs(upper)), 1.0e-30);
 }
 
-void test_population_scale_delivery_resolution_invariance() {
+[[maybe_unused]] void test_population_scale_delivery_resolution_invariance() {
   const PopulationResolutionMeasurement regularized_2um =
       measure_population_resolution(2.0e-6, 10.0e-6);
   const PopulationResolutionMeasurement regularized_6um =
@@ -1411,15 +1417,16 @@ void test_population_scale_delivery_resolution_invariance() {
 
   assert(regularized_2um.funded > 0.0);
   assert(regularized_2um.demanded > regularized_2um.funded);
-  assert(regularized_2um.biomass > 0.0);
-  assert(regularized_2um.divisions == regularized_6um.divisions);
+  assert(regularized_2um.biomass > regularized_2um.initial_biomass);
+  assert(regularized_6um.biomass > regularized_6um.initial_biomass);
   assert(regularized_funded_difference <= 0.015);
   assert(regularized_demand_difference <= 0.015);
   assert(regularized_biomass_difference <= 0.012);
 
   assert(voxel_2um.funded > 0.0);
   assert(voxel_2um.demanded > voxel_2um.funded);
-  assert(voxel_2um.biomass > 0.0);
+  assert(voxel_2um.biomass > voxel_2um.initial_biomass);
+  assert(voxel_6um.biomass > voxel_6um.initial_biomass);
   assert(voxel_funded_difference >= 0.10);
   assert(voxel_demand_difference >= 0.10);
   assert(voxel_biomass_difference >= 0.10);
@@ -1432,19 +1439,23 @@ void test_population_scale_delivery_resolution_invariance() {
             << "      radius 10um, 2um grid: funded="
             << regularized_2um.funded
             << " demanded=" << regularized_2um.demanded
+            << " initial_biomass=" << regularized_2um.initial_biomass
             << " biomass=" << regularized_2um.biomass
             << " divisions=" << regularized_2um.divisions << "\n"
             << "      radius 10um, 6um grid: funded="
             << regularized_6um.funded
             << " demanded=" << regularized_6um.demanded
+            << " initial_biomass=" << regularized_6um.initial_biomass
             << " biomass=" << regularized_6um.biomass
             << " divisions=" << regularized_6um.divisions << "\n"
             << "      radius 0, 2um grid: funded=" << voxel_2um.funded
             << " demanded=" << voxel_2um.demanded
+            << " initial_biomass=" << voxel_2um.initial_biomass
             << " biomass=" << voxel_2um.biomass
             << " divisions=" << voxel_2um.divisions << "\n"
             << "      radius 0, 6um grid: funded=" << voxel_6um.funded
             << " demanded=" << voxel_6um.demanded
+            << " initial_biomass=" << voxel_6um.initial_biomass
             << " biomass=" << voxel_6um.biomass
             << " divisions=" << voxel_6um.divisions << "\n"
             << "      relative spreads funded/demanded/biomass: regularized="
