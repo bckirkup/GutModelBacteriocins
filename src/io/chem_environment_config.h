@@ -52,7 +52,7 @@ struct OxygenConfig {
   // mol/m^3/s removal — that form removes O2 that isn't there, hard-zeroing the
   // interior in one bio step and masking per-agent respiration.
   Real vbf_sink = 1.0e-3;           // 1/s first-order background O2 uptake rate
-  Real k_ROS = 1.0e2;               // ROS-driven SOS rate coefficient
+  Real k_ROS = 0.0;                 // opt-in ambient ROS-driven SOS coefficient
   Real k_ROS_respiratory = 0.0;     // kg/mol funded specific-flux coefficient
   Real k_ROS_funded = 0.0;          // mol^-1 funded absolute-flux coefficient
 };

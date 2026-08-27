@@ -76,7 +76,7 @@ low-flow zone near the epithelium, so it's protected from washout.
 | `oxygen.boost_max` | 2.0 | — | Max growth boost from aerobic respiration |
 | `oxygen.q_consumption` | 1e-14 | mol/s/cell | Specific O₂ consumption per agent |
 | `oxygen.vbf_sink` | 1e-6 | mol/m³/s | VBF background O₂ consumption |
-| `oxygen.k_ROS` | 1e2 | 1/s per mol/m³ | ROS-driven SOS rate coefficient |
+| `oxygen.k_ROS` | 0.0 | — | Opt-in ambient ROS-driven SOS coefficient; ambient ROS mortality is disabled by default |
 
 ### Files to Modify
 - `src/fields/chemical_field.h/.cpp` — register "oxygen" species

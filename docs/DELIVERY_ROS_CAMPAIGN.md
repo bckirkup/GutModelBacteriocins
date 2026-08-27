@@ -17,7 +17,7 @@ preceded it.
 | PR | Defect | Mechanism |
 |---|---|---|
 | #331 | Delivery uptake was a bookkeeping quantity | The per-agent sink rate was rescaled to imitate the analytic ceiling. At 2 µm the implicit solve is saturated (`k·dt ≈ 1e5`), so realized removal was nearly independent of the rate: cutting it 4.5× moved removal 28%. Replaced by prescribing the analytic mass inside the solve, so funding equals realized removal identically. |
-| #332 | ROS-driven SOS was priced off ambient oxygen | Hazard was `k_ROS × [O₂]_ambient × mu_realized` — oxygen the cell never acquired. With a Robin epithelium the mucus sits at 40–50 µM, so the shipped `k_ROS = 1e2` gives ≈2.5% lysis per cell per 60 s step. Added a funded driver and a four-component SOS hazard ledger. |
+| #332 | ROS-driven SOS was priced off ambient oxygen | Hazard was `k_ROS × [O₂]_ambient × mu_realized` — oxygen the cell never acquired. With a Robin epithelium the mucus sits at 40–50 µM, so the then-shipped `k_ROS = 1e2` gave ≈2.5% lysis per cell per 60 s step. Added a funded driver and a four-component SOS hazard ledger. |
 | #334 | The Sherwood ceiling read a drained voxel | `4πDrC` is defined against the far field, but `C` came from the agent's own voxel, double-counting the `1/r` depletion the derivation already contains. Added a far-field averaging radius. Per-agent invariance improved 99% → 0.25%, and **population-scale behaviour did not move at all** — see §4. |
 | #335, #336 | The prescribed mass was removed from one voxel | The prescribed mass contains no `dx`, but it was deposited into a voxel holding `C·dx³`: ~3–6e-17 mol per cell-step against 2.8e-19 mol in a 2 µm voxel, so negativity was structurally guaranteed and the retry path halved the draw. Deposition was regularized over a 10 µm physical support (default since #336). |
 | #338 | Rationing gave up instead of enforcing positivity | Prescribed mass was removed unconditionally and, after two retries, a negative solve was accepted. Mass was conserved, so this was a positivity failure, not an accounting one — the field borrowed against undelivered oxygen. Replaced by local-first reduction with a global bisection guarantee, and a reported per-species rationing factor. |
@@ -123,12 +123,17 @@ funding number measured before the gradient double-count fix was overstated.
 
 ## 5. Open items
 
-- **Shipped defaults do not reflect these findings.** `oxygen.ros_driver`
-  defaults to `ambient` with the uncited `k_ROS = 1e2`, i.e. a fresh run using
-  defaults still reproduces the retired mortality; and
-  `metabolism.uptake_limit` defaults to `none`, so the whole funded-delivery
-  path — including the 10 µm support — is off unless a config opts in. Both are
-  scientific decisions rather than code defects, and both are unresolved.
+- **Shipped default decision.** `oxygen.k_ROS` now defaults to `0.0`, retiring
+  ambient ROS mortality in fresh runs. The old coefficient multiplied
+  `[O₂]_ambient` — oxygen no cell paid for — and with `k_ROS = 1e2` accounted
+  for 99.5% of cumulative SOS hazard and every population loss in the oxygen
+  series (#332). The ambient code path remains intact and is opt-in through an
+  explicit positive `oxygen.k_ROS`. `oxygen.ros_driver` remains `ambient` and
+  `metabolism.uptake_limit` remains `none`: the parser refuses
+  `uptake_limit=delivery` with `gpu_enabled=true` until CUDA delivery parity
+  exists, so changing those defaults would break GPU configurations. The
+  remaining open default decision is whether and how to enable the funded
+  uptake/ROS route after that parity work.
 - **`k_ROS_funded` has no chosen value.** The 1/2/5% per-generation targets are
   in-vitro priors (1–8% colicin-expressing fraction; ~0.9% spontaneous
   SOS-positive) applied out of domain: there is no direct measurement of
