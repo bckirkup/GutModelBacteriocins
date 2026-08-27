@@ -1175,6 +1175,7 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   std::vector<double> respired_oxygen_rate(static_cast<size_t>(n));
   std::vector<double> biomass(static_cast<size_t>(n));
   std::vector<int32_t> in_crypt(static_cast<size_t>(n));
+  std::vector<int32_t> microcin_penalty_applied(static_cast<size_t>(n));
   std::vector<int32_t> n_bi(static_cast<size_t>(n));
   std::vector<double> radius(static_cast<size_t>(n));
   std::vector<int64_t> lineage_id(static_cast<size_t>(n));
@@ -1195,6 +1196,8 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
     respired_oxygen_rate[idx] = a.respired_oxygen_rate;
     biomass[idx] = a.biomass;
     in_crypt[idx] = a.flags.in_crypt ? 1 : 0;
+    microcin_penalty_applied[idx] =
+        a.flags.microcin_penalty_applied ? 1 : 0;
     n_bi[idx] = static_cast<int32_t>(a.genome.bi_loci.size());
     radius[idx] = a.radius;
     lineage_id[idx] = static_cast<int64_t>(a.genome.lineage_id);
@@ -1220,6 +1223,9 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
                    local_n, cfg_);
   write_dataset_1d(fid, group + "/biomass", H5T_NATIVE_DOUBLE, biomass.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/in_crypt", H5T_NATIVE_INT32, in_crypt.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/microcin_penalty_applied",
+                   H5T_NATIVE_INT32, microcin_penalty_applied.data(),
+                   local_n, cfg_);
   write_dataset_1d(fid, group + "/n_bi_loci", H5T_NATIVE_INT32, n_bi.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/radius", H5T_NATIVE_DOUBLE, radius.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/lineage_id", H5T_NATIVE_INT64, lineage_id.data(), local_n, cfg_);
@@ -1467,6 +1473,7 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
   std::vector<int32_t> bi_immunity_id;
   std::vector<int32_t> bi_target;
   std::vector<int32_t> bi_bclass;
+  std::vector<int32_t> bi_release_mode;
   std::vector<double> bi_pI;
   std::vector<double> bi_diff;
   std::vector<double> bi_ret;
@@ -1497,6 +1504,8 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
       bi_immunity_id.push_back(static_cast<int32_t>(bi.immunity_id));
       bi_target.push_back(static_cast<int32_t>(to_underlying(bi.target)));
       bi_bclass.push_back(static_cast<int32_t>(to_underlying(bi.bclass)));
+      bi_release_mode.push_back(
+          static_cast<int32_t>(to_underlying(bi.release_mode)));
       bi_pI.push_back(bi.pI);
       bi_diff.push_back(bi.diff_coeff);
       bi_ret.push_back(bi.retardation);
@@ -1546,6 +1555,8 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
                    bi_target.data(), local_bi, cfg_);
   write_dataset_1d(fid, group + "/bi_bclass", H5T_NATIVE_INT32,
                    bi_bclass.data(), local_bi, cfg_);
+  write_dataset_1d(fid, group + "/bi_release_mode", H5T_NATIVE_INT32,
+                   bi_release_mode.data(), local_bi, cfg_);
   write_dataset_1d(fid, group + "/bi_pI", H5T_NATIVE_DOUBLE,
                    bi_pI.data(), local_bi, cfg_);
   write_dataset_1d(fid, group + "/bi_diff_coeff", H5T_NATIVE_DOUBLE,

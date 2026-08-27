@@ -17,6 +17,12 @@
 #include <string_view>
 #include <vector>
 
+#ifdef GUTIBM_HDF5
+extern "C" {
+#include <hdf5.h>
+}
+#endif
+
 #ifdef GUTIBM_MPI
 #include <mpi.h>
 #endif
@@ -163,14 +169,17 @@ void test_resume_preserves_mu_max_and_in_crypt() {
 
   constexpr Real kStressedMu = 5.0e-6;
   constexpr Real kTrueMuMax = 5.5e-4;
+  constexpr Real kMicrocinPenalty = 0.03;
   // Outside crypt zone: z-retag would NOT set in_crypt, and washout_rate at
   // zn≈0.6 exceeds kStressedMu — crushed mu_max would wipe the population.
   const Real outside_crypt_z = sim.domain().lo()[2] + 15e-6;
   for (Agent& a : sim.agents()) {
-    a.mu_max = kTrueMuMax;
+    a.genome.bi_loci.push_back(PlasmidLibrary::microcin_V());
+    a.mu_max = kTrueMuMax * (1.0 - kMicrocinPenalty);
     a.mu_realized = kStressedMu;
     a.x[2] = outside_crypt_z;
     a.flags.in_crypt = true;  // written to HDF5; must round-trip
+    a.flags.microcin_penalty_applied = true;
   }
 
   const fs::path ckpt_crypt = restart_dir / "step_000010.h5";
@@ -181,11 +190,18 @@ void test_resume_preserves_mu_max_and_in_crypt() {
   assert(!snap.agents.mu_max.empty());
   assert(!snap.agents.in_crypt.empty());
   assert(snap.agents.mu_max.size() == snap.agents.id.size());
+  assert(snap.genome.bi_release_mode.size() == snap.genome.bi_toxin_id.size());
   for (size_t i = 0; i < snap.agents.id.size(); ++i) {
-    assert(std::abs(snap.agents.mu_max[i] - kTrueMuMax) < 1e-12);
+    assert(std::abs(snap.agents.mu_max[i]
+                    - kTrueMuMax * (1.0 - kMicrocinPenalty)) < 1e-12);
     assert(std::abs(snap.agents.mu[i] - kStressedMu) < 1e-12);
     assert(snap.agents.in_crypt[i] != 0);
+    assert(snap.agents.microcin_penalty_applied[i] != 0);
   }
+  const auto continuous_count = std::count(
+      snap.genome.bi_release_mode.begin(), snap.genome.bi_release_mode.end(),
+      static_cast<int32_t>(ReleaseMode::CONTINUOUS));
+  assert(continuous_count == static_cast<int>(snap.agents.id.size()));
 
   const std::string resume_out =
       resolve_test_h5_path("GUTIBM_TEST_RESTART_STRESS_RESUME_H5",
@@ -204,9 +220,43 @@ void test_resume_preserves_mu_max_and_in_crypt() {
   resumed_crypt.init_from_checkpoint(resume_cfg, ckpt_crypt.string(), "");
   assert(resumed_crypt.global_agent_count() == snap.metadata.num_agents);
   for (const Agent& a : resumed_crypt.agents()) {
-    assert(std::abs(a.mu_max - kTrueMuMax) < 1e-12);
+    assert(std::abs(a.mu_max
+                    - kTrueMuMax * (1.0 - kMicrocinPenalty)) < 1e-12);
     assert(std::abs(a.mu_realized - kStressedMu) < 1e-12);
     assert(a.flags.in_crypt);
+    assert(a.flags.microcin_penalty_applied);
+  }
+  resumed_crypt.step(60.0);
+  for (const Agent& a : resumed_crypt.agents()) {
+    assert(std::abs(a.mu_max
+                    - kTrueMuMax * (1.0 - kMicrocinPenalty)) < 1e-12);
+  }
+
+  // Legacy checkpoint: without the guard dataset, a continuous BI locus
+  // implies that the already-penalized mu_max must not be charged again.
+  const fs::path legacy_ckpt = restart_dir / "step_000010_legacy.h5";
+  fs::copy_file(ckpt_crypt, legacy_ckpt,
+                fs::copy_options::overwrite_existing);
+  hid_t legacy_file = H5Fopen(legacy_ckpt.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+  assert(legacy_file >= 0);
+  assert(H5Ldelete(legacy_file, "agents/step_000010/microcin_penalty_applied",
+                   H5P_DEFAULT) >= 0);
+  assert(H5Fclose(legacy_file) >= 0);
+
+  HDF5CheckpointSnapshot legacy_snap =
+      HDF5Reader::load_snapshot(legacy_ckpt.string(), "");
+  assert(legacy_snap.agents.microcin_penalty_applied.empty());
+  Simulation legacy_resumed;
+  legacy_resumed.init_from_checkpoint(resume_cfg, legacy_ckpt.string(), "");
+  for (const Agent& a : legacy_resumed.agents()) {
+    assert(std::abs(a.mu_max
+                    - kTrueMuMax * (1.0 - kMicrocinPenalty)) < 1e-12);
+    assert(a.flags.microcin_penalty_applied);
+  }
+  legacy_resumed.step(60.0);
+  for (const Agent& a : legacy_resumed.agents()) {
+    assert(std::abs(a.mu_max
+                    - kTrueMuMax * (1.0 - kMicrocinPenalty)) < 1e-12);
   }
 
   // Second artifact: same stress, but NOT crypt-protected — proves mu_max

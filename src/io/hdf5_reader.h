@@ -47,6 +47,7 @@ struct HDF5CheckpointAgents {
   std::vector<double>  realized_fermentation_fraction;
   std::vector<double>  respired_oxygen_rate;
   std::vector<int32_t> in_crypt;
+  std::vector<int32_t> microcin_penalty_applied;
   std::vector<int64_t> lineage;
 };
 
@@ -75,6 +76,7 @@ struct HDF5CheckpointGenome {
   std::vector<int32_t> bi_immunity_id;
   std::vector<int32_t> bi_target;
   std::vector<int32_t> bi_bclass;
+  std::vector<int32_t> bi_release_mode;
   std::vector<double>  bi_pI;
   std::vector<double>  bi_diff_coeff;
   std::vector<double>  bi_retardation;

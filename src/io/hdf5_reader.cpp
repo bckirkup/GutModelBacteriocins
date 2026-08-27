@@ -153,6 +153,10 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
     out.in_crypt =
         read_dataset_1d<int32_t>(file, prefix + "in_crypt", H5T_NATIVE_INT32);
   }
+  if (link_exists(file, prefix + "microcin_penalty_applied")) {
+    out.microcin_penalty_applied = read_dataset_1d<int32_t>(
+        file, prefix + "microcin_penalty_applied", H5T_NATIVE_INT32);
+  }
 
   const std::string lineage_path = link_exists(file, prefix + "lineage_id")
       ? prefix + "lineage_id" : prefix + "lineage";
@@ -177,6 +181,11 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
   }
   if (!out.in_crypt.empty() && out.in_crypt.size() != out.id.size()) {
     throw HDF5Error("inconsistent in_crypt length in agents/" + step);
+  }
+  if (!out.microcin_penalty_applied.empty()
+      && out.microcin_penalty_applied.size() != out.id.size()) {
+    throw HDF5Error(
+        "inconsistent microcin penalty length in agents/" + step);
   }
   return out;
 }
@@ -235,6 +244,11 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       read_dataset_1d<int32_t>(file, prefix + "bi_target", H5T_NATIVE_INT32);
   out.bi_bclass =
       read_dataset_1d<int32_t>(file, prefix + "bi_bclass", H5T_NATIVE_INT32);
+  if (link_exists(file, prefix + "bi_release_mode")) {
+    out.bi_release_mode =
+        read_dataset_1d<int32_t>(file, prefix + "bi_release_mode",
+                                 H5T_NATIVE_INT32);
+  }
   out.bi_pI =
       read_dataset_1d<double>(file, prefix + "bi_pI", H5T_NATIVE_DOUBLE);
   out.bi_diff_coeff =
@@ -261,7 +275,8 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       out.bi_bclass.size() != n_bi || out.bi_pI.size() != n_bi ||
       out.bi_diff_coeff.size() != n_bi || out.bi_retardation.size() != n_bi ||
       out.bi_molecular_weight.size() != n_bi ||
-      out.bi_immunity_binding_affinity.size() != n_bi) {
+      out.bi_immunity_binding_affinity.size() != n_bi ||
+      (!out.bi_release_mode.empty() && out.bi_release_mode.size() != n_bi)) {
     throw HDF5Error("inconsistent BI locus dataset lengths in genome/" + step);
   }
 
