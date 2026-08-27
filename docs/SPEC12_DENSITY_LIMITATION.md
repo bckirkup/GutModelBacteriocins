@@ -3,8 +3,10 @@
 This document is the amended Spec 12 as supplied by the project lead, reproduced
 below without edits so that the literature-derived reasoning stays auditable.
 Everything above the horizontal rule is repository annotation: what is already
-implemented, what differs deliberately, and which two of the spec's numbers do
-not survive checking against the repository's own units.
+implemented, what differs deliberately, which of the spec's numbers and config
+keys do not survive checking against the repository's own units and parser, and
+which mechanisms the delivery/ROS campaign (#319–#339) added or bypassed after
+the spec was written.
 
 ## Implementation status
 
@@ -14,6 +16,93 @@ not survive checking against the repository's own units.
 | **Change 2** — O₂-dependent metabolic mode | Implemented before this document, in amended form: `oxygen.metabolic_switch_enabled`, `oxygen.mu_crit`, `oxygen.aerobic_mu_factor` / `anaerobic_mu_factor`, `oxygen.tau_metabolic_switch`, `oxygen.ferm_acid_yield`, and per-agent `realized_fermentation_fraction` (persisted and inherited at division). |
 | **Change 3** — fermentation-product growth inhibition | Implemented before this document, in amended form: `metabolism.acid_inhibition_enabled`, `acid_inhibition_max`, `acid_inhibition_Ki`, acting on *undissociated* acetate via Henderson–Hasselbalch at the existing environment pH. |
 | Nutrient blocking fraction diagnostic | Implemented as a derived per-interval quantity over the existing agent and VBF carbon accounting. |
+
+## Per-mechanism reconciliation (spec-says / code-does / gap)
+
+The spec text below was written before PRs #319–#339. This table is the
+authoritative statement of what the shipped code actually evaluates. Config keys
+are quoted exactly as the parser accepts them; unknown keys are warned on
+`stderr` and ignored, or abort the run under `GUTIBM_STRICT_CONFIG=1`.
+
+### Change 1 — density-coupled VBF carbon sink
+
+| Item | Spec says | Code does | Gap |
+|---|---|---|---|
+| Sink law | `vmax_local = vmax_base + coupling · n_agents / V_cell`, implicit positivity-preserving solve unchanged | Identical, in `vbf.cpp :: apply_carbon_sink` (host) and `chemistry_kernel.cu` (device), from the same shared closed-form helper | None |
+| Occupancy histogram | "counted via histogram over `grid_cell[]`", wired in `simulation.cpp` | Built in `chemistry_pipeline.cpp :: run_chemistry_pipeline` (host) or `count_agents_per_cell_kernel` (device); dead and ghost agents excluded | Location differs from the spec's file list; behaviour matches. `simulation.cpp` is not involved |
+| MPI correctness | Not addressed | Was rank-local in `replicated` chemical decomposition — every rank applies VBF over the whole global grid, so with `nprocs > 1` and nonzero coupling the ranks' carbon fields diverged from each other and from serial. Now globally summed before the sink is applied; the device path defers to the reduced host path in that configuration | **Real defect, found during this reconciliation and fixed in code.** Inert at the default `coupling = 0.0`, but it would have silently corrupted any multi-rank carbon-competition sweep |
+| Starting value / sweep | `1e-16 mol/s/agent`; sweep `{0, 1e-17, 1e-16, 1e-15}` | No default other than `0.0` | Spec magnitudes are ~2000× per-agent demand at this discretization; see "Sizing `agent_carbon_coupling`" below. Use `{0, 1e-21, 1e-20, 1e-19}` |
+
+### Change 2 — O₂-dependent metabolic mode
+
+| Item | Spec says | Code does | Gap |
+|---|---|---|---|
+| Enable flag | `oxygen.metabolic_switch_enabled`, legacy boost preserved when false | Same; the legacy `1 + boost_max · f_O2` path is the `else` branch and is still the default | None |
+| Respiratory capacity | `resp_capacity = f_O2 · mu_crit / max(µ, mu_crit)` | Same, in `metabolic_mode::respiratory_capacity` (shared host/device header) | None |
+| Growth multiplier | Interpolate `aerobic_mu_factor` → `anaerobic_mu_factor` on the fermentation fraction | Same, via `metabolic_mode::interpolate` | None |
+| Yield | `Y_eff = yield_carbon · ((1−ff)·aerobic_yield_factor + ff·anaerobic_yield_factor)`, `anaerobic_yield_factor = 0.25` | Substrate-cost convention: `oxygen.aerobic_carbon_cost_factor = 1.0`, `oxygen.anaerobic_carbon_cost_factor = 4.1` | Reciprocal formulation of the same Varma–Palsson ratio (`1/0.244 ≈ 4.1`). The spec's key names `oxygen.aerobic_yield_factor` / `oxygen.anaerobic_yield_factor` **do not exist** |
+| Fermentative acetate | `acetate_prod = ff · ferm_acetate_yield · carbon_consumed`, `ferm_acetate_yield = 0.67` mol acetate/mol glucose | `oxygen.ferm_acid_yield = 1.0` acetate per carbon-equivalent consumed, multiplied by the realized carbon cost | Different quantity, not a different value; the spec key `oxygen.ferm_acetate_yield` does not exist |
+| Inertia | Exponential relaxation over `tau_metabolic_switch = 3600 s` | Same, `metabolic_mode::relax` | None |
+| Per-agent state | `f_ferm_realized`, initialized `0.0` | `Agent::realized_fermentation_fraction`, persisted in checkpoints, inherited at division, mirrored to the GPU agent pool, and emitted per agent and as `mean_realized_fermentation_fraction` | Name only |
+| Driver of the fermentation fraction | Ambient concentration only | `oxygen.respiration_driver` selects `ambient` (spec behaviour, default) or `funded` (#339), where the fraction comes from `funded_growth_O₂ / demanded_growth_O₂` with a one-step lag | **Post-spec mechanism.** In `funded` mode `oxygen.Km` and `oxygen.mu_crit` do not enter the fermentation fraction at all, so the spec's two-axis phase plane — including the aerobic-overflow axis the `mu_crit` correction was made for — is inactive. `funded` requires `metabolism.uptake_limit=delivery` and is CPU-only |
+| Maintenance | Not addressed by Change 2 | `oxygen.anaerobic_maintenance_factor = 15.0` interpolates the carbon maintenance rate on the same fermentation fraction | **Code term with no spec counterpart and no citation in this document.** It is a large multiplier and should be sourced or swept before it is relied on |
+| Oxygen boundary for Spec 12 runs | `oxygen.epithelial_conc: 5.0e-6` annotated "mucus-surface O₂ (~4 mmHg)" | Parsed as `mol/m³` | **Unit error in the spec.** `5.0e-6 mol/m³` is ≈`0.004 mmHg`; ≈4 mmHg is ≈`5e-3 mol/m³`. The same 1000× error is in the spec's "55 µM (~42 mmHg)" line. See `docs/PARAMETERS.md` §Oxygen, which carries the corrected conversions and the sourced tissue-side value |
+
+### Change 3 — acid-product growth inhibition
+
+| Item | Spec says | Code does | Gap |
+|---|---|---|---|
+| Inhibition law | `mu *= 1 − acid_inhibition_max · [Ac]/(Ki + [Ac])` on **total** acetate, before maintenance subtraction | Same functional form and same position in the growth expression, but on the **undissociated** fraction via Henderson–Hasselbalch | Deliberate; see "Acid inhibition acts on undissociated acetate" below |
+| Half-inhibition constant | `Ki_acetate = 20 mol/m³` total | `acid_inhibition_Ki = 50 mol/m³` undissociated | Deliberate; the spec value contradicts the spec's own citation |
+| Config location | `OxygenConfig`, keys `oxygen.acid_inhibition_enabled` / `oxygen.Ki_acetate` / `oxygen.acid_inhibition_max` | `MetabolismConfig`, keys `metabolism.acid_inhibition_enabled`, `metabolism.acid_inhibition_Ki`, `metabolism.acid_inhibition_max` (bare names also accepted) | The spec's `oxygen.*` acid keys **do not exist** |
+| pH and pKa | Implicit "gut pH 6.0" | pH is read from the existing environment value `bacteriocin.mucin_charge.ph`; pKa from `metabolism.acetate_pKa` | Acid inhibition is coupled to the bacteriocin module's pH, not to a Spec-12-local pH |
+
+### Diagnostics (spec §Diagnostics, items 1–8)
+
+| # | Spec diagnostic | Status |
+|---|---|---|
+| 1 | Metabolic state histogram (respiratory / mixed / fermentative) | Partial — per-agent `realized_fermentation_fraction` and `mean_realized_fermentation_fraction` are written; no binned histogram |
+| 2 | Overflow acetate split aerobic vs anaerobic | Not implemented |
+| 3 | Mean effective yield | Not implemented |
+| 4 | Mean acid inhibition | Not implemented |
+| 5 | Carbon in top- vs bottom-quartile-density voxels | Not implemented (derivable offline from grid output) |
+| 6 | Thiele modulus per z-layer | Not implemented |
+| 7 | Metabolic inertia lag | Not implemented |
+| 8 | Nutrient blocking fraction | Implemented, but **per species and per output interval, domain-wide** (`agent uptake + maintenance` over `that + VBF sink`), not per voxel as the spec asks |
+
+### Validation config (spec §"Validation config")
+
+Five of its fourteen keys are not parser keys and are silently ignored (or abort
+under `GUTIBM_STRICT_CONFIG=1`): `oxygen.aerobic_yield_factor`,
+`oxygen.anaerobic_yield_factor`, `oxygen.ferm_acetate_yield`,
+`oxygen.acid_inhibition_enabled`, `oxygen.Ki_acetate`, plus
+`oxygen.acid_inhibition_max` (the bare `acid_inhibition_max` is accepted). Do
+not copy that block. The equivalent working configuration is:
+
+```yaml
+oxygen.enabled: true
+oxygen.epithelial_conc: 5.0e-6        # see the unit caveat above
+oxygen.Km: 3.0e-7
+oxygen.metabolic_switch_enabled: true
+oxygen.aerobic_mu_factor: 1.0
+oxygen.anaerobic_mu_factor: 0.55
+oxygen.aerobic_carbon_cost_factor: 1.0
+oxygen.anaerobic_carbon_cost_factor: 4.1
+oxygen.mu_crit: 9.7e-5
+oxygen.ferm_acid_yield: 1.0
+oxygen.tau_metabolic_switch: 3600.0
+metabolism.acid_inhibition_enabled: true
+metabolism.acid_inhibition_Ki: 50.0
+metabolism.acid_inhibition_max: 0.8
+vbf.agent_carbon_coupling: 1.0e-20     # not 1e-16; see sizing section below
+```
+
+Backward compatibility is as the spec claims: `agent_carbon_coupling = 0.0`,
+`metabolic_switch_enabled = false`, `acid_inhibition_enabled = false`, and
+`epithelial_conc = 55e-6` are the shipped defaults. The separate open question of
+whether the *oxygen mortality and uptake* defaults (`oxygen.ros_driver`,
+`oxygen.k_ROS`, `metabolism.uptake_limit`) should still be the pre-campaign
+values is tracked in `AGENTS.md` and `docs/DELIVERY_ROS_CAMPAIGN.md`, not here.
 
 ## Deliberate deviations from the text below
 

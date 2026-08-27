@@ -211,6 +211,33 @@ if(GUTIBM_USE_MPI)
     RESOURCE_LOCK mpi
   )
 
+  add_executable(test_vbf_density_mpi test_vbf_density_mpi.cpp)
+  gutibm_enable_test_assertions(test_vbf_density_mpi)
+  target_link_libraries(test_vbf_density_mpi PRIVATE gutibm)
+  add_test(
+    NAME vbf_density_replicated_mpi
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+            ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_vbf_density_mpi>
+            mpi ${CMAKE_CURRENT_BINARY_DIR}/vbf_density_mpi_result.txt
+            ${MPIEXEC_POSTFLAGS}
+  )
+  set_tests_properties(vbf_density_replicated_mpi PROPERTIES
+    LABELS "integration;mpi"
+    PASS_REGULAR_EXPRESSION "replicated MPI field consistency"
+    RESOURCE_LOCK mpi
+  )
+  add_test(
+    NAME vbf_density_replicated_serial
+    COMMAND $<TARGET_FILE:test_vbf_density_mpi>
+            serial ${CMAKE_CURRENT_BINARY_DIR}/vbf_density_mpi_result.txt
+  )
+  set_tests_properties(vbf_density_replicated_serial PROPERTIES
+    LABELS "integration;mpi"
+    PASS_REGULAR_EXPRESSION "serial agreement"
+    DEPENDS vbf_density_replicated_mpi
+    RESOURCE_LOCK mpi
+  )
+
   add_executable(test_mpi_four_rank test_mpi_four_rank.cpp)
   gutibm_enable_test_assertions(test_mpi_four_rank)
   target_link_libraries(test_mpi_four_rank PRIVATE gutibm)
