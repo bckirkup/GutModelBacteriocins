@@ -395,6 +395,11 @@ parameterization.
   timescale of displacement are independently measured.
 - **Diagnostic**: report producer/sensitive ratio over time, compare to
   experimental time series.
+- **Design**: [`SPEC13_LYSIS_SELECTION.md`](SPEC13_LYSIS_SELECTION.md) turns this
+  prediction into the selection procedure for the per-generation lysis prior,
+  and lists the prerequisites (no configurable resistant strain, hardcoded
+  colicin retardation and burst size, patch persistence, and the undecided
+  comparison observable) that a prior selected today would absorb.
 
 ### 6. Stool shedding rate
 - **Prediction**: CFU/g stool as an emergent output of mucosal population ×
