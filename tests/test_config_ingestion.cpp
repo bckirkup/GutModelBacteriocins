@@ -346,6 +346,8 @@ std::vector<Probe> build_probes() {
   v.push_back(R("carbon_z_lambda", [](const SimulationConfig& c) { return carbon_spec(c).z_gradient_lambda; }));
   add_ns_real(v, "carbon.boundary_conc", "carbon_boundary_conc",
               [](const SimulationConfig& c) { return c.carbon_boundary_conc; });
+  add_ns_real(v, "carbon.z_amplitude", "carbon_z_amplitude",
+              [](const SimulationConfig& c) { return c.carbon_z_amplitude; });
   v.push_back(R("b12.initial_conc",
                 [](const SimulationConfig& c) { return c.b12_initial_conc; }));
   v.push_back(R("b12_initial_conc",

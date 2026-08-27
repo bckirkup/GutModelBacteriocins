@@ -818,6 +818,19 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
     for (auto& c : cfg.chemicals) {
       if (c.name == species::CARBON) {
         c.boundary_conc = cfg.carbon_boundary_conc;
+        if (cfg.carbon_z_amplitude <= 0.0) {
+          c.initial_conc = cfg.carbon_boundary_conc;
+        }
+        return true;
+      }
+    }
+    return true;
+  }
+  if (key == "carbon.z_amplitude" || key == "carbon_z_amplitude") {
+    cfg.carbon_z_amplitude = parse_config_real(key, val);
+    for (auto& c : cfg.chemicals) {
+      if (c.name == species::CARBON) {
+        c.initial_conc = cfg.carbon_z_amplitude;
         return true;
       }
     }

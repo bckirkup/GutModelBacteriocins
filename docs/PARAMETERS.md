@@ -179,6 +179,8 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 | `ChemicalSpec.z_gradient_lambda` | 25e-6 | m | Characteristic decay length |
 | `carbon_z_gradient` | true | — | Config file key for carbon gradient |
 | `carbon_z_lambda` | 25e-6 | m | Config file key for carbon decay length |
+| `carbon.boundary_conc` / `carbon_boundary_conc` | 5e-3 | mol/m³ | Epithelial carbon concentration; also sets the z-gradient reference amplitude by default |
+| `carbon.z_amplitude` / `carbon_z_amplitude` | unset (follows `carbon.boundary_conc`) | mol/m³ | Optional explicit z-gradient reference amplitude override; leaves the epithelial boundary concentration unchanged |
 | `carbon.epithelial_boundary` / `carbon_epithelial_boundary` | `dirichlet` | — | Epithelial z=0 mode: fixed concentration, Robin delivery, or fixed flux |
 | `carbon.epithelial_transfer_coeff` / `carbon_epithelial_transfer_coeff` | 0 | m/s | Robin mass-transfer coefficient `k` |
 | `carbon.epithelial_flux` / `carbon_epithelial_flux` | 0 | mol/m²/s | Fixed epithelial delivery flux `J` |

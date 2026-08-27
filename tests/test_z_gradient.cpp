@@ -11,11 +11,44 @@
 #include "vbf.h"
 #include "input_parser.h"
 #include "simulation.h"
+#include "species_names.h"
+#include <algorithm>
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <string>
 
 using namespace gutibm;
+
+SimulationConfig carbon_gradient_config(Real boundary, Real amplitude = 0.0) {
+  SimulationConfig cfg = InputParser::default_config();
+  assert(InputParser::apply_flat_key(
+      cfg, "carbon.boundary_conc", std::to_string(boundary)));
+  if (amplitude > 0.0) {
+    assert(InputParser::apply_flat_key(
+        cfg, "carbon_z_amplitude", std::to_string(amplitude)));
+  }
+  return cfg;
+}
+
+const ChemicalSpec& carbon_spec(const SimulationConfig& cfg) {
+  const auto carbon = std::find_if(
+      cfg.chemicals.begin(), cfg.chemicals.end(),
+      [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
+  assert(carbon != cfg.chemicals.end());
+  return *carbon;
+}
+
+void init_carbon_field(const SimulationConfig& cfg, Domain& domain,
+                       ChemicalField& chem) {
+  DomainConfig dcfg;
+  dcfg.lo = {0, 0, 0};
+  dcfg.hi = {20e-6, 20e-6, 100e-6};
+  dcfg.grid_dx = 5e-6;
+  dcfg.hash_cell_size = 10e-6;
+  domain.init(dcfg);
+  chem.init(domain, cfg.chemicals);
+}
 
 void test_carbon_z_gradient_init() {
   // Set up a small domain and verify the exponential profile
@@ -69,6 +102,55 @@ void test_carbon_z_gradient_init() {
   }
 
   std::cout << "  test_carbon_z_gradient_init: PASSED\n";
+}
+
+void test_boundary_sets_carbon_gradient_amplitude() {
+  const SimulationConfig cfg = carbon_gradient_config(1.0e-3);
+  Domain domain;
+  ChemicalField chem;
+  init_carbon_field(cfg, domain, chem);
+  const Int carbon = chem.find(species::CARBON);
+  assert(carbon >= 0);
+
+  const Real c0 = chem.conc(carbon, domain.cell_index(0, 0, 0));
+  const Real c1 = chem.conc(carbon, domain.cell_index(0, 0, 1));
+  const Real c6 = chem.conc(carbon, domain.cell_index(0, 0, 6));
+  // Before the amplitude fallback, C(2 µm)≈1.00e-3 while
+  // C(26 µm)≈1.75e-3, an inversion with carbon rising away from its source.
+  assert(c0 >= c1);
+  assert(c1 >= c6);
+  assert(c0 > c6 * 1.5);
+  std::cout << "  test_boundary_sets_carbon_gradient_amplitude: PASSED\n";
+}
+
+void test_carbon_gradient_amplitude_override_sensitivity() {
+  const SimulationConfig low_cfg = carbon_gradient_config(1.0e-3, 2.0e-3);
+  const SimulationConfig high_cfg = carbon_gradient_config(1.0e-3, 4.0e-3);
+  Domain low_domain;
+  Domain high_domain;
+  ChemicalField low_chem;
+  ChemicalField high_chem;
+  init_carbon_field(low_cfg, low_domain, low_chem);
+  init_carbon_field(high_cfg, high_domain, high_chem);
+  low_chem.apply_boundaries(low_domain);
+  high_chem.apply_boundaries(high_domain);
+  const Int low_carbon = low_chem.find(species::CARBON);
+  const Int high_carbon = high_chem.find(species::CARBON);
+  const Real low_far = low_chem.conc(
+      low_carbon, low_domain.cell_index(0, 0, 6));
+  const Real high_far = high_chem.conc(
+      high_carbon, high_domain.cell_index(0, 0, 6));
+  const Real low_epithelial = low_chem.conc(
+      low_carbon, low_domain.cell_index(0, 0, 0));
+  const Real high_epithelial = high_chem.conc(
+      high_carbon, high_domain.cell_index(0, 0, 0));
+  assert(std::abs(high_far / low_far - 2.0) < 1.0e-12);
+  assert(std::abs(low_epithelial - high_epithelial) < 1.0e-15);
+  assert(std::abs(low_cfg.carbon_boundary_conc
+                  - high_cfg.carbon_boundary_conc) < 1.0e-15);
+  assert(std::abs(carbon_spec(low_cfg).boundary_conc
+                  - carbon_spec(high_cfg).boundary_conc) < 1.0e-15);
+  std::cout << "  test_carbon_gradient_amplitude_override_sensitivity: PASSED\n";
 }
 
 void test_uniform_when_gradient_disabled() {
@@ -293,6 +375,8 @@ void test_smoke_with_z_gradient() {
 int main() {
   std::cout << "=== Z-Gradient Tests ===\n";
   test_carbon_z_gradient_init();
+  test_boundary_sets_carbon_gradient_amplitude();
+  test_carbon_gradient_amplitude_override_sensitivity();
   test_uniform_when_gradient_disabled();
   test_vbf_mucin_rate_z_dependent();
   test_vbf_mucin_rate_uniform_when_disabled();
