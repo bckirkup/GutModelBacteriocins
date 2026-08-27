@@ -441,6 +441,67 @@ void test_json_document_parser() {
   std::cout << "  test_json_document_parser: PASSED\n";
 }
 
+void test_json_large_integer_round_trip() {
+  const std::string json = R"({
+    "seed": 20260828,
+    "immigration": {"step": 1234567},
+    "restart": {"interval_steps": 2345678},
+    "hdf5": {"schedule": {"summary": 3456789}}
+  })";
+  const std::string path =
+      std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/_large_integer_doc.json";
+  {
+    std::ofstream out(path);
+    out << json;
+  }
+
+  std::stringstream err;
+  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
+  SimulationConfig cfg = InputParser::parse(path);
+  std::cerr.rdbuf(old_err);
+  std::remove(path.c_str());
+
+  const std::string warnings = err.str();
+  if (!warnings.empty()) {
+    std::cerr << "large integer parse warnings:\n" << warnings;
+  }
+  assert(warnings.empty());
+  assert(cfg.seed == 20260828ULL);
+  assert(cfg.immigration.step == 1234567);
+  assert(cfg.restart.interval_steps == 2345678);
+  assert(cfg.hdf5.schedule.summary == 3456789);
+
+  std::stringstream roundtrip_err;
+  old_err = std::cerr.rdbuf(roundtrip_err.rdbuf());
+  SimulationConfig roundtrip = InputParser::default_config();
+  assert(ConfigJson::parse_document(
+      roundtrip, ConfigJson::serialize_document(cfg)));
+  std::cerr.rdbuf(old_err);
+  assert(roundtrip_err.str().empty());
+  assert(roundtrip.seed == 20260828ULL);
+  assert(roundtrip.immigration.step == 1234567);
+  assert(roundtrip.restart.interval_steps == 2345678);
+  assert(roundtrip.hdf5.schedule.summary == 3456789);
+
+  const std::string large_seed_json = R"({"seed": 12345678901})";
+  const std::string large_seed_path =
+      std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/_large_seed_doc.json";
+  {
+    std::ofstream out(large_seed_path);
+    out << large_seed_json;
+  }
+  err.str("");
+  err.clear();
+  old_err = std::cerr.rdbuf(err.rdbuf());
+  SimulationConfig large_seed = InputParser::parse(large_seed_path);
+  std::cerr.rdbuf(old_err);
+  std::remove(large_seed_path.c_str());
+  assert(err.str().empty());
+  assert(large_seed.seed == 12345678901ULL);
+
+  std::cout << "  test_json_large_integer_round_trip: PASSED\n";
+}
+
 void test_malformed_numeric_warnings_json() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.json";
 
@@ -1344,6 +1405,7 @@ int main() {
   test_operating_envelope_fixture();
   test_fix_tunables_fixture();
   test_json_document_parser();
+  test_json_large_integer_round_trip();
   test_malformed_numeric_warnings_json();
   test_malformed_numeric_warnings_legacy();
   test_unknown_key_warning_json();

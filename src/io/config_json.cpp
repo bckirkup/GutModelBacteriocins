@@ -535,6 +535,7 @@ void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor
   } else if (std::isdigit(static_cast<unsigned char>(c)) || c == '-' || c == '+') {
     const Real value = cursor.parse_number();
     std::ostringstream oss;
+    oss << std::setprecision(17);
     oss << value;
     handled = InputParser::apply_flat_key(cfg, key, oss.str());
   } else {
