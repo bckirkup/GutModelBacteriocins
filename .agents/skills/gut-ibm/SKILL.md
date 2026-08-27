@@ -288,7 +288,7 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `oxygen.enabled`, `oxygen.epithelial_conc`, … | O₂ field and aerobic boost (Spec 1) |
 | `oxygen.delivery_uptake_enabled` | Oxygen delivery uptake; default `false`, requires delivery uptake mode |
 | `oxygen.ros_driver` | ROS driver; default `ambient`, supported values `ambient` and `funded` |
-| `oxygen.k_ROS` | Ambient ROS coefficient; default `1.0e2` |
+| `oxygen.k_ROS` | Ambient ROS coefficient; default `0.0` (set positive to opt in) |
 | `oxygen.k_ROS_respiratory` | Funded specific-flux ROS coefficient; default `0.0` |
 | `oxygen.k_ROS_funded` | Funded absolute-flux ROS coefficient in mol⁻¹; default `0.0` |
 | `carbon.epithelial_boundary` | Carbon z=0 boundary; default `dirichlet`, with `robin`/`flux` supported |

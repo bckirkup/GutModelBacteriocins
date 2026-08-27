@@ -391,16 +391,25 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | `oxygen.epithelial_flux` / `oxygen_epithelial_flux` | 0 | mol/m²/s | Fixed epithelial delivery flux `J` for flux mode |
 | `oxygen.z_gradient` / `oxygen_z_gradient` | true | — | Imposed exponential z-profile toggle; must be false for Robin or flux |
 | `oxygen.respiration_driver` | `ambient` | — | Fermentation-mode driver: `ambient` preserves concentration-based switching; `funded` uses realized growth-O₂ delivery and requires oxygen delivery uptake with `metabolism.uptake_limit=delivery` |
-| `oxygen.ros_driver` | `ambient` | — | SOS ROS driver: `ambient` uses ambient voxel oxygen (the compatibility default); `funded` uses funded respiratory oxygen flux and requires oxygen delivery uptake with `metabolism.uptake_limit=delivery` |
+| `oxygen.ros_driver` | `ambient` | — | SOS ROS driver: `ambient` remains available as an explicit compatibility path but is inert by default because `oxygen.k_ROS` is `0.0`; `funded` uses funded respiratory oxygen flux and requires oxygen delivery uptake with `metabolism.uptake_limit=delivery` |
 | `oxygen.D_free` | 2.1e-9 | m²/s | O₂ diffusion coefficient |
 | `oxygen.Km` | 1e-6 | mol/m³ | Monod half-saturation for aerobic boost |
 | `oxygen.boost_max` | 2.0 | — | Max growth multiplier above fermentation baseline |
 | `oxygen.q_consumption` | 1e-14 | mol/cell | Growth-associated agent O₂ consumption (× μ_realized) |
 | `oxygen.q_maintenance` | 1e-18 | mol/s/cell | Basal (density-coupled) agent O₂ respiration, applied per living cell regardless of growth so the field tracks agent density |
 | `oxygen.vbf_sink` | 1e-3 | 1/s | VBF background O₂ uptake — **first-order** rate constant (`reac −= vbf_sink × [O₂]`), not a zero-order removal |
-| `oxygen.k_ROS` | 1e2 | — | Uncited ambient-path ROS induction coefficient. Its units are not established in the existing documentation; its product with ambient oxygen concentration set mortality in every run to date. |
+| `oxygen.k_ROS` | 0.0 | — | Opt-in ambient-path ROS induction coefficient. Its units are uncited; it multiplies ambient oxygen concentration and positive `mu_realized`. The shipped zero disables ambient ROS mortality by default. |
 | `oxygen.k_ROS_respiratory` | 0.0 | kg/mol | Funded ROS-induction coefficient for specific respiratory oxygen flux (`respired_oxygen_rate / biomass`); mutually exclusive with `oxygen.k_ROS_funded` and required to be positive if that normalization is selected |
 | `oxygen.k_ROS_funded` | 0.0 | mol⁻¹ | Funded ROS-induction coefficient for absolute respiratory oxygen flux (`respired_oxygen_rate`); mutually exclusive with `oxygen.k_ROS_respiratory` and required to be positive if that normalization is selected |
+
+The shipped default `oxygen.k_ROS = 0.0` retires ambient ROS mortality by
+default. The coefficient is an uncited term multiplying `[O₂]_ambient` —
+oxygen no cell paid for — and `k_ROS = 1e2` accounted for 99.5% of cumulative
+SOS hazard and every population loss in the oxygen series (#332). The ambient
+code path remains available by setting a positive `oxygen.k_ROS` explicitly.
+`oxygen.ros_driver` therefore remains `ambient`, and `metabolism.uptake_limit`
+remains `none`; changing those shipped defaults would break GPU configurations
+until CUDA delivery parity exists.
 
 With `oxygen.ros_driver = funded`, exactly one of
 `oxygen.k_ROS_respiratory` and `oxygen.k_ROS_funded` must be positive.
