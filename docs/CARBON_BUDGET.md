@@ -242,6 +242,12 @@ on for a whole campaign rather than switching it on for audits.
   `maintenance_shortfall_*` fields are unfunded carbon in mol, not agent
   counts; `maintenance_limited_agents_*` contains the corresponding
   clamped-agent count.
+- **Biology-time delivery pricing uses the stored field concentration.**
+  `FixMetabolism` reads `ChemicalField::conc_global`, which already contains
+  the full concentration outside the diffusion solve. The solver temporarily
+  subtracts and later restores a prescribed z-gradient while solving the
+  perturbation, so adding the reference profile again at biology time would
+  double-count it. The obsolete `total_conc_global` accessor was removed.
 - **Finite-rate epithelial delivery is implemented.** Set
   `carbon.epithelial_boundary` (or `carbon_epithelial_boundary`) to `robin` or
   `flux`. Robin uses `carbon.epithelial_transfer_coeff` in m/s and

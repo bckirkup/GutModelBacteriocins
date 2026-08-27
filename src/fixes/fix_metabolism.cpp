@@ -31,16 +31,14 @@ void FixMetabolism::init() {
 Real FixMetabolism::delivery_concentration(
     const Agent& agent, Int species_index) const {
   const auto& chem = sim_.chemical_field();
-  const auto& domain = sim_.domain();
   if (cfg_.delivery_far_field_radius <= 0.0) {
-    return chem.total_conc_global(species_index, agent.grid_cell, domain);
+    return chem.conc_global(species_index, agent.grid_cell);
   }
 
   const auto& support = delivery_support_cells(agent);
   Real concentration_sum = 0.0;
   for (const Int cell : support) {
-    concentration_sum += chem.total_conc_global(
-        species_index, cell, domain);
+    concentration_sum += chem.conc_global(species_index, cell);
   }
   return support.empty()
       ? 0.0

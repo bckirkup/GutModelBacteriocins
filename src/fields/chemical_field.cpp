@@ -1426,18 +1426,6 @@ void ChemicalField::zero_reactions() {
   }
 }
 
-Real ChemicalField::total_conc_global(
-    Int spec, Int cell, const Domain& domain) const {
-  const Real perturbation = conc_global(spec, cell);
-  const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
-  if (!chemical.z_gradient_enabled || chemical.z_gradient_lambda <= 0.0) {
-    return perturbation;
-  }
-  const Int cells_per_z = domain.nx() * domain.ny();
-  const Int iz = cells_per_z > 0 ? cell / cells_per_z : 0;
-  return perturbation + z_gradient_reference(chemical, domain, iz);
-}
-
 void ChemicalField::add_sink_rate_global(Int spec, Int cell, Real rate) {
   const Int storage_cell = global_to_storage_cell(cell);
   if (spec < 0 || spec >= nspec_ || storage_cell < 0 || rate <= 0.0) {

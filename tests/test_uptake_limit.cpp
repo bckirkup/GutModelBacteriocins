@@ -171,8 +171,7 @@ DeliveryStepMeasurement measure_delivery_step(
   const Int carbon = sim.chemical_field().find(species::CARBON);
   const Int cell = agent.grid_cell;
   const Real pre_step_concentration =
-      sim.chemical_field().total_conc_global(
-          carbon, cell, sim.domain());
+      sim.chemical_field().conc_global(carbon, cell);
   const Real effective_diffusivity =
       sim.chemical_field().spec(carbon).diff_coeff
       / sim.chemical_field().spec(carbon).retardation;
@@ -1766,6 +1765,220 @@ struct GradientDeliveryMeasurement {
   Real background_concentration = 0.0;
 };
 
+struct GradientRepresentationMeasurement {
+  Real demand = 0.0;
+  Real funded = 0.0;
+  Real pending_ceiling = 0.0;
+  Real concentration = 0.0;
+  Real analytic_ceiling = 0.0;
+  Real effective_diffusivity = 0.0;
+  Real radius = 0.0;
+};
+
+GradientRepresentationMeasurement run_gradient_representation(
+    bool gradient_enabled) {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.initial_strains.front().mu_max = 1.0e-2;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  cfg.time.total_time = kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = kDt;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  constexpr Real initial_concentration = 1.0e-3;
+  constexpr Real gradient_lambda = 25.0e-6;
+  constexpr Real agent_z = 12.5e-6;
+  const Real physical_concentration = initial_concentration
+      * std::exp(-agent_z / gradient_lambda);
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::CARBON) {
+      chemical.initial_conc = gradient_enabled
+          ? initial_concentration : physical_concentration;
+      chemical.boundary_conc = chemical.initial_conc;
+      chemical.z_gradient_enabled = gradient_enabled;
+      chemical.z_gradient_lambda = gradient_lambda;
+    } else if (chemical.name == species::IRON) {
+      chemical.initial_conc = initial_concentration;
+      chemical.boundary_conc = initial_concentration;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent& agent = sim.agents()[0];
+  agent.x = {7.5e-6, 7.5e-6, agent_z};
+  agent.radius = 5.0e-7;
+  agent.outer_radius = agent.radius * 1.05;
+  agent.km.km_carbon = 1.0e-9;
+  Int ix = 0;
+  Int iy = 0;
+  Int iz = 0;
+  sim.domain().pos_to_grid(agent.x, ix, iy, iz);
+  agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  const Int carbon = sim.chemical_field().find(species::CARBON);
+  const Real concentration =
+      sim.chemical_field().conc_global(carbon, agent.grid_cell);
+  const Real effective_diffusivity = uptake::effective_diffusivity(
+      sim.chemical_field().spec(carbon).diff_coeff,
+      sim.chemical_field().spec(carbon).retardation);
+  const Real analytic_ceiling = uptake::allowed_uptake_mol(
+      to_underlying(UptakeLimitMode::Sherwood), concentration,
+      effective_diffusivity, agent.radius, sim.domain().cell_volume(), kDt);
+  sim.step(kDt);
+
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const auto index = static_cast<size_t>(carbon);
+  GradientRepresentationMeasurement result;
+  result.demand = flux.uptake_demand_interval[index];
+  result.funded = flux.agent_uptake_interval[index];
+  result.pending_ceiling = sim.agents()[0].pending_carbon_ceiling;
+  result.concentration = concentration;
+  result.analytic_ceiling = analytic_ceiling;
+  result.effective_diffusivity = effective_diffusivity;
+  result.radius = agent.radius;
+  return result;
+}
+
+void test_delivery_gradient_representation_invariance() {
+  const GradientRepresentationMeasurement gradient =
+      run_gradient_representation(true);
+  const GradientRepresentationMeasurement flat =
+      run_gradient_representation(false);
+  const Real relative_tolerance = 1.0e-10;
+  std::cerr << std::setprecision(17)
+            << "    gradient detail funded/demand/pending/concentration="
+            << gradient.funded << "/" << gradient.demand << "/"
+            << gradient.pending_ceiling << "/" << gradient.concentration
+            << ", flat=" << flat.funded << "/" << flat.demand << "/"
+            << flat.pending_ceiling << "/" << flat.concentration << "\n";
+  assert(gradient.demand > gradient.funded);
+  assert(flat.demand > flat.funded);
+  assert(std::abs(gradient.concentration - flat.concentration)
+         <= relative_tolerance * flat.concentration);
+  assert(std::abs(gradient.funded - flat.funded)
+         <= relative_tolerance * flat.funded);
+  assert(std::abs(gradient.pending_ceiling - flat.pending_ceiling)
+         <= relative_tolerance * flat.pending_ceiling);
+
+  assert(std::abs(gradient.pending_ceiling - gradient.analytic_ceiling)
+         <= relative_tolerance * gradient.analytic_ceiling);
+  const Real double_concentration_ceiling = uptake::allowed_uptake_mol(
+      to_underlying(UptakeLimitMode::Sherwood),
+      2.0 * gradient.concentration,
+      gradient.effective_diffusivity, gradient.radius,
+      0.0, kDt);
+  // CHANGE DETECTOR: before this fix, the gradient representation priced
+  // delivery at approximately twice the flat representation's concentration.
+  assert(std::abs(gradient.pending_ceiling - double_concentration_ceiling)
+         > relative_tolerance * double_concentration_ceiling);
+  std::cout << "    gradient/flat funded=" << gradient.funded << "/"
+            << flat.funded << " ratio=" << gradient.funded / flat.funded
+            << ", pending ceiling=" << gradient.pending_ceiling << "\n";
+  std::cout << "  test_delivery_gradient_representation_invariance: PASSED\n";
+}
+
+struct PopulationGradientDeliveryMeasurement {
+  Real demand = 0.0;
+  Real funded = 0.0;
+  Real field_removal = 0.0;
+  Real minimum_concentration = 0.0;
+};
+
+PopulationGradientDeliveryMeasurement measure_population_gradient_delivery() {
+  SimulationConfig cfg = base_config();
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains.front().count = 128;
+  cfg.initial_strains.front().mu_max = 1.0e-2;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.domain.hi = {100.0e-6, 100.0e-6, 100.0e-6};
+  cfg.domain.grid_dx = 5.0e-6;
+  cfg.domain.hash_cell_size = 10.0e-6;
+  cfg.time.total_time = 3.0 * kDt;
+  cfg.time.bio_dt = kDt;
+  cfg.time.output_interval = cfg.time.total_time;
+  cfg.vbf.carbon_sink_vmax = 0.0;
+  cfg.vbf.mucin_liberation = 0.0;
+  cfg.advection.radial_turnover = 1.0e100;
+  cfg.advection.distal_transit_time = 1.0e100;
+  cfg.dysbiosis_threshold = 0.0;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::IRON) {
+      chemical.initial_conc = 1.0;
+      chemical.boundary_conc = 1.0;
+      chemical.z_gradient_enabled = false;
+    }
+  }
+
+  Simulation sim;
+  sim.init(cfg);
+  const Int agent_count = static_cast<Int>(sim.agents().size());
+  for (Int i = 0; i < agent_count; ++i) {
+    Agent& agent = sim.agents()[static_cast<size_t>(i)];
+    const Int ix = static_cast<Int>(i % 8) * 2 + 1;
+    const Int iy = static_cast<Int>((i / 8) % 8) * 2 + 1;
+    const Int iz = static_cast<Int>(i / 64) + 1;
+    agent.x = sim.domain().cell_center(ix, iy, iz);
+    agent.radius = 5.0e-7;
+    agent.outer_radius = agent.radius * 1.05;
+    agent.km.km_carbon = 1.0e-9;
+    agent.grid_cell = sim.domain().cell_index(ix, iy, iz);
+  }
+  const auto& chem = sim.chemical_field();
+  const Int carbon = chem.find(species::CARBON);
+  const auto index = static_cast<size_t>(carbon);
+  PopulationGradientDeliveryMeasurement result;
+  constexpr Int population_steps = 3;
+  for (Int step = 0; step < population_steps; ++step) {
+    sim.step(kDt);
+    for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+      result.field_removal += chem.sink_realized_global(carbon, cell);
+    }
+  }
+  const auto& flux = chem.flux_accounting();
+  result.demand = flux.uptake_demand_cumulative[index]
+      + flux.uptake_demand_interval[index];
+  result.funded = flux.agent_uptake_cumulative[index]
+      + flux.agent_uptake_interval[index];
+  result.minimum_concentration = std::numeric_limits<Real>::infinity();
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    result.minimum_concentration = std::min(
+        result.minimum_concentration, chem.conc_global(carbon, cell));
+  }
+  return result;
+}
+
+void test_population_delivery_gradient_budget() {
+  const PopulationGradientDeliveryMeasurement result =
+      measure_population_gradient_delivery();
+  std::cerr << std::setprecision(17)
+            << "    population detail funded/demand/removal/min="
+            << result.funded << "/" << result.demand << "/"
+            << result.field_removal << "/" << result.minimum_concentration
+            << "\n";
+  assert(result.demand > 0.0);
+  assert(result.funded > 0.0);
+  assert(result.funded < result.demand);
+  assert(result.minimum_concentration >= 0.0);
+  assert(result.funded <= result.demand
+         + 1.0e-12 * std::max(result.demand, 1.0e-30));
+  assert(std::abs(result.field_removal - result.funded)
+         <= 1.0e-10 * std::max(result.funded, 1.0e-30));
+  std::cout << "    population gradient funded/demand="
+            << result.funded << "/" << result.demand
+            << ", minimum concentration=" << result.minimum_concentration
+            << "\n";
+  std::cout << "  test_population_delivery_gradient_budget: PASSED\n";
+}
+
 GradientDeliveryMeasurement run_gradient_delivery(
     bool gradient_enabled, Real gradient_lambda, Real radius) {
   SimulationConfig cfg = base_config();
@@ -1951,6 +2164,7 @@ void test_none_mode_clip_does_not_close_by_default() {
 int main() {
 #ifdef GUTIBM_POPULATION_RESOLUTION_ONLY
   test_population_scale_delivery_resolution_invariance();
+  test_population_delivery_gradient_budget();
 #else
   std::cout << "=== Uptake Limitation Tests ===\n";
   test_delivery_resolution_and_timestep_invariance();
@@ -1985,6 +2199,8 @@ int main() {
   test_delivery_gradient_depletes_below_background();
   test_delivery_gradient_sensitivity();
   test_delivery_gradient_inertness_change_detectors();
+  test_delivery_gradient_representation_invariance();
+  test_population_delivery_gradient_budget();
   test_delivery_zero_realization_closure();
   test_none_mode_clip_does_not_close_by_default();
   std::cout << "All uptake limitation tests passed.\n";
