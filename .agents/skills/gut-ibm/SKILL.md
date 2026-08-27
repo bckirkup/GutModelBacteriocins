@@ -269,7 +269,7 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `domain_x`, `domain_y`, `domain_z`, `grid_dx` | Domain size / resolution |
 | `mucus_thickness`, `radial_turnover`, `distal_transit` | Advection |
 | `vbf_density`, `vbf_viscosity`, `vbf_mucin_z_gradient`, `vbf_mucin_z_lambda` | VBF |
-| `carbon_z_gradient`, `carbon_z_lambda` | Carbon z-gradient |
+| `carbon_z_gradient`, `carbon_z_lambda`, `carbon.z_amplitude`, `carbon_z_amplitude` | Carbon z-gradient; boundary concentration supplies the amplitude by default, with an explicit amplitude override |
 | `sos_lysis_prob` | Bacteriocin Fix |
 | `crypts_enabled`, `crypt_depth`, `crypt_exit_rate`, `crypt_entry_rate`, `crypt_carrying_capacity` | Crypt refugia |
 | `hdf5_file`, `hdf5.schedule.*`, `hdf5.compression` | HDF5 output (Spec 4 layered schema) |

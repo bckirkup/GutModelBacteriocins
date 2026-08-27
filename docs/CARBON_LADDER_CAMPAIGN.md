@@ -88,7 +88,7 @@ at 98 µm).
 
 | Rank | Variable | Key | Default | Effect on monod(26 µm) |
 |---|---|---|---|---|
-| 1 | carbon reference amplitude + epithelial boundary | `carbon.boundary_conc` (amplitude currently has **no** key — see gaps) | 5e-3 mol/m^3 | 0.084 -> 0.583 over x0.25 to x4 |
+| 1 | carbon reference amplitude + epithelial boundary | `carbon.boundary_conc` (or explicit `carbon.z_amplitude`) | 5e-3 mol/m^3 | 0.084 -> 0.583 over x0.25 to x4 |
 | 2 | gradient decay length | `carbon_z_lambda` | 25e-6 m | 0.114 -> 0.427 over 12.5 to 100 µm |
 | 3 | imposed vs emergent profile | `carbon_z_gradient` | true | removes stratification entirely when false |
 | 4 | mucin liberation | `vbf_mucin_liberation` | 5e-5 mol/m^3/s | 6.8% over x0 to x5; material only at >= ~100x |
@@ -97,13 +97,11 @@ at 98 µm).
 
 ## Gaps that block the ladder as designed
 
-1. **No parser key for the carbon reference amplitude.** `carbon.boundary_conc`
-   re-pins only the epithelial cell; the reference profile keeps
-   `initial_conc = 5e-3`. Setting the boundary alone therefore produces a
-   non-physical inversion — measured at `carbon.boundary_conc = 1e-3`:
-   C(2 µm) = 1.00e-3 *below* C(26 µm) = 1.75e-3, i.e. carbon rising away from
-   its source. The amplitude arms in the table above were only reachable by
-   setting the field struct directly, which no config can do.
+1. **Carbon reference amplitude (closed).** `carbon.boundary_conc` now sets both
+   the epithelial boundary and the z-gradient reference amplitude by default.
+   Capacity arms are reachable from configuration, and
+   `carbon.z_amplitude` / `carbon_z_amplitude` provides an explicit override
+   when a deliberately decoupled profile is needed.
 2. **`km_carbon` is not configurable.** It is assigned in
    `src/core/agent.cpp`; a ladder in `C/km` space can only move `C`.
 3. **Dynamic mucin liberation is dimensionally wrong and unusable.**

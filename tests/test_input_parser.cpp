@@ -7,6 +7,7 @@
 #include "simulation.h"
 #include "error.h"
 #include "species_names.h"
+#include <array>
 #include <cassert>
 #include <algorithm>
 #include <iostream>
@@ -532,6 +533,45 @@ void test_chem_env_fixture() {
   assert(has_ferrichrome);
 
   std::cout << "  test_chem_env_fixture: PASSED\n";
+}
+
+void test_carbon_z_amplitude_parser_keys() {
+  const std::array<std::string, 2> amplitude_keys = {
+      "carbon.z_amplitude", "carbon_z_amplitude"};
+  const std::array<bool, 2> boundary_first = {true, false};
+  for (const std::string& amplitude_key : amplitude_keys) {
+    for (const bool apply_boundary_first : boundary_first) {
+      SimulationConfig cfg = InputParser::default_config();
+      if (apply_boundary_first) {
+        assert(InputParser::apply_flat_key(
+            cfg, "carbon.boundary_conc", "1e-3"));
+        assert(InputParser::apply_flat_key(cfg, amplitude_key, "4e-3"));
+      } else {
+        assert(InputParser::apply_flat_key(cfg, amplitude_key, "4e-3"));
+        assert(InputParser::apply_flat_key(
+            cfg, "carbon.boundary_conc", "1e-3"));
+      }
+
+      const auto carbon = std::find_if(
+          cfg.chemicals.begin(), cfg.chemicals.end(),
+          [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
+      assert(carbon != cfg.chemicals.end());
+      assert(std::abs(cfg.carbon_z_amplitude - 4e-3) < 1e-15);
+      assert(std::abs(carbon->initial_conc - 4e-3) < 1e-15);
+      assert(std::abs(carbon->boundary_conc - 1e-3) < 1e-15);
+    }
+  }
+
+  SimulationConfig boundary_only = InputParser::default_config();
+  assert(InputParser::apply_flat_key(
+      boundary_only, "carbon_boundary_conc", "1e-3"));
+  const auto carbon = std::find_if(
+      boundary_only.chemicals.begin(), boundary_only.chemicals.end(),
+      [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
+  assert(carbon != boundary_only.chemicals.end());
+  assert(std::abs(carbon->initial_conc - 1e-3) < 1e-15);
+  assert(std::abs(carbon->boundary_conc - 1e-3) < 1e-15);
+  std::cout << "  test_carbon_z_amplitude_parser_keys: PASSED\n";
 }
 
 void test_epithelial_boundary_fixture() {
@@ -1299,6 +1339,7 @@ int main() {
   test_strain_spawn_integration();
   test_fixes_fixture();
   test_chem_env_fixture();
+  test_carbon_z_amplitude_parser_keys();
   test_epithelial_boundary_fixture();
   test_operating_envelope_fixture();
   test_fix_tunables_fixture();

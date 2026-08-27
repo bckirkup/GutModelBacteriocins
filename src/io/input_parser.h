@@ -105,6 +105,7 @@ struct SimulationConfig {
   AdvectionConfig advection;
   VBFConfig vbf;
   Real carbon_boundary_conc = 5.0e-3;
+  Real carbon_z_amplitude = 0.0;
   Real b12_initial_conc = 1.0e-3;
   std::string carbon_epithelial_boundary = "dirichlet";
   Real carbon_epithelial_transfer_coeff = 0.0;

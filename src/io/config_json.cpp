@@ -841,6 +841,9 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("vbf_carbon_sink_km", cfg.vbf.carbon_sink_km);
   real_key("vbf.agent_carbon_coupling", cfg.vbf.agent_carbon_coupling);
   real_key("carbon_boundary_conc", cfg.carbon_boundary_conc);
+  if (cfg.carbon_z_amplitude > 0.0) {
+    real_key("carbon_z_amplitude", cfg.carbon_z_amplitude);
+  }
   bool_key("oxygen.enabled", cfg.chem_env.oxygen.enabled);
   real_key("oxygen.epithelial_conc", cfg.chem_env.oxygen.epithelial_conc);
   string_key("oxygen.epithelial_boundary", cfg.oxygen_epithelial_boundary);
