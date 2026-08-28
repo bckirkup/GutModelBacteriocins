@@ -110,6 +110,30 @@ Int parse_config_int(std::string_view key, const std::string& val) {
   }
 }
 
+uint64_t parse_config_uint64(std::string_view key, const std::string& val) {
+  const std::string trimmed = trim_config(val);
+  if (trimmed.empty() || trimmed.front() == '-') {
+    warn_parse_failure("unsigned integer", key, val);
+    return 0;
+  }
+
+  try {
+    size_t consumed = 0;
+    const uint64_t result = std::stoull(trimmed, &consumed);
+    if (consumed != trimmed.size()) {
+      warn_parse_failure("unsigned integer", key, val);
+      return 0;
+    }
+    return result;
+  } catch (const std::invalid_argument&) {
+    warn_parse_failure("unsigned integer", key, val);
+    return 0;
+  } catch (const std::out_of_range&) {
+    warn_parse_failure("unsigned integer", key, val);
+    return 0;
+  }
+}
+
 Int parse_positive_config_int(std::string_view key, const std::string& val) {
   const Int result = parse_config_int(key, val);
   if (result < 1) {
@@ -672,7 +696,7 @@ bool apply_time_key(SimulationConfig& cfg, std::string_view key, const std::stri
   if (key == "total_time")           { cfg.time.total_time = parse_config_real(key, val); return true; }
   if (key == "bio_dt")               { cfg.time.bio_dt = parse_config_real(key, val); return true; }
   if (key == "output_interval")      { cfg.time.output_interval = parse_config_real(key, val); return true; }
-  if (key == "seed")                 { cfg.seed = static_cast<uint64_t>(parse_config_int(key, val)); return true; }
+  if (key == "seed")                 { cfg.seed = parse_config_uint64(key, val); return true; }
   return false;
 }
 

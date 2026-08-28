@@ -191,6 +191,25 @@ void test_seed_and_fix_subset_change_outcomes() {
   std::cout << "  test_seed_and_fix_subset_change_outcomes: PASSED\n";
 }
 
+SimulationConfig json_seed_config(uint64_t seed) {
+  SimulationConfig cfg = growth_baseline(42);
+  const std::string json = "{\"seed\":" + std::to_string(seed) + "}";
+  assert(ConfigJson::parse_document(cfg, json));
+  return cfg;
+}
+
+void test_large_json_seed_changes_fingerprint() {
+  constexpr uint64_t kSeedA = 12345678901ULL;
+  constexpr uint64_t kSeedB = 12345678902ULL;
+  const uint64_t fp_a = run_fingerprint(json_seed_config(kSeedA));
+  const uint64_t fp_b = run_fingerprint(json_seed_config(kSeedB));
+  const uint64_t fp_a_repeat = run_fingerprint(json_seed_config(kSeedA));
+
+  assert(fp_a != fp_b);
+  assert(fp_a == fp_a_repeat);
+  std::cout << "  test_large_json_seed_changes_fingerprint: PASSED\n";
+}
+
 void test_ros_driver_config_diversity() {
   SimulationConfig ambient = growth_baseline(7011);
   SimulationConfig funded = ambient;
@@ -404,6 +423,7 @@ int main() {
   test_fixture_configs_produce_distinct_fingerprints();
   test_example_configs_differ();
   test_seed_and_fix_subset_change_outcomes();
+  test_large_json_seed_changes_fingerprint();
   test_ros_driver_config_diversity();
   test_parsed_fix_list_is_honored();
   test_fix_tunables_reach_simulation();
