@@ -342,6 +342,71 @@ precision — and the reappearance counts show that strains persist below the 1%
 detection limit, so a model that lets a strain go extinct at zero is not
 measuring the same process.
 
+**Where a reappearing strain comes from, and why it is a confound.** Per the
+experimentalist: a mouse could carry a small percentage of a second or third
+strain, but the refugium for reinoculation was *the other mice in the cage*,
+not another site within the same mouse. That makes the coprophagic exchange
+kernel the mechanism that generates the observable rather than a nuisance term
+to be kept small, and it creates a degeneracy: transfer rate and lysis prior
+both move the transition count, in the same direction, and cannot be separated
+by that statistic alone. The exit is to pin them on different observables —
+reappearance counts (R 9×, S 9×, C 14×) and C's elimination from 10 of 12 cages
+by week 7 constrain transfer and producer mortality; the transition count is
+then left to the prior. Fix and report the transfer rate *before* the prior
+sweep starts, not alongside it — §4e sharpens which statistic to fix it
+against: the frequency and duration of mixed samples, computed over every
+mouse × half-week cell, rather than the 32 aggregated reappearance events.
+
+**(e) Dominance is bistable with hysteresis, and the observable is a time
+domain, not a count.** Three facts that look independent are one system. Hosts
+are near-monotypic; minority strains are nonetheless *regularly observed* near
+the 1% limit; transitions are sharp. That combination is what a bistable
+competition with a barrier produces: the arrival needed to displace an incumbent
+is far above the arrival needed to colonize a naive host, so routine arrivals
+sit **subcritical** in the incumbent's basin — detectable, and unable to convert
+the host. The incumbent has a residency advantage; the flip, when it comes, is
+fast.
+
+Three things follow, and each one changes a statistic below.
+
+*Exclusion is complete; mixtures are transient.* The minority is observed
+recurrently, not maintained. Do not build — or select for — a stable low-level
+coexistence: an arm that settles at a persistent ~1% second strain is wrong even
+if its mixed-sample frequency matches. Mixtures are arrival events with a finite
+lifetime above detection.
+
+*The mixed-sample frequency pins the arrival rate.* Because mixtures are events,
+
+```text
+P(sample is mixed)  ~=  arrival rate  x  time an arrival stays above 1%
+```
+
+and sharpness bounds the second factor from above. Computed over every
+mouse × half-week cell, this is a stronger handle on inter-host transfer than the
+32 aggregated reappearance events, and it is the constraint to fix transfer
+against before the prior sweep.
+
+*A count is only the first moment.* The shape of the hysteresis is the
+dwell-time distribution per dominance state — long-tailed, multi-week between
+flips, with short mixed intervals during them — together with the directional
+asymmetry, since C→S and S→C are different barrier heights rather than one rate.
+Memoryless flipping at the correct mean rate reproduces 123 transitions with no
+residency advantage and no hysteresis at all, and the count alone cannot see the
+difference. The prior is therefore being selected against a *barrier height*,
+not a rate — which is where a short-range mechanism like colicin should have its
+leverage.
+
+**(f) The mechanism must not depend on the mouse.** Colicins are functional in
+men and across many enterics in many hosts, none of them cage-confined
+coprophagic mice. If colicin efficacy in the model depends on the transmission
+route, the model explains a husbandry artifact rather than the biology. Efficacy
+has to arise at patch scale, in local competition, and the transmission kernel
+has to be a swappable rate — coprophagy here, faecal-oral elsewhere — that moves
+transition counts without deciding *whether* colicin matters. This is testable
+and should be tested: vary transfer over orders of magnitude and the
+colicin-versus-null contrast must survive. If it does not, what the campaign
+selected is a property of mouse husbandry.
+
 ## 5. The selection procedure
 
 Deliberately structured so that the answer can be "none of them", and so that a
@@ -376,12 +441,18 @@ is sampled on the paper's cadence — half-weekly for 12 weeks — through the
 stool observation model: one pellet, subdivided, plated, with any strain below
 1% of that pellet's recovered population recorded as *not detected*. Each
 sample yields a dominant-strain call, so a run produces the same object the
-paper publishes: a mouse × half-week grid of dominance states. Four numbers per
+paper publishes: a mouse × half-week grid of dominance states. Six numbers per
 replicate, all computed on that grid and never on the underlying uncensored
 counts:
 
-1. **Transition count** — dominance changes summed over animals. This is the
-   primary target: 123 for E1, 43 for E2.
+1. **Dwell-time distribution, and the transition count as its first moment.**
+   The count is the published number — 123 for E1, 43 for E2 — and it is the
+   calibration target, but per §4e it does not discriminate hysteresis from
+   memoryless flipping at the same mean rate. Report the distribution of
+   consecutive half-weeks spent in one dominance state, per state and per
+   direction, and require it to be over-dispersed relative to the geometric
+   distribution with the same mean. An arm matching the count with geometric
+   dwell times has no residency advantage and is rejected.
 2. **Time to C elimination** — fraction of cages with no C by week 7 (in vivo:
    10 of 12), and whether any cage fixes on C (in vivo: none).
 3. **Directional asymmetry** — the transition matrix, tested with the same
@@ -389,9 +460,21 @@ counts:
 4. **Mixed-pellet frequency** — the paper's pellets were rarely mixed. A model
    that produces routinely mixed pellets has the wrong within-host competition,
    whatever its transition count.
+5. **Transition sharpness** — the dwell time in a mixed or ambiguous dominance
+   state, in half-week samples. In vivo the switches are sharp: a mouse flips
+   from one dominant strain to another rather than drifting through a mixed
+   interval. This is (4) read along the time axis, and it is a separate
+   falsifier: an arm can hit the transition count with slow ratio drift that
+   happens to cross the 50% line the right number of times, and that arm is
+   wrong.
+6. **Sub-detection minority frequency** — the fraction of mouse × half-week
+   cells with a detectable second strain, and the *duration* of those episodes.
+   Per §4e this is the transfer handle and a bistability check at once: episodes
+   must be recurrent and finite. Persistent low-level coexistence fails here
+   even when (1) and (4) pass.
 
 **Selection rule.** A prior is *admissible* if its replicate band contains the
-in-vivo value of (1) and does not contradict (2)–(4). Report the admissible
+in-vivo value of (1) and does not contradict (2)–(6). Report the admissible
 **set**, not a point estimate; with five priors and this much stochasticity the
 honest answer is likely an interval.
 
@@ -415,11 +498,14 @@ antagonism and every selection made with it is void. This is the population-scal
 asserted contrast the delivery campaign learned to demand: per-agent kill tests
 passing does not establish that the population-scale observable responds.
 
-**Forbidden.** Do not tune `retardation`, `burst_size`, resistance cost, or
-inoculum against the same time series simultaneously with the prior. Four
-parameters against one displacement curve is degenerate, and the model has
-already shown that a free coefficient times an unaudited quantity looks like
-biology.
+**Forbidden.** Do not tune `retardation`, `burst_size`, resistance cost,
+inter-host transfer rate, or inoculum against the same statistic
+simultaneously with the prior. Five parameters against one aggregate count is
+degenerate, and the model has already shown that a free coefficient times an
+unaudited quantity looks like biology. The way out is §4e: distinct statistics
+for distinct parameters — mixed-sample frequency and episode duration for
+transfer, C's elimination for producer mortality, dwell-time shape and
+transition count for the prior.
 
 ## 6. What a selected prior does and does not mean
 

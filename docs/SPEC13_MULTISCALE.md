@@ -301,7 +301,7 @@ one introduces variance that the level above cannot see.
 | Level | Model object | Sampling introduced |
 |---|---|---|
 | Animal | one Layer 3 colonic chain, persistent identity | between-host divergence; each animal is separately colonized |
-| Cage | a set of animals with a coprophagic exchange kernel | between-host transfer, non-independence of co-caged animals |
+| Cage | a set of animals with a coprophagic exchange kernel | between-host transfer, non-independence of co-caged animals; **the only refugium** (see 6) |
 | Pellet | a bolus of distal luminal content, mass `m_pellet` | temporal: which lineages happened to be in that bolus |
 | Subdivision | an aliquot of one pellet, mass `m_aliquot ≪ m_pellet` | multinomial draw; the *only* level at which plating counts exist |
 
@@ -327,11 +327,55 @@ satisfies (the patch books `outflow_boundary` and discards the cell):
 5. **Censoring at the reported limit.** Any strain below 1% of the aliquot's
    recovered count is recorded as not detected. Statistics are computed on the
    censored calls, never on the underlying counts.
-6. **No hard extinction at the observation layer.** The paper records strains
-   reappearing after apparent loss (R 9×, S 9×, C 14×) and attributes this to
-   sub-detection persistence or environmental refugia rather than mutation. A
-   model in which "not detected" is implemented as extinction cannot reproduce
-   reappearance and will systematically undercount transitions.
+6. **No hard extinction at the observation layer, and the refugium is the
+   cage-mate.** The paper records strains reappearing after apparent loss
+   (R 9×, S 9×, C 14×), so a model in which "not detected" is implemented as
+   extinction cannot reproduce reappearance and will systematically undercount
+   transitions. Where the returning strain comes from is a structural choice,
+   and the experimentalist's account settles it: a mouse can carry a small
+   percentage of a second or third strain, but reinoculation came from the
+   *other mice in the cage*, not from another compartment of the same mouse.
+   Layer 2 must therefore not be given a within-host protected niche that
+   quietly reseeds the lumen — the cage exchange kernel carries that load, and
+   a single-animal chain cannot produce the observable at all. It follows that
+   the cage is a required simulation unit, not an aggregation convenience.
+
+7. **Transitions are sharp, and dominance is bistable with hysteresis.**
+   Takeover is fast relative to the half-week cadence: a mouse is dominated by
+   one strain, then by another, without a long mixed interval. Minority strains
+   are nevertheless *regularly observed* near the 1% limit — recurrently, not
+   maintained. Together with near-monotypy this is a barrier: an arrival can be
+   detectable while remaining subcritical against an incumbent, which has a
+   residency advantage. Three requirements follow. Exclusion must be complete,
+   so a stable low-level coexistence is a defect and not a feature, however
+   well it matches a mixed-sample frequency. Mixture episodes must be finite,
+   with a duration the model reports. And the dominance dwell time is itself an
+   observable: a model that flips memorylessly at the right mean rate has the
+   right transition count and no hysteresis at all. See
+   `SPEC13_LYSIS_SELECTION.md` §4e, which turns these into selection
+   statistics.
+
+**Why the host is neither one patch nor a mosaic.** These requirements bound the
+within-host architecture from both sides, and the bound is narrow. A single
+continuous patch makes monotypy trivial and uninformative, and it also dilutes
+the producer: colicin action is short-range (`SPEC13_LYSIS_SELECTION.md` §4b; at
+the hardcoded `retardation = 50` the lethal zone is microns), so a well-mixed
+host at the observed ~10⁶ CFU/g gives the toxin nothing to act on and cannot
+produce the paper's directional asymmetry. Many independent patches give the
+opposite failure — a mosaic with different strains fixed in different patches,
+which stool pools into a chronically mixed sample. What is left is many small
+patches, each small enough to fix locally, coupled through the lumen fast enough
+to homogenize one host between half-week samples, with between-host transfer
+slower still. That ordering
+
+```text
+tau_patch_fixation  <<  tau_within_host_coupling  <<  tau_between_host
+```
+
+is a testable constraint rather than a modelling convenience: near-monotypy pins
+the middle term, and both a shorter and a longer value break a different
+observable. Patch count per host and the coupling rate are therefore calibration
+targets, and must be reported with the observable each was fixed against.
 
 **Primary comparison is categorical.** The statistic is the mouse × half-week
 dominance grid and the transition counts computed from it (123 for the E1
