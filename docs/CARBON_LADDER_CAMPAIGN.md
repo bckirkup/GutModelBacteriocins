@@ -147,9 +147,141 @@ or horizon), whether agents were crowded (contact-limited rather than
 carbon-limited), and the grid spacing used, since delivery support and shell
 sampling are grid-dependent. The `sqrt(3)` shell artifact is not compensated.
 
+## Measured ladder (28 arms, serial, local)
+
+Run configuration, identical across arms unless named: 4 µm grid,
+200 × 200 × 100 µm domain, 100 founders placed in a 0–20 µm z slab and carrying
+no plasmids, `bio_dt = 60 s`, 12 h requested horizon,
+`metabolism.uptake_limit = delivery` over the 10 µm support,
+`oxygen.k_ROS = 0.0`, oxygen species disabled so carbon is the only limiter.
+`dysbiosis_threshold` was raised to 1e10: at the shipped 1e8 cells/mL the guard
+fires at roughly 400 agents in this volume, i.e. before any arm reaches a
+plateau. 27 of 28 arms reached `horizon_reached`; the one exception is named
+below. `km_carbon` is still hard-coded, so this is a ladder in `C`, not `C/km`.
+
+### Two silent defects voided the first pass of this ladder
+
+Both were invisible in the numbers, and both are the reason the results below
+are the ones to cite:
+
+- The first 20-arm pass was produced by a binary predating the delivery pricing
+  fix (#344), so every gradient-on arm priced delivery-limited carbon at
+  roughly twice the stored field. It reported 1377 agents at default carbon;
+  the corrected binary reports 122. Any carbon number from that pass is void.
+- The seeded λ replicates were produced by a binary predating #347, so all
+  "replicates" ran at seed 0 and reported a within-λ spread of exactly zero —
+  which is what prompted the audit. Exact reproducibility across nominally
+  distinct seeds is a defect signature, not a clean result.
+
+The analyzer now refuses to interpret an arm set whose `/run_provenance/git_sha`
+is not identical and non-dirty across every arm. All numbers below come from
+`a115447`.
+
+### A — capacity: the shipped carbon default sits at the threshold of growth
+
+| amplitude | C_epi | C(26 µm) | Monod at agents | peak N | divisions | boundary export | µ/µmax | rationing |
+|---|---|---|---|---|---|---|---|---|
+| x0.25 | 1.25e-3 | 4.61e-4 | 0.075 | 100 | 10 | 105 | 0.029 | 1 |
+| x0.5 | 2.5e-3 | 8.90e-4 | 0.153 | 100 | 47 | 122 | 0.083 | 1 |
+| x1 (default) | 5e-3 | 1.75e-3 | 0.146 | 122 | 194 | 190 | 0.082 | 1 |
+| x2 | 1e-2 | 3.46e-3 | 0.318 | 1063 | 1547 | 584 | 0.197 | 1 |
+| x4 | 2e-2 | 6.78e-3 | 0.371 | 9046 | 13083 | 4137 | 0.189 | 0.753 |
+
+Capacity is a threshold in amplitude, not a proportionality. Below the shipped
+default no arm exceeds its own founder count in 12 h — divisions are real but
+are matched by boundary export (x0.25: 10 divisions against 105 exports), so
+the patch is not self-sustaining. At the default it barely is: 122 peak against
+100 founders, 194 divisions against 190 exports. A 2x amplitude buys 8.7x
+capacity and 4x buys 74x. The shipped default is therefore not a mid-range
+choice; it sits at the break-even point between division and export, which is
+also exactly `km_carbon` (Monod = 0.5 at the epithelium, 0.35 at 26 µm).
+
+Only the top arm is delivery-rationed (0.753, funded fraction 0.910) and it is
+also the most contact-limited (1.85 displacement clamps/agent against ≤1.2
+elsewhere, 600 bacteriostatic cells), so its µ/µmax of 0.189 is not a clean
+carbon read-out — the ladder's growth-fraction claim is therefore made over the
+unrationed range (0.029 → 0.197) only. Adjacent unrationed steps are not
+separated by more than the seed spread measured in B (x0.5 and x1 are tied at
+0.083 within 1%), so no step-by-step monotone claim is made. Maintenance
+shortfall and reaction clips were zero in every arm.
+
+### B — gradient shape: λ does not resolve vertical extent
+
+Three seeds per λ (the 25 µm group shares the A x1 arm).
+
+| λ | peak N per seed | p90 agent z (µm) per seed |
+|---|---|---|
+| 12.5 µm | 100, 100, 100 | 93.7, 91.8, 36.8 |
+| 25 µm | 122, 100, 100 | 82.4, 95.2, 72.6 |
+| 50 µm | 191, 100, 100 | 80.4, 77.4, 69.6 |
+| 100 µm | 472, 128, 343 | 90.5, 69.3, 82.2 |
+
+The single-seed pass of this arm set produced a monotone p90(z) in λ. That
+ordering did not survive replication: the worst within-λ seed spread in p90 z is
+0.77 of the group mean against a between-λ range of 0.12, so **vertical extent
+is not resolved by λ at this scale** and the earlier ordering was noise. With
+most arms pinned at the founder floor, the surviving agents' z distribution is
+set by transport and export, not by how far carbon reaches.
+
+What does replicate is a floor effect: at λ = 12.5 µm no seed achieves net
+growth, at λ = 100 µm every seed does. Between those, one seed of three does.
+Since the within-λ spread in peak N reaches 1.09 of the group mean, only that
+never/always contrast is asserted; the mean 100 → 314 trend is not separately
+claimable.
+
+`R_lam_12p5um_s20260828` terminated at `population_stop` (extinction) at
+3.51e4 s, not at the horizon, and its mean µ/µmax of −0.013 is a shrinking
+population. It must not be quoted as a horizon value.
+
+### C — emergent supply: the imposed profile is a penalty, not a supply
+
+With `carbon_z_gradient = false`, liberation x0/x1/x5/x100 crossed with the VBF
+sink x0/x1/x5. Across every physiologically defensible pair (liberation ≤ x5)
+the field stays essentially flat: C(26 µm)/C(epithelium) ≥ 0.934, against 0.350
+with the profile imposed. So no defensible source/sink pair reproduces the
+imposed stratification — as the agent-free scoping predicted, now stated as a
+measured result.
+
+The population consequence is the direction that matters: those flat-field arms
+reach peak 628–1291 agents against 122 for the imposed profile at the same
+epithelial concentration. Relative to a uniform field at the boundary value,
+the prescribed gradient is a **depletion penalty everywhere off the
+epithelium**, not a supply mechanism; switching it off raises capacity 5–10x.
+Peak N varies 2.06x across the nominally physiological arms, which is within
+the seed spread measured in B, so the ordering *within* arm set C is not
+interpretable — only the 5–10x contrast against the imposed profile exceeds it.
+
+Liberation at x100 inverts the profile (C(26)/C(epi) = 1.55–1.66) instead of
+steepening it, because VBF liberation is spatially uniform and has no
+epithelial localization. It is a diagnostic of that fact, not a physiological
+arm.
+
+### What this does and does not license
+
+- Carbon amplitude is a real population-scale lever, and the shipped default is
+  at the edge of patch self-sustainment. Any campaign that needs a growing
+  patch at default carbon needs a larger domain, a shorter mucus turnover, or
+  more founders — not a small amplitude nudge.
+- The prescribed z-gradient is a boundary condition whose net population effect
+  is negative relative to a uniform field. It should not be described as the
+  mechanism that supplies carbon to the mucus layer.
+- λ, at this domain and horizon, is not a usable knob for colony vertical
+  extent; claims about depth of colonization need a design where growth is not
+  floored, and need replicates.
+- Everything here is single-seed except arm set B. Differences smaller than
+  roughly 2x in A or C are not resolved.
+- Grid spacing is 4 µm and the delivery support is 10 µm; shell sampling is
+  grid-dependent and the `sqrt(3)` shell artifact is not compensated.
+
 ## Provenance
 
-Agent-free measurements above were produced with an untracked standalone probe
-against the serial Release library at `4644120` plus the delivery pricing fix;
-they are supply-side scoping numbers, not campaign outputs, and no HDF5 or
-campaign artifacts were committed.
+The measured ladder above was produced locally and serially at
+`a115447` (post-#344, post-#346, plus the #347 seed-parsing fix), with all
+28 arms verified to share that single non-dirty sha. Campaign configs, HDF5
+outputs, logs, the runner and the analyzer live outside the repository and are
+not committed.
+
+Agent-free measurements earlier in this document were produced with an
+untracked standalone probe against the serial Release library at `4644120` plus
+the delivery pricing fix; they are supply-side scoping numbers, not campaign
+outputs, and no HDF5 or campaign artifacts were committed.
