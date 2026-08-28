@@ -301,7 +301,7 @@ one introduces variance that the level above cannot see.
 | Level | Model object | Sampling introduced |
 |---|---|---|
 | Animal | one Layer 3 colonic chain, persistent identity | between-host divergence; each animal is separately colonized |
-| Cage | a set of animals with a coprophagic exchange kernel | between-host transfer, non-independence of co-caged animals |
+| Cage | a set of animals with a coprophagic exchange kernel | between-host transfer, non-independence of co-caged animals; **the only refugium** (see 6) |
 | Pellet | a bolus of distal luminal content, mass `m_pellet` | temporal: which lineages happened to be in that bolus |
 | Subdivision | an aliquot of one pellet, mass `m_aliquot ≪ m_pellet` | multinomial draw; the *only* level at which plating counts exist |
 
@@ -327,11 +327,26 @@ satisfies (the patch books `outflow_boundary` and discards the cell):
 5. **Censoring at the reported limit.** Any strain below 1% of the aliquot's
    recovered count is recorded as not detected. Statistics are computed on the
    censored calls, never on the underlying counts.
-6. **No hard extinction at the observation layer.** The paper records strains
-   reappearing after apparent loss (R 9×, S 9×, C 14×) and attributes this to
-   sub-detection persistence or environmental refugia rather than mutation. A
-   model in which "not detected" is implemented as extinction cannot reproduce
-   reappearance and will systematically undercount transitions.
+6. **No hard extinction at the observation layer, and the refugium is the
+   cage-mate.** The paper records strains reappearing after apparent loss
+   (R 9×, S 9×, C 14×), so a model in which "not detected" is implemented as
+   extinction cannot reproduce reappearance and will systematically undercount
+   transitions. Where the returning strain comes from is a structural choice,
+   and the experimentalist's account settles it: a mouse can carry a small
+   percentage of a second or third strain, but reinoculation came from the
+   *other mice in the cage*, not from another compartment of the same mouse.
+   Layer 2 must therefore not be given a within-host protected niche that
+   quietly reseeds the lumen — the cage exchange kernel carries that load, and
+   a single-animal chain cannot produce the observable at all. It follows that
+   the cage is a required simulation unit, not an aggregation convenience.
+
+7. **Transitions are sharp.** Takeover is fast relative to the half-week
+   cadence: a mouse is dominated by one strain, then by another, without a
+   long mixed interval. This is a shape constraint independent of how many
+   transitions occur — a model that drifts through a mixed state for weeks is
+   wrong even if its transition count matches, and it is the same statement as
+   the rare-mixed-pellet observation viewed along the time axis rather than
+   within a sample.
 
 **Primary comparison is categorical.** The statistic is the mouse × half-week
 dominance grid and the transition counts computed from it (123 for the E1

@@ -342,6 +342,19 @@ precision — and the reappearance counts show that strains persist below the 1%
 detection limit, so a model that lets a strain go extinct at zero is not
 measuring the same process.
 
+**Where a reappearing strain comes from, and why it is a confound.** Per the
+experimentalist: a mouse could carry a small percentage of a second or third
+strain, but the refugium for reinoculation was *the other mice in the cage*,
+not another site within the same mouse. That makes the coprophagic exchange
+kernel the mechanism that generates the observable rather than a nuisance term
+to be kept small, and it creates a degeneracy: transfer rate and lysis prior
+both move the transition count, in the same direction, and cannot be separated
+by that statistic alone. The exit is to pin them on different observables —
+reappearance counts (R 9×, S 9×, C 14×) and C's elimination from 10 of 12 cages
+by week 7 constrain transfer and producer mortality; the transition count is
+then left to the prior. Fix and report the transfer rate against the
+reappearance counts *before* the prior sweep starts, not alongside it.
+
 ## 5. The selection procedure
 
 Deliberately structured so that the answer can be "none of them", and so that a
@@ -376,7 +389,7 @@ is sampled on the paper's cadence — half-weekly for 12 weeks — through the
 stool observation model: one pellet, subdivided, plated, with any strain below
 1% of that pellet's recovered population recorded as *not detected*. Each
 sample yields a dominant-strain call, so a run produces the same object the
-paper publishes: a mouse × half-week grid of dominance states. Four numbers per
+paper publishes: a mouse × half-week grid of dominance states. Five numbers per
 replicate, all computed on that grid and never on the underlying uncensored
 counts:
 
@@ -389,9 +402,16 @@ counts:
 4. **Mixed-pellet frequency** — the paper's pellets were rarely mixed. A model
    that produces routinely mixed pellets has the wrong within-host competition,
    whatever its transition count.
+5. **Transition sharpness** — the dwell time in a mixed or ambiguous dominance
+   state, in half-week samples. In vivo the switches are sharp: a mouse flips
+   from one dominant strain to another rather than drifting through a mixed
+   interval. This is (4) read along the time axis, and it is a separate
+   falsifier: an arm can hit the transition count with slow ratio drift that
+   happens to cross the 50% line the right number of times, and that arm is
+   wrong.
 
 **Selection rule.** A prior is *admissible* if its replicate band contains the
-in-vivo value of (1) and does not contradict (2)–(4). Report the admissible
+in-vivo value of (1) and does not contradict (2)–(5). Report the admissible
 **set**, not a point estimate; with five priors and this much stochasticity the
 honest answer is likely an interval.
 
@@ -415,8 +435,9 @@ antagonism and every selection made with it is void. This is the population-scal
 asserted contrast the delivery campaign learned to demand: per-agent kill tests
 passing does not establish that the population-scale observable responds.
 
-**Forbidden.** Do not tune `retardation`, `burst_size`, resistance cost, or
-inoculum against the same time series simultaneously with the prior. Four
+**Forbidden.** Do not tune `retardation`, `burst_size`, resistance cost,
+inter-host transfer rate, or inoculum against the same statistic
+simultaneously with the prior. Four
 parameters against one displacement curve is degenerate, and the model has
 already shown that a free coefficient times an unaudited quantity looks like
 biology.
