@@ -39,6 +39,29 @@ make a contrast pass, and every row is reported with its termination cause and
 delivery rationing factor so that a crowded or early-terminated arm is not
 quoted as an ordinary horizon value.
 
+## Result at `3c166c1`: A1 FAIL, A2 FAIL, B PASS-then-withdrawn
+
+The probe could not answer its question, and why is the finding. Full account
+in `docs/SPEC13_LYSIS_SELECTION.md` §4a-result; in brief:
+
+- Outcome is a founder lottery, not a treatment effect. 120–180 founders fall
+  to ~30 live within ~2 h, then the patch either escapes (2383–7629 divisions)
+  or does not (22–297), and the survivors sweep it. Three identical-treatment
+  seeds ended R-only, S-only, and C+S.
+- The null arm — no ColE1 anywhere — gave the largest R/S separation in the
+  probe (395 vs 0.67 with a producer). That is A2 failing outright.
+- The producer treatment is nearly inert: 11 receptor-mediated kills against
+  7629 divisions, consistent with the hardcoded `retardation = 50`. A1's FAIL
+  therefore says nothing about the `{"BtuB": 0.0}` genotype.
+- B's PASS was an artifact of `n3 / max(n2, 1)` with `n2 = 0`; one strain was
+  extinct in 8 of 12 arms. `analyze.py` now excludes arms without both strains
+  and reports `INSUFFICIENT` rather than averaging a ratio against an extinct
+  denominator. Re-run on the same outputs, nothing passes.
+
+A probe with power needs the patch off its self-sustainment threshold (Layer 2
+reseeding or Layer 3), ≥5 seeds per arm with a paired within-seed statistic
+rather than a ratio of between-arm means, and colicin transport fixed first.
+
 ## Running
 
 ```bash

@@ -166,7 +166,9 @@ consequences for the campaign:
    the double-counting the audit correctly warned about.
 2. `b12_initial_conc` therefore becomes a campaign axis, and the S-beats-R leg
    has to be demonstrated at population scale before any RPS claim, not
-   assumed from the Km algebra. That is what the probe in §4a-probe measures.
+   assumed from the Km algebra. That is what the probe in §4a-probe set out to
+   measure, and §4a-result records that it could not: the S-beats-R leg remains
+   undemonstrated at population scale, so no RPS claim is available yet.
 3. Two bookkeeping caveats for strain accounting: `PhenoState::RESISTANT` is
    the same field that later holds `SOS_INDUCED`/`DEAD`, so classify strains by
    `receptor_expr[BtuB]` or agent `type`, never by `state`; and `FixMutation`
@@ -192,6 +194,77 @@ itself there:
   cycle needs and locates the corrinoid level at which it becomes real.
 
 A FAIL on any of these is a finding about the model, not an arm to retune.
+
+**(a-result) Ran at `3c166c1`, serial, 12 arms. A1 FAIL, A2 FAIL, B PASS but
+the PASS is an artifact. The probe did not test what it was built to test, and
+why it could not is the finding.**
+
+Two regimes, split by seed and not by treatment. Every arm loses most of its
+founders in the first ~2 h — 120–180 founders down to ~30 live by step 120,
+against 134–745 cumulative `outflow_boundary` — and then the patch either
+escapes or does not. Cumulative divisions are bimodal with nothing in between:
+22–297 in the collapse regime, 2383–7629 in the escape regime. Whatever few
+lineages survive the crash own the patch, so the final composition is a founder
+lottery.
+
+| Arm | C | S | R | divisions | colicin kills |
+|---|---:|---:|---:|---:|---:|
+| `A_three_strain_s20260901` | 0 | 0 | 2 | 84 | 0 |
+| `A_three_strain_s20260902` | 0 | 3455 | 0 | 3851 | 0 |
+| `A_three_strain_s20260903` | 713 | 6252 | 2 | 7629 | 11 |
+| `A_null_no_producer_s20260901` | 7 | 0 | 395 | 553 | — (no producer) |
+
+Three identical-treatment seeds produce R-only, S-only, and C+S. **The null arm
+— no ColE1 anywhere in the config — produces the single largest R/S separation
+in the whole probe, 395 against the producer arms' 0.67.** That is A2 failing,
+and it is unambiguous: at this scale, type composition is set by which founders
+happened to survive, not by colicin. Nothing about the `{"BtuB": 0.0}` genotype
+can be concluded from A1's FAIL, because the treatment it was contrasting
+against barely exists (below).
+
+**The producer treatment is nearly inert: 11 receptor-mediated kills against
+7629 divisions**, in the one arm where the producer grew at all, and zero
+everywhere else. This is (b) measured rather than argued — `retardation = 50`
+puts `D_eff` 72× below the literature analogue, so the kill zone is ~1/72 the
+area, and a producer at these densities almost never has a sensitive cell
+inside it. Fixing (b) is therefore a prerequisite for *any* colicin efficacy
+arm, not just for the lysis prior's accuracy.
+
+**B's PASS must not be quoted; the assertion was wrong.** The monotone R/S
+sequence (103.0, 7.0, 4.0, 1.0) is the same seed split: the `s20260901` arms are
+R-only, the `s20260902` arms are S-only, and one strain is extinct in 8 of the
+12 arms, so most of those "ratios" were `n3 / max(0, 1)` — an arbitrary number
+divided by a strain that is not there. This is the failure mode the ladder's λ
+arms already showed once, a monotone single-seed trend that is not a treatment
+effect, and here it passed the gate. `analyze.py` now refuses a ratio against
+an extinct denominator and reports `INSUFFICIENT` with the usable-arm count
+instead of averaging it away; re-run against the same outputs, all three
+contrasts are FAIL or INSUFFICIENT, which is the honest reading.
+
+There is, however, a **controlled** signal hiding inside the B group, because
+seed fixes founder placement across the corrinoid axis. Within `s20260901`
+(R-dominated) the final population falls `206 → 14 → 8 → 2` as
+`b12_initial_conc` falls `1e-3 → 1e-4 → 3e-5 → 1e-5`; within `s20260902`
+(S-dominated) it does not move at all: `2360 → 2739 → 2144 → 3463`. A
+BtuB-null population is corrinoid-limited over this range and a BtuB-intact one
+is not, which is the direction the `Km_b12` clamp predicts. Treat it as a
+hypothesis with n=1 seed per regime, not as the measured cost: it is confounded
+with the escape/collapse split, and the two regimes are not the same population
+being compared.
+
+**What a probe with power has to change.** Not the arm labels — the scale. The
+patch is at the self-sustainment threshold by construction
+(`CARBON_LADDER_CAMPAIGN.md`: 194 divisions against 190 exports at the shipped
+default), and a marginal patch destroys composition observables before it
+destroys population ones, because it hands the whole patch to a handful of
+lineages. Concretely: (i) the founder crash has to be removed or measured —
+either a domain with enough capacity that 120 founders are not competing for a
+few escape sites, or explicit reseeding, which is Layer 2's job; (ii) seeds must
+be ≥5 per arm with the paired within-seed contrast as the statistic, never a
+ratio of between-arm means; (iii) (b) must be fixed first, or the producer arm
+is a null arm with extra steps. **This is a second, independent argument for the
+same conclusion §4d reaches from the data side: strain composition is not
+observable at patch scale, and the RPS comparison needs Layers 2 and 3.**
 
 **(b) Colicin transport is 72× too slow, and not configurable.** ColE1/E2
 `retardation = 50` is hardcoded in `plasmid.cpp` and copied into the burst;
