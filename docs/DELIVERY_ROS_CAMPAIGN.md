@@ -149,4 +149,7 @@ funding number measured before the gradient double-count fix was overstated.
 - **Re-run the #314 carbon ladder** on the current code, sweeping the
   gradient-setting terms.
 - **CUDA parity** for delivery-limited uptake is covered by an explicit refusal
-  rather than an implementation.
+  rather than an implementation. `docs/CUDA_DELIVERY_PARITY.md` now inventories
+  what is actually missing on device — the per-cell agent sink in the implicit z
+  solve, realized-removal readback, and the rationing loop — and states the two
+  routes and the population-scale parity gate either route needs.
