@@ -13,6 +13,7 @@ using namespace gutibm;
 void test_round_trip_preserves_state() {
   Agent a = Agent::create_default(42, 3, {10e-6, 20e-6, 30e-6}, 4e-4);
   a.flags.in_crypt = true;
+  a.flags.microcin_penalty_applied = true;
   a.mu_realized = 1.2e-5;
   a.respired_oxygen_rate = 2.5e-19;
   a.motility.prev_ai2 = 3.5e-8;
@@ -38,6 +39,7 @@ void test_round_trip_preserves_state() {
 
   assert(b.identity.tag == a.identity.tag);
   assert(b.flags.in_crypt == true);
+  assert(b.flags.microcin_penalty_applied == true);
   assert(std::abs(b.mu_realized - a.mu_realized) < 1e-20);
   assert(std::abs(b.respired_oxygen_rate - a.respired_oxygen_rate) < 1e-30);
   assert(std::abs(b.motility.prev_ai2 - a.motility.prev_ai2) < 1e-20);

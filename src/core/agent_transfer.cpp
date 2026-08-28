@@ -49,6 +49,7 @@ struct AgentLifecycleXfer {
   double death_time;
   int32_t grid_cell;
   int32_t in_crypt;
+  int32_t microcin_penalty_applied;
 };
 
 struct AgentMotilityXfer {
@@ -138,6 +139,8 @@ void pack_agent(const Agent& a, AgentTransferData& d) {
   d.lifecycle.death_time = a.timers.death_time;
   d.lifecycle.grid_cell = a.grid_cell;
   d.lifecycle.in_crypt = a.flags.in_crypt ? 1 : 0;
+  d.lifecycle.microcin_penalty_applied =
+      a.flags.microcin_penalty_applied ? 1 : 0;
   for (int k = 0; k < 3; ++k)
     d.motility.swim_direction[k] = a.motility.swim_direction[k];
   d.motility.swim_speed = a.motility.swim_speed;
@@ -212,6 +215,8 @@ Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_d
   a.timers.death_time = d.lifecycle.death_time;
   a.grid_cell = d.lifecycle.grid_cell;
   a.flags.in_crypt = (d.lifecycle.in_crypt != 0);
+  a.flags.microcin_penalty_applied =
+      (d.lifecycle.microcin_penalty_applied != 0);
   a.flags.is_ghost = false;
   for (int k = 0; k < 3; ++k)
     a.motility.swim_direction[k] = d.motility.swim_direction[k];

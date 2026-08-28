@@ -155,17 +155,47 @@ void test_microcin_mu_penalty() {
   auto sim = make_empty_sim();
   Agent a = make_agent_at_center(sim, 1);
   a.genome.bi_loci.push_back(PlasmidLibrary::microcin_V());
-  Real mu_before = a.mu_max;
+  const Real mu_before = a.mu_max;
   sim.agents().push_back(std::move(a));
 
   FixBacteriocin fix(sim, cfg);
   fix.compute(60.0);
   fix.compute(60.0);
 
-  Real mu_after = sim.agents()[0].mu_max;
+  const Real mu_after = sim.agents()[0].mu_max;
   assert(std::abs(mu_after - mu_before * (1.0 - cfg.microcin_mu_penalty)) < 1e-12);
 
   std::cout << "  test_microcin_mu_penalty: PASSED\n";
+}
+
+void test_microcin_mu_penalty_persists() {
+  BacteriocinConfig cfg;
+  cfg.microcin_mu_penalty = 0.03;
+
+  auto sim = make_empty_sim();
+  Agent producer = make_agent_at_center(sim, 1);
+  producer.genome.bi_loci.push_back(PlasmidLibrary::microcin_V());
+  const Real producer_mu_before = producer.mu_max;
+  sim.agents().push_back(std::move(producer));
+  Agent control = make_agent_at_center(sim, 2);
+  const Real control_mu_before = control.mu_max;
+  sim.agents().push_back(std::move(control));
+
+  for (int step = 0; step < 10; ++step) {
+    sim.step(60.0);
+  }
+
+  const Real producer_mu_after = sim.agents()[0].mu_max;
+  assert(std::abs(producer_mu_after
+                  - producer_mu_before * (1.0 - cfg.microcin_mu_penalty))
+          < 1e-12);
+  assert(std::abs(producer_mu_after
+                  - producer_mu_before
+                      * std::pow(1.0 - cfg.microcin_mu_penalty, 10))
+          > 1e-8);
+  assert(std::abs(sim.agents()[1].mu_max - control_mu_before) < 1e-12);
+
+  std::cout << "  test_microcin_mu_penalty_persists: PASSED\n";
 }
 
 void test_sos_induction_requires_bi_loci() {
@@ -612,6 +642,7 @@ int main() {
   test_pi_diffusion_classes();
   test_pi_retardation_sensitivity_and_calibration();
   test_microcin_mu_penalty();
+  test_microcin_mu_penalty_persists();
   test_sos_induction_requires_bi_loci();
   test_sos_induction_high_basal_rate();
   test_steady_state_qssa_source();

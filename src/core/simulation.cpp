@@ -360,6 +360,9 @@ void restore_bi_loci(Agent& agent,
     bi.immunity_id = static_cast<uint16_t>(gen.bi_immunity_id[b]);
     bi.target = static_cast<ReceptorType>(gen.bi_target[b]);
     bi.bclass = static_cast<BacteriocinClass>(gen.bi_bclass[b]);
+    if (!gen.bi_release_mode.empty()) {
+      bi.release_mode = static_cast<ReleaseMode>(gen.bi_release_mode[b]);
+    }
     bi.pI = gen.bi_pI[b];
     bi.diff_coeff = gen.bi_diff_coeff[b];
     bi.retardation = gen.bi_retardation[b];
@@ -944,6 +947,15 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
       a.flags.in_crypt = (atoms.in_crypt[i] != 0);
     } else {
       tag_crypt_resident(a, advection_);
+    }
+    if (i < atoms.microcin_penalty_applied.size()) {
+      a.flags.microcin_penalty_applied =
+          (atoms.microcin_penalty_applied[i] != 0);
+    } else {
+      a.flags.microcin_penalty_applied = std::ranges::any_of(
+          a.genome.bi_loci, [](const BICluster& bi) {
+            return bi.release_mode == ReleaseMode::CONTINUOUS;
+          });
     }
 
     max_tag = std::max(max_tag, static_cast<TagID>(atoms.id[i]));
@@ -1588,7 +1600,6 @@ void Simulation::step(Real dt) {
 
   for (Agent& a : agents_) {
     a.flags.just_divided = false;
-    a.flags.microcin_penalty_applied = false;
   }
 
   // Update advection time for peristaltic oscillation
