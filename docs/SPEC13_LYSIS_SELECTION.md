@@ -14,6 +14,14 @@ has to be true of the model before that selection means anything. Three of the
 findings below change the campaign design, and one of them changes what the
 `k_ROS_funded` coefficients mean.
 
+Two prerequisites have since been resolved and are folded in below. The
+comparison observable is **per-animal stool**, sampled from individual faecal
+pellets that were subdivided for plating (§4d) — which forces Layer 3 and, more
+consequentially, makes the target a *categorical dominance sequence* with a 1%
+detection limit rather than a continuous displacement curve. And the resistant
+strain is **already configurable** through per-strain `receptor_expression`
+(§4a); the earlier audit finding that it was not is withdrawn.
+
 ## 1. The release chain, as implemented
 
 Read as of `src/fixes/fix_bacteriocin.cpp` on `main`:
@@ -112,21 +120,151 @@ confirmation arm rather than the sweep axis.
 ## 4. Prerequisites — each of these would be absorbed into the selected prior
 
 A prior selected against displacement absorbs every error in the machinery
-between lysis and the death of a sensitive cell. Four are known and open.
+between lysis and the death of a sensitive cell. Four were identified; (a) and
+(d) are now resolved, (b) and (c) remain open blockers.
 
-**(a) There is no resistant strain.** `experiments/rps_campaign/rps_spec_audit.md`
-§C: `SimulationConfig::InitialStrain` has no receptor-genotype field and
-`parse_strain_object` ignores unknown keys, so `receptor_mutations` parses
-silently and does nothing; every founder gets `receptor_expr_base.fill(1.0)`.
-Resistance arises only from `FixMutation` at 1e-7/step. **Kirkup & Riley 2004 is
-a three-strain non-transitive result; the model can currently express only C vs
-S.** A C-vs-S displacement selection is still well posed (and is the pairwise
-leg the paper reports as resolved), but it cannot be presented as reproducing
-the RPS result, and the R-strain gap is a prerequisite for the coexistence
-claim. Note also the audit's double-counting warning: a receptor knockout
-already costs growth through `Km_b12 = km_b12/(expr·affinity)` (9% at 1 µM
-corrinoid, 25% at 0.3 µM), so an *additional* `mu_max` cost charges resistance
-twice.
+**(a) The resistant strain is configurable — the audit was wrong, and the real
+gap is the cost, not the genotype.** `experiments/rps_campaign/rps_spec_audit.md`
+§C states that `InitialStrain` has no receptor-genotype field and that resistance
+can arise only from `FixMutation`. That is false, and the AGENTS.md landmine row
+repeating it has been corrected. A per-strain receptor genotype is parsed,
+validated, tested, and applied on the shipped path:
+
+- `src/io/config_json.cpp::parse_receptor_expression_object` accepts a
+  `receptor_expression` object on each entry of `initial_strains` (aliases
+  `receptor_genotype`, `receptors`), rejects unknown receptor names, and
+  requires each value finite in `[0, 1]`.
+- `Simulation::create_strain_agent` writes it into `receptor_expr_base`,
+  `receptor_expr`, and `genome.receptor_expression`, and tags the founder
+  `PhenoState::RESISTANT` when `receptor_expression_is_resistant()` (`< 0.2`).
+- `tests/fixtures/parser_strains.json` already carries `{"BtuB": 0.0,
+  "FepA": 0.35}` and `tests/test_config_ingestion.cpp` asserts both land.
+- Division copies `receptor_expr_base` to the daughter (`fix_metabolism.cpp`),
+  `agent_transfer.cpp` ships it across ranks, and `restore_receptor_fields`
+  restores it from checkpoint. The genotype is not lost by MPI or restart.
+
+ColE1 and ColE2 both enter through BtuB, and the kill hazard is
+`kill_rate × occupancy × immunity` with `occupancy` *linear* in
+`agent.receptor_expr[BtuB]` (`fix_receptor.cpp::toxin_occupancy`). So
+`{"BtuB": 0.0}` is a founder that is completely resistant to both colicins by
+the same mechanism as the paper's R strain — Kirkup & Riley's R is a
+spontaneous `btuB` mutant, not an immunity carrier. **The C/S/R system is
+constructible today.**
+
+What is *not* settled is the cost, and the RPS cycle stands or falls on it: S
+beats R only if losing BtuB costs something. The cost route is real but weak at
+shipped defaults. `fix_metabolism.cpp` computes
+`Km_b12 = km_b12 / (expr_btuB · lig_aff)` with `expr_btuB` clamped to a floor of
+`0.01`, so a knockout inflates `Km_b12` by 100× — but only that, no matter how
+far below `0.01` the genotype goes. Against the shipped `km_b12 = 1e-6` and
+`b12_initial_conc = 1e-3 mol/m³` the knockout is still corrinoid-saturated:
+`monod_b12` falls only from 0.999 to 0.909, a ~9% growth penalty. Three
+consequences for the campaign:
+
+1. The resistance cost must be *set by corrinoid supply*, not by an added
+   `mu_max` penalty — an extra `mu_max` cost charges resistance twice, which is
+   the double-counting the audit correctly warned about.
+2. `b12_initial_conc` therefore becomes a campaign axis, and the S-beats-R leg
+   has to be demonstrated at population scale before any RPS claim, not
+   assumed from the Km algebra. That is what the probe in §4a-probe set out to
+   measure, and §4a-result records that it could not: the S-beats-R leg remains
+   undemonstrated at population scale, so no RPS claim is available yet.
+3. Two bookkeeping caveats for strain accounting: `PhenoState::RESISTANT` is
+   the same field that later holds `SOS_INDUCED`/`DEAD`, so classify strains by
+   `receptor_expr[BtuB]` or agent `type`, never by `state`; and `FixMutation`
+   writes `receptor_expression` at 1e-7/step, so a selection arm that wants a
+   fixed three-strain composition must say what it does with de-novo
+   resistance rather than let it accumulate silently.
+
+**(a-probe) Population-scale check of the above.** The claims in (a) are read
+from source; per-agent reasoning about a kill hazard is exactly the class of
+claim that #334 established does not transfer to a population. The probe under
+`experiments/rps_probe/` (config generator and analysis committed; outputs are
+not) asserts three contrasts on 12 local serial arms at 2× the shipped carbon
+amplitude, chosen because the corrected ladder puts patch capacity at 122 agents
+from 100 founders at 1× and a fitness difference has no headroom to express
+itself there:
+
+- **A1** with a ColE1 producer present, the `{"BtuB": 0.0}` founder ends above
+  the otherwise-identical sensitive founder;
+- **A2** in a null arm with the identical three founders and no ColE1 anywhere,
+  that contrast disappears — otherwise the separation is not colicin;
+- **B** the no-producer R/S ratio is non-increasing as `b12_initial_conc` falls
+  through `1e-3 → 1e-4 → 3e-5 → 1e-5`, which is the resistance cost the RPS
+  cycle needs and locates the corrinoid level at which it becomes real.
+
+A FAIL on any of these is a finding about the model, not an arm to retune.
+
+**(a-result) Ran at `3c166c1`, serial, 12 arms. A1 FAIL, A2 FAIL, B PASS but
+the PASS is an artifact. The probe did not test what it was built to test, and
+why it could not is the finding.**
+
+Two regimes, split by seed and not by treatment. Every arm loses most of its
+founders in the first ~2 h — 120–180 founders down to ~30 live by step 120,
+against 134–745 cumulative `outflow_boundary` — and then the patch either
+escapes or does not. Cumulative divisions are bimodal with nothing in between:
+22–297 in the collapse regime, 2383–7629 in the escape regime. Whatever few
+lineages survive the crash own the patch, so the final composition is a founder
+lottery.
+
+| Arm | C | S | R | divisions | colicin kills |
+|---|---:|---:|---:|---:|---:|
+| `A_three_strain_s20260901` | 0 | 0 | 2 | 84 | 0 |
+| `A_three_strain_s20260902` | 0 | 3455 | 0 | 3851 | 0 |
+| `A_three_strain_s20260903` | 713 | 6252 | 2 | 7629 | 11 |
+| `A_null_no_producer_s20260901` | 7 | 0 | 395 | 553 | — (no producer) |
+
+Three identical-treatment seeds produce R-only, S-only, and C+S. **The null arm
+— no ColE1 anywhere in the config — produces the single largest R/S separation
+in the whole probe, 395 against the producer arms' 0.67.** That is A2 failing,
+and it is unambiguous: at this scale, type composition is set by which founders
+happened to survive, not by colicin. Nothing about the `{"BtuB": 0.0}` genotype
+can be concluded from A1's FAIL, because the treatment it was contrasting
+against barely exists (below).
+
+**The producer treatment is nearly inert: 11 receptor-mediated kills against
+7629 divisions**, in the one arm where the producer grew at all, and zero
+everywhere else. This is (b) measured rather than argued — `retardation = 50`
+puts `D_eff` 72× below the literature analogue, so the kill zone is ~1/72 the
+area, and a producer at these densities almost never has a sensitive cell
+inside it. Fixing (b) is therefore a prerequisite for *any* colicin efficacy
+arm, not just for the lysis prior's accuracy.
+
+**B's PASS must not be quoted; the assertion was wrong.** The monotone R/S
+sequence (103.0, 7.0, 4.0, 1.0) is the same seed split: the `s20260901` arms are
+R-only, the `s20260902` arms are S-only, and one strain is extinct in 8 of the
+12 arms, so most of those "ratios" were `n3 / max(0, 1)` — an arbitrary number
+divided by a strain that is not there. This is the failure mode the ladder's λ
+arms already showed once, a monotone single-seed trend that is not a treatment
+effect, and here it passed the gate. `analyze.py` now refuses a ratio against
+an extinct denominator and reports `INSUFFICIENT` with the usable-arm count
+instead of averaging it away; re-run against the same outputs, all three
+contrasts are FAIL or INSUFFICIENT, which is the honest reading.
+
+There is, however, a **controlled** signal hiding inside the B group, because
+seed fixes founder placement across the corrinoid axis. Within `s20260901`
+(R-dominated) the final population falls `206 → 14 → 8 → 2` as
+`b12_initial_conc` falls `1e-3 → 1e-4 → 3e-5 → 1e-5`; within `s20260902`
+(S-dominated) it does not move at all: `2360 → 2739 → 2144 → 3463`. A
+BtuB-null population is corrinoid-limited over this range and a BtuB-intact one
+is not, which is the direction the `Km_b12` clamp predicts. Treat it as a
+hypothesis with n=1 seed per regime, not as the measured cost: it is confounded
+with the escape/collapse split, and the two regimes are not the same population
+being compared.
+
+**What a probe with power has to change.** Not the arm labels — the scale. The
+patch is at the self-sustainment threshold by construction
+(`CARBON_LADDER_CAMPAIGN.md`: 194 divisions against 190 exports at the shipped
+default), and a marginal patch destroys composition observables before it
+destroys population ones, because it hands the whole patch to a handful of
+lineages. Concretely: (i) the founder crash has to be removed or measured —
+either a domain with enough capacity that 120 founders are not competing for a
+few escape sites, or explicit reseeding, which is Layer 2's job; (ii) seeds must
+be ≥5 per arm with the paired within-seed contrast as the statistic, never a
+ratio of between-arm means; (iii) (b) must be fixed first, or the producer arm
+is a null arm with extra steps. **This is a second, independent argument for the
+same conclusion §4d reaches from the data side: strain composition is not
+observable at patch scale, and the RPS comparison needs Layers 2 and 3.**
 
 **(b) Colicin transport is 72× too slow, and not configurable.** ColE1/E2
 `retardation = 50` is hardcoded in `plasmid.cpp` and copied into the burst;
@@ -153,16 +291,56 @@ enough for a ratio between two strains to mean anything at the end. **Layer 2
 reseeding (Phase 1 of `SPEC13_MULTISCALE.md`) is a hard prerequisite**, and it
 is the reason this campaign is a Spec 13 item rather than a patch-scale one.
 
-**(d) The comparison observable is not yet decided, and it decides the layer.**
-Kirkup & Riley recovered strain frequencies from animals over weeks. If the
-target series is *fecal/stool* counts, the model has no such observable until
-the luminal compartment exists (Layer 3), because the patch's only export
-channel books `outflow_boundary` and discards the cell. If a *mucosal* ratio is
-the fair comparison, Layer 2 suffices. This is a question about the source data,
-not about the code, and it is the one input I cannot derive: **the digitized
-time series, its sampling cadence, replicate count, detection limit, and
-inoculum ratio have to come from the paper's figures before the selection
-statistic can be defined.**
+**(d) The comparison observable is settled: per-animal stool, and it is
+categorical.** Kirkup & Riley sampled faecal pellets taken directly from each
+mouse — not mucosa — and individual pellets were subdivided for plating. Two
+things follow, and the second is the one that reshapes the campaign.
+
+*It forces Layer 3.* A mucosal ratio would have been satisfiable at Layer 2. A
+stool count is not: the patch's only export channel books `outflow_boundary`
+and discards the cell, so today the model has no stool observable at all. The
+luminal compartment of `SPEC13_MULTISCALE.md` is a hard prerequisite, and the
+observation model in that document (§ *Stool observation model*) — animal, cage,
+pellet, subdivision, detection limit — is the thing that has to exist before a
+selection statistic can be computed.
+
+*It is not a time series of ratios.* The paper is explicit: "Only rarely was a
+mixed population recovered from individual faecal pellets; at any given time
+each mouse was dominated by a single strain. Detection limits for a second
+strain were 1% of the population." Figures 1–3 are grids of mouse × half-week
+coloured by *dominant strain*. So there is no continuous displacement curve to
+fit and nothing to digitize off a y-axis; the data are a censored categorical
+state sequence per animal. What is available to select against, with the
+numbers as published:
+
+| Statistic | Colicin E1 | Colicin E2 |
+|---|---|---|
+| Cages × mice | 12 × 3 = 36 | 12 × 3 = 36 |
+| Sampling | half-weekly, 12 weeks | half-weekly, 12 weeks |
+| Dominance transitions | 123 (">98 putative") | 43 |
+| Mixed pellets | rare | rare |
+| Second-strain detection limit | 1% | 1% |
+| C fate | no cage fixed on C; C eliminated in all but two cages by week 7 | — |
+| Early dynamics | — | 4 of 36 mice displaced within one week |
+| Directions resolved (one-tailed Wald, 95%) | C→S, R→C, S→R all rejected as null | C→S at 98.7%, R→C at 97.7%; S-vs-R insufficient |
+| Reappearance after loss | R 9×, S 9×, C 14× | S never reappeared once eliminated |
+| Steady density | ~1e6 CFU/g faeces, stable >4 weeks | same |
+| Reintroduction assay | — | S invaded and displaced R in 11 of 16 mice, Fisher P = 0.055 |
+
+The transition-count contrast between the two producers (123 vs 43, same
+hosts, same protocol, different colicin) is the single most useful number here:
+it is a *rate* difference that a lysis prior can plausibly move, measured
+within one experimental system, and it does not require any absolute CFU
+calibration to compare against.
+
+The binding caveat: at 12 cages the transition count is the aggregate of a
+strongly non-independent design. The paper's own analysis presumes exponential
+cooperativity among co-caged mice and homogenizes mouse identity into a 10×10
+matrix for the Wald test. Any model statistic must be computed with the same
+nesting (pellet within animal within cage) or it will overstate its own
+precision — and the reappearance counts show that strains persist below the 1%
+detection limit, so a model that lets a strain go extinct at zero is not
+measuring the same process.
 
 ## 5. The selection procedure
 
@@ -175,6 +353,16 @@ arms. The 0 arm is the null: with release lysis-gated, it emits no toxin at all.
 The 0.10 arm brackets above the in-vitro band so that a monotone-but-unbounded
 response is visible as such.
 
+**Founders.** Three strains per animal-equivalent, matching the paper's design:
+C carrying ColE1 (or ColE2), S with default receptors, and R declared
+`receptor_expression: {"BtuB": 0.0}` per §4a. Each animal is inoculated with a
+*single* strain, as in the paper — one C, one S, one R mouse per cage — so
+displacement can only follow inter-host transfer. That makes the between-host
+exchange rate (coprophagy; the model's `immigration` path already injects a
+chosen `initial_strains` index) a structural parameter of the design and not a
+free knob: it must be fixed and reported before the sweep, or it will be tuned
+against the transition count along with everything else.
+
 **Replication.** ≥5 seeds per arm. Justification: the λ arms of the carbon
 ladder showed within-λ peak-N spread of 1.09 at 100 founders and a single-seed
 monotonic result that did not survive replication; a displacement statistic is a
@@ -183,15 +371,38 @@ within-arm band alongside every between-arm difference — the gate is that
 between-prior separation exceeds within-prior spread, and if it does not, the
 campaign has no resolving power and no prior is selected.
 
-**Statistic.** Computed on whatever quantity the source data reports (§4d), with
-the model censored to match: the in-vivo sampling cadence, the detection limit,
-and the same inoculum ratio. Two numbers per replicate — displacement half-time
-(time for the sensitive fraction to fall to half its initial value) and the
-strain ratio at the final in-vivo sampling time.
+**Statistic.** Categorical, because the data are (§4d). Each simulated animal
+is sampled on the paper's cadence — half-weekly for 12 weeks — through the
+stool observation model: one pellet, subdivided, plated, with any strain below
+1% of that pellet's recovered population recorded as *not detected*. Each
+sample yields a dominant-strain call, so a run produces the same object the
+paper publishes: a mouse × half-week grid of dominance states. Four numbers per
+replicate, all computed on that grid and never on the underlying uncensored
+counts:
 
-**Selection rule.** A prior is *admissible* if its replicate band contains both
-in-vivo statistics. Report the admissible **set**, not a point estimate; with
-five priors and this much stochasticity the honest answer is likely an interval.
+1. **Transition count** — dominance changes summed over animals. This is the
+   primary target: 123 for E1, 43 for E2.
+2. **Time to C elimination** — fraction of cages with no C by week 7 (in vivo:
+   10 of 12), and whether any cage fixes on C (in vivo: none).
+3. **Directional asymmetry** — the transition matrix, tested with the same
+   one-tailed Wald test the paper used, against the same three null hypotheses.
+4. **Mixed-pellet frequency** — the paper's pellets were rarely mixed. A model
+   that produces routinely mixed pellets has the wrong within-host competition,
+   whatever its transition count.
+
+**Selection rule.** A prior is *admissible* if its replicate band contains the
+in-vivo value of (1) and does not contradict (2)–(4). Report the admissible
+**set**, not a point estimate; with five priors and this much stochasticity the
+honest answer is likely an interval.
+
+**Two-sided, and that is what makes it selective.** A displacement rate alone
+would be satisfied by an arbitrarily strong producer. The paper's C strain is
+also the *loser*: it fixed in no cage and was gone from 10 of 12 by week 7. A
+lysis prior high enough to displace S quickly also kills producers faster than
+they divide, so (1) and (2) pull the coefficient in opposite directions and
+bound it from both sides. Any arm that reproduces the transition count while
+leaving C established at week 7 has failed, not passed.
+
 Two informative failure modes, both of which must be reported rather than
 tuned away: if *every* prior is admissible the observable does not constrain
 lysis; if *none* is, the release/transport parameters of §4b (or the missing
@@ -226,19 +437,22 @@ upper bound on the respiratory contribution, with the unmodelled routes named.
 
 1. Fix the microcin penalty compounding defect (§8) — cheap, and it corrupts any
    continuous-release comparison arm.
-2. Obtain the source time series and settle the comparison observable (§4d).
-   This determines whether Layer 2 or Layer 3 is required and is a blocking
-   input, not an implementation task.
-3. Make `retardation` and `burst_size` configurable per BI locus, sourced, with
+2. ~~Settle the comparison observable~~ — done (§4d): per-animal stool,
+   categorical dominance, 1% detection limit. This forces Layer 3.
+3. Run the btuB-null probe (§4a-probe) to establish at population scale that
+   the resistant genotype is both effective and costly, and to locate the
+   corrinoid level at which the S-beats-R leg exists. Cheap, local, serial, and
+   it gates the RPS claim.
+4. Make `retardation` and `burst_size` configurable per BI locus, sourced, with
    parser + config-ingestion coverage (§4b).
-4. Add the configurable resistant strain — receptor genotype on
-   `InitialStrain`, cost taken mechanistically and reported, not double-charged
-   (§4a). Required for the RPS claim, not for the C-vs-S selection.
 5. Layer 2 patch network with reseeding, CPU-only, lookup patches, per the Phase
    1 plan and gates in `SPEC13_IMPLEMENTATION_REVIEW.md` (§4c).
-6. Run the 12-arm × 5-seed selection with the null-arm falsifier (§5), locally
+6. Layer 3 luminal compartment and the stool observation model — animal, cage,
+   pellet, subdivision, detection limit — per `SPEC13_MULTISCALE.md`. Without
+   it there is no observable to select against.
+7. Run the 12-arm × 5-seed selection with the null-arm falsifier (§5), locally
    and serial; no AWS or GPU without explicit authorization.
-7. Publish the admissible set, the implied `k_ROS_funded` range with its
+8. Publish the admissible set, the implied `k_ROS_funded` range with its
    uncrowded-`Q` validity caveat (§3), and the absorbed-routes caveat (§6).
 
 ## 8. Defect found while auditing the release chain

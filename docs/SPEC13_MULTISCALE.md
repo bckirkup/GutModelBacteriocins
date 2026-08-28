@@ -286,6 +286,62 @@ Stool output constraints (validation targets, NOT inputs):
 - Total fecal bacteria: ~0.35–3.2×10¹¹ cells/g
 - E. coli: ~10⁶–10⁸ CFU/g (healthy human range)
 
+#### Stool observation model
+
+The wall-to-stool equation above yields a mean concentration. That is not what
+Kirkup & Riley 2004 measured, and a mean is not comparable to what they
+published. Their samples were faecal pellets taken **directly from each animal**,
+and individual pellets were **subdivided** for plating; the reported observable
+is which strain *dominates* a given mouse at a given sampling time, with a
+second strain detectable only above 1% of the pellet's recovered population.
+Reproducing that requires an explicit observation model sitting between the
+Layer 3 luminal state and any reported statistic. It has four levels, and each
+one introduces variance that the level above cannot see.
+
+| Level | Model object | Sampling introduced |
+|---|---|---|
+| Animal | one Layer 3 colonic chain, persistent identity | between-host divergence; each animal is separately colonized |
+| Cage | a set of animals with a coprophagic exchange kernel | between-host transfer, non-independence of co-caged animals |
+| Pellet | a bolus of distal luminal content, mass `m_pellet` | temporal: which lineages happened to be in that bolus |
+| Subdivision | an aliquot of one pellet, mass `m_aliquot ≪ m_pellet` | multinomial draw; the *only* level at which plating counts exist |
+
+Requirements this places on Layer 3, none of which the current export path
+satisfies (the patch books `outflow_boundary` and discards the cell):
+
+1. **Lineage-indexed luminal state, not a scalar.** The luminal compartment
+   must carry per-lineage counts with genotype and BI-locus composition
+   preserved, because the observable is *which* strain, not how many bacteria.
+   At ~10⁸ CFU/g these cannot be agents.
+2. **Persistent animal identity.** Strain composition must remain attributable
+   to an individual host across the whole horizon; a pooled colonic population
+   cannot produce a mouse × time dominance grid.
+3. **Pellet formation as a discrete event**, not a continuous flux. Defecation
+   at ~1.2/day segregates content into boli; a continuous outflow rate cannot
+   produce between-pellet variation.
+4. **Aliquot draw as multinomial sampling.** Subdividing a pellet and plating
+   an aliquot is a finite-count draw from the pellet's composition. This is a
+   *measurement* process and must be simulated as one — it is the difference
+   between biological between-pellet variation and plating noise, and
+   conflating them will make the model look either more or less variable than
+   the data with no way to tell which.
+5. **Censoring at the reported limit.** Any strain below 1% of the aliquot's
+   recovered count is recorded as not detected. Statistics are computed on the
+   censored calls, never on the underlying counts.
+6. **No hard extinction at the observation layer.** The paper records strains
+   reappearing after apparent loss (R 9×, S 9×, C 14×) and attributes this to
+   sub-detection persistence or environmental refugia rather than mutation. A
+   model in which "not detected" is implemented as extinction cannot reproduce
+   reappearance and will systematically undercount transitions.
+
+**Primary comparison is categorical.** The statistic is the mouse × half-week
+dominance grid and the transition counts computed from it (123 for the E1
+experiment, 43 for E2 over 12 weeks), not a stool CFU/g time series. CFU/g
+remains a secondary output and a sanity constraint — the paper reports steady
+colonization at ~10⁶ CFU/g faeces, an order of magnitude below the ~10⁷–10⁸ the
+luminal amplification argument above is tuned toward, and that gap is a
+streptomycin-treated-mouse versus healthy-human difference that must be stated
+rather than averaged over.
+
 #### Inter-region coupling
 
 - **Continuous drift**: Luminal content moves distally at ~cm/h.
@@ -390,23 +446,42 @@ parameterization.
   sensitive strain, measured as relative abundance over time. Emerges from:
   bacteriocin diffusion range relative to patch size × metabolic cost ×
   patch exchange rate.
-- **Test data**: Kirkup & Riley (2004) — colicin producers displaced
-  sensitive strains in mouse colonization over 2–4 weeks. The magnitude and
-  timescale of displacement are independently measured.
-- **Diagnostic**: report producer/sensitive ratio over time, compare to
-  experimental time series.
+- **Test data**: Kirkup & Riley (2004), doi:10.1038/nature02429 — 12 cages of
+  three streptomycin-treated mice per producer, each mouse initially carrying
+  one of C (ColE1 or ColE2), S, or R (a spontaneous *btuB* mutant), sampled
+  half-weekly for 12 weeks from **faecal pellets taken from each animal**, with
+  pellets subdivided for plating.
+- **Diagnostic**: *not* a producer/sensitive ratio. The observable is the
+  mouse × half-week **dominant-strain grid** and the transition counts computed
+  from it (123 for E1, 43 for E2), through the observation model in
+  §*Stool observation model*: pellet → subdivision → plating → 1% detection
+  limit. Pellets were rarely mixed; each mouse was dominated by a single strain
+  at any time, so a model producing routinely mixed pellets has the wrong
+  within-host competition regardless of its transition count.
+- **Constrains from both sides**: C fixed in no cage and was eliminated from 10
+  of 12 by week 7. A lysis prior fast enough to displace S also kills producers,
+  so displacement rate and producer persistence bound the coefficient in
+  opposite directions.
 - **Design**: [`SPEC13_LYSIS_SELECTION.md`](SPEC13_LYSIS_SELECTION.md) turns this
   prediction into the selection procedure for the per-generation lysis prior,
-  and lists the prerequisites (no configurable resistant strain, hardcoded
-  colicin retardation and burst size, patch persistence, and the undecided
-  comparison observable) that a prior selected today would absorb.
+  and lists the prerequisites a prior selected today would absorb — hardcoded
+  colicin retardation and burst size, and patch persistence. Two earlier
+  prerequisites are now closed: the resistant strain *is* configurable through
+  per-strain `receptor_expression: {"BtuB": 0.0}`, and the comparison
+  observable is settled as per-animal stool.
 
 ### 6. Stool shedding rate
 - **Prediction**: CFU/g stool as an emergent output of mucosal population ×
   washout rate × luminal transit. Not an input.
-- **Test data**: Healthy human stool E. coli: 10⁶–10⁸ CFU/g.
+- **Test data**: Healthy human stool E. coli: 10⁶–10⁸ CFU/g. Kirkup & Riley's
+  streptomycin-treated mice sat at ~10⁶ CFU/g, stable for over four weeks —
+  a different host and a different perturbation state, quoted as such and not
+  pooled with the human range.
 - **Diagnostic**: count agents exiting the distal segment per unit time,
-  normalize by stool volume.
+  normalize by stool volume. Secondary to prediction #5's categorical
+  statistic: an absolute CFU/g agreement neither establishes nor refutes the
+  dominance dynamics, and a single stool CFU/g target cannot identify the
+  wall-to-stool transfer and luminal growth parameters jointly.
 
 ---
 
