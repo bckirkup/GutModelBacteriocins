@@ -57,6 +57,25 @@ it is the one thing in the spec that **cannot be swept without a code change**.
 
 ## C. The Resistant strain cannot be configured at all
 
+> **Withdrawn — this section is wrong as written.** A per-strain receptor
+> genotype exists and is live on the shipped path: `initial_strains[]` accepts a
+> `receptor_expression` object (aliases `receptor_genotype`, `receptors`),
+> parsed and range-validated by
+> `config_json.cpp::parse_receptor_expression_object` and applied in
+> `Simulation::create_strain_agent` to `receptor_expr_base`, `receptor_expr`,
+> and `genome.receptor_expression`, with `PhenoState::RESISTANT` set below 0.2.
+> It is inherited on division, transferred across MPI ranks, and restored from
+> checkpoint, and `tests/fixtures/parser_strains.json` already declares
+> `{"BtuB": 0.0, "FepA": 0.35}`. The spelling `receptor_mutations` used in the
+> spec config is indeed ignored, which is what this audit observed — but that is
+> a wrong key, not a missing feature. Colicin kill hazard is linear in
+> `receptor_expr[BtuB]` and ColE1/E2 both enter via BtuB, so `{"BtuB": 0.0}` is
+> a phenocopy of Kirkup & Riley's *btuB* R strain and the C/S/R system is
+> constructible today. The cost discussion below stands and is now the live
+> issue; see `docs/SPEC13_LYSIS_SELECTION.md` §4a.
+
+The original text follows for the record.
+
 `SimulationConfig::InitialStrain` (`src/io/input_parser.h:118`) is
 `{type, count, mu_max, plasmids, conjugative, cdi_type, cdi_immunity}`. There is
 no receptor-genotype field, and `parse_strain_object` ignores unknown keys, so
