@@ -304,12 +304,16 @@ void write_file_attr(hid_t fid, const char* name, hid_t type, const void* value)
 }
 
 void write_string_dataset(hid_t fid, const std::string& path,
-                          const std::string& value) {
+                          const std::string& value,
+                          bool recreate_existing = false) {
   hid_t type = H5Tcopy(H5T_C_S1);
   H5Tset_size(type, H5T_VARIABLE);
   hid_t space = H5Screate(H5S_SCALAR);
   const bool exists = H5Lexists(fid, path.c_str(), H5P_DEFAULT) > 0;
-  hid_t ds = exists
+  if (exists && recreate_existing) {
+    H5Ldelete(fid, path.c_str(), H5P_DEFAULT);
+  }
+  hid_t ds = exists && !recreate_existing
       ? H5Dopen2(fid, path.c_str(), H5P_DEFAULT)
       : H5Dcreate2(fid, path.c_str(), type, space,
                    H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
@@ -318,6 +322,29 @@ void write_string_dataset(hid_t fid, const std::string& path,
   if (ds >= 0) H5Dclose(ds);
   H5Sclose(space);
   H5Tclose(type);
+}
+
+void write_robin_provenance(hid_t fid, const Simulation& sim) {
+  const auto& table_cache = robin::global_table_cache();
+  const auto robin_metadata = robin_table_metadata(sim.config())
+      + ";" + table_cache.metadata();
+  write_string_dataset(fid, "run_provenance/robin_table_metadata",
+                       robin_metadata, true);
+  write_string_dataset(fid, "run_provenance/robin_table_hash",
+                       sim.robin_table_hash(), true);
+  const auto robin_tables_built =
+      static_cast<unsigned long long>(sim.robin_tables_built());
+  const auto robin_table_evictions =
+      static_cast<unsigned long long>(sim.robin_table_evictions());
+  write_scalar_dataset(fid, "run_provenance/robin_tables_built",
+                       H5T_NATIVE_ULLONG, &robin_tables_built);
+  write_scalar_dataset(fid, "run_provenance/robin_table_evictions",
+                       H5T_NATIVE_ULLONG, &robin_table_evictions);
+  const auto robin_direct_evaluations =
+      static_cast<unsigned long long>(
+          sim.qssa().gf().robin_direct_evaluations());
+  write_scalar_dataset(fid, "run_provenance/robin_direct_mode_evaluations",
+                       H5T_NATIVE_ULLONG, &robin_direct_evaluations);
 }
 
 hid_t make_dataset_plist(const HDF5Config& cfg, const hsize_t* chunk_dims,
@@ -608,13 +635,7 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
   ensure_group(fid, "run_provenance", cfg_);
   const auto config = ConfigJson::serialize_document(sim.config());
   write_string_dataset(fid, "run_provenance/resolved_config", config);
-  const auto& table_cache = robin::global_table_cache();
-  const auto robin_metadata = robin_table_metadata(sim.config())
-      + ";" + table_cache.metadata();
-  write_string_dataset(fid, "run_provenance/robin_table_metadata",
-                       robin_metadata);
-  write_string_dataset(fid, "run_provenance/robin_table_hash",
-                       table_cache.values_hash());
+  write_robin_provenance(fid, sim);
   write_string_dataset(fid, "run_provenance/image_series_mode",
                        sim.config().qssa.image_series_mode);
   write_string_dataset(fid, "run_provenance/git_sha", GUTIBM_GIT_SHA);
@@ -681,19 +702,6 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
   write_scalar_dataset(fid, "run_provenance/green_function_kernel_evaluations",
                        H5T_NATIVE_ULLONG, &kernel_evaluations);
   write_step_profile(fid, sim.step_profile(), cfg_);
-  const auto robin_tables_built =
-      static_cast<unsigned long long>(table_cache.tables_built());
-  const auto robin_table_evictions =
-      static_cast<unsigned long long>(table_cache.table_evictions());
-  write_scalar_dataset(fid, "run_provenance/robin_tables_built",
-                       H5T_NATIVE_ULLONG, &robin_tables_built);
-  write_scalar_dataset(fid, "run_provenance/robin_table_evictions",
-                       H5T_NATIVE_ULLONG, &robin_table_evictions);
-  const auto robin_direct_evaluations =
-      static_cast<unsigned long long>(
-          sim.qssa().gf().robin_direct_evaluations());
-  write_scalar_dataset(fid, "run_provenance/robin_direct_mode_evaluations",
-                       H5T_NATIVE_ULLONG, &robin_direct_evaluations);
   const auto robin_host_fallback_sources =
       static_cast<unsigned long long>(
           sim.qssa().gf().robin_host_fallback_sources());
@@ -744,6 +752,7 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
     write_run_provenance(sim);
     const auto fid = static_cast<hid_t>(file_id_);
     ensure_group(fid, "run_provenance", cfg_);
+    write_robin_provenance(fid, sim);
     const int32_t halt_reason = sim.halted_for_dysbiosis() ? 1 : 0;
     const double halt_density = sim.halt_density_cells_per_mL();
     const int32_t halt_step = sim.halted_for_dysbiosis() ? step : 0;

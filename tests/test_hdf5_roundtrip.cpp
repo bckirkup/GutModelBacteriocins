@@ -55,6 +55,16 @@ void assert_run_provenance(hid_t file,
   assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/robin_gpu_host_fallback_sources"));
   assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/robin_table_hash"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/robin_table_metadata"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/robin_tables_built"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/robin_table_evictions"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/robin_direct_mode_evaluations"));
+  assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/green_function_kernel_evaluations"));
   for (const char* phase : {
            "ghost_exchange_s", "spatial_hash_s", "biology_s", "chemistry_s",
@@ -153,6 +163,7 @@ SimulationConfig make_roundtrip_config(std::string_view filename, bool parallel)
   cfg.advection.distal_length = 50e-6;
   cfg.qssa.toxin_cutoff = 25e-6;
   cfg.qssa.nutrient_cutoff = 15e-6;
+  cfg.qssa.lumen_transfer_length = 100.0e-6;
 
   cfg.initial_strains.clear();
   SimulationConfig::InitialStrain resident;
@@ -172,6 +183,39 @@ SimulationConfig make_roundtrip_config(std::string_view filename, bool parallel)
   cfg.initial_strains.push_back(immigrant);
 
   return cfg;
+}
+
+struct RobinProvenanceValues {
+  std::string metadata;
+  std::string hash;
+  unsigned long long tables_built = 0;
+  unsigned long long evictions = 0;
+  unsigned long long direct_evaluations = 0;
+};
+
+RobinProvenanceValues read_robin_provenance(hid_t file) {
+  RobinProvenanceValues values;
+  values.metadata = read_string_dataset(
+      file, "run_provenance/robin_table_metadata");
+  values.hash = read_string_dataset(file, "run_provenance/robin_table_hash");
+  values.tables_built = hdf5_read_scalar<unsigned long long>(
+      file, "run_provenance/robin_tables_built", H5T_NATIVE_ULLONG);
+  values.evictions = hdf5_read_scalar<unsigned long long>(
+      file, "run_provenance/robin_table_evictions", H5T_NATIVE_ULLONG);
+  values.direct_evaluations = hdf5_read_scalar<unsigned long long>(
+      file, "run_provenance/robin_direct_mode_evaluations",
+      H5T_NATIVE_ULLONG);
+  return values;
+}
+
+void print_robin_provenance(const char* phase,
+                            const RobinProvenanceValues& values) {
+  std::cout << "  Robin provenance " << phase
+            << ": hash=" << values.hash
+            << " tables_built=" << values.tables_built
+            << " evictions=" << values.evictions
+            << " direct_evaluations=" << values.direct_evaluations
+            << " metadata=" << values.metadata << "\n";
 }
 
 void assert_schema(hid_t file, const std::string& step) {
@@ -482,6 +526,25 @@ void run_roundtrip(bool parallel_io) {
   SimulationConfig cfg = make_roundtrip_config(filename, parallel_io);
   Simulation sim;
   sim.init(cfg);
+  for (Agent& agent : sim.agents()) {
+    for (BICluster& bi : agent.genome.bi_loci) {
+      bi.release_mode = ReleaseMode::CONTINUOUS;
+    }
+  }
+  RobinProvenanceValues before;
+  int rank = 0;
+#ifdef GUTIBM_MPI
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+#endif
+  if (rank == 0) {
+    hid_t initial_file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY,
+                                  H5P_DEFAULT);
+    assert(initial_file >= 0);
+    before = read_robin_provenance(initial_file);
+    H5Fclose(initial_file);
+    print_robin_provenance("before", before);
+    assert(before.tables_built == 0);
+  }
   sim.run();
 
 #ifdef GUTIBM_MPI
@@ -490,12 +553,26 @@ void run_roundtrip(bool parallel_io) {
   if (nprocs > 1) {
     MPI_Barrier(MPI_COMM_WORLD);
     validate_parallel_roundtrip(sim, filename);
+    if (rank == 0) {
+      hid_t final_file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY,
+                                  H5P_DEFAULT);
+      assert(final_file >= 0);
+      const auto after = read_robin_provenance(final_file);
+      H5Fclose(final_file);
+      print_robin_provenance("after", after);
+      assert(after.tables_built > 0);
+      assert(after.hash != before.hash);
+    }
     return;
   }
 #endif
 
   hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
   assert(file >= 0);
+  const auto after = read_robin_provenance(file);
+  print_robin_provenance("after", after);
+  assert(after.tables_built > 0);
+  assert(after.hash != before.hash);
 
   validate_step_schema(file, "step_000000");
   validate_step_metadata(file, "step_000000", 0, 0.0, 12);

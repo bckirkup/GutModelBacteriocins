@@ -232,6 +232,9 @@ class Simulation {
   uint64_t green_function_kernel_evaluations() const {
     return green_function_kernel_evaluations_;
   }
+  uint64_t robin_tables_built() const;
+  uint64_t robin_table_evictions() const;
+  std::string robin_table_hash() const;
   Real halt_density_cells_per_mL() const {
     return dysbiosis_.halt_density_cells_per_mL();
   }
@@ -249,6 +252,7 @@ class Simulation {
 
  private:
   void finalize_neumann_image_series_stats();
+  void capture_robin_provenance_baseline();
 
   // Initialization helpers
   void init_population(const SimulationConfig& cfg);
@@ -378,6 +382,9 @@ class Simulation {
   uint64_t neumann_negative_field_count_ = 0;
   Real neumann_most_negative_field_ = 0.0;
   uint64_t green_function_kernel_evaluations_ = 0;
+  uint64_t robin_tables_built_baseline_ = 0;
+  uint64_t robin_table_evictions_baseline_ = 0;
+  uint64_t robin_table_identity_baseline_ = 0;
   Int zero_realization_steps_ = 0;
 };
 
