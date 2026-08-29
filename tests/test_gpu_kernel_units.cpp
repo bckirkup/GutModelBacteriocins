@@ -652,14 +652,14 @@ void test_superpose() {
   two.upload(std::vector<double>(kCells, 0.0));
   combined.upload(std::vector<double>(kCells, 0.0));
   gutibm::gpu::launch_superpose_kernel(
-      x.data(), y.data(), z.data(), params.data(), one.data(), domain, advection,
-      1, 1, 1, 1, nullptr);
+      x.data(), y.data(), z.data(), params.data(), one.data(), nullptr, domain,
+      advection, 1, 1, 1, 1, nullptr);
   gutibm::gpu::launch_superpose_kernel(
       x.data() + 1, y.data() + 1, z.data() + 1, params.data() + 1, two.data(),
-      domain, advection, 1, 1, 1, 1, nullptr);
+      nullptr, domain, advection, 1, 1, 1, 1, nullptr);
   gutibm::gpu::launch_superpose_kernel(
       x.data(), y.data(), z.data(), params.data(), combined.data(), domain,
-      advection, 2, 1, 1, 1, nullptr);
+      nullptr, advection, 2, 1, 1, 1, nullptr);
   synchronize();
   const auto one_host = download(one, kCells);
   const auto two_host = download(two, kCells);
