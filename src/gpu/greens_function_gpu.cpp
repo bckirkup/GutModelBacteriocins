@@ -76,11 +76,17 @@ bool launch_superpose(const Domain& domain,
                       const std::vector<Real>& strength_factors,
                       double* d_grid,
                       Real cutoff_radius, uint64_t* cap_hits,
-                      uint64_t* kernel_evaluations) {
+                      uint64_t* kernel_evaluations,
+                      uint64_t* low_screening_evaluations,
+                      uint64_t* negative_field_count,
+                      Real* most_negative_field) {
   if (!gpu_runtime_enabled() || sources.empty()) return false;
   if (d_grid == nullptr) return false;
   if (cap_hits != nullptr) *cap_hits = 0;
   if (kernel_evaluations != nullptr) *kernel_evaluations = 0;
+  if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
+  if (negative_field_count != nullptr) *negative_field_count = 0;
+  if (most_negative_field != nullptr) *most_negative_field = 0.0;
   std::lock_guard<std::mutex> table_lock(robin_table_device_mutex);
 
   Int ncells = domain.ncells();
@@ -177,13 +183,35 @@ bool launch_superpose(const Domain& domain,
     robin_index_error = d_robin_index_error.data();
   }
   DeviceBuffer<unsigned long long> d_cap_hits;
+  DeviceBuffer<unsigned long long> d_low_screening_evaluations;
+  DeviceBuffer<unsigned long long> d_negative_field_count;
+  DeviceBuffer<double> d_most_negative_field;
   DeviceBuffer<unsigned long long> d_kernel_evaluations;
   unsigned long long* cap_hits_device = nullptr;
+  unsigned long long* low_screening_evaluations_device = nullptr;
+  unsigned long long* negative_field_count_device = nullptr;
+  double* most_negative_field_device = nullptr;
   unsigned long long* kernel_evaluations_device = nullptr;
   if (cap_hits != nullptr) {
     d_cap_hits.allocate(1);
     cudaMemset(d_cap_hits.data(), 0, sizeof(unsigned long long));
     cap_hits_device = d_cap_hits.data();
+  }
+  if (low_screening_evaluations != nullptr) {
+    d_low_screening_evaluations.allocate(1);
+    cudaMemset(d_low_screening_evaluations.data(), 0,
+               sizeof(unsigned long long));
+    low_screening_evaluations_device = d_low_screening_evaluations.data();
+  }
+  if (negative_field_count != nullptr) {
+    d_negative_field_count.allocate(1);
+    cudaMemset(d_negative_field_count.data(), 0, sizeof(unsigned long long));
+    negative_field_count_device = d_negative_field_count.data();
+  }
+  if (most_negative_field != nullptr) {
+    d_most_negative_field.allocate(1);
+    cudaMemset(d_most_negative_field.data(), 0, sizeof(double));
+    most_negative_field_device = d_most_negative_field.data();
   }
   if (kernel_evaluations != nullptr) {
     d_kernel_evaluations.allocate(1);
@@ -196,7 +224,9 @@ bool launch_superpose(const Domain& domain,
       robin_table_device_buffer.data(),
       dom, adv_p, static_cast<int>(sources.size()), span_x, span_y, span_z,
       static_cast<int>(robin_tables.size()), robin_index_error,
-      gpu_compute_stream(), cap_hits_device, kernel_evaluations_device);
+      gpu_compute_stream(), cap_hits_device, low_screening_evaluations_device,
+      negative_field_count_device, most_negative_field_device,
+      kernel_evaluations_device);
 
   gpu_sync_compute();
   gpu_check_error("superpose_kernel");
@@ -218,6 +248,19 @@ bool launch_superpose(const Domain& domain,
     unsigned long long count = 0;
     d_kernel_evaluations.download(&count, 1);
     *kernel_evaluations = static_cast<uint64_t>(count);
+  }
+  if (low_screening_evaluations != nullptr) {
+    unsigned long long count = 0;
+    d_low_screening_evaluations.download(&count, 1);
+    *low_screening_evaluations = static_cast<uint64_t>(count);
+  }
+  if (negative_field_count != nullptr) {
+    unsigned long long count = 0;
+    d_negative_field_count.download(&count, 1);
+    *negative_field_count = static_cast<uint64_t>(count);
+  }
+  if (most_negative_field != nullptr) {
+    d_most_negative_field.download(most_negative_field, 1);
   }
   return true;
 }
@@ -283,7 +326,10 @@ bool gpu_superpose_to_grid(
     const std::vector<Real>& strength_factors,
     std::vector<Real>& grid_conc,
     Real cutoff_radius, uint64_t* cap_hits,
-    uint64_t* kernel_evaluations) {
+    uint64_t* kernel_evaluations,
+    uint64_t* low_screening_evaluations,
+    uint64_t* negative_field_count,
+    Real* most_negative_field) {
 
 #ifndef GUTIBM_CUDA
   (void)domain;
@@ -295,12 +341,18 @@ bool gpu_superpose_to_grid(
   (void)cutoff_radius;
   (void)cap_hits;
   (void)kernel_evaluations;
+  (void)low_screening_evaluations;
+  (void)negative_field_count;
+  (void)most_negative_field;
   return false;
 #else
   if (sources.empty()) {
     grid_conc.assign(domain.ncells(), 0.0);
     if (cap_hits != nullptr) *cap_hits = 0;
     if (kernel_evaluations != nullptr) *kernel_evaluations = 0;
+    if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
+    if (negative_field_count != nullptr) *negative_field_count = 0;
+    if (most_negative_field != nullptr) *most_negative_field = 0.0;
     return true;
   }
 
@@ -308,7 +360,8 @@ bool gpu_superpose_to_grid(
   d_grid.allocate(static_cast<size_t>(domain.ncells()));
   if (!launch_superpose(domain, adv, sources, params, strength_factors,
                         d_grid.data(), cutoff_radius, cap_hits,
-                        kernel_evaluations)) {
+                        kernel_evaluations, low_screening_evaluations,
+                        negative_field_count, most_negative_field)) {
     return false;
   }
   d_grid.download(grid_conc);
@@ -324,7 +377,10 @@ bool gpu_superpose_to_device(
     const std::vector<Real>& strength_factors,
     double* d_grid_conc,
     Real cutoff_radius, uint64_t* cap_hits,
-    uint64_t* kernel_evaluations) {
+    uint64_t* kernel_evaluations,
+    uint64_t* low_screening_evaluations,
+    uint64_t* negative_field_count,
+    Real* most_negative_field) {
 
 #ifndef GUTIBM_CUDA
   (void)domain;
@@ -336,6 +392,9 @@ bool gpu_superpose_to_device(
   (void)cutoff_radius;
   (void)cap_hits;
   (void)kernel_evaluations;
+  (void)low_screening_evaluations;
+  (void)negative_field_count;
+  (void)most_negative_field;
   return false;
 #else
   if (sources.empty()) {
@@ -345,11 +404,15 @@ bool gpu_superpose_to_device(
     }
     if (cap_hits != nullptr) *cap_hits = 0;
     if (kernel_evaluations != nullptr) *kernel_evaluations = 0;
+    if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
+    if (negative_field_count != nullptr) *negative_field_count = 0;
+    if (most_negative_field != nullptr) *most_negative_field = 0.0;
     return true;
   }
   return launch_superpose(domain, adv, sources, params, strength_factors,
                           d_grid_conc, cutoff_radius, cap_hits,
-                          kernel_evaluations);
+                          kernel_evaluations, low_screening_evaluations,
+                          negative_field_count, most_negative_field);
 #endif
 }
 

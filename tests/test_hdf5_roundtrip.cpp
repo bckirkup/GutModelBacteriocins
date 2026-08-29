@@ -66,6 +66,12 @@ void assert_run_provenance(hid_t file,
   }
   assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/image_series_mode"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/neumann_low_screening_evaluations"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/neumann_negative_field_count"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/neumann_most_negative_field"));
   assert(read_string_dataset(file, "run_provenance/image_series_mode")
          == "corrected");
   assert(gutibm::test::hdf5_read_scalar<int32_t>(

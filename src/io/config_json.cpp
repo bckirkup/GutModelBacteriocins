@@ -930,6 +930,7 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
            cfg.qssa.image_series_relative_tolerance);
   int_key("image_series_max_shells", cfg.qssa.image_series_max_shells);
   string_key("image_series_mode", cfg.qssa.image_series_mode);
+  string_key("qssa.low_screening_policy", cfg.qssa.low_screening_policy);
   real_key("nutrient_cutoff", cfg.qssa.nutrient_cutoff);
   real_key("colicin_release_rate", cfg.qssa.colicin_release_rate);
   real_key("microcin_secretion", cfg.qssa.microcin_secretion);

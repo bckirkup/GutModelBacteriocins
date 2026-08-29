@@ -220,6 +220,15 @@ class Simulation {
   uint64_t neumann_image_series_cap_hits() const {
     return neumann_image_series_cap_hits_;
   }
+  uint64_t neumann_low_screening_evaluations() const {
+    return neumann_low_screening_evaluations_;
+  }
+  uint64_t neumann_negative_field_count() const {
+    return neumann_negative_field_count_;
+  }
+  Real neumann_most_negative_field() const {
+    return neumann_most_negative_field_;
+  }
   uint64_t green_function_kernel_evaluations() const {
     return green_function_kernel_evaluations_;
   }
@@ -365,6 +374,9 @@ class Simulation {
   std::string termination_detail_ = "run has not completed";
   double termination_wall_seconds_ = 0.0;
   uint64_t neumann_image_series_cap_hits_ = 0;
+  uint64_t neumann_low_screening_evaluations_ = 0;
+  uint64_t neumann_negative_field_count_ = 0;
+  Real neumann_most_negative_field_ = 0.0;
   uint64_t green_function_kernel_evaluations_ = 0;
   Int zero_realization_steps_ = 0;
 };

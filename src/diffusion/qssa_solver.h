@@ -34,6 +34,7 @@ class AdvectionField;
 class ChemicalField;
 class ChemicalFieldGpu;
 class AgentPool;
+struct ChemicalSpec;
 
 struct QSSAConfig {
   // Cutoff radius for Green's function evaluation (m)
@@ -50,6 +51,7 @@ struct QSSAConfig {
   int image_series_max_shells = kDefaultImageSeriesMaxShells;
   bool image_series_max_shells_explicit = false;
   std::string image_series_mode = "corrected";
+  std::string low_screening_policy = "warn";
   Real nutrient_cutoff  = 50.0e-6;    // 50 um for nutrient depletion zones
 
   // Bacteriocin source parameters
@@ -90,7 +92,8 @@ class QSSASolver {
   QSSASolver() = default;
 
   void init(const QSSAConfig& cfg, const Domain& domain,
-            const AdvectionField& adv, bool profile_steps = false);
+            const AdvectionField& adv, bool profile_steps = false,
+            const std::vector<ChemicalSpec>* chemicals = nullptr);
 
   // Compute steady-state bacteriocin field from current toxin sources
   // and deposit onto chemical field grid

@@ -33,7 +33,10 @@ bool gpu_superpose_to_grid(
     const std::vector<Real>& strength_factors,
     std::vector<Real>& grid_conc,
     Real cutoff_radius, uint64_t* cap_hits = nullptr,
-    uint64_t* kernel_evaluations = nullptr);
+    uint64_t* kernel_evaluations = nullptr,
+    uint64_t* low_screening_evaluations = nullptr,
+    uint64_t* negative_field_count = nullptr,
+    Real* most_negative_field = nullptr);
 
 // Deposit near-field superposition directly into a device concentration buffer.
 bool gpu_superpose_to_device(
@@ -44,7 +47,10 @@ bool gpu_superpose_to_device(
     const std::vector<Real>& strength_factors,
     double* d_grid_conc,
     Real cutoff_radius, uint64_t* cap_hits = nullptr,
-    uint64_t* kernel_evaluations = nullptr);
+    uint64_t* kernel_evaluations = nullptr,
+    uint64_t* low_screening_evaluations = nullptr,
+    uint64_t* negative_field_count = nullptr,
+    Real* most_negative_field = nullptr);
 
 }  // namespace gutibm
 

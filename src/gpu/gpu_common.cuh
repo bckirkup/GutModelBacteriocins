@@ -80,6 +80,9 @@ __device__ inline double concentration_bounded(const double src[3], const double
                                                int robin_table_count,
                                                unsigned int* robin_index_error,
                                                unsigned long long* cap_hits,
+                                               unsigned long long* low_screening_evaluations,
+                                               unsigned long long* negative_field_count,
+                                               double* most_negative_field,
                                                unsigned long long* kernel_evaluations) {
   double D_eff = p.diff_coeff / p.retardation;
   double flow[3];
@@ -108,6 +111,7 @@ __device__ inline double concentration_bounded(const double src[3], const double
   const ImageKernel kernel = {src, tgt, D_eff, p.source_rate, p.decay_rate,
                               flow, &dom, kernel_evaluations};
   int cap_hit = 0;
+  int low_screening_floor = 0;
   const double flow_magnitude = sqrt(
       flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]);
   const auto budget = neumann::image_series_budget(
@@ -129,9 +133,12 @@ __device__ inline double concentration_bounded(const double src[3], const double
         src[2], dom.z_lo, dom.z_hi, kernel,
         p.image_series_relative_tolerance, budget.max_shells,
         nullptr, &cap_hit);
-    if (budget.forced_cap_hit) cap_hit = 1;
+    low_screening_floor = budget.low_screening_floor ? 1 : 0;
   }
   if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
+  if (low_screening_floor != 0 && low_screening_evaluations != nullptr) {
+    atomicAdd(low_screening_evaluations, 1ULL);
+  }
   if (robin::transfer_enabled(p.lumen_transfer_length)) {
     if (p.robin_table_index < 0
         || p.robin_table_index >= robin_table_count
@@ -155,6 +162,24 @@ __device__ inline double concentration_bounded(const double src[3], const double
     correction *= exp((flow[0] * dx + flow[1] * dy + flow[2] * dz)
                       / (2.0 * D_eff));
     total += p.source_rate / (4.0 * PI_GPU * D_eff) * correction;
+  }
+  if (total < 0.0) {
+    if (negative_field_count != nullptr) {
+      atomicAdd(negative_field_count, 1ULL);
+    }
+    if (most_negative_field != nullptr) {
+      unsigned long long* bits =
+          reinterpret_cast<unsigned long long*>(most_negative_field);
+      unsigned long long old = *bits;
+      unsigned long long assumed = old;
+      while (total < __longlong_as_double(static_cast<long long>(assumed))) {
+        assumed = atomicCAS(
+            bits, assumed, static_cast<unsigned long long>(
+                __double_as_longlong(total)));
+        if (assumed == old) break;
+        old = assumed;
+      }
+    }
   }
   return total > 0.0 ? total : 0.0;
 }
