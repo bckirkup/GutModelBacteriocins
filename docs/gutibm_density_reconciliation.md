@@ -123,6 +123,14 @@ total community, not the viable-culture-scale community.
    with FISH-based total mucosal bacteria (~2×10⁸ cells/mL in healthy
    controls, Swidsinski 2005). This is the right scale for the VBF.
 
+## Generalization
+
+This is not specific to density. The same substitution — a precise
+sequence-derived number standing in for an imprecise functional one — recurred
+in the Spec 14 lysogen prior, where integrated-prophage detection in MAGs was
+adopted as the prevalence of *inducible* prophage. See
+`docs/SPEC14_PRIOR_REVIEW.md` §4 for the class and the rule.
+
 ## References
 
 Ahmed et al. 2007. Mucosa-associated bacterial diversity in relation to human
