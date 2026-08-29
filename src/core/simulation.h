@@ -220,6 +220,9 @@ class Simulation {
   uint64_t neumann_image_series_cap_hits() const {
     return neumann_image_series_cap_hits_;
   }
+  uint64_t green_function_kernel_evaluations() const {
+    return green_function_kernel_evaluations_;
+  }
   Real halt_density_cells_per_mL() const {
     return dysbiosis_.halt_density_cells_per_mL();
   }
@@ -362,6 +365,7 @@ class Simulation {
   std::string termination_detail_ = "run has not completed";
   double termination_wall_seconds_ = 0.0;
   uint64_t neumann_image_series_cap_hits_ = 0;
+  uint64_t green_function_kernel_evaluations_ = 0;
   Int zero_realization_steps_ = 0;
 };
 

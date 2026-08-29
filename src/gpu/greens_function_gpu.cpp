@@ -75,10 +75,12 @@ bool launch_superpose(const Domain& domain,
                       const std::vector<GreensFunctionParams>& params,
                       const std::vector<Real>& strength_factors,
                       double* d_grid,
-                      Real cutoff_radius, uint64_t* cap_hits) {
+                      Real cutoff_radius, uint64_t* cap_hits,
+                      uint64_t* kernel_evaluations) {
   if (!gpu_runtime_enabled() || sources.empty()) return false;
   if (d_grid == nullptr) return false;
   if (cap_hits != nullptr) *cap_hits = 0;
+  if (kernel_evaluations != nullptr) *kernel_evaluations = 0;
   std::lock_guard<std::mutex> table_lock(robin_table_device_mutex);
 
   Int ncells = domain.ncells();
@@ -100,6 +102,15 @@ bool launch_superpose(const Domain& domain,
     sp[i].decay_rate = params[i].decay_rate;
     sp[i].lumen_transfer_length = params[i].lumen_transfer_length;
     sp[i].robin_cutoff = params[i].robin_cutoff;
+    sp[i].image_series_relative_tolerance =
+        params[i].image_series_relative_tolerance;
+    sp[i].image_series_max_shells =
+        params[i].image_series_legacy_reflections
+                && !params[i].image_series_max_shells_explicit
+            ? kHistoricalLegacyImageSeriesShells
+            : params[i].image_series_max_shells;
+    sp[i].image_series_legacy_reflections =
+        params[i].image_series_legacy_reflections ? 1 : 0;
     sp[i].lumen_transfer_basis_free =
         params[i].lumen_transfer_basis_free ? 1 : 0;
     sp[i].robin_table_index = -1;
@@ -172,18 +183,25 @@ bool launch_superpose(const Domain& domain,
   const auto dom = make_domain_params(domain);
   const auto adv_p = make_advection_params(adv);
   DeviceBuffer<unsigned long long> d_cap_hits;
+  DeviceBuffer<unsigned long long> d_kernel_evaluations;
   unsigned long long* cap_hits_device = nullptr;
+  unsigned long long* kernel_evaluations_device = nullptr;
   if (cap_hits != nullptr) {
     d_cap_hits.allocate(1);
     cudaMemset(d_cap_hits.data(), 0, sizeof(unsigned long long));
     cap_hits_device = d_cap_hits.data();
+  }
+  if (kernel_evaluations != nullptr) {
+    d_kernel_evaluations.allocate(1);
+    cudaMemset(d_kernel_evaluations.data(), 0, sizeof(unsigned long long));
+    kernel_evaluations_device = d_kernel_evaluations.data();
   }
 
   gpu::launch_superpose_kernel(
       d_sx.data(), d_sy.data(), d_sz.data(), d_params.data(), d_grid,
       robin_table_device_buffer.data(),
       dom, adv_p, static_cast<int>(sources.size()), span_x, span_y, span_z,
-      gpu_compute_stream(), cap_hits_device);
+      gpu_compute_stream(), cap_hits_device, kernel_evaluations_device);
 
   gpu_sync_compute();
   gpu_check_error("superpose_kernel");
@@ -191,6 +209,11 @@ bool launch_superpose(const Domain& domain,
     unsigned long long count = 0;
     d_cap_hits.download(&count, 1);
     *cap_hits = static_cast<uint64_t>(count);
+  }
+  if (kernel_evaluations != nullptr) {
+    unsigned long long count = 0;
+    d_kernel_evaluations.download(&count, 1);
+    *kernel_evaluations = static_cast<uint64_t>(count);
   }
   return true;
 }
@@ -205,7 +228,8 @@ bool gpu_superpose_to_grid(
     const std::vector<GreensFunctionParams>& params,
     const std::vector<Real>& strength_factors,
     std::vector<Real>& grid_conc,
-    Real cutoff_radius, uint64_t* cap_hits) {
+    Real cutoff_radius, uint64_t* cap_hits,
+    uint64_t* kernel_evaluations) {
 
 #ifndef GUTIBM_CUDA
   (void)domain;
@@ -216,18 +240,21 @@ bool gpu_superpose_to_grid(
   (void)grid_conc;
   (void)cutoff_radius;
   (void)cap_hits;
+  (void)kernel_evaluations;
   return false;
 #else
   if (sources.empty()) {
     grid_conc.assign(domain.ncells(), 0.0);
     if (cap_hits != nullptr) *cap_hits = 0;
+    if (kernel_evaluations != nullptr) *kernel_evaluations = 0;
     return true;
   }
 
   DeviceBuffer<double> d_grid;
   d_grid.allocate(static_cast<size_t>(domain.ncells()));
   if (!launch_superpose(domain, adv, sources, params, strength_factors,
-                        d_grid.data(), cutoff_radius, cap_hits)) {
+                        d_grid.data(), cutoff_radius, cap_hits,
+                        kernel_evaluations)) {
     return false;
   }
   d_grid.download(grid_conc);
@@ -242,7 +269,8 @@ bool gpu_superpose_to_device(
     const std::vector<GreensFunctionParams>& params,
     const std::vector<Real>& strength_factors,
     double* d_grid_conc,
-    Real cutoff_radius, uint64_t* cap_hits) {
+    Real cutoff_radius, uint64_t* cap_hits,
+    uint64_t* kernel_evaluations) {
 
 #ifndef GUTIBM_CUDA
   (void)domain;
@@ -253,6 +281,7 @@ bool gpu_superpose_to_device(
   (void)d_grid_conc;
   (void)cutoff_radius;
   (void)cap_hits;
+  (void)kernel_evaluations;
   return false;
 #else
   if (sources.empty()) {
@@ -261,10 +290,12 @@ bool gpu_superpose_to_device(
                  static_cast<size_t>(domain.ncells()) * sizeof(double));
     }
     if (cap_hits != nullptr) *cap_hits = 0;
+    if (kernel_evaluations != nullptr) *kernel_evaluations = 0;
     return true;
   }
   return launch_superpose(domain, adv, sources, params, strength_factors,
-                          d_grid_conc, cutoff_radius, cap_hits);
+                          d_grid_conc, cutoff_radius, cap_hits,
+                          kernel_evaluations);
 #endif
 }
 

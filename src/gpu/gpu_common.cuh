@@ -49,7 +49,9 @@ __device__ inline double minimum_image_delta(double delta, double span,
 __device__ inline double single_kernel(const double src[3], const double tgt[3],
                                        double D_eff, double Q, double decay_rate,
                                        const double flow[3],
-                                       const DomainParams& dom) {
+                                       const DomainParams& dom,
+                                       unsigned long long* kernel_evaluations) {
+  if (kernel_evaluations != nullptr) atomicAdd(kernel_evaluations, 1ULL);
   double dx = minimum_image_delta(
       tgt[0] - src[0], dom.extent[0], dom.periodic[0]);
   double dy = minimum_image_delta(
@@ -75,7 +77,8 @@ __device__ inline double concentration_bounded(const double src[3], const double
                                                const DomainParams& dom,
                                                const AdvectionParams& adv,
                                                const double* robin_tables,
-                                               unsigned long long* cap_hits) {
+                                               unsigned long long* cap_hits,
+                                               unsigned long long* kernel_evaluations) {
   double D_eff = p.diff_coeff / p.retardation;
   double flow[3];
   flow_velocity(adv, src[0], src[2], flow[0], flow[1], flow[2]);
@@ -87,6 +90,7 @@ __device__ inline double concentration_bounded(const double src[3], const double
     double decay_rate;
     const double* flow;
     const DomainParams* domain;
+    unsigned long long* kernel_evaluations;
 
     __device__ double operator()(double image_z, int reflected) const {
       double image[3] = {source[0], source[1], image_z};
@@ -95,17 +99,36 @@ __device__ inline double concentration_bounded(const double src[3], const double
         image_flow[2] = -image_flow[2];
       }
       return single_kernel(image, target, diff_coeff, source_rate,
-                           decay_rate, image_flow, *domain);
+                           decay_rate, image_flow, *domain,
+                           kernel_evaluations);
     }
   };
   const ImageKernel kernel = {src, tgt, D_eff, p.source_rate, p.decay_rate,
-                              flow, &dom};
+                              flow, &dom, kernel_evaluations};
   int cap_hit = 0;
-  double total = neumann::sum_image_series(
-      src[2], dom.z_lo, dom.z_hi, kernel,
-      D_eff, p.decay_rate,
-      sqrt(flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]),
-      fabs(flow[2]), neumann::kRelativeTolerance, nullptr, &cap_hit);
+  const double flow_magnitude = sqrt(
+      flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]);
+  const auto budget = neumann::image_series_budget(
+      D_eff, p.decay_rate, flow_magnitude, fabs(flow[2]),
+      dom.z_hi - dom.z_lo, p.image_series_relative_tolerance);
+  double total = 0.0;
+  if (p.image_series_legacy_reflections != 0) {
+    total = kernel(src[2], 0);
+    for (int m = 1; m <= p.image_series_max_shells; ++m) {
+      const double offset = 2.0 * static_cast<double>(m)
+          * (dom.z_hi - dom.z_lo);
+      total += kernel(2.0 * dom.z_lo - src[2] - offset, 0)
+          + kernel(2.0 * dom.z_hi - src[2] + offset, 0)
+          + kernel(2.0 * dom.z_lo - src[2] + offset, 0)
+          + kernel(2.0 * dom.z_hi - src[2] - offset, 0);
+    }
+  } else {
+    total = neumann::sum_image_series(
+        src[2], dom.z_lo, dom.z_hi, kernel,
+        p.image_series_relative_tolerance, budget.max_shells,
+        nullptr, &cap_hit);
+    if (budget.forced_cap_hit) cap_hit = 1;
+  }
   if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
   if (p.robin_table_index >= 0 && robin_tables != nullptr
       && robin::transfer_enabled(p.lumen_transfer_length)) {

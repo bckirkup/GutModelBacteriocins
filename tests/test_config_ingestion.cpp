@@ -22,6 +22,7 @@
 
 #include "input_parser.h"
 #include "config_json.h"
+#include "error.h"
 
 #include <cmath>
 #include <cstdio>
@@ -317,6 +318,19 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return c.qssa.lumen_transfer_basis;
                 }, "free"));
+  v.push_back(R("image_series_relative_tolerance",
+                [](const SimulationConfig& c) {
+                  return c.qssa.image_series_relative_tolerance;
+                }, 1.0e-6));
+  v.push_back(I("image_series_max_shells",
+                [](const SimulationConfig& c) {
+                  return static_cast<long long>(
+                      c.qssa.image_series_max_shells);
+                }));
+  v.push_back(S("image_series_mode",
+                [](const SimulationConfig& c) {
+                  return c.qssa.image_series_mode;
+                }, "pre_fix_duplicated_reflection"));
   v.push_back(R("lumen_transfer_length", [](const SimulationConfig& c) {
     return c.qssa.lumen_transfer_length;
   }, 123.0e-6, false));
@@ -1093,6 +1107,48 @@ void test_strain_and_array_keys() {
   std::cout << "  test_strain_and_array_keys: checked strain + array keys\n";
 }
 
+void test_disabled_robin_infinity_round_trip() {
+  const SimulationConfig original = InputParser::default_config();
+  const std::string serialized = ConfigJson::serialize_document(original);
+  expect(serialized.find("\"toxin.lumen_transfer_length\":\"inf\"")
+             != std::string::npos,
+         "default disabled Robin transfer should serialize as inf");
+
+  const std::string path = source_path(
+      "tests/fixtures/_config_ingestion_inf_round_trip.json");
+  {
+    std::ofstream out(path);
+    out << serialized;
+  }
+
+  const char* previous = std::getenv("GUTIBM_STRICT_CONFIG");
+  const std::string saved = previous == nullptr ? "" : previous;
+  setenv("GUTIBM_STRICT_CONFIG", "1", 1);
+  SimulationConfig restored = InputParser::default_config();
+  bool parsed = true;
+  try {
+    restored = InputParser::parse(path);
+  } catch (const ConfigError& ex) {
+    parsed = false;
+    record_failure("strict config rejected serialized infinity: "
+                   + std::string(ex.what()));
+  }
+  if (previous == nullptr) {
+    unsetenv("GUTIBM_STRICT_CONFIG");
+  } else {
+    setenv("GUTIBM_STRICT_CONFIG", saved.c_str(), 1);
+  }
+  std::remove(path.c_str());
+
+  expect(parsed, "serialized default config should parse under strict mode");
+  expect(std::isinf(restored.qssa.lumen_transfer_length)
+             && restored.qssa.lumen_transfer_length > 0.0,
+         "serialized default should retain disabled Robin transfer");
+  expect(restored.qssa.lumen_transfer_basis == "effective",
+         "disabled Robin round trip should retain effective basis");
+  std::cout << "  test_disabled_robin_infinity_round_trip: PASSED\n";
+}
+
 // Completeness guard: the set of keys parsed by the sources must equal the set
 // of keys tracked here. Adding a parser key without a probe (or removing a
 // probe for a still-parsed key) fails CI.
@@ -1137,6 +1193,7 @@ int main() {
   test_every_flat_key_ingests_via_apply();
   test_every_flat_key_ingests_via_json_document();
   test_strain_and_array_keys();
+  test_disabled_robin_infinity_round_trip();
   test_all_parser_keys_are_tracked();
   if (failure_counter().value != 0) {
     std::cerr << failure_counter().value << " config ingestion check(s) FAILED.\n";

@@ -17,6 +17,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <limits>
 
 namespace gutibm {
 
@@ -58,6 +59,13 @@ Real parse_config_real(std::string_view key, const std::string& val) {
   if (trimmed.empty()) {
     warn_parse_failure("numeric", key, val);
     return 0.0;
+  }
+  if (trimmed == "inf" || trimmed == "+inf"
+      || trimmed == "infinity" || trimmed == "+infinity") {
+    return std::numeric_limits<Real>::infinity();
+  }
+  if (trimmed == "-inf" || trimmed == "-infinity") {
+    return -std::numeric_limits<Real>::infinity();
   }
 
   try {
@@ -791,6 +799,26 @@ bool apply_chemistry_key(SimulationConfig& cfg, std::string_view key,
     throw ConfigError(
         "invalid toxin_lumping: expected 'per_receptor' or 'lumped', got '"
         + val + "'");
+  }
+  if (key == "image_series_relative_tolerance") {
+    cfg.qssa.image_series_relative_tolerance =
+        parse_config_real(key, val);
+    return true;
+  }
+  if (key == "image_series_max_shells") {
+    cfg.qssa.image_series_max_shells = parse_config_int(key, val);
+    cfg.qssa.image_series_max_shells_explicit = true;
+    return true;
+  }
+  if (key == "image_series_mode") {
+    if (val == "corrected"
+        || val == "pre_fix_duplicated_reflection") {
+      cfg.qssa.image_series_mode = val;
+      return true;
+    }
+    throw ConfigError(
+        "invalid image_series_mode: expected 'corrected' or "
+        "'pre_fix_duplicated_reflection'");
   }
   return false;
 }

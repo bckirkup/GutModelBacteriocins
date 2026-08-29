@@ -153,10 +153,11 @@ bool try_gpu_superpose(const Domain& domain,
                        const std::vector<Vec3>& sources,
                        const std::vector<GreensFunctionParams>& params,
                        std::vector<Real>& grid_conc,
-                       Real cutoff_radius, uint64_t* cap_hits) {
+                       Real cutoff_radius, uint64_t* cap_hits,
+                       uint64_t* kernel_evaluations) {
   if (!gpu_runtime_enabled()) return false;
   return gpu_superpose_to_grid(domain, adv, sources, params, {}, grid_conc,
-                               cutoff_radius, cap_hits);
+                               cutoff_radius, cap_hits, kernel_evaluations);
 }
 #endif
 
@@ -274,9 +275,30 @@ void GreensFunction::require_init() const {
   }
 }
 
+void GreensFunction::set_kernel_evaluation_counting(bool enabled) {
+  kernel_evaluation_counting_enabled_ = enabled;
+  if (!enabled) {
+    kernel_evaluations_by_thread_.clear();
+    return;
+  }
+  int slot_count = 1;
+#ifdef GUTIBM_OPENMP
+  slot_count = omp_get_max_threads();
+#endif
+  kernel_evaluations_by_thread_.assign(
+      static_cast<std::size_t>(slot_count), uint64_t{0});
+}
+
 Real GreensFunction::single_kernel(const Vec3& src, const Vec3& tgt,
                                     Real D_eff, Real Q, Real decay_rate,
                                     const Vec3& flow_vel) const {
+  if (kernel_evaluation_counting_enabled_) {
+    int slot = 0;
+#ifdef GUTIBM_OPENMP
+    slot = omp_get_thread_num();
+#endif
+    ++kernel_evaluations_by_thread_[static_cast<std::size_t>(slot)];
+  }
   Vec3 delta = domain_->min_image_delta(src, tgt);
   Real r = std::sqrt(delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2]);
 
@@ -343,12 +365,31 @@ Real GreensFunction::concentration_sealed(
   // The image construction is exact only for flow uniform in z. The existing
   // radial_velocity(z) profile varies in z, so this retains its pre-existing
   // uniform-flow approximation.
-  const Real total = neumann::sum_image_series(
-      source[2], z_lo_, z_hi_, evaluate_image,
-      D_eff, params.decay_rate,
-      std::sqrt(flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]),
-      std::abs(flow[2]),
-      neumann::kRelativeTolerance, nullptr, &cap_hit);
+  const Real flow_magnitude = std::sqrt(
+      flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]);
+  const auto budget = neumann::image_series_budget(
+      D_eff, params.decay_rate, flow_magnitude, std::abs(flow[2]),
+      z_hi_ - z_lo_, params.image_series_relative_tolerance);
+  Real total = 0.0;
+  if (params.image_series_legacy_reflections) {
+    total = evaluate_image(source[2], 0);
+    const int max_shells = !params.image_series_max_shells_explicit
+        ? kHistoricalLegacyImageSeriesShells
+        : params.image_series_max_shells;
+    for (int m = 1; m <= max_shells; ++m) {
+      const Real offset = 2.0 * static_cast<Real>(m) * (z_hi_ - z_lo_);
+      total += evaluate_image(2.0 * z_lo_ - source[2] - offset, 0)
+          + evaluate_image(2.0 * z_hi_ - source[2] + offset, 0)
+          + evaluate_image(2.0 * z_lo_ - source[2] + offset, 0)
+          + evaluate_image(2.0 * z_hi_ - source[2] - offset, 0);
+    }
+  } else {
+    total = neumann::sum_image_series(
+        source[2], z_lo_, z_hi_, evaluate_image,
+        params.image_series_relative_tolerance, budget.max_shells,
+        nullptr, &cap_hit);
+    if (budget.forced_cap_hit) cap_hit = 1;
+  }
   if (cap_hit != 0) {
 #ifdef GUTIBM_OPENMP
 #pragma omp atomic update
@@ -414,9 +455,17 @@ void GreensFunction::superpose_to_grid(
   grid_conc.assign(ncells, 0.0);
 
 #ifdef GUTIBM_CUDA
+  uint64_t gpu_kernel_evaluations = 0;
+  uint64_t* kernel_evaluations = kernel_evaluation_counting_enabled_
+      ? &gpu_kernel_evaluations
+      : nullptr;
   if (adv_ && domain_ && try_gpu_superpose(*domain_, *adv_, sources, params,
                                            grid_conc, cutoff_radius,
-                                           &image_series_cap_hits_)) {
+                                           &image_series_cap_hits_,
+                                           kernel_evaluations)) {
+    if (kernel_evaluations != nullptr) {
+      add_kernel_evaluations(gpu_kernel_evaluations);
+    }
     return;
   }
 #endif

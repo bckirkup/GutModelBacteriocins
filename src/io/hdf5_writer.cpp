@@ -270,6 +270,31 @@ void write_scalar_dataset(hid_t fid, const std::string& path, hid_t h5_type,
   H5Sclose(space);
 }
 
+void write_step_profile(hid_t fid, const StepProfile& profile,
+                        const HDF5Config& cfg) {
+  ensure_group(fid, "run_provenance/step_profile", cfg);
+  const auto write_phase = [fid](const char* name, double value) {
+    write_scalar_dataset(fid, "run_provenance/step_profile/" + std::string(name),
+                         H5T_NATIVE_DOUBLE, &value);
+  };
+  write_phase("ghost_exchange_s", profile.ghost_exchange_s);
+  write_phase("spatial_hash_s", profile.spatial_hash_s);
+  write_phase("biology_s", profile.biology_s);
+  write_phase("chemistry_s", profile.chemistry_s);
+  write_phase("physics_s", profile.physics_s);
+  write_phase("mpi_migrate_s", profile.mpi_migrate_s);
+  write_phase("cleanup_s", profile.cleanup_s);
+  write_phase("gpu_h2d_s", profile.gpu_h2d_s);
+  write_phase("gpu_d2h_s", profile.gpu_d2h_s);
+  write_phase("gpu_slab_x_roundtrip_s", profile.gpu_slab_x_roundtrip_s);
+  write_phase("mpi_reaction_reduce_s", profile.mpi_reaction_reduce_s);
+  write_phase("hdf5_s", profile.hdf5_s);
+  write_phase("total_s", profile.total_s());
+  const int32_t step_count = profile.step_count;
+  write_scalar_dataset(fid, "run_provenance/step_profile/step_count",
+                       H5T_NATIVE_INT32, &step_count);
+}
+
 void write_file_attr(hid_t fid, const char* name, hid_t type, const void* value) {
   hid_t space = H5Screate(H5S_SCALAR);
   hid_t attr = H5Acreate2(fid, name, type, space, H5P_DEFAULT, H5P_DEFAULT);
@@ -590,6 +615,8 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
                        robin_metadata);
   write_string_dataset(fid, "run_provenance/robin_table_hash",
                        table_cache.values_hash());
+  write_string_dataset(fid, "run_provenance/image_series_mode",
+                       sim.config().qssa.image_series_mode);
   write_string_dataset(fid, "run_provenance/git_sha", GUTIBM_GIT_SHA);
   write_string_dataset(fid, "run_provenance/version", GUTIBM_VERSION);
   const int32_t mpi_compiled =
@@ -638,6 +665,11 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
       sim.neumann_image_series_cap_hits());
   write_scalar_dataset(fid, "run_provenance/neumann_image_series_cap_hits",
                        H5T_NATIVE_ULLONG, &cap_hits);
+  const auto kernel_evaluations = static_cast<unsigned long long>(
+      sim.green_function_kernel_evaluations());
+  write_scalar_dataset(fid, "run_provenance/green_function_kernel_evaluations",
+                       H5T_NATIVE_ULLONG, &kernel_evaluations);
+  write_step_profile(fid, sim.step_profile(), cfg_);
   const auto robin_tables_built =
       static_cast<unsigned long long>(table_cache.tables_built());
   const auto robin_table_evictions =
@@ -738,6 +770,12 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
         sim.neumann_image_series_cap_hits());
     write_scalar_dataset(fid, "run_provenance/neumann_image_series_cap_hits",
                          H5T_NATIVE_ULLONG, &cap_hits);
+    const auto kernel_evaluations = static_cast<unsigned long long>(
+        sim.green_function_kernel_evaluations());
+    write_scalar_dataset(
+        fid, "run_provenance/green_function_kernel_evaluations",
+        H5T_NATIVE_ULLONG, &kernel_evaluations);
+    write_step_profile(fid, sim.step_profile(), cfg_);
     H5Fflush(fid, H5F_SCOPE_LOCAL);
   }
   mpi_barrier(cfg_);
