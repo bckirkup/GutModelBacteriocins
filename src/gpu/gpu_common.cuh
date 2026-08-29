@@ -90,6 +90,7 @@ __device__ inline double concentration_bounded(const double src[3], const double
     double decay_rate;
     const double* flow;
     const DomainParams* domain;
+    unsigned long long* kernel_evaluations;
 
     __device__ double operator()(double image_z, int reflected) const {
       double image[3] = {source[0], source[1], image_z};
@@ -103,7 +104,7 @@ __device__ inline double concentration_bounded(const double src[3], const double
     }
   };
   const ImageKernel kernel = {src, tgt, D_eff, p.source_rate, p.decay_rate,
-                              flow, &dom};
+                              flow, &dom, kernel_evaluations};
   int cap_hit = 0;
   const double flow_magnitude = sqrt(
       flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]);
