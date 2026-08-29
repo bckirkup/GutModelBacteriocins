@@ -426,6 +426,7 @@ void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
   domain_ = &domain;
   adv_    = &adv;
   gf_.init(domain, adv);
+  gf_.reset_image_series_cap_hits();
 }
 
 void QSSASolver::solve_lumped_bacteriocin_fields(

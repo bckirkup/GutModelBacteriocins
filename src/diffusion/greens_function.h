@@ -22,6 +22,7 @@
 #define GUTIBM_GREENS_FUNCTION_H
 
 #include "types.h"
+#include <cstdint>
 #include <vector>
 
 namespace gutibm {
@@ -81,6 +82,13 @@ class GreensFunction {
   // Peclet number at position: Pe = U*L/D
   Real peclet(const Vec3& pos, Real D_eff, Real length_scale) const;
 
+  uint64_t image_series_cap_hits() const {
+    return image_series_cap_hits_;
+  }
+  void reset_image_series_cap_hits() const {
+    image_series_cap_hits_ = 0;
+  }
+
  private:
   void require_init() const;
 
@@ -92,10 +100,9 @@ class GreensFunction {
   const Domain* domain_    = nullptr;
   const AdvectionField* adv_ = nullptr;
 
-  // Method of Images parameters
   Real z_lo_ = 0.0;
   Real z_hi_ = 100.0e-6;
-  static constexpr int N_IMAGES = 3;  // number of image pairs
+  mutable uint64_t image_series_cap_hits_ = 0;
 };
 
 }  // namespace gutibm

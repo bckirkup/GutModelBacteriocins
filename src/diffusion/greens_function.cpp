@@ -16,6 +16,7 @@
 #include "advection.h"
 #include "greens_function_gpu.h"
 #include "dispatch.h"
+#include "neumann_image_series.h"
 #include <cassert>
 #include <cmath>
 #include <algorithm>
@@ -312,38 +313,32 @@ Real GreensFunction::concentration_bounded(const Vec3& source, const Vec3& targe
   require_init();
   Real D_eff = params.diff_coeff / params.retardation;
   Vec3 flow  = adv_->velocity(source);
-  Real Q     = params.source_rate;
-
-  Real total = single_kernel(source, target, D_eff, Q,
-                             params.decay_rate, flow);
-
-  // Method of Images: reflect source across z=z_lo and z=z_hi
-  for (int n = 1; n <= N_IMAGES; ++n) {
-    // Image below z_lo
-    Vec3 img_lo = source;
-    img_lo[2] = 2.0 * z_lo_ - source[2] - 2.0 * n * (z_hi_ - z_lo_);
-    total += single_kernel(img_lo, target, D_eff, Q,
-                           params.decay_rate, flow);
-
-    // Image above z_hi
-    Vec3 img_hi = source;
-    img_hi[2] = 2.0 * z_hi_ - source[2] + 2.0 * n * (z_hi_ - z_lo_);
-    total += single_kernel(img_hi, target, D_eff, Q,
-                           params.decay_rate, flow);
-
-    // Image reflected below then above
-    Vec3 img_lo2 = source;
-    img_lo2[2] = 2.0 * z_lo_ - source[2] + 2.0 * n * (z_hi_ - z_lo_);
-    total += single_kernel(img_lo2, target, D_eff, Q,
-                           params.decay_rate, flow);
-
-    // Image reflected above then below
-    Vec3 img_hi2 = source;
-    img_hi2[2] = 2.0 * z_hi_ - source[2] - 2.0 * n * (z_hi_ - z_lo_);
-    total += single_kernel(img_hi2, target, D_eff, Q,
-                           params.decay_rate, flow);
+  const Real Q = params.source_rate;
+  const auto evaluate_image = [this, &source, &target, D_eff, Q,
+                               decay_rate = params.decay_rate, flow](
+                                  Real image_z, int reflected) {
+    Vec3 image = source;
+    image[2] = image_z;
+    Vec3 image_flow = flow;
+    if (reflected != 0) {
+      image_flow[2] = -image_flow[2];
+    }
+    return single_kernel(image, target, D_eff, Q, decay_rate, image_flow);
+  };
+  int cap_hit = 0;
+  // The image construction is exact only for flow uniform in z. The existing
+  // radial_velocity(z) profile varies in z, so this retains its pre-existing
+  // uniform-flow approximation.
+  const Real total = neumann::sum_image_series(
+      source[2], z_lo_, z_hi_, evaluate_image,
+      neumann::kRelativeTolerance, neumann::kMaxImageShells, nullptr,
+      &cap_hit);
+  if (cap_hit != 0) {
+#ifdef GUTIBM_OPENMP
+#pragma omp atomic update
+#endif
+    ++image_series_cap_hits_;
   }
-
   return std::max(total, 0.0);
 }
 
