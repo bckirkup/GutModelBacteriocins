@@ -42,6 +42,7 @@ GUTIBM_GPU_DEVICE inline int map_global_cell_to_storage(
 void launch_superpose_kernel(
     const double* src_x, const double* src_y, const double* src_z,
     const GfSourceParams* params, double* grid_conc,
+    const double* robin_tables,
     const DomainParams& dom, const AdvectionParams& adv,
     int num_sources, int span_x, int span_y, int span_z,
     cudaStream_t stream, unsigned long long* cap_hits = nullptr);

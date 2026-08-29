@@ -310,6 +310,12 @@ std::vector<Probe> build_probes() {
 
   // ── QSSA / FMM ────────────────────────────────────────────────────────────
   v.push_back(R("toxin_cutoff", [](const SimulationConfig& c) { return c.qssa.toxin_cutoff; }));
+  v.push_back(R("toxin.lumen_transfer_length", [](const SimulationConfig& c) {
+    return c.qssa.lumen_transfer_length;
+  }));
+  v.push_back(R("lumen_transfer_length", [](const SimulationConfig& c) {
+    return c.qssa.lumen_transfer_length;
+  }, false));
   v.push_back(R("nutrient_cutoff", [](const SimulationConfig& c) { return c.qssa.nutrient_cutoff; }));
   v.push_back(R("colicin_release_rate", [](const SimulationConfig& c) { return c.qssa.colicin_release_rate; }));
   v.push_back(R("microcin_secretion", [](const SimulationConfig& c) { return c.qssa.microcin_secretion; }));

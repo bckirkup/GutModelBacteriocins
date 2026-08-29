@@ -271,6 +271,7 @@ allocations. This memory behavior is not fixed.
 | Strict config | `GUTIBM_STRICT_CONFIG=1` aborts on invalid numerics |
 | MPI decomp axis | `cfg.domain.mpi_decomp_axis` (default 0 = x) |
 | Barnes-Hut FMM | `use_fmm`, `fmm_theta`, `fmm_expansion_order` in input JSON |
+| Robin lumen transfer | `toxin.lumen_transfer_length` in input JSON |
 | Peristaltic mixing | `peristaltic_*` keys in input JSON |
 | Chemical environment (Spec 1) | `oxygen.enabled`, `acetate.enabled`, `mucin.enabled`, `protease.enabled` + nested keys in `docs/PARAMETERS.md` |
 | Cell biology (Spec 3 / 10v2) | `fur.enabled`, `cdi.enabled`, `motility.enabled` + aerotaxis/energy/surface/mucin keys; per-strain `cdi_type`, `cdi_immunity` |

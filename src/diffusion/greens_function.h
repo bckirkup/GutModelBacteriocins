@@ -22,7 +22,12 @@
 #define GUTIBM_GREENS_FUNCTION_H
 
 #include "types.h"
+#include "robin_correction_table.h"
 #include <cstdint>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <utility>
 #include <vector>
 
 namespace gutibm {
@@ -36,6 +41,10 @@ struct GreensFunctionParams {
   Real pI = 0.0;               // isoelectric point (determines retardation)
   Real retardation = 1.0;      // mucin retardation factor
   Real decay_rate = 0.0;       // first-order toxin degradation rate (1/s)
+  // Infinity retains the sealed Neumann result for direct callers. QSSA
+  // populates this from toxin.lumen_transfer_length (100 um by default).
+  Real lumen_transfer_length = robin::kZeroTransferLength;
+  Real robin_cutoff = robin::kDefaultCutoff;
 
   // NOTE: bacteriocin pI classification lives in a single source of truth,
   // `classify_by_pI()` in src/genome/plasmid.h (pI > 8.5 → CORE, pI < 7.0 →
@@ -46,6 +55,27 @@ struct GreensFunctionParams {
 class GreensFunction {
  public:
   GreensFunction() = default;
+  GreensFunction(const GreensFunction&) = delete;
+  GreensFunction& operator=(const GreensFunction&) = delete;
+  GreensFunction(GreensFunction&& other) noexcept
+      : domain_(other.domain_),
+        adv_(other.adv_),
+        z_lo_(other.z_lo_),
+        z_hi_(other.z_hi_),
+        image_series_cap_hits_(other.image_series_cap_hits_),
+        robin_tables_(std::move(other.robin_tables_)) {}
+  GreensFunction& operator=(GreensFunction&& other) noexcept {
+    if (this != &other) {
+      std::lock_guard<std::mutex> lock(robin_tables_mutex_);
+      domain_ = other.domain_;
+      adv_ = other.adv_;
+      z_lo_ = other.z_lo_;
+      z_hi_ = other.z_hi_;
+      image_series_cap_hits_ = other.image_series_cap_hits_;
+      robin_tables_ = std::move(other.robin_tables_);
+    }
+    return *this;
+  }
 
   void init(const Domain& domain, const AdvectionField& adv);
 
@@ -94,6 +124,10 @@ class GreensFunction {
 
  private:
   void require_init() const;
+  Real concentration_sealed(const Vec3& source, const Vec3& target,
+                            const GreensFunctionParams& params) const;
+  const robin::Table& robin_table(
+      const GreensFunctionParams& params) const;
 
   // Single image contribution
   Real single_kernel(const Vec3& src, const Vec3& tgt,
@@ -106,6 +140,17 @@ class GreensFunction {
   Real z_lo_ = 0.0;
   Real z_hi_ = 100.0e-6;
   mutable uint64_t image_series_cap_hits_ = 0;
+  struct RobinTableKey {
+    Real diff_coeff;
+    Real retardation;
+    Real decay_rate;
+    Real lumen_transfer_length;
+    Real cutoff;
+    bool operator<(const RobinTableKey& other) const;
+  };
+  mutable std::map<RobinTableKey, std::shared_ptr<robin::Table>>
+      robin_tables_;
+  mutable std::mutex robin_tables_mutex_;
 };
 
 }  // namespace gutibm

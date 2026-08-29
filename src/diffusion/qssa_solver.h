@@ -38,6 +38,8 @@ struct QSSAConfig {
   // Cutoff radius for Green's function evaluation (m)
   // Beyond this, contribution is negligible
   Real toxin_cutoff     = 200.0e-6;   // 200 um for lethal halos
+  // Lumen unstirred-layer transfer length; k_c = D_free / length.
+  Real lumen_transfer_length = 100.0e-6;
   Real nutrient_cutoff  = 50.0e-6;    // 50 um for nutrient depletion zones
 
   // Bacteriocin source parameters

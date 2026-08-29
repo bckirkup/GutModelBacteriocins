@@ -39,6 +39,9 @@ struct GfSourceParams {
   double source_rate;
   double retardation;
   double decay_rate;
+  double lumen_transfer_length;
+  double robin_cutoff;
+  int robin_table_index;
 };
 
 struct VbfLaunchParams {

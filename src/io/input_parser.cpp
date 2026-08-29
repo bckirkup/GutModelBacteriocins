@@ -829,6 +829,11 @@ bool apply_advection_key(SimulationConfig& cfg, std::string_view key, const std:
 
 bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "toxin_cutoff")         { cfg.qssa.toxin_cutoff = parse_config_real(key, val); return true; }
+  if (key == "toxin.lumen_transfer_length"
+      || key == "lumen_transfer_length") {
+    cfg.qssa.lumen_transfer_length = parse_config_real(key, val);
+    return true;
+  }
   if (key == "nutrient_cutoff")      { cfg.qssa.nutrient_cutoff = parse_config_real(key, val); return true; }
   if (key == "colicin_release_rate") { cfg.qssa.colicin_release_rate = parse_config_real(key, val); return true; }
   if (key == "microcin_secretion")   { cfg.qssa.microcin_secretion = parse_config_real(key, val); return true; }

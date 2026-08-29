@@ -3,6 +3,7 @@
 #include "device_memory.h"
 #include "gpu_types.h"
 #include "gpu_kernels.h"
+#include "robin_correction_table.h"
 
 #ifdef GUTIBM_CUDA
 #include <cuda_runtime.h>
@@ -11,8 +12,10 @@
 #include "domain.h"
 #include "advection.h"
 #include <algorithm>
-#include <vector>
 #include <cmath>
+#include <map>
+#include <tuple>
+#include <vector>
 
 namespace gutibm {
 namespace {
@@ -78,6 +81,10 @@ bool launch_superpose(const Domain& domain,
   std::vector<double> sy(sources.size());
   std::vector<double> sz(sources.size());
   std::vector<gpu::GfSourceParams> sp(params.size());
+  std::vector<double> robin_table_values;
+  std::vector<robin::Table> robin_tables;
+  std::map<std::tuple<Real, Real, Real, Real, Real>, int>
+      robin_table_indices;
   for (size_t i = 0; i < sources.size(); ++i) {
     sx[i] = sources[i][0];
     sy[i] = sources[i][1];
@@ -87,16 +94,45 @@ bool launch_superpose(const Domain& domain,
     sp[i].source_rate = params[i].source_rate * scale;
     sp[i].retardation = params[i].retardation;
     sp[i].decay_rate = params[i].decay_rate;
+    sp[i].lumen_transfer_length = params[i].lumen_transfer_length;
+    sp[i].robin_cutoff = params[i].robin_cutoff;
+    sp[i].robin_table_index = -1;
+    if (params[i].lumen_transfer_length > 0.0
+        && std::isfinite(params[i].lumen_transfer_length)) {
+      const auto key = std::make_tuple(
+          params[i].diff_coeff, params[i].retardation,
+          params[i].decay_rate, params[i].lumen_transfer_length,
+          params[i].robin_cutoff);
+      const auto existing = robin_table_indices.find(key);
+      if (existing != robin_table_indices.end()) {
+        sp[i].robin_table_index = existing->second;
+      } else {
+        robin_tables.push_back(robin::build_table(
+            adv, domain.lo()[2], domain.hi()[2],
+            params[i].diff_coeff,
+            params[i].diff_coeff / params[i].retardation,
+            params[i].decay_rate, params[i].lumen_transfer_length,
+            params[i].robin_cutoff));
+        sp[i].robin_table_index = static_cast<int>(robin_tables.size() - 1);
+        robin_table_indices.emplace(key, sp[i].robin_table_index);
+      }
+    }
+  }
+  for (const auto& table : robin_tables) {
+    robin_table_values.insert(robin_table_values.end(),
+                              table.values.begin(), table.values.end());
   }
 
   DeviceBuffer<double> d_sx;
   DeviceBuffer<double> d_sy;
   DeviceBuffer<double> d_sz;
   DeviceBuffer<gpu::GfSourceParams> d_params;
+  DeviceBuffer<double> d_robin_tables;
   d_sx.upload(sx);
   d_sy.upload(sy);
   d_sz.upload(sz);
   d_params.upload(sp);
+  d_robin_tables.upload(robin_table_values);
 
   const auto span_x = static_cast<int>(
       std::ceil(cutoff_radius / domain.dx_x()));
@@ -116,6 +152,7 @@ bool launch_superpose(const Domain& domain,
 
   gpu::launch_superpose_kernel(
       d_sx.data(), d_sy.data(), d_sz.data(), d_params.data(), d_grid,
+      d_robin_tables.data(),
       dom, adv_p, static_cast<int>(sources.size()), span_x, span_y, span_z,
       gpu_compute_stream(), cap_hits_device);
 

@@ -3,6 +3,7 @@
 
 #include "gpu_types.h"
 #include "neumann_image_series.h"
+#include "robin_correction_table.h"
 
 namespace gutibm {
 namespace gpu {
@@ -73,6 +74,7 @@ __device__ inline double concentration_bounded(const double src[3], const double
                                                const GfSourceParams& p,
                                                const DomainParams& dom,
                                                const AdvectionParams& adv,
+                                               const double* robin_tables,
                                                unsigned long long* cap_hits) {
   double D_eff = p.diff_coeff / p.retardation;
   double flow[3];
@@ -105,6 +107,24 @@ __device__ inline double concentration_bounded(const double src[3], const double
       sqrt(flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]),
       fabs(flow[2]), neumann::kRelativeTolerance, nullptr, &cap_hit);
   if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
+  if (p.robin_table_index >= 0 && robin_tables != nullptr
+      && p.lumen_transfer_length > 0.0
+      && p.lumen_transfer_length < robin::kZeroTransferLength) {
+    double dx = minimum_image_delta(
+        tgt[0] - src[0], dom.extent[0], dom.periodic[0]);
+    double dy = minimum_image_delta(
+        tgt[1] - src[1], dom.extent[1], dom.periodic[1]);
+    double rho = sqrt(dx * dx + dy * dy);
+    robin::TableView table{
+        robin_tables + p.robin_table_index * robin::kTableValueCount,
+        dom.z_lo, dom.z_hi - dom.z_lo, p.robin_cutoff};
+    double correction = robin::interpolate(table, src[2], tgt[2], rho);
+    double dz = minimum_image_delta(
+        tgt[2] - src[2], dom.extent[2], dom.periodic[2]);
+    correction *= exp((flow[0] * dx + flow[1] * dy + flow[2] * dz)
+                      / (2.0 * D_eff));
+    total += p.source_rate / (4.0 * PI_GPU * D_eff) * correction;
+  }
   return total > 0.0 ? total : 0.0;
 }
 
