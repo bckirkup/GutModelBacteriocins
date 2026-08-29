@@ -43,6 +43,8 @@ $OUTPUT_BUCKET = $env:OUTPUT_BUCKET
 if (-not $env:JOB_QUEUE)      { $env:JOB_QUEUE      = "gutibm-gpu-practice" }
 if (-not $env:JOB_DEFINITION) { $env:JOB_DEFINITION = "gutibm-cuda" }
 if (-not $env:COMPUTE_ENV)    { $env:COMPUTE_ENV    = "gutibm-gpu-practice-od" }
+# Budget guardrail: per-attempt wall clock (3 h) for practice smokes.
+if (-not $env:PRACTICE_JOB_TIMEOUT_SECONDS) { $env:PRACTICE_JOB_TIMEOUT_SECONDS = "10800" }
 
 # Campaign stack (05): multi-AZ Spot GPU, single-GPU sizes, one GPU per run.
 if (-not $env:COMPUTE_ENV_CAMPAIGN)     { $env:COMPUTE_ENV_CAMPAIGN     = "gutibm-gpu-campaign-spot" }
@@ -51,6 +53,8 @@ if (-not $env:JOB_QUEUE_CAMPAIGN)       { $env:JOB_QUEUE_CAMPAIGN       = "gutib
 if (-not $env:JOB_DEFINITION_CAMPAIGN)  { $env:JOB_DEFINITION_CAMPAIGN  = "gutibm-cuda-campaign" }
 if (-not $env:CAMPAIGN_MAX_VCPUS)       { $env:CAMPAIGN_MAX_VCPUS       = "96" }
 if (-not $env:CAMPAIGN_ONDEMAND_FALLBACK) { $env:CAMPAIGN_ONDEMAND_FALLBACK = "0" }
+# Budget guardrail: per-attempt wall clock (24 h); checkpoint/restart resumes.
+if (-not $env:CAMPAIGN_JOB_TIMEOUT_SECONDS) { $env:CAMPAIGN_JOB_TIMEOUT_SECONDS = "86400" }
 
 Write-Host "AWS_REGION=$($env:AWS_REGION)"
 Write-Host "ACCOUNT=$ACCOUNT"

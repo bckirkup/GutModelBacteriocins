@@ -206,6 +206,7 @@ aws batch register-job-definition \
   --platform-capabilities EC2 \
   --container-properties "file://${JD_JSON}" \
   --retry-strategy "file://${RETRY_JSON}" \
+  --timeout "attemptDurationSeconds=${CAMPAIGN_JOB_TIMEOUT_SECONDS}" \
   --region "${AWS_REGION}" >/dev/null
 rm -f "${JD_JSON}"
 

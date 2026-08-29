@@ -334,6 +334,12 @@ add_test(
 set_tests_properties(checkpoint_retention PROPERTIES LABELS "unit")
 
 add_test(
+  NAME aws_job_timeouts
+  COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_aws_job_timeouts.sh"
+)
+set_tests_properties(aws_job_timeouts PROPERTIES LABELS "unit")
+
+add_test(
   NAME aws_entrypoint_runtime_files
   COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/test_aws_entrypoint_runtime_files.sh"
 )
