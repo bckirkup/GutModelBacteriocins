@@ -265,6 +265,7 @@ void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   z_lo_   = domain.lo()[2];
   z_hi_   = domain.hi()[2];
   robin_direct_evaluations_ = 0;
+  robin_host_fallback_sources_ = 0;
 }
 
 void GreensFunction::require_init() const {
@@ -414,10 +415,50 @@ void GreensFunction::superpose_to_grid(
   grid_conc.assign(ncells, 0.0);
 
 #ifdef GUTIBM_CUDA
-  if (adv_ && domain_ && try_gpu_superpose(*domain_, *adv_, sources, params,
-                                           grid_conc, cutoff_radius,
-                                           &image_series_cap_hits_)) {
-    return;
+  const std::vector<size_t> fallback = robin_host_fallback_sources(
+      *domain_, sources, params);
+  if (fallback.empty()) {
+    if (adv_ && domain_ && try_gpu_superpose(
+            *domain_, *adv_, sources, params, grid_conc, cutoff_radius,
+            &image_series_cap_hits_)) {
+      return;
+    }
+  } else if (gpu_runtime_enabled()) {
+    std::vector<Vec3> gpu_sources;
+    std::vector<GreensFunctionParams> gpu_params;
+    std::vector<Vec3> host_sources;
+    std::vector<GreensFunctionParams> host_params;
+    std::vector<char> is_fallback(sources.size(), 0);
+    for (const size_t index : fallback) is_fallback[index] = 1;
+    for (size_t index = 0; index < sources.size(); ++index) {
+      if (is_fallback[index] != 0) {
+        host_sources.push_back(sources[index]);
+        host_params.push_back(params[index]);
+      } else {
+        gpu_sources.push_back(sources[index]);
+        gpu_params.push_back(params[index]);
+      }
+    }
+    std::vector<Real> gpu_grid;
+    uint64_t gpu_cap_hits = 0;
+    const bool gpu_ok = gpu_sources.empty()
+        || try_gpu_superpose(*domain_, *adv_, gpu_sources, gpu_params,
+                             gpu_grid, cutoff_radius, &gpu_cap_hits);
+    if (gpu_ok) {
+      if (gpu_sources.empty()) {
+        gpu_grid.assign(static_cast<size_t>(ncells), 0.0);
+      }
+      std::vector<Real> host_grid(static_cast<size_t>(ncells), 0.0);
+      superpose_cpu(*domain_, *this, host_sources, host_params, nullptr,
+                    host_grid, cutoff_radius);
+      grid_conc = std::move(gpu_grid);
+      for (size_t cell = 0; cell < grid_conc.size(); ++cell) {
+        grid_conc[cell] += host_grid[cell];
+      }
+      image_series_cap_hits_ += gpu_cap_hits;
+      robin_host_fallback_sources_ += fallback.size();
+      return;
+    }
   }
 #endif
 

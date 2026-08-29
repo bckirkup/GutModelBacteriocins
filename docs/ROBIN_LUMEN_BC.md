@@ -200,6 +200,10 @@ near-lumen toxin exposure suppresses their kill/induction or analytic-sampling
 assertions. These failures are why Robin is opt-in; the measurements are
 informational and are not used as gates.
 
+When Robin transfer is enabled, near-wall sources are evaluated on the host
+through the direct mode sum because CUDA intentionally does not duplicate that
+numerical path; the fallback count is recorded in run provenance.
+
 The direct fallback uses
 `rho < cell_radius && source_wall_distance < cell_radius &&
 target_wall_distance < cell_radius`. Requiring both points to be near the same

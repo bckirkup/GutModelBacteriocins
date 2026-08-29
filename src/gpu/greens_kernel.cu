@@ -16,6 +16,8 @@ __global__ void superpose_kernel(
     AdvectionParams adv,
     int num_sources,
     int span_x, int span_y, int span_z,
+    int robin_table_count,
+    unsigned int* robin_index_error,
     unsigned long long* cap_hits) {
 
   int sid = blockIdx.x;
@@ -59,7 +61,8 @@ __global__ void superpose_kernel(
   double tgt[3];
   cell_center(dom, ix, iy, iz, tgt);
   double c = concentration_bounded(
-      src, tgt, params[sid], dom, adv, robin_tables, cap_hits);
+      src, tgt, params[sid], dom, adv, robin_tables, robin_table_count,
+      robin_index_error, cap_hits);
   int idx = cell_index(dom, ix, iy, iz);
   atomicAdd(&grid_conc[idx], c);
 }
@@ -70,6 +73,7 @@ void launch_superpose_kernel(
     const double* robin_tables,
     const DomainParams& dom, const AdvectionParams& adv,
     int num_sources, int span_x, int span_y, int span_z,
+    int robin_table_count, unsigned int* robin_index_error,
     cudaStream_t stream, unsigned long long* cap_hits) {
 
   if (num_sources == 0) return;
@@ -78,8 +82,8 @@ void launch_superpose_kernel(
   dim3 grid(num_sources, (stencil_vol + block.x - 1) / block.x);
   superpose_kernel<<<grid, block, 0, stream>>>(
       src_x, src_y, src_z, params, grid_conc, robin_tables, dom, adv,
-      num_sources,
-      span_x, span_y, span_z, cap_hits);
+      num_sources, span_x, span_y, span_z, robin_table_count,
+      robin_index_error, cap_hits);
 }
 
 }  // namespace gpu

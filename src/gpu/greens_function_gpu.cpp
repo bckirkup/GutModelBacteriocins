@@ -11,11 +11,12 @@
 
 #include "domain.h"
 #include "advection.h"
+#include "error.h"
 #include <algorithm>
 #include <cmath>
-#include <limits>
 #include <mutex>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace gutibm {
@@ -65,8 +66,7 @@ gpu::AdvectionParams make_advection_params(const AdvectionField& adv) {
 }
 
 DeviceBuffer<double> robin_table_device_buffer;
-uint64_t robin_table_device_generation = std::numeric_limits<uint64_t>::max();
-std::vector<std::shared_ptr<const robin::Table>> robin_table_device_snapshot;
+std::vector<std::shared_ptr<const robin::Table>> robin_table_device_set;
 std::mutex robin_table_device_mutex;
 
 bool launch_superpose(const Domain& domain,
@@ -88,7 +88,7 @@ bool launch_superpose(const Domain& domain,
   std::vector<double> sy(sources.size());
   std::vector<double> sz(sources.size());
   std::vector<gpu::GfSourceParams> sp(params.size());
-  std::vector<std::shared_ptr<const robin::Table>> robin_tables;
+  std::vector<std::shared_ptr<const robin::Table>> source_tables(params.size());
   for (size_t i = 0; i < sources.size(); ++i) {
     sx[i] = sources[i][0];
     sy[i] = sources[i][1];
@@ -112,46 +112,33 @@ bool launch_superpose(const Domain& domain,
           params[i].lumen_transfer_basis_free
               ? robin::TransferBasis::Free
               : robin::TransferBasis::Effective);
-      const auto existing = std::find_if(
-          robin_tables.begin(), robin_tables.end(),
-          [&table](const auto& existing_table) {
-            return existing_table.get() == table.get();
-          });
-      if (existing == robin_tables.end()) {
-        robin_tables.push_back(table);
-        sp[i].robin_table_index =
-            static_cast<int>(robin_tables.size() - 1);
-      } else {
-        sp[i].robin_table_index = static_cast<int>(
-            std::distance(robin_tables.begin(), existing));
-      }
+      source_tables[i] = table;
     }
   }
-  const auto cache_snapshot = robin::global_table_cache().snapshot();
-  if (cache_snapshot.generation != robin_table_device_generation) {
+  std::vector<std::shared_ptr<const robin::Table>> robin_tables;
+  const std::vector<int> launch_indices = make_robin_launch_table_indices(
+      source_tables, robin_tables);
+  for (size_t i = 0; i < launch_indices.size(); ++i) {
+    sp[i].robin_table_index = launch_indices[i];
+  }
+  const bool same_uploaded_set = robin_tables.size()
+      == robin_table_device_set.size()
+      && std::equal(
+          robin_tables.begin(), robin_tables.end(),
+          robin_table_device_set.begin(),
+          [](const auto& current, const auto& uploaded) {
+            return current.get() == uploaded.get();
+          });
+  if (!same_uploaded_set) {
     std::vector<double> robin_table_values;
     robin_table_values.reserve(
-        cache_snapshot.tables.size() * robin::kTableValueCount);
-    for (const auto& table : cache_snapshot.tables) {
+        robin_tables.size() * robin::kTableValueCount);
+    for (const auto& table : robin_tables) {
       robin_table_values.insert(robin_table_values.end(),
                                 table->values.begin(), table->values.end());
     }
     robin_table_device_buffer.upload(robin_table_values);
-    robin_table_device_snapshot = cache_snapshot.tables;
-    robin_table_device_generation = cache_snapshot.generation;
-  }
-  const auto& device_snapshot = robin_table_device_snapshot;
-  for (auto& source : sp) {
-    if (source.robin_table_index < 0) continue;
-    const auto& table = robin_tables[static_cast<size_t>(
-        source.robin_table_index)];
-    const auto table_position = std::find_if(
-        device_snapshot.begin(), device_snapshot.end(),
-        [&table](const auto& candidate) {
-          return candidate.get() == table.get();
-        });
-    source.robin_table_index = static_cast<int>(
-        std::distance(device_snapshot.begin(), table_position));
+    robin_table_device_set = robin_tables;
   }
 
   DeviceBuffer<double> d_sx;
@@ -171,6 +158,13 @@ bool launch_superpose(const Domain& domain,
       std::ceil(cutoff_radius / domain.dx_z()));
   const auto dom = make_domain_params(domain);
   const auto adv_p = make_advection_params(adv);
+  DeviceBuffer<unsigned int> d_robin_index_error;
+  unsigned int* robin_index_error = nullptr;
+  if (!robin_tables.empty()) {
+    d_robin_index_error.allocate(1);
+    cudaMemset(d_robin_index_error.data(), 0, sizeof(unsigned int));
+    robin_index_error = d_robin_index_error.data();
+  }
   DeviceBuffer<unsigned long long> d_cap_hits;
   unsigned long long* cap_hits_device = nullptr;
   if (cap_hits != nullptr) {
@@ -183,10 +177,20 @@ bool launch_superpose(const Domain& domain,
       d_sx.data(), d_sy.data(), d_sz.data(), d_params.data(), d_grid,
       robin_table_device_buffer.data(),
       dom, adv_p, static_cast<int>(sources.size()), span_x, span_y, span_z,
+      static_cast<int>(robin_tables.size()), robin_index_error,
       gpu_compute_stream(), cap_hits_device);
 
   gpu_sync_compute();
   gpu_check_error("superpose_kernel");
+  if (robin_index_error != nullptr) {
+    unsigned int error = 0;
+    d_robin_index_error.download(&error, 1);
+    if (error != 0) {
+      throw SimulationError(
+          "GPU Robin table index exceeded the launch-local table count "
+          "(count=" + std::to_string(robin_tables.size()) + ")");
+    }
+  }
   if (cap_hits != nullptr) {
     unsigned long long count = 0;
     d_cap_hits.download(&count, 1);
@@ -197,6 +201,56 @@ bool launch_superpose(const Domain& domain,
 #endif
 
 }  // namespace
+
+std::vector<int> make_robin_launch_table_indices(
+    const std::vector<std::shared_ptr<const robin::Table>>& source_tables,
+    std::vector<std::shared_ptr<const robin::Table>>& launch_tables) {
+  std::vector<int> indices(source_tables.size(), -1);
+  for (size_t source = 0; source < source_tables.size(); ++source) {
+    const auto& table = source_tables[source];
+    if (table == nullptr) continue;
+    const auto existing = std::find_if(
+        launch_tables.begin(), launch_tables.end(),
+        [&table](const auto& candidate) {
+          return candidate.get() == table.get();
+        });
+    if (existing == launch_tables.end()) {
+      if (launch_tables.size() >= kMaximumRobinDeviceTables) {
+        throw SimulationError(
+            "Robin GPU launch references "
+            + std::to_string(launch_tables.size() + 1)
+            + " distinct tables; launch limit is "
+            + std::to_string(kMaximumRobinDeviceTables));
+      }
+      launch_tables.push_back(table);
+      indices[source] = static_cast<int>(launch_tables.size() - 1);
+    } else {
+      indices[source] = static_cast<int>(
+          std::distance(launch_tables.begin(), existing));
+    }
+  }
+  return indices;
+}
+
+std::vector<size_t> robin_host_fallback_sources(
+    const Domain& domain,
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params) {
+  const double cell_radius = std::min(
+      {domain.dx_x(), domain.dx_y(), domain.dx_z()});
+  std::vector<size_t> fallback;
+  for (size_t source = 0; source < sources.size(); ++source) {
+    if (!robin::transfer_enabled(params[source].lumen_transfer_length)) {
+      continue;
+    }
+    if (robin::requires_direct_evaluation(
+            sources[source][2], sources[source][2], 0.0,
+            domain.lo()[2], domain.hi()[2], cell_radius)) {
+      fallback.push_back(source);
+    }
+  }
+  return fallback;
+}
 
 bool gpu_superpose_to_grid(
     const Domain& domain,

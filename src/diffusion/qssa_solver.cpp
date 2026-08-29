@@ -311,11 +311,55 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
                                       ChemicalFieldGpu* chem_gpu,
                                       bool defer_host_sync) {
   uint64_t gpu_cap_hits = 0;
-  if (try_gpu_near_field(domain, adv, sources, params, strength_factors,
-                         cutoff_radius, chem, toxin_species_idx, chem_gpu,
-                         defer_host_sync, &gpu_cap_hits)) {
-    gf.add_image_series_cap_hits(gpu_cap_hits);
-    return true;
+  const std::vector<size_t> fallback = robin_host_fallback_sources(
+      domain, sources, params);
+  if (fallback.empty()) {
+    if (try_gpu_near_field(
+            domain, adv, sources, params, strength_factors, cutoff_radius,
+            chem, toxin_species_idx, chem_gpu, defer_host_sync,
+            &gpu_cap_hits)) {
+      gf.add_image_series_cap_hits(gpu_cap_hits);
+      return true;
+    }
+  } else if (gpu_runtime_enabled()) {
+    std::vector<Vec3> gpu_sources;
+    std::vector<GreensFunctionParams> gpu_params;
+    std::vector<Real> gpu_strengths;
+    std::vector<Vec3> host_sources;
+    std::vector<GreensFunctionParams> host_params;
+    std::vector<Real> host_strengths;
+    std::vector<char> is_fallback(sources.size(), 0);
+    for (const size_t index : fallback) is_fallback[index] = 1;
+    for (size_t index = 0; index < sources.size(); ++index) {
+      if (is_fallback[index] != 0) {
+        host_sources.push_back(sources[index]);
+        host_params.push_back(params[index]);
+        host_strengths.push_back(strength_factors[index]);
+      } else {
+        gpu_sources.push_back(sources[index]);
+        gpu_params.push_back(params[index]);
+        gpu_strengths.push_back(strength_factors[index]);
+      }
+    }
+    if (try_gpu_near_field(
+            domain, adv, gpu_sources, gpu_params, gpu_strengths,
+            cutoff_radius, chem, toxin_species_idx, chem_gpu,
+            true, &gpu_cap_hits)) {
+      std::vector<Real> host_grid;
+      gf.superpose_to_grid(
+          host_sources, host_params, host_strengths, host_grid,
+          cutoff_radius);
+      chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
+      std::vector<Real>& device_grid =
+          chem.mutable_species_concentration(toxin_species_idx);
+      for (size_t cell = 0; cell < device_grid.size(); ++cell) {
+        device_grid[cell] += host_grid[cell];
+      }
+      chem_gpu->sync_species_concentrations_to_device(chem, toxin_species_idx);
+      gf.add_image_series_cap_hits(gpu_cap_hits);
+      gf.add_robin_host_fallback_sources(fallback.size());
+      return true;
+    }
   }
   gf.superpose_to_grid(sources, params, strength_factors, toxin_conc,
                        cutoff_radius);

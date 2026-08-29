@@ -100,11 +100,17 @@ class GreensFunction {
   uint64_t robin_direct_evaluations() const {
     return robin_direct_evaluations_;
   }
+  uint64_t robin_host_fallback_sources() const {
+    return robin_host_fallback_sources_;
+  }
   void add_image_series_cap_hits(uint64_t count) const {
     image_series_cap_hits_ += count;
   }
   void reset_image_series_cap_hits() {
     image_series_cap_hits_ = 0;
+  }
+  void add_robin_host_fallback_sources(uint64_t count) const {
+    robin_host_fallback_sources_ += count;
   }
 
  private:
@@ -126,6 +132,7 @@ class GreensFunction {
   Real z_hi_ = 100.0e-6;
   mutable uint64_t image_series_cap_hits_ = 0;
   mutable uint64_t robin_direct_evaluations_ = 0;
+  mutable uint64_t robin_host_fallback_sources_ = 0;
 };
 
 }  // namespace gutibm

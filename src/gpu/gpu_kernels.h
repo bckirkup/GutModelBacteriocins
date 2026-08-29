@@ -45,6 +45,7 @@ void launch_superpose_kernel(
     const double* robin_tables,
     const DomainParams& dom, const AdvectionParams& adv,
     int num_sources, int span_x, int span_y, int span_z,
+    int robin_table_count, unsigned int* robin_index_error,
     cudaStream_t stream, unsigned long long* cap_hits = nullptr);
 
 void launch_field_update_kernel(

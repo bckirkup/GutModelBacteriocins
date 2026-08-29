@@ -52,6 +52,8 @@ void assert_run_provenance(hid_t file,
       file, "run_provenance/termination_detail"));
   assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/termination_wall_seconds"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/robin_gpu_host_fallback_sources"));
   assert(gutibm::test::hdf5_read_scalar<int32_t>(
              file, "run_provenance/termination_cause_code",
              H5T_NATIVE_INT32) == 0);

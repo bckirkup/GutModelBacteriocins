@@ -5,6 +5,7 @@
 #include "advection.h"
 #include "domain.h"
 #include "greens_function.h"
+#include "greens_function_gpu.h"
 #include "input_parser.h"
 #include "config_json.h"
 #include "error.h"
@@ -65,6 +66,69 @@ void require(bool condition, const char* message) {
   if (condition) return;
   std::cerr << message << "\n";
   std::exit(1);
+}
+
+void test_launch_local_table_mapping() {
+  std::vector<std::shared_ptr<const robin::Table>> source_tables;
+  source_tables.reserve(128);
+  for (int i = 0; i < 128; ++i) {
+    auto table = std::make_shared<robin::Table>();
+    table->quantized_key[0] = i;
+    source_tables.push_back(std::move(table));
+  }
+  source_tables.push_back(source_tables[7]);
+  std::vector<std::shared_ptr<const robin::Table>> launch_tables;
+  const auto indices = make_robin_launch_table_indices(
+      source_tables, launch_tables);
+  require(launch_tables.size() == 128,
+          "launch-local Robin table set lost a distinct identity");
+  require(indices.size() == source_tables.size(),
+          "launch-local Robin index count does not match sources");
+  for (size_t source = 0; source < source_tables.size(); ++source) {
+    const int index = indices[source];
+    require(index >= 0
+                && static_cast<size_t>(index) < launch_tables.size(),
+            "launch-local Robin index is out of bounds");
+    require(launch_tables[static_cast<size_t>(index)].get()
+                == source_tables[source].get(),
+            "launch-local Robin index resolved to the wrong table");
+  }
+  source_tables.clear();
+  for (int i = 0; i < 257; ++i) {
+    auto table = std::make_shared<robin::Table>();
+    table->quantized_key[0] = i;
+    source_tables.push_back(std::move(table));
+  }
+  launch_tables.clear();
+  bool rejected_overflow = false;
+  try {
+    (void)make_robin_launch_table_indices(source_tables, launch_tables);
+  } catch (const SimulationError&) {
+    rejected_overflow = true;
+  }
+  require(rejected_overflow,
+          "launch-local Robin table cap did not reject 257 identities");
+  std::cout << "  test_launch_local_table_mapping: 128 identities passed\n";
+}
+
+void test_robin_fallback_preflight() {
+  const auto system = make_system();
+  const std::vector<Vec3> sources = {
+      {500.0e-6, 500.0e-6, 4.999e-6},
+      {500.0e-6, 500.0e-6, 5.001e-6},
+      {500.0e-6, 500.0e-6, 50.0e-6}};
+  auto params = params_for(2.0e-11, 5.0e-5, 100.0e-6);
+  const std::vector<GreensFunctionParams> enabled(sources.size(), params);
+  auto disabled = enabled;
+  for (auto& item : disabled) {
+    item.lumen_transfer_length = std::numeric_limits<Real>::infinity();
+  }
+  const auto fallback = robin_host_fallback_sources(
+      system.domain, sources, enabled);
+  require(fallback.size() == 1 && fallback.front() == 0,
+          "Robin fallback preflight did not honor the cell-radius threshold");
+  require(robin_host_fallback_sources(system.domain, sources, disabled).empty(),
+          "Robin fallback preflight changed the disabled path");
 }
 
 void test_disabled_default_is_inert() {
@@ -675,6 +739,8 @@ void test_peristaltic_mean_profile() {
 
 int main() {
   std::cout << "=== Independent Robin Lumen-Boundary Tests ===\n";
+  test_launch_local_table_mapping();
+  test_robin_fallback_preflight();
   test_disabled_default_is_inert();
   test_enabled_boundary_impact();
   test_flux_residual();

@@ -3,12 +3,26 @@
 
 #include "types.h"
 #include "greens_function.h"
+#include "robin_correction_table.h"
+#include <cstddef>
+#include <memory>
 #include <vector>
 
 namespace gutibm {
 
 class Domain;
 class AdvectionField;
+
+constexpr size_t kMaximumRobinDeviceTables = 256;
+
+std::vector<int> make_robin_launch_table_indices(
+    const std::vector<std::shared_ptr<const robin::Table>>& source_tables,
+    std::vector<std::shared_ptr<const robin::Table>>& launch_tables);
+
+std::vector<size_t> robin_host_fallback_sources(
+    const Domain& domain,
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params);
 
 // GPU-accelerated Green's function superposition. Returns false if GPU unavailable.
 bool gpu_superpose_to_grid(
