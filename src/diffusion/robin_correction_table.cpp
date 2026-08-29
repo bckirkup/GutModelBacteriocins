@@ -22,6 +22,7 @@ namespace {
 
 constexpr double kBisectionTolerance = 1.0e-13;
 constexpr double kMinimumRho = 1.0e-12;
+constexpr int kSamplesPerPiInterval = 260;
 
 Vec3 mean_profile_velocity(const AdvectionField& adv, double z) {
   return adv.mean_velocity({0.0, 0.0, z});
@@ -57,54 +58,126 @@ TableCacheKey make_cache_key(const AdvectionField& adv, double z_lo,
       quantize_relative(cutoff / height)}};
 }
 
-double mode_root(int branch, double height, double c_lo, double c_hi,
-                 double bi, double a_height) {
-  const double pi = std::numbers::pi;
-  const double branch_lo = static_cast<double>(branch) * pi / height;
-  const double branch_hi = (static_cast<double>(branch) * pi + 0.5 * pi)
-      / height;
-  // Keep both brackets away from tan() poles by a fixed angular margin.
-  // At high mode numbers, forming beta*height otherwise loses enough
-  // precision to place the nominal upper endpoint across the pole.
-  constexpr double kAngularMargin = 1.0e-6;
-  double lo = branch_lo + kAngularMargin / height;
-  double hi = branch_hi - kAngularMargin / height;
-  const double coefficient_product = c_lo * c_hi;
-  if (coefficient_product < 0.0) {
-    const double rational_pole = std::sqrt(-coefficient_product);
-    lo = std::max(lo, rational_pole + kAngularMargin / height);
+double pole_free_residual(double x, double p, double q) {
+  return (x * x + p) * std::sin(x) - q * x * std::cos(x);
+}
+
+double imaginary_residual(double y, double p, double q) {
+  return (p - y * y) * std::sinh(y) - q * y * std::cosh(y);
+}
+
+bool is_sign_change(double first, double second) {
+  return (first < 0.0 && second > 0.0)
+      || (first > 0.0 && second < 0.0);
+}
+
+double bisect_pole_free_root(double left, double right, double f_left,
+                             double p, double q) {
+  for (int iteration = 0; iteration < 200; ++iteration) {
+    const double middle = 0.5 * (left + right);
+    const double f_middle = pole_free_residual(middle, p, q);
+    if (f_middle == 0.0
+        || right - left <= kBisectionTolerance
+            * std::max(1.0, std::abs(middle))) {
+      return middle;
+    }
+    if (is_sign_change(f_left, f_middle)) {
+      right = middle;
+    } else {
+      left = middle;
+      f_left = f_middle;
+    }
   }
-  auto equation = [height, c_lo, c_hi](double beta) {
-    const double denominator = beta * beta + c_lo * c_hi;
-    return std::tan(beta * height)
-        - (c_hi - c_lo) * beta / denominator;
-  };
-  double f_lo = equation(lo);
-  if (!(f_lo < 0.0 && equation(hi) > 0.0)) {
+  return 0.5 * (left + right);
+}
+
+void reject_unrepresented_imaginary_mode(double p, double q, double c_lo,
+                                         double c_hi, double height) {
+  constexpr int kImaginarySamples = 4096;
+  double previous = imaginary_residual(1.0e-12, p, q);
+  for (int index = 1; index <= kImaginarySamples; ++index) {
+    const double y = 80.0 * index / static_cast<double>(kImaginarySamples);
+    const double value = imaginary_residual(y, p, q);
+    if (is_sign_change(previous, value)) {
+      throw SimulationError(
+          "Robin imaginary mode is not represented by the current kernel "
+          "(c_lo=" + std::to_string(c_lo)
+          + ", c_hi=" + std::to_string(c_hi)
+          + ", H=" + std::to_string(height) + ")");
+    }
+    previous = value;
+  }
+}
+
+void validate_root(double x, double p, double q, double c_lo, double c_hi,
+                   double height) {
+  const double scale = (x * x + std::abs(p)) + std::abs(q) * x;
+  const double residual = std::abs(pole_free_residual(x, p, q)) / scale;
+  if (!(residual <= 1.0e-9)) {
     throw SimulationError(
-        "Robin eigenvalue bracket does not contain a root at branch "
-        + std::to_string(branch) + " (f_lo=" + std::to_string(f_lo)
-        + ", f_hi=" + std::to_string(equation(hi))
+        "Robin eigenvalue residual exceeded tolerance (x="
+        + std::to_string(x) + ", residual=" + std::to_string(residual)
         + ", c_lo=" + std::to_string(c_lo)
         + ", c_hi=" + std::to_string(c_hi)
-        + ", Bi=" + std::to_string(bi)
-        + ", aH=" + std::to_string(a_height) + ")");
+        + ", H=" + std::to_string(height) + ")");
   }
-  for (int iteration = 0; iteration < 100; ++iteration) {
-    const double mid = 0.5 * (lo + hi);
-    const double f_mid = equation(mid);
-    if (std::abs(hi - lo) <= kBisectionTolerance
-        * std::max(1.0, std::abs(mid))) {
-      return mid;
+}
+
+std::vector<double> robin_mode_roots_impl(double height, double c_lo,
+                                          double c_hi, int mode_count) {
+  if (!(height > 0.0) || mode_count < 0) {
+    throw ConfigError("invalid Robin eigenvalue dimensions");
+  }
+  const double p = c_lo * c_hi * height * height;
+  const double q = (c_hi - c_lo) * height;
+  reject_unrepresented_imaginary_mode(p, q, c_lo, c_hi, height);
+
+  std::vector<double> roots;
+  roots.reserve(static_cast<size_t>(mode_count));
+  const double zero_lhs = c_hi * (1.0 - c_lo * height) - c_lo;
+  const double zero_scale = std::max(
+      {std::abs(c_lo), std::abs(c_hi), 1.0 / height});
+  if (std::abs(zero_lhs) <= 1.0e-12 * zero_scale && mode_count > 0) {
+    roots.push_back(0.0);
+  }
+  if (static_cast<int>(roots.size()) == mode_count) return roots;
+
+  const int intervals = mode_count + 2;
+  const int sample_count = intervals * kSamplesPerPiInterval;
+  const double step = std::numbers::pi
+      / static_cast<double>(kSamplesPerPiInterval);
+  double left = step * 1.0e-6;
+  double f_left = pole_free_residual(left, p, q);
+  for (int index = 1; index <= sample_count
+       && static_cast<int>(roots.size()) < mode_count; ++index) {
+    const double right = step * index;
+    const double f_right = pole_free_residual(right, p, q);
+    if (f_right == 0.0) {
+      roots.push_back(right);
+    } else if (is_sign_change(f_left, f_right)) {
+      roots.push_back(bisect_pole_free_root(
+          left, right, f_left, p, q));
     }
-    if (f_mid > 0.0) {
-      hi = mid;
-    } else {
-      lo = mid;
-      f_lo = f_mid;
+    left = right;
+    f_left = f_right;
+  }
+  if (static_cast<int>(roots.size()) != mode_count) {
+    throw SimulationError(
+        "Robin eigenvalue enumeration found "
+        + std::to_string(roots.size()) + " of "
+        + std::to_string(mode_count) + " roots (c_lo="
+        + std::to_string(c_lo) + ", c_hi=" + std::to_string(c_hi)
+        + ", H=" + std::to_string(height) + ")");
+  }
+  for (size_t index = 0; index < roots.size(); ++index) {
+    if (index > 0 && !(roots[index] > roots[index - 1])) {
+      throw SimulationError("Robin eigenvalue enumeration produced duplicate roots");
+    }
+    if (roots[index] > 0.0) {
+      validate_root(roots[index], p, q, c_lo, c_hi, height);
     }
   }
-  return 0.5 * (lo + hi);
+  return roots;
 }
 
 double eigenfunction(double beta, double a, double zeta) {
@@ -236,11 +309,15 @@ double mode_sum(double z_source, double z_target, double rho,
   std::vector<double> betas;
   betas.reserve(static_cast<size_t>(mode_count));
   const bool use_robin_modes = robin_boundary && bi > 0.0;
-  const int first_mode = use_robin_modes ? 0 : 1;
-  for (int n = first_mode; n < mode_count; ++n) {
-    betas.push_back(use_robin_modes
-        ? mode_root(n, height, lower, b, bi, a * height)
-        : static_cast<double>(n) * std::numbers::pi / height);
+  if (use_robin_modes) {
+    for (const double root : robin_mode_roots_impl(
+             height, lower, b, mode_count)) {
+      betas.push_back(root / height);
+    }
+  } else {
+    for (int n = 1; n < mode_count; ++n) {
+      betas.push_back(static_cast<double>(n) * std::numbers::pi / height);
+    }
   }
   const double positive_modes = mode_sum_betas(
       z_source, z_target, rho, z_lo, z_hi, d_eff, decay_rate, betas,
@@ -259,6 +336,14 @@ double robin_biot_number(double d_free, double d_eff, double height,
                          double lumen_transfer_length, TransferBasis basis) {
   return robin_biot_number_impl(
       d_free, d_eff, height, lumen_transfer_length, basis);
+}
+
+std::vector<double> robin_mode_roots(double height, double c_lo,
+                                     double c_hi, int mode_count) {
+  std::vector<double> roots = robin_mode_roots_impl(
+      height, c_lo, c_hi, mode_count);
+  for (double& root : roots) root /= height;
+  return roots;
 }
 
 bool requires_direct_evaluation(double source_z, double target_z, double rho,
@@ -358,12 +443,9 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
     std::vector<double> sealed_betas;
     robin_betas.reserve(kTableModeCount);
     sealed_betas.reserve(kTableModeCount - 1);
-    for (int n = 0; n < kTableModeCount; ++n) {
-      robin_betas.push_back(mode_root(
-          n, table.height, lower, b,
-          robin_biot_number(d_free, d_eff, table.height,
-                            lumen_transfer_length, basis),
-          a * table.height));
+    for (const double root : robin_mode_roots_impl(
+             table.height, lower, b, kTableModeCount)) {
+      robin_betas.push_back(root / table.height);
     }
     for (int n = 1; n < kTableModeCount; ++n) {
       sealed_betas.push_back(

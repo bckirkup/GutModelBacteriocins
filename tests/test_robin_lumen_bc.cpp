@@ -7,14 +7,18 @@
 #include "greens_function.h"
 #include "input_parser.h"
 #include "config_json.h"
+#include "error.h"
+#include "plasmid.h"
 #include "robin_correction_table.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <numbers>
+#include <string>
 
 using namespace gutibm;
 
@@ -222,28 +226,114 @@ void test_sealed_limit() {
   auto system = make_system();
   const auto sealed = params_for(
       2.0e-11, 1.0e-4, std::numeric_limits<Real>::infinity());
-  const auto zero_transfer = params_for(2.0e-11, 1.0e-4, 0.0);
   const Vec3 source = {500.0e-6, 500.0e-6, 25.0e-6};
-  const Vec3 target = {530.0e-6, 500.0e-6, 75.0e-6};
-  const Real bounded = system.gf.concentration_bounded(
-      source, target, sealed);
-  const Real through_robin_path = system.gf.concentration_bounded(
-      source, target, zero_transfer);
-  require(std::abs(bounded - through_robin_path)
-              <= 1.0e-12 * std::max(std::abs(bounded), 1.0e-30),
-          "Robin sealed limit differs from sealed Green's function");
-  const Real correction = robin::normalized_correction(
-      source[2], target[2], 30.0e-6, 0.0, 100.0e-6, 2.0e-11, 4.0e-11,
-      1.0e-4, 0.0, 0.0, 0.0, 0.0, robin::kTableModeCount);
-  require(correction == 0.0,
-          "zero transfer length did not produce zero correction");
-  const auto zero_table = robin::build_table(
-      system.adv, 0.0, 100.0e-6, 4.0e-11, 2.0e-11, 1.0e-4, 0.0,
-      200.0e-6);
-  require(std::all_of(zero_table.values.begin(), zero_table.values.end(),
-                      [](const Real value) { return value == 0.0; }),
-          "zero transfer length produced a nonzero correction table");
-  std::cout << "  test_sealed_limit: PASSED\n";
+  const Vec3 near_lumen = {530.0e-6, 500.0e-6, 99.0e-6};
+  const Real sealed_value = system.gf.concentration_bounded(
+      source, near_lumen, sealed);
+
+  for (const std::string& invalid : {"0", "-1e-6", "nan", "-inf"}) {
+    SimulationConfig config = InputParser::default_config();
+    bool rejected = false;
+    try {
+      InputParser::apply_flat_key(
+          config, "toxin.lumen_transfer_length", invalid);
+    } catch (const ConfigError&) {
+      rejected = true;
+    }
+    require(rejected, "invalid Robin transfer length was accepted");
+  }
+  for (const std::string& invalid : {"0", "nan", "-inf"}) {
+    SimulationConfig config = InputParser::default_config();
+    bool rejected = false;
+    try {
+      InputParser::apply_flat_key(config, "toxin_cutoff", invalid);
+    } catch (const ConfigError&) {
+      rejected = true;
+    }
+    require(rejected, "invalid Robin cutoff was accepted");
+  }
+  SimulationConfig config = InputParser::default_config();
+  require(InputParser::apply_flat_key(
+              config, "toxin.lumen_transfer_length", "inf"),
+          "positive infinity transfer length was not accepted");
+  require(!robin::transfer_enabled(config.qssa.lumen_transfer_length),
+          "positive infinity transfer length did not disable Robin");
+
+  const auto broad_layer = params_for(2.0e-11, 1.0e-4, 1.0e-6);
+  const auto thin_layer = params_for(2.0e-11, 1.0e-4, 1.0e-8);
+  const Real broad_value = system.gf.concentration_bounded(
+      source, near_lumen, broad_layer);
+  const Real thin_value = system.gf.concentration_bounded(
+      source, near_lumen, thin_layer);
+  require(broad_value < sealed_value,
+          "finite Robin transfer did not reduce near-lumen concentration");
+  require(thin_value < broad_value,
+          "near-lumen concentration did not decrease as transfer length shrank");
+  std::cout << "  test_sealed_limit: PASSED (sealed=" << sealed_value
+            << ", delta=1e-6=" << broad_value
+            << ", delta=1e-8=" << thin_value << ")\n";
+}
+
+void test_robin_mode_residuals() {
+  constexpr Real height = 100.0e-6;
+  constexpr Real transfer_length = 100.0e-6;
+  constexpr Real decay = 5.0e-5;
+  const auto system = make_system(true);
+  const std::array<Real, 3> source_fractions = {0.02, 0.5, 0.98};
+  const std::array<robin::TransferBasis, 2> bases = {
+      robin::TransferBasis::Effective, robin::TransferBasis::Free};
+  for (const auto& entry : PlasmidLibrary::entries()) {
+    for (const auto basis : bases) {
+      for (const Real source_fraction : source_fractions) {
+        const Real z = source_fraction * height;
+        const Vec3 flow = system.adv.mean_velocity({0.0, 0.0, z});
+        const Real d_eff = entry.cluster.diff_coeff
+            / entry.cluster.retardation;
+        const Real a = flow[2] / (2.0 * d_eff);
+        const Real bi = robin::robin_biot_number(
+            entry.cluster.diff_coeff, d_eff, height, transfer_length, basis);
+        const Real c_lo = -a;
+        const Real c_hi = bi / height + a;
+        const auto roots = robin::robin_mode_roots(
+            height, c_lo, c_hi, 64);
+        require(roots.size() == 64,
+                "Robin residual sweep returned the wrong mode count");
+        Real previous = -1.0;
+        const Real p = c_lo * c_hi * height * height;
+        const Real q = (c_hi - c_lo) * height;
+        for (const Real beta : roots) {
+          const Real x = beta * height;
+          require(x > previous,
+                  "Robin residual sweep returned duplicate or unordered roots");
+          previous = x;
+          const Real residual = (x * x + p) * std::sin(x)
+              - q * x * std::cos(x);
+          const Real scale = (x * x + std::abs(p)) + std::abs(q) * x;
+          require(std::abs(residual) / scale <= 1.0e-9,
+                  "Robin residual sweep exceeded scaled residual tolerance");
+        }
+      }
+    }
+  }
+  std::cout << "  test_robin_mode_residuals: PASSED (6 plasmids, 2 bases, "
+               "3 source heights, 64 modes)\n";
+}
+
+void test_colE1_pole_regression() {
+  constexpr Real height = 100.0e-6;
+  constexpr Real a_height = 1.1626094919444088;
+  const Real c_lo = -a_height / height;
+  const Real c_hi = (1.0 + a_height) / height;
+  const auto roots = robin::robin_mode_roots(height, c_lo, c_hi, 5);
+  const Real first_x = roots.front() * height;
+  const Real expected = 1.5763832766320491;
+  const Real pole = 1.5856450809382423;
+  require(std::abs(first_x - expected) / expected <= 1.0e-9,
+          "ColE1 first Robin root does not match the pole-free reference");
+  require(std::abs(first_x - pole) / pole >= 1.0e-6,
+          "ColE1 first Robin root converged to the rational pole");
+  std::cout << "  test_colE1_pole_regression: PASSED (first beta*H="
+            << first_x << ")\n";
 }
 
 void test_sink_limit() {
@@ -590,6 +680,8 @@ int main() {
   test_flux_residual();
   test_table_against_direct_modes();
   test_sealed_limit();
+  test_robin_mode_residuals();
+  test_colE1_pole_regression();
   test_sink_limit();
   test_cross_language_anchors();
   test_shipped_screening_sealed_series();
