@@ -90,6 +90,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | `src/io/hdf5_writer.cpp` | Parallel HDF5 output + genome checkpoint groups |
 | `src/io/hdf5_reader.cpp` | Checkpoint restart snapshots |
 | `docs/DELIVERY_ROS_CAMPAIGN.md` | Consolidated delivery/ROS campaign findings and retired claims |
+| `docs/EXTERNAL_AUDIT_2026-08.md` | External audit claims, per-claim verdicts, and the decisions taken |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
 | `python/gut_ibm_tools/colony.py` and `spatial_stats.py` | Colony catalogs and 3-D spatial observables |
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `batch_scan/`, `scaling_benchmark/` |
