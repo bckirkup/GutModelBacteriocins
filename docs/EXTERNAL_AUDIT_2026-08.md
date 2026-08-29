@@ -147,3 +147,137 @@ mass-balance check.
   coupled EARI/VADI hypothesis" from "has validated EARI/VADI as the causal
   explanation" is adopted. External parameterization, held-out data, competing
   models, and ablations do not yet exist, so claims stay on the former side.
+
+## Round two — the Robin correction design review
+
+The same external platform reviewed the lumen-boundary design before it was
+implemented (`gutibm_robin_correction_design_review.md`, review basis PR #359 at
+`49dae68`). This section records that review the same way as the audit above:
+claim, independent verdict, and what changed as a result. The implementation is
+PR #361; the physics and its accuracy budget live in `docs/ROBIN_LUMEN_BC.md`
+and are not repeated here.
+
+Context for a reader arriving cold: the lumen at `z_hi` was sealed, i.e. toxin
+reflected off it, while `AdvectionField` carries flow through it. That is not a
+defensible outflow model, and it is not a small effect — at shipped parameters a
+transparent lumen gives 0.35–0.67x and a perfect sink 0.01–0.52x the sealed
+toxin concentration, which dwarfs the 9–19% bias from the image-series defect
+that PR #359 fixed. The decision taken was the middle treatment, a Robin
+mass-transfer condition at the lumen with an impermeable epithelium, because it
+is the only one of the three that follows from a physical picture (a well-mixed
+lumen bulk above a diffusive boundary layer) rather than from convenience.
+
+### Standing of the review
+
+Substantially correct and materially useful: it changed the implementation in
+three places, one of which was a sign error in our own specification that would
+have produced a plausible-looking but wrong field. It was also wrong in one
+recommendation and unnecessary in two, in each case demonstrably so by
+measurement rather than by argument. Its central procedural instruction —
+validate the reconstructed total concentration, not the correction — is the most
+valuable sentence in it, and it is what exposed the test-design error described
+below.
+
+| # | Review point | Verdict |
+|---|---|---|
+| 1 | Keep `G_Robin = G_sealed + ΔG` and precompute the correction | Adopted, and independently required: a direct mode kernel needs 393 modes at `ρ=1 µm` and 197 at 2 µm, exactly the distances agents evaluate |
+| 2 | Expose transfer length `δ`, not `k_c` | Adopted (`toxin.lumen_transfer_length`); `k_c` is not exposed |
+| 3 | Do not key tables by receptor field | Adopted. Confirmed independently: ColE1 and ColE2 both target BtuB with different `D_free` and retardation, so one BtuB table would apply the wrong kernel |
+| 4 | Declare the state variable and the boundary diffusivity convention | Adopted as a config choice rather than a single declaration — `toxin.lumen_transfer_basis` selects `k_c = D_eff/δ` (default) or `D_free/δ` — because the review's own table is the argument against hard-coding the free basis: shipped pI-driven retardation spans ~55x, so that basis silently turns the lethal-core toxins into an absorbing lumen |
+| 5 | Carry normal velocity in the transformed Robin coefficient, and re-derive the sign | **Adopted, and it caught a real error of ours.** See below |
+| 6 | Guard near-wall/near-axis with a direct branch | Adopted as a bounded fallback, but the premise was not reproduced — see below |
+| 7 | Low screening needs a direct path or a documented rejection gate | Partially adopted: measured, documented, not gated — see below |
+| 8 | Advection varies with depth and time, so a table built once goes stale | Confirmed and fixed, though not as ranked — see below |
+| 9 | Quantized, bounded cache rather than one table per floating-point tuple | Adopted, and it was load-bearing: mutation moves pI, `retardation_from_pI` moves retardation, so the naive key was unbounded at ~2M Bessel evaluations per miss. Tables are keyed on `(Bi, κH, aH, cutoff/H)` in 1% bins, capped at 64 with LRU eviction and counters in provenance |
+| 10 | Validate the reconstructed total, not only `ΔC`; keep positivity a diagnostic, not a clip | Adopted, and it exposed a test-design error of ours — see below |
+| 11 | `ρ²` near-axis and `log ρ` beyond a matched radius; `N_s,N_t = 48–64`, `N_ρ = 128–256` | Rejected on measurement — see below |
+| 12 | `δ = 100 µm` is an exploratory prior, not a colon default; sweep it; report realized Bi | Adopted, and strengthened: the boundary ships **disabled**, so enabling it is an explicit act, and realized Bi is recorded per cached table in provenance |
+| 13 | Record grid, key, tolerance, method, basis and a hash in provenance | Adopted; the hash covers the table values, not the metadata string that describes them |
+
+### Where the review changed the code
+
+**The two walls do not share a boundary law (point 5).** The review's transformed
+condition `-D ∂ψ/∂n = (k_c + U_n/2) ψ` is right for the lumen, and following its
+instruction to re-derive the sign showed that our own specification had the
+epithelium wrong. The epithelium is impermeable, so nothing crosses it and the
+correct statement is zero *total* flux, `-D ∂C/∂z + U_z C = 0`; the lumen carries
+free advective outflow plus film transfer, `-D ∂C/∂z = k_c C`. In the gauge
+variable those give `c_lo = -a` and `c_hi = k_c/D_eff + a` with `a = U_z/(2 D_eff)`
+— the drift term enters with *opposite* signs at the two walls. Our spec had used
+`+a` at both. The corrected eigenproblem is verified against an independent
+reference implementation to 1.6e-10..5.9e-9 across five anchors, and the residual
+of each wall law is asserted separately in CI.
+
+**Validating the total, not the correction (point 10).** Following this exposed
+that the obvious test is the wrong test. A wall-flux residual computed from the
+*interpolated* field is not a check of the boundary condition: a 1e-9 m finite
+difference taken inside one 3.1 µm trilinear cell returns that cell's average
+slope, so curvature that is invisible in field values (1e-3) reappears amplified
+to ~1e-1 in a gradient metric. The boundary laws are therefore asserted on the
+direct-mode path (measured 1.8e-4 epithelial, 2.7e-4 lumen), reconstruction is
+asserted on field *values* (<= 8.4e-3), and the interpolated wall residual is
+retained only as a regression guard whose comment records the decomposition and
+states that tightening it requires a finer near-wall grid rather than a looser
+tolerance.
+
+**Time-varying flow (point 8).** Confirmed, but the fix is not one of the three
+options the review ranked. The staleness that matters is not interpolation error,
+it is cache identity: sampling the instantaneous velocity makes the key drift
+every step under peristalsis, so every step builds a table and then thrashes the
+cache. Tables are therefore built from the peristalsis-free mean profile, with
+the full time-varying flow retained in the base image series and in the runtime
+drift factor. What that neglects was measured rather than assumed: across
+peristaltic factors 0.5–1.5 the omitted change in the correction is 6.0e-3 of the
+total field.
+
+### Where the review was wrong, and how we know
+
+**Table coordinates (point 11).** The recommended `ρ²`/`log ρ` scheme and the
+48–64 x 128–256 grid were not adopted, because a uniform 33-node `ρ` grid over
+the 200 µm cutoff was measured at 1.8e-4..1.8e-3 error against the total field —
+already below the dominant error term below. The recommendation would have cost
+4–8 MiB per tuple instead of 287 KiB to improve a term that is not the binding
+constraint. Grid changes should follow the error map, which is exactly the
+review's own instruction.
+
+**Near-axis singularity at the Robin wall (point 6).** The premise was not
+reproduced. `|ΔC|/C_Robin` falls to 0.3–1% as `ρ → 0` with both points near the
+wall; no logarithmic blow-up appeared. The direct branch is retained as a bounded
+safety net, but it is deliberately narrow — a 2048-mode root solve in the hot
+loop is a runtime cliff, so widening the predicate to catch "either point near a
+wall" was reverted, and direct evaluations are now counted in provenance so any
+future cliff is visible in output rather than only in wall time.
+
+**Low screening (point 7).** Real, and milder than implied. Measured
+`|ΔC|/C_Robin` rises to 2.4 at `κH = 5e-3`, i.e. roughly 0.4 digits of
+cancellation, not catastrophic loss. It is documented as a soft spot with the
+direct path reachable, and no accuracy gate was added, because a gate calibrated
+on an unmeasured fear would reject usable configurations.
+
+**A subtraction we tried and abandoned.** Defining the correction against the
+*image series* rather than against the sealed mode sum would have cancelled the
+image base's error, which is attractive since that base is now the dominant term.
+It fails: the difference then inherits a `1/ρ`-like singular component and a
+uniform `ρ` grid gives 14%–528% error. The sealed mode sum stays as the table's
+reference, and the image base's error stays as a documented floor.
+
+### What this round found that neither side had
+
+**The image series does not solve the drift PDE when there is wall-normal flow.**
+Translations plus z-reversed reflections satisfy zero diffusive flux at both
+walls, but a reflected image with reversed `U_z` solves the mirrored-drift
+equation, so the sum solves neither: interior residual 2.9e-1 against 1.4e-3 for
+a converged mode sum. It is exact only for wall-parallel flow. At shipped flow
+the resulting field error is 1.2e-3..6.9e-3 — sub-percent, and now the *dominant*
+term in the Robin accuracy budget, ahead of interpolation. This is inherited from
+PR #359, not introduced by the Robin work, and it is recorded as a landmine
+rather than fixed here.
+
+**Enabling the boundary changes biology, not just numbers.** With `δ = 100 µm`,
+near-lumen toxin falls to 0.59x (effective basis) or 0.45x (free basis) of the
+sealed value, and four toxin tests that assert killing or induction fail. Those
+failures are the finding: the lumen treatment, not the image-series fix, decides
+whether killing happens at all in those scenarios. The boundary therefore ships
+disabled — the default is bit-for-bit the previous sealed result — and flipping
+it is a scientific decision that belongs with the GPU/precision benchmark
+evidence, not with a library change.
