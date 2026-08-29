@@ -207,7 +207,7 @@ void launch_mechanics_clear_kernel(double* dx, double* dy, double* dz,
                                    cudaStream_t stream);
 void launch_mechanics_forces_kernel(
     const double* x, const double* y, const double* z,
-    const double* radius, const int* state,
+    const double* radius, const int* state, const double* death_time,
     const int* cell_offsets, const int* sorted_indices,
     double* dx, double* dy, double* dz,
     int num_agents, const MechanicsLaunchParams& params,

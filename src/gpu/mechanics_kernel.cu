@@ -1,5 +1,6 @@
 #include "gpu_kernels.h"
 #include "gpu_types.h"
+#include "mechanics_participation.h"
 
 #include <cuda_runtime.h>
 #include <cmath>
@@ -93,13 +94,17 @@ __global__ void mechanics_clear_kernel(double* dx, double* dy, double* dz,
 
 __global__ void mechanics_forces_kernel(
     const double* x, const double* y, const double* z,
-    const double* radius, const int* state,
+    const double* radius, const int* state, const double* death_time,
     const int* cell_offsets, const int* sorted_indices,
     double* dx, double* dy, double* dz,
     int num_agents, MechanicsLaunchParams params) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
-  if (state[i] == 3) return;
+  if (!mechanics_participates(state[i], death_time[i], params.sim_time,
+                              params.cdi_enabled,
+                              params.corpse_persistence)) {
+    return;
+  }
 
   int ix = static_cast<int>((x[i] - params.lo0) / params.cell_size);
   int iy = static_cast<int>((y[i] - params.lo1) / params.cell_size);
@@ -124,7 +129,11 @@ __global__ void mechanics_forces_kernel(
         for (int pos = begin; pos < end; ++pos) {
           const int j = sorted_indices[pos];
           if (j <= i) continue;
-          if (state[j] == 3) continue;
+          if (!mechanics_participates(state[j], death_time[j], params.sim_time,
+                                      params.cdi_enabled,
+                                      params.corpse_persistence)) {
+            continue;
+          }
 
           double delta_x = 0.0;
           double delta_y = 0.0;
@@ -154,7 +163,8 @@ __global__ void mechanics_forces_kernel(
                 radius_i, radius_j, viscosity, dx, dy, dz);
           }
 
-          if (params.adhesion_enabled) {
+          if (params.adhesion_enabled && state[i] != kDeadStateValue
+              && state[j] != kDeadStateValue) {
             const double gap = d - sum_r;
             if (gap > 0.0 && gap < params.adhesion_range) {
               const double adhesion_frac = 1.0 - (gap / params.adhesion_range);
@@ -228,7 +238,7 @@ void launch_mechanics_clear_kernel(double* dx, double* dy, double* dz,
 
 void launch_mechanics_forces_kernel(
     const double* x, const double* y, const double* z,
-    const double* radius, const int* state,
+    const double* radius, const int* state, const double* death_time,
     const int* cell_offsets, const int* sorted_indices,
     double* dx, double* dy, double* dz,
     int num_agents, const MechanicsLaunchParams& params,
@@ -237,7 +247,7 @@ void launch_mechanics_forces_kernel(
   int block = 256;
   int grid = (num_agents + block - 1) / block;
   mechanics_forces_kernel<<<grid, block, 0, stream>>>(
-      x, y, z, radius, state,
+      x, y, z, radius, state, death_time,
       cell_offsets, sorted_indices,
       dx, dy, dz, num_agents, params);
 }

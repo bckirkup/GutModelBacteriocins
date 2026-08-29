@@ -8,13 +8,15 @@
 #include "fix_mechanics.h"
 #include "input_parser.h"
 #include "simulation.h"
+#include "cdi_config.h"
 
 namespace gutibm::test {
 
 inline Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
                                      const MechanicsConfig& mcfg = {},
                                      bool gpu_enabled = false,
-                                     Real viscosity = 0.01) {
+                                     Real viscosity = 0.01,
+                                     const CdiConfig& cdi_cfg = {}) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.initial_strains.clear();
   cfg.domain.hi = {100e-6, 100e-6, 100e-6};
@@ -22,6 +24,7 @@ inline Simulation make_two_agent_sim(Vec3 pos_a, Vec3 pos_b,
   cfg.domain.hash_cell_size = 20e-6;
   cfg.fixes.mechanics = mcfg;
   cfg.vbf.viscosity = viscosity;
+  cfg.cell_bio.cdi = cdi_cfg;
   cfg.hdf5.enabled = false;
   cfg.gpu.enabled = gpu_enabled;
 

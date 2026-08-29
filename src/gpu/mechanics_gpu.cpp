@@ -6,6 +6,7 @@
 #include "device_memory.h"
 #include "gpu_kernels.h"
 #include "gpu_types.h"
+#include "mechanics_participation.h"
 
 #include <type_traits>
 
@@ -39,6 +40,7 @@ MechanicsDeviceScratch& mechanics_device_scratch() {
 bool gpu_run_mechanics(AgentPoolGpu& agents, Int num_agents,
                        const SpatialHashGpu& hash, const Domain& domain,
                        const MechanicsConfig& cfg, Real dt, Real viscosity,
+                       Real sim_time, Real corpse_persistence, int cdi_enabled,
                        Int& clamp_count) {
   clamp_count = 0;
 #ifndef GUTIBM_CUDA
@@ -49,6 +51,9 @@ bool gpu_run_mechanics(AgentPoolGpu& agents, Int num_agents,
   (void)cfg;
   (void)dt;
   (void)viscosity;
+  (void)sim_time;
+  (void)corpse_persistence;
+  (void)cdi_enabled;
   (void)clamp_count;
   return false;
 #else
@@ -73,6 +78,9 @@ bool gpu_run_mechanics(AgentPoolGpu& agents, Int num_agents,
   params.max_displacement_fraction =
       kMechanicsMaxDisplacementRadiusFraction;
   params.dt = dt;
+  params.sim_time = sim_time;
+  params.corpse_persistence = corpse_persistence;
+  params.cdi_enabled = cdi_enabled;
   params.lo0 = domain.lo()[0];
   params.lo1 = domain.lo()[1];
   params.lo2 = domain.lo()[2];
@@ -93,7 +101,7 @@ bool gpu_run_mechanics(AgentPoolGpu& agents, Int num_agents,
       scratch.clamp_count.data(), num_agents, stream);
   gpu::launch_mechanics_forces_kernel(
       agents.x(), agents.y(), agents.z(),
-      agents.radius(), agents.state(),
+      agents.radius(), agents.state(), agents.death_time(),
       hash.cell_offsets.data(), hash.sorted_agent_indices.data(),
       scratch.dx.data(), scratch.dy.data(), scratch.dz.data(),
       num_agents, params, stream);

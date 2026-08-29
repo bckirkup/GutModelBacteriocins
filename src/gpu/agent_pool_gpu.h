@@ -80,6 +80,7 @@ class AgentPoolGpu {
   const double* x() const { return d_x_.data(); }
   const double* y() const { return d_y_.data(); }
   const double* z() const { return d_z_.data(); }
+  const double* death_time() const { return d_death_time_.data(); }
   int*    grid_cell() { return d_grid_cell_.data(); }
   const int* grid_cell() const { return d_grid_cell_.data(); }
   int*    state() { return d_state_.data(); }
@@ -121,6 +122,7 @@ class AgentPoolGpu {
   DeviceBuffer<double> d_x_;
   DeviceBuffer<double> d_y_;
   DeviceBuffer<double> d_z_;
+  DeviceBuffer<double> d_death_time_;
   DeviceBuffer<int> d_grid_cell_;
   DeviceBuffer<int> d_state_;
   DeviceBuffer<int> d_is_ghost_;

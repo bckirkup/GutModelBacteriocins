@@ -77,6 +77,8 @@ enum class PhenoState : uint8_t {
   DEAD         = 3
 };
 
+inline constexpr int kDeadStateValue = 3;
+
 // C++17 polyfill for std::to_underlying (C++23)
 template <typename E>
 constexpr auto to_underlying(E e) noexcept {

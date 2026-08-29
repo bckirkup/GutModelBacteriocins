@@ -94,6 +94,99 @@ void test_gpu_adhesion_match_cpu() {
 #endif
 }
 
+#ifdef GUTIBM_CUDA
+void mark_corpse(Simulation& sim, Real death_time) {
+  sim.agents()[1].state = PhenoState::DEAD;
+  sim.agents()[1].timers.death_time = death_time;
+}
+#endif
+
+void test_gpu_fresh_corpse_match_cpu() {
+#ifdef GUTIBM_CUDA
+  GpuConfig gcfg;
+  gcfg.enabled = true;
+  gpu_set_config(gcfg);
+  assert(gpu_init_for_rank(0, 1));
+
+  const Real r = CELL_RADIUS_DEFAULT;
+  const Real separation = 2 * r - 0.2e-6;
+  const Vec3 pos_a = {50e-6, 50e-6, 50e-6};
+  const Vec3 pos_b = {50e-6 + separation, 50e-6, 50e-6};
+
+  MechanicsConfig mcfg;
+  mcfg.hertzian_enabled = true;
+  mcfg.hertz_k = 1.0e-6;
+  mcfg.adhesion_enabled = false;
+
+  Simulation sim_cpu = make_two_agent_sim(pos_a, pos_b, mcfg, false);
+  mark_corpse(sim_cpu, 0.0);
+  FixMechanics fix_cpu(sim_cpu, mcfg);
+  fix_cpu.compute(1.0);
+
+  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true);
+  mark_corpse(sim_gpu, 0.0);
+  assert(sim_gpu.gpu_active());
+  FixMechanics fix_gpu(sim_gpu, mcfg);
+  fix_gpu.compute(1.0);
+
+  const Real host_displacement =
+      std::abs(sim_cpu.agents()[0].x[0] - pos_a[0])
+      + std::abs(sim_cpu.agents()[1].x[0] - pos_b[0]);
+  const Real device_displacement =
+      std::abs(sim_gpu.agents()[0].x[0] - pos_a[0])
+      + std::abs(sim_gpu.agents()[1].x[0] - pos_b[0]);
+  assert(host_displacement > 1.0e-12);
+  assert(device_displacement > 1.0e-12);
+  for (Int i = 0; i < 2; ++i) {
+    for (int d = 0; d < 3; ++d) {
+      assert(std::abs(sim_cpu.agents()[i].x[d]
+                      - sim_gpu.agents()[i].x[d]) < 1e-12);
+    }
+  }
+
+  std::cout << "  test_gpu_fresh_corpse_match_cpu: PASSED\n";
+#endif
+}
+
+void test_gpu_expired_corpse_match_cpu() {
+#ifdef GUTIBM_CUDA
+  GpuConfig gcfg;
+  gcfg.enabled = true;
+  gpu_set_config(gcfg);
+  assert(gpu_init_for_rank(0, 1));
+
+  const Real r = CELL_RADIUS_DEFAULT;
+  const Real separation = 2 * r - 0.2e-6;
+  const Vec3 pos_a = {50e-6, 50e-6, 50e-6};
+  const Vec3 pos_b = {50e-6 + separation, 50e-6, 50e-6};
+  MechanicsConfig mcfg;
+  mcfg.hertzian_enabled = true;
+  mcfg.hertz_k = 1.0e-6;
+  mcfg.adhesion_enabled = false;
+
+  Simulation sim_cpu = make_two_agent_sim(pos_a, pos_b, mcfg, false);
+  mark_corpse(sim_cpu, -301.0);
+  FixMechanics fix_cpu(sim_cpu, mcfg);
+  fix_cpu.compute(1.0);
+
+  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true);
+  mark_corpse(sim_gpu, -301.0);
+  assert(sim_gpu.gpu_active());
+  FixMechanics fix_gpu(sim_gpu, mcfg);
+  fix_gpu.compute(1.0);
+
+  for (Int i = 0; i < 2; ++i) {
+    for (int d = 0; d < 3; ++d) {
+      assert(std::abs(sim_cpu.agents()[i].x[d]
+                      - (i == 0 ? pos_a[d] : pos_b[d])) < 1e-12);
+      assert(std::abs(sim_cpu.agents()[i].x[d]
+                      - sim_gpu.agents()[i].x[d]) < 1e-12);
+    }
+  }
+  std::cout << "  test_gpu_expired_corpse_match_cpu: PASSED\n";
+#endif
+}
+
 }  // namespace
 
 int main() {
@@ -102,6 +195,8 @@ int main() {
   if (gpu_status != 0) return gpu_status;
   test_gpu_overlapping_agents_match_cpu();
   test_gpu_adhesion_match_cpu();
+  test_gpu_fresh_corpse_match_cpu();
+  test_gpu_expired_corpse_match_cpu();
   std::cout << "All mechanics GPU parity tests passed.\n";
   return 0;
 }

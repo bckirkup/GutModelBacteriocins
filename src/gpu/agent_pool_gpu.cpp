@@ -16,6 +16,7 @@ void AgentPoolGpu::resize(Int n) {
   d_x_.allocate(static_cast<size_t>(n));
   d_y_.allocate(static_cast<size_t>(n));
   d_z_.allocate(static_cast<size_t>(n));
+  d_death_time_.allocate(static_cast<size_t>(n));
   d_grid_cell_.allocate(static_cast<size_t>(n));
   d_state_.allocate(static_cast<size_t>(n));
   d_is_ghost_.allocate(static_cast<size_t>(n));
@@ -45,6 +46,7 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   std::vector<double> x(n);
   std::vector<double> y(n);
   std::vector<double> z(n);
+  std::vector<double> death_time(n);
   std::vector<int> grid_cell(n);
   std::vector<int> state(n);
   std::vector<int> is_ghost(n);
@@ -70,6 +72,7 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
     x[i] = a.x[0];
     y[i] = a.x[1];
     z[i] = a.x[2];
+    death_time[i] = a.timers.death_time;
     grid_cell[i] = a.grid_cell;
     state[i] = static_cast<int>(to_underlying(a.state));
     is_ghost[i] = a.flags.is_ghost ? 1 : 0;
@@ -100,6 +103,7 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   d_x_.upload(x);
   d_y_.upload(y);
   d_z_.upload(z);
+  d_death_time_.upload(death_time);
   d_grid_cell_.upload(grid_cell);
   d_state_.upload(state);
   d_is_ghost_.upload(is_ghost);
