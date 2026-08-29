@@ -72,7 +72,7 @@ Inspect the Batch `statusReason` and attempt history before submitting anything:
 | Evidence | Classification | Response |
 |---|---|---|
 | `statusReason` begins `Host EC2*` | Spot reclaim | The configured retry/resume path should use `latest.json`; inspect the newest durable checkpoint before authorizing any intervention. |
-| Attempt timeout | Timeout | It does not retry under the Spot-reclaim rule; do not label it a reclaim or resubmit automatically. |
+| Attempt timeout | Timeout | It does not retry under the Spot-reclaim rule; do not label it a reclaim or resubmit automatically. Job definitions register a bounded attempt budget (`CAMPAIGN_JOB_TIMEOUT_SECONDS`, default 24 h; practice 3 h), so a timeout means the run exceeded that budget — resume from the newest durable checkpoint rather than restarting the horizon. |
 | Application/configuration failure | Application failure | Neither automatic Spot retry nor timeout reasoning applies; inspect logs and artifact state first. |
 
 Do not respond symmetrically to these cases. A mistaken resubmission wastes

@@ -40,6 +40,9 @@ fi
 export JOB_QUEUE="${JOB_QUEUE:-gutibm-gpu-practice}"
 export JOB_DEFINITION="${JOB_DEFINITION:-gutibm-cuda}"
 export COMPUTE_ENV="${COMPUTE_ENV:-gutibm-gpu-practice-od}"
+# Budget guardrail: Batch kills an attempt that exceeds this wall clock. Smokes
+# finish in minutes; 3 h catches a hung practice container.
+export PRACTICE_JOB_TIMEOUT_SECONDS="${PRACTICE_JOB_TIMEOUT_SECONDS:-10800}"
 
 # Campaign stack (05): multi-AZ Spot GPU, single-GPU sizes, one GPU per run.
 export COMPUTE_ENV_CAMPAIGN="${COMPUTE_ENV_CAMPAIGN:-gutibm-gpu-campaign-spot}"
@@ -51,6 +54,10 @@ export JOB_DEFINITION_CAMPAIGN="${JOB_DEFINITION_CAMPAIGN:-gutibm-cuda-campaign}
 export CAMPAIGN_MAX_VCPUS="${CAMPAIGN_MAX_VCPUS:-96}"
 # Set to 1 to also create an On-Demand fallback CE and order it after Spot.
 export CAMPAIGN_ONDEMAND_FALLBACK="${CAMPAIGN_ONDEMAND_FALLBACK:-0}"
+# Budget guardrail: per-attempt wall clock for campaign runs. Checkpoint/restart
+# means a timed-out attempt resumes from S3 rather than restarting the horizon,
+# so no single unmonitored GPU container bills past a day.
+export CAMPAIGN_JOB_TIMEOUT_SECONDS="${CAMPAIGN_JOB_TIMEOUT_SECONDS:-86400}"
 
 echo "AWS_REGION=${AWS_REGION}"
 echo "ACCOUNT=${ACCOUNT}"

@@ -43,6 +43,9 @@ Terraform/CDK, or replacing local Stage 1–2 validation.
 | Scheduler | **AWS Batch** (EC2 GPU), not Fargate | Fargate has **no NVIDIA GPUs**; keep the Docker/ECR muscle memory, change only the compute backend |
 | Practice instance | **`g4dn.xlarge`** (T4, 16 GB VRAM) | Cheapest common GPU Spot class for tiny smokes |
 | Campaign instances | **`g5.2xlarge`**, `g5.4xlarge`, `g5.8xlarge`, `g5.16xlarge`, `g4dn.2xlarge`, `g4dn.4xlarge`, `g4dn.8xlarge`, `g4dn.16xlarge` | Single-GPU sizes with at least 8 vCPUs and 32 GiB host RAM; multi-GPU sizes are excluded because one requested GPU would leave paid accelerators idle |
+| Scale-to-zero | `minvCpus: 0`, `desiredvCpus: 0` on every GPU CE | An idle queue holds no instances; the first submit provisions, the last completion terminates |
+| Attempt timeout | `PRACTICE_JOB_TIMEOUT_SECONDS` (3 h), `CAMPAIGN_JOB_TIMEOUT_SECONDS` (24 h) | Registered on the job definition, so no unmonitored GPU container bills indefinitely. A timed-out campaign attempt resumes from its S3 checkpoint; it is **not** a Spot reclaim (see skill `gutibm-campaign-ops`) |
+| Shared memory | `linuxParameters.sharedMemorySize: 2048` | `/dev/shm` for CUDA/MPI host staging |
 | First jobs | **`experiments/smoke_gpu.json`** then `smoke_gpu_batch.json` | Prove CUDA path before Stage 3 |
 | Image build | **Laptop `docker build` + `aws ecr get-login-password` push** | Same as existing Fargate deploys; GHA→ECR later if desired |
 | First campaign (after smoke) | **`batch_baseline.json`** (3 seeds) | Smaller than the 12-run Kd sweep; validate cost/wall time once |
