@@ -275,13 +275,30 @@ void GreensFunction::require_init() const {
   }
 }
 
+void GreensFunction::set_kernel_evaluation_counting(bool enabled) {
+  kernel_evaluation_counting_enabled_ = enabled;
+  if (!enabled) {
+    kernel_evaluations_by_thread_.clear();
+    return;
+  }
+  int slot_count = 1;
+#ifdef GUTIBM_OPENMP
+  slot_count = omp_get_max_threads();
+#endif
+  kernel_evaluations_by_thread_.assign(
+      static_cast<std::size_t>(slot_count), uint64_t{0});
+}
+
 Real GreensFunction::single_kernel(const Vec3& src, const Vec3& tgt,
                                     Real D_eff, Real Q, Real decay_rate,
                                     const Vec3& flow_vel) const {
+  if (kernel_evaluation_counting_enabled_) {
+    int slot = 0;
 #ifdef GUTIBM_OPENMP
-#pragma omp atomic update
+    slot = omp_get_thread_num();
 #endif
-  ++kernel_evaluations_;
+    ++kernel_evaluations_by_thread_[static_cast<std::size_t>(slot)];
+  }
   Vec3 delta = domain_->min_image_delta(src, tgt);
   Real r = std::sqrt(delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2]);
 
@@ -356,7 +373,10 @@ Real GreensFunction::concentration_sealed(
   Real total = 0.0;
   if (params.image_series_legacy_reflections) {
     total = evaluate_image(source[2], 0);
-    for (int m = 1; m <= params.image_series_max_shells; ++m) {
+    const int max_shells = !params.image_series_max_shells_explicit
+        ? kHistoricalLegacyImageSeriesShells
+        : params.image_series_max_shells;
+    for (int m = 1; m <= max_shells; ++m) {
       const Real offset = 2.0 * static_cast<Real>(m) * (z_hi_ - z_lo_);
       total += evaluate_image(2.0 * z_lo_ - source[2] - offset, 0)
           + evaluate_image(2.0 * z_hi_ - source[2] + offset, 0)
@@ -435,10 +455,17 @@ void GreensFunction::superpose_to_grid(
   grid_conc.assign(ncells, 0.0);
 
 #ifdef GUTIBM_CUDA
+  uint64_t gpu_kernel_evaluations = 0;
+  uint64_t* kernel_evaluations = kernel_evaluation_counting_enabled_
+      ? &gpu_kernel_evaluations
+      : nullptr;
   if (adv_ && domain_ && try_gpu_superpose(*domain_, *adv_, sources, params,
                                            grid_conc, cutoff_radius,
                                            &image_series_cap_hits_,
-                                           &kernel_evaluations_)) {
+                                           kernel_evaluations)) {
+    if (kernel_evaluations != nullptr) {
+      add_kernel_evaluations(gpu_kernel_evaluations);
+    }
     return;
   }
 #endif

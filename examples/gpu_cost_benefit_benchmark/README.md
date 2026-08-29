@@ -17,3 +17,8 @@ from any hosts with `merge_report.py`.  Missing `(arm, scale, seed)` records
 remain explicit in the merged report; the merger never starts GutIBM.
 
 No benchmark arm is launched by the generator or this source tree's tests.
+
+B1 uses the pre-fix duplicated-reflection series only as a cost reference. It
+is explicitly marked as physically wrong and pins `image_series_max_shells`
+to the historical three-shell value; legacy mode also maps an otherwise
+unchanged corrected-mode shell default to those three shells.

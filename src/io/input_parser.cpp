@@ -807,6 +807,7 @@ bool apply_chemistry_key(SimulationConfig& cfg, std::string_view key,
   }
   if (key == "image_series_max_shells") {
     cfg.qssa.image_series_max_shells = parse_config_int(key, val);
+    cfg.qssa.image_series_max_shells_explicit = true;
     return true;
   }
   if (key == "image_series_mode") {

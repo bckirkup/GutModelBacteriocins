@@ -104,7 +104,11 @@ bool launch_superpose(const Domain& domain,
     sp[i].robin_cutoff = params[i].robin_cutoff;
     sp[i].image_series_relative_tolerance =
         params[i].image_series_relative_tolerance;
-    sp[i].image_series_max_shells = params[i].image_series_max_shells;
+    sp[i].image_series_max_shells =
+        params[i].image_series_legacy_reflections
+                && !params[i].image_series_max_shells_explicit
+            ? kHistoricalLegacyImageSeriesShells
+            : params[i].image_series_max_shells;
     sp[i].image_series_legacy_reflections =
         params[i].image_series_legacy_reflections ? 1 : 0;
     sp[i].lumen_transfer_basis_free =

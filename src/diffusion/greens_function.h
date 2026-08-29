@@ -23,12 +23,17 @@
 
 #include "types.h"
 #include "robin_correction_table.h"
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <utility>
 #include <vector>
 
 namespace gutibm {
+
+inline constexpr int kDefaultImageSeriesMaxShells = 512;
+inline constexpr int kHistoricalLegacyImageSeriesShells = 3;
 
 class Domain;
 class AdvectionField;
@@ -45,7 +50,8 @@ struct GreensFunctionParams {
   bool lumen_transfer_basis_free = false;
   Real robin_cutoff = robin::kDefaultCutoff;
   Real image_series_relative_tolerance = 1.0e-10;
-  int image_series_max_shells = 512;
+  int image_series_max_shells = kDefaultImageSeriesMaxShells;
+  bool image_series_max_shells_explicit = false;
   bool image_series_legacy_reflections = false;
 
   // NOTE: bacteriocin pI classification lives in a single source of truth,
@@ -104,19 +110,29 @@ class GreensFunction {
     return robin_direct_evaluations_;
   }
   uint64_t kernel_evaluations() const {
-    return kernel_evaluations_;
+    return std::accumulate(kernel_evaluations_by_thread_.begin(),
+                           kernel_evaluations_by_thread_.end(),
+                           uint64_t{0});
+  }
+  void set_kernel_evaluation_counting(bool enabled);
+  bool kernel_evaluation_counting_enabled() const {
+    return kernel_evaluation_counting_enabled_;
   }
   void add_image_series_cap_hits(uint64_t count) const {
     image_series_cap_hits_ += count;
   }
   void add_kernel_evaluations(uint64_t count) const {
-    kernel_evaluations_ += count;
+    if (kernel_evaluation_counting_enabled_
+        && !kernel_evaluations_by_thread_.empty()) {
+      kernel_evaluations_by_thread_[0] += count;
+    }
   }
   void reset_image_series_cap_hits() {
     image_series_cap_hits_ = 0;
   }
   void reset_kernel_evaluations() {
-    kernel_evaluations_ = 0;
+    std::fill(kernel_evaluations_by_thread_.begin(),
+              kernel_evaluations_by_thread_.end(), uint64_t{0});
   }
 
  private:
@@ -138,7 +154,8 @@ class GreensFunction {
   Real z_hi_ = 100.0e-6;
   mutable uint64_t image_series_cap_hits_ = 0;
   mutable uint64_t robin_direct_evaluations_ = 0;
-  mutable uint64_t kernel_evaluations_ = 0;
+  bool kernel_evaluation_counting_enabled_ = false;
+  mutable std::vector<uint64_t> kernel_evaluations_by_thread_;
 };
 
 }  // namespace gutibm

@@ -615,6 +615,8 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
                        robin_metadata);
   write_string_dataset(fid, "run_provenance/robin_table_hash",
                        table_cache.values_hash());
+  write_string_dataset(fid, "run_provenance/image_series_mode",
+                       sim.config().qssa.image_series_mode);
   write_string_dataset(fid, "run_provenance/git_sha", GUTIBM_GIT_SHA);
   write_string_dataset(fid, "run_provenance/version", GUTIBM_VERSION);
   const int32_t mpi_compiled =

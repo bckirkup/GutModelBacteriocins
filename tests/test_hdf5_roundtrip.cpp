@@ -54,14 +54,18 @@ void assert_run_provenance(hid_t file,
       file, "run_provenance/termination_wall_seconds"));
   assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/green_function_kernel_evaluations"));
+  for (const char* phase : {
+           "ghost_exchange_s", "spatial_hash_s", "biology_s", "chemistry_s",
+           "physics_s", "mpi_migrate_s", "cleanup_s", "gpu_h2d_s",
+           "gpu_d2h_s", "gpu_slab_x_roundtrip_s", "mpi_reaction_reduce_s",
+           "hdf5_s", "total_s", "step_count"}) {
+    assert(gutibm::test::hdf5_dataset_exists(
+        file, std::string("run_provenance/step_profile/") + phase));
+  }
   assert(gutibm::test::hdf5_dataset_exists(
-      file, "run_provenance/step_profile/biology_s"));
-  assert(gutibm::test::hdf5_dataset_exists(
-      file, "run_provenance/step_profile/chemistry_s"));
-  assert(gutibm::test::hdf5_dataset_exists(
-      file, "run_provenance/step_profile/total_s"));
-  assert(gutibm::test::hdf5_dataset_exists(
-      file, "run_provenance/step_profile/step_count"));
+      file, "run_provenance/image_series_mode"));
+  assert(read_string_dataset(file, "run_provenance/image_series_mode")
+         == "corrected");
   assert(gutibm::test::hdf5_read_scalar<int32_t>(
              file, "run_provenance/termination_cause_code",
              H5T_NATIVE_INT32) == 0);

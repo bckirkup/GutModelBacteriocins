@@ -549,7 +549,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   vbf_.init(cfg.vbf, domain_);
 
   // QSSA solver
-  qssa_.init(cfg.qssa, domain_, advection_);
+  qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps);
 
   // Lineage tracker
   lineage_.init(cfg.time.output_interval);
@@ -801,7 +801,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   validate_required_species(cfg_, chem_);
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
-  qssa_.init(cfg.qssa, domain_, advection_);
+  qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps);
   lineage_.init(cfg.time.output_interval);
   hdf5_.init(cfg.hdf5, domain_);
   hdf5_.write_run_provenance(*this);
