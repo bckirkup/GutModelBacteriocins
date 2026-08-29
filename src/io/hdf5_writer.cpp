@@ -607,6 +607,10 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
   const double wall_seconds = 0.0;
   write_scalar_dataset(fid, "run_provenance/termination_wall_seconds",
                        H5T_NATIVE_DOUBLE, &wall_seconds);
+  const auto cap_hits = static_cast<unsigned long long>(
+      sim.neumann_image_series_cap_hits());
+  write_scalar_dataset(fid, "run_provenance/neumann_image_series_cap_hits",
+                       H5T_NATIVE_ULLONG, &cap_hits);
   const auto optional_env = [&fid](const char* name, const char* env_name) {
     if (const char* value = std::getenv(env_name);
         value != nullptr && value[0] != '\0') {
@@ -690,6 +694,10 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
     const double wall_seconds = sim.termination_wall_seconds();
     write_scalar_dataset(fid, "run_provenance/termination_wall_seconds",
                          H5T_NATIVE_DOUBLE, &wall_seconds);
+    const auto cap_hits = static_cast<unsigned long long>(
+        sim.neumann_image_series_cap_hits());
+    write_scalar_dataset(fid, "run_provenance/neumann_image_series_cap_hits",
+                         H5T_NATIVE_ULLONG, &cap_hits);
     H5Fflush(fid, H5F_SCOPE_LOCAL);
   }
   mpi_barrier(cfg_);

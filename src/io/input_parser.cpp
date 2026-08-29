@@ -532,6 +532,28 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
 
   configure_toxin_species(cfg);
 
+  const Real slab_height = cfg.domain.hi[2] - cfg.domain.lo[2];
+  // This is the worst-case screening because both flow components vanish at
+  // z_lo, so a source at the epithelial wall is unscreened by lumen flow.
+  // Keep the parser guard on sqrt(decay_rate / D_eff) * H rather than using
+  // distal or radial lumen velocities.
+  for (const auto& spec : cfg.chemicals) {
+    if (!is_toxin_species(spec.name) || spec.diffusion_enabled) continue;
+    const Real d_eff = spec.diff_coeff / spec.retardation;
+    const Real k_h = d_eff > 0.0 && spec.decay_rate > 0.0
+        ? std::sqrt(spec.decay_rate / d_eff) * slab_height : 0.0;
+    if (k_h >= 0.05) continue;
+    std::cerr << "Warning: QSSA Green's-function species '" << spec.name
+              << "' has negligible slab screening (kH=" << k_h
+              << ", require kH >= 0.05); the bounded steady-state image "
+                 "series may not converge\n";
+    if (strict_config_enabled()) {
+      throw ConfigError(
+          "QSSA Green's-function species '" + spec.name
+          + "' has negligible slab screening (kH < 0.05)");
+    }
+  }
+
   // Spec 11 — AI-2 autoinducer (no z-gradient; agent-produced only)
   if (cfg.quorum_sensing.enabled) {
     const Int idx = find_chemical_spec(cfg.chemicals, species::AI2);

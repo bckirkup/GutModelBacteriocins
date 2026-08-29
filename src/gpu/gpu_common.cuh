@@ -2,11 +2,11 @@
 #define GUTIBM_GPU_COMMON_CUH
 
 #include "gpu_types.h"
+#include "neumann_image_series.h"
 
 namespace gutibm {
 namespace gpu {
 
-static constexpr int N_IMAGES = 3;
 static constexpr double PI_GPU = 3.14159265358979323846;
 
 __device__ inline double clampd(double v, double lo, double hi) {
@@ -72,31 +72,39 @@ __device__ inline double single_kernel(const double src[3], const double tgt[3],
 __device__ inline double concentration_bounded(const double src[3], const double tgt[3],
                                                const GfSourceParams& p,
                                                const DomainParams& dom,
-                                               const AdvectionParams& adv) {
+                                               const AdvectionParams& adv,
+                                               unsigned long long* cap_hits) {
   double D_eff = p.diff_coeff / p.retardation;
   double flow[3];
   flow_velocity(adv, src[0], src[2], flow[0], flow[1], flow[2]);
-  double Q = p.source_rate;
-  double total = single_kernel(src, tgt, D_eff, Q, p.decay_rate, flow, dom);
+  struct ImageKernel {
+    const double* source;
+    const double* target;
+    double diff_coeff;
+    double source_rate;
+    double decay_rate;
+    const double* flow;
+    const DomainParams* domain;
 
-  for (int n = 1; n <= N_IMAGES; ++n) {
-    double img[3];
-    double dz_span = dom.z_hi - dom.z_lo;
-
-    img[0] = src[0]; img[1] = src[1];
-    img[2] = 2.0 * dom.z_lo - src[2] - 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, p.decay_rate, flow, dom);
-
-    img[2] = 2.0 * dom.z_hi - src[2] + 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, p.decay_rate, flow, dom);
-
-    img[2] = 2.0 * dom.z_lo - src[2] + 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, p.decay_rate, flow, dom);
-
-    img[2] = 2.0 * dom.z_hi - src[2] - 2.0 * n * dz_span;
-    total += single_kernel(img, tgt, D_eff, Q, p.decay_rate, flow, dom);
-  }
-
+    __device__ double operator()(double image_z, int reflected) const {
+      double image[3] = {source[0], source[1], image_z};
+      double image_flow[3] = {flow[0], flow[1], flow[2]};
+      if (reflected != 0) {
+        image_flow[2] = -image_flow[2];
+      }
+      return single_kernel(image, target, diff_coeff, source_rate,
+                           decay_rate, image_flow, *domain);
+    }
+  };
+  const ImageKernel kernel = {src, tgt, D_eff, p.source_rate, p.decay_rate,
+                              flow, &dom};
+  int cap_hit = 0;
+  const double total = neumann::sum_image_series(
+      src[2], dom.z_lo, dom.z_hi, kernel,
+      D_eff, p.decay_rate,
+      sqrt(flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]),
+      fabs(flow[2]), neumann::kRelativeTolerance, nullptr, &cap_hit);
+  if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
   return total > 0.0 ? total : 0.0;
 }
 

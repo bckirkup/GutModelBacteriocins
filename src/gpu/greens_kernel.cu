@@ -14,7 +14,8 @@ __global__ void superpose_kernel(
     DomainParams dom,
     AdvectionParams adv,
     int num_sources,
-    int span_x, int span_y, int span_z) {
+    int span_x, int span_y, int span_z,
+    unsigned long long* cap_hits) {
 
   int sid = blockIdx.x;
   if (sid >= num_sources) return;
@@ -56,7 +57,7 @@ __global__ void superpose_kernel(
 
   double tgt[3];
   cell_center(dom, ix, iy, iz, tgt);
-  double c = concentration_bounded(src, tgt, params[sid], dom, adv);
+  double c = concentration_bounded(src, tgt, params[sid], dom, adv, cap_hits);
   int idx = cell_index(dom, ix, iy, iz);
   atomicAdd(&grid_conc[idx], c);
 }
@@ -66,7 +67,7 @@ void launch_superpose_kernel(
     const GfSourceParams* params, double* grid_conc,
     const DomainParams& dom, const AdvectionParams& adv,
     int num_sources, int span_x, int span_y, int span_z,
-    cudaStream_t stream) {
+    cudaStream_t stream, unsigned long long* cap_hits) {
 
   if (num_sources == 0) return;
   int stencil_vol = (2 * span_x + 1) * (2 * span_y + 1) * (2 * span_z + 1);
@@ -74,7 +75,7 @@ void launch_superpose_kernel(
   dim3 grid(num_sources, (stencil_vol + block.x - 1) / block.x);
   superpose_kernel<<<grid, block, 0, stream>>>(
       src_x, src_y, src_z, params, grid_conc, dom, adv, num_sources,
-      span_x, span_y, span_z);
+      span_x, span_y, span_z, cap_hits);
 }
 
 }  // namespace gpu

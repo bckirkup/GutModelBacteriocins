@@ -28,6 +28,7 @@
 #include "types.h"
 #include "step_profiler.h"
 #include "dysbiosis_guard.h"
+#include <cstdint>
 #include "agent.h"
 #include "domain.h"
 #include "random.h"
@@ -216,6 +217,9 @@ class Simulation {
   TerminationCause termination_cause() const { return termination_cause_; }
   const std::string& termination_detail() const { return termination_detail_; }
   double termination_wall_seconds() const { return termination_wall_seconds_; }
+  uint64_t neumann_image_series_cap_hits() const {
+    return neumann_image_series_cap_hits_;
+  }
   Real halt_density_cells_per_mL() const {
     return dysbiosis_.halt_density_cells_per_mL();
   }
@@ -232,6 +236,8 @@ class Simulation {
 
 
  private:
+  void finalize_neumann_image_series_stats();
+
   // Initialization helpers
   void init_population(const SimulationConfig& cfg);
   Agent create_strain_agent(const SimulationConfig::InitialStrain& strain,
@@ -355,6 +361,7 @@ class Simulation {
   TerminationCause termination_cause_ = TerminationCause::IncompleteUnknown;
   std::string termination_detail_ = "run has not completed";
   double termination_wall_seconds_ = 0.0;
+  uint64_t neumann_image_series_cap_hits_ = 0;
   Int zero_realization_steps_ = 0;
 };
 

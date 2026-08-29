@@ -12,6 +12,7 @@
 #include "dispatch.h"
 #include "chemistry_pipeline.h"
 #include "gpu_profile.h"
+#include "neumann_image_series.h"
 #ifdef GUTIBM_CUDA
 #include "device.h"
 #include "gpu_kernels.h"
@@ -1557,6 +1558,7 @@ int Simulation::run() {
 
   termination_wall_seconds_ = std::chrono::duration<double>(
       std::chrono::steady_clock::now() - wall_start).count();
+  finalize_neumann_image_series_stats();
   if (hdf5_.is_enabled()) {
     hdf5_.write_run_termination(*this, clock_.step_count, clock_.time);
   }
@@ -1586,6 +1588,37 @@ int Simulation::run() {
     }
   }
   return termination_cause_ == TerminationCause::ClosureViolation ? 1 : 0;
+}
+
+void Simulation::finalize_neumann_image_series_stats() {
+  const uint64_t local_hits = qssa_.gf().image_series_cap_hits();
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) {
+    neumann_image_series_cap_hits_ = local_hits;
+    return;
+  }
+  unsigned long long global_hits = 0;
+  const unsigned long long local_value =
+      static_cast<unsigned long long>(local_hits);
+  MPI_Allreduce(&local_value, &global_hits, 1, MPI_UNSIGNED_LONG_LONG,
+                MPI_SUM, MPI_COMM_WORLD);
+  neumann_image_series_cap_hits_ = static_cast<uint64_t>(global_hits);
+#else
+  neumann_image_series_cap_hits_ = local_hits;
+#endif
+  if (domain_.rank() == 0 && neumann_image_series_cap_hits_ != 0) {
+    std::cerr << "Warning: Neumann image series reached its configured "
+                 "shell budget (M_MAX="
+              << neumann::kMaxImageShells << ", low-screening fallback="
+              << neumann::kLowScreeningShells << ") on "
+              << neumann_image_series_cap_hits_
+              << " evaluations; bounded QSSA steady state may be "
+                 "under-resolved\n";
+  }
 }
 
 void Simulation::step(Real dt) {
