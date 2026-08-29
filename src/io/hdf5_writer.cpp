@@ -10,6 +10,7 @@
 #include "step_events.h"
 #include "config_json.h"
 #include "error.h"
+#include "robin_correction_table.h"
 
 #ifdef GUTIBM_HDF5
 extern "C" {
@@ -33,6 +34,8 @@ extern "C" {
 #include <numeric>
 #include <ranges>
 #include <set>
+#include <sstream>
+#include <iomanip>
 #include <system_error>
 #include <string>
 #include <vector>
@@ -42,6 +45,23 @@ extern "C" {
 namespace gutibm {
 
 namespace {
+
+std::string robin_table_metadata(const SimulationConfig& cfg) {
+  std::ostringstream metadata;
+  metadata << std::setprecision(17)
+           << "nodes=" << robin::kTableNodes
+           << ";modes=" << robin::kTableModeCount
+           << ";relative_tolerance=" << robin::kTableRelativeTolerance
+           << ";cutoff=" << cfg.qssa.toxin_cutoff
+           << ";lumen_transfer_length="
+           << cfg.qssa.lumen_transfer_length
+           << ";boundary_mapping="
+           << cfg.qssa.lumen_transfer_basis
+           << ";boundary_status="
+           << (robin::transfer_enabled(cfg.qssa.lumen_transfer_length)
+                   ? "enabled" : "disabled");
+  return metadata.str();
+}
 
 constexpr int k_max_types = 8;
 constexpr int k_num_pheno_states = 4;
@@ -563,6 +583,13 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
   ensure_group(fid, "run_provenance", cfg_);
   const auto config = ConfigJson::serialize_document(sim.config());
   write_string_dataset(fid, "run_provenance/resolved_config", config);
+  const auto& table_cache = robin::global_table_cache();
+  const auto robin_metadata = robin_table_metadata(sim.config())
+      + ";" + table_cache.metadata();
+  write_string_dataset(fid, "run_provenance/robin_table_metadata",
+                       robin_metadata);
+  write_string_dataset(fid, "run_provenance/robin_table_hash",
+                       table_cache.values_hash());
   write_string_dataset(fid, "run_provenance/git_sha", GUTIBM_GIT_SHA);
   write_string_dataset(fid, "run_provenance/version", GUTIBM_VERSION);
   const int32_t mpi_compiled =
@@ -611,6 +638,19 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
       sim.neumann_image_series_cap_hits());
   write_scalar_dataset(fid, "run_provenance/neumann_image_series_cap_hits",
                        H5T_NATIVE_ULLONG, &cap_hits);
+  const auto robin_tables_built =
+      static_cast<unsigned long long>(table_cache.tables_built());
+  const auto robin_table_evictions =
+      static_cast<unsigned long long>(table_cache.table_evictions());
+  write_scalar_dataset(fid, "run_provenance/robin_tables_built",
+                       H5T_NATIVE_ULLONG, &robin_tables_built);
+  write_scalar_dataset(fid, "run_provenance/robin_table_evictions",
+                       H5T_NATIVE_ULLONG, &robin_table_evictions);
+  const auto robin_direct_evaluations =
+      static_cast<unsigned long long>(
+          sim.qssa().gf().robin_direct_evaluations());
+  write_scalar_dataset(fid, "run_provenance/robin_direct_mode_evaluations",
+                       H5T_NATIVE_ULLONG, &robin_direct_evaluations);
   const auto optional_env = [&fid](const char* name, const char* env_name) {
     if (const char* value = std::getenv(env_name);
         value != nullptr && value[0] != '\0') {

@@ -22,7 +22,10 @@
 #define GUTIBM_GREENS_FUNCTION_H
 
 #include "types.h"
+#include "robin_correction_table.h"
 #include <cstdint>
+#include <memory>
+#include <utility>
 #include <vector>
 
 namespace gutibm {
@@ -36,6 +39,11 @@ struct GreensFunctionParams {
   Real pI = 0.0;               // isoelectric point (determines retardation)
   Real retardation = 1.0;      // mucin retardation factor
   Real decay_rate = 0.0;       // first-order toxin degradation rate (1/s)
+  // Infinity retains the sealed Neumann result for direct callers. QSSA
+  // populates this from toxin.lumen_transfer_length (disabled by default).
+  Real lumen_transfer_length = robin::kZeroTransferLength;
+  bool lumen_transfer_basis_free = false;
+  Real robin_cutoff = robin::kDefaultCutoff;
 
   // NOTE: bacteriocin pI classification lives in a single source of truth,
   // `classify_by_pI()` in src/genome/plasmid.h (pI > 8.5 → CORE, pI < 7.0 →
@@ -46,6 +54,10 @@ struct GreensFunctionParams {
 class GreensFunction {
  public:
   GreensFunction() = default;
+  GreensFunction(const GreensFunction&) = delete;
+  GreensFunction& operator=(const GreensFunction&) = delete;
+  GreensFunction(GreensFunction&&) noexcept = default;
+  GreensFunction& operator=(GreensFunction&&) noexcept = default;
 
   void init(const Domain& domain, const AdvectionField& adv);
 
@@ -85,6 +97,9 @@ class GreensFunction {
   uint64_t image_series_cap_hits() const {
     return image_series_cap_hits_;
   }
+  uint64_t robin_direct_evaluations() const {
+    return robin_direct_evaluations_;
+  }
   void add_image_series_cap_hits(uint64_t count) const {
     image_series_cap_hits_ += count;
   }
@@ -94,6 +109,10 @@ class GreensFunction {
 
  private:
   void require_init() const;
+  Real concentration_sealed(const Vec3& source, const Vec3& target,
+                            const GreensFunctionParams& params) const;
+  std::shared_ptr<const robin::Table> robin_table(
+      const GreensFunctionParams& params) const;
 
   // Single image contribution
   Real single_kernel(const Vec3& src, const Vec3& tgt,
@@ -106,6 +125,7 @@ class GreensFunction {
   Real z_lo_ = 0.0;
   Real z_hi_ = 100.0e-6;
   mutable uint64_t image_series_cap_hits_ = 0;
+  mutable uint64_t robin_direct_evaluations_ = 0;
 };
 
 }  // namespace gutibm

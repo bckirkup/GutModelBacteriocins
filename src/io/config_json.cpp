@@ -754,7 +754,13 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   };
   const auto real_key = [&key, &out](std::string_view name, Real value) {
     key(name);
-    out << value;
+    if (std::isfinite(value)) {
+      out << value;
+    } else {
+      // JSON has no non-finite numeric literals.  Keep the disabled Robin
+      // default round-trippable through the scalar parser.
+      out << "\"inf\"";
+    }
   };
   const auto int_key = [&key, &out](std::string_view name, auto value) {
     key(name);
@@ -918,6 +924,8 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   bool_key("quorum_sensing.ai2_chemotaxis", cfg.quorum_sensing.ai2_chemotaxis_enabled);
   real_key("quorum_sensing.chi_ai2", cfg.quorum_sensing.chi_ai2);
   real_key("toxin_cutoff", cfg.qssa.toxin_cutoff);
+  real_key("toxin.lumen_transfer_length", cfg.qssa.lumen_transfer_length);
+  string_key("toxin.lumen_transfer_basis", cfg.qssa.lumen_transfer_basis);
   real_key("nutrient_cutoff", cfg.qssa.nutrient_cutoff);
   real_key("colicin_release_rate", cfg.qssa.colicin_release_rate);
   real_key("microcin_secretion", cfg.qssa.microcin_secretion);

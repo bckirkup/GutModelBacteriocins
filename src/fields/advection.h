@@ -61,6 +61,9 @@ class AdvectionField {
   // Flow velocity at a position (m/s)
   Vec3 velocity(const Vec3& pos) const;
 
+  // Mean profile velocity without peristaltic modulation (m/s)
+  Vec3 mean_velocity(const Vec3& pos) const;
+
   // Radial velocity magnitude at height z
   Real radial_velocity(Real z) const;
 

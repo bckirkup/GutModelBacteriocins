@@ -20,6 +20,7 @@
 #include <cassert>
 #include <cmath>
 #include <algorithm>
+#include <tuple>
 #include "error.h"
 #ifdef GUTIBM_OPENMP
 #include <omp.h>
@@ -263,6 +264,7 @@ void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   adv_    = &adv;
   z_lo_   = domain.lo()[2];
   z_hi_   = domain.hi()[2];
+  robin_direct_evaluations_ = 0;
 }
 
 void GreensFunction::require_init() const {
@@ -309,8 +311,19 @@ Real GreensFunction::concentration(const Vec3& source, const Vec3& target,
                        params.decay_rate, flow);
 }
 
-Real GreensFunction::concentration_bounded(const Vec3& source, const Vec3& target,
-                                            const GreensFunctionParams& params) const {
+std::shared_ptr<const robin::Table> GreensFunction::robin_table(
+    const GreensFunctionParams& params) const {
+  const Real d_eff = params.diff_coeff / params.retardation;
+  const robin::TransferBasis basis = params.lumen_transfer_basis_free
+      ? robin::TransferBasis::Free : robin::TransferBasis::Effective;
+  return robin::global_table_cache().get(
+      *adv_, z_lo_, z_hi_, params.diff_coeff, d_eff, params.decay_rate,
+      params.lumen_transfer_length, params.robin_cutoff, basis);
+}
+
+Real GreensFunction::concentration_sealed(
+    const Vec3& source, const Vec3& target,
+    const GreensFunctionParams& params) const {
   require_init();
   Real D_eff = params.diff_coeff / params.retardation;
   Vec3 flow  = adv_->velocity(source);
@@ -342,6 +355,51 @@ Real GreensFunction::concentration_bounded(const Vec3& source, const Vec3& targe
 #endif
     ++image_series_cap_hits_;
   }
+  return std::max(total, 0.0);
+}
+
+Real GreensFunction::concentration_bounded(
+    const Vec3& source, const Vec3& target,
+    const GreensFunctionParams& params) const {
+  require_init();
+  if (!robin::transfer_enabled(params.lumen_transfer_length)) {
+    return concentration_sealed(source, target, params);
+  }
+
+  const Vec3 delta = domain_->min_image_delta(source, target);
+  const Real d_eff = params.diff_coeff / params.retardation;
+  const Vec3 flow = adv_->velocity(source);
+  const std::shared_ptr<const robin::Table> table = robin_table(params);
+  const robin::TableView view{
+      table->values.data(), table->z_lo, table->height, table->cutoff};
+  const Real rho = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]);
+  const bool use_direct = robin::requires_direct_evaluation(
+      source[2], target[2], rho, z_lo_, z_hi_,
+      std::min({domain_->dx_x(), domain_->dx_y(), domain_->dx_z()}));
+  Real correction_base = 0.0;
+  if (use_direct) {
+#ifdef GUTIBM_OPENMP
+#pragma omp atomic update
+#endif
+    ++robin_direct_evaluations_;
+    const Vec3 mean_flow = adv_->mean_velocity(source);
+    correction_base = robin::normalized_correction(
+        source[2], target[2], rho, z_lo_, z_hi_, d_eff,
+        params.diff_coeff, params.decay_rate,
+        params.lumen_transfer_length, mean_flow[0], mean_flow[1],
+        mean_flow[2], robin::kTableModeCount,
+        params.lumen_transfer_basis_free
+            ? robin::TransferBasis::Free
+            : robin::TransferBasis::Effective);
+  } else {
+    correction_base = robin::interpolate(view, source[2], target[2], rho);
+  }
+  const Real correction = correction_base * std::exp(
+      (flow[0] * delta[0] + flow[1] * delta[1] + flow[2] * delta[2])
+      / (2.0 * d_eff));
+  const Real sealed = concentration_sealed(source, target, params);
+  const Real total = sealed + params.source_rate
+      / (4.0 * PI * d_eff) * correction;
   return std::max(total, 0.0);
 }
 

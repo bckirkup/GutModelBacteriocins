@@ -19,6 +19,7 @@
 
 #include "types.h"
 #include "greens_function.h"
+#include "robin_correction_table.h"
 #include "fmm.h"
 #include "chem_environment_config.h"
 #include <array>
@@ -38,6 +39,11 @@ struct QSSAConfig {
   // Cutoff radius for Green's function evaluation (m)
   // Beyond this, contribution is negligible
   Real toxin_cutoff     = 200.0e-6;   // 200 um for lethal halos
+  // Lumen unstirred-layer transfer length; infinity disables the Robin
+  // correction and preserves the sealed boundary result.
+  Real lumen_transfer_length = robin::kZeroTransferLength;
+  // effective uses k_c = D_eff / length; free uses D_free / length.
+  std::string lumen_transfer_basis = "effective";
   Real nutrient_cutoff  = 50.0e-6;    // 50 um for nutrient depletion zones
 
   // Bacteriocin source parameters

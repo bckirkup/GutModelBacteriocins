@@ -50,6 +50,12 @@ Vec3 AdvectionField::velocity(const Vec3& pos) const {
   return {vx, vy, vz};
 }
 
+Vec3 AdvectionField::mean_velocity(const Vec3& pos) const {
+  if (cfg_.crypts_enabled && pos[2] < lo_z_ + cfg_.crypt_depth)
+    return {0.0, 0.0, 0.0};
+  return {distal_velocity(pos[2]), 0.0, radial_velocity(pos[2])};
+}
+
 Real AdvectionField::shear_rate(const Vec3& pos) const {
   // dv/dz at position
   Real zn = std::clamp((pos[2] - lo_z_) / h_, 0.0, 1.0);
