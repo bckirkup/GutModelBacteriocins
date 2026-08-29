@@ -38,7 +38,7 @@ struct QSSAConfig {
   // Cutoff radius for Green's function evaluation (m)
   // Beyond this, contribution is negligible
   Real toxin_cutoff     = 200.0e-6;   // 200 um for lethal halos
-  // Lumen unstirred-layer transfer length; k_c = D_free / length.
+  // Lumen unstirred-layer transfer length; basis selects k_c.
   Real lumen_transfer_length = 100.0e-6;
   // effective uses k_c = D_eff / length; free uses D_free / length.
   std::string lumen_transfer_basis = "effective";

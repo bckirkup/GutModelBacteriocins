@@ -125,9 +125,10 @@ on host and device, with no Bessel evaluation in the hot loop.
   per axis (0.27 MB per species in doubles).
 - Built once at init from the mode sum with a high mode count (target 2000+;
   `ΔĈ` is converged by 600 at ρ=0.6 µm).
-- One eigenvalue set per `z_s` row: `a` and `c_hi` depend on `U(z_s)`, and flow is
-  already evaluated at the source, so this is consistent with the existing
-  approximation rather than a new one.
+- One eigenvalue set per `z_s` row: `a` and `c_hi` depend on the source-height
+  mean profile `U(z_s)`. The correction table deliberately neglects peristaltic
+  modulation so its key remains stationary; the sealed image base and runtime
+  drift restoration retain the full time-varying flow.
 - Scale by `Q` at runtime; the tabulated quantity is `Q`-independent.
 
 Measured interpolation error against the direct mode sum is at most `1.8e-3`
@@ -170,6 +171,14 @@ cancellation of approximately `0.4` digits. This is a documented soft spot,
 not a gate; the direct mode path remains reachable for near-wall/near-axis
 queries.
 
+The direct fallback uses
+`rho < cell_radius && source_wall_distance < cell_radius &&
+target_wall_distance < cell_radius`. Requiring both points to be near the same
+wall keeps this expensive safety-net path bounded while retaining the
+near-wall/near-axis protection. Direct-mode evaluations are counted in
+`run_provenance/robin_direct_mode_evaluations`, alongside the table build and
+eviction counters.
+
 Limits to keep reachable and tested: `δ → ∞` (`k_c = 0`) must return the #359
 sealed result bit-for-bit via the same code path, and large `Bi` must drive
 `C(z_hi) → 0`.
@@ -205,5 +214,12 @@ sealed result bit-for-bit via the same code path, and large `Bi` must drive
   so both the image construction and this eigenmode family are exact only for
   `z`-uniform flow. Unchanged by this work; it is now the largest remaining
   approximation in the kernel and should be quantified separately.
+- Correction table keying and construction use the peristalsis-free mean radial
+  and distal profiles. This deliberately neglects peristaltic modulation in the
+  correction; the sealed image base and runtime drift factor continue to use
+  full time-varying flow. The Robin tests report the measured correction change
+  at factors 0.5, 1.0, and 1.5 without assigning a pass/fail tolerance. At the
+  shipped parameters and a near-lumen target, the maximum measured change was
+  `6.00591e-3` relative to the reconstructed field.
 - Lateral periodicity is unchanged.
 - `δ` is colon-adjusted from small-bowel data, not measured in colon.

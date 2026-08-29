@@ -643,6 +643,11 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
                        H5T_NATIVE_ULLONG, &robin_tables_built);
   write_scalar_dataset(fid, "run_provenance/robin_table_evictions",
                        H5T_NATIVE_ULLONG, &robin_table_evictions);
+  const auto robin_direct_evaluations =
+      static_cast<unsigned long long>(
+          sim.qssa().gf().robin_direct_evaluations());
+  write_scalar_dataset(fid, "run_provenance/robin_direct_mode_evaluations",
+                       H5T_NATIVE_ULLONG, &robin_direct_evaluations);
   const auto optional_env = [&fid](const char* name, const char* env_name) {
     if (const char* value = std::getenv(env_name);
         value != nullptr && value[0] != '\0') {

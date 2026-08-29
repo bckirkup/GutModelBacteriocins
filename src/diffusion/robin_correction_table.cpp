@@ -23,6 +23,10 @@ namespace {
 constexpr double kBisectionTolerance = 1.0e-13;
 constexpr double kMinimumRho = 1.0e-12;
 
+Vec3 mean_profile_velocity(const AdvectionField& adv, double z) {
+  return adv.mean_velocity({0.0, 0.0, z});
+}
+
 int64_t quantize_relative(double value) {
   if (value == 0.0) return std::numeric_limits<int64_t>::min();
   const double magnitude = std::abs(value);
@@ -38,7 +42,7 @@ TableCacheKey make_cache_key(const AdvectionField& adv, double z_lo,
                              double cutoff, TransferBasis basis) {
   const double height = z_hi - z_lo;
   const Vec3 midpoint = {0.0, 0.0, 0.5 * (z_lo + z_hi)};
-  const Vec3 flow = adv.velocity(midpoint);
+  const Vec3 flow = mean_profile_velocity(adv, midpoint[2]);
   const double flow_squared = flow[0] * flow[0] + flow[1] * flow[1]
       + flow[2] * flow[2];
   const double screening_height = std::sqrt(
@@ -267,8 +271,8 @@ bool requires_direct_evaluation(double source_z, double target_z, double rho,
   const double target_wall_distance = std::min(
       target_z - z_lo, z_hi - target_z);
   return rho < cell_radius
-      && (source_wall_distance < cell_radius
-          || target_wall_distance < cell_radius);
+      && source_wall_distance < cell_radius
+      && target_wall_distance < cell_radius;
 }
 
 double normalized_robin_field(
@@ -324,7 +328,7 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
     table.biot_number = robin_biot_number(
         d_free, d_eff, table.height, lumen_transfer_length, basis);
     const Vec3 midpoint = {0.0, 0.0, 0.5 * (z_lo + z_hi)};
-    const Vec3 midpoint_flow = adv.velocity(midpoint);
+    const Vec3 midpoint_flow = mean_profile_velocity(adv, midpoint[2]);
     const double flow_squared = midpoint_flow[0] * midpoint_flow[0]
         + midpoint_flow[1] * midpoint_flow[1]
         + midpoint_flow[2] * midpoint_flow[2];
@@ -347,8 +351,7 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
   for (int source_index = 0; source_index < kTableNodes; ++source_index) {
     const double z_source = z_lo + table.height * source_index
         / static_cast<double>(kTableNodes - 1);
-    const Vec3 source = {0.0, 0.0, z_source};
-    const Vec3 flow = adv.velocity(source);
+    const Vec3 flow = mean_profile_velocity(adv, z_source);
     const double a = flow[2] / (2.0 * d_eff);
     const double kc = robin_boundary_coefficient(
         d_free, d_eff, table.height, lumen_transfer_length, basis);

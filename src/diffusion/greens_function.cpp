@@ -264,6 +264,7 @@ void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   adv_    = &adv;
   z_lo_   = domain.lo()[2];
   z_hi_   = domain.hi()[2];
+  robin_direct_evaluations_ = 0;
 }
 
 void GreensFunction::require_init() const {
@@ -376,19 +377,27 @@ Real GreensFunction::concentration_bounded(
   const robin::TableView view{
       table->values.data(), table->z_lo, table->height, table->cutoff};
   const Real rho = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]);
-  const Real correction_base =
-      robin::requires_direct_evaluation(
-          source[2], target[2], rho, z_lo_, z_hi_,
-          std::min({domain_->dx_x(), domain_->dx_y(), domain_->dx_z()}))
-      ? robin::normalized_correction(
-          source[2], target[2], rho, z_lo_, z_hi_, d_eff,
-          params.diff_coeff, params.decay_rate,
-          params.lumen_transfer_length, flow[0], flow[1], flow[2],
-          robin::kTableModeCount,
-          params.lumen_transfer_basis_free
-              ? robin::TransferBasis::Free
-              : robin::TransferBasis::Effective)
-      : robin::interpolate(view, source[2], target[2], rho);
+  const bool use_direct = robin::requires_direct_evaluation(
+      source[2], target[2], rho, z_lo_, z_hi_,
+      std::min({domain_->dx_x(), domain_->dx_y(), domain_->dx_z()}));
+  Real correction_base = 0.0;
+  if (use_direct) {
+#ifdef GUTIBM_OPENMP
+#pragma omp atomic update
+#endif
+    ++robin_direct_evaluations_;
+    const Vec3 mean_flow = adv_->mean_velocity(source);
+    correction_base = robin::normalized_correction(
+        source[2], target[2], rho, z_lo_, z_hi_, d_eff,
+        params.diff_coeff, params.decay_rate,
+        params.lumen_transfer_length, mean_flow[0], mean_flow[1],
+        mean_flow[2], robin::kTableModeCount,
+        params.lumen_transfer_basis_free
+            ? robin::TransferBasis::Free
+            : robin::TransferBasis::Effective);
+  } else {
+    correction_base = robin::interpolate(view, source[2], target[2], rho);
+  }
   const Real correction = correction_base * std::exp(
       (flow[0] * delta[0] + flow[1] * delta[1] + flow[2] * delta[2])
       / (2.0 * d_eff));

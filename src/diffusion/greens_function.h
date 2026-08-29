@@ -97,6 +97,9 @@ class GreensFunction {
   uint64_t image_series_cap_hits() const {
     return image_series_cap_hits_;
   }
+  uint64_t robin_direct_evaluations() const {
+    return robin_direct_evaluations_;
+  }
   void add_image_series_cap_hits(uint64_t count) const {
     image_series_cap_hits_ += count;
   }
@@ -122,6 +125,7 @@ class GreensFunction {
   Real z_lo_ = 0.0;
   Real z_hi_ = 100.0e-6;
   mutable uint64_t image_series_cap_hits_ = 0;
+  mutable uint64_t robin_direct_evaluations_ = 0;
 };
 
 }  // namespace gutibm

@@ -66,6 +66,7 @@ gpu::AdvectionParams make_advection_params(const AdvectionField& adv) {
 
 DeviceBuffer<double> robin_table_device_buffer;
 uint64_t robin_table_device_generation = std::numeric_limits<uint64_t>::max();
+std::vector<std::shared_ptr<const robin::Table>> robin_table_device_snapshot;
 std::mutex robin_table_device_mutex;
 
 bool launch_superpose(const Domain& domain,
@@ -128,28 +129,30 @@ bool launch_superpose(const Domain& domain,
     }
   }
   const auto cache_snapshot = robin::global_table_cache().snapshot();
-  std::vector<double> robin_table_values;
-  robin_table_values.reserve(
-      cache_snapshot.tables.size() * robin::kTableValueCount);
-  for (const auto& table : cache_snapshot.tables) {
-    robin_table_values.insert(robin_table_values.end(),
-                              table->values.begin(), table->values.end());
+  if (cache_snapshot.generation != robin_table_device_generation) {
+    std::vector<double> robin_table_values;
+    robin_table_values.reserve(
+        cache_snapshot.tables.size() * robin::kTableValueCount);
+    for (const auto& table : cache_snapshot.tables) {
+      robin_table_values.insert(robin_table_values.end(),
+                                table->values.begin(), table->values.end());
+    }
+    robin_table_device_buffer.upload(robin_table_values);
+    robin_table_device_snapshot = cache_snapshot.tables;
+    robin_table_device_generation = cache_snapshot.generation;
   }
+  const auto& device_snapshot = robin_table_device_snapshot;
   for (auto& source : sp) {
     if (source.robin_table_index < 0) continue;
     const auto& table = robin_tables[static_cast<size_t>(
         source.robin_table_index)];
     const auto table_position = std::find_if(
-        cache_snapshot.tables.begin(), cache_snapshot.tables.end(),
+        device_snapshot.begin(), device_snapshot.end(),
         [&table](const auto& candidate) {
           return candidate.get() == table.get();
         });
     source.robin_table_index = static_cast<int>(
-        std::distance(cache_snapshot.tables.begin(), table_position));
-  }
-  if (cache_snapshot.generation != robin_table_device_generation) {
-    robin_table_device_buffer.upload(robin_table_values);
-    robin_table_device_generation = cache_snapshot.generation;
+        std::distance(device_snapshot.begin(), table_position));
   }
 
   DeviceBuffer<double> d_sx;
