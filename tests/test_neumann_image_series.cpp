@@ -5,6 +5,7 @@
 #include "advection.h"
 #include "domain.h"
 #include "greens_function.h"
+#include "qssa_solver.h"
 #include "input_parser.h"
 #include "neumann_image_series.h"
 #include "error.h"
@@ -268,13 +269,120 @@ void test_truncation_and_cap_guard() {
   const Vec3 target = {530.0e-6, 500.0e-6, 50.0e-6};
   auto zero_decay = test_params(0.0);
   system.gf.reset_image_series_cap_hits();
+  system.gf.reset_low_screening_diagnostics();
   (void)system.gf.concentration_bounded(source, target, zero_decay);
-  if (system.gf.image_series_cap_hits() == 0) {
-    std::cerr << "zero-decay series did not report a cap hit\n";
+  if (system.gf.image_series_cap_hits() == 0
+      || system.gf.low_screening_evaluations() == 0) {
+    std::cerr << "zero-decay series did not report distinct floor/cap stats\n";
     std::exit(1);
   }
   std::cout << "  test_truncation_and_cap_guard: PASSED (adaptive shells="
             << shell_count << ", zero-decay cap hit)\n";
+}
+
+Real envelope_kernel(Real image_z, int) {
+  constexpr Real target_z = 37.0e-6;
+  constexpr Real height = 100.0e-6;
+  const Real screening = 1.0;
+  const Real distance = std::abs(image_z - target_z);
+  return std::exp(-screening * distance / height)
+      / (1.0 + distance / height);
+}
+
+void test_low_screening_accuracy_envelope() {
+  constexpr std::array<Real, 5> k_h_values =
+      {0.5, 0.158114, 0.05, 0.03, 0.025};
+  for (const Real k_h : k_h_values) {
+    const auto budget = neumann::image_series_budget(
+        4.0e-11, (k_h / 100.0e-6) * (k_h / 100.0e-6) * 4.0e-11,
+        0.0, 0.0, 100.0e-6);
+    int shells = 0;
+    int cap_hit = 0;
+    int floored = 0;
+    const Real value = neumann::sum_image_series(
+        23.0e-6, 0.0, 100.0e-6, envelope_kernel,
+        neumann::kRelativeTolerance, budget.max_shells, &shells, &cap_hit,
+        &floored);
+    const Real reference = neumann::sum_image_series(
+        23.0e-6, 0.0, 100.0e-6, envelope_kernel,
+        neumann::kRelativeTolerance, neumann::kMaxImageShells, nullptr,
+        nullptr);
+    const Real relative_error =
+        std::abs(value - reference) / std::abs(reference);
+    if (!(relative_error <= 1.0e-9) || cap_hit != 0 || floored != 0) {
+      std::cerr << "low-screening envelope oracle mismatch at kH=" << k_h
+                << ": relative error=" << relative_error << "\n";
+      std::exit(1);
+    }
+  }
+  std::cout << "  test_low_screening_accuracy_envelope: PASSED\n";
+}
+
+void test_low_screening_provenance() {
+  auto system = make_system();
+  auto params = test_params(0.0);
+  params.decay_rate = (0.005 / system.domain.size()[2])
+      * (0.005 / system.domain.size()[2]) * params.diff_coeff;
+  system.gf.reset_image_series_cap_hits();
+  system.gf.reset_low_screening_diagnostics();
+  (void)system.gf.concentration_bounded(
+      {500.0e-6, 500.0e-6, 50.0e-6},
+      {530.0e-6, 500.0e-6, 50.0e-6}, params);
+  if (system.gf.low_screening_evaluations() == 0
+      || system.gf.image_series_cap_hits() == 0) {
+    std::cerr << "low-screening and cap provenance were not distinct\n";
+    std::exit(1);
+  }
+  std::cout << "  test_low_screening_provenance: PASSED\n";
+}
+
+void test_low_screening_policy() {
+  auto system = make_system();
+  std::vector<ChemicalSpec> chemicals(1);
+  chemicals[0].name = species::BACTERIOCIN_BTUB;
+  chemicals[0].diff_coeff = 4.0e-11;
+  chemicals[0].decay_rate = 0.0;
+  QSSAConfig cfg;
+  cfg.low_screening_policy = "error";
+  QSSASolver qssa;
+  bool rejected = false;
+  try {
+    qssa.init(cfg, system.domain, system.adv, false, &chemicals);
+  } catch (const SimulationError&) {
+    rejected = true;
+  }
+  if (!rejected) {
+    std::cerr << "low-screening error policy did not reject\n";
+    std::exit(1);
+  }
+  cfg.low_screening_policy = "warn";
+  qssa.init(cfg, system.domain, system.adv, false, &chemicals);
+  cfg.low_screening_policy = "allow";
+  qssa.init(cfg, system.domain, system.adv, false, &chemicals);
+  std::cout << "  test_low_screening_policy: PASSED\n";
+}
+
+void test_preclip_negative_diagnostic() {
+  auto system = make_system();
+  const Vec3 source = {500.0e-6, 500.0e-6, 50.0e-6};
+  const Vec3 target = {530.0e-6, 500.0e-6, 50.0e-6};
+  system.gf.reset_low_screening_diagnostics();
+  (void)system.gf.concentration_bounded(source, target, test_params(1.0e-4));
+  if (system.gf.negative_field_count() != 0) {
+    std::cerr << "shipped parameter field was negative before clipping\n";
+    std::exit(1);
+  }
+  auto negative = test_params(1.0e-4);
+  negative.lumen_transfer_length = 100.0e-6;
+  negative.source_rate = -1.0e-18;
+  system.gf.reset_low_screening_diagnostics();
+  (void)system.gf.concentration_bounded(source, target, negative);
+  if (system.gf.negative_field_count() == 0
+      || !(system.gf.most_negative_field() < 0.0)) {
+    std::cerr << "negative pre-clip field was not diagnosed\n";
+    std::exit(1);
+  }
+  std::cout << "  test_preclip_negative_diagnostic: PASSED\n";
 }
 
 void test_parser_screening_guard() {
@@ -315,6 +423,10 @@ int main() {
   test_shipped_screening_resolution();
   test_global_mass_balance();
   test_truncation_and_cap_guard();
+  test_low_screening_accuracy_envelope();
+  test_low_screening_provenance();
+  test_low_screening_policy();
+  test_preclip_negative_diagnostic();
   test_parser_screening_guard();
   std::cout << "All independent Neumann image-series tests passed.\n";
   return 0;

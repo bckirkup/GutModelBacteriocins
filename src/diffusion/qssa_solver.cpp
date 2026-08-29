@@ -12,6 +12,7 @@
 #include "chemical_field.h"
 #include "chemical_field_gpu.h"
 #include "greens_function_gpu.h"
+#include "neumann_image_series.h"
 #include "dispatch.h"
 #include "agent.h"
 #include "error.h"
@@ -39,6 +40,46 @@ namespace {
 constexpr Real k_ln2 = std::numbers::ln2;
 
 Int toxin_sample_index(ReceptorType target);
+
+bool is_bacteriocin_spec(const ChemicalSpec& spec) {
+  return spec.name == species::BACTERIOCIN_BTUB
+      || spec.name == species::BACTERIOCIN_FEPA
+      || spec.name == species::BACTERIOCIN_CIRA
+      || spec.name == species::BACTERIOCIN_FHUA
+      || spec.name == species::BACTERIOCIN_LUMPED;
+}
+
+void enforce_low_screening_policy(
+    const QSSAConfig& cfg, const Domain& domain, const AdvectionField& adv,
+    const std::vector<ChemicalSpec>& chemicals) {
+  if (cfg.low_screening_policy == "allow") return;
+  const Vec3 probe = domain.cell_center(
+      domain.nx() / 2, domain.ny() / 2, domain.nz() / 2);
+  const Vec3 flow = adv.velocity(probe);
+  for (const auto& spec : chemicals) {
+    if (!is_bacteriocin_spec(spec)) continue;
+    const Real d_eff = spec.diff_coeff / spec.retardation;
+    if (!(d_eff > 0.0)) continue;
+    const Real flow_magnitude = std::sqrt(
+        flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]);
+    const Real k_h = neumann::series_screening(
+        d_eff, spec.decay_rate, flow_magnitude, std::abs(flow[2]))
+        * (domain.hi()[2] - domain.lo()[2]);
+    if (k_h < neumann::kLowScreeningFloorThreshold) {
+      const std::string message =
+          "low-screening sealed Neumann image series: kH="
+          + std::to_string(k_h)
+          + " (measured truncation error scale is approximately 13%)";
+      if (cfg.low_screening_policy == "error") {
+        throw SimulationError(message);
+      }
+      std::cerr << "WARNING: " << message
+                << "; use qssa.low_screening_policy=allow for deliberate "
+                   "unscreened diagnostics\n";
+      return;
+    }
+  }
+}
 
 int image_series_shells(const QSSAConfig& cfg) {
   if (cfg.image_series_mode == "pre_fix_duplicated_reflection"
@@ -299,13 +340,17 @@ bool try_gpu_near_field(const Domain& domain,
                         ChemicalFieldGpu* chem_gpu,
                         bool defer_host_sync,
                         uint64_t* cap_hits,
-                        uint64_t* kernel_evaluations) {
+                        uint64_t* kernel_evaluations,
+                        uint64_t* low_screening_evaluations,
+                        uint64_t* negative_field_count,
+                        Real* most_negative_field) {
   if (chem_gpu == nullptr || !chem_gpu->active()) return false;
   double* d_conc = chem_gpu->conc_device(toxin_species_idx);
   if (d_conc == nullptr) return false;
   if (!gpu_superpose_to_device(domain, adv, sources, params, strength_factors,
                                d_conc, cutoff_radius, cap_hits,
-                               kernel_evaluations)) {
+                               kernel_evaluations, low_screening_evaluations,
+                               negative_field_count, most_negative_field)) {
     return false;
   }
   if (!defer_host_sync) {
@@ -328,6 +373,9 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
                                       bool defer_host_sync) {
   uint64_t gpu_cap_hits = 0;
   uint64_t gpu_kernel_evaluations = 0;
+  uint64_t gpu_low_screening = 0;
+  uint64_t gpu_negative_count = 0;
+  Real gpu_most_negative = 0.0;
   uint64_t* kernel_evaluations = gf.kernel_evaluation_counting_enabled()
       ? &gpu_kernel_evaluations
       : nullptr;
@@ -337,8 +385,12 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
     if (try_gpu_near_field(
             domain, adv, sources, params, strength_factors, cutoff_radius,
             chem, toxin_species_idx, chem_gpu, defer_host_sync,
-            &gpu_cap_hits, kernel_evaluations)) {
+            &gpu_cap_hits, kernel_evaluations, &gpu_low_screening,
+            &gpu_negative_count, &gpu_most_negative)) {
       gf.add_image_series_cap_hits(gpu_cap_hits);
+      gf.add_low_screening_evaluations(gpu_low_screening);
+      gf.add_negative_field_diagnostics(gpu_negative_count,
+                                        gpu_most_negative);
       if (kernel_evaluations != nullptr) {
         gf.add_kernel_evaluations(gpu_kernel_evaluations);
       }
@@ -367,7 +419,8 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
     if (try_gpu_near_field(
             domain, adv, gpu_sources, gpu_params, gpu_strengths,
             cutoff_radius, chem, toxin_species_idx, chem_gpu,
-            true, &gpu_cap_hits, kernel_evaluations)) {
+            true, &gpu_cap_hits, kernel_evaluations, &gpu_low_screening,
+            &gpu_negative_count, &gpu_most_negative)) {
       std::vector<Real> host_grid;
       gf.superpose_to_grid(
           host_sources, host_params, host_strengths, host_grid,
@@ -380,6 +433,9 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
       }
       chem_gpu->sync_species_concentrations_to_device(chem, toxin_species_idx);
       gf.add_image_series_cap_hits(gpu_cap_hits);
+      gf.add_low_screening_evaluations(gpu_low_screening);
+      gf.add_negative_field_diagnostics(gpu_negative_count,
+                                        gpu_most_negative);
       if (kernel_evaluations != nullptr) {
         gf.add_kernel_evaluations(gpu_kernel_evaluations);
       }
@@ -506,14 +562,19 @@ void zero_species_field(ChemicalField& chem, Int species_idx) {
 }  // namespace
 
 void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
-                       const AdvectionField& adv, bool profile_steps) {
+                       const AdvectionField& adv, bool profile_steps,
+                       const std::vector<ChemicalSpec>* chemicals) {
   cfg_    = cfg;
   domain_ = &domain;
   adv_    = &adv;
   gf_.init(domain, adv);
   gf_.set_kernel_evaluation_counting(profile_steps);
   gf_.reset_image_series_cap_hits();
+  gf_.reset_low_screening_diagnostics();
   gf_.reset_kernel_evaluations();
+  if (chemicals != nullptr) {
+    enforce_low_screening_policy(cfg, domain, adv, *chemicals);
+  }
   if (cfg.image_series_mode == "pre_fix_duplicated_reflection") {
     std::cerr
         << "WARNING: image_series_mode=pre_fix_duplicated_reflection is a "

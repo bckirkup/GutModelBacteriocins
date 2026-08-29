@@ -549,7 +549,8 @@ void Simulation::init(const SimulationConfig& cfg) {
   vbf_.init(cfg.vbf, domain_);
 
   // QSSA solver
-  qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps);
+  qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps,
+             &cfg.chemicals);
 
   // Lineage tracker
   lineage_.init(cfg.time.output_interval);
@@ -801,7 +802,8 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   validate_required_species(cfg_, chem_);
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
-  qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps);
+  qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps,
+             &cfg.chemicals);
   lineage_.init(cfg.time.output_interval);
   hdf5_.init(cfg.hdf5, domain_);
   hdf5_.write_run_provenance(*this);
@@ -1592,6 +1594,11 @@ int Simulation::run() {
 
 void Simulation::finalize_neumann_image_series_stats() {
   const uint64_t local_hits = qssa_.gf().image_series_cap_hits();
+  const uint64_t local_low_screening =
+      qssa_.gf().low_screening_evaluations();
+  const uint64_t local_negative_count =
+      qssa_.gf().negative_field_count();
+  const Real local_most_negative = qssa_.gf().most_negative_field();
   const uint64_t local_kernel_evaluations =
       qssa_.gf().kernel_evaluations();
 #ifdef GUTIBM_MPI
@@ -1601,24 +1608,48 @@ void Simulation::finalize_neumann_image_series_stats() {
   MPI_Finalized(&finalized);
   if (!initialized || finalized) {
     neumann_image_series_cap_hits_ = local_hits;
+    neumann_low_screening_evaluations_ = local_low_screening;
+    neumann_negative_field_count_ = local_negative_count;
+    neumann_most_negative_field_ = local_most_negative;
     green_function_kernel_evaluations_ = local_kernel_evaluations;
     return;
   }
   unsigned long long global_hits = 0;
+  unsigned long long global_low_screening = 0;
+  unsigned long long global_negative_count = 0;
   unsigned long long global_kernel_evaluations = 0;
   const unsigned long long local_value =
       static_cast<unsigned long long>(local_hits);
   const unsigned long long local_kernel_value =
       static_cast<unsigned long long>(local_kernel_evaluations);
+  const unsigned long long local_low_screening_value =
+      static_cast<unsigned long long>(local_low_screening);
+  const unsigned long long local_negative_count_value =
+      static_cast<unsigned long long>(local_negative_count);
   MPI_Allreduce(&local_value, &global_hits, 1, MPI_UNSIGNED_LONG_LONG,
                 MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_low_screening_value, &global_low_screening, 1,
+                MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_negative_count_value, &global_negative_count, 1,
+                MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+  Real global_most_negative = 0.0;
+  MPI_Allreduce(&local_most_negative, &global_most_negative, 1, MPI_DOUBLE,
+                MPI_MIN, MPI_COMM_WORLD);
   MPI_Allreduce(&local_kernel_value, &global_kernel_evaluations, 1,
                 MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
   neumann_image_series_cap_hits_ = static_cast<uint64_t>(global_hits);
+  neumann_low_screening_evaluations_ =
+      static_cast<uint64_t>(global_low_screening);
+  neumann_negative_field_count_ =
+      static_cast<uint64_t>(global_negative_count);
+  neumann_most_negative_field_ = global_most_negative;
   green_function_kernel_evaluations_ =
       static_cast<uint64_t>(global_kernel_evaluations);
 #else
   neumann_image_series_cap_hits_ = local_hits;
+  neumann_low_screening_evaluations_ = local_low_screening;
+  neumann_negative_field_count_ = local_negative_count;
+  neumann_most_negative_field_ = local_most_negative;
   green_function_kernel_evaluations_ = local_kernel_evaluations;
 #endif
   if (domain_.rank() == 0 && neumann_image_series_cap_hits_ != 0) {
@@ -1629,6 +1660,11 @@ void Simulation::finalize_neumann_image_series_stats() {
               << neumann_image_series_cap_hits_
               << " evaluations; bounded QSSA steady state may be "
                  "under-resolved\n";
+  }
+  if (domain_.rank() == 0 && neumann_negative_field_count_ != 0) {
+    std::cerr << "Warning: Neumann/Robin field was negative before clipping "
+              << neumann_negative_field_count_ << " times; most negative="
+              << neumann_most_negative_field_ << "\n";
   }
 }
 

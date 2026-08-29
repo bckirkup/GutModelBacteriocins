@@ -331,6 +331,14 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return c.qssa.image_series_mode;
                 }, "pre_fix_duplicated_reflection"));
+  v.push_back(S("qssa.low_screening_policy",
+                [](const SimulationConfig& c) {
+                  return c.qssa.low_screening_policy;
+                }, "allow"));
+  v.push_back(S("low_screening_policy",
+                [](const SimulationConfig& c) {
+                  return c.qssa.low_screening_policy;
+                }, "allow"));
   v.push_back(R("lumen_transfer_length", [](const SimulationConfig& c) {
     return c.qssa.lumen_transfer_length;
   }, 123.0e-6, false));

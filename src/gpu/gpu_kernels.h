@@ -47,6 +47,9 @@ void launch_superpose_kernel(
     int num_sources, int span_x, int span_y, int span_z,
     int robin_table_count, unsigned int* robin_index_error,
     cudaStream_t stream, unsigned long long* cap_hits = nullptr,
+    unsigned long long* low_screening_evaluations = nullptr,
+    unsigned long long* negative_field_count = nullptr,
+    double* most_negative_field = nullptr,
     unsigned long long* kernel_evaluations = nullptr);
 
 void launch_field_update_kernel(

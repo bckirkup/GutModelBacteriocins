@@ -409,6 +409,14 @@ void apply_species_subset(SimulationConfig& cfg) {
 void InputParser::finalize_config(SimulationConfig& cfg) {
   constexpr Real k_z_lambda = 25.0e-6;
 
+  if (cfg.qssa.low_screening_policy != "warn"
+      && cfg.qssa.low_screening_policy != "error"
+      && cfg.qssa.low_screening_policy != "allow") {
+    throw ConfigError(
+        "invalid qssa.low_screening_policy: expected 'warn', 'error', "
+        "or 'allow'");
+  }
+
   if (cfg.closure.zero_realization_grace_steps < 0) {
     throw ConfigError(
         "closure.zero_realization_grace_steps must be nonnegative");
@@ -877,6 +885,15 @@ bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::stri
           "invalid toxin.lumen_transfer_basis: expected 'effective' or 'free'");
     }
     cfg.qssa.lumen_transfer_basis = val;
+    return true;
+  }
+  if (key == "low_screening_policy" || key == "qssa.low_screening_policy") {
+    if (val != "warn" && val != "error" && val != "allow") {
+      throw ConfigError(
+          "invalid qssa.low_screening_policy: expected 'warn', 'error', "
+          "or 'allow'");
+    }
+    cfg.qssa.low_screening_policy = val;
     return true;
   }
   if (key == "nutrient_cutoff")      { cfg.qssa.nutrient_cutoff = parse_config_real(key, val); return true; }

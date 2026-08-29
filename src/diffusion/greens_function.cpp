@@ -154,10 +154,15 @@ bool try_gpu_superpose(const Domain& domain,
                        const std::vector<GreensFunctionParams>& params,
                        std::vector<Real>& grid_conc,
                        Real cutoff_radius, uint64_t* cap_hits,
-                       uint64_t* kernel_evaluations) {
+                       uint64_t* kernel_evaluations,
+                       uint64_t* low_screening_evaluations,
+                       uint64_t* negative_field_count,
+                       Real* most_negative_field) {
   if (!gpu_runtime_enabled()) return false;
   return gpu_superpose_to_grid(domain, adv, sources, params, {}, grid_conc,
-                               cutoff_radius, cap_hits, kernel_evaluations);
+                               cutoff_radius, cap_hits, kernel_evaluations,
+                               low_screening_evaluations, negative_field_count,
+                               most_negative_field);
 }
 #endif
 
@@ -290,6 +295,14 @@ void GreensFunction::set_kernel_evaluation_counting(bool enabled) {
       static_cast<std::size_t>(slot_count), uint64_t{0});
 }
 
+void GreensFunction::add_negative_field_diagnostics(
+    uint64_t count, Real most_negative) const {
+  negative_field_count_ += count;
+  if (count != 0 && most_negative < most_negative_field_) {
+    most_negative_field_ = most_negative;
+  }
+}
+
 Real GreensFunction::single_kernel(const Vec3& src, const Vec3& tgt,
                                     Real D_eff, Real Q, Real decay_rate,
                                     const Vec3& flow_vel) const {
@@ -363,6 +376,7 @@ Real GreensFunction::concentration_sealed(
     return single_kernel(image, target, D_eff, Q, decay_rate, image_flow);
   };
   int cap_hit = 0;
+  int low_screening_floor = 0;
   // The image construction is exact only for flow uniform in z. The existing
   // radial_velocity(z) profile varies in z, so this retains its pre-existing
   // uniform-flow approximation.
@@ -388,14 +402,30 @@ Real GreensFunction::concentration_sealed(
     total = neumann::sum_image_series(
         source[2], z_lo_, z_hi_, evaluate_image,
         params.image_series_relative_tolerance, budget.max_shells,
-        nullptr, &cap_hit);
-    if (budget.forced_cap_hit) cap_hit = 1;
+        nullptr, &cap_hit, &low_screening_floor);
+    low_screening_floor = budget.low_screening_floor ? 1 : 0;
   }
   if (cap_hit != 0) {
 #ifdef GUTIBM_OPENMP
 #pragma omp atomic update
 #endif
     ++image_series_cap_hits_;
+  }
+  if (low_screening_floor != 0) {
+#ifdef GUTIBM_OPENMP
+#pragma omp atomic update
+#endif
+    ++low_screening_evaluations_;
+  }
+  if (total < 0.0) {
+#ifdef GUTIBM_OPENMP
+#pragma omp atomic update
+#endif
+    ++negative_field_count_;
+#ifdef GUTIBM_OPENMP
+#pragma omp critical(gutibm_negative_field_min)
+#endif
+    most_negative_field_ = std::min(most_negative_field_, total);
   }
   return std::max(total, 0.0);
 }
@@ -442,6 +472,16 @@ Real GreensFunction::concentration_bounded(
   const Real sealed = concentration_sealed(source, target, params);
   const Real total = sealed + params.source_rate
       / (4.0 * PI * d_eff) * correction;
+  if (total < 0.0) {
+#ifdef GUTIBM_OPENMP
+#pragma omp atomic update
+#endif
+    ++negative_field_count_;
+#ifdef GUTIBM_OPENMP
+#pragma omp critical(gutibm_negative_field_min)
+#endif
+    most_negative_field_ = std::min(most_negative_field_, total);
+  }
   return std::max(total, 0.0);
 }
 
@@ -457,6 +497,9 @@ void GreensFunction::superpose_to_grid(
 
 #ifdef GUTIBM_CUDA
   uint64_t gpu_kernel_evaluations = 0;
+  uint64_t gpu_low_screening = 0;
+  uint64_t gpu_negative_count = 0;
+  Real gpu_most_negative = 0.0;
   uint64_t* kernel_evaluations = kernel_evaluation_counting_enabled_
       ? &gpu_kernel_evaluations
       : nullptr;
@@ -465,7 +508,10 @@ void GreensFunction::superpose_to_grid(
   if (fallback.empty()) {
     if (adv_ && domain_ && try_gpu_superpose(
             *domain_, *adv_, sources, params, grid_conc, cutoff_radius,
-            &image_series_cap_hits_, kernel_evaluations)) {
+            &image_series_cap_hits_, kernel_evaluations, &gpu_low_screening,
+            &gpu_negative_count, &gpu_most_negative)) {
+      add_low_screening_evaluations(gpu_low_screening);
+      add_negative_field_diagnostics(gpu_negative_count, gpu_most_negative);
       if (kernel_evaluations != nullptr) {
         add_kernel_evaluations(gpu_kernel_evaluations);
       }
@@ -492,7 +538,8 @@ void GreensFunction::superpose_to_grid(
     const bool gpu_ok = gpu_sources.empty()
         || try_gpu_superpose(*domain_, *adv_, gpu_sources, gpu_params,
                              gpu_grid, cutoff_radius, &gpu_cap_hits,
-                             kernel_evaluations);
+                             kernel_evaluations, &gpu_low_screening,
+                             &gpu_negative_count, &gpu_most_negative);
     if (gpu_ok) {
       if (gpu_sources.empty()) {
         gpu_grid.assign(static_cast<size_t>(ncells), 0.0);
@@ -505,6 +552,8 @@ void GreensFunction::superpose_to_grid(
         grid_conc[cell] += host_grid[cell];
       }
       image_series_cap_hits_ += gpu_cap_hits;
+      add_low_screening_evaluations(gpu_low_screening);
+      add_negative_field_diagnostics(gpu_negative_count, gpu_most_negative);
       if (kernel_evaluations != nullptr) {
         add_kernel_evaluations(gpu_kernel_evaluations);
       }

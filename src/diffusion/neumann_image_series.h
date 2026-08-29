@@ -17,11 +17,12 @@ namespace gutibm::neumann {
 
 constexpr int kMaxImageShells = 512;
 constexpr int kLowScreeningShells = 8;
+constexpr double kLowScreeningFloorThreshold = 0.0225;
 constexpr double kRelativeTolerance = 1.0e-10;
 
 struct ImageSeriesBudget {
   int max_shells;
-  bool forced_cap_hit;
+  bool low_screening_floor;
 };
 
 GUTIBM_NEUMANN_HOST_DEVICE inline double series_screening(
@@ -37,7 +38,7 @@ GUTIBM_NEUMANN_HOST_DEVICE inline ImageSeriesBudget image_series_budget(
   const double k_series = series_screening(
       d_eff, decay_rate, flow_magnitude, flow_z);
   const double scaled_screening = k_series * height;
-  if (!(scaled_screening >= 0.05)) {
+  if (!(scaled_screening >= kLowScreeningFloorThreshold)) {
     return {kLowScreeningShells, true};
   }
   if (!(rel_tol > 0.0)) {
@@ -58,7 +59,9 @@ template <typename Kernel>
 GUTIBM_NEUMANN_HOST_DEVICE inline double sum_image_series(
     double source_z, double z_lo, double z_hi, Kernel kernel,
     double rel_tol = kRelativeTolerance, int max_shells = kMaxImageShells,
-    int* shell_count = nullptr, int* cap_hit = nullptr) {
+    int* shell_count = nullptr, int* cap_hit = nullptr,
+    int* low_screening_floor = nullptr) {
+  (void)low_screening_floor;
   const double height = z_hi - z_lo;
   const double reflected_source_z = 2.0 * z_lo - source_z;
   double total = kernel(source_z, 0) + kernel(reflected_source_z, 1);
@@ -95,14 +98,14 @@ GUTIBM_NEUMANN_HOST_DEVICE inline double sum_image_series(
     double source_z, double z_lo, double z_hi, Kernel kernel,
     double d_eff, double decay_rate, double flow_magnitude, double flow_z,
     double rel_tol = kRelativeTolerance, int* shell_count = nullptr,
-    int* cap_hit = nullptr) {
+    int* cap_hit = nullptr, int* low_screening_floor = nullptr) {
   const ImageSeriesBudget budget = image_series_budget(
       d_eff, decay_rate, flow_magnitude, flow_z, z_hi - z_lo, rel_tol);
   const double total = sum_image_series(
       source_z, z_lo, z_hi, kernel, rel_tol, budget.max_shells,
-      shell_count, cap_hit);
-  if (cap_hit != nullptr && budget.forced_cap_hit) {
-    *cap_hit = 1;
+      shell_count, cap_hit, low_screening_floor);
+  if (low_screening_floor != nullptr) {
+    *low_screening_floor = budget.low_screening_floor ? 1 : 0;
   }
   return total;
 }

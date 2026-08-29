@@ -665,6 +665,17 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
       sim.neumann_image_series_cap_hits());
   write_scalar_dataset(fid, "run_provenance/neumann_image_series_cap_hits",
                        H5T_NATIVE_ULLONG, &cap_hits);
+  const auto low_screening = static_cast<unsigned long long>(
+      sim.neumann_low_screening_evaluations());
+  write_scalar_dataset(fid, "run_provenance/neumann_low_screening_evaluations",
+                       H5T_NATIVE_ULLONG, &low_screening);
+  const auto negative_count = static_cast<unsigned long long>(
+      sim.neumann_negative_field_count());
+  write_scalar_dataset(fid, "run_provenance/neumann_negative_field_count",
+                       H5T_NATIVE_ULLONG, &negative_count);
+  const double most_negative = sim.neumann_most_negative_field();
+  write_scalar_dataset(fid, "run_provenance/neumann_most_negative_field",
+                       H5T_NATIVE_DOUBLE, &most_negative);
   const auto kernel_evaluations = static_cast<unsigned long long>(
       sim.green_function_kernel_evaluations());
   write_scalar_dataset(fid, "run_provenance/green_function_kernel_evaluations",
@@ -775,6 +786,18 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
         sim.neumann_image_series_cap_hits());
     write_scalar_dataset(fid, "run_provenance/neumann_image_series_cap_hits",
                          H5T_NATIVE_ULLONG, &cap_hits);
+    const auto low_screening = static_cast<unsigned long long>(
+        sim.neumann_low_screening_evaluations());
+    write_scalar_dataset(
+        fid, "run_provenance/neumann_low_screening_evaluations",
+        H5T_NATIVE_ULLONG, &low_screening);
+    const auto negative_count = static_cast<unsigned long long>(
+        sim.neumann_negative_field_count());
+    write_scalar_dataset(fid, "run_provenance/neumann_negative_field_count",
+                         H5T_NATIVE_ULLONG, &negative_count);
+    const double most_negative = sim.neumann_most_negative_field();
+    write_scalar_dataset(fid, "run_provenance/neumann_most_negative_field",
+                         H5T_NATIVE_DOUBLE, &most_negative);
     const auto robin_host_fallback_sources =
         static_cast<unsigned long long>(
             sim.qssa().gf().robin_host_fallback_sources());

@@ -106,6 +106,15 @@ class GreensFunction {
   uint64_t image_series_cap_hits() const {
     return image_series_cap_hits_;
   }
+  uint64_t low_screening_evaluations() const {
+    return low_screening_evaluations_;
+  }
+  uint64_t negative_field_count() const {
+    return negative_field_count_;
+  }
+  Real most_negative_field() const {
+    return most_negative_field_;
+  }
   uint64_t robin_direct_evaluations() const {
     return robin_direct_evaluations_;
   }
@@ -124,6 +133,11 @@ class GreensFunction {
   void add_image_series_cap_hits(uint64_t count) const {
     image_series_cap_hits_ += count;
   }
+  void add_low_screening_evaluations(uint64_t count) const {
+    low_screening_evaluations_ += count;
+  }
+  void add_negative_field_diagnostics(uint64_t count,
+                                      Real most_negative) const;
   void add_kernel_evaluations(uint64_t count) const {
     if (kernel_evaluation_counting_enabled_
         && !kernel_evaluations_by_thread_.empty()) {
@@ -132,6 +146,11 @@ class GreensFunction {
   }
   void reset_image_series_cap_hits() {
     image_series_cap_hits_ = 0;
+  }
+  void reset_low_screening_diagnostics() {
+    low_screening_evaluations_ = 0;
+    negative_field_count_ = 0;
+    most_negative_field_ = 0.0;
   }
   void add_robin_host_fallback_sources(uint64_t count) const {
     robin_host_fallback_sources_ += count;
@@ -159,6 +178,9 @@ class GreensFunction {
   Real z_lo_ = 0.0;
   Real z_hi_ = 100.0e-6;
   mutable uint64_t image_series_cap_hits_ = 0;
+  mutable uint64_t low_screening_evaluations_ = 0;
+  mutable uint64_t negative_field_count_ = 0;
+  mutable Real most_negative_field_ = 0.0;
   mutable uint64_t robin_direct_evaluations_ = 0;
   mutable uint64_t robin_host_fallback_sources_ = 0;
   bool kernel_evaluation_counting_enabled_ = false;
