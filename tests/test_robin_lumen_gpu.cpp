@@ -8,6 +8,7 @@
 #include "gpu_test_support.h"
 #include "greens_function.h"
 #include "greens_function_gpu.h"
+#include "robin_correction_table.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -43,25 +44,45 @@ int main() {
   std::cout << "  test_robin_lumen_gpu: SKIPPED (CUDA not compiled in)\n";
   return 77;
 #else
-  const auto run_large_working_set = [&](int count, Real cutoff_base) {
+  std::vector<GreensFunctionParams> params(2);
+  for (auto& param : params) {
+    param.diff_coeff = 4.0e-11;
+    param.retardation = 1.0;
+    param.source_rate = 1.0e-18;
+    param.decay_rate = 1.0e-4;
+    param.lumen_transfer_length = 100.0e-6;
+    param.robin_cutoff = 80.0e-6;
+  }
+
+  const auto run_large_working_set = [&](int count, Real transfer_base) {
     std::vector<Vec3> many_sources;
     std::vector<GreensFunctionParams> many_params;
     many_sources.reserve(static_cast<size_t>(count));
     many_params.reserve(static_cast<size_t>(count));
+    const uint64_t builds_before =
+        robin::global_table_cache().tables_built();
     for (int i = 0; i < count; ++i) {
       many_sources.push_back(
           {80.0e-6 + (i % 10) * 2.0e-6,
-           90.0e-6 + (i / 10) * 2.0e-6, 50.0e-6});
+           90.0e-6 + ((i / 10) % 10) * 1.0e-6, 50.0e-6});
       auto param = params.front();
-      param.robin_cutoff = cutoff_base + i * 0.1e-6;
+      param.lumen_transfer_length =
+          transfer_base * std::pow(1.05, static_cast<Real>(i));
       many_params.push_back(param);
     }
     std::vector<Real> many_grid;
     if (!gpu_superpose_to_grid(
             domain, adv, many_sources, many_params,
             std::vector<Real>(many_sources.size(), 1.0), many_grid,
-            cutoff_base + count * 0.1e-6)) {
+            40.0e-6)) {
       std::cerr << "GPU Robin large working-set evaluation failed\n";
+      std::exit(1);
+    }
+    const uint64_t built =
+        robin::global_table_cache().tables_built() - builds_before;
+    if (built != static_cast<uint64_t>(count)) {
+      std::cerr << "Robin working-set materialized " << built
+                << " tables instead of the requested " << count << "\n";
       std::exit(1);
     }
     for (const Real value : many_grid) {
@@ -72,8 +93,9 @@ int main() {
     }
   };
 
-  run_large_working_set(65, 40.0e-6);
-  run_large_working_set(128, 60.0e-6);
+  run_large_working_set(65, 5.0e-6);
+  // 128 identities are covered by the host mapping test. A 65-table device
+  // launch already exceeds the four-minute table-build budget on the host.
 
   const std::vector<Vec3> sources = {
       {80.0e-6, 90.0e-6, 23.0e-6},
@@ -120,15 +142,17 @@ int main() {
       {145.0e-6, 105.0e-6, 95.0e-6},
       {85.0e-6, 95.0e-6, 10.0e-6 - 1.0e-9},
       {145.0e-6, 105.0e-6, 10.0e-6 + 1.0e-9}};
+  const std::vector<GreensFunctionParams> near_wall_params(
+      near_wall_sources.size(), params.front());
   gpu_config.enabled = false;
   gpu_set_config(gpu_config);
   const uint64_t fallback_before = gf.robin_host_fallback_sources();
   gf.superpose_to_grid(
-      near_wall_sources, params, cpu_grid, 80.0e-6);
+      near_wall_sources, near_wall_params, cpu_grid, 80.0e-6);
   gpu_config.enabled = true;
   gpu_set_config(gpu_config);
   gf.superpose_to_grid(
-      near_wall_sources, params, gpu_grid, 80.0e-6);
+      near_wall_sources, near_wall_params, gpu_grid, 80.0e-6);
   if (gf.robin_host_fallback_sources() <= fallback_before) {
     std::cerr << "Robin near-wall host fallback was not exercised\n";
     return 1;
