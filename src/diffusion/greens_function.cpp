@@ -362,14 +362,11 @@ Real GreensFunction::concentration_bounded(
     const Vec3& source, const Vec3& target,
     const GreensFunctionParams& params) const {
   require_init();
-  const Vec3 delta = domain_->min_image_delta(source, target);
-  const Real r = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]
-                            + delta[2] * delta[2]);
-  if (r < 1.0e-9) return 0.0;
   if (!robin::transfer_enabled(params.lumen_transfer_length)) {
     return concentration_sealed(source, target, params);
   }
 
+  const Vec3 delta = domain_->min_image_delta(source, target);
   const Real d_eff = params.diff_coeff / params.retardation;
   const Vec3 flow = adv_->velocity(source);
   const std::shared_ptr<const robin::Table> table = robin_table(params);
