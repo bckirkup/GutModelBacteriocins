@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "advection.h"
+#include "dispatch.h"
 #include "domain.h"
 #include "gpu_test_support.h"
 #include "greens_function.h"
