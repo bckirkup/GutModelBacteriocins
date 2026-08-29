@@ -22,7 +22,11 @@ using Int     = int;
 using TagID   = int64_t;
 using Vec3    = std::array<Real, 3>;
 
+#ifdef __CUDACC__
+static constexpr Real PI        = 3.14159265358979323846;
+#else
 static constexpr Real PI        = std::numbers::pi;
+#endif
 static constexpr Real BOLTZMANN = 1.380649e-23;    // J/K
 static constexpr Real AVOGADRO  = 6.02214076e23;
 
