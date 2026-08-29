@@ -258,6 +258,56 @@ def _read_provenance(path: Path) -> dict[str, Any]:
         return _read_hdf5_group(handle["run_provenance"])
 
 
+def _run_pass(
+    pass_name: str,
+    profile_steps: bool,
+    config: dict[str, Any],
+    config_path: Path,
+    hdf5_path: Path,
+    binary: Path,
+    *,
+    mpirun: str | None,
+    mpi_ranks: int,
+) -> dict[str, Any]:
+    config["profile_steps"] = profile_steps
+    config["hdf5_file"] = str(hdf5_path.resolve())
+    _write_json(config_path, config)
+    command = [str(binary), str(config_path)]
+    if mpirun is not None:
+        command = [mpirun, "-np", str(mpi_ranks), *command]
+    started = time.monotonic()
+    completed = subprocess.run(command, cwd=binary.parent, check=False)
+    wall_seconds = time.monotonic() - started
+    status = "completed" if completed.returncode == 0 else "failed"
+    return {
+        "name": pass_name,
+        "profile_steps": profile_steps,
+        "config_file": str(config_path.resolve()),
+        "hdf5_file": str(hdf5_path.resolve()),
+        "status": status,
+        "completion_status": status,
+        "exit_code": completed.returncode,
+        "wall_seconds": wall_seconds,
+        "provenance": (
+            _read_provenance(hdf5_path) if hdf5_path.is_file() else {}
+        ),
+    }
+
+
+def _pass_pair_overhead(passes: dict[str, Any]) -> tuple[float | None, float | None]:
+    cost = passes.get("cost", {})
+    profile = passes.get("profile", {})
+    cost_wall = cost.get("wall_seconds")
+    profile_wall = profile.get("wall_seconds")
+    if not all(isinstance(value, (int, float))
+               for value in (cost_wall, profile_wall)):
+        return None, None
+    difference = float(profile_wall) - float(cost_wall)
+    if float(cost_wall) <= 0.0:
+        return difference, None
+    return difference, difference / float(cost_wall)
+
+
 def run_one_arm(
     manifest_path: Path,
     arm: str,
@@ -269,55 +319,108 @@ def run_one_arm(
     mpirun: str | None = None,
     mpi_ranks: int = 1,
 ) -> Path:
-    """Run exactly one arm/scale/seed and write one result record."""
+    """Run one arm/scale/seed with separate cost and profile passes."""
     manifest = _read_json(manifest_path)
     arm_info = manifest["arms"][arm]
     output_dir.mkdir(parents=True, exist_ok=True)
     result_path = output_dir / f"{arm}_{scale}_seed{seed}.json"
-    hdf5_path = output_dir / f"{arm}_{scale}_seed{seed}.h5"
     config = _read_json(Path(arm_info["configs"][scale]))
     config["seed"] = seed
-    config["hdf5_file"] = str(hdf5_path.resolve())
-    config_path = output_dir / f"{arm}_{scale}_seed{seed}.config.json"
-    _write_json(config_path, config)
     record: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "arm": arm,
         "axis": arm_info["axis"],
         "scale": scale,
         "seed": seed,
         "host": {"hostname": os.uname().nodename},
         "backend": {"gpu_requested": bool(config.get("gpu_enabled", False))},
-        "config_file": str(config_path.resolve()),
-        "hdf5_file": str(hdf5_path.resolve()),
     }
     if arm_info["status"] == "blocked":
+        blocked_passes = {
+            name: {
+                "name": name,
+                "profile_steps": profile_steps,
+                "status": "blocked",
+                "completion_status": "not_run",
+                "exit_code": None,
+                "wall_seconds": None,
+                "provenance": {},
+            }
+            for name, profile_steps in (("cost", False), ("profile", True))
+        }
         record.update({
             "status": "blocked",
             "completion_status": "not_run",
-            "exit_code": None,
-            "wall_seconds": None,
             "blocked_reason": arm_info["blocked_reason"],
+            "passes": blocked_passes,
+            "profiling_wall_difference_seconds": None,
+            "profiling_wall_difference_fraction": None,
         })
         _write_json(result_path, record)
         return result_path
-    command = [str(binary), str(config_path)]
-    if mpirun is not None:
-        command = [mpirun, "-np", str(mpi_ranks), *command]
-    started = time.monotonic()
-    completed = subprocess.run(command, cwd=binary.parent, check=False)
-    wall_seconds = time.monotonic() - started
+
+    passes: dict[str, Any] = {}
+    for pass_name, profile_steps in (("cost", False), ("profile", True)):
+        pass_config = copy.deepcopy(config)
+        pass_config_path = output_dir / (
+            f"{arm}_{scale}_seed{seed}.{pass_name}.config.json"
+        )
+        pass_hdf5_path = output_dir / (
+            f"{arm}_{scale}_seed{seed}.{pass_name}.h5"
+        )
+        passes[pass_name] = _run_pass(
+            pass_name,
+            profile_steps,
+            pass_config,
+            pass_config_path,
+            pass_hdf5_path,
+            binary,
+            mpirun=mpirun,
+            mpi_ranks=mpi_ranks,
+        )
+    pass_statuses = [item["status"] for item in passes.values()]
+    status = "completed" if all(
+        item == "completed" for item in pass_statuses
+    ) else "failed"
+    difference, fraction = _pass_pair_overhead(passes)
     record.update({
-        "status": "completed" if completed.returncode == 0 else "failed",
-        "completion_status": (
-            "completed" if completed.returncode == 0 else "failed"
-        ),
-        "exit_code": completed.returncode,
-        "wall_seconds": wall_seconds,
-        "provenance": _read_provenance(hdf5_path) if hdf5_path.is_file() else {},
+        "status": status,
+        "completion_status": status,
+        "passes": passes,
+        "profiling_wall_difference_seconds": difference,
+        "profiling_wall_difference_fraction": fraction,
     })
     _write_json(result_path, record)
     return result_path
+
+
+def _completed_pass_pair(record: dict[str, Any]) -> bool:
+    passes = record.get("passes", {})
+    return (
+        record.get("status") == "completed"
+        and all(
+            passes.get(name, {}).get("status") == "completed"
+            for name in ("cost", "profile")
+        )
+    )
+
+
+def _numeric_pass_values(
+    records: list[dict[str, Any]], key: str
+) -> list[float]:
+    values = []
+    for record in records:
+        value = record.get(key)
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+    return values
+
+
+def _median_numeric_value(
+    records: list[dict[str, Any]], key: str
+) -> float | None:
+    values = _numeric_pass_values(records, key)
+    return median(values) if values else None
 
 
 def merge_results(manifest_path: Path, result_paths: list[Path]) -> dict[str, Any]:
@@ -332,7 +435,7 @@ def merge_results(manifest_path: Path, result_paths: list[Path]) -> dict[str, An
         record["raw_result_file"] = str(Path(path).resolve())
         records[key] = record
     merged: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "scales": manifest["scales"],
         "seeds": manifest["seeds"],
         "baselines": manifest["baselines"],
@@ -367,18 +470,43 @@ def merge_results(manifest_path: Path, result_paths: list[Path]) -> dict[str, An
                         "scale": scale,
                         "seed": seed,
                     })
-            completed = [
-                item for item in entries
-                if item.get("status") == "completed"
-                and isinstance(item.get("wall_seconds"), (int, float))
-            ]
+            completed = [item for item in entries if _completed_pass_pair(item)]
+            cost_passes = [item["passes"]["cost"] for item in completed]
+            profile_passes = [item["passes"]["profile"] for item in completed]
             phase_totals: dict[str, list[float]] = {}
-            for item in completed:
+            for item in profile_passes:
                 profile = item.get("provenance", {}).get("step_profile", {})
                 for phase, value in profile.items():
                     if phase == "step_count" or not isinstance(value, (int, float)):
                         continue
                     phase_totals.setdefault(phase, []).append(float(value))
+            cost_walls = [
+                item["wall_seconds"] for item in cost_passes
+                if isinstance(item.get("wall_seconds"), (int, float))
+            ]
+            steps_per_second = []
+            for item in cost_passes:
+                steps = item.get("provenance", {}).get("termination_step")
+                wall = item.get("wall_seconds")
+                if (isinstance(steps, (int, float))
+                        and isinstance(wall, (int, float))
+                        and wall > 0.0):
+                    steps_per_second.append(float(steps) / float(wall))
+            kernel_counts = []
+            direct_counts = []
+            table_builds = []
+            table_evictions = []
+            for item in profile_passes:
+                provenance = item.get("provenance", {})
+                for target, key in (
+                    (kernel_counts, "green_function_kernel_evaluations"),
+                    (direct_counts, "robin_direct_mode_evaluations"),
+                    (table_builds, "robin_tables_built"),
+                    (table_evictions, "robin_table_evictions"),
+                ):
+                    value = provenance.get(key)
+                    if isinstance(value, (int, float)):
+                        target.append(float(value))
             arm_result["scales"][scale] = {
                 "records": entries,
                 "available_count": len(completed),
@@ -386,13 +514,37 @@ def merge_results(manifest_path: Path, result_paths: list[Path]) -> dict[str, An
                                      for item in entries),
                 "cost_summary": {
                     "wall_seconds_median": (
-                        median(item["wall_seconds"] for item in completed)
-                        if completed else None
+                        median(cost_walls) if cost_walls else None
                     ),
+                    "steps_per_second_median": (
+                        median(steps_per_second) if steps_per_second else None
+                    ),
+                },
+                "attribution_summary": {
                     "step_profile_median": {
                         phase: median(values)
                         for phase, values in phase_totals.items()
                     },
+                    "kernel_evaluations_median": (
+                        median(kernel_counts) if kernel_counts else None
+                    ),
+                    "robin_direct_mode_evaluations_median": (
+                        median(direct_counts) if direct_counts else None
+                    ),
+                    "robin_tables_built_median": (
+                        median(table_builds) if table_builds else None
+                    ),
+                    "robin_table_evictions_median": (
+                        median(table_evictions) if table_evictions else None
+                    ),
+                },
+                "profiling_overhead": {
+                    "wall_seconds_median": _median_numeric_value(
+                        completed, "profiling_wall_difference_seconds"
+                    ),
+                    "fraction_median": _median_numeric_value(
+                        completed, "profiling_wall_difference_fraction"
+                    ),
                 },
             }
         merged["arms"][arm] = arm_result

@@ -5,10 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
+import gut_ibm_tools.gpu_cost_benefit as benchmark
 from gut_ibm_tools.gpu_cost_benefit import (
     ARM_MATRIX,
     generate_configs,
     merge_results,
+    run_one_arm,
 )
 
 
@@ -138,13 +142,40 @@ def test_partial_merge_marks_missing_records_without_filling_defaults(
     _write_config(manifest_path, manifest)
     _write_config(
         result_path,
-        {"arm": "A1", "scale": "1e5", "seed": 55, "status": "completed"},
+        {
+            "arm": "A1",
+            "scale": "1e5",
+            "seed": 55,
+            "status": "completed",
+            "wall_seconds": 999.0,
+            "passes": {
+                "cost": {
+                    "status": "completed",
+                    "wall_seconds": 10.0,
+                    "provenance": {"termination_step": 20},
+                },
+                "profile": {
+                    "status": "completed",
+                    "wall_seconds": 11.0,
+                    "provenance": {"step_profile": {"biology_s": 3.0}},
+                },
+            },
+            "profiling_wall_difference_seconds": 1.0,
+            "profiling_wall_difference_fraction": 0.1,
+        },
     )
 
     merged = merge_results(manifest_path, [result_path])
     records = merged["arms"]["A1"]["scales"]["1e5"]["records"]
     assert records[0]["status"] == "completed"
     assert records[0]["raw_result_file"] == str(result_path.resolve())
+    assert merged["arms"]["A1"]["scales"]["1e5"]["cost_summary"] == {
+        "wall_seconds_median": 10.0,
+        "steps_per_second_median": 2.0,
+    }
+    assert merged["arms"]["A1"]["scales"]["1e5"][
+        "attribution_summary"
+    ]["step_profile_median"] == {"biology_s": 3.0}
     assert records[1]["status"] == "missing"
     assert "wall_seconds" not in records[1]
     assert merged["arms"]["A6"]["status"] == "blocked"
@@ -153,3 +184,54 @@ def test_partial_merge_marks_missing_records_without_filling_defaults(
         record["status"] == "blocked"
         for record in merged["arms"]["A6"]["scales"]["1e5"]["records"]
     )
+
+
+def test_runner_separates_cost_and_profile_passes(tmp_path: Path, monkeypatch) -> None:
+    base_path = tmp_path / "base.json"
+    scale_path = tmp_path / "scale.json"
+    _write_config(base_path, {"total_time": 60, "initial_strains": []})
+    _write_config(scale_path, {"domain_x": 0.001, "initial_strains": []})
+    generated = tmp_path / "generated"
+    generate_configs(base_path, generated, {"1e5": scale_path})
+    manifest_path = generated / "manifest.json"
+    output_dir = tmp_path / "results"
+    calls = []
+
+    def fake_run(command, cwd, check):
+        calls.append((command, cwd, check))
+        return benchmark.subprocess.CompletedProcess(command, 0)
+
+    clock = iter((10.0, 12.0, 20.0, 23.0))
+    monkeypatch.setattr(benchmark.subprocess, "run", fake_run)
+    monkeypatch.setattr(benchmark.time, "monotonic", lambda: next(clock))
+    monkeypatch.setattr(
+        benchmark,
+        "_read_provenance",
+        lambda path: {
+            "termination_step": 4,
+            "step_profile": {"biology_s": 1.5},
+        },
+    )
+
+    result_path = run_one_arm(
+        manifest_path,
+        "A1",
+        "1e5",
+        55,
+        Path("/opt/gut_ibm"),
+        output_dir,
+    )
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert len(calls) == 2
+    cost_config = json.loads(
+        (output_dir / "A1_1e5_seed55.cost.config.json").read_text()
+    )
+    profile_config = json.loads(
+        (output_dir / "A1_1e5_seed55.profile.config.json").read_text()
+    )
+    assert cost_config["profile_steps"] is False
+    assert profile_config["profile_steps"] is True
+    assert result["passes"]["cost"]["profile_steps"] is False
+    assert result["passes"]["profile"]["profile_steps"] is True
+    assert result["profiling_wall_difference_seconds"] == pytest.approx(1.0)
+    assert result["profiling_wall_difference_fraction"] == pytest.approx(0.5)
