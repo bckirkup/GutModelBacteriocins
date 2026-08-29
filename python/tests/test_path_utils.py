@@ -10,6 +10,7 @@ from gut_ibm_tools.path_utils import (
     prepare_output_directory,
     prepare_output_file,
     validate_input_path,
+    validate_input_path_within,
     validate_output_path,
     validate_path_syntax,
     write_text_file,
@@ -31,6 +32,81 @@ def test_validate_input_path_requires_existing_file(tmp_path: Path) -> None:
     target.write_bytes(b"data")
     resolved = validate_input_path(target)
     assert resolved == target.resolve()
+
+
+def test_validate_input_path_within_accepts_nested_file(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    target = root / "nested" / "input.json"
+    target.parent.mkdir(parents=True)
+    target.write_text("{}", encoding="utf-8")
+
+    assert validate_input_path_within(root, "nested/input.json") == target
+
+
+def test_validate_input_path_within_accepts_absolute_file(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    target = root / "input.json"
+    target.write_text("{}", encoding="utf-8")
+
+    assert validate_input_path_within(root, target) == target
+
+
+def test_validate_input_path_within_rejects_absolute_escape(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+
+    with pytest.raises(PathValidationError, match="outside trusted root"):
+        validate_input_path_within(root, outside)
+
+
+def test_validate_input_path_within_rejects_traversal(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+
+    with pytest.raises(PathValidationError, match="traversal"):
+        validate_input_path_within(root, "nested/../input.json")
+
+
+def test_validate_input_path_within_rejects_unsafe_segment(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+
+    with pytest.raises(PathValidationError, match="unsafe path segment"):
+        validate_input_path_within(root, "unsafe dir/input.json")
+
+
+def test_validate_input_path_within_rejects_root(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+
+    with pytest.raises(PathValidationError, match="must name a file"):
+        validate_input_path_within(root, root)
+
+
+def test_validate_input_path_within_rejects_symlink_escape(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    (root / "link.json").symlink_to(outside)
+
+    with pytest.raises(PathValidationError, match="resolves outside"):
+        validate_input_path_within(root, "link.json")
 
 
 def test_validate_output_path_rejects_symlink_in_world_writable_parent(

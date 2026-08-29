@@ -23,6 +23,7 @@ from .batch_config import apply_overrides
 from .path_utils import (
     PathValidationError,
     validate_input_path,
+    validate_input_path_within,
     validate_path_syntax,
     write_json_file,
 )
@@ -164,6 +165,13 @@ def _without_comments(value: Any) -> Any:
 
 def _read_json(path: Path) -> dict[str, Any]:
     with validate_input_path(path).open(encoding="utf-8") as handle:
+        return _without_comments(json.load(handle))
+
+
+def _read_declared_json(root: Path, declared: str) -> dict[str, Any]:
+    with validate_input_path_within(root, declared).open(
+        encoding="utf-8"
+    ) as handle:
         return _without_comments(json.load(handle))
 
 
@@ -361,7 +369,9 @@ def run_one_arm(
     manifest = _read_json(manifest_path)
     arm_info = manifest["arms"][arm]
     result_path = output_dir / f"{arm}_{scale}_seed{seed}.json"
-    config = _read_json(Path(arm_info["configs"][scale]))
+    config = _read_declared_json(
+        manifest_path.parent, arm_info["configs"][scale]
+    )
     config["seed"] = seed
     record: dict[str, Any] = {
         "schema_version": 2,
