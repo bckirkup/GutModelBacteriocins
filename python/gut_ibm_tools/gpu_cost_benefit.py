@@ -194,7 +194,6 @@ def generate_configs(
 ) -> dict[str, Any]:
     """Generate all arm/scale configs and a manifest from one base config."""
     base = _read_json(base_path)
-    output_dir.mkdir(parents=True, exist_ok=True)
     arms: dict[str, Any] = {}
     for scale, scale_path in scale_paths.items():
         scale_base = _scale_config(base, _read_json(scale_path))
@@ -207,7 +206,6 @@ def generate_configs(
             }
             apply_overrides(config, overrides)
             arm_dir = output_dir / arm
-            arm_dir.mkdir(parents=True, exist_ok=True)
             config_path = arm_dir / f"{scale}.json"
             _write_json(config_path, config)
             arms.setdefault(arm, {
