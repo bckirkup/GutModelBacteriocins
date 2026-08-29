@@ -85,6 +85,53 @@ int main() {
   }
   std::cout << "  test_neumann_image_series_gpu: PASSED (max relative error="
             << max_relative_error << ")\n";
+
+  for (auto& param : params) {
+    param.decay_rate = 0.0;
+  }
+  gf.reset_image_series_cap_hits();
+  gpu_config.enabled = false;
+  gpu_set_config(gpu_config);
+  std::vector<Real> unscreened_cpu_grid;
+  gf.superpose_to_grid(
+      sources, params, unscreened_cpu_grid, 80.0e-6);
+  const uint64_t host_cap_hits = gf.image_series_cap_hits();
+
+  gpu_config.enabled = true;
+  gpu_set_config(gpu_config);
+  std::vector<Real> unscreened_gpu_grid;
+  uint64_t device_cap_hits = 0;
+  if (!gpu_superpose_to_grid(
+          domain, adv, sources, params,
+          std::vector<Real>(sources.size(), 1.0), unscreened_gpu_grid,
+          80.0e-6, &device_cap_hits)) {
+    std::cerr << "GPU unscreened Green's function evaluation failed\n";
+    return 1;
+  }
+  if (host_cap_hits == 0 || device_cap_hits == 0 ||
+      host_cap_hits != device_cap_hits) {
+    std::cerr << "CPU/GPU cap-hit mismatch: host=" << host_cap_hits
+              << " device=" << device_cap_hits << "\n";
+    return 1;
+  }
+
+  Real unscreened_max_relative_error = 0.0;
+  for (size_t i = 0; i < unscreened_cpu_grid.size(); ++i) {
+    const Real denominator =
+        std::max(std::abs(unscreened_cpu_grid[i]), 1.0e-30);
+    unscreened_max_relative_error = std::max(
+        unscreened_max_relative_error,
+        std::abs(unscreened_cpu_grid[i] - unscreened_gpu_grid[i]) /
+            denominator);
+  }
+  if (!(unscreened_max_relative_error < 1.0e-4)) {
+    std::cerr << "CPU/GPU unscreened mismatch: "
+              << unscreened_max_relative_error << "\n";
+    return 1;
+  }
+  std::cout << "  forced-cap parity: PASSED (cap hits=" << host_cap_hits
+            << ", max relative error=" << unscreened_max_relative_error
+            << ")\n";
   return 0;
 #endif
 }
