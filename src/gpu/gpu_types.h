@@ -95,6 +95,9 @@ struct MechanicsLaunchParams {
   double viscosity = 0.0;
   double max_displacement_fraction = 0.0;
   double dt = 0.0;
+  double sim_time = 0.0;
+  double corpse_persistence = 0.0;
+  int cdi_enabled = 0;
   double lo0 = 0.0;
   double lo1 = 0.0;
   double lo2 = 0.0;

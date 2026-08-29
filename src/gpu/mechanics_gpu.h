@@ -13,6 +13,7 @@ struct MechanicsConfig;
 bool gpu_run_mechanics(AgentPoolGpu& agents, Int num_agents,
                        const SpatialHashGpu& hash, const Domain& domain,
                        const MechanicsConfig& cfg, Real dt, Real viscosity,
+                       Real sim_time, Real corpse_persistence, int cdi_enabled,
                        Int& clamp_count);
 
 }  // namespace gutibm

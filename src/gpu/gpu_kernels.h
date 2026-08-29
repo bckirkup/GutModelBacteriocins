@@ -115,9 +115,11 @@ void launch_metabolism_kernel(
 
 void launch_spatial_hash_build_kernel(
     const double* x, const double* y, const double* z, const int* state,
+    const double* death_time,
     int* cell_keys, int* sorted_indices, int num_agents,
     double lo0, double lo1, double lo2, double cell_size,
-    int nx_cells, int ny_cells, int nz_cells, cudaStream_t stream);
+    int nx_cells, int ny_cells, int nz_cells, double sim_time,
+    int cdi_enabled, double corpse_persistence, cudaStream_t stream);
 
 void launch_diffuse_x_periodic(double* conc, int nx, int ny, int nz,
                                double alpha, double gamma, double corner,
@@ -207,7 +209,7 @@ void launch_mechanics_clear_kernel(double* dx, double* dy, double* dz,
                                    cudaStream_t stream);
 void launch_mechanics_forces_kernel(
     const double* x, const double* y, const double* z,
-    const double* radius, const int* state,
+    const double* radius, const int* state, const double* death_time,
     const int* cell_offsets, const int* sorted_indices,
     double* dx, double* dy, double* dz,
     int num_agents, const MechanicsLaunchParams& params,

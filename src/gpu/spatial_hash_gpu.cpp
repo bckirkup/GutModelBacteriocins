@@ -17,6 +17,8 @@ namespace gutibm {
 
 bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
                             Vec3 lo, Vec3 hi, Real cell_size,
+                            Real sim_time, Real corpse_persistence,
+                            int cdi_enabled,
                             SpatialHashGpu& out) {
 #ifndef GUTIBM_CUDA
   (void)agents;
@@ -24,6 +26,9 @@ bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
   (void)lo;
   (void)hi;
   (void)cell_size;
+  (void)sim_time;
+  (void)corpse_persistence;
+  (void)cdi_enabled;
   (void)out;
   return false;
 #else
@@ -40,10 +45,11 @@ bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
   out.sorted_agent_indices.allocate(static_cast<size_t>(num_agents));
 
   gpu::launch_spatial_hash_build_kernel(
-      agents.x(), agents.y(), agents.z(), agents.state(),
+      agents.x(), agents.y(), agents.z(), agents.state(), agents.death_time(),
       out.cell_keys.data(), out.sorted_agent_indices.data(), num_agents,
       lo[0], lo[1], lo[2], cell_size,
-      out.num_cells_x, out.num_cells_y, out.num_cells_z, gpu_compute_stream());
+      out.num_cells_x, out.num_cells_y, out.num_cells_z, sim_time, cdi_enabled,
+      corpse_persistence, gpu_compute_stream());
   gpu_sync_compute();
   gpu_check_error("spatial_hash_build_kernel");
 

@@ -922,15 +922,18 @@ void test_spatial_hash() {
   DeviceBuffer<double> y(agents);
   DeviceBuffer<double> z(agents);
   DeviceBuffer<int> state(agents);
+  DeviceBuffer<double> death_time(agents);
   DeviceBuffer<int> keys(agents);
   DeviceBuffer<int> sorted(agents);
   x.upload(std::vector<double>{0.0, 1.0, 3.999, 2.0, -1.0, 2.0});
   y.upload(std::vector<double>{0.0, 1.0, 3.999, 0.0, 5.0, 0.0});
   z.upload(std::vector<double>{0.0, 1.0, 3.999, 3.0, 4.0, 0.0});
   state.upload(std::vector<int>{0, 0, 0, 0, 0, 3});
+  death_time.upload(std::vector<double>(agents, -1.0));
   gutibm::gpu::launch_spatial_hash_build_kernel(
-      x.data(), y.data(), z.data(), state.data(), keys.data(), sorted.data(),
-      agents, 0.0, 0.0, 0.0, 1.0, kNx, kNy, kNz, nullptr);
+      x.data(), y.data(), z.data(), state.data(), death_time.data(), keys.data(),
+      sorted.data(), agents, 0.0, 0.0, 0.0, 1.0, kNx, kNy, kNz, 0.0, 0,
+      300.0, nullptr);
   synchronize();
   const auto result = download(keys, agents);
   assert(result[0] == 0);
@@ -991,6 +994,7 @@ void test_mechanics_forces() {
   DeviceBuffer<double> dy(2);
   DeviceBuffer<double> dz(2);
   DeviceBuffer<int> state(2);
+  DeviceBuffer<double> death_time(2);
   DeviceBuffer<int> offsets(2);
   DeviceBuffer<int> sorted(2);
   x.upload(std::vector<double>{0.5, 1.5});
@@ -998,6 +1002,7 @@ void test_mechanics_forces() {
   z.upload(std::vector<double>{0.5, 0.5});
   radius.upload(std::vector<double>{0.5, 0.5});
   state.upload(std::vector<int>{0, 0});
+  death_time.upload(std::vector<double>{-1.0, -1.0});
   offsets.upload(std::vector<int>{0, 2});
   sorted.upload(std::vector<int>{0, 1});
   dx.upload(std::vector<double>(2, 0.0));
@@ -1005,7 +1010,8 @@ void test_mechanics_forces() {
   dz.upload(std::vector<double>(2, 0.0));
   const MechanicsLaunchParams parameters = mechanics_parameters();
   gutibm::gpu::launch_mechanics_forces_kernel(
-      x.data(), y.data(), z.data(), radius.data(), state.data(), offsets.data(),
+      x.data(), y.data(), z.data(), radius.data(), state.data(),
+      death_time.data(), offsets.data(),
       sorted.data(), dx.data(), dy.data(), dz.data(), 2, parameters, nullptr);
   synchronize();
   for (const double value : download(dx, 2)) assert(value == 0.0);
@@ -1013,14 +1019,16 @@ void test_mechanics_forces() {
   x.upload(std::vector<double>{0.5, 1.500001});
   dx.upload(std::vector<double>(2, 0.0));
   gutibm::gpu::launch_mechanics_forces_kernel(
-      x.data(), y.data(), z.data(), radius.data(), state.data(), offsets.data(),
+      x.data(), y.data(), z.data(), radius.data(), state.data(),
+      death_time.data(), offsets.data(),
       sorted.data(), dx.data(), dy.data(), dz.data(), 2, parameters, nullptr);
   synchronize();
   for (const double value : download(dx, 2)) assert(value == 0.0);
 
   x.upload(std::vector<double>{0.5, 0.8});
   gutibm::gpu::launch_mechanics_forces_kernel(
-      x.data(), y.data(), z.data(), radius.data(), state.data(), offsets.data(),
+      x.data(), y.data(), z.data(), radius.data(), state.data(),
+      death_time.data(), offsets.data(),
       sorted.data(), dx.data(), dy.data(), dz.data(), 2, parameters, nullptr);
   synchronize();
   const auto force = download(dx, 2);

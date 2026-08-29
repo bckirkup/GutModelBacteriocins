@@ -30,6 +30,8 @@ struct SpatialHashGpu {
 
 bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
                             Vec3 lo, Vec3 hi, Real cell_size,
+                            Real sim_time, Real corpse_persistence,
+                            int cdi_enabled,
                             SpatialHashGpu& out);
 
 }  // namespace gutibm

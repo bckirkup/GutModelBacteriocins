@@ -150,6 +150,8 @@ gutibm_add_test(scaling_benchmark test_scaling_benchmark.cpp LABELS "benchmark;s
 
 # Slower physics tests — still unit scope but excluded from fast CI shard.
 gutibm_add_test(mechanics test_mechanics.cpp LABELS "unit;slow")
+gutibm_add_test(mechanics_participation test_mechanics_participation.cpp
+  LABELS "unit")
 gutibm_add_test(immunity_escape test_immunity_escape.cpp LABELS "unit;slow")
 
 # ── Integration tests (simulation / I/O; separate CI job) ────────────────

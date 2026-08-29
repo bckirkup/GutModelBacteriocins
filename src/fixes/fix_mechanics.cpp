@@ -5,6 +5,7 @@
 #include "fix_mechanics.h"
 #include "simulation.h"
 #include "mechanics_gpu.h"
+#include "mechanics_participation.h"
 #include "spatial_hash_gpu.h"
 #include "dispatch.h"
 
@@ -14,13 +15,16 @@
 
 namespace gutibm {
 
+static_assert(kDeadStateValue == to_underlying(PhenoState::DEAD),
+              "GPU and host dead-state values must remain aligned");
+
 namespace {
 
 bool participates_in_mechanics(const Agent& a, Real sim_time,
                                const SimulationConfig& cfg) {
-  if (a.state != PhenoState::DEAD) return true;
-  return cfg.cell_bio.cdi.enabled && a.timers.death_time >= 0.0
-      && (sim_time - a.timers.death_time) < cfg.cell_bio.cdi.corpse_persistence;
+  return mechanics_participates(
+      to_underlying(a.state), a.timers.death_time, sim_time,
+      cfg.cell_bio.cdi.enabled ? 1 : 0, cfg.cell_bio.cdi.corpse_persistence);
 }
 
 bool is_active_corpse(const Agent& a) {
@@ -174,13 +178,18 @@ bool try_gpu_mechanics(Simulation& sim, const MechanicsConfig& cfg, Real dt) {
   SpatialHashGpu hash;
   const auto& dom = sim.domain();
   if (!gpu_build_spatial_hash(
-          ag, n, dom.lo(), dom.hi(), dom.spatial_hash().cell_size(), hash)) {
+          ag, n, dom.lo(), dom.hi(), dom.spatial_hash().cell_size(), sim.time(),
+          sim.config().cell_bio.cdi.corpse_persistence,
+          sim.config().cell_bio.cdi.enabled ? 1 : 0, hash)) {
     return false;
   }
 
   Int clamp_count = 0;
   if (!gpu_run_mechanics(ag, n, hash, dom, cfg, dt,
-                         sim.config().vbf.viscosity, clamp_count)) {
+                         sim.config().vbf.viscosity, sim.time(),
+                         sim.config().cell_bio.cdi.corpse_persistence,
+                         sim.config().cell_bio.cdi.enabled ? 1 : 0,
+                         clamp_count)) {
     return false;
   }
 
