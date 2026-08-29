@@ -20,7 +20,12 @@ from typing import Any
 import h5py
 
 from .batch_config import apply_overrides
-from .path_utils import prepare_output_file, validate_input_path
+from .path_utils import (
+    PathValidationError,
+    validate_input_path,
+    validate_path_syntax,
+    write_json_file,
+)
 
 ARM_MATRIX: dict[str, dict[str, Any]] = {
     "A1": {
@@ -163,10 +168,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    output = prepare_output_file(path)
-    with output.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-        handle.write("\n")
+    write_json_file(path, payload)
 
 
 def _scale_config(base: dict[str, Any], scale: dict[str, Any]) -> dict[str, Any]:
@@ -258,6 +260,36 @@ def _read_provenance(path: Path) -> dict[str, Any]:
         return _read_hdf5_group(handle["run_provenance"])
 
 
+def _validated_binary_path(binary: Path) -> Path:
+    candidate = validate_path_syntax(binary).resolve()
+    if candidate.name != "gut_ibm":
+        raise PathValidationError("benchmark binary must be named gut_ibm")
+    if not candidate.is_relative_to(Path.cwd().resolve()):
+        raise PathValidationError(
+            f"benchmark binary must be under the working directory: {binary}"
+        )
+    return candidate
+
+
+def _validated_mpi_launcher(mpirun: str | None) -> str | None:
+    if mpirun is None:
+        return None
+    launcher = validate_path_syntax(mpirun).name
+    if launcher == "mpirun":
+        return "mpirun"
+    if launcher == "mpiexec":
+        return "mpiexec"
+    if launcher == "mpiexec.hydra":
+        return "mpiexec.hydra"
+    raise PathValidationError(f"unsupported MPI launcher: {mpirun}")
+
+
+def _validated_mpi_ranks(mpi_ranks: int) -> str:
+    if not 1 <= mpi_ranks <= 4096:
+        raise ValueError("mpi_ranks must be between 1 and 4096")
+    return str(mpi_ranks)
+
+
 def _run_pass(
     pass_name: str,
     profile_steps: bool,
@@ -272,9 +304,17 @@ def _run_pass(
     config["profile_steps"] = profile_steps
     config["hdf5_file"] = str(hdf5_path.resolve())
     _write_json(config_path, config)
-    command = [str(binary), str(config_path)]
-    if mpirun is not None:
-        command = [mpirun, "-np", str(mpi_ranks), *command]
+    config_argument = str(config_path)
+    if mpirun is None:
+        command = ["./gut_ibm", config_argument]
+    else:
+        command = [
+            mpirun,
+            "-np",
+            _validated_mpi_ranks(mpi_ranks),
+            "./gut_ibm",
+            config_argument,
+        ]
     started = time.monotonic()
     completed = subprocess.run(command, cwd=binary.parent, check=False)
     wall_seconds = time.monotonic() - started
@@ -322,7 +362,6 @@ def run_one_arm(
     """Run one arm/scale/seed with separate cost and profile passes."""
     manifest = _read_json(manifest_path)
     arm_info = manifest["arms"][arm]
-    output_dir.mkdir(parents=True, exist_ok=True)
     result_path = output_dir / f"{arm}_{scale}_seed{seed}.json"
     config = _read_json(Path(arm_info["configs"][scale]))
     config["seed"] = seed
@@ -359,6 +398,8 @@ def run_one_arm(
         _write_json(result_path, record)
         return result_path
 
+    binary = _validated_binary_path(binary)
+    mpirun = _validated_mpi_launcher(mpirun)
     passes: dict[str, Any] = {}
     for pass_name, profile_steps in (("cost", False), ("profile", True)):
         pass_config = copy.deepcopy(config)

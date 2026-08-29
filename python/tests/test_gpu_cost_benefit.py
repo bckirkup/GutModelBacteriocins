@@ -186,6 +186,7 @@ def test_partial_merge_marks_missing_records_without_filling_defaults(
 
 
 def test_runner_separates_cost_and_profile_passes(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
     base_path = tmp_path / "base.json"
     scale_path = tmp_path / "scale.json"
     _write_config(base_path, {"total_time": 60, "initial_strains": []})
@@ -217,7 +218,7 @@ def test_runner_separates_cost_and_profile_passes(tmp_path: Path, monkeypatch) -
         "A1",
         "1e5",
         55,
-        Path("/opt/gut_ibm"),
+        tmp_path / "gut_ibm",
         output_dir,
     )
     result = json.loads(result_path.read_text(encoding="utf-8"))
