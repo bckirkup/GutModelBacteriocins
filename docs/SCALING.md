@@ -47,6 +47,11 @@ chemistry_ms, biology_ms, hash_ms, rss_mb`.
 When `profile_steps` is enabled, rank 0 prints mean wall time per phase after
 `run()` completes:
 
+This flag also enables Green's-function kernel-evaluation counting. Counting is
+disabled otherwise, so unprofiled runs do not perform per-evaluation counter
+updates; the resulting total is stored in
+`run_provenance/green_function_kernel_evaluations`.
+
 ```
 Step profile (mean wall time per step, s):
   ghost_exchange=...
@@ -198,7 +203,8 @@ Additional tuning:
 
 - Set `hdf5.enabled: false` or all `hdf5.schedule.*` intervals to 0 during performance runs.
 - `adaptive_dt_enabled false` gives stable step times for benchmarking.
-- `profile_steps true` for hotspot identification; adds minor timer overhead.
+- `profile_steps true` for hotspot identification and kernel-count provenance;
+  measure its small instrumentation overhead when comparing wall times.
 - Barnes-Hut FMM is the supported far-field path; true higher-order FMM (#29) is
   not required for these benchmarks.
 

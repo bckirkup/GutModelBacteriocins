@@ -44,6 +44,12 @@ struct QSSAConfig {
   Real lumen_transfer_length = robin::kZeroTransferLength;
   // effective uses k_c = D_eff / length; free uses D_free / length.
   std::string lumen_transfer_basis = "effective";
+  Real image_series_relative_tolerance = 1.0e-10;
+  // In legacy mode, the unchanged corrected-mode default is interpreted as
+  // the historical three-shell reference rather than 512 wrong shells.
+  int image_series_max_shells = kDefaultImageSeriesMaxShells;
+  bool image_series_max_shells_explicit = false;
+  std::string image_series_mode = "corrected";
   Real nutrient_cutoff  = 50.0e-6;    // 50 um for nutrient depletion zones
 
   // Bacteriocin source parameters
@@ -84,7 +90,7 @@ class QSSASolver {
   QSSASolver() = default;
 
   void init(const QSSAConfig& cfg, const Domain& domain,
-            const AdvectionField& adv);
+            const AdvectionField& adv, bool profile_steps = false);
 
   // Compute steady-state bacteriocin field from current toxin sources
   // and deposit onto chemical field grid

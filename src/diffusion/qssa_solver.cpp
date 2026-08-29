@@ -23,6 +23,7 @@
 #include <limits>
 #include <numbers>
 #include <numeric>
+#include <iostream>
 #include <type_traits>
 #ifdef GUTIBM_MPI
 #include <mpi.h>
@@ -38,6 +39,14 @@ namespace {
 constexpr Real k_ln2 = std::numbers::ln2;
 
 Int toxin_sample_index(ReceptorType target);
+
+int image_series_shells(const QSSAConfig& cfg) {
+  if (cfg.image_series_mode == "pre_fix_duplicated_reflection"
+      && !cfg.image_series_max_shells_explicit) {
+    return kHistoricalLegacyImageSeriesShells;
+  }
+  return cfg.image_series_max_shells;
+}
 
 struct FarFieldGridContext {
   const Domain& domain;
@@ -217,6 +226,11 @@ GreensFunctionParams weighted_avg_params(
   avg_params.lumen_transfer_length = cfg.lumen_transfer_length;
   avg_params.lumen_transfer_basis_free = cfg.lumen_transfer_basis == "free";
   avg_params.robin_cutoff = cfg.toxin_cutoff;
+  avg_params.image_series_relative_tolerance =
+      cfg.image_series_relative_tolerance;
+  avg_params.image_series_max_shells = image_series_shells(cfg);
+  avg_params.image_series_legacy_reflections =
+      cfg.image_series_mode == "pre_fix_duplicated_reflection";
   return avg_params;
 }
 
@@ -284,12 +298,14 @@ bool try_gpu_near_field(const Domain& domain,
                         Int toxin_species_idx,
                         ChemicalFieldGpu* chem_gpu,
                         bool defer_host_sync,
-                        uint64_t* cap_hits) {
+                        uint64_t* cap_hits,
+                        uint64_t* kernel_evaluations) {
   if (chem_gpu == nullptr || !chem_gpu->active()) return false;
   double* d_conc = chem_gpu->conc_device(toxin_species_idx);
   if (d_conc == nullptr) return false;
   if (!gpu_superpose_to_device(domain, adv, sources, params, strength_factors,
-                               d_conc, cutoff_radius, cap_hits)) {
+                               d_conc, cutoff_radius, cap_hits,
+                               kernel_evaluations)) {
     return false;
   }
   if (!defer_host_sync) {
@@ -311,14 +327,21 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
                                       ChemicalFieldGpu* chem_gpu,
                                       bool defer_host_sync) {
   uint64_t gpu_cap_hits = 0;
+  uint64_t gpu_kernel_evaluations = 0;
+  uint64_t* kernel_evaluations = gf.kernel_evaluation_counting_enabled()
+      ? &gpu_kernel_evaluations
+      : nullptr;
   const std::vector<size_t> fallback = robin_host_fallback_sources(
       domain, sources, params);
   if (fallback.empty()) {
     if (try_gpu_near_field(
             domain, adv, sources, params, strength_factors, cutoff_radius,
             chem, toxin_species_idx, chem_gpu, defer_host_sync,
-            &gpu_cap_hits)) {
+            &gpu_cap_hits, kernel_evaluations)) {
       gf.add_image_series_cap_hits(gpu_cap_hits);
+      if (kernel_evaluations != nullptr) {
+        gf.add_kernel_evaluations(gpu_kernel_evaluations);
+      }
       return true;
     }
   } else if (gpu_runtime_enabled()) {
@@ -344,7 +367,7 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
     if (try_gpu_near_field(
             domain, adv, gpu_sources, gpu_params, gpu_strengths,
             cutoff_radius, chem, toxin_species_idx, chem_gpu,
-            true, &gpu_cap_hits)) {
+            true, &gpu_cap_hits, kernel_evaluations)) {
       std::vector<Real> host_grid;
       gf.superpose_to_grid(
           host_sources, host_params, host_strengths, host_grid,
@@ -357,6 +380,9 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
       }
       chem_gpu->sync_species_concentrations_to_device(chem, toxin_species_idx);
       gf.add_image_series_cap_hits(gpu_cap_hits);
+      if (kernel_evaluations != nullptr) {
+        gf.add_kernel_evaluations(gpu_kernel_evaluations);
+      }
       gf.add_robin_host_fallback_sources(fallback.size());
       return true;
     }
@@ -387,6 +413,11 @@ void collect_microcin_sources(const AgentPool& agents,
       gfp.lumen_transfer_length = cfg.lumen_transfer_length;
       gfp.lumen_transfer_basis_free = cfg.lumen_transfer_basis == "free";
       gfp.robin_cutoff = cfg.toxin_cutoff;
+      gfp.image_series_relative_tolerance =
+          cfg.image_series_relative_tolerance;
+      gfp.image_series_max_shells = image_series_shells(cfg);
+      gfp.image_series_legacy_reflections =
+          cfg.image_series_mode == "pre_fix_duplicated_reflection";
       const Real protease_decay = (protease.enabled
                                    && bi.protease_half_life > 0.0)
           ? k_ln2 / bi.protease_half_life : 0.0;
@@ -475,12 +506,20 @@ void zero_species_field(ChemicalField& chem, Int species_idx) {
 }  // namespace
 
 void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
-                       const AdvectionField& adv) {
+                       const AdvectionField& adv, bool profile_steps) {
   cfg_    = cfg;
   domain_ = &domain;
   adv_    = &adv;
   gf_.init(domain, adv);
+  gf_.set_kernel_evaluation_counting(profile_steps);
   gf_.reset_image_series_cap_hits();
+  gf_.reset_kernel_evaluations();
+  if (cfg.image_series_mode == "pre_fix_duplicated_reflection") {
+    std::cerr
+        << "WARNING: image_series_mode=pre_fix_duplicated_reflection is a "
+           "benchmark-only cost reference and produces a physically wrong "
+           "field; do not use it for science runs.\n";
+  }
 }
 
 void QSSASolver::solve_lumped_bacteriocin_fields(
@@ -542,6 +581,11 @@ void QSSASolver::solve_bacteriocin_field(
     param.lumen_transfer_length = cfg_.lumen_transfer_length;
     param.lumen_transfer_basis_free = cfg_.lumen_transfer_basis == "free";
     param.robin_cutoff = cfg_.toxin_cutoff;
+    param.image_series_relative_tolerance =
+        cfg_.image_series_relative_tolerance;
+    param.image_series_max_shells = image_series_shells(cfg_);
+    param.image_series_legacy_reflections =
+        cfg_.image_series_mode == "pre_fix_duplicated_reflection";
   }
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
@@ -652,6 +696,11 @@ void QSSASolver::solve_all_bacteriocin_fields(
     param.lumen_transfer_length = cfg_.lumen_transfer_length;
     param.lumen_transfer_basis_free = cfg_.lumen_transfer_basis == "free";
     param.robin_cutoff = cfg_.toxin_cutoff;
+    param.image_series_relative_tolerance =
+        cfg_.image_series_relative_tolerance;
+    param.image_series_max_shells = image_series_shells(cfg_);
+    param.image_series_legacy_reflections =
+        cfg_.image_series_mode == "pre_fix_duplicated_reflection";
   }
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);

@@ -23,12 +23,17 @@
 
 #include "types.h"
 #include "robin_correction_table.h"
+#include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <utility>
 #include <vector>
 
 namespace gutibm {
+
+inline constexpr int kDefaultImageSeriesMaxShells = 512;
+inline constexpr int kHistoricalLegacyImageSeriesShells = 3;
 
 class Domain;
 class AdvectionField;
@@ -44,6 +49,10 @@ struct GreensFunctionParams {
   Real lumen_transfer_length = robin::kZeroTransferLength;
   bool lumen_transfer_basis_free = false;
   Real robin_cutoff = robin::kDefaultCutoff;
+  Real image_series_relative_tolerance = 1.0e-10;
+  int image_series_max_shells = kDefaultImageSeriesMaxShells;
+  bool image_series_max_shells_explicit = false;
+  bool image_series_legacy_reflections = false;
 
   // NOTE: bacteriocin pI classification lives in a single source of truth,
   // `classify_by_pI()` in src/genome/plasmid.h (pI > 8.5 → CORE, pI < 7.0 →
@@ -103,14 +112,33 @@ class GreensFunction {
   uint64_t robin_host_fallback_sources() const {
     return robin_host_fallback_sources_;
   }
+  uint64_t kernel_evaluations() const {
+    return std::accumulate(kernel_evaluations_by_thread_.begin(),
+                           kernel_evaluations_by_thread_.end(),
+                           uint64_t{0});
+  }
+  void set_kernel_evaluation_counting(bool enabled);
+  bool kernel_evaluation_counting_enabled() const {
+    return kernel_evaluation_counting_enabled_;
+  }
   void add_image_series_cap_hits(uint64_t count) const {
     image_series_cap_hits_ += count;
+  }
+  void add_kernel_evaluations(uint64_t count) const {
+    if (kernel_evaluation_counting_enabled_
+        && !kernel_evaluations_by_thread_.empty()) {
+      kernel_evaluations_by_thread_[0] += count;
+    }
   }
   void reset_image_series_cap_hits() {
     image_series_cap_hits_ = 0;
   }
   void add_robin_host_fallback_sources(uint64_t count) const {
     robin_host_fallback_sources_ += count;
+  }
+  void reset_kernel_evaluations() {
+    std::fill(kernel_evaluations_by_thread_.begin(),
+              kernel_evaluations_by_thread_.end(), uint64_t{0});
   }
 
  private:
@@ -133,6 +161,8 @@ class GreensFunction {
   mutable uint64_t image_series_cap_hits_ = 0;
   mutable uint64_t robin_direct_evaluations_ = 0;
   mutable uint64_t robin_host_fallback_sources_ = 0;
+  bool kernel_evaluation_counting_enabled_ = false;
+  mutable std::vector<uint64_t> kernel_evaluations_by_thread_;
 };
 
 }  // namespace gutibm

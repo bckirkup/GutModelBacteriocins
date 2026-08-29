@@ -43,6 +43,9 @@ struct GfSourceParams {
   double robin_cutoff;
   int lumen_transfer_basis_free;
   int robin_table_index;
+  double image_series_relative_tolerance;
+  int image_series_max_shells;
+  int image_series_legacy_reflections;
 };
 
 struct VbfLaunchParams {
