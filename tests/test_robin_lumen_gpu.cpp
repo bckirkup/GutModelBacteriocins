@@ -18,6 +18,23 @@
 
 using namespace gutibm;
 
+#ifdef GUTIBM_CUDA
+namespace {
+
+Real max_relative_error(const std::vector<Real>& expected,
+                        const std::vector<Real>& actual) {
+  Real maximum = 0.0;
+  for (size_t i = 0; i < expected.size(); ++i) {
+    const Real denominator = std::max(std::abs(expected[i]), 1.0e-30);
+    maximum = std::max(
+        maximum, std::abs(expected[i] - actual[i]) / denominator);
+  }
+  return maximum;
+}
+
+}  // namespace
+#endif
+
 int main() {
   std::cout << "=== Robin Lumen-Boundary GPU Parity Test ===\n";
   const int gpu_status = test::require_gpu("robin_lumen_gpu");
@@ -79,12 +96,7 @@ int main() {
     std::cerr << "GPU Robin Green's-function evaluation failed\n";
     return 1;
   }
-  Real maximum = 0.0;
-  for (size_t i = 0; i < cpu_grid.size(); ++i) {
-    const Real denominator = std::max(std::abs(cpu_grid[i]), 1.0e-30);
-    maximum = std::max(
-        maximum, std::abs(cpu_grid[i] - gpu_grid[i]) / denominator);
-  }
+  Real maximum = max_relative_error(cpu_grid, gpu_grid);
   if (!(maximum < 1.0e-4)) {
     std::cerr << "Robin CPU/GPU mismatch: " << maximum << "\n";
     return 1;
@@ -95,7 +107,7 @@ int main() {
       {145.0e-6, 105.0e-6, 95.0e-6},
       {85.0e-6, 95.0e-6, 10.0e-6 - 1.0e-9},
       {145.0e-6, 105.0e-6, 10.0e-6 + 1.0e-9}};
-  const std::vector<GreensFunctionParams> near_wall_params(
+  const std::vector near_wall_params(
       near_wall_sources.size(), params.front());
   gpu_config.enabled = false;
   gpu_set_config(gpu_config);
@@ -110,12 +122,7 @@ int main() {
     std::cerr << "Robin near-wall host fallback was not exercised\n";
     return 1;
   }
-  maximum = 0.0;
-  for (size_t i = 0; i < cpu_grid.size(); ++i) {
-    const Real denominator = std::max(std::abs(cpu_grid[i]), 1.0e-30);
-    maximum = std::max(
-        maximum, std::abs(cpu_grid[i] - gpu_grid[i]) / denominator);
-  }
+  maximum = max_relative_error(cpu_grid, gpu_grid);
   if (!(maximum < 1.0e-4)) {
     std::cerr << "Near-wall Robin CPU/GPU mismatch: " << maximum << "\n";
     return 1;
@@ -139,12 +146,7 @@ int main() {
     std::cerr << "GPU sealed Green's-function evaluation failed\n";
     return 1;
   }
-  maximum = 0.0;
-  for (size_t i = 0; i < cpu_grid.size(); ++i) {
-    const Real denominator = std::max(std::abs(cpu_grid[i]), 1.0e-30);
-    maximum = std::max(
-        maximum, std::abs(cpu_grid[i] - gpu_grid[i]) / denominator);
-  }
+  maximum = max_relative_error(cpu_grid, gpu_grid);
   if (!(maximum < 1.0e-4)) {
     std::cerr << "Sealed CPU/GPU mismatch: " << maximum << "\n";
     return 1;

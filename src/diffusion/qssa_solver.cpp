@@ -988,6 +988,10 @@ void QSSASolver::solve_bacteriocin_field_fmm(
         defer_sync);
   }
   if (near_on_gpu) {
+    if (chem_gpu == nullptr) {
+      throw SimulationError(
+          "GPU near-field evaluation succeeded without a GPU chemical field");
+    }
     chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
     for (Int c = 0; c < ncells; ++c) {
       toxin_conc[static_cast<size_t>(c)] = chem.conc(toxin_species_idx, c);
