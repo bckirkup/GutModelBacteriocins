@@ -128,13 +128,13 @@ void test_gpu_corpse_match_cpu(Real death_time, bool expect_displacement) {
 
   Simulation sim_cpu =
       make_two_agent_sim(pos_a, pos_b, mcfg, false, 0.01, cdi);
-  mark_corpse(sim_cpu, 0.0);
+  mark_corpse(sim_cpu, death_time);
   FixMechanics fix_cpu(sim_cpu, mcfg);
   fix_cpu.compute(1.0);
 
   Simulation sim_gpu =
       make_two_agent_sim(pos_a, pos_b, mcfg, true, 0.01, cdi);
-  mark_corpse(sim_gpu, 0.0);
+  mark_corpse(sim_gpu, death_time);
   assert(sim_gpu.gpu_active());
   FixMechanics fix_gpu(sim_gpu, mcfg);
   fix_gpu.compute(1.0);
