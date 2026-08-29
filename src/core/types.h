@@ -22,11 +22,7 @@ using Int     = int;
 using TagID   = int64_t;
 using Vec3    = std::array<Real, 3>;
 
-#ifdef __CUDACC__
-static constexpr Real PI        = 3.14159265358979323846;
-#else
 static constexpr Real PI        = std::numbers::pi;
-#endif
 static constexpr Real BOLTZMANN = 1.380649e-23;    // J/K
 static constexpr Real AVOGADRO  = 6.02214076e23;
 
@@ -80,8 +76,6 @@ enum class PhenoState : uint8_t {
   SOS_INDUCED  = 2,   // about to lyse
   DEAD         = 3
 };
-
-inline constexpr int kDeadStateValue = 3;
 
 // C++17 polyfill for std::to_underlying (C++23)
 template <typename E>

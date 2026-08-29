@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "mechanics_participation.h"
+#include "types.h"
 
 #include <cassert>
 #include <iostream>

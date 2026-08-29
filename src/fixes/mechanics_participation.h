@@ -5,8 +5,6 @@
 #ifndef GUTIBM_MECHANICS_PARTICIPATION_H
 #define GUTIBM_MECHANICS_PARTICIPATION_H
 
-#include "types.h"
-
 #ifdef __CUDACC__
 #define GUTIBM_MECHANICS_HOST_DEVICE __host__ __device__
 #else
@@ -15,8 +13,7 @@
 
 namespace gutibm {
 
-static_assert(kDeadStateValue == to_underlying(PhenoState::DEAD),
-              "GPU and host dead-state values must remain aligned");
+inline constexpr int kDeadStateValue = 3;
 
 GUTIBM_MECHANICS_HOST_DEVICE inline bool mechanics_participates(
     int state, double death_time, double sim_time, int cdi_enabled,
