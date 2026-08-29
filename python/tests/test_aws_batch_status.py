@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timezone
 
 import pytest
+
 from gut_ibm_tools.aws_batch_status import (
     evaluate_usefulness,
     fetch_job_status,

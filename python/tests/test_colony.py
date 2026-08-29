@@ -6,6 +6,7 @@ import sys
 
 import numpy as np
 import pytest
+
 from gut_ibm_tools.colony import ColonyConfig, build_colony_catalog, dbscan_colonies
 from gut_ibm_tools.colony import main as colony_main
 from gut_ibm_tools.hdf5_reader import GutIBMData

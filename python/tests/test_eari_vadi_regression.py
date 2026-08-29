@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from gut_ibm_tools.hdf5_reader import GutIBMData
 from gut_ibm_tools.validation_regression import (
     FISH_TARGETS,

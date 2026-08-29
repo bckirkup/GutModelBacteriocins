@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import gut_ibm_tools.gpu_cost_benefit as benchmark
 import pytest
+
+import gut_ibm_tools.gpu_cost_benefit as benchmark
 from gut_ibm_tools.gpu_cost_benefit import (
     ARM_MATRIX,
     generate_configs,

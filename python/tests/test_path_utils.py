@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from gut_ibm_tools.path_utils import (
     PathValidationError,
     prepare_output_directory,

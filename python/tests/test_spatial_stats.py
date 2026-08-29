@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+
 from gut_ibm_tools.spatial_stats import (
     SpatialStatsConfig,
     compute_spatial_stats,
