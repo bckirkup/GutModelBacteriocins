@@ -658,8 +658,8 @@ void test_superpose() {
       x.data() + 1, y.data() + 1, z.data() + 1, params.data() + 1, two.data(),
       nullptr, domain, advection, 1, 1, 1, 1, nullptr);
   gutibm::gpu::launch_superpose_kernel(
-      x.data(), y.data(), z.data(), params.data(), combined.data(), domain,
-      nullptr, advection, 2, 1, 1, 1, nullptr);
+      x.data(), y.data(), z.data(), params.data(), combined.data(), nullptr,
+      domain, advection, 2, 1, 1, 1, nullptr);
   synchronize();
   const auto one_host = download(one, kCells);
   const auto two_host = download(two, kCells);
