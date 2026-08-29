@@ -94,8 +94,7 @@ double bisect_pole_free_root(double left, double right, double f_left,
 void reject_unrepresented_imaginary_mode(double p, double q, double c_lo,
                                          double c_hi, double height) {
   constexpr int kImaginarySamples = 4096;
-  double previous_y = 1.0e-12;
-  double previous = imaginary_residual(previous_y, p, q);
+  double previous = imaginary_residual(1.0e-12, p, q);
   for (int index = 1; index <= kImaginarySamples; ++index) {
     const double y = 80.0 * index / static_cast<double>(kImaginarySamples);
     const double value = imaginary_residual(y, p, q);
@@ -106,10 +105,8 @@ void reject_unrepresented_imaginary_mode(double p, double q, double c_lo,
           + ", c_hi=" + std::to_string(c_hi)
           + ", H=" + std::to_string(height) + ")");
     }
-    previous_y = y;
     previous = value;
   }
-  (void)previous_y;
 }
 
 void validate_root(double x, double p, double q, double c_lo, double c_hi,

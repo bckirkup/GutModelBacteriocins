@@ -835,9 +835,7 @@ bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::stri
   if (key == "toxin.lumen_transfer_length"
       || key == "lumen_transfer_length") {
     const Real transfer_length = parse_config_real(key, val);
-    if (!(transfer_length > 0.0)
-        || (std::isinf(transfer_length) && transfer_length < 0.0)
-        || std::isnan(transfer_length)) {
+    if (!(transfer_length > 0.0)) {
       throw ConfigError(
           "config key '" + std::string(key)
           + "' must be positive and finite, or +inf to disable Robin transfer");

@@ -170,8 +170,8 @@ estimates. Those are small-bowel measurements with glucose probes; the colon is
 less stirred and carries an outer mucus layer, so the default is deliberately
 2–3× the jejunal value and is documented as **colon-adjusted, not measured**.
 
-`Bi = 0.3 / 1 / 5` (δ ≈ 600 / 100 / 40 µm) puts near-lumen toxin at ≈0.75× /
-0.45× / 0.2× the sealed value, so `δ` must appear in the sensitivity sweep for
+`Bi = 0.3 / 2 / 5` (effective basis, so δ = H/Bi ≈ 333 / 50 / 20 µm) puts
+near-lumen toxin at ≈0.75× / 0.45× / 0.2× the sealed value, so `δ` must appear in the sensitivity sweep for
 any lethal-core/halo or comet-tail claim regardless of the default.
 
 At low screening, `|Delta|/C_robin` rises to `2.4` at `kH=5e-3`, a mild
