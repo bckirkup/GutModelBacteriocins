@@ -2,6 +2,7 @@
 #include "gpu_test_support.h"
 #include "metabolic_mode.h"
 #include "receptor_utils.h"
+#include "robin_correction_table.h"
 #include "vbf_carbon_sink.h"
 
 #include <algorithm>
@@ -653,13 +654,13 @@ void test_superpose() {
   combined.upload(std::vector<double>(kCells, 0.0));
   gutibm::gpu::launch_superpose_kernel(
       x.data(), y.data(), z.data(), params.data(), one.data(), nullptr, domain,
-      advection, 1, 1, 1, 1, nullptr);
+      advection, 1, 1, 1, 1, 0, nullptr, nullptr);
   gutibm::gpu::launch_superpose_kernel(
       x.data() + 1, y.data() + 1, z.data() + 1, params.data() + 1, two.data(),
-      nullptr, domain, advection, 1, 1, 1, 1, nullptr);
+      nullptr, domain, advection, 1, 1, 1, 1, 0, nullptr, nullptr);
   gutibm::gpu::launch_superpose_kernel(
       x.data(), y.data(), z.data(), params.data(), combined.data(), nullptr,
-      domain, advection, 2, 1, 1, 1, nullptr);
+      domain, advection, 2, 1, 1, 1, 0, nullptr, nullptr);
   synchronize();
   const auto one_host = download(one, kCells);
   const auto two_host = download(two, kCells);
@@ -670,6 +671,43 @@ void test_superpose() {
   const int near_source = kNx * kNy + kNx;
   const int far_source = kNx * kNy + kNx + 3;
   assert(one_host[near_source] > one_host[far_source]);
+}
+
+void test_robin_table_index_guard() {
+  const DomainParams domain = domain_params();
+  const AdvectionParams advection = zero_advection();
+  DeviceBuffer<double> x(1);
+  DeviceBuffer<double> y(1);
+  DeviceBuffer<double> z(1);
+  DeviceBuffer<GfSourceParams> params(1);
+  DeviceBuffer<double> field(kCells);
+  DeviceBuffer<double> robin_table(gutibm::robin::kTableValueCount);
+  DeviceBuffer<unsigned int> index_error(1);
+  x.upload(std::vector<double>{1.5});
+  y.upload(std::vector<double>{1.5});
+  z.upload(std::vector<double>{1.5});
+  params.upload(std::vector<GfSourceParams>{{1.0, 1.0, 1.0, 0.0, 1.0,
+                                             1.0, 0, 5}});
+  robin_table.upload(std::vector<double>(
+      gutibm::robin::kTableValueCount, 0.0));
+  field.upload(std::vector<double>(kCells, 0.0));
+  index_error.upload(std::vector<unsigned int>{0});
+  gutibm::gpu::launch_superpose_kernel(
+      x.data(), y.data(), z.data(), params.data(), field.data(), nullptr,
+      domain, advection, 1, 1, 1, 1, 1, index_error.data(), nullptr, nullptr);
+  synchronize();
+  assert(download(index_error, 1)[0] != 0U);
+
+  params.upload(std::vector<GfSourceParams>{{1.0, 1.0, 1.0, 0.0, 1.0,
+                                             1.0, 0, 0}});
+  field.upload(std::vector<double>(kCells, 0.0));
+  index_error.upload(std::vector<unsigned int>{0});
+  gutibm::gpu::launch_superpose_kernel(
+      x.data(), y.data(), z.data(), params.data(), field.data(),
+      robin_table.data(), domain, advection, 1, 1, 1, 1, 1,
+      index_error.data(), nullptr, nullptr);
+  synchronize();
+  assert(download(index_error, 1)[0] == 0U);
 }
 
 void test_fmm_far_local() {
@@ -1108,6 +1146,8 @@ int main() {
   run_case("launch_shift_z_gradient", test_shift_z_gradient);
   run_case("launch_clamp_nonneg", test_clamp_nonneg);
   run_case("launch_superpose_kernel", test_superpose);
+  run_case("launch_superpose_kernel Robin table index guard",
+           test_robin_table_index_guard);
   run_case("launch_fmm_far_local_kernel", test_fmm_far_local);
   run_case("launch_vbf_coupling_kernel", test_vbf_coupling);
   run_case("launch_vbf_coupling_kernel implicit carbon sink",

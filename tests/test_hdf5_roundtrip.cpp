@@ -53,6 +53,8 @@ void assert_run_provenance(hid_t file,
   assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/termination_wall_seconds"));
   assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/robin_gpu_host_fallback_sources"));
+  assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/green_function_kernel_evaluations"));
   for (const char* phase : {
            "ghost_exchange_s", "spatial_hash_s", "biology_s", "chemistry_s",

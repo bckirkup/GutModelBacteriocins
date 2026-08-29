@@ -683,6 +683,11 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
           sim.qssa().gf().robin_direct_evaluations());
   write_scalar_dataset(fid, "run_provenance/robin_direct_mode_evaluations",
                        H5T_NATIVE_ULLONG, &robin_direct_evaluations);
+  const auto robin_host_fallback_sources =
+      static_cast<unsigned long long>(
+          sim.qssa().gf().robin_host_fallback_sources());
+  write_scalar_dataset(fid, "run_provenance/robin_gpu_host_fallback_sources",
+                       H5T_NATIVE_ULLONG, &robin_host_fallback_sources);
   const auto optional_env = [&fid](const char* name, const char* env_name) {
     if (const char* value = std::getenv(env_name);
         value != nullptr && value[0] != '\0') {
@@ -770,6 +775,12 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
         sim.neumann_image_series_cap_hits());
     write_scalar_dataset(fid, "run_provenance/neumann_image_series_cap_hits",
                          H5T_NATIVE_ULLONG, &cap_hits);
+    const auto robin_host_fallback_sources =
+        static_cast<unsigned long long>(
+            sim.qssa().gf().robin_host_fallback_sources());
+    write_scalar_dataset(
+        fid, "run_provenance/robin_gpu_host_fallback_sources",
+        H5T_NATIVE_ULLONG, &robin_host_fallback_sources);
     const auto kernel_evaluations = static_cast<unsigned long long>(
         sim.green_function_kernel_evaluations());
     write_scalar_dataset(

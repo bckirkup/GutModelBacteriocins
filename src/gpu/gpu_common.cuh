@@ -77,6 +77,8 @@ __device__ inline double concentration_bounded(const double src[3], const double
                                                const DomainParams& dom,
                                                const AdvectionParams& adv,
                                                const double* robin_tables,
+                                               int robin_table_count,
+                                               unsigned int* robin_index_error,
                                                unsigned long long* cap_hits,
                                                unsigned long long* kernel_evaluations) {
   double D_eff = p.diff_coeff / p.retardation;
@@ -130,8 +132,15 @@ __device__ inline double concentration_bounded(const double src[3], const double
     if (budget.forced_cap_hit) cap_hit = 1;
   }
   if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
-  if (p.robin_table_index >= 0 && robin_tables != nullptr
-      && robin::transfer_enabled(p.lumen_transfer_length)) {
+  if (robin::transfer_enabled(p.lumen_transfer_length)) {
+    if (p.robin_table_index < 0
+        || p.robin_table_index >= robin_table_count
+        || robin_tables == nullptr) {
+      if (robin_index_error != nullptr) {
+        atomicExch(robin_index_error, 1U);
+      }
+      return total > 0.0 ? total : 0.0;
+    }
     double dx = minimum_image_delta(
         tgt[0] - src[0], dom.extent[0], dom.periodic[0]);
     double dy = minimum_image_delta(
