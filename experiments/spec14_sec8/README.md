@@ -15,6 +15,13 @@ Run at `5fb4250`, serial, local, no code changes.
 | `analyze.py` | per-arm counts, events, termination cause, provenance SHA; paired producer − null |
 | `analyze_corrinoid.py` | per-level paired selection coefficient, kills per lysis, kills per division |
 
+The analysis scripts import `h5py`, which the system `python3` does not have.
+Run them with the venv the blueprint's maintenance step builds:
+
+```bash
+python/.venv311/bin/python experiments/spec14_sec8/analyze_corrinoid.py --run-root <campaign-root>
+```
+
 Run `analyze_corrinoid.py` from this directory; it imports helpers from
 `analyze.py` and `prepare_corrinoid.py` imports the shared config blocks from
 `prepare.py`, so neither is self-contained by design — the ladder must not be
