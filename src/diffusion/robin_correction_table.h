@@ -186,6 +186,9 @@ TableCache& global_table_cache();
 double robin_biot_number(double d_free, double d_eff, double height,
                          double lumen_transfer_length, TransferBasis basis);
 
+std::vector<double> robin_mode_roots(double height, double c_lo,
+                                     double c_hi, int mode_count);
+
 bool requires_direct_evaluation(double source_z, double target_z, double rho,
                                 double z_lo, double z_hi,
                                 double cell_radius);

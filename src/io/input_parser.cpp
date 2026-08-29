@@ -828,10 +828,21 @@ bool apply_advection_key(SimulationConfig& cfg, std::string_view key, const std:
 }
 
 bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
-  if (key == "toxin_cutoff")         { cfg.qssa.toxin_cutoff = parse_config_real(key, val); return true; }
+  if (key == "toxin_cutoff") {
+    cfg.qssa.toxin_cutoff = parse_positive_config_real(key, val);
+    return true;
+  }
   if (key == "toxin.lumen_transfer_length"
       || key == "lumen_transfer_length") {
-    cfg.qssa.lumen_transfer_length = parse_config_real(key, val);
+    const Real transfer_length = parse_config_real(key, val);
+    if (!(transfer_length > 0.0)
+        || (std::isinf(transfer_length) && transfer_length < 0.0)
+        || std::isnan(transfer_length)) {
+      throw ConfigError(
+          "config key '" + std::string(key)
+          + "' must be positive and finite, or +inf to disable Robin transfer");
+    }
+    cfg.qssa.lumen_transfer_length = transfer_length;
     return true;
   }
   if (key == "toxin.lumen_transfer_basis") {

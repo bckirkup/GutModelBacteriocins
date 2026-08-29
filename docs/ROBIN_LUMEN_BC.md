@@ -64,7 +64,7 @@ diffusive film transfer on top of free advective outflow.
 ## 4. Eigenmodes
 
 ```
-φ_n(z) = cos(β_n ζ) - (a/β_n) sin(β_n ζ),      ζ = z - z_lo
+φ_n(z) = cos(β_n ζ) + (a/β_n) sin(β_n ζ),      ζ = z - z_lo
 tan(β_n H) = (c_hi - c_lo) β_n / (β_n² + c_lo c_hi),
   c_lo = -a
 N_n = ∫₀^H φ_n(ζ)² dζ
@@ -73,11 +73,15 @@ N_n = ∫₀^H φ_n(ζ)² dζ
 C(r) = exp(U·(x - x_s)/(2D)) · (Q / 2πD) · Σ_n φ_n(ζ_s) φ_n(ζ_t) K₀(κ_n ρ) / N_n
 ```
 
-`ρ` is the lateral (xy) separation. The roots are found by bracket-and-bisect
-on each branch, with diagnostics including `c_lo`, `c_hi`, `Bi`, and `aH`.
-For these mixed signs, no imaginary root is present and branch zero is
-bracketed directly. The sealed reference is handled as a separate mode set;
-its exponential mode is described below.
+`ρ` is the lateral (xy) separation. The roots are enumerated by uniformly
+scanning the entire pole-free residual and bisecting each detected sign
+change, with diagnostics including `c_lo`, `c_hi`, `Bi`, and `aH`.
+Root generation enumerates the entire pole-free residual rather than a
+tangent-form branch bracket. Every accepted root is checked against a scaled
+residual bound; zero-mode detection is explicit, and an imaginary-branch sign
+change is rejected because the current kernel does not represent that
+exponential mode. The sealed reference is handled as a separate mode set; its
+exponential mode is described below.
 
 For the sealed reference, `c_lo = c_hi = +a`. When `a != 0`, beta zero is
 replaced by the imaginary mode `beta = i*a`, with
@@ -166,7 +170,7 @@ estimates. Those are small-bowel measurements with glucose probes; the colon is
 less stirred and carries an outer mucus layer, so the default is deliberately
 2–3× the jejunal value and is documented as **colon-adjusted, not measured**.
 
-`Bi = 0.3 / 2 / 5` (δ ≈ 600 / 100 / 40 µm) puts near-lumen toxin at ≈0.75× /
+`Bi = 0.3 / 1 / 5` (δ ≈ 600 / 100 / 40 µm) puts near-lumen toxin at ≈0.75× /
 0.45× / 0.2× the sealed value, so `δ` must appear in the sensitivity sweep for
 any lethal-core/halo or comet-tail claim regardless of the default.
 
