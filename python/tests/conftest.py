@@ -21,7 +21,6 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
     """Write a minimal Spec-4-compatible HDF5 file for tests."""
     rng = np.random.default_rng(42)
     nx, ny, nz = 4, 5, 1
-    ncells = nx * ny * nz
 
     with h5py.File(path, "w") as f:
         f.attrs["gutibm_version"] = 4
@@ -29,6 +28,12 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
         f.attrs["ny"] = ny
         f.attrs["nz"] = nz
         f.attrs["grid_dx"] = 5e-6
+        f.attrs["domain_lo_x"] = 0.0
+        f.attrs["domain_lo_y"] = 0.0
+        f.attrs["domain_lo_z"] = 0.0
+        f.attrs["domain_hi_x"] = 20e-6
+        f.attrs["domain_hi_y"] = 25e-6
+        f.attrs["domain_hi_z"] = 5e-6
         provenance = f.require_group("run_provenance")
         provenance.create_dataset("halt_reason_code", data=np.array(0, dtype=np.int32))
         provenance.create_dataset(
@@ -78,12 +83,19 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
             agents.create_dataset("z", data=z)
             agents.create_dataset("radius", data=np.full(n_agents, 0.5e-6))
             agents.create_dataset("biomass", data=np.full(n_agents, 1e-15))
+            agents.create_dataset(
+                "n_bi_loci",
+                data=np.where(np.isin(lineage_ids[:n_agents], [1, 2]), 2, 0),
+            )
             agents.create_dataset("mu_realized", data=np.full(n_agents, 5e-4))
             agents.create_dataset("lineage_id", data=lineage_ids[:n_agents])
 
             grid = f.require_group("grid").require_group(step_name)
-            btub = np.linspace(0.1, 2.0, ncells) ** (1 + 0.2 * step_idx)
-            grid.create_dataset("bacteriocin_BtuB", data=btub.reshape(nz, ny, nx))
+            x_profile = np.array([0.05, 0.15, 0.6, 3.0])
+            btub = np.broadcast_to(
+                x_profile, (nz, ny, nx)
+            ) ** (1 + 0.2 * step_idx)
+            grid.create_dataset("bacteriocin_BtuB", data=btub)
 
             summary = f.require_group("summary").require_group(step_name)
             summary.create_dataset("time", data=np.array(step_idx * 3600.0))

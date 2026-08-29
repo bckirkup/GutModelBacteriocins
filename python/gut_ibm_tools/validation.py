@@ -20,6 +20,36 @@ from .analysis import (
 from .hdf5_reader import GutIBMData
 
 
+def _toxin_source_reference(
+    agents: dict[str, np.ndarray],
+    grid_positions: np.ndarray,
+) -> np.ndarray:
+    """Choose a biomass-weighted producer reference with documented fallbacks.
+
+    Producer agents are identified by ``n_bi_loci > 0``.  If that field or a
+    producer population is unavailable, all agents are used.  With no agents,
+    the domain midpoint (the mean of the uniform cell centers) is used.
+    """
+    if len(agents.get("x", [])) == 0:
+        return np.mean(grid_positions, axis=0)
+
+    agent_positions = np.column_stack([
+        agents["x"], agents["y"], agents["z"],
+    ])
+    biomass = np.asarray(agents.get("biomass", np.ones(len(agent_positions))))
+    producer_mask = np.asarray(
+        agents.get("n_bi_loci", np.zeros(len(agent_positions))) > 0,
+        dtype=bool,
+    )
+    selected = producer_mask if np.any(producer_mask) else np.ones(
+        len(agent_positions), dtype=bool
+    )
+    weights = biomass[selected]
+    if len(weights) == 0 or not np.all(np.isfinite(weights)) or np.sum(weights) <= 0:
+        weights = np.ones(np.count_nonzero(selected))
+    return np.average(agent_positions[selected], axis=0, weights=weights)
+
+
 def validate_spatial_signatures(
     data: GutIBMData,
     step: str,
@@ -31,6 +61,13 @@ def validate_spatial_signatures(
     Retained metrics:
         monochromatic_score  – should be > 0.7
         comet_tail_ratio     – should be > 1.5
+        The comet-tail flow axis is positive x, the model's distal-flow
+        convention from ``AdvectionField::velocity``; it is not inferred from
+        HDF5 storage order.  Its reference is the biomass-weighted centroid of
+        producer agents, then all agents, then the domain midpoint when no
+        agents exist.  The x period is the domain extent because x is
+        periodic.  These reference and wrapping choices are part of the metric
+        definition.
     New exclusion-radius metrics:
         mean_exclusion_radius – mean over all types
         hopkins_statistic     – H > 0.7 → significantly clustered
@@ -39,6 +76,7 @@ def validate_spatial_signatures(
     """
     agents = data.get_agents(step)
     grid = data.get_grid(step)
+    expected_length = int(np.prod(data.grid_shape()))
 
     positions = np.column_stack([agents["x"], agents["y"], agents["z"]])
     types = agents["type"]
@@ -51,20 +89,37 @@ def validate_spatial_signatures(
         if k.startswith("bacteriocin_") and k != "bacteriocin_lumped"
     ]
     if bacteriocin_keys:
-        bacteriocin = sum(np.asarray(grid[k]).ravel() for k in bacteriocin_keys)
+        toxin_fields = []
+        for key in bacteriocin_keys:
+            field = np.asarray(grid[key]).ravel()
+            if len(field) != expected_length:
+                raise ValueError(
+                    f"flattened toxin field length {len(field)} for {key} "
+                    f"does not match grid size {expected_length}"
+                )
+            toxin_fields.append(field)
+        bacteriocin = np.sum(toxin_fields, axis=0)
     else:
         bacteriocin = grid.get(
             "bacteriocin_BtuB",
             grid.get("bacteriocin_lumped", np.zeros(1)),
         )
         bacteriocin = np.asarray(bacteriocin).ravel()
-    n = len(bacteriocin)
-    grid_pos = np.column_stack([
-        np.linspace(0, 1e-3, n),
-        np.zeros(n),
-        np.zeros(n),
-    ])
-    comet = comet_tail_index(grid_pos, bacteriocin)
+    if len(bacteriocin) != expected_length:
+        raise ValueError(
+            "flattened toxin field length "
+            f"{len(bacteriocin)} does not match grid size {expected_length}"
+        )
+    grid_pos = data.grid_cell_centers()
+    reference = _toxin_source_reference(agents, grid_pos)
+    period = data.grid_periods()[0]
+    comet = comet_tail_index(
+        grid_pos,
+        bacteriocin,
+        flow_direction=np.array([1.0, 0.0, 0.0]),
+        reference=reference,
+        period=period,
+    )
 
     # --- new exclusion-radius metrics ------------------------------------
     unique_types = np.unique(types)
@@ -85,7 +140,13 @@ def validate_spatial_signatures(
     nnd_mean = float(np.mean(all_nnd)) if len(all_nnd) > 0 else 0.0
 
     # Enhanced comet-tail asymmetry (concentration-weighted)
-    comet_asym = comet_tail_asymmetry_index(grid_pos, bacteriocin, flow_direction=0)
+    comet_asym = comet_tail_asymmetry_index(
+        grid_pos,
+        bacteriocin,
+        flow_direction=0,
+        reference=reference,
+        period=period,
+    )
 
     return {
         "monochromatic_score": mono_score,

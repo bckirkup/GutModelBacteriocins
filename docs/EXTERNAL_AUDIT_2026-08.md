@@ -33,7 +33,7 @@ requires experiments, not arbitration.
 | 5 | GPU mechanics omits CDI corpses | Confirmed **and understated**. `cdi.enabled` defaults true with 300 s persistence, so this is not a narrow guard: every GPU run in which any cell dies diverges from CPU for five simulated minutes per death |
 | 6 | Checkpoint restart does not restore RNG state | Confirmed, low novelty — `docs/BRANCHING_FROM_CHECKPOINTS.md` already states a fork is a population-state continuation, not a bit-identical restart |
 | 7 | Post-division SOS hazard applies to both parent and daughter | Confirmed: 1.98% per division event against a documented 1% "per division". An estimand ambiguity, cheap to settle |
-| 8 | Comet-tail analysis fabricates geometry | Confirmed, and the most damaging analysis defect. Coordinates are assigned by `linspace` over flattened storage order, so every comet-tail number produced to date is a function of HDF5 layout, not of flow |
+| 8 | Comet-tail analysis fabricates geometry | **Confirmed and fixed.** Validation now uses physical HDF5 cell centers in `(z, y, x)` flattening order, the model's positive-x distal-flow convention, and an explicit producer reference with periodic minimum-image wrapping |
 | 9 | Resident-retention estimator measures lineage-label persistence | Confirmed |
 | 10 | Flagship diversity scenario has no immigration block and no grid output | Confirmed, both halves, against a README that describes periodic lumen immigration |
 | 11 | Taylor–Aris dispersion toggle is unused | Confirmed: zero callers, defaulted on, documented as active |
@@ -42,6 +42,28 @@ requires experiments, not arbitration.
 | 14 | Provenance and compiler contract incomplete | Confirmed: git SHA falls back to `unknown-git-unavailable`, and `<format>` is used widely while the README never states the GCC 13+ requirement |
 | 15 | Python manifest writes are non-atomic | Confirmed: destination opened in `"w"`, no temp file, no fsync, no retained generation |
 | 16 | Ethanolamine absolute units off by 1000 | Confirmed, already recorded in `docs/UNITS_AUDIT.md`. `eut_km` is off by the same factor, so the Monod penalty is numerically unchanged — labels and coupling only |
+
+### Claim 8 measurements and resolution
+
+The shipped `examples/eari_vadi_validation` run at `step_000015` was measured
+with both the former fabricated line and physical HDF5 cell centers:
+
+| Geometry and reference | `comet_tail_ratio` | `comet_tail_asymmetry` |
+|---|---:|---:|
+| Fabricated geometry | 0.9529 | 0.9927 |
+| Real geometry, domain-midpoint reference | 0.7071 | 0.6040 |
+| Real geometry, producer reference with minimum-image wrapping | 0.6464 | 0.5923 |
+
+The synthetic oracle makes the geometry defect especially clear: the same
+downstream-elongated plume scores `1.0000` / `1.0005` with fabricated
+coordinates, but `5.9998` / `35.62` with real coordinates.  Validation now
+uses voxel centers derived from HDF5 domain metadata, the model's positive-x
+distal-flow convention from `AdvectionField::velocity`, and a documented
+producer-reference fallback chain with the x-domain period for wrapping.
+
+With real geometry that shipped example shows **no** comet tail (ratio < 1),
+so the `min: 1.5` target has never been met by a real-geometry measurement and
+remains unvalidated — we are recording that, not changing the target.
 
 ## Where we corrected the report
 

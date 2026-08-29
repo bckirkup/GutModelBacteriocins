@@ -179,6 +179,61 @@ class GutIBMData:
             out[name] = arr.ravel()
         return out
 
+    def grid_shape(self) -> tuple[int, int, int]:
+        """Return the grid shape as ``(nx, ny, nz)``."""
+        assert self._file is not None
+        return self._nx, self._ny, self._nz
+
+    def _grid_origins_and_spacings(self) -> tuple[np.ndarray, np.ndarray]:
+        """Return physical grid origins and cell spacings for each axis."""
+        assert self._file is not None
+        legacy_dx = float(self._file.attrs.get("grid_dx", 0.0))
+        fallback_spacings = np.array([
+            float(self._file.attrs.get(name, legacy_dx))
+            for name in ("grid_dx_x", "grid_dx_y", "grid_dx_z")
+        ])
+        origins: list[float] = []
+        spacings: list[float] = []
+        for axis, (axis_name, cell_count) in enumerate(
+            zip(("x", "y", "z"), (self._nx, self._ny, self._nz))
+        ):
+            lo = self._file.attrs.get(f"domain_lo_{axis_name}")
+            hi = self._file.attrs.get(f"domain_hi_{axis_name}")
+            origin = 0.0 if lo is None else float(lo)
+            spacing = fallback_spacings[axis]
+            if lo is not None and hi is not None and cell_count > 0:
+                spacing = (float(hi) - float(lo)) / cell_count
+            origins.append(origin)
+            spacings.append(spacing)
+        return np.asarray(origins, dtype=float), np.asarray(spacings, dtype=float)
+
+    def grid_periods(self) -> np.ndarray:
+        """Return physical periods for the x, y, and z grid axes.
+
+        Real GutIBM files provide ``domain_lo_*`` and ``domain_hi_*``
+        attributes.  For older files without those attributes, the period is
+        derived from the cell count and per-axis ``grid_dx_*`` spacing, with
+        ``grid_dx`` as the common-spacing fallback.
+        """
+        _, spacings = self._grid_origins_and_spacings()
+        return np.asarray(self.grid_shape(), dtype=float) * spacings
+
+    def grid_cell_centers(self) -> np.ndarray:
+        """Return flattened ``(N, 3)`` voxel-center coordinates.
+
+        The row order is identical to :meth:`get_grid`: ``iz*ny*nx +
+        iy*nx + ix``.  When domain bounds are present, spacing is derived
+        from each bound pair and its cell count.  Older files without domain
+        bounds use zero as each axis origin and the corresponding
+        ``grid_dx_*`` (or common ``grid_dx``) spacing.
+        """
+        origins, spacings = self._grid_origins_and_spacings()
+        x = origins[0] + (np.arange(self._nx) + 0.5) * spacings[0]
+        y = origins[1] + (np.arange(self._ny) + 0.5) * spacings[1]
+        z = origins[2] + (np.arange(self._nz) + 0.5) * spacings[2]
+        zz, yy, xx = np.meshgrid(z, y, x, indexing="ij")
+        return np.column_stack((xx.ravel(), yy.ravel(), zz.ravel()))
+
     def get_metadata(self, step: str) -> dict[str, Any]:
         """Compatibility alias for summary scalars."""
         summary = self.get_summary(step)
