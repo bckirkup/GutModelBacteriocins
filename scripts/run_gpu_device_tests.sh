@@ -226,7 +226,7 @@ jq -n \
     platformCapabilities: ["EC2"],
     containerProperties: {
       image: $image,
-      command: ["-lc", "cd /src/build && nvidia-smi && ctest -L gpu --output-on-failure; echo GPUTEST_STATUS=$?"],
+      command: ["-lc", "cd /src/build && nvidia-smi && ctest -L gpu --output-on-failure && ctest -V -R neumann_image_series_gpu; echo GPUTEST_STATUS=$?"],
       vcpus: 4,
       memory: 12000,
       resourceRequirements: [{type: "GPU", value: "1"}],
