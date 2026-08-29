@@ -331,7 +331,7 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
   uint64_t* kernel_evaluations = gf.kernel_evaluation_counting_enabled()
       ? &gpu_kernel_evaluations
       : nullptr;
-  const std::vector<size_t> fallback = robin_host_fallback_sources(
+  const std::vector<size_t> fallback = ::gutibm::robin_host_fallback_sources(
       domain, sources, params);
   if (fallback.empty()) {
     if (try_gpu_near_field(
