@@ -68,6 +68,29 @@ task 44e9e0b4-233f-4123-8301-93399cb96056 (prophage induction).
   journal={MicrobiologyOpen}, year={2018}, volume={7},
   doi={10.1002/mbo3.558}
 }
+@article{dikareva2023prophages,
+  author={Dikareva, Evgenia and others},
+  title={An extended catalog of integrated prophages in the infant and adult fecal
+         microbiome shows high prevalence of lysogeny},
+  journal={Frontiers in Microbiology}, year={2023}, volume={14}, pages={1254535},
+  doi={10.3389/fmicb.2023.1254535},
+  note={Human fecal, 6186 MAGs, 7165 prophage sequences; >70\% of near-complete MAGs
+        are lysogens, Enterobacteriaceae among the highest-prevalence families.
+        Supersedes the murine 4-bin Kim \& Bae 2018 figure as the prevalence anchor.
+        Reports GENOMIC prophage carriage: an upper bound on inducible carriage, and
+        the cohort is infant-weighted. See docs/SPEC14_PRIOR_REVIEW.md.}
+}
+@article{currentbiology2025lysislysogeny,
+  title={Abundance measurements reveal the balance between lysis and lysogeny in the
+         human gut microbiome},
+  journal={Current Biology}, year={2025},
+  doi={10.1016/j.cub.2025.03.073},
+  note={Preprint doi:10.1101/2024.09.27.614587. Phage particles ~1:100 to cells,
+        phage genomes ~4:1 to bacterial genomes, induction and lysis ~0.001--0.01 per
+        bacterium per day. Independent of the Petit-group sources: constrains the
+        PRODUCT of lysogen prevalence and per-lysogen induction rate, which Spec 14
+        treats as two free parameters. See docs/SPEC14_PRIOR_REVIEW.md.}
+}
 ```
 
 ## Oxygen physiology and transport (Addendum A)

@@ -143,6 +143,13 @@ modelling. Set `spontaneous_induction_rate` from the in vivo figure.
 Converting 1.5% of population per day to a per-second hazard:
 `-ln(1 - 0.015) / 86400 = 1.75e-7 /s`. Use **1.75e-7 /s** as default.
 
+Upper bound from an independent source: the human gut community-average
+induction and lysis rate is ~0.001–0.01 per bacterium per day (Current Biology
+2025, doi:10.1016/j.cub.2025.03.073), which measures the *product* of this rate
+and `lysogen_prevalence_init`. At 1.75e-7 /s the product sits at or above the
+top of that band across the whole prevalence sweep, before any damage-driven
+induction is added. See `docs/SPEC14_PRIOR_REVIEW.md` §2.
+
 Adsorption: `9.9e-9 mL/min = 1.65e-16 m^3/s`. Mucus will reduce this; see 4.2.
 
 ### 4.2 Assumptions — no measurement available
@@ -158,7 +165,7 @@ Flag these clearly in code comments. They are calibration targets, not knowns.
 | `phage_decay_rate` | 1e-4 | 1/s | ~2 h half-life. **Not measured in intestinal contents.** |
 | `adsorption_rate_mucus` | 1.65e-17 | m^3/s | In vitro value reduced 10x for hindered diffusion. Unmeasured. |
 | `prophage_carriage_cost` | 0.02 | frac. of mu_max | **No measurement found.** De Paepe shows carriage *is* costly, mechanism is frequent reactivation — which this model produces endogenously. Keep the direct cost small to avoid double-counting. Sweep {0, 0.02, 0.05}. |
-| `lysogen_prevalence_init` | 0.3 | — | Fraction of founders that are lysogens. Poorly constrained for commensal *E. coli*. Sweep {0, 0.3, 0.7}. |
+| `lysogen_prevalence_init` | 0.8 | — | Fraction of founders carrying an **inducible** prophage. Revised from 0.3 (rev3): Dikareva et al. 2023 finds >70% of near-complete human fecal MAGs are lysogens with Enterobacteriaceae among the highest families. But that is *genomic* carriage, an upper bound on inducible carriage, so 0.3 remains the plausible "most detected prophages are cryptic" scenario rather than a low-end strawman. Sweep {0.3, 0.8, 1.0}. **Not independent of `spontaneous_induction_rate`** — see `docs/SPEC14_PRIOR_REVIEW.md` §2. |
 | `superinfection_immunity` | 1.0 | — | Full immunity of lysogens to the same phage. Well-established qualitatively. |
 
 ### 4.3 Which bacteriocins induce
@@ -187,7 +194,7 @@ damage variable.
 
 ```
 // per agent, per step:
-damage += k_damage_per_conc * local_nuclease_conc * dt      // accrual
+damage += k_damage_per_conc * local_damage_source_conc * dt // accrual
 damage -= damage_repair_rate * damage * dt                  // first-order repair
 damage  = max(damage, 0)
 ```
@@ -199,7 +206,11 @@ damage  = max(damage, 0)
   Follow the `is_nuclease` pattern at lines 98/170/240. Missing this will silently
   zero damage for agents crossing rank boundaries, producing rank-count-dependent
   results. This is the easiest bug to introduce here.
-- `src/fixes/fix_bacteriocin.cpp` — update damage in `compute()`.
+- `src/fixes/fix_bacteriocin.cpp` — update damage in `compute()`. Keep the accrual
+  term source-agnostic rather than hard-wiring `local_nuclease_toxin`: colibactin
+  from pks+ *E. coli* also induces prophage (Silpe et al., *Nature* 603:315–320,
+  2022) with no receptor-mediated entry, so it is a third competition strategy
+  that must be able to feed the same pathway without a refactor.
 - `src/gpu/agent_update_kernel.cu`, `src/gpu/agent_pool_gpu.h/.cpp` — mirror on GPU
   with a `DeviceBuffer<double> d_dna_damage_`, following the `d_f_ferm_realized_`
   pattern from Spec 12 Change 2.
@@ -244,6 +255,14 @@ p = 1 - exp(-p_induce_per_s * dt)
 
 **Superinfection immunity**: a lysogen is immune to infection by the same phage.
 Since we model one phage type, `is_lysogen == true` → not a valid infection target.
+
+Immunity and inducibility do not degrade together, so do not derive both from one
+flag. `is_lysogen` here means *inducible*, but a cryptic or defective prophage
+still expresses repressor and still confers immunity while being unable to
+excise. As the inducible fraction falls from 0.8 toward 0.3 the immune fraction
+stays where genomic carriage puts it, which weakens the kin-lysogenization and
+second-killing channels without lifting the immunity blockade. A separate
+`is_immune` flag costs one bit per agent now and a retrofit later.
 
 **Test**: lysogen in high nuclease field induces at high rate; non-lysogen in the
 same field does not induce (but may still be killed by the existing colicin path).
@@ -342,7 +361,7 @@ Once Changes 1–2 land:
 
 | Axis | Values |
 |---|---|
-| `lysogen_prevalence_init` | 0, 0.3, 0.7 |
+| `lysogen_prevalence_init` | 0.3, 0.8, 1.0 |
 | `hill_n` | 1, 2.5, 5 |
 | `prophage_carriage_cost` | 0, 0.02, 0.05 |
 | spatial structure | well-mixed vs full mucus |
@@ -377,7 +396,9 @@ worth publishing.
 - Continuum treatment of phage particles is questionable at low copy number (§7).
 - Adsorption and decay rates in mucus are unmeasured; both were scaled from broth
   values by an assumed factor.
-- Prophage prevalence in commensal *E. coli* is not well constrained, so
-  `lysogen_prevalence_init` is effectively a free parameter.
+- Prophage prevalence in commensal *E. coli* is constrained only as *genomic*
+  carriage; the inducible fraction this parameter denotes is not separately
+  measured, and it is not independent of `spontaneous_induction_rate`.
+  See `docs/SPEC14_PRIOR_REVIEW.md`.
 - Henrot et al. is a **preprint** (May 2026, 0 citations at time of writing). The
   key quantitative claims should be re-checked against the peer-reviewed version.
