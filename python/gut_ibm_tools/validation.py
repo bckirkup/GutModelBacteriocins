@@ -21,7 +21,6 @@ from .hdf5_reader import GutIBMData
 
 
 def _toxin_source_reference(
-    data: GutIBMData,
     agents: dict[str, np.ndarray],
     grid_positions: np.ndarray,
 ) -> np.ndarray:
@@ -77,7 +76,7 @@ def validate_spatial_signatures(
     """
     agents = data.get_agents(step)
     grid = data.get_grid(step)
-    expected_length = data._nx * data._ny * data._nz
+    expected_length = int(np.prod(data.grid_shape()))
 
     positions = np.column_stack([agents["x"], agents["y"], agents["z"]])
     types = agents["type"]
@@ -112,7 +111,7 @@ def validate_spatial_signatures(
             f"{len(bacteriocin)} does not match grid size {expected_length}"
         )
     grid_pos = data.grid_cell_centers()
-    reference = _toxin_source_reference(data, agents, grid_pos)
+    reference = _toxin_source_reference(agents, grid_pos)
     period = data.grid_periods()[0]
     comet = comet_tail_index(
         grid_pos,

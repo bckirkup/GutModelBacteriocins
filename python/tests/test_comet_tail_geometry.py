@@ -7,7 +7,6 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
-
 from gut_ibm_tools import GutIBMData, validation
 from gut_ibm_tools.analysis import (
     comet_tail_asymmetry_index,
@@ -66,6 +65,7 @@ def test_grid_cell_centers_preserve_flattened_order(tmp_path: Path) -> None:
     _write_grid_file(path, nx=3, ny=2, nz=2)
 
     with GutIBMData(path) as data:
+        assert data.grid_shape() == (3, 2, 2)
         centers = data.grid_cell_centers()
         marker = data.get_grid("step_000000")["marker"]
         periods = data.grid_periods()
@@ -274,3 +274,97 @@ def test_validation_rejects_mismatched_toxin_length(
         ValueError, match="flattened toxin field length"
     ):
         validation.validate_spatial_signatures(data, "step_000000")
+
+
+def test_toxin_reference_prefers_biomass_weighted_producers() -> None:
+    grid_positions = np.column_stack([
+        np.arange(-1.0, 10.0, 2.0),
+        np.zeros(6),
+        np.zeros(6),
+    ])
+    agents = {
+        "x": np.array([1.0, 3.0, 9.0]),
+        "y": np.zeros(3),
+        "z": np.zeros(3),
+        "biomass": np.array([1.0, 3.0, 4.0]),
+        "n_bi_loci": np.array([1, 1, 0]),
+    }
+    concentrations = np.array([1.0, 1.0, 10.0, 10.0, 10.0, 10.0])
+
+    reference = validation._toxin_source_reference(agents, grid_positions)
+    all_agent_reference = np.array([5.75, 0.0, 0.0])
+    producer_ratio = comet_tail_index(
+        grid_positions,
+        concentrations,
+        reference=reference,
+    )
+    all_agent_ratio = comet_tail_index(
+        grid_positions,
+        concentrations,
+        reference=all_agent_reference,
+    )
+
+    assert reference[0] == pytest.approx(2.5)
+    assert not np.isclose(all_agent_reference[0], reference[0])
+    assert producer_ratio == pytest.approx(10.0)
+    assert all_agent_ratio == pytest.approx(10.0 / 5.5)
+    assert producer_ratio - all_agent_ratio > 5.0
+
+
+@pytest.mark.parametrize(
+    "agents",
+    [
+        {
+            "x": np.array([1.0, 3.0, 9.0]),
+            "y": np.zeros(3),
+            "z": np.zeros(3),
+            "biomass": np.array([1.0, 3.0, 4.0]),
+            "n_bi_loci": np.array([0, 0, 0]),
+        },
+        {
+            "x": np.array([1.0, 3.0, 9.0]),
+            "y": np.zeros(3),
+            "z": np.zeros(3),
+            "biomass": np.array([1.0, 3.0, 4.0]),
+        },
+    ],
+    ids=["no-producers", "missing-producer-field"],
+)
+def test_toxin_reference_falls_back_to_all_agents(
+    agents: dict[str, np.ndarray],
+) -> None:
+    grid_positions = np.column_stack([
+        np.arange(-1.0, 10.0, 2.0),
+        np.zeros(6),
+        np.zeros(6),
+    ])
+    concentrations = np.array([1.0, 1.0, 10.0, 10.0, 10.0, 10.0])
+
+    reference = validation._toxin_source_reference(agents, grid_positions)
+    all_agent_ratio = comet_tail_index(
+        grid_positions,
+        concentrations,
+        reference=reference,
+    )
+
+    assert reference[0] == pytest.approx(5.75)
+    assert all_agent_ratio == pytest.approx(10.0 / 5.5)
+
+
+def test_toxin_reference_uses_domain_midpoint_without_agents() -> None:
+    grid_positions = np.column_stack([
+        np.arange(0.5, 10.0, 1.0),
+        np.zeros(10),
+        np.zeros(10),
+    ])
+    concentrations = np.array([1.0, 1.0, 1.0, 1.0, 1.0, 4.0, 4.0, 4.0, 4.0, 4.0])
+
+    reference = validation._toxin_source_reference({}, grid_positions)
+    midpoint_ratio = comet_tail_index(
+        grid_positions,
+        concentrations,
+        reference=reference,
+    )
+
+    assert reference == pytest.approx([5.0, 0.0, 0.0])
+    assert midpoint_ratio == pytest.approx(4.0)
