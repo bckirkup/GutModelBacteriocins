@@ -202,19 +202,27 @@ def comet_tail_asymmetry_index(
     positions: np.ndarray,
     concentrations: np.ndarray,
     flow_direction: int = 0,
+    reference: np.ndarray | None = None,
+    period: float | None = None,
 ) -> float:
     """
     Enhanced comet-tail metric measuring downstream elongation.
 
     *flow_direction* is the axis index (0 = x, 1 = y, 2 = z).
+    *reference* is the point from which displacement is measured; when
+    omitted, the position centroid is used.  When *period* is supplied,
+    along-flow displacement uses the minimum-image convention.
     Returns the ratio of concentration-weighted mean downstream distance
     to upstream distance; values > 1 indicate advective comet-tail.
     """
     if len(positions) == 0 or len(concentrations) == 0:
         return 1.0
 
-    centroid = np.mean(positions, axis=0)
-    projections = positions[:, flow_direction] - centroid[flow_direction]
+    if reference is None:
+        reference = np.mean(positions, axis=0)
+    projections = positions[:, flow_direction] - reference[flow_direction]
+    if period is not None:
+        projections -= period * np.round(projections / period)
 
     downstream = projections > 0
     upstream = ~downstream
@@ -233,11 +241,15 @@ def comet_tail_index(
     positions: np.ndarray,
     concentrations: np.ndarray,
     flow_direction: np.ndarray | None = None,
+    reference: np.ndarray | None = None,
+    period: float | None = None,
 ) -> float:
     """
     Measure asymmetry of concentration field along flow direction.
     Returns ratio of downstream/upstream mean concentration.
-    Values > 1 indicate comet-tail formation.
+    Values > 1 indicate comet-tail formation.  *reference* overrides the
+    default position centroid.  When *period* is supplied, the projected
+    along-flow displacement uses the minimum-image convention.
     """
     if len(positions) == 0 or len(concentrations) == 0:
         return 1.0
@@ -245,8 +257,11 @@ def comet_tail_index(
     if flow_direction is None:
         flow_direction = np.array([1, 0, 0])
 
-    centroid = np.mean(positions, axis=0)
-    projections = np.dot(positions - centroid, flow_direction)
+    if reference is None:
+        reference = np.mean(positions, axis=0)
+    projections = np.dot(positions - reference, flow_direction)
+    if period is not None:
+        projections -= period * np.round(projections / period)
 
     downstream = concentrations[projections > 0]
     upstream = concentrations[projections <= 0]
