@@ -103,8 +103,7 @@ bool launch_superpose(const Domain& domain,
     sp[i].lumen_transfer_basis_free =
         params[i].lumen_transfer_basis_free ? 1 : 0;
     sp[i].robin_table_index = -1;
-    if (params[i].lumen_transfer_length > 0.0
-        && std::isfinite(params[i].lumen_transfer_length)) {
+    if (robin::transfer_enabled(params[i].lumen_transfer_length)) {
       const auto table = robin::global_table_cache().get(
           adv, domain.lo()[2], domain.hi()[2], params[i].diff_coeff,
           params[i].diff_coeff / params[i].retardation,

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <array>
+#include <cmath>
 #include <list>
 #include <limits>
 #include <map>
@@ -42,6 +43,10 @@ constexpr double kTableRelativeTolerance = 1.0e-6;
 constexpr double kDefaultCutoff = 200.0e-6;
 constexpr double kZeroTransferLength =
     std::numeric_limits<double>::infinity();
+
+GUTIBM_ROBIN_HOST_DEVICE inline bool transfer_enabled(double transfer_length) {
+  return transfer_length > 0.0 && std::isfinite(transfer_length);
+}
 
 struct TableView {
   const double* values;

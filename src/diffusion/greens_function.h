@@ -40,7 +40,7 @@ struct GreensFunctionParams {
   Real retardation = 1.0;      // mucin retardation factor
   Real decay_rate = 0.0;       // first-order toxin degradation rate (1/s)
   // Infinity retains the sealed Neumann result for direct callers. QSSA
-  // populates this from toxin.lumen_transfer_length (100 um by default).
+  // populates this from toxin.lumen_transfer_length (disabled by default).
   Real lumen_transfer_length = robin::kZeroTransferLength;
   bool lumen_transfer_basis_free = false;
   Real robin_cutoff = robin::kDefaultCutoff;

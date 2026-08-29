@@ -5,6 +5,8 @@
 #include "advection.h"
 #include "domain.h"
 #include "greens_function.h"
+#include "input_parser.h"
+#include "config_json.h"
 #include "robin_correction_table.h"
 #include <algorithm>
 #include <array>
@@ -59,6 +61,68 @@ void require(bool condition, const char* message) {
   if (condition) return;
   std::cerr << message << "\n";
   std::exit(1);
+}
+
+void test_disabled_default_is_inert() {
+  const SimulationConfig config = InputParser::default_config();
+  require(!robin::transfer_enabled(config.qssa.lumen_transfer_length),
+          "Robin transfer must be disabled by default");
+  const std::string resolved = ConfigJson::serialize_document(config);
+  require(resolved.find("\"toxin.lumen_transfer_length\":\"inf\"")
+              != std::string::npos,
+          "resolved provenance must serialize disabled Robin transfer");
+
+  auto system = make_system(true);
+  const auto params = params_for(2.0e-11, 5.0e-5,
+                                 config.qssa.lumen_transfer_length);
+  const auto explicit_sealed = params_for(2.0e-11, 5.0e-5, 0.0);
+  for (const Real source_fraction : {0.2, 0.5, 0.8}) {
+    const Vec3 source = {500.0e-6, 500.0e-6,
+                         source_fraction * system.domain.size()[2]};
+    for (const Real target_fraction : {0.1, 0.5, 0.9}) {
+      const Vec3 target = {530.0e-6, 500.0e-6,
+                           target_fraction * system.domain.size()[2]};
+      const Real bounded = system.gf.concentration_bounded(
+          source, target, params);
+      const Real sealed = system.gf.concentration_bounded(
+          source, target, explicit_sealed);
+      require(std::abs(bounded - sealed) <=
+                  1.0e-12 * std::max(std::abs(sealed), 1.0e-30),
+              "disabled Robin default changed sealed concentration");
+    }
+  }
+  std::cout << "  test_disabled_default_is_inert: boundary_status=disabled\n";
+}
+
+void test_enabled_boundary_impact() {
+  auto system = make_system(true);
+  const Real height = system.domain.size()[2];
+  const Vec3 source = {500.0e-6, 500.0e-6, 0.4 * height};
+  const Vec3 near_lumen = {520.0e-6, 500.0e-6, 0.98 * height};
+  const Vec3 mid_slab = {520.0e-6, 500.0e-6, 0.5 * height};
+  const auto disabled = params_for(
+      2.0e-11, 5.0e-5, robin::kZeroTransferLength);
+  const auto effective = params_for(2.0e-11, 5.0e-5, 100.0e-6);
+  auto free = effective;
+  free.lumen_transfer_basis_free = true;
+  const Real disabled_near =
+      system.gf.concentration_bounded(source, near_lumen, disabled);
+  const Real disabled_mid =
+      system.gf.concentration_bounded(source, mid_slab, disabled);
+  const Real effective_near =
+      system.gf.concentration_bounded(source, near_lumen, effective);
+  const Real effective_mid =
+      system.gf.concentration_bounded(source, mid_slab, effective);
+  const Real free_near =
+      system.gf.concentration_bounded(source, near_lumen, free);
+  const Real free_mid =
+      system.gf.concentration_bounded(source, mid_slab, free);
+  std::cout << "  enabled impact near-lumen (effective/disabled)="
+            << effective_near / disabled_near
+            << " mid-slab=" << effective_mid / disabled_mid << "\n";
+  std::cout << "  enabled impact near-lumen (free/disabled)="
+            << free_near / disabled_near
+            << " mid-slab=" << free_mid / disabled_mid << "\n";
 }
 
 void test_flux_residual() {
@@ -521,6 +585,8 @@ void test_peristaltic_mean_profile() {
 
 int main() {
   std::cout << "=== Independent Robin Lumen-Boundary Tests ===\n";
+  test_disabled_default_is_inert();
+  test_enabled_boundary_impact();
   test_flux_residual();
   test_table_against_direct_modes();
   test_sealed_limit();

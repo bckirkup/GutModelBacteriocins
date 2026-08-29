@@ -56,7 +56,10 @@ std::string robin_table_metadata(const SimulationConfig& cfg) {
            << ";lumen_transfer_length="
            << cfg.qssa.lumen_transfer_length
            << ";boundary_mapping="
-           << cfg.qssa.lumen_transfer_basis;
+           << cfg.qssa.lumen_transfer_basis
+           << ";boundary_status="
+           << (robin::transfer_enabled(cfg.qssa.lumen_transfer_length)
+                   ? "enabled" : "disabled");
   return metadata.str();
 }
 

@@ -754,7 +754,13 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   };
   const auto real_key = [&key, &out](std::string_view name, Real value) {
     key(name);
-    out << value;
+    if (std::isfinite(value)) {
+      out << value;
+    } else {
+      // JSON has no non-finite numeric literals.  Keep the disabled Robin
+      // default round-trippable through the scalar parser.
+      out << "\"inf\"";
+    }
   };
   const auto int_key = [&key, &out](std::string_view name, auto value) {
     key(name);

@@ -366,8 +366,7 @@ Real GreensFunction::concentration_bounded(
   const Real r = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]
                             + delta[2] * delta[2]);
   if (r < 1.0e-9) return 0.0;
-  if (!(params.lumen_transfer_length > 0.0)
-      || !std::isfinite(params.lumen_transfer_length)) {
+  if (!robin::transfer_enabled(params.lumen_transfer_length)) {
     return concentration_sealed(source, target, params);
   }
 

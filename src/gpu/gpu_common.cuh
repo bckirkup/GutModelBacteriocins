@@ -101,15 +101,14 @@ __device__ inline double concentration_bounded(const double src[3], const double
   const ImageKernel kernel = {src, tgt, D_eff, p.source_rate, p.decay_rate,
                               flow, &dom};
   int cap_hit = 0;
-  const double total = neumann::sum_image_series(
+  double total = neumann::sum_image_series(
       src[2], dom.z_lo, dom.z_hi, kernel,
       D_eff, p.decay_rate,
       sqrt(flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]),
       fabs(flow[2]), neumann::kRelativeTolerance, nullptr, &cap_hit);
   if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
   if (p.robin_table_index >= 0 && robin_tables != nullptr
-      && p.lumen_transfer_length > 0.0
-      && p.lumen_transfer_length < robin::kZeroTransferLength) {
+      && robin::transfer_enabled(p.lumen_transfer_length)) {
     double dx = minimum_image_delta(
         tgt[0] - src[0], dom.extent[0], dom.periodic[0]);
     double dy = minimum_image_delta(

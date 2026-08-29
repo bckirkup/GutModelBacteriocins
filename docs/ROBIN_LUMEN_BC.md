@@ -155,7 +155,8 @@ Bi  = k_c·H/D_eff
 `δ` is the measurable quantity (a lumen-side unstirred/diffusive boundary layer)
 and making it the input keeps the two species consistent automatically.
 
-Default `δ = 100 µm` → `Bi = 1` for the effective basis; the optional free
+The default is disabled (`δ = inf`); set `δ = 100 µm` explicitly to enable it.
+With that setting, `Bi = 1` for the effective basis; the optional free
 basis gives `Bi = R`. The effective basis is the default because it avoids
 making lumen absorption scale with poorly constrained retardation. Basis:
 human jejunal unstirred-layer thickness
@@ -173,6 +174,27 @@ At low screening, `|Delta|/C_robin` rises to `2.4` at `kH=5e-3`, a mild
 cancellation of approximately `0.4` digits. This is a documented soft spot,
 not a gate; the direct mode path remains reachable for near-wall/near-axis
 queries.
+
+### What enabling this changes
+
+The shipped default keeps the pre-Robin toxin behavior because the boundary
+choice changes biological exposure, not merely numerical details. At shipped
+flow, the regression test reports these representative concentration ratios
+relative to the disabled result (`δ = inf`), using a source at `z/H = 0.4`,
+a near-lumen target at `z/H = 0.98`, and a mid-slab target at `z/H = 0.5`:
+
+```text
+                         near lumen       mid slab
+effective, δ = 100 µm       0.594597        0.870689
+free,      δ = 100 µm       0.446327        0.830316
+```
+
+With explicit `δ = 100 µm` enablement, all four legacy toxin behavior tests
+(`test_bacteriocin`, `test_per_receptor_toxin`, `test_toxin_lumping`, and
+`test_agent_toxin_sampling`) fail in the current fixture because the reduced
+near-lumen toxin exposure suppresses their kill/induction or analytic-sampling
+assertions. These failures are why Robin is opt-in; the measurements are
+informational and are not used as gates.
 
 The direct fallback uses
 `rho < cell_radius && source_wall_distance < cell_radius &&

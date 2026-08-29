@@ -131,8 +131,7 @@ double normalization(double beta, double a, double height) {
 double robin_biot_number_impl(double d_free, double d_eff, double height,
                               double lumen_transfer_length,
                               TransferBasis basis) {
-  if (!(lumen_transfer_length > 0.0)
-      || !std::isfinite(lumen_transfer_length) || !(d_eff > 0.0)
+  if (!transfer_enabled(lumen_transfer_length) || !(d_eff > 0.0)
       || !(height > 0.0)) {
     return 0.0;
   }
@@ -295,8 +294,7 @@ double normalized_correction(
     double lumen_transfer_length,
     double flow_x, double flow_y, double flow_z, int mode_count,
     TransferBasis basis) {
-  if (!(lumen_transfer_length > 0.0)
-      || !std::isfinite(lumen_transfer_length)) {
+  if (!transfer_enabled(lumen_transfer_length)) {
     return 0.0;
   }
   const double robin = mode_sum(
@@ -343,8 +341,7 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
     table.quantized_key = key.groups;
     table.basis = basis;
   };
-  if (!(lumen_transfer_length > 0.0)
-      || !std::isfinite(lumen_transfer_length)) {
+  if (!transfer_enabled(lumen_transfer_length)) {
     set_metadata();
     return table;
   }
