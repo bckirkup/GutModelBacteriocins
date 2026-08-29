@@ -1,7 +1,7 @@
 # Robin lumen boundary for the QSSA toxin Green's function — design spec
 
-Status: authored by the lead, not yet implemented. Numbers below are measured,
-not assumed; the scripts that produced them are named per section.
+Status: implemented. Numbers below are measured, not assumed; independent
+reference calculations are described where they are used.
 
 ## 1. What is being replaced and why
 
@@ -10,7 +10,7 @@ a sealed slab. `AdvectionField::radial_velocity` is nonzero at `z_hi`, so the
 lumen wall is not physically sealed, and the choice matters far more than the
 bug #359 fixed: measured at shipped parameters (`H=100 µm`, `D_eff=2e-11 m²/s`,
 `kH=0.158`), a transparent lumen gives 0.35–0.67× and a perfect sink 0.01–0.52×
-the sealed toxin concentration (`lumen_bc_bracket.py`), against a 9–19% bias
+the sealed toxin concentration, against a 9–19% bias
 from the image-series defect itself.
 
 Advection cannot carry the escape on its own: `Pe = U_z·H/D_eff ≈ 0.086`, so
@@ -45,11 +45,11 @@ Substituting `C = exp(U·(x - x_s)/(2D)) ψ` removes the drift from the interior
 ```
 
 The transform is *not* boundary-neutral. Writing `a = U_z/(2D)` and
-`b = (k_c + U_z/2)/D`, the two conditions become
+`c_hi = k_c/D + a`, the two conditions become
 
 ```
-z_lo:  ψ' + a ψ = 0
-z_hi:  ψ' + b ψ = 0
+z_lo:  ψ' - a ψ = 0
+z_hi:  ψ' + (k_c/D + a) ψ = 0
 ```
 
 so the transformed problem is Robin at **both** walls even though the physical
@@ -57,30 +57,34 @@ condition at `z_lo` is pure no-flux. Ignoring this would be a `Pe/2 ≈ 0.043`
 error in the mode structure at shipped parameters — small, but it costs nothing
 to carry, because the eigenvalue solve happens once at init.
 
-Note `b - a = k_c/D` exactly: the drift cancels from the eigencondition
-numerator and survives only through the `ab` product.
+Here `c_lo = -a` and `c_hi = k_c/D + a`. The drift sign differs at the two
+walls because the epithelial law is zero total flux while the lumen law is
+diffusive film transfer on top of free advective outflow.
 
 ## 4. Eigenmodes
 
 ```
 φ_n(z) = cos(β_n ζ) - (a/β_n) sin(β_n ζ),      ζ = z - z_lo
-tan(β_n H) = (b - a) β_n / (β_n² + a b)
+tan(β_n H) = (c_hi - c_lo) β_n / (β_n² + c_lo c_hi),
+  c_lo = -a
 N_n = ∫₀^H φ_n(ζ)² dζ
 κ_n = sqrt( (λ + |U|²/(4D)) / D + β_n² )
 
 C(r) = exp(U·(x - x_s)/(2D)) · (Q / 2πD) · Σ_n φ_n(ζ_s) φ_n(ζ_t) K₀(κ_n ρ) / N_n
 ```
 
-`ρ` is the lateral (xy) separation. Since `b - a = k_c/D > 0` and `ab ≥ 0`, the
-right-hand side of the eigencondition is positive, so there is exactly one root
-per branch `(nπ, nπ + π/2)` including `n = 0`; bracket-and-bisect per branch is
-sufficient and cannot miss or double-count a root. As `k_c → 0` the `n = 0` root
-goes to zero and the expansion degenerates to the sealed case — handle
-`β_0 H < 1e-8` by the limit `φ_0 = 1 - a ζ` rather than dividing by `β_0`.
+`ρ` is the lateral (xy) separation. The roots are found by bracket-and-bisect
+on each branch, with diagnostics including `c_lo`, `c_hi`, `Bi`, and `aH`.
+For these mixed signs, no imaginary root is present and branch zero is
+bracketed directly. The sealed reference is handled as a separate mode set;
+its exponential mode is described below.
 
-Validated in `robin_mode_expansion.py`: at `Bi → 0` the expansion reproduces the
-sealed image series to 2e-16 relative across nine `(z_s, z_t)` pairs, and
-`C(z_hi)/C(H/2)` falls 0.71 → 0.0002 as `Bi` goes 0 → 1e4.
+For the sealed reference, `c_lo = c_hi = +a`. When `a != 0`, beta zero is
+replaced by the imaginary mode `beta = i*a`, with
+`phi = exp(-a*zeta)` and
+`N = (1 - exp(-2*a*H))/(2*a)` (using `N=H` when `a=0`). Its radial decay is
+`kappa² = lambda/D + (U_x² + U_y²)/(4D²)`. Only the exact `a=0` limit uses
+the beta-zero mode.
 
 ## 5. Why this is NOT a runtime mode sum
 
@@ -97,8 +101,8 @@ Measured mode counts for 1e-6 convergence at `Bi = 4` (same script):
 `K₀` converges slowly near the source, and near-source is where agents evaluate.
 This retracts the "10–20 modes, likely cheaper than 73 image shells" estimate I
 gave earlier — it is true only in the far field. Summing the *correction* instead
-of the field only halves the count (199 at ρ=1 µm, `robin_correction_convergence.py`),
-so that is not a way out either.
+of the field only halves the count (199 at ρ=1 µm), so that is not a way out
+either.
 
 ## 6. Implementation: sealed images + tabulated correction
 
@@ -109,40 +113,48 @@ Keep #359's image series for the sealed part and add a per-species table of
 C_robin ≈ C_sealed_images + (Q/4πD) · ΔĈ_interp
 ```
 
-`ΔC` is regular at `ρ → 0` (the free-space singularity is identical in both
-fields and cancels), bounded, and smooth in all three arguments, so it
-tabulates on a uniform grid **including** `ρ = 0` — which is exactly what the
-full field cannot do. Runtime cost is one trilinear interpolation, identical on
-host and device, with no Bessel evaluation in the hot loop.
+In the interior, `ΔC` is regular at `ρ → 0` because the free-space singularity
+is identical in both fields and cancels. When both source and target are within
+a cell radius of a wall, near-axis cancellation is not bounded on the table's
+z scale; the evaluator therefore routes those queries to the independent
+direct mode sum. Elsewhere the correction tabulates on a uniform grid
+**including** `ρ = 0`. Runtime cost is one trilinear interpolation, identical
+on host and device, with no Bessel evaluation in the hot loop.
 
 - Table axes: `z_s, z_t ∈ [z_lo, z_hi]`, `ρ ∈ [0, cutoff]`, uniform, `n = 33`
   per axis (0.27 MB per species in doubles).
 - Built once at init from the mode sum with a high mode count (target 2000+;
-  `ΔĈ` is converged by 600 at ρ=0.6 µm, verified in `robin_table_accuracy.py`).
-- One eigenvalue set per `z_s` row: `a` and `b` depend on `U(z_s)`, and flow is
+  `ΔĈ` is converged by 600 at ρ=0.6 µm).
+- One eigenvalue set per `z_s` row: `a` and `c_hi` depend on `U(z_s)`, and flow is
   already evaluated at the source, so this is consistent with the existing
   approximation rather than a new one.
 - Scale by `Q` at runtime; the tabulated quantity is `Q`-independent.
 
-Measured interpolation error against the direct mode sum over 300 random points
-(`robin_table_accuracy.py`, `Bi = 2`), as a fraction of the **local total
-field**: 4.2e-3 at n=17, 2.8e-3 at n=33, 2.3e-3 at n=65. n=33 is the pick: the
-residual is two orders below the 2–3× physics effect this whole change is about,
-and the n=65 table costs 8× the memory for no useful gain.
+Measured interpolation error against the direct mode sum is at most `1.8e-3`
+for shipped-flow near-lumen samples. The accuracy budget is, in descending
+order of importance: (1) inherited image-base inconsistency under wall-normal
+flow, `1.2e-3..6.9e-3` at shipped `U_z`, (2) rho/z interpolation, `<=1.8e-3`,
+and (3) sealed-reference mode-set error, `<=1.4e-3`. Defining the correction
+against the image series was rejected: its near-axis difference contains a
+singular component and the uniform rho table has `14%-528%` error.
 
 ## 7. Parameter: expose the length, not the coefficient
 
 Config key `toxin.lumen_transfer_length` = `δ` [m], with
 
 ```
-k_c = D_free / δ        (per species, so it scales with each toxin's D_free)
+k_c = D_eff / δ         (default effective basis)
+k_c = D_free / δ        (optional free basis)
 Bi  = k_c·H/D_eff
 ```
 
 `δ` is the measurable quantity (a lumen-side unstirred/diffusive boundary layer)
 and making it the input keeps the two species consistent automatically.
 
-Default `δ = 100 µm` → `Bi ≈ 2`. Basis: human jejunal unstirred-layer thickness
+Default `δ = 100 µm` → `Bi = 1` for the effective basis; the optional free
+basis gives `Bi = R`. The effective basis is the default because it avoids
+making lumen absorption scale with poorly constrained retardation. Basis:
+human jejunal unstirred-layer thickness
 is 35–40 µm (Levitt et al., *J Clin Invest* 1990, range 23–65; Strocchi &
 Levitt, *Am J Physiol* 1992, ≈35 µm), which replaced older ~600 µm osmotic
 estimates. Those are small-bowel measurements with glucose probes; the colon is
@@ -153,6 +165,11 @@ less stirred and carries an outer mucus layer, so the default is deliberately
 0.45× / 0.2× the sealed value, so `δ` must appear in the sensitivity sweep for
 any lethal-core/halo or comet-tail claim regardless of the default.
 
+At low screening, `|Delta|/C_robin` rises to `2.4` at `kH=5e-3`, a mild
+cancellation of approximately `0.4` digits. This is a documented soft spot,
+not a gate; the direct mode path remains reachable for near-wall/near-axis
+queries.
+
 Limits to keep reachable and tested: `δ → ∞` (`k_c = 0`) must return the #359
 sealed result bit-for-bit via the same code path, and large `Bi` must drive
 `C(z_hi) → 0`.
@@ -162,21 +179,22 @@ sealed result bit-for-bit via the same code path, and large `Bi` must drive
 1. **Flux residual at both walls**, numerically differentiated: `-D ∂C/∂z + U_z C = 0`
    at `z_lo` and `-D ∂C/∂z - k_c C = 0` at `z_hi`, over several source
    positions and lateral offsets, normalised by `D·C/H`.
-2. **Table vs direct mode sum**: max relative error over random points below
-   5e-3 of the local total field (measured 2.8e-3 at n=33; assert the bound, not
-   the measured value).
+2. **Table vs direct mode sum**: max relative error over shipped-flow near-lumen
+   points below 5e-3 of the local total field (measured <=1.8e-3 at n=33;
+   assert the bound, not the measured value).
 3. **Sealed limit**: `k_c = 0` reproduces `concentration_bounded()` to 1e-12.
 4. **Sink limit**: `Bi = 1e4` gives `C(z_hi)/C(mid) < 1e-3`.
-5. **Cross-language anchors** (`Bi=2`, `H=100 µm`, `D_eff=2e-11`, `kH=0.158114`,
-   `ΔĈ` and `Ĉ = 4πD·C/Q`, from a 3000-mode reference):
+5. **Cross-language anchors** (`Bi=2`, free basis, shipped flow,
+   `H=100 µm`, `D_eff=2e-11`, `kH=0.158114`, and
+   `Ĉ = 4πD·C/Q`, from a 3000-mode reference):
 
-   | z_s/H | z_t/H | ρ (µm) | Ĉ_robin | ΔĈ |
-   |---|---|---|---|---|
-   | 0.25 | 0.25 | 2.0 | 5.1061945263e+05 | -3.3149597263e+04 |
-   | 0.25 | 0.75 | 10.0 | 1.9964906375e+04 | -3.7235028089e+04 |
-   | 0.50 | 0.50 | 20.0 | 5.0272543392e+04 | -3.6163301346e+04 |
-   | 0.90 | 0.99 | 5.0 | 1.2537873736e+05 | -7.7533465488e+04 |
-   | 0.10 | 0.90 | 40.0 | 1.0721327524e+04 | -3.7660834321e+04 |
+   | z_s/H | z_t/H | ρ (µm) | Ĉ_robin |
+   |---|---|---|---|
+   | 0.25 | 0.25 | 2.0 | 5.0484644484e+05 |
+   | 0.25 | 0.75 | 10.0 | 7.0837466276e+03 |
+   | 0.50 | 0.50 | 20.0 | 5.1114593668e+04 |
+   | 0.90 | 0.99 | 5.0 | 1.2272983283e+05 |
+   | 0.10 | 0.90 | 40.0 | 4.6022438359e+03 |
 
 6. **CPU/GPU parity** through the shared table, including a `k_c = 0` case so
    the sealed path stays covered on device.

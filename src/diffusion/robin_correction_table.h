@@ -6,7 +6,15 @@
 #define GUTIBM_ROBIN_CORRECTION_TABLE_H
 
 #include <cstddef>
+#include <cstdint>
+#include <array>
+#include <list>
 #include <limits>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <tuple>
 #include <vector>
 
 #ifdef __CUDACC__
@@ -20,6 +28,11 @@ namespace gutibm {
 class AdvectionField;
 
 namespace robin {
+
+enum class TransferBasis {
+  Effective,
+  Free
+};
 
 constexpr int kTableNodes = 33;
 constexpr int kTableValueCount =
@@ -115,7 +128,58 @@ struct Table {
   double z_lo = 0.0;
   double height = 0.0;
   double cutoff = kDefaultCutoff;
+  double biot_number = 0.0;
+  double screening_height = 0.0;
+  double lower_coefficient_height = 0.0;
+  std::array<int64_t, 4> quantized_key{};
+  TransferBasis basis = TransferBasis::Effective;
 };
+
+struct TableCacheKey {
+  std::array<int64_t, 4> groups{};
+  bool operator<(const TableCacheKey& other) const {
+    return groups < other.groups;
+  }
+};
+
+struct TableCacheSnapshot {
+  uint64_t generation = 0;
+  std::vector<std::shared_ptr<const Table>> tables;
+};
+
+class TableCache {
+ public:
+  static constexpr size_t kMaximumTables = 64;
+
+  std::shared_ptr<const Table> get(
+      const AdvectionField& adv, double z_lo, double z_hi,
+      double d_free, double d_eff, double decay_rate,
+      double lumen_transfer_length, double cutoff, TransferBasis basis);
+  TableCacheSnapshot snapshot() const;
+  size_t size() const;
+  uint64_t tables_built() const;
+  uint64_t table_evictions() const;
+  std::string metadata() const;
+  std::string values_hash() const;
+
+ private:
+  struct Entry {
+    TableCacheKey key;
+    std::shared_ptr<const Table> table;
+  };
+
+  mutable std::mutex mutex_;
+  std::list<Entry> lru_;
+  std::map<TableCacheKey, std::list<Entry>::iterator> entries_;
+  uint64_t generation_ = 0;
+  uint64_t tables_built_ = 0;
+  uint64_t table_evictions_ = 0;
+};
+
+TableCache& global_table_cache();
+
+double robin_biot_number(double d_free, double d_eff, double height,
+                         double lumen_transfer_length, TransferBasis basis);
 
 bool requires_direct_evaluation(double source_z, double target_z, double rho,
                                 double z_lo, double z_hi,
@@ -123,21 +187,24 @@ bool requires_direct_evaluation(double source_z, double target_z, double rho,
 
 Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
                   double d_free, double d_eff, double decay_rate,
-                  double lumen_transfer_length, double cutoff);
+                  double lumen_transfer_length, double cutoff,
+                  TransferBasis basis = TransferBasis::Effective);
 
 double normalized_robin_field(double z_source, double z_target, double rho,
                               double z_lo, double z_hi, double d_eff,
                               double d_free, double decay_rate,
                               double lumen_transfer_length,
                               double flow_x, double flow_y, double flow_z,
-                              int mode_count);
+                              int mode_count,
+                              TransferBasis basis = TransferBasis::Effective);
 
 double normalized_correction(double z_source, double z_target, double rho,
                              double z_lo, double z_hi, double d_eff,
                              double d_free, double decay_rate,
                              double lumen_transfer_length,
                              double flow_x, double flow_y, double flow_z,
-                             int mode_count);
+                             int mode_count,
+                             TransferBasis basis = TransferBasis::Effective);
 
 }  // namespace robin
 }  // namespace gutibm

@@ -38,7 +38,6 @@ extern "C" {
 #include <iomanip>
 #include <system_error>
 #include <string>
-#include <string_view>
 #include <vector>
 #include <cstdlib>
 #include "error.h"
@@ -56,19 +55,9 @@ std::string robin_table_metadata(const SimulationConfig& cfg) {
            << ";cutoff=" << cfg.qssa.toxin_cutoff
            << ";lumen_transfer_length="
            << cfg.qssa.lumen_transfer_length
-           << ";boundary_mapping=D_free_over_delta";
+           << ";boundary_mapping="
+           << cfg.qssa.lumen_transfer_basis;
   return metadata.str();
-}
-
-std::string fnv1a_hex(std::string_view value) {
-  uint64_t hash = 14695981039346656037ULL;
-  for (const unsigned char byte : value) {
-    hash ^= byte;
-    hash *= 1099511628211ULL;
-  }
-  std::ostringstream result;
-  result << std::hex << std::setfill('0') << std::setw(16) << hash;
-  return result.str();
 }
 
 constexpr int k_max_types = 8;
@@ -591,11 +580,13 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
   ensure_group(fid, "run_provenance", cfg_);
   const auto config = ConfigJson::serialize_document(sim.config());
   write_string_dataset(fid, "run_provenance/resolved_config", config);
-  const auto robin_metadata = robin_table_metadata(sim.config());
+  const auto& table_cache = robin::global_table_cache();
+  const auto robin_metadata = robin_table_metadata(sim.config())
+      + ";" + table_cache.metadata();
   write_string_dataset(fid, "run_provenance/robin_table_metadata",
                        robin_metadata);
   write_string_dataset(fid, "run_provenance/robin_table_hash",
-                       fnv1a_hex(robin_metadata));
+                       table_cache.values_hash());
   write_string_dataset(fid, "run_provenance/git_sha", GUTIBM_GIT_SHA);
   write_string_dataset(fid, "run_provenance/version", GUTIBM_VERSION);
   const int32_t mpi_compiled =
@@ -644,6 +635,14 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
       sim.neumann_image_series_cap_hits());
   write_scalar_dataset(fid, "run_provenance/neumann_image_series_cap_hits",
                        H5T_NATIVE_ULLONG, &cap_hits);
+  const auto robin_tables_built =
+      static_cast<unsigned long long>(table_cache.tables_built());
+  const auto robin_table_evictions =
+      static_cast<unsigned long long>(table_cache.table_evictions());
+  write_scalar_dataset(fid, "run_provenance/robin_tables_built",
+                       H5T_NATIVE_ULLONG, &robin_tables_built);
+  write_scalar_dataset(fid, "run_provenance/robin_table_evictions",
+                       H5T_NATIVE_ULLONG, &robin_table_evictions);
   const auto optional_env = [&fid](const char* name, const char* env_name) {
     if (const char* value = std::getenv(env_name);
         value != nullptr && value[0] != '\0') {

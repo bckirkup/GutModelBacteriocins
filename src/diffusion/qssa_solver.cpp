@@ -215,6 +215,7 @@ GreensFunctionParams weighted_avg_params(
   }
   avg_params.source_rate = 0.0;
   avg_params.lumen_transfer_length = cfg.lumen_transfer_length;
+  avg_params.lumen_transfer_basis_free = cfg.lumen_transfer_basis == "free";
   avg_params.robin_cutoff = cfg.toxin_cutoff;
   return avg_params;
 }
@@ -340,6 +341,7 @@ void collect_microcin_sources(const AgentPool& agents,
       gfp.pI           = bi.pI;
       gfp.source_rate  = cfg.microcin_secretion;
       gfp.lumen_transfer_length = cfg.lumen_transfer_length;
+      gfp.lumen_transfer_basis_free = cfg.lumen_transfer_basis == "free";
       gfp.robin_cutoff = cfg.toxin_cutoff;
       const Real protease_decay = (protease.enabled
                                    && bi.protease_half_life > 0.0)
@@ -494,6 +496,7 @@ void QSSASolver::solve_bacteriocin_field(
   append_burst_sources(bursts, current_time, *domain_, buffers);
   for (auto& param : all_params) {
     param.lumen_transfer_length = cfg_.lumen_transfer_length;
+    param.lumen_transfer_basis_free = cfg_.lumen_transfer_basis == "free";
     param.robin_cutoff = cfg_.toxin_cutoff;
   }
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
@@ -603,6 +606,7 @@ void QSSASolver::solve_all_bacteriocin_fields(
   append_burst_sources(bursts, current_time, *domain_, buffers);
   for (auto& param : all_params) {
     param.lumen_transfer_length = cfg_.lumen_transfer_length;
+    param.lumen_transfer_basis_free = cfg_.lumen_transfer_basis == "free";
     param.robin_cutoff = cfg_.toxin_cutoff;
   }
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,

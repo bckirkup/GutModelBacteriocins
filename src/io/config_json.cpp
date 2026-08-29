@@ -919,6 +919,7 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("quorum_sensing.chi_ai2", cfg.quorum_sensing.chi_ai2);
   real_key("toxin_cutoff", cfg.qssa.toxin_cutoff);
   real_key("toxin.lumen_transfer_length", cfg.qssa.lumen_transfer_length);
+  string_key("toxin.lumen_transfer_basis", cfg.qssa.lumen_transfer_basis);
   real_key("nutrient_cutoff", cfg.qssa.nutrient_cutoff);
   real_key("colicin_release_rate", cfg.qssa.colicin_release_rate);
   real_key("microcin_secretion", cfg.qssa.microcin_secretion);

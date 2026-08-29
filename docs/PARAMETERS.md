@@ -314,7 +314,8 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
 | `qssa.toxin_cutoff` | 200e-6 | m | Green's function evaluation radius for toxins |
-| `toxin.lumen_transfer_length` | 100e-6 | m | Lumen unstirred-layer transfer length; each species uses `k_c = D_free / δ` in the Robin correction |
+| `toxin.lumen_transfer_length` | 100e-6 | m | Lumen unstirred-layer transfer length; the Robin correction uses `k_c = D_eff / δ` by default |
+| `toxin.lumen_transfer_basis` | effective | effective/free | Select `D_eff / δ` (default) or `D_free / δ` for the lumen transfer coefficient |
 | `chemistry.toxin_evaluation` | `grid` | — | Toxin exposure evaluation: `grid` samples each agent's chemistry cell center; `agents` evaluates the same Green's-function superposition at each agent position |
 | `chemistry.toxin_lumping` | `per_receptor` | — | Scientific toxin spatial model: `per_receptor` keeps four target-specific fields; `lumped` puts all sources in one field read by every receptor |
 | `qssa.nutrient_cutoff` | 50e-6 | m | Cutoff for nutrient depletion zones |

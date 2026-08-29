@@ -41,6 +41,7 @@ struct GfSourceParams {
   double decay_rate;
   double lumen_transfer_length;
   double robin_cutoff;
+  int lumen_transfer_basis_free;
   int robin_table_index;
 };
 

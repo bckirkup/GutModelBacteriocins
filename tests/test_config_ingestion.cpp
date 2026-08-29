@@ -313,6 +313,10 @@ std::vector<Probe> build_probes() {
   v.push_back(R("toxin.lumen_transfer_length", [](const SimulationConfig& c) {
     return c.qssa.lumen_transfer_length;
   }));
+  v.push_back(S("toxin.lumen_transfer_basis",
+                [](const SimulationConfig& c) {
+                  return c.qssa.lumen_transfer_basis;
+                }, "free"));
   v.push_back(R("lumen_transfer_length", [](const SimulationConfig& c) {
     return c.qssa.lumen_transfer_length;
   }, false));

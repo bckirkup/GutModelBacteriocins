@@ -264,8 +264,6 @@ void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   adv_    = &adv;
   z_lo_   = domain.lo()[2];
   z_hi_   = domain.hi()[2];
-  std::lock_guard<std::mutex> lock(robin_tables_mutex_);
-  robin_tables_.clear();
 }
 
 void GreensFunction::require_init() const {
@@ -312,30 +310,14 @@ Real GreensFunction::concentration(const Vec3& source, const Vec3& target,
                        params.decay_rate, flow);
 }
 
-bool GreensFunction::RobinTableKey::operator<(
-    const RobinTableKey& other) const {
-  return std::tie(diff_coeff, retardation, decay_rate,
-                  lumen_transfer_length, cutoff)
-      < std::tie(other.diff_coeff, other.retardation, other.decay_rate,
-                 other.lumen_transfer_length, other.cutoff);
-}
-
-const robin::Table& GreensFunction::robin_table(
+std::shared_ptr<const robin::Table> GreensFunction::robin_table(
     const GreensFunctionParams& params) const {
-  const RobinTableKey key{
-      params.diff_coeff, params.retardation, params.decay_rate,
-      params.lumen_transfer_length, params.robin_cutoff};
-  std::lock_guard<std::mutex> lock(robin_tables_mutex_);
-  if (const auto it = robin_tables_.find(key); it != robin_tables_.end()) {
-    return *it->second;
-  }
   const Real d_eff = params.diff_coeff / params.retardation;
-  auto table = std::make_shared<robin::Table>(robin::build_table(
+  const robin::TransferBasis basis = params.lumen_transfer_basis_free
+      ? robin::TransferBasis::Free : robin::TransferBasis::Effective;
+  return robin::global_table_cache().get(
       *adv_, z_lo_, z_hi_, params.diff_coeff, d_eff, params.decay_rate,
-      params.lumen_transfer_length, params.robin_cutoff));
-  const robin::Table& result = *table;
-  robin_tables_.emplace(key, std::move(table));
-  return result;
+      params.lumen_transfer_length, params.robin_cutoff, basis);
 }
 
 Real GreensFunction::concentration_sealed(
@@ -390,9 +372,9 @@ Real GreensFunction::concentration_bounded(
 
   const Real d_eff = params.diff_coeff / params.retardation;
   const Vec3 flow = adv_->velocity(source);
-  const robin::Table& table = robin_table(params);
+  const std::shared_ptr<const robin::Table> table = robin_table(params);
   const robin::TableView view{
-      table.values.data(), table.z_lo, table.height, table.cutoff};
+      table->values.data(), table->z_lo, table->height, table->cutoff};
   const Real rho = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]);
   const Real correction_base =
       robin::requires_direct_evaluation(
@@ -402,7 +384,10 @@ Real GreensFunction::concentration_bounded(
           source[2], target[2], rho, z_lo_, z_hi_, d_eff,
           params.diff_coeff, params.decay_rate,
           params.lumen_transfer_length, flow[0], flow[1], flow[2],
-          robin::kTableModeCount)
+          robin::kTableModeCount,
+          params.lumen_transfer_basis_free
+              ? robin::TransferBasis::Free
+              : robin::TransferBasis::Effective)
       : robin::interpolate(view, source[2], target[2], rho);
   const Real correction = correction_base * std::exp(
       (flow[0] * delta[0] + flow[1] * delta[1] + flow[2] * delta[2])
