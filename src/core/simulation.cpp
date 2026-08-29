@@ -551,6 +551,7 @@ void Simulation::init(const SimulationConfig& cfg) {
   // QSSA solver
   qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps,
              &cfg.chemicals);
+  capture_robin_provenance_baseline();
 
   // Lineage tracker
   lineage_.init(cfg.time.output_interval);
@@ -804,6 +805,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   vbf_.init(cfg.vbf, domain_);
   qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps,
              &cfg.chemicals);
+  capture_robin_provenance_baseline();
   lineage_.init(cfg.time.output_interval);
   hdf5_.init(cfg.hdf5, domain_);
   hdf5_.write_run_provenance(*this);
@@ -1666,6 +1668,29 @@ void Simulation::finalize_neumann_image_series_stats() {
               << neumann_negative_field_count_ << " times; most negative="
               << neumann_most_negative_field_ << "\n";
   }
+}
+
+void Simulation::capture_robin_provenance_baseline() {
+  const auto& table_cache = robin::global_table_cache();
+  robin_tables_built_baseline_ = table_cache.tables_built();
+  robin_table_evictions_baseline_ = table_cache.table_evictions();
+  robin_table_identity_baseline_ = table_cache.built_identity();
+}
+
+uint64_t Simulation::robin_tables_built() const {
+  return robin::global_table_cache().tables_built()
+      - robin_tables_built_baseline_;
+}
+
+uint64_t Simulation::robin_table_evictions() const {
+  return robin::global_table_cache().table_evictions()
+      - robin_table_evictions_baseline_;
+}
+
+std::string Simulation::robin_table_hash() const {
+  const uint64_t identity = robin::global_table_cache().built_identity()
+      ^ robin_table_identity_baseline_;
+  return robin::format_identity_hash(identity);
 }
 
 void Simulation::step(Real dt) {

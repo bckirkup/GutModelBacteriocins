@@ -164,8 +164,9 @@ class TableCache {
   size_t size() const;
   uint64_t tables_built() const;
   uint64_t table_evictions() const;
+  uint64_t built_identity() const;
   std::string metadata() const;
-  std::string values_hash() const;
+  std::string built_identity_hash() const;
 
  private:
   struct Entry {
@@ -179,9 +180,12 @@ class TableCache {
   uint64_t generation_ = 0;
   uint64_t tables_built_ = 0;
   uint64_t table_evictions_ = 0;
+  uint64_t built_identity_ = 0;
 };
 
 TableCache& global_table_cache();
+
+std::string format_identity_hash(uint64_t identity);
 
 double robin_biot_number(double d_free, double d_eff, double height,
                          double lumen_transfer_length, TransferBasis basis);

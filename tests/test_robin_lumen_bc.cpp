@@ -11,9 +11,11 @@
 #include "error.h"
 #include "plasmid.h"
 #include "robin_correction_table.h"
+#include "simulation.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -66,6 +68,118 @@ void require(bool condition, const char* message) {
   if (condition) return;
   std::cerr << message << "\n";
   std::exit(1);
+}
+
+constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
+constexpr uint64_t kFnvPrime = 1099511628211ULL;
+
+void append_hash_bytes(uint64_t& hash, const void* data, size_t size) {
+  const auto* bytes = static_cast<const unsigned char*>(data);
+  for (size_t index = 0; index < size; ++index) {
+    hash ^= bytes[index];
+    hash *= kFnvPrime;
+  }
+}
+
+uint64_t table_identity_hash(const robin::Table& table) {
+  uint64_t hash = kFnvOffset;
+  for (const int64_t group : table.quantized_key) {
+    append_hash_bytes(hash, &group, sizeof(group));
+  }
+  const int basis = static_cast<int>(table.basis);
+  append_hash_bytes(hash, &basis, sizeof(basis));
+  append_hash_bytes(hash, &table.z_lo, sizeof(table.z_lo));
+  append_hash_bytes(hash, &table.height, sizeof(table.height));
+  append_hash_bytes(hash, &table.cutoff, sizeof(table.cutoff));
+  for (const double value : table.values) {
+    append_hash_bytes(hash, &value, sizeof(value));
+  }
+  return hash;
+}
+
+SimulationConfig provenance_test_config() {
+  SimulationConfig config = InputParser::default_config();
+  config.domain.hi = {50.0e-6, 50.0e-6, 25.0e-6};
+  config.domain.grid_dx = 5.0e-6;
+  config.hdf5.enabled = false;
+  config.enabled_fixes.clear();
+  config.initial_strains.clear();
+  SimulationConfig::InitialStrain strain;
+  strain.type = 1;
+  strain.count = 1;
+  strain.mu_max = 5.0e-4;
+  config.initial_strains.push_back(strain);
+  return config;
+}
+
+std::shared_ptr<const robin::Table> build_identity_table(
+    const TestSystem& system, Real transfer_length) {
+  return robin::global_table_cache().get(
+      system.adv, 0.0, 100.0e-6, 4.0e-11, 2.0e-11, 5.0e-5,
+      transfer_length, 173.0e-6, robin::TransferBasis::Effective);
+}
+
+void test_run_scoped_identity_and_eviction() {
+  auto first_sim = provenance_test_config();
+  Simulation first;
+  first.init(first_sim);
+  const auto system = make_system();
+  auto& cache = robin::global_table_cache();
+  const uint64_t built_before = cache.tables_built();
+  const uint64_t evictions_before = cache.table_evictions();
+  const uint64_t identity_before = cache.built_identity();
+
+  constexpr Real set_base = 7.123e-6;
+  std::array<std::shared_ptr<const robin::Table>, 3> set_tables;
+  uint64_t expected_identity = 0;
+  for (size_t index = 0; index < set_tables.size(); ++index) {
+    const Real transfer_length = set_base
+        * std::pow(1.05, static_cast<Real>(index));
+    set_tables[index] = build_identity_table(system, transfer_length);
+    expected_identity ^= table_identity_hash(*set_tables[index]);
+  }
+  const uint64_t set_identity = expected_identity;
+  const std::string first_hash = first.robin_table_hash();
+  require(first.robin_tables_built() == set_tables.size(),
+          "first Robin provenance pass did not build exactly three tables");
+  require(first_hash == robin::format_identity_hash(set_identity),
+          "Robin run identity did not match the first table set");
+
+  constexpr int filler_count = 64;
+  for (int index = 0; index < filler_count; ++index) {
+    const Real transfer_length = 1.234e-6
+        * std::pow(1.05, static_cast<Real>(index));
+    const auto filler = build_identity_table(system, transfer_length);
+    expected_identity ^= table_identity_hash(*filler);
+  }
+  require(cache.table_evictions() > evictions_before,
+          "Robin cache eviction was not exercised");
+
+  SimulationConfig second_config = provenance_test_config();
+  Simulation second;
+  second.init(second_config);
+  uint64_t reverse_identity = 0;
+  for (size_t index = set_tables.size(); index > 0; --index) {
+    const Real transfer_length = set_base
+        * std::pow(1.05, static_cast<Real>(index - 1));
+    const auto table = build_identity_table(system, transfer_length);
+    reverse_identity ^= table_identity_hash(*table);
+  }
+
+  require(second.robin_tables_built() == set_tables.size(),
+          "second Robin provenance pass did not rebuild exactly three tables");
+  require(first_hash == second.robin_table_hash(),
+          "Robin run identity depended on insertion order");
+  expected_identity ^= reverse_identity;
+  require((cache.built_identity() ^ identity_before) == expected_identity,
+          "Robin identity omitted an evicted table");
+  require(cache.tables_built() - built_before == 3 + filler_count + 3,
+          "Robin table build count did not match the eviction test workload");
+  require(cache.tables_built() > second.robin_tables_built(),
+          "Robin run-scoped count was not isolated from process totals");
+  std::cout << "  test_run_scoped_identity_and_eviction: 70 builds, "
+            << cache.table_evictions() - evictions_before
+            << " evictions, order-independent identity passed\n";
 }
 
 void test_launch_local_table_mapping() {
@@ -755,6 +869,7 @@ int main() {
   test_shipped_flow_reconstruction();
   test_shipped_flow_interpolated_wall_guard();
   test_basis_and_cache();
+  test_run_scoped_identity_and_eviction();
   test_peristaltic_mean_profile();
   std::cout << "All independent Robin lumen-boundary tests passed.\n";
   return 0;

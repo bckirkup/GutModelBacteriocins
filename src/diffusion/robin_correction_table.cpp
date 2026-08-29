@@ -20,9 +20,45 @@ namespace gutibm::robin {
 
 namespace {
 
+constexpr uint64_t kFnvOffset = 14695981039346656037ULL;
+constexpr uint64_t kFnvPrime = 1099511628211ULL;
 constexpr double kBisectionTolerance = 1.0e-13;
 constexpr double kMinimumRho = 1.0e-12;
 constexpr int kSamplesPerPiInterval = 260;
+
+void append_hash_bytes(uint64_t& hash, const void* data, size_t size) {
+  const auto* bytes = static_cast<const unsigned char*>(data);
+  for (size_t index = 0; index < size; ++index) {
+    hash ^= bytes[index];
+    hash *= kFnvPrime;
+  }
+}
+
+uint64_t table_identity_hash(const Table& table) {
+  uint64_t hash = kFnvOffset;
+  for (const int64_t group : table.quantized_key) {
+    append_hash_bytes(hash, &group, sizeof(group));
+  }
+  const int basis = static_cast<int>(table.basis);
+  append_hash_bytes(hash, &basis, sizeof(basis));
+  append_hash_bytes(hash, &table.z_lo, sizeof(table.z_lo));
+  append_hash_bytes(hash, &table.height, sizeof(table.height));
+  append_hash_bytes(hash, &table.cutoff, sizeof(table.cutoff));
+  for (const double value : table.values) {
+    append_hash_bytes(hash, &value, sizeof(value));
+  }
+  return hash;
+}
+
+}  // namespace
+
+std::string format_identity_hash(uint64_t identity) {
+  std::ostringstream output;
+  output << std::hex << std::setfill('0') << std::setw(16) << identity;
+  return output.str();
+}
+
+namespace {
 
 Vec3 mean_profile_velocity(const AdvectionField& adv, double z) {
   return adv.mean_velocity({0.0, 0.0, z});
@@ -531,6 +567,7 @@ std::shared_ptr<const Table> TableCache::get(
   }
   lru_.push_front(Entry{key, table});
   entries_[key] = lru_.begin();
+  built_identity_ ^= table_identity_hash(*table);
   ++tables_built_;
   ++generation_;
   return table;
@@ -563,6 +600,11 @@ uint64_t TableCache::table_evictions() const {
   return table_evictions_;
 }
 
+uint64_t TableCache::built_identity() const {
+  std::lock_guard<std::mutex> lock(mutex_);
+  return built_identity_;
+}
+
 std::string TableCache::metadata() const {
   std::lock_guard<std::mutex> lock(mutex_);
   std::ostringstream output;
@@ -582,22 +624,9 @@ std::string TableCache::metadata() const {
   return output.str();
 }
 
-std::string TableCache::values_hash() const {
+std::string TableCache::built_identity_hash() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  uint64_t hash = 14695981039346656037ULL;
-  for (const auto& [key, iterator] : entries_) {
-    (void)key;
-    for (const double value : iterator->table->values) {
-      const auto* bytes = reinterpret_cast<const unsigned char*>(&value);
-      for (size_t byte = 0; byte < sizeof(value); ++byte) {
-        hash ^= bytes[byte];
-        hash *= 1099511628211ULL;
-      }
-    }
-  }
-  std::ostringstream output;
-  output << std::hex << std::setfill('0') << std::setw(16) << hash;
-  return output.str();
+  return format_identity_hash(built_identity_);
 }
 
 TableCache& global_table_cache() {
