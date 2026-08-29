@@ -15,6 +15,9 @@
 
 namespace gutibm {
 
+static_assert(kDeadStateValue == to_underlying(PhenoState::DEAD),
+              "GPU and host dead-state values must remain aligned");
+
 namespace {
 
 bool participates_in_mechanics(const Agent& a, Real sim_time,
@@ -175,7 +178,9 @@ bool try_gpu_mechanics(Simulation& sim, const MechanicsConfig& cfg, Real dt) {
   SpatialHashGpu hash;
   const auto& dom = sim.domain();
   if (!gpu_build_spatial_hash(
-          ag, n, dom.lo(), dom.hi(), dom.spatial_hash().cell_size(), hash)) {
+          ag, n, dom.lo(), dom.hi(), dom.spatial_hash().cell_size(), sim.time(),
+          sim.config().cell_bio.cdi.corpse_persistence,
+          sim.config().cell_bio.cdi.enabled ? 1 : 0, hash)) {
     return false;
   }
 

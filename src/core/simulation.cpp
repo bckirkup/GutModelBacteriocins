@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "mechanics_participation.h"
 #include "stop_signal.h"
 #include "species_names.h"
 #include "agent_transfer.h"
@@ -1926,10 +1927,10 @@ void Simulation::rebuild_spatial_hash() {
   domain_.spatial_hash().clear();
   Int i = 0;
   for (const Agent& a : agents_) {
-    const bool live = a.state != PhenoState::DEAD;
-    if (const bool corpse = cfg_.cell_bio.cdi.enabled && a.timers.death_time >= 0.0
-            && (clock_.time - a.timers.death_time) < cfg_.cell_bio.cdi.corpse_persistence;
-        live || corpse) {
+    if (mechanics_participates(
+            to_underlying(a.state), a.timers.death_time, clock_.time,
+            cfg_.cell_bio.cdi.enabled ? 1 : 0,
+            cfg_.cell_bio.cdi.corpse_persistence)) {
       domain_.spatial_hash().insert(i, a.x);
     }
     ++i;

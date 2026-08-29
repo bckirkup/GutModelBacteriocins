@@ -55,7 +55,10 @@ int main() {
   const Vec3 lo = sim.domain().lo();
   const Vec3 hi = sim.domain().hi();
   const bool built =
-      gpu_build_spatial_hash(ag, ag.size(), lo, hi, cell_size, hash);
+      gpu_build_spatial_hash(
+          ag, ag.size(), lo, hi, cell_size, sim.time(),
+          cfg.cell_bio.cdi.corpse_persistence,
+          cfg.cell_bio.cdi.enabled ? 1 : 0, hash);
   assert(built);
   assert(hash.active());
   assert(hash.cell_offsets.size() == 1001);

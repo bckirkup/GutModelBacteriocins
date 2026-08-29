@@ -1,5 +1,6 @@
 #include "gpu_kernels.h"
 #include "gpu_common.cuh"
+#include "mechanics_participation.h"
 #include <cuda_runtime.h>
 
 namespace gutibm {
@@ -7,13 +8,16 @@ namespace gpu {
 
 __global__ void compute_cell_keys_kernel(
     const double* x, const double* y, const double* z, const int* state,
+    const double* death_time,
     int* cell_keys, int* sorted_indices, int num_agents,
     double lo0, double lo1, double lo2, double cell_size,
-    int nx_cells, int ny_cells, int nz_cells) {
+    int nx_cells, int ny_cells, int nz_cells, double sim_time,
+    int cdi_enabled, double corpse_persistence) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
   sorted_indices[i] = i;
-  if (state[i] == 3) {
+  if (!mechanics_participates(state[i], death_time[i], sim_time, cdi_enabled,
+                              corpse_persistence)) {
     cell_keys[i] = -1;
     return;
   }
@@ -28,15 +32,18 @@ __global__ void compute_cell_keys_kernel(
 
 void launch_spatial_hash_build_kernel(
     const double* x, const double* y, const double* z, const int* state,
+    const double* death_time,
     int* cell_keys, int* sorted_indices, int num_agents,
     double lo0, double lo1, double lo2, double cell_size,
-    int nx_cells, int ny_cells, int nz_cells, cudaStream_t stream) {
+    int nx_cells, int ny_cells, int nz_cells, double sim_time,
+    int cdi_enabled, double corpse_persistence, cudaStream_t stream) {
   if (num_agents <= 0) return;
   int block = 256;
   int grid = (num_agents + block - 1) / block;
   compute_cell_keys_kernel<<<grid, block, 0, stream>>>(
-      x, y, z, state, cell_keys, sorted_indices, num_agents,
-      lo0, lo1, lo2, cell_size, nx_cells, ny_cells, nz_cells);
+      x, y, z, state, death_time, cell_keys, sorted_indices, num_agents,
+      lo0, lo1, lo2, cell_size, nx_cells, ny_cells, nz_cells, sim_time,
+      cdi_enabled, corpse_persistence);
 }
 
 }  // namespace gpu

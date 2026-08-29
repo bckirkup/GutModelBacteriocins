@@ -922,15 +922,18 @@ void test_spatial_hash() {
   DeviceBuffer<double> y(agents);
   DeviceBuffer<double> z(agents);
   DeviceBuffer<int> state(agents);
+  DeviceBuffer<double> death_time(agents);
   DeviceBuffer<int> keys(agents);
   DeviceBuffer<int> sorted(agents);
   x.upload(std::vector<double>{0.0, 1.0, 3.999, 2.0, -1.0, 2.0});
   y.upload(std::vector<double>{0.0, 1.0, 3.999, 0.0, 5.0, 0.0});
   z.upload(std::vector<double>{0.0, 1.0, 3.999, 3.0, 4.0, 0.0});
   state.upload(std::vector<int>{0, 0, 0, 0, 0, 3});
+  death_time.upload(std::vector<double>(agents, -1.0));
   gutibm::gpu::launch_spatial_hash_build_kernel(
-      x.data(), y.data(), z.data(), state.data(), keys.data(), sorted.data(),
-      agents, 0.0, 0.0, 0.0, 1.0, kNx, kNy, kNz, nullptr);
+      x.data(), y.data(), z.data(), state.data(), death_time.data(), keys.data(),
+      sorted.data(), agents, 0.0, 0.0, 0.0, 1.0, kNx, kNy, kNz, 0.0, 0,
+      300.0, nullptr);
   synchronize();
   const auto result = download(keys, agents);
   assert(result[0] == 0);
