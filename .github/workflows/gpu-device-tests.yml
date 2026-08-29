@@ -5,8 +5,7 @@ on:
     branches: [main]
     paths:
       - "src/gpu/**"
-      - "tests/test_gpu*"
-      - "tests/test_mpi_gpu*"
+      - "tests/**gpu**"
       - "deploy/aws/Dockerfile.gputest"
       - "scripts/run_gpu_device_tests.sh"
       - ".github/workflows/gpu-device-tests.yml"
