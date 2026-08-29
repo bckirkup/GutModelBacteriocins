@@ -1593,6 +1593,14 @@ int Simulation::run() {
 void Simulation::finalize_neumann_image_series_stats() {
   const uint64_t local_hits = qssa_.gf().image_series_cap_hits();
 #ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (!initialized || finalized) {
+    neumann_image_series_cap_hits_ = local_hits;
+    return;
+  }
   unsigned long long global_hits = 0;
   const unsigned long long local_value =
       static_cast<unsigned long long>(local_hits);
