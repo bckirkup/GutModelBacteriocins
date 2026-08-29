@@ -1603,8 +1603,10 @@ void Simulation::finalize_neumann_image_series_stats() {
   neumann_image_series_cap_hits_ = local_hits;
 #endif
   if (domain_.rank() == 0 && neumann_image_series_cap_hits_ != 0) {
-    std::cerr << "Warning: Neumann image series reached M_MAX="
-              << neumann::kMaxImageShells << " on "
+    std::cerr << "Warning: Neumann image series reached its configured "
+                 "shell budget (M_MAX="
+              << neumann::kMaxImageShells << ", low-screening fallback="
+              << neumann::kLowScreeningShells << ") on "
               << neumann_image_series_cap_hits_
               << " evaluations; bounded QSSA steady state may be "
                  "under-resolved\n";

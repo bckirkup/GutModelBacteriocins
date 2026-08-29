@@ -72,7 +72,8 @@ __device__ inline double single_kernel(const double src[3], const double tgt[3],
 __device__ inline double concentration_bounded(const double src[3], const double tgt[3],
                                                const GfSourceParams& p,
                                                const DomainParams& dom,
-                                               const AdvectionParams& adv) {
+                                               const AdvectionParams& adv,
+                                               unsigned long long* cap_hits) {
   double D_eff = p.diff_coeff / p.retardation;
   double flow[3];
   flow_velocity(adv, src[0], src[2], flow[0], flow[1], flow[2]);
@@ -97,9 +98,13 @@ __device__ inline double concentration_bounded(const double src[3], const double
   };
   const ImageKernel kernel = {src, tgt, D_eff, p.source_rate, p.decay_rate,
                               flow, &dom};
+  int cap_hit = 0;
   const double total = neumann::sum_image_series(
       src[2], dom.z_lo, dom.z_hi, kernel,
-      neumann::kRelativeTolerance, neumann::kMaxImageShells);
+      D_eff, p.decay_rate,
+      sqrt(flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]),
+      fabs(flow[2]), neumann::kRelativeTolerance, nullptr, &cap_hit);
+  if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
   return total > 0.0 ? total : 0.0;
 }
 

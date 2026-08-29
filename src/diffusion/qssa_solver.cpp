@@ -17,6 +17,7 @@
 #include "error.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstddef>
 #include <cstring>
 #include <limits>
@@ -279,12 +280,13 @@ bool try_gpu_near_field(const Domain& domain,
                         ChemicalField& chem,
                         Int toxin_species_idx,
                         ChemicalFieldGpu* chem_gpu,
-                        bool defer_host_sync) {
+                        bool defer_host_sync,
+                        uint64_t* cap_hits) {
   if (chem_gpu == nullptr || !chem_gpu->active()) return false;
   double* d_conc = chem_gpu->conc_device(toxin_species_idx);
   if (d_conc == nullptr) return false;
   if (!gpu_superpose_to_device(domain, adv, sources, params, strength_factors,
-                               d_conc, cutoff_radius)) {
+                               d_conc, cutoff_radius, cap_hits)) {
     return false;
   }
   if (!defer_host_sync) {
@@ -305,9 +307,11 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
                                       Int toxin_species_idx,
                                       ChemicalFieldGpu* chem_gpu,
                                       bool defer_host_sync) {
+  uint64_t gpu_cap_hits = 0;
   if (try_gpu_near_field(domain, adv, sources, params, strength_factors,
                          cutoff_radius, chem, toxin_species_idx, chem_gpu,
-                         defer_host_sync)) {
+                         defer_host_sync, &gpu_cap_hits)) {
+    gf.add_image_series_cap_hits(gpu_cap_hits);
     return true;
   }
   gf.superpose_to_grid(sources, params, strength_factors, toxin_conc,

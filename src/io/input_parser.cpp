@@ -533,6 +533,10 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
   configure_toxin_species(cfg);
 
   const Real slab_height = cfg.domain.hi[2] - cfg.domain.lo[2];
+  // This is the worst-case screening because both flow components vanish at
+  // z_lo, so a source at the epithelial wall is unscreened by lumen flow.
+  // Keep the parser guard on sqrt(decay_rate / D_eff) * H rather than using
+  // distal or radial lumen velocities.
   for (const auto& spec : cfg.chemicals) {
     if (!is_toxin_species(spec.name) || spec.diffusion_enabled) continue;
     const Real d_eff = spec.diff_coeff / spec.retardation;

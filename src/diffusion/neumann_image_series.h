@@ -16,7 +16,41 @@
 namespace gutibm::neumann {
 
 constexpr int kMaxImageShells = 512;
+constexpr int kLowScreeningShells = 8;
 constexpr double kRelativeTolerance = 1.0e-10;
+
+struct ImageSeriesBudget {
+  int max_shells;
+  bool forced_cap_hit;
+};
+
+GUTIBM_NEUMANN_HOST_DEVICE inline double series_screening(
+    double d_eff, double decay_rate, double flow_magnitude, double flow_z) {
+  const double screened_speed = sqrt(
+      flow_magnitude * flow_magnitude + 4.0 * d_eff * decay_rate);
+  return (screened_speed - fabs(flow_z)) / (2.0 * d_eff);
+}
+
+GUTIBM_NEUMANN_HOST_DEVICE inline ImageSeriesBudget image_series_budget(
+    double d_eff, double decay_rate, double flow_magnitude, double flow_z,
+    double height, double rel_tol = kRelativeTolerance) {
+  const double k_series = series_screening(
+      d_eff, decay_rate, flow_magnitude, flow_z);
+  const double scaled_screening = k_series * height;
+  if (!(scaled_screening >= 0.05)) {
+    return {kLowScreeningShells, true};
+  }
+  if (!(rel_tol > 0.0)) {
+    return {kMaxImageShells, false};
+  }
+  const double estimated_shells = ceil(
+      log(1.0 / rel_tol) / (2.0 * scaled_screening));
+  const int shell_count = static_cast<int>(estimated_shells < 1.0
+      ? 1.0
+      : (estimated_shells > static_cast<double>(kMaxImageShells)
+          ? static_cast<double>(kMaxImageShells) : estimated_shells));
+  return {shell_count, false};
+}
 
 // Kernel evaluates one image at image_z. reflected is nonzero for family B,
 // whose odd z-reflection reverses the z component of the flow.
@@ -52,6 +86,23 @@ GUTIBM_NEUMANN_HOST_DEVICE inline double sum_image_series(
   }
   if (cap_hit != nullptr) {
     *cap_hit = converged ? 0 : 1;
+  }
+  return total;
+}
+
+template <typename Kernel>
+GUTIBM_NEUMANN_HOST_DEVICE inline double sum_image_series(
+    double source_z, double z_lo, double z_hi, Kernel kernel,
+    double d_eff, double decay_rate, double flow_magnitude, double flow_z,
+    double rel_tol = kRelativeTolerance, int* shell_count = nullptr,
+    int* cap_hit = nullptr) {
+  const ImageSeriesBudget budget = image_series_budget(
+      d_eff, decay_rate, flow_magnitude, flow_z, z_hi - z_lo, rel_tol);
+  const double total = sum_image_series(
+      source_z, z_lo, z_hi, kernel, rel_tol, budget.max_shells,
+      shell_count, cap_hit);
+  if (cap_hit != nullptr && budget.forced_cap_hit) {
+    *cap_hit = 1;
   }
   return total;
 }

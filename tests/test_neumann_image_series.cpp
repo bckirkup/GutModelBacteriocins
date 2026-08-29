@@ -149,6 +149,49 @@ void test_mode_expansion_agreement() {
             << maximum_relative_error << ")\n";
 }
 
+void test_shipped_screening_resolution() {
+  auto system = make_system();
+  const Real height = system.domain.size()[2];
+  const auto params = test_params(1.0e-4);
+  const Real source_z = 0.3 * height;
+  const Real target_z = 0.7 * height;
+  const Real rho = 30.0e-6;
+  const Real d_eff = params.diff_coeff / params.retardation;
+  const Real screening = std::sqrt(params.decay_rate / d_eff);
+  const auto budget = neumann::image_series_budget(
+      d_eff, params.decay_rate, 0.0, 0.0, height);
+  if (!(screening * height > 0.15 && screening * height < 0.17)
+      || budget.max_shells < 60 || budget.max_shells >= neumann::kMaxImageShells) {
+    std::cerr << "shipped screening budget was not resolved: kH="
+              << screening * height << " shells=" << budget.max_shells << "\n";
+    std::exit(1);
+  }
+  const auto kernel = [=](Real image_z, int) {
+    const Real distance = std::hypot(rho, target_z - image_z);
+    return params.source_rate
+        * std::exp(-screening * distance)
+        / (4.0 * std::numbers::pi * d_eff * distance);
+  };
+  int shell_count = 0;
+  int cap_hit = 0;
+  const Real image_value = neumann::sum_image_series(
+      source_z, 0.0, height, kernel, d_eff, params.decay_rate, 0.0, 0.0,
+      neumann::kRelativeTolerance, &shell_count, &cap_hit);
+  const Real mode_value = mode_expansion(
+      params, rho, target_z, source_z, 0.0, height);
+  const Real relative_error =
+      std::abs(image_value - mode_value) / std::abs(mode_value);
+  if (cap_hit != 0 || shell_count < 50 || !(relative_error < 1.0e-6)) {
+    std::cerr << "shipped screening image series under-resolved: shells="
+              << shell_count << " cap_hit=" << cap_hit
+              << " relative_error=" << relative_error << "\n";
+    std::exit(1);
+  }
+  std::cout << "  test_shipped_screening_resolution: PASSED (kH="
+            << screening * height << ", shells=" << shell_count
+            << ", relative error=" << relative_error << ")\n";
+}
+
 void test_global_mass_balance() {
   auto system = make_system(10.0e-6);
   const Real decay = 1.0e-2;
@@ -269,6 +312,7 @@ int main() {
   std::cout << "=== Independent Neumann Image-Series Tests ===\n";
   test_boundary_condition();
   test_mode_expansion_agreement();
+  test_shipped_screening_resolution();
   test_global_mass_balance();
   test_truncation_and_cap_guard();
   test_parser_screening_guard();

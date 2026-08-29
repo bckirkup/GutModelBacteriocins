@@ -152,9 +152,10 @@ bool try_gpu_superpose(const Domain& domain,
                        const std::vector<Vec3>& sources,
                        const std::vector<GreensFunctionParams>& params,
                        std::vector<Real>& grid_conc,
-                       Real cutoff_radius) {
+                       Real cutoff_radius, uint64_t* cap_hits) {
   if (!gpu_runtime_enabled()) return false;
-  return gpu_superpose_to_grid(domain, adv, sources, params, {}, grid_conc, cutoff_radius);
+  return gpu_superpose_to_grid(domain, adv, sources, params, {}, grid_conc,
+                               cutoff_radius, cap_hits);
 }
 #endif
 
@@ -331,8 +332,10 @@ Real GreensFunction::concentration_bounded(const Vec3& source, const Vec3& targe
   // uniform-flow approximation.
   const Real total = neumann::sum_image_series(
       source[2], z_lo_, z_hi_, evaluate_image,
-      neumann::kRelativeTolerance, neumann::kMaxImageShells, nullptr,
-      &cap_hit);
+      D_eff, params.decay_rate,
+      std::sqrt(flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]),
+      std::abs(flow[2]),
+      neumann::kRelativeTolerance, nullptr, &cap_hit);
   if (cap_hit != 0) {
 #ifdef GUTIBM_OPENMP
 #pragma omp atomic update
@@ -354,7 +357,8 @@ void GreensFunction::superpose_to_grid(
 
 #ifdef GUTIBM_CUDA
   if (adv_ && domain_ && try_gpu_superpose(*domain_, *adv_, sources, params,
-                                           grid_conc, cutoff_radius)) {
+                                           grid_conc, cutoff_radius,
+                                           &image_series_cap_hits_)) {
     return;
   }
 #endif

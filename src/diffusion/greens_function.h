@@ -85,7 +85,10 @@ class GreensFunction {
   uint64_t image_series_cap_hits() const {
     return image_series_cap_hits_;
   }
-  void reset_image_series_cap_hits() const {
+  void add_image_series_cap_hits(uint64_t count) const {
+    image_series_cap_hits_ += count;
+  }
+  void reset_image_series_cap_hits() {
     image_series_cap_hits_ = 0;
   }
 
