@@ -44,6 +44,9 @@ struct GreensFunctionParams {
   Real lumen_transfer_length = robin::kZeroTransferLength;
   bool lumen_transfer_basis_free = false;
   Real robin_cutoff = robin::kDefaultCutoff;
+  Real image_series_relative_tolerance = 1.0e-10;
+  int image_series_max_shells = 512;
+  bool image_series_legacy_reflections = false;
 
   // NOTE: bacteriocin pI classification lives in a single source of truth,
   // `classify_by_pI()` in src/genome/plasmid.h (pI > 8.5 → CORE, pI < 7.0 →
@@ -100,11 +103,20 @@ class GreensFunction {
   uint64_t robin_direct_evaluations() const {
     return robin_direct_evaluations_;
   }
+  uint64_t kernel_evaluations() const {
+    return kernel_evaluations_;
+  }
   void add_image_series_cap_hits(uint64_t count) const {
     image_series_cap_hits_ += count;
   }
+  void add_kernel_evaluations(uint64_t count) const {
+    kernel_evaluations_ += count;
+  }
   void reset_image_series_cap_hits() {
     image_series_cap_hits_ = 0;
+  }
+  void reset_kernel_evaluations() {
+    kernel_evaluations_ = 0;
   }
 
  private:
@@ -126,6 +138,7 @@ class GreensFunction {
   Real z_hi_ = 100.0e-6;
   mutable uint64_t image_series_cap_hits_ = 0;
   mutable uint64_t robin_direct_evaluations_ = 0;
+  mutable uint64_t kernel_evaluations_ = 0;
 };
 
 }  // namespace gutibm

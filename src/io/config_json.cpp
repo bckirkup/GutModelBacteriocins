@@ -926,6 +926,10 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("toxin_cutoff", cfg.qssa.toxin_cutoff);
   real_key("toxin.lumen_transfer_length", cfg.qssa.lumen_transfer_length);
   string_key("toxin.lumen_transfer_basis", cfg.qssa.lumen_transfer_basis);
+  real_key("image_series_relative_tolerance",
+           cfg.qssa.image_series_relative_tolerance);
+  int_key("image_series_max_shells", cfg.qssa.image_series_max_shells);
+  string_key("image_series_mode", cfg.qssa.image_series_mode);
   real_key("nutrient_cutoff", cfg.qssa.nutrient_cutoff);
   real_key("colicin_release_rate", cfg.qssa.colicin_release_rate);
   real_key("microcin_secretion", cfg.qssa.microcin_secretion);

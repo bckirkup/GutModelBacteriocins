@@ -1,0 +1,19 @@
+# GPU cost/benefit benchmark harness
+
+This directory contains the authoritative Axis A/B/C arm manifest generator,
+the one-arm runner, and the cross-machine report merger.  Generate configs
+without executing an arm:
+
+```bash
+PYTHONPATH=../../python python generate_configs.py generate \
+  --base base_config.json --output-dir generated \
+  --scale 1e5 ../scaling_benchmark/input_1e5.json \
+  --scale 1e6 ../scaling_benchmark/input_1e6.json
+```
+
+The generated `manifest.json` retains every arm, including blocked A6.  Run
+one record on a suitable host with `run_arm.py`, then merge raw result files
+from any hosts with `merge_report.py`.  Missing `(arm, scale, seed)` records
+remain explicit in the merged report; the merger never starts GutIBM.
+
+No benchmark arm is launched by the generator or this source tree's tests.

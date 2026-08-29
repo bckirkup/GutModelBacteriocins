@@ -1592,6 +1592,8 @@ int Simulation::run() {
 
 void Simulation::finalize_neumann_image_series_stats() {
   const uint64_t local_hits = qssa_.gf().image_series_cap_hits();
+  const uint64_t local_kernel_evaluations =
+      qssa_.gf().kernel_evaluations();
 #ifdef GUTIBM_MPI
   int initialized = 0;
   int finalized = 0;
@@ -1599,16 +1601,25 @@ void Simulation::finalize_neumann_image_series_stats() {
   MPI_Finalized(&finalized);
   if (!initialized || finalized) {
     neumann_image_series_cap_hits_ = local_hits;
+    green_function_kernel_evaluations_ = local_kernel_evaluations;
     return;
   }
   unsigned long long global_hits = 0;
+  unsigned long long global_kernel_evaluations = 0;
   const unsigned long long local_value =
       static_cast<unsigned long long>(local_hits);
+  const unsigned long long local_kernel_value =
+      static_cast<unsigned long long>(local_kernel_evaluations);
   MPI_Allreduce(&local_value, &global_hits, 1, MPI_UNSIGNED_LONG_LONG,
                 MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_kernel_value, &global_kernel_evaluations, 1,
+                MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
   neumann_image_series_cap_hits_ = static_cast<uint64_t>(global_hits);
+  green_function_kernel_evaluations_ =
+      static_cast<uint64_t>(global_kernel_evaluations);
 #else
   neumann_image_series_cap_hits_ = local_hits;
+  green_function_kernel_evaluations_ = local_kernel_evaluations;
 #endif
   if (domain_.rank() == 0 && neumann_image_series_cap_hits_ != 0) {
     std::cerr << "Warning: Neumann image series reached its configured "

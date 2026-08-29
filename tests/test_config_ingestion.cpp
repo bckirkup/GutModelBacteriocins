@@ -317,6 +317,19 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return c.qssa.lumen_transfer_basis;
                 }, "free"));
+  v.push_back(R("image_series_relative_tolerance",
+                [](const SimulationConfig& c) {
+                  return c.qssa.image_series_relative_tolerance;
+                }, 1.0e-6));
+  v.push_back(I("image_series_max_shells",
+                [](const SimulationConfig& c) {
+                  return static_cast<long long>(
+                      c.qssa.image_series_max_shells);
+                }));
+  v.push_back(S("image_series_mode",
+                [](const SimulationConfig& c) {
+                  return c.qssa.image_series_mode;
+                }, "pre_fix_duplicated_reflection"));
   v.push_back(R("lumen_transfer_length", [](const SimulationConfig& c) {
     return c.qssa.lumen_transfer_length;
   }, 123.0e-6, false));

@@ -52,6 +52,16 @@ void assert_run_provenance(hid_t file,
       file, "run_provenance/termination_detail"));
   assert(gutibm::test::hdf5_dataset_exists(
       file, "run_provenance/termination_wall_seconds"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/green_function_kernel_evaluations"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/step_profile/biology_s"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/step_profile/chemistry_s"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/step_profile/total_s"));
+  assert(gutibm::test::hdf5_dataset_exists(
+      file, "run_provenance/step_profile/step_count"));
   assert(gutibm::test::hdf5_read_scalar<int32_t>(
              file, "run_provenance/termination_cause_code",
              H5T_NATIVE_INT32) == 0);
@@ -62,6 +72,11 @@ void assert_run_provenance(hid_t file,
   assert(gutibm::test::hdf5_read_scalar<double>(
              file, "run_provenance/termination_wall_seconds",
              H5T_NATIVE_DOUBLE) >= 0.0);
+  assert(gutibm::test::hdf5_read_scalar<int32_t>(
+             file, "run_provenance/step_profile/step_count",
+             H5T_NATIVE_INT32) == 2);
+  assert(std::isfinite(gutibm::test::hdf5_read_scalar<double>(
+      file, "run_provenance/step_profile/total_s", H5T_NATIVE_DOUBLE)));
   const std::string content =
       read_string_dataset(file, "run_provenance/resolved_config");
   gutibm::SimulationConfig restored = gutibm::InputParser::default_config();
@@ -108,6 +123,7 @@ SimulationConfig make_roundtrip_config(std::string_view filename, bool parallel)
   cfg.time.total_time = 120.0;
   cfg.time.bio_dt = 60.0;
   cfg.time.output_interval = 60.0;
+  cfg.profile_steps = true;
   cfg.seed = 24680;
   cfg.hdf5.enabled = true;
   cfg.hdf5.filename = filename;
