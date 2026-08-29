@@ -280,38 +280,59 @@ void test_truncation_and_cap_guard() {
             << shell_count << ", zero-decay cap hit)\n";
 }
 
-Real envelope_kernel(Real image_z, int) {
-  constexpr Real target_z = 37.0e-6;
-  constexpr Real height = 100.0e-6;
-  const Real screening = 1.0;
-  const Real distance = std::abs(image_z - target_z);
-  return std::exp(-screening * distance / height)
-      / (1.0 + distance / height);
-}
+struct EnvelopeKernel {
+  Real target_z;
+  Real screening;
+
+  Real operator()(Real image_z, int) const {
+    constexpr Real rho = 2.0e-6;
+    const Real distance = std::hypot(rho, target_z - image_z);
+    return std::exp(-screening * distance) / distance;
+  }
+};
 
 void test_low_screening_accuracy_envelope() {
+  constexpr Real height = 100.0e-6;
+  constexpr Real source_z = 0.3 * height;
+  constexpr Real target_z = 0.5 * height;
+  constexpr Real d_eff = 4.0e-11;
+  constexpr int reference_shells = 20000;
   constexpr std::array<Real, 5> k_h_values =
       {0.5, 0.158114, 0.05, 0.03, 0.025};
   for (const Real k_h : k_h_values) {
+    const Real screening = k_h / height;
+    const Real decay_rate = screening * screening * d_eff;
+    const EnvelopeKernel kernel = {target_z, screening};
     const auto budget = neumann::image_series_budget(
-        4.0e-11, (k_h / 100.0e-6) * (k_h / 100.0e-6) * 4.0e-11,
-        0.0, 0.0, 100.0e-6);
+        d_eff, decay_rate, 0.0, 0.0, height);
     int shells = 0;
     int cap_hit = 0;
-    int floored = 0;
     const Real value = neumann::sum_image_series(
-        23.0e-6, 0.0, 100.0e-6, envelope_kernel,
-        neumann::kRelativeTolerance, budget.max_shells, &shells, &cap_hit,
-        &floored);
+        source_z, 0.0, height, kernel, neumann::kRelativeTolerance,
+        budget.max_shells, &shells, &cap_hit);
+    const int floored = budget.low_screening_floor ? 1 : 0;
     const Real reference = neumann::sum_image_series(
-        23.0e-6, 0.0, 100.0e-6, envelope_kernel,
-        neumann::kRelativeTolerance, neumann::kMaxImageShells, nullptr,
-        nullptr);
+        source_z, 0.0, height, kernel, neumann::kRelativeTolerance,
+        reference_shells, nullptr, nullptr);
     const Real relative_error =
         std::abs(value - reference) / std::abs(reference);
-    if (!(relative_error <= 1.0e-9) || cap_hit != 0 || floored != 0) {
+    const int old_shells = k_h < 0.05 ? neumann::kLowScreeningShells
+                                      : budget.max_shells;
+    const Real old_value = neumann::sum_image_series(
+        source_z, 0.0, height, kernel, neumann::kRelativeTolerance,
+        old_shells, nullptr, nullptr);
+    const Real old_error =
+        std::abs(old_value - reference) / std::abs(reference);
+    std::cout << "    kH=" << k_h << " relative error=" << relative_error
+              << " old-threshold error=" << old_error
+              << " floored=" << floored << "\n";
+    if (!(relative_error <= 1.0e-9) || cap_hit != 0
+        || ((k_h == 0.03 || k_h == 0.025) && floored != 0)
+        || (k_h < 0.05 && !(old_error > 0.05))
+        || (k_h >= 0.05 && !(old_error <= 1.0e-9))) {
       std::cerr << "low-screening envelope oracle mismatch at kH=" << k_h
-                << ": relative error=" << relative_error << "\n";
+                << ": relative error=" << relative_error
+                << ", old-threshold error=" << old_error << "\n";
       std::exit(1);
     }
   }
@@ -321,8 +342,22 @@ void test_low_screening_accuracy_envelope() {
 void test_low_screening_provenance() {
   auto system = make_system();
   auto params = test_params(0.0);
-  params.decay_rate = (0.005 / system.domain.size()[2])
-      * (0.005 / system.domain.size()[2]) * params.diff_coeff;
+  const Real height = system.domain.size()[2];
+  params.decay_rate =
+      (0.03 / height) * (0.03 / height) * params.diff_coeff;
+  system.gf.reset_image_series_cap_hits();
+  system.gf.reset_low_screening_diagnostics();
+  const Real resolved = system.gf.concentration_bounded(
+      {500.0e-6, 500.0e-6, 50.0e-6},
+      {530.0e-6, 500.0e-6, 50.0e-6}, params);
+  if (!std::isfinite(resolved)
+      || system.gf.low_screening_evaluations() != 0) {
+    std::cerr << "kH=0.03 evaluation unexpectedly used low-screening floor\n";
+    std::exit(1);
+  }
+
+  params.decay_rate = (0.005 / height) * (0.005 / height)
+      * params.diff_coeff;
   system.gf.reset_image_series_cap_hits();
   system.gf.reset_low_screening_diagnostics();
   (void)system.gf.concentration_bounded(

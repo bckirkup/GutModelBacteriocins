@@ -402,7 +402,7 @@ Real GreensFunction::concentration_sealed(
     total = neumann::sum_image_series(
         source[2], z_lo_, z_hi_, evaluate_image,
         params.image_series_relative_tolerance, budget.max_shells,
-        nullptr, &cap_hit, &low_screening_floor);
+        nullptr, &cap_hit);
     low_screening_floor = budget.low_screening_floor ? 1 : 0;
   }
   if (cap_hit != 0) {

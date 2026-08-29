@@ -59,9 +59,7 @@ template <typename Kernel>
 GUTIBM_NEUMANN_HOST_DEVICE inline double sum_image_series(
     double source_z, double z_lo, double z_hi, Kernel kernel,
     double rel_tol = kRelativeTolerance, int max_shells = kMaxImageShells,
-    int* shell_count = nullptr, int* cap_hit = nullptr,
-    int* low_screening_floor = nullptr) {
-  (void)low_screening_floor;
+    int* shell_count = nullptr, int* cap_hit = nullptr) {
   const double height = z_hi - z_lo;
   const double reflected_source_z = 2.0 * z_lo - source_z;
   double total = kernel(source_z, 0) + kernel(reflected_source_z, 1);
@@ -103,7 +101,7 @@ GUTIBM_NEUMANN_HOST_DEVICE inline double sum_image_series(
       d_eff, decay_rate, flow_magnitude, flow_z, z_hi - z_lo, rel_tol);
   const double total = sum_image_series(
       source_z, z_lo, z_hi, kernel, rel_tol, budget.max_shells,
-      shell_count, cap_hit, low_screening_floor);
+      shell_count, cap_hit);
   if (low_screening_floor != nullptr) {
     *low_screening_floor = budget.low_screening_floor ? 1 : 0;
   }

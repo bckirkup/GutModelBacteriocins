@@ -37,6 +37,9 @@ Run provenance distinguishes genuine image-series non-convergence
 low-screening floor (`neumann_low_screening_evaluations`). It also records the
 pre-clip negative-field count and most-negative value. The final field remains
 clamped at zero; the diagnostic is recorded before that clamp.
+The negative pre-clip test intentionally uses an unphysical negative source
+rate to drive the field negative, so it covers diagnostic counter plumbing
+rather than a physically reachable case.
 
 The translated/reflected image construction retains the inherited
 wall-normal-flow approximation. This envelope change does not alter that

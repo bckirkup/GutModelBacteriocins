@@ -69,7 +69,9 @@ void enforce_low_screening_policy(
       const std::string message =
           "low-screening sealed Neumann image series: kH="
           + std::to_string(k_h)
-          + " (measured truncation error scale is approximately 13%)";
+          + "; sealed truncation error is at least approximately 13% at "
+            "the kH=0.0225 threshold and grows without bound as kH "
+            "approaches zero; see docs/NEUMANN_LOW_SCREENING_ENVELOPE.md";
       if (cfg.low_screening_policy == "error") {
         throw SimulationError(message);
       }

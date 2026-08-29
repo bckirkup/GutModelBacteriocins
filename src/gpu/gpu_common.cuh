@@ -132,7 +132,7 @@ __device__ inline double concentration_bounded(const double src[3], const double
     total = neumann::sum_image_series(
         src[2], dom.z_lo, dom.z_hi, kernel,
         p.image_series_relative_tolerance, budget.max_shells,
-        nullptr, &cap_hit, &low_screening_floor);
+        nullptr, &cap_hit);
     low_screening_floor = budget.low_screening_floor ? 1 : 0;
   }
   if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
