@@ -99,6 +99,13 @@ void mark_corpse(Simulation& sim, Real death_time) {
   sim.agents()[1].state = PhenoState::DEAD;
   sim.agents()[1].timers.death_time = death_time;
 }
+
+CdiConfig corpse_cdi_config() {
+  CdiConfig cdi;
+  cdi.enabled = true;
+  cdi.corpse_persistence = 300.0;
+  return cdi;
+}
 #endif
 
 void test_gpu_fresh_corpse_match_cpu() {
@@ -117,13 +124,16 @@ void test_gpu_fresh_corpse_match_cpu() {
   mcfg.hertzian_enabled = true;
   mcfg.hertz_k = 1.0e-6;
   mcfg.adhesion_enabled = false;
+  const CdiConfig cdi = corpse_cdi_config();
 
-  Simulation sim_cpu = make_two_agent_sim(pos_a, pos_b, mcfg, false);
+  Simulation sim_cpu =
+      make_two_agent_sim(pos_a, pos_b, mcfg, false, 0.01, cdi);
   mark_corpse(sim_cpu, 0.0);
   FixMechanics fix_cpu(sim_cpu, mcfg);
   fix_cpu.compute(1.0);
 
-  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true);
+  Simulation sim_gpu =
+      make_two_agent_sim(pos_a, pos_b, mcfg, true, 0.01, cdi);
   mark_corpse(sim_gpu, 0.0);
   assert(sim_gpu.gpu_active());
   FixMechanics fix_gpu(sim_gpu, mcfg);
@@ -163,14 +173,17 @@ void test_gpu_expired_corpse_match_cpu() {
   mcfg.hertzian_enabled = true;
   mcfg.hertz_k = 1.0e-6;
   mcfg.adhesion_enabled = false;
+  const CdiConfig cdi = corpse_cdi_config();
 
-  Simulation sim_cpu = make_two_agent_sim(pos_a, pos_b, mcfg, false);
-  mark_corpse(sim_cpu, -301.0);
+  Simulation sim_cpu =
+      make_two_agent_sim(pos_a, pos_b, mcfg, false, 0.01, cdi);
+  mark_corpse(sim_cpu, -(cdi.corpse_persistence + 1.0));
   FixMechanics fix_cpu(sim_cpu, mcfg);
   fix_cpu.compute(1.0);
 
-  Simulation sim_gpu = make_two_agent_sim(pos_a, pos_b, mcfg, true);
-  mark_corpse(sim_gpu, -301.0);
+  Simulation sim_gpu =
+      make_two_agent_sim(pos_a, pos_b, mcfg, true, 0.01, cdi);
+  mark_corpse(sim_gpu, -(cdi.corpse_persistence + 1.0));
   assert(sim_gpu.gpu_active());
   FixMechanics fix_gpu(sim_gpu, mcfg);
   fix_gpu.compute(1.0);
