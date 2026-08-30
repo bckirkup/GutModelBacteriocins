@@ -271,7 +271,7 @@ void test_fur_siderophore_metabolism_parity() {
 }
 
 void test_fur_sensitivity() {
-  const std::vector<Real> iron_values{3.0e-5, 1.0e-4, 1.0e-3};
+  const std::vector iron_values{3.0e-5, 1.0e-4, 1.0e-3};
   std::vector<Real> cpu_expression;
   std::vector<Real> gpu_expression;
   std::vector<Real> cpu_mu;
@@ -293,7 +293,7 @@ void test_fur_sensitivity() {
                         "fepA_expression", true);
   assert_ordering_match(cpu_mu, gpu_mu, iron_values, "mu_realized", false);
 
-  const std::vector<Real> cap_iron_values{1.0e-8, 1.0e-10};
+  const std::vector cap_iron_values{1.0e-8, 1.0e-10};
   std::vector<Real> cap_cpu_expression;
   std::vector<Real> cap_gpu_expression;
   for (const Real iron : cap_iron_values) {
@@ -328,8 +328,11 @@ void test_fur_sensitivity() {
 
 int main() {
   std::cout << "=== GPU Fur/Siderophore Metabolism Parity ===\n";
-  const int gpu_status = gutibm::test::require_gpu("gpu_metabolism_fur");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status =
+          gutibm::test::require_gpu("gpu_metabolism_fur");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
   return 0;

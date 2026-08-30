@@ -9,6 +9,7 @@
 #include "plasmid.h"
 #include <iostream>
 #include <algorithm>
+#include <ranges>
 #include "error.h"
 #include <sstream>
 #include <stdexcept>
@@ -17,6 +18,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <format>
 #include <limits>
 
 namespace gutibm {
@@ -153,9 +155,10 @@ Int parse_positive_config_int(std::string_view key, const std::string& val) {
 
 EpithelialBoundaryMode parse_epithelial_boundary_mode(
     std::string_view key, const std::string& value) {
-  if (value == "dirichlet") return EpithelialBoundaryMode::Dirichlet;
-  if (value == "robin") return EpithelialBoundaryMode::Robin;
-  if (value == "flux") return EpithelialBoundaryMode::Flux;
+  using enum EpithelialBoundaryMode;
+  if (value == "dirichlet") return Dirichlet;
+  if (value == "robin") return Robin;
+  if (value == "flux") return Flux;
   throw ConfigError(
       "invalid " + std::string(key)
       + ": expected 'dirichlet', 'robin', or 'flux', got '" + value + "'");
@@ -266,9 +269,9 @@ void configure_toxin_species(SimulationConfig& cfg) {
         find_chemical_spec(cfg.chemicals, receptor_names[i]);
     if (receptor_indices[i] >= 0) ++receptor_count;
   }
-  const Int lumped_idx =
-      find_chemical_spec(cfg.chemicals, species::BACTERIOCIN_LUMPED);
-  if (lumped_idx >= 0) {
+  if (const Int lumped_idx =
+          find_chemical_spec(cfg.chemicals, species::BACTERIOCIN_LUMPED);
+      lumped_idx >= 0) {
     if (receptor_count != 0) {
       throw ConfigError(
           "toxin_lumping=lumped cannot combine lumped and receptor fields");
@@ -298,11 +301,10 @@ void configure_toxin_species(SimulationConfig& cfg) {
   configured.reserve(cfg.chemicals.size() - receptor_names.size() + 1);
   bool inserted = false;
   for (const auto& spec : cfg.chemicals) {
-    const bool is_receptor =
-        std::find(std::begin(receptor_names), std::end(receptor_names),
-                  spec.name)
-        != std::end(receptor_names);
-    if (is_receptor) {
+    if (const bool is_receptor =
+            std::ranges::find(receptor_names, spec.name)
+            != std::end(receptor_names);
+        is_receptor) {
       if (!inserted) {
         configured.push_back(lumped);
         inserted = true;
@@ -610,13 +612,13 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
   }
   if (cfg.chemistry_decomposition == "slab"
       && metabolism.delivery_far_field_radius > 0.0) {
-    throw ConfigError(
-        "metabolism.delivery_far_field_radius="
-        + std::to_string(metabolism.delivery_far_field_radius)
-        + " is unsupported for regularized delivery deposition in slab "
-          "chemistry; slab configurations must set "
-          "metabolism.delivery_far_field_radius = 0.0 to opt into the "
-          "grid-dependent single-voxel delivery model");
+    throw ConfigError(std::format(
+        "metabolism.delivery_far_field_radius={:f}"
+        " is unsupported for regularized delivery deposition in slab "
+        "chemistry; slab configurations must set "
+        "metabolism.delivery_far_field_radius = 0.0 to opt into the "
+        "grid-dependent single-voxel delivery model",
+        metabolism.delivery_far_field_radius));
   }
   if (cfg.chem_env.oxygen.respiration_driver != "ambient"
       && cfg.chem_env.oxygen.respiration_driver != "funded") {
@@ -632,7 +634,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
       && (!cfg.chem_env.oxygen.delivery_uptake_enabled
           || metabolism.uptake_limit_mode != UptakeLimitMode::Delivery)) {
     throw ConfigError(
-        "oxygen.respiration_driver=\"funded\" requires "
+        R"(oxygen.respiration_driver="funded" requires )"
         "oxygen.delivery_uptake_enabled=true and "
         "metabolism.uptake_limit=\"delivery\"");
   }
@@ -655,7 +657,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
       && (!cfg.chem_env.oxygen.delivery_uptake_enabled
           || metabolism.uptake_limit_mode != UptakeLimitMode::Delivery)) {
     throw ConfigError(
-        "oxygen.ros_driver=\"funded\" requires "
+        R"(oxygen.ros_driver="funded" requires )"
         "oxygen.delivery_uptake_enabled=true and "
         "metabolism.uptake_limit=\"delivery\"");
   }
@@ -683,8 +685,9 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
     spec.delivery_enabled = false;
   }
   if (metabolism.uptake_limit_mode == UptakeLimitMode::Delivery) {
-    const Int carbon = find_chemical_spec(cfg.chemicals, species::CARBON);
-    if (carbon >= 0) {
+    if (const Int carbon =
+            find_chemical_spec(cfg.chemicals, species::CARBON);
+        carbon >= 0) {
       cfg.chemicals[static_cast<size_t>(carbon)].delivery_enabled = true;
     }
     if (cfg.chem_env.oxygen.delivery_uptake_enabled) {
@@ -702,8 +705,9 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "implemented yet");
   }
 
-  const Int carbon_idx = find_chemical_spec(cfg.chemicals, species::CARBON);
-  if (carbon_idx >= 0) {
+  if (const Int carbon_idx =
+          find_chemical_spec(cfg.chemicals, species::CARBON);
+      carbon_idx >= 0) {
     auto& carbon = cfg.chemicals[static_cast<size_t>(carbon_idx)];
     configure_epithelial_boundary(
         carbon, "carbon", "carbon.epithelial_boundary",

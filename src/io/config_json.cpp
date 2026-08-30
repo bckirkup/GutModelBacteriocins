@@ -189,15 +189,15 @@ class JsonCursor {
   }
 
   void parse_receptor_expression_object(
-      std::map<std::string, Real>& expressions) {
+      std::map<std::string, Real, std::less<>>& expressions) {
     if (!match('{')) throw ConfigError("expected receptor expression object");
     skip_ws();
     if (match('}')) return;
     while (true) {
       const std::string receptor_name = parse_string();
       if (!match(':')) throw ConfigError("expected ':' in receptor expression");
-      const auto receptor = receptor_type_from_name(receptor_name);
-      if (!receptor.has_value()) {
+      if (const auto receptor = receptor_type_from_name(receptor_name);
+          !receptor.has_value()) {
         throw ConfigError("unknown receptor name: " + receptor_name);
       }
       const Real expression = parse_number();
@@ -613,8 +613,8 @@ InitialStrainsParseResult ConfigJson::parse_initial_strains(const std::string& c
       }
     }
   } catch (const ConfigError& ex) {
-    const std::string message = ex.what();
-    if (message.find("unknown receptor name") != std::string::npos) {
+    if (const std::string message = ex.what();
+        message.find("unknown receptor name") != std::string::npos) {
       throw;
     }
     std::cerr << "Warning: failed to parse initial_strains: " << ex.what()
@@ -704,8 +704,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
 
     return true;
   } catch (const ConfigError& ex) {
-    const std::string message = ex.what();
-    if (message.find("invalid immigration.") == 0
+    if (const std::string message = ex.what();
+        message.find("invalid immigration.") == 0
         || message.find("invalid initial_population.") == 0
         || message.find("invalid chemistry_decomposition") == 0
         || message.find("invalid species_subset") == 0

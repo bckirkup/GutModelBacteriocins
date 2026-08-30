@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <format>
 #include <string>
 
 namespace gutibm {
@@ -26,17 +27,16 @@ void Domain::init(const DomainConfig& cfg) {
 
   Vec3 sz = size();
   const std::array<const char*, 3> axis_names = {"x", "y", "z"};
-  Int base_cells[3] = {};
+  std::array<Int, 3> base_cells = {};
   for (Int axis = 0; axis < 3; ++axis) {
     base_cells[axis] = std::max<Int>(1, static_cast<Int>(
         std::round(sz[static_cast<size_t>(axis)] / cfg.grid_dx)));
     const Int stride = cfg.chemistry_stride[static_cast<size_t>(axis)];
     if (base_cells[axis] % stride != 0) {
-      throw ConfigError(
-          "chemistry stride for axis " + std::string(axis_names[axis])
-          + " does not divide base cell count "
-          + std::to_string(base_cells[axis]) + " (stride "
-          + std::to_string(stride) + ")");
+      throw ConfigError(std::format(
+          "chemistry stride for axis {} does not divide base cell count {} "
+          "(stride {})",
+          axis_names[axis], base_cells[axis], stride));
     }
   }
   nx_ = base_cells[0] / cfg.chemistry_stride[0];
@@ -109,9 +109,10 @@ void Domain::decompose() {
   Int axis = cfg_.mpi_decomp_axis;  // 0 = x
   Real global_lo = lo_[axis];
   Real global_hi = hi_[axis];
-  const auto grid_range = grid_x_range_for_rank(nx_, nprocs_, rank_);
-  local_lo_x_ = global_lo + grid_range.first * dx_[0];
-  local_hi_x_ = global_lo + grid_range.second * dx_[0];
+  const auto [grid_begin, grid_end] =
+      grid_x_range_for_rank(nx_, nprocs_, rank_);
+  local_lo_x_ = global_lo + grid_begin * dx_[0];
+  local_hi_x_ = global_lo + grid_end * dx_[0];
   if (rank_ == nprocs_ - 1) local_hi_x_ = global_hi;
 
   ghost_width_ = cfg_.ghost_width;
@@ -128,8 +129,8 @@ void Domain::decompose() {
     rank_hi_ = axis_periodic ? 0 : -1;
   }
 
-  local_grid_x_begin_ = grid_range.first;
-  local_grid_x_end_ = grid_range.second;
+  local_grid_x_begin_ = grid_begin;
+  local_grid_x_end_ = grid_end;
 }
 
 std::pair<Int, Int> Domain::grid_x_range_for_rank(
@@ -176,7 +177,7 @@ Int Domain::global_to_local_grid_x(Int global_ix) const {
     }
     candidate %= nx_;
     if (candidate < 0) candidate += nx_;
-    const Int periods = static_cast<Int>(std::floor(
+    const auto periods = static_cast<Int>(std::floor(
         static_cast<Real>(local_grid_x_begin_ - candidate) / nx_));
     candidate += periods * nx_;
     if (candidate < lower) candidate += nx_;

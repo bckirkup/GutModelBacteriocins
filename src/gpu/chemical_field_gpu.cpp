@@ -62,7 +62,7 @@ void ChemicalFieldGpu::reset_agent_uptake() {
   d_agent_uptake_.upload(std::vector(4, 0.0));
 }
 
-void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) {
+void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) const {
   if (!active_) return;
   gpu_sync_compute();
   std::vector values(4, 0.0);
@@ -80,7 +80,7 @@ void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) {
 void ChemicalFieldGpu::prepare_maintenance(
     const ChemicalField& field, Int carbon, Real cell_volume) {
   if (!active_ || carbon < 0 || cell_volume <= 0.0) return;
-  std::vector<double> available(static_cast<size_t>(ncells_), 0.0);
+  std::vector available(static_cast<size_t>(ncells_), 0.0);
   for (Int cell = 0; cell < ncells_; ++cell) {
     available[static_cast<size_t>(cell)] = carbon_maintenance::available(
         field.conc(carbon, cell), cell_volume);
@@ -93,7 +93,7 @@ void ChemicalFieldGpu::reset_uptake_limit_totals() {
   d_uptake_limit_totals_.upload(std::vector(5, 0.0));
 }
 
-void ChemicalFieldGpu::download_uptake_limit_totals(ChemicalField& field) {
+void ChemicalFieldGpu::download_uptake_limit_totals(ChemicalField& field) const {
   if (!active_) return;
   gpu_sync_compute();
   std::vector values(5, 0.0);
@@ -120,7 +120,8 @@ double* ChemicalFieldGpu::vbf_totals_device() {
   return active_ ? d_vbf_totals_.data() : nullptr;
 }
 
-void ChemicalFieldGpu::download_vbf_totals(std::vector<double>& values) {
+void ChemicalFieldGpu::download_vbf_totals(
+    std::vector<double>& values) const {
   if (!active_) return;
   d_vbf_totals_.download(values);
 }
@@ -150,7 +151,7 @@ void ChemicalFieldGpu::reset_reaction_clip() {
 #endif
 }
 
-void ChemicalFieldGpu::download_reaction_clip(ChemicalField& field) {
+void ChemicalFieldGpu::download_reaction_clip(ChemicalField& field) const {
 #ifndef GUTIBM_CUDA
   (void)field;
   return;

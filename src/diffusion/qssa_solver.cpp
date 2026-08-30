@@ -21,9 +21,11 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
+#include <format>
 #include <limits>
 #include <numbers>
 #include <numeric>
+#include <ranges>
 #include <iostream>
 #include <type_traits>
 #ifdef GUTIBM_MPI
@@ -66,12 +68,12 @@ void enforce_low_screening_policy(
         d_eff, spec.decay_rate, flow_magnitude, std::abs(flow[2]))
         * (domain.hi()[2] - domain.lo()[2]);
     if (k_h < neumann::kLowScreeningFloorThreshold) {
-      const std::string message =
-          "low-screening sealed Neumann image series: kH="
-          + std::to_string(k_h)
-          + "; sealed truncation error is at least approximately 13% at "
-            "the kH=0.0225 threshold and grows without bound as kH "
-            "approaches zero; see docs/NEUMANN_LOW_SCREENING_ENVELOPE.md";
+      const std::string message = std::format(
+          "low-screening sealed Neumann image series: kH={:f}; sealed "
+          "truncation error is at least approximately 13% at the kH=0.0225 "
+          "threshold and grows without bound as kH approaches zero; see "
+          "docs/NEUMANN_LOW_SCREENING_ENVELOPE.md",
+          k_h);
       if (cfg.low_screening_policy == "error") {
         throw SimulationError(message);
       }
@@ -325,7 +327,7 @@ void deposit_to_chemical_field(ChemicalField& chem,
   #pragma omp parallel for schedule(static)
   #endif
   for (size_t c = 0; c < concentrations.size(); ++c) {
-    const Int global_cell = static_cast<Int>(c);
+    const auto global_cell = static_cast<Int>(c);
     if (!chem.owns_global_cell(global_cell)) continue;
     chem.conc_global(toxin_species_idx, global_cell) = concentrations[c];
   }
@@ -381,9 +383,9 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
   uint64_t* kernel_evaluations = gf.kernel_evaluation_counting_enabled()
       ? &gpu_kernel_evaluations
       : nullptr;
-  const std::vector<size_t> fallback = ::gutibm::robin_host_fallback_sources(
-      domain, sources, params);
-  if (fallback.empty()) {
+  if (const std::vector<size_t> fallback =
+          ::gutibm::robin_host_fallback_sources(domain, sources, params);
+      fallback.empty()) {
     if (try_gpu_near_field(
             domain, adv, sources, params, strength_factors, cutoff_radius,
             chem, toxin_species_idx, chem_gpu, defer_host_sync,
@@ -670,8 +672,7 @@ void QSSASolver::solve_bacteriocin_field(
 
   if (cfg_.toxin_evaluation == "agents") {
     sampled_species_indices_.fill(-1);
-    const Int sample_idx = toxin_sample_index(target);
-    if (sample_idx >= 0) {
+    if (const Int sample_idx = toxin_sample_index(target); sample_idx >= 0) {
       sampled_species_indices_[static_cast<size_t>(sample_idx)] =
           toxin_species_idx;
     }
@@ -788,8 +789,8 @@ void QSSASolver::solve_all_bacteriocin_fields(
       if (name == nullptr) continue;
       Int idx = chem.find(name);
       if (idx < 0) continue;
-      const Int sample_idx = toxin_sample_index(target);
-      if (sample_idx >= 0) {
+      if (const Int sample_idx = toxin_sample_index(target);
+          sample_idx >= 0) {
         sampled_species_indices_[static_cast<size_t>(sample_idx)] = idx;
       }
       filter_sources_by_target(all_sources, all_params, all_strengths,
@@ -841,11 +842,12 @@ void QSSASolver::solve_all_bacteriocin_fields(
 namespace {
 
 Int toxin_sample_index(ReceptorType target) {
+  using enum ReceptorType;
   switch (target) {
-    case ReceptorType::BtuB: return 0;
-    case ReceptorType::FepA: return 1;
-    case ReceptorType::CirA: return 2;
-    case ReceptorType::FhuA: return 3;
+    case BtuB: return 0;
+    case FepA: return 1;
+    case CirA: return 2;
+    case FhuA: return 3;
     default: return -1;
   }
 }
@@ -922,8 +924,8 @@ void QSSASolver::sample_nuclease_sources(
     const std::vector<bool>& is_nuclease,
     const std::vector<ReceptorType>& targets,
     const AgentPool& agents) {
-  sampled_nuclease_sources_ = std::any_of(
-      is_nuclease.begin(), is_nuclease.end(), [](bool value) {
+  sampled_nuclease_sources_ = std::ranges::any_of(
+      is_nuclease, [](bool value) {
         return value;
       });
   if (!sampled_nuclease_sources_) return;
@@ -959,8 +961,7 @@ Real QSSASolver::evaluate_sample(const SampledToxinField& field,
 }
 
 Int QSSASolver::sampled_slot_for_species(Int species_idx) const {
-  const auto it = std::find(sampled_species_indices_.begin(),
-                            sampled_species_indices_.end(), species_idx);
+  const auto it = std::ranges::find(sampled_species_indices_, species_idx);
   return it == sampled_species_indices_.end()
       ? -1
       : static_cast<Int>(std::distance(sampled_species_indices_.begin(), it));
@@ -1011,8 +1012,8 @@ Real QSSASolver::sampled_nuclease_conc(
 }
 
 Real QSSASolver::sampled_toxin_max(Int species_idx) const {
-  const Int sample_idx = sampled_slot_for_species(species_idx);
-  if (sample_idx < 0) return 0.0;
+  if (const Int sample_idx = sampled_slot_for_species(species_idx);
+      sample_idx < 0) return 0.0;
   if (sampled_agents_ == nullptr) return 0.0;
   Real maximum = 0.0;
   for (Int i = 0; i < sampled_agents_->size(); ++i) {

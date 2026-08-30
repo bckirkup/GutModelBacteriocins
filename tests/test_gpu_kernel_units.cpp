@@ -11,6 +11,7 @@
 #include <cmath>
 #include <iostream>
 #include <numeric>
+#include <numbers>
 #include <vector>
 
 #ifdef GUTIBM_CUDA
@@ -33,7 +34,6 @@ constexpr int kNx = 4;
 constexpr int kNy = 4;
 constexpr int kNz = 4;
 constexpr int kCells = kNx * kNy * kNz;
-constexpr double kPi = 3.14159265358979323846;
 constexpr double kTolerance = 1.0e-10;
 
 template <typename T>
@@ -89,9 +89,9 @@ PeriodicCoefficients periodic_coefficients(int size, double alpha) {
   coefficients.gamma = -diagonal_value;
   coefficients.corner = -alpha;
 
-  std::vector<double> lower(static_cast<size_t>(size - 1), -alpha);
-  std::vector<double> upper(static_cast<size_t>(size - 1), -alpha);
-  std::vector<double> diagonal(static_cast<size_t>(size), diagonal_value);
+  std::vector lower(static_cast<size_t>(size - 1), -alpha);
+  std::vector upper(static_cast<size_t>(size - 1), -alpha);
+  std::vector diagonal(static_cast<size_t>(size), diagonal_value);
   diagonal.front() -= coefficients.gamma;
   diagonal.back() -=
       coefficients.corner * coefficients.corner / coefficients.gamma;
@@ -126,7 +126,7 @@ void test_field_update() {
   DeviceBuffer<double> concentration(kCells);
   DeviceBuffer<double> reaction(kCells);
   DeviceBuffer<double> clip(1);
-  std::vector<double> host_reaction(kCells, 0.0);
+  std::vector host_reaction(kCells, 0.0);
   host_reaction[0] = -2.0;
   concentration.upload(std::vector<double>(kCells, 1.0));
   reaction.upload(host_reaction);
@@ -303,10 +303,11 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   receptor_base.upload(
       std::vector<double>(gutibm::NUM_RECEPTORS * agents, 2.0));
   ligand.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
-  std::vector<int> iron_receptor_flags(gutibm::NUM_RECEPTORS, 0);
-  for (int receptor = 0; receptor < gutibm::NUM_RECEPTORS; ++receptor) {
-    iron_receptor_flags[static_cast<size_t>(receptor)] =
-        gutibm::is_iron_receptor(receptor) ? 1 : 0;
+  std::vector iron_receptor_flags(gutibm::NUM_RECEPTORS, 0);
+  for (int receptor_index = 0;
+       receptor_index < gutibm::NUM_RECEPTORS; ++receptor_index) {
+    iron_receptor_flags[static_cast<size_t>(receptor_index)] =
+        gutibm::is_iron_receptor(receptor_index) ? 1 : 0;
   }
   iron_receptor.upload(iron_receptor_flags);
   cells.upload(activate_second_agent ? std::vector<int>{4, 5}
@@ -478,12 +479,12 @@ void test_diffuse_x_periodic() {
   assert(close(std::accumulate(uniform.begin(), uniform.end(), 0.0),
                2.0 * kCells));
 
-  std::vector<double> mode(kCells, 0.0);
+  std::vector mode(kCells, 0.0);
   for (int iz = 0; iz < kNz; ++iz) {
     for (int iy = 0; iy < kNy; ++iy) {
       for (int ix = 0; ix < kNx; ++ix) {
         mode[iz * kNx * kNy + iy * kNx + ix] =
-            std::sin(2.0 * kPi * ix / kNx);
+            std::sin(2.0 * std::numbers::pi * ix / kNx);
       }
     }
   }
@@ -494,7 +495,8 @@ void test_diffuse_x_periodic() {
   synchronize();
   const auto result = download(field, kCells);
   const double eigenvalue =
-      1.0 + 2.0 * alpha - 2.0 * alpha * std::cos(2.0 * kPi / kNx);
+      1.0 + 2.0 * alpha - 2.0 * alpha
+          * std::cos(2.0 * std::numbers::pi / kNx);
   for (int cell = 0; cell < kCells; ++cell) {
     assert(close(result[cell], mode[cell] / eigenvalue));
   }
@@ -516,12 +518,12 @@ void test_diffuse_y_periodic() {
   assert(close(std::accumulate(uniform.begin(), uniform.end(), 0.0),
                2.0 * kCells));
 
-  std::vector<double> mode(kCells, 0.0);
+  std::vector mode(kCells, 0.0);
   for (int iz = 0; iz < kNz; ++iz) {
     for (int iy = 0; iy < kNy; ++iy) {
       for (int ix = 0; ix < kNx; ++ix) {
         mode[iz * kNx * kNy + iy * kNx + ix] =
-            std::sin(2.0 * kPi * iy / kNy);
+            std::sin(2.0 * std::numbers::pi * iy / kNy);
       }
     }
   }
@@ -583,12 +585,12 @@ void test_set_epithelial_boundary() {
   assert(injected[0] < injected[1]);
   assert(injected[1] < injected[2]);
   assert(close(injected[2] / injected[1], 3.0));
-  assert(face_cells > 0);
+  static_assert(face_cells > 0);
 }
 
 void test_set_luminal_neumann() {
   DeviceBuffer<double> field(kCells);
-  std::vector<double> initial(kCells, 0.0);
+  std::vector initial(kCells, 0.0);
   for (int iy = 0; iy < kNy; ++iy) {
     for (int ix = 0; ix < kNx; ++ix) {
       initial[(kNz - 2) * kNx * kNy + iy * kNx + ix] = 3.0;
@@ -623,7 +625,7 @@ void test_shift_z_gradient() {
 
 void test_clamp_nonneg() {
   DeviceBuffer<double> field(kCells);
-  std::vector<double> initial(kCells, 2.0);
+  std::vector initial(kCells, 2.0);
   initial[0] = -1.0;
   field.upload(initial);
   gutibm::gpu::launch_clamp_nonneg(
@@ -1128,8 +1130,11 @@ void run_case(const char* name, Function function) {
 
 int main() {
   std::cout << "=== Direct GPU Kernel Unit Tests ===\n";
-  const int gpu_status = gutibm::test::require_gpu("gpu_kernel_units");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status =
+          gutibm::test::require_gpu("gpu_kernel_units");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifdef GUTIBM_CUDA
   run_case("launch_field_update_kernel", test_field_update);
   run_case("launch_apply_boundaries_kernel", test_apply_boundaries);

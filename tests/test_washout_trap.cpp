@@ -304,7 +304,7 @@ void test_trap_profile_more_lethal_than_mild_downregulation() {
 
 void test_population_stocks_are_instantaneous_and_ordered() {
   constexpr Int kCount = 12;
-  const std::vector<Real> turnovers = {3600.0, 120000.0, 1.0e6};
+  const std::vector turnovers = {3600.0, 120000.0, 1.0e6};
   std::vector<Int> trapped;
 
   for (const Real turnover : turnovers) {
@@ -392,7 +392,7 @@ std::pair<Int, Int> run_transport_loss(WashoutTrapMode mode, Real domain_z,
     apply_trap_immigrant_profile(agent, 44e-6);
   }
   Int total_outflow = 0;
-  const Int steps = static_cast<Int>(std::ceil(total_time / 60.0));
+  const auto steps = static_cast<Int>(std::ceil(total_time / 60.0));
   for (Int step = 0; step < steps && sim.global_agent_count() > 0; ++step) {
     sim.step(60.0);
     const StepEvents& events = sim.step_events();
@@ -412,25 +412,27 @@ void test_washout_modes_have_distinct_low_flow_behavior() {
 }
 
 void test_washout_modes_converge_at_high_flow() {
-  const auto imposed = run_transport_loss(WashoutTrapMode::IMPOSED, 50e-6, 1.0, 60.0);
-  const auto emergent = run_transport_loss(WashoutTrapMode::EMERGENT, 50e-6, 1.0, 60.0);
+  const auto [imposed_survivors, imposed_washout] =
+      run_transport_loss(WashoutTrapMode::IMPOSED, 50e-6, 1.0, 60.0);
+  const auto [emergent_survivors, emergent_washout] =
+      run_transport_loss(WashoutTrapMode::EMERGENT, 50e-6, 1.0, 60.0);
   constexpr Int initial_agents = 8;
-  assert(imposed.first == emergent.first);
-  assert(imposed.first == initial_agents);
-  assert(emergent.first == initial_agents);
-  assert(imposed.second == 0);
-  assert(emergent.second == 0);
+  assert(imposed_survivors == emergent_survivors);
+  assert(imposed_survivors == initial_agents);
+  assert(emergent_survivors == initial_agents);
+  assert(imposed_washout == 0);
+  assert(emergent_washout == 0);
   std::cout << "  test_washout_modes_converge_at_high_flow: PASSED\n";
 }
 
 void test_emergent_washout_is_geometry_sensitive() {
-  const auto short_box = run_transport_loss(
+  const auto [short_box_survivors, short_box_washout] = run_transport_loss(
       WashoutTrapMode::EMERGENT, 50e-6, 5400.0, 1200.0);
-  const auto tall_box = run_transport_loss(
+  const auto [tall_box_survivors, tall_box_washout] = run_transport_loss(
       WashoutTrapMode::EMERGENT, 100e-6, 5400.0, 1200.0);
-  assert(short_box.first > 0);
-  assert(short_box.first > tall_box.first);
-  assert(short_box.second < tall_box.second);
+  assert(short_box_survivors > 0);
+  assert(short_box_survivors > tall_box_survivors);
+  assert(short_box_washout < tall_box_washout);
   std::cout << "  test_emergent_washout_is_geometry_sensitive: PASSED\n";
 }
 
@@ -459,8 +461,8 @@ void test_bacteriostasis_threshold_default_is_reachable() {
 }
 
 void test_bacteriostasis_threshold_is_sensitive() {
-  const std::vector<Real> thresholds = {-4.0e-6, 2.0e-6, 1.0e-5};
-  const std::vector<Real> realized_mu = {
+  const std::vector thresholds = {-4.0e-6, 2.0e-6, 1.0e-5};
+  const std::vector realized_mu = {
       -5.0e-6, 0.0, 2.0e-6, 8.0e-6, 2.0e-5, 1.0e-4};
   std::vector<Int> stock_counts;
 

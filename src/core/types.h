@@ -47,14 +47,15 @@ enum class ReceptorType : uint8_t {
 
 inline std::optional<ReceptorType> receptor_type_from_name(
     std::string_view name) {
-  if (name == "BtuB") return ReceptorType::BtuB;
-  if (name == "FepA") return ReceptorType::FepA;
-  if (name == "Tsx") return ReceptorType::Tsx;
-  if (name == "FhuA") return ReceptorType::FhuA;
-  if (name == "IroN") return ReceptorType::IroN;
-  if (name == "Fiu") return ReceptorType::Fiu;
-  if (name == "CirA") return ReceptorType::CirA;
-  if (name == "IutA") return ReceptorType::IutA;
+  using enum ReceptorType;
+  if (name == "BtuB") return BtuB;
+  if (name == "FepA") return FepA;
+  if (name == "Tsx") return Tsx;
+  if (name == "FhuA") return FhuA;
+  if (name == "IroN") return IroN;
+  if (name == "Fiu") return Fiu;
+  if (name == "CirA") return CirA;
+  if (name == "IutA") return IutA;
   return std::nullopt;
 }
 

@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <numeric>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -393,8 +394,8 @@ Real reduce_prescribed_near_negative_cells(
   affected_cells.clear();
   for (Int cell = 0; cell < global_ncells; ++cell) {
     if (!owns_cell(cell)) continue;
-    const Int storage = storage_cell(cell);
-    if (storage < 0
+    if (const Int storage = storage_cell(cell);
+        storage < 0
         || concentration[static_cast<size_t>(storage)] >= 0.0) {
       continue;
     }
@@ -458,8 +459,8 @@ DeliveryRetryResult run_delivery_rationing(
       const Real mid = (lo + hi) * 0.5;
       callbacks.restore_original();
       auto& current = callbacks.prescribed();
-      std::transform(
-          original.begin(), original.end(), current.begin(),
+      std::ranges::transform(
+          original, current.begin(),
           [mid](const Real value) { return value * mid; });
       callbacks.solve();
       result.retry_events += 1.0;
@@ -472,8 +473,8 @@ DeliveryRetryResult run_delivery_rationing(
     }
     callbacks.restore_original();
     auto& current = callbacks.prescribed();
-    std::transform(
-        original.begin(), original.end(), current.begin(),
+    std::ranges::transform(
+        original, current.begin(),
         [best](const Real value) { return value * best; });
     callbacks.solve();
     result.retry_events += 1.0;
@@ -593,7 +594,7 @@ void fill_gradient_profile(std::vector<Real>& gradient,
                            Int iz) {
   if (gradient_spec == nullptr) return;
   const Real value = z_gradient_reference(*gradient_spec, domain, iz);
-  std::fill(gradient.begin(), gradient.end(), value);
+  std::ranges::fill(gradient, value);
 }
 
 void load_periodic_x_delivery_line(
@@ -648,7 +649,7 @@ void diffuse_periodic_x_delivery(
       load_periodic_x_delivery_line(
           line, sink, prescribed, concentration, domain, iy, iz,
           sink_params);
-      std::vector<Real> gradient(static_cast<size_t>(nx), 0.0);
+      std::vector gradient(static_cast<size_t>(nx), 0.0);
       fill_gradient_profile(gradient, sink_params.gradient_spec, domain, iz);
       solve_periodic_with_sink(
           line, sink, alpha,
@@ -683,7 +684,7 @@ void diffuse_periodic_y_delivery(
       load_periodic_y_delivery_line(
           line, sink, prescribed, concentration, domain, ix, iz,
           sink_params);
-      std::vector<Real> gradient(static_cast<size_t>(ny), 0.0);
+      std::vector gradient(static_cast<size_t>(ny), 0.0);
       fill_gradient_profile(gradient, sink_params.gradient_spec, domain, iz);
       solve_periodic_with_sink(
           line, sink, alpha,
@@ -800,7 +801,7 @@ void solve_replicated_delivery_z_line(
         context.sink.sink_rate[static_cast<size_t>(cell)]
         * context.sink.sink_dt;
   }
-  std::vector<Real> gradient(static_cast<size_t>(nz - 1), 0.0);
+  std::vector gradient(static_cast<size_t>(nz - 1), 0.0);
   apply_gradient_sink(
       line, sink, gradient, context.sink.gradient_spec,
       context.domain, 1);
@@ -817,7 +818,7 @@ void solve_replicated_delivery_z_line(
       context.alpha, context.boundary, line);
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = context.domain.cell_index(ix, iy, iz);
-    const size_t index = static_cast<size_t>(iz - 1);
+    const auto index = static_cast<size_t>(iz - 1);
     context.concentration[static_cast<size_t>(cell)] = line[index];
     const Real total = context.sink.gradient_spec != nullptr
         ? line[index] + gradient[index] : line[index];
@@ -832,8 +833,7 @@ Real diffuse_bounded_z_delivery(
     const DeliverySinkParameters& sink_params) {
   const Int nx = domain.nx();
   const Int ny = domain.ny();
-  const Int nz = domain.nz();
-  if (nz <= 1) return 0.0;
+  if (const Int nz = domain.nz(); nz <= 1) return 0.0;
   ReplicatedDeliveryLineContext line_context{
       concentration, domain, alpha, params, sink_params};
   Real face_exchange = 0.0;
@@ -905,7 +905,7 @@ void solve_delivery_z_line(
     Real& face_exchange) {
   std::vector<Real> line(static_cast<size_t>(grid.nz));
   std::vector<Real> sink(static_cast<size_t>(grid.nz));
-  std::vector<Real> gradient(static_cast<size_t>(grid.nz), 0.0);
+  std::vector gradient(static_cast<size_t>(grid.nz), 0.0);
   std::vector diagonal(static_cast<size_t>(grid.nz), 0.0);
   operations.load_line(ix, iy, line);
   operations.load_sink(ix, iy, sink);
@@ -1021,8 +1021,7 @@ Real diffuse_bounded_z_delivery_with_sink_impl(
         AddRealized>& operations) {
   const Int nx = grid.nx;
   const Int ny = grid.ny;
-  const Int nz = grid.nz;
-  if (nz <= 0) return 0.0;
+  if (const Int nz = grid.nz; nz <= 0) return 0.0;
 
   Real face_exchange = 0.0;
   #ifdef GUTIBM_OPENMP
@@ -1177,9 +1176,9 @@ void validate_chemical_decomposition(const Domain& domain,
   }
   if (decomposition != "slab") return;
 
-  const auto required_halo = static_cast<Int>(
-      std::ceil(domain.ghost_width() / domain.dx_x()));
-  if (domain.grid_halo_width() < required_halo) {
+  if (const auto required_halo = static_cast<Int>(
+          std::ceil(domain.ghost_width() / domain.dx_x()));
+      domain.grid_halo_width() < required_halo) {
     throw ConfigError(
         "slab chemistry requires grid_halo_width >= ceil(ghost_width / dx)");
   }
@@ -1683,7 +1682,7 @@ void ChemicalField::sum_accounting_across_ranks() {
   MPI_Initialized(&initialized);
   MPI_Finalized(&finalized);
   if (!initialized || finalized) return;
-  const int count = static_cast<int>(nspec_);
+  const auto count = static_cast<int>(nspec_);
   if (mode_ != DecompositionMode::Slab) {
     MPI_Allreduce(
         MPI_IN_PLACE, flux_accounting_.delivery_reduction_step.data(),
@@ -1816,7 +1815,7 @@ void solve_slab_delivery_line(
     sink[static_cast<size_t>(iz - 1)] =
         context.sink_rate[static_cast<size_t>(cell)] * context.sink_dt;
   }
-  std::vector<Real> gradient(static_cast<size_t>(nz - 1), 0.0);
+  std::vector gradient(static_cast<size_t>(nz - 1), 0.0);
   apply_gradient_sink(
       line, sink, gradient, context.gradient_spec, context.domain, 1);
   std::vector diagonal(static_cast<size_t>(nz - 1), 0.0);
@@ -1852,7 +1851,6 @@ void diffuse_periodic_x_slab_single(
   const auto* sink_rate = context.sink_rate;
   const auto* gradient_spec = context.gradient_spec;
   auto* realized = context.realized;
-  const Real sink_dt = context.sink_dt;
   const Real cell_volume = context.cell_volume;
   const Int nx = domain.nx();
   const Int ny = domain.ny();
@@ -2017,7 +2015,7 @@ void solve_slab_periodic_x_lines(
   const auto* sink_rate = context.sink_rate;
   const auto* gradient_spec = context.gradient_spec;
   std::vector sink(static_cast<size_t>(layout.nx), 0.0);
-  const auto gathered_displacements = layout.recv_displacements;
+  const auto& gathered_displacements = layout.recv_displacements;
   for (Int line_index = 0;
        line_index < layout.line_counts[static_cast<size_t>(layout.local_rank)];
        ++line_index) {
@@ -2081,7 +2079,7 @@ void store_slab_periodic_x_line(
         halo_width + ix, iy, iz, storage_nx, layout.ny);
     concentration[static_cast<size_t>(cell)] =
         buffers.recv[static_cast<size_t>(offset + ix)];
-    if (realized != nullptr) {
+    if (realized != nullptr && sink_rate != nullptr) {
       const Real total = gradient_spec != nullptr
           ? concentration[static_cast<size_t>(cell)]
               + z_gradient_reference(*gradient_spec, context.domain, iz)
@@ -2125,11 +2123,11 @@ void diffuse_periodic_x_slab_mpi(
         MPI_COMM_WORLD);
   }
   solve_slab_periodic_x_lines(context, layout, solver, buffers);
-  const auto output_counts = layout.recv_counts;
-  const auto output_displacements = layout.recv_displacements;
-  const auto solved_counts = layout.send_counts;
-  const auto solved_displacements = layout.send_displacements;
-  const auto gathered_displacements = layout.recv_displacements;
+  const auto& output_counts = layout.recv_counts;
+  const auto& output_displacements = layout.recv_displacements;
+  const auto& solved_counts = layout.send_counts;
+  const auto& solved_displacements = layout.send_displacements;
+  const auto& gathered_displacements = layout.recv_displacements;
   buffers.send.assign(
       static_cast<size_t>(std::accumulate(
           output_counts.begin(), output_counts.end(), 0)), 0.0);
@@ -2306,8 +2304,7 @@ Real diffuse_bounded_z_slab_delivery(
   const auto* gradient_spec = context.gradient_spec;
   const Int nx = domain.local_grid_nx();
   const Int ny = domain.ny();
-  const Int nz = domain.nz();
-  if (nz <= 1) return 0.0;
+  if (const Int nz = domain.nz(); nz <= 1) return 0.0;
   Real face_exchange = 0.0;
   const SlabDeliveryLineContext line_context{
       concentration, realized, sink_rate, domain, storage_nx, halo_width,
@@ -3147,7 +3144,7 @@ void ChemicalField::apply_diffusion_species(
   const auto flux_snapshot = flux_accounting_;
   const auto realized_snapshot = total_sink_realized_[static_cast<size_t>(s)];
   const auto prescribed_snapshot = prescribed_sink_[static_cast<size_t>(s)];
-  const auto solve = [this, &context] {
+  const auto solve = [&context] {
       prepare_replicated_diffusion(context);
       transport_replicated_diffusion(context);
       finish_replicated_diffusion(context);
@@ -3288,7 +3285,7 @@ void ChemicalField::apply_diffusion_slab_species(
   const auto flux_snapshot = flux_accounting_;
   const auto realized_snapshot = total_sink_realized_[static_cast<size_t>(s)];
   const auto prescribed_snapshot = prescribed_sink_[static_cast<size_t>(s)];
-  const auto solve = [this, &context] {
+  const auto solve = [&context] {
       prepare_slab_diffusion(context);
       transport_slab_diffusion(context);
       finish_slab_diffusion(context);

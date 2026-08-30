@@ -65,7 +65,7 @@ bool DysbiosisGuard::is_accelerating_window() const {
     if (density_history_[i] <= threshold_) return false;
   }
 
-  const size_t increment_count =
+  const auto increment_count =
       static_cast<size_t>(sample_count_ - 1);
   const size_t first_half_count = increment_count / 2;
   const size_t second_half_count = increment_count - first_half_count;

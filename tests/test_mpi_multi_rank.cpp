@@ -64,8 +64,9 @@ void test_chemical_field_layout_mapping() {
   Int owned = 0;
   Int halo = 0;
   for (Int cell = 0; cell < domain.ncells(); ++cell) {
-    const Int local_x = domain.global_to_local_grid_x(cell % domain.nx());
-    if (local_x < 0) {
+    if (const Int local_x =
+            domain.global_to_local_grid_x(cell % domain.nx());
+        local_x < 0) {
       continue;
     }
     assert(chem.storage_to_global_cell(
@@ -391,7 +392,7 @@ void test_slab_chemistry_transpose_halos_and_ledger() {
     for (Int iy = 0; iy < domain.ny(); ++iy) {
       for (Int ix = 0; ix < domain.nx(); ++ix) {
         const Int global = domain.cell_index(ix, iy, iz);
-        const Real value = static_cast<Real>(1 + ix + 10 * iy + 100 * iz);
+        const auto value = static_cast<Real>(1 + ix + 10 * iy + 100 * iz);
         replicated.conc(0, global) = value;
         if (slab.owns_global_cell(global)) {
           slab.conc_global(0, global) = value;
@@ -403,7 +404,7 @@ void test_slab_chemistry_transpose_halos_and_ledger() {
 
   const Int seam_x = rank == 0 ? domain.nx() - 1 : 0;
   const Int seam_cell = domain.cell_index(seam_x, 0, 0);
-  const Real expected_seam = static_cast<Real>(1 + seam_x);
+  const auto expected_seam = static_cast<Real>(1 + seam_x);
   assert(slab.global_cell_in_halo(seam_cell));
   assert(slab.conc_global(0, seam_cell) == expected_seam);
 
@@ -511,115 +512,132 @@ uint64_t hash_simulation_chemistry(const Simulation& simulation) {
       simulation.chemical_field(), simulation.domain());
 }
 
+void compare_ledger_values(const char* name,
+                           const std::vector<Real>& slab_values,
+                           const std::vector<Real>& replicated_values,
+                           Real absolute_tolerance = 0.0) {
+  assert(slab_values.size() == replicated_values.size());
+  for (size_t species = 0; species < slab_values.size(); ++species) {
+    Real slab_min = 0.0;
+    Real slab_max = 0.0;
+    MPI_Allreduce(&slab_values[species], &slab_min, 1, MPI_DOUBLE,
+                  MPI_MIN, MPI_COMM_WORLD);
+    MPI_Allreduce(&slab_values[species], &slab_max, 1, MPI_DOUBLE,
+                  MPI_MAX, MPI_COMM_WORLD);
+    Real replicated_min = 0.0;
+    Real replicated_max = 0.0;
+    MPI_Allreduce(&replicated_values[species], &replicated_min, 1,
+                  MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
+    MPI_Allreduce(&replicated_values[species], &replicated_max, 1,
+                  MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    assert(slab_min == slab_max);
+    assert(replicated_min == replicated_max);
+    // Ledger totals sum identical cell contributions in different orders:
+    // slab reduces rank-local partials, while replicated sweeps the grid.
+    const Real scale = std::max(
+        std::max(std::abs(slab_min), std::abs(replicated_min)), 1.0e-300);
+    if (std::abs(slab_min - replicated_min)
+        > std::max(1.0e-12 * scale, absolute_tolerance)) {
+      int rank = 0;
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      if (rank == 0) {
+        std::cerr << std::setprecision(17);
+        std::cerr << "ledger mismatch " << name << '[' << species << "] "
+                  << slab_min << " vs " << replicated_min << '\n';
+      }
+    }
+    assert(std::abs(slab_min - replicated_min)
+           <= std::max(1.0e-12 * scale, absolute_tolerance));
+  }
+}
+
 void assert_equal_ledgers(const Simulation& slab,
                           const Simulation& replicated) {
   const auto& slab_flux = slab.chemical_field().flux_accounting();
   const auto& replicated_flux =
       replicated.chemical_field().flux_accounting();
-  const auto compare = [](const char* name,
-                          const std::vector<Real>& slab_values,
-                          const std::vector<Real>& replicated_values,
-                          Real absolute_tolerance = 0.0) {
-    assert(slab_values.size() == replicated_values.size());
-    for (size_t species = 0; species < slab_values.size(); ++species) {
-      Real slab_min = 0.0;
-      Real slab_max = 0.0;
-      MPI_Allreduce(&slab_values[species], &slab_min, 1, MPI_DOUBLE,
-                    MPI_MIN, MPI_COMM_WORLD);
-      MPI_Allreduce(&slab_values[species], &slab_max, 1, MPI_DOUBLE,
-                    MPI_MAX, MPI_COMM_WORLD);
-      Real replicated_min = 0.0;
-      Real replicated_max = 0.0;
-      MPI_Allreduce(&replicated_values[species], &replicated_min, 1,
-                    MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD);
-      MPI_Allreduce(&replicated_values[species], &replicated_max, 1,
-                    MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-      assert(slab_min == slab_max);
-      assert(replicated_min == replicated_max);
-      // Ledger totals sum identical cell contributions in different orders:
-      // slab reduces rank-local partials, while replicated sweeps the grid.
-      const Real scale = std::max(
-          std::max(std::abs(slab_min), std::abs(replicated_min)), 1.0e-300);
-      if (std::abs(slab_min - replicated_min)
-          > std::max(1.0e-12 * scale, absolute_tolerance)) {
-        int rank = 0;
-        MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        if (rank == 0) {
-          std::cerr << std::setprecision(17);
-          std::cerr << "ledger mismatch " << name << '[' << species << "] "
-                    << slab_min << " vs " << replicated_min << '\n';
-        }
-      }
-      assert(std::abs(slab_min - replicated_min)
-             <= std::max(1.0e-12 * scale, absolute_tolerance));
-    }
-  };
-  compare("boundary_interval", slab_flux.boundary_interval,
-          replicated_flux.boundary_interval);
-  compare("boundary_cumulative", slab_flux.boundary_cumulative,
-          replicated_flux.boundary_cumulative);
-  compare("gradient_source_interval", slab_flux.gradient_source_interval,
-          replicated_flux.gradient_source_interval, 1.0e-28);
-  compare("gradient_source_cumulative", slab_flux.gradient_source_cumulative,
-          replicated_flux.gradient_source_cumulative, 1.0e-28);
-  compare("vbf_source_interval", slab_flux.vbf_source_interval,
-          replicated_flux.vbf_source_interval);
-  compare("vbf_source_cumulative", slab_flux.vbf_source_cumulative,
-          replicated_flux.vbf_source_cumulative);
-  compare("vbf_sink_interval", slab_flux.vbf_sink_interval,
-          replicated_flux.vbf_sink_interval);
-  compare("vbf_sink_cumulative", slab_flux.vbf_sink_cumulative,
-          replicated_flux.vbf_sink_cumulative);
-  compare("agent_uptake_interval", slab_flux.agent_uptake_interval,
-          replicated_flux.agent_uptake_interval);
-  compare("agent_uptake_step", slab_flux.agent_uptake_step,
-          replicated_flux.agent_uptake_step);
-  compare("agent_uptake_cumulative", slab_flux.agent_uptake_cumulative,
-          replicated_flux.agent_uptake_cumulative);
-  compare("maintenance_interval", slab_flux.maintenance_interval,
-          replicated_flux.maintenance_interval);
-  compare("maintenance_cumulative", slab_flux.maintenance_cumulative,
-          replicated_flux.maintenance_cumulative);
-  compare("uptake_demand_interval", slab_flux.uptake_demand_interval,
-          replicated_flux.uptake_demand_interval);
-  compare("uptake_demand_cumulative", slab_flux.uptake_demand_cumulative,
-          replicated_flux.uptake_demand_cumulative);
-  compare("uptake_shortfall_interval", slab_flux.uptake_shortfall_interval,
-          replicated_flux.uptake_shortfall_interval);
-  compare("uptake_shortfall_cumulative", slab_flux.uptake_shortfall_cumulative,
-          replicated_flux.uptake_shortfall_cumulative);
-  compare("delivery_reduction_interval",
+  compare_ledger_values("boundary_interval", slab_flux.boundary_interval,
+                        replicated_flux.boundary_interval);
+  compare_ledger_values("boundary_cumulative", slab_flux.boundary_cumulative,
+                        replicated_flux.boundary_cumulative);
+  compare_ledger_values("gradient_source_interval",
+                        slab_flux.gradient_source_interval,
+                        replicated_flux.gradient_source_interval, 1.0e-28);
+  compare_ledger_values("gradient_source_cumulative",
+                        slab_flux.gradient_source_cumulative,
+                        replicated_flux.gradient_source_cumulative, 1.0e-28);
+  compare_ledger_values("vbf_source_interval", slab_flux.vbf_source_interval,
+                        replicated_flux.vbf_source_interval);
+  compare_ledger_values("vbf_source_cumulative",
+                        slab_flux.vbf_source_cumulative,
+                        replicated_flux.vbf_source_cumulative);
+  compare_ledger_values("vbf_sink_interval", slab_flux.vbf_sink_interval,
+                        replicated_flux.vbf_sink_interval);
+  compare_ledger_values("vbf_sink_cumulative",
+                        slab_flux.vbf_sink_cumulative,
+                        replicated_flux.vbf_sink_cumulative);
+  compare_ledger_values("agent_uptake_interval",
+                        slab_flux.agent_uptake_interval,
+                        replicated_flux.agent_uptake_interval);
+  compare_ledger_values("agent_uptake_step", slab_flux.agent_uptake_step,
+                        replicated_flux.agent_uptake_step);
+  compare_ledger_values("agent_uptake_cumulative",
+                        slab_flux.agent_uptake_cumulative,
+                        replicated_flux.agent_uptake_cumulative);
+  compare_ledger_values("maintenance_interval",
+                        slab_flux.maintenance_interval,
+                        replicated_flux.maintenance_interval);
+  compare_ledger_values("maintenance_cumulative",
+                        slab_flux.maintenance_cumulative,
+                        replicated_flux.maintenance_cumulative);
+  compare_ledger_values("uptake_demand_interval",
+                        slab_flux.uptake_demand_interval,
+                        replicated_flux.uptake_demand_interval);
+  compare_ledger_values("uptake_demand_cumulative",
+                        slab_flux.uptake_demand_cumulative,
+                        replicated_flux.uptake_demand_cumulative);
+  compare_ledger_values("uptake_shortfall_interval",
+                        slab_flux.uptake_shortfall_interval,
+                        replicated_flux.uptake_shortfall_interval);
+  compare_ledger_values("uptake_shortfall_cumulative",
+                        slab_flux.uptake_shortfall_cumulative,
+                        replicated_flux.uptake_shortfall_cumulative);
+  compare_ledger_values("delivery_reduction_interval",
           slab_flux.delivery_reduction_interval,
           replicated_flux.delivery_reduction_interval);
-  compare("delivery_reduction_step", slab_flux.delivery_reduction_step,
-          replicated_flux.delivery_reduction_step);
-  compare("delivery_reduction_cumulative",
+  compare_ledger_values("delivery_reduction_step",
+                        slab_flux.delivery_reduction_step,
+                        replicated_flux.delivery_reduction_step);
+  compare_ledger_values("delivery_reduction_cumulative",
           slab_flux.delivery_reduction_cumulative,
           replicated_flux.delivery_reduction_cumulative);
-  compare("delivery_retry_events_interval",
+  compare_ledger_values("delivery_retry_events_interval",
           slab_flux.delivery_retry_events_interval,
           replicated_flux.delivery_retry_events_interval);
-  compare("delivery_retry_events_step", slab_flux.delivery_retry_events_step,
-          replicated_flux.delivery_retry_events_step);
-  compare("delivery_retry_events_cumulative",
+  compare_ledger_values("delivery_retry_events_step",
+                        slab_flux.delivery_retry_events_step,
+                        replicated_flux.delivery_retry_events_step);
+  compare_ledger_values("delivery_retry_events_cumulative",
           slab_flux.delivery_retry_events_cumulative,
           replicated_flux.delivery_retry_events_cumulative);
-  compare("delivery_rationing_factor_interval",
+  compare_ledger_values("delivery_rationing_factor_interval",
           slab_flux.delivery_rationing_factor_interval,
           replicated_flux.delivery_rationing_factor_interval);
-  compare("delivery_rationing_factor_cumulative",
+  compare_ledger_values("delivery_rationing_factor_cumulative",
           slab_flux.delivery_rationing_factor_cumulative,
           replicated_flux.delivery_rationing_factor_cumulative);
-  compare("delivery_infeasible_interval",
+  compare_ledger_values("delivery_infeasible_interval",
           slab_flux.delivery_infeasible_interval,
           replicated_flux.delivery_infeasible_interval);
-  compare("delivery_infeasible_cumulative",
+  compare_ledger_values("delivery_infeasible_cumulative",
           slab_flux.delivery_infeasible_cumulative,
           replicated_flux.delivery_infeasible_cumulative);
-  compare("reaction_clip_interval", slab_flux.reaction_clip_interval,
-          replicated_flux.reaction_clip_interval);
-  compare("reaction_clip_cumulative", slab_flux.reaction_clip_cumulative,
-          replicated_flux.reaction_clip_cumulative);
+  compare_ledger_values("reaction_clip_interval",
+                        slab_flux.reaction_clip_interval,
+                        replicated_flux.reaction_clip_interval);
+  compare_ledger_values("reaction_clip_cumulative",
+                        slab_flux.reaction_clip_cumulative,
+                        replicated_flux.reaction_clip_cumulative);
 }
 
 void test_delivery_sink_slab_matches_replicated() {

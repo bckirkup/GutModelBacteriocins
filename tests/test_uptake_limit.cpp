@@ -15,6 +15,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <ranges>
 #include <utility>
 #include <vector>
 
@@ -66,11 +67,12 @@ SimulationConfig base_config() {
 }
 
 const char* mode_name(UptakeLimitMode mode) {
+  using enum UptakeLimitMode;
   switch (mode) {
-    case UptakeLimitMode::Sherwood: return "sherwood";
-    case UptakeLimitMode::Voxel:    return "voxel";
-    case UptakeLimitMode::Delivery: return "delivery";
-    case UptakeLimitMode::None:     break;
+    case Sherwood: return "sherwood";
+    case Voxel:    return "voxel";
+    case Delivery: return "delivery";
+    case None:     break;
   }
   return "none";
 }
@@ -262,23 +264,21 @@ Real run_resolution_probe(Real grid_dx, Real far_field_radius) {
 }
 
 void test_far_field_resolution_invariance_and_anti_vacuity() {
-  const std::vector<Real> resolutions = {2.0e-6, 4.0e-6, 6.0e-6};
+  const std::vector resolutions = {2.0e-6, 4.0e-6, 6.0e-6};
   std::vector<Real> far_field;
   std::vector<Real> own_voxel;
   for (const Real resolution : resolutions) {
     far_field.push_back(run_resolution_probe(resolution, 10.0e-6));
     own_voxel.push_back(run_resolution_probe(resolution, 0.0));
   }
-  const Real far_span = *std::max_element(
-      far_field.begin(), far_field.end())
-      - *std::min_element(far_field.begin(), far_field.end());
-  const Real own_span = *std::max_element(
-      own_voxel.begin(), own_voxel.end())
-      - *std::min_element(own_voxel.begin(), own_voxel.end());
+  const Real far_span = *std::ranges::max_element(far_field)
+      - *std::ranges::min_element(far_field);
+  const Real own_span = *std::ranges::max_element(own_voxel)
+      - *std::ranges::min_element(own_voxel);
   const Real far_scale = std::max(
-      *std::max_element(far_field.begin(), far_field.end()), 1.0e-30);
+      *std::ranges::max_element(far_field), 1.0e-30);
   const Real own_scale = std::max(
-      *std::max_element(own_voxel.begin(), own_voxel.end()), 1.0e-30);
+      *std::ranges::max_element(own_voxel), 1.0e-30);
   std::cout << "    far-field fractions 2um/4um/6um="
             << far_field[0] << "/" << far_field[1] << "/" << far_field[2]
             << "\n";
@@ -305,7 +305,7 @@ void test_far_field_uniform_field_invariant() {
 }
 
 void test_far_field_concentration_monotonicity() {
-  const std::vector<Real> concentrations = {
+  const std::vector concentrations = {
       1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4};
   std::vector<Real> fractions;
   fractions.reserve(concentrations.size());
@@ -495,7 +495,7 @@ bool finite_and_nonnegative(const Measurement& m) {
 }
 
 void test_funded_fraction_falls_with_local_concentration() {
-  const std::vector<Real> concentrations = {1.0e-4, 1.0e-5, 1.0e-6, 1.0e-7};
+  const std::vector concentrations = {1.0e-4, 1.0e-5, 1.0e-6, 1.0e-7};
   std::vector<Real> fractions;
   fractions.reserve(concentrations.size());
   for (Real concentration : concentrations) {
@@ -516,7 +516,7 @@ void test_funded_fraction_falls_with_local_concentration() {
 
 void test_funded_fraction_falls_with_radius_and_diffusivity() {
   const Real carbon = 1.0e-7;
-  const std::vector<Real> radii = {2.0e-6, 5.0e-7, 1.0e-7};
+  const std::vector radii = {2.0e-6, 5.0e-7, 1.0e-7};
   std::vector<Real> by_radius;
   by_radius.reserve(radii.size());
   for (Real radius : radii) {
@@ -530,7 +530,7 @@ void test_funded_fraction_falls_with_radius_and_diffusivity() {
   }
   assert(by_radius.front() > by_radius.back());
 
-  const std::vector<Real> retardations = {1.0, 4.0, 16.0};
+  const std::vector retardations = {1.0, 4.0, 16.0};
   std::vector<Real> by_diffusivity;
   by_diffusivity.reserve(retardations.size());
   for (Real retardation : retardations) {
@@ -831,7 +831,7 @@ void test_invalid_cell_agent_cannot_claim_delivery_funding() {
   Simulation sim;
   sim.init(cfg);
   const Vec3 shared_position = {7.5e-6, 7.5e-6, 12.5e-6};
-  Agent& valid = sim.agents()[0];
+  const Agent& valid = sim.agents()[0];
   Agent& invalid = sim.agents()[1];
   for (Agent& agent : sim.agents()) {
     agent.x = shared_position;
@@ -1019,7 +1019,7 @@ void test_delivery_rationing_is_local() {
 
   const auto& chem = sim.chemical_field();
   const auto& flux = chem.flux_accounting();
-  const size_t index = static_cast<size_t>(carbon);
+  const auto index = static_cast<size_t>(carbon);
   Real minimum = std::numeric_limits<Real>::infinity();
   Real field_removal = 0.0;
   for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
@@ -1192,18 +1192,21 @@ std::pair<Real, Real> run_regularized_retry_case(Real support_radius) {
 }
 
 void test_regularized_delivery_reduces_depletion_retries() {
-  const auto radius_zero = run_regularized_retry_case(0.0);
-  const auto radius_ten = run_regularized_retry_case(10.0e-6);
+  const auto [radius_zero_reduction, radius_zero_events] =
+      run_regularized_retry_case(0.0);
+  const auto [radius_ten_reduction, radius_ten_events] =
+      run_regularized_retry_case(10.0e-6);
   std::cout << "    retry reductions radius 0/10um="
-            << radius_zero.first << "/" << radius_ten.first
-            << ", events=" << radius_zero.second << "/" << radius_ten.second
+            << radius_zero_reduction << "/" << radius_ten_reduction
+            << ", events=" << radius_zero_events << "/" << radius_ten_events
             << "\n";
-  assert(radius_zero.first > 0.0);
-  assert(radius_zero.second > 0.0);
-  assert(radius_ten.first >= 0.0);
-  assert(radius_ten.second >= 0.0);
-  assert(radius_zero.first >= 10.0 * std::max(radius_ten.first, 1.0e-30));
-  assert(radius_zero.second >= 10.0 * std::max(radius_ten.second, 1.0));
+  assert(radius_zero_reduction > 0.0);
+  assert(radius_zero_events > 0.0);
+  assert(radius_ten_reduction >= 0.0);
+  assert(radius_ten_events >= 0.0);
+  assert(radius_zero_reduction
+         >= 10.0 * std::max(radius_ten_reduction, 1.0e-30));
+  assert(radius_zero_events >= 10.0 * std::max(radius_ten_events, 1.0));
   std::cout << "  test_regularized_delivery_reduces_depletion_retries: PASSED\n";
 }
 
@@ -1255,7 +1258,7 @@ ResolutionFundingMeasurement measure_regularized_resolution_funding(
   }
   sim.step(kDt);
   const auto& flux = sim.chemical_field().flux_accounting();
-  const size_t index = static_cast<size_t>(carbon);
+  const auto index = static_cast<size_t>(carbon);
   return {flux.agent_uptake_interval[index],
           flux.uptake_demand_interval[index],
           flux.delivery_reduction_interval[index]
@@ -1263,7 +1266,7 @@ ResolutionFundingMeasurement measure_regularized_resolution_funding(
 }
 
 void test_regularized_delivery_funding_resolution_invariance() {
-  const std::vector<Real> resolutions = {
+  const std::vector resolutions = {
       2.0e-6, 4.0e-6, 6.0e-6};
   std::vector<Real> regularized;
   std::vector<Real> own_voxel;
@@ -1289,17 +1292,14 @@ void test_regularized_delivery_funding_resolution_invariance() {
     regularized.push_back(far_field.funded / far_field.demanded);
     own_voxel.push_back(own_fraction);
   }
-  const Real regularized_span = *std::max_element(
-      regularized.begin(), regularized.end())
-      - *std::min_element(regularized.begin(), regularized.end());
-  const Real own_span = *std::max_element(
-      own_voxel.begin(), own_voxel.end())
-      - *std::min_element(own_voxel.begin(), own_voxel.end());
+  const Real regularized_span = *std::ranges::max_element(regularized)
+      - *std::ranges::min_element(regularized);
+  const Real own_span = *std::ranges::max_element(own_voxel)
+      - *std::ranges::min_element(own_voxel);
   const Real regularized_scale = std::max(
-      *std::max_element(regularized.begin(), regularized.end()),
-      1.0e-30);
+      *std::ranges::max_element(regularized), 1.0e-30);
   const Real own_scale = std::max(
-      *std::max_element(own_voxel.begin(), own_voxel.end()), 1.0e-30);
+      *std::ranges::max_element(own_voxel), 1.0e-30);
   std::cout << "    realized funded fractions radius 10um 2/4/6um="
             << regularized[0] << "/" << regularized[1] << "/"
             << regularized[2] << "\n";
@@ -1851,12 +1851,11 @@ void test_delivery_gradient_representation_invariance() {
   const GradientRepresentationMeasurement flat =
       run_gradient_representation(false);
   const Real relative_tolerance = 1.0e-10;
-  std::cerr << std::setprecision(17)
-            << "    gradient detail funded/demand/pending/concentration="
-            << gradient.funded << "/" << gradient.demand << "/"
-            << gradient.pending_ceiling << "/" << gradient.concentration
-            << ", flat=" << flat.funded << "/" << flat.demand << "/"
-            << flat.pending_ceiling << "/" << flat.concentration << "\n";
+  std::cerr << std::format(
+      "    gradient detail funded/demand/pending/concentration={:.17g}/{:.17g}/{:.17g}/{:.17g}, flat={:.17g}/{:.17g}/{:.17g}/{:.17g}\n",
+      gradient.funded, gradient.demand, gradient.pending_ceiling,
+      gradient.concentration, flat.funded, flat.demand,
+      flat.pending_ceiling, flat.concentration);
   assert(gradient.demand > gradient.funded);
   assert(flat.demand > flat.funded);
   assert(std::abs(gradient.concentration - flat.concentration)
@@ -1920,9 +1919,9 @@ PopulationGradientDeliveryMeasurement measure_population_gradient_delivery() {
 
   Simulation sim;
   sim.init(cfg);
-  const Int agent_count = static_cast<Int>(sim.agents().size());
-  for (Int i = 0; i < agent_count; ++i) {
-    Agent& agent = sim.agents()[static_cast<size_t>(i)];
+  const auto agent_count = sim.agents().size();
+  for (auto i = 0; i < agent_count; ++i) {
+    Agent& agent = sim.agents()[i];
     const Int ix = static_cast<Int>(i % 8) * 2 + 1;
     const Int iy = static_cast<Int>((i / 8) % 8) * 2 + 1;
     const Int iz = static_cast<Int>(i / 64) + 1;
@@ -1959,11 +1958,10 @@ PopulationGradientDeliveryMeasurement measure_population_gradient_delivery() {
 void test_population_delivery_gradient_budget() {
   const PopulationGradientDeliveryMeasurement result =
       measure_population_gradient_delivery();
-  std::cerr << std::setprecision(17)
-            << "    population detail funded/demand/removal/min="
-            << result.funded << "/" << result.demand << "/"
-            << result.field_removal << "/" << result.minimum_concentration
-            << "\n";
+  std::cerr << std::format(
+      "    population detail funded/demand/removal/min={:.17g}/{:.17g}/{:.17g}/{:.17g}\n",
+      result.funded, result.demand, result.field_removal,
+      result.minimum_concentration);
   assert(result.demand > 0.0);
   assert(result.funded > 0.0);
   assert(result.funded < result.demand);

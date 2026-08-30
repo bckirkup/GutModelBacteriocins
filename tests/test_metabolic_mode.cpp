@@ -12,6 +12,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef GUTIBM_HDF5
@@ -79,7 +80,7 @@ struct RespirationProbe {
 };
 
 RespirationProbe run_respiration_probe(
-    const std::string& driver, Real oxygen_concentration,
+    std::string_view driver, Real oxygen_concentration,
     bool zero_growth = false, Real q_consumption = 1.0e-15) {
   SimulationConfig cfg = simulation_config();
   cfg.chem_env.oxygen.enabled = true;

@@ -46,9 +46,8 @@ RUN test -n "${GPU_TARGETS}" \
       -DCMAKE_CUDA_HOST_COMPILER=g++-13 \
       -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
  && printf '%s\n' "${GPU_TARGETS}" \
- | xargs cmake --build build -j"$(nproc)" --target
-
-RUN groupadd --gid 1000 gutibm \
+ | xargs cmake --build build -j"$(nproc)" --target \
+ && groupadd --gid 1000 gutibm \
  && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash gutibm \
  && chown -R gutibm:gutibm /src
 

@@ -11,13 +11,14 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <string_view>
 #include <vector>
 
 using namespace gutibm;
 
 namespace {
 
-Simulation make_sim(const std::string& mode, bool use_fmm = false,
+Simulation make_sim(std::string_view mode, bool use_fmm = false,
                     Real domain_size = 120e-6, Real grid_dx = 10e-6,
                     Real toxin_cutoff = 80e-6) {
   SimulationConfig cfg = InputParser::default_config();
@@ -124,8 +125,8 @@ void test_sampling_exactness_and_bounds() {
   const Int toxin = sim.chemical_field().find(species::BACTERIOCIN_BTUB);
   const Real sample = sim.qssa().sampled_toxin_conc(0, toxin);
   std::vector<Vec3> sources{source.pos};
-  std::vector<GreensFunctionParams> params{source.params};
-  std::vector<Real> strengths{1.0};
+  std::vector params{source.params};
+  std::vector strengths{1.0};
   const Real analytic =
       sim.qssa().point_concentration(sim.agents()[0].x, sources, params,
                                      strengths);

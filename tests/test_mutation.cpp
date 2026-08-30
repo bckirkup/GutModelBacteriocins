@@ -139,7 +139,7 @@ void test_super_killer_updates_retardation_after_pi_drift() {
   cfg.immunity_escape_prob = 0.0;
 
   bool found_upward_drift = false;
-  for (uint64_t seed = 1; seed <= 100 && !found_upward_drift; ++seed) {
+  for (uint64_t seed = 1; seed <= 100; ++seed) {
     auto sim = make_empty_sim(seed);
     Agent a = make_dividing_agent(sim);
     const BICluster parent = a.genome.bi_loci.front();
@@ -151,6 +151,7 @@ void test_super_killer_updates_retardation_after_pi_drift() {
     if (novel.pI > parent.pI) {
       assert(novel.retardation > parent.retardation);
       found_upward_drift = true;
+      break;
     }
   }
   assert(found_upward_drift);

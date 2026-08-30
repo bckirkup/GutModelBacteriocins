@@ -380,7 +380,7 @@ void run_slab_grid_pattern() {
   for (Int iz = 0; iz < sim.domain().nz(); ++iz) {
     for (Int iy = 0; iy < sim.domain().ny(); ++iy) {
       for (Int ix = 0; ix < sim.domain().nx(); ++ix) {
-        const size_t index = static_cast<size_t>(
+        const auto index = static_cast<size_t>(
             iz * sim.domain().ny() * sim.domain().nx()
             + iy * sim.domain().nx() + ix);
         assert(values[index] == static_cast<double>(1000 * iz + 100 * iy + ix));
@@ -651,7 +651,7 @@ void run_parallel_slab_grid_equivalence() {
   H5Sget_simple_extent_dims(slab_space, slab_dims.data(), nullptr);
   H5Sget_simple_extent_dims(replicated_space, replicated_dims.data(), nullptr);
   assert(slab_dims == replicated_dims);
-  const size_t count = static_cast<size_t>(slab_dims[0] * slab_dims[1]
+  const auto count = static_cast<size_t>(slab_dims[0] * slab_dims[1]
                                             * slab_dims[2]);
   std::vector<double> slab_values(count);
   std::vector<double> replicated_values(count);

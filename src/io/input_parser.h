@@ -23,6 +23,8 @@
 #include "fix_mutation.h"
 #include "fix_mechanics.h"
 #include "hdf5_writer.h"
+
+#include <functional>
 #include "hdf5_reader.h"
 #include "gpu_config.h"
 #include "immigration_config.h"
@@ -142,14 +144,14 @@ struct SimulationConfig {
     bool conjugative = false;
     uint16_t cdi_type = 0;
     uint16_t cdi_immunity = 0;
-    std::map<std::string, Real> receptor_expression;
+    std::map<std::string, Real, std::less<>> receptor_expression;
   };
   struct PlasmidOverride {
     std::optional<Real> retardation;
     std::optional<Real> diff_coeff;
     std::optional<Real> burst_size;
   };
-  std::map<std::string, PlasmidOverride> plasmid_overrides;
+  std::map<std::string, PlasmidOverride, std::less<>> plasmid_overrides;
   std::vector<InitialStrain> initial_strains;
   InitialPopulationConfig initial_population;
   std::vector<std::string> enabled_fixes;

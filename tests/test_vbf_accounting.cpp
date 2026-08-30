@@ -291,7 +291,7 @@ int main() {
   }
   test_implicit_sink_mass_closure(domain, carbon);
   test_implicit_oxygen_sink_split(domain);
-  std::vector<Int> empty_counts(static_cast<size_t>(domain.ncells()), 0);
+  std::vector empty_counts(static_cast<size_t>(domain.ncells()), 0);
   std::vector<Int> dense_counts = empty_counts;
   dense_counts[0] = 1;
   const std::array<Real, 4> coupling_values = {

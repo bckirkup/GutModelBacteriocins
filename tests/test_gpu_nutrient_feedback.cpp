@@ -124,7 +124,7 @@ void assert_closure(const FeedbackResult& result, const std::string& path) {
 }
 
 void run_path_checks(bool gpu) {
-  const std::vector<Int> counts = {0, 4, 8};
+  const std::vector counts = {0, 4, 8};
   std::vector<Real> depletion;
   for (const Int count : counts) {
     const FeedbackResult result = run_feedback(count, gpu);
@@ -142,8 +142,10 @@ void run_path_checks(bool gpu) {
 
 int main() {
   run_path_checks(false);
-  const int gpu_status = test::require_gpu("gpu_nutrient_feedback");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("gpu_nutrient_feedback");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifndef GUTIBM_CUDA
   std::cout << "GPU nutrient feedback checks passed (CPU only; CUDA not compiled in).\n";
   return 0;

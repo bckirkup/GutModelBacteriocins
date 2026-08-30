@@ -14,6 +14,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef GUTIBM_MPI
@@ -63,7 +64,7 @@ long read_vmrss_kb() {
 }
 
 SimulationConfig bench_config(int agent_count, bool use_fmm,
-                              const std::string& toxin_evaluation) {
+                              std::string_view toxin_evaluation) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.hdf5.enabled = false;
   cfg.time.total_time = 120.0;
@@ -88,6 +89,32 @@ SimulationConfig bench_config(int agent_count, bool use_fmm,
   strain.plasmids = {"ColE1", "ColB"};
   strain.conjugative = true;
   cfg.initial_strains.push_back(strain);
+  return cfg;
+}
+
+SimulationConfig toxin_timing_config(std::string_view mode, int producer_count,
+                                     int consumer_count, double domain_size,
+                                     double grid_dx, double toxin_cutoff) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.hdf5.enabled = false;
+  cfg.domain.hi = {domain_size, domain_size, domain_size};
+  cfg.domain.grid_dx = grid_dx;
+  cfg.qssa.toxin_cutoff = toxin_cutoff;
+  cfg.qssa.toxin_evaluation = mode;
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain producers;
+  producers.type = 1;
+  producers.count = producer_count;
+  producers.mu_max = 5.5e-4;
+  producers.plasmids = {"ColB"};
+  producers.conjugative = false;
+  cfg.initial_strains.push_back(producers);
+  SimulationConfig::InitialStrain consumers;
+  consumers.type = 2;
+  consumers.count = consumer_count;
+  consumers.mu_max = 5.5e-4;
+  consumers.conjugative = false;
+  cfg.initial_strains.push_back(consumers);
   return cfg;
 }
 
@@ -198,34 +225,14 @@ void run_toxin_timing_case() {
     sources.push_back(source_at({x, y, z}));
   }
 
-  auto config = [&](const std::string& mode) {
-    SimulationConfig cfg = InputParser::default_config();
-    cfg.hdf5.enabled = false;
-    cfg.domain.hi = {domain_size, domain_size, domain_size};
-    cfg.domain.grid_dx = grid_dx;
-    cfg.qssa.toxin_cutoff = toxin_cutoff;
-    cfg.qssa.toxin_evaluation = mode;
-    cfg.initial_strains.clear();
-    SimulationConfig::InitialStrain producers;
-    producers.type = 1;
-    producers.count = producer_count;
-    producers.mu_max = 5.5e-4;
-    producers.plasmids = {"ColB"};
-    producers.conjugative = false;
-    cfg.initial_strains.push_back(producers);
-    SimulationConfig::InitialStrain consumers;
-    consumers.type = 2;
-    consumers.count = consumer_count;
-    consumers.mu_max = 5.5e-4;
-    consumers.conjugative = false;
-    cfg.initial_strains.push_back(consumers);
-    return cfg;
-  };
-
   Simulation grid_sim;
   Simulation agent_sim;
-  const SimulationConfig grid_cfg = config("grid");
-  const SimulationConfig agent_cfg = config("agents");
+  const SimulationConfig grid_cfg = toxin_timing_config(
+      "grid", producer_count, consumer_count, domain_size, grid_dx,
+      toxin_cutoff);
+  const SimulationConfig agent_cfg = toxin_timing_config(
+      "agents", producer_count, consumer_count, domain_size, grid_dx,
+      toxin_cutoff);
   grid_sim.init(grid_cfg);
   agent_sim.init(agent_cfg);
 

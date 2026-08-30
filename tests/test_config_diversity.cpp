@@ -13,6 +13,7 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <format>
 #include <iostream>
 #include <set>
 #include <string>
@@ -193,7 +194,7 @@ void test_seed_and_fix_subset_change_outcomes() {
 
 SimulationConfig json_seed_config(uint64_t seed) {
   SimulationConfig cfg = growth_baseline(42);
-  const std::string json = "{\"seed\":" + std::to_string(seed) + "}";
+  const std::string json = std::format("{{\"seed\":{}}}", seed);
   assert(ConfigJson::parse_document(cfg, json));
   return cfg;
 }

@@ -30,7 +30,7 @@ KD_TOX = 5.0e-7
 
 def summary_at(h5, step):
     """Cumulative counters and stocks at the last snapshot <= step."""
-    keys = sorted(k for k in h5["summary"])
+    keys = sorted(h5["summary"])
     chosen = None
     for k in keys:
         if int(h5[f"summary/{k}/step"][()][0]) <= step:

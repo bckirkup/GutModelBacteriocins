@@ -976,9 +976,9 @@ void scan_source_keys(const std::string& path, std::set<std::string, std::less<>
   }
   if (src.find("constexpr std::string_view prefix = \"plasmid_overrides.\"")
       != std::string::npos) {
-    out.insert("plasmid_overrides.ColE1.retardation");
-    out.insert("plasmid_overrides.ColE1.diff_coeff");
-    out.insert("plasmid_overrides.ColE1.burst_size");
+    out.emplace("plasmid_overrides.ColE1.retardation");
+    out.emplace("plasmid_overrides.ColE1.diff_coeff");
+    out.emplace("plasmid_overrides.ColE1.burst_size");
   }
 }
 
@@ -1118,7 +1118,7 @@ void test_strain_and_array_keys() {
 void test_disabled_robin_infinity_round_trip() {
   const SimulationConfig original = InputParser::default_config();
   const std::string serialized = ConfigJson::serialize_document(original);
-  expect(serialized.find("\"toxin.lumen_transfer_length\":\"inf\"")
+  expect(serialized.find(R"("toxin.lumen_transfer_length":"inf")")
              != std::string::npos,
          "default disabled Robin transfer should serialize as inf");
 

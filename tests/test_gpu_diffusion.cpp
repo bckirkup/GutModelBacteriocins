@@ -215,8 +215,10 @@ void test_gpu_delivery_boundary_modes() {
 
 int main() {
   std::cout << "=== GPU Diffusion Parity Tests ===\n";
-  const int gpu_status = test::require_gpu("gpu_diffusion");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("gpu_diffusion");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";

@@ -17,8 +17,10 @@ using namespace gutibm;
 
 int main() {
   std::cout << "=== Neumann Image-Series GPU Parity Test ===\n";
-  const int gpu_status = test::require_gpu("neumann_image_series_gpu");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("neumann_image_series_gpu");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
   DomainConfig dcfg;
   dcfg.lo = {0.0, 0.0, 0.0};

@@ -14,8 +14,10 @@
 #include "error.h"
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <mutex>
 #include <memory>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -87,7 +89,7 @@ bool launch_superpose(const Domain& domain,
   if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
   if (negative_field_count != nullptr) *negative_field_count = 0;
   if (most_negative_field != nullptr) *most_negative_field = 0.0;
-  std::lock_guard<std::mutex> table_lock(robin_table_device_mutex);
+  std::scoped_lock table_lock(robin_table_device_mutex);
 
   Int ncells = domain.ncells();
   cudaMemset(d_grid, 0, static_cast<size_t>(ncells) * sizeof(double));
@@ -138,15 +140,15 @@ bool launch_superpose(const Domain& domain,
   for (size_t i = 0; i < launch_indices.size(); ++i) {
     sp[i].robin_table_index = launch_indices[i];
   }
-  const bool same_uploaded_set = robin_tables.size()
-      == robin_table_device_set.size()
-      && std::equal(
-          robin_tables.begin(), robin_tables.end(),
-          robin_table_device_set.begin(),
-          [](const auto& current, const auto& uploaded) {
-            return current.get() == uploaded.get();
-          });
-  if (!same_uploaded_set) {
+  if (const bool same_uploaded_set = robin_tables.size()
+          == robin_table_device_set.size()
+          && std::equal(
+              robin_tables.begin(), robin_tables.end(),
+              robin_table_device_set.begin(),
+              [](const auto& current, const auto& uploaded) {
+                return current.get() == uploaded.get();
+              });
+      !same_uploaded_set) {
     std::vector<double> robin_table_values;
     robin_table_values.reserve(
         robin_tables.size() * robin::kTableValueCount);
@@ -234,9 +236,10 @@ bool launch_superpose(const Domain& domain,
     unsigned int error = 0;
     d_robin_index_error.download(&error, 1);
     if (error != 0) {
-      throw SimulationError(
+      throw SimulationError(std::format(
           "GPU Robin table index exceeded the launch-local table count "
-          "(count=" + std::to_string(robin_tables.size()) + ")");
+          "(count={})",
+          robin_tables.size()));
     }
   }
   if (cap_hits != nullptr) {
@@ -271,22 +274,20 @@ bool launch_superpose(const Domain& domain,
 std::vector<int> make_robin_launch_table_indices(
     const std::vector<std::shared_ptr<const robin::Table>>& source_tables,
     std::vector<std::shared_ptr<const robin::Table>>& launch_tables) {
-  std::vector<int> indices(source_tables.size(), -1);
+  std::vector indices(source_tables.size(), -1);
   for (size_t source = 0; source < source_tables.size(); ++source) {
     const auto& table = source_tables[source];
     if (table == nullptr) continue;
-    const auto existing = std::find_if(
-        launch_tables.begin(), launch_tables.end(),
-        [&table](const auto& candidate) {
+    const auto existing = std::ranges::find_if(
+        launch_tables, [&table](const auto& candidate) {
           return candidate.get() == table.get();
         });
     if (existing == launch_tables.end()) {
       if (launch_tables.size() >= kMaximumRobinDeviceTables) {
-        throw SimulationError(
-            "Robin GPU launch references "
-            + std::to_string(launch_tables.size() + 1)
-            + " distinct tables; launch limit is "
-            + std::to_string(kMaximumRobinDeviceTables));
+        throw SimulationError(std::format(
+            "Robin GPU launch references {} distinct tables; launch limit is "
+            "{}",
+            launch_tables.size() + 1, kMaximumRobinDeviceTables));
       }
       launch_tables.push_back(table);
       indices[source] = static_cast<int>(launch_tables.size() - 1);

@@ -255,7 +255,7 @@ void superpose_cpu_local(
       domain, gf, cutoff_radius, grid, strength_factors};
 
 #ifdef GUTIBM_OPENMP
-  const Int ncells = static_cast<Int>(grid_conc.size());
+  const auto ncells = static_cast<Int>(grid_conc.size());
   const SuperposeOpenmpContext omp_ctx{ctx, ncells};
   superpose_sources_openmp(sources, params, omp_ctx, grid_conc);
 #else
@@ -503,9 +503,9 @@ void GreensFunction::superpose_to_grid(
   uint64_t* kernel_evaluations = kernel_evaluation_counting_enabled_
       ? &gpu_kernel_evaluations
       : nullptr;
-  const std::vector<size_t> fallback = ::gutibm::robin_host_fallback_sources(
-      *domain_, sources, params);
-  if (fallback.empty()) {
+  if (const std::vector<size_t> fallback =
+          ::gutibm::robin_host_fallback_sources(*domain_, sources, params);
+      fallback.empty()) {
     if (adv_ && domain_ && try_gpu_superpose(
             *domain_, *adv_, sources, params, grid_conc, cutoff_radius,
             &image_series_cap_hits_, kernel_evaluations, &gpu_low_screening,
@@ -544,7 +544,7 @@ void GreensFunction::superpose_to_grid(
       if (gpu_sources.empty()) {
         gpu_grid.assign(static_cast<size_t>(ncells), 0.0);
       }
-      std::vector<Real> host_grid(static_cast<size_t>(ncells), 0.0);
+      std::vector host_grid(static_cast<size_t>(ncells), 0.0);
       superpose_cpu(*domain_, *this, host_sources, host_params, nullptr,
                     host_grid, cutoff_radius);
       grid_conc = std::move(gpu_grid);

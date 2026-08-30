@@ -37,8 +37,10 @@ Real max_relative_error(const std::vector<Real>& expected,
 
 int main() {
   std::cout << "=== Robin Lumen-Boundary GPU Parity Test ===\n";
-  const int gpu_status = test::require_gpu("robin_lumen_gpu");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("robin_lumen_gpu");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
   DomainConfig dcfg;
   dcfg.lo = {0.0, 0.0, 0.0};

@@ -78,8 +78,10 @@ static bool capture_cpu_field(Real microcin_secretion,
 
 int main() {
   std::cout << "=== QSSA GPU Near-Field Parity ===\n";
-  const int gpu_status = test::require_gpu("qssa_gpu_parity");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("qssa_gpu_parity");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";

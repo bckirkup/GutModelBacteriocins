@@ -83,7 +83,7 @@ void assert_checkpoint_agent_partition(
     const std::vector<gutibm::test::AgentSnapshot>& expected_agents,
     const std::vector<gutibm::test::AgentSnapshot>& local_agents,
     Int expected_count) {
-  const int local_count = static_cast<int>(local_agents.size());
+  const auto local_count = static_cast<int>(local_agents.size());
   int global_count = 0;
   MPI_Allreduce(&local_count, &global_count, 1, MPI_INT, MPI_SUM,
                 MPI_COMM_WORLD);
@@ -92,7 +92,7 @@ void assert_checkpoint_agent_partition(
   std::vector<int> counts(static_cast<size_t>(resumed.domain().nprocs()));
   MPI_Allgather(&local_count, 1, MPI_INT, counts.data(), 1, MPI_INT,
                 MPI_COMM_WORLD);
-  std::vector<int> displacements(counts.size(), 0);
+  std::vector displacements(counts.size(), 0);
   int total_count = 0;
   for (size_t rank = 0; rank < counts.size(); ++rank) {
     displacements[rank] = total_count;

@@ -27,21 +27,21 @@ class ChemicalFieldGpu {
 
   bool apply_reactions(double dt, const Domain& domain);
   void reset_reaction_clip();
-  void download_reaction_clip(ChemicalField& field);
+  void download_reaction_clip(ChemicalField& field) const;
   bool apply_diffusion(const Domain& domain, ChemicalField& field, Real dt);
   bool apply_boundaries(const Domain& domain, ChemicalField& field);
   void reset_agent_uptake();
-  void download_agent_uptake(ChemicalField& field);
+  void download_agent_uptake(ChemicalField& field) const;
   void prepare_maintenance(const ChemicalField& field, Int carbon,
                            Real cell_volume);
   void reset_uptake_limit_totals();
-  void download_uptake_limit_totals(ChemicalField& field);
+  void download_uptake_limit_totals(ChemicalField& field) const;
   double* uptake_limit_totals_device() {
     return active_ ? d_uptake_limit_totals_.data() : nullptr;
   }
   void reset_vbf_totals();
   double* vbf_totals_device();
-  void download_vbf_totals(std::vector<double>& values);
+  void download_vbf_totals(std::vector<double>& values) const;
   void reset_agent_counts();
   int* agent_counts_device();
   double* agent_uptake_device() {
