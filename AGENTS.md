@@ -122,7 +122,8 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **#42 Plasmid names** | Fixed | `PlasmidLibrary::find()` + aliases; warn on unknown names |
 | **#43 Multi-rank tests** | Fixed | `mpi_multi_rank` + `hdf5_roundtrip_parallel` CTest targets |
 | **Requested HDF5 output failed open** | Fixed | Requested output previously could fail validation or creation, warn, remove the file, and let the run complete with exit 0 and no scientific record. `HDF5Writer::init` now fails before compute with an `IOError`, and MPI ranks receive the same failure decision. |
-| **#78 parse_real() silent zero** | Fixed | Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts |
+| **#78 parse_real() silent zero** | Fixed | Invalid numerics abort by default; `GUTIBM_STRICT_CONFIG=0` preserves the exploratory warning-and-zero escape hatch |
+| **Configuration ingestion fail-open** | Fixed | Missing/unreadable named files, malformed JSON, malformed arrays, unknown keys, and invalid known values now fail closed by default. `GUTIBM_STRICT_CONFIG=0` explicitly preserves the exploratory lenient path; valid legacy flat-key files remain supported. |
 | **JSON large-integer precision and seed width** | Fixed | JSON integer keys above six significant digits were stringified at default precision and silently parsed as 0, so seeded JSON replicates were silently identical; numeric scalars now retain 17-digit precision and `seed` parses as unsigned 64-bit. |
 | **Dysbiosis guard noise sensitivity** | Fixed | The former per-sample strict-increase and non-deceleration criterion was effectively unfirable on stochastic trajectories: one density dip reset the seven-sample window. The guard now uses a positive net rise and aggregate half-window increment means while retaining the above-threshold requirement. |
 | **Dysbiosis halt artifact visibility** | Fixed | Run-level termination metadata is written under `/run_provenance/`, so guard-halted runs are distinguishable from full-horizon completions even when the final summary was written before the guard evaluation. |
@@ -271,7 +272,7 @@ allocations. This memory behavior is not fixed.
 | Checkpoint restart | `checkpoint_file` + optional `checkpoint_step` in input JSON |
 | Closed midstream restarts | `restart.enabled` + `restart.directory` + `restart.interval_steps` (Tier 2: agents+grid; AWS uploads immutable `step_*.h5` + `latest.json`) |
 | Disable HDF5 in tests | `cfg.hdf5.enabled = false` |
-| Strict config | `GUTIBM_STRICT_CONFIG=1` aborts on invalid numerics |
+| Strict config | Unset/`GUTIBM_STRICT_CONFIG=1` aborts on invalid numerics and unknown keys; `GUTIBM_STRICT_CONFIG=0` is the explicit lenient escape hatch |
 | MPI decomp axis | `cfg.domain.mpi_decomp_axis` (default 0 = x) |
 | Barnes-Hut FMM | `use_fmm`, `fmm_theta`, `fmm_expansion_order` in input JSON |
 | Robin lumen transfer | `toxin.lumen_transfer_length` in input JSON |

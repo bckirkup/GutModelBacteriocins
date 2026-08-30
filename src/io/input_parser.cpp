@@ -27,26 +27,28 @@ namespace {
 
 bool strict_config_enabled() {
   const char* env = std::getenv("GUTIBM_STRICT_CONFIG");
-  if (!env || env[0] == '\0') return false;
+  if (!env || env[0] == '\0') return true;
   return env[0] != '0';
+}
+
+bool strict_config_requested() {
+  const char* env = std::getenv("GUTIBM_STRICT_CONFIG");
+  return env != nullptr && env[0] != '\0' && env[0] != '0';
 }
 
 void warn_parse_failure(const char* kind,
                         std::string_view key,
                         const std::string& val) {
-  std::cerr << "Warning: config key '" << key << "' has invalid " << kind
-            << " value '" << val << "' — using 0\n";
   if (strict_config_enabled()) {
     throw ConfigError(std::string("invalid config value for key '")
                       + std::string(key) + "'");
   }
+  std::cerr << "Warning: config key '" << key << "' has invalid " << kind
+            << " value '" << val << "' — using 0\n";
 }
 
 void warn_unknown_config_key(std::string_view key) {
-  std::cerr << "Warning: unknown config key '" << key << "' ignored\n";
-  if (strict_config_enabled()) {
-    throw ConfigError("unknown config key '" + std::string(key) + "'");
-  }
+  InputParser::handle_unknown_config_key(key);
 }
 
 std::string trim_config(std::string_view s) {
@@ -565,7 +567,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
               << "' has negligible slab screening (kH=" << k_h
               << ", require kH >= 0.05); the bounded steady-state image "
                  "series may not converge\n";
-    if (strict_config_enabled()) {
+    if (strict_config_requested()) {
       throw ConfigError(
           "QSSA Green's-function species '" + spec.name
           + "' has negligible slab screening (kH < 0.05)");
@@ -1861,6 +1863,13 @@ void parse_legacy_flat_keys(const std::string& content, SimulationConfig& cfg) {
 
 }  // namespace
 
+void InputParser::handle_unknown_config_key(std::string_view key) {
+  if (strict_config_enabled()) {
+    throw ConfigError("unknown config key '" + std::string(key) + "'");
+  }
+  std::cerr << "Warning: unknown config key '" << key << "' ignored\n";
+}
+
 bool InputParser::apply_flat_key(SimulationConfig& cfg,
                                  std::string_view key,
                                  const std::string& val) {
@@ -1877,16 +1886,12 @@ SimulationConfig InputParser::parse(const std::string& filename) {
   try {
     config_path = validate_input_file_path(filename);
   } catch (const IOError& ex) {
-    std::cerr << "Warning: cannot open config file '" << filename
-              << "' (" << ex.what() << "), using defaults\n";
-    return cfg;
+    throw IOError("cannot open config file '" + filename + "': " + ex.what());
   }
 
   std::ifstream ifs(config_path);
   if (!ifs.is_open()) {
-    std::cerr << "Warning: cannot open config file '" << config_path
-              << "', using defaults\n";
-    return cfg;
+    throw IOError("cannot open config file '" + config_path + "'");
   }
 
   std::ostringstream content_stream;

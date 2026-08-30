@@ -26,6 +26,66 @@
 
 using namespace gutibm;
 
+class ScopedStrictConfig {
+ public:
+  explicit ScopedStrictConfig(const char* value) {
+    const char* previous = std::getenv("GUTIBM_STRICT_CONFIG");
+    had_previous_ = previous != nullptr;
+    if (had_previous_) {
+      previous_ = previous;
+    }
+    if (value == nullptr) {
+      unsetenv("GUTIBM_STRICT_CONFIG");
+    } else {
+      setenv("GUTIBM_STRICT_CONFIG", value, 1);
+    }
+  }
+
+  ~ScopedStrictConfig() {
+    if (had_previous_) {
+      setenv("GUTIBM_STRICT_CONFIG", previous_.c_str(), 1);
+    } else {
+      unsetenv("GUTIBM_STRICT_CONFIG");
+    }
+  }
+
+ private:
+  bool had_previous_ = false;
+  std::string previous_;
+};
+
+class ScopedCerrCapture {
+ public:
+  ScopedCerrCapture() : previous_(std::cerr.rdbuf(buffer_.rdbuf())) {}
+
+  ~ScopedCerrCapture() { std::cerr.rdbuf(previous_); }
+
+  std::string str() const { return buffer_.str(); }
+
+ private:
+  std::stringstream buffer_;
+  std::streambuf* previous_;
+};
+
+SimulationConfig parse_lenient_config(const std::string& path,
+                                      std::string& warnings) {
+  ScopedStrictConfig strict_config("0");
+  ScopedCerrCapture capture;
+  SimulationConfig cfg = InputParser::parse(path);
+  warnings = capture.str();
+  return cfg;
+}
+
+std::string expect_config_error(const std::string& path) {
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError& error) {
+    return error.what();
+  }
+  assert(false && "InputParser::parse unexpectedly accepted invalid config");
+  return {};
+}
+
 void test_single_colony_example() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/examples/single_colony/input.json";
   SimulationConfig cfg = InputParser::parse(path);
@@ -506,15 +566,12 @@ void test_json_large_integer_round_trip() {
 void test_malformed_numeric_warnings_json() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.json";
 
-  std::stringstream err;
-  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
-  SimulationConfig cfg = InputParser::parse(path);
-  std::cerr.rdbuf(old_err);
+  std::string warnings;
+  SimulationConfig cfg = parse_lenient_config(path, warnings);
 
   assert(std::abs(cfg.domain.hi[0]) < 1e-15);
   assert(cfg.seed == 0);
 
-  const std::string warnings = err.str();
   assert(warnings.find("domain_x") != std::string::npos);
   assert(warnings.find("1mm") != std::string::npos);
   assert(warnings.find("seed") != std::string::npos);
@@ -525,15 +582,12 @@ void test_malformed_numeric_warnings_json() {
 void test_malformed_numeric_warnings_legacy() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.legacy";
 
-  std::stringstream err;
-  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
-  SimulationConfig cfg = InputParser::parse(path);
-  std::cerr.rdbuf(old_err);
+  std::string warnings;
+  SimulationConfig cfg = parse_lenient_config(path, warnings);
 
   assert(std::abs(cfg.domain.hi[0]) < 1e-15);
   assert(cfg.seed == 0);
 
-  const std::string warnings = err.str();
   assert(warnings.find("domain_x") != std::string::npos);
   assert(warnings.find("1mm") != std::string::npos);
   std::cout << "  test_malformed_numeric_warnings_legacy: PASSED\n";
@@ -693,6 +747,7 @@ void test_unknown_key_warning_json() {
     "total_time": 100,
     "bogus_key_xyz": 5,
     "another.unknown_key": true,
+    "bogus_object": {"nested": 1},
     "siderophore.recapture_fraction": 0.5
   })";
 
@@ -702,19 +757,17 @@ void test_unknown_key_warning_json() {
     out << json;
   }
 
-  std::stringstream err;
-  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
-  SimulationConfig cfg = InputParser::parse(path);
-  std::cerr.rdbuf(old_err);
+  std::string warnings;
+  SimulationConfig cfg = parse_lenient_config(path, warnings);
   std::remove(path.c_str());
 
   // Known key still applied.
   assert(std::abs(cfg.time.total_time - 100.0) < 1e-6);
 
-  const std::string warnings = err.str();
   // Unknown keys are surfaced.
   assert(warnings.find("bogus_key_xyz") != std::string::npos);
   assert(warnings.find("another.unknown_key") != std::string::npos);
+  assert(warnings.find("bogus_object") != std::string::npos);
   assert(warnings.find("siderophore.recapture_fraction") != std::string::npos);
   // Comment keys and recognized keys are not flagged.
   assert(warnings.find("_comment") == std::string::npos);
@@ -731,14 +784,11 @@ void test_unknown_key_warning_legacy() {
     out << "_comment: ignore me\n";
   }
 
-  std::stringstream err;
-  std::streambuf* old_err = std::cerr.rdbuf(err.rdbuf());
-  SimulationConfig cfg = InputParser::parse(path);
-  std::cerr.rdbuf(old_err);
+  std::string warnings;
+  SimulationConfig cfg = parse_lenient_config(path, warnings);
   std::remove(path.c_str());
 
   assert(std::abs(cfg.time.total_time - 200.0) < 1e-6);
-  const std::string warnings = err.str();
   assert(warnings.find("made_up_key") != std::string::npos);
   assert(warnings.find("_comment") == std::string::npos);
   std::cout << "  test_unknown_key_warning_legacy: PASSED\n";
@@ -755,38 +805,27 @@ void test_gpu_enabled_fixture() {
 void test_strict_config_aborts_on_bad_numeric() {
   std::string path = std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_bad_numeric.json";
 
-  const char* previous = std::getenv("GUTIBM_STRICT_CONFIG");
-  std::string saved;
-  if (previous) saved = previous;
-  setenv("GUTIBM_STRICT_CONFIG", "1", 1);
+  ScopedStrictConfig strict_config("1");
 
   bool threw = false;
   try {
     (void)InputParser::parse(path);
   } catch (const ConfigError&) {
     threw = true;
-  }
-
-  if (saved.empty()) {
-    unsetenv("GUTIBM_STRICT_CONFIG");
-  } else {
-    setenv("GUTIBM_STRICT_CONFIG", saved.c_str(), 1);
   }
 
   assert(threw);
   std::cout << "  test_strict_config_aborts_on_bad_numeric: PASSED\n";
 }
 
-void test_strict_config_aborts_on_unknown_key() {
+void test_default_config_aborts_on_unknown_key() {
   const std::string path = std::string(GUTIBM_SOURCE_DIR)
       + "/tests/fixtures/_strict_unknown_key.json";
   {
     std::ofstream out(path);
     out << "{\"strict_unknown_key\": 1}\n";
   }
-  const char* previous = std::getenv("GUTIBM_STRICT_CONFIG");
-  const std::string saved = previous == nullptr ? "" : previous;
-  setenv("GUTIBM_STRICT_CONFIG", "1", 1);
+  ScopedStrictConfig strict_config(nullptr);
 
   bool threw = false;
   try {
@@ -795,14 +834,106 @@ void test_strict_config_aborts_on_unknown_key() {
     threw = true;
   }
 
-  if (saved.empty()) {
-    unsetenv("GUTIBM_STRICT_CONFIG");
-  } else {
-    setenv("GUTIBM_STRICT_CONFIG", saved.c_str(), 1);
-  }
   std::remove(path.c_str());
   assert(threw);
-  std::cout << "  test_strict_config_aborts_on_unknown_key: PASSED\n";
+  std::cout << "  test_default_config_aborts_on_unknown_key: PASSED\n";
+}
+
+void test_missing_named_config_aborts() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/_missing_config_file.json";
+  std::remove(path.c_str());
+
+  bool threw = false;
+  std::string message;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const IOError& error) {
+    threw = true;
+    message = error.what();
+  }
+
+  assert(threw);
+  assert(message.find(path) != std::string::npos);
+  std::cout << "  test_missing_named_config_aborts: PASSED\n";
+}
+
+void test_malformed_json_is_fatal() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/_malformed_json_doc.json";
+  {
+    std::ofstream out(path);
+    out << R"({"total_time": 123, "seed": })";
+  }
+
+  const std::string message = expect_config_error(path);
+  std::remove(path.c_str());
+
+  assert(message.find("JSON") != std::string::npos);
+  std::cout << "  test_malformed_json_is_fatal: PASSED\n";
+}
+
+void test_legacy_flat_key_file_still_parses() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/_valid_flat_config.legacy";
+  {
+    std::ofstream out(path);
+    out << "total_time: 321\n";
+    out << "seed: 77\n";
+  }
+
+  const SimulationConfig cfg = InputParser::parse(path);
+  std::remove(path.c_str());
+
+  assert(std::abs(cfg.time.total_time - 321.0) < 1e-12);
+  assert(cfg.seed == 77);
+  std::cout << "  test_legacy_flat_key_file_still_parses: PASSED\n";
+}
+
+void test_invalid_numeric_strict_by_default_and_lenient_by_opt_in() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/_invalid_numeric_config.legacy";
+  {
+    std::ofstream out(path);
+    out << "domain_x: not_a_number\n";
+  }
+
+  ScopedStrictConfig strict_config(nullptr);
+
+  bool strict_threw = false;
+  std::string strict_message;
+  try {
+    (void)InputParser::parse(path);
+  } catch (const ConfigError& error) {
+    strict_threw = true;
+    strict_message = error.what();
+  }
+  assert(strict_threw);
+  assert(strict_message.find("domain_x") != std::string::npos);
+
+  std::string warnings;
+  const SimulationConfig lenient = parse_lenient_config(path, warnings);
+  std::remove(path.c_str());
+
+  assert(std::abs(lenient.domain.hi[0]) < 1e-15);
+  assert(warnings.find("domain_x") != std::string::npos);
+  std::cout << "  test_invalid_numeric_strict_by_default_and_lenient_by_opt_in:"
+            << " PASSED\n";
+}
+
+void test_malformed_initial_strains_array_is_fatal() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/_malformed_initial_strains.json";
+  {
+    std::ofstream out(path);
+    out << R"({"initial_strains": [{"type": 1,}], "total_time": 7})";
+  }
+
+  const std::string message = expect_config_error(path);
+  std::remove(path.c_str());
+
+  assert(message.find("JSON") != std::string::npos);
+  std::cout << "  test_malformed_initial_strains_array_is_fatal: PASSED\n";
 }
 
 void test_burst_release_tau_must_be_positive() {
@@ -1423,7 +1554,12 @@ int main() {
   test_unknown_key_warning_legacy();
   test_gpu_enabled_fixture();
   test_strict_config_aborts_on_bad_numeric();
-  test_strict_config_aborts_on_unknown_key();
+  test_default_config_aborts_on_unknown_key();
+  test_missing_named_config_aborts();
+  test_malformed_json_is_fatal();
+  test_legacy_flat_key_file_still_parses();
+  test_invalid_numeric_strict_by_default_and_lenient_by_opt_in();
+  test_malformed_initial_strains_array_is_fatal();
   test_burst_release_tau_must_be_positive();
   test_chemistry_stride_requires_positive_integer();
   test_grid_halo_width_fixture();

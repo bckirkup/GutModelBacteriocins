@@ -191,6 +191,9 @@ class InputParser {
                              std::string_view key,
                              const std::string& val);
 
+  // Apply the configured strictness policy to an unrecognized key.
+  static void handle_unknown_config_key(std::string_view key);
+
  private:
   static std::string trim(std::string_view s);
   static Real parse_real(const std::string& key, const std::string& val);
