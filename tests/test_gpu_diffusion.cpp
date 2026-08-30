@@ -228,11 +228,18 @@ SimulationConfig mixed_boundary_config() {
   cfg.domain.hi = {5.0e-6, 5.0e-6, 1025 * 5.0e-6};
   cfg.domain.grid_dx = 5.0e-6;
   cfg.domain.hash_cell_size = 10.0e-6;
-  cfg.chem_env.oxygen.enabled = false;
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.chem_env.oxygen.D_free = 2.1e-9;
+  cfg.chem_env.oxygen.epithelial_conc = 0.15;
+  cfg.oxygen_epithelial_boundary = "robin";
+  cfg.oxygen_epithelial_transfer_coeff = 2.0e-5;
+  cfg.carbon_epithelial_boundary = "dirichlet";
+  cfg.oxygen_z_gradient_enabled = false;
   cfg.chem_env.acetate.enabled = false;
   cfg.chem_env.mucin.enabled = false;
   cfg.chem_env.siderophore.enabled = false;
   cfg.chem_env.ferrichrome.enabled = false;
+  InputParser::finalize_config(cfg);
   for (ChemicalSpec& spec : cfg.chemicals) {
     spec.diffusion_enabled = false;
   }
@@ -240,24 +247,41 @@ SimulationConfig mixed_boundary_config() {
   const auto carbon = std::find_if(
       cfg.chemicals.begin(), cfg.chemicals.end(),
       [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
-  const auto oxygen = std::find_if(
-      cfg.chemicals.begin(), cfg.chemicals.end(),
-      [](const ChemicalSpec& spec) { return spec.name == species::OXYGEN; });
   assert(carbon != cfg.chemicals.end());
-  assert(oxygen != cfg.chemicals.end());
   carbon->diffusion_enabled = true;
   carbon->diff_coeff = 2.1e-9;
   carbon->retardation = 1.0;
   carbon->initial_conc = 0.25;
   carbon->boundary_conc = 0.25;
-  carbon->epithelial_boundary_mode = EpithelialBoundaryMode::Dirichlet;
-  oxygen->diffusion_enabled = true;
-  oxygen->diff_coeff = 2.1e-9;
-  oxygen->retardation = 1.0;
-  oxygen->initial_conc = 0.15;
-  oxygen->boundary_conc = 0.15;
-  oxygen->epithelial_boundary_mode = EpithelialBoundaryMode::Robin;
-  oxygen->epithelial_transfer_coeff = 2.0e-5;
+
+  InputParser::finalize_config(cfg);
+  const auto final_carbon = std::find_if(
+      cfg.chemicals.begin(), cfg.chemicals.end(),
+      [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
+  const auto final_oxygen = std::find_if(
+      cfg.chemicals.begin(), cfg.chemicals.end(),
+      [](const ChemicalSpec& spec) { return spec.name == species::OXYGEN; });
+  assert(final_carbon != cfg.chemicals.end());
+  assert(final_oxygen != cfg.chemicals.end());
+  Int diffusing_species = 0;
+  for (const ChemicalSpec& spec : cfg.chemicals) {
+    if (spec.diffusion_enabled) ++diffusing_species;
+    if (spec.epithelial_boundary_mode != EpithelialBoundaryMode::Dirichlet) {
+      assert(!spec.z_gradient_enabled);
+    }
+  }
+  assert(diffusing_species == 2);
+  assert(final_carbon->diffusion_enabled);
+  assert(final_oxygen->diffusion_enabled);
+  assert(final_carbon->epithelial_boundary_mode
+         == EpithelialBoundaryMode::Dirichlet);
+  assert(final_oxygen->epithelial_boundary_mode
+         == EpithelialBoundaryMode::Robin);
+  assert(final_oxygen->epithelial_transfer_coeff > 0.0);
+  assert(!final_oxygen->z_gradient_enabled);
+  Domain fixed_point_domain;
+  fixed_point_domain.init(cfg.domain);
+  assert(fixed_point_domain.nz() == 1025);
   return cfg;
 }
 
@@ -286,8 +310,14 @@ void test_mixed_boundary_falls_back_to_cpu() {
   const ChemicalField& gpu_field = gpu.chemical_field();
   assert(cpu_field.num_species() == gpu_field.num_species());
   for (Int s = 0; s < cpu_field.num_species(); ++s) {
+    const auto& cpu_concentrations =
+        cpu_field.conc_data()[static_cast<size_t>(s)];
+    if (s == carbon || s == oxygen) {
+      assert(*std::max_element(cpu_concentrations.begin(),
+                               cpu_concentrations.end()) > 1.0e-12);
+    }
     const Real max_diff = max_abs_diff(
-        cpu_field.conc_data()[static_cast<size_t>(s)],
+        cpu_concentrations,
         gpu_field.conc_data()[static_cast<size_t>(s)]);
     assert(max_diff < 1.0e-10);
   }
