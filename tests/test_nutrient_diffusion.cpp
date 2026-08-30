@@ -4,10 +4,12 @@
 #include "domain.h"
 #include "error.h"
 #include "input_parser.h"
+#include "simulation.h"
 #include "species_names.h"
 #include "vbf.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -371,6 +373,121 @@ void test_delivery_step_mass_closure_vbf_source() {
   assert(vbf_source > 0.0);
   assert(std::abs(residual_without_vbf_source) > 1.0e-12 * scale);
   assert(relative_residual <= 1.0e-12);
+}
+
+SimulationConfig oxygen_ledger_config(bool z_gradient, Int steps) {
+  constexpr Real dt = 60.0;
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.domain.hi = {100.0e-6, 100.0e-6, 40.0e-6};
+  cfg.hdf5.enabled = false;
+  cfg.time.total_time = dt * static_cast<Real>(steps);
+  cfg.time.bio_dt = dt;
+  cfg.time.output_interval = dt;
+  cfg.dysbiosis_threshold = 0.0;
+  cfg.enabled_fixes = {"metabolism"};
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain strain;
+  strain.type = 1;
+  strain.count = 1;
+  strain.mu_max = 1.0e-4;
+  cfg.initial_strains.push_back(strain);
+  cfg.chem_env.oxygen.enabled = true;
+  cfg.chem_env.oxygen.delivery_uptake_enabled = true;
+  cfg.chem_env.oxygen.respiration_driver = "funded";
+  cfg.chem_env.oxygen.metabolic_switch_enabled = true;
+  cfg.chem_env.oxygen.tau_metabolic_switch = 1.0;
+  cfg.chem_env.oxygen.q_consumption = 1.0e-15;
+  cfg.chem_env.oxygen.q_maintenance = 0.0;
+  cfg.chem_env.oxygen.vbf_sink = 0.0;
+  cfg.chem_env.oxygen.epithelial_conc = 55.0e-6;
+  cfg.oxygen_z_gradient_enabled = z_gradient;
+  cfg.fixes.metabolism.uptake_limit = "delivery";
+  cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
+  cfg.fixes.metabolism.maintenance_rate = 0.0;
+  cfg.fixes.metabolism.division_threshold = 1.0e9;
+  InputParser::finalize_config(cfg);
+  return cfg;
+}
+
+Real oxygen_inventory(const Simulation& sim, Int oxygen) {
+  const auto& chem = sim.chemical_field();
+  Real total = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    if (!chem.owns_global_cell(cell)) continue;
+    total += chem.conc_global(oxygen, cell) * sim.domain().cell_volume();
+  }
+  return total;
+}
+
+struct OxygenLedgerArm {
+  const char* name;
+  bool uniform_init;
+  bool z_gradient;
+  Int steps;
+};
+
+void test_oxygen_inventory_ledger_closure() {
+  constexpr Real dt = 60.0;
+  constexpr Real tolerance = 1.0e-9;
+  constexpr Real oxygen_concentration = 55.0e-6;
+  const std::array arms = {
+      OxygenLedgerArm{"uniform init, gradient on", true, true, 1},
+      OxygenLedgerArm{"model init, gradient on", false, true, 1},
+      OxygenLedgerArm{"uniform init, gradient off", true, false, 1},
+      OxygenLedgerArm{"model init, gradient off", false, false, 1},
+      OxygenLedgerArm{"model init, gradient on, 10 steps", false, true, 10},
+      OxygenLedgerArm{"uniform init, gradient off, 10 steps", true, false, 10}};
+
+  for (const OxygenLedgerArm& arm : arms) {
+    Simulation sim;
+    sim.init(oxygen_ledger_config(arm.z_gradient, arm.steps));
+    auto& chem = sim.chemical_field();
+    const Int carbon = chem.find(species::CARBON);
+    const Int oxygen = chem.find(species::OXYGEN);
+    assert(carbon >= 0);
+    assert(oxygen >= 0);
+    for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+      if (!chem.owns_global_cell(cell)) continue;
+      chem.conc_global(carbon, cell) = 1.0;
+      if (arm.uniform_init) {
+        chem.conc_global(oxygen, cell) = oxygen_concentration;
+      }
+    }
+
+    Real worst_relative_residual = 0.0;
+    for (Int step = 0; step < arm.steps; ++step) {
+      const Real before = oxygen_inventory(sim, oxygen);
+      sim.step(dt);
+      const Real after = oxygen_inventory(sim, oxygen);
+      const auto& flux = chem.flux_accounting();
+      Real total_sink_realized = 0.0;
+      for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+        if (!chem.owns_global_cell(cell)) continue;
+        total_sink_realized +=
+            chem.total_sink_realized_global(oxygen, cell);
+      }
+      const Real boundary = flux.boundary_for_step(oxygen);
+      const Real gradient_source = flux.gradient_source_for_step(oxygen);
+      const Real vbf_source = flux.vbf_source_for_step(oxygen);
+      const Real vbf_sink = flux.vbf_sink_for_step(oxygen);
+      const Real reaction_clip = flux.reaction_clip_for_step(oxygen);
+      const Real expected_delta = boundary + gradient_source + vbf_source
+          - vbf_sink - total_sink_realized - reaction_clip;
+      const Real residual = (after - before) - expected_delta;
+      const Real gross = std::abs(boundary) + std::abs(gradient_source)
+          + std::abs(vbf_source) + std::abs(vbf_sink)
+          + std::abs(total_sink_realized) + std::abs(reaction_clip);
+      const Real relative_residual =
+          std::abs(residual) / std::max(gross, 1.0e-30);
+      worst_relative_residual =
+          std::max(worst_relative_residual, relative_residual);
+      assert(std::isfinite(relative_residual));
+      assert(relative_residual <= tolerance);
+    }
+    std::cout << "  test_oxygen_inventory_ledger_closure: " << arm.name
+              << " worst_relative_residual=" << worst_relative_residual
+              << "\n";
+  }
 }
 
 void test_anisotropic_diffusion_invariants() {
@@ -1055,6 +1172,7 @@ int main() {
   test_delivery_mass_closure_gradient_parameterization();
   test_delivery_step_mass_closure_dirichlet_refill();
   test_delivery_step_mass_closure_vbf_source();
+  test_oxygen_inventory_ledger_closure();
   test_default_species_configuration();
   std::cout << "All nutrient diffusion tests passed.\n";
   return 0;

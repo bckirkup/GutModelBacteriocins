@@ -351,6 +351,30 @@ respiration is delivery-limited to approximately one third of demand at
 a test artifact. The linear solve is linear in the prescribed mass, so the
 delivery limit lifts proportionally with oxygen availability.
 
+**The reported unaccounted oxygen removal was a false alarm.** The per-step
+oxygen ledger closes to machine precision when normalized by gross channel
+traffic: the measured worst signed residual ratios were `-3.5e-13` (uniform
+initialization, gradient on), `1.6e-13` (model initialization, gradient on),
+`-3.0e-12` (uniform initialization, gradient off), `-3.0e-12` (model
+initialization, gradient off), `1.6e-13` (model initialization, gradient on,
+10 steps), and `-5.7e-12` (uniform initialization, gradient off, 10 steps).
+The symptom came from reading `boundary_step` after
+`commit_boundary_and_reaction_step()` had zeroed it; the correct
+`boundary_last_step` value for the reported arm was `-9.57e-18` mol. The
+probe also overwrote the field with a uniform `55e-6` mol/m³, far above the
+model's depth-decaying reference profile, producing a `-49.6%` first-step
+inventory change; using the model initialization instead produced `+0.53%`.
+There is no missing oxygen removal channel.
+
+The same measured probe found that the shipped-default delivery limit is
+driven by the z-gradient, not voxel size alone. At the agent depth
+(`iz = 7`), local oxygen is `3.02e-5` mol/m³ versus the `5.5e-5` epithelial
+value. With the gradient enabled, rationing fires, delivery reduction is
+`2.75e-18` mol, and funded respiration is approximately `0.33` of demand;
+with the gradient disabled, rationing never fires and full demand
+(`4.08e-18` mol) is funded. Raising `epithelial_conc` therefore does not lift
+the limit while the gradient remains active.
+
 **Non-delivery GPU oxygen VBF remains a discretization divergence.** Delivery
 enabled oxygen is a first-order sink in the implicit Route B diagonal, while
 ordinary non-delivery GPU VBF intentionally retains the shipped explicit

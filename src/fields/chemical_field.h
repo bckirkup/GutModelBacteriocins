@@ -21,6 +21,9 @@ class Domain;
 class ChemicalFieldGpu;
 
 struct NutrientFluxAccounting {
+  // *_step vectors are mid-step scratch.  The commit methods copy their
+  // values to *_last_step and then clear them, so post-step readers must use
+  // the *_for_step accessors rather than reading the raw vectors.
   std::vector<Real> boundary_interval;
   std::vector<Real> boundary_step;
   std::vector<Real> boundary_last_step;
@@ -296,6 +299,22 @@ struct NutrientFluxAccounting {
 
   Real agent_uptake_for_step(Int species) const {
     return agent_uptake_last_step[static_cast<size_t>(species)];
+  }
+
+  Real boundary_for_step(Int species) const {
+    return boundary_last_step[static_cast<size_t>(species)];
+  }
+
+  Real gradient_source_for_step(Int species) const {
+    return gradient_source_last_step[static_cast<size_t>(species)];
+  }
+
+  Real vbf_source_for_step(Int species) const {
+    return vbf_source_last_step[static_cast<size_t>(species)];
+  }
+
+  Real vbf_sink_for_step(Int species) const {
+    return vbf_sink_last_step[static_cast<size_t>(species)];
   }
 
   Real uptake_demand_for_step(Int species) const {
