@@ -304,7 +304,7 @@ void test_trap_profile_more_lethal_than_mild_downregulation() {
 
 void test_population_stocks_are_instantaneous_and_ordered() {
   constexpr Int kCount = 12;
-  const std::vector<Real> turnovers = {3600.0, 120000.0, 1.0e6};
+  const std::vector turnovers = {3600.0, 120000.0, 1.0e6};
   std::vector<Int> trapped;
 
   for (const Real turnover : turnovers) {
@@ -392,7 +392,7 @@ std::pair<Int, Int> run_transport_loss(WashoutTrapMode mode, Real domain_z,
     apply_trap_immigrant_profile(agent, 44e-6);
   }
   Int total_outflow = 0;
-  const Int steps = static_cast<Int>(std::ceil(total_time / 60.0));
+  const auto steps = static_cast<Int>(std::ceil(total_time / 60.0));
   for (Int step = 0; step < steps && sim.global_agent_count() > 0; ++step) {
     sim.step(60.0);
     const StepEvents& events = sim.step_events();
@@ -459,8 +459,8 @@ void test_bacteriostasis_threshold_default_is_reachable() {
 }
 
 void test_bacteriostasis_threshold_is_sensitive() {
-  const std::vector<Real> thresholds = {-4.0e-6, 2.0e-6, 1.0e-5};
-  const std::vector<Real> realized_mu = {
+  const std::vector thresholds = {-4.0e-6, 2.0e-6, 1.0e-5};
+  const std::vector realized_mu = {
       -5.0e-6, 0.0, 2.0e-6, 8.0e-6, 2.0e-5, 1.0e-4};
   std::vector<Int> stock_counts;
 

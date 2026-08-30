@@ -14,6 +14,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef GUTIBM_MPI
@@ -63,7 +64,7 @@ long read_vmrss_kb() {
 }
 
 SimulationConfig bench_config(int agent_count, bool use_fmm,
-                              const std::string& toxin_evaluation) {
+                              std::string_view toxin_evaluation) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.hdf5.enabled = false;
   cfg.time.total_time = 120.0;
@@ -198,7 +199,7 @@ void run_toxin_timing_case() {
     sources.push_back(source_at({x, y, z}));
   }
 
-  auto config = [&](const std::string& mode) {
+  auto config = [&](std::string_view mode) {
     SimulationConfig cfg = InputParser::default_config();
     cfg.hdf5.enabled = false;
     cfg.domain.hi = {domain_size, domain_size, domain_size};

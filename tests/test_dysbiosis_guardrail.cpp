@@ -76,7 +76,7 @@ int main() {
   observe_series(flat_guard, flat, interval);
   assert(!flat_guard.halted());
 
-  const std::vector<Real> growth_rates{1.0e6, 2.0e6, 4.0e6};
+  const std::vector growth_rates{1.0e6, 2.0e6, 4.0e6};
   Real previous_halt_time = 1.0e30;
   for (const Real growth_rate : growth_rates) {
     std::vector<Real> growth;

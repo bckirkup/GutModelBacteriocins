@@ -17,15 +17,15 @@ using namespace gutibm;
 
 namespace {
 
-std::set<std::string> names(const SimulationConfig& cfg) {
-  std::set<std::string> result;
+std::set<std::string, std::less<>> names(const SimulationConfig& cfg) {
+  std::set<std::string, std::less<>> result;
   for (const auto& spec : cfg.chemicals) result.insert(spec.name);
   return result;
 }
 
 void test_exact_species_sets() {
   const auto full = InputParser::default_config();
-  const std::set<std::string> expected_full = {
+  const std::set<std::string, std::less<>> expected_full = {
       species::CARBON, species::IRON, species::B12,
       species::BACTERIOCIN_BTUB, species::BACTERIOCIN_FEPA,
       species::BACTERIOCIN_CIRA, species::BACTERIOCIN_FHUA,
@@ -36,7 +36,7 @@ void test_exact_species_sets() {
   auto nutrient = full;
   nutrient.species_subset = "nutrient_only";
   InputParser::finalize_config(nutrient);
-  const std::set<std::string> expected_nutrient = {
+  const std::set<std::string, std::less<>> expected_nutrient = {
       species::CARBON, species::IRON, species::B12, species::ACETATE,
       species::ETHANOLAMINE, species::SIDEROPHORE,
       species::FERRIC_ENTEROBACTIN};
@@ -45,7 +45,8 @@ void test_exact_species_sets() {
   auto carbon = full;
   carbon.species_subset = "carbon_only";
   InputParser::finalize_config(carbon);
-  assert(names(carbon) == std::set<std::string>{species::CARBON});
+  assert((names(carbon)
+          == std::set<std::string, std::less<>>{species::CARBON}));
   std::cout << "  test_exact_species_sets: PASSED\n";
 }
 

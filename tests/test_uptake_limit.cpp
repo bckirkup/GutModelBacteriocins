@@ -66,11 +66,12 @@ SimulationConfig base_config() {
 }
 
 const char* mode_name(UptakeLimitMode mode) {
+  using enum UptakeLimitMode;
   switch (mode) {
-    case UptakeLimitMode::Sherwood: return "sherwood";
-    case UptakeLimitMode::Voxel:    return "voxel";
-    case UptakeLimitMode::Delivery: return "delivery";
-    case UptakeLimitMode::None:     break;
+    case Sherwood: return "sherwood";
+    case Voxel:    return "voxel";
+    case Delivery: return "delivery";
+    case None:     break;
   }
   return "none";
 }
@@ -262,7 +263,7 @@ Real run_resolution_probe(Real grid_dx, Real far_field_radius) {
 }
 
 void test_far_field_resolution_invariance_and_anti_vacuity() {
-  const std::vector<Real> resolutions = {2.0e-6, 4.0e-6, 6.0e-6};
+  const std::vector resolutions = {2.0e-6, 4.0e-6, 6.0e-6};
   std::vector<Real> far_field;
   std::vector<Real> own_voxel;
   for (const Real resolution : resolutions) {
@@ -305,7 +306,7 @@ void test_far_field_uniform_field_invariant() {
 }
 
 void test_far_field_concentration_monotonicity() {
-  const std::vector<Real> concentrations = {
+  const std::vector concentrations = {
       1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4};
   std::vector<Real> fractions;
   fractions.reserve(concentrations.size());
@@ -495,7 +496,7 @@ bool finite_and_nonnegative(const Measurement& m) {
 }
 
 void test_funded_fraction_falls_with_local_concentration() {
-  const std::vector<Real> concentrations = {1.0e-4, 1.0e-5, 1.0e-6, 1.0e-7};
+  const std::vector concentrations = {1.0e-4, 1.0e-5, 1.0e-6, 1.0e-7};
   std::vector<Real> fractions;
   fractions.reserve(concentrations.size());
   for (Real concentration : concentrations) {
@@ -516,7 +517,7 @@ void test_funded_fraction_falls_with_local_concentration() {
 
 void test_funded_fraction_falls_with_radius_and_diffusivity() {
   const Real carbon = 1.0e-7;
-  const std::vector<Real> radii = {2.0e-6, 5.0e-7, 1.0e-7};
+  const std::vector radii = {2.0e-6, 5.0e-7, 1.0e-7};
   std::vector<Real> by_radius;
   by_radius.reserve(radii.size());
   for (Real radius : radii) {
@@ -530,7 +531,7 @@ void test_funded_fraction_falls_with_radius_and_diffusivity() {
   }
   assert(by_radius.front() > by_radius.back());
 
-  const std::vector<Real> retardations = {1.0, 4.0, 16.0};
+  const std::vector retardations = {1.0, 4.0, 16.0};
   std::vector<Real> by_diffusivity;
   by_diffusivity.reserve(retardations.size());
   for (Real retardation : retardations) {
@@ -1019,7 +1020,7 @@ void test_delivery_rationing_is_local() {
 
   const auto& chem = sim.chemical_field();
   const auto& flux = chem.flux_accounting();
-  const size_t index = static_cast<size_t>(carbon);
+  const auto index = static_cast<size_t>(carbon);
   Real minimum = std::numeric_limits<Real>::infinity();
   Real field_removal = 0.0;
   for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
@@ -1255,7 +1256,7 @@ ResolutionFundingMeasurement measure_regularized_resolution_funding(
   }
   sim.step(kDt);
   const auto& flux = sim.chemical_field().flux_accounting();
-  const size_t index = static_cast<size_t>(carbon);
+  const auto index = static_cast<size_t>(carbon);
   return {flux.agent_uptake_interval[index],
           flux.uptake_demand_interval[index],
           flux.delivery_reduction_interval[index]
@@ -1263,7 +1264,7 @@ ResolutionFundingMeasurement measure_regularized_resolution_funding(
 }
 
 void test_regularized_delivery_funding_resolution_invariance() {
-  const std::vector<Real> resolutions = {
+  const std::vector resolutions = {
       2.0e-6, 4.0e-6, 6.0e-6};
   std::vector<Real> regularized;
   std::vector<Real> own_voxel;
@@ -1920,9 +1921,9 @@ PopulationGradientDeliveryMeasurement measure_population_gradient_delivery() {
 
   Simulation sim;
   sim.init(cfg);
-  const Int agent_count = static_cast<Int>(sim.agents().size());
-  for (Int i = 0; i < agent_count; ++i) {
-    Agent& agent = sim.agents()[static_cast<size_t>(i)];
+  const auto agent_count = sim.agents().size();
+  for (size_t i = 0; i < agent_count; ++i) {
+    Agent& agent = sim.agents()[i];
     const Int ix = static_cast<Int>(i % 8) * 2 + 1;
     const Int iy = static_cast<Int>((i / 8) % 8) * 2 + 1;
     const Int iz = static_cast<Int>(i / 64) + 1;

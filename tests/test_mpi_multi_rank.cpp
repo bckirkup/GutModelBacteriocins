@@ -391,7 +391,7 @@ void test_slab_chemistry_transpose_halos_and_ledger() {
     for (Int iy = 0; iy < domain.ny(); ++iy) {
       for (Int ix = 0; ix < domain.nx(); ++ix) {
         const Int global = domain.cell_index(ix, iy, iz);
-        const Real value = static_cast<Real>(1 + ix + 10 * iy + 100 * iz);
+        const auto value = static_cast<Real>(1 + ix + 10 * iy + 100 * iz);
         replicated.conc(0, global) = value;
         if (slab.owns_global_cell(global)) {
           slab.conc_global(0, global) = value;
@@ -403,7 +403,7 @@ void test_slab_chemistry_transpose_halos_and_ledger() {
 
   const Int seam_x = rank == 0 ? domain.nx() - 1 : 0;
   const Int seam_cell = domain.cell_index(seam_x, 0, 0);
-  const Real expected_seam = static_cast<Real>(1 + seam_x);
+  const auto expected_seam = static_cast<Real>(1 + seam_x);
   assert(slab.global_cell_in_halo(seam_cell));
   assert(slab.conc_global(0, seam_cell) == expected_seam);
 

@@ -177,7 +177,7 @@ int main() {
   const BurstRun gpu = run_case(true, strength);
   compare_fields(cpu, gpu);
 
-  const std::vector<Real> strengths{0.0, 0.1 * strength, strength, 10.0 * strength};
+  const std::vector strengths{0.0, 0.1 * strength, strength, 10.0 * strength};
   std::vector<Int> cpu_kills;
   std::vector<Int> gpu_kills;
   for (const Real dose : strengths) {

@@ -122,7 +122,7 @@ void test_maintenance_rate_is_independent() {
 }
 
 void test_maintenance_sensitivity_and_shortfall() {
-  const std::vector<Real> rates = {0.0, 1.0e-6, 1.0e-5, 1.0e-4};
+  const std::vector rates = {0.0, 1.0e-6, 1.0e-5, 1.0e-4};
   std::vector<Real> draws;
   draws.reserve(rates.size());
   for (const Real rate : rates) {
@@ -204,7 +204,7 @@ LedgerResult run_ledger_probe() {
 }
 
 void test_trajectory_sensitivity_and_zero_compatibility() {
-  const std::vector<Real> rates = {0.0, 1.0e-4, 1.0e-3, 1.0e-2};
+  const std::vector rates = {0.0, 1.0e-4, 1.0e-3, 1.0e-2};
   std::vector<TrajectoryResult> results;
   results.reserve(rates.size());
   for (const Real rate : rates) results.push_back(run_trajectory(rate));

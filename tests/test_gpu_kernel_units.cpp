@@ -89,9 +89,9 @@ PeriodicCoefficients periodic_coefficients(int size, double alpha) {
   coefficients.gamma = -diagonal_value;
   coefficients.corner = -alpha;
 
-  std::vector<double> lower(static_cast<size_t>(size - 1), -alpha);
-  std::vector<double> upper(static_cast<size_t>(size - 1), -alpha);
-  std::vector<double> diagonal(static_cast<size_t>(size), diagonal_value);
+  std::vector lower(static_cast<size_t>(size - 1), -alpha);
+  std::vector upper(static_cast<size_t>(size - 1), -alpha);
+  std::vector diagonal(static_cast<size_t>(size), diagonal_value);
   diagonal.front() -= coefficients.gamma;
   diagonal.back() -=
       coefficients.corner * coefficients.corner / coefficients.gamma;
@@ -126,7 +126,7 @@ void test_field_update() {
   DeviceBuffer<double> concentration(kCells);
   DeviceBuffer<double> reaction(kCells);
   DeviceBuffer<double> clip(1);
-  std::vector<double> host_reaction(kCells, 0.0);
+  std::vector host_reaction(kCells, 0.0);
   host_reaction[0] = -2.0;
   concentration.upload(std::vector<double>(kCells, 1.0));
   reaction.upload(host_reaction);
@@ -303,7 +303,7 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
   receptor_base.upload(
       std::vector<double>(gutibm::NUM_RECEPTORS * agents, 2.0));
   ligand.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
-  std::vector<int> iron_receptor_flags(gutibm::NUM_RECEPTORS, 0);
+  std::vector iron_receptor_flags(gutibm::NUM_RECEPTORS, 0);
   for (int receptor = 0; receptor < gutibm::NUM_RECEPTORS; ++receptor) {
     iron_receptor_flags[static_cast<size_t>(receptor)] =
         gutibm::is_iron_receptor(receptor) ? 1 : 0;
@@ -478,7 +478,7 @@ void test_diffuse_x_periodic() {
   assert(close(std::accumulate(uniform.begin(), uniform.end(), 0.0),
                2.0 * kCells));
 
-  std::vector<double> mode(kCells, 0.0);
+  std::vector mode(kCells, 0.0);
   for (int iz = 0; iz < kNz; ++iz) {
     for (int iy = 0; iy < kNy; ++iy) {
       for (int ix = 0; ix < kNx; ++ix) {
@@ -516,7 +516,7 @@ void test_diffuse_y_periodic() {
   assert(close(std::accumulate(uniform.begin(), uniform.end(), 0.0),
                2.0 * kCells));
 
-  std::vector<double> mode(kCells, 0.0);
+  std::vector mode(kCells, 0.0);
   for (int iz = 0; iz < kNz; ++iz) {
     for (int iy = 0; iy < kNy; ++iy) {
       for (int ix = 0; ix < kNx; ++ix) {
@@ -583,12 +583,12 @@ void test_set_epithelial_boundary() {
   assert(injected[0] < injected[1]);
   assert(injected[1] < injected[2]);
   assert(close(injected[2] / injected[1], 3.0));
-  assert(face_cells > 0);
+  static_assert(face_cells > 0);
 }
 
 void test_set_luminal_neumann() {
   DeviceBuffer<double> field(kCells);
-  std::vector<double> initial(kCells, 0.0);
+  std::vector initial(kCells, 0.0);
   for (int iy = 0; iy < kNy; ++iy) {
     for (int ix = 0; ix < kNx; ++ix) {
       initial[(kNz - 2) * kNx * kNy + iy * kNx + ix] = 3.0;
@@ -623,7 +623,7 @@ void test_shift_z_gradient() {
 
 void test_clamp_nonneg() {
   DeviceBuffer<double> field(kCells);
-  std::vector<double> initial(kCells, 2.0);
+  std::vector initial(kCells, 2.0);
   initial[0] = -1.0;
   field.upload(initial);
   gutibm::gpu::launch_clamp_nonneg(

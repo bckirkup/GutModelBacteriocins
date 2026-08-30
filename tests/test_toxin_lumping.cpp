@@ -11,14 +11,15 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <string_view>
 #include <vector>
 
 using namespace gutibm;
 
 namespace {
 
-Simulation make_sim(const std::string& lumping,
-                    const std::string& evaluation = "grid",
+Simulation make_sim(std::string_view lumping,
+                    std::string_view evaluation = "grid",
                     bool use_fmm = false) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.initial_strains.clear();
@@ -87,16 +88,17 @@ void test_single_target_equivalence() {
 }
 
 void test_single_target_kill_equivalence() {
+  using enum ReceptorType;
   auto per_receptor = make_sim("per_receptor");
   auto lumped = make_sim("lumped");
   add_agent(per_receptor, {60e-6, 60e-6, 60e-6});
   add_agent(lumped, {60e-6, 60e-6, 60e-6});
   for (Simulation* sim : {&per_receptor, &lumped}) {
     Agent& agent = (*sim).agents()[0];
-    agent.receptor_expr[to_underlying(ReceptorType::BtuB)] = 1.0;
-    agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 0.0;
-    agent.receptor_expr[to_underlying(ReceptorType::CirA)] = 0.0;
-    agent.receptor_expr[to_underlying(ReceptorType::FhuA)] = 0.0;
+    agent.receptor_expr[to_underlying(BtuB)] = 1.0;
+    agent.receptor_expr[to_underlying(FepA)] = 0.0;
+    agent.receptor_expr[to_underlying(CirA)] = 0.0;
+    agent.receptor_expr[to_underlying(FhuA)] = 0.0;
   }
   const Int per_idx = per_receptor.chemical_field().find(
       species::BACTERIOCIN_BTUB);
@@ -118,7 +120,7 @@ void test_single_target_kill_equivalence() {
 }
 
 void test_lumped_field_is_per_target_sum() {
-  const std::vector<ToxinBurstSource> sources = {
+  const std::vector sources = {
       source_at({30e-6, 60e-6, 60e-6}, ReceptorType::BtuB),
       source_at({60e-6, 30e-6, 60e-6}, ReceptorType::FepA),
       source_at({90e-6, 60e-6, 60e-6}, ReceptorType::CirA),
@@ -146,7 +148,7 @@ void test_lumped_field_is_per_target_sum() {
 void test_lumped_agent_sampling_matches_analytic_sum() {
   auto sim = make_sim("lumped", "agents");
   const Agent target = add_agent(sim, {55e-6, 65e-6, 65e-6});
-  const std::vector<ToxinBurstSource> sources = {
+  const std::vector sources = {
       source_at({65e-6, 65e-6, 65e-6}, ReceptorType::BtuB),
       source_at({45e-6, 65e-6, 65e-6}, ReceptorType::FepA)};
   solve(sim, sources, false);
@@ -165,7 +167,7 @@ void test_lumped_agent_sampling_matches_analytic_sum() {
 void test_lumped_agent_sampling_fmm_is_finite() {
   auto sim = make_sim("lumped", "agents", true);
   add_agent(sim, {55e-6, 65e-6, 65e-6});
-  const std::vector<ToxinBurstSource> sources = {
+  const std::vector sources = {
       source_at({65e-6, 65e-6, 65e-6}, ReceptorType::BtuB),
       source_at({45e-6, 65e-6, 65e-6}, ReceptorType::FepA)};
   solve(sim, sources, false);

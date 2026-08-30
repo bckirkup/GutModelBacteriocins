@@ -124,7 +124,7 @@ void assert_closure(const FeedbackResult& result, const std::string& path) {
 }
 
 void run_path_checks(bool gpu) {
-  const std::vector<Int> counts = {0, 4, 8};
+  const std::vector counts = {0, 4, 8};
   std::vector<Real> depletion;
   for (const Int count : counts) {
     const FeedbackResult result = run_feedback(count, gpu);

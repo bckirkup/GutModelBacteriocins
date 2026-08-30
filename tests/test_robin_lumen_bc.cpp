@@ -86,7 +86,7 @@ uint64_t table_identity_hash(const robin::Table& table) {
   for (const int64_t group : table.quantized_key) {
     append_hash_bytes(hash, &group, sizeof(group));
   }
-  const int basis = static_cast<int>(table.basis);
+  const auto basis = static_cast<int>(to_underlying(table.basis));
   append_hash_bytes(hash, &basis, sizeof(basis));
   append_hash_bytes(hash, &table.z_lo, sizeof(table.z_lo));
   append_hash_bytes(hash, &table.height, sizeof(table.height));
@@ -232,7 +232,7 @@ void test_robin_fallback_preflight() {
       {500.0e-6, 500.0e-6, 5.001e-6},
       {500.0e-6, 500.0e-6, 50.0e-6}};
   auto params = params_for(2.0e-11, 5.0e-5, 100.0e-6);
-  const std::vector<GreensFunctionParams> enabled(sources.size(), params);
+  const std::vector enabled(sources.size(), params);
   auto disabled = enabled;
   for (auto& item : disabled) {
     item.lumen_transfer_length = std::numeric_limits<Real>::infinity();
