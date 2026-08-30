@@ -398,7 +398,7 @@ void test_delivery_device_parity_and_provenance() {
   assert(std::abs(delivery_realized - none_realized)
          > 1.0e-6 * contrast_scale);
   SimulationConfig over_cap_config = delivery_config;
-  over_cap_config.domain.hi[2] = 513.0 * over_cap_config.domain.grid_dx;
+  over_cap_config.domain.hi[2] = 514.0 * over_cap_config.domain.grid_dx;
   Simulation host_forced = run(over_cap_config, true);
   assert(std::string(host_forced.chemistry_placement())
          == "host_forced_delivery");
