@@ -41,6 +41,10 @@ SimulationConfig make_config(UptakeLimitMode mode) {
   } else if (mode == UptakeLimitMode::Delivery) {
     cfg.fixes.metabolism.uptake_limit = "delivery";
     cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
+    cfg.chem_env.oxygen.enabled = true;
+    cfg.chem_env.oxygen.delivery_uptake_enabled = true;
+    cfg.oxygen_epithelial_boundary = "dirichlet";
+    cfg.oxygen_z_gradient_enabled = false;
     for (auto& chemical : cfg.chemicals) {
       if (chemical.name == species::CARBON) {
         chemical.delivery_enabled = true;
@@ -114,16 +118,55 @@ Real carbon_agent_realized_sink(const Simulation& simulation) {
   assert(carbon >= 0);
   Real realized = 0.0;
   for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    if (!chem.owns_global_cell(cell)) continue;
     realized += chem.sink_realized_global(carbon, cell);
   }
   return realized;
 }
 
-Real carbon_vbf_realized_sink(const Simulation& simulation) {
+Real agent_realized_sink(const Simulation& simulation, Int spec) {
   const auto& chem = simulation.chemical_field();
-  const Int carbon = chem.find(species::CARBON);
+  assert(spec >= 0);
+  Real realized = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    if (!chem.owns_global_cell(cell)) continue;
+    realized += chem.sink_realized_global(spec, cell);
+  }
+  return realized;
+}
+
+Real total_realized_sink(const Simulation& simulation, Int spec) {
+  const auto& chem = simulation.chemical_field();
+  assert(spec >= 0);
+  Real realized = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    if (!chem.owns_global_cell(cell)) continue;
+    realized += chem.total_sink_realized_global(spec, cell);
+  }
+  return realized;
+}
+
+Real vbf_realized_sink(const Simulation& simulation, Int spec) {
+  const auto& chem = simulation.chemical_field();
+  assert(spec >= 0);
+  return chem.vbf_sink_realized(spec);
+}
+
+Real carbon_vbf_realized_sink(const Simulation& simulation) {
+  const Int carbon = simulation.chemical_field().find(species::CARBON);
   assert(carbon >= 0);
-  return chem.vbf_sink_realized(carbon);
+  return vbf_realized_sink(simulation, carbon);
+}
+
+void assert_delivery_oxygen_shape(const Simulation& simulation) {
+  const auto& chem = simulation.chemical_field();
+  const Int oxygen = chem.find(species::OXYGEN);
+  assert(oxygen >= 0);
+  const auto& oxygen_spec = chem.spec(oxygen);
+  assert(oxygen_spec.delivery_enabled);
+  assert(oxygen_spec.epithelial_boundary_mode
+         == EpithelialBoundaryMode::Dirichlet);
+  assert(!oxygen_spec.z_gradient_enabled);
 }
 
 Real relative_scale(Real first, Real second) {
@@ -257,6 +300,8 @@ void test_delivery_device_parity_and_provenance() {
 
   assert(std::string(cpu_delivery.chemistry_placement()) == "host");
   assert(std::string(delivery.chemistry_placement()) == "device_delivery");
+  assert_delivery_oxygen_shape(cpu_delivery);
+  assert_delivery_oxygen_shape(delivery);
   const auto& cpu_flux = cpu_delivery.chemical_field().flux_accounting();
   const auto& delivery_flux = delivery.chemical_field().flux_accounting();
   const Int carbon = delivery.chemical_field().find(species::CARBON);
@@ -276,17 +321,55 @@ void test_delivery_device_parity_and_provenance() {
       carbon_agent_realized_sink(cpu_delivery);
   const Real delivery_vbf_realized = carbon_vbf_realized_sink(delivery);
   const Real cpu_vbf_realized = carbon_vbf_realized_sink(cpu_delivery);
+  const Real delivery_total_realized = total_realized_sink(delivery, carbon);
+  const Real cpu_total_realized = total_realized_sink(cpu_delivery, carbon);
   assert(std::isfinite(delivery_field_realized));
   assert(std::isfinite(cpu_field_realized));
   assert(std::isfinite(delivery_vbf_realized));
   assert(std::isfinite(cpu_vbf_realized));
   assert(delivery_field_realized > 0.0);
   assert(cpu_field_realized > 0.0);
-  assert(delivery_vbf_realized > 0.0);
-  assert(cpu_vbf_realized > 0.0);
-  assert(std::abs(delivery_vbf_realized - cpu_vbf_realized)
+  // Carbon's VBF sink is a Monod reaction term, not a first-order sink-rate
+  // channel, so the delivery split attributes nothing to VBF.
+  assert(delivery_vbf_realized == 0.0);
+  assert(cpu_vbf_realized == 0.0);
+  assert(std::abs(delivery_total_realized - delivery_field_realized)
+      <= 1.0e-12 * relative_scale(
+          delivery_total_realized, delivery_field_realized));
+  assert(std::abs(cpu_total_realized - cpu_field_realized)
+      <= 1.0e-12 * relative_scale(cpu_total_realized, cpu_field_realized));
+  assert(std::abs(delivery_total_realized - cpu_total_realized)
       <= 1.0e-9 * relative_scale(
-          delivery_vbf_realized, cpu_vbf_realized));
+          delivery_total_realized, cpu_total_realized));
+  const Int oxygen = delivery.chemical_field().find(species::OXYGEN);
+  assert(oxygen >= 0);
+  const Real delivery_oxygen_vbf = vbf_realized_sink(delivery, oxygen);
+  const Real cpu_oxygen_vbf = vbf_realized_sink(cpu_delivery, oxygen);
+  const Real delivery_oxygen_agent = agent_realized_sink(delivery, oxygen);
+  const Real cpu_oxygen_agent = agent_realized_sink(cpu_delivery, oxygen);
+  const Real delivery_oxygen_total = total_realized_sink(delivery, oxygen);
+  const Real cpu_oxygen_total = total_realized_sink(cpu_delivery, oxygen);
+  assert(delivery_oxygen_vbf > 0.0);
+  assert(cpu_oxygen_vbf > 0.0);
+  assert(delivery_oxygen_agent > 0.0);
+  assert(cpu_oxygen_agent > 0.0);
+  assert(std::abs(delivery_oxygen_vbf + delivery_oxygen_agent
+                  - delivery_oxygen_total)
+      <= 1.0e-12 * relative_scale(
+          delivery_oxygen_vbf + delivery_oxygen_agent,
+          delivery_oxygen_total));
+  assert(std::abs(cpu_oxygen_vbf + cpu_oxygen_agent - cpu_oxygen_total)
+      <= 1.0e-12 * relative_scale(
+          cpu_oxygen_vbf + cpu_oxygen_agent, cpu_oxygen_total));
+  assert(std::abs(delivery_oxygen_vbf - cpu_oxygen_vbf)
+      <= 1.0e-9 * relative_scale(
+          delivery_oxygen_vbf, cpu_oxygen_vbf));
+  assert(std::abs(delivery_oxygen_agent - cpu_oxygen_agent)
+      <= 1.0e-9 * relative_scale(
+          delivery_oxygen_agent, cpu_oxygen_agent));
+  assert(std::abs(delivery_oxygen_total - cpu_oxygen_total)
+      <= 1.0e-9 * relative_scale(
+          delivery_oxygen_total, cpu_oxygen_total));
   const MaintenanceLedger delivery_maintenance = maintenance_ledger(delivery);
   assert(delivery_maintenance.realized > 0.0);
   assert(std::abs(cpu_funded - delivery_realized)
@@ -322,6 +405,10 @@ void test_delivery_device_parity_and_provenance() {
   assert(carbon_agent_realized_sink(host_forced) > 0.0);
   std::cout << "    delivery carbon sink realized="
             << format_real(delivery_field_realized)
+            << " delivery oxygen VBF realized="
+            << format_real(delivery_oxygen_vbf)
+            << " delivery oxygen agent realized="
+            << format_real(delivery_oxygen_agent)
             << " delivery carbon maintenance realized="
             << format_real(delivery_maintenance.realized)
             << " none carbon sink realized="
