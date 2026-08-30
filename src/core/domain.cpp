@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <format>
 #include <string>
 
 namespace gutibm {
@@ -32,11 +33,10 @@ void Domain::init(const DomainConfig& cfg) {
         std::round(sz[static_cast<size_t>(axis)] / cfg.grid_dx)));
     const Int stride = cfg.chemistry_stride[static_cast<size_t>(axis)];
     if (base_cells[axis] % stride != 0) {
-      throw ConfigError(
-          "chemistry stride for axis " + std::string(axis_names[axis])
-          + " does not divide base cell count "
-          + std::to_string(base_cells[axis]) + " (stride "
-          + std::to_string(stride) + ")");
+      throw ConfigError(std::format(
+          "chemistry stride for axis {} does not divide base cell count {} "
+          "(stride {})",
+          axis_names[axis], base_cells[axis], stride));
     }
   }
   nx_ = base_cells[0] / cfg.chemistry_stride[0];

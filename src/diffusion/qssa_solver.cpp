@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstddef>
 #include <cstring>
+#include <format>
 #include <limits>
 #include <numbers>
 #include <numeric>
@@ -66,12 +67,12 @@ void enforce_low_screening_policy(
         d_eff, spec.decay_rate, flow_magnitude, std::abs(flow[2]))
         * (domain.hi()[2] - domain.lo()[2]);
     if (k_h < neumann::kLowScreeningFloorThreshold) {
-      const std::string message =
-          "low-screening sealed Neumann image series: kH="
-          + std::to_string(k_h)
-          + "; sealed truncation error is at least approximately 13% at "
-            "the kH=0.0225 threshold and grows without bound as kH "
-            "approaches zero; see docs/NEUMANN_LOW_SCREENING_ENVELOPE.md";
+      const std::string message = std::format(
+          "low-screening sealed Neumann image series: kH={:f}; sealed "
+          "truncation error is at least approximately 13% at the kH=0.0225 "
+          "threshold and grows without bound as kH approaches zero; see "
+          "docs/NEUMANN_LOW_SCREENING_ENVELOPE.md",
+          k_h);
       if (cfg.low_screening_policy == "error") {
         throw SimulationError(message);
       }

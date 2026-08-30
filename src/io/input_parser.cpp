@@ -17,6 +17,7 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <format>
 #include <limits>
 
 namespace gutibm {
@@ -611,13 +612,13 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
   }
   if (cfg.chemistry_decomposition == "slab"
       && metabolism.delivery_far_field_radius > 0.0) {
-    throw ConfigError(
-        "metabolism.delivery_far_field_radius="
-        + std::to_string(metabolism.delivery_far_field_radius)
-        + " is unsupported for regularized delivery deposition in slab "
-          "chemistry; slab configurations must set "
-          "metabolism.delivery_far_field_radius = 0.0 to opt into the "
-          "grid-dependent single-voxel delivery model");
+    throw ConfigError(std::format(
+        "metabolism.delivery_far_field_radius={:f}"
+        " is unsupported for regularized delivery deposition in slab "
+        "chemistry; slab configurations must set "
+        "metabolism.delivery_far_field_radius = 0.0 to opt into the "
+        "grid-dependent single-voxel delivery model",
+        metabolism.delivery_far_field_radius));
   }
   if (cfg.chem_env.oxygen.respiration_driver != "ambient"
       && cfg.chem_env.oxygen.respiration_driver != "funded") {

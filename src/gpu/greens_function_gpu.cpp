@@ -14,6 +14,7 @@
 #include "error.h"
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <mutex>
 #include <memory>
 #include <string>
@@ -234,9 +235,10 @@ bool launch_superpose(const Domain& domain,
     unsigned int error = 0;
     d_robin_index_error.download(&error, 1);
     if (error != 0) {
-      throw SimulationError(
+      throw SimulationError(std::format(
           "GPU Robin table index exceeded the launch-local table count "
-          "(count=" + std::to_string(robin_tables.size()) + ")");
+          "(count={})",
+          robin_tables.size()));
     }
   }
   if (cap_hits != nullptr) {
@@ -282,11 +284,10 @@ std::vector<int> make_robin_launch_table_indices(
         });
     if (existing == launch_tables.end()) {
       if (launch_tables.size() >= kMaximumRobinDeviceTables) {
-        throw SimulationError(
-            "Robin GPU launch references "
-            + std::to_string(launch_tables.size() + 1)
-            + " distinct tables; launch limit is "
-            + std::to_string(kMaximumRobinDeviceTables));
+        throw SimulationError(std::format(
+            "Robin GPU launch references {} distinct tables; launch limit is "
+            "{}",
+            launch_tables.size() + 1, kMaximumRobinDeviceTables));
       }
       launch_tables.push_back(table);
       indices[source] = static_cast<int>(launch_tables.size() - 1);

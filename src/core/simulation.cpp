@@ -59,12 +59,13 @@ void reject_unsupported_delivery_configuration(const SimulationConfig& cfg) {
     return;
   }
   throw ConfigError(
-      "metabolism.delivery_far_field_radius="
-      + std::to_string(cfg.fixes.metabolism.delivery_far_field_radius)
-      + " is unsupported for regularized delivery deposition in slab "
-        "chemistry; slab configurations must set "
-        "metabolism.delivery_far_field_radius = 0.0 to opt into the "
-        "grid-dependent single-voxel delivery model");
+      std::format(
+          "metabolism.delivery_far_field_radius={:f}"
+          " is unsupported for regularized delivery deposition in slab "
+          "chemistry; slab configurations must set "
+          "metabolism.delivery_far_field_radius = 0.0 to opt into the "
+          "grid-dependent single-voxel delivery model",
+          cfg.fixes.metabolism.delivery_far_field_radius));
 }
 
 Real global_density_cells_per_mL(const Domain& domain, Int global_agents) {

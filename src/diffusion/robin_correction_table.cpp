@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <format>
 #include <iomanip>
 #include <limits>
 #include <map>
@@ -135,11 +136,10 @@ void reject_unrepresented_imaginary_mode(double p, double q, double c_lo,
     const double y = 80.0 * index / static_cast<double>(kImaginarySamples);
     const double value = imaginary_residual(y, p, q);
     if (is_sign_change(previous, value)) {
-      throw SimulationError(
+      throw SimulationError(std::format(
           "Robin imaginary mode is not represented by the current kernel "
-          "(c_lo=" + std::to_string(c_lo)
-          + ", c_hi=" + std::to_string(c_hi)
-          + ", H=" + std::to_string(height) + ")");
+          "(c_lo={:f}, c_hi={:f}, H={:f})",
+          c_lo, c_hi, height));
     }
     previous = value;
   }
@@ -150,12 +150,10 @@ void validate_root(double x, double p, double q, double c_lo, double c_hi,
   const double scale = (x * x + std::abs(p)) + std::abs(q) * x;
   const double residual = std::abs(pole_free_residual(x, p, q)) / scale;
   if (!(residual <= 1.0e-9)) {
-    throw SimulationError(
-        "Robin eigenvalue residual exceeded tolerance (x="
-        + std::to_string(x) + ", residual=" + std::to_string(residual)
-        + ", c_lo=" + std::to_string(c_lo)
-        + ", c_hi=" + std::to_string(c_hi)
-        + ", H=" + std::to_string(height) + ")");
+    throw SimulationError(std::format(
+        "Robin eigenvalue residual exceeded tolerance (x={:f}, residual={:f}, "
+        "c_lo={:f}, c_hi={:f}, H={:f})",
+        x, residual, c_lo, c_hi, height));
   }
 }
 
@@ -198,12 +196,10 @@ std::vector<double> robin_mode_roots_impl(double height, double c_lo,
     f_left = f_right;
   }
   if (static_cast<int>(roots.size()) != mode_count) {
-    throw SimulationError(
-        "Robin eigenvalue enumeration found "
-        + std::to_string(roots.size()) + " of "
-        + std::to_string(mode_count) + " roots (c_lo="
-        + std::to_string(c_lo) + ", c_hi=" + std::to_string(c_hi)
-        + ", H=" + std::to_string(height) + ")");
+    throw SimulationError(std::format(
+        "Robin eigenvalue enumeration found {} of {} roots (c_lo={:f}, "
+        "c_hi={:f}, H={:f})",
+        roots.size(), mode_count, c_lo, c_hi, height));
   }
   for (size_t index = 0; index < roots.size(); ++index) {
     if (index > 0 && !(roots[index] > roots[index - 1])) {
