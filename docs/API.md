@@ -174,7 +174,6 @@ Viscoelastic Background Field (anaerobic microbiota continuum).
 |--------|-------------|
 | `init(VBFConfig&, Domain&)` | Initialize background field |
 | `apply_nutrient_coupling(chem, dt)` | Sink/source on chemical field |
-| `drag_force(Vec3 vel)` | Stokes-like drag on agent velocity |
 | `viscosity()` | Effective viscosity (Pa·s) |
 
 ---

@@ -893,10 +893,12 @@ When `crypts_enabled = true`, a crypt zone is defined as `z < lo_z + crypt_depth
 ## Viscoelastic Background Field (VBF)
 
 The 99% obligate anaerobic microbiota is modeled as a continuum rather than discrete agents:
-- **Physical drag**: Stokes-like force opposing agent velocity
 - **Nutrient sink**: Background consumption at volumetric rate
 - **Mucin liberation**: Monosaccharide release from mucin glycoproteins (carbon source)
-- **Carrying capacity**: Local density limit for the simulation domain
+
+VBF mechanics is overdamped: agent translation comes from advection and
+mechanics displacement, with no inertial velocity channel or carrying-capacity
+mechanism.
 
 ### Implicit carbon competition sink
 

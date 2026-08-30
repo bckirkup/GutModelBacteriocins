@@ -176,7 +176,6 @@ VbfSpeciesIndices find_vbf_species(const ChemicalField& chem) {
 void VBF::init(const VBFConfig& cfg, const Domain& domain) {
   cfg_          = cfg;
   ncells_       = domain.ncells();
-  carrying_cap_ = cfg.carrying_cap;
 }
 
 Real VBF::mucin_rate(Real z_rel) const {
@@ -243,14 +242,6 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
       }
     }
   }
-}
-
-Vec3 VBF::drag_force(const Vec3& agent_vel) const {
-  return {
-    -cfg_.drag_coeff * agent_vel[0],
-    -cfg_.drag_coeff * agent_vel[1],
-    -cfg_.drag_coeff * agent_vel[2]
-  };
 }
 
 }  // namespace gutibm

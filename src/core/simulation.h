@@ -18,7 +18,6 @@
    
    3. Physics module (same dt as biology):
       - Advection (mucus flow)
-      - VBF drag
       - Cell–cell mechanical repulsion
    ----------------------------------------------------------------------- */
 

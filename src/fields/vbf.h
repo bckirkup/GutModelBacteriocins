@@ -1,9 +1,8 @@
 /* -----------------------------------------------------------------------
    GutIBM – Viscoelastic Background Field (VBF)
    Represents the 99% obligate anaerobic microbiota as a continuous
-   medium that: (1) exerts physical drag, (2) consumes nutrients as
-   a biochemical sink, and (3) liberates monosaccharides from mucin
-   to serve as a baseline carbon source.
+   medium that consumes nutrients as a biochemical sink and liberates
+   monosaccharides from mucin to serve as a baseline carbon source.
    ----------------------------------------------------------------------- */
 
 #ifndef GUTIBM_VBF_H
@@ -30,7 +29,6 @@ struct VbfFluxTotals {
 
 struct VBFConfig {
   Real density          = 1.0e11;   // background cell density (#/m^3)
-  Real drag_coeff       = 1.0e-9;   // Stokes-like drag (N·s/m)
   // First-order iron uptake RATE CONSTANT (1/s): the sink applied by the VBF is
   // concentration-dependent, reac -= nutrient_sink * [iron] (unsaturated /
   // Monod-at-low-concentration limit), not a constant zero-order mol/m^3/s
@@ -38,7 +36,6 @@ struct VBFConfig {
   // mol/m^3/s would deplete iron in ~1 s, which is unphysical.
   Real nutrient_sink    = 1.0e-4;   // first-order iron uptake rate constant (1/s)
   Real mucin_liberation = 5.0e-5;   // monosaccharide release from mucin (mol/m^3/s)
-  Real carrying_cap     = 1.0e12;   // local carrying capacity (#/m^3)
   Real viscosity        = 0.01;     // effective viscosity (Pa·s), ~10x water
 
   // Optional z-dependent mucin liberation scaling with epithelial distance
@@ -78,12 +75,6 @@ class VBF {
                                 VbfFluxTotals* totals = nullptr,
                                 const std::vector<Int>& agent_counts = {}) const;
 
-  // Compute drag force on an agent at position with velocity
-  Vec3 drag_force(const Vec3& agent_vel) const;
-
-  // Local carrying capacity at a grid cell
-  Real local_capacity(Int /*cell_idx*/) const { return carrying_cap_; }
-
   // Effective viscosity at position (for conjugation shear calc)
   Real viscosity() const { return cfg_.viscosity; }
 
@@ -96,7 +87,6 @@ class VBF {
 
  private:
   VBFConfig cfg_;
-  Real carrying_cap_ = 0.0;
   Int ncells_ = 0;
 };
 
