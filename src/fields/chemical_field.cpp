@@ -8,6 +8,8 @@
 #include "error.h"
 #include "species_names.h"
 #include "tridiagonal_factorization.h"
+#include "chemical_field_gpu.h"
+#include "diffusion_gpu.h"
 #include <algorithm>
 #include <array>
 #include <charconv>
@@ -3007,6 +3009,120 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   for (Int s = 0; s < nspec_; ++s) {
     apply_diffusion_species(domain, dt, s);
   }
+}
+
+bool ChemicalField::apply_diffusion_gpu(
+    ChemicalFieldGpu& gpu, const Domain& domain, Real dt) {
+  if (!gpu.active() || !delivery_route_b_eligible(domain, *this)) {
+    return false;
+  }
+  bool has_delivery = false;
+  for (Int s = 0; s < nspec_; ++s) {
+    const auto& chemical = specs_[static_cast<size_t>(s)];
+    has_delivery |= chemical.diffuses() && chemical.delivery_enabled;
+  }
+  if (!has_delivery) return false;
+  // Non-delivery species retain the existing constant-diagonal GPU kernels.
+  bool has_non_delivery_diffusion = false;
+  for (Int s = 0; s < nspec_; ++s) {
+    const auto& chemical = specs_[static_cast<size_t>(s)];
+    has_non_delivery_diffusion |=
+        chemical.diffuses() && !chemical.delivery_enabled;
+  }
+  if (has_non_delivery_diffusion
+      && !gpu.apply_diffusion(domain, *this, dt)) {
+    return false;
+  }
+  for (Int s = 0; s < nspec_; ++s) {
+    const ChemicalSpec& chemical = specs_[static_cast<size_t>(s)];
+    if (!chemical.diffuses() || !chemical.delivery_enabled) continue;
+
+    auto& concentration = conc_[static_cast<size_t>(s)];
+    auto& prescribed = prescribed_sink_[static_cast<size_t>(s)];
+    const auto concentration_snapshot = concentration;
+    const auto flux_snapshot = flux_accounting_;
+    const auto realized_snapshot =
+        total_sink_realized_[static_cast<size_t>(s)];
+    const auto prescribed_snapshot = prescribed;
+    gpu.prepare_delivery_species(
+        s, sink_rate_[static_cast<size_t>(s)], prescribed);
+    gpu.snapshot_delivery_species(s);
+
+    const auto restore = [&gpu, this, s, &concentration_snapshot,
+                          &flux_snapshot, &realized_snapshot] {
+      conc_[static_cast<size_t>(s)] = concentration_snapshot;
+      flux_accounting_ = flux_snapshot;
+      total_sink_realized_[static_cast<size_t>(s)] = realized_snapshot;
+      gpu.restore_delivery_species(s);
+    };
+    const auto restore_original =
+        [&gpu, this, s, &restore, &prescribed, &prescribed_snapshot] {
+          restore();
+          prescribed = prescribed_snapshot;
+          gpu.upload_delivery_prescribed(prescribed);
+        };
+    const auto solve = [&gpu, this, &domain, s, dt, &chemical] {
+      gpu.upload_delivery_prescribed(prescribed_sink_[static_cast<size_t>(s)]);
+      gpu.reset_delivery_boundary(s);
+      if (!gpu.apply_delivery_species(domain, chemical, s, dt)) {
+        throw Error("Route B delivery solve unexpectedly unavailable");
+      }
+      flux_accounting_.add_boundary(
+          s, gpu.download_delivery_boundary(s));
+      flux_accounting_.add_gradient_source(
+          s, gpu.download_delivery_gradient_source());
+    };
+    const auto owns_cell = [this](Int cell) {
+      return owns_global_cell(cell);
+    };
+    const auto storage_cell = [this](Int cell) {
+      return global_to_storage_cell(cell);
+    };
+    const DeliveryRationingCallbacks callbacks{
+        restore,
+        restore_original,
+        solve,
+        [&gpu, s] { return gpu.delivery_has_negative(s); },
+        [&gpu, s] { return gpu.delivery_negative_fraction(s); },
+        [this, &gpu, s, &domain, &owns_cell, &storage_cell] {
+          // Retry dilation intentionally uses one device-to-host transfer;
+          // duplicating the established support stencil on CUDA would add a
+          // second scientific implementation for a rare path.
+          std::vector<Real> realized;
+          gpu.download_delivery_species(
+              s, conc_[static_cast<size_t>(s)], realized);
+          auto& current = prescribed_sink_[static_cast<size_t>(s)];
+          const Real reduced = reduce_prescribed_near_negative_cells(
+              conc_[static_cast<size_t>(s)], current, domain,
+              delivery_support_stencil_, delivery_affected_mask_,
+              delivery_affected_cells_, global_ncells_,
+              owns_cell, storage_cell);
+          gpu.upload_delivery_prescribed(current);
+          return reduced;
+        },
+        [this, s]() -> std::vector<Real>& {
+          return prescribed_sink_[static_cast<size_t>(s)];
+        },
+        [this, &owns_cell, &storage_cell](
+            const std::vector<Real>& values) {
+          return owned_prescribed_sum(
+              values, global_ncells_, owns_cell, storage_cell);
+        },
+        [this, &owns_cell, &storage_cell](
+            const std::vector<Real>& original,
+            const std::vector<Real>& final_values) {
+          return minimum_prescribed_ratio(
+              original, final_values, global_ncells_,
+              owns_cell, storage_cell);
+        }};
+    const auto result = run_delivery_rationing(
+        prescribed_snapshot, callbacks);
+    std::vector<Real> realized;
+    gpu.download_delivery_species(s, concentration, realized);
+    total_sink_realized_[static_cast<size_t>(s)] = std::move(realized);
+    record_delivery_rationing(s, chemical, result);
+  }
+  return has_delivery;
 }
 
 DeliveryRetryResult ChemicalField::run_delivery_rationing_for_species(

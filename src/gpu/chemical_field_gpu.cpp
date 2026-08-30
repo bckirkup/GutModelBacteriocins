@@ -98,6 +98,13 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   d_vbf_totals_.allocate(4);
   d_reaction_clip_.allocate(static_cast<size_t>(nspec_));
   d_agent_counts_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_sink_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_prescribed_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_realized_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_concentration_backup_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_realized_backup_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_gradient_source_.allocate(1);
+  d_delivery_negative_count_.allocate(1);
   sync_to_device(field);
 }
 
@@ -355,9 +362,10 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   const Int owned_storage_begin = owned_storage_x_begin();
   const Int owned_storage_end = owned_storage_x_end();
   for (Int s = 0; s < nspec_; ++s) {
+    if (field.spec(s).delivery_enabled) continue;
     bool species_applied = false;
     if (slab_mode_) {
-      SlabDiffusionContext context{
+      GpuSlabDiffusionContext context{
           field, s, storage_nx_, owned_storage_begin, owned_storage_end};
       species_applied = gpu_apply_species_diffusion_slab_device(
           domain, field.spec(s), d_conc_[static_cast<size_t>(s)].data(),
@@ -383,6 +391,156 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   }
   return applied;
 #endif
+}
+
+bool ChemicalFieldGpu::apply_delivery_species(
+    const Domain& domain, const ChemicalSpec& spec, Int species, Real dt) {
+#ifndef GUTIBM_CUDA
+  (void)domain;
+  (void)spec;
+  (void)species;
+  (void)dt;
+  return false;
+#else
+  if (!active_ || species < 0 || species >= nspec_) return false;
+#ifdef GUTIBM_CUDA
+  cudaMemset(d_delivery_realized_.data(), 0,
+             static_cast<size_t>(ncells_) * sizeof(double));
+  cudaMemset(d_delivery_gradient_source_.data(), 0, sizeof(double));
+#endif
+  return gpu_apply_species_delivery_device(
+      domain, spec, d_conc_[static_cast<size_t>(species)].data(),
+      d_delivery_sink_.data(), d_delivery_prescribed_.data(),
+      d_delivery_realized_.data(),
+      d_boundary_injected_.data() + static_cast<size_t>(species),
+      d_delivery_gradient_source_.data(), dt);
+#endif
+}
+
+void ChemicalFieldGpu::prepare_delivery_species(
+    Int spec, const std::vector<Real>& sink,
+    const std::vector<Real>& prescribed) {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  d_delivery_sink_.upload(sink);
+  d_delivery_prescribed_.upload(prescribed);
+#ifdef GUTIBM_CUDA
+  cudaMemset(d_delivery_realized_.data(), 0,
+             static_cast<size_t>(ncells_) * sizeof(double));
+  cudaMemset(d_delivery_gradient_source_.data(), 0, sizeof(double));
+#endif
+}
+
+void ChemicalFieldGpu::snapshot_delivery_species(Int spec) {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+#ifdef GUTIBM_CUDA
+  cudaMemcpy(
+      d_delivery_concentration_backup_.data(),
+      d_conc_[static_cast<size_t>(spec)].data(),
+      static_cast<size_t>(ncells_) * sizeof(double),
+      cudaMemcpyDeviceToDevice);
+  cudaMemset(d_delivery_realized_backup_.data(), 0,
+             static_cast<size_t>(ncells_) * sizeof(double));
+#endif
+}
+
+void ChemicalFieldGpu::restore_delivery_species(Int spec) {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+#ifdef GUTIBM_CUDA
+  cudaMemcpy(
+      d_conc_[static_cast<size_t>(spec)].data(),
+      d_delivery_concentration_backup_.data(),
+      static_cast<size_t>(ncells_) * sizeof(double),
+      cudaMemcpyDeviceToDevice);
+  cudaMemcpy(
+      d_delivery_realized_.data(), d_delivery_realized_backup_.data(),
+      static_cast<size_t>(ncells_) * sizeof(double),
+      cudaMemcpyDeviceToDevice);
+#endif
+}
+
+void ChemicalFieldGpu::restore_delivery_original(Int spec) {
+  restore_delivery_species(spec);
+}
+
+void ChemicalFieldGpu::upload_delivery_concentration(
+    Int spec, const std::vector<Real>& concentration) {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  d_conc_[static_cast<size_t>(spec)].upload(concentration);
+}
+
+void ChemicalFieldGpu::upload_delivery_prescribed(
+    const std::vector<Real>& prescribed) {
+  if (!active_) return;
+  d_delivery_prescribed_.upload(prescribed);
+}
+
+Real ChemicalFieldGpu::download_delivery_gradient_source() const {
+  if (!active_) return 0.0;
+  gpu_sync_compute();
+  double value = 0.0;
+  d_delivery_gradient_source_.download(&value, 1);
+  return value;
+}
+
+void ChemicalFieldGpu::download_delivery_species(
+    Int spec, std::vector<Real>& concentration,
+    std::vector<Real>& realized) const {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  gpu_sync_compute();
+  d_conc_[static_cast<size_t>(spec)].download(concentration);
+  d_delivery_realized_.download(realized);
+}
+
+bool ChemicalFieldGpu::delivery_has_negative(Int spec) {
+#ifndef GUTIBM_CUDA
+  (void)spec;
+  return false;
+#else
+  if (!active_ || spec < 0 || spec >= nspec_) return false;
+  cudaMemset(d_delivery_negative_count_.data(), 0, sizeof(unsigned long long));
+  gpu::launch_count_negative_kernel(
+      d_conc_[static_cast<size_t>(spec)].data(), storage_nx_, global_ny_,
+      global_nz_, owned_storage_x_begin(), owned_storage_x_end(),
+      d_delivery_negative_count_.data(), gpu_compute_stream());
+  gpu_sync_compute();
+  unsigned long long count = 0;
+  d_delivery_negative_count_.download(&count, 1);
+  return count != 0;
+#endif
+}
+
+Real ChemicalFieldGpu::delivery_negative_fraction(Int spec) const {
+#ifndef GUTIBM_CUDA
+  (void)spec;
+  return 0.0;
+#else
+  if (!active_ || spec < 0 || spec >= nspec_) return 0.0;
+  auto* self = const_cast<ChemicalFieldGpu*>(this);
+  const bool negative = self->delivery_has_negative(spec);
+  if (!negative) return 0.0;
+  unsigned long long count = 0;
+  self->d_delivery_negative_count_.download(&count, 1);
+  return static_cast<Real>(count)
+      / static_cast<Real>((owned_x_end_ - owned_x_begin_)
+                          * global_ny_ * global_nz_);
+#endif
+}
+
+void ChemicalFieldGpu::reset_delivery_boundary(Int spec) {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+#ifdef GUTIBM_CUDA
+  cudaMemset(
+      d_boundary_injected_.data() + static_cast<size_t>(spec), 0,
+      sizeof(double));
+#endif
+}
+
+Real ChemicalFieldGpu::download_delivery_boundary(Int spec) const {
+  if (!active_ || spec < 0 || spec >= nspec_) return 0.0;
+  gpu_sync_compute();
+  std::vector<double> values(static_cast<size_t>(nspec_), 0.0);
+  d_boundary_injected_.download(values);
+  return values[static_cast<size_t>(spec)];
 }
 
 bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,

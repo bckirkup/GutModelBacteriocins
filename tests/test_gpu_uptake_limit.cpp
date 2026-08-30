@@ -108,7 +108,7 @@ Real flux_value(const Simulation& simulation,
       + interval[static_cast<size_t>(carbon)];
 }
 
-Real carbon_realized_sink(const Simulation& simulation) {
+Real carbon_agent_realized_sink(const Simulation& simulation) {
   const auto& chem = simulation.chemical_field();
   const Int carbon = chem.find(species::CARBON);
   assert(carbon >= 0);
@@ -117,6 +117,17 @@ Real carbon_realized_sink(const Simulation& simulation) {
     realized += chem.sink_realized_global(carbon, cell);
   }
   return realized;
+}
+
+Real carbon_vbf_realized_sink(const Simulation& simulation) {
+  const auto& chem = simulation.chemical_field();
+  const Int carbon = chem.find(species::CARBON);
+  assert(carbon >= 0);
+  return chem.vbf_sink_realized(carbon);
+}
+
+Real relative_scale(Real first, Real second) {
+  return std::max({std::abs(first), std::abs(second), 1.0e-30});
 }
 
 struct MaintenanceLedger {
@@ -240,26 +251,63 @@ void test_delivery_forces_host_chemistry() {
   const SimulationConfig delivery_config =
       make_config(UptakeLimitMode::Delivery);
   const SimulationConfig none_config = make_config(UptakeLimitMode::None);
+  Simulation cpu_delivery = run(delivery_config, false);
   Simulation delivery = run(delivery_config, true);
   Simulation none = run(none_config, true);
 
-  assert(std::string(delivery.chemistry_placement())
-         == "host_forced_delivery");
+  assert(std::string(cpu_delivery.chemistry_placement()) == "host");
+  assert(std::string(delivery.chemistry_placement()) == "device_delivery");
+  const auto& cpu_flux = cpu_delivery.chemical_field().flux_accounting();
   const auto& delivery_flux = delivery.chemical_field().flux_accounting();
+  const Int carbon = delivery.chemical_field().find(species::CARBON);
+  assert(carbon >= 0);
+  const auto index = static_cast<size_t>(carbon);
+  const Real cpu_funded = cpu_flux.agent_uptake_cumulative[index]
+      + cpu_flux.agent_uptake_interval[index];
   const Real delivery_realized = flux_value(
       delivery, delivery_flux.agent_uptake_cumulative,
       delivery_flux.agent_uptake_interval);
-  const Real delivery_field_realized = carbon_realized_sink(delivery);
+  const Real cpu_realized = flux_value(
+      cpu_delivery, cpu_flux.agent_uptake_cumulative,
+      cpu_flux.agent_uptake_interval);
+  const Real delivery_field_realized =
+      carbon_agent_realized_sink(delivery);
+  const Real cpu_field_realized =
+      carbon_agent_realized_sink(cpu_delivery);
+  const Real delivery_vbf_realized = carbon_vbf_realized_sink(delivery);
+  const Real cpu_vbf_realized = carbon_vbf_realized_sink(cpu_delivery);
   assert(std::isfinite(delivery_field_realized));
+  assert(std::isfinite(cpu_field_realized));
+  assert(std::isfinite(delivery_vbf_realized));
+  assert(std::isfinite(cpu_vbf_realized));
   assert(delivery_field_realized > 0.0);
+  assert(cpu_field_realized > 0.0);
+  assert(delivery_vbf_realized > 0.0);
+  assert(cpu_vbf_realized > 0.0);
+  assert(std::abs(delivery_vbf_realized - cpu_vbf_realized)
+      <= 1.0e-9 * relative_scale(
+          delivery_vbf_realized, cpu_vbf_realized));
   const MaintenanceLedger delivery_maintenance = maintenance_ledger(delivery);
   assert(delivery_maintenance.realized > 0.0);
+  assert(std::abs(cpu_funded - delivery_realized)
+         <= 1.0e-9 * relative_scale(cpu_funded, delivery_realized));
+  assert(std::abs(cpu_realized - delivery_realized)
+         <= 1.0e-9 * relative_scale(cpu_realized, delivery_realized));
+  assert(std::abs(cpu_field_realized - delivery_field_realized)
+         <= 1.0e-9 * relative_scale(cpu_field_realized,
+                                     delivery_field_realized));
+  assert(std::abs(cpu_flux.delivery_rationing_factor_cumulative[index]
+      - delivery_flux.delivery_rationing_factor_cumulative[index])
+      <= 1.0e-6);
+  assert(cpu_flux.delivery_infeasible_cumulative[index]
+      == delivery_flux.delivery_infeasible_cumulative[index]);
+  assert(cpu_delivery.agents().size() == delivery.agents().size());
 
   const auto& none_flux = none.chemical_field().flux_accounting();
   const Real none_realized = flux_value(
       none, none_flux.agent_uptake_cumulative,
       none_flux.agent_uptake_interval);
-  const Real none_field_realized = carbon_realized_sink(none);
+  const Real none_field_realized = carbon_agent_realized_sink(none);
   assert(std::isfinite(none_field_realized));
   assert(none_field_realized == 0.0);
   const Real contrast_scale =

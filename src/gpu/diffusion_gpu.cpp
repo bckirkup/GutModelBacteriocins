@@ -182,6 +182,20 @@ bool diffusion_all_species_within(
   return true;
 }
 
+bool delivery_route_b_eligible(
+    const Domain& domain, const ChemicalField& field, int max_line) {
+  if (max_line <= 0 || domain.nprocs() != 1 || field.slab_mode()) return false;
+  for (Int s = 0; s < field.num_species(); ++s) {
+    const ChemicalSpec& spec = field.spec(s);
+    if (spec.diffuses() && spec.delivery_enabled
+        && !diffusion_line_lengths_within(
+            domain, spec.epithelial_boundary_mode, max_line)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool gpu_diffusion_line_lengths_supported(
     const Domain& domain, EpithelialBoundaryMode mode) {
 #ifdef GUTIBM_CUDA
@@ -217,9 +231,119 @@ bool gpu_apply_species_diffusion_device(const Domain& domain,
 #endif
 }
 
+bool gpu_apply_species_delivery_device(
+    const Domain& domain, const ChemicalSpec& spec, double* d_conc,
+    const double* d_sink, const double* d_prescribed, double* d_realized,
+    double* d_boundary_injected, double* d_gradient_source, Real dt) {
+#ifndef GUTIBM_CUDA
+  (void)domain;
+  (void)spec;
+  (void)d_conc;
+  (void)d_sink;
+  (void)d_prescribed;
+  (void)d_realized;
+  (void)d_boundary_injected;
+  (void)d_gradient_source;
+  (void)dt;
+  return false;
+#else
+  if (!gpu_runtime_enabled() || !spec.delivery_enabled
+      || !species_diffusion_eligible(spec, dt, domain)
+      || domain.nprocs() != 1 || domain.nx() > 512 || domain.ny() > 512
+      || !diffusion_line_lengths_within(
+          domain, spec.epithelial_boundary_mode, 512)) {
+    return false;
+  }
+  const Real effective_diffusion = spec.diff_coeff / spec.retardation;
+  const Real alpha_x = effective_diffusion * dt
+      / (domain.dx_x() * domain.dx_x());
+  const Real alpha_y = effective_diffusion * dt
+      / (domain.dx_y() * domain.dx_y());
+  const Real alpha_z = effective_diffusion * dt
+      / (domain.dx_z() * domain.dx_z());
+  const bool preserve_gradient =
+      spec.z_gradient_enabled && spec.z_gradient_lambda > 0.0;
+  const int mode = to_underlying(spec.epithelial_boundary_mode);
+  const Real beta = spec.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Robin
+      ? spec.epithelial_transfer_coeff * dt / domain.dx_z() : 0.0;
+  const Real flux_source = spec.epithelial_boundary_mode
+      == EpithelialBoundaryMode::Flux
+      ? spec.epithelial_flux * dt / domain.dx_z() : 0.0;
+  const auto stream = gpu_compute_stream();
+  if (spec.epithelial_boundary_mode == EpithelialBoundaryMode::Dirichlet) {
+    gpu::launch_set_epithelial_boundary(
+        d_conc, domain.nx(), domain.ny(), 0, domain.nx(),
+        spec.boundary_conc, domain.cell_volume(), d_boundary_injected, stream);
+  }
+  if (preserve_gradient) {
+    if (d_gradient_source != nullptr) {
+      gpu::launch_set_luminal_neumann_accounted(
+          d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(),
+          domain.cell_volume(), d_gradient_source, stream);
+      gpu::launch_shift_z_gradient_accounted(
+          d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(),
+          domain.dx_z(), spec.initial_conc, spec.z_gradient_lambda,
+          spec.boundary_conc, -1.0, domain.cell_volume(), d_gradient_source,
+          stream);
+    } else {
+      gpu::launch_set_luminal_neumann(
+          d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(),
+          stream);
+      gpu::launch_shift_z_gradient(
+          d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(),
+          domain.dx_z(), spec.initial_conc, spec.z_gradient_lambda,
+          spec.boundary_conc, -1.0, stream);
+    }
+  }
+  gpu::launch_diffuse_x_periodic_delivery(
+      d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
+      domain.nz(), alpha_x, dt / 3.0, domain.cell_volume(), domain.dx_z(),
+      spec.initial_conc, spec.z_gradient_lambda, spec.boundary_conc,
+      preserve_gradient, stream);
+  gpu::launch_diffuse_y_periodic_delivery(
+      d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
+      domain.nz(), 0, domain.nx(), alpha_y, dt / 3.0,
+      domain.cell_volume(), domain.dx_z(), spec.initial_conc,
+      spec.z_gradient_lambda, spec.boundary_conc, preserve_gradient, stream);
+  gpu::launch_diffuse_z_bounded_delivery(
+      d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
+      domain.nz(), 0, domain.nx(), alpha_z, mode, spec.boundary_conc, beta,
+      flux_source, dt / 3.0, domain.cell_volume(), domain.dx_z(),
+      spec.initial_conc, spec.z_gradient_lambda, preserve_gradient,
+      d_boundary_injected, stream);
+  if (preserve_gradient) {
+    if (d_gradient_source != nullptr) {
+      gpu::launch_shift_z_gradient_accounted(
+          d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(),
+          domain.dx_z(), spec.initial_conc, spec.z_gradient_lambda,
+          spec.boundary_conc, 1.0, domain.cell_volume(), d_gradient_source,
+          stream);
+      gpu::launch_set_luminal_neumann_accounted(
+          d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(),
+          domain.cell_volume(), d_gradient_source, stream);
+    } else {
+      gpu::launch_shift_z_gradient(
+          d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(),
+          domain.dx_z(), spec.initial_conc, spec.z_gradient_lambda,
+          spec.boundary_conc, 1.0, stream);
+      gpu::launch_set_luminal_neumann(
+          d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(),
+          stream);
+    }
+  }
+  if (spec.epithelial_boundary_mode == EpithelialBoundaryMode::Dirichlet) {
+    gpu::launch_set_epithelial_boundary(
+        d_conc, domain.nx(), domain.ny(), 0, domain.nx(),
+        spec.boundary_conc, domain.cell_volume(), d_boundary_injected, stream);
+  }
+  return true;
+#endif
+}
+
 bool gpu_apply_species_diffusion_slab_device(
     const Domain& domain, const ChemicalSpec& spec, double* d_conc,
-    double* d_injected_amount, Real dt, SlabDiffusionContext& context) {
+    double* d_injected_amount, Real dt, GpuSlabDiffusionContext& context) {
 #ifndef GUTIBM_CUDA
   (void)domain;
   (void)spec;
