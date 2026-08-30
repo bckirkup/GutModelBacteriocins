@@ -1922,7 +1922,7 @@ PopulationGradientDeliveryMeasurement measure_population_gradient_delivery() {
   Simulation sim;
   sim.init(cfg);
   const auto agent_count = sim.agents().size();
-  for (size_t i = 0; i < agent_count; ++i) {
+  for (auto i = 0; i < agent_count; ++i) {
     Agent& agent = sim.agents()[i];
     const Int ix = static_cast<Int>(i % 8) * 2 + 1;
     const Int iy = static_cast<Int>((i / 8) % 8) * 2 + 1;
