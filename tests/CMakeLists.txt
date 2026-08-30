@@ -136,6 +136,8 @@ gutibm_add_test(receptor test_receptor.cpp LABELS "unit")
 gutibm_add_test(mutation test_mutation.cpp LABELS "unit")
 gutibm_add_test(fur test_fur.cpp LABELS "unit")
 gutibm_add_test(uptake_limit test_uptake_limit.cpp LABELS "unit")
+gutibm_add_test(delivery_support_cache_race test_delivery_support_cache_race.cpp
+  LABELS "unit;openmp")
 gutibm_add_test(uptake_limit_population_resolution test_uptake_limit.cpp
   LABELS "integration;slow"
   COMPILE_DEFINITIONS GUTIBM_POPULATION_RESOLUTION_ONLY)
