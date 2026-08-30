@@ -37,21 +37,12 @@ static Simulation make_ownership_sim(bool ghost_recipient) {
   const Vec3 recipient_pos = {27e-6, 25e-6, 12.5e-6};
   Agent donor = Agent::create_default(
       sim.agents().next_tag(), 1, donor_pos, 5e-4);
-  Int ix;
-  Int iy;
-  Int iz;
-  sim.domain().pos_to_grid(donor.x, ix, iy, iz);
-  donor.grid_cell = sim.domain().cell_index(ix, iy, iz);
-  donor.identity.owner_rank = sim.domain().rank();
   donor.genome.bi_loci.push_back(PlasmidLibrary::colicin_B());
   donor.genome.has_conjugative_plasmid = true;
   sim.agents().push_back(std::move(donor));
 
   Agent recipient = Agent::create_default(
       sim.agents().next_tag(), 2, recipient_pos, 5e-4);
-  sim.domain().pos_to_grid(recipient.x, ix, iy, iz);
-  recipient.grid_cell = sim.domain().cell_index(ix, iy, iz);
-  recipient.identity.owner_rank = sim.domain().rank();
   recipient.flags.is_ghost = ghost_recipient;
   sim.agents().push_back(std::move(recipient));
 
