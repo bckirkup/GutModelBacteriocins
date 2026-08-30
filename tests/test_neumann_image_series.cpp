@@ -167,7 +167,8 @@ void test_shipped_screening_resolution() {
               << screening * height << " shells=" << budget.max_shells << "\n";
     std::exit(1);
   }
-  const auto kernel = [=](Real image_z, int) {
+  const auto kernel = [rho, target_z, params, screening, d_eff](
+                          Real image_z, int) {
     const Real distance = std::hypot(rho, target_z - image_z);
     return params.source_rate
         * std::exp(-screening * distance)
@@ -255,10 +256,10 @@ void test_truncation_and_cap_guard() {
     previous = partial;
   }
   int ignored_cap = 0;
-  const Real next_shell = neumann::sum_image_series(
-      23.0e-6, 0.0, 100.0e-6, kernel, 0.0, shell_count + 1, nullptr,
-      &ignored_cap) - adaptive;
-  if (!(std::abs(next_shell)
+  if (const Real next_shell = neumann::sum_image_series(
+          23.0e-6, 0.0, 100.0e-6, kernel, 0.0, shell_count + 1, nullptr,
+          &ignored_cap) - adaptive;
+      !(std::abs(next_shell)
         < neumann::kRelativeTolerance * std::abs(adaptive))) {
     std::cerr << "adaptive truncation increment exceeded tolerance\n";
     std::exit(1);
@@ -347,10 +348,10 @@ void test_low_screening_provenance() {
       (0.03 / height) * (0.03 / height) * params.diff_coeff;
   system.gf.reset_image_series_cap_hits();
   system.gf.reset_low_screening_diagnostics();
-  const Real resolved = system.gf.concentration_bounded(
-      {500.0e-6, 500.0e-6, 50.0e-6},
-      {530.0e-6, 500.0e-6, 50.0e-6}, params);
-  if (!std::isfinite(resolved)
+  if (const Real resolved = system.gf.concentration_bounded(
+          {500.0e-6, 500.0e-6, 50.0e-6},
+          {530.0e-6, 500.0e-6, 50.0e-6}, params);
+      !std::isfinite(resolved)
       || system.gf.low_screening_evaluations() != 0) {
     std::cerr << "kH=0.03 evaluation unexpectedly used low-screening floor\n";
     std::exit(1);

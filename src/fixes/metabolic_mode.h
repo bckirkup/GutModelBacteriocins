@@ -12,7 +12,9 @@
 namespace gutibm::metabolic_mode {
 
 GUTIBM_METABOLIC_MODE_HOST_DEVICE inline double clamp01(double value) {
-  return value < 0.0 ? 0.0 : (value > 1.0 ? 1.0 : value);
+  if (value < 0.0) return 0.0;
+  if (value > 1.0) return 1.0;
+  return value;
 }
 
 GUTIBM_METABOLIC_MODE_HOST_DEVICE inline double monod(

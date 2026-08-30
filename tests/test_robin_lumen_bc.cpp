@@ -124,7 +124,7 @@ void test_run_scoped_identity_and_eviction() {
   Simulation first;
   first.init(first_sim);
   const auto system = make_system();
-  auto& cache = robin::global_table_cache();
+  const auto& cache = robin::global_table_cache();
   const uint64_t built_before = cache.tables_built();
   const uint64_t evictions_before = cache.table_evictions();
   const uint64_t identity_before = cache.built_identity();
@@ -455,7 +455,6 @@ void test_sealed_limit() {
 void test_robin_mode_residuals() {
   constexpr Real height = 100.0e-6;
   constexpr Real transfer_length = 100.0e-6;
-  constexpr Real decay = 5.0e-5;
   const auto system = make_system(true);
   const std::array<Real, 3> source_fractions = {0.02, 0.5, 0.98};
   const std::array<robin::TransferBasis, 2> bases = {

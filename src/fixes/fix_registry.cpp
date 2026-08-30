@@ -16,6 +16,7 @@
 
 #include <iostream>
 #include <algorithm>
+#include <ranges>
 #include <string_view>
 #include <unordered_map>
 
@@ -104,8 +105,7 @@ std::vector<std::unique_ptr<Fix>> FixRegistry::create_all(Simulation& sim,
   std::vector<std::unique_ptr<Fix>> fixes;
   fixes.reserve(order.size());
   for (const auto& name : order) {
-    if (std::find(cfg.disabled_fixes.begin(),
-                  cfg.disabled_fixes.end(), name)
+    if (std::ranges::find(cfg.disabled_fixes, name)
         != cfg.disabled_fixes.end()) {
       continue;
     }

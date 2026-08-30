@@ -11,6 +11,7 @@
 #include <cmath>
 #include <iostream>
 #include <numeric>
+#include <numbers>
 #include <vector>
 
 #ifdef GUTIBM_CUDA
@@ -33,7 +34,6 @@ constexpr int kNx = 4;
 constexpr int kNy = 4;
 constexpr int kNz = 4;
 constexpr int kCells = kNx * kNy * kNz;
-constexpr double kPi = 3.14159265358979323846;
 constexpr double kTolerance = 1.0e-10;
 
 template <typename T>
@@ -304,9 +304,10 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       std::vector<double>(gutibm::NUM_RECEPTORS * agents, 2.0));
   ligand.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
   std::vector iron_receptor_flags(gutibm::NUM_RECEPTORS, 0);
-  for (int receptor = 0; receptor < gutibm::NUM_RECEPTORS; ++receptor) {
-    iron_receptor_flags[static_cast<size_t>(receptor)] =
-        gutibm::is_iron_receptor(receptor) ? 1 : 0;
+  for (int receptor_index = 0;
+       receptor_index < gutibm::NUM_RECEPTORS; ++receptor_index) {
+    iron_receptor_flags[static_cast<size_t>(receptor_index)] =
+        gutibm::is_iron_receptor(receptor_index) ? 1 : 0;
   }
   iron_receptor.upload(iron_receptor_flags);
   cells.upload(activate_second_agent ? std::vector<int>{4, 5}
@@ -483,7 +484,7 @@ void test_diffuse_x_periodic() {
     for (int iy = 0; iy < kNy; ++iy) {
       for (int ix = 0; ix < kNx; ++ix) {
         mode[iz * kNx * kNy + iy * kNx + ix] =
-            std::sin(2.0 * kPi * ix / kNx);
+            std::sin(2.0 * std::numbers::pi * ix / kNx);
       }
     }
   }
@@ -494,7 +495,8 @@ void test_diffuse_x_periodic() {
   synchronize();
   const auto result = download(field, kCells);
   const double eigenvalue =
-      1.0 + 2.0 * alpha - 2.0 * alpha * std::cos(2.0 * kPi / kNx);
+      1.0 + 2.0 * alpha - 2.0 * alpha
+          * std::cos(2.0 * std::numbers::pi / kNx);
   for (int cell = 0; cell < kCells; ++cell) {
     assert(close(result[cell], mode[cell] / eigenvalue));
   }
@@ -521,7 +523,7 @@ void test_diffuse_y_periodic() {
     for (int iy = 0; iy < kNy; ++iy) {
       for (int ix = 0; ix < kNx; ++ix) {
         mode[iz * kNx * kNy + iy * kNx + ix] =
-            std::sin(2.0 * kPi * iy / kNy);
+            std::sin(2.0 * std::numbers::pi * iy / kNy);
       }
     }
   }
@@ -1128,8 +1130,11 @@ void run_case(const char* name, Function function) {
 
 int main() {
   std::cout << "=== Direct GPU Kernel Unit Tests ===\n";
-  const int gpu_status = gutibm::test::require_gpu("gpu_kernel_units");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status =
+          gutibm::test::require_gpu("gpu_kernel_units");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifdef GUTIBM_CUDA
   run_case("launch_field_update_kernel", test_field_update);
   run_case("launch_apply_boundaries_kernel", test_apply_boundaries);

@@ -17,6 +17,7 @@
 #include <format>
 #include <mutex>
 #include <memory>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -88,7 +89,7 @@ bool launch_superpose(const Domain& domain,
   if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
   if (negative_field_count != nullptr) *negative_field_count = 0;
   if (most_negative_field != nullptr) *most_negative_field = 0.0;
-  std::lock_guard table_lock(robin_table_device_mutex);
+  std::scoped_lock table_lock(robin_table_device_mutex);
 
   Int ncells = domain.ncells();
   cudaMemset(d_grid, 0, static_cast<size_t>(ncells) * sizeof(double));
@@ -139,15 +140,15 @@ bool launch_superpose(const Domain& domain,
   for (size_t i = 0; i < launch_indices.size(); ++i) {
     sp[i].robin_table_index = launch_indices[i];
   }
-  const bool same_uploaded_set = robin_tables.size()
-      == robin_table_device_set.size()
-      && std::equal(
-          robin_tables.begin(), robin_tables.end(),
-          robin_table_device_set.begin(),
-          [](const auto& current, const auto& uploaded) {
-            return current.get() == uploaded.get();
-          });
-  if (!same_uploaded_set) {
+  if (const bool same_uploaded_set = robin_tables.size()
+          == robin_table_device_set.size()
+          && std::equal(
+              robin_tables.begin(), robin_tables.end(),
+              robin_table_device_set.begin(),
+              [](const auto& current, const auto& uploaded) {
+                return current.get() == uploaded.get();
+              });
+      !same_uploaded_set) {
     std::vector<double> robin_table_values;
     robin_table_values.reserve(
         robin_tables.size() * robin::kTableValueCount);
@@ -277,9 +278,8 @@ std::vector<int> make_robin_launch_table_indices(
   for (size_t source = 0; source < source_tables.size(); ++source) {
     const auto& table = source_tables[source];
     if (table == nullptr) continue;
-    const auto existing = std::find_if(
-        launch_tables.begin(), launch_tables.end(),
-        [&table](const auto& candidate) {
+    const auto existing = std::ranges::find_if(
+        launch_tables, [&table](const auto& candidate) {
           return candidate.get() == table.get();
         });
     if (existing == launch_tables.end()) {

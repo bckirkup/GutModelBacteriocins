@@ -413,7 +413,7 @@ void test_cross_induction() {
   ToxinBurstSource burst = burst_from_cluster(
       PlasmidLibrary::colicin_E2(), sim.agents()[0].x);
   burst.params.source_rate = 1.0e-12;
-  sim.add_toxin_burst(std::move(burst));
+  sim.add_toxin_burst(burst);
   sim.qssa().solve_all_bacteriocin_fields(
       sim.agents(), sim.toxin_bursts(), 0.0,
       sim.config().chem_env.protease, sim.advection(),

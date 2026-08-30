@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <ranges>
 #include <numeric>
 #include <utility>
 #include <vector>
@@ -156,8 +157,7 @@ class GreensFunction {
     robin_host_fallback_sources_ += count;
   }
   void reset_kernel_evaluations() {
-    std::fill(kernel_evaluations_by_thread_.begin(),
-              kernel_evaluations_by_thread_.end(), uint64_t{0});
+    std::ranges::fill(kernel_evaluations_by_thread_, uint64_t{0});
   }
 
  private:

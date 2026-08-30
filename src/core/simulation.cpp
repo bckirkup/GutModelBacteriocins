@@ -29,6 +29,7 @@
 #include <cmath>
 #include <cstring>
 #include <numeric>
+#include <ranges>
 #include <iomanip>
 #include <set>
 #include "error.h"
@@ -158,14 +159,11 @@ void validate_lumped_toxin_species(const SimulationConfig& cfg,
 }
 
 bool fix_enabled(const SimulationConfig& cfg, std::string_view name) {
-  if (std::find(cfg.disabled_fixes.begin(),
-                cfg.disabled_fixes.end(), name)
-      != cfg.disabled_fixes.end()) {
+  if (std::ranges::find(cfg.disabled_fixes, name) != cfg.disabled_fixes.end()) {
     return false;
   }
   return cfg.enabled_fixes.empty()
-      || std::find(cfg.enabled_fixes.begin(), cfg.enabled_fixes.end(), name)
-          != cfg.enabled_fixes.end();
+      || std::ranges::find(cfg.enabled_fixes, name) != cfg.enabled_fixes.end();
 }
 
 void require_species(const ChemicalField& chem,
@@ -264,11 +262,11 @@ void validate_required_species(const SimulationConfig& cfg,
                     "quorum_sensing.enabled");
   }
 
-  const bool vbf_carbon_enabled =
-      cfg.vbf.mucin_liberation > 0.0
-      || cfg.vbf.carbon_sink_vmax > 0.0
-      || cfg.vbf.use_dynamic_mucin;
-  if (vbf_carbon_enabled) {
+  if (const bool vbf_carbon_enabled =
+          cfg.vbf.mucin_liberation > 0.0
+          || cfg.vbf.carbon_sink_vmax > 0.0
+          || cfg.vbf.use_dynamic_mucin;
+      vbf_carbon_enabled) {
     require_species(chem, "VBF", species::CARBON,
                     "vbf.mucin_liberation or vbf.carbon_sink_vmax");
   }

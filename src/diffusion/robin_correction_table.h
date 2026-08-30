@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <compare>
 #include <array>
 #include <cmath>
 #include <list>
@@ -55,6 +56,15 @@ struct TableView {
   double cutoff;
 };
 
+GUTIBM_ROBIN_HOST_DEVICE inline double clamp_table_coordinate(
+    double coordinate) {
+  if (coordinate < 0.0) return 0.0;
+  if (coordinate > static_cast<double>(kTableNodes - 1)) {
+    return static_cast<double>(kTableNodes - 1);
+  }
+  return coordinate;
+}
+
 GUTIBM_ROBIN_HOST_DEVICE inline int table_index(
     int source_index, int target_index, int rho_index) {
   return (source_index * kTableNodes + target_index) * kTableNodes
@@ -62,12 +72,12 @@ GUTIBM_ROBIN_HOST_DEVICE inline int table_index(
 }
 
 GUTIBM_ROBIN_HOST_DEVICE inline double table_value(
-    TableView table, int source_index, int target_index, int rho_index) {
+    const TableView& table, int source_index, int target_index, int rho_index) {
   return table.values[table_index(source_index, target_index, rho_index)];
 }
 
 GUTIBM_ROBIN_HOST_DEVICE inline double interpolate(
-    TableView table, double source_z, double target_z, double rho) {
+    const TableView& table, double source_z, double target_z, double rho) {
   const double source_coordinate =
       (source_z - table.z_lo) / table.height
       * static_cast<double>(kTableNodes - 1);
@@ -76,18 +86,9 @@ GUTIBM_ROBIN_HOST_DEVICE inline double interpolate(
       * static_cast<double>(kTableNodes - 1);
   const double rho_coordinate = rho / table.cutoff
       * static_cast<double>(kTableNodes - 1);
-  const double source_clamped = source_coordinate < 0.0
-      ? 0.0
-      : (source_coordinate > static_cast<double>(kTableNodes - 1)
-          ? static_cast<double>(kTableNodes - 1) : source_coordinate);
-  const double target_clamped = target_coordinate < 0.0
-      ? 0.0
-      : (target_coordinate > static_cast<double>(kTableNodes - 1)
-          ? static_cast<double>(kTableNodes - 1) : target_coordinate);
-  const double rho_clamped = rho_coordinate < 0.0
-      ? 0.0
-      : (rho_coordinate > static_cast<double>(kTableNodes - 1)
-          ? static_cast<double>(kTableNodes - 1) : rho_coordinate);
+  const double source_clamped = clamp_table_coordinate(source_coordinate);
+  const double target_clamped = clamp_table_coordinate(target_coordinate);
+  const double rho_clamped = clamp_table_coordinate(rho_coordinate);
 
   const auto source_low = static_cast<int>(source_clamped);
   const auto target_low = static_cast<int>(target_clamped);
@@ -142,9 +143,7 @@ struct Table {
 
 struct TableCacheKey {
   std::array<int64_t, 4> groups{};
-  bool operator<(const TableCacheKey& other) const {
-    return groups < other.groups;
-  }
+  auto operator<=>(const TableCacheKey& other) const = default;
 };
 
 struct TableCacheSnapshot {

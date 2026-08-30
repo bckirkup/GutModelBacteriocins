@@ -101,6 +101,7 @@ HORIZON_S = 86400
 J_DIR = 1.0756e-08
 VBF_VMAX = 5.5e-05
 GUARD_CELLS_PER_ML = 1.0e10
+PLACEMENT_KEY = "initial_population.placement"
 
 # ~42 mmHg dissolved. Held fixed across the matrix; see module docstring.
 APICAL_O2 = 5.5e-2
@@ -115,7 +116,7 @@ O2_SINK = {
 
 # Anatomy-derived placement (PR #324). Values are measured, not fitted.
 ANATOMIC = {
-    "initial_population.placement": "anatomic",
+    PLACEMENT_KEY: "anatomic",
     "initial_population.anatomic_exclusion_floor": 20.0e-6,
     "initial_population.anatomic_exponential_scale": 40.0e-6,
     "initial_population.anatomic_outer_extent": 150.0e-6,
@@ -123,7 +124,7 @@ ANATOMIC = {
 
 # The band every previously measured arm actually used.
 ZSLAB = {
-    "initial_population.placement": "z_slab",
+    PLACEMENT_KEY: "z_slab",
     "initial_population.z_min": 0.0,
     "initial_population.z_max": 5.0e-5,
 }
@@ -157,7 +158,7 @@ def build_arm(base: dict, driver: str, placement: str, sink: str) -> dict:
     cfg["acetate.enabled"] = True
     cfg["metabolism.acid_inhibition_enabled"] = True
 
-    for key in ("initial_population.placement",
+    for key in (PLACEMENT_KEY,
                 "initial_population.z_min",
                 "initial_population.z_max"):
         cfg.pop(key, None)

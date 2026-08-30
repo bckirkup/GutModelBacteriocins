@@ -289,7 +289,6 @@ void test_viscosity_slows_relaxation() {
 }
 
 void test_floor_is_contained() {
-  Real r = CELL_RADIUS_DEFAULT;
   Vec3 pos_a = {50e-6, 50e-6, 0.1e-6};
   Vec3 pos_b = {50e-6, 50e-6, 0.9e-6};
   MechanicsConfig mcfg;

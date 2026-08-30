@@ -46,10 +46,13 @@ GUTIBM_NEUMANN_HOST_DEVICE inline ImageSeriesBudget image_series_budget(
   }
   const double estimated_shells = ceil(
       log(1.0 / rel_tol) / (2.0 * scaled_screening));
-  const auto shell_count = static_cast<int>(estimated_shells < 1.0
-      ? 1.0
-      : (estimated_shells > static_cast<double>(kMaxImageShells)
-          ? static_cast<double>(kMaxImageShells) : estimated_shells));
+  double shell_value = estimated_shells;
+  if (shell_value < 1.0) {
+    shell_value = 1.0;
+  } else if (shell_value > static_cast<double>(kMaxImageShells)) {
+    shell_value = static_cast<double>(kMaxImageShells);
+  }
+  const auto shell_count = static_cast<int>(shell_value);
   return {shell_count, false};
 }
 

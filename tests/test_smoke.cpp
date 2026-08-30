@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cassert>
 #include <iostream>
+#include <ranges>
 #include <cmath>
 #include <vector>
 
@@ -196,7 +197,7 @@ void test_anatomic_population_distribution() {
     assert(!agent.flags.in_crypt);
     depths.push_back(agent.x[2]);
   }
-  std::sort(depths.begin(), depths.end());
+  std::ranges::sort(depths);
   const Real median = depths[depths.size() / 2];
   const Real quantile90 = depths[(depths.size() * 9) / 10];
   const Real quantile95 = depths[(depths.size() * 19) / 20];

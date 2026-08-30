@@ -16,6 +16,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <ranges>
 #include <string>
 
 using namespace gutibm;
@@ -32,8 +33,8 @@ SimulationConfig carbon_gradient_config(Real boundary, Real amplitude = 0.0) {
 }
 
 const ChemicalSpec& carbon_spec(const SimulationConfig& cfg) {
-  const auto carbon = std::find_if(
-      cfg.chemicals.begin(), cfg.chemicals.end(),
+  const auto carbon = std::ranges::find_if(
+      cfg.chemicals,
       [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
   assert(carbon != cfg.chemicals.end());
   return *carbon;
