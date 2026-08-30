@@ -213,6 +213,7 @@ class Simulation {
   Real compute_adaptive_dt() const;
 
   bool gpu_active() const { return gpu_.active; }
+  const char* chemistry_placement() const;
   bool halted_for_dysbiosis() const { return dysbiosis_.halted(); }
   TerminationCause termination_cause() const { return termination_cause_; }
   const std::string& termination_detail() const { return termination_detail_; }
@@ -382,6 +383,9 @@ class Simulation {
   uint64_t neumann_negative_field_count_ = 0;
   Real neumann_most_negative_field_ = 0.0;
   uint64_t green_function_kernel_evaluations_ = 0;
+  bool chemistry_host_diffusion_seen_ = false;
+  bool chemistry_device_diffusion_seen_ = false;
+  bool chemistry_delivery_host_forced_ = false;
   uint64_t robin_tables_built_baseline_ = 0;
   uint64_t robin_table_evictions_baseline_ = 0;
   uint64_t robin_table_identity_baseline_ = 0;
