@@ -285,6 +285,22 @@ reference, and the image base's error stays as a documented floor.
 
 ### What this round found that neither side had
 
+**Prescribed oxygen mass was not removed in every directional solve.** In the
+default Dirichlet delivery mode, the z solve omitted prescribed mass, so the
+old `fractions[0] - fractions[3] > 0.5` expectation was reachable only because
+respiration was funded from oxygen that the field had not removed. At the
+highest tested rung, the pre-fix probe credited `3.958e-18` mol while the
+field-side removal was `1.002e-18` mol; after the prescribed-mass fix, those
+values were `1.227e-19` mol credited versus `9.927e-19` mol removed. The
+post-fix funded fractions for oxygen concentrations
+`[0, 1.0e-6, 2.5e-6, 5.0e-6]` mol/m^3 are
+`[1.000000000, 0.993979919, 0.984949798, 0.969899597]`.
+
+The user approved replacing the obsolete magnitude expectation with the
+measured band (`fractions[0] - fractions[3] > 0.02` and
+`fractions[3] < 0.98`) and with the invariant that credited respiration over a
+step does not exceed the oxygen inventory decrease plus boundary influx.
+
 **The image series does not solve the drift PDE when there is wall-normal flow.**
 Translations plus z-reversed reflections satisfy zero diffusive flux at both
 walls, but a reflected image with reversed `U_z` solves the mirrored-drift
