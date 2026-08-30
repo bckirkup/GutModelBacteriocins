@@ -22,6 +22,13 @@ as a "super-killer" array) compete against naive immigrant strains.
 3. **Mechanism**: Immigrants that downregulate BtuB/FepA should show
    growth rates below the washout threshold and be flushed
 
+None of these targets is demonstrated by this scenario as shipped. The
+immigration mechanism the setup above describes is now actually exercised, and
+it does not produce the documented effect at these parameters: target 2 does not
+discriminate between immigration on and off, and target 1 is degenerate. See
+[Measured behaviour](#measured-behaviour-at-shipped-parameters-12-h-scaled-run)
+before drawing any conclusion about the paradox from this example.
+
 ## Running
 
 ```bash
