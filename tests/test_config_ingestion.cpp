@@ -351,10 +351,8 @@ std::vector<Probe> build_probes() {
   // ── VBF ───────────────────────────────────────────────────────────────────
   v.push_back(R("vbf_density", [](const SimulationConfig& c) { return c.vbf.density; }));
   v.push_back(R("vbf_viscosity", [](const SimulationConfig& c) { return c.vbf.viscosity; }));
-  v.push_back(R("vbf_drag_coeff", [](const SimulationConfig& c) { return c.vbf.drag_coeff; }));
   v.push_back(R("vbf_nutrient_sink", [](const SimulationConfig& c) { return c.vbf.nutrient_sink; }));
   v.push_back(R("vbf_mucin_liberation", [](const SimulationConfig& c) { return c.vbf.mucin_liberation; }));
-  v.push_back(R("vbf_carrying_cap", [](const SimulationConfig& c) { return c.vbf.carrying_cap; }));
   v.push_back(B("vbf_mucin_z_gradient", [](const SimulationConfig& c) { return c.vbf.mucin_z_gradient_enabled; }));
   v.push_back(R("vbf_mucin_z_lambda", [](const SimulationConfig& c) { return c.vbf.mucin_z_gradient_lambda; }));
   v.push_back(R("vbf_carbon_sink_vmax", [](const SimulationConfig& c) { return c.vbf.carbon_sink_vmax; }));

@@ -1919,20 +1919,8 @@ void Simulation::module_physics(Real dt) {
   for (Agent& a : agents_) {
     if (a.state == PhenoState::DEAD) continue;
 
-    // Advection: mucus flow carries agent
+    // Overdamped mechanics: advection and mechanics displacement translate agents.
     advection_.advect(a.x, dt);
-
-    // VBF drag modifies velocity
-    Vec3 drag = vbf_.drag_force(a.v);
-    Real inv_mass = 1.0 / std::max(a.mass, 1.0e-30);
-    a.v[0] += drag[0] * inv_mass * dt;
-    a.v[1] += drag[1] * inv_mass * dt;
-    a.v[2] += drag[2] * inv_mass * dt;
-
-    // Apply position update from velocity
-    a.x[0] += a.v[0] * dt;
-    a.x[1] += a.v[1] * dt;
-    a.x[2] += a.v[2] * dt;
 
     if (cfg_.cell_bio.motility.enabled) {
       a.x[0] += a.motility.step_displacement[0];

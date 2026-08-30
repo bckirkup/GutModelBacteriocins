@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .batch_config import MANIFEST_VERSION, BatchConfigError, JobSpec
-from .path_utils import prepare_output_file
+from .path_utils import write_json_file
 
 MANIFEST_NAME = "batch_manifest.json"
 JOB_STATUS_DONE = "done"
@@ -148,10 +148,7 @@ def create_manifest(
 def save_manifest(manifest: BatchManifest, output_dir: Path) -> Path:
     manifest.updated_at = _utc_now()
     path = manifest_path(output_dir)
-    out = prepare_output_file(path)
-    with open(out, "w", encoding="utf-8") as handle:
-        json.dump(asdict(manifest), handle, indent=2)
-        handle.write("\n")
+    write_json_file(path, asdict(manifest), indent=2)
     return path
 
 

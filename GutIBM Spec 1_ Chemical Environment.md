@@ -254,7 +254,7 @@ monosaccharides → E. coli growth.
 | `mucin.enabled` | false | — | Enable dynamic mucin |
 | `mucin.secretion_rate` | 1e-4 | mol/m³/s | Goblet cell secretion at z=0 |
 | `mucin.Km_degradation` | 1e-3 | mol/m³ | Half-saturation for anaerobe degradation |
-| `mucin.k_liberation` | 1e-4 | 1/s | Rate constant for VBF mucin degradation |
+| `mucin.k_liberation` | 5e-16 | mol/(cell·s) | Per-cell specific VBF mucin liberation rate |
 
 ### Files to Modify
 - `src/fields/chemical_field.h/.cpp` — register "mucin" species

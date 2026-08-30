@@ -37,10 +37,10 @@ requires experiments, not arbitration.
 | 9 | Resident-retention estimator measures lineage-label persistence | Confirmed |
 | 10 | Flagship diversity scenario has no immigration block and no grid output | **Confirmed and fixed, with a substantive negative result.** Both halves stood: no `immigration` block and `grid: 0`. The example now ships continuous luminal immigration and 6-hourly named-species grid output, and an out-of-domain `z_slab` band now fails closed instead of silently clamping immigrants onto a domain face. Enabling the documented mechanism does **not** change the flagship regime at shipped parameters — see below. |
 | 11 | Taylor–Aris dispersion toggle is unused | **Confirmed and resolved by removal.** The dead, default-on toggle and uncalled implementation were removed rather than wired into the isotropic transport model. At `z=h`, the measured `D_taylor/D` enhancements are `6.379e-9` for oxygen (`D=2e-9`), `6.379e-5` for carbon (`D=2e-11`), `4.023e-2` for shipped ColE1-like colicin (`D=7.964e-13`), and `2.552` for a hypothetical `D=1e-13`; the enhancement falls as `(z/h)^3`. The long-time limit is valid for the shipped colicin (`t/t_diff=3.44`) but not for the large-effect hypothetical case (`0.43`). The `210` prefactor is also the Poiseuille result while the shipped profile exponent is `1.5`. Honest wiring would require an anisotropic streamwise transport kernel and re-derivation of both the image series and Robin correction table. Reinstating it requires that work. |
-| 12 | VBF drag and carrying capacity unused | Half wrong, right conclusion — see below |
+| 12 | VBF drag and carrying capacity unused | Half wrong, right conclusion; **resolved by removal** — see below |
 | 13 | Requested HDF5 output can fail open | **Confirmed and fixed.** Requested HDF5 output now throws before compute when path validation or file creation fails; under MPI, rank 0 makes the decision and broadcasts it so every rank fails together rather than continuing without the requested record. The failed output file is no longer silently removed, and the error names the file plus the underlying reason where available. |
 | 14 | Provenance and compiler contract incomplete | Confirmed: git SHA falls back to `unknown-git-unavailable`, and `<format>` is used widely while the README never states the GCC 13+ requirement |
-| 15 | Python manifest writes are non-atomic | Confirmed: destination opened in `"w"`, no temp file, no fsync, no retained generation |
+| 15 | Python manifest writes are non-atomic | **Confirmed and fixed.** Both run-level JSON writers (`batch_manifest.save_manifest`, `batch_runner._write_json_output`) now route through the hardened `path_utils` layer, which serializes fully before opening anything, writes a same-directory temp file, `flush()` + `os.fsync()`, `os.replace()`, then a best-effort directory fsync; the temp file is removed on failure. Regression tests interrupt the serializer and assert the previous generation is byte-identical, still parseable, and that no temp file is left behind — they fail on the pre-change code with an empty destination (`assert b'' == b'{\n  "versi...'`). |
 | 16 | Ethanolamine absolute units off by 1000 | Confirmed, already recorded in `docs/UNITS_AUDIT.md`. `eut_km` is off by the same factor, so the Monod penalty is numerically unchanged — labels and coupling only |
 
 ### Claim 8 measurements and resolution
@@ -135,12 +135,58 @@ starts at zero stays identically zero and the `a.x += a.v·dt` update is a
 permanent no-op. `local_capacity()` genuinely has no callers, so the
 carrying-capacity half stands as written.
 
+Measured, not argued: over a 60-step VBF-enabled serial run (60 µm × 60 µm ×
+40 µm domain, 200 founders, `bio_dt = 60` s), `max|a.v|` over every agent and
+every step is exactly `0`, and so is `max|a.v|·dt`. The instrumentation read
+`a.v` off the agents directly rather than any flux counter, so it is not
+exposed to the `*_step`-versus-`*_last_step` accounting trap.
+
+The channel was also unusable as written, which decided the fix. With
+`drag_coeff = 1e-9` N·s/m, a measured agent mass of `9.13e-16` kg and
+`dt = 60` s, the explicit update `v ← v(1 - c·dt/m)` has `c·dt/m = 6.6e7`: had
+`v` ever been nonzero it would have diverged immediately. Making drag entrain
+agents toward the local fluid velocity — the physically defensible alternative —
+therefore needs an implicit or analytic relaxation at `bio_dt`, not the existing
+explicit step, and it would change trajectories and so every spatial observable.
+We took removal instead: the velocity integration, the `a.x += a.v·dt` update,
+`drag_force()`, `local_capacity()`, and the dead `vbf.drag_coeff` /
+`vbf.carrying_cap` config keys are gone, mirroring the Taylor–Aris decision
+(claim 11) to delete a documented-but-dead path rather than wire it silently.
+The change is numerically inert: the removed update added exactly `0` to every
+position. `Agent::v` is kept, because MPI transfer and checkpoint layouts
+serialize it, and it remains zero. Mechanics is now documented as purely
+overdamped with translation from advection plus mechanics displacement.
+
+The accompanying test asserts the invariant (`a.v` exactly zero for every agent
+at every step) and is a characterization test: it passes both before and after,
+which is the point — the removal changed no number. The fails-before-passes-after
+tests in this PR are the Python atomicity ones (claim 15) and the mucin
+dimensional one.
+
 **Daughter placement near bounded walls (Section 4).** `Domain::apply_pbc`
 clamps non-periodic axes, so near-wall daughters are never lost from the domain —
 they accumulate on the wall. The artifact is a surface density bias, not
 immediate loss, which makes the risk milder and the test cheaper than claimed.
 
 ## What we found that the report did not
+
+**The dynamic mucin liberation prefactor is dimensionally wrong, and it is the
+parameter that is wrong, not the expression.** This was raised as a suspicion
+against `dynamic_mucin_liberation()` and checked rather than assumed. The return
+value feeds `chem.reac`, so it must be `mol m^-3 s^-1`, and the static
+alternative it replaces (`vbf.mucin_liberation = 5e-5 mol m^-3 s^-1`) fixes those
+dimensions for both branches. With `vbf.density` in cells m^-3, the prefactor
+must be `mol cell^-1 s^-1`, but `k_liberation` was declared `1/s` with default
+`1e-4`, giving `1e-4 * 1e11 * 0.909 = 9.1e6` against `5.0e-5`, a factor `1.8e11`.
+The expression is correct once `k_liberation` is read as a per-cell specific
+rate, which is also the intended physics, so the fix is to redeclare it
+`mol cell^-1 s^-1` with default `5.0e-16` — calibrated so the dynamic path
+reproduces the static term at the default background density — and to change no
+host or device code, which is why the backends cannot diverge here. `mucin.enabled`
+is `false` in every shipped example and default, so no published-style number
+moves. Full algebra in `docs/UNITS_AUDIT.md` §11; the unresolved half (liberation
+is not limited by the mucin present, and ignores the z-gradient weighting) stays
+open in the landmine table.
 
 **The CUDA path carried the identical image-series defect.** The same four
 duplicated reflected families and the same `N_IMAGES = 3` appeared in

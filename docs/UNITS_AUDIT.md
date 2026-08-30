@@ -104,7 +104,7 @@ mol/m^3.
 | `fur.Km = 1e-5` | Iron field | `fix_metabolism.cpp:201-210`; GPU expression update mirrors this through host-side Fur update | **Self-consistent genuine mol/m^3** (10 nM). |
 | `siderophore.Km_reimport = 1e-6` (`src/io/chem_environment_config.h`) | Ferric-enterobactin field | `fix_metabolism.cpp`; FepA-mediated reimport | **Corrected.** The previous `1e-9` value was a molar 1 nM number mislabeled as mol/m^3; true 1 nM is `1e-6 mol/m^3`. |
 | `vbf_carbon_sink_km = 1e-4` | Carbon field | VBF carbon sink | **Self-consistent genuine mol/m^3.** |
-| `mucin.Km_degradation = 1e-3` | Mucin field | `src/fields/vbf.cpp:18-22` | **Self-consistent/unclear biological target**, no receptor-unit coupling. |
+| `mucin.Km_degradation = 1e-3` | Mucin field | `src/fields/vbf.cpp:18-22` | **Self-consistent/unclear biological target**, no receptor-unit coupling. The Km ratio is dimensionless and was never the problem; the *prefactor* of the same expression was, see section 11. |
 | `oxygen.Km = 1e-6` | Oxygen field | `fix_metabolism.cpp:256-261`; GPU `agent_update_kernel.cu:71-75` | **Self-consistent as a mol/m^3 field/Km pair; separate subsystem.** |
 | `metE_acetate_km = 40` | Acetate field | `fix_metabolism.cpp:274-279`; GPU `agent_update_kernel.cu:80-84` | **Self-consistent genuine mol/m^3** (40 mM). |
 | `acetate.scavenge_Km = 5` | Acetate field | `fix_metabolism.cpp:386-389` | **Self-consistent genuine mol/m^3**; this is an acetate scavenging path, not receptor competition. |
@@ -379,6 +379,66 @@ The migration to honest units is therefore expected to move population-level
 goldens substantially. In particular, isolated-cell bacteriocin-mediated
 exclusion may largely disappear, while dense producer microcolonies can still
 generate a meaningful local hazard.
+
+## 11. Mucin liberation prefactor: `k_liberation * vbf.density`
+
+This is the derivation for the dynamic mucin carbon-liberation term, recorded so
+it is not re-raised. The Monod ratio in the same expression is dimensionless and
+was already audited above; the defect was in the prefactor.
+
+The expression (host `src/fields/vbf.cpp`, device mirror
+`src/gpu/chemistry_kernel.cu`) is
+
+```
+liberation = k_liberation * vbf.density * M / (Km_degradation + M)
+```
+
+Required units follow from the caller, not from the parameter table: the return
+value is written into `chem.reac(mucin, cell)` and `chem.reac(carbon, cell)`, so
+it must be a concentration rate, `mol m^-3 s^-1`. The static alternative it
+replaces is `vbf.mucin_liberation`, used directly as the same `reac` term with a
+declared `5e-5 mol m^-3 s^-1`; the two branches are mutually exclusive
+(`use_dynamic_mucin ? dynamic : static`), so they must share dimensions.
+
+With `vbf.density` in cells m^-3 and the Monod factor dimensionless, the
+prefactor must satisfy
+
+```
+[k_liberation] * [cells m^-3] = [mol m^-3 s^-1]
+=> [k_liberation] = mol cell^-1 s^-1
+```
+
+`k_liberation` was declared `1/s` with a default of `1e-4`
+(`src/io/chem_environment_config.h`, `docs/PARAMETERS.md`), which gives
+cells m^-3 s^-1, not mol m^-3 s^-1. Numerically, at shipped defaults
+(`density = 1e11`, `M = initial_conc = 1e-2`, `Km_degradation = 1e-3`, so the
+Monod factor is `0.909`):
+
+```
+1e-4 * 1e11 * 0.909 = 9.1e6   (as mol m^-3 s^-1)
+static term                    = 5.0e-5 mol m^-3 s^-1
+ratio                          = 1.8e11
+```
+
+So the two alternatives for the same term differed by eleven orders of
+magnitude, which is the dimensional error made visible rather than an accepted
+calibration difference.
+
+**Resolution.** The expression is correct once `k_liberation` is a per-cell
+specific liberation rate, which is also the physically intended reading: a
+molar release rate per background organism times an organism density. The
+parameter is therefore redeclared `mol cell^-1 s^-1` and its default set to
+`5.0e-16`, chosen so the dynamic path reproduces the static term it replaces at
+the default background density and near-saturating mucin
+(`5e-16 * 1e11 * 0.909 = 4.5e-5` against `5.0e-5`). No host or device code
+changed, so the two backends cannot diverge on this.
+
+Still open, and not addressed by the unit correction: the dynamic path is not
+stoichiometrically limited by the mucin actually present (mucin can be driven
+negative in a step while carbon receives the full amount), it ignores the
+`mucin_z_gradient` weighting the static path applies, and `mucin.enabled`
+remains `false` by default. Those are modelling decisions, tracked in the
+landmine table and `docs/CARBON_LADDER_CAMPAIGN.md`.
 
 ## Conclusion
 
