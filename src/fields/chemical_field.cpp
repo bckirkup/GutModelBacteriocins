@@ -2081,7 +2081,7 @@ void store_slab_periodic_x_line(
         halo_width + ix, iy, iz, storage_nx, layout.ny);
     concentration[static_cast<size_t>(cell)] =
         buffers.recv[static_cast<size_t>(offset + ix)];
-    if (realized != nullptr) {
+    if (realized != nullptr && sink_rate != nullptr) {
       const Real total = gradient_spec != nullptr
           ? concentration[static_cast<size_t>(cell)]
               + z_gradient_reference(*gradient_spec, context.domain, iz)
