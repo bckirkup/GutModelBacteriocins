@@ -30,19 +30,22 @@ BASE = "https://sonarcloud.io/api"
 # Every other open rule is fixed in code — do not add a rule here to avoid
 # doing the work, and never add a security rule.
 DEBT_RULES: dict[str, str] = {
-    # Toolchain: the fix needs a C++23 library feature. The project is
-    # CMAKE_CXX_STANDARD 20 and CI builds with GCC 11, whose libstdc++ has no
-    # <format> at all. Revisit when the toolchain moves to C++23.
-    "cpp:S7034": "std::string::contains is C++23; project is C++20 on GCC 11",
-    "cpp:S7035": "std::to_underlying is C++23; project is C++20 on GCC 11",
-    "cpp:S6185": "std::format needs libstdc++ 13; CI builds with GCC 11",
-    "cpp:S6484": "std::format needs libstdc++ 13; CI builds with GCC 11",
+    # Language standard: the fix needs a C++23 *library* feature, gated on
+    # __cplusplus > 202002L, so it does not compile at CMAKE_CXX_STANDARD 20
+    # even under GCC 13 (the compiler the project actually builds with).
+    # Bumping the standard is not a cleanup: CMAKE_CUDA_STANDARD is 17, and
+    # shared __host__ __device__ headers are compiled by nvcc.
+    "cpp:S7034": "std::string::contains is C++23; project is C++20",
+    "cpp:S7035": "std::to_underlying is C++23; project is C++20",
     # Numerical reproducibility: std::lerp/std::midpoint are not bit-identical
     # to the current arithmetic. These sites are the Robin correction-table
     # interpolation and the metabolic-mode blend, whose outputs are compared
     # against Python oracles at ~1e-9 and are regression-guarded; changing the
     # arithmetic for a style rule trades reproducibility for nothing.
     "cpp:S6179": "std::lerp is not bit-identical here; FP reproducibility",
+    # cpp:S6185 and cpp:S6484 (std::format) are NOT debt: <format> is a C++20
+    # header, libstdc++ 13 has it, and src/io/hdf5_writer.cpp already uses it.
+    # They are fixed in code. Do not re-add them on a GCC-11 assumption.
     # cpp:S8379 is deliberately NOT listed yet. Most of its findings are
     # already synchronized by a mechanism the rule cannot see (OpenMP atomic
     # updates and per-thread slots for the Green's-function diagnostics,
@@ -67,6 +70,11 @@ DEBT_RULES: dict[str, str] = {
 }
 
 COMMENT_PREFIX = "Accepted GutIBM debt — see docs/SONARQUBE_PLAN.md. "
+
+REOPEN_COMMENT = (
+    "Reopened: the reason recorded on this resolution was wrong. "
+    "See docs/SONARQUBE_PLAN.md — this rule is fixed in code."
+)
 
 
 def _request(
@@ -125,6 +133,48 @@ def list_open_debt_issues(
     return issues
 
 
+def reopen_rules(token: str, rules: tuple[str, ...], dry_run: bool) -> int:
+    keys: list[str] = []
+    page = 1
+    while True:
+        payload = _request(
+            "GET",
+            "/issues/search",
+            token,
+            params={
+                "componentKeys": PROJECT,
+                "resolutions": "WONTFIX",
+                "rules": ",".join(rules),
+                "ps": 100,
+                "p": page,
+            },
+        )
+        batch = payload.get("issues", [])
+        keys.extend(issue["key"] for issue in batch)
+        if page * 100 >= int(payload.get("total", 0)) or not batch:
+            break
+        page += 1
+
+    print(f"Won't Fix issues to reopen for {','.join(rules)}: {len(keys)}")
+    for start in range(0, len(keys), 400):
+        chunk = keys[start:start + 400]
+        if dry_run:
+            print(f"[dry-run] REOPEN {len(chunk)} issue(s)")
+            continue
+        _request(
+            "POST",
+            "/issues/bulk_change",
+            token,
+            data={
+                "issues": ",".join(chunk),
+                "do_transition": "reopen",
+                "comment": REOPEN_COMMENT,
+            },
+        )
+        print(f"REOPEN {len(chunk)} issue(s)")
+    return 0
+
+
 def bulk_wont_fix(
     token: str, issue_keys: list[str], comment: str, dry_run: bool
 ) -> None:
@@ -159,6 +209,15 @@ def main() -> int:
         action="store_true",
         help="List matching open issues without resolving them",
     )
+    parser.add_argument(
+        "--reopen",
+        metavar="RULES",
+        help=(
+            "Comma-separated rules to reopen instead of resolving, for when a "
+            "recorded reason turns out to be wrong. A resolution nobody can "
+            "defend is worse than an open finding."
+        ),
+    )
     args = parser.parse_args()
     token = os.environ.get("SONAR_TOKEN", "").strip()
     if not token:
@@ -170,6 +229,13 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+
+    if args.reopen:
+        return reopen_rules(
+            token,
+            tuple(rule.strip() for rule in args.reopen.split(",")),
+            dry_run=args.dry_run,
+        )
 
     issues = list_open_debt_issues(token)
     print(f"Open issues matching accepted-debt rules: {len(issues)}")

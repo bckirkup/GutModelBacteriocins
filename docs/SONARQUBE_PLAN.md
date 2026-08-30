@@ -14,7 +14,8 @@ is left sitting on the dashboard as "probably fine".
 | **C** | This doc + skill remaining-work map | Done |
 | **D** | `pythonsecurity:S6549` manifest path taint (8) | Done in code (PR #370) |
 | **E** | Concurrency triage of `cpp:S8379` (13) | 1 real race fixed (PR #371); 2 under audit; rest accepted |
-| **F** | Type/template modernization sweep (~137) | In progress |
+| **F** | Type/template modernization sweep (125) | Fixed in code |
+| **F2** | `cpp:S6185`/`cpp:S6484` `std::format` (11) | Reopened from debt — fixed in code |
 | **G** | Algorithms, control flow, and the `cpp:S1669` BLOCKER | Queued |
 | **H** | `cpp:S6004` init-if (56) | Queued — reclassified from accepted debt to code fix |
 | **I** | Python / Docker / shell findings (9) | Queued |
@@ -35,11 +36,23 @@ survives being read out loud.
 
 ### The four accepted-debt categories
 
-1. **Toolchain** — the fix needs a C++23 library feature. The project is
-   `CMAKE_CXX_STANDARD 20` and CI builds with GCC 11, whose libstdc++ has no
-   `<format>` at all: `cpp:S7034` (`std::string::contains`), `cpp:S7035`
-   (`std::to_underlying`), `cpp:S6185` and `cpp:S6484` (`std::format`).
-   Revisit as one batch when the toolchain moves, not case by case.
+1. **Language standard** — the fix needs a C++23 *library* feature:
+   `cpp:S7034` (`std::string::contains`) and `cpp:S7035`
+   (`std::to_underlying`). Both are gated on `__cplusplus > 202002L`, so they
+   do not compile at `CMAKE_CXX_STANDARD 20` regardless of compiler version.
+   Bumping the standard is not a cleanup: `CMAKE_CUDA_STANDARD` is 17 and the
+   shared `__host__ __device__` headers are compiled by nvcc, so it is a
+   cross-toolchain decision. Revisit as one batch if the standard moves.
+
+   **Do not extend this category to `std::format`.** `<format>` is C++20, the
+   project builds with GCC 13 (`deploy/aws/Dockerfile` installs `g++-13`;
+   `ubuntu-latest` CI is GCC 13), and `src/io/hdf5_writer.cpp` already calls
+   `std::format` on `main` — so `cpp:S6185`/`cpp:S6484` are code fixes. They
+   were briefly resolved here against a GCC 11 assumption, taken from probing
+   the wrong compiler binary; the resolutions were reverted with
+   `sonar_wont_fix_debt.py --reopen`. Confirm the compiler the build actually
+   uses (`build/CMakeCache.txt`, the Dockerfile) before calling anything
+   toolchain debt.
 2. **Numerical reproducibility** — `cpp:S6179` wants `std::lerp`/`std::midpoint`
    in the Robin correction-table interpolation and the metabolic-mode blend.
    Neither is bit-identical to the current arithmetic, and both sites are
@@ -62,6 +75,10 @@ survives being read out loud.
 `cpp:S6004` (init-if, 56 findings) was previously in this list as "low-value
 modernization" and has been moved out: it is a mechanical, behaviour-preserving
 C++17 fix, so it gets fixed.
+
+The `--reopen` flag exists because a resolution carrying a reason that does not
+survive checking is worse than an open finding: it launders the debt. Use it
+rather than editing history when a recorded reason turns out to be wrong.
 
 ## Why multicriteria alone is not enough
 
@@ -100,9 +117,8 @@ so a reader of the dashboard sees why without finding this file.
 
 | Rule family | Count | Category | Reason |
 |-------------|-------|----------|--------|
-| `cpp:S7034` `contains` | 61 | Toolchain | `std::string::contains` is C++23 |
-| `cpp:S6185` / `cpp:S6484` `std::format` | 11 | Toolchain | libstdc++ 11 has no `<format>` |
-| `cpp:S7035` `to_underlying` | 5 | Toolchain | C++23 |
+| `cpp:S7034` `contains` | 61 | Standard | `std::string::contains` is C++23 |
+| `cpp:S7035` `to_underlying` | 5 | Standard | C++23 |
 | `cpp:S6179` `std::lerp` | 11 | Numerical | not bit-identical; FP reproducibility |
 | `cpp:S107` param count | 45 | Architecture | diffusion/GPU APIs need a context-struct redesign |
 | `cpp:S134` nesting | 41 | Architecture | hot kernels / receptor / GPU |
