@@ -15,6 +15,7 @@ See docs/SONARQUBE_PLAN.md.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import urllib.error
@@ -25,28 +26,47 @@ from typing import Any
 PROJECT = "bckirkup_GutModelBacteriocins"
 BASE = "https://sonarcloud.io/api"
 
-# Accepted complexity / architecture debt (Batch B). Do not include rules
-# cleared by mechanical code fixes (Batch A).
-DEBT_RULES = (
-    "cpp:S134",
-    "cpp:S107",
-    "cpp:S6004",
-    "cpp:S3776",
-    "python:S3776",
-    "cpp:S995",
-    "cpp:S5008",
-    "cpp:S1820",
-    "cpp:S1448",
-    "cpp:S3656",
-    "cpp:S924",
-    "cpp:S7034",
-)
+# Accepted debt, per rule, with the reason recorded on each resolution.
+# Every other open rule is fixed in code — do not add a rule here to avoid
+# doing the work, and never add a security rule.
+DEBT_RULES: dict[str, str] = {
+    # Toolchain: the fix needs a C++23 library feature. The project is
+    # CMAKE_CXX_STANDARD 20 and CI builds with GCC 11, whose libstdc++ has no
+    # <format> at all. Revisit when the toolchain moves to C++23.
+    "cpp:S7034": "std::string::contains is C++23; project is C++20 on GCC 11",
+    "cpp:S7035": "std::to_underlying is C++23; project is C++20 on GCC 11",
+    "cpp:S6185": "std::format needs libstdc++ 13; CI builds with GCC 11",
+    "cpp:S6484": "std::format needs libstdc++ 13; CI builds with GCC 11",
+    # Numerical reproducibility: std::lerp/std::midpoint are not bit-identical
+    # to the current arithmetic. These sites are the Robin correction-table
+    # interpolation and the metabolic-mode blend, whose outputs are compared
+    # against Python oracles at ~1e-9 and are regression-guarded; changing the
+    # arithmetic for a style rule trades reproducibility for nothing.
+    "cpp:S6179": "std::lerp is not bit-identical here; FP reproducibility",
+    # cpp:S8379 is deliberately NOT listed yet. Most of its findings are
+    # already synchronized by a mechanism the rule cannot see (OpenMP atomic
+    # updates and per-thread slots for the Green's-function diagnostics,
+    # serial-only mutation for the Fix vector and the HDF5 provenance flag),
+    # but triaging it found one genuine race, fixed in PR #371, and the two
+    # FixMetabolism findings are still under audit. Resolving the family
+    # wholesale would resolve those two as well. Add it here only once the
+    # audit lands.
+    # Complexity and architecture of a research prototype: NUFEB-style Fix
+    # plugins, the diffusion kernels, and the config parser. Refactoring these
+    # is a redesign, not a cleanup, and would put the scientific code at risk.
+    "cpp:S107": "diffusion/GPU APIs need a context-struct redesign",
+    "cpp:S134": "nesting in hot kernels, receptor, and GPU paths",
+    "cpp:S3776": "parser/HDF5/GPU complexity; redesign, not cleanup",
+    "python:S3776": "batch CLI and analysis complexity; redesign",
+    "cpp:S1820": "Simulation/GPU type size is the architecture",
+    "cpp:S1448": "Simulation/GPU method count is the architecture",
+    "cpp:S995": "GPU buffer mutability",
+    "cpp:S5008": "void* is the HDF5 C API buffer type",
+    "cpp:S3656": "protected members are the NUFEB-style Fix base contract",
+    "cpp:S924": "nested break is coupled to Simulation::run",
+}
 
-COMMENT = (
-    "Accepted GutIBM technical debt — see docs/SONARQUBE_PLAN.md. "
-    "Complexity/architecture smells in QSSA/FMM/Simulation/Fix; "
-    "multicriteria already suppresses for scanner runs."
-)
+COMMENT_PREFIX = "Accepted GutIBM debt — see docs/SONARQUBE_PLAN.md. "
 
 
 def _request(
@@ -71,17 +91,18 @@ def _request(
             raw = resp.read().decode()
             if not raw:
                 return {}
-            import json
-
             return json.loads(raw)
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")
         raise SystemExit(f"HTTP {exc.code} on {path}: {detail}") from exc
 
 
-def list_open_debt_issues(token: str) -> list[dict[str, Any]]:
+def list_open_debt_issues(
+    token: str, rules: tuple[str, ...] = ()
+) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     page = 1
+    selected = rules or tuple(DEBT_RULES)
     while True:
         payload = _request(
             "GET",
@@ -90,7 +111,7 @@ def list_open_debt_issues(token: str) -> list[dict[str, Any]]:
             params={
                 "componentKeys": PROJECT,
                 "resolved": "false",
-                "rules": ",".join(DEBT_RULES),
+                "rules": ",".join(selected),
                 "ps": 100,
                 "p": page,
             },
@@ -104,7 +125,9 @@ def list_open_debt_issues(token: str) -> list[dict[str, Any]]:
     return issues
 
 
-def bulk_wont_fix(token: str, issue_keys: list[str], dry_run: bool) -> None:
+def bulk_wont_fix(
+    token: str, issue_keys: list[str], comment: str, dry_run: bool
+) -> None:
     # SonarCloud bulk_change accepts up to 500 keys per call.
     chunk_size = 100
     for i in range(0, len(issue_keys), chunk_size):
@@ -124,7 +147,7 @@ def bulk_wont_fix(token: str, issue_keys: list[str], dry_run: bool) -> None:
             data={
                 "issues": ",".join(chunk),
                 "do_transition": "wontfix",
-                "comment": COMMENT,
+                "comment": comment,
             },
         )
 
@@ -149,21 +172,31 @@ def main() -> int:
         return 2
 
     issues = list_open_debt_issues(token)
-    print(f"Open debt issues matching Batch B rules: {len(issues)}")
+    print(f"Open issues matching accepted-debt rules: {len(issues)}")
     if not issues:
         print("Nothing to resolve.")
         return 0
 
-    by_rule: dict[str, int] = {}
+    by_rule: dict[str, list[str]] = {}
     for issue in issues:
-        by_rule[issue["rule"]] = by_rule.get(issue["rule"], 0) + 1
-    for rule, count in sorted(by_rule.items(), key=lambda kv: (-kv[1], kv[0])):
-        print(f"  {rule}: {count}")
+        by_rule.setdefault(issue["rule"], []).append(issue["key"])
+    for rule, keys in sorted(
+        by_rule.items(), key=lambda kv: (-len(kv[1]), kv[0])
+    ):
+        print(f"  {rule}: {len(keys)} — {DEBT_RULES[rule]}")
 
-    bulk_wont_fix(token, [i["key"] for i in issues], dry_run=args.dry_run)
+    # One transition per rule, so each resolution carries its own reason
+    # instead of a single generic comment across unrelated rule families.
+    for rule, keys in sorted(by_rule.items()):
+        bulk_wont_fix(
+            token,
+            keys,
+            f"{COMMENT_PREFIX}{rule}: {DEBT_RULES[rule]}",
+            dry_run=args.dry_run,
+        )
     if not args.dry_run:
         remaining = list_open_debt_issues(token)
-        print(f"Remaining open debt issues: {len(remaining)}")
+        print(f"Remaining open accepted-debt issues: {len(remaining)}")
     return 0
 
 

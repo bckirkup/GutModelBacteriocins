@@ -2,28 +2,66 @@
 
 **Project:** [bckirkup_GutModelBacteriocins](https://sonarcloud.io/project/overview?id=bckirkup_GutModelBacteriocins)
 
-**Status (Jul 2026):** Quality gate **OK** (0 BUG, 0 VULNERABILITY). Pragmatic
-clear-to-zero:
+**Status (Aug 2026):** 541 open issues (0 BUG, 0 VULNERABILITY after PR #370),
+under a clear-to-zero sweep. The standard is that an open finding must be
+either fixed in code or resolved with a recorded, defensible reason — nothing
+is left sitting on the dashboard as "probably fine".
 
 | Batch | Action | Status |
 |-------|--------|--------|
-| **A** | Mechanical code fixes (~25 smells) | Done (`cursor/sonar-mechanical-cleanup-aead` / PR) |
-| **B** | Won’t Fix accepted complexity/architecture debt (~54) | Script ready — run after merge re-scan |
+| **A** | Mechanical code fixes (~25 smells) | Done (Jul 2026) |
+| **B** | Won’t Fix accepted complexity/architecture debt | Reclassified — see below |
 | **C** | This doc + skill remaining-work map | Done |
+| **D** | `pythonsecurity:S6549` manifest path taint (8) | Done in code (PR #370) |
+| **E** | Concurrency triage of `cpp:S8379` (13) | 1 real race fixed (PR #371); 2 under audit; rest accepted |
+| **F** | Type/template modernization sweep (~137) | In progress |
+| **G** | Algorithms, control flow, and the `cpp:S1669` BLOCKER | Queued |
+| **H** | `cpp:S6004` init-if (56) | Queued — reclassified from accepted debt to code fix |
+| **I** | Python / Docker / shell findings (9) | Queued |
 
 ## Policy
 
 | Category | Action |
 |----------|--------|
 | **BUG** | Fix immediately — blocks merge |
-| **VULNERABILITY** | Fix immediately — blocks merge |
+| **VULNERABILITY** | Fix immediately — blocks merge. Never Won’t Fix, never suppress, even when the finding is unexploitable — a reader who has to reason about whether it is safe has already paid the cost |
 | **New smells on changed lines** | Fix opportunistically when touching the file |
-| **Accepted debt (Batch B rules)** | Multicriteria for scanner runs + SonarCloud Won’t Fix for auto-analysis dashboard |
+| **Mechanical / modernization smells** | Fix in code, provided the fix is available in C++20 on the CI toolchain and changes no behaviour |
+| **Accepted debt** | Only the four categories below, each with its reason recorded per resolution by `scripts/sonar_wont_fix_debt.py` |
 
-The quality gate should pass on **reliability + security** (and current
-maintainability-on-new-code conditions). Maintainability smells in diffusion
-kernels, GPU headers, and legacy Fix modules are not worth batch-refactoring for
-a research prototype.
+Not permitted as a way to clear a finding: `// NOSONAR` / `# NOSONAR`, new
+`sonar.issue.ignore.multicriteria` entries, and Won’t Fix without a reason that
+survives being read out loud.
+
+### The four accepted-debt categories
+
+1. **Toolchain** — the fix needs a C++23 library feature. The project is
+   `CMAKE_CXX_STANDARD 20` and CI builds with GCC 11, whose libstdc++ has no
+   `<format>` at all: `cpp:S7034` (`std::string::contains`), `cpp:S7035`
+   (`std::to_underlying`), `cpp:S6185` and `cpp:S6484` (`std::format`).
+   Revisit as one batch when the toolchain moves, not case by case.
+2. **Numerical reproducibility** — `cpp:S6179` wants `std::lerp`/`std::midpoint`
+   in the Robin correction-table interpolation and the metabolic-mode blend.
+   Neither is bit-identical to the current arithmetic, and both sites are
+   validated against Python oracles at ~1e-9 and regression-guarded. Trading
+   reproducibility of the scientific output for a style rule is not a trade.
+3. **Synchronization the rule cannot see** — `cpp:S8379` wants a mutex on
+   `mutable` members that are in fact protected by OpenMP `atomic update`,
+   per-thread slots, or serial-only mutation. A mutex in the QSSA/Green's
+   function hot loop would serialize it for no correctness gain. This category
+   is earned per finding, not per rule: triaging it turned up one genuine race
+   (below), so the rule stays open on the dashboard until the last two findings
+   are audited.
+4. **Architecture of a research prototype** — parameter counts, nesting,
+   cognitive complexity, and type size in the diffusion kernels, the NUFEB-style
+   `Fix` base, and the config parser (`cpp:S107`, `S134`, `S3776`,
+   `python:S3776`, `S1820`, `S1448`, `S995`, `S5008`, `S3656`, `S924`).
+   Addressing these is a redesign that would put working scientific code at
+   risk to move a maintainability rating.
+
+`cpp:S6004` (init-if, 56 findings) was previously in this list as "low-value
+modernization" and has been moved out: it is a mechanical, behaviour-preserving
+C++17 fix, so it gets fixed.
 
 ## Why multicriteria alone is not enough
 
@@ -56,18 +94,46 @@ Cleared in code (do not re-suppress these rules project-wide):
 
 ## Batch B — Accepted debt (Won’t Fix)
 
-| Rule family | Approx. count | Reason |
-|-------------|---------------|--------|
-| `cpp:S134` nesting | 11 | Hot kernels / receptor / GPU |
-| `cpp:S107` param count | 10 | Diffusion APIs need context-struct redesign |
-| `cpp:S6004` init-if | 10 | Low-value modernization |
-| `cpp:S3776` / `python:S3776` | 11 | Parser, HDF5, GPU, batch CLI |
-| `cpp:S995` const ptr | 4 | GPU buffer mutability |
-| `cpp:S5008` `void*` | 2 | HDF5 C API buffers |
-| `cpp:S1820` / `cpp:S1448` | 3 | `Simulation` / GPU types size |
-| `cpp:S3656` protected | 1 | NUFEB-style `Fix` base |
-| `cpp:S924` nested break | 1 | Coupled to `Simulation::run` |
-| `cpp:S7034` `contains` | 1 | `string_view::contains` is C++23; project is C++20 |
+Counts as of the Aug 2026 inventory. `scripts/sonar_wont_fix_debt.py` holds the
+authoritative rule list and records the reason on each individual resolution,
+so a reader of the dashboard sees why without finding this file.
+
+| Rule family | Count | Category | Reason |
+|-------------|-------|----------|--------|
+| `cpp:S7034` `contains` | 61 | Toolchain | `std::string::contains` is C++23 |
+| `cpp:S6185` / `cpp:S6484` `std::format` | 11 | Toolchain | libstdc++ 11 has no `<format>` |
+| `cpp:S7035` `to_underlying` | 5 | Toolchain | C++23 |
+| `cpp:S6179` `std::lerp` | 11 | Numerical | not bit-identical; FP reproducibility |
+| `cpp:S107` param count | 45 | Architecture | diffusion/GPU APIs need a context-struct redesign |
+| `cpp:S134` nesting | 41 | Architecture | hot kernels / receptor / GPU |
+| `cpp:S3776` / `python:S3776` | 39 | Architecture | parser, HDF5, GPU, batch CLI |
+| `cpp:S1820` / `cpp:S1448` | 17 | Architecture | `Simulation` / GPU type size |
+| `cpp:S995` const ptr | 5 | Architecture | GPU buffer mutability |
+| `cpp:S5008` `void*` | 4 | Architecture | HDF5 C API buffers |
+| `cpp:S3656` protected | 1 | Architecture | NUFEB-style `Fix` base contract |
+| `cpp:S924` nested break | 1 | Architecture | coupled to `Simulation::run` |
+
+### `cpp:S8379` — held open on purpose
+
+The rule flags 13 `mutable` members as needing a mutex. Twelve are protected by
+something the rule does not model: `#pragma omp atomic update` and a per-thread
+`kernel_evaluations_by_thread_` vector in `GreensFunction`, `omp critical` in
+`FixMetabolism`, and serial-only mutation of `Simulation::fixes_` and the HDF5
+`run_provenance_written_` flag.
+
+The thirteenth was real. `QSSASolver::sampled_toxin_conc()` lazily called
+`field.samples.resize()` on a shared vector from inside `fix_receptor`'s
+`omp parallel for`, reachable whenever an agent count grew since the sampling
+pass — routine, because `FixMetabolism::compute()` divides earlier in the same
+biology phase. Fixed in PR #371 by making the out-of-range case non-mutating,
+which also let `sampled_fields_`/`sampled_nuclease_fields_` drop `mutable` so
+the pattern cannot come back silently.
+
+Because of that, the family is **not** in the Won't Fix rule list: the two
+`FixMetabolism` findings (`delivery_support_cache_`, `delivery_support_stencil_`)
+are still under audit — the fast-path cache `find()` is unsynchronized while a
+miss inserts under `omp critical` — and a wholesale resolution would bury them.
+Add `cpp:S8379` to the script only once that audit lands.
 
 ### Clear dashboard after Batch A merges
 
