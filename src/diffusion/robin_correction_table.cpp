@@ -10,7 +10,6 @@
 #include <cmath>
 #include <cstring>
 #include <format>
-#include <iomanip>
 #include <limits>
 #include <map>
 #include <numbers>
@@ -54,9 +53,7 @@ uint64_t table_identity_hash(const Table& table) {
 }  // namespace
 
 std::string format_identity_hash(uint64_t identity) {
-  std::ostringstream output;
-  output << std::hex << std::setfill('0') << std::setw(16) << identity;
-  return output.str();
+  return std::format("{:016x}", identity);
 }
 
 namespace {
@@ -93,6 +90,29 @@ TableCacheKey make_cache_key(const AdvectionField& adv, double z_lo,
       quantize_relative(screening_height),
       quantize_relative(lower_coefficient_height),
       quantize_relative(cutoff / height)}};
+}
+
+void set_table_metadata(Table& table, const AdvectionField& adv, double z_lo,
+                        double z_hi, double d_free, double d_eff,
+                        double decay_rate, double lumen_transfer_length,
+                        double cutoff, TransferBasis basis) {
+  table.biot_number = robin_biot_number(
+      d_free, d_eff, table.height, lumen_transfer_length, basis);
+  const Vec3 midpoint = {0.0, 0.0, 0.5 * (z_lo + z_hi)};
+  const Vec3 midpoint_flow = mean_profile_velocity(adv, midpoint[2]);
+  const double flow_squared = midpoint_flow[0] * midpoint_flow[0]
+      + midpoint_flow[1] * midpoint_flow[1]
+      + midpoint_flow[2] * midpoint_flow[2];
+  table.screening_height = std::sqrt(
+      (decay_rate + flow_squared / (4.0 * d_eff)) / d_eff)
+      * table.height;
+  table.lower_coefficient_height =
+      midpoint_flow[2] * table.height / (2.0 * d_eff);
+  const TableCacheKey key = make_cache_key(
+      adv, z_lo, z_hi, d_free, d_eff, decay_rate, lumen_transfer_length,
+      cutoff, basis);
+  table.quantized_key = key.groups;
+  table.basis = basis;
 }
 
 double pole_free_residual(double x, double p, double q) {
@@ -182,8 +202,8 @@ std::vector<double> robin_mode_roots_impl(double height, double c_lo,
       / static_cast<double>(kSamplesPerPiInterval);
   double left = step * 1.0e-6;
   double f_left = pole_free_residual(left, p, q);
-  for (int index = 1; index <= sample_count
-       && static_cast<int>(roots.size()) < mode_count; ++index) {
+  for (int index = 1; index <= sample_count; ++index) {
+    if (static_cast<int>(roots.size()) >= mode_count) break;
     const double right = step * index;
     const double f_right = pole_free_residual(right, p, q);
     if (f_right == 0.0) {
@@ -437,29 +457,9 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
   table.height = z_hi - z_lo;
   table.cutoff = cutoff;
   table.values.resize(kTableValueCount);
-  const auto set_metadata = [&table, &adv, z_lo, z_hi, d_free, d_eff,
-                             decay_rate, lumen_transfer_length, cutoff,
-                             basis]() {
-    table.biot_number = robin_biot_number(
-        d_free, d_eff, table.height, lumen_transfer_length, basis);
-    const Vec3 midpoint = {0.0, 0.0, 0.5 * (z_lo + z_hi)};
-    const Vec3 midpoint_flow = mean_profile_velocity(adv, midpoint[2]);
-    const double flow_squared = midpoint_flow[0] * midpoint_flow[0]
-        + midpoint_flow[1] * midpoint_flow[1]
-        + midpoint_flow[2] * midpoint_flow[2];
-    table.screening_height = std::sqrt(
-        (decay_rate + flow_squared / (4.0 * d_eff)) / d_eff)
-        * table.height;
-    table.lower_coefficient_height =
-        midpoint_flow[2] * table.height / (2.0 * d_eff);
-    const TableCacheKey key = make_cache_key(
-        adv, z_lo, z_hi, d_free, d_eff, decay_rate, lumen_transfer_length,
-        cutoff, basis);
-    table.quantized_key = key.groups;
-    table.basis = basis;
-  };
   if (!transfer_enabled(lumen_transfer_length)) {
-    set_metadata();
+    set_table_metadata(table, adv, z_lo, z_hi, d_free, d_eff, decay_rate,
+                       lumen_transfer_length, cutoff, basis);
     return table;
   }
   for (int source_index = 0; source_index < kTableNodes; ++source_index) {
@@ -537,7 +537,8 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
       }
     }
   }
-  set_metadata();
+  set_table_metadata(table, adv, z_lo, z_hi, d_free, d_eff, decay_rate,
+                     lumen_transfer_length, cutoff, basis);
   return table;
 }
 
@@ -548,7 +549,7 @@ std::shared_ptr<const Table> TableCache::get(
   const TableCacheKey key = make_cache_key(
       adv, z_lo, z_hi, d_free, d_eff, decay_rate, lumen_transfer_length,
       cutoff, basis);
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   if (const auto found = entries_.find(key); found != entries_.end()) {
     lru_.splice(lru_.begin(), lru_, found->second);
     return found->second->table;
@@ -570,7 +571,7 @@ std::shared_ptr<const Table> TableCache::get(
 }
 
 TableCacheSnapshot TableCache::snapshot() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   TableCacheSnapshot result;
   result.generation = generation_;
   result.tables.reserve(lru_.size());
@@ -582,36 +583,36 @@ TableCacheSnapshot TableCache::snapshot() const {
 }
 
 size_t TableCache::size() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return lru_.size();
 }
 
 uint64_t TableCache::tables_built() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return tables_built_;
 }
 
 uint64_t TableCache::table_evictions() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return table_evictions_;
 }
 
 uint64_t TableCache::built_identity() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return built_identity_;
 }
 
 std::string TableCache::metadata() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   std::ostringstream output;
   output << "capacity=" << kMaximumTables
          << ";tables_built=" << tables_built_
          << ";table_evictions=" << table_evictions_;
   for (const auto& [key, iterator] : entries_) {
     const Table& table = *iterator->table;
-    output << ";table{Bi=" << std::setprecision(17) << table.biot_number
-           << ",kH=" << table.screening_height
-           << ",aH=" << table.lower_coefficient_height
+    output << ";table{Bi=" << std::format("{:.17g}", table.biot_number)
+           << ",kH=" << std::format("{:.17g}", table.screening_height)
+           << ",aH=" << std::format("{:.17g}", table.lower_coefficient_height)
            << ",basis="
            << (table.basis == TransferBasis::Free ? "free" : "effective")
            << ",key=" << key.groups[0] << ',' << key.groups[1] << ','
@@ -621,7 +622,7 @@ std::string TableCache::metadata() const {
 }
 
 std::string TableCache::built_identity_hash() const {
-  std::lock_guard lock(mutex_);
+  std::scoped_lock lock(mutex_);
   return format_identity_hash(built_identity_);
 }
 

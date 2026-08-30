@@ -88,7 +88,7 @@ Real diffuse_and_commit_uptake(
 
 struct DeliveryClosureResult {
   Real initial = 0.0;
-  Real final = 0.0;
+  Real final_value = 0.0;
   Real boundary = 0.0;
   Real gradient_source = 0.0;
   Real vbf_source = 0.0;
@@ -179,7 +179,7 @@ DeliveryClosureResult run_delivery_closure(
     chem.flux_accounting().close_interval();
   }
 
-  result.final = total_inventory(chem, domain, species_index);
+  result.final_value = total_inventory(chem, domain, species_index);
   const auto& flux = chem.flux_accounting();
   result.boundary = flux.boundary_cumulative[
       static_cast<size_t>(species_index)];
@@ -199,9 +199,9 @@ DeliveryClosureResult run_delivery_closure(
       + result.vbf_source
       - result.agent_uptake
       - result.maintenance - result.vbf_sink + result.reaction_clip;
-  result.residual = lhs - result.final;
+  result.residual = lhs - result.final_value;
   const Real scale = std::max(
-      {std::abs(lhs), std::abs(result.final), 1.0e-300});
+      {std::abs(lhs), std::abs(result.final_value), 1.0e-300});
   result.relative_residual = std::abs(result.residual) / scale;
   return result;
 }
@@ -222,7 +222,7 @@ void test_delivery_mass_closure_gradient_parameterization() {
   const auto report = [](std::string_view label,
                          const DeliveryClosureResult& result) {
     std::cout << "  " << label << " initial=" << result.initial
-              << " final=" << result.final
+              << " final=" << result.final_value
               << " boundary=" << result.boundary
               << " gradient_source=" << result.gradient_source
               << " vbf_source=" << result.vbf_source

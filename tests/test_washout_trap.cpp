@@ -412,25 +412,27 @@ void test_washout_modes_have_distinct_low_flow_behavior() {
 }
 
 void test_washout_modes_converge_at_high_flow() {
-  const auto imposed = run_transport_loss(WashoutTrapMode::IMPOSED, 50e-6, 1.0, 60.0);
-  const auto emergent = run_transport_loss(WashoutTrapMode::EMERGENT, 50e-6, 1.0, 60.0);
+  const auto [imposed_survivors, imposed_washout] =
+      run_transport_loss(WashoutTrapMode::IMPOSED, 50e-6, 1.0, 60.0);
+  const auto [emergent_survivors, emergent_washout] =
+      run_transport_loss(WashoutTrapMode::EMERGENT, 50e-6, 1.0, 60.0);
   constexpr Int initial_agents = 8;
-  assert(imposed.first == emergent.first);
-  assert(imposed.first == initial_agents);
-  assert(emergent.first == initial_agents);
-  assert(imposed.second == 0);
-  assert(emergent.second == 0);
+  assert(imposed_survivors == emergent_survivors);
+  assert(imposed_survivors == initial_agents);
+  assert(emergent_survivors == initial_agents);
+  assert(imposed_washout == 0);
+  assert(emergent_washout == 0);
   std::cout << "  test_washout_modes_converge_at_high_flow: PASSED\n";
 }
 
 void test_emergent_washout_is_geometry_sensitive() {
-  const auto short_box = run_transport_loss(
+  const auto [short_box_survivors, short_box_washout] = run_transport_loss(
       WashoutTrapMode::EMERGENT, 50e-6, 5400.0, 1200.0);
-  const auto tall_box = run_transport_loss(
+  const auto [tall_box_survivors, tall_box_washout] = run_transport_loss(
       WashoutTrapMode::EMERGENT, 100e-6, 5400.0, 1200.0);
-  assert(short_box.first > 0);
-  assert(short_box.first > tall_box.first);
-  assert(short_box.second < tall_box.second);
+  assert(short_box_survivors > 0);
+  assert(short_box_survivors > tall_box_survivors);
+  assert(short_box_washout < tall_box_washout);
   std::cout << "  test_emergent_washout_is_geometry_sensitive: PASSED\n";
 }
 

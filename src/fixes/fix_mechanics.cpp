@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <numbers>
 #include <vector>
 
 namespace gutibm {
@@ -48,12 +49,10 @@ bool compute_pair_geometry(const Vec3& delta, Real sum_r, PairGeometry& geom) {
 
 constexpr Real kMinimumViscosity = 1.0e-30;
 constexpr Real kMinimumRadius = 1.0e-30;
-constexpr Real kPi = 3.14159265358979323846;
-
 Real mobility(const Agent& agent, Real viscosity) {
   const Real radius = std::max(agent.radius, kMinimumRadius);
   const Real effective_viscosity = std::max(viscosity, kMinimumViscosity);
-  return 1.0 / (6.0 * kPi * effective_viscosity * radius);
+  return 1.0 / (6.0 * std::numbers::pi * effective_viscosity * radius);
 }
 
 void apply_pair_displacement(Vec3& displacement_i, Vec3& displacement_j,
@@ -211,13 +210,13 @@ void FixMechanics::compute(Real dt) {
   std::vector<Vec3> displacements(static_cast<size_t>(agents.size()));
 
   for (Int i = 0; i < agents.size(); ++i) {
-    Agent& ai = agents[i];
+    const Agent& ai = agents[i];
     if (!participates_in_mechanics(ai, sim_time, sim_cfg)) continue;
 
     auto neighbors = hash.query_neighbors(ai.x);
     for (Int j : neighbors) {
       if (j <= i) continue;
-      Agent& aj = agents[j];
+      const Agent& aj = agents[j];
       if (!participates_in_mechanics(aj, sim_time, sim_cfg)) continue;
       resolve_agent_pair(ai, aj, sim_.domain(), cfg_, dt, viscosity,
                          displacements[static_cast<size_t>(i)],

@@ -167,7 +167,8 @@ void test_shipped_screening_resolution() {
               << screening * height << " shells=" << budget.max_shells << "\n";
     std::exit(1);
   }
-  const auto kernel = [=](Real image_z, int) {
+  const auto kernel = [rho, target_z, params, screening, d_eff](
+                          Real image_z, int) {
     const Real distance = std::hypot(rho, target_z - image_z);
     return params.source_rate
         * std::exp(-screening * distance)

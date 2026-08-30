@@ -83,7 +83,7 @@ const std::vector<Int>& FixMetabolism::delivery_support_cells(
   {
     cached = delivery_support_cache_.find(agent.identity.tag);
     if (cached == delivery_support_cache_.end()) {
-      cached = delivery_support_cache_.emplace(
+      cached = delivery_support_cache_.try_emplace(
           agent.identity.tag, enumerate_delivery_support_cells(agent)).first;
     }
   }
@@ -102,7 +102,7 @@ void FixMetabolism::prepare_delivery_support_cache() {
         || agent.grid_cell < 0) {
       continue;
     }
-    delivery_support_cache_.emplace(
+    delivery_support_cache_.try_emplace(
         agent.identity.tag, enumerate_delivery_support_cells(agent));
   }
 }
@@ -473,7 +473,7 @@ void FixMetabolism::commit_delivery_uptake(Real dt) {
   if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery || dt <= 0.0) {
     return;
   }
-  auto& chem = sim_.chemical_field();
+  const auto& chem = sim_.chemical_field();
   const Int carbon = chem.find(species::CARBON);
   commit_delivery_carbon(dt, carbon);
   const Int oxygen = chem.find(species::OXYGEN);
