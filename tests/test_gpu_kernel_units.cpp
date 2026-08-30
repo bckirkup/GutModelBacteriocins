@@ -763,7 +763,8 @@ void test_vbf_coupling() {
   gutibm::gpu::launch_vbf_coupling_kernel(
       2 * kNy * kNz, parameters, reaction_carbon.data(), concentration.data(),
       reaction_iron.data(), concentration.data(), reaction_oxygen.data(),
-      concentration.data(), reaction_acetate.data(), reaction_mucin.data(),
+      concentration.data(), nullptr, reaction_acetate.data(),
+      reaction_mucin.data(),
       concentration.data(), nullptr, 1.0, nullptr);
   synchronize();
   const auto result = download(reaction_carbon, storage_cells);
@@ -805,7 +806,7 @@ void test_vbf_implicit_carbon_sink() {
   gutibm::gpu::launch_vbf_coupling_kernel(
       kCells, parameters, reaction_carbon.data(), concentration.data(),
       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-      dt, nullptr);
+      nullptr, dt, nullptr);
   synchronize();
   for (const double value : download(reaction_carbon, kCells)) {
     assert(std::abs(value + expected_sink) < 1.0e-12);

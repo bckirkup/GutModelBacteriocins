@@ -18,6 +18,7 @@
 namespace gutibm {
 
 class Domain;
+class ChemicalFieldGpu;
 
 struct NutrientFluxAccounting {
   std::vector<Real> boundary_interval;
@@ -490,6 +491,7 @@ class ChemicalField {
   void add_sink_rate_global(Int spec, Int cell, Real rate);
   void add_prescribed_sink_global(Int spec, Int cell, Real amount);
   void add_vbf_sink_rate_global(Int spec, Int cell, Real rate);
+  void add_vbf_sink_rates(Int spec, const std::vector<Real>& rates);
   void split_delivery_sink_realized(Int spec);
   void add_sink_rate_global(Int cell, Real rate);
   Real sink_realized_global(Int spec, Int cell) const;
@@ -504,6 +506,8 @@ class ChemicalField {
 
   // Apply stable implicit diffusion for enabled nutrient species.
   void apply_diffusion(const Domain& domain, Real dt);
+  bool apply_diffusion_gpu(ChemicalFieldGpu& gpu, const Domain& domain,
+                           Real dt);
   // Apply only the periodic x-direction solve.  GPU slab chemistry uses this
   // exact host path because a global periodic line spans MPI slabs.
   void apply_periodic_x_diffusion(const Domain& domain, Real dt);

@@ -8,8 +8,12 @@
 #include "error.h"
 #include "species_names.h"
 #include "tridiagonal_factorization.h"
+#include "chemical_field_gpu.h"
+#include "diffusion_gpu.h"
+#include "dispatch.h"
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
@@ -430,6 +434,24 @@ struct DeliveryRationingCallbacks {
       ratio;
 };
 
+bool collective_positive(Real local_value) {
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (initialized && !finalized) {
+    Real global_value = 0.0;
+    MPI_Allreduce(&local_value, &global_value, 1, MPI_DOUBLE, MPI_MAX,
+                  MPI_COMM_WORLD);
+    return global_value > 0.0;
+  }
+#else
+  (void)local_value;
+#endif
+  return local_value > 0.0;
+}
+
 DeliveryRetryResult run_delivery_rationing(
     const std::vector<Real>& original,
     const DeliveryRationingCallbacks& callbacks) {
@@ -442,7 +464,8 @@ DeliveryRetryResult run_delivery_rationing(
     for (Int attempt = 0;
          result.negative_after_solve && attempt < kMaxDeliveryLocalRetries;
          ++attempt) {
-      if (const auto reduced = callbacks.reduce(); reduced <= 0.0) break;
+      const auto reduced = callbacks.reduce();
+      if (!collective_positive(reduced)) break;
       callbacks.restore();
       callbacks.solve();
       result.retry_events += 1.0;
@@ -793,18 +816,26 @@ void solve_replicated_delivery_z_line(
   const Int nz = context.domain.nz();
   std::vector<Real> line(static_cast<size_t>(nz - 1));
   std::vector<Real> sink(static_cast<size_t>(nz - 1));
+  std::vector<Real> prescribed(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = context.domain.cell_index(ix, iy, iz);
-    line[static_cast<size_t>(iz - 1)] =
-        context.concentration[static_cast<size_t>(cell)];
-    sink[static_cast<size_t>(iz - 1)] =
-        context.sink.sink_rate[static_cast<size_t>(cell)]
+    const auto index = static_cast<size_t>(iz - 1);
+    line[index] = context.concentration[static_cast<size_t>(cell)];
+    sink[index] = context.sink.sink_rate[static_cast<size_t>(cell)]
         * context.sink.sink_dt;
+    if (context.sink.prescribed_mass != nullptr) {
+      prescribed[index] =
+          (*context.sink.prescribed_mass)[static_cast<size_t>(cell)]
+          / (3.0 * context.sink.cell_volume);
+    }
   }
   std::vector gradient(static_cast<size_t>(nz - 1), 0.0);
   apply_gradient_sink(
       line, sink, gradient, context.sink.gradient_spec,
       context.domain, 1);
+  for (size_t index = 0; index < line.size(); ++index) {
+    line[index] -= prescribed[index];
+  }
   std::vector diagonal(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     diagonal[static_cast<size_t>(iz - 1)] =
@@ -1485,6 +1516,22 @@ void ChemicalField::add_vbf_sink_rate_global(Int spec, Int cell, Real rate) {
             [static_cast<size_t>(storage_cell)] += rate;
 }
 
+void ChemicalField::add_vbf_sink_rates(
+    Int spec, const std::vector<Real>& rates) {
+  if (spec < 0 || spec >= nspec_) return;
+  auto& vbf_rates = vbf_sink_rate_[static_cast<size_t>(spec)];
+  auto& total_rates = sink_rate_[static_cast<size_t>(spec)];
+  if (rates.size() != vbf_rates.size()) {
+    throw Error("VBF sink-rate buffer size mismatch");
+  }
+  for (size_t i = 0; i < rates.size(); ++i) {
+    const Real rate = rates[i];
+    if (rate <= 0.0) continue;
+    vbf_rates[i] += rate;
+    total_rates[i] += rate;
+  }
+}
+
 void ChemicalField::split_delivery_sink_realized(Int spec) {
   if (spec < 0 || spec >= nspec_) return;
   for (Int cell = 0; cell < global_ncells_; ++cell) {
@@ -1768,6 +1815,7 @@ struct SlabDeliveryLineContext {
   std::vector<Real>& concentration;
   std::vector<Real>& realized;
   const std::vector<Real>& sink_rate;
+  const std::vector<Real>* prescribed_mass = nullptr;
   const Domain& domain;
   Int storage_nx = 0;
   Int halo_width = 0;
@@ -1807,17 +1855,26 @@ void solve_slab_delivery_line(
   const Int ny = context.domain.ny();
   std::vector<Real> line(static_cast<size_t>(nz - 1));
   std::vector<Real> sink(static_cast<size_t>(nz - 1));
+  std::vector<Real> prescribed(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = slab_storage_index(
         context.halo_width + ix, iy, iz, context.storage_nx, ny);
-    line[static_cast<size_t>(iz - 1)] =
-        context.concentration[static_cast<size_t>(cell)];
-    sink[static_cast<size_t>(iz - 1)] =
-        context.sink_rate[static_cast<size_t>(cell)] * context.sink_dt;
+    const auto index = static_cast<size_t>(iz - 1);
+    line[index] = context.concentration[static_cast<size_t>(cell)];
+    sink[index] = context.sink_rate[static_cast<size_t>(cell)]
+        * context.sink_dt;
+    if (context.prescribed_mass != nullptr) {
+      prescribed[index] =
+          (*context.prescribed_mass)[static_cast<size_t>(cell)]
+          / (3.0 * context.cell_volume);
+    }
   }
   std::vector gradient(static_cast<size_t>(nz - 1), 0.0);
   apply_gradient_sink(
       line, sink, gradient, context.gradient_spec, context.domain, 1);
+  for (size_t index = 0; index < line.size(); ++index) {
+    line[index] -= prescribed[index];
+  }
   std::vector diagonal(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     diagonal[static_cast<size_t>(iz - 1)] =
@@ -2227,12 +2284,18 @@ void diffuse_periodic_y_slab_delivery(
     for (Int ix = 0; ix < nx; ++ix) {
       std::vector<Real> line(static_cast<size_t>(ny));
       std::vector<Real> sink(static_cast<size_t>(ny));
+      std::vector<Real> prescribed(static_cast<size_t>(ny), 0.0);
       for (Int iy = 0; iy < ny; ++iy) {
         const Int cell = slab_storage_index(
             halo_width + ix, iy, iz, storage_nx, ny);
         line[static_cast<size_t>(iy)] = concentration[static_cast<size_t>(cell)];
         sink[static_cast<size_t>(iy)] =
             sink_rate[static_cast<size_t>(cell)] * sink_dt;
+        if (context.prescribed_mass != nullptr) {
+          prescribed[static_cast<size_t>(iy)] =
+              (*context.prescribed_mass)[static_cast<size_t>(cell)]
+              / (3.0 * cell_volume);
+        }
       }
       std::vector<Real> gradient;
       if (gradient_spec != nullptr) {
@@ -2242,7 +2305,8 @@ void diffuse_periodic_y_slab_delivery(
       }
       solve_periodic_with_sink(
           line, sink, alpha,
-          gradient_spec != nullptr ? &gradient : nullptr);
+          gradient_spec != nullptr ? &gradient : nullptr,
+          context.prescribed_mass != nullptr ? &prescribed : nullptr);
       for (Int iy = 0; iy < ny; ++iy) {
         const Int cell = slab_storage_index(
             halo_width + ix, iy, iz, storage_nx, ny);
@@ -2307,8 +2371,9 @@ Real diffuse_bounded_z_slab_delivery(
   if (const Int nz = domain.nz(); nz <= 1) return 0.0;
   Real face_exchange = 0.0;
   const SlabDeliveryLineContext line_context{
-      concentration, realized, sink_rate, domain, storage_nx, halo_width,
-      alpha, boundary_conc, cell_volume, sink_dt, gradient_spec};
+      concentration, realized, sink_rate, context.prescribed_mass, domain,
+      storage_nx, halo_width, alpha, boundary_conc, cell_volume, sink_dt,
+      gradient_spec};
   for (Int iy = 0; iy < ny; ++iy) {
     for (Int ix = 0; ix < nx; ++ix) {
       solve_slab_delivery_line(line_context, ix, iy, face_exchange);
@@ -3007,6 +3072,146 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
   for (Int s = 0; s < nspec_; ++s) {
     apply_diffusion_species(domain, dt, s);
   }
+}
+
+bool ChemicalField::apply_diffusion_gpu(
+    ChemicalFieldGpu& gpu, const Domain& domain, Real dt) {
+  if (!gpu.active() || !delivery_route_b_eligible(domain, *this)) {
+    return false;
+  }
+  for (Int s = 0; s < nspec_; ++s) {
+    const ChemicalSpec& chemical = specs_[static_cast<size_t>(s)];
+    if (!chemical.diffuses() || !chemical.delivery_enabled) continue;
+    if (!gpu_delivery_species_eligible(domain, chemical, dt)) {
+      return false;
+    }
+  }
+  bool has_delivery = false;
+  for (Int s = 0; s < nspec_; ++s) {
+    const auto& chemical = specs_[static_cast<size_t>(s)];
+    has_delivery |= chemical.diffuses() && chemical.delivery_enabled;
+  }
+  if (!has_delivery) return false;
+  // Non-delivery species retain the existing constant-diagonal GPU kernels.
+  bool has_non_delivery_diffusion = false;
+  for (Int s = 0; s < nspec_; ++s) {
+    const auto& chemical = specs_[static_cast<size_t>(s)];
+    has_non_delivery_diffusion |=
+        chemical.diffuses() && !chemical.delivery_enabled;
+  }
+  if (has_non_delivery_diffusion
+      && !gpu.apply_diffusion(domain, *this, dt)) {
+    return false;
+  }
+  for (Int s = 0; s < nspec_; ++s) {
+    const ChemicalSpec& chemical = specs_[static_cast<size_t>(s)];
+    if (!chemical.diffuses() || !chemical.delivery_enabled) continue;
+
+    auto& concentration = conc_[static_cast<size_t>(s)];
+    auto& prescribed = prescribed_sink_[static_cast<size_t>(s)];
+    const auto concentration_snapshot = concentration;
+    const auto flux_snapshot = flux_accounting_;
+    assert(std::ranges::all_of(
+        total_sink_realized_[static_cast<size_t>(s)],
+        [](const Real value) { return value == 0.0; }));
+    const auto realized_snapshot =
+        total_sink_realized_[static_cast<size_t>(s)];
+    const auto prescribed_snapshot = prescribed;
+    gpu.snapshot_delivery_species(s);
+    gpu.prepare_delivery_species(
+        s, sink_rate_[static_cast<size_t>(s)], prescribed);
+
+    const auto restore = [&gpu, this, s, &concentration_snapshot,
+                          &flux_snapshot, &realized_snapshot] {
+      conc_[static_cast<size_t>(s)] = concentration_snapshot;
+      flux_accounting_ = flux_snapshot;
+      total_sink_realized_[static_cast<size_t>(s)] = realized_snapshot;
+      gpu.restore_delivery_species(s);
+    };
+    const auto restore_original =
+        [&gpu, this, s, &restore, &prescribed, &prescribed_snapshot] {
+          restore();
+          prescribed = prescribed_snapshot;
+          gpu.upload_delivery_prescribed(prescribed);
+        };
+    const auto solve = [
+        &gpu, this, &domain, s, dt, &chemical] {
+      gpu.upload_delivery_prescribed(prescribed_sink_[static_cast<size_t>(s)]);
+      gpu.reset_delivery_boundary(s);
+      if (!gpu.apply_delivery_species(
+              domain, chemical, s, dt,
+              prescribed_active_[static_cast<size_t>(s)])) {
+        throw Error(
+            "CUDA delivery precondition failed for species '"
+            + chemical.name + "'");
+      }
+      flux_accounting_.add_boundary(
+          s, gpu.download_delivery_boundary(s));
+      flux_accounting_.add_gradient_source(
+          s, gpu.download_delivery_gradient_source());
+      flux_accounting_.add_reaction_clip(
+          s, gpu.download_delivery_reaction_clip());
+    };
+    const auto owns_cell = [this](Int cell) {
+      return owns_global_cell(cell);
+    };
+    const auto storage_cell = [this](Int cell) {
+      return global_to_storage_cell(cell);
+    };
+    const DeliveryRationingCallbacks callbacks{
+        restore,
+        restore_original,
+        solve,
+        [&gpu, s] {
+          return gpu.delivery_has_negative(s);
+        },
+        [&gpu, s] {
+          return gpu.delivery_negative_fraction(s);
+        },
+        [this, &gpu, s, &domain, &owns_cell, &storage_cell] {
+          // Retry dilation intentionally uses one device-to-host transfer;
+          // duplicating the established support stencil on CUDA would add a
+          // second scientific implementation for a rare path.
+          std::vector<Real> realized;
+          gpu.download_delivery_species(
+              s, conc_[static_cast<size_t>(s)], realized);
+          auto& current = prescribed_sink_[static_cast<size_t>(s)];
+          const Real reduced = reduce_prescribed_near_negative_cells(
+              conc_[static_cast<size_t>(s)], current, domain,
+              delivery_support_stencil_, delivery_affected_mask_,
+              delivery_affected_cells_, global_ncells_,
+              owns_cell, storage_cell);
+          gpu.upload_delivery_prescribed(current);
+          return reduced;
+        },
+        [this, s]() -> std::vector<Real>& {
+          return prescribed_sink_[static_cast<size_t>(s)];
+        },
+        [this, &owns_cell, &storage_cell](
+            const std::vector<Real>& values) {
+          return owned_prescribed_sum(
+              values, global_ncells_, owns_cell, storage_cell);
+        },
+        [this, &owns_cell, &storage_cell](
+            const std::vector<Real>& original,
+            const std::vector<Real>& final_values) {
+          return minimum_prescribed_ratio(
+              original, final_values, global_ncells_,
+              owns_cell, storage_cell);
+        }};
+    const auto result = run_delivery_rationing(
+        prescribed_snapshot, callbacks);
+    std::vector<Real> realized;
+    gpu.download_delivery_species(s, concentration, realized);
+    auto& total_realized = total_sink_realized_[static_cast<size_t>(s)];
+    assert(total_realized.size() == realized_snapshot.size());
+    assert(total_realized.size() == realized.size());
+    for (size_t i = 0; i < total_realized.size(); ++i) {
+      total_realized[i] = realized_snapshot[i] + realized[i];
+    }
+    record_delivery_rationing(s, chemical, result);
+  }
+  return has_delivery;
 }
 
 DeliveryRetryResult ChemicalField::run_delivery_rationing_for_species(

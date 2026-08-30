@@ -18,7 +18,7 @@
 namespace gutibm {
 
 bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
-                            const ChemicalField& chem,
+                            ChemicalField& chem,
                             const Domain& domain,
                             const VBF& vbf,
                             const OxygenConfig& oxygen,
@@ -47,6 +47,13 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
     // Device agent counts are rank-local; use the globally reduced CPU path.
     return false;
   }
+  const Int i_carbon = chem.find(species::CARBON);
+  const Int i_iron = chem.find(species::IRON);
+  const Int i_oxygen = chem.find(species::OXYGEN);
+  const Int i_acetate = chem.find(species::ACETATE);
+  const Int i_mucin = chem.find(species::MUCIN);
+  const bool oxygen_delivery =
+      i_oxygen >= 0 && chem.spec(i_oxygen).delivery_enabled;
   gpu::VbfLaunchParams params;
   params.storage_nx = chem_gpu.storage_nx();
   params.owned_x_begin = chem_gpu.owned_storage_x_begin();
@@ -69,7 +76,8 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   params.mucin_liberation = cfg.mucin_liberation;
   params.vbf_density = cfg.density;
   params.oxygen_enabled = oxygen.enabled ? 1 : 0;
-  params.oxygen_vbf_sink = oxygen.vbf_sink;
+  params.oxygen_delivery_enabled = oxygen_delivery ? 1 : 0;
+  params.oxygen_vbf_sink = oxygen_vbf_sink_rate(oxygen);
   params.acetate_enabled = acetate.enabled ? 1 : 0;
   params.acetate_vbf_production = acetate.vbf_production;
   params.acetate_vbf_consumption = acetate.vbf_consumption;
@@ -79,11 +87,6 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   params.mucin_Km_degradation = mucin.Km_degradation;
   params.mucin_k_liberation = mucin.k_liberation;
 
-  const Int i_carbon = chem.find(species::CARBON);
-  const Int i_iron = chem.find(species::IRON);
-  const Int i_oxygen = chem.find(species::OXYGEN);
-  const Int i_acetate = chem.find(species::ACETATE);
-  const Int i_mucin = chem.find(species::MUCIN);
 #ifdef GUTIBM_CUDA
   if (cfg.agent_carbon_coupling != 0.0) {
     chem_gpu.reset_agent_counts();
@@ -106,6 +109,7 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
       i_iron >= 0 ? chem_gpu.conc_device(i_iron) : nullptr,
       i_oxygen >= 0 ? chem_gpu.reac_device(i_oxygen) : nullptr,
       i_oxygen >= 0 ? chem_gpu.conc_device(i_oxygen) : nullptr,
+      oxygen_delivery ? chem_gpu.vbf_sink_rate_device(i_oxygen) : nullptr,
       i_acetate >= 0 ? chem_gpu.reac_device(i_acetate) : nullptr,
       i_mucin >= 0 ? chem_gpu.reac_device(i_mucin) : nullptr,
       i_mucin >= 0 ? chem_gpu.conc_device(i_mucin) : nullptr,
@@ -120,6 +124,11 @@ bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
   totals.carbon_sink = values[1];
   totals.iron_sink = values[2];
   totals.oxygen_sink = values[3];
+  if (oxygen_delivery) {
+    std::vector<double> rates;
+    chem_gpu.download_vbf_sink_rates(i_oxygen, rates);
+    chem.add_vbf_sink_rates(i_oxygen, rates);
+  }
   return true;
 #endif
 }

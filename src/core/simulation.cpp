@@ -1878,11 +1878,15 @@ void Simulation::module_chemistry(Real dt) {
       run_chemistry_pipeline(pipeline, dt);
   chemistry_host_diffusion_seen_ |= !result.diffusion_on_gpu;
   chemistry_device_diffusion_seen_ |= result.diffusion_on_gpu;
+  chemistry_device_delivery_seen_ |= result.delivery_on_gpu;
   chemistry_delivery_host_forced_ |=
       result.delivery_chemistry_host_forced;
 }
 
 const char* Simulation::chemistry_placement() const {
+  if (chemistry_device_delivery_seen_) {
+    return chemistry_host_diffusion_seen_ ? "mixed" : "device_delivery";
+  }
   if (chemistry_device_diffusion_seen_) {
     return chemistry_host_diffusion_seen_ ? "mixed" : "device";
   }
@@ -1895,6 +1899,7 @@ const char* Simulation::chemistry_placement() const {
 void Simulation::reset_chemistry_placement() {
   chemistry_host_diffusion_seen_ = false;
   chemistry_device_diffusion_seen_ = false;
+  chemistry_device_delivery_seen_ = false;
   chemistry_delivery_host_forced_ = false;
 }
 

@@ -11,6 +11,8 @@ using cudaStream_t = void*;
 
 namespace gutibm::gpu {
 
+inline constexpr int kMaxDeliveryLineLength = 512;
+
 #ifdef GUTIBM_CUDA
 #ifdef __CUDACC__
 #define GUTIBM_GPU_DEVICE __device__
@@ -136,6 +138,28 @@ void launch_diffuse_z_bounded(double* conc, int storage_nx, int ny, int nz,
                               double beta, double flux_source,
                               double cell_volume, double* face_exchange,
                               cudaStream_t stream);
+bool launch_diffuse_x_periodic_delivery(
+    double* conc, const double* sink, const double* prescribed,
+    double* realized, int nx, int ny, int nz, double alpha, double sink_dt,
+    double cell_volume, double dx_z, double initial_conc, double lambda,
+    double boundary_conc, int has_gradient, cudaStream_t stream);
+bool launch_diffuse_y_periodic_delivery(
+    double* conc, const double* sink, const double* prescribed,
+    double* realized, int storage_nx, int ny, int nz, int owned_x_begin,
+    int owned_x_end, double alpha, double sink_dt, double cell_volume,
+    double dx_z, double initial_conc, double lambda, double boundary_conc,
+    int has_gradient, cudaStream_t stream);
+bool launch_diffuse_z_bounded_delivery(
+    double* conc, const double* sink, const double* prescribed,
+    double* realized, int storage_nx, int ny, int nz, int owned_x_begin,
+    int owned_x_end, double alpha, int boundary_mode,
+    double diffusion_boundary, double boundary_conc, double beta,
+    double flux_source, double sink_dt, double cell_volume, double dx_z,
+    double initial_conc, double lambda, int has_gradient, double* face_exchange,
+    cudaStream_t stream);
+void launch_count_negative_kernel(
+    const double* conc, int storage_nx, int ny, int nz, int owned_x_begin,
+    int owned_x_end, unsigned long long* count, cudaStream_t stream);
 void launch_set_epithelial_boundary(double* conc, int storage_nx, int ny,
                                     int owned_x_begin, int owned_x_end,
                                     double boundary_conc, double cell_volume,
@@ -144,14 +168,27 @@ void launch_set_epithelial_boundary(double* conc, int storage_nx, int ny,
 void launch_set_luminal_neumann(double* conc, int storage_nx, int ny, int nz,
                                 int owned_x_begin, int owned_x_end,
                                 cudaStream_t stream);
+void launch_set_luminal_neumann_accounted(
+    double* conc, int storage_nx, int ny, int nz, int owned_x_begin,
+    int owned_x_end, double cell_volume, double* content_delta,
+    cudaStream_t stream);
 void launch_shift_z_gradient(double* conc, int storage_nx, int ny, int nz,
                              int owned_x_begin, int owned_x_end, double dx_z,
                              double initial_conc, double lambda,
                              double boundary_conc, double scale,
                              cudaStream_t stream);
+void launch_shift_z_gradient_accounted(
+    double* conc, int storage_nx, int ny, int nz, int owned_x_begin,
+    int owned_x_end, double dx_z, double initial_conc, double lambda,
+    double boundary_conc, double scale, double cell_volume,
+    double* content_delta, cudaStream_t stream);
 void launch_clamp_nonneg(double* conc, int storage_nx, int ny, int nz,
                          int owned_x_begin, int owned_x_end,
                          cudaStream_t stream);
+void launch_clamp_nonneg_accounted(
+    double* conc, int storage_nx, int ny, int nz, int owned_x_begin,
+    int owned_x_end, double cell_volume, double* clipped,
+    cudaStream_t stream);
 
 void launch_o2_depletion_kernel(double* reac_oxygen,
                                 const double* mu_realized,
@@ -177,6 +214,7 @@ void launch_vbf_coupling_kernel(int ncells,
                                 const double* conc_iron,
                                 double* reac_oxygen,
                                 const double* conc_oxygen,
+                                double* oxygen_sink_rate,
                                 double* reac_acetate,
                                 double* reac_mucin,
                                 const double* conc_mucin,

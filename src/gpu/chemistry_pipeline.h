@@ -40,6 +40,7 @@ struct ChemistryPipelineInput {
 struct ChemistryPipelineResult {
   bool reactions_on_gpu = false;
   bool diffusion_on_gpu = false;
+  bool delivery_on_gpu = false;
   bool delivery_chemistry_host_forced = false;
 };
 
