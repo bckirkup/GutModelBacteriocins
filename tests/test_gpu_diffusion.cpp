@@ -229,6 +229,7 @@ SimulationConfig mixed_boundary_config() {
   cfg.domain.grid_dx = 5.0e-6;
   cfg.domain.hash_cell_size = 10.0e-6;
   cfg.chem_env.oxygen.enabled = true;
+  cfg.oxygen_z_gradient_enabled = false;
   cfg.chem_env.acetate.enabled = false;
   cfg.chem_env.mucin.enabled = false;
   cfg.chem_env.siderophore.enabled = false;
@@ -259,6 +260,19 @@ SimulationConfig mixed_boundary_config() {
   oxygen->boundary_conc = 0.15;
   oxygen->epithelial_boundary_mode = EpithelialBoundaryMode::Robin;
   oxygen->epithelial_transfer_coeff = 2.0e-5;
+
+  Int diffusing_species = 0;
+  for (const ChemicalSpec& spec : cfg.chemicals) {
+    if (spec.diffusion_enabled) ++diffusing_species;
+    if (spec.epithelial_boundary_mode != EpithelialBoundaryMode::Dirichlet) {
+      assert(!spec.z_gradient_enabled);
+    }
+  }
+  assert(diffusing_species == 2);
+  assert(carbon->epithelial_boundary_mode == EpithelialBoundaryMode::Dirichlet);
+  assert(oxygen->epithelial_boundary_mode == EpithelialBoundaryMode::Robin);
+  assert(oxygen->epithelial_transfer_coeff > 0.0);
+  assert(!oxygen->z_gradient_enabled);
   return cfg;
 }
 
