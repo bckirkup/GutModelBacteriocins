@@ -31,11 +31,11 @@ class ChemicalFieldGpu {
   void download_reaction_clip(ChemicalField& field) const;
   bool apply_diffusion(const Domain& domain, ChemicalField& field, Real dt);
   bool apply_delivery_species(const Domain& domain, const ChemicalSpec& spec,
-                              Int species, Real dt);
+                              Int species, Real dt, bool prescribed_active);
   void reset_delivery_boundary(Int species);
   Real download_delivery_boundary(Int species) const;
   bool delivery_has_negative(Int spec);
-  Real delivery_negative_fraction(Int spec) const;
+  Real delivery_negative_fraction(Int spec);
   void prepare_delivery_species(
       Int spec, const std::vector<Real>& sink,
       const std::vector<Real>& prescribed);
@@ -123,6 +123,8 @@ class ChemicalFieldGpu {
   DeviceBuffer<double> d_delivery_realized_backup_;
   DeviceBuffer<double> d_delivery_gradient_source_;
   DeviceBuffer<unsigned long long> d_delivery_negative_count_;
+  unsigned long long delivery_negative_count_host_ = 0;
+  Int delivery_negative_count_spec_ = -1;
 };
 
 }  // namespace gutibm

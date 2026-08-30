@@ -6,11 +6,14 @@
 #include "dispatch.h"
 #include "gpu_kernels.h"
 #include "device_memory.h"
+#include "error.h"
 #include "species_names.h"
 #include "carbon_maintenance.h"
 
 #include <cstdlib>
 #include <iostream>
+#include <string>
+#include <cassert>
 
 #ifdef GUTIBM_CUDA
 #include <cuda_runtime.h>
@@ -394,26 +397,38 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
 }
 
 bool ChemicalFieldGpu::apply_delivery_species(
-    const Domain& domain, const ChemicalSpec& spec, Int species, Real dt) {
+    const Domain& domain, const ChemicalSpec& spec, Int species, Real dt,
+    bool prescribed_active) {
 #ifndef GUTIBM_CUDA
   (void)domain;
   (void)spec;
   (void)species;
   (void)dt;
+  (void)prescribed_active;
   return false;
 #else
   if (!active_ || species < 0 || species >= nspec_) return false;
 #ifdef GUTIBM_CUDA
-  cudaMemset(d_delivery_realized_.data(), 0,
-             static_cast<size_t>(ncells_) * sizeof(double));
-  cudaMemset(d_delivery_gradient_source_.data(), 0, sizeof(double));
+  if (const cudaError_t realized_status = cudaMemset(
+          d_delivery_realized_.data(), 0,
+          static_cast<size_t>(ncells_) * sizeof(double));
+      realized_status != cudaSuccess) {
+    throw Error(std::string("delivery realized memset: ")
+                + cudaGetErrorString(realized_status));
+  }
+  if (const cudaError_t gradient_status = cudaMemset(
+          d_delivery_gradient_source_.data(), 0, sizeof(double));
+      gradient_status != cudaSuccess) {
+    throw Error(std::string("delivery gradient memset: ")
+                + cudaGetErrorString(gradient_status));
+  }
 #endif
   return gpu_apply_species_delivery_device(
       domain, spec, d_conc_[static_cast<size_t>(species)].data(),
       d_delivery_sink_.data(), d_delivery_prescribed_.data(),
       d_delivery_realized_.data(),
       d_boundary_injected_.data() + static_cast<size_t>(species),
-      d_delivery_gradient_source_.data(), dt);
+      d_delivery_gradient_source_.data(), dt, prescribed_active);
 #endif
 }
 
@@ -424,37 +439,63 @@ void ChemicalFieldGpu::prepare_delivery_species(
   d_delivery_sink_.upload(sink);
   d_delivery_prescribed_.upload(prescribed);
 #ifdef GUTIBM_CUDA
-  cudaMemset(d_delivery_realized_.data(), 0,
-             static_cast<size_t>(ncells_) * sizeof(double));
-  cudaMemset(d_delivery_gradient_source_.data(), 0, sizeof(double));
+  if (const cudaError_t realized_status = cudaMemset(
+          d_delivery_realized_.data(), 0,
+          static_cast<size_t>(ncells_) * sizeof(double));
+      realized_status != cudaSuccess) {
+    throw Error(std::string("delivery realized memset: ")
+                + cudaGetErrorString(realized_status));
+  }
+  if (const cudaError_t gradient_status = cudaMemset(
+          d_delivery_gradient_source_.data(), 0, sizeof(double));
+      gradient_status != cudaSuccess) {
+    throw Error(std::string("delivery gradient memset: ")
+                + cudaGetErrorString(gradient_status));
+  }
 #endif
 }
 
 void ChemicalFieldGpu::snapshot_delivery_species(Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
 #ifdef GUTIBM_CUDA
-  cudaMemcpy(
-      d_delivery_concentration_backup_.data(),
-      d_conc_[static_cast<size_t>(spec)].data(),
-      static_cast<size_t>(ncells_) * sizeof(double),
-      cudaMemcpyDeviceToDevice);
-  cudaMemset(d_delivery_realized_backup_.data(), 0,
-             static_cast<size_t>(ncells_) * sizeof(double));
+  const size_t bytes = static_cast<size_t>(ncells_) * sizeof(double);
+  if (const cudaError_t concentration_status = cudaMemcpy(
+          d_delivery_concentration_backup_.data(),
+          d_conc_[static_cast<size_t>(spec)].data(), bytes,
+          cudaMemcpyDeviceToDevice);
+      concentration_status != cudaSuccess) {
+    throw Error(std::string("delivery concentration snapshot: ")
+                + cudaGetErrorString(concentration_status));
+  }
+  if (const cudaError_t realized_status = cudaMemcpy(
+          d_delivery_realized_backup_.data(), d_delivery_realized_.data(),
+          bytes, cudaMemcpyDeviceToDevice);
+      realized_status != cudaSuccess) {
+    throw Error(std::string("delivery realized snapshot: ")
+                + cudaGetErrorString(realized_status));
+  }
 #endif
 }
 
 void ChemicalFieldGpu::restore_delivery_species(Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
 #ifdef GUTIBM_CUDA
-  cudaMemcpy(
-      d_conc_[static_cast<size_t>(spec)].data(),
-      d_delivery_concentration_backup_.data(),
-      static_cast<size_t>(ncells_) * sizeof(double),
-      cudaMemcpyDeviceToDevice);
-  cudaMemcpy(
-      d_delivery_realized_.data(), d_delivery_realized_backup_.data(),
-      static_cast<size_t>(ncells_) * sizeof(double),
-      cudaMemcpyDeviceToDevice);
+  const size_t bytes = static_cast<size_t>(ncells_) * sizeof(double);
+  if (const cudaError_t concentration_status = cudaMemcpy(
+          d_conc_[static_cast<size_t>(spec)].data(),
+          d_delivery_concentration_backup_.data(), bytes,
+          cudaMemcpyDeviceToDevice);
+      concentration_status != cudaSuccess) {
+    throw Error(std::string("delivery concentration restore: ")
+                + cudaGetErrorString(concentration_status));
+  }
+  if (const cudaError_t realized_status = cudaMemcpy(
+          d_delivery_realized_.data(), d_delivery_realized_backup_.data(),
+          bytes, cudaMemcpyDeviceToDevice);
+      realized_status != cudaSuccess) {
+    throw Error(std::string("delivery realized restore: ")
+                + cudaGetErrorString(realized_status));
+  }
 #endif
 }
 
@@ -494,44 +535,60 @@ void ChemicalFieldGpu::download_delivery_species(
 bool ChemicalFieldGpu::delivery_has_negative(Int spec) {
 #ifndef GUTIBM_CUDA
   (void)spec;
+  delivery_negative_count_host_ = 0;
+  delivery_negative_count_spec_ = -1;
   return false;
 #else
-  if (!active_ || spec < 0 || spec >= nspec_) return false;
-  cudaMemset(d_delivery_negative_count_.data(), 0, sizeof(unsigned long long));
+  if (!active_ || spec < 0 || spec >= nspec_) {
+    delivery_negative_count_host_ = 0;
+    delivery_negative_count_spec_ = -1;
+    return false;
+  }
+  if (const cudaError_t status = cudaMemset(
+          d_delivery_negative_count_.data(), 0,
+          sizeof(unsigned long long));
+      status != cudaSuccess) {
+    throw Error(std::string("delivery negative-count memset: ")
+                + cudaGetErrorString(status));
+  }
   gpu::launch_count_negative_kernel(
       d_conc_[static_cast<size_t>(spec)].data(), storage_nx_, global_ny_,
       global_nz_, owned_storage_x_begin(), owned_storage_x_end(),
       d_delivery_negative_count_.data(), gpu_compute_stream());
   gpu_sync_compute();
-  unsigned long long count = 0;
-  d_delivery_negative_count_.download(&count, 1);
-  return count != 0;
+  gpu_check_error("delivery negative-count kernel");
+  d_delivery_negative_count_.download(&delivery_negative_count_host_, 1);
+  delivery_negative_count_spec_ = spec;
+  return delivery_negative_count_host_ != 0;
 #endif
 }
 
-Real ChemicalFieldGpu::delivery_negative_fraction(Int spec) const {
+Real ChemicalFieldGpu::delivery_negative_fraction(Int spec) {
 #ifndef GUTIBM_CUDA
   (void)spec;
   return 0.0;
 #else
   if (!active_ || spec < 0 || spec >= nspec_) return 0.0;
-  auto* self = const_cast<ChemicalFieldGpu*>(this);
-  const bool negative = self->delivery_has_negative(spec);
-  if (!negative) return 0.0;
-  unsigned long long count = 0;
-  self->d_delivery_negative_count_.download(&count, 1);
-  return static_cast<Real>(count)
-      / static_cast<Real>((owned_x_end_ - owned_x_begin_)
-                          * global_ny_ * global_nz_);
+  assert(delivery_negative_count_spec_ == spec);
+  const auto owned_cells = static_cast<unsigned long long>(
+      owned_x_end_ - owned_x_begin_) * static_cast<unsigned long long>(
+      global_ny_) * static_cast<unsigned long long>(global_nz_);
+  assert(owned_cells > 0);
+  return static_cast<Real>(delivery_negative_count_host_)
+      / static_cast<Real>(owned_cells);
 #endif
 }
 
 void ChemicalFieldGpu::reset_delivery_boundary(Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
 #ifdef GUTIBM_CUDA
-  cudaMemset(
-      d_boundary_injected_.data() + static_cast<size_t>(spec), 0,
-      sizeof(double));
+  if (const cudaError_t status = cudaMemset(
+          d_boundary_injected_.data() + static_cast<size_t>(spec), 0,
+          sizeof(double));
+      status != cudaSuccess) {
+    throw Error(std::string("delivery boundary reset: ")
+                + cudaGetErrorString(status));
+  }
 #endif
 }
 

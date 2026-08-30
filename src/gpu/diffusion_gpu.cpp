@@ -6,6 +6,7 @@
 #include "gpu_kernels.h"
 #include "gpu_profile.h"
 #include "tridiagonal_factorization.h"
+#include <cassert>
 #include <chrono>
 #include <string>
 #include <vector>
@@ -234,7 +235,8 @@ bool gpu_apply_species_diffusion_device(const Domain& domain,
 bool gpu_apply_species_delivery_device(
     const Domain& domain, const ChemicalSpec& spec, double* d_conc,
     const double* d_sink, const double* d_prescribed, double* d_realized,
-    double* d_boundary_injected, double* d_gradient_source, Real dt) {
+    double* d_boundary_injected, double* d_gradient_source, Real dt,
+    bool prescribed_active) {
 #ifndef GUTIBM_CUDA
   (void)domain;
   (void)spec;
@@ -245,13 +247,18 @@ bool gpu_apply_species_delivery_device(
   (void)d_boundary_injected;
   (void)d_gradient_source;
   (void)dt;
+  (void)prescribed_active;
   return false;
 #else
+  // Device rationing has no MPI reduction; Route B is single-rank only.
+  assert(domain.nprocs() == 1);
+  const int max_line = gpu::kMaxDeliveryLineLength;
   if (!gpu_runtime_enabled() || !spec.delivery_enabled
       || !species_diffusion_eligible(spec, dt, domain)
-      || domain.nprocs() != 1 || domain.nx() > 512 || domain.ny() > 512
+      || domain.nprocs() != 1 || domain.nx() > max_line
+      || domain.ny() > max_line
       || !diffusion_line_lengths_within(
-          domain, spec.epithelial_boundary_mode, 512)) {
+          domain, spec.epithelial_boundary_mode, max_line)) {
     return false;
   }
   const Real effective_diffusion = spec.diff_coeff / spec.retardation;
@@ -263,6 +270,8 @@ bool gpu_apply_species_delivery_device(
       / (domain.dx_z() * domain.dx_z());
   const bool preserve_gradient =
       spec.z_gradient_enabled && spec.z_gradient_lambda > 0.0;
+  const Real diffusion_boundary =
+      preserve_gradient ? 0.0 : spec.boundary_conc;
   const int mode = to_underlying(spec.epithelial_boundary_mode);
   const Real beta = spec.epithelial_boundary_mode
       == EpithelialBoundaryMode::Robin
@@ -296,22 +305,30 @@ bool gpu_apply_species_delivery_device(
           spec.boundary_conc, -1.0, stream);
     }
   }
-  gpu::launch_diffuse_x_periodic_delivery(
-      d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
-      domain.nz(), alpha_x, dt / 3.0, domain.cell_volume(), domain.dx_z(),
-      spec.initial_conc, spec.z_gradient_lambda, spec.boundary_conc,
-      preserve_gradient, stream);
-  gpu::launch_diffuse_y_periodic_delivery(
-      d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
-      domain.nz(), 0, domain.nx(), alpha_y, dt / 3.0,
-      domain.cell_volume(), domain.dx_z(), spec.initial_conc,
-      spec.z_gradient_lambda, spec.boundary_conc, preserve_gradient, stream);
-  gpu::launch_diffuse_z_bounded_delivery(
-      d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
-      domain.nz(), 0, domain.nx(), alpha_z, mode, spec.boundary_conc, beta,
-      flux_source, dt / 3.0, domain.cell_volume(), domain.dx_z(),
-      spec.initial_conc, spec.z_gradient_lambda, preserve_gradient,
-      d_boundary_injected, stream);
+  if (!gpu::launch_diffuse_x_periodic_delivery(
+          d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
+          domain.nz(), alpha_x, dt / 3.0, domain.cell_volume(),
+          domain.dx_z(), spec.initial_conc, spec.z_gradient_lambda,
+          spec.boundary_conc, preserve_gradient, stream)) {
+    return false;
+  }
+  if (!gpu::launch_diffuse_y_periodic_delivery(
+          d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
+          domain.nz(), 0, domain.nx(), alpha_y, dt / 3.0,
+          domain.cell_volume(), domain.dx_z(), spec.initial_conc,
+          spec.z_gradient_lambda, spec.boundary_conc, preserve_gradient,
+          stream)) {
+    return false;
+  }
+  if (!gpu::launch_diffuse_z_bounded_delivery(
+          d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
+          domain.nz(), 0, domain.nx(), alpha_z, mode, diffusion_boundary,
+          spec.boundary_conc, beta, flux_source, dt / 3.0,
+          domain.cell_volume(), domain.dx_z(), spec.initial_conc,
+          spec.z_gradient_lambda, preserve_gradient, d_boundary_injected,
+          stream)) {
+    return false;
+  }
   if (preserve_gradient) {
     if (d_gradient_source != nullptr) {
       gpu::launch_shift_z_gradient_accounted(
@@ -332,11 +349,17 @@ bool gpu_apply_species_delivery_device(
           stream);
     }
   }
+  if (!prescribed_active) {
+    gpu::launch_clamp_nonneg(
+        d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(), stream);
+  }
   if (spec.epithelial_boundary_mode == EpithelialBoundaryMode::Dirichlet) {
     gpu::launch_set_epithelial_boundary(
         d_conc, domain.nx(), domain.ny(), 0, domain.nx(),
         spec.boundary_conc, domain.cell_volume(), d_boundary_injected, stream);
   }
+  gpu_sync_compute();
+  gpu_check_error("gpu_apply_species_delivery_device");
   return true;
 #endif
 }

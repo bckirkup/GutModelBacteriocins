@@ -247,7 +247,7 @@ void test_none_mode_parity_and_absence_of_limitation() {
   std::cout << "  test_none_mode_parity_and_absence_of_limitation: PASSED\n";
 }
 
-void test_delivery_forces_host_chemistry() {
+void test_delivery_device_parity_and_provenance() {
   const SimulationConfig delivery_config =
       make_config(UptakeLimitMode::Delivery);
   const SimulationConfig none_config = make_config(UptakeLimitMode::None);
@@ -314,13 +314,19 @@ void test_delivery_forces_host_chemistry() {
       std::max(std::abs(delivery_realized), std::abs(none_realized));
   assert(std::abs(delivery_realized - none_realized)
          > 1.0e-6 * contrast_scale);
+  SimulationConfig over_cap_config = delivery_config;
+  over_cap_config.domain.hi[2] = 513.0 * over_cap_config.domain.grid_dx;
+  Simulation host_forced = run(over_cap_config, true);
+  assert(std::string(host_forced.chemistry_placement())
+         == "host_forced_delivery");
+  assert(carbon_agent_realized_sink(host_forced) > 0.0);
   std::cout << "    delivery carbon sink realized="
             << format_real(delivery_field_realized)
             << " delivery carbon maintenance realized="
             << format_real(delivery_maintenance.realized)
             << " none carbon sink realized="
             << format_real(none_field_realized) << "\n";
-  std::cout << "  test_delivery_forces_host_chemistry: PASSED\n";
+  std::cout << "  test_delivery_device_parity_and_provenance: PASSED\n";
 }
 #endif
 
@@ -338,7 +344,7 @@ int main() {
 #else
   test_sherwood_parity();
   test_none_mode_parity_and_absence_of_limitation();
-  test_delivery_forces_host_chemistry();
+  test_delivery_device_parity_and_provenance();
   std::cout << "GPU uptake limitation parity tests passed.\n";
   return 0;
 #endif

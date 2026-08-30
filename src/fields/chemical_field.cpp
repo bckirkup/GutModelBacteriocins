@@ -12,6 +12,7 @@
 #include "diffusion_gpu.h"
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
@@ -3067,12 +3068,15 @@ bool ChemicalField::apply_diffusion_gpu(
     auto& prescribed = prescribed_sink_[static_cast<size_t>(s)];
     const auto concentration_snapshot = concentration;
     const auto flux_snapshot = flux_accounting_;
+    assert(std::ranges::all_of(
+        total_sink_realized_[static_cast<size_t>(s)],
+        [](const Real value) { return value == 0.0; }));
     const auto realized_snapshot =
         total_sink_realized_[static_cast<size_t>(s)];
     const auto prescribed_snapshot = prescribed;
+    gpu.snapshot_delivery_species(s);
     gpu.prepare_delivery_species(
         s, sink_rate_[static_cast<size_t>(s)], prescribed);
-    gpu.snapshot_delivery_species(s);
 
     const auto restore = [&gpu, this, s, &concentration_snapshot,
                           &flux_snapshot, &realized_snapshot] {
@@ -3087,12 +3091,18 @@ bool ChemicalField::apply_diffusion_gpu(
           prescribed = prescribed_snapshot;
           gpu.upload_delivery_prescribed(prescribed);
         };
-    const auto solve = [&gpu, this, &domain, s, dt, &chemical] {
+    bool device_delivery_failed = false;
+    const auto solve = [
+        &gpu, this, &domain, s, dt, &chemical, &device_delivery_failed] {
       gpu.upload_delivery_prescribed(prescribed_sink_[static_cast<size_t>(s)]);
       gpu.reset_delivery_boundary(s);
-      if (!gpu.apply_delivery_species(domain, chemical, s, dt)) {
-        throw Error("Route B delivery solve unexpectedly unavailable");
+      if (!device_delivery_failed
+          && !gpu.apply_delivery_species(
+              domain, chemical, s, dt,
+              prescribed_active_[static_cast<size_t>(s)])) {
+        device_delivery_failed = true;
       }
+      if (device_delivery_failed) return;
       flux_accounting_.add_boundary(
           s, gpu.download_delivery_boundary(s));
       flux_accounting_.add_gradient_source(
@@ -3108,8 +3118,13 @@ bool ChemicalField::apply_diffusion_gpu(
         restore,
         restore_original,
         solve,
-        [&gpu, s] { return gpu.delivery_has_negative(s); },
-        [&gpu, s] { return gpu.delivery_negative_fraction(s); },
+        [&gpu, s, &device_delivery_failed] {
+          return device_delivery_failed || gpu.delivery_has_negative(s);
+        },
+        [&gpu, s, &device_delivery_failed] {
+          return device_delivery_failed
+              ? 1.0 : gpu.delivery_negative_fraction(s);
+        },
         [this, &gpu, s, &domain, &owns_cell, &storage_cell] {
           // Retry dilation intentionally uses one device-to-host transfer;
           // duplicating the established support stencil on CUDA would add a
@@ -3143,6 +3158,10 @@ bool ChemicalField::apply_diffusion_gpu(
         }};
     const auto result = run_delivery_rationing(
         prescribed_snapshot, callbacks);
+    if (device_delivery_failed) {
+      restore_original();
+      return false;
+    }
     std::vector<Real> realized;
     gpu.download_delivery_species(s, concentration, realized);
     total_sink_realized_[static_cast<size_t>(s)] = std::move(realized);

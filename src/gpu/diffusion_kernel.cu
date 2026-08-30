@@ -586,9 +586,10 @@ __global__ void diffuse_y_periodic_delivery_kernel(
 __global__ void diffuse_z_bounded_delivery_kernel(
     double* conc, const double* sink, const double* prescribed,
     double* realized, int storage_nx, int ny, int nz, int owned_x_begin,
-    int owned_x_end, double alpha, int boundary_mode, double boundary_conc,
-    double beta, double flux_source, double sink_dt, double cell_volume,
-    double dx_z, double initial_conc, double lambda, int has_gradient,
+    int owned_x_end, double alpha, int boundary_mode,
+    double diffusion_boundary, double boundary_conc, double beta,
+    double flux_source, double sink_dt, double cell_volume, double dx_z,
+    double initial_conc, double lambda, int has_gradient,
     double* face_exchange) {
   const int line_id = blockIdx.x;
   const int local_nx = owned_x_end - owned_x_begin;
@@ -616,14 +617,18 @@ __global__ void diffuse_z_bounded_delivery_kernel(
     upper[tid] = tid == n - 1 ? 0.0 : -alpha;
     diagonal[tid] = 1.0 + 2.0 * alpha + sink[cell] * sink_dt;
     if (tid == 0) {
-      diagonal[tid] += boundary_mode == 1 ? -alpha + beta : -alpha;
+      if (boundary_mode == 1) {
+        diagonal[tid] += -alpha + beta;
+      } else if (boundary_mode == 2) {
+        diagonal[tid] -= alpha;
+      }
     }
     if (tid == n - 1) diagonal[tid] -= alpha;
     rhs[tid] = line[tid];
     if (tid == 0) {
       rhs[tid] += boundary_mode == 1
-          ? beta * boundary_conc
-          : (boundary_mode == 0 ? alpha * boundary_conc : flux_source);
+          ? beta * diffusion_boundary
+          : (boundary_mode == 0 ? alpha * diffusion_boundary : flux_source);
     }
   }
   __syncthreads();
@@ -740,27 +745,33 @@ void launch_diffuse_z_bounded(double* conc,
       face_exchange);
 }
 
-void launch_diffuse_x_periodic_delivery(
+bool launch_diffuse_x_periodic_delivery(
     double* conc, const double* sink, const double* prescribed,
     double* realized, int nx, int ny, int nz, double alpha, double sink_dt,
     double cell_volume, double dx_z, double initial_conc, double lambda,
     double boundary_conc, int has_gradient, cudaStream_t stream) {
-  if (nx <= 0 || nx > 512 || ny <= 0 || nz <= 0) return;
+  if (nx <= 0 || nx > kMaxDeliveryLineLength || ny <= 0 || nz <= 0) {
+    return false;
+  }
   const int block = next_pow2(nx);
   diffuse_x_periodic_delivery_kernel<<<
       ny * nz, block, static_cast<size_t>(6 * block) * sizeof(double), stream>>>(
       conc, sink, prescribed, realized, nx, ny, nz, alpha, sink_dt,
       cell_volume, dx_z, initial_conc, lambda, boundary_conc, has_gradient);
+  return true;
 }
 
-void launch_diffuse_y_periodic_delivery(
+bool launch_diffuse_y_periodic_delivery(
     double* conc, const double* sink, const double* prescribed,
     double* realized, int storage_nx, int ny, int nz, int owned_x_begin,
     int owned_x_end, double alpha, double sink_dt, double cell_volume,
     double dx_z, double initial_conc, double lambda, double boundary_conc,
     int has_gradient, cudaStream_t stream) {
   const int local_nx = owned_x_end - owned_x_begin;
-  if (local_nx <= 0 || ny <= 0 || ny > 512 || nz <= 0) return;
+  if (local_nx <= 0 || ny <= 0 || ny > kMaxDeliveryLineLength
+      || nz <= 0) {
+    return false;
+  }
   const int block = next_pow2(ny);
   diffuse_y_periodic_delivery_kernel<<<
       local_nx * nz, block, static_cast<size_t>(6 * block) * sizeof(double),
@@ -768,26 +779,32 @@ void launch_diffuse_y_periodic_delivery(
       conc, sink, prescribed, realized, storage_nx, ny, nz, owned_x_begin,
       owned_x_end, alpha, sink_dt, cell_volume, dx_z, initial_conc, lambda,
       boundary_conc, has_gradient);
+  return true;
 }
 
-void launch_diffuse_z_bounded_delivery(
+bool launch_diffuse_z_bounded_delivery(
     double* conc, const double* sink, const double* prescribed,
     double* realized, int storage_nx, int ny, int nz, int owned_x_begin,
-    int owned_x_end, double alpha, int boundary_mode, double boundary_conc,
-    double beta, double flux_source, double sink_dt, double cell_volume,
-    double dx_z, double initial_conc, double lambda, int has_gradient,
+    int owned_x_end, double alpha, int boundary_mode,
+    double diffusion_boundary, double boundary_conc, double beta,
+    double flux_source, double sink_dt, double cell_volume, double dx_z,
+    double initial_conc, double lambda, int has_gradient,
     double* face_exchange, cudaStream_t stream) {
   const int local_nx = owned_x_end - owned_x_begin;
   const int n = boundary_mode == 0 ? nz - 1 : nz;
-  if (local_nx <= 0 || ny <= 0 || n <= 0 || n > 512) return;
+  if (local_nx <= 0 || ny <= 0 || n <= 0
+      || n > kMaxDeliveryLineLength) {
+    return false;
+  }
   const int block = next_pow2(n);
   diffuse_z_bounded_delivery_kernel<<<
       local_nx * ny, block, static_cast<size_t>(5 * block) * sizeof(double),
       stream>>>(
       conc, sink, prescribed, realized, storage_nx, ny, nz, owned_x_begin,
-      owned_x_end, alpha, boundary_mode, boundary_conc, beta, flux_source,
-      sink_dt, cell_volume, dx_z, initial_conc, lambda, has_gradient,
-      face_exchange);
+      owned_x_end, alpha, boundary_mode, diffusion_boundary, boundary_conc,
+      beta, flux_source, sink_dt, cell_volume, dx_z, initial_conc, lambda,
+      has_gradient, face_exchange);
+  return true;
 }
 
 void launch_set_epithelial_boundary(double* conc,
