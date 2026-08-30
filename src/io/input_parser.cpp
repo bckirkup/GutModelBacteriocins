@@ -153,9 +153,10 @@ Int parse_positive_config_int(std::string_view key, const std::string& val) {
 
 EpithelialBoundaryMode parse_epithelial_boundary_mode(
     std::string_view key, const std::string& value) {
-  if (value == "dirichlet") return EpithelialBoundaryMode::Dirichlet;
-  if (value == "robin") return EpithelialBoundaryMode::Robin;
-  if (value == "flux") return EpithelialBoundaryMode::Flux;
+  using enum EpithelialBoundaryMode;
+  if (value == "dirichlet") return Dirichlet;
+  if (value == "robin") return Robin;
+  if (value == "flux") return Flux;
   throw ConfigError(
       "invalid " + std::string(key)
       + ": expected 'dirichlet', 'robin', or 'flux', got '" + value + "'");
@@ -632,7 +633,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
       && (!cfg.chem_env.oxygen.delivery_uptake_enabled
           || metabolism.uptake_limit_mode != UptakeLimitMode::Delivery)) {
     throw ConfigError(
-        "oxygen.respiration_driver=\"funded\" requires "
+        R"(oxygen.respiration_driver="funded" requires )"
         "oxygen.delivery_uptake_enabled=true and "
         "metabolism.uptake_limit=\"delivery\"");
   }
@@ -655,7 +656,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
       && (!cfg.chem_env.oxygen.delivery_uptake_enabled
           || metabolism.uptake_limit_mode != UptakeLimitMode::Delivery)) {
     throw ConfigError(
-        "oxygen.ros_driver=\"funded\" requires "
+        R"(oxygen.ros_driver="funded" requires )"
         "oxygen.delivery_uptake_enabled=true and "
         "metabolism.uptake_limit=\"delivery\"");
   }

@@ -122,7 +122,7 @@ void mpi_barrier(const HDF5Config& cfg) {
 
 std::vector<Real> elementwise_min(
     const std::vector<Real>& left, const std::vector<Real>& right) {
-  std::vector<Real> result(left.size(), 1.0);
+  std::vector result(left.size(), 1.0);
   for (size_t i = 0; i < result.size(); ++i) {
     result[i] = std::min(left[i], right[i]);
   }
@@ -667,10 +667,10 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
                        H5T_NATIVE_INT32, &gpu_compiled);
   write_scalar_dataset(fid, "run_provenance/openmp_compiled",
                        H5T_NATIVE_INT32, &openmp_compiled);
-  const int32_t rank_count = static_cast<int32_t>(mpi_nprocs_world());
+  const auto rank_count = static_cast<int32_t>(mpi_nprocs_world());
   write_scalar_dataset(fid, "run_provenance/mpi_rank_count",
                        H5T_NATIVE_INT32, &rank_count);
-  const int32_t incomplete_code =
+  const auto incomplete_code =
       static_cast<int32_t>(to_underlying(TerminationCause::IncompleteUnknown));
   write_scalar_dataset(fid, "run_provenance/termination_cause_code",
                        H5T_NATIVE_INT32, &incomplete_code);
@@ -727,7 +727,7 @@ void HDF5Writer::write_halt_metadata(const Simulation& sim, Int step) const {
   if (enabled_ && io_rank(cfg_) == 0 && file_id_ >= 0) {
     write_run_provenance(sim);
     const auto fid = static_cast<hid_t>(file_id_);
-    const std::string group = "summary/" + std::format("step_{:06}", step);
+    const std::string group = std::format("summary/step_{:06}", step);
     ensure_group(fid, "summary", cfg_);
     ensure_group(fid, group, cfg_);
     const int32_t halt_reason = sim.halted_for_dysbiosis() ? 1 : 0;
@@ -763,7 +763,7 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
         sim.halted_for_dysbiosis() ? 1 : (completed_total_time != 0 ? 0 : 2);
     const int32_t termination_step = step;
     const double termination_time = time;
-    const int32_t cause_code = static_cast<int32_t>(
+    const auto cause_code = static_cast<int32_t>(
         to_underlying(sim.termination_cause()));
     write_scalar_dataset(fid, "run_provenance/halt_reason_code",
                          H5T_NATIVE_INT32, &halt_reason);
@@ -1407,7 +1407,7 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
   if (gather_slab) {
     rank = mpi_rank_world();
     nprocs = mpi_nprocs_world();
-    const int local_count = static_cast<int>(local_nx * ny_ * nz_);
+    const auto local_count = static_cast<int>(local_nx * ny_ * nz_);
     counts.resize(static_cast<size_t>(nprocs));
     displacements.resize(static_cast<size_t>(nprocs));
     begins.resize(static_cast<size_t>(nprocs));
@@ -1462,7 +1462,7 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
       }
 #ifdef GUTIBM_MPI
       if (gather_slab) {
-        const int local_count = static_cast<int>(local.size());
+        const auto local_count = static_cast<int>(local.size());
         std::vector<double> gathered;
         if (rank == 0) gathered.resize(static_cast<size_t>(total_count));
         double dummy = 0.0;
@@ -1480,7 +1480,7 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
                 for (Int ix = 0; ix < width; ++ix) {
                   const size_t source = static_cast<size_t>(source_offset)
                       + static_cast<size_t>(iz * ny_ * width + iy * width + ix);
-                  const size_t target = static_cast<size_t>(iz * ny_ * nx_
+                  const auto target = static_cast<size_t>(iz * ny_ * nx_
                       + iy * nx_ + begins[static_cast<size_t>(r)] + ix);
                   grid3d[target] = gathered[source];
                 }
@@ -1492,9 +1492,9 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
         for (Int iz = 0; iz < nz_; ++iz) {
           for (Int iy = 0; iy < ny_; ++iy) {
             for (Int ix = 0; ix < local_nx; ++ix) {
-              const size_t source =
+              const auto source =
                   static_cast<size_t>(iz * ny_ * local_nx + iy * local_nx + ix);
-              const size_t target = static_cast<size_t>(
+              const auto target = static_cast<size_t>(
                   iz * ny_ * nx_ + iy * nx_ + domain.local_grid_x_begin() + ix);
               grid3d[target] = local[source];
             }

@@ -189,7 +189,7 @@ class JsonCursor {
   }
 
   void parse_receptor_expression_object(
-      std::map<std::string, Real>& expressions) {
+      std::map<std::string, Real, std::less<>>& expressions) {
     if (!match('{')) throw ConfigError("expected receptor expression object");
     skip_ws();
     if (match('}')) return;

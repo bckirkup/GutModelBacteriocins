@@ -648,7 +648,7 @@ void diffuse_periodic_x_delivery(
       load_periodic_x_delivery_line(
           line, sink, prescribed, concentration, domain, iy, iz,
           sink_params);
-      std::vector<Real> gradient(static_cast<size_t>(nx), 0.0);
+      std::vector gradient(static_cast<size_t>(nx), 0.0);
       fill_gradient_profile(gradient, sink_params.gradient_spec, domain, iz);
       solve_periodic_with_sink(
           line, sink, alpha,
@@ -683,7 +683,7 @@ void diffuse_periodic_y_delivery(
       load_periodic_y_delivery_line(
           line, sink, prescribed, concentration, domain, ix, iz,
           sink_params);
-      std::vector<Real> gradient(static_cast<size_t>(ny), 0.0);
+      std::vector gradient(static_cast<size_t>(ny), 0.0);
       fill_gradient_profile(gradient, sink_params.gradient_spec, domain, iz);
       solve_periodic_with_sink(
           line, sink, alpha,
@@ -800,7 +800,7 @@ void solve_replicated_delivery_z_line(
         context.sink.sink_rate[static_cast<size_t>(cell)]
         * context.sink.sink_dt;
   }
-  std::vector<Real> gradient(static_cast<size_t>(nz - 1), 0.0);
+  std::vector gradient(static_cast<size_t>(nz - 1), 0.0);
   apply_gradient_sink(
       line, sink, gradient, context.sink.gradient_spec,
       context.domain, 1);
@@ -817,7 +817,7 @@ void solve_replicated_delivery_z_line(
       context.alpha, context.boundary, line);
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = context.domain.cell_index(ix, iy, iz);
-    const size_t index = static_cast<size_t>(iz - 1);
+    const auto index = static_cast<size_t>(iz - 1);
     context.concentration[static_cast<size_t>(cell)] = line[index];
     const Real total = context.sink.gradient_spec != nullptr
         ? line[index] + gradient[index] : line[index];
@@ -905,7 +905,7 @@ void solve_delivery_z_line(
     Real& face_exchange) {
   std::vector<Real> line(static_cast<size_t>(grid.nz));
   std::vector<Real> sink(static_cast<size_t>(grid.nz));
-  std::vector<Real> gradient(static_cast<size_t>(grid.nz), 0.0);
+  std::vector gradient(static_cast<size_t>(grid.nz), 0.0);
   std::vector diagonal(static_cast<size_t>(grid.nz), 0.0);
   operations.load_line(ix, iy, line);
   operations.load_sink(ix, iy, sink);
@@ -1683,7 +1683,7 @@ void ChemicalField::sum_accounting_across_ranks() {
   MPI_Initialized(&initialized);
   MPI_Finalized(&finalized);
   if (!initialized || finalized) return;
-  const int count = static_cast<int>(nspec_);
+  const auto count = static_cast<int>(nspec_);
   if (mode_ != DecompositionMode::Slab) {
     MPI_Allreduce(
         MPI_IN_PLACE, flux_accounting_.delivery_reduction_step.data(),
@@ -1816,7 +1816,7 @@ void solve_slab_delivery_line(
     sink[static_cast<size_t>(iz - 1)] =
         context.sink_rate[static_cast<size_t>(cell)] * context.sink_dt;
   }
-  std::vector<Real> gradient(static_cast<size_t>(nz - 1), 0.0);
+  std::vector gradient(static_cast<size_t>(nz - 1), 0.0);
   apply_gradient_sink(
       line, sink, gradient, context.gradient_spec, context.domain, 1);
   std::vector diagonal(static_cast<size_t>(nz - 1), 0.0);
@@ -2017,7 +2017,7 @@ void solve_slab_periodic_x_lines(
   const auto* sink_rate = context.sink_rate;
   const auto* gradient_spec = context.gradient_spec;
   std::vector sink(static_cast<size_t>(layout.nx), 0.0);
-  const auto gathered_displacements = layout.recv_displacements;
+  const auto& gathered_displacements = layout.recv_displacements;
   for (Int line_index = 0;
        line_index < layout.line_counts[static_cast<size_t>(layout.local_rank)];
        ++line_index) {
@@ -2125,11 +2125,11 @@ void diffuse_periodic_x_slab_mpi(
         MPI_COMM_WORLD);
   }
   solve_slab_periodic_x_lines(context, layout, solver, buffers);
-  const auto output_counts = layout.recv_counts;
-  const auto output_displacements = layout.recv_displacements;
-  const auto solved_counts = layout.send_counts;
-  const auto solved_displacements = layout.send_displacements;
-  const auto gathered_displacements = layout.recv_displacements;
+  const auto& output_counts = layout.recv_counts;
+  const auto& output_displacements = layout.recv_displacements;
+  const auto& solved_counts = layout.send_counts;
+  const auto& solved_displacements = layout.send_displacements;
+  const auto& gathered_displacements = layout.recv_displacements;
   buffers.send.assign(
       static_cast<size_t>(std::accumulate(
           output_counts.begin(), output_counts.end(), 0)), 0.0);
