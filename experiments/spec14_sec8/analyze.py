@@ -38,6 +38,7 @@ ARMS = ROOT / "arms"
 # has at least this many agents.
 MIN_DENOM = 10
 EXCLUSION_DECADES = 2.0
+OUTPUT_FILENAME = "output.h5"
 
 
 def keys_sorted(group):
@@ -71,7 +72,7 @@ def log_ratio(n1: int, n2: int):
 def analyze(arm: str) -> dict:
     directory = ARMS / arm
     cfg = json.loads((directory / "input.json").read_text())
-    with h5py.File(directory / "output.h5", "r") as handle:
+    with h5py.File(directory / OUTPUT_FILENAME, "r") as handle:
         agent_steps = keys_sorted(handle["agents"])
         series = []
         for key in agent_steps:
@@ -139,9 +140,9 @@ def fmt(value):
 
 def main() -> int:
     arms = sorted(p.name for p in ARMS.iterdir()
-                  if (p / "output.h5").exists())
+                  if (p / OUTPUT_FILENAME).exists())
     missing = sorted(p.name for p in ARMS.iterdir()
-                     if not (p / "output.h5").exists())
+                     if not (p / OUTPUT_FILENAME).exists())
     records = [analyze(a) for a in arms]
     by_key = {(r["condition"], r["treatment"], r["seed"]): r for r in records}
 

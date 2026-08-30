@@ -28,40 +28,44 @@ from .path_utils import (
     write_json_file,
 )
 
+UPTAKE_LIMIT_KEY = "metabolism.uptake_limit"
+LUMEN_TRANSFER_LENGTH_KEY = "toxin.lumen_transfer_length"
+LUMEN_TRANSFER_BASIS_KEY = "toxin.lumen_transfer_basis"
+
 ARM_MATRIX: dict[str, dict[str, Any]] = {
     "A1": {
         "axis": "A",
-        "metabolism.uptake_limit": "none",
+        UPTAKE_LIMIT_KEY: "none",
         "gpu_enabled": False,
     },
     "A2": {
         "axis": "A",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": False,
     },
     "A3": {
         "axis": "A",
-        "metabolism.uptake_limit": "delivery",
+        UPTAKE_LIMIT_KEY: "delivery",
         "gpu_enabled": False,
     },
     "A4": {
         "axis": "A",
-        "metabolism.uptake_limit": "none",
+        UPTAKE_LIMIT_KEY: "none",
         "gpu_enabled": True,
     },
     "A5": {
         "axis": "A",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": True,
     },
     "A6": {
         "axis": "A",
-        "metabolism.uptake_limit": "delivery",
+        UPTAKE_LIMIT_KEY: "delivery",
         "gpu_enabled": True,
         "status": "blocked",
         "blocked_reason": (
             'parser refusal: gpu_enabled=true cannot be combined with '
-            'metabolism.uptake_limit="delivery": CUDA parity is not '
+            f"{UPTAKE_LIMIT_KEY}=\"delivery\": CUDA parity is not "
             "implemented yet"
         ),
     },
@@ -69,7 +73,7 @@ ARM_MATRIX: dict[str, dict[str, Any]] = {
     # corrected-series-plus-FMM variant rather than duplicating B2.
     "B1": {
         "axis": "B",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": False,
         "image_series_mode": "pre_fix_duplicated_reflection",
         "image_series_relative_tolerance": 0.0,
@@ -78,7 +82,7 @@ ARM_MATRIX: dict[str, dict[str, Any]] = {
     },
     "B2": {
         "axis": "B",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": False,
         "image_series_mode": "corrected",
         "image_series_relative_tolerance": 1.0e-10,
@@ -86,7 +90,7 @@ ARM_MATRIX: dict[str, dict[str, Any]] = {
     },
     "B3": {
         "axis": "B",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": False,
         "image_series_mode": "corrected",
         "image_series_relative_tolerance": 1.0e-6,
@@ -94,7 +98,7 @@ ARM_MATRIX: dict[str, dict[str, Any]] = {
     },
     "B4": {
         "axis": "B",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": False,
         "image_series_mode": "corrected",
         "image_series_relative_tolerance": 1.0e-10,
@@ -106,44 +110,44 @@ ARM_MATRIX: dict[str, dict[str, Any]] = {
         "gpu_enabled": False,
         "image_series_mode": "corrected",
         "image_series_relative_tolerance": 1.0e-10,
-        "toxin.lumen_transfer_length": "inf",
-        "toxin.lumen_transfer_basis": "effective",
+        LUMEN_TRANSFER_LENGTH_KEY: "inf",
+        LUMEN_TRANSFER_BASIS_KEY: "effective",
     },
     "C2": {
         "axis": "C",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": False,
         "image_series_mode": "corrected",
         "image_series_relative_tolerance": 1.0e-10,
-        "toxin.lumen_transfer_length": 100.0e-6,
-        "toxin.lumen_transfer_basis": "effective",
+        LUMEN_TRANSFER_LENGTH_KEY: 100.0e-6,
+        LUMEN_TRANSFER_BASIS_KEY: "effective",
     },
     "C3": {
         "axis": "C",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": False,
         "image_series_mode": "corrected",
         "image_series_relative_tolerance": 1.0e-10,
-        "toxin.lumen_transfer_length": 100.0e-6,
-        "toxin.lumen_transfer_basis": "free",
+        LUMEN_TRANSFER_LENGTH_KEY: 100.0e-6,
+        LUMEN_TRANSFER_BASIS_KEY: "free",
     },
     "C4": {
         "axis": "C",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": False,
         "image_series_mode": "corrected",
         "image_series_relative_tolerance": 1.0e-10,
-        "toxin.lumen_transfer_length": 300.0e-6,
-        "toxin.lumen_transfer_basis": "effective",
+        LUMEN_TRANSFER_LENGTH_KEY: 300.0e-6,
+        LUMEN_TRANSFER_BASIS_KEY: "effective",
     },
     "C5": {
         "axis": "C",
-        "metabolism.uptake_limit": "sherwood",
+        UPTAKE_LIMIT_KEY: "sherwood",
         "gpu_enabled": False,
         "image_series_mode": "corrected",
         "image_series_relative_tolerance": 1.0e-10,
-        "toxin.lumen_transfer_length": 30.0e-6,
-        "toxin.lumen_transfer_basis": "effective",
+        LUMEN_TRANSFER_LENGTH_KEY: 30.0e-6,
+        LUMEN_TRANSFER_BASIS_KEY: "effective",
     },
 }
 
