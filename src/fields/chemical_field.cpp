@@ -434,6 +434,24 @@ struct DeliveryRationingCallbacks {
       ratio;
 };
 
+bool collective_positive(Real local_value) {
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (initialized && !finalized) {
+    Real global_value = 0.0;
+    MPI_Allreduce(&local_value, &global_value, 1, MPI_DOUBLE, MPI_MAX,
+                  MPI_COMM_WORLD);
+    return global_value > 0.0;
+  }
+#else
+  (void)local_value;
+#endif
+  return local_value > 0.0;
+}
+
 DeliveryRetryResult run_delivery_rationing(
     const std::vector<Real>& original,
     const DeliveryRationingCallbacks& callbacks) {
@@ -446,7 +464,8 @@ DeliveryRetryResult run_delivery_rationing(
     for (Int attempt = 0;
          result.negative_after_solve && attempt < kMaxDeliveryLocalRetries;
          ++attempt) {
-      if (const auto reduced = callbacks.reduce(); reduced <= 0.0) break;
+      const auto reduced = callbacks.reduce();
+      if (!collective_positive(reduced)) break;
       callbacks.restore();
       callbacks.solve();
       result.retry_events += 1.0;
