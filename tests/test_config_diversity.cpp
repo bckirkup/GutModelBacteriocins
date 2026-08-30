@@ -63,6 +63,11 @@ void shrink_for_ci(SimulationConfig& cfg) {
     ny = static_cast<Int>(std::ceil(cfg.domain.hi[1] / cfg.domain.grid_dx));
     nz = static_cast<Int>(std::ceil(cfg.domain.hi[2] / cfg.domain.grid_dx));
   }
+  if (cfg.immigration.enabled && cfg.immigration.placement == "z_slab") {
+    const Real span = cfg.domain.hi[2] - cfg.domain.lo[2];
+    cfg.immigration.z_min = cfg.domain.lo[2] + 0.9 * span;
+    cfg.immigration.z_max = cfg.domain.hi[2];
+  }
 
   Int total_agents = 0;
   for (const auto& strain : cfg.initial_strains) {
@@ -177,6 +182,59 @@ void test_example_configs_differ() {
   assert(fp_single != fp_diversity);
 
   std::cout << "  test_example_configs_differ: PASSED\n";
+}
+
+void test_diversity_paradox_documents_its_mechanisms() {
+  SimulationConfig cfg = InputParser::parse(
+      std::string(GUTIBM_SOURCE_DIR)
+      + "/examples/diversity_paradox/input.json");
+  InputParser::finalize_config(cfg);
+
+  assert(cfg.immigration.enabled);
+  assert(cfg.immigration.count > 0);
+  assert(cfg.immigration.schedule == "continuous");
+  assert(cfg.immigration.rate > 0.0);
+  assert(cfg.immigration.placement == "z_slab");
+  assert(cfg.immigration.strain_index >= 0);
+  assert(cfg.immigration.strain_index
+         < static_cast<Int>(cfg.initial_strains.size()));
+  const auto& immigrant =
+      cfg.initial_strains[static_cast<size_t>(cfg.immigration.strain_index)];
+  assert(immigrant.plasmids.empty());
+  assert(!immigrant.conjugative);
+
+  const Real domain_span = cfg.domain.hi[2] - cfg.domain.lo[2];
+  assert(cfg.immigration.z_min >=
+         cfg.domain.lo[2] + 0.8 * domain_span);
+  assert(cfg.immigration.z_max <= cfg.domain.hi[2]);
+  assert(cfg.immigration.z_min < cfg.immigration.z_max);
+
+  assert(cfg.hdf5.schedule.grid > 0);
+  assert(!cfg.hdf5.schedule.grid_species.empty());
+  bool has_required_species = false;
+  bool has_carbon = false;
+  bool has_bacteriocin = false;
+  for (const std::string& species_name : cfg.hdf5.schedule.grid_species) {
+    if (species_name == "all") has_required_species = true;
+    if (species_name == "carbon") has_carbon = true;
+    if (species_name.starts_with("bacteriocin_")) has_bacteriocin = true;
+  }
+  assert(has_required_species || (has_carbon && has_bacteriocin));
+
+  SimulationConfig run = cfg;
+  shrink_for_ci(run);
+  run.time.total_time = 36000.0;
+  run.time.output_interval = 36000.0;
+  Simulation sim;
+  sim.init(run);
+  for (Int step = 0; step < 600; ++step) {
+    sim.step(run.time.bio_dt);
+  }
+  const Int fired =
+      sim.cumulative_events().immigrations + sim.step_events().immigrations;
+  assert(fired > 0);
+  std::cout << "  test_diversity_paradox_documents_its_mechanisms: PASSED "
+            << "(fired=" << fired << ")\n";
 }
 
 void test_seed_and_fix_subset_change_outcomes() {
@@ -423,6 +481,7 @@ int main() {
   std::cout << "=== Config Diversity Tests ===\n";
   test_fixture_configs_produce_distinct_fingerprints();
   test_example_configs_differ();
+  test_diversity_paradox_documents_its_mechanisms();
   test_seed_and_fix_subset_change_outcomes();
   test_large_json_seed_changes_fingerprint();
   test_ros_driver_config_diversity();

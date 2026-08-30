@@ -506,6 +506,13 @@ void print_gpu_status_banner(bool gpu_active, const GpuConfig& gpu) {
   }
 }
 
+void validate_immigration(const SimulationConfig& cfg,
+                          ImmigrationEngine& immigration) {
+  immigration.validate(cfg.immigration,
+                       static_cast<Int>(cfg.initial_strains.size()),
+                       cfg.domain.lo, cfg.domain.hi);
+}
+
 }  // namespace
 
 void Simulation::init(const SimulationConfig& cfg) {
@@ -526,8 +533,7 @@ void Simulation::init(const SimulationConfig& cfg) {
         "gpu_enabled=true is not supported with "
         "chemistry.species_subset != full");
   }
-  immigration_.validate(cfg_.immigration,
-                        static_cast<Int>(cfg_.initial_strains.size()));
+  validate_immigration(cfg_, immigration_);
   rng_.seed(cfg_.seed);
   immigration_.seed(cfg_.seed ^ kImmigrationSeedMix);
   immigration_.set_start_step(0);
@@ -791,8 +797,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
         "gpu_enabled=true is not supported with "
         "chemistry.species_subset != full");
   }
-  immigration_.validate(cfg_.immigration,
-                        static_cast<Int>(cfg_.initial_strains.size()));
+  validate_immigration(cfg_, immigration_);
   rng_.seed(cfg_.seed);
   immigration_.seed(cfg_.seed ^ kImmigrationSeedMix);
 

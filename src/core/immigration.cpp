@@ -5,6 +5,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <format>
 
 #ifdef GUTIBM_MPI
 #include <mpi.h>
@@ -113,7 +114,8 @@ std::pair<Int, Real> best_distance_candidate(
 }  // namespace
 
 void ImmigrationEngine::validate(const ImmigrationConfig& immigration,
-                                 Int initial_strain_count) const {
+                                 Int initial_strain_count, const Vec3& lo,
+                                 const Vec3& hi) const {
   if (!immigration.enabled) return;
   if (immigration.count < 0) {
     throw ConfigError("immigration.count must be non-negative");
@@ -129,6 +131,12 @@ void ImmigrationEngine::validate(const ImmigrationConfig& immigration,
   if (immigration.placement == "z_slab" &&
       immigration.z_min >= immigration.z_max) {
     throw ConfigError("immigration.z_min must be less than z_max");
+  }
+  if (immigration.placement == "z_slab" &&
+      (immigration.z_min < lo[2] || immigration.z_max > hi[2])) {
+    throw ConfigError(std::format(
+        "immigration z_slab band [{}, {}] lies outside domain z [{}, {}]",
+        immigration.z_min, immigration.z_max, lo[2], hi[2]));
   }
   if (immigration.distance_tolerance < 0.0 ||
       immigration.rate < 0.0) {
