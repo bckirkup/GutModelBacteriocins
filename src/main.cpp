@@ -10,6 +10,7 @@
 #include "input_parser.h"
 #include "stop_signal.h"
 
+#include <exception>
 #include <iostream>
 #include <string>
 
@@ -50,28 +51,36 @@ int main(int argc, char** argv) {
   MPI_Init(&argc, &argv);
 #endif
 
-  gutibm::SimulationConfig cfg;
+  try {
+    gutibm::SimulationConfig cfg;
 
-  if (argc > 1) {
-    std::string config_file = argv[1];
-    cfg = gutibm::InputParser::parse(config_file);
-  } else {
-    cfg = gutibm::InputParser::default_config();
-  }
+    if (argc > 1) {
+      std::string config_file = argv[1];
+      cfg = gutibm::InputParser::parse(config_file);
+    } else {
+      cfg = gutibm::InputParser::default_config();
+    }
 
-  gutibm::install_stop_signal_handlers();
+    gutibm::install_stop_signal_handlers();
 
-  gutibm::Simulation sim;
-  if (!cfg.checkpoint.file.empty()) {
-    sim.init_from_checkpoint(cfg, cfg.checkpoint.file, cfg.checkpoint.step);
-  } else {
-    sim.init(cfg);
-  }
-  const int exit_code = sim.run();
+    gutibm::Simulation sim;
+    if (!cfg.checkpoint.file.empty()) {
+      sim.init_from_checkpoint(cfg, cfg.checkpoint.file, cfg.checkpoint.step);
+    } else {
+      sim.init(cfg);
+    }
+    const int exit_code = sim.run();
 
 #ifdef GUTIBM_MPI
-  MPI_Finalize();
+    MPI_Finalize();
 #endif
 
-  return exit_code;
+    return exit_code;
+  } catch (const std::exception& error) {
+    std::cerr << "Error: " << error.what() << "\n";
+#ifdef GUTIBM_MPI
+    MPI_Abort(MPI_COMM_WORLD, 2);
+#endif
+    return 2;
+  }
 }
