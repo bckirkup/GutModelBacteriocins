@@ -9,15 +9,20 @@ using namespace gutibm;
 
 namespace {
 
-Domain make_domain(Int nz) {
+Domain make_domain(Int nx, Int ny, Int nz, Int grid_halo_width = 1) {
   DomainConfig cfg;
   cfg.lo = {0.0, 0.0, 0.0};
-  cfg.hi = {5.0e-6, 5.0e-6, nz * 5.0e-6};
+  cfg.hi = {nx * 5.0e-6, ny * 5.0e-6, nz * 5.0e-6};
   cfg.grid_dx = 5.0e-6;
   cfg.hash_cell_size = 10.0e-6;
+  cfg.grid_halo_width = grid_halo_width;
   Domain domain;
   domain.init(cfg);
   return domain;
+}
+
+Domain make_domain(Int nz) {
+  return make_domain(1, 1, nz);
 }
 
 ChemicalSpec diffusing_species(const char* name,
@@ -28,6 +33,14 @@ ChemicalSpec diffusing_species(const char* name,
   spec.retardation = 1.0;
   spec.diffusion_enabled = true;
   spec.epithelial_boundary_mode = mode;
+  return spec;
+}
+
+ChemicalSpec delivery_species(EpithelialBoundaryMode mode) {
+  ChemicalSpec spec = diffusing_species("delivery", mode);
+  spec.delivery_enabled = true;
+  spec.epithelial_transfer_coeff =
+      mode == EpithelialBoundaryMode::Robin ? 1.0e-5 : 0.0;
   return spec;
 }
 
@@ -56,6 +69,32 @@ int main() {
       diffusing_species("robin", EpithelialBoundaryMode::Robin),
   });
   assert(diffusion_all_species_within(supported_domain, supported, 1024));
+
+  const Domain route_domain = make_domain(4, 5, 6);
+  ChemicalField route_field;
+  route_field.init(
+      route_domain, {delivery_species(EpithelialBoundaryMode::Robin)});
+  assert(delivery_route_b_eligible(route_domain, route_field));
+  assert(!delivery_route_b_eligible(route_domain, route_field, 4));
+
+  const Domain exact_cap = make_domain(1, 1, 512);
+  ChemicalField exact_cap_field;
+  exact_cap_field.init(
+      exact_cap, {delivery_species(EpithelialBoundaryMode::Robin)});
+  assert(delivery_route_b_eligible(exact_cap, exact_cap_field));
+
+  const Domain over_cap = make_domain(1, 1, 513);
+  ChemicalField over_cap_field;
+  over_cap_field.init(
+      over_cap, {delivery_species(EpithelialBoundaryMode::Robin)});
+  assert(!delivery_route_b_eligible(over_cap, over_cap_field));
+
+  ChemicalField slab_field;
+  const Domain slab_domain = make_domain(4, 5, 6, 2);
+  slab_field.init(
+      slab_domain, {delivery_species(EpithelialBoundaryMode::Robin)},
+      "slab");
+  assert(!delivery_route_b_eligible(slab_domain, slab_field));
 
   ChemicalSpec disabled_robin =
       diffusing_species("disabled_robin", EpithelialBoundaryMode::Robin);

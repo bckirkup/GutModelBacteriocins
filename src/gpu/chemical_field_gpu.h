@@ -10,6 +10,7 @@ namespace gutibm {
 
 class ChemicalField;
 class Domain;
+struct ChemicalSpec;
 
 class ChemicalFieldGpu {
  public:
@@ -29,6 +30,24 @@ class ChemicalFieldGpu {
   void reset_reaction_clip();
   void download_reaction_clip(ChemicalField& field) const;
   bool apply_diffusion(const Domain& domain, ChemicalField& field, Real dt);
+  bool apply_delivery_species(const Domain& domain, const ChemicalSpec& spec,
+                              Int species, Real dt);
+  void reset_delivery_boundary(Int species);
+  Real download_delivery_boundary(Int species) const;
+  bool delivery_has_negative(Int spec);
+  Real delivery_negative_fraction(Int spec) const;
+  void prepare_delivery_species(
+      Int spec, const std::vector<Real>& sink,
+      const std::vector<Real>& prescribed);
+  void snapshot_delivery_species(Int spec);
+  void restore_delivery_species(Int spec);
+  void restore_delivery_original(Int spec);
+  void download_delivery_species(Int spec, std::vector<Real>& concentration,
+                                 std::vector<Real>& realized) const;
+  void upload_delivery_concentration(Int spec,
+                                     const std::vector<Real>& concentration);
+  void upload_delivery_prescribed(const std::vector<Real>& prescribed);
+  Real download_delivery_gradient_source() const;
   bool apply_boundaries(const Domain& domain, ChemicalField& field);
   void reset_agent_uptake();
   void download_agent_uptake(ChemicalField& field) const;
@@ -97,6 +116,13 @@ class ChemicalFieldGpu {
   DeviceBuffer<double> d_vbf_totals_;
   DeviceBuffer<double> d_reaction_clip_;
   DeviceBuffer<int> d_agent_counts_;
+  DeviceBuffer<double> d_delivery_sink_;
+  DeviceBuffer<double> d_delivery_prescribed_;
+  DeviceBuffer<double> d_delivery_realized_;
+  DeviceBuffer<double> d_delivery_concentration_backup_;
+  DeviceBuffer<double> d_delivery_realized_backup_;
+  DeviceBuffer<double> d_delivery_gradient_source_;
+  DeviceBuffer<unsigned long long> d_delivery_negative_count_;
 };
 
 }  // namespace gutibm
