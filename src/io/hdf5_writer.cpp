@@ -759,8 +759,12 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
     const double halt_time = sim.halted_for_dysbiosis() ? time : 0.0;
     const int32_t completed_total_time =
         time >= sim.config().time.total_time ? 1 : 0;
-    const int32_t termination_reason =
-        sim.halted_for_dysbiosis() ? 1 : (completed_total_time != 0 ? 0 : 2);
+    int32_t termination_reason = 2;
+    if (sim.halted_for_dysbiosis()) {
+      termination_reason = 1;
+    } else if (completed_total_time != 0) {
+      termination_reason = 0;
+    }
     const int32_t termination_step = step;
     const double termination_time = time;
     const auto cause_code = static_cast<int32_t>(
@@ -1471,7 +1475,7 @@ void HDF5Writer::write_grid_layer(const Simulation& sim,
                     rank == 0 ? gathered.data() : nullptr, counts.data(),
                     displacements.data(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
         if (rank == 0) {
-          std::fill(grid3d.begin(), grid3d.end(), 0.0);
+          std::ranges::fill(grid3d, 0.0);
           for (int r = 0; r < nprocs; ++r) {
             const int width = widths[static_cast<size_t>(r)];
             const int source_offset = displacements[static_cast<size_t>(r)];

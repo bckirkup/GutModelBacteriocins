@@ -10,6 +10,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <ranges>
 #include <set>
 #include <string>
 
@@ -52,12 +53,11 @@ void test_exact_species_sets() {
 
 void test_required_species_rejection() {
   auto cfg = InputParser::default_config();
-  cfg.chemicals.erase(
-      std::remove_if(cfg.chemicals.begin(), cfg.chemicals.end(),
-                     [](const ChemicalSpec& spec) {
-                       return spec.name == species::CARBON;
-                     }),
-      cfg.chemicals.end());
+  const auto new_end = std::ranges::remove_if(
+      cfg.chemicals, [](const ChemicalSpec& spec) {
+        return spec.name == species::CARBON;
+      });
+  cfg.chemicals.erase(new_end.begin(), cfg.chemicals.end());
   cfg.hdf5.enabled = false;
   bool threw = false;
   try {

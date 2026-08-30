@@ -109,9 +109,10 @@ void Domain::decompose() {
   Int axis = cfg_.mpi_decomp_axis;  // 0 = x
   Real global_lo = lo_[axis];
   Real global_hi = hi_[axis];
-  const auto grid_range = grid_x_range_for_rank(nx_, nprocs_, rank_);
-  local_lo_x_ = global_lo + grid_range.first * dx_[0];
-  local_hi_x_ = global_lo + grid_range.second * dx_[0];
+  const auto [grid_begin, grid_end] =
+      grid_x_range_for_rank(nx_, nprocs_, rank_);
+  local_lo_x_ = global_lo + grid_begin * dx_[0];
+  local_hi_x_ = global_lo + grid_end * dx_[0];
   if (rank_ == nprocs_ - 1) local_hi_x_ = global_hi;
 
   ghost_width_ = cfg_.ghost_width;
@@ -128,8 +129,8 @@ void Domain::decompose() {
     rank_hi_ = axis_periodic ? 0 : -1;
   }
 
-  local_grid_x_begin_ = grid_range.first;
-  local_grid_x_end_ = grid_range.second;
+  local_grid_x_begin_ = grid_begin;
+  local_grid_x_end_ = grid_end;
 }
 
 std::pair<Int, Int> Domain::grid_x_range_for_rank(

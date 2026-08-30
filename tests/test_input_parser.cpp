@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cmath>
+#include <ranges>
 #include <string>
 #include <fstream>
 #include <sstream>
@@ -100,8 +101,8 @@ void test_strain_fixture() {
   assert(std::abs(cfg.fixes.bacteriocin.mucin_charge.dz_half - 1.1) < 1e-12);
   assert(std::abs(cfg.fixes.bacteriocin.mucin_charge.width - 0.8) < 1e-12);
   assert(std::abs(cfg.fixes.bacteriocin.mucin_charge.ph - 6.8) < 1e-12);
-  const auto b12 = std::find_if(
-      cfg.chemicals.begin(), cfg.chemicals.end(),
+  const auto b12 = std::ranges::find_if(
+      cfg.chemicals,
       [](const ChemicalSpec& chemical) { return chemical.name == species::B12; });
   assert(b12 != cfg.chemicals.end());
   assert(std::abs(b12->initial_conc - 3e-4) < 1e-15);
@@ -613,8 +614,8 @@ void test_carbon_z_amplitude_parser_keys() {
             cfg, "carbon.boundary_conc", "1e-3"));
       }
 
-      const auto carbon = std::find_if(
-          cfg.chemicals.begin(), cfg.chemicals.end(),
+      const auto carbon = std::ranges::find_if(
+          cfg.chemicals,
           [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
       assert(carbon != cfg.chemicals.end());
       assert(std::abs(cfg.carbon_z_amplitude - 4e-3) < 1e-15);
@@ -626,8 +627,8 @@ void test_carbon_z_amplitude_parser_keys() {
   SimulationConfig boundary_only = InputParser::default_config();
   assert(InputParser::apply_flat_key(
       boundary_only, "carbon_boundary_conc", "1e-3"));
-  const auto carbon = std::find_if(
-      boundary_only.chemicals.begin(), boundary_only.chemicals.end(),
+  const auto carbon = std::ranges::find_if(
+      boundary_only.chemicals,
       [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
   assert(carbon != boundary_only.chemicals.end());
   assert(std::abs(carbon->initial_conc - 1e-3) < 1e-15);

@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <numeric>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -458,8 +459,8 @@ DeliveryRetryResult run_delivery_rationing(
       const Real mid = (lo + hi) * 0.5;
       callbacks.restore_original();
       auto& current = callbacks.prescribed();
-      std::transform(
-          original.begin(), original.end(), current.begin(),
+      std::ranges::transform(
+          original, current.begin(),
           [mid](const Real value) { return value * mid; });
       callbacks.solve();
       result.retry_events += 1.0;
@@ -472,8 +473,8 @@ DeliveryRetryResult run_delivery_rationing(
     }
     callbacks.restore_original();
     auto& current = callbacks.prescribed();
-    std::transform(
-        original.begin(), original.end(), current.begin(),
+    std::ranges::transform(
+        original, current.begin(),
         [best](const Real value) { return value * best; });
     callbacks.solve();
     result.retry_events += 1.0;
@@ -593,7 +594,7 @@ void fill_gradient_profile(std::vector<Real>& gradient,
                            Int iz) {
   if (gradient_spec == nullptr) return;
   const Real value = z_gradient_reference(*gradient_spec, domain, iz);
-  std::fill(gradient.begin(), gradient.end(), value);
+  std::ranges::fill(gradient, value);
 }
 
 void load_periodic_x_delivery_line(
@@ -1852,7 +1853,6 @@ void diffuse_periodic_x_slab_single(
   const auto* sink_rate = context.sink_rate;
   const auto* gradient_spec = context.gradient_spec;
   auto* realized = context.realized;
-  const Real sink_dt = context.sink_dt;
   const Real cell_volume = context.cell_volume;
   const Int nx = domain.nx();
   const Int ny = domain.ny();
@@ -3147,7 +3147,7 @@ void ChemicalField::apply_diffusion_species(
   const auto flux_snapshot = flux_accounting_;
   const auto realized_snapshot = total_sink_realized_[static_cast<size_t>(s)];
   const auto prescribed_snapshot = prescribed_sink_[static_cast<size_t>(s)];
-  const auto solve = [this, &context] {
+  const auto solve = [&context] {
       prepare_replicated_diffusion(context);
       transport_replicated_diffusion(context);
       finish_replicated_diffusion(context);
@@ -3288,7 +3288,7 @@ void ChemicalField::apply_diffusion_slab_species(
   const auto flux_snapshot = flux_accounting_;
   const auto realized_snapshot = total_sink_realized_[static_cast<size_t>(s)];
   const auto prescribed_snapshot = prescribed_sink_[static_cast<size_t>(s)];
-  const auto solve = [this, &context] {
+  const auto solve = [&context] {
       prepare_slab_diffusion(context);
       transport_slab_diffusion(context);
       finish_slab_diffusion(context);

@@ -9,6 +9,7 @@
 #include "plasmid.h"
 #include <iostream>
 #include <algorithm>
+#include <ranges>
 #include "error.h"
 #include <sstream>
 #include <stdexcept>
@@ -301,8 +302,7 @@ void configure_toxin_species(SimulationConfig& cfg) {
   bool inserted = false;
   for (const auto& spec : cfg.chemicals) {
     const bool is_receptor =
-        std::find(std::begin(receptor_names), std::end(receptor_names),
-                  spec.name)
+        std::ranges::find(receptor_names, spec.name)
         != std::end(receptor_names);
     if (is_receptor) {
       if (!inserted) {

@@ -10,9 +10,11 @@
 #include "error.h"
 
 #include <cassert>
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -198,9 +200,8 @@ void test_resume_preserves_mu_max_and_in_crypt() {
     assert(snap.agents.in_crypt[i] != 0);
     assert(snap.agents.microcin_penalty_applied[i] != 0);
   }
-  const auto continuous_count = std::count(
-      snap.genome.bi_release_mode.begin(), snap.genome.bi_release_mode.end(),
-      static_cast<int32_t>(ReleaseMode::CONTINUOUS));
+  const auto continuous_count = std::ranges::count(
+      snap.genome.bi_release_mode, static_cast<int32_t>(ReleaseMode::CONTINUOUS));
   assert(continuous_count == static_cast<int>(snap.agents.id.size()));
 
   const std::string resume_out =

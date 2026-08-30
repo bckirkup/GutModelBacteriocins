@@ -25,6 +25,7 @@
 #include <limits>
 #include <numbers>
 #include <numeric>
+#include <ranges>
 #include <iostream>
 #include <type_traits>
 #ifdef GUTIBM_MPI
@@ -924,8 +925,8 @@ void QSSASolver::sample_nuclease_sources(
     const std::vector<bool>& is_nuclease,
     const std::vector<ReceptorType>& targets,
     const AgentPool& agents) {
-  sampled_nuclease_sources_ = std::any_of(
-      is_nuclease.begin(), is_nuclease.end(), [](bool value) {
+  sampled_nuclease_sources_ = std::ranges::any_of(
+      is_nuclease, [](bool value) {
         return value;
       });
   if (!sampled_nuclease_sources_) return;
@@ -961,8 +962,7 @@ Real QSSASolver::evaluate_sample(const SampledToxinField& field,
 }
 
 Int QSSASolver::sampled_slot_for_species(Int species_idx) const {
-  const auto it = std::find(sampled_species_indices_.begin(),
-                            sampled_species_indices_.end(), species_idx);
+  const auto it = std::ranges::find(sampled_species_indices_, species_idx);
   return it == sampled_species_indices_.end()
       ? -1
       : static_cast<Int>(std::distance(sampled_species_indices_.begin(), it));
