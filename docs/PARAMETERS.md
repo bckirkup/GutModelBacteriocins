@@ -470,7 +470,7 @@ default.
 | `mucin.initial_conc` | 1e-2 | mol/m³ | Initial mucin concentration |
 | `mucin.secretion_rate` | 1e-4 | mol/m³/s | Goblet cell secretion at epithelium |
 | `mucin.Km_degradation` | 1e-3 | mol/m³ | Half-saturation for VBF mucin degradation |
-| `mucin.k_liberation` | 1e-4 | 1/s | Rate constant for mucin → monosaccharide conversion |
+| `mucin.k_liberation` | 5e-16 | mol/(cell·s) | Per-cell specific mucin → monosaccharide liberation rate |
 
 ---
 

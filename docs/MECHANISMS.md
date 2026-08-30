@@ -990,7 +990,12 @@ rate(z) = mucin_liberation * exp(-z_rel / mucin_z_gradient_lambda)
 ```
 This couples the ongoing carbon source term to the same spatial gradient, maintaining the profile during simulation.
 
-**Spec 1 extensions:** When `mucin.enabled`, liberation follows `k_liberation * vbf_density * [mucin] / (Km + [mucin])` with goblet secretion at z=0. When `acetate.enabled`, VBF adds z-weighted acetate production and epithelial uptake. When `oxygen.enabled`, VBF applies a constant O₂ sink.
+**Spec 1 extensions:** When `mucin.enabled`, liberation follows
+`k_liberation * vbf_density * [mucin] / (Km + [mucin])`, where
+`k_liberation` is a per-cell specific rate in mol/(cell·s), so the product is
+a concentration rate, with goblet secretion at z=0. When `acetate.enabled`, VBF
+adds z-weighted acetate production and epithelial uptake. When
+`oxygen.enabled`, VBF applies a constant O₂ sink.
 
 ### Biological consequences
 - Agents near the epithelium (z ~ 0) have access to more carbon, leading to faster Monod growth.

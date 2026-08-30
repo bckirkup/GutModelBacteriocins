@@ -74,7 +74,7 @@ struct MucinConfig {
   Real initial_conc = 1.0e-2;       // mol/m^3 bulk mucin polymer
   Real secretion_rate = 1.0e-4;     // mol/m^3/s at epithelium
   Real Km_degradation = 1.0e-3;     // mol/m^3
-  Real k_liberation = 1.0e-4;       // 1/s rate constant
+  Real k_liberation = 5.0e-16;       // mol/(cell·s) per-cell specific liberation rate
   Real D_free = 1.0e-12;            // effectively immobile
   Real retardation = 1000.0;
 };
