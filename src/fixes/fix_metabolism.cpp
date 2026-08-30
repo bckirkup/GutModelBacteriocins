@@ -75,19 +75,11 @@ const std::vector<Int>& FixMetabolism::delivery_support_cells(
   if (cached != delivery_support_cache_.end()) {
     return cached->second;
   }
-  // The cache is populated before the OpenMP biology loop. Keep an
-  // unexpected miss safe if a caller is added to that loop later.
-#ifdef GUTIBM_OPENMP
-#pragma omp critical(delivery_support_cache_insert)
-#endif
-  {
-    cached = delivery_support_cache_.find(agent.identity.tag);
-    if (cached == delivery_support_cache_.end()) {
-      cached = delivery_support_cache_.try_emplace(
-          agent.identity.tag, enumerate_delivery_support_cells(agent)).first;
-    }
-  }
-  return cached->second;
+  // Prepared entries are read-only; an unexpected miss uses per-thread
+  // scratch rather than mutating the shared cache.
+  static thread_local std::vector<Int> scratch;
+  scratch = enumerate_delivery_support_cells(agent);
+  return scratch;
 }
 
 void FixMetabolism::prepare_delivery_support_cache() {
@@ -111,6 +103,11 @@ void FixMetabolism::add_delivery_mass(
     Int species_index, const Agent& agent, Real amount) const {
   if (amount <= 0.0) return;
   auto& chem = sim_.chemical_field();
+  if (cfg_.delivery_far_field_radius <= 0.0) {
+    if (agent.grid_cell < 0) return;
+    chem.add_prescribed_sink_global(species_index, agent.grid_cell, amount);
+    return;
+  }
   const auto& support = delivery_support_cells(agent);
   if (support.empty()) return;
   const Real per_cell = amount / static_cast<Real>(support.size());

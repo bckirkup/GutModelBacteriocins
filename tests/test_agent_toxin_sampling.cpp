@@ -186,22 +186,68 @@ void test_distance_ordering_and_fmm() {
   std::cout << "  test_distance_ordering_and_fmm: PASSED\n";
 }
 
-void test_sampling_caches_appended_agents() {
+void test_sampling_does_not_cache_appended_agents() {
   auto sim = make_sim("agents");
   add_target(sim, {55e-6, 65e-6, 65e-6});
   const ToxinBurstSource source = source_at({65e-6, 65e-6, 65e-6});
   solve(sim, source);
 
-  const Agent appended = add_target(sim, {45e-6, 65e-6, 65e-6});
+  const std::vector<Vec3> appended_positions{
+      {45e-6, 65e-6, 65e-6},
+      {35e-6, 65e-6, 65e-6},
+      {25e-6, 65e-6, 65e-6}};
+  for (const Vec3& position : appended_positions) {
+    add_target(sim, position);
+  }
+  const Int initial_count = 1;
   const Int toxin = sim.chemical_field().find(
       species::BACTERIOCIN_BTUB);
-  const Real sampled = sim.qssa().sampled_toxin_conc(1, toxin);
-  const Real analytic = sim.qssa().point_concentration(
-      appended.x, {source.pos}, {source.params}, {1.0});
-  assert(sampled > 0.0);
-  assert(std::abs(sampled - analytic)
-         <= 1e-12 * std::max({1.0, std::abs(sampled), std::abs(analytic)}));
-  std::cout << "  test_sampling_caches_appended_agents: PASSED\n";
+  assert(sim.qssa().sampled_toxin_sample_count(toxin) == initial_count);
+
+  std::vector<Real> expected;
+  std::vector<Real> sampled;
+  for (const Vec3& position : appended_positions) {
+    expected.push_back(sim.qssa().point_concentration(
+        position, {source.pos}, {source.params}, {1.0}));
+  }
+  for (Int i = 0; i < static_cast<Int>(appended_positions.size()); ++i) {
+    sampled.push_back(sim.qssa().sampled_toxin_conc(initial_count + i, toxin));
+  }
+  for (Int i = 0; i < static_cast<Int>(sampled.size()); ++i) {
+    assert(std::isfinite(sampled[static_cast<size_t>(i)]));
+    assert(sampled[static_cast<size_t>(i)] > 0.0);
+    assert(std::abs(sampled[static_cast<size_t>(i)]
+                    - expected[static_cast<size_t>(i)])
+           <= 1e-12
+               * std::max({1.0, std::abs(sampled[static_cast<size_t>(i)]),
+                           std::abs(expected[static_cast<size_t>(i)])}));
+  }
+  assert(sampled[0] > sampled[1]);
+  assert(sampled[1] > sampled[2]);
+  assert(sim.qssa().sampled_toxin_sample_count(toxin) == initial_count);
+
+#ifdef GUTIBM_OPENMP
+  std::vector<Real> parallel_samples(96, 0.0);
+#pragma omp parallel for
+  for (Int i = 0; i < static_cast<Int>(parallel_samples.size()); ++i) {
+    const Int appended_index =
+        initial_count + i % static_cast<Int>(appended_positions.size());
+    parallel_samples[static_cast<size_t>(i)] =
+        sim.qssa().sampled_toxin_conc(appended_index, toxin);
+  }
+  for (Int i = 0; i < static_cast<Int>(parallel_samples.size()); ++i) {
+    const Int appended_index =
+        i % static_cast<Int>(appended_positions.size());
+    assert(std::abs(parallel_samples[static_cast<size_t>(i)]
+                    - expected[static_cast<size_t>(appended_index)])
+           <= 1e-12
+               * std::max({1.0,
+                           std::abs(parallel_samples[static_cast<size_t>(i)]),
+                           std::abs(expected[static_cast<size_t>(appended_index)])}));
+  }
+  assert(sim.qssa().sampled_toxin_sample_count(toxin) == initial_count);
+#endif
+  std::cout << "  test_sampling_does_not_cache_appended_agents: PASSED\n";
 }
 
 void test_nuclease_sampling_specificity_sensitivity_and_bounds() {
@@ -251,7 +297,7 @@ int main() {
   test_sampling_exactness_and_bounds();
   test_nonmaterialized_grid_is_zeroed();
   test_distance_ordering_and_fmm();
-  test_sampling_caches_appended_agents();
+  test_sampling_does_not_cache_appended_agents();
   test_nuclease_sampling_specificity_sensitivity_and_bounds();
   std::cout << "All agent toxin sampling tests passed.\n";
   return 0;
