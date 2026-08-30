@@ -2245,12 +2245,18 @@ void diffuse_periodic_y_slab_delivery(
     for (Int ix = 0; ix < nx; ++ix) {
       std::vector<Real> line(static_cast<size_t>(ny));
       std::vector<Real> sink(static_cast<size_t>(ny));
+      std::vector<Real> prescribed(static_cast<size_t>(ny), 0.0);
       for (Int iy = 0; iy < ny; ++iy) {
         const Int cell = slab_storage_index(
             halo_width + ix, iy, iz, storage_nx, ny);
         line[static_cast<size_t>(iy)] = concentration[static_cast<size_t>(cell)];
         sink[static_cast<size_t>(iy)] =
             sink_rate[static_cast<size_t>(cell)] * sink_dt;
+        if (context.prescribed_mass != nullptr) {
+          prescribed[static_cast<size_t>(iy)] =
+              (*context.prescribed_mass)[static_cast<size_t>(cell)]
+              / (3.0 * cell_volume);
+        }
       }
       std::vector<Real> gradient;
       if (gradient_spec != nullptr) {
@@ -2260,7 +2266,8 @@ void diffuse_periodic_y_slab_delivery(
       }
       solve_periodic_with_sink(
           line, sink, alpha,
-          gradient_spec != nullptr ? &gradient : nullptr);
+          gradient_spec != nullptr ? &gradient : nullptr,
+          context.prescribed_mass != nullptr ? &prescribed : nullptr);
       for (Int iy = 0; iy < ny; ++iy) {
         const Int cell = slab_storage_index(
             halo_width + ix, iy, iz, storage_nx, ny);

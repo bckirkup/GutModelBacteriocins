@@ -894,13 +894,14 @@ struct PrescribedMassClosureResult {
 };
 
 PrescribedMassClosureResult run_prescribed_mass_closure(
-    EpithelialBoundaryMode mode, Real transfer_coeff) {
+    EpithelialBoundaryMode mode, Real transfer_coeff, bool slab) {
   constexpr Real dt = 60.0;
   DomainConfig cfg;
   cfg.lo = {0.0, 0.0, 0.0};
   cfg.hi = {20.0e-6, 20.0e-6, 30.0e-6};
   cfg.grid_dx = 5.0e-6;
   cfg.hash_cell_size = 10.0e-6;
+  if (slab) cfg.grid_halo_width = 2;
   Domain domain;
   domain.init(cfg);
 
@@ -909,7 +910,7 @@ PrescribedMassClosureResult run_prescribed_mass_closure(
   spec.diff_coeff = 1.0e-20;
   spec.delivery_enabled = true;
   ChemicalField chem;
-  chem.init(domain, {spec});
+  chem.init(domain, {spec}, slab ? "slab" : "replicated");
   const Int species_index = chem.find(species::OXYGEN);
   const Real prescribed = 1.0e-3 * 0.05 * domain.cell_volume();
   chem.add_prescribed_sink_global(
@@ -932,23 +933,37 @@ void test_delivery_prescribed_mass_closure_all_boundaries() {
   for (const auto mode : modes) {
     const Real transfer_coeff =
         mode == EpithelialBoundaryMode::Robin ? 1.0e-8 : 0.0;
-    const PrescribedMassClosureResult result =
-        run_prescribed_mass_closure(mode, transfer_coeff);
-    const Real scale = std::max(
-        {std::abs(result.prescribed), std::abs(result.field_removed),
-         1.0e-300});
-    const Real relative_error =
-        std::abs(result.field_removed - result.prescribed) / scale;
-    std::cout << "  prescribed_mass mode="
-              << (mode == EpithelialBoundaryMode::Dirichlet
-                      ? "dirichlet"
-                      : (mode == EpithelialBoundaryMode::Robin
-                             ? "robin" : "flux"))
-              << " prescribed=" << result.prescribed
-              << " removed=" << result.field_removed
-              << " ratio=" << result.field_removed / result.prescribed
-              << " relative_error=" << relative_error << "\n";
-    assert(relative_error <= 1.0e-9);
+    const PrescribedMassClosureResult replicated =
+        run_prescribed_mass_closure(mode, transfer_coeff, false);
+    const PrescribedMassClosureResult slab =
+        run_prescribed_mass_closure(mode, transfer_coeff, true);
+    const auto check_closure = [mode](
+                                   const char* decomposition,
+                                   const PrescribedMassClosureResult& result) {
+      const Real scale = std::max(
+          {std::abs(result.prescribed), std::abs(result.field_removed),
+           1.0e-300});
+      const Real relative_error =
+          std::abs(result.field_removed - result.prescribed) / scale;
+      std::cout << "  prescribed_mass mode="
+                << (mode == EpithelialBoundaryMode::Dirichlet
+                        ? "dirichlet"
+                        : (mode == EpithelialBoundaryMode::Robin
+                               ? "robin" : "flux"))
+                << " decomposition=" << decomposition
+                << " prescribed=" << result.prescribed
+                << " removed=" << result.field_removed
+                << " ratio=" << result.field_removed / result.prescribed
+                << " relative_error=" << relative_error << "\n";
+      assert(relative_error <= 1.0e-9);
+    };
+    check_closure("replicated", replicated);
+    check_closure("slab", slab);
+    const Real parity_scale = std::max(
+        {std::abs(replicated.field_removed),
+         std::abs(slab.field_removed), 1.0e-300});
+    assert(std::abs(replicated.field_removed - slab.field_removed)
+           / parity_scale <= 1.0e-9);
   }
   std::cout << "  test_delivery_prescribed_mass_closure_all_boundaries:"
             << " PASSED\n";
