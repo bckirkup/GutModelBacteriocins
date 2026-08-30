@@ -121,6 +121,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | **#41 MPI state loss** | Fixed | `agent_transfer.cpp` serializes crypt, affinities, immunity escape |
 | **#42 Plasmid names** | Fixed | `PlasmidLibrary::find()` + aliases; warn on unknown names |
 | **#43 Multi-rank tests** | Fixed | `mpi_multi_rank` + `hdf5_roundtrip_parallel` CTest targets |
+| **Requested HDF5 output failed open** | Fixed | Requested output previously could fail validation or creation, warn, remove the file, and let the run complete with exit 0 and no scientific record. `HDF5Writer::init` now fails before compute with an `IOError`, and MPI ranks receive the same failure decision. |
 | **#78 parse_real() silent zero** | Fixed | Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts |
 | **JSON large-integer precision and seed width** | Fixed | JSON integer keys above six significant digits were stringified at default precision and silently parsed as 0, so seeded JSON replicates were silently identical; numeric scalars now retain 17-digit precision and `seed` parses as unsigned 64-bit. |
 | **Dysbiosis guard noise sensitivity** | Fixed | The former per-sample strict-increase and non-deceleration criterion was effectively unfirable on stochastic trajectories: one density dip reset the seven-sample window. The guard now uses a positive net rise and aggregate half-window increment means while retaining the above-threshold requirement. |

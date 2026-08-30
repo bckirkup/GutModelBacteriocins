@@ -164,6 +164,7 @@ gutibm_add_test(feature_combinations test_feature_combinations.cpp LABELS "integ
 gutibm_add_test(config_diversity test_config_diversity.cpp
   LABELS "integration"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gutibm_add_test(hdf5_fail_closed test_hdf5_fail_closed.cpp LABELS "unit")
 gutibm_add_test(openmp_parity test_openmp_parity.cpp LABELS "openmp")
 
 if(GUTIBM_USE_HDF5)

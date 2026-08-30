@@ -38,7 +38,7 @@ requires experiments, not arbitration.
 | 10 | Flagship diversity scenario has no immigration block and no grid output | Confirmed, both halves, against a README that describes periodic lumen immigration |
 | 11 | Taylor–Aris dispersion toggle is unused | Confirmed: zero callers, defaulted on, documented as active |
 | 12 | VBF drag and carrying capacity unused | Half wrong, right conclusion — see below |
-| 13 | Requested HDF5 output can fail open | Confirmed: on create/validate failure the file is removed and the run proceeds |
+| 13 | Requested HDF5 output can fail open | **Confirmed and fixed.** Requested HDF5 output now throws before compute when path validation or file creation fails; under MPI, rank 0 makes the decision and broadcasts it so every rank fails together rather than continuing without the requested record. The failed output file is no longer silently removed, and the error names the file plus the underlying reason where available. |
 | 14 | Provenance and compiler contract incomplete | Confirmed: git SHA falls back to `unknown-git-unavailable`, and `<format>` is used widely while the README never states the GCC 13+ requirement |
 | 15 | Python manifest writes are non-atomic | Confirmed: destination opened in `"w"`, no temp file, no fsync, no retained generation |
 | 16 | Ethanolamine absolute units off by 1000 | Confirmed, already recorded in `docs/UNITS_AUDIT.md`. `eut_km` is off by the same factor, so the Monod penalty is numerically unchanged — labels and coupling only |
