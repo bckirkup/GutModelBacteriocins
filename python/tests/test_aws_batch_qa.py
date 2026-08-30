@@ -10,6 +10,7 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
+
 from gut_ibm_tools.aws_batch_qa import (
     format_report,
     list_array_indices,

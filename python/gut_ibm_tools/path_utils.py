@@ -76,6 +76,45 @@ def validate_input_path(path: str | Path) -> Path:
     return candidate.resolve()
 
 
+def validate_input_path_within(root: str | Path, path: str | Path) -> Path:
+    """Validate declared data against a trusted root by containment rebuild.
+
+    The returned path is rebuilt from ``root`` plus regex-allowlisted segments,
+    so no component of the declared value reaches a filesystem call.
+    """
+    resolved_root = Path(root).resolve()
+    if not resolved_root.exists() or not resolved_root.is_dir():
+        raise PathValidationError(f"trusted root is not a directory: {root}")
+
+    declared = validate_path_syntax(path)
+    if declared.is_absolute():
+        root_parts = resolved_root.parts
+        if declared.parts[:len(root_parts)] != root_parts:
+            raise PathValidationError(
+                f"declared path is outside trusted root: {resolved_root}"
+            )
+        remainder = declared.parts[len(root_parts):]
+    else:
+        remainder = declared.parts
+
+    trusted = resolved_root
+    for segment in remainder:
+        if segment != ".":
+            trusted = trusted / _sanitize_path_segment(segment)
+
+    if trusted == resolved_root:
+        raise PathValidationError(
+            f"declared path must name a file below trusted root: {resolved_root}"
+        )
+
+    validated = validate_input_path(trusted)
+    if not validated.is_relative_to(resolved_root):
+        raise PathValidationError(
+            f"declared path resolves outside trusted root: {resolved_root}"
+        )
+    return validated
+
+
 def _output_parent_directory(parent: Path) -> Path:
     return parent if parent.parts else Path(".")
 

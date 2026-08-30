@@ -30,9 +30,10 @@ np.testing.assert_allclose(times, [0.0, 3600.0])
 
 Existing patterns: `test_validation.py`, `test_hdf5_writer_roundtrip.py`, `test_eari_vadi_regression.py`.
 
-## Path safety (pythonsecurity:S8707) — VULNERABILITY
+## Path safety (pythonsecurity:S8707, pythonsecurity:S6549) — VULNERABILITY
 
-User-supplied paths (CLI args, env) must be validated **before** any filesystem call (`mkdir`, `open`, `Path.read_text`).
+Paths from CLI arguments, environment variables, or parsed file content must be
+validated **before** any filesystem call (`mkdir`, `open`, `Path.read_text`).
 
 Use `gut_ibm_tools.path_utils`:
 
@@ -40,12 +41,21 @@ Use `gut_ibm_tools.path_utils`:
 |----------|-----|
 | `validate_path_syntax()` | Reject `..`, null bytes, empty paths |
 | `validate_input_path()` | Read existing files; returns resolved path |
+| `validate_input_path_within()` | Rebuild paths from parsed file content under an explicit trusted root |
 | `validate_output_path()` | Write when parent already exists |
 | `prepare_output_file()` | Validate then create parent dirs — **all checks before mkdir** |
 | `prepare_output_directory()` | Cwd-bound trusted dir create (CLI work dirs; S8707) |
 | `write_text_file()` / `write_json_file()` | Validated CLI output (cwd-bound + segment allowlist) |
 
-Sonar S8707 validators are registered in `sonar/pythonsecurity-s8707.json` — see `docs/SONARQUBE_PLAN.md`.
+Any filesystem path from parsed file content (JSON, HDF5, or manifests) must go
+through `validate_input_path_within()` with an explicit trusted root. Paths
+from CLI arguments use the existing input/output helpers above. The trusted-root
+helper lexically checks containment and rebuilds the path from allowlisted
+segments before calling filesystem APIs; it is the code-structure fix for
+`pythonsecurity:S6549`, not a scanner configuration workaround.
+
+Sonar S8707/S6549 validators are registered in
+`sonar/pythonsecurity-s8707.json` — see `docs/SONARQUBE_PLAN.md`.
 
 Tests: `python/tests/test_path_utils.py`.
 

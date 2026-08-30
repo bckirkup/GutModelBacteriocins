@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from gut_ibm_tools.aws_batch_branch import (
     BranchIO,
     apply_overlay,

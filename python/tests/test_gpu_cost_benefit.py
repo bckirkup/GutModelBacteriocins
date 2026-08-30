@@ -5,14 +5,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import gut_ibm_tools.gpu_cost_benefit as benchmark
 import pytest
+
+import gut_ibm_tools.gpu_cost_benefit as benchmark
 from gut_ibm_tools.gpu_cost_benefit import (
     ARM_MATRIX,
     generate_configs,
     merge_results,
     run_one_arm,
 )
+from gut_ibm_tools.path_utils import PathValidationError
 
 
 def _write_config(path: Path, payload: dict) -> None:
@@ -235,3 +237,35 @@ def test_runner_separates_cost_and_profile_passes(tmp_path: Path, monkeypatch) -
     assert result["passes"]["profile"]["profile_steps"] is True
     assert result["profiling_wall_difference_seconds"] == pytest.approx(1.0)
     assert result["profiling_wall_difference_fraction"] == pytest.approx(0.5)
+
+
+def test_runner_rejects_manifest_config_outside_manifest_directory(
+    tmp_path: Path,
+) -> None:
+    manifest_dir = tmp_path / "manifest"
+    manifest_dir.mkdir()
+    outside_config = tmp_path / "outside.json"
+    _write_config(outside_config, {"total_time": 60})
+    manifest_path = manifest_dir / "manifest.json"
+    _write_config(
+        manifest_path,
+        {
+            "arms": {
+                "A1": {
+                    "axis": "A",
+                    "status": "runnable",
+                    "configs": {"1e5": str(outside_config)},
+                }
+            }
+        },
+    )
+
+    with pytest.raises(PathValidationError, match="outside trusted root"):
+        run_one_arm(
+            manifest_path,
+            "A1",
+            "1e5",
+            55,
+            tmp_path / "gut_ibm",
+            tmp_path / "results",
+        )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+
 from gut_ibm_tools import analysis
 
 

@@ -28,6 +28,54 @@
       {
         "methodId": "gut_ibm_tools.path_utils.validate_output_path",
         "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils.validate_input_path",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils.validate_input_path_within",
+        "args": [2]
+      }
+    ]
+  },
+  "S6549": {
+    "validators": [
+      {
+        "methodId": "gut_ibm_tools.path_utils.validate_path_syntax",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils._ensure_output_within_cwd",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils._sanitize_path_segment",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils._trusted_output_path",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils.prepare_output_file",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils.prepare_output_directory",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils.validate_output_path",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils.validate_input_path",
+        "args": [1]
+      },
+      {
+        "methodId": "gut_ibm_tools.path_utils.validate_input_path_within",
+        "args": [2]
       }
     ]
   }

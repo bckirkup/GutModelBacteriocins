@@ -87,11 +87,12 @@ python3 scripts/sonar_wont_fix_debt.py             # resolve
 
 ## Security (fixed — do not regress)
 
-### `pythonsecurity:S8707` — path traversal on CLI output
+### `pythonsecurity:S8707` / `pythonsecurity:S6549` — path traversal and tainted input paths
 
 **Problem:** Sonar's taint engine does not recognize custom `path_utils` validators, so
 `prepare_output_file` / `write_text_file` kept flagging `mkdir` and `open` sinks even after
-validation.
+validation. `S6549` additionally flags paths taken from parsed JSON/HDF5 content
+when they reach filesystem calls.
 
 **Fix (two parts):**
 
@@ -102,12 +103,19 @@ validation.
    - Use `open()` on the trusted path instead of passing user input through
    - `_mkdir_validated_parents()` creates only pre-checked directory segments
    - `prepare_output_directory()` for CLI work dirs (`aws_batch_qa`) — same trusted rebuild
+   - `validate_input_path_within()` rebuilds paths declared in parsed file content
+     from an explicit trusted root and regex-allowlisted segments before reading them;
+     this enforces manifest containment rather than trusting a serialized path
 
 2. **SAST config** (`sonar/pythonsecurity-s8707.json` + `sonar-project.properties`):
    - Registers `validate_path_syntax`, `validate_output_path`, `prepare_output_file`,
-     `prepare_output_directory`, and `_ensure_output_within_cwd` as validators for S8707
+     `prepare_output_directory`, `_ensure_output_within_cwd`, and
+     `validate_input_path_within` as validators for S8707/S6549
    - Upload the same JSON in SonarCloud → Project Settings → SAST Engine → Python custom
-     configuration if the scanner property is not picked up automatically
+     configuration if the scanner property is not picked up automatically. This
+     file is scanner-only; SonarCloud automatic analysis clears these findings
+     through the code-structure rebuild in `validate_input_path_within()`, not
+     through this configuration.
 
 ### GitHub Actions pip (`githubactions:S8541` / `S8544`)
 
