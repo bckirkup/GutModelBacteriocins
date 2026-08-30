@@ -67,7 +67,7 @@ immigrant arriving in the luminal band is expelled before it can divide twice.
 Cumulative boundary outflow was 61 with immigration against 33 without; live
 residents at the horizon 121 against 195; live immigrants 0 in both arms.
 
-Consequences for the validation targets below:
+Consequences for the validation targets above:
 
 - The 70–80% resident-retention target is **not discriminating** at these
   parameters: type-based resident retention is 100% in both arms, because the
@@ -81,5 +81,5 @@ Consequences for the validation targets below:
   shipped here.
 
 The full 7-day, 2×2 mm horizon has not been run: at that grid size a single
-all-species grid dump is hundreds of MB per species. The targets below are
+all-species grid dump is hundreds of MB per species. The targets above are
 therefore unvalidated, not met — see `docs/EXTERNAL_AUDIT_2026-08.md` claim 10.
