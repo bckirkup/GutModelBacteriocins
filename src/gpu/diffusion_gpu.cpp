@@ -51,17 +51,15 @@ PeriodicPcrCoeffs build_periodic_coeffs(int n, double alpha) {
       + out.corner * out.correction.back() / out.gamma;
   return out;
 }
-
-bool species_diffusion_eligible(const ChemicalSpec& spec, Real dt,
-                                const Domain& domain) {
-  return dt > 0.0 && domain.dx_x() > 0.0 && domain.dx_y() > 0.0
-      && domain.dx_z() > 0.0 && spec.diffusion_enabled
-      && spec.diff_coeff > 0.0 && spec.retardation > 0.0;
-}
-
 #endif
 
 #ifdef GUTIBM_CUDA
+bool species_diffusion_eligible(const ChemicalSpec& spec, Real dt,
+                                const Domain& domain) {
+  return dt > 0.0 && domain.dx_x() > 0.0 && domain.dx_y() > 0.0
+      && domain.dx_z() > 0.0 && spec.diffuses();
+}
+
 bool apply_species_diffusion_on_device(const Domain& domain,
                                        const ChemicalSpec& spec,
                                        double* d_conc,
@@ -158,13 +156,37 @@ bool apply_species_diffusion_on_device(const Domain& domain,
 
 }  // namespace
 
+int diffusion_z_line_length(
+    const Domain& domain, EpithelialBoundaryMode mode) {
+  return mode == EpithelialBoundaryMode::Dirichlet
+      ? domain.nz() - 1 : domain.nz();
+}
+
+bool diffusion_line_lengths_within(
+    const Domain& domain, EpithelialBoundaryMode mode, int max_line) {
+  if (max_line <= 0) return false;
+  const int z_line = diffusion_z_line_length(domain, mode);
+  return domain.nx() <= max_line && domain.ny() <= max_line
+      && z_line <= max_line;
+}
+
+bool diffusion_all_species_within(
+    const Domain& domain, const ChemicalField& field, int max_line) {
+  for (Int s = 0; s < field.num_species(); ++s) {
+    const ChemicalSpec& spec = field.spec(s);
+    if (spec.diffuses() && !diffusion_line_lengths_within(
+                                domain, spec.epithelial_boundary_mode, max_line)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool gpu_diffusion_line_lengths_supported(
     const Domain& domain, EpithelialBoundaryMode mode) {
 #ifdef GUTIBM_CUDA
   const int max_line = gpu::diffusion_max_line_length();
-  return domain.nx() <= max_line && domain.ny() <= max_line
-      && (mode == EpithelialBoundaryMode::Dirichlet
-          ? domain.nz() - 1 : domain.nz()) <= max_line;
+  return diffusion_line_lengths_within(domain, mode, max_line);
 #else
   (void)domain;
   (void)mode;

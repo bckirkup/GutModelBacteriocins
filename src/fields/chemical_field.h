@@ -399,6 +399,10 @@ struct ChemicalSpec {
   Real epithelial_transfer_coeff = 0.0;  // Robin k (m/s)
   Real epithelial_flux = 0.0;             // fixed flux J (mol/m^2/s)
   bool delivery_enabled = false;         // agent delivery sink participates
+
+  bool diffuses() const {
+    return diffusion_enabled && diff_coeff > 0.0 && retardation > 0.0;
+  }
 };
 
 class ChemicalField {

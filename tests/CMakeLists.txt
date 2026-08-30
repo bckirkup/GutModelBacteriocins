@@ -301,6 +301,8 @@ endif()
 # ── GPU tests (CUDA CI job only) ─────────────────────────────────────────
 gutibm_add_test(greens_function_gpu test_greens_function_gpu.cpp LABELS "gpu")
 gutibm_add_test(gpu_diffusion test_gpu_diffusion.cpp LABELS "gpu")
+gutibm_add_test(gpu_diffusion_species_mask
+  test_gpu_diffusion_species_mask.cpp LABELS "unit")
 gutibm_add_test(gpu_chemical_field test_gpu_chemical_field.cpp LABELS "gpu")
 gutibm_add_test(gpu_feature_combinations test_gpu_feature_combinations.cpp LABELS "gpu;integration")
 gutibm_add_test(gpu_production_path test_gpu_production_path.cpp LABELS "gpu;integration")
