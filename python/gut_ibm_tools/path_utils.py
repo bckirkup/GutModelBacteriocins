@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import stat
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -270,8 +272,39 @@ def write_text_file(path: str | Path, text: str) -> None:
     candidate = prepare_output_file(candidate)
     trusted_path = _trusted_output_path(candidate)
     _validate_output_parent(trusted_path)
-    with trusted_path.open("w", encoding="utf-8") as handle:
-        handle.write(text)
+    temp_path: Path | None = None
+    temp_fd = -1
+    try:
+        temp_fd, temp_name = tempfile.mkstemp(
+            dir=trusted_path.parent,
+            prefix=".gutibm-",
+        )
+        temp_path = Path(temp_name)
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as handle:
+            temp_fd = -1
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(temp_path, 0o644)
+        os.replace(temp_path, trusted_path)
+        temp_path = None
+
+        try:
+            directory_fd = os.open(trusted_path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        except OSError:
+            pass
+    finally:
+        if temp_fd != -1:
+            os.close(temp_fd)
+        if temp_path is not None:
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def write_json_file(path: str | Path, payload: Any, *, indent: int = 2) -> None:

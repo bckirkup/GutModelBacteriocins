@@ -37,7 +37,7 @@ from .batch_manifest import (
     save_manifest,
 )
 from .hdf5_gzip import maybe_gzip_hdf5_file
-from .path_utils import PathValidationError, prepare_output_file
+from .path_utils import PathValidationError, write_json_file
 from .validation_regression import run_validation
 
 EXIT_INTERRUPTED = 130
@@ -83,10 +83,7 @@ def _print_dry_run(manifest: BatchManifest, output_dir: Path) -> None:
 
 
 def _write_json_output(path: Path, payload: dict[str, Any]) -> None:
-    out = prepare_output_file(path)
-    with open(out, "w", encoding="utf-8") as handle:
-        json.dump(payload, handle, indent=2)
-        handle.write("\n")
+    write_json_file(path, payload, indent=2)
 
 
 def _write_job_config(settings: BatchSettings, job: JobRecord, output_dir: Path) -> Path:

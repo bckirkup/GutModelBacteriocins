@@ -177,3 +177,23 @@ def test_write_text_file_writes_validated_output(tmp_path: Path, monkeypatch: py
     target = tmp_path / "out" / "result.txt"
     write_text_file(target, "hello")
     assert target.read_text(encoding="utf-8") == "hello"
+
+
+def test_write_text_file_preserves_previous_on_fsync_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from gut_ibm_tools import path_utils
+
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "result.txt"
+    write_text_file(target, "original")
+
+    def fail_fsync(_file_descriptor: int) -> None:
+        raise OSError("simulated interrupted write")
+
+    monkeypatch.setattr(path_utils.os, "fsync", fail_fsync)
+    with pytest.raises(OSError, match="interrupted write"):
+        write_text_file(target, "replacement")
+
+    assert target.read_text(encoding="utf-8") == "original"
+    assert list(tmp_path.iterdir()) == [target]
