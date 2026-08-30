@@ -35,7 +35,7 @@ void test_vbf_velocity_remains_zero() {
   sim.init(cfg);
 
   const Real dt = cfg.time.bio_dt;
-  const int steps = static_cast<int>(cfg.time.total_time / dt);
+  const auto steps = static_cast<int>(cfg.time.total_time / dt);
   for (int step = 0; step < steps; ++step) {
     sim.step(dt);
     for (const Agent& agent : sim.agents()) {

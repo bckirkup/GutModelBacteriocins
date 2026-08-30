@@ -285,7 +285,6 @@ def write_text_file(path: str | Path, text: str) -> None:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        os.chmod(temp_path, 0o644)
         os.replace(temp_path, trusted_path)
         temp_path = None
 
