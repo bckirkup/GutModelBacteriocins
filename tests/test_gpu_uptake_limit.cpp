@@ -41,6 +41,11 @@ SimulationConfig make_config(UptakeLimitMode mode) {
   } else if (mode == UptakeLimitMode::Delivery) {
     cfg.fixes.metabolism.uptake_limit = "delivery";
     cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
+    for (auto& chemical : cfg.chemicals) {
+      if (chemical.name == species::CARBON) {
+        chemical.delivery_enabled = true;
+      }
+    }
   } else {
     cfg.fixes.metabolism.uptake_limit = "none";
   }
@@ -244,10 +249,11 @@ void test_delivery_forces_host_chemistry() {
   const Real delivery_realized = flux_value(
       delivery, delivery_flux.agent_uptake_cumulative,
       delivery_flux.agent_uptake_interval);
-  assert(delivery_realized > 0.0);
   const Real delivery_field_realized = carbon_realized_sink(delivery);
   assert(std::isfinite(delivery_field_realized));
   assert(delivery_field_realized > 0.0);
+  const MaintenanceLedger delivery_maintenance = maintenance_ledger(delivery);
+  assert(delivery_maintenance.realized > 0.0);
 
   const auto& none_flux = none.chemical_field().flux_accounting();
   const Real none_realized = flux_value(
@@ -262,6 +268,8 @@ void test_delivery_forces_host_chemistry() {
          > 1.0e-6 * contrast_scale);
   std::cout << "    delivery carbon sink realized="
             << format_real(delivery_field_realized)
+            << " delivery carbon maintenance realized="
+            << format_real(delivery_maintenance.realized)
             << " none carbon sink realized="
             << format_real(none_field_realized) << "\n";
   std::cout << "  test_delivery_forces_host_chemistry: PASSED\n";
