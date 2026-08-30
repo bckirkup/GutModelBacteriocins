@@ -460,9 +460,9 @@ BI transport is controlled by each plasmid's library entry. The optional
 `burst_size` per plasmid. Canonical names and legacy aliases resolve through
 `PlasmidLibrary::find()`, and transferred BI clusters retain the donor's
 configured values. The former global pI retardation keys are removed:
-per-plasmid retardation is authoritative. Unknown keys warn by default;
-`GUTIBM_STRICT_CONFIG=1` turns unrecognized keys into hard configuration
-failures.
+per-plasmid retardation is authoritative. Unknown keys are hard configuration
+failures by default; `GUTIBM_STRICT_CONFIG=0` explicitly restores the
+warning-and-ignore behavior for exploratory configurations.
 
 ColB and ColIa use prophage induction, not SOS suicide:
 

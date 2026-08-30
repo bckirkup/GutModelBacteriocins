@@ -709,8 +709,9 @@ remain authoritative. Per-plasmid defaults in `PlasmidLibrary` also include
 Names resolve through `PlasmidLibrary::find()`, so existing aliases such as
 `colicin_E1` remain accepted and are emitted canonically. The removed global
 `retardation_basic`, `retardation_acidic`, and `retardation_neutral` keys are
-not used; per-plasmid retardation is authoritative. Unknown keys warn by
-default, while `GUTIBM_STRICT_CONFIG=1` makes them hard configuration errors.
+not used; per-plasmid retardation is authoritative. Unknown keys are hard
+configuration errors by default. Set `GUTIBM_STRICT_CONFIG=0` explicitly to
+retain the exploratory warning-and-ignore behavior.
 
 QSSA maintains four receptor-specific toxin fields (`bacteriocin_BtuB`, `bacteriocin_FepA`, `bacteriocin_CirA`, `bacteriocin_FhuA`) by default. With `chemistry.toxin_lumping = "lumped"`, it instead maintains one `bacteriocin_lumped` field containing all sources, and all receptors read that field. Nuclease colicin bursts continue to use the BtuB cross-induction path in the default mode; lumped mode makes that path read total toxin burden as well. The lumped approximation means a colicin an agent is immune to can contribute to exposure through another receptor, and can also contribute to SOS/ROS cross-induction; these are intentional scientific costs of removing receptor-specific spatial targeting.
 
@@ -1035,8 +1036,10 @@ Unknown Fix names log a warning and are skipped. Register new Fix modules in
 
 ## Input Config Format
 
-Simulation configs are strict JSON. Use `"_comment"` (string or array) for
-human-readable notes — see [CONFIG_FORMAT.md](CONFIG_FORMAT.md).
+Simulation configs are strict JSON. Unknown keys and invalid known values abort
+by default; set `GUTIBM_STRICT_CONFIG=0` for exploratory warning-and-continue
+parsing. Use `"_comment"` (string or array) for human-readable notes — see
+[CONFIG_FORMAT.md](CONFIG_FORMAT.md).
 
 ## Initial Population
 

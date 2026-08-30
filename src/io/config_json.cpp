@@ -11,6 +11,7 @@
 #include <sstream>
 #include <iomanip>
 #include <string_view>
+#include <stdexcept>
 #include "error.h"
 #include <utility>
 
@@ -144,7 +145,19 @@ class JsonCursor {
       ++pos_;
     }
     if (start == pos_) throw ConfigError("expected JSON number");
-    return std::stod(text_.substr(start, pos_ - start));
+    try {
+      size_t consumed = 0;
+      const Real value = std::stod(
+          text_.substr(start, pos_ - start), &consumed);
+      if (consumed != pos_ - start) {
+        throw ConfigError("invalid JSON number");
+      }
+      return value;
+    } catch (const std::invalid_argument&) {
+      throw ConfigError("invalid JSON number");
+    } catch (const std::out_of_range&) {
+      throw ConfigError("JSON number is out of range");
+    }
   }
 
   bool parse_bool() {
@@ -247,6 +260,11 @@ class JsonCursor {
   char peek() {
     skip_ws();
     return pos_ < text_.size() ? text_[pos_] : '\0';
+  }
+
+  bool at_end() {
+    skip_ws();
+    return pos_ == text_.size();
   }
 
   void skip_value() {
@@ -526,6 +544,10 @@ class JsonCursor {
 };
 
 void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor& cursor) {
+  if (key == "hdf5.schedule.grid_species") {
+    cfg.hdf5.schedule.grid_species = cursor.parse_string_array();
+    return;
+  }
   const char c = cursor.peek();
   bool handled = false;
   if (c == '"') {
@@ -540,17 +562,19 @@ void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor
     handled = InputParser::apply_flat_key(cfg, key, oss.str());
   } else {
     cursor.skip_value();
+    if (key == "disabled_fixes" || key == "disabled_mechanisms") {
+      return;
+    }
+    if (!key.empty() && key.front() != '_') {
+      InputParser::handle_unknown_config_key(key);
+    }
     return;
   }
   // Keys beginning with '_' are documented as comments and handled by the
   // caller; every other scalar key that no handler recognized is a typo or a
   // version mismatch, so surface it instead of silently ignoring it.
   if (!handled && !key.empty() && key.front() != '_') {
-    std::cerr << "Warning: unknown config key '" << key << "' ignored\n";
-    const char* strict = std::getenv("GUTIBM_STRICT_CONFIG");
-    if (strict != nullptr && strict[0] != '\0' && strict[0] != '0') {
-      throw ConfigError("unknown config key '" + key + "'");
-    }
+    InputParser::handle_unknown_config_key(key);
   }
 }
 
@@ -566,7 +590,9 @@ size_t find_initial_strains_array(std::string_view content) {
   if (key_pos == std::string::npos) return std::string::npos;
 
   size_t bracket = content.find('[', key_pos + key.size());
-  if (bracket == std::string::npos) return std::string::npos;
+  if (bracket == std::string::npos) {
+    throw ConfigError("malformed initial_strains array: expected '['");
+  }
   return bracket;
 }
 
@@ -576,7 +602,9 @@ size_t find_fixes_array(std::string_view content) {
   if (key_pos == std::string::npos) return std::string::npos;
 
   size_t bracket = content.find('[', key_pos + key.size());
-  if (bracket == std::string::npos) return std::string::npos;
+  if (bracket == std::string::npos) {
+    throw ConfigError("malformed fixes array: expected '['");
+  }
   return bracket;
 }
 
@@ -593,9 +621,7 @@ InitialStrainsParseResult ConfigJson::parse_initial_strains(const std::string& c
   JsonCursor cursor(content.substr(array_pos));
 
   if (!cursor.match('[')) {
-    std::cerr << "Warning: malformed initial_strains array — using default strains\n";
-    result.found = false;
-    return result;
+    throw ConfigError("malformed initial_strains array: parser stopped before '['");
   }
 
   cursor.skip_ws();
@@ -603,24 +629,13 @@ InitialStrainsParseResult ConfigJson::parse_initial_strains(const std::string& c
     return result;
   }
 
-  try {
-    while (true) {
-      result.strains.push_back(cursor.parse_strain_object());
-      cursor.skip_ws();
-      if (cursor.match(']')) break;
-      if (!cursor.match(',')) {
-        throw ConfigError("expected ',' between strain objects");
-      }
+  while (true) {
+    result.strains.push_back(cursor.parse_strain_object());
+    cursor.skip_ws();
+    if (cursor.match(']')) break;
+    if (!cursor.match(',')) {
+      throw ConfigError("expected ',' between strain objects");
     }
-  } catch (const ConfigError& ex) {
-    if (const std::string message = ex.what();
-        message.find("unknown receptor name") != std::string::npos) {
-      throw;
-    }
-    std::cerr << "Warning: failed to parse initial_strains: " << ex.what()
-              << " — using default strains\n";
-    result.found = false;
-    result.strains.clear();
   }
 
   return result;
@@ -636,14 +651,7 @@ EnabledFixesParseResult ConfigJson::parse_enabled_fixes(const std::string& conte
   result.found = true;
   JsonCursor cursor(content.substr(array_pos));
 
-  try {
-    result.names = cursor.parse_string_array();
-  } catch (const ConfigError& ex) {
-    std::cerr << "Warning: failed to parse fixes: " << ex.what()
-              << " — using default fix list\n";
-    result.found = false;
-    result.names.clear();
-  }
+  result.names = cursor.parse_string_array();
 
   return result;
 }
@@ -654,77 +662,64 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
     return false;
   }
 
-  try {
-    JsonCursor cursor(content.substr(object_pos));
-    if (!cursor.match('{')) return false;
+  JsonCursor cursor(content.substr(object_pos));
+  if (!cursor.match('{')) {
+    throw ConfigError("JSON config parse stopped before root object");
+  }
+
+  cursor.skip_ws();
+  if (cursor.match('}')) {
+    if (!cursor.at_end()) {
+      throw ConfigError("JSON config parse stopped after root object");
+    }
+    return true;
+  }
+
+  while (true) {
+    const std::string key = cursor.parse_string();
+    if (!cursor.match(':')) throw ConfigError("expected ':' after key");
+
+    if (!key.empty() && key.front() == '_') {
+      cursor.skip_value();
+    } else if (key == "initial_strains") {
+      cfg.initial_strains = cursor.parse_strain_array();
+    } else if (key == "plasmid_overrides") {
+      cursor.parse_plasmid_overrides_object(cfg);
+    } else if (key == "fixes") {
+      cfg.enabled_fixes = cursor.parse_string_array();
+    } else if (key == "hdf5") {
+      cursor.parse_hdf5_object(cfg);
+    } else if (key == "restart") {
+      cursor.parse_restart_object(cfg);
+    } else if (key == "immigration") {
+      cursor.parse_immigration_object(cfg);
+    } else if (key == "initial_population") {
+      cursor.parse_initial_population_object(cfg);
+    } else if (key == "closure") {
+      cursor.parse_prefixed_object(cfg, "closure", "closure");
+    } else if (key == "domain") {
+      cursor.parse_domain_object(cfg);
+    } else if (key == "advection") {
+      cursor.parse_advection_object(cfg);
+    } else if (key == "washout") {
+      cursor.parse_prefixed_object(cfg, "washout", "washout");
+    } else if (key == "chemistry") {
+      cursor.parse_chemistry_object(cfg);
+    } else if (key == "bacteriocin") {
+      cursor.parse_bacteriocin_object(cfg);
+    } else {
+      apply_json_scalar(cfg, key, cursor);
+    }
 
     cursor.skip_ws();
-    if (cursor.match('}')) return true;
-
-    while (true) {
-      const std::string key = cursor.parse_string();
-      if (!cursor.match(':')) throw ConfigError("expected ':' after key");
-
-      if (!key.empty() && key.front() == '_') {
-        cursor.skip_value();
-      } else if (key == "initial_strains") {
-        cfg.initial_strains = cursor.parse_strain_array();
-      } else if (key == "plasmid_overrides") {
-        cursor.parse_plasmid_overrides_object(cfg);
-      } else if (key == "fixes") {
-        cfg.enabled_fixes = cursor.parse_string_array();
-      } else if (key == "hdf5") {
-        cursor.parse_hdf5_object(cfg);
-      } else if (key == "restart") {
-        cursor.parse_restart_object(cfg);
-      } else if (key == "immigration") {
-        cursor.parse_immigration_object(cfg);
-      } else if (key == "initial_population") {
-        cursor.parse_initial_population_object(cfg);
-      } else if (key == "closure") {
-        cursor.parse_prefixed_object(cfg, "closure", "closure");
-      } else if (key == "domain") {
-        cursor.parse_domain_object(cfg);
-      } else if (key == "advection") {
-        cursor.parse_advection_object(cfg);
-      } else if (key == "washout") {
-        cursor.parse_prefixed_object(cfg, "washout", "washout");
-      } else if (key == "chemistry") {
-        cursor.parse_chemistry_object(cfg);
-      } else if (key == "bacteriocin") {
-        cursor.parse_bacteriocin_object(cfg);
-      } else {
-        apply_json_scalar(cfg, key, cursor);
-      }
-
-      cursor.skip_ws();
-      if (cursor.match('}')) break;
-      if (!cursor.match(',')) throw ConfigError("expected ',' between object fields");
-    }
-
-    return true;
-  } catch (const ConfigError& ex) {
-    if (const std::string message = ex.what();
-        message.find("invalid immigration.") == 0
-        || message.find("invalid initial_population.") == 0
-        || message.find("invalid chemistry_decomposition") == 0
-        || message.find("invalid species_subset") == 0
-        || message.find("invalid toxin_evaluation") == 0
-        || message.find("invalid toxin_lumping") == 0
-        || message.find("invalid washout.trap") == 0
-        || message.find("chemistry stride") != std::string::npos
-        || message.find("chemistry_stride") != std::string::npos
-        || message.find("grid_halo_width") != std::string::npos
-        || message.find("unknown receptor name") != std::string::npos
-        || message.find("unknown plasmid name") != std::string::npos
-        || message.find("plasmid override") != std::string::npos
-        || message.find("unknown config key") != std::string::npos) {
-      throw;
-    }
-    std::cerr << "Warning: JSON config parse failed: " << ex.what()
-              << " — falling back to legacy parser\n";
-    return false;
+    if (cursor.match('}')) break;
+    if (!cursor.match(',')) throw ConfigError("expected ',' between object fields");
   }
+
+  if (!cursor.at_end()) {
+    throw ConfigError("JSON config parse stopped after root object");
+  }
+  return true;
 }
 
 std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {

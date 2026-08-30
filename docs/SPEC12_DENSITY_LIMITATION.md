@@ -21,8 +21,9 @@ the spec was written.
 
 The spec text below was written before PRs #319–#339. This table is the
 authoritative statement of what the shipped code actually evaluates. Config keys
-are quoted exactly as the parser accepts them; unknown keys are warned on
-`stderr` and ignored, or abort the run under `GUTIBM_STRICT_CONFIG=1`.
+are quoted exactly as the parser accepts them; unknown keys abort the run by
+default. Set `GUTIBM_STRICT_CONFIG=0` to warn on `stderr` and ignore them for
+an exploratory run.
 
 ### Change 1 — density-coupled VBF carbon sink
 
@@ -72,8 +73,9 @@ are quoted exactly as the parser accepts them; unknown keys are warned on
 
 ### Validation config (spec §"Validation config")
 
-Five of its fourteen keys are not parser keys and are silently ignored (or abort
-under `GUTIBM_STRICT_CONFIG=1`): `oxygen.aerobic_yield_factor`,
+Five of its fourteen keys are not parser keys and are rejected by default (or
+warned about and ignored under `GUTIBM_STRICT_CONFIG=0`):
+`oxygen.aerobic_yield_factor`,
 `oxygen.anaerobic_yield_factor`, `oxygen.ferm_acetate_yield`,
 `oxygen.acid_inhibition_enabled`, `oxygen.Ki_acetate`, plus
 `oxygen.acid_inhibition_max` (the bare `acid_inhibition_max` is accepted). Do

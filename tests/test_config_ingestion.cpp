@@ -862,7 +862,8 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity", "receptor_expression", "receptor_genotype", "receptors",
-      "plasmid_overrides"};
+      "plasmid_overrides", "hdf5.schedule.grid_species",
+      "disabled_fixes", "disabled_mechanisms"};
   return keys;
 }
 
@@ -1060,7 +1061,8 @@ void test_strain_and_array_keys() {
     "plasmid_overrides": {
       "ColE1": {"retardation": 25.0, "diff_coeff": 8e-11, "burst_size": 2e5}
     },
-    "fixes": ["metabolism", "mechanics"]
+    "fixes": ["metabolism", "mechanics"],
+    "hdf5.schedule.grid_species": ["carbon", "oxygen"]
   })";
 
   const std::string path = source_path("tests/fixtures/_config_ingestion_strains.json");
@@ -1096,6 +1098,10 @@ void test_strain_and_array_keys() {
     expect(cfg.enabled_fixes[0] == "metabolism" && cfg.enabled_fixes[1] == "mechanics",
            "'fixes' array contents not ingested");
   }
+  expect(cfg.hdf5.schedule.grid_species.size() == 2
+             && cfg.hdf5.schedule.grid_species[0] == "carbon"
+             && cfg.hdf5.schedule.grid_species[1] == "oxygen",
+         "'hdf5.schedule.grid_species' array not ingested");
   const auto override_it = cfg.plasmid_overrides.find("ColE1");
   expect(override_it != cfg.plasmid_overrides.end(),
          "'plasmid_overrides' object not ingested");
