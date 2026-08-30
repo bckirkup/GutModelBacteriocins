@@ -34,6 +34,7 @@ class FixConjugation : public Fix {
  public:
   FixConjugation(Simulation& sim, const ConjugationConfig& cfg);
 
+  void init() override;
   void compute(Real dt) override;
 
  private:

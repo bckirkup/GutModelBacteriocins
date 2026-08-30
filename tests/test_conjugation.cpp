@@ -5,6 +5,7 @@
    ----------------------------------------------------------------------- */
 
 #include "fix_conjugation.h"
+#include "plasmid.h"
 #include "random.h"
 #include "simulation.h"
 #include "input_parser.h"
@@ -14,6 +15,47 @@
 #include <vector>
 
 using namespace gutibm;
+
+static Simulation make_ownership_sim(bool ghost_recipient) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_strains.clear();
+  cfg.hdf5.enabled = false;
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.enabled_fixes = {"conjugation"};
+  cfg.fixes.conjugation.pili_heterogeneity = false;
+  cfg.fixes.conjugation.pili_length = 4.0e-6;
+  cfg.fixes.conjugation.base_transfer_rate = 1.0e6;
+  cfg.advection.radial_turnover = 1.0e12;
+  cfg.advection.distal_transit_time = 1.0e12;
+
+  Simulation sim;
+  sim.init(cfg);
+
+  const Vec3 donor_pos = {25e-6, 25e-6, 12.5e-6};
+  const Vec3 recipient_pos = {27e-6, 25e-6, 12.5e-6};
+  Agent donor = Agent::create_default(
+      sim.agents().next_tag(), 1, donor_pos, 5e-4);
+  donor.genome.bi_loci.push_back(PlasmidLibrary::colicin_B());
+  donor.genome.has_conjugative_plasmid = true;
+  sim.agents().push_back(std::move(donor));
+
+  Agent recipient = Agent::create_default(
+      sim.agents().next_tag(), 2, recipient_pos, 5e-4);
+  recipient.flags.is_ghost = ghost_recipient;
+  sim.agents().push_back(std::move(recipient));
+
+  return sim;
+}
+
+static Int count_hgt_events(const Simulation& sim) {
+  Int count = 0;
+  for (const LineageEvent& event : sim.lineage_tracker().events()) {
+    if (event.type == LineageEvent::Type::HGT) ++count;
+  }
+  return count;
+}
 
 void test_config_defaults() {
   ConjugationConfig cfg;
@@ -163,12 +205,44 @@ void test_heterogeneity_disabled_uses_fixed() {
   std::cout << "  test_heterogeneity_disabled_uses_fixed: PASSED\n";
 }
 
+void test_ghost_recipient_does_not_commit() {
+  auto sim = make_ownership_sim(true);
+  assert((sim.agents()[1].genome.bi_loci.empty())
+         && "ghost recipient genome changed");
+
+  sim.step(sim.config().time.bio_dt);
+
+  assert((sim.agents()[1].genome.bi_loci.empty())
+         && "ghost recipient acquired a cluster");
+  assert((sim.step_events().conjugation_transfers == 0)
+         && "ghost recipient incremented transfer count");
+  assert((count_hgt_events(sim) == 0)
+         && "ghost recipient recorded an HGT event");
+  std::cout << "  test_ghost_recipient_does_not_commit: PASSED\n";
+}
+
+void test_owned_recipient_commits() {
+  auto sim = make_ownership_sim(false);
+
+  sim.step(sim.config().time.bio_dt);
+
+  assert((!sim.agents()[1].genome.bi_loci.empty())
+         && "owned recipient did not acquire a cluster");
+  assert((sim.step_events().conjugation_transfers == 1)
+         && "owned recipient transfer count mismatch");
+  assert((count_hgt_events(sim) == 1)
+         && "owned recipient HGT event count mismatch");
+  std::cout << "  test_owned_recipient_commits: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Conjugation Pili Heterogeneity Tests ===\n";
   test_config_defaults();
   test_sampled_radii_vary();
   test_heterogeneity_integration();
   test_heterogeneity_disabled_uses_fixed();
+  test_ghost_recipient_does_not_commit();
+  test_owned_recipient_commits();
   std::cout << "All conjugation tests passed.\n";
   return 0;
 }
