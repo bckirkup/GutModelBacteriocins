@@ -3,6 +3,7 @@
     "Full diversity paradox simulation: residents vs immigrants.",
     "Tests the Advective Double-Bind / Combinatorial Washout Trap.",
     "Validation targets: 70-80% resident retention, monochromatic patches.",
+    "Immigration uses a luminal band; named-species grid dumps occur every 6 hours.",
     "QSSA/FMM: enable use_fmm for 10^6+ agents; fmm_theta 0.3 (accurate), 0.5 (balanced), 0.7 (fast)."
   ],
 
@@ -52,12 +53,26 @@
     }
   ],
 
+  "immigration": {
+    "enabled": true,
+    "count": 1,
+    "strain_index": 1,
+    "placement": "z_slab",
+    "z_min": 9e-05,
+    "z_max": 0.0001,
+    "schedule": "continuous",
+    "rate": 2.777777777777778e-4
+  },
+
   "hdf5_file": "diversity_paradox_output.h5",
   "hdf5": {
+    "compression": "gzip",
+    "compression_level": 4,
     "schedule": {
       "summary": 60,
       "agents": 60,
-      "grid": 0,
+      "grid": 360,
+      "grid_species": ["carbon", "bacteriocin_BtuB", "bacteriocin_FepA"],
       "lineage": 60,
       "genome": 60
     }

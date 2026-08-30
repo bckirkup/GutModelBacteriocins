@@ -35,7 +35,7 @@ requires experiments, not arbitration.
 | 7 | Post-division SOS hazard applies to both parent and daughter | Confirmed: 1.98% per division event against a documented 1% "per division". An estimand ambiguity, cheap to settle |
 | 8 | Comet-tail analysis fabricates geometry | **Confirmed and fixed.** Validation now uses physical HDF5 cell centers in `(z, y, x)` flattening order, the model's positive-x distal-flow convention, and an explicit producer reference with periodic minimum-image wrapping |
 | 9 | Resident-retention estimator measures lineage-label persistence | Confirmed |
-| 10 | Flagship diversity scenario has no immigration block and no grid output | Confirmed, both halves, against a README that describes periodic lumen immigration |
+| 10 | Flagship diversity scenario has no immigration block and no grid output | **Confirmed and fixed, with a substantive negative result.** Both halves stood: no `immigration` block and `grid: 0`. The example now ships continuous luminal immigration and 6-hourly named-species grid output, and an out-of-domain `z_slab` band now fails closed instead of silently clamping immigrants onto a domain face. Enabling the documented mechanism does **not** change the flagship regime at shipped parameters — see below. |
 | 11 | Taylor–Aris dispersion toggle is unused | **Confirmed and resolved by removal.** The dead, default-on toggle and uncalled implementation were removed rather than wired into the isotropic transport model. At `z=h`, the measured `D_taylor/D` enhancements are `6.379e-9` for oxygen (`D=2e-9`), `6.379e-5` for carbon (`D=2e-11`), `4.023e-2` for shipped ColE1-like colicin (`D=7.964e-13`), and `2.552` for a hypothetical `D=1e-13`; the enhancement falls as `(z/h)^3`. The long-time limit is valid for the shipped colicin (`t/t_diff=3.44`) but not for the large-effect hypothetical case (`0.43`). The `210` prefactor is also the Poiseuille result while the shipped profile exponent is `1.5`. Honest wiring would require an anisotropic streamwise transport kernel and re-derivation of both the image series and Robin correction table. Reinstating it requires that work. |
 | 12 | VBF drag and carrying capacity unused | Half wrong, right conclusion — see below |
 | 13 | Requested HDF5 output can fail open | **Confirmed and fixed.** Requested HDF5 output now throws before compute when path validation or file creation fails; under MPI, rank 0 makes the decision and broadcasts it so every rank fails together rather than continuing without the requested record. The failed output file is no longer silently removed, and the error names the file plus the underlying reason where available. |
@@ -64,6 +64,66 @@ producer-reference fallback chain with the x-domain period for wrapping.
 With real geometry that shipped example shows **no** comet tail (ratio < 1),
 so the `min: 1.5` target has never been met by a real-geometry measurement and
 remains unvalidated — we are recording that, not changing the target.
+
+### Claim 10 measurements and resolution
+
+The flagship geometry is not runnable to its 7-day horizon here, so both arms
+were measured on a scaled fixture: 400×400×100 µm (x and y reduced 5×), all
+biology, `grid_dx`, mucus thickness, `radial_turnover` and `distal_transit`
+unchanged, founders scaled to the same areal density as the shipped 500 + 100
+in 2×2 mm (20 residents + 4 immigrants), seed 42, 12 h = 720 steps of 60 s,
+serial build, `termination_cause_code = horizon_reached`. The two arms differ
+only in `immigration.enabled`.
+
+| Observable at horizon | immigration on | immigration off |
+|---|---:|---:|
+| Immigration events (cumulative) | 14 | 0 |
+| Live immigrants (type 2) | 0 | 0 |
+| Live residents (type 1) | 121 | 195 |
+| Boundary outflow (cumulative) | 61 | 33 |
+| SOS lysis deaths (cumulative) | 4 | 3 |
+| `monochromatic_score` | 1.000 | 1.000 |
+| Grid dumps emitted (3 species each) | 13 | 13 |
+
+1. **The mechanism is reachable and fires.** 14 Poisson events at the shipped
+   1/h rate, 11 distinct post-founder immigrant tags observed in the agent
+   snapshots, first-seen z between 84.7 and 99.4 µm.
+2. **Immigrants do not establish.** Observed residence was 0–4800 s (median
+   600 s, the snapshot interval). Radial advection reaches the lumen boundary
+   from the arrival band in a few hundred seconds at `profile_alpha = 1.5`
+   and `radial_turnover = 5400 s`, against a resident doubling time of
+   `ln2/5.0e-4 ≈ 1390 s`. The washout interaction is real and was measured,
+   not assumed: cumulative boundary outflow nearly doubled (61 vs 33) while
+   `outflow_washout` stayed 0 in both arms (`washout.trap` is `emergent`).
+3. **So the headline observable does not discriminate.** Type-based resident
+   retention is 100% in both arms — the initial immigrant cohort dies out
+   without any immigration — and `monochromatic_score` is degenerate at 1.000
+   once one type remains. Enabling the documented mechanism changes the influx,
+   not the outcome. What it buys is that the washout half of the Advective
+   Double-Bind is now exercised and recorded instead of being claimed only in
+   prose. Whether immigrants *should* establish at these parameters is a
+   scientific question about `mu_max`, the luminal arrival depth and the
+   turnover time; no parameter was retuned to make the example look better.
+4. **Grid output exposes a second limitation.** With grid dumps finally
+   emitted, the bacteriocin fields are identically zero in most of them:
+   release is tied to SOS lysis (3–4 events per 12 h arm) and the field decays
+   within a few steps, so a strided grid dump is unlikely to catch an
+   induction. The comet-tail and lethal-halo claims need a dedicated
+   high-cadence grid window, which is why the shipped stride is 6 h rather
+   than hourly — three named species at the flagship grid size are already
+   ~5 GB per week of simulated time.
+5. **MPI equivalence.** Immigration decisions are drawn from the replicated
+   stream (`seed ^ 0x9e3779b97f4a7c15`) and are rank-count invariant: a 2 h
+   control fired exactly 1 event at both 1 and 2 ranks, with globally unique
+   agent tags and no duplicated insertion (only the owning rank constructs the
+   cell). Serial and 2-rank *trajectories* do diverge, but they diverge
+   identically with immigration disabled (5 vs 11 live agents in the control),
+   so that divergence is the pre-existing rank-partitioned agent RNG, not
+   something immigration introduced. RNG consumption is unchanged when
+   immigration is disabled, and the claim-6 checkpoint RNG-state limitation
+   is not worsened.
+6. **Not verified locally.** The full 7-day 2×2 mm horizon (grid alone is
+   ~5×10⁷ cells) and any GPU path.
 
 ## Where we corrected the report
 

@@ -527,7 +527,8 @@ void Simulation::init(const SimulationConfig& cfg) {
         "chemistry.species_subset != full");
   }
   immigration_.validate(cfg_.immigration,
-                        static_cast<Int>(cfg_.initial_strains.size()));
+                        static_cast<Int>(cfg_.initial_strains.size()),
+                        cfg_.domain.lo, cfg_.domain.hi);
   rng_.seed(cfg_.seed);
   immigration_.seed(cfg_.seed ^ kImmigrationSeedMix);
   immigration_.set_start_step(0);
@@ -792,7 +793,8 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
         "chemistry.species_subset != full");
   }
   immigration_.validate(cfg_.immigration,
-                        static_cast<Int>(cfg_.initial_strains.size()));
+                        static_cast<Int>(cfg_.initial_strains.size()),
+                        cfg_.domain.lo, cfg_.domain.hi);
   rng_.seed(cfg_.seed);
   immigration_.seed(cfg_.seed ^ kImmigrationSeedMix);
 

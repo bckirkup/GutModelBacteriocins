@@ -48,6 +48,30 @@ void test_schedule_and_uniform_placement() {
   std::cout << "  test_schedule_and_uniform_placement: PASSED\n";
 }
 
+void test_z_slab_domain_validation() {
+  ImmigrationEngine engine;
+  ImmigrationConfig cfg;
+  cfg.enabled = true;
+  cfg.placement = "z_slab";
+  cfg.z_min = 2e-6;
+  cfg.z_max = 8e-6;
+  const Vec3 lo = {0.0, 0.0, 0.0};
+  const Vec3 hi = {20e-6, 20e-6, 10e-6};
+
+  engine.validate(cfg, 1, lo, hi);
+
+  cfg.z_min = 12e-6;
+  cfg.z_max = 18e-6;
+  bool rejected = false;
+  try {
+    engine.validate(cfg, 1, lo, hi);
+  } catch (const ConfigError&) {
+    rejected = true;
+  }
+  assert(rejected);
+  std::cout << "  test_z_slab_domain_validation: PASSED\n";
+}
+
 void test_at_distance_selects_candidate() {
   ImmigrationConfig cfg;
   cfg.enabled = true;
@@ -546,6 +570,7 @@ void test_pulse_constructs_full_agents() {
 
 int main() {
   test_schedule_and_uniform_placement();
+  test_z_slab_domain_validation();
   test_at_distance_selects_candidate();
   test_disabled_is_inert();
   test_at_distance_end_to_end_and_empty_fallback();

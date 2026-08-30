@@ -22,7 +22,8 @@ class ImmigrationEngine {
   void seed(uint64_t seed) { rng_.seed(seed); }
   void set_start_step(Int step) { start_step_ = step; }
 
-  void validate(const ImmigrationConfig& cfg, Int initial_strain_count) const;
+  void validate(const ImmigrationConfig& cfg, Int initial_strain_count,
+                const Vec3& lo, const Vec3& hi) const;
 
   void inject(const ImmigrationConfig& cfg, Int current_step, Real dt,
               const AgentPool& agents, const Domain& domain,
