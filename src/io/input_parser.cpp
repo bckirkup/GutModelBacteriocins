@@ -638,12 +638,6 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "oxygen.delivery_uptake_enabled=true and "
         "metabolism.uptake_limit=\"delivery\"");
   }
-  if (cfg.chem_env.oxygen.respiration_driver_mode == RespirationDriver::Funded
-      && cfg.gpu.enabled) {
-    throw ConfigError(
-        "oxygen.respiration_driver=\"funded\" cannot be combined with "
-        "gpu_enabled=true: funded oxygen delivery is CPU-only");
-  }
   if (cfg.chem_env.oxygen.ros_driver != "ambient"
       && cfg.chem_env.oxygen.ros_driver != "funded") {
     throw ConfigError(
@@ -697,14 +691,6 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
       }
     }
   }
-  if (cfg.gpu.enabled
-      && metabolism.uptake_limit_mode == UptakeLimitMode::Delivery) {
-    throw ConfigError(
-        "gpu_enabled=true cannot be combined with "
-        "metabolism.uptake_limit=\"delivery\": CUDA parity is not "
-        "implemented yet");
-  }
-
   if (const Int carbon_idx =
           find_chemical_spec(cfg.chemicals, species::CARBON);
       carbon_idx >= 0) {

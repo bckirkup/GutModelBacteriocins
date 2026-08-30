@@ -1257,6 +1257,22 @@ void test_funded_respiration_requires_delivery() {
         "oxygen.respiration_driver=\"funded\"") != std::string::npos;
   }
   assert(threw);
+
+  cfg = InputParser::default_config();
+  cfg.gpu.enabled = true;
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.respiration_driver", "funded"));
+  assert(InputParser::apply_flat_key(
+      cfg, "oxygen.delivery_uptake_enabled", "true"));
+  assert(InputParser::apply_flat_key(
+      cfg, "metabolism.uptake_limit", "delivery"));
+  InputParser::finalize_config(cfg);
+  assert(cfg.gpu.enabled);
+  assert(cfg.chem_env.oxygen.respiration_driver_mode
+         == RespirationDriver::Funded);
+  assert(cfg.chem_env.oxygen.delivery_uptake_enabled);
+  assert(cfg.fixes.metabolism.uptake_limit_mode
+         == UptakeLimitMode::Delivery);
   std::cout << "  test_funded_respiration_requires_delivery: PASSED\n";
 }
 
@@ -1340,23 +1356,17 @@ void test_funded_ros_requires_delivery_and_positive_yield() {
   std::cout << "  test_funded_ros_requires_delivery_and_positive_yield: PASSED\n";
 }
 
-void test_delivery_uptake_rejects_gpu() {
+void test_delivery_uptake_allows_gpu() {
   SimulationConfig cfg = InputParser::default_config();
   cfg.gpu.enabled = true;
   assert(InputParser::apply_flat_key(
       cfg, "metabolism.uptake_limit", "delivery"));
-  bool threw = false;
-  try {
-    InputParser::finalize_config(cfg);
-  } catch (const ConfigError& error) {
-    const std::string message = error.what();
-    threw = message.find("gpu_enabled") != std::string::npos
-        && message.find("metabolism.uptake_limit") != std::string::npos
-        && message.find("CUDA parity is not implemented yet")
-            != std::string::npos;
-  }
-  assert(threw);
-  std::cout << "  test_delivery_uptake_rejects_gpu: PASSED\n";
+  InputParser::finalize_config(cfg);
+  assert(cfg.gpu.enabled);
+  assert(cfg.fixes.metabolism.uptake_limit == "delivery");
+  assert(cfg.fixes.metabolism.uptake_limit_mode
+         == UptakeLimitMode::Delivery);
+  std::cout << "  test_delivery_uptake_allows_gpu: PASSED\n";
 }
 
 void test_uptake_limit_rejects_unknown_modes() {
@@ -1436,7 +1446,7 @@ int main() {
   test_oxygen_delivery_uptake_requires_delivery();
   test_funded_respiration_requires_delivery();
   test_funded_ros_requires_delivery_and_positive_yield();
-  test_delivery_uptake_rejects_gpu();
+  test_delivery_uptake_allows_gpu();
   test_uptake_limit_rejects_unknown_modes();
   test_carbon_maintenance_fixture();
   test_metabolic_mode_fixture();

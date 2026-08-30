@@ -38,6 +38,9 @@ SimulationConfig make_config(UptakeLimitMode mode) {
     cfg.fixes.metabolism.uptake_limit = "sherwood";
   } else if (mode == UptakeLimitMode::Voxel) {
     cfg.fixes.metabolism.uptake_limit = "voxel";
+  } else if (mode == UptakeLimitMode::Delivery) {
+    cfg.fixes.metabolism.uptake_limit = "delivery";
+    cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
   } else {
     cfg.fixes.metabolism.uptake_limit = "none";
   }
@@ -216,6 +219,32 @@ void test_none_mode_parity_and_absence_of_limitation() {
   assert(std::abs(cpu_realized - cpu_demand) <= 1.0e-12 * cpu_demand);
   std::cout << "  test_none_mode_parity_and_absence_of_limitation: PASSED\n";
 }
+
+void test_delivery_forces_host_chemistry() {
+  const SimulationConfig delivery_config =
+      make_config(UptakeLimitMode::Delivery);
+  const SimulationConfig none_config = make_config(UptakeLimitMode::None);
+  Simulation delivery = run(delivery_config, true);
+  Simulation none = run(none_config, true);
+
+  assert(std::string(delivery.chemistry_placement())
+         == "host_forced_delivery");
+  const auto& delivery_flux = delivery.chemical_field().flux_accounting();
+  const Real delivery_realized = flux_value(
+      delivery, delivery_flux.agent_uptake_cumulative,
+      delivery_flux.agent_uptake_interval);
+  assert(delivery_realized > 0.0);
+
+  const auto& none_flux = none.chemical_field().flux_accounting();
+  const Real none_realized = flux_value(
+      none, none_flux.agent_uptake_cumulative,
+      none_flux.agent_uptake_interval);
+  const Real contrast_scale =
+      std::max(std::abs(delivery_realized), std::abs(none_realized));
+  assert(std::abs(delivery_realized - none_realized)
+         > 1.0e-6 * contrast_scale);
+  std::cout << "  test_delivery_forces_host_chemistry: PASSED\n";
+}
 #endif
 
 }  // namespace
@@ -232,6 +261,7 @@ int main() {
 #else
   test_sherwood_parity();
   test_none_mode_parity_and_absence_of_limitation();
+  test_delivery_forces_host_chemistry();
   std::cout << "GPU uptake limitation parity tests passed.\n";
   return 0;
 #endif
