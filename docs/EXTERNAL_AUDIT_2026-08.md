@@ -121,6 +121,49 @@ device pieces). "Make funded uptake mandatory for scientific configurations" is
 therefore currently equivalent to "no GPU campaigns" — and the report never
 mentions `sherwood`, the unblocked middle path.
 
+**Cross-boundary conjugation over-counted rather than lost.** The standing
+landmine row described a cross-rank plasmid transfer as lost when ghosts are
+cleared. Measurement says otherwise: `FixConjugation` had no ghost-recipient
+guard, so a boundary-straddling pair was attempted **twice** per step — once on
+the donor's rank, where the recipient is a ghost, and once on the recipient's
+owning rank, where the donor is a ghost. Only the second write survives the
+ghost clear, but the first still increments `conjugation_transfers` and still
+appends a lineage HGT edge. A deterministic fixture (three pairs straddling the
+4-rank slab boundaries at `x = 25/50/75 µm` plus one interior control pair,
+`p_transfer` forced to 1) recorded 7 transfers and 7 HGT edges for 4 actual
+acquisitions at `nprocs = 4`, against 4/4/4 in serial over identical geometry.
+Plasmid spread itself was unbiased: with 600 boundary-straddling and 600
+interior pairs at `p = 0.3`, cross-boundary recipients acquired at `p`, not at
+`1-(1-p)^2`, because the donor-side duplicate trial is what gets discarded. The
+defect was therefore in the event ledger and the recorded genealogy, not in the
+biology — every phantom HGT edge named a recipient whose genome never changed.
+The fix commits acquisitions only on the recipient's owning rank; ghost donors
+remain valid, so each pair is attempted exactly once globally with no new
+communication.
+
+**Scale of the affected fraction at `nprocs = 4`.** Sampled from serial runs of
+the shipped examples (chemistry grid coarsened to fit a 7.5 GB box; pair
+geometry is unaffected), classifying every donor/recipient pair within the 4 µm
+pili reach by the cell-aligned 4-slab x decomposition: `eari_vadi_validation`
+(`Lx = 500 µm`) 10 of 3368 pairs cross a boundary (0.30%), `single_colony`
+(`Lx = 1000 µm`) 2 of 2266 (0.09%), `diversity_paradox` (`Lx = 2000 µm`) 0 of
+264. Mean `|Δx|` over in-reach pairs is 1.41 µm, close to the 3r/8 = 1.5 µm
+uniform-in-ball value, so `nprocs·E|Δx|/Lx` predicts 0.6% at `Lx = 1000 µm` and
+0.3% at `Lx = 2000 µm`; the measured fractions sit at or below that because
+microcolonies are clustered and only occasionally sit on a boundary — the
+occurrence is bursty, one sample reaching 3.2%. So multi-rank HGT counts at
+`nprocs = 4` were over-reported by well under 1%, scaling with rank count and
+inversely with slab width. Separately, no conjugation-eligible pair (a
+plasmid-free recipient within pili reach of a plasmid-bearing donor) occurred at
+all in any sampled window of any shipped example: `single_colony` ships only the
+conjugative strain, and in the two-strain examples microcolonies are clonal, so
+the plasmid-free strain never came within 4 µm of a donor. Under shipped
+defaults the over-count is unreachable, which is the reason no published
+multi-rank result is at risk. `domain.ghost_width` (10 µm default) must stay at
+or above the pili reach (4 µm default) for the recipient's owner to see the
+donor at all; `FixConjugation::init` now warns when it does not, since that is
+the one configuration where a genuine loss remains possible.
+
 ## Decisions taken
 
 **Uptake mode.** `sherwood` is the operating mode: `src/fixes/uptake_limit.h` is
