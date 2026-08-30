@@ -308,6 +308,18 @@ respiration is delivery-limited to approximately one third of demand at
 a test artifact. The linear solve is linear in the prescribed mass, so the
 delivery limit lifts proportionally with oxygen availability.
 
+**Non-delivery GPU oxygen VBF remains a discretization divergence.** Delivery
+enabled oxygen is a first-order sink in the implicit Route B diagonal, while
+ordinary non-delivery GPU VBF intentionally retains the shipped explicit
+reaction update. For the shipped `oxygen.vbf_sink = 1e-3 1/s` and `dt = 60 s`,
+the explicit concentration factor is `1 - s·dt = 0.94`, versus the implicit
+factor `1/(1 + s·dt) = 0.9433962264`. The one-step removed fractions therefore
+differ by `6.0%` relative to implicit removal; the resulting field differs by
+`0.0033962264·C` in absolute concentration, or `0.36%` relative to the
+implicit concentration. This is an open host/device discretization divergence
+on the non-delivery GPU VBF path. Its scientific significance is left for a
+separate decision.
+
 **The image series does not solve the drift PDE when there is wall-normal flow.**
 Translations plus z-reversed reflections satisfy zero diffusive flux at both
 walls, but a reflected image with reversed `U_z` solves the mirrored-drift

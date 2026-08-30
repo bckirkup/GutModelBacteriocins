@@ -117,7 +117,7 @@ void apply_oxygen_sink(ChemicalField& chem, Int cell,
   if (const ChemicalSpec& oxygen_spec = chem.spec(ctx.idx.oxygen);
       oxygen_spec.delivery_enabled) {
     chem.add_vbf_sink_rate_global(
-        ctx.idx.oxygen, cell, ctx.oxygen.vbf_sink);
+        ctx.idx.oxygen, cell, oxygen_vbf_sink_rate(ctx.oxygen));
     return;
   }
   // First-order background O2 consumption by the anaerobic majority:
@@ -128,7 +128,8 @@ void apply_oxygen_sink(ChemicalField& chem, Int cell,
   // reported. A first-order sink is self-limiting: it scales with the local O2
   // it can actually consume, so a smooth gradient survives and agent
   // respiration remains visible on top of it.
-  const Real sink = ctx.oxygen.vbf_sink * chem.conc(ctx.idx.oxygen, cell);
+  const Real sink = oxygen_vbf_sink_rate(ctx.oxygen)
+      * chem.conc(ctx.idx.oxygen, cell);
   chem.reac(ctx.idx.oxygen, cell) -= sink;
   if (totals != nullptr) totals->oxygen_sink += sink * cell_volume * dt;
 }

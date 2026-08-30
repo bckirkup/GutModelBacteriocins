@@ -1497,6 +1497,22 @@ void ChemicalField::add_vbf_sink_rate_global(Int spec, Int cell, Real rate) {
             [static_cast<size_t>(storage_cell)] += rate;
 }
 
+void ChemicalField::add_vbf_sink_rates(
+    Int spec, const std::vector<Real>& rates) {
+  if (spec < 0 || spec >= nspec_) return;
+  auto& vbf_rates = vbf_sink_rate_[static_cast<size_t>(spec)];
+  auto& total_rates = sink_rate_[static_cast<size_t>(spec)];
+  if (rates.size() != vbf_rates.size()) {
+    throw Error("VBF sink-rate buffer size mismatch");
+  }
+  for (size_t i = 0; i < rates.size(); ++i) {
+    const Real rate = rates[i];
+    if (rate <= 0.0) continue;
+    vbf_rates[i] += rate;
+    total_rates[i] += rate;
+  }
+}
+
 void ChemicalField::split_delivery_sink_realized(Int spec) {
   if (spec < 0 || spec >= nspec_) return;
   for (Int cell = 0; cell < global_ncells_; ++cell) {

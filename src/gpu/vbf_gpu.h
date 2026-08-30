@@ -17,7 +17,7 @@ struct OxygenConfig;
 struct VbfFluxTotals;
 
 bool gpu_apply_vbf_coupling(ChemicalFieldGpu& chem_gpu,
-                            const ChemicalField& chem,
+                            ChemicalField& chem,
                             const Domain& domain,
                             const VBF& vbf,
                             const OxygenConfig& oxygen,

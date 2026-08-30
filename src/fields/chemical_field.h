@@ -491,6 +491,7 @@ class ChemicalField {
   void add_sink_rate_global(Int spec, Int cell, Real rate);
   void add_prescribed_sink_global(Int spec, Int cell, Real amount);
   void add_vbf_sink_rate_global(Int spec, Int cell, Real rate);
+  void add_vbf_sink_rates(Int spec, const std::vector<Real>& rates);
   void split_delivery_sink_realized(Int spec);
   void add_sink_rate_global(Int cell, Real rate);
   Real sink_realized_global(Int spec, Int cell) const;

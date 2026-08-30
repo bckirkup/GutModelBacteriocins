@@ -62,6 +62,8 @@ class ChemicalFieldGpu {
   void reset_vbf_totals();
   double* vbf_totals_device();
   void download_vbf_totals(std::vector<double>& values) const;
+  void download_vbf_sink_rates(Int spec, std::vector<double>& values) const;
+  double* vbf_sink_rate_device(Int spec);
   void reset_agent_counts();
   int* agent_counts_device();
   double* agent_uptake_device() {
@@ -115,6 +117,7 @@ class ChemicalFieldGpu {
   DeviceBuffer<double> d_maintenance_available_;
   DeviceBuffer<double> d_uptake_limit_totals_;
   DeviceBuffer<double> d_vbf_totals_;
+  std::vector<DeviceBuffer<double>> d_vbf_sink_rates_;
   DeviceBuffer<double> d_reaction_clip_;
   DeviceBuffer<int> d_agent_counts_;
   DeviceBuffer<double> d_delivery_sink_;

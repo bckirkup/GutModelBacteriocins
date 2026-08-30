@@ -99,6 +99,11 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   d_maintenance_available_.allocate(static_cast<size_t>(ncells_));
   d_uptake_limit_totals_.allocate(5);
   d_vbf_totals_.allocate(4);
+  d_vbf_sink_rates_.resize(static_cast<size_t>(nspec_));
+  for (Int s = 0; s < nspec_; ++s) {
+    d_vbf_sink_rates_[static_cast<size_t>(s)].allocate(
+        static_cast<size_t>(ncells_));
+  }
   d_reaction_clip_.allocate(static_cast<size_t>(nspec_));
   d_agent_counts_.allocate(static_cast<size_t>(ncells_));
   d_delivery_sink_.allocate(static_cast<size_t>(ncells_));
@@ -169,6 +174,14 @@ void ChemicalFieldGpu::download_uptake_limit_totals(ChemicalField& field) const 
 void ChemicalFieldGpu::reset_vbf_totals() {
   if (!active_) return;
   d_vbf_totals_.upload(std::vector(4, 0.0));
+#ifdef GUTIBM_CUDA
+  for (auto& rates : d_vbf_sink_rates_) {
+    cudaMemsetAsync(rates.data(),
+                    0,
+                    static_cast<size_t>(ncells_) * sizeof(double),
+                    gpu_compute_stream());
+  }
+#endif
 }
 
 double* ChemicalFieldGpu::vbf_totals_device() {
@@ -179,6 +192,17 @@ void ChemicalFieldGpu::download_vbf_totals(
     std::vector<double>& values) const {
   if (!active_) return;
   d_vbf_totals_.download(values);
+}
+
+void ChemicalFieldGpu::download_vbf_sink_rates(
+    Int spec, std::vector<double>& values) const {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  d_vbf_sink_rates_[static_cast<size_t>(spec)].download(values);
+}
+
+double* ChemicalFieldGpu::vbf_sink_rate_device(Int spec) {
+  if (!active_ || spec < 0 || spec >= nspec_) return nullptr;
+  return d_vbf_sink_rates_[static_cast<size_t>(spec)].data();
 }
 
 void ChemicalFieldGpu::reset_agent_counts() {

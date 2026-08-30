@@ -71,6 +71,7 @@ struct VbfLaunchParams {
   double mucin_liberation = 0.0;
   double vbf_density = 0.0;
   int oxygen_enabled = 0;
+  int oxygen_delivery_enabled = 0;
   double oxygen_vbf_sink = 0.0;
   int acetate_enabled = 0;
   double acetate_vbf_production = 0.0;
