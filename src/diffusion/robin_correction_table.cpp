@@ -39,7 +39,7 @@ uint64_t table_identity_hash(const Table& table) {
   for (const int64_t group : table.quantized_key) {
     append_hash_bytes(hash, &group, sizeof(group));
   }
-  const auto basis = static_cast<int>(to_underlying(table.basis));
+  const int basis = static_cast<int>(table.basis);
   append_hash_bytes(hash, &basis, sizeof(basis));
   append_hash_bytes(hash, &table.z_lo, sizeof(table.z_lo));
   append_hash_bytes(hash, &table.height, sizeof(table.height));

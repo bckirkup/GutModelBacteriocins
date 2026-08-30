@@ -200,7 +200,7 @@ void test_resume_preserves_mu_max_and_in_crypt() {
   }
   const auto continuous_count = std::count(
       snap.genome.bi_release_mode.begin(), snap.genome.bi_release_mode.end(),
-      static_cast<int32_t>(to_underlying(ReleaseMode::CONTINUOUS)));
+      static_cast<int32_t>(ReleaseMode::CONTINUOUS));
   assert(continuous_count == static_cast<int>(snap.agents.id.size()));
 
   const std::string resume_out =

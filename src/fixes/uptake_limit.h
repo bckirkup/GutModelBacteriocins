@@ -30,13 +30,13 @@ GUTIBM_UPTAKE_HOST_DEVICE inline double allowed_uptake_mol(
     int mode, double concentration, double effective_diffusivity,
     double agent_radius, double cell_volume, double dt) {
   const double available = concentration > 0.0 ? concentration : 0.0;
-  if (mode == to_underlying(UptakeLimitMode::Sherwood)) {
+  if (mode == static_cast<int>(UptakeLimitMode::Sherwood)) {
     if (effective_diffusivity <= 0.0 || agent_radius <= 0.0 || dt <= 0.0) {
       return 0.0;
     }
     return 4.0 * kPi * effective_diffusivity * agent_radius * available * dt;
   }
-  if (mode == to_underlying(UptakeLimitMode::Voxel)) {
+  if (mode == static_cast<int>(UptakeLimitMode::Voxel)) {
     if (cell_volume <= 0.0) return 0.0;
     return available * cell_volume;
   }
