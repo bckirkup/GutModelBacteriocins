@@ -180,6 +180,7 @@ void require_species(const ChemicalField& chem,
 
 void validate_required_species(const SimulationConfig& cfg,
                                const ChemicalField& chem) {
+  using enum ReceptorType;
   if (fix_enabled(cfg, "metabolism")) {
     require_species(chem, "fix_metabolism", species::CARBON,
                     "fixes.metabolism");
@@ -221,8 +222,7 @@ void validate_required_species(const SimulationConfig& cfg,
       require_species(chem, "fix_receptor", species::FERRICHROME,
                       "ferrichrome.enabled");
     }
-    for (ReceptorType target : {ReceptorType::BtuB, ReceptorType::FepA,
-                                ReceptorType::CirA, ReceptorType::FhuA}) {
+    for (ReceptorType target : {BtuB, FepA, CirA, FhuA}) {
       require_species(chem, "fix_receptor",
                       species::bacteriocin_species_for(
                           target, cfg.qssa.toxin_lumping == "lumped"),
@@ -231,8 +231,7 @@ void validate_required_species(const SimulationConfig& cfg,
   }
 
   if (fix_enabled(cfg, "bacteriocin")) {
-    for (ReceptorType target : {ReceptorType::BtuB, ReceptorType::FepA,
-                                ReceptorType::CirA, ReceptorType::FhuA}) {
+    for (ReceptorType target : {BtuB, FepA, CirA, FhuA}) {
       require_species(chem, "fix_bacteriocin",
                       species::bacteriocin_species_for(
                           target, cfg.qssa.toxin_lumping == "lumped"),
@@ -1621,13 +1620,13 @@ void Simulation::finalize_neumann_image_series_stats() {
   unsigned long long global_low_screening = 0;
   unsigned long long global_negative_count = 0;
   unsigned long long global_kernel_evaluations = 0;
-  const unsigned long long local_value =
+  const auto local_value =
       static_cast<unsigned long long>(local_hits);
-  const unsigned long long local_kernel_value =
+  const auto local_kernel_value =
       static_cast<unsigned long long>(local_kernel_evaluations);
-  const unsigned long long local_low_screening_value =
+  const auto local_low_screening_value =
       static_cast<unsigned long long>(local_low_screening);
-  const unsigned long long local_negative_count_value =
+  const auto local_negative_count_value =
       static_cast<unsigned long long>(local_negative_count);
   MPI_Allreduce(&local_value, &global_hits, 1, MPI_UNSIGNED_LONG_LONG,
                 MPI_SUM, MPI_COMM_WORLD);

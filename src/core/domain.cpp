@@ -26,7 +26,7 @@ void Domain::init(const DomainConfig& cfg) {
 
   Vec3 sz = size();
   const std::array<const char*, 3> axis_names = {"x", "y", "z"};
-  Int base_cells[3] = {};
+  std::array<Int, 3> base_cells = {};
   for (Int axis = 0; axis < 3; ++axis) {
     base_cells[axis] = std::max<Int>(1, static_cast<Int>(
         std::round(sz[static_cast<size_t>(axis)] / cfg.grid_dx)));
@@ -176,7 +176,7 @@ Int Domain::global_to_local_grid_x(Int global_ix) const {
     }
     candidate %= nx_;
     if (candidate < 0) candidate += nx_;
-    const Int periods = static_cast<Int>(std::floor(
+    const auto periods = static_cast<Int>(std::floor(
         static_cast<Real>(local_grid_x_begin_ - candidate) / nx_));
     candidate += periods * nx_;
     if (candidate < lower) candidate += nx_;

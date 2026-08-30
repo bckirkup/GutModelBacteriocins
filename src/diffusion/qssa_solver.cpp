@@ -325,7 +325,7 @@ void deposit_to_chemical_field(ChemicalField& chem,
   #pragma omp parallel for schedule(static)
   #endif
   for (size_t c = 0; c < concentrations.size(); ++c) {
-    const Int global_cell = static_cast<Int>(c);
+    const auto global_cell = static_cast<Int>(c);
     if (!chem.owns_global_cell(global_cell)) continue;
     chem.conc_global(toxin_species_idx, global_cell) = concentrations[c];
   }
@@ -841,11 +841,12 @@ void QSSASolver::solve_all_bacteriocin_fields(
 namespace {
 
 Int toxin_sample_index(ReceptorType target) {
+  using enum ReceptorType;
   switch (target) {
-    case ReceptorType::BtuB: return 0;
-    case ReceptorType::FepA: return 1;
-    case ReceptorType::CirA: return 2;
-    case ReceptorType::FhuA: return 3;
+    case BtuB: return 0;
+    case FepA: return 1;
+    case CirA: return 2;
+    case FhuA: return 3;
     default: return -1;
   }
 }

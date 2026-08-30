@@ -39,7 +39,7 @@ uint64_t table_identity_hash(const Table& table) {
   for (const int64_t group : table.quantized_key) {
     append_hash_bytes(hash, &group, sizeof(group));
   }
-  const int basis = static_cast<int>(table.basis);
+  const auto basis = static_cast<int>(to_underlying(table.basis));
   append_hash_bytes(hash, &basis, sizeof(basis));
   append_hash_bytes(hash, &table.z_lo, sizeof(table.z_lo));
   append_hash_bytes(hash, &table.height, sizeof(table.height));
@@ -69,7 +69,7 @@ int64_t quantize_relative(double value) {
   const double magnitude = std::abs(value);
   const double bin = std::round(
       std::log(magnitude) / std::log1p(0.01));
-  const int64_t quantized = static_cast<int64_t>(bin);
+  const auto quantized = static_cast<int64_t>(bin);
   return value < 0.0 ? -quantized : quantized;
 }
 
@@ -552,7 +552,7 @@ std::shared_ptr<const Table> TableCache::get(
   const TableCacheKey key = make_cache_key(
       adv, z_lo, z_hi, d_free, d_eff, decay_rate, lumen_transfer_length,
       cutoff, basis);
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   if (const auto found = entries_.find(key); found != entries_.end()) {
     lru_.splice(lru_.begin(), lru_, found->second);
     return found->second->table;
@@ -565,7 +565,7 @@ std::shared_ptr<const Table> TableCache::get(
     lru_.pop_back();
     ++table_evictions_;
   }
-  lru_.push_front(Entry{key, table});
+  lru_.emplace_front(key, table);
   entries_[key] = lru_.begin();
   built_identity_ ^= table_identity_hash(*table);
   ++tables_built_;
@@ -574,7 +574,7 @@ std::shared_ptr<const Table> TableCache::get(
 }
 
 TableCacheSnapshot TableCache::snapshot() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   TableCacheSnapshot result;
   result.generation = generation_;
   result.tables.reserve(lru_.size());
@@ -586,27 +586,27 @@ TableCacheSnapshot TableCache::snapshot() const {
 }
 
 size_t TableCache::size() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return lru_.size();
 }
 
 uint64_t TableCache::tables_built() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return tables_built_;
 }
 
 uint64_t TableCache::table_evictions() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return table_evictions_;
 }
 
 uint64_t TableCache::built_identity() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return built_identity_;
 }
 
 std::string TableCache::metadata() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   std::ostringstream output;
   output << "capacity=" << kMaximumTables
          << ";tables_built=" << tables_built_
@@ -625,7 +625,7 @@ std::string TableCache::metadata() const {
 }
 
 std::string TableCache::built_identity_hash() const {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard lock(mutex_);
   return format_identity_hash(built_identity_);
 }
 

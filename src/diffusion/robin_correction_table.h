@@ -89,9 +89,9 @@ GUTIBM_ROBIN_HOST_DEVICE inline double interpolate(
       : (rho_coordinate > static_cast<double>(kTableNodes - 1)
           ? static_cast<double>(kTableNodes - 1) : rho_coordinate);
 
-  const int source_low = static_cast<int>(source_clamped);
-  const int target_low = static_cast<int>(target_clamped);
-  const int rho_low = static_cast<int>(rho_clamped);
+  const auto source_low = static_cast<int>(source_clamped);
+  const auto target_low = static_cast<int>(target_clamped);
+  const auto rho_low = static_cast<int>(rho_clamped);
   const int source_high = source_low == kTableNodes - 1
       ? source_low : source_low + 1;
   const int target_high = target_low == kTableNodes - 1
