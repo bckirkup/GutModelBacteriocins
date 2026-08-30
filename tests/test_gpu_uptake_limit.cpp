@@ -103,6 +103,17 @@ Real flux_value(const Simulation& simulation,
       + interval[static_cast<size_t>(carbon)];
 }
 
+Real carbon_realized_sink(const Simulation& simulation) {
+  const auto& chem = simulation.chemical_field();
+  const Int carbon = chem.find(species::CARBON);
+  assert(carbon >= 0);
+  Real realized = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    realized += chem.sink_realized_global(carbon, cell);
+  }
+  return realized;
+}
+
 struct MaintenanceLedger {
   Real realized = 0.0;
   Real shortfall = 0.0;
@@ -234,15 +245,25 @@ void test_delivery_forces_host_chemistry() {
       delivery, delivery_flux.agent_uptake_cumulative,
       delivery_flux.agent_uptake_interval);
   assert(delivery_realized > 0.0);
+  const Real delivery_field_realized = carbon_realized_sink(delivery);
+  assert(std::isfinite(delivery_field_realized));
+  assert(delivery_field_realized > 0.0);
 
   const auto& none_flux = none.chemical_field().flux_accounting();
   const Real none_realized = flux_value(
       none, none_flux.agent_uptake_cumulative,
       none_flux.agent_uptake_interval);
+  const Real none_field_realized = carbon_realized_sink(none);
+  assert(std::isfinite(none_field_realized));
+  assert(none_field_realized == 0.0);
   const Real contrast_scale =
       std::max(std::abs(delivery_realized), std::abs(none_realized));
   assert(std::abs(delivery_realized - none_realized)
          > 1.0e-6 * contrast_scale);
+  std::cout << "    delivery carbon sink realized="
+            << format_real(delivery_field_realized)
+            << " none carbon sink realized="
+            << format_real(none_field_realized) << "\n";
   std::cout << "  test_delivery_forces_host_chemistry: PASSED\n";
 }
 #endif

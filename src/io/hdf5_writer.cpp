@@ -633,7 +633,7 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
   const auto fid = static_cast<hid_t>(file_id_);
   if (run_provenance_written_) {
     write_string_dataset(fid, "run_provenance/chemistry_placement",
-                         sim.chemistry_placement());
+                         sim.chemistry_placement(), true);
     return;
   }
   ensure_group(fid, "run_provenance", cfg_);
