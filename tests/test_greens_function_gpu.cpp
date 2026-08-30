@@ -24,8 +24,10 @@ static void cpu_superpose(const GreensFunction& gf,
 
 int main() {
   std::cout << "=== GPU Green's Function Tests ===\n";
-  const int gpu_status = test::require_gpu("greens_function_gpu");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("greens_function_gpu");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
   DomainConfig dcfg;
   dcfg.lo = {0, 0, 0};

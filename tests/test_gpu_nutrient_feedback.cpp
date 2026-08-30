@@ -142,8 +142,10 @@ void run_path_checks(bool gpu) {
 
 int main() {
   run_path_checks(false);
-  const int gpu_status = test::require_gpu("gpu_nutrient_feedback");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("gpu_nutrient_feedback");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifndef GUTIBM_CUDA
   std::cout << "GPU nutrient feedback checks passed (CPU only; CUDA not compiled in).\n";
   return 0;

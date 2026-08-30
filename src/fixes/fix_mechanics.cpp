@@ -147,9 +147,9 @@ Int apply_displacements(Simulation& sim, std::vector<Vec3>& displacements) {
         displacement[0] * displacement[0]
         + displacement[1] * displacement[1]
         + displacement[2] * displacement[2]);
-    const Real limit =
-        kMechanicsMaxDisplacementRadiusFraction * agents[i].radius;
-    if (norm > limit && norm > 0.0) {
+    if (const Real limit =
+            kMechanicsMaxDisplacementRadiusFraction * agents[i].radius;
+        norm > limit && norm > 0.0) {
       const Real scale = limit / norm;
       displacement[0] *= scale;
       displacement[1] *= scale;

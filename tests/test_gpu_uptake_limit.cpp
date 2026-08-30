@@ -222,8 +222,10 @@ void test_none_mode_parity_and_absence_of_limitation() {
 
 int main() {
   std::cout << "=== GPU Uptake Limitation Parity ===\n";
-  const int gpu_status = gutibm::test::require_gpu("gpu_uptake_limit");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = gutibm::test::require_gpu("gpu_uptake_limit");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
   return 0;

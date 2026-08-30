@@ -189,9 +189,9 @@ std::vector<double> robin_mode_roots_impl(double height, double c_lo,
   std::vector<double> roots;
   roots.reserve(static_cast<size_t>(mode_count));
   const double zero_lhs = c_hi * (1.0 - c_lo * height) - c_lo;
-  const double zero_scale = std::max(
-      {std::abs(c_lo), std::abs(c_hi), 1.0 / height});
-  if (std::abs(zero_lhs) <= 1.0e-12 * zero_scale && mode_count > 0) {
+  if (const double zero_scale = std::max(
+          {std::abs(c_lo), std::abs(c_hi), 1.0 / height});
+      std::abs(zero_lhs) <= 1.0e-12 * zero_scale && mode_count > 0) {
     roots.push_back(0.0);
   }
   if (static_cast<int>(roots.size()) == mode_count) return roots;

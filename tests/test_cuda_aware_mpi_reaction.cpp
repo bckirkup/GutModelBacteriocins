@@ -38,8 +38,11 @@ void test_device_reduce_gated_without_env() {
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  const int gpu_status = test::require_gpu("cuda_aware_mpi_reaction");
-  if (gpu_status != 0) return;
+  if (const int gpu_status = test::require_gpu(
+          "cuda_aware_mpi_reaction");
+      gpu_status != 0) {
+    return;
+  }
 
 #ifdef GUTIBM_CUDA
   unsetenv("GUTIBM_CUDA_AWARE_MPI");
@@ -82,8 +85,11 @@ void test_device_reduce_matches_host_when_available() {
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  const int gpu_status = test::require_gpu("cuda_aware_mpi_reaction");
-  if (gpu_status != 0) return;
+  if (const int gpu_status = test::require_gpu(
+          "cuda_aware_mpi_reaction");
+      gpu_status != 0) {
+    return;
+  }
 
 #ifdef GUTIBM_CUDA
   if (!cuda_aware_mpi_runtime_available()) {
@@ -158,8 +164,11 @@ void test_runtime_detection_reports_status() {
 }  // namespace
 
 int main(int argc, char** argv) {
-  const int gpu_status = test::require_gpu("cuda_aware_mpi_reaction");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu(
+          "cuda_aware_mpi_reaction");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifdef GUTIBM_MPI
   MPI_Init(&argc, &argv);
 

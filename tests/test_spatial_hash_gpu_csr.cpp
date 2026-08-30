@@ -16,8 +16,10 @@ using namespace gutibm;
 
 int main() {
   std::cout << "=== Spatial Hash GPU CSR ===\n";
-  const int gpu_status = test::require_gpu("spatial_hash_gpu_csr");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("spatial_hash_gpu_csr");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";

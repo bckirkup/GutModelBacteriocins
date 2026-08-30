@@ -184,8 +184,10 @@ void test_gpu_expired_corpse_match_cpu() {}
 
 int main() {
   std::cout << "=== Mechanics GPU Parity Tests ===\n";
-  const int gpu_status = test::require_gpu("mechanics_gpu_parity");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("mechanics_gpu_parity");
+      gpu_status != 0) {
+    return gpu_status;
+  }
   test_gpu_overlapping_agents_match_cpu();
   test_gpu_adhesion_match_cpu();
   test_gpu_fresh_corpse_match_cpu();

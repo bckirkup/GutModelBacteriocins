@@ -383,9 +383,9 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
   uint64_t* kernel_evaluations = gf.kernel_evaluation_counting_enabled()
       ? &gpu_kernel_evaluations
       : nullptr;
-  const std::vector<size_t> fallback = ::gutibm::robin_host_fallback_sources(
-      domain, sources, params);
-  if (fallback.empty()) {
+  if (const std::vector<size_t> fallback =
+          ::gutibm::robin_host_fallback_sources(domain, sources, params);
+      fallback.empty()) {
     if (try_gpu_near_field(
             domain, adv, sources, params, strength_factors, cutoff_radius,
             chem, toxin_species_idx, chem_gpu, defer_host_sync,
@@ -672,8 +672,7 @@ void QSSASolver::solve_bacteriocin_field(
 
   if (cfg_.toxin_evaluation == "agents") {
     sampled_species_indices_.fill(-1);
-    const Int sample_idx = toxin_sample_index(target);
-    if (sample_idx >= 0) {
+    if (const Int sample_idx = toxin_sample_index(target); sample_idx >= 0) {
       sampled_species_indices_[static_cast<size_t>(sample_idx)] =
           toxin_species_idx;
     }
@@ -790,8 +789,8 @@ void QSSASolver::solve_all_bacteriocin_fields(
       if (name == nullptr) continue;
       Int idx = chem.find(name);
       if (idx < 0) continue;
-      const Int sample_idx = toxin_sample_index(target);
-      if (sample_idx >= 0) {
+      if (const Int sample_idx = toxin_sample_index(target);
+          sample_idx >= 0) {
         sampled_species_indices_[static_cast<size_t>(sample_idx)] = idx;
       }
       filter_sources_by_target(all_sources, all_params, all_strengths,
@@ -1008,8 +1007,8 @@ Real QSSASolver::sampled_nuclease_conc(
 }
 
 Real QSSASolver::sampled_toxin_max(Int species_idx) const {
-  const Int sample_idx = sampled_slot_for_species(species_idx);
-  if (sample_idx < 0) return 0.0;
+  if (const Int sample_idx = sampled_slot_for_species(species_idx);
+      sample_idx < 0) return 0.0;
   if (sampled_agents_ == nullptr) return 0.0;
   Real maximum = 0.0;
   for (Int i = 0; i < sampled_agents_->size(); ++i) {

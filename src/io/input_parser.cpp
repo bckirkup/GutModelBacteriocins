@@ -269,9 +269,9 @@ void configure_toxin_species(SimulationConfig& cfg) {
         find_chemical_spec(cfg.chemicals, receptor_names[i]);
     if (receptor_indices[i] >= 0) ++receptor_count;
   }
-  const Int lumped_idx =
-      find_chemical_spec(cfg.chemicals, species::BACTERIOCIN_LUMPED);
-  if (lumped_idx >= 0) {
+  if (const Int lumped_idx =
+          find_chemical_spec(cfg.chemicals, species::BACTERIOCIN_LUMPED);
+      lumped_idx >= 0) {
     if (receptor_count != 0) {
       throw ConfigError(
           "toxin_lumping=lumped cannot combine lumped and receptor fields");
@@ -301,10 +301,10 @@ void configure_toxin_species(SimulationConfig& cfg) {
   configured.reserve(cfg.chemicals.size() - receptor_names.size() + 1);
   bool inserted = false;
   for (const auto& spec : cfg.chemicals) {
-    const bool is_receptor =
-        std::ranges::find(receptor_names, spec.name)
-        != std::end(receptor_names);
-    if (is_receptor) {
+    if (const bool is_receptor =
+            std::ranges::find(receptor_names, spec.name)
+            != std::end(receptor_names);
+        is_receptor) {
       if (!inserted) {
         configured.push_back(lumped);
         inserted = true;
@@ -685,8 +685,9 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
     spec.delivery_enabled = false;
   }
   if (metabolism.uptake_limit_mode == UptakeLimitMode::Delivery) {
-    const Int carbon = find_chemical_spec(cfg.chemicals, species::CARBON);
-    if (carbon >= 0) {
+    if (const Int carbon =
+            find_chemical_spec(cfg.chemicals, species::CARBON);
+        carbon >= 0) {
       cfg.chemicals[static_cast<size_t>(carbon)].delivery_enabled = true;
     }
     if (cfg.chem_env.oxygen.delivery_uptake_enabled) {
@@ -704,8 +705,9 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "implemented yet");
   }
 
-  const Int carbon_idx = find_chemical_spec(cfg.chemicals, species::CARBON);
-  if (carbon_idx >= 0) {
+  if (const Int carbon_idx =
+          find_chemical_spec(cfg.chemicals, species::CARBON);
+      carbon_idx >= 0) {
     auto& carbon = cfg.chemicals[static_cast<size_t>(carbon_idx)];
     configure_epithelial_boundary(
         carbon, "carbon", "carbon.epithelial_boundary",
