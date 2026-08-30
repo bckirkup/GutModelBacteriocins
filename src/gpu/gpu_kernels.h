@@ -185,6 +185,10 @@ void launch_shift_z_gradient_accounted(
 void launch_clamp_nonneg(double* conc, int storage_nx, int ny, int nz,
                          int owned_x_begin, int owned_x_end,
                          cudaStream_t stream);
+void launch_clamp_nonneg_accounted(
+    double* conc, int storage_nx, int ny, int nz, int owned_x_begin,
+    int owned_x_end, double cell_volume, double* clipped,
+    cudaStream_t stream);
 
 void launch_o2_depletion_kernel(double* reac_oxygen,
                                 const double* mu_realized,

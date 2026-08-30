@@ -37,6 +37,8 @@ bool diffusion_all_species_within(
 bool delivery_route_b_eligible(
     const Domain& domain, const ChemicalField& field,
     int max_line = gpu::kMaxDeliveryLineLength);
+bool gpu_delivery_species_eligible(
+    const Domain& domain, const ChemicalSpec& spec, Real dt);
 
 // True when the selected z solve fits the PCR shared-memory line limit.
 bool gpu_diffusion_line_lengths_supported(
@@ -56,8 +58,8 @@ bool gpu_apply_species_diffusion_device(const Domain& domain,
 bool gpu_apply_species_delivery_device(
     const Domain& domain, const ChemicalSpec& spec, double* d_conc,
     const double* d_sink, const double* d_prescribed, double* d_realized,
-    double* d_boundary_injected, double* d_gradient_source, Real dt,
-    bool prescribed_active);
+    double* d_boundary_injected, double* d_gradient_source,
+    double* d_reaction_clip, Real dt, bool prescribed_active);
 
 bool gpu_apply_species_diffusion_slab_device(
     const Domain& domain, const ChemicalSpec& spec, double* d_conc,

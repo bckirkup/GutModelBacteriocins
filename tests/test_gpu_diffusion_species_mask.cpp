@@ -1,9 +1,11 @@
 #include "chemical_field.h"
+#include "chemical_field_gpu.h"
 #include "diffusion_gpu.h"
 #include "domain.h"
 
 #include <cassert>
 #include <iostream>
+#include <vector>
 
 using namespace gutibm;
 
@@ -36,12 +38,17 @@ ChemicalSpec diffusing_species(const char* name,
   return spec;
 }
 
-ChemicalSpec delivery_species(EpithelialBoundaryMode mode) {
-  ChemicalSpec spec = diffusing_species("delivery", mode);
+ChemicalSpec delivery_species(const char* name,
+                               EpithelialBoundaryMode mode) {
+  ChemicalSpec spec = diffusing_species(name, mode);
   spec.delivery_enabled = true;
   spec.epithelial_transfer_coeff =
       mode == EpithelialBoundaryMode::Robin ? 1.0e-5 : 0.0;
   return spec;
+}
+
+ChemicalSpec delivery_species(EpithelialBoundaryMode mode) {
+  return delivery_species("delivery", mode);
 }
 
 }  // namespace
@@ -105,6 +112,37 @@ int main() {
       disabled_robin,
   });
   assert(diffusion_all_species_within(tall_domain, mixed_disabled, 1024));
+
+  const Domain mixed_delivery_domain = make_domain(1, 1, 513);
+  assert(diffusion_line_lengths_within(
+      mixed_delivery_domain, EpithelialBoundaryMode::Dirichlet, 512));
+  assert(!diffusion_line_lengths_within(
+      mixed_delivery_domain, EpithelialBoundaryMode::Robin, 512));
+  const std::vector<ChemicalSpec> mixed_delivery_specs{
+      delivery_species("eligible_delivery", EpithelialBoundaryMode::Dirichlet),
+      delivery_species("ineligible_delivery", EpithelialBoundaryMode::Robin),
+      diffusing_species("ordinary", EpithelialBoundaryMode::Robin)};
+  ChemicalField expected_host;
+  expected_host.init(mixed_delivery_domain, mixed_delivery_specs);
+  ChemicalField fallback_field;
+  fallback_field.init(mixed_delivery_domain, mixed_delivery_specs);
+  const Int seed_cell = mixed_delivery_domain.cell_index(0, 0, 256);
+  for (Int s = 0; s < fallback_field.num_species(); ++s) {
+    const Real seed = 0.25 * static_cast<Real>(s + 1);
+    expected_host.conc(s, seed_cell) = seed;
+    fallback_field.conc(s, seed_cell) = seed;
+  }
+  expected_host.apply_diffusion(mixed_delivery_domain, 1.0);
+  const auto before_fallback = fallback_field.conc_data();
+  ChemicalFieldGpu gpu;
+  gpu.init(fallback_field);
+  assert(!delivery_route_b_eligible(
+      mixed_delivery_domain, fallback_field));
+  assert(!fallback_field.apply_diffusion_gpu(
+      gpu, mixed_delivery_domain, 1.0));
+  assert(fallback_field.conc_data() == before_fallback);
+  fallback_field.apply_diffusion(mixed_delivery_domain, 1.0);
+  assert(fallback_field.conc_data() == expected_host.conc_data());
 
   std::cout << "GPU diffusion species-mask predicates passed.\n";
   return 0;

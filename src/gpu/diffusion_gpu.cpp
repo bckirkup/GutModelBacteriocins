@@ -3,6 +3,7 @@
 #include "domain.h"
 #include "dispatch.h"
 #include "device_memory.h"
+#include "error.h"
 #include "gpu_kernels.h"
 #include "gpu_profile.h"
 #include "tridiagonal_factorization.h"
@@ -197,6 +198,25 @@ bool delivery_route_b_eligible(
   return true;
 }
 
+bool gpu_delivery_species_eligible(
+    const Domain& domain, const ChemicalSpec& spec, Real dt) {
+#ifdef GUTIBM_CUDA
+  return gpu_runtime_enabled() && spec.delivery_enabled
+      && species_diffusion_eligible(spec, dt, domain)
+      && domain.nprocs() == 1
+      && domain.nx() <= gpu::kMaxDeliveryLineLength
+      && domain.ny() <= gpu::kMaxDeliveryLineLength
+      && diffusion_line_lengths_within(
+          domain, spec.epithelial_boundary_mode,
+          gpu::kMaxDeliveryLineLength);
+#else
+  (void)domain;
+  (void)spec;
+  (void)dt;
+  return false;
+#endif
+}
+
 bool gpu_diffusion_line_lengths_supported(
     const Domain& domain, EpithelialBoundaryMode mode) {
 #ifdef GUTIBM_CUDA
@@ -235,8 +255,8 @@ bool gpu_apply_species_diffusion_device(const Domain& domain,
 bool gpu_apply_species_delivery_device(
     const Domain& domain, const ChemicalSpec& spec, double* d_conc,
     const double* d_sink, const double* d_prescribed, double* d_realized,
-    double* d_boundary_injected, double* d_gradient_source, Real dt,
-    bool prescribed_active) {
+    double* d_boundary_injected, double* d_gradient_source,
+    double* d_reaction_clip, Real dt, bool prescribed_active) {
 #ifndef GUTIBM_CUDA
   (void)domain;
   (void)spec;
@@ -246,19 +266,14 @@ bool gpu_apply_species_delivery_device(
   (void)d_realized;
   (void)d_boundary_injected;
   (void)d_gradient_source;
+  (void)d_reaction_clip;
   (void)dt;
   (void)prescribed_active;
   return false;
 #else
   // Device rationing has no MPI reduction; Route B is single-rank only.
   assert(domain.nprocs() == 1);
-  const int max_line = gpu::kMaxDeliveryLineLength;
-  if (!gpu_runtime_enabled() || !spec.delivery_enabled
-      || !species_diffusion_eligible(spec, dt, domain)
-      || domain.nprocs() != 1 || domain.nx() > max_line
-      || domain.ny() > max_line
-      || !diffusion_line_lengths_within(
-          domain, spec.epithelial_boundary_mode, max_line)) {
+  if (!gpu_delivery_species_eligible(domain, spec, dt)) {
     return false;
   }
   const Real effective_diffusion = spec.diff_coeff / spec.retardation;
@@ -310,7 +325,9 @@ bool gpu_apply_species_delivery_device(
           domain.nz(), alpha_x, dt / 3.0, domain.cell_volume(),
           domain.dx_z(), spec.initial_conc, spec.z_gradient_lambda,
           spec.boundary_conc, preserve_gradient, stream)) {
-    return false;
+    throw Error(
+        "CUDA delivery x-periodic launch failed for species '"
+        + spec.name + "'");
   }
   if (!gpu::launch_diffuse_y_periodic_delivery(
           d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
@@ -318,7 +335,9 @@ bool gpu_apply_species_delivery_device(
           domain.cell_volume(), domain.dx_z(), spec.initial_conc,
           spec.z_gradient_lambda, spec.boundary_conc, preserve_gradient,
           stream)) {
-    return false;
+    throw Error(
+        "CUDA delivery y-periodic launch failed for species '"
+        + spec.name + "'");
   }
   if (!gpu::launch_diffuse_z_bounded_delivery(
           d_conc, d_sink, d_prescribed, d_realized, domain.nx(), domain.ny(),
@@ -327,7 +346,9 @@ bool gpu_apply_species_delivery_device(
           domain.cell_volume(), domain.dx_z(), spec.initial_conc,
           spec.z_gradient_lambda, preserve_gradient, d_boundary_injected,
           stream)) {
-    return false;
+    throw Error(
+        "CUDA delivery z-bounded launch failed for species '"
+        + spec.name + "'");
   }
   if (preserve_gradient) {
     if (d_gradient_source != nullptr) {
@@ -350,8 +371,9 @@ bool gpu_apply_species_delivery_device(
     }
   }
   if (!prescribed_active) {
-    gpu::launch_clamp_nonneg(
-        d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(), stream);
+    gpu::launch_clamp_nonneg_accounted(
+        d_conc, domain.nx(), domain.ny(), domain.nz(), 0, domain.nx(),
+        domain.cell_volume(), d_reaction_clip, stream);
   }
   if (spec.epithelial_boundary_mode == EpithelialBoundaryMode::Dirichlet) {
     gpu::launch_set_epithelial_boundary(

@@ -107,6 +107,7 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   d_delivery_concentration_backup_.allocate(static_cast<size_t>(ncells_));
   d_delivery_realized_backup_.allocate(static_cast<size_t>(ncells_));
   d_delivery_gradient_source_.allocate(1);
+  d_delivery_reaction_clip_.allocate(1);
   d_delivery_negative_count_.allocate(1);
   sync_to_device(field);
 }
@@ -422,13 +423,20 @@ bool ChemicalFieldGpu::apply_delivery_species(
     throw Error(std::string("delivery gradient memset: ")
                 + cudaGetErrorString(gradient_status));
   }
+  if (const cudaError_t clip_status = cudaMemset(
+          d_delivery_reaction_clip_.data(), 0, sizeof(double));
+      clip_status != cudaSuccess) {
+    throw Error(std::string("delivery reaction-clip memset: ")
+                + cudaGetErrorString(clip_status));
+  }
 #endif
   return gpu_apply_species_delivery_device(
       domain, spec, d_conc_[static_cast<size_t>(species)].data(),
       d_delivery_sink_.data(), d_delivery_prescribed_.data(),
       d_delivery_realized_.data(),
       d_boundary_injected_.data() + static_cast<size_t>(species),
-      d_delivery_gradient_source_.data(), dt, prescribed_active);
+      d_delivery_gradient_source_.data(), d_delivery_reaction_clip_.data(),
+      dt, prescribed_active);
 #endif
 }
 
@@ -521,6 +529,14 @@ Real ChemicalFieldGpu::download_delivery_gradient_source() const {
   double value = 0.0;
   d_delivery_gradient_source_.download(&value, 1);
   return value;
+}
+
+Real ChemicalFieldGpu::download_delivery_reaction_clip() const {
+  if (!active_) return 0.0;
+  gpu_sync_compute();
+  double clipped = 0.0;
+  d_delivery_reaction_clip_.download(&clipped, 1);
+  return clipped;
 }
 
 void ChemicalFieldGpu::download_delivery_species(

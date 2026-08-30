@@ -417,6 +417,25 @@ __global__ void clamp_nonneg_kernel(double* conc, int storage_nx, int ny,
       fmax(conc[cell_index(ix, iy, iz, storage_nx, ny)], 0.0);
 }
 
+__global__ void clamp_nonneg_accounted_kernel(
+    double* conc, int storage_nx, int ny, int nz, int owned_x_begin,
+    int owned_x_end, double cell_volume, double* clipped) {
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int local_nx = owned_x_end - owned_x_begin;
+  const int ncells = local_nx * ny * nz;
+  if (idx >= ncells) return;
+  const int iz = idx / (local_nx * ny);
+  const int rem = idx % (local_nx * ny);
+  const int iy = rem / local_nx;
+  const int ix = owned_x_begin + rem % local_nx;
+  const int cell = cell_index(ix, iy, iz, storage_nx, ny);
+  const double value = conc[cell];
+  if (value < 0.0) {
+    atomicAdd(clipped, -value * cell_volume);
+    conc[cell] = 0.0;
+  }
+}
+
 __device__ double delivery_gradient(
     int iz, int nz, double dx_z, double initial_conc, double lambda,
     double boundary_conc, int has_gradient) {
@@ -601,8 +620,7 @@ __global__ void diffuse_z_bounded_delivery_kernel(
   const int tid = threadIdx.x;
   extern __shared__ double smem[];
   double* line = smem;
-  double* pcr = line + blockDim.x;
-  double* lower = pcr;
+  double* lower = line + blockDim.x;
   double* diagonal = lower + blockDim.x;
   double* upper = diagonal + blockDim.x;
   double* rhs = upper + blockDim.x;
@@ -897,6 +915,19 @@ void launch_clamp_nonneg(double* conc, int storage_nx, int ny, int nz,
   const int grid = (ncells + block - 1) / block;
   clamp_nonneg_kernel<<<grid, block, 0, stream>>>(
       conc, storage_nx, ny, nz, owned_x_begin, owned_x_end);
+}
+
+void launch_clamp_nonneg_accounted(
+    double* conc, int storage_nx, int ny, int nz, int owned_x_begin,
+    int owned_x_end, double cell_volume, double* clipped,
+    cudaStream_t stream) {
+  const int ncells = (owned_x_end - owned_x_begin) * ny * nz;
+  if (ncells <= 0 || clipped == nullptr) return;
+  const int block = 256;
+  const int grid = (ncells + block - 1) / block;
+  clamp_nonneg_accounted_kernel<<<grid, block, 0, stream>>>(
+      conc, storage_nx, ny, nz, owned_x_begin, owned_x_end, cell_volume,
+      clipped);
 }
 
 void launch_count_negative_kernel(

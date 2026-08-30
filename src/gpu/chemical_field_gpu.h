@@ -34,6 +34,7 @@ class ChemicalFieldGpu {
                               Int species, Real dt, bool prescribed_active);
   void reset_delivery_boundary(Int species);
   Real download_delivery_boundary(Int species) const;
+  Real download_delivery_reaction_clip() const;
   bool delivery_has_negative(Int spec);
   Real delivery_negative_fraction(Int spec);
   void prepare_delivery_species(
@@ -122,6 +123,7 @@ class ChemicalFieldGpu {
   DeviceBuffer<double> d_delivery_concentration_backup_;
   DeviceBuffer<double> d_delivery_realized_backup_;
   DeviceBuffer<double> d_delivery_gradient_source_;
+  DeviceBuffer<double> d_delivery_reaction_clip_;
   DeviceBuffer<unsigned long long> d_delivery_negative_count_;
   unsigned long long delivery_negative_count_host_ = 0;
   Int delivery_negative_count_spec_ = -1;

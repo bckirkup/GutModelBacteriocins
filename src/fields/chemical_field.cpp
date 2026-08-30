@@ -10,6 +10,7 @@
 #include "tridiagonal_factorization.h"
 #include "chemical_field_gpu.h"
 #include "diffusion_gpu.h"
+#include "dispatch.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -3043,6 +3044,13 @@ bool ChemicalField::apply_diffusion_gpu(
   if (!gpu.active() || !delivery_route_b_eligible(domain, *this)) {
     return false;
   }
+  for (Int s = 0; s < nspec_; ++s) {
+    const ChemicalSpec& chemical = specs_[static_cast<size_t>(s)];
+    if (!chemical.diffuses() || !chemical.delivery_enabled) continue;
+    if (!gpu_delivery_species_eligible(domain, chemical, dt)) {
+      return false;
+    }
+  }
   bool has_delivery = false;
   for (Int s = 0; s < nspec_; ++s) {
     const auto& chemical = specs_[static_cast<size_t>(s)];
@@ -3091,22 +3099,23 @@ bool ChemicalField::apply_diffusion_gpu(
           prescribed = prescribed_snapshot;
           gpu.upload_delivery_prescribed(prescribed);
         };
-    bool device_delivery_failed = false;
     const auto solve = [
-        &gpu, this, &domain, s, dt, &chemical, &device_delivery_failed] {
+        &gpu, this, &domain, s, dt, &chemical] {
       gpu.upload_delivery_prescribed(prescribed_sink_[static_cast<size_t>(s)]);
       gpu.reset_delivery_boundary(s);
-      if (!device_delivery_failed
-          && !gpu.apply_delivery_species(
+      if (!gpu.apply_delivery_species(
               domain, chemical, s, dt,
               prescribed_active_[static_cast<size_t>(s)])) {
-        device_delivery_failed = true;
+        throw Error(
+            "CUDA delivery precondition failed for species '"
+            + chemical.name + "'");
       }
-      if (device_delivery_failed) return;
       flux_accounting_.add_boundary(
           s, gpu.download_delivery_boundary(s));
       flux_accounting_.add_gradient_source(
           s, gpu.download_delivery_gradient_source());
+      flux_accounting_.add_reaction_clip(
+          s, gpu.download_delivery_reaction_clip());
     };
     const auto owns_cell = [this](Int cell) {
       return owns_global_cell(cell);
@@ -3118,12 +3127,11 @@ bool ChemicalField::apply_diffusion_gpu(
         restore,
         restore_original,
         solve,
-        [&gpu, s, &device_delivery_failed] {
-          return device_delivery_failed || gpu.delivery_has_negative(s);
+        [&gpu, s] {
+          return gpu.delivery_has_negative(s);
         },
-        [&gpu, s, &device_delivery_failed] {
-          return device_delivery_failed
-              ? 1.0 : gpu.delivery_negative_fraction(s);
+        [&gpu, s] {
+          return gpu.delivery_negative_fraction(s);
         },
         [this, &gpu, s, &domain, &owns_cell, &storage_cell] {
           // Retry dilation intentionally uses one device-to-host transfer;
@@ -3158,13 +3166,14 @@ bool ChemicalField::apply_diffusion_gpu(
         }};
     const auto result = run_delivery_rationing(
         prescribed_snapshot, callbacks);
-    if (device_delivery_failed) {
-      restore_original();
-      return false;
-    }
     std::vector<Real> realized;
     gpu.download_delivery_species(s, concentration, realized);
-    total_sink_realized_[static_cast<size_t>(s)] = std::move(realized);
+    auto& total_realized = total_sink_realized_[static_cast<size_t>(s)];
+    assert(total_realized.size() == realized_snapshot.size());
+    assert(total_realized.size() == realized.size());
+    for (size_t i = 0; i < total_realized.size(); ++i) {
+      total_realized[i] = realized_snapshot[i] + realized[i];
+    }
     record_delivery_rationing(s, chemical, result);
   }
   return has_delivery;
