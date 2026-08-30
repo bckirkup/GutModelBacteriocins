@@ -56,10 +56,23 @@ rather than an accident of a fallback branch:
 
 Cost: delivery runs get no chemistry-solve speedup from the GPU. Agent kernels,
 toxin kernels, mechanics, and non-delivery species keep their GPU acceleration.
-Nothing scientific is left to a silent branch, and the device delivery solve
-remains explicitly unimplemented.
+Nothing scientific is left to a silent branch. Route A remains the path for
+every configuration outside Route B's supported scope below.
 
-## Route B — port the delivery solve to the device (implemented)
+## Route B — port the delivery solve to the device (implemented, narrow scope)
+
+The device delivery solve carries both sink terms: agent uptake as prescribed
+mass in the RHS and the first-order VBF sink in the implicit diagonal, with
+per-cell realized removal read back to fund biomass and the positivity
+rationing policy left single-sourced on the host, driven by device-backed
+negativity and reduction callbacks.
+
+Supported scope: replicated decomposition, single rank, delivery-enabled
+diffusing species, and line lengths up to 512 (the shared-memory bound of the
+variable-diagonal periodic kernels). Slab mode, `nprocs > 1`, longer lines, and
+any unsupported boundary combination fall back to Route A and are recorded as
+`host_forced_delivery`; `device_delivery` is recorded only when the device path
+actually ran.
 
 The T4 parity gate proves the realized-removal channels that the device
 delivery path actually uses: for carbon, the agent prescribed-mass share is
@@ -69,12 +82,11 @@ share by construction: its VBF sink is a Monod reaction term rather than a
 first-order sink-rate channel, so the delivery split attributes zero carbon
 removal to VBF.
 
-The cost structure is the thing to note before starting: rationing can require
-up to 18 full three-axis solves in a single biology step, each followed by a
-collective negativity decision. A port therefore cannot avoid a per-iteration
-reduction — but that same arithmetic is why delivery mode is the most expensive
-thing in the model on CPU, and why the port is worth doing eventually rather
-than never.
+The cost structure remains the thing to watch: rationing can require up to 18
+full three-axis solves in a single biology step, each followed by a collective
+negativity decision, so the device path cannot avoid a per-iteration reduction.
+That same arithmetic is why delivery mode is the most expensive thing in the
+model on CPU, and why the port was worth doing.
 
 ## The parity gate, either way
 
