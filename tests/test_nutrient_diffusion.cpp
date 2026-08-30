@@ -888,6 +888,72 @@ void test_delivery_boundary_slab_matches_replicated() {
   std::cout << "  test_delivery_boundary_slab_matches_replicated: PASSED\n";
 }
 
+struct PrescribedMassClosureResult {
+  Real prescribed = 0.0;
+  Real field_removed = 0.0;
+};
+
+PrescribedMassClosureResult run_prescribed_mass_closure(
+    EpithelialBoundaryMode mode, Real transfer_coeff) {
+  constexpr Real dt = 60.0;
+  DomainConfig cfg;
+  cfg.lo = {0.0, 0.0, 0.0};
+  cfg.hi = {20.0e-6, 20.0e-6, 30.0e-6};
+  cfg.grid_dx = 5.0e-6;
+  cfg.hash_cell_size = 10.0e-6;
+  Domain domain;
+  domain.init(cfg);
+
+  ChemicalSpec spec = delivery_species(
+      mode, 1.0e-3, 1.0e-3, transfer_coeff, 0.0);
+  spec.diff_coeff = 1.0e-20;
+  spec.delivery_enabled = true;
+  ChemicalField chem;
+  chem.init(domain, {spec});
+  const Int species_index = chem.find(species::OXYGEN);
+  const Real prescribed = 1.0e-3 * 0.05 * domain.cell_volume();
+  chem.add_prescribed_sink_global(
+      species_index, domain.cell_index(2, 2, 3), prescribed);
+
+  const Real before = total_inventory(chem, domain, species_index);
+  chem.apply_diffusion(domain, dt);
+  const Real after = total_inventory(chem, domain, species_index);
+  const auto& flux = chem.flux_accounting();
+  const Real boundary = flux.boundary_step[
+      static_cast<size_t>(species_index)];
+  return {prescribed, before - after + boundary};
+}
+
+void test_delivery_prescribed_mass_closure_all_boundaries() {
+  const std::array modes = {
+      EpithelialBoundaryMode::Dirichlet,
+      EpithelialBoundaryMode::Robin,
+      EpithelialBoundaryMode::Flux};
+  for (const auto mode : modes) {
+    const Real transfer_coeff =
+        mode == EpithelialBoundaryMode::Robin ? 1.0e-8 : 0.0;
+    const PrescribedMassClosureResult result =
+        run_prescribed_mass_closure(mode, transfer_coeff);
+    const Real scale = std::max(
+        {std::abs(result.prescribed), std::abs(result.field_removed),
+         1.0e-300});
+    const Real relative_error =
+        std::abs(result.field_removed - result.prescribed) / scale;
+    std::cout << "  prescribed_mass mode="
+              << (mode == EpithelialBoundaryMode::Dirichlet
+                      ? "dirichlet"
+                      : (mode == EpithelialBoundaryMode::Robin
+                             ? "robin" : "flux"))
+              << " prescribed=" << result.prescribed
+              << " removed=" << result.field_removed
+              << " ratio=" << result.field_removed / result.prescribed
+              << " relative_error=" << relative_error << "\n";
+    assert(relative_error <= 1.0e-9);
+  }
+  std::cout << "  test_delivery_prescribed_mass_closure_all_boundaries:"
+            << " PASSED\n";
+}
+
 void test_dirichlet_default_is_unchanged() {
   Domain domain = make_domain(4, 3, 6);
   ChemicalSpec implicit_default = diffusing_species(2.1e-9, 0.0, 1.0);
@@ -968,6 +1034,7 @@ int main() {
   test_delivery_boundary_conservation_and_sensitivity();
   test_delivery_boundary_limits_depletion_and_accounting();
   test_delivery_boundary_slab_matches_replicated();
+  test_delivery_prescribed_mass_closure_all_boundaries();
   test_dirichlet_default_is_unchanged();
   test_delivery_boundary_rejects_gradient();
   test_delivery_mass_closure_gradient_parameterization();

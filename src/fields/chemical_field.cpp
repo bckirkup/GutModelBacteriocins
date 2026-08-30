@@ -793,18 +793,26 @@ void solve_replicated_delivery_z_line(
   const Int nz = context.domain.nz();
   std::vector<Real> line(static_cast<size_t>(nz - 1));
   std::vector<Real> sink(static_cast<size_t>(nz - 1));
+  std::vector<Real> prescribed(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = context.domain.cell_index(ix, iy, iz);
-    line[static_cast<size_t>(iz - 1)] =
-        context.concentration[static_cast<size_t>(cell)];
-    sink[static_cast<size_t>(iz - 1)] =
-        context.sink.sink_rate[static_cast<size_t>(cell)]
+    const auto index = static_cast<size_t>(iz - 1);
+    line[index] = context.concentration[static_cast<size_t>(cell)];
+    sink[index] = context.sink.sink_rate[static_cast<size_t>(cell)]
         * context.sink.sink_dt;
+    if (context.sink.prescribed_mass != nullptr) {
+      prescribed[index] =
+          (*context.sink.prescribed_mass)[static_cast<size_t>(cell)]
+          / (3.0 * context.sink.cell_volume);
+    }
   }
   std::vector gradient(static_cast<size_t>(nz - 1), 0.0);
   apply_gradient_sink(
       line, sink, gradient, context.sink.gradient_spec,
       context.domain, 1);
+  for (size_t index = 0; index < line.size(); ++index) {
+    line[index] -= prescribed[index];
+  }
   std::vector diagonal(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     diagonal[static_cast<size_t>(iz - 1)] =
@@ -1768,6 +1776,7 @@ struct SlabDeliveryLineContext {
   std::vector<Real>& concentration;
   std::vector<Real>& realized;
   const std::vector<Real>& sink_rate;
+  const std::vector<Real>* prescribed_mass = nullptr;
   const Domain& domain;
   Int storage_nx = 0;
   Int halo_width = 0;
@@ -1807,17 +1816,26 @@ void solve_slab_delivery_line(
   const Int ny = context.domain.ny();
   std::vector<Real> line(static_cast<size_t>(nz - 1));
   std::vector<Real> sink(static_cast<size_t>(nz - 1));
+  std::vector<Real> prescribed(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = slab_storage_index(
         context.halo_width + ix, iy, iz, context.storage_nx, ny);
-    line[static_cast<size_t>(iz - 1)] =
-        context.concentration[static_cast<size_t>(cell)];
-    sink[static_cast<size_t>(iz - 1)] =
-        context.sink_rate[static_cast<size_t>(cell)] * context.sink_dt;
+    const auto index = static_cast<size_t>(iz - 1);
+    line[index] = context.concentration[static_cast<size_t>(cell)];
+    sink[index] = context.sink_rate[static_cast<size_t>(cell)]
+        * context.sink_dt;
+    if (context.prescribed_mass != nullptr) {
+      prescribed[index] =
+          (*context.prescribed_mass)[static_cast<size_t>(cell)]
+          / (3.0 * context.cell_volume);
+    }
   }
   std::vector gradient(static_cast<size_t>(nz - 1), 0.0);
   apply_gradient_sink(
       line, sink, gradient, context.gradient_spec, context.domain, 1);
+  for (size_t index = 0; index < line.size(); ++index) {
+    line[index] -= prescribed[index];
+  }
   std::vector diagonal(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     diagonal[static_cast<size_t>(iz - 1)] =
@@ -2307,8 +2325,9 @@ Real diffuse_bounded_z_slab_delivery(
   if (const Int nz = domain.nz(); nz <= 1) return 0.0;
   Real face_exchange = 0.0;
   const SlabDeliveryLineContext line_context{
-      concentration, realized, sink_rate, domain, storage_nx, halo_width,
-      alpha, boundary_conc, cell_volume, sink_dt, gradient_spec};
+      concentration, realized, sink_rate, context.prescribed_mass, domain,
+      storage_nx, halo_width, alpha, boundary_conc, cell_volume, sink_dt,
+      gradient_spec};
   for (Int iy = 0; iy < ny; ++iy) {
     for (Int ix = 0; ix < nx; ++ix) {
       solve_slab_delivery_line(line_context, ix, iy, face_exchange);
