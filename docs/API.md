@@ -161,7 +161,6 @@ Dual-vector mucus flow field.
 | `shear_rate(Vec3 pos)` | Local shear magnitude |
 | `advect(Vec3& pos, Real dt)` | Move a position by flow |
 | `washout_rate(Real z)` | Dilution rate at height z (0 in crypt zone) |
-| `taylor_aris_D_eff(z, D_mol)` | Shear-enhanced dispersion coefficient |
 | `in_crypt_zone(Real z)` | True if z falls within the crypt zero-flow zone |
 
 ---

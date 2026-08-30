@@ -33,10 +33,6 @@ struct AdvectionConfig {
   // Parabolic profile: v(z) = v_max * (z/h)^alpha
   Real profile_alpha       = 1.5;      // shear profile exponent
 
-  // Taylor-Aris effective dispersion enhancement
-  // D_eff = D_mol + (U^2 * h^2) / (210 * D_mol)  for Poiseuille flow
-  bool  taylor_aris_enabled = true;
-
   // Crypt refugia: zero-flow zones near epithelium (VADI §80, §98-99)
   bool  crypts_enabled       = false;
   Real  crypt_depth          = 10.0e-6;  // z < lo_z + crypt_depth is zero-flow (10 um)
@@ -85,10 +81,6 @@ class AdvectionField {
   // Washout rate at height z (1/s)
   // gamma_flow = v_radial(z) / mucus_thickness
   Real washout_rate(Real z) const;
-
-  // Taylor-Aris effective dispersion coefficient at height z
-  // Accounts for shear-enhanced longitudinal spreading
-  Real taylor_aris_D_eff(Real z, Real D_mol) const;
 
   // Query whether a z-coordinate falls within the crypt zone
   bool in_crypt_zone(Real z) const;

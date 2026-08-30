@@ -53,7 +53,6 @@ int main() {
   acfg.distal_transit_time = 43200.0;
   acfg.mucus_thickness = 100.0e-6;
   acfg.distal_length = 0.05;
-  acfg.taylor_aris_enabled = false;
   AdvectionField adv;
   adv.init(acfg, domain);
   GreensFunction gf;

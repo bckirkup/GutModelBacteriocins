@@ -121,7 +121,6 @@ For `chemistry.decomposition=slab`, `domain.grid_halo_width` is the number of ch
 | `advection.distal_transit_time` | 43200 | s | Peristaltic transit (12 h) |
 | `advection.distal_length` | 1e-3 | m | Domain length for transit calc |
 | `advection.profile_alpha` | 1.5 | — | Flow profile exponent |
-| `advection.taylor_aris_enabled` | true | — | Enable Taylor-Aris dispersion |
 
 **Velocity profile:** `v(z) = v_max * (z/h)^alpha`
 
@@ -129,14 +128,8 @@ For `chemistry.decomposition=slab`, `domain.grid_halo_width` is the number of ch
 - `alpha = 1.5`: intermediate (default)
 - `alpha = 2.0`: parabolic (Poiseuille-like)
 
-**Taylor-Aris:** Enhances effective longitudinal diffusion via:
-`D_eff = D_mol + U(z)^2 * h^2 / (210 * D_mol)`
-
-This captures shear-enhanced spreading of toxins in the mucus flow. The
-constant `210` is the classical result for fully-developed parabolic
-(Poiseuille) flow (`profile_alpha = 2`); for other profile exponents the
-prefactor differs, so with the default `profile_alpha = 1.5` this is an
-order-of-magnitude approximation rather than an exact coefficient.
+Taylor-Aris dispersion is not included; see the decision and measurements in
+the Taylor-Aris entry of `docs/EXTERNAL_AUDIT_2026-08.md`.
 
 ### Peristaltic Mixing (VADI §77)
 
