@@ -23,6 +23,8 @@ struct SlabDiffusionContext {
 };
 
 // Host-compilable checks shared by the CPU and GPU diffusion dispatch paths.
+int diffusion_z_line_length(
+    const Domain& domain, EpithelialBoundaryMode mode);
 bool diffusion_line_lengths_within(
     const Domain& domain, EpithelialBoundaryMode mode, int max_line);
 bool diffusion_all_species_within(

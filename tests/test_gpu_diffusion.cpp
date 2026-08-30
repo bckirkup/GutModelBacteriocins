@@ -272,6 +272,13 @@ void test_mixed_boundary_falls_back_to_cpu() {
   Simulation gpu;
   gpu.init(gpu_config);
   assert(gpu.gpu_active());
+  assert(gpu.domain().nz() == 1025);
+  const Int carbon = gpu.chemical_field().find(species::CARBON);
+  const Int oxygen = gpu.chemical_field().find(species::OXYGEN);
+  assert(carbon >= 0);
+  assert(oxygen >= 0);
+  assert(gpu.chemical_field().spec(carbon).epithelial_boundary_mode
+         != gpu.chemical_field().spec(oxygen).epithelial_boundary_mode);
   gpu.step(gpu_config.time.bio_dt);
 
   assert(std::string(gpu.chemistry_placement()) == "host");

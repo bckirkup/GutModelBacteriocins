@@ -156,11 +156,16 @@ bool apply_species_diffusion_on_device(const Domain& domain,
 
 }  // namespace
 
+int diffusion_z_line_length(
+    const Domain& domain, EpithelialBoundaryMode mode) {
+  return mode == EpithelialBoundaryMode::Dirichlet
+      ? domain.nz() - 1 : domain.nz();
+}
+
 bool diffusion_line_lengths_within(
     const Domain& domain, EpithelialBoundaryMode mode, int max_line) {
   if (max_line <= 0) return false;
-  const int z_line = mode == EpithelialBoundaryMode::Dirichlet
-      ? domain.nz() - 1 : domain.nz();
+  const int z_line = diffusion_z_line_length(domain, mode);
   return domain.nx() <= max_line && domain.ny() <= max_line
       && z_line <= max_line;
 }

@@ -35,6 +35,7 @@ ChemicalSpec diffusing_species(const char* name,
 
 int main() {
   const Domain tall_domain = make_domain(1025);
+  assert(tall_domain.nz() == 1025);
   assert(diffusion_line_lengths_within(
       tall_domain, EpithelialBoundaryMode::Dirichlet, 1024));
   assert(!diffusion_line_lengths_within(
@@ -48,6 +49,7 @@ int main() {
   assert(!diffusion_all_species_within(tall_domain, mixed, 1024));
 
   const Domain supported_domain = make_domain(1024);
+  assert(supported_domain.nz() == 1024);
   ChemicalField supported;
   supported.init(supported_domain, {
       diffusing_species("dirichlet", EpithelialBoundaryMode::Dirichlet),
@@ -55,13 +57,13 @@ int main() {
   });
   assert(diffusion_all_species_within(supported_domain, supported, 1024));
 
-  ChemicalSpec disabled_neumann =
+  ChemicalSpec disabled_robin =
       diffusing_species("disabled_robin", EpithelialBoundaryMode::Robin);
-  disabled_neumann.diffusion_enabled = false;
+  disabled_robin.diffusion_enabled = false;
   ChemicalField mixed_disabled;
   mixed_disabled.init(tall_domain, {
       diffusing_species("dirichlet", EpithelialBoundaryMode::Dirichlet),
-      disabled_neumann,
+      disabled_robin,
   });
   assert(diffusion_all_species_within(tall_domain, mixed_disabled, 1024));
 
