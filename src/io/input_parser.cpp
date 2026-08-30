@@ -31,6 +31,11 @@ bool strict_config_enabled() {
   return env[0] != '0';
 }
 
+bool strict_config_requested() {
+  const char* env = std::getenv("GUTIBM_STRICT_CONFIG");
+  return env != nullptr && env[0] != '\0' && env[0] != '0';
+}
+
 void warn_parse_failure(const char* kind,
                         std::string_view key,
                         const std::string& val) {
@@ -562,7 +567,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
               << "' has negligible slab screening (kH=" << k_h
               << ", require kH >= 0.05); the bounded steady-state image "
                  "series may not converge\n";
-    if (strict_config_enabled()) {
+    if (strict_config_requested()) {
       throw ConfigError(
           "QSSA Green's-function species '" + spec.name
           + "' has negligible slab screening (kH < 0.05)");
