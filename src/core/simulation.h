@@ -254,6 +254,7 @@ class Simulation {
  private:
   void finalize_neumann_image_series_stats();
   void capture_robin_provenance_baseline();
+  void reset_chemistry_placement();
 
   // Initialization helpers
   void init_population(const SimulationConfig& cfg);

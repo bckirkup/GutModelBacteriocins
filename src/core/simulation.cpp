@@ -510,9 +510,7 @@ void print_gpu_status_banner(bool gpu_active, const GpuConfig& gpu) {
 
 void Simulation::init(const SimulationConfig& cfg) {
   cfg_ = cfg;
-  chemistry_host_diffusion_seen_ = false;
-  chemistry_device_diffusion_seen_ = false;
-  chemistry_delivery_host_forced_ = false;
+  reset_chemistry_placement();
   event_ledger_.step_events.reset();
   event_ledger_.summary_events.reset();
   event_ledger_.cumulative_events.reset();
@@ -777,9 +775,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
                                       const std::string& h5_file,
                                       const std::string& step) {
   cfg_ = cfg;
-  chemistry_host_diffusion_seen_ = false;
-  chemistry_device_diffusion_seen_ = false;
-  chemistry_delivery_host_forced_ = false;
+  reset_chemistry_placement();
   event_ledger_.step_events.reset();
   event_ledger_.summary_events.reset();
   event_ledger_.cumulative_events.reset();
@@ -1894,6 +1890,12 @@ const char* Simulation::chemistry_placement() const {
     return "host_forced_delivery";
   }
   return "host";
+}
+
+void Simulation::reset_chemistry_placement() {
+  chemistry_host_diffusion_seen_ = false;
+  chemistry_device_diffusion_seen_ = false;
+  chemistry_delivery_host_forced_ = false;
 }
 
 void Simulation::module_physics(Real dt) {
