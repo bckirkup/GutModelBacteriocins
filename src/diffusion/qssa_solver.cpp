@@ -972,14 +972,19 @@ Real QSSASolver::sampled_toxin_conc(Int agent_index, Int species_idx) const {
   }
   const Int sample_idx = sampled_slot_for_species(species_idx);
   if (sample_idx < 0 || agent_index >= sampled_agents_->size()) return 0.0;
-  auto& field = sampled_fields_[static_cast<size_t>(sample_idx)];
+  const auto& field = sampled_fields_[static_cast<size_t>(sample_idx)];
   if (agent_index >= static_cast<Int>(field.samples.size())) {
-    field.samples.resize(static_cast<size_t>(agent_index + 1), 0.0);
-    field.samples[static_cast<size_t>(agent_index)] =
-        std::max(evaluate_sample(field, (*sampled_agents_)[agent_index].x),
-                 0.0);
+    return std::max(
+        evaluate_sample(field, (*sampled_agents_)[agent_index].x), 0.0);
   }
   return field.samples[static_cast<size_t>(agent_index)];
+}
+
+Int QSSASolver::sampled_toxin_sample_count(Int species_idx) const {
+  const Int sample_idx = sampled_slot_for_species(species_idx);
+  if (sample_idx < 0) return 0;
+  return static_cast<Int>(
+      sampled_fields_[static_cast<size_t>(sample_idx)].samples.size());
 }
 
 Real QSSASolver::sampled_nuclease_conc(Int agent_index) const {

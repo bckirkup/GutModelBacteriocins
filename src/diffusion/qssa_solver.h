@@ -134,6 +134,7 @@ class QSSASolver {
       const std::vector<Real>& strength_factors) const;
 
   Real sampled_toxin_conc(Int agent_index, Int species_idx) const;
+  Int sampled_toxin_sample_count(Int species_idx) const;
   Real sampled_nuclease_conc(Int agent_index) const;
   Real sampled_nuclease_conc(Int agent_index, ReceptorType target) const;
   Real sampled_toxin_max(Int species_idx) const;
@@ -211,8 +212,8 @@ class QSSASolver {
   const Domain* domain_ = nullptr;
   const AdvectionField* adv_ = nullptr;
   const AgentPool* sampled_agents_ = nullptr;
-  mutable std::array<SampledToxinField, 4> sampled_fields_;
-  mutable std::array<SampledToxinField, 4> sampled_nuclease_fields_;
+  std::array<SampledToxinField, 4> sampled_fields_;
+  std::array<SampledToxinField, 4> sampled_nuclease_fields_;
   bool sampled_nuclease_sources_ = false;
   std::array<Int, 4> sampled_species_indices_{{-1, -1, -1, -1}};
 };
