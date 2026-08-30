@@ -627,17 +627,23 @@ void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
 
 void HDF5Writer::write_run_provenance(const Simulation& sim) const {
 #ifdef GUTIBM_HDF5
-  if (run_provenance_written_ || !enabled_ || io_rank(cfg_) != 0
-      || file_id_ < 0) {
+  if (!enabled_ || io_rank(cfg_) != 0 || file_id_ < 0) {
     return;
   }
   const auto fid = static_cast<hid_t>(file_id_);
+  if (run_provenance_written_) {
+    write_string_dataset(fid, "run_provenance/chemistry_placement",
+                         sim.chemistry_placement(), true);
+    return;
+  }
   ensure_group(fid, "run_provenance", cfg_);
   const auto config = ConfigJson::serialize_document(sim.config());
   write_string_dataset(fid, "run_provenance/resolved_config", config);
   write_robin_provenance(fid, sim);
   write_string_dataset(fid, "run_provenance/image_series_mode",
                        sim.config().qssa.image_series_mode);
+  write_string_dataset(fid, "run_provenance/chemistry_placement",
+                       sim.chemistry_placement());
   write_string_dataset(fid, "run_provenance/git_sha", GUTIBM_GIT_SHA);
   write_string_dataset(fid, "run_provenance/version", GUTIBM_VERSION);
   const int32_t mpi_compiled =

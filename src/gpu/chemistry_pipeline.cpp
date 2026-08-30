@@ -48,6 +48,8 @@ bool sum_reactions_with_optional_device(ChemistryPipelineInput& in,
 
 ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real dt) {
   ChemistryPipelineResult result;
+  result.delivery_chemistry_host_forced =
+      in.gpu_active && in.delivery_mode;
   bool reactions_on_device = false;
   if (in.gpu_active) {
     in.chem_gpu.sync_reactions_to_device(in.chem);
@@ -196,7 +198,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     }
   }
 
-  if (in.gpu_active && result.reactions_on_gpu) {
+  if (in.gpu_active && result.reactions_on_gpu && !in.delivery_mode) {
     result.diffusion_on_gpu =
         in.chem_gpu.apply_diffusion(in.domain, in.chem, dt);
     if (result.diffusion_on_gpu) {

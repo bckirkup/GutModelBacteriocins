@@ -38,6 +38,14 @@ SimulationConfig make_config(UptakeLimitMode mode) {
     cfg.fixes.metabolism.uptake_limit = "sherwood";
   } else if (mode == UptakeLimitMode::Voxel) {
     cfg.fixes.metabolism.uptake_limit = "voxel";
+  } else if (mode == UptakeLimitMode::Delivery) {
+    cfg.fixes.metabolism.uptake_limit = "delivery";
+    cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
+    for (auto& chemical : cfg.chemicals) {
+      if (chemical.name == species::CARBON) {
+        chemical.delivery_enabled = true;
+      }
+    }
   } else {
     cfg.fixes.metabolism.uptake_limit = "none";
   }
@@ -98,6 +106,17 @@ Real flux_value(const Simulation& simulation,
   assert(carbon >= 0);
   return cumulative[static_cast<size_t>(carbon)]
       + interval[static_cast<size_t>(carbon)];
+}
+
+Real carbon_realized_sink(const Simulation& simulation) {
+  const auto& chem = simulation.chemical_field();
+  const Int carbon = chem.find(species::CARBON);
+  assert(carbon >= 0);
+  Real realized = 0.0;
+  for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+    realized += chem.sink_realized_global(carbon, cell);
+  }
+  return realized;
 }
 
 struct MaintenanceLedger {
@@ -216,6 +235,45 @@ void test_none_mode_parity_and_absence_of_limitation() {
   assert(std::abs(cpu_realized - cpu_demand) <= 1.0e-12 * cpu_demand);
   std::cout << "  test_none_mode_parity_and_absence_of_limitation: PASSED\n";
 }
+
+void test_delivery_forces_host_chemistry() {
+  const SimulationConfig delivery_config =
+      make_config(UptakeLimitMode::Delivery);
+  const SimulationConfig none_config = make_config(UptakeLimitMode::None);
+  Simulation delivery = run(delivery_config, true);
+  Simulation none = run(none_config, true);
+
+  assert(std::string(delivery.chemistry_placement())
+         == "host_forced_delivery");
+  const auto& delivery_flux = delivery.chemical_field().flux_accounting();
+  const Real delivery_realized = flux_value(
+      delivery, delivery_flux.agent_uptake_cumulative,
+      delivery_flux.agent_uptake_interval);
+  const Real delivery_field_realized = carbon_realized_sink(delivery);
+  assert(std::isfinite(delivery_field_realized));
+  assert(delivery_field_realized > 0.0);
+  const MaintenanceLedger delivery_maintenance = maintenance_ledger(delivery);
+  assert(delivery_maintenance.realized > 0.0);
+
+  const auto& none_flux = none.chemical_field().flux_accounting();
+  const Real none_realized = flux_value(
+      none, none_flux.agent_uptake_cumulative,
+      none_flux.agent_uptake_interval);
+  const Real none_field_realized = carbon_realized_sink(none);
+  assert(std::isfinite(none_field_realized));
+  assert(none_field_realized == 0.0);
+  const Real contrast_scale =
+      std::max(std::abs(delivery_realized), std::abs(none_realized));
+  assert(std::abs(delivery_realized - none_realized)
+         > 1.0e-6 * contrast_scale);
+  std::cout << "    delivery carbon sink realized="
+            << format_real(delivery_field_realized)
+            << " delivery carbon maintenance realized="
+            << format_real(delivery_maintenance.realized)
+            << " none carbon sink realized="
+            << format_real(none_field_realized) << "\n";
+  std::cout << "  test_delivery_forces_host_chemistry: PASSED\n";
+}
 #endif
 
 }  // namespace
@@ -232,6 +290,7 @@ int main() {
 #else
   test_sherwood_parity();
   test_none_mode_parity_and_absence_of_limitation();
+  test_delivery_forces_host_chemistry();
   std::cout << "GPU uptake limitation parity tests passed.\n";
   return 0;
 #endif

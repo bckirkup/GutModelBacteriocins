@@ -1,11 +1,10 @@
 # CUDA parity for delivery-limited uptake
 
-Scope: what has to exist before `metabolism.uptake_limit` can ship as
-`delivery`, measured against the code as of #352 rather than argued. The parser
-currently refuses `uptake_limit="delivery"` with `gpu_enabled=true`
-(`src/io/input_parser.cpp`), and that refusal is the only thing standing between
-a GPU configuration and a silently unfunded run. This document is the inventory
-behind it and the two routes out; no route is implemented yet.
+Scope: what has to exist for `metabolism.uptake_limit="delivery"` to run with
+GPU acceleration, measured against the code as of #352 rather than argued. The
+parser now permits `uptake_limit="delivery"` with `gpu_enabled=true` by forcing the
+delivery chemistry solve onto the host and recording that placement. This
+document is the inventory behind Route A and the still-open Route B.
 
 ## What parity has to mean here
 
@@ -40,25 +39,27 @@ with the agent sink dropped: agents would be funded from mass the field never
 removed, with no error and no clip. That is the pre-#332 unfunded behaviour
 wearing delivery mode's provenance.
 
-## Route A — permit GPU with host-forced delivery chemistry
+## Route A — permit GPU with host-forced delivery chemistry (implemented)
 
 Keep the numerics on the host, and make that a declared property of the run
 rather than an accident of a fallback branch:
 
-- allow `gpu_enabled=true` with `uptake_limit="delivery"`;
-- force the delivery chemistry path to host, unconditionally, rather than
+- `gpu_enabled=true` with `uptake_limit="delivery"` is accepted;
+- the delivery chemistry path is forced to host, unconditionally, rather than
   relying on `reactions_on_gpu` being false;
-- record it in `/run_provenance/` (e.g. a chemistry-placement field reading
-  `host_forced_delivery`) so no archived run can be mistaken for a device solve;
-- gate it with a test asserting that with `gpu_enabled=true` and delivery, the
-  device diffusion path is *not* taken and realized removal is nonzero.
+- the sticky placement accessor and
+  `/run_provenance/chemistry_placement` record `host_forced_delivery` when
+  active GPU delivery chemistry has run without device diffusion;
+- the GPU uptake-limit test asserts that device diffusion is not taken,
+  realized delivery removal is positive, and delivery differs from the
+  `none` control arm.
 
-Cost: delivery runs get no chemistry speedup from the GPU; agent kernels and
-non-delivery species keep theirs. Benefit: the shipped default can move to
-`delivery` without breaking any GPU configuration, which is the decision this
-blocks, and nothing scientific is left to a silent branch.
+Cost: delivery runs get no chemistry-solve speedup from the GPU. Agent kernels,
+toxin kernels, mechanics, and non-delivery species keep their GPU acceleration.
+Nothing scientific is left to a silent branch, and the device delivery solve
+remains explicitly unimplemented.
 
-## Route B — port the delivery solve to the device
+## Route B — port the delivery solve to the device (open)
 
 Add the `s·dt` diagonal term and per-cell realized-removal output to
 `solve_delivery_line`, download realized removal for agent funding, and run the

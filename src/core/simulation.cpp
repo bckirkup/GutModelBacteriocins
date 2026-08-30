@@ -510,6 +510,7 @@ void print_gpu_status_banner(bool gpu_active, const GpuConfig& gpu) {
 
 void Simulation::init(const SimulationConfig& cfg) {
   cfg_ = cfg;
+  reset_chemistry_placement();
   event_ledger_.step_events.reset();
   event_ledger_.summary_events.reset();
   event_ledger_.cumulative_events.reset();
@@ -774,6 +775,7 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
                                       const std::string& h5_file,
                                       const std::string& step) {
   cfg_ = cfg;
+  reset_chemistry_placement();
   event_ledger_.step_events.reset();
   event_ledger_.summary_events.reset();
   event_ledger_.cumulative_events.reset();
@@ -1872,7 +1874,28 @@ void Simulation::module_chemistry(Real dt) {
       .flux_accounting = chem_.flux_accounting(),
       .step_profile = cfg_.profile_steps ? &step_profile_ : nullptr,
   };
-  (void)run_chemistry_pipeline(pipeline, dt);
+  const ChemistryPipelineResult result =
+      run_chemistry_pipeline(pipeline, dt);
+  chemistry_host_diffusion_seen_ |= !result.diffusion_on_gpu;
+  chemistry_device_diffusion_seen_ |= result.diffusion_on_gpu;
+  chemistry_delivery_host_forced_ |=
+      result.delivery_chemistry_host_forced;
+}
+
+const char* Simulation::chemistry_placement() const {
+  if (chemistry_device_diffusion_seen_) {
+    return chemistry_host_diffusion_seen_ ? "mixed" : "device";
+  }
+  if (chemistry_delivery_host_forced_) {
+    return "host_forced_delivery";
+  }
+  return "host";
+}
+
+void Simulation::reset_chemistry_placement() {
+  chemistry_host_diffusion_seen_ = false;
+  chemistry_device_diffusion_seen_ = false;
+  chemistry_delivery_host_forced_ = false;
 }
 
 void Simulation::module_physics(Real dt) {
