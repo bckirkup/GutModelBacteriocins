@@ -22,6 +22,12 @@ struct SlabDiffusionContext {
   Int owned_storage_x_end;
 };
 
+// Host-compilable checks shared by the CPU and GPU diffusion dispatch paths.
+bool diffusion_line_lengths_within(
+    const Domain& domain, EpithelialBoundaryMode mode, int max_line);
+bool diffusion_all_species_within(
+    const Domain& domain, const ChemicalField& field, int max_line);
+
 // True when the selected z solve fits the PCR shared-memory line limit.
 bool gpu_diffusion_line_lengths_supported(
     const Domain& domain,

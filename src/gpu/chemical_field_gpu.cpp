@@ -10,6 +10,7 @@
 #include "carbon_maintenance.h"
 
 #include <cstdlib>
+#include <iostream>
 
 #ifdef GUTIBM_CUDA
 #include <cuda_runtime.h>
@@ -33,6 +34,7 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   halo_width_ = field.grid_halo_width();
   storage_nx_ = field.storage_nx();
   slab_mode_ = field.slab_mode();
+  diffusion_fallback_warning_emitted_ = false;
   if (!active_ || nspec_ <= 0 || ncells_ <= 0) return;
 
   d_conc_.resize(static_cast<size_t>(nspec_));
@@ -295,6 +297,48 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   return false;
 #else
   if (!active_) return false;
+
+  const int max_line = gpu::diffusion_max_line_length();
+  if (!diffusion_all_species_within(domain, field, max_line)) {
+    if (!diffusion_fallback_warning_emitted_) {
+      diffusion_fallback_warning_emitted_ = true;
+      if (domain.rank() == 0) {
+        for (Int s = 0; s < nspec_; ++s) {
+          const ChemicalSpec& spec = field.spec(s);
+          if (!spec.diffuses() || diffusion_line_lengths_within(
+                                    domain, spec.epithelial_boundary_mode,
+                                    max_line)) {
+            continue;
+          }
+          const int z_line = spec.epithelial_boundary_mode
+                  == EpithelialBoundaryMode::Dirichlet
+              ? domain.nz() - 1 : domain.nz();
+          std::cerr << "Warning: GPU diffusion fallback for species '"
+                    << spec.name << "': line length exceeds cap"
+                    << " (nx=" << domain.nx()
+                    << ", ny=" << domain.ny()
+                    << ", z_line=" << z_line
+                    << ", nz=" << domain.nz()
+                    << ", cap=" << max_line
+                    << ", boundary_mode=";
+          switch (spec.epithelial_boundary_mode) {
+            case EpithelialBoundaryMode::Dirichlet:
+              std::cerr << "Dirichlet";
+              break;
+            case EpithelialBoundaryMode::Robin:
+              std::cerr << "Robin";
+              break;
+            case EpithelialBoundaryMode::Flux:
+              std::cerr << "Flux";
+              break;
+          }
+          std::cerr << ")\n";
+          break;
+        }
+      }
+    }
+    return false;
+  }
 
   bool applied = false;
   std::vector zero(static_cast<size_t>(nspec_), 0.0);

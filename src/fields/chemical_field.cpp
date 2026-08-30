@@ -3111,10 +3111,7 @@ void ChemicalField::record_delivery_rationing(
 void ChemicalField::apply_diffusion_species(
     const Domain& domain, Real dt, Int s) {
   const ChemicalSpec& chemical = specs_[s];
-  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
-      || chemical.retardation <= 0.0) {
-    return;
-  }
+  if (!chemical.diffuses()) return;
   const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
   const Real alpha_x = effective_diffusion * dt
       / (domain.dx_x() * domain.dx_x());
@@ -3181,10 +3178,7 @@ void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt,
                                                Int spec) {
   if (dt <= 0.0 || domain.dx_x() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
-  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
-      || chemical.retardation <= 0.0) {
-    return;
-  }
+  if (!chemical.diffuses()) return;
   const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt
       / (domain.dx_x() * domain.dx_x());
   if (mode_ == DecompositionMode::Slab) {
@@ -3200,10 +3194,7 @@ void ChemicalField::apply_periodic_y_diffusion(const Domain& domain, Real dt,
                                                Int spec) {
   if (dt <= 0.0 || domain.dx_y() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
-  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
-      || chemical.retardation <= 0.0) {
-    return;
-  }
+  if (!chemical.diffuses()) return;
   const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt
       / (domain.dx_y() * domain.dx_y());
   diffuse_periodic_y(conc_[static_cast<size_t>(spec)], domain, alpha);
@@ -3213,10 +3204,7 @@ void ChemicalField::apply_bounded_z_diffusion(const Domain& domain, Real dt,
                                               Int spec) {
   if (dt <= 0.0 || domain.dx_z() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
-  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
-      || chemical.retardation <= 0.0) {
-    return;
-  }
+  if (!chemical.diffuses()) return;
   const Real effective_diffusion =
       chemical.diff_coeff / chemical.retardation;
   const Real alpha = effective_diffusion * dt
@@ -3251,10 +3239,7 @@ void ChemicalField::apply_diffusion_slab(const Domain& domain, Real dt) {
 void ChemicalField::apply_diffusion_slab_species(
     const Domain& domain, Real dt, Int s) {
   const ChemicalSpec& chemical = specs_[s];
-  if (!chemical.diffusion_enabled || chemical.diff_coeff <= 0.0
-      || chemical.retardation <= 0.0) {
-    return;
-  }
+  if (!chemical.diffuses()) return;
   const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
   const Real alpha_x = effective_diffusion * dt
       / (domain.dx_x() * domain.dx_x());

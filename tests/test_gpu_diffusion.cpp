@@ -8,6 +8,8 @@
 #include "dispatch.h"
 #include "domain.h"
 #include "gpu_diagnostic_format.h"
+#include "input_parser.h"
+#include "simulation.h"
 #include "species_names.h"
 #include "gpu_test_support.h"
 
@@ -16,6 +18,7 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <string>
 #include <vector>
 
 using namespace gutibm;
@@ -213,6 +216,78 @@ void test_gpu_delivery_boundary_modes() {
   std::cout << "  test_gpu_delivery_boundary_modes: PASSED\n";
 }
 
+#ifdef GUTIBM_CUDA
+SimulationConfig mixed_boundary_config() {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.time.total_time = 60.0;
+  cfg.time.bio_dt = 60.0;
+  cfg.hdf5.enabled = false;
+  cfg.gpu.enabled = true;
+  cfg.initial_strains.clear();
+  cfg.domain.lo = {0.0, 0.0, 0.0};
+  cfg.domain.hi = {5.0e-6, 5.0e-6, 1025 * 5.0e-6};
+  cfg.domain.grid_dx = 5.0e-6;
+  cfg.domain.hash_cell_size = 10.0e-6;
+  cfg.chem_env.oxygen.enabled = false;
+  cfg.chem_env.acetate.enabled = false;
+  cfg.chem_env.mucin.enabled = false;
+  cfg.chem_env.siderophore.enabled = false;
+  cfg.chem_env.ferrichrome.enabled = false;
+  for (ChemicalSpec& spec : cfg.chemicals) {
+    spec.diffusion_enabled = false;
+  }
+
+  const auto carbon = std::find_if(
+      cfg.chemicals.begin(), cfg.chemicals.end(),
+      [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
+  const auto oxygen = std::find_if(
+      cfg.chemicals.begin(), cfg.chemicals.end(),
+      [](const ChemicalSpec& spec) { return spec.name == species::OXYGEN; });
+  assert(carbon != cfg.chemicals.end());
+  assert(oxygen != cfg.chemicals.end());
+  carbon->diffusion_enabled = true;
+  carbon->diff_coeff = 2.1e-9;
+  carbon->retardation = 1.0;
+  carbon->initial_conc = 0.25;
+  carbon->boundary_conc = 0.25;
+  carbon->epithelial_boundary_mode = EpithelialBoundaryMode::Dirichlet;
+  oxygen->diffusion_enabled = true;
+  oxygen->diff_coeff = 2.1e-9;
+  oxygen->retardation = 1.0;
+  oxygen->initial_conc = 0.15;
+  oxygen->boundary_conc = 0.15;
+  oxygen->epithelial_boundary_mode = EpithelialBoundaryMode::Robin;
+  oxygen->epithelial_transfer_coeff = 2.0e-5;
+  return cfg;
+}
+
+void test_mixed_boundary_falls_back_to_cpu() {
+  SimulationConfig cpu_config = mixed_boundary_config();
+  cpu_config.gpu.enabled = false;
+  Simulation cpu;
+  cpu.init(cpu_config);
+  cpu.step(cpu_config.time.bio_dt);
+
+  SimulationConfig gpu_config = mixed_boundary_config();
+  Simulation gpu;
+  gpu.init(gpu_config);
+  assert(gpu.gpu_active());
+  gpu.step(gpu_config.time.bio_dt);
+
+  assert(std::string(gpu.chemistry_placement()) == "host");
+  const ChemicalField& cpu_field = cpu.chemical_field();
+  const ChemicalField& gpu_field = gpu.chemical_field();
+  assert(cpu_field.num_species() == gpu_field.num_species());
+  for (Int s = 0; s < cpu_field.num_species(); ++s) {
+    const Real max_diff = max_abs_diff(
+        cpu_field.conc_data()[static_cast<size_t>(s)],
+        gpu_field.conc_data()[static_cast<size_t>(s)]);
+    assert(max_diff < 1.0e-10);
+  }
+  std::cout << "  test_mixed_boundary_falls_back_to_cpu: PASSED\n";
+}
+#endif
+
 int main() {
   std::cout << "=== GPU Diffusion Parity Tests ===\n";
   if (const int gpu_status = test::require_gpu("gpu_diffusion");
@@ -238,6 +313,7 @@ int main() {
   test_gpu_dirichlet_neumann_boundary();
   test_gpu_z_gradient_background_fixed_point();
   test_gpu_delivery_boundary_modes();
+  test_mixed_boundary_falls_back_to_cpu();
 
   std::cout << "All GPU diffusion tests passed.\n";
   return 0;
