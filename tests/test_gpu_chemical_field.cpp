@@ -181,8 +181,10 @@ void test_host_reaction_survives_gpu_round_trip() {
 
 int main() {
   std::cout << "=== GPU ChemicalField Facade Tests ===\n";
-  const int gpu_status = test::require_gpu("gpu_chemical_field");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("gpu_chemical_field");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";

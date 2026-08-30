@@ -72,8 +72,8 @@ bool apply_species_diffusion_on_device(const Domain& domain,
   const int nx = storage_nx;
   const int ny = domain.ny();
   const int nz = domain.nz();
-  const int ncells = storage_nx * domain.ny() * domain.nz();
-  if (ncells <= 0 || d_conc == nullptr) return false;
+  if (const int ncells = storage_nx * domain.ny() * domain.nz();
+      ncells <= 0 || d_conc == nullptr) return false;
 
   const Real effective_diffusion = spec.diff_coeff / spec.retardation;
   const Real alpha_x = effective_diffusion * dt
@@ -225,10 +225,10 @@ bool gpu_apply_species_diffusion_slab_device(
   const auto start = std::chrono::steady_clock::now();
   auto& host_concentration =
       context.field.mutable_species_concentration(context.spec_index);
-  const cudaError_t d2h_status = cudaMemcpy(
-      host_concentration.data(), d_conc, count * sizeof(double),
-      cudaMemcpyDeviceToHost);
-  if (d2h_status != cudaSuccess) {
+  if (const cudaError_t d2h_status = cudaMemcpy(
+          host_concentration.data(), d_conc, count * sizeof(double),
+          cudaMemcpyDeviceToHost);
+      d2h_status != cudaSuccess) {
     throw Error(std::string("slab diffusion D2H: ")
                 + cudaGetErrorString(d2h_status));
   }
@@ -238,10 +238,10 @@ bool gpu_apply_species_diffusion_slab_device(
   context.field.apply_periodic_x_diffusion(
       domain, dt, context.spec_index);
   const auto host_done = std::chrono::steady_clock::now();
-  const cudaError_t h2d_status = cudaMemcpy(
-      d_conc, host_concentration.data(), count * sizeof(double),
-      cudaMemcpyHostToDevice);
-  if (h2d_status != cudaSuccess) {
+  if (const cudaError_t h2d_status = cudaMemcpy(
+          d_conc, host_concentration.data(), count * sizeof(double),
+          cudaMemcpyHostToDevice);
+      h2d_status != cudaSuccess) {
     throw Error(std::string("slab diffusion H2D: ")
                 + cudaGetErrorString(h2d_status));
   }

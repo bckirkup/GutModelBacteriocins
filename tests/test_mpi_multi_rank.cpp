@@ -64,8 +64,9 @@ void test_chemical_field_layout_mapping() {
   Int owned = 0;
   Int halo = 0;
   for (Int cell = 0; cell < domain.ncells(); ++cell) {
-    const Int local_x = domain.global_to_local_grid_x(cell % domain.nx());
-    if (local_x < 0) {
+    if (const Int local_x =
+            domain.global_to_local_grid_x(cell % domain.nx());
+        local_x < 0) {
       continue;
     }
     assert(chem.storage_to_global_cell(

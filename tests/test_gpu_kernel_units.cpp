@@ -1130,8 +1130,11 @@ void run_case(const char* name, Function function) {
 
 int main() {
   std::cout << "=== Direct GPU Kernel Unit Tests ===\n";
-  const int gpu_status = gutibm::test::require_gpu("gpu_kernel_units");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status =
+          gutibm::test::require_gpu("gpu_kernel_units");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifdef GUTIBM_CUDA
   run_case("launch_field_update_kernel", test_field_update);
   run_case("launch_apply_boundaries_kernel", test_apply_boundaries);

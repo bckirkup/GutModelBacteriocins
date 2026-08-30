@@ -119,8 +119,10 @@ void test_gpu_fmm_hybrid_production_domain() {
 
 int main() {
   std::cout << "=== GPU Production Path Smoke Tests ===\n";
-  const int gpu_status = test::require_gpu("gpu_production_path");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("gpu_production_path");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";

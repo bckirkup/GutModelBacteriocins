@@ -85,7 +85,7 @@ def audit(path):
 
 
 def main(root):
-    arms = sorted(p for p in root.glob("*/output.h5"))
+    arms = sorted(root.glob("*/output.h5"))
     if not arms:
         raise SystemExit(f"no */output.h5 under {root}")
     header = (

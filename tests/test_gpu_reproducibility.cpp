@@ -112,8 +112,10 @@ void print_difference(const char* label,
 
 int main() {
   std::cout << "=== GPU Reproducibility Diagnostic ===\n";
-  const int gpu_status = test::require_gpu("gpu_reproducibility");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("gpu_reproducibility");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";

@@ -262,11 +262,11 @@ void validate_required_species(const SimulationConfig& cfg,
                     "quorum_sensing.enabled");
   }
 
-  const bool vbf_carbon_enabled =
-      cfg.vbf.mucin_liberation > 0.0
-      || cfg.vbf.carbon_sink_vmax > 0.0
-      || cfg.vbf.use_dynamic_mucin;
-  if (vbf_carbon_enabled) {
+  if (const bool vbf_carbon_enabled =
+          cfg.vbf.mucin_liberation > 0.0
+          || cfg.vbf.carbon_sink_vmax > 0.0
+          || cfg.vbf.use_dynamic_mucin;
+      vbf_carbon_enabled) {
     require_species(chem, "VBF", species::CARBON,
                     "vbf.mucin_liberation or vbf.carbon_sink_vmax");
   }

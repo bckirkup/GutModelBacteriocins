@@ -161,8 +161,10 @@ void compare_fields(const BurstRun& cpu, const BurstRun& gpu) {
 
 int main() {
   std::cout << "=== GPU Toxin Burst Parity ===\n";
-  const int gpu_status = test::require_gpu("gpu_toxin_burst_parity");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("gpu_toxin_burst_parity");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
 #ifndef GUTIBM_CUDA
   const BurstRun cpu = run_case(false, 1.0e-18);

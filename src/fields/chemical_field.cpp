@@ -394,8 +394,8 @@ Real reduce_prescribed_near_negative_cells(
   affected_cells.clear();
   for (Int cell = 0; cell < global_ncells; ++cell) {
     if (!owns_cell(cell)) continue;
-    const Int storage = storage_cell(cell);
-    if (storage < 0
+    if (const Int storage = storage_cell(cell);
+        storage < 0
         || concentration[static_cast<size_t>(storage)] >= 0.0) {
       continue;
     }
@@ -833,8 +833,7 @@ Real diffuse_bounded_z_delivery(
     const DeliverySinkParameters& sink_params) {
   const Int nx = domain.nx();
   const Int ny = domain.ny();
-  const Int nz = domain.nz();
-  if (nz <= 1) return 0.0;
+  if (const Int nz = domain.nz(); nz <= 1) return 0.0;
   ReplicatedDeliveryLineContext line_context{
       concentration, domain, alpha, params, sink_params};
   Real face_exchange = 0.0;
@@ -1022,8 +1021,7 @@ Real diffuse_bounded_z_delivery_with_sink_impl(
         AddRealized>& operations) {
   const Int nx = grid.nx;
   const Int ny = grid.ny;
-  const Int nz = grid.nz;
-  if (nz <= 0) return 0.0;
+  if (const Int nz = grid.nz; nz <= 0) return 0.0;
 
   Real face_exchange = 0.0;
   #ifdef GUTIBM_OPENMP
@@ -1178,9 +1176,9 @@ void validate_chemical_decomposition(const Domain& domain,
   }
   if (decomposition != "slab") return;
 
-  const auto required_halo = static_cast<Int>(
-      std::ceil(domain.ghost_width() / domain.dx_x()));
-  if (domain.grid_halo_width() < required_halo) {
+  if (const auto required_halo = static_cast<Int>(
+          std::ceil(domain.ghost_width() / domain.dx_x()));
+      domain.grid_halo_width() < required_halo) {
     throw ConfigError(
         "slab chemistry requires grid_halo_width >= ceil(ghost_width / dx)");
   }
@@ -2306,8 +2304,7 @@ Real diffuse_bounded_z_slab_delivery(
   const auto* gradient_spec = context.gradient_spec;
   const Int nx = domain.local_grid_nx();
   const Int ny = domain.ny();
-  const Int nz = domain.nz();
-  if (nz <= 1) return 0.0;
+  if (const Int nz = domain.nz(); nz <= 1) return 0.0;
   Real face_exchange = 0.0;
   const SlabDeliveryLineContext line_context{
       concentration, realized, sink_rate, domain, storage_nx, halo_width,

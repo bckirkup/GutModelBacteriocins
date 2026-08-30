@@ -81,8 +81,10 @@ void test_mpi_gpu_chemistry_identical_across_ranks() {
 
   int rank = 0;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  const int gpu_status = test::require_gpu("mpi_gpu_multi_rank");
-  if (gpu_status != 0) return;
+  if (const int gpu_status = test::require_gpu("mpi_gpu_multi_rank");
+      gpu_status != 0) {
+    return;
+  }
 
 #ifdef GUTIBM_CUDA
   SimulationConfig cfg = make_mpi_gpu_config();
@@ -202,8 +204,10 @@ void test_mpi_gpu_ghost_receptor_parity() {
 }  // namespace
 
 int main() {
-  const int gpu_status = test::require_gpu("mpi_gpu_multi_rank");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("mpi_gpu_multi_rank");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifdef GUTIBM_MPI
   MPI_Init(nullptr, nullptr);
   int rank = 0;

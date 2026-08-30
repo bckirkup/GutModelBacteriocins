@@ -8,7 +8,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 AWS_DIR="${ROOT}/deploy/aws"
 
 fail() {
-  echo "$1" >&2
+  local message="$1"
+  echo "${message}" >&2
   exit 1
 }
 

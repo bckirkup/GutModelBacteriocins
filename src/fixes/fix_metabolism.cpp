@@ -137,8 +137,9 @@ Real FixMetabolism::delivery_field_funding(
     const Real share = i + 1 == support.size()
         ? amount - deposited : per_cell;
     const Int cell = support[i];
-    const Real requested = requested_by_cell[static_cast<size_t>(cell)];
-    if (requested > 0.0) {
+    if (const Real requested =
+            requested_by_cell[static_cast<size_t>(cell)];
+        requested > 0.0) {
       funding += chem.prescribed_sink_global(species_index, cell)
           * (share / requested);
     }
@@ -626,8 +627,8 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
         field_funding);
     record_delivery_funding(
         chem, oxygen, growth_demand, maintenance_demand, funding);
-    const auto& oxygen_cfg = sim_.config().chem_env.oxygen;
-    if (oxygen_cfg.respiration_driver_mode == RespirationDriver::Funded
+    if (const auto& oxygen_cfg = sim_.config().chem_env.oxygen;
+        oxygen_cfg.respiration_driver_mode == RespirationDriver::Funded
         && oxygen_cfg.metabolic_switch_enabled && growth_demand > 0.0) {
       const Real instantaneous = 1.0 - funding.growth_fraction;
       agent.realized_fermentation_fraction = metabolic_mode::relax(
@@ -1113,8 +1114,9 @@ Real FixMetabolism::uptake_limit_fraction(
 void FixMetabolism::grow_agent(Agent& agent, Real dt) {
   // Biomass increase, funded by the uptake the agent can actually acquire
   Real d_biomass = agent.mu_realized * agent.biomass * dt;
-  const Real funded = uptake_limit_fraction(agent, d_biomass, dt, true);
-  if (funded < 1.0) {
+  if (const Real funded = uptake_limit_fraction(
+          agent, d_biomass, dt, true);
+      funded < 1.0) {
     d_biomass *= funded;
     agent.mu_realized *= funded;
   }

@@ -77,8 +77,10 @@ static void print_species_diagnostics(const Simulation& gpu,
 
 int main() {
   std::cout << "=== GPU Smoke Test ===\n";
-  const int gpu_status = test::require_gpu("gpu_smoke");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status = test::require_gpu("gpu_smoke");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 
   SimulationConfig cfg = InputParser::default_config();
   cfg.time.total_time = 300.0;

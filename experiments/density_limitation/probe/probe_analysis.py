@@ -97,7 +97,7 @@ def arm_report(root, name):
 
         # last 6 h event rates per agent per hour
         win = t_h >= t_h[-1] - 6.0
-        idx = np.where(win)[0]
+        idx = np.nonzero(win)[0]
         a, b = idx[0], idx[-1]
         span = max(t_h[b] - t_h[a], 1e-9)
         mean_n = max(float(np.mean(n_t[a:b + 1])), 1e-9)

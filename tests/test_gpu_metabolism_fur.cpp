@@ -328,8 +328,11 @@ void test_fur_sensitivity() {
 
 int main() {
   std::cout << "=== GPU Fur/Siderophore Metabolism Parity ===\n";
-  const int gpu_status = gutibm::test::require_gpu("gpu_metabolism_fur");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status =
+          gutibm::test::require_gpu("gpu_metabolism_fur");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifndef GUTIBM_CUDA
   std::cout << "  SKIPPED (CUDA not compiled in)\n";
   return 0;

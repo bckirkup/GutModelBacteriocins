@@ -140,15 +140,15 @@ bool launch_superpose(const Domain& domain,
   for (size_t i = 0; i < launch_indices.size(); ++i) {
     sp[i].robin_table_index = launch_indices[i];
   }
-  const bool same_uploaded_set = robin_tables.size()
-      == robin_table_device_set.size()
-      && std::equal(
-          robin_tables.begin(), robin_tables.end(),
-          robin_table_device_set.begin(),
-          [](const auto& current, const auto& uploaded) {
-            return current.get() == uploaded.get();
-          });
-  if (!same_uploaded_set) {
+  if (const bool same_uploaded_set = robin_tables.size()
+          == robin_table_device_set.size()
+          && std::equal(
+              robin_tables.begin(), robin_tables.end(),
+              robin_table_device_set.begin(),
+              [](const auto& current, const auto& uploaded) {
+                return current.get() == uploaded.get();
+              });
+      !same_uploaded_set) {
     std::vector<double> robin_table_values;
     robin_table_values.reserve(
         robin_tables.size() * robin::kTableValueCount);

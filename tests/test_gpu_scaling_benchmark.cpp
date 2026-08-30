@@ -62,8 +62,11 @@ int mpi_rank() {
 }  // namespace
 
 int main(int argc, char** argv) {
-  const int gpu_status = gutibm::test::require_gpu("gpu_scaling_benchmark");
-  if (gpu_status != 0) return gpu_status;
+  if (const int gpu_status =
+          gutibm::test::require_gpu("gpu_scaling_benchmark");
+      gpu_status != 0) {
+    return gpu_status;
+  }
 #ifdef GUTIBM_MPI
   MPI_Init(&argc, &argv);
 #endif

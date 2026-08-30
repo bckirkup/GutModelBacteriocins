@@ -503,9 +503,9 @@ void GreensFunction::superpose_to_grid(
   uint64_t* kernel_evaluations = kernel_evaluation_counting_enabled_
       ? &gpu_kernel_evaluations
       : nullptr;
-  const std::vector<size_t> fallback = ::gutibm::robin_host_fallback_sources(
-      *domain_, sources, params);
-  if (fallback.empty()) {
+  if (const std::vector<size_t> fallback =
+          ::gutibm::robin_host_fallback_sources(*domain_, sources, params);
+      fallback.empty()) {
     if (adv_ && domain_ && try_gpu_superpose(
             *domain_, *adv_, sources, params, grid_conc, cutoff_radius,
             &image_series_cap_hits_, kernel_evaluations, &gpu_low_screening,
