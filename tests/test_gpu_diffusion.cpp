@@ -228,11 +228,12 @@ SimulationConfig mixed_boundary_config() {
   cfg.domain.hi = {5.0e-6, 5.0e-6, 1025 * 5.0e-6};
   cfg.domain.grid_dx = 5.0e-6;
   cfg.domain.hash_cell_size = 10.0e-6;
-  cfg.chem_env.oxygen.enabled = false;
+  cfg.chem_env.oxygen.enabled = true;
   cfg.chem_env.acetate.enabled = false;
   cfg.chem_env.mucin.enabled = false;
   cfg.chem_env.siderophore.enabled = false;
   cfg.chem_env.ferrichrome.enabled = false;
+  InputParser::finalize_config(cfg);
   for (ChemicalSpec& spec : cfg.chemicals) {
     spec.diffusion_enabled = false;
   }
