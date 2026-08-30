@@ -10,6 +10,7 @@
 #include "carbon_maintenance.h"
 
 #include <cstdlib>
+#include <iostream>
 
 #ifdef GUTIBM_CUDA
 #include <cuda_runtime.h>
@@ -20,6 +21,48 @@
 #endif
 
 namespace gutibm {
+
+#ifdef GUTIBM_CUDA
+namespace {
+
+const char* diffusion_boundary_mode_name(EpithelialBoundaryMode mode) {
+  switch (mode) {
+    case EpithelialBoundaryMode::Dirichlet:
+      return "Dirichlet";
+    case EpithelialBoundaryMode::Robin:
+      return "Robin";
+    case EpithelialBoundaryMode::Flux:
+      return "Flux";
+  }
+  return "unknown";
+}
+
+void warn_diffusion_line_length_fallback(
+    const Domain& domain, const ChemicalField& field, int max_line) {
+  if (domain.rank() != 0) return;
+  for (Int s = 0; s < field.num_species(); ++s) {
+    const ChemicalSpec& spec = field.spec(s);
+    if (!spec.diffuses() || diffusion_line_lengths_within(
+                              domain, spec.epithelial_boundary_mode, max_line)) {
+      continue;
+    }
+    std::cerr << "Warning: GPU diffusion fallback for species '"
+              << spec.name << "': line length exceeds cap"
+              << " (nx=" << domain.nx()
+              << ", ny=" << domain.ny()
+              << ", z_line=" << diffusion_z_line_length(
+                                  domain, spec.epithelial_boundary_mode)
+              << ", nz=" << domain.nz()
+              << ", cap=" << max_line
+              << ", boundary_mode="
+              << diffusion_boundary_mode_name(spec.epithelial_boundary_mode)
+              << ")\n";
+    break;
+  }
+}
+
+}  // namespace
+#endif
 
 void ChemicalFieldGpu::init(ChemicalField& field) {
   active_ = gpu_runtime_enabled();
@@ -33,6 +76,7 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   halo_width_ = field.grid_halo_width();
   storage_nx_ = field.storage_nx();
   slab_mode_ = field.slab_mode();
+  diffusion_fallback_warning_emitted_ = false;
   if (!active_ || nspec_ <= 0 || ncells_ <= 0) return;
 
   d_conc_.resize(static_cast<size_t>(nspec_));
@@ -295,6 +339,15 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   return false;
 #else
   if (!active_) return false;
+
+  const int max_line = gpu::diffusion_max_line_length();
+  if (!diffusion_all_species_within(domain, field, max_line)) {
+    if (!diffusion_fallback_warning_emitted_) {
+      diffusion_fallback_warning_emitted_ = true;
+      warn_diffusion_line_length_fallback(domain, field, max_line);
+    }
+    return false;
+  }
 
   bool applied = false;
   std::vector zero(static_cast<size_t>(nspec_), 0.0);
