@@ -80,7 +80,7 @@ void ChemicalFieldGpu::download_agent_uptake(ChemicalField& field) {
 void ChemicalFieldGpu::prepare_maintenance(
     const ChemicalField& field, Int carbon, Real cell_volume) {
   if (!active_ || carbon < 0 || cell_volume <= 0.0) return;
-  std::vector<double> available(static_cast<size_t>(ncells_), 0.0);
+  std::vector available(static_cast<size_t>(ncells_), 0.0);
   for (Int cell = 0; cell < ncells_; ++cell) {
     available[static_cast<size_t>(cell)] = carbon_maintenance::available(
         field.conc(carbon, cell), cell_volume);

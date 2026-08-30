@@ -87,7 +87,7 @@ bool launch_superpose(const Domain& domain,
   if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
   if (negative_field_count != nullptr) *negative_field_count = 0;
   if (most_negative_field != nullptr) *most_negative_field = 0.0;
-  std::lock_guard<std::mutex> table_lock(robin_table_device_mutex);
+  std::lock_guard table_lock(robin_table_device_mutex);
 
   Int ncells = domain.ncells();
   cudaMemset(d_grid, 0, static_cast<size_t>(ncells) * sizeof(double));
@@ -271,7 +271,7 @@ bool launch_superpose(const Domain& domain,
 std::vector<int> make_robin_launch_table_indices(
     const std::vector<std::shared_ptr<const robin::Table>>& source_tables,
     std::vector<std::shared_ptr<const robin::Table>>& launch_tables) {
-  std::vector<int> indices(source_tables.size(), -1);
+  std::vector indices(source_tables.size(), -1);
   for (size_t source = 0; source < source_tables.size(); ++source) {
     const auto& table = source_tables[source];
     if (table == nullptr) continue;

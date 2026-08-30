@@ -57,7 +57,7 @@ bool gpu_accumulate_far_field_local(const FMM& fmm,
     if (fmm.node(i).is_leaf) leaf_ids[static_cast<size_t>(i)] = leaf_idx++;
   }
 
-  std::vector<int> cell_leaf(static_cast<size_t>(ncells), -1);
+  std::vector cell_leaf(static_cast<size_t>(ncells), -1);
   for (Int iz = 0; iz < domain.nz(); ++iz) {
     for (Int iy = 0; iy < domain.ny(); ++iy) {
       for (Int ix = 0; ix < domain.nx(); ++ix) {
