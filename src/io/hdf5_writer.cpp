@@ -521,7 +521,7 @@ bool HDF5Writer::should_write_species(const std::string& name) const {
 }
 
 #ifdef GUTIBM_HDF5
-void HDF5Writer::initialize_file() {
+void HDF5Writer::initialize_file(std::string& error_message) {
   if (enabled_ && io_rank(cfg_) == 0) {
     // Parallel HDF5 builds can return invalid FILE_CREATE property lists from
     // H5Pcreate on some platforms; H5P_DEFAULT is reliable for rank-0 serial I/O.
@@ -549,12 +549,16 @@ void HDF5Writer::initialize_file() {
     if (file_id_ < 0 || !H5Iis_valid(static_cast<hid_t>(file_id_)) ||
         H5Fis_hdf5(cfg_.filename.c_str()) <= 0) {
       H5Eclear2(H5E_DEFAULT);
+      const bool file_created =
+          file_id_ >= 0 && H5Iis_valid(static_cast<hid_t>(file_id_));
       if (file_id_ >= 0 && H5Iis_valid(static_cast<hid_t>(file_id_))) {
         H5Fclose(static_cast<hid_t>(file_id_));
       }
       file_id_ = -1;
       enabled_ = false;
-      std::remove(cfg_.filename.c_str());
+      error_message = file_created
+          ? "H5Fis_hdf5 rejected the file after truncation"
+          : "H5Fcreate failed to create the file";
     } else {
       auto fid = static_cast<hid_t>(file_id_);
       const int32_t nx_attr = nx_;
@@ -602,18 +606,21 @@ void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
 #ifdef GUTIBM_HDF5
   enabled_ = true;
   file_id_ = -1;
+  std::string failure_message;
 
   if (io_rank(cfg_) == 0) {
     try {
       validate_output_file_path(cfg_.filename);
     } catch (const IOError& ex) {
-      std::cerr << "Warning: invalid HDF5 output path '" << cfg_.filename
-                << "': " << ex.what() << " — HDF5 output disabled\n";
+      failure_message = "invalid HDF5 output path '" + cfg_.filename
+          + "': " + ex.what();
       enabled_ = false;
+    }
+    if (enabled_) {
+      initialize_file(failure_message);
     }
   }
 
-  initialize_file();
   mpi_barrier(cfg_);
 #ifdef GUTIBM_MPI
   if (mpi_multi_rank()) {
@@ -622,6 +629,16 @@ void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
     enabled_ = enabled_flag != 0;
   }
 #endif
+  if (!enabled_) {
+    if (io_rank(cfg_) != 0) {
+      failure_message = "rank 0 failed to validate or create HDF5 output file '"
+          + cfg_.filename + "'";
+    } else {
+      failure_message = "HDF5 output '" + cfg_.filename + "' failed: "
+          + failure_message;
+    }
+    throw IOError(failure_message);
+  }
 #endif
 }
 

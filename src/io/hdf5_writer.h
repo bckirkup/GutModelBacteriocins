@@ -88,7 +88,7 @@ class HDF5Writer {
   Vec3 domain_hi_{};
 
 #ifdef GUTIBM_HDF5
-  void initialize_file();
+  void initialize_file(std::string& error_message);
   int64_t file_id_ = -1;
 #endif
   mutable bool run_provenance_written_ = false;

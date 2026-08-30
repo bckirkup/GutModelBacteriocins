@@ -86,6 +86,7 @@ class ChemicalFieldGpu {
   Int halo_width_ = 0;
   Int storage_nx_ = 0;
   bool slab_mode_ = false;
+  bool diffusion_fallback_warning_emitted_ = false;
   std::vector<DeviceBuffer<double>> d_conc_;
   std::vector<DeviceBuffer<double>> d_reac_;
   DeviceBuffer<double> d_boundary_conc_;

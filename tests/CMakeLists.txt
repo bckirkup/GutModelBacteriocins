@@ -164,6 +164,7 @@ gutibm_add_test(feature_combinations test_feature_combinations.cpp LABELS "integ
 gutibm_add_test(config_diversity test_config_diversity.cpp
   LABELS "integration"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gutibm_add_test(hdf5_fail_closed test_hdf5_fail_closed.cpp LABELS "unit")
 gutibm_add_test(openmp_parity test_openmp_parity.cpp LABELS "openmp")
 
 if(GUTIBM_USE_HDF5)
@@ -300,6 +301,8 @@ endif()
 # ── GPU tests (CUDA CI job only) ─────────────────────────────────────────
 gutibm_add_test(greens_function_gpu test_greens_function_gpu.cpp LABELS "gpu")
 gutibm_add_test(gpu_diffusion test_gpu_diffusion.cpp LABELS "gpu")
+gutibm_add_test(gpu_diffusion_species_mask
+  test_gpu_diffusion_species_mask.cpp LABELS "unit")
 gutibm_add_test(gpu_chemical_field test_gpu_chemical_field.cpp LABELS "gpu")
 gutibm_add_test(gpu_feature_combinations test_gpu_feature_combinations.cpp LABELS "gpu;integration")
 gutibm_add_test(gpu_production_path test_gpu_production_path.cpp LABELS "gpu;integration")
