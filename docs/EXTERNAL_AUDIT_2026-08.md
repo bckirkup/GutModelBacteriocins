@@ -301,6 +301,13 @@ measured band (`fractions[0] - fractions[3] > 0.02` and
 `fractions[3] < 0.98`) and with the invariant that credited respiration over a
 step does not exceed the oxygen inventory decrease plus boundary influx.
 
+Measured at the shipped epithelial oxygen default of `55e-6`, funded
+respiration is delivery-limited to approximately one third of demand at
+`2e-6` voxel resolution. Saturation is reached near `166e-6` and is clean at
+`200e-6`; this is a real constraint on the funded-uptake default decision, not
+a test artifact. The linear solve is linear in the prescribed mass, so the
+delivery limit lifts proportionally with oxygen availability.
+
 **The image series does not solve the drift PDE when there is wall-normal flow.**
 Translations plus z-reversed reflections satisfy zero diffusive flux at both
 walls, but a reflected image with reversed `U_z` solves the mirrored-drift

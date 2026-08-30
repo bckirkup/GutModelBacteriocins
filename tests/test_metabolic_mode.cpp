@@ -81,6 +81,10 @@ struct RespirationProbe {
   Real oxygen_inventory_before = 0.0;
   Real oxygen_inventory_after = 0.0;
   Real oxygen_boundary_influx = 0.0;
+  Real oxygen_field_removal = 0.0;
+  Real oxygen_delivery_rationing_factor = 1.0;
+  Real oxygen_delivery_retry_events = 0.0;
+  Real oxygen_delivery_infeasible = 0.0;
 };
 
 RespirationProbe run_respiration_probe(
@@ -127,6 +131,8 @@ RespirationProbe run_respiration_probe(
     oxygen_inventory_after +=
         sim.chemical_field().conc(oxygen, inventory_cell) * cell_volume;
   }
+  const auto& flux = sim.chemical_field().flux_accounting();
+  const auto oxygen_index = static_cast<size_t>(oxygen);
   RespirationProbe result;
   result.fraction = sim.agents()[0].realized_fermentation_fraction;
   result.growth_demand = sim.agents()[0].pending_oxygen_growth;
@@ -136,8 +142,20 @@ RespirationProbe run_respiration_probe(
   result.oxygen_inventory_before = oxygen_inventory_before;
   result.oxygen_inventory_after = oxygen_inventory_after;
   result.oxygen_boundary_influx =
-      sim.chemical_field().flux_accounting().boundary_last_step[
-          static_cast<size_t>(oxygen)];
+      flux.boundary_last_step[oxygen_index];
+  for (gutibm::Int removal_cell = 0;
+       removal_cell < sim.chemical_field().global_ncells();
+       ++removal_cell) {
+    if (!sim.chemical_field().owns_global_cell(removal_cell)) continue;
+    result.oxygen_field_removal +=
+        sim.chemical_field().sink_realized_global(oxygen, removal_cell);
+  }
+  result.oxygen_delivery_rationing_factor =
+      flux.delivery_rationing_factor_interval[oxygen_index];
+  result.oxygen_delivery_retry_events =
+      flux.delivery_retry_events_interval[oxygen_index];
+  result.oxygen_delivery_infeasible =
+      flux.delivery_infeasible_interval[oxygen_index];
   return result;
 }
 
@@ -178,10 +196,48 @@ void test_funded_respiration_graded_and_bounded() {
   assert(fully_fermentative.fraction > 0.99);
   assert(fully_fermentative.respired_oxygen_rate == 0.0);
   const RespirationProbe supplied = run_respiration_probe(
-      "funded", 55.0e-6);
+      "funded", 200.0e-6);
   assert(std::abs(supplied.funded_growth - supplied.growth_demand)
          <= 1.0e-12 * std::max(supplied.growth_demand, 1.0e-30));
   assert(supplied.fraction < 0.05);
+  assert(std::abs(supplied.oxygen_delivery_rationing_factor - 1.0)
+         <= 1.0e-9);
+  assert(supplied.oxygen_delivery_infeasible == 0.0);
+  // At 2 um resolution, the analytic Sherwood ceiling is ample, but drawing
+  // full demand from one fine voxel in one step would make the field negative,
+  // so positivity rationing cuts the prescribed mass.
+  const RespirationProbe delivery_limited = run_respiration_probe(
+      "funded", 55.0e-6);
+  const Real delivery_limited_ratio =
+      delivery_limited.funded_growth / delivery_limited.growth_demand;
+  assert(delivery_limited_ratio > 0.25);
+  assert(delivery_limited_ratio < 0.45);
+  assert(delivery_limited.fraction > 0.55);
+  assert(delivery_limited.fraction < 0.75);
+  assert(delivery_limited.oxygen_delivery_rationing_factor > 0.0);
+  assert(delivery_limited.oxygen_delivery_rationing_factor < 1.0);
+  assert(delivery_limited.oxygen_delivery_infeasible == 0.0);
+  assert(std::abs(delivery_limited.funded_growth
+                  - delivery_limited.oxygen_field_removal)
+         <= 1.0e-12 * std::max(
+             delivery_limited.oxygen_field_removal, 1.0e-30));
+  std::cout << "  delivery-limited 55e-6: demand="
+            << delivery_limited.growth_demand
+            << " funded=" << delivery_limited.funded_growth
+            << " ratio=" << delivery_limited_ratio
+            << " rationing_factor="
+            << delivery_limited.oxygen_delivery_rationing_factor
+            << " retries/infeasible="
+            << delivery_limited.oxygen_delivery_retry_events << "/"
+            << delivery_limited.oxygen_delivery_infeasible
+            << " fraction=" << delivery_limited.fraction << "\n";
+  std::cout << "  saturated 200e-6: demand=" << supplied.growth_demand
+            << " funded=" << supplied.funded_growth
+            << " ratio=" << supplied.funded_growth / supplied.growth_demand
+            << " rationing_factor="
+            << supplied.oxygen_delivery_rationing_factor
+            << " infeasible=" << supplied.oxygen_delivery_infeasible
+            << " fraction=" << supplied.fraction << "\n";
   std::cout << "  test_funded_respiration_graded_and_bounded: PASSED\n";
 }
 
