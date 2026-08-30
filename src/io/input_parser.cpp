@@ -840,7 +840,6 @@ bool apply_advection_key(SimulationConfig& cfg, std::string_view key, const std:
   if (key == "distal_transit")       { cfg.advection.distal_transit_time = parse_config_real(key, val); return true; }
   if (key == "distal_length")        { cfg.advection.distal_length = parse_config_real(key, val); return true; }
   if (key == "profile_alpha")        { cfg.advection.profile_alpha = parse_config_real(key, val); return true; }
-  if (key == "taylor_aris_enabled")  { cfg.advection.taylor_aris_enabled = parse_bool_config(val); return true; }
   if (key == "peristaltic_enabled")  { cfg.advection.peristaltic_enabled = (val == "true" || val == "1"); return true; }
   if (key == "peristaltic_period")   { cfg.advection.peristaltic_period = parse_config_real(key, val); return true; }
   if (key == "peristaltic_amplitude") { cfg.advection.peristaltic_amplitude = parse_config_real(key, val); return true; }

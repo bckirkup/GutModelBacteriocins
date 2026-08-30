@@ -826,7 +826,6 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("distal_transit", cfg.advection.distal_transit_time);
   real_key("distal_length", cfg.advection.distal_length);
   real_key("profile_alpha", cfg.advection.profile_alpha);
-  bool_key("taylor_aris_enabled", cfg.advection.taylor_aris_enabled);
   bool_key("peristaltic_enabled", cfg.advection.peristaltic_enabled);
   real_key("peristaltic_period", cfg.advection.peristaltic_period);
   real_key("peristaltic_amplitude", cfg.advection.peristaltic_amplitude);

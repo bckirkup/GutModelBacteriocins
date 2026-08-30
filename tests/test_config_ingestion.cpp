@@ -298,7 +298,6 @@ std::vector<Probe> build_probes() {
   v.push_back(R("distal_transit", [](const SimulationConfig& c) { return c.advection.distal_transit_time; }));
   v.push_back(R("distal_length", [](const SimulationConfig& c) { return c.advection.distal_length; }));
   v.push_back(R("profile_alpha", [](const SimulationConfig& c) { return c.advection.profile_alpha; }));
-  v.push_back(B("taylor_aris_enabled", [](const SimulationConfig& c) { return c.advection.taylor_aris_enabled; }));
   v.push_back(B("peristaltic_enabled", [](const SimulationConfig& c) { return c.advection.peristaltic_enabled; }));
   v.push_back(R("peristaltic_period", [](const SimulationConfig& c) { return c.advection.peristaltic_period; }));
   v.push_back(R("peristaltic_amplitude", [](const SimulationConfig& c) { return c.advection.peristaltic_amplitude; }));

@@ -46,7 +46,6 @@ TestSystem make_system(bool shipped_flow = false, bool peristaltic = false) {
   acfg.distal_transit_time = shipped_flow ? 43200.0 : 1.0e20;
   acfg.distal_length = shipped_flow ? 0.05 : 1.0e-3;
   acfg.mucus_thickness = 100.0e-6;
-  acfg.taylor_aris_enabled = false;
   acfg.peristaltic_enabled = peristaltic;
   system.adv.init(acfg, system.domain);
   system.gf.init(system.domain, system.adv);

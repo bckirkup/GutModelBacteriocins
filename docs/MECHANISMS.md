@@ -787,11 +787,13 @@ field; this is an explicit second approximation cost.
 4. Apply Method of Images for bounded mucus domain (z = 0 epithelium, z = h lumen)
 5. Superpose contributions from all sources within cutoff radius
 
-**Taylor-Aris dispersion:** The shear profile in the mucus layer enhances longitudinal spreading:
-```
-D_eff = D_mol + U(z)^2 * h^2 / (210 * D_mol)
-```
-This is computed via `AdvectionField::taylor_aris_D_eff()`.
+**Taylor-Aris dispersion:** The model does not include this enhancement. At
+shipped parameters its effect is negligible for the species where the
+long-time Taylor-Aris limit is valid, while the regime where it is large does
+not satisfy that limit. Adding it honestly would require an anisotropic
+transport kernel, plus re-derivation of the image series and Robin correction
+table. See the decision and measurements in
+`docs/EXTERNAL_AUDIT_2026-08.md`.
 
 ### FMM Far-Field Acceleration
 

@@ -40,7 +40,6 @@ TestSystem make_system(Real grid_dx = 5.0e-6) {
   acfg.distal_transit_time = 1.0e20;
   acfg.mucus_thickness = 100.0e-6;
   acfg.distal_length = 1.0e-3;
-  acfg.taylor_aris_enabled = false;
   system.adv.init(acfg, system.domain);
   system.gf.init(system.domain, system.adv);
   return system;
