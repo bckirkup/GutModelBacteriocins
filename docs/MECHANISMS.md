@@ -204,7 +204,7 @@ When `metabolism.uptake_limit` is `delivery` and
 `oxygen.delivery_uptake_enabled` is true, growth-associated and maintenance
 respiration use the same per-agent implicit delivery sink as carbon. Realized
 oxygen removal is distributed in proportion to per-agent respiratory demand;
-the explicit QSSA oxygen sink remains the default when the flag is false.
+the implicit first-order VBF sink remains the default when the flag is false.
 
 `oxygen.respiration_driver` selects how that realized fermentation fraction is
 updated. The default `ambient` driver preserves the concentration-based

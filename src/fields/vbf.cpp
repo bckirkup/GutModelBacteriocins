@@ -8,6 +8,7 @@
 #include "chemical_field.h"
 #include "chem_environment_config.h"
 #include "vbf_carbon_sink.h"
+#include "vbf_first_order_sink.h"
 #include <cmath>
 
 namespace gutibm {
@@ -127,9 +128,11 @@ void apply_oxygen_sink(ChemicalField& chem, Int cell,
   // per-agent respiration signal entirely — the density-tracking bug Edison
   // reported. A first-order sink is self-limiting: it scales with the local O2
   // it can actually consume, so a smooth gradient survives and agent
-  // respiration remains visible on top of it.
-  const Real sink = oxygen_vbf_sink_rate(ctx.oxygen)
-      * chem.conc(ctx.idx.oxygen, cell);
+  // respiration remains visible on top of it. The first-order integration is
+  // implicit, with one closed form shared by host and device.
+  const Real sink = vbf::implicit_first_order_sink(
+      chem.conc(ctx.idx.oxygen, cell),
+      oxygen_vbf_sink_rate(ctx.oxygen), dt);
   chem.reac(ctx.idx.oxygen, cell) -= sink;
   if (totals != nullptr) totals->oxygen_sink += sink * cell_volume * dt;
 }

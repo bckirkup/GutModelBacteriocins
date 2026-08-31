@@ -1,5 +1,6 @@
 #include "gpu_kernels.h"
 #include "vbf_carbon_sink.h"
+#include "vbf_first_order_sink.h"
 #include <cuda_runtime.h>
 #include <cmath>
 
@@ -72,7 +73,8 @@ __device__ void apply_vbf_at_cell(int cell,
     if (p.oxygen_delivery_enabled != 0 && oxygen_sink_rate) {
       oxygen_sink_rate[cell] += p.oxygen_vbf_sink;
     } else if (reac_oxygen) {
-      const double sink = p.oxygen_vbf_sink * conc_oxygen[cell];
+      const double sink = vbf::implicit_first_order_sink(
+          conc_oxygen[cell], p.oxygen_vbf_sink, dt);
       reac_oxygen[cell] -= sink;
       if (vbf_totals) atomicAdd(&vbf_totals[3], sink * cell_volume * dt);
     }
