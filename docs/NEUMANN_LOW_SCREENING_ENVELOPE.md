@@ -42,5 +42,6 @@ rate to drive the field negative, so it covers diagnostic counter plumbing
 rather than a physically reachable case.
 
 The translated/reflected image construction retains the inherited
-wall-normal-flow approximation. This envelope change does not alter that
-scientific approximation or the shipped ColE1 `kH = 0.158114` behavior.
+wall-normal-flow approximation. See [NEUMANN_WALL_NORMAL_DRIFT.md](NEUMANN_WALL_NORMAL_DRIFT.md)
+and its `qssa.drift_envelope_policy` gate. This envelope change does not alter
+that scientific approximation or the shipped ColE1 `kH = 0.158114` behavior.

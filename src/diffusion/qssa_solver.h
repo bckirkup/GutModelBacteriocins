@@ -29,6 +29,11 @@
 
 namespace gutibm {
 
+struct RuntimeDriftEnvelopeBasis {
+  std::string label;
+  Real d_eff = 0.0;
+};
+
 class Domain;
 class AdvectionField;
 class ChemicalField;
@@ -52,6 +57,7 @@ struct QSSAConfig {
   bool image_series_max_shells_explicit = false;
   std::string image_series_mode = "corrected";
   std::string low_screening_policy = "warn";
+  std::string drift_envelope_policy = "warn";
   Real nutrient_cutoff  = 50.0e-6;    // 50 um for nutrient depletion zones
 
   // Bacteriocin source parameters
@@ -93,7 +99,8 @@ class QSSASolver {
 
   void init(const QSSAConfig& cfg, const Domain& domain,
             const AdvectionField& adv, bool profile_steps = false,
-            const std::vector<ChemicalSpec>* chemicals = nullptr);
+            const std::vector<ChemicalSpec>* chemicals = nullptr,
+            const RuntimeDriftEnvelopeBasis* runtime_basis = nullptr);
 
   // Compute steady-state bacteriocin field from current toxin sources
   // and deposit onto chemical field grid

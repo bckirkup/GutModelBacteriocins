@@ -26,7 +26,7 @@ requires experiments, not arbitration.
 
 | # | Claim | Verdict |
 |---|---|---|
-| 1 | Two-wall Neumann image series incomplete and duplicated | Confirmed, and worse than described — see below |
+| 1 | Two-wall Neumann image series incomplete and duplicated | Confirmed, measured, and gated — see below |
 | 2 | `uptake_limit` ships as `none`, so growth is unfunded by realized removal | Confirmed factually; the remedy is a decision, not a patch — see below |
 | 3 | Configuration fails open (missing file, malformed JSON, unknown keys) | **Confirmed and fixed.** JSON-vs-legacy selection now uses file shape rather than an error-message whitelist: once a root JSON object is found, every parse failure is fatal; files without one retain legacy flat-key parsing. Named-file open failures, malformed arrays, unknown keys, and invalid known values fail closed by default. `GUTIBM_STRICT_CONFIG` is inverted: unset/`1` is strict, while `0` is the explicit lenient escape hatch. |
 | 4 | GPU per-species diffusion completion suppresses CPU fallback | **Confirmed and fixed.** A whole-field pre-flight now declines GPU diffusion before any launch when an eligible species exceeds the line cap, so the pipeline's existing host fallback covers every species. The mixed-eligibility window is exactly `nz == 1025`: Dirichlet solves `nz - 1`, Robin/Flux solve `nz`; above the cap every species is refused uniformly. Their `nz = 1025` reproducer is covered host-side for the predicates and on the T4 for the device path; a species the host does not diffuse never forces a fallback |
@@ -532,12 +532,17 @@ separate decision.
 **The image series does not solve the drift PDE when there is wall-normal flow.**
 Translations plus z-reversed reflections satisfy zero diffusive flux at both
 walls, but a reflected image with reversed `U_z` solves the mirrored-drift
-equation, so the sum solves neither: interior residual 2.9e-1 against 1.4e-3 for
-a converged mode sum. It is exact only for wall-parallel flow. At shipped flow
-the resulting field error is 1.2e-3..6.9e-3 — sub-percent, and now the *dominant*
-term in the Robin accuracy budget, ahead of interpolation. This is inherited from
-PR #359, not introduced by the Robin work, and it is recorded as a landmine
-rather than fixed here.
+equation, so the sum solves neither. As originally recorded here, the evidence
+was an interior residual of 2.9e-1 against 1.4e-3 for a converged mode sum, and
+the shipped field error was 1.2e-3..6.9e-3 — sub-percent, and the *dominant*
+term in the Robin accuracy budget, ahead of interpolation. Both of those
+numbers were revisited and are corrected in the paragraph below: the residual
+pair is not reproducible as a statement about the image sum, and the
+sub-percent characterization holds only for weakly retarded toxins. It is exact
+only for wall-parallel flow. This is inherited from PR #359, not introduced by
+the Robin work, and it is recorded as a landmine rather than fixed here.
+
+**Wall-normal drift in the image series (measured, gated).** Confirmed and quantified. A reflected image with reversed `U_z` solves the operator built from `U'=(U_x,U_y,-U_z)`, leaving exact interior residual `-2 U_z ∂f/∂z`; equivalently the reflected pair enforces zero *diffusive* flux `∂C/∂z=0` rather than the physical sealed law `-D ∂C/∂z + U_z C = 0`, so the sealed slab leaks advective flux `U_z C` at both walls. Measured against a converged sealed eigenmode reference (cross-checked against an independent Hankel closed form to ~1e-10), the relative field error is exactly first order in `Pe_z = U_z H / D_eff`: median `0.114*Pe_z`, worst case `0.439*Pe_z` for `Pe_z <= 0.05`, and machine-precision exact at `Pe_z = 0`. The report's residual metric is not reproducible as a statement about the image sum: a second-order central-difference interior residual normalized by `λC` scores 4.73e1 for the *exact* free-space kernel (true residual zero) versus 4.72e1 for the image sum at `H/500`, and the two stay within 0.2% at `H/2000` and `H/8000`, so that metric is entirely discretization error near the source singularity and cannot distinguish an exact solution from the image sum. Drift-corrected images were derived and rejected on evidence: the exact gauge-variable reflection coefficient `R(γ)=(γ-a)/(γ+a)`, `γ=sqrt(q²+κ²)`, depends on the transverse wavenumber, whereas every per-image exponential weight is wavenumber independent; scanning all constant reflection weights buys at most 1.4-1.5x worst case and does not change the `Pe_z` scaling. The series is therefore gated, not corrected: `qssa.drift_envelope_policy` (warn/error/allow) on a measured envelope `|Pe_z| <= 0.05` (<=2% worst case), with `neumann_drift_envelope_evaluations` provenance. At shipped defaults the ChemicalSpec/spec basis is `Pe_z=0.164` at the midpoint probe, while the configured-plasmid ColE1 basis is `Pe_z=0.822` at mid-depth and `2.325` at the lumen surface, so the default warning fires. The authoritative runtime measurements show 5-15% median and 20-40% worst-case field errors for strongly retarded ColE1 and colicin M; the audit's sub-percent characterization applies only to weakly retarded toxins such as ColB, colicin E2, and microcin V. The series arithmetic is unchanged by this gate-only change, but that does not establish scientific acceptability. Whether killing or induction outcomes move is untested: the corrected modal solve is not implemented here, and existing toxin/killing tolerances may encode the uncorrected field. This is a scientific decision for the maintainer, not something this change resolves. See `docs/NEUMANN_WALL_NORMAL_DRIFT.md`.
 
 **Enabling the boundary changes biology, not just numbers.** With `δ = 100 µm`,
 near-lumen toxin falls to 0.59x (effective basis) or 0.45x (free basis) of the

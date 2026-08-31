@@ -29,6 +29,7 @@
 #include <cmath>
 #include <cstring>
 #include <numeric>
+#include <optional>
 #include <ranges>
 #include <iomanip>
 #include <set>
@@ -77,6 +78,27 @@ Real global_density_cells_per_mL(const Domain& domain, Int global_agents) {
   return volume_mL > 0.0 ? static_cast<Real>(global_agents) / volume_mL : 0.0;
 }
 
+BICluster configured_plasmid_cluster(const SimulationConfig& cfg,
+                                     const PlasmidEntry& entry) {
+  BICluster cluster = entry.cluster;
+  cluster.retardation = retardation_from_pI(
+      cluster.pI, cfg.fixes.bacteriocin.mucin_charge);
+  if (const auto it = cfg.plasmid_overrides.find(entry.name);
+      it != cfg.plasmid_overrides.end()) {
+    const auto& values = it->second;
+    if (values.retardation.has_value()) {
+      cluster.retardation = *values.retardation;
+    }
+    if (values.diff_coeff.has_value()) {
+      cluster.diff_coeff = *values.diff_coeff;
+    }
+    if (values.burst_size.has_value()) {
+      cluster.burst_size = *values.burst_size;
+    }
+  }
+  return cluster;
+}
+
 void assign_plasmids(Agent& agent,
                      const std::vector<std::string>& plasmids,
                      const SimulationConfig& cfg,
@@ -90,27 +112,37 @@ void assign_plasmids(Agent& agent,
       }
       continue;
     }
-    BICluster cluster = entry->cluster;
-    cluster.retardation = retardation_from_pI(
-        cluster.pI, cfg.fixes.bacteriocin.mucin_charge);
-    if (const auto it = cfg.plasmid_overrides.find(entry->name);
-        it != cfg.plasmid_overrides.end()) {
-      const auto& values = it->second;
-      if (values.retardation.has_value()) {
-        cluster.retardation = *values.retardation;
-      }
-      if (values.diff_coeff.has_value()) {
-        cluster.diff_coeff = *values.diff_coeff;
-      }
-      if (values.burst_size.has_value()) {
-        cluster.burst_size = *values.burst_size;
-      }
-    }
+    BICluster cluster = configured_plasmid_cluster(cfg, *entry);
     agent.genome.bi_loci.push_back(cluster);
     if (entry->conjugative) {
       agent.genome.has_conjugative_plasmid = true;
     }
   }
+}
+
+std::optional<RuntimeDriftEnvelopeBasis> runtime_basis_for_plasmid(
+    const SimulationConfig& cfg, const std::string& plasmid_name) {
+  const PlasmidEntry* entry = PlasmidLibrary::find(plasmid_name);
+  if (entry == nullptr) return std::nullopt;
+  const BICluster cluster = configured_plasmid_cluster(cfg, *entry);
+  const Real d_eff = cluster.diff_coeff / cluster.retardation;
+  if (!(d_eff > 0.0)) return std::nullopt;
+  return RuntimeDriftEnvelopeBasis{entry->name, d_eff};
+}
+
+std::optional<RuntimeDriftEnvelopeBasis> configured_runtime_drift_basis(
+    const SimulationConfig& cfg) {
+  std::optional<RuntimeDriftEnvelopeBasis> result;
+  for (const auto& strain : cfg.initial_strains) {
+    for (const auto& plasmid_name : strain.plasmids) {
+      const auto basis = runtime_basis_for_plasmid(cfg, plasmid_name);
+      if (!basis.has_value()) continue;
+      if (!result.has_value() || basis->d_eff < result->d_eff) {
+        result = basis;
+      }
+    }
+  }
+  return result;
 }
 
 void tag_crypt_resident(Agent& agent, const AdvectionField& advection) {
@@ -555,8 +587,11 @@ void Simulation::init(const SimulationConfig& cfg) {
   vbf_.init(cfg.vbf, domain_);
 
   // QSSA solver
+  const std::optional<RuntimeDriftEnvelopeBasis> runtime_drift_basis =
+      configured_runtime_drift_basis(cfg_);
   qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps,
-             &cfg.chemicals);
+             &cfg.chemicals,
+             runtime_drift_basis.has_value() ? &*runtime_drift_basis : nullptr);
   capture_robin_provenance_baseline();
 
   // Lineage tracker
@@ -809,8 +844,11 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   validate_required_species(cfg_, chem_);
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
+  const std::optional<RuntimeDriftEnvelopeBasis> runtime_drift_basis =
+      configured_runtime_drift_basis(cfg_);
   qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps,
-             &cfg.chemicals);
+             &cfg.chemicals,
+             runtime_drift_basis.has_value() ? &*runtime_drift_basis : nullptr);
   capture_robin_provenance_baseline();
   lineage_.init(cfg.time.output_interval);
   hdf5_.init(cfg.hdf5, domain_);
@@ -1625,6 +1663,8 @@ void Simulation::finalize_neumann_image_series_stats() {
   const uint64_t local_hits = qssa_.gf().image_series_cap_hits();
   const uint64_t local_low_screening =
       qssa_.gf().low_screening_evaluations();
+  const uint64_t local_drift_envelope =
+      qssa_.gf().drift_envelope_evaluations();
   const uint64_t local_negative_count =
       qssa_.gf().negative_field_count();
   const Real local_most_negative = qssa_.gf().most_negative_field();
@@ -1638,6 +1678,7 @@ void Simulation::finalize_neumann_image_series_stats() {
   if (!initialized || finalized) {
     neumann_image_series_cap_hits_ = local_hits;
     neumann_low_screening_evaluations_ = local_low_screening;
+    neumann_drift_envelope_evaluations_ = local_drift_envelope;
     neumann_negative_field_count_ = local_negative_count;
     neumann_most_negative_field_ = local_most_negative;
     green_function_kernel_evaluations_ = local_kernel_evaluations;
@@ -1645,6 +1686,7 @@ void Simulation::finalize_neumann_image_series_stats() {
   }
   unsigned long long global_hits = 0;
   unsigned long long global_low_screening = 0;
+  unsigned long long global_drift_envelope = 0;
   unsigned long long global_negative_count = 0;
   unsigned long long global_kernel_evaluations = 0;
   const auto local_value =
@@ -1653,11 +1695,15 @@ void Simulation::finalize_neumann_image_series_stats() {
       static_cast<unsigned long long>(local_kernel_evaluations);
   const auto local_low_screening_value =
       static_cast<unsigned long long>(local_low_screening);
+  const auto local_drift_envelope_value =
+      static_cast<unsigned long long>(local_drift_envelope);
   const auto local_negative_count_value =
       static_cast<unsigned long long>(local_negative_count);
   MPI_Allreduce(&local_value, &global_hits, 1, MPI_UNSIGNED_LONG_LONG,
                 MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&local_low_screening_value, &global_low_screening, 1,
+                MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_drift_envelope_value, &global_drift_envelope, 1,
                 MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&local_negative_count_value, &global_negative_count, 1,
                 MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
@@ -1669,6 +1715,8 @@ void Simulation::finalize_neumann_image_series_stats() {
   neumann_image_series_cap_hits_ = static_cast<uint64_t>(global_hits);
   neumann_low_screening_evaluations_ =
       static_cast<uint64_t>(global_low_screening);
+  neumann_drift_envelope_evaluations_ =
+      static_cast<uint64_t>(global_drift_envelope);
   neumann_negative_field_count_ =
       static_cast<uint64_t>(global_negative_count);
   neumann_most_negative_field_ = global_most_negative;
@@ -1677,6 +1725,7 @@ void Simulation::finalize_neumann_image_series_stats() {
 #else
   neumann_image_series_cap_hits_ = local_hits;
   neumann_low_screening_evaluations_ = local_low_screening;
+  neumann_drift_envelope_evaluations_ = local_drift_envelope;
   neumann_negative_field_count_ = local_negative_count;
   neumann_most_negative_field_ = local_most_negative;
   green_function_kernel_evaluations_ = local_kernel_evaluations;

@@ -22,6 +22,10 @@ Decision (Benjamin, this session): Robin mass transfer at `z_hi`, no flux at
 `z_lo`. Sealed and perfect-sink are its two limits, so the model spans the whole
 bracket with one parameter instead of picking an extreme.
 
+### Wall-normal drift in the sealed base
+
+`normalized_correction` returns `robin_modal - sealed_modal`, and the caller adds it to the image-series sealed base. The image defect therefore passes through the Robin path untouched and dominates that accuracy budget; see [NEUMANN_WALL_NORMAL_DRIFT.md](NEUMANN_WALL_NORMAL_DRIFT.md).
+
 ## 2. Governing problem
 
 Screened advection–diffusion for one toxin species, QSSA, uniform flow `U`

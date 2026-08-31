@@ -19,6 +19,20 @@ constexpr int kMaxImageShells = 512;
 constexpr int kLowScreeningShells = 8;
 constexpr double kLowScreeningFloorThreshold = 0.0225;
 constexpr double kRelativeTolerance = 1.0e-10;
+constexpr double kDriftEnvelopePeZ = 0.05;
+
+// See docs/NEUMANN_WALL_NORMAL_DRIFT.md for the measured validity envelope.
+GUTIBM_NEUMANN_HOST_DEVICE inline double wall_normal_peclet(
+    double flow_z, double height, double d_eff) {
+  return d_eff > 0.0 ? flow_z * height / d_eff : 0.0;
+}
+
+// See docs/NEUMANN_WALL_NORMAL_DRIFT.md for the measured validity envelope.
+GUTIBM_NEUMANN_HOST_DEVICE inline bool drift_envelope_exceeded(
+    double flow_z, double height, double d_eff,
+    double envelope = kDriftEnvelopePeZ) {
+  return fabs(wall_normal_peclet(flow_z, height, d_eff)) > envelope;
+}
 
 struct ImageSeriesBudget {
   int max_shells;

@@ -420,6 +420,13 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "invalid qssa.low_screening_policy: expected 'warn', 'error', "
         "or 'allow'");
   }
+  if (cfg.qssa.drift_envelope_policy != "warn"
+      && cfg.qssa.drift_envelope_policy != "error"
+      && cfg.qssa.drift_envelope_policy != "allow") {
+    throw ConfigError(
+        "invalid qssa.drift_envelope_policy: expected 'warn', 'error', "
+        "or 'allow'");
+  }
 
   if (cfg.closure.zero_realization_grace_steps < 0) {
     throw ConfigError(
@@ -854,6 +861,21 @@ bool apply_advection_key(SimulationConfig& cfg, std::string_view key, const std:
   return false;
 }
 
+bool apply_drift_envelope_policy_key(
+    SimulationConfig& cfg, std::string_view key, const std::string& val) {
+  if (key == "drift_envelope_policy"
+      || key == "qssa.drift_envelope_policy") {
+    if (val != "warn" && val != "error" && val != "allow") {
+      throw ConfigError(
+          "invalid qssa.drift_envelope_policy: expected 'warn', 'error', "
+          "or 'allow'");
+    }
+    cfg.qssa.drift_envelope_policy = val;
+    return true;
+  }
+  return false;
+}
+
 bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "toxin_cutoff") {
     cfg.qssa.toxin_cutoff = parse_positive_config_real(key, val);
@@ -887,6 +909,7 @@ bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::stri
     cfg.qssa.low_screening_policy = val;
     return true;
   }
+  if (apply_drift_envelope_policy_key(cfg, key, val)) return true;
   if (key == "nutrient_cutoff")      { cfg.qssa.nutrient_cutoff = parse_config_real(key, val); return true; }
   if (key == "colicin_release_rate") { cfg.qssa.colicin_release_rate = parse_config_real(key, val); return true; }
   if (key == "microcin_secretion")   { cfg.qssa.microcin_secretion = parse_config_real(key, val); return true; }

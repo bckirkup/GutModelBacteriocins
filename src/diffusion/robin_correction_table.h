@@ -152,6 +152,20 @@ struct TableCacheSnapshot {
   std::vector<std::shared_ptr<const Table>> tables;
 };
 
+struct SealedFieldParams {
+  double z_source;
+  double z_target;
+  double rho;
+  double z_lo;
+  double z_hi;
+  double d_eff;
+  double decay_rate;
+  double flow_x;
+  double flow_y;
+  double flow_z;
+  int mode_count;
+};
+
 class TableCache {
  public:
   static constexpr size_t kMaximumTables = 64;
@@ -209,6 +223,8 @@ double normalized_robin_field(double z_source, double z_target, double rho,
                               double flow_x, double flow_y, double flow_z,
                               int mode_count,
                               TransferBasis basis = TransferBasis::Effective);
+
+double normalized_sealed_field(const SealedFieldParams& params);
 
 double normalized_correction(double z_source, double z_target, double rho,
                              double z_lo, double z_hi, double d_eff,
