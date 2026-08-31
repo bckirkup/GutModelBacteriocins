@@ -4,6 +4,7 @@
 #include "receptor_utils.h"
 #include "robin_correction_table.h"
 #include "vbf_carbon_sink.h"
+#include "vbf_first_order_sink.h"
 
 #include <algorithm>
 #include <array>
@@ -813,6 +814,36 @@ void test_vbf_implicit_carbon_sink() {
   }
 }
 
+void test_vbf_implicit_first_order_sink() {
+  constexpr double concentration = 2.5;
+  constexpr double dt = 60.0;
+  const std::array<double, 7> rate_dt_values = {
+      1.0e-3, 1.0e-2, 1.0e-1, 1.0, 1.0e1, 1.0e3, 1.0e6};
+  for (const double rate_dt : rate_dt_values) {
+    const double rate = rate_dt / dt;
+    const double sink = gutibm::vbf::implicit_first_order_sink(
+        concentration, rate, dt);
+    const double expected = (concentration
+                             - concentration / (1.0 + rate_dt)) / dt;
+    assert(std::abs(sink - expected)
+           <= 1.0e-12 * std::max(std::abs(expected), 1.0e-30));
+    const double concentration_after = concentration - sink * dt;
+    assert(concentration_after > 0.0);
+  }
+  assert(gutibm::vbf::implicit_first_order_sink(
+             0.0, 1.0, dt) == 0.0);
+  assert(gutibm::vbf::implicit_first_order_sink(
+             -concentration, 1.0, dt) == 0.0);
+  assert(gutibm::vbf::implicit_first_order_sink(
+             concentration, 0.0, dt) == 0.0);
+  assert(gutibm::vbf::implicit_first_order_sink(
+             concentration, -1.0, dt) == 0.0);
+  assert(gutibm::vbf::implicit_first_order_sink(
+             concentration, 1.0, 0.0) == 0.0);
+  assert(gutibm::vbf::implicit_first_order_sink(
+             concentration, 1.0, -dt) == 0.0);
+}
+
 void test_o2_depletion() {
   constexpr int storage_nx = 6;
   constexpr int storage_cells = storage_nx * kNy * kNz;
@@ -1166,6 +1197,8 @@ int main() {
   run_case("launch_vbf_coupling_kernel", test_vbf_coupling);
   run_case("launch_vbf_coupling_kernel implicit carbon sink",
            test_vbf_implicit_carbon_sink);
+  run_case("launch_vbf_coupling_kernel implicit first-order sink",
+           test_vbf_implicit_first_order_sink);
   run_case("launch_o2_depletion_kernel", test_o2_depletion);
   run_case("launch_o2_depletion_kernel metabolic mode",
            test_o2_depletion_metabolic_mode);

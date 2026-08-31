@@ -517,17 +517,25 @@ This hardware measurement is separate from the local host-only measurements
 above; CUDA carries the signed mass ledger, but its negative-excursion diagnostic
 is not yet instrumented.
 
-**Non-delivery GPU oxygen VBF remains a discretization divergence.** Delivery
-enabled oxygen is a first-order sink in the implicit Route B diagonal, while
-ordinary non-delivery GPU VBF intentionally retains the shipped explicit
-reaction update. For the shipped `oxygen.vbf_sink = 1e-3 1/s` and `dt = 60 s`,
-the explicit concentration factor is `1 - s·dt = 0.94`, versus the implicit
-factor `1/(1 + s·dt) = 0.9433962264`. The one-step removed fractions therefore
-differ by `6.0%` relative to implicit removal; the resulting field differs by
+**Non-delivery oxygen VBF integration (approved and implemented).** The
+delivery-enabled oxygen path applies the first-order VBF sink implicitly in
+the Route B diagonal, while the non-delivery path previously applied the same
+explicit first-order update identically on host and device. This was therefore
+not a host/device parity defect; it was a delivery/non-delivery integration-
+scheme difference. Non-delivery oxygen now uses the shared closed-form helper
+for implicit integration on both backends. For the shipped
+`oxygen.vbf_sink = 1e-3 1/s` and `dt = 60 s`, `s·dt = 0.06`: the explicit
+one-step concentration factor is `1 - s·dt = 0.94`, corresponding to `6.0%`
+removed, while the implicit factor is `1/(1 + s·dt) = 0.9433962264`,
+corresponding to `5.66037736%` removed. The removed fractions differ by
+`6.0%` relative to implicit removal, and the resulting field differs by
 `0.0033962264·C` in absolute concentration, or `0.36%` relative to the
-implicit concentration. This is an open host/device discretization divergence
-on the non-delivery GPU VBF path. Its scientific significance is left for a
-separate decision.
+implicit concentration. The helper returns zero for `concentration <= 0.0`,
+which differs from the previous signed explicit form for negative
+concentrations; non-delivery fields are final-concentration-clamped
+nonnegative at reaction time, so this distinction does not occur there.
+Iron is deliberately unchanged: its explicit `1e-4 1/s` sink remains an open
+maintainer decision.
 
 **The image series does not solve the drift PDE when there is wall-normal flow.**
 Translations plus z-reversed reflections satisfy zero diffusive flux at both

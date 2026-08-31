@@ -204,7 +204,8 @@ When `metabolism.uptake_limit` is `delivery` and
 `oxygen.delivery_uptake_enabled` is true, growth-associated and maintenance
 respiration use the same per-agent implicit delivery sink as carbon. Realized
 oxygen removal is distributed in proportion to per-agent respiratory demand;
-the explicit QSSA oxygen sink remains the default when the flag is false.
+when the flag is false, agent respiration remains the explicit per-agent
+oxygen depletion reaction term.
 
 `oxygen.respiration_driver` selects how that realized fermentation fraction is
 updated. The default `ambient` driver preserves the concentration-based
@@ -918,6 +919,13 @@ nutrient-flux summary reports the derived blocking fraction. Its numerator is
 realized agent carbon removal, `agent_uptake + maintenance`; unpaid
 maintenance shortfall is excluded. The denominator is that realized agent
 removal plus realized VBF sink removal.
+
+### Implicit oxygen background sink
+
+The non-delivery oxygen VBF sink is first-order in local oxygen concentration
+and is integrated implicitly over each biological timestep. Host and device
+use one shared closed-form helper, while delivery-enabled oxygen applies the
+same first-order sink through the implicit delivery diagonal.
 
 ---
 
