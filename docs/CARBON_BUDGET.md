@@ -103,13 +103,12 @@ were mistaken for other things during the calibration:
    whole run. Whether that equality is physiology or coincidence is a modelling
    question, but it has total control over whether anything can grow.
 
-There is no carrying-capacity mechanism anywhere in the live path.
-`VBFConfig::carrying_cap` defaults to `1e12` and `VBF::local_capacity()` returns
-it, but **no call site applies either** to growth, division, death, placement or
-mechanics. Growth is bounded only by nutrients, washout, and soft-sphere
-repulsion. Volume exclusion is real but never binding at these densities: at
-step 1080 the peak local occupied fraction was 0.28% within 10 µm, with zero
-overlapping nearest-neighbour pairs and a minimum surface gap of 6.75 nm.
+There is no carrying-capacity mechanism anywhere in the live path. The former
+`VBFConfig::carrying_cap` and `VBF::local_capacity()` placeholders were removed;
+growth is bounded only by nutrients, washout, and soft-sphere repulsion. Volume
+exclusion is real but never binding at these densities: at step 1080 the peak
+local occupied fraction was 0.28% within 10 µm, with zero overlapping
+nearest-neighbour pairs and a minimum surface gap of 6.75 nm.
 
 ## 4. Reading the accounting from an artifact
 

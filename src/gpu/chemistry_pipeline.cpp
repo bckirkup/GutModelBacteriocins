@@ -48,8 +48,6 @@ bool sum_reactions_with_optional_device(ChemistryPipelineInput& in,
 
 ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real dt) {
   ChemistryPipelineResult result;
-  result.delivery_chemistry_host_forced =
-      in.gpu_active && in.delivery_mode;
   bool reactions_on_device = false;
   if (in.gpu_active) {
     in.chem_gpu.sync_reactions_to_device(in.chem);
@@ -198,9 +196,15 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     }
   }
 
-  if (in.gpu_active && result.reactions_on_gpu && !in.delivery_mode) {
-    result.diffusion_on_gpu =
-        in.chem_gpu.apply_diffusion(in.domain, in.chem, dt);
+  if (in.gpu_active && result.reactions_on_gpu) {
+    if (in.delivery_mode) {
+      result.delivery_on_gpu =
+          in.chem.apply_diffusion_gpu(in.chem_gpu, in.domain, dt);
+      result.diffusion_on_gpu = result.delivery_on_gpu;
+    } else {
+      result.diffusion_on_gpu =
+          in.chem_gpu.apply_diffusion(in.domain, in.chem, dt);
+    }
     if (result.diffusion_on_gpu) {
       in.chem_gpu.apply_boundaries(in.domain, in.chem);
       in.chem_gpu.sync_concentrations_to_host(in.chem);
@@ -208,6 +212,8 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   }
 
   if (!result.diffusion_on_gpu) {
+    result.delivery_chemistry_host_forced =
+        in.gpu_active && in.delivery_mode;
     if (in.gpu_active && result.reactions_on_gpu) {
       in.chem_gpu.sync_concentrations_to_host(in.chem);
     }

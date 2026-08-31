@@ -6,7 +6,9 @@
 #include "simulation.h"
 #include "input_parser.h"
 #include "mpi_test_helpers.h"
+#include "plasmid.h"
 
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -282,6 +284,106 @@ void test_periodic_x_ring_four_ranks() {
   }
 }
 
+void test_cross_boundary_conjugation_four_ranks() {
+  require_mpi_ranks(4);
+
+  int rank = 0;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  SimulationConfig cfg = make_mpi_config(4404, 0);
+  cfg.enabled_fixes = {"conjugation"};
+  cfg.advection.distal_transit_time = 1e12;
+  cfg.fixes.conjugation.pili_heterogeneity = false;
+  cfg.fixes.conjugation.pili_length = 4.0e-6;
+  cfg.fixes.conjugation.base_transfer_rate = 1.0e6;
+
+  Simulation sim;
+  sim.init(cfg);
+
+  const std::array<std::pair<Real, Real>, 4> pairs = {{
+      {24e-6, 26e-6},
+      {49e-6, 51e-6},
+      {74e-6, 76e-6},
+      {10e-6, 12e-6},
+  }};
+  for (const auto& [donor_x, recipient_x] : pairs) {
+    const Vec3 donor_pos = {donor_x, 50e-6, 25e-6};
+    if (sim.domain().is_local(donor_pos)) {
+      Agent donor = Agent::create_default(
+          sim.agents().next_tag(), 1, donor_pos, 5e-4);
+      Int ix;
+      Int iy;
+      Int iz;
+      sim.domain().pos_to_grid(donor.x, ix, iy, iz);
+      donor.grid_cell = sim.domain().cell_index(ix, iy, iz);
+      donor.identity.owner_rank = sim.domain().rank();
+      donor.genome.bi_loci.push_back(PlasmidLibrary::colicin_B());
+      donor.genome.has_conjugative_plasmid = true;
+      sim.agents().push_back(std::move(donor));
+    }
+
+    const Vec3 recipient_pos = {recipient_x, 50e-6, 25e-6};
+    if (sim.domain().is_local(recipient_pos)) {
+      Agent recipient = Agent::create_default(
+          sim.agents().next_tag(), 2, recipient_pos, 5e-4);
+      Int ix;
+      Int iy;
+      Int iz;
+      sim.domain().pos_to_grid(recipient.x, ix, iy, iz);
+      recipient.grid_cell = sim.domain().cell_index(ix, iy, iz);
+      recipient.identity.owner_rank = sim.domain().rank();
+      sim.agents().push_back(std::move(recipient));
+    }
+  }
+
+  sim.step(cfg.time.bio_dt);
+
+  const Int local_transfers = sim.step_events().conjugation_transfers;
+  Int global_transfers = 0;
+  MPI_Allreduce(&local_transfers, &global_transfers, 1, MPI_INT,
+                MPI_SUM, MPI_COMM_WORLD);
+
+  Int local_acquisitions = 0;
+  for (const Agent& agent : sim.agents()) {
+    if (agent.flags.is_ghost || agent.state == PhenoState::DEAD) continue;
+    if (agent.identity.type == 2 && !agent.genome.bi_loci.empty()) {
+      ++local_acquisitions;
+    }
+  }
+  Int global_acquisitions = 0;
+  MPI_Allreduce(&local_acquisitions, &global_acquisitions, 1, MPI_INT,
+                MPI_SUM, MPI_COMM_WORLD);
+
+  Int local_hgt_events = 0;
+  for (const LineageEvent& event : sim.lineage_tracker().events()) {
+    if (event.type == LineageEvent::Type::HGT) ++local_hgt_events;
+  }
+  Int global_hgt_events = 0;
+  MPI_Allreduce(&local_hgt_events, &global_hgt_events, 1, MPI_INT,
+                MPI_SUM, MPI_COMM_WORLD);
+
+  if (rank == 0) {
+    std::cout << "  test_cross_boundary_conjugation_four_ranks: observed"
+              << " (transfers=" << global_transfers
+              << ", acquisitions=" << global_acquisitions
+              << ", hgt_events=" << global_hgt_events << ")\n";
+  }
+
+  assert((global_transfers == 4)
+         && "cross-boundary conjugation transfer count mismatch");
+  assert((global_acquisitions == 4)
+         && "cross-boundary conjugation acquisition count mismatch");
+  assert((global_hgt_events == 4)
+         && "cross-boundary conjugation HGT event count mismatch");
+
+  if (rank == 0) {
+    std::cout << "  test_cross_boundary_conjugation_four_ranks: PASSED"
+              << " (transfers=" << global_transfers
+              << ", acquisitions=" << global_acquisitions
+              << ", hgt_events=" << global_hgt_events << ")\n";
+  }
+}
+
 #endif  // GUTIBM_MPI
 
 }  // namespace
@@ -303,6 +405,7 @@ int main(int argc, char** argv) {
   test_migration_across_four_ranks();
   test_multirank_simulation_steps_four_ranks();
   test_periodic_x_ring_four_ranks();
+  test_cross_boundary_conjugation_four_ranks();
 
   if (rank == 0) {
     std::cout << "All MPI four-rank tests passed.\n";

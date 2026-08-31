@@ -26,6 +26,7 @@ __device__ void apply_vbf_at_cell(int cell,
                                   const double* conc_iron,
                                   double* reac_oxygen,
                                   const double* conc_oxygen,
+                                  double* oxygen_sink_rate,
                                   double* reac_acetate,
                                   double* reac_mucin,
                                   const double* conc_mucin,
@@ -67,10 +68,14 @@ __device__ void apply_vbf_at_cell(int cell,
     if (vbf_totals) atomicAdd(&vbf_totals[2], sink * cell_volume * dt);
   }
 
-  if (p.oxygen_enabled && reac_oxygen && conc_oxygen) {
-    const double sink = p.oxygen_vbf_sink * conc_oxygen[cell];
-    reac_oxygen[cell] -= sink;
-    if (vbf_totals) atomicAdd(&vbf_totals[3], sink * cell_volume * dt);
+  if (p.oxygen_enabled && conc_oxygen) {
+    if (p.oxygen_delivery_enabled != 0 && oxygen_sink_rate) {
+      oxygen_sink_rate[cell] += p.oxygen_vbf_sink;
+    } else if (reac_oxygen) {
+      const double sink = p.oxygen_vbf_sink * conc_oxygen[cell];
+      reac_oxygen[cell] -= sink;
+      if (vbf_totals) atomicAdd(&vbf_totals[3], sink * cell_volume * dt);
+    }
   }
 
   if (p.acetate_enabled && reac_acetate) {
@@ -127,6 +132,7 @@ __global__ void vbf_coupling_kernel(int ncells,
                                     const double* conc_iron,
                                     double* reac_oxygen,
                                     const double* conc_oxygen,
+                                    double* oxygen_sink_rate,
                                     double* reac_acetate,
                                     double* reac_mucin,
                                     const double* conc_mucin,
@@ -157,7 +163,7 @@ __global__ void vbf_coupling_kernel(int ncells,
   apply_vbf_at_cell(storage_cell, iz, static_liberation, z_weight, params,
                     reac_carbon, conc_carbon,
                     reac_iron, conc_iron,
-                    reac_oxygen, conc_oxygen,
+                    reac_oxygen, conc_oxygen, oxygen_sink_rate,
                     reac_acetate,
                     reac_mucin, conc_mucin, vbf_totals,
                     params.dx_x * params.dx_y * params.dx_z, dt);
@@ -215,6 +221,7 @@ void launch_vbf_coupling_kernel(int ncells,
                                 const double* conc_iron,
                                 double* reac_oxygen,
                                 const double* conc_oxygen,
+                                double* oxygen_sink_rate,
                                 double* reac_acetate,
                                 double* reac_mucin,
                                 const double* conc_mucin,
@@ -228,7 +235,7 @@ void launch_vbf_coupling_kernel(int ncells,
       ncells, params,
       reac_carbon, conc_carbon,
       reac_iron, conc_iron,
-      reac_oxygen, conc_oxygen,
+      reac_oxygen, conc_oxygen, oxygen_sink_rate,
       reac_acetate,
       reac_mucin, conc_mucin, vbf_totals, dt);
 }

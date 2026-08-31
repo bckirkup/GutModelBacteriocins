@@ -832,10 +832,8 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   int_key("crypt_carrying_capacity", cfg.advection.crypt_carrying_capacity);
   real_key("vbf_density", cfg.vbf.density);
   real_key("vbf_viscosity", cfg.vbf.viscosity);
-  real_key("vbf_drag_coeff", cfg.vbf.drag_coeff);
   real_key("vbf_nutrient_sink", cfg.vbf.nutrient_sink);
   real_key("vbf_mucin_liberation", cfg.vbf.mucin_liberation);
-  real_key("vbf_carrying_cap", cfg.vbf.carrying_cap);
   bool_key("vbf_mucin_z_gradient", cfg.vbf.mucin_z_gradient_enabled);
   real_key("vbf_mucin_z_lambda", cfg.vbf.mucin_z_gradient_lambda);
   real_key("vbf_carbon_sink_vmax", cfg.vbf.carbon_sink_vmax);

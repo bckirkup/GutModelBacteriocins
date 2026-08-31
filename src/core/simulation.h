@@ -18,7 +18,6 @@
    
    3. Physics module (same dt as biology):
       - Advection (mucus flow)
-      - VBF drag
       - Cell–cell mechanical repulsion
    ----------------------------------------------------------------------- */
 
@@ -390,6 +389,7 @@ class Simulation {
   uint64_t green_function_kernel_evaluations_ = 0;
   bool chemistry_host_diffusion_seen_ = false;
   bool chemistry_device_diffusion_seen_ = false;
+  bool chemistry_device_delivery_seen_ = false;
   bool chemistry_delivery_host_forced_ = false;
   uint64_t robin_tables_built_baseline_ = 0;
   uint64_t robin_table_evictions_baseline_ = 0;

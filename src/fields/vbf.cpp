@@ -117,7 +117,7 @@ void apply_oxygen_sink(ChemicalField& chem, Int cell,
   if (const ChemicalSpec& oxygen_spec = chem.spec(ctx.idx.oxygen);
       oxygen_spec.delivery_enabled) {
     chem.add_vbf_sink_rate_global(
-        ctx.idx.oxygen, cell, ctx.oxygen.vbf_sink);
+        ctx.idx.oxygen, cell, oxygen_vbf_sink_rate(ctx.oxygen));
     return;
   }
   // First-order background O2 consumption by the anaerobic majority:
@@ -128,7 +128,8 @@ void apply_oxygen_sink(ChemicalField& chem, Int cell,
   // reported. A first-order sink is self-limiting: it scales with the local O2
   // it can actually consume, so a smooth gradient survives and agent
   // respiration remains visible on top of it.
-  const Real sink = ctx.oxygen.vbf_sink * chem.conc(ctx.idx.oxygen, cell);
+  const Real sink = oxygen_vbf_sink_rate(ctx.oxygen)
+      * chem.conc(ctx.idx.oxygen, cell);
   chem.reac(ctx.idx.oxygen, cell) -= sink;
   if (totals != nullptr) totals->oxygen_sink += sink * cell_volume * dt;
 }
@@ -176,7 +177,6 @@ VbfSpeciesIndices find_vbf_species(const ChemicalField& chem) {
 void VBF::init(const VBFConfig& cfg, const Domain& domain) {
   cfg_          = cfg;
   ncells_       = domain.ncells();
-  carrying_cap_ = cfg.carrying_cap;
 }
 
 Real VBF::mucin_rate(Real z_rel) const {
@@ -243,14 +243,6 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
       }
     }
   }
-}
-
-Vec3 VBF::drag_force(const Vec3& agent_vel) const {
-  return {
-    -cfg_.drag_coeff * agent_vel[0],
-    -cfg_.drag_coeff * agent_vel[1],
-    -cfg_.drag_coeff * agent_vel[2]
-  };
 }
 
 }  // namespace gutibm

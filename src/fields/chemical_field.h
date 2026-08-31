@@ -18,8 +18,12 @@
 namespace gutibm {
 
 class Domain;
+class ChemicalFieldGpu;
 
 struct NutrientFluxAccounting {
+  // *_step vectors are mid-step scratch.  The commit methods copy their
+  // values to *_last_step and then clear them, so post-step readers must use
+  // the *_for_step accessors rather than reading the raw vectors.
   std::vector<Real> boundary_interval;
   std::vector<Real> boundary_step;
   std::vector<Real> boundary_last_step;
@@ -297,6 +301,22 @@ struct NutrientFluxAccounting {
     return agent_uptake_last_step[static_cast<size_t>(species)];
   }
 
+  Real boundary_for_step(Int species) const {
+    return boundary_last_step[static_cast<size_t>(species)];
+  }
+
+  Real gradient_source_for_step(Int species) const {
+    return gradient_source_last_step[static_cast<size_t>(species)];
+  }
+
+  Real vbf_source_for_step(Int species) const {
+    return vbf_source_last_step[static_cast<size_t>(species)];
+  }
+
+  Real vbf_sink_for_step(Int species) const {
+    return vbf_sink_last_step[static_cast<size_t>(species)];
+  }
+
   Real uptake_demand_for_step(Int species) const {
     return uptake_demand_last_step[static_cast<size_t>(species)];
   }
@@ -490,6 +510,7 @@ class ChemicalField {
   void add_sink_rate_global(Int spec, Int cell, Real rate);
   void add_prescribed_sink_global(Int spec, Int cell, Real amount);
   void add_vbf_sink_rate_global(Int spec, Int cell, Real rate);
+  void add_vbf_sink_rates(Int spec, const std::vector<Real>& rates);
   void split_delivery_sink_realized(Int spec);
   void add_sink_rate_global(Int cell, Real rate);
   Real sink_realized_global(Int spec, Int cell) const;
@@ -504,6 +525,8 @@ class ChemicalField {
 
   // Apply stable implicit diffusion for enabled nutrient species.
   void apply_diffusion(const Domain& domain, Real dt);
+  bool apply_diffusion_gpu(ChemicalFieldGpu& gpu, const Domain& domain,
+                           Real dt);
   // Apply only the periodic x-direction solve.  GPU slab chemistry uses this
   // exact host path because a global periodic line spans MPI slabs.
   void apply_periodic_x_diffusion(const Domain& domain, Real dt);

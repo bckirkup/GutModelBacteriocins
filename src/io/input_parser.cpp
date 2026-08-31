@@ -922,10 +922,8 @@ bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::stri
 bool apply_vbf_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {
   if (key == "vbf_density")          { cfg.vbf.density = parse_config_real(key, val); return true; }
   if (key == "vbf_viscosity")        { cfg.vbf.viscosity = parse_config_real(key, val); return true; }
-  if (key == "vbf_drag_coeff")       { cfg.vbf.drag_coeff = parse_config_real(key, val); return true; }
   if (key == "vbf_nutrient_sink")    { cfg.vbf.nutrient_sink = parse_config_real(key, val); return true; }
   if (key == "vbf_mucin_liberation") { cfg.vbf.mucin_liberation = parse_config_real(key, val); return true; }
-  if (key == "vbf_carrying_cap")     { cfg.vbf.carrying_cap = parse_config_real(key, val); return true; }
   if (key == "vbf_mucin_z_gradient") { cfg.vbf.mucin_z_gradient_enabled = (val == "true" || val == "1"); return true; }
   if (key == "vbf_mucin_z_lambda")   { cfg.vbf.mucin_z_gradient_lambda = parse_config_real(key, val); return true; }
   if (key == "vbf_carbon_sink_vmax") { cfg.vbf.carbon_sink_vmax = parse_config_real(key, val); return true; }

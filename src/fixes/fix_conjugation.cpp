@@ -5,11 +5,29 @@
 #include "fix_conjugation.h"
 #include "simulation.h"
 #include <cmath>
+#include <iostream>
 
 namespace gutibm {
 
 FixConjugation::FixConjugation(Simulation& sim, const ConjugationConfig& cfg)
     : Fix("conjugation", sim), cfg_(cfg) {}
+
+void FixConjugation::init() {
+  // A cross-boundary pair is resolved on the recipient's owning rank, which
+  // requires the donor to be present there as a ghost. Pili reach beyond the
+  // ghost layer would place donors outside the exchanged band, so those pairs
+  // would never be seen by the rank that can commit the transfer.
+  if (sim_.domain().nprocs() <= 1) return;
+  Real max_reach =
+      cfg_.pili_heterogeneity ? cfg_.pili_length_max : cfg_.pili_length;
+  if (max_reach > sim_.domain().ghost_width()) {
+    std::cerr << "Warning: conjugation pili reach " << max_reach
+              << " m exceeds domain.ghost_width "
+              << sim_.domain().ghost_width()
+              << " m; cross-rank transfers beyond the ghost layer cannot be "
+                 "committed by the recipient's owner and will be missed\n";
+  }
+}
 
 void FixConjugation::compute(Real dt) {
   auto& agents = sim_.agents();
@@ -36,6 +54,11 @@ void FixConjugation::compute(Real dt) {
       if (j == i) continue;
       Agent& recipient = agents[j];
       if (recipient.state == PhenoState::DEAD) continue;
+      // Only the recipient's owning rank commits the acquisition: a write to a
+      // ghost copy is discarded at the next ghost clear, while the counter and
+      // the lineage edge would survive. Ghost donors carry the cross-boundary
+      // case, so every pair is still attempted exactly once globally.
+      if (recipient.flags.is_ghost) continue;
 
       // Check distance against sampled pilus length
       if (Real d2 = sim_.domain().min_image_dist_sq(donor.x, recipient.x);

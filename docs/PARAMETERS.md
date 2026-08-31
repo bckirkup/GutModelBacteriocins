@@ -284,16 +284,18 @@ change).
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
 | `vbf.density` | 1e11 | #/m^3 | Anaerobic background density |
-| `vbf.drag_coeff` | 1e-9 | N·s/m | Stokes drag coefficient |
 | `vbf.nutrient_sink` | 1e-4 | 1/s | First-order iron uptake rate constant (sink is `-nutrient_sink · [iron]`, concentration-dependent — **not** a zero-order mol/m³/s removal) |
 | `vbf.mucin_liberation` | 5e-5 | mol/m^3/s | Peak monosaccharide release (at z=0) |
-| `vbf.carrying_cap` | 1e12 | #/m^3 | Local carrying capacity |
 | `vbf.viscosity` | 0.01 | Pa·s | Effective viscosity (~10× water) |
 | `vbf.mucin_z_gradient_enabled` | true | — | z-dependent mucin liberation rate |
 | `vbf.mucin_z_gradient_lambda` | 25e-6 | m | Liberation decay length from epithelium |
 | `vbf_carbon_sink_vmax` | 5.5e-5 | mol/m³/s | Monod carbon consumption by the anaerobic majority (Spec 5 §1 / Spec 6 §1). Activated by default: set just above the mucin liberation rate (5e-5) so bulk carbon settles to a ~1 mM equilibrium instead of accumulating without bound. `0` restores pre-Spec-6 unbounded accumulation |
 | `vbf_carbon_sink_km` | 1e-4 | mol/m³ | Half-saturation for the VBF carbon sink |
 | `vbf.agent_carbon_coupling` | 0.0 | mol/s/agent | Additional VBF carbon competition proportional to owned live-agent density; zero preserves the historical sink. For 2 µm cells (8 fL), use demand-anchored values such as 0, 1e-21, 1e-20, and 1e-19 mol/s/agent; values large enough to starve a voxel are expected to trigger the delivery closure gate. |
+
+VBF mechanics is overdamped: agent translation comes from advection and
+mechanics displacement, with no inertial velocity channel or carrying-capacity
+mechanism.
 
 **Mucin liberation profile:** When `mucin_z_gradient_enabled`, the liberation rate varies as:
 `rate(z) = mucin_liberation * exp(-z_rel / mucin_z_gradient_lambda)`
@@ -469,7 +471,7 @@ default.
 | `mucin.initial_conc` | 1e-2 | mol/m³ | Initial mucin concentration |
 | `mucin.secretion_rate` | 1e-4 | mol/m³/s | Goblet cell secretion at epithelium |
 | `mucin.Km_degradation` | 1e-3 | mol/m³ | Half-saturation for VBF mucin degradation |
-| `mucin.k_liberation` | 1e-4 | 1/s | Rate constant for mucin → monosaccharide conversion |
+| `mucin.k_liberation` | 5e-16 | mol/(cell·s) | Per-cell specific mucin → monosaccharide liberation rate |
 
 ---
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -17,12 +18,14 @@ from gut_ibm_tools.batch_config import (
 )
 from gut_ibm_tools.batch_manifest import (
     JOB_STATUS_DONE,
+    BatchManifest,
     create_manifest,
     format_status_line,
     load_manifest,
     pending_jobs,
     save_manifest,
 )
+from gut_ibm_tools.batch_runner import _write_json_output
 from gut_ibm_tools.batch_runner import main as batch_main
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -214,6 +217,94 @@ def test_manifest_resume_skips_done_jobs(batch_workspace: Path) -> None:
     remaining = pending_jobs(loaded)
     assert [job.job_id for job in remaining] == ["c", "d"]
     assert "2/4 done" in format_status_line(loaded)
+
+
+def test_save_manifest_preserves_previous_generation_on_serialization_error(
+    batch_workspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gut_ibm_tools import batch_manifest
+    from gut_ibm_tools.batch_config import JobSpec
+
+    output_dir = batch_workspace / "out"
+    manifest = create_manifest(
+        batch_config=batch_workspace / "batch.json",
+        output_dir=output_dir,
+        jobs=[JobSpec(job_id="a", overrides={"seed": 1})],
+    )
+    save_manifest(manifest, output_dir)
+    manifest_path = output_dir / "batch_manifest.json"
+    original_bytes = manifest_path.read_bytes()
+
+    def fail_serialization(_manifest: BatchManifest) -> dict:
+        raise RuntimeError("simulated serialization interruption")
+
+    monkeypatch.setattr(batch_manifest, "asdict", fail_serialization)
+    with pytest.raises(RuntimeError, match="serialization interruption"):
+        save_manifest(manifest, output_dir)
+
+    assert manifest_path.read_bytes() == original_bytes
+    assert load_manifest(output_dir).jobs[0].job_id == "a"
+    assert list(output_dir.iterdir()) == [manifest_path]
+
+
+def test_write_json_output_preserves_previous_generation_on_serialization_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import gut_ibm_tools.batch_runner as runner
+
+    monkeypatch.chdir(tmp_path)
+    output_path = tmp_path / "result.json"
+    payload = {"status": "initial", "count": 1}
+    _write_json_output(output_path, payload)
+    original_bytes = output_path.read_bytes()
+
+    def fail_serialization(*_args, **_kwargs):
+        raise RuntimeError("simulated serialization interruption")
+
+    monkeypatch.setattr(runner.json, "dump", fail_serialization)
+    monkeypatch.setattr(runner.json, "dumps", fail_serialization)
+    with pytest.raises(RuntimeError, match="serialization interruption"):
+        _write_json_output(output_path, {"status": "updated", "count": 2})
+
+    assert output_path.read_bytes() == original_bytes
+    assert json.loads(output_path.read_text(encoding="utf-8")) == payload
+    assert output_path.read_text(encoding="utf-8").endswith("\n")
+    assert list(tmp_path.iterdir()) == [output_path]
+
+
+def test_manifest_write_preserves_json_format_and_trailing_newline(
+    batch_workspace: Path,
+) -> None:
+    from gut_ibm_tools.batch_config import JobSpec
+
+    output_dir = batch_workspace / "out"
+    manifest = create_manifest(
+        batch_config=batch_workspace / "batch.json",
+        output_dir=output_dir,
+        jobs=[JobSpec(job_id="a", overrides={"seed": 1})],
+    )
+    save_manifest(manifest, output_dir)
+    content = (output_dir / "batch_manifest.json").read_text(encoding="utf-8")
+
+    assert json.loads(content) == asdict(manifest)
+    assert content.endswith("\n")
+    assert content == json.dumps(asdict(manifest), indent=2) + "\n"
+
+
+def test_json_output_preserves_json_format_and_trailing_newline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_path = tmp_path / "result.json"
+    payload = {"status": "complete", "items": [1, 2, 3]}
+    _write_json_output(output_path, payload)
+    content = output_path.read_text(encoding="utf-8")
+
+    assert json.loads(content) == payload
+    assert content.endswith("\n")
+    assert content == json.dumps(payload, indent=2) + "\n"
 
 
 def test_dry_run_cli(batch_workspace: Path, capsys: pytest.CaptureFixture[str]) -> None:
