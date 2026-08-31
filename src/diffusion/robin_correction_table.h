@@ -210,6 +210,11 @@ double normalized_robin_field(double z_source, double z_target, double rho,
                               int mode_count,
                               TransferBasis basis = TransferBasis::Effective);
 
+double normalized_sealed_field(double z_source, double z_target, double rho,
+                               double z_lo, double z_hi, double d_eff,
+                               double decay_rate, double flow_x, double flow_y,
+                               double flow_z, int mode_count);
+
 double normalized_correction(double z_source, double z_target, double rho,
                              double z_lo, double z_hi, double d_eff,
                              double d_free, double decay_rate,

@@ -52,6 +52,7 @@ struct QSSAConfig {
   bool image_series_max_shells_explicit = false;
   std::string image_series_mode = "corrected";
   std::string low_screening_policy = "warn";
+  std::string drift_envelope_policy = "warn";
   Real nutrient_cutoff  = 50.0e-6;    // 50 um for nutrient depletion zones
 
   // Bacteriocin source parameters

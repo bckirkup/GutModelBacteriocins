@@ -85,6 +85,37 @@ void enforce_low_screening_policy(
   }
 }
 
+void enforce_drift_envelope_policy(
+    const QSSAConfig& cfg, const Domain& domain, const AdvectionField& adv,
+    const std::vector<ChemicalSpec>& chemicals) {
+  if (cfg.drift_envelope_policy == "allow") return;
+  const Vec3 probe = domain.cell_center(
+      domain.nx() / 2, domain.ny() / 2, domain.nz() / 2);
+  const Vec3 flow = adv.velocity(probe);
+  const Real height = domain.hi()[2] - domain.lo()[2];
+  for (const auto& spec : chemicals) {
+    if (!is_bacteriocin_spec(spec)) continue;
+    const Real d_eff = spec.diff_coeff / spec.retardation;
+    if (!(d_eff > 0.0)) continue;
+    const Real pe_z = neumann::wall_normal_peclet(flow[2], height, d_eff);
+    if (neumann::drift_envelope_exceeded(flow[2], height, d_eff)) {
+      const std::string message = std::format(
+          "wall-normal drift in sealed Neumann image series: Pe_z={:.6g}; "
+          "envelope is |Pe_z| <= 0.05; worst-case relative field error is "
+          "approximately 0.44*Pe_z; see "
+          "docs/NEUMANN_WALL_NORMAL_DRIFT.md",
+          pe_z);
+      if (cfg.drift_envelope_policy == "error") {
+        throw SimulationError(message);
+      }
+      std::cerr << "WARNING: " << message
+                << "; use qssa.drift_envelope_policy=allow for deliberate "
+                   "high-wall-normal-flow diagnostics\n";
+      return;
+    }
+  }
+}
+
 int image_series_shells(const QSSAConfig& cfg) {
   if (cfg.image_series_mode == "pre_fix_duplicated_reflection"
       && !cfg.image_series_max_shells_explicit) {
@@ -578,6 +609,7 @@ void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
   gf_.reset_kernel_evaluations();
   if (chemicals != nullptr) {
     enforce_low_screening_policy(cfg, domain, adv, *chemicals);
+    enforce_drift_envelope_policy(cfg, domain, adv, *chemicals);
   }
   if (cfg.image_series_mode == "pre_fix_duplicated_reflection") {
     std::cerr

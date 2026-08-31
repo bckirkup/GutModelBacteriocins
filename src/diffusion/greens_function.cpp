@@ -363,6 +363,13 @@ Real GreensFunction::concentration_sealed(
   require_init();
   Real D_eff = params.diff_coeff / params.retardation;
   Vec3 flow  = adv_->velocity(source);
+  if (neumann::drift_envelope_exceeded(
+          flow[2], z_hi_ - z_lo_, D_eff)) {
+#ifdef GUTIBM_OPENMP
+#pragma omp atomic update
+#endif
+    ++drift_envelope_evaluations_;
+  }
   const Real Q = params.source_rate;
   const auto evaluate_image = [this, &source, &target, D_eff, Q,
                                decay_rate = params.decay_rate, flow](

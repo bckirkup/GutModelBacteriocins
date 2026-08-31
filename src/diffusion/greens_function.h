@@ -110,6 +110,9 @@ class GreensFunction {
   uint64_t low_screening_evaluations() const {
     return low_screening_evaluations_;
   }
+  uint64_t drift_envelope_evaluations() const {
+    return drift_envelope_evaluations_;
+  }
   uint64_t negative_field_count() const {
     return negative_field_count_;
   }
@@ -137,6 +140,9 @@ class GreensFunction {
   void add_low_screening_evaluations(uint64_t count) const {
     low_screening_evaluations_ += count;
   }
+  void add_drift_envelope_evaluations(uint64_t count) const {
+    drift_envelope_evaluations_ += count;
+  }
   void add_negative_field_diagnostics(uint64_t count,
                                       Real most_negative) const;
   void add_kernel_evaluations(uint64_t count) const {
@@ -150,6 +156,7 @@ class GreensFunction {
   }
   void reset_low_screening_diagnostics() {
     low_screening_evaluations_ = 0;
+    drift_envelope_evaluations_ = 0;
     negative_field_count_ = 0;
     most_negative_field_ = 0.0;
   }
@@ -179,6 +186,7 @@ class GreensFunction {
   Real z_hi_ = 100.0e-6;
   mutable uint64_t image_series_cap_hits_ = 0;
   mutable uint64_t low_screening_evaluations_ = 0;
+  mutable uint64_t drift_envelope_evaluations_ = 0;
   mutable uint64_t negative_field_count_ = 0;
   mutable Real most_negative_field_ = 0.0;
   mutable uint64_t robin_direct_evaluations_ = 0;

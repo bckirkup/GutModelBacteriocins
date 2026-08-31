@@ -334,6 +334,14 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return c.qssa.low_screening_policy;
                 }, "allow"));
+  v.push_back(S("qssa.drift_envelope_policy",
+                [](const SimulationConfig& c) {
+                  return c.qssa.drift_envelope_policy;
+                }, "allow"));
+  v.push_back(S("drift_envelope_policy",
+                [](const SimulationConfig& c) {
+                  return c.qssa.drift_envelope_policy;
+                }, "allow"));
   v.push_back(S("low_screening_policy",
                 [](const SimulationConfig& c) {
                   return c.qssa.low_screening_policy;
