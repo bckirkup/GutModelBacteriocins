@@ -29,6 +29,7 @@
 #include <cmath>
 #include <cstring>
 #include <numeric>
+#include <optional>
 #include <ranges>
 #include <iomanip>
 #include <set>
@@ -111,6 +112,36 @@ void assign_plasmids(Agent& agent,
       agent.genome.has_conjugative_plasmid = true;
     }
   }
+}
+
+std::optional<RuntimeDriftEnvelopeBasis> configured_runtime_drift_basis(
+    const SimulationConfig& cfg) {
+  std::optional<RuntimeDriftEnvelopeBasis> result;
+  for (const auto& strain : cfg.initial_strains) {
+    for (const auto& plasmid_name : strain.plasmids) {
+      const PlasmidEntry* entry = PlasmidLibrary::find(plasmid_name);
+      if (entry == nullptr) continue;
+      BICluster cluster = entry->cluster;
+      cluster.retardation = retardation_from_pI(
+          cluster.pI, cfg.fixes.bacteriocin.mucin_charge);
+      if (const auto it = cfg.plasmid_overrides.find(entry->name);
+          it != cfg.plasmid_overrides.end()) {
+        const auto& values = it->second;
+        if (values.retardation.has_value()) {
+          cluster.retardation = *values.retardation;
+        }
+        if (values.diff_coeff.has_value()) {
+          cluster.diff_coeff = *values.diff_coeff;
+        }
+      }
+      const Real d_eff = cluster.diff_coeff / cluster.retardation;
+      if (!(d_eff > 0.0)) continue;
+      if (!result.has_value() || d_eff < result->d_eff) {
+        result = RuntimeDriftEnvelopeBasis{entry->name, d_eff};
+      }
+    }
+  }
+  return result;
 }
 
 void tag_crypt_resident(Agent& agent, const AdvectionField& advection) {
@@ -549,8 +580,11 @@ void Simulation::init(const SimulationConfig& cfg) {
   vbf_.init(cfg.vbf, domain_);
 
   // QSSA solver
+  const std::optional<RuntimeDriftEnvelopeBasis> runtime_drift_basis =
+      configured_runtime_drift_basis(cfg_);
   qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps,
-             &cfg.chemicals);
+             &cfg.chemicals,
+             runtime_drift_basis.has_value() ? &*runtime_drift_basis : nullptr);
   capture_robin_provenance_baseline();
 
   // Lineage tracker
@@ -804,8 +838,11 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   validate_required_species(cfg_, chem_);
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
+  const std::optional<RuntimeDriftEnvelopeBasis> runtime_drift_basis =
+      configured_runtime_drift_basis(cfg_);
   qssa_.init(cfg.qssa, domain_, advection_, cfg.profile_steps,
-             &cfg.chemicals);
+             &cfg.chemicals,
+             runtime_drift_basis.has_value() ? &*runtime_drift_basis : nullptr);
   capture_robin_provenance_baseline();
   lineage_.init(cfg.time.output_interval);
   hdf5_.init(cfg.hdf5, domain_);

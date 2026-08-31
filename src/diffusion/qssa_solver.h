@@ -29,6 +29,11 @@
 
 namespace gutibm {
 
+struct RuntimeDriftEnvelopeBasis {
+  std::string label;
+  Real d_eff = 0.0;
+};
+
 class Domain;
 class AdvectionField;
 class ChemicalField;
@@ -94,7 +99,8 @@ class QSSASolver {
 
   void init(const QSSAConfig& cfg, const Domain& domain,
             const AdvectionField& adv, bool profile_steps = false,
-            const std::vector<ChemicalSpec>* chemicals = nullptr);
+            const std::vector<ChemicalSpec>* chemicals = nullptr,
+            const RuntimeDriftEnvelopeBasis* runtime_basis = nullptr);
 
   // Compute steady-state bacteriocin field from current toxin sources
   // and deposit onto chemical field grid

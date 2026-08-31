@@ -11,8 +11,12 @@ Summary of the result: the defect is real and is exactly first order in the
 wall-normal flow, but it is **not** repairable by drift-corrected images — the
 exact wall reflection coefficient depends on the transverse wavenumber, and no
 real-space image weight can. The series is therefore gated on a measured
-envelope rather than "corrected". Shipped defaults sit inside the envelope, and
-the shipped numerics are unchanged by this work.
+envelope rather than "corrected". Shipped defaults are outside the envelope:
+the ChemicalSpec/spec basis gives midpoint `Pe_z = 0.164`, and the configured
+ColE1 plasmid basis gives `Pe_z = 0.822` at mid-depth and `2.325` at the lumen
+surface, so the default warning fires. The series arithmetic is unchanged by
+this gate-only work, but that does not establish that the resulting fields are
+scientifically acceptable.
 
 ## 1. Operator, gauge transform, and the sealed wall law
 
@@ -213,45 +217,56 @@ the shipped image sum:
 | `H/2000` | 4.64e1 | 4.66e1 |
 | `H/8000` | 4.63e1 | 4.65e1 |
 
-The exact kernel scores the same value as the image sum to within 0.2% at every
-spacing: near the source singularity the metric is entirely discretization
-error and cannot distinguish an exact solution from the image sum. I could not
-reproduce the reported 2.9e-1 versus 1.4e-3 pair, and whatever it measures it
-is not the interior residual of the image sum. The exact residual identity in
-§2 makes that comparison unnecessary, and the error table above is a field
-comparison against a converged reference, so it does not depend on a difference
-stencil.
+The report's residual metric is not reproducible as a statement about the image
+sum: a second-order central-difference interior residual normalized by `λC`
+scores 4.73e1 for the *exact* free-space kernel (true residual zero) versus
+4.72e1 for the image sum at `H/500`, and the two stay within 0.2% at `H/2000`
+and `H/8000`, so that metric is entirely discretization error near the source
+singularity and cannot distinguish an exact solution from the image sum. The
+exact residual identity in §2 makes that comparison unnecessary, and the error
+table above is a field comparison against a converged reference, so it does
+not depend on a difference stencil.
 
 ## 5. Consequence at shipped parameters
 
 `AdvectionField::radial_velocity` uses `profile_alpha = 1.5`, so the
 wall-normal flow — and hence the local `Pe_z` a source sees — is depth
-dependent:
+dependent. For `H = 1e-4 m` and `radial_turnover = 5400 s`,
+`U_z(0.5H) = 6.547e-9 m/s` and `U_z(H) = 1.8519e-8 m/s`.
 
 ```
-Pe_z(z_s) = Pe_z(z_hi) · (z_s/H)^1.5 ,      Pe_z(z_hi) = 0.0926
+U_z(z) = (H / radial_turnover) · (z/H)^1.5
 ```
 
-at shipped `H = 100 µm`, `radial_turnover = 5400 s`, ColE1
-`D_eff = 2e-11 m²/s`, `decay_rate = 5e-5 s⁻¹`. Measured relative field error
-for near-wall and mid-range targets at each source depth:
+The initialization gate's configured ChemicalSpec basis uses
+`diff_coeff = 4e-11 m²/s`, `retardation = 10`, hence
+`D_eff = 4e-12 m²/s` and midpoint-probe `Pe_z = 0.164`, outside the enforced
+`0.05` envelope. Runtime Green's-function sources instead use each plasmid BI
+locus's `diff_coeff` and pI-derived retardation. The configured ColE1 basis has
+`Pe_z = 0.822` at mid-depth and `Pe_z = 2.325` at the lumen surface. Thus the
+default warning fires, and the runtime basis can be substantially more
+restrictive than the ChemicalSpec basis.
 
-| `z_s/H` | local `Pe_z` | median error | max error |
-|---:|---:|---:|---:|
-| 0.02 | 2.62e-4 | 2.24e-5 | 6.43e-5 |
-| 0.05 | 1.04e-3 | 8.45e-5 | 2.47e-4 |
-| 0.10 | 2.93e-3 | 2.07e-4 | 6.35e-4 |
-| 0.20 | 8.28e-3 | 4.13e-4 | 1.34e-3 |
-| 0.30 | 1.52e-2 | 4.85e-4 | 1.60e-3 |
-| 0.50 | 3.27e-2 | 1.75e-5 | 2.28e-4 |
-| 0.75 | 6.01e-2 | 2.45e-3 | 8.61e-3 |
-| 1.00 | 9.26e-2 | 7.13e-3 | 1.77e-2 |
+```
+species | retardation | D_eff (m^2/s) | z/H | Pe_z | median rel err | worst rel err
+colicin E1 (ColE1) | 50.22 | 7.96e-13 | 0.50 | 0.822 | 0.057 | 0.225
+colicin E1 (ColE1) | 50.22 | 7.96e-13 | 1.00 | 2.325 | 0.151 | 0.395
+colicin B (ColB) | 1.27 | 3.16e-11 | 0.50 | 0.021 | 0.002 | 0.009
+colicin B (ColB) | 1.27 | 3.16e-11 | 1.00 | 0.059 | 0.005 | 0.025
+colicin E2 | 2.04 | 1.72e-11 | 0.50 | 0.038 | 0.003 | 0.016
+colicin E2 | 2.04 | 1.72e-11 | 1.00 | 0.108 | 0.010 | 0.045
+colicin Ia | 5.17 | 7.74e-12 | 0.50 | 0.085 | 0.007 | 0.035
+colicin Ia | 5.17 | 7.74e-12 | 1.00 | 0.239 | 0.020 | 0.094
+colicin M | 55.15 | 9.07e-13 | 0.50 | 0.722 | 0.048 | 0.203
+colicin M | 55.15 | 9.07e-13 | 1.00 | 2.042 | 0.130 | 0.366
+microcin V | 1.23 | 8.15e-11 | 0.50 | 0.008 | 0.001 | 0.004
+microcin V | 1.23 | 8.15e-11 | 1.00 | 0.023 | 0.003 | 0.010
+```
 
-The shipped default founder band is `z/H ∈ [0, 0.5]`
-(`Simulation::init_population`), where the measured error is
-**6.4e-5 .. 1.6e-3** — consistent with the audit's reported 1.2e-3..6.9e-3
-band, at the low end of it, because the depth profile keeps founders in the
-weak-flow region. Only sources at the lumen surface reach ~1.8e-2.
+The strongly pI-retarded ColE1 and colicin M therefore have measured errors of
+**5–15% median and 20–40% worst case**, while the audit's sub-percent
+characterization applies only to weakly retarded toxins such as ColB, colicin
+E2, and microcin V.
 
 The Robin correction does not absorb any of this. `normalized_correction`
 returns `robin_modal - sealed_modal` and the caller adds it to the
@@ -279,9 +294,9 @@ during QSSA initialization from the same mid-domain flow probe. Run provenance
 records `neumann_drift_envelope_evaluations`, the number of kernel evaluations
 whose source-local `|Pe_z|` exceeded the envelope, separately from
 `neumann_image_series_cap_hits` and
-`neumann_low_screening_evaluations`. At shipped defaults the mid-domain probe
-gives `Pe_z = 0.033`, inside the envelope, so no warning fires and the counter
-stays at zero.
+`neumann_low_screening_evaluations`. At shipped defaults the ChemicalSpec
+midpoint basis gives `Pe_z = 0.164` and the configured-plasmid ColE1 basis gives
+`Pe_z = 0.822`, both outside the envelope, so the default warning fires.
 
 Routing out-of-envelope configurations to an exact alternative solve is *not*
 offered, for a measured reason rather than a scheduling one: the only exact
@@ -304,9 +319,13 @@ recorded here as follow-up scientific decisions, not implemented:
 ## 7. What this change does and does not alter
 
 The image-series arithmetic is untouched: no term, weight, shell budget, or
-convergence test changes, so host and device remain bit-identical and every
-shipped number is unchanged. What is added is the measured envelope, the policy
-gate, the provenance counter, and this derivation.
+convergence test changes, so host and device remain bit-identical for the same
+inputs. What is added is the measured envelope, the policy gate, the runtime
+basis, the provenance counter, and this derivation. Whether killing or
+induction outcomes move is not established: the corrected modal solve is not
+implemented here, and existing toxin/killing tolerances may encode the
+uncorrected field. That is a scientific decision for the maintainer, not
+something this gate-only change resolves.
 
 Device evidence for the CUDA compile comes only from CI: there is no CUDA
 toolkit or GPU on the development machine used for this work, and the shared

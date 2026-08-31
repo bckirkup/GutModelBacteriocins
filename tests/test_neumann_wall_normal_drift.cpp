@@ -19,6 +19,7 @@
 #include <iostream>
 #include <limits>
 #include <numbers>
+#include <string>
 #include <vector>
 
 using namespace gutibm;
@@ -228,7 +229,7 @@ void test_drift_classifier() {
   }
   if (neumann::drift_envelope_exceeded(
           0.033 * kDiffusion / kHeight, kHeight, kDiffusion)) {
-    std::cerr << "shipped mid-domain Pe_z was incorrectly rejected\n";
+    std::cerr << "in-envelope Pe_z=0.033 was incorrectly rejected\n";
     std::exit(1);
   }
   if (!neumann::drift_envelope_exceeded(
@@ -276,6 +277,53 @@ void test_drift_envelope_policy() {
   std::cout << "  test_drift_envelope_policy: PASSED\n";
 }
 
+void test_runtime_plasmid_basis_closes_gate_hole() {
+  const Real flow_z = 0.033 * kDiffusion / kHeight;
+  auto system = make_system(flow_z);
+  ChemicalSpec bacteriocin;
+  bacteriocin.name = species::BACTERIOCIN_BTUB;
+  bacteriocin.diff_coeff = kDiffusion;
+  bacteriocin.retardation = 1.0;
+  bacteriocin.decay_rate = kDecay;
+  const std::vector<ChemicalSpec> chemicals = {bacteriocin};
+  const RuntimeDriftEnvelopeBasis high_runtime_basis{
+      "ColE1", kDiffusion / 10.0};
+  const RuntimeDriftEnvelopeBasis low_runtime_basis{"low", kDiffusion};
+
+  QSSAConfig cfg;
+  cfg.low_screening_policy = "allow";
+  cfg.drift_envelope_policy = "error";
+
+  bool rejected = false;
+  try {
+    QSSASolver qssa;
+    qssa.init(cfg, system.domain, system.adv, false, &chemicals,
+              &high_runtime_basis);
+  } catch (const SimulationError& error) {
+    rejected = std::string(error.what()).find(
+                   "configured-plasmid basis: ColE1") != std::string::npos;
+  }
+  if (!rejected) {
+    std::cerr << "configured-plasmid drift basis did not close gate hole\n";
+    std::exit(1);
+  }
+
+  {
+    QSSASolver qssa;
+    qssa.init(cfg, system.domain, system.adv, false, &chemicals,
+              &low_runtime_basis);
+  }
+  {
+    QSSASolver qssa;
+    qssa.init(cfg, system.domain, system.adv, false, &chemicals);
+  }
+  // The ChemicalSpec basis has Pe_z=0.033 and passes, while the configured
+  // plasmid basis has Pe_z=0.33 and must reject. The absent/low negative
+  // controls ensure the new basis, rather than the existing species basis,
+  // is what closes this false-negative hole.
+  std::cout << "  test_runtime_plasmid_basis_closes_gate_hole: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -286,6 +334,7 @@ int main() {
   test_wall_parallel_flow_is_exact();
   test_drift_classifier();
   test_drift_envelope_policy();
+  test_runtime_plasmid_basis_closes_gate_hole();
   std::cout << "All wall-normal drift envelope tests passed.\n";
   return 0;
 }

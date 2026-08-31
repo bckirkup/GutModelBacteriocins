@@ -87,33 +87,59 @@ void enforce_low_screening_policy(
 
 void enforce_drift_envelope_policy(
     const QSSAConfig& cfg, const Domain& domain, const AdvectionField& adv,
-    const std::vector<ChemicalSpec>& chemicals) {
+    const std::vector<ChemicalSpec>* chemicals,
+    const RuntimeDriftEnvelopeBasis* runtime_basis) {
   if (cfg.drift_envelope_policy == "allow") return;
   const Vec3 probe = domain.cell_center(
       domain.nx() / 2, domain.ny() / 2, domain.nz() / 2);
   const Vec3 flow = adv.velocity(probe);
   const Real height = domain.hi()[2] - domain.lo()[2];
-  for (const auto& spec : chemicals) {
-    if (!is_bacteriocin_spec(spec)) continue;
-    const Real d_eff = spec.diff_coeff / spec.retardation;
-    if (!(d_eff > 0.0)) continue;
-    const Real pe_z = neumann::wall_normal_peclet(flow[2], height, d_eff);
-    if (neumann::drift_envelope_exceeded(flow[2], height, d_eff)) {
-      const std::string message = std::format(
-          "wall-normal drift in sealed Neumann image series: Pe_z={:.6g}; "
-          "envelope is |Pe_z| <= 0.05; worst-case relative field error is "
-          "approximately 0.44*Pe_z; see "
-          "docs/NEUMANN_WALL_NORMAL_DRIFT.md",
-          pe_z);
-      if (cfg.drift_envelope_policy == "error") {
-        throw SimulationError(message);
+  Real worst_pe_z = 0.0;
+  Real worst_d_eff = 0.0;
+  std::string worst_basis;
+  if (chemicals != nullptr) {
+    for (const auto& spec : *chemicals) {
+      if (!is_bacteriocin_spec(spec)) continue;
+      const Real d_eff = spec.diff_coeff / spec.retardation;
+      if (!(d_eff > 0.0)) continue;
+      const Real pe_z = neumann::wall_normal_peclet(flow[2], height, d_eff);
+      if (std::abs(pe_z) > std::abs(worst_pe_z)) {
+        worst_pe_z = pe_z;
+        worst_d_eff = d_eff;
+        worst_basis = "configured-species basis: " + spec.name;
       }
-      std::cerr << "WARNING: " << message
-                << "; use qssa.drift_envelope_policy=allow for deliberate "
-                   "high-wall-normal-flow diagnostics\n";
-      return;
     }
   }
+  if (runtime_basis != nullptr && runtime_basis->d_eff > 0.0) {
+    const Real pe_z = neumann::wall_normal_peclet(
+        flow[2], height, runtime_basis->d_eff);
+    if (std::abs(pe_z) > std::abs(worst_pe_z)) {
+      worst_pe_z = pe_z;
+      worst_d_eff = runtime_basis->d_eff;
+      worst_basis = "configured-plasmid basis: " + runtime_basis->label;
+    }
+  }
+  if (!neumann::drift_envelope_exceeded(
+          flow[2], height, worst_d_eff)) {
+    return;
+  }
+  const std::string error_description =
+      std::abs(worst_pe_z) > 0.3
+      ? "worst-case relative field error is approximately 0.44*Pe_z only in "
+        "the small-Pe fit; measured worst-case field error is 20-40% for "
+        "strongly retarded shipped toxins"
+      : "worst-case relative field error is approximately 0.44*Pe_z";
+  const std::string message = std::format(
+      "wall-normal drift in sealed Neumann image series: Pe_z={:.6g} "
+      "({}; D_eff={:.6g}); envelope is |Pe_z| <= 0.05; {}; see "
+      "docs/NEUMANN_WALL_NORMAL_DRIFT.md",
+      worst_pe_z, worst_basis, worst_d_eff, error_description);
+  if (cfg.drift_envelope_policy == "error") {
+    throw SimulationError(message);
+  }
+  std::cerr << "WARNING: " << message
+            << "; use qssa.drift_envelope_policy=allow for deliberate "
+               "high-wall-normal-flow diagnostics\n";
 }
 
 int image_series_shells(const QSSAConfig& cfg) {
@@ -598,7 +624,8 @@ void zero_species_field(ChemicalField& chem, Int species_idx) {
 
 void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
                        const AdvectionField& adv, bool profile_steps,
-                       const std::vector<ChemicalSpec>* chemicals) {
+                       const std::vector<ChemicalSpec>* chemicals,
+                       const RuntimeDriftEnvelopeBasis* runtime_basis) {
   cfg_    = cfg;
   domain_ = &domain;
   adv_    = &adv;
@@ -609,7 +636,9 @@ void QSSASolver::init(const QSSAConfig& cfg, const Domain& domain,
   gf_.reset_kernel_evaluations();
   if (chemicals != nullptr) {
     enforce_low_screening_policy(cfg, domain, adv, *chemicals);
-    enforce_drift_envelope_policy(cfg, domain, adv, *chemicals);
+  }
+  if (chemicals != nullptr || runtime_basis != nullptr) {
+    enforce_drift_envelope_policy(cfg, domain, adv, chemicals, runtime_basis);
   }
   if (cfg.image_series_mode == "pre_fix_duplicated_reflection") {
     std::cerr
