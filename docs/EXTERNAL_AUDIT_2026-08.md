@@ -509,6 +509,14 @@ only and does not constrain intermediate directional states. Whether to enforce
 intra-step positivity remains an open decision; this implementation uses signed
 ledger accounting and does not settle that question.
 
+The hosted T4 GPU delivery fixture provides a separate device measurement of the
+same open issue. In the CI GPU job, the host delivery run recorded `1184`
+negative-concentration excursion events creating `2.60e-17` mol, enough that
+the aggregate signed VBF realized channel was net negative in that configuration.
+This hardware measurement is separate from the local host-only measurements
+above; CUDA carries the signed mass ledger, but its negative-excursion diagnostic
+is not yet instrumented.
+
 **Non-delivery GPU oxygen VBF remains a discretization divergence.** Delivery
 enabled oxygen is a first-order sink in the implicit Route B diagonal, while
 ordinary non-delivery GPU VBF intentionally retains the shipped explicit
