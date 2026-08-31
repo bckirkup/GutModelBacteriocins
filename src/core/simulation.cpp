@@ -1574,17 +1574,18 @@ int Simulation::run() {
     const auto& flux = chemical.flux_accounting();
     for (Int species = 0; species < chemical.num_species(); ++species) {
       const auto index = static_cast<size_t>(species);
-      const Real negative_cells =
-          flux.negative_delivery_cells_cumulative[index]
-          + flux.negative_delivery_cells_interval[index];
+      const Real negative_events =
+          flux.negative_delivery_events_cumulative[index]
+          + flux.negative_delivery_events_interval[index];
       const Real negative_mass =
           flux.negative_delivery_mass_cumulative[index]
           + flux.negative_delivery_mass_interval[index];
-      if (negative_cells > 0.0 || negative_mass > 0.0) {
+      if (negative_events > 0.0 || negative_mass > 0.0) {
         std::cerr << "Warning: delivery species "
                   << chemical.spec(species).name
-                  << " had " << negative_cells
-                  << " owned-cell negative directional excursions, creating "
+                  << " had " << negative_events
+                  << " negative-concentration excursion events across "
+                     "directional delivery solves, creating "
                   << negative_mass << " mol via its sink term\n";
       }
     }

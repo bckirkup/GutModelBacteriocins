@@ -80,7 +80,10 @@ reproduced; for oxygen, the first-order VBF sink-rate share is reproduced
 along with the agent share and their total. Carbon carries no VBF sink-rate
 share by construction: its VBF sink is a Monod reaction term rather than a
 first-order sink-rate channel, so the delivery split attributes zero carbon
-removal to VBF.
+removal to VBF. Device realized-sink accumulation uses the same signed
+convention as the host, but CUDA delivery kernels do not yet record
+negative-concentration excursion events; that diagnostic is host-only until
+device instrumentation is added.
 
 The cost structure remains the thing to watch: rationing can require up to 18
 full three-axis solves in a single biology step, each followed by a collective

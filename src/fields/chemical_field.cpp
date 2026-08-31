@@ -308,6 +308,14 @@ void record_negative_delivery_excursion(
       spec, 1.0, -sink_amount * concentration * cell_volume);
 }
 
+void record_negative_delivery_excursion(
+    NutrientFluxAccounting* flux, Int spec, Real created_mass) {
+  if (flux == nullptr || created_mass <= 0.0) {
+    return;
+  }
+  flux->add_negative_delivery_excursion(spec, 1.0, created_mass);
+}
+
 template <typename OwnsCell, typename StorageCell>
 bool has_negative_owned_cell(
     const std::vector<Real>& concentration, Int global_ncells,
@@ -1144,10 +1152,8 @@ Real diffuse_bounded_z_delivery_with_sink(
       &realized = sink_params.realized, &domain, &sink_params](
       Int ix, Int iy, Int iz, Real amount) {
     realized[static_cast<size_t>(domain.cell_index(ix, iy, iz))] += amount;
-    if (amount < 0.0) {
-      sink_params.flux->add_negative_delivery_excursion(
-          sink_params.spec, 1.0, -amount);
-    }
+    record_negative_delivery_excursion(
+        sink_params.flux, sink_params.spec, -amount);
   };
   const DeliveryLineOperations<
       decltype(load_line), decltype(store_line), decltype(load_sink),
@@ -1464,7 +1470,7 @@ void ChemicalField::zero_reactions() {
     std::ranges::fill(total_sink_realized_[s], 0.0);
     std::ranges::fill(vbf_sink_realized_[s], 0.0);
     std::ranges::fill(prescribed_sink_[s], 0.0);
-    flux_accounting_.negative_delivery_cells_step[
+    flux_accounting_.negative_delivery_events_step[
         static_cast<size_t>(s)] = 0.0;
     flux_accounting_.negative_delivery_mass_step[
         static_cast<size_t>(s)] = 0.0;
@@ -1780,7 +1786,7 @@ void ChemicalField::sum_accounting_across_ranks() {
   reduce(flux_accounting_.boundary_step);
   reduce(flux_accounting_.gradient_source_step);
   reduce(flux_accounting_.reaction_clip_step);
-  reduce(flux_accounting_.negative_delivery_cells_step);
+  reduce(flux_accounting_.negative_delivery_events_step);
   reduce(flux_accounting_.negative_delivery_mass_step);
   reduce(flux_accounting_.delivery_reduction_step);
   MPI_Allreduce(
@@ -2515,10 +2521,8 @@ Real diffuse_bounded_z_delivery_with_sink_slab(
       Int ix, Int iy, Int iz, Real amount) {
     realized[static_cast<size_t>(slab_storage_index(
         halo_width + ix, iy, iz, storage_nx, ny))] += amount;
-    if (amount < 0.0) {
-      context.flux->add_negative_delivery_excursion(
-          context.spec, 1.0, -amount);
-    }
+    record_negative_delivery_excursion(
+        context.flux, context.spec, -amount);
   };
   const DeliveryLineOperations<
       decltype(load_line), decltype(store_line), decltype(load_sink),

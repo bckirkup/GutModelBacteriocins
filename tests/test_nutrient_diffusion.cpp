@@ -503,7 +503,7 @@ void test_oxygen_inventory_ledger_closure() {
                    * std::max(std::abs(agent_sink_realized), 1.0e-30));
         if (arm.vbf_sink_rate > 0.0) {
           assert(flux.negative_delivery_mass_for_step(oxygen) > 0.0);
-          assert(flux.negative_delivery_cells_for_step(oxygen) > 0.0);
+          assert(flux.negative_delivery_events_for_step(oxygen) > 0.0);
         }
         std::cout << "  test_oxygen_inventory_ledger_closure: " << arm.name
                   << " step=" << step

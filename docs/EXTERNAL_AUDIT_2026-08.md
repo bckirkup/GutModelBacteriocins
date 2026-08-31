@@ -486,10 +486,13 @@ is enabled. My first closure identity double-subtracted the delivery VBF mass:
 `vbf_sink` is a reporting share contained in `total_sink_realized` for delivery
 species, while it is an independent channel for non-delivery species. The
 seventh regression arm exposed this accounting-representation hazard; at the
-shipped `vbf_sink = 1e-3` and delivery enabled, the measured VBF share is
-approximately `6.18e-19` mol/step against approximately `1.95e-18` mol/step
-total. This is not a mass-conservation defect: the field removes the VBF mass
-exactly once.
+shipped `vbf_sink = 1e-3` and delivery enabled, the pre-fix clamped ledger
+reported a VBF share of approximately `6.18e-19` mol/step against approximately
+`1.95e-18` mol/step total; after signed accounting, the same arm reports
+approximately `6.01e-19` mol/step. The seventh arm's closure is
+`1.79e-12` gross-relative after the fix, against `5.47e-3` before it. This is
+not a mass-conservation defect: the field removes the VBF mass exactly once;
+the difference in reported share is evidence that the clamp moved the ledger.
 
 The corrected seventh arm then exposed a separate clamped realized-sink defect.
 The A–E matrix exonerated the z-gradient and localized the residual to the

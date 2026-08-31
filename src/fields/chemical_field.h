@@ -28,9 +28,9 @@ struct NutrientFluxAccounting {
   // must not be added again in a conservation sum; for non-delivery species,
   // it is an independent removal channel. finalize_delivery_realized() and
   // the add_interval() call in chemistry_pipeline.cpp establish this split.
-  // negative_delivery_* records owned cells observed below zero after a
-  // directional delivery solve and the positive inventory contribution of the
-  // sink in those cells.
+  // negative_delivery_events_* records owned-cell excursions observed below
+  // zero after a directional delivery solve and the positive inventory
+  // contribution of the sink in those cells.
   std::vector<Real> boundary_interval;
   std::vector<Real> boundary_step;
   std::vector<Real> boundary_last_step;
@@ -92,10 +92,10 @@ struct NutrientFluxAccounting {
   std::vector<Real> delivery_infeasible_interval;
   std::vector<Real> delivery_infeasible_step;
   std::vector<Real> delivery_infeasible_cumulative;
-  std::vector<Real> negative_delivery_cells_interval;
-  std::vector<Real> negative_delivery_cells_step;
-  std::vector<Real> negative_delivery_cells_last_step;
-  std::vector<Real> negative_delivery_cells_cumulative;
+  std::vector<Real> negative_delivery_events_interval;
+  std::vector<Real> negative_delivery_events_step;
+  std::vector<Real> negative_delivery_events_last_step;
+  std::vector<Real> negative_delivery_events_cumulative;
   std::vector<Real> negative_delivery_mass_interval;
   std::vector<Real> negative_delivery_mass_step;
   std::vector<Real> negative_delivery_mass_last_step;
@@ -160,10 +160,10 @@ struct NutrientFluxAccounting {
     delivery_infeasible_interval.assign(species_count, 0.0);
     delivery_infeasible_step.assign(species_count, 0.0);
     delivery_infeasible_cumulative.assign(species_count, 0.0);
-    negative_delivery_cells_interval.assign(species_count, 0.0);
-    negative_delivery_cells_step.assign(species_count, 0.0);
-    negative_delivery_cells_last_step.assign(species_count, 0.0);
-    negative_delivery_cells_cumulative.assign(species_count, 0.0);
+    negative_delivery_events_interval.assign(species_count, 0.0);
+    negative_delivery_events_step.assign(species_count, 0.0);
+    negative_delivery_events_last_step.assign(species_count, 0.0);
+    negative_delivery_events_cumulative.assign(species_count, 0.0);
     negative_delivery_mass_interval.assign(species_count, 0.0);
     negative_delivery_mass_step.assign(species_count, 0.0);
     negative_delivery_mass_last_step.assign(species_count, 0.0);
@@ -269,16 +269,16 @@ struct NutrientFluxAccounting {
   }
 
   void add_negative_delivery_excursion(
-      Int species, Real cell_count, Real created_mass) {
+      Int species, Real event_count, Real created_mass) {
     if (species < 0
         || static_cast<size_t>(species)
-            >= negative_delivery_cells_step.size()) {
+            >= negative_delivery_events_step.size()) {
       return;
     }
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif
-    negative_delivery_cells_step[static_cast<size_t>(species)] += cell_count;
+    negative_delivery_events_step[static_cast<size_t>(species)] += event_count;
     #ifdef GUTIBM_OPENMP
     #pragma omp atomic
     #endif
@@ -365,8 +365,8 @@ struct NutrientFluxAccounting {
     return reaction_clip_last_step[static_cast<size_t>(species)];
   }
 
-  Real negative_delivery_cells_for_step(Int species) const {
-    return negative_delivery_cells_last_step[static_cast<size_t>(species)];
+  Real negative_delivery_events_for_step(Int species) const {
+    return negative_delivery_events_last_step[static_cast<size_t>(species)];
   }
 
   Real negative_delivery_mass_for_step(Int species) const {
@@ -380,21 +380,21 @@ struct NutrientFluxAccounting {
       vbf_source_last_step[i] = vbf_source_step[i];
       vbf_sink_last_step[i] = vbf_sink_step[i];
       reaction_clip_last_step[i] = reaction_clip_step[i];
-      negative_delivery_cells_last_step[i] =
-          negative_delivery_cells_step[i];
+      negative_delivery_events_last_step[i] =
+          negative_delivery_events_step[i];
       negative_delivery_mass_last_step[i] = negative_delivery_mass_step[i];
       boundary_interval[i] += boundary_step[i];
       gradient_source_interval[i] += gradient_source_step[i];
       reaction_clip_interval[i] += reaction_clip_step[i];
-      negative_delivery_cells_interval[i] +=
-          negative_delivery_cells_step[i];
+      negative_delivery_events_interval[i] +=
+          negative_delivery_events_step[i];
       negative_delivery_mass_interval[i] += negative_delivery_mass_step[i];
       boundary_step[i] = 0.0;
       gradient_source_step[i] = 0.0;
       vbf_source_step[i] = 0.0;
       vbf_sink_step[i] = 0.0;
       reaction_clip_step[i] = 0.0;
-      negative_delivery_cells_step[i] = 0.0;
+      negative_delivery_events_step[i] = 0.0;
       negative_delivery_mass_step[i] = 0.0;
     }
   }
@@ -421,8 +421,8 @@ struct NutrientFluxAccounting {
           delivery_rationing_factor_interval[i]);
       delivery_infeasible_cumulative[i] += delivery_infeasible_interval[i];
       reaction_clip_cumulative[i] += reaction_clip_interval[i];
-      negative_delivery_cells_cumulative[i] +=
-          negative_delivery_cells_interval[i];
+      negative_delivery_events_cumulative[i] +=
+          negative_delivery_events_interval[i];
       negative_delivery_mass_cumulative[i] +=
           negative_delivery_mass_interval[i];
       boundary_interval[i] = 0.0;
@@ -441,7 +441,7 @@ struct NutrientFluxAccounting {
       delivery_rationing_factor_interval[i] = 1.0;
       delivery_infeasible_interval[i] = 0.0;
       reaction_clip_interval[i] = 0.0;
-      negative_delivery_cells_interval[i] = 0.0;
+      negative_delivery_events_interval[i] = 0.0;
       negative_delivery_mass_interval[i] = 0.0;
     }
   }
