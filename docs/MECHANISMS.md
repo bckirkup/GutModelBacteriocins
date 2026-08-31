@@ -204,7 +204,8 @@ When `metabolism.uptake_limit` is `delivery` and
 `oxygen.delivery_uptake_enabled` is true, growth-associated and maintenance
 respiration use the same per-agent implicit delivery sink as carbon. Realized
 oxygen removal is distributed in proportion to per-agent respiratory demand;
-when the flag is false, agent respiration remains the explicit per-agent oxygen depletion reaction term.
+when the flag is false, agent respiration remains the explicit per-agent
+oxygen depletion reaction term.
 
 `oxygen.respiration_driver` selects how that realized fermentation fraction is
 updated. The default `ambient` driver preserves the concentration-based
@@ -911,13 +912,6 @@ carbon reaction rate and `vbf_sink` accounting. Any residual reaction
 positivity clip is recorded separately in the nutrient-flux summary. Agent-side
 uptake remains an independent pathway and can still overdraw a cell.
 
-### Implicit oxygen background sink
-
-The non-delivery oxygen VBF sink is first-order in local oxygen concentration
-and is integrated implicitly over each biological timestep. Host and device
-use one shared closed-form helper, while delivery-enabled oxygen applies the
-same first-order sink through the implicit delivery diagonal.
-
 With `vbf.agent_carbon_coupling` nonzero, the VBF `vmax` in each voxel gains
 `agent_carbon_coupling * n_owned_live_agents / V_cell`. The default zero keeps
 the historical sink unchanged; ghost and dead agents are excluded. The
@@ -925,6 +919,13 @@ nutrient-flux summary reports the derived blocking fraction. Its numerator is
 realized agent carbon removal, `agent_uptake + maintenance`; unpaid
 maintenance shortfall is excluded. The denominator is that realized agent
 removal plus realized VBF sink removal.
+
+### Implicit oxygen background sink
+
+The non-delivery oxygen VBF sink is first-order in local oxygen concentration
+and is integrated implicitly over each biological timestep. Host and device
+use one shared closed-form helper, while delivery-enabled oxygen applies the
+same first-order sink through the implicit delivery diagonal.
 
 ---
 
