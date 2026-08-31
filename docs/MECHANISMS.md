@@ -126,8 +126,8 @@ not constrain intermediate directional states; those excursions are measured
 by diagnostics rather than enforced. If a genuinely starved neighbourhood would
 remain negative, local prescribed draws are reduced first and the solve is
 retried. Each local retry halves prescribed mass in the physical delivery-radius
-neighbourhood of
-every negative owned cell, using periodic x/y and clipped z support semantics.
+neighbourhood of every negative owned cell, using periodic x/y and clipped z
+support semantics.
 The local pass runs for up to four attempts and stops early when no affected
 prescribed value can be changed. When more than one quarter of owned cells are
 negative, the local pass is skipped: dilation of a domain-wide deficit covers
