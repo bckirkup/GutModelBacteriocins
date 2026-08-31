@@ -123,17 +123,29 @@ achievable worst-case error over the probe set gives:
 The entire family buys at most a factor ~1.5 and does not change the scaling:
 the error stays first order in `Pe_z`. The specific
 `exp(U_z(z - z_image)/(2D))` weighting was also measured directly and improves
-the *median* error by ~23% while leaving the *worst case* unchanged to four
-digits. Treatment (a) of the task is therefore rejected on evidence, not on
-taste.
+the *median* error by ~23%.
+
+Its *worst case* is unchanged to four digits, and that deserves an explanation
+rather than a footnote, because it is a property of the probe set and not of
+the correction. The worst case over the nine probes is attained at
+`(z_s, z_t) = (0.05H, 0.95H)`, and at every probe with `z_s + z_t = H` exactly
+the reversed-`U_z` and non-reversed reflected families coincide term by term,
+so any change confined to the reflected images is invisible there. Measured at
+an asymmetric probe (`z_s = 0.40H`, `z_t = 0.98H`, `ρ = 5 µm`) the two
+constructions separate cleanly — shipped 4.27e-3 versus 1.03e-2 without the
+reversal at `Pe_z = 0.0926`, a factor 2.4 — which is the sensitivity the
+regression test asserts, precisely so that a change to the reflected family
+cannot pass unnoticed behind a symmetric worst case.
+
+Treatment (a) of the task is therefore rejected on evidence, not on taste.
 
 ## 4. Measured error versus `Pe_z`
 
 `Pe_z = U_z H / D_eff`. Reference: the sealed eigenmode expansion (`β_n = nπ/H`
 plus the `β = ia` exponential mode, the same construction as
 `mode_sum(..., robin_boundary = false, ...)`), converged in mode count and
-cross-checked against the independent Hankel closed form of §3 to ~1e-10
-wherever the Hankel quadrature itself converged. Relative field error over nine
+cross-checked against the independent Hankel closed form of §3 (see the
+cross-check paragraph below). Relative field error over nine
 source/target/lateral geometries spanning near-wall, mid-slab and long-range
 (`ρ` up to 50 µm):
 
@@ -147,8 +159,24 @@ source/target/lateral geometries spanning near-wall, mid-slab and long-range
 | 0.185 | 2.10e-2 | 7.65e-2 | 1.59e-2 | 7.65e-2 |
 | 0.370 | 4.21e-2 | 1.44e-1 | 3.11e-2 | 1.44e-1 |
 | 1.50 | 1.65e-1 | 4.20e-1 | 9.31e-2 | 4.20e-1 |
-| 6.00 | 4.69e-1 | 8.98e-1 | 4.12e-1 | 8.98e-1 |
-| 25.0 | 1.31e0 | 5.18e1 | 8.85e-1 | 6.65e1 |
+| 6.00 † | 4.69e-1 | 8.98e-1 | 4.12e-1 | 8.98e-1 |
+| 25.0 † | 1.31e0 | 5.18e1 | 8.85e-1 | 6.65e1 |
+
+† These rows characterise the image series as mathematics, not the shipped C++
+field. Wall-normal flow suppresses the series screening length: with
+`kH = (w - |U_z|)H / 2D_eff`, `Pe_z = 1.5` already gives `kH = 0.0187`, below
+the `kLowScreeningFloorThreshold = 0.0225` at which the shipped budget floors
+to `kLowScreeningShells = 8` (`kH` falls to 4.7e-3 at `Pe_z = 6` and 1.1e-3 at
+`Pe_z = 25`). Above `Pe_z ≈ 1.4` the C++ field therefore differs from the
+converged series by the low-screening floor as well as by the drift defect, and
+the two error terms are not separable there; a direct C++/reference comparison
+at `Pe_z = 25` differs from the table by ~0.5 relative for this reason. The
+practical consequence is that the two envelopes are *ordered*: the drift gate
+at `|Pe_z| = 0.05` fires roughly 28x earlier than the low-screening floor, so a
+configuration is warned about drift long before the shell budget degrades. The
+rows at and below `Pe_z = 0.37` are unaffected — `kH = 0.065` there — and the
+C++ probe reproduces the Python model to near machine precision across the
+entire gated range.
 
 The `Pe_z = 0` row is the exactness check: the series reproduces the mode sum
 to machine precision, so the measured error is the drift defect and not

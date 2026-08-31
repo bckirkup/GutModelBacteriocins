@@ -167,6 +167,42 @@ void test_wall_normal_flow_sweep_is_sensitive_and_ordered() {
   std::cout << "  test_wall_normal_flow_sweep_is_sensitive_and_ordered: PASSED\n";
 }
 
+void test_reflected_flow_reversal_is_detectable() {
+  const Probe probe = {0.40, 0.98, 5.0e-6};
+  bool valid = true;
+  for (const Real pe_z : {0.01, 0.0926, 0.37}) {
+    const Real flow_z = pe_z * kDiffusion / kHeight;
+    auto system = make_system(flow_z);
+    const auto params = make_params();
+    const Vec3 source = {500.0e-6, 500.0e-6,
+                         probe.source_fraction * kHeight};
+    const Vec3 target = {source[0] + probe.rho, source[1],
+                         probe.target_fraction * kHeight};
+    const Real image = system.gf.concentration_bounded(source, target, params);
+    const Real reference = modal_reference(probe, flow_z);
+    const Real error = relative_error(image, reference);
+    if (!(std::isfinite(image) && image > 0.0
+          && std::isfinite(reference) && reference > 0.0
+          && error >= 0.020 * pe_z && error <= 0.070 * pe_z)) {
+      std::cerr << "reversal-sensitive asymmetric probe outside bounds: Pe_z="
+                << pe_z << " error=" << error << "\n";
+      valid = false;
+    } else {
+      std::cout << "  Pe_z=" << pe_z
+                << " asymmetric reversal-sensitive error=" << error << "\n";
+    }
+  }
+  if (!valid) {
+    std::exit(1);
+  }
+  // This asymmetric probe guards the reflected family specifically: the
+  // symmetric worst-case probe cannot see image-flow reversal. The two-sided
+  // bounds come from docs/NEUMANN_WALL_NORMAL_DRIFT.md §3; flipping
+  // image_flow[2] back to same-sign in greens_function.cpp was verified to
+  // break the upper bound at all three Pe_z values.
+  std::cout << "  test_reflected_flow_reversal_is_detectable: PASSED\n";
+}
+
 void test_wall_parallel_flow_is_exact() {
   for (const Real flow_x : {0.0, kFlowX, 10.0 * kFlowX}) {
     const Real error = worst_case_error(flow_x, 0.0);
@@ -246,6 +282,7 @@ int main() {
   std::cout << "=== Wall-Normal Drift Envelope Tests ===\n";
   test_zero_wall_normal_flow_is_exact();
   test_wall_normal_flow_sweep_is_sensitive_and_ordered();
+  test_reflected_flow_reversal_is_detectable();
   test_wall_parallel_flow_is_exact();
   test_drift_classifier();
   test_drift_envelope_policy();
