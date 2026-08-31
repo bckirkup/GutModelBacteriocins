@@ -863,17 +863,17 @@ bool apply_advection_key(SimulationConfig& cfg, std::string_view key, const std:
 
 bool apply_drift_envelope_policy_key(
     SimulationConfig& cfg, std::string_view key, const std::string& val) {
-  if (key != "drift_envelope_policy"
-      && key != "qssa.drift_envelope_policy") {
-    return false;
+  if (key == "drift_envelope_policy"
+      || key == "qssa.drift_envelope_policy") {
+    if (val != "warn" && val != "error" && val != "allow") {
+      throw ConfigError(
+          "invalid qssa.drift_envelope_policy: expected 'warn', 'error', "
+          "or 'allow'");
+    }
+    cfg.qssa.drift_envelope_policy = val;
+    return true;
   }
-  if (val != "warn" && val != "error" && val != "allow") {
-    throw ConfigError(
-        "invalid qssa.drift_envelope_policy: expected 'warn', 'error', "
-        "or 'allow'");
-  }
-  cfg.qssa.drift_envelope_policy = val;
-  return true;
+  return false;
 }
 
 bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::string& val) {

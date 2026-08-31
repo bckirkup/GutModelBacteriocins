@@ -78,6 +78,27 @@ Real global_density_cells_per_mL(const Domain& domain, Int global_agents) {
   return volume_mL > 0.0 ? static_cast<Real>(global_agents) / volume_mL : 0.0;
 }
 
+BICluster configured_plasmid_cluster(const SimulationConfig& cfg,
+                                     const PlasmidEntry& entry) {
+  BICluster cluster = entry.cluster;
+  cluster.retardation = retardation_from_pI(
+      cluster.pI, cfg.fixes.bacteriocin.mucin_charge);
+  if (const auto it = cfg.plasmid_overrides.find(entry.name);
+      it != cfg.plasmid_overrides.end()) {
+    const auto& values = it->second;
+    if (values.retardation.has_value()) {
+      cluster.retardation = *values.retardation;
+    }
+    if (values.diff_coeff.has_value()) {
+      cluster.diff_coeff = *values.diff_coeff;
+    }
+    if (values.burst_size.has_value()) {
+      cluster.burst_size = *values.burst_size;
+    }
+  }
+  return cluster;
+}
+
 void assign_plasmids(Agent& agent,
                      const std::vector<std::string>& plasmids,
                      const SimulationConfig& cfg,
@@ -91,22 +112,7 @@ void assign_plasmids(Agent& agent,
       }
       continue;
     }
-    BICluster cluster = entry->cluster;
-    cluster.retardation = retardation_from_pI(
-        cluster.pI, cfg.fixes.bacteriocin.mucin_charge);
-    if (const auto it = cfg.plasmid_overrides.find(entry->name);
-        it != cfg.plasmid_overrides.end()) {
-      const auto& values = it->second;
-      if (values.retardation.has_value()) {
-        cluster.retardation = *values.retardation;
-      }
-      if (values.diff_coeff.has_value()) {
-        cluster.diff_coeff = *values.diff_coeff;
-      }
-      if (values.burst_size.has_value()) {
-        cluster.burst_size = *values.burst_size;
-      }
-    }
+    BICluster cluster = configured_plasmid_cluster(cfg, *entry);
     agent.genome.bi_loci.push_back(cluster);
     if (entry->conjugative) {
       agent.genome.has_conjugative_plasmid = true;
@@ -114,19 +120,14 @@ void assign_plasmids(Agent& agent,
   }
 }
 
-void apply_runtime_plasmid_overrides(const SimulationConfig& cfg,
-                                     const PlasmidEntry& entry,
-                                     BICluster& cluster) {
-  if (const auto it = cfg.plasmid_overrides.find(entry.name);
-      it != cfg.plasmid_overrides.end()) {
-    const auto& values = it->second;
-    if (values.retardation.has_value()) {
-      cluster.retardation = *values.retardation;
-    }
-    if (values.diff_coeff.has_value()) {
-      cluster.diff_coeff = *values.diff_coeff;
-    }
-  }
+std::optional<RuntimeDriftEnvelopeBasis> runtime_basis_for_plasmid(
+    const SimulationConfig& cfg, const std::string& plasmid_name) {
+  const PlasmidEntry* entry = PlasmidLibrary::find(plasmid_name);
+  if (entry == nullptr) return std::nullopt;
+  const BICluster cluster = configured_plasmid_cluster(cfg, *entry);
+  const Real d_eff = cluster.diff_coeff / cluster.retardation;
+  if (!(d_eff > 0.0)) return std::nullopt;
+  return RuntimeDriftEnvelopeBasis{entry->name, d_eff};
 }
 
 std::optional<RuntimeDriftEnvelopeBasis> configured_runtime_drift_basis(
@@ -134,16 +135,10 @@ std::optional<RuntimeDriftEnvelopeBasis> configured_runtime_drift_basis(
   std::optional<RuntimeDriftEnvelopeBasis> result;
   for (const auto& strain : cfg.initial_strains) {
     for (const auto& plasmid_name : strain.plasmids) {
-      const PlasmidEntry* entry = PlasmidLibrary::find(plasmid_name);
-      if (entry == nullptr) continue;
-      BICluster cluster = entry->cluster;
-      cluster.retardation = retardation_from_pI(
-          cluster.pI, cfg.fixes.bacteriocin.mucin_charge);
-      apply_runtime_plasmid_overrides(cfg, *entry, cluster);
-      const Real d_eff = cluster.diff_coeff / cluster.retardation;
-      if (!(d_eff > 0.0)) continue;
-      if (!result.has_value() || d_eff < result->d_eff) {
-        result = RuntimeDriftEnvelopeBasis{entry->name, d_eff};
+      const auto basis = runtime_basis_for_plasmid(cfg, plasmid_name);
+      if (!basis.has_value()) continue;
+      if (!result.has_value() || basis->d_eff < result->d_eff) {
+        result = basis;
       }
     }
   }
