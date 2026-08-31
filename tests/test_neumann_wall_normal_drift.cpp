@@ -11,9 +11,11 @@
 #include "qssa_solver.h"
 #include "robin_correction_table.h"
 #include "species_names.h"
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 #include <numbers>
@@ -53,7 +55,7 @@ struct TestSystem {
   GreensFunction gf;
 };
 
-TestSystem make_system(Real flow_z) {
+TestSystem make_system(Real flow_z, Real flow_x = kFlowX) {
   TestSystem system;
   DomainConfig dcfg;
   dcfg.lo = {0.0, 0.0, 0.0};
@@ -66,8 +68,8 @@ TestSystem make_system(Real flow_z) {
   acfg.peristaltic_enabled = false;
   acfg.mucus_thickness = kHeight;
   acfg.profile_alpha = 0.0;
-  acfg.distal_length = 1.0e-3;
-  acfg.distal_transit_time = 43200.0;
+  acfg.distal_length = flow_x == 0.0 ? 0.0 : 1.0e-3;
+  acfg.distal_transit_time = flow_x == 0.0 ? 1.0 : acfg.distal_length / flow_x;
   acfg.radial_turnover = flow_z == 0.0
       ? std::numeric_limits<Real>::infinity() : kHeight / flow_z;
   system.adv.init(acfg, system.domain);
@@ -94,27 +96,38 @@ Real relative_error(Real actual, Real reference) {
       / std::max(std::abs(reference), 1.0e-300);
 }
 
-Real modal_reference(const Probe& probe, Real flow_z) {
+Real modal_reference(const Probe& probe, Real flow_z, Real flow_x = kFlowX) {
   const Real normalized = robin::normalized_sealed_field(
       probe.source_fraction * kHeight, probe.target_fraction * kHeight,
-      probe.rho, 0.0, kHeight, kDiffusion, kDecay, kFlowX, 0.0, flow_z,
+      probe.rho, 0.0, kHeight, kDiffusion, kDecay, flow_x, 0.0, flow_z,
       4000);
   return kSourceRate / (4.0 * std::numbers::pi * kDiffusion) * normalized;
 }
 
-void test_zero_wall_normal_flow_is_exact() {
-  auto system = make_system(0.0);
+Real worst_case_error(Real flow_x, Real flow_z) {
+  auto system = make_system(flow_z, flow_x);
   const auto params = make_params();
-  Real maximum = 0.0;
+  Real worst = 0.0;
   for (const Probe& probe : kProbes) {
     const Vec3 source = {500.0e-6, 500.0e-6,
                          probe.source_fraction * kHeight};
     const Vec3 target = {source[0] + probe.rho, source[1],
                          probe.target_fraction * kHeight};
     const Real image = system.gf.concentration_bounded(source, target, params);
-    maximum = std::max(maximum, relative_error(
-        image, modal_reference(probe, 0.0)));
+    const Real reference = modal_reference(probe, flow_z, flow_x);
+    if (!(std::isfinite(image) && image > 0.0
+          && std::isfinite(reference) && reference > 0.0)) {
+      std::cerr << "non-positive or non-finite sealed field in sweep: flow_x="
+                << flow_x << " flow_z=" << flow_z << "\n";
+      std::exit(1);
+    }
+    worst = std::max(worst, relative_error(image, reference));
   }
+  return worst;
+}
+
+void test_zero_wall_normal_flow_is_exact() {
+  const Real maximum = worst_case_error(kFlowX, 0.0);
   if (!(maximum < 1.0e-8)) {
     std::cerr << "zero-flow sealed image/modal mismatch: " << maximum << "\n";
     std::exit(1);
@@ -123,33 +136,51 @@ void test_zero_wall_normal_flow_is_exact() {
                "error=" << maximum << ")\n";
 }
 
-void test_wall_normal_flow_defect_is_first_order() {
-  for (const Real pe_z : {0.0926, 0.37}) {
+void test_wall_normal_flow_sweep_is_sensitive_and_ordered() {
+  const std::array<Real, 5> pe_values = {0.0, 0.01, 0.0926, 0.37, 1.5};
+  std::array<Real, 5> errors = {};
+  for (std::size_t i = 0; i < pe_values.size(); ++i) {
+    const Real pe_z = pe_values[i];
     const Real flow_z = pe_z * kDiffusion / kHeight;
-    auto system = make_system(flow_z);
-    const auto params = make_params();
-    Real worst = 0.0;
-    for (const Probe& probe : kProbes) {
-      const Vec3 source = {500.0e-6, 500.0e-6,
-                           probe.source_fraction * kHeight};
-      const Vec3 target = {source[0] + probe.rho, source[1],
-                           probe.target_fraction * kHeight};
-      const Real image = system.gf.concentration_bounded(source, target, params);
-      worst = std::max(worst, relative_error(
-          image, modal_reference(probe, flow_z)));
-    }
-    if (!(worst <= 0.6 * pe_z && worst >= 0.20 * pe_z)) {
-      std::cerr << "wall-normal drift defect outside documented bounds: Pe_z="
-                << pe_z << " worst=" << worst << "\n";
+    errors[i] = worst_case_error(kFlowX, flow_z);
+    if (i > 0 && errors[i] < errors[i - 1]) {
+      std::cerr << "wall-normal drift error was not non-decreasing: Pe_z="
+                << pe_z << " previous=" << errors[i - 1]
+                << " current=" << errors[i] << "\n";
       std::exit(1);
     }
-    // The lower bound pins the known documented defect, so a stub or an
-    // accidental change to the series construction cannot pass. An exact
-    // treatment must update this test and the drift document together.
-    std::cout << "  Pe_z=" << pe_z << " worst relative error=" << worst
+    std::cout << "  Pe_z=" << pe_z << " worst relative error=" << errors[i]
               << "\n";
   }
-  std::cout << "  test_wall_normal_flow_defect_is_first_order: PASSED\n";
+  if (!(errors[0] <= 1.0e-8
+        && errors[4] - errors[2] > 0.1
+        && errors[2] >= 0.20 * pe_values[2]
+        && errors[2] <= 0.60 * pe_values[2]
+        && errors[3] >= 0.20 * pe_values[3]
+        && errors[3] <= 0.60 * pe_values[3])) {
+    std::cerr << "wall-normal drift sweep outside documented bounds\n";
+    std::exit(1);
+  }
+  // The middle-range lower bounds pin the known documented defect, so a stub
+  // or accidental series change cannot pass. An exact treatment must update
+  // this test and §§4/6 of the drift document together.
+  std::cout << "  test_wall_normal_flow_sweep_is_sensitive_and_ordered: PASSED\n";
+}
+
+void test_wall_parallel_flow_is_exact() {
+  for (const Real flow_x : {0.0, kFlowX, 10.0 * kFlowX}) {
+    const Real error = worst_case_error(flow_x, 0.0);
+    if (!(error <= 1.0e-8)) {
+      std::cerr << "wall-parallel flow lost sealed exactness: flow_x="
+                << flow_x << " worst=" << error << "\n";
+      std::exit(1);
+    }
+    std::cout << "  flow_x=" << flow_x << " wall-parallel worst relative error="
+              << error << "\n";
+  }
+  // The defect is proportional to wall-normal flow and vanishes for
+  // wall-parallel flow; this negative control guards that invariant.
+  std::cout << "  test_wall_parallel_flow_is_exact: PASSED\n";
 }
 
 void test_drift_classifier() {
@@ -214,7 +245,8 @@ void test_drift_envelope_policy() {
 int main() {
   std::cout << "=== Wall-Normal Drift Envelope Tests ===\n";
   test_zero_wall_normal_flow_is_exact();
-  test_wall_normal_flow_defect_is_first_order();
+  test_wall_normal_flow_sweep_is_sensitive_and_ordered();
+  test_wall_parallel_flow_is_exact();
   test_drift_classifier();
   test_drift_envelope_policy();
   std::cout << "All wall-normal drift envelope tests passed.\n";
