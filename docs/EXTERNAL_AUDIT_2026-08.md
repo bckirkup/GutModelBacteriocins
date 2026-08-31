@@ -481,6 +481,42 @@ with the gradient disabled, rationing never fires and full demand
 (`4.08e-18` mol) is funded. Raising `epithelial_conc` therefore does not lift
 the limit while the gradient remains active.
 
+The oxygen ledger has two removal representations depending on whether delivery
+is enabled. My first closure identity double-subtracted the delivery VBF mass:
+`vbf_sink` is a reporting share contained in `total_sink_realized` for delivery
+species, while it is an independent channel for non-delivery species. The
+seventh regression arm exposed this accounting-representation hazard; at the
+shipped `vbf_sink = 1e-3` and delivery enabled, the pre-fix clamped ledger
+reported a VBF share of approximately `6.18e-19` mol/step against approximately
+`1.95e-18` mol/step total; after signed accounting, the same arm reports
+approximately `6.01e-19` mol/step. The seventh arm's closure is
+`1.79e-12` gross-relative after the fix, against `5.47e-3` before it. This is
+not a mass-conservation defect: the field removes the VBF mass exactly once;
+the difference in reported share is evidence that the clamp moved the ledger.
+
+The corrected seventh arm then exposed a separate clamped realized-sink defect.
+The A–E matrix exonerated the z-gradient and localized the residual to the
+agent-consuming delivery path. Directional instrumentation localized it to the
+periodic x and y solves; the z solve was exact. The replicated periodic clamps
+dropped `2.62e-20` mol in x and `3.16e-20` mol in y, `5.785e-20` mol total,
+matching the `5.47e-3` gross-relative residual to eight digits. At full demand,
+2500 owned cells went negative mid-step, with a most-negative excursion of
+`-3.37e-3` mol/m³, roughly sixty times the ambient field value. The sink
+created `1.086%` of the step's total realized removal in those cells. End-of-step
+positivity still passed because the epithelial Dirichlet face refilled them, so
+the #338 rationing loop never fired: its positivity guarantee is end-of-step
+only and does not constrain intermediate directional states. Whether to enforce
+intra-step positivity remains an open decision; this implementation uses signed
+ledger accounting and does not settle that question.
+
+The hosted T4 GPU delivery fixture provides a separate device measurement of the
+same open issue. In the CI GPU job, the host delivery run recorded `1184`
+negative-concentration excursion events creating `2.60e-17` mol, enough that
+the aggregate signed VBF realized channel was net negative in that configuration.
+This hardware measurement is separate from the local host-only measurements
+above; CUDA carries the signed mass ledger, but its negative-excursion diagnostic
+is not yet instrumented.
+
 **Non-delivery GPU oxygen VBF remains a discretization divergence.** Delivery
 enabled oxygen is a first-order sink in the implicit Route B diagonal, while
 ordinary non-delivery GPU VBF intentionally retains the shipped explicit

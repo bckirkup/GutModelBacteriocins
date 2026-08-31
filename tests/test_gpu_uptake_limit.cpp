@@ -349,10 +349,27 @@ void test_delivery_device_parity_and_provenance() {
   const Real cpu_oxygen_agent = agent_realized_sink(cpu_delivery, oxygen);
   const Real delivery_oxygen_total = total_realized_sink(delivery, oxygen);
   const Real cpu_oxygen_total = total_realized_sink(cpu_delivery, oxygen);
-  assert(delivery_oxygen_vbf > 0.0);
-  assert(cpu_oxygen_vbf > 0.0);
+  // Transient intra-step negative concentrations make the implicit sink*C
+  // term create inventory, so the signed VBF aggregate may be negative.
+  // Parity and a physical-scale magnitude, rather than sign, are required.
   assert(delivery_oxygen_agent > 0.0);
   assert(cpu_oxygen_agent > 0.0);
+  const Real oxygen_vbf_scale = std::max({
+      std::abs(delivery_oxygen_total),
+      std::abs(cpu_oxygen_total),
+      std::abs(delivery_oxygen_agent),
+      std::abs(cpu_oxygen_agent),
+      1.0e-30});
+  constexpr Real oxygen_vbf_fraction_floor = 1.0e-3;
+  const Real oxygen_vbf_floor =
+      oxygen_vbf_fraction_floor * oxygen_vbf_scale;
+  assert(std::abs(delivery_oxygen_vbf) > oxygen_vbf_floor);
+  assert(std::abs(cpu_oxygen_vbf) > oxygen_vbf_floor);
+  const auto oxygen_index = static_cast<size_t>(oxygen);
+  const Real cpu_negative_events =
+      cpu_flux.negative_delivery_events_cumulative[oxygen_index]
+      + cpu_flux.negative_delivery_events_interval[oxygen_index];
+  assert(cpu_negative_events > 0.0);
   assert(std::abs(delivery_oxygen_vbf + delivery_oxygen_agent
                   - delivery_oxygen_total)
       <= 1.0e-12 * relative_scale(

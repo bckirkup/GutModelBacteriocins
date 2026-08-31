@@ -1569,6 +1569,27 @@ int Simulation::run() {
   termination_wall_seconds_ = std::chrono::duration<double>(
       std::chrono::steady_clock::now() - wall_start).count();
   finalize_neumann_image_series_stats();
+  if (rank == 0) {
+    const auto& chemical = chemical_field();
+    const auto& flux = chemical.flux_accounting();
+    for (Int species = 0; species < chemical.num_species(); ++species) {
+      const auto index = static_cast<size_t>(species);
+      const Real negative_events =
+          flux.negative_delivery_events_cumulative[index]
+          + flux.negative_delivery_events_interval[index];
+      const Real negative_mass =
+          flux.negative_delivery_mass_cumulative[index]
+          + flux.negative_delivery_mass_interval[index];
+      if (negative_events > 0.0 || negative_mass > 0.0) {
+        std::cerr << "Warning: delivery species "
+                  << chemical.spec(species).name
+                  << " had " << negative_events
+                  << " negative-concentration excursion events across "
+                     "directional delivery solves, creating "
+                  << negative_mass << " mol via its sink term\n";
+      }
+    }
+  }
   if (hdf5_.is_enabled()) {
     hdf5_.write_run_termination(*this, clock_.step_count, clock_.time);
   }
