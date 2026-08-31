@@ -365,9 +365,10 @@ void test_delivery_device_parity_and_provenance() {
       oxygen_vbf_fraction_floor * oxygen_vbf_scale;
   assert(std::abs(delivery_oxygen_vbf) > oxygen_vbf_floor);
   assert(std::abs(cpu_oxygen_vbf) > oxygen_vbf_floor);
+  const auto oxygen_index = static_cast<size_t>(oxygen);
   const Real cpu_negative_events =
-      cpu_flux.negative_delivery_events_cumulative[index]
-      + cpu_flux.negative_delivery_events_interval[index];
+      cpu_flux.negative_delivery_events_cumulative[oxygen_index]
+      + cpu_flux.negative_delivery_events_interval[oxygen_index];
   assert(cpu_negative_events > 0.0);
   assert(std::abs(delivery_oxygen_vbf + delivery_oxygen_agent
                   - delivery_oxygen_total)
