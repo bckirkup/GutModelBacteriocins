@@ -425,16 +425,16 @@ double normalized_robin_field(
       (flow_x * rho + flow_z * (z_target - z_source)) / (2.0 * d_eff));
 }
 
-double normalized_sealed_field(
-    double z_source, double z_target, double rho, double z_lo, double z_hi,
-    double d_eff, double decay_rate, double flow_x, double flow_y,
-    double flow_z, int mode_count) {
+double normalized_sealed_field(const SealedFieldParams& params) {
   const double radial = mode_sum(
-      z_source, z_target, rho, z_lo, z_hi, d_eff, decay_rate,
-      d_eff, kZeroTransferLength, flow_x, flow_y, flow_z,
-      false, mode_count, TransferBasis::Effective);
+      params.z_source, params.z_target, params.rho, params.z_lo, params.z_hi,
+      params.d_eff, params.decay_rate, params.d_eff, kZeroTransferLength,
+      params.flow_x, params.flow_y, params.flow_z, false, params.mode_count,
+      TransferBasis::Effective);
   return radial * std::exp(
-      (flow_x * rho + flow_z * (z_target - z_source)) / (2.0 * d_eff));
+      (params.flow_x * params.rho
+       + params.flow_z * (params.z_target - params.z_source))
+      / (2.0 * params.d_eff));
 }
 
 double normalized_correction(

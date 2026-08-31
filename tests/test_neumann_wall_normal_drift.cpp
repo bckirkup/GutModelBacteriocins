@@ -20,6 +20,7 @@
 #include <limits>
 #include <numbers>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace gutibm;
@@ -98,11 +99,30 @@ Real relative_error(Real actual, Real reference) {
 }
 
 Real modal_reference(const Probe& probe, Real flow_z, Real flow_x = kFlowX) {
-  const Real normalized = robin::normalized_sealed_field(
+  const robin::SealedFieldParams params{
       probe.source_fraction * kHeight, probe.target_fraction * kHeight,
       probe.rho, 0.0, kHeight, kDiffusion, kDecay, flow_x, 0.0, flow_z,
-      4000);
+      4000};
+  const Real normalized = robin::normalized_sealed_field(params);
   return kSourceRate / (4.0 * std::numbers::pi * kDiffusion) * normalized;
+}
+
+Real probe_error(const TestSystem& system,
+                 const GreensFunctionParams& params,
+                 const Probe& probe, Real flow_x, Real flow_z) {
+  const Vec3 source = {500.0e-6, 500.0e-6,
+                       probe.source_fraction * kHeight};
+  const Vec3 target = {source[0] + probe.rho, source[1],
+                       probe.target_fraction * kHeight};
+  const Real image = system.gf.concentration_bounded(source, target, params);
+  const Real reference = modal_reference(probe, flow_z, flow_x);
+  if (!(std::isfinite(image) && image > 0.0
+        && std::isfinite(reference) && reference > 0.0)) {
+    std::cerr << "non-positive or non-finite sealed field in probe: flow_x="
+              << flow_x << " flow_z=" << flow_z << "\n";
+    std::exit(1);
+  }
+  return relative_error(image, reference);
 }
 
 Real worst_case_error(Real flow_x, Real flow_z) {
@@ -110,19 +130,8 @@ Real worst_case_error(Real flow_x, Real flow_z) {
   const auto params = make_params();
   Real worst = 0.0;
   for (const Probe& probe : kProbes) {
-    const Vec3 source = {500.0e-6, 500.0e-6,
-                         probe.source_fraction * kHeight};
-    const Vec3 target = {source[0] + probe.rho, source[1],
-                         probe.target_fraction * kHeight};
-    const Real image = system.gf.concentration_bounded(source, target, params);
-    const Real reference = modal_reference(probe, flow_z, flow_x);
-    if (!(std::isfinite(image) && image > 0.0
-          && std::isfinite(reference) && reference > 0.0)) {
-      std::cerr << "non-positive or non-finite sealed field in sweep: flow_x="
-                << flow_x << " flow_z=" << flow_z << "\n";
-      std::exit(1);
-    }
-    worst = std::max(worst, relative_error(image, reference));
+    worst = std::max(
+        worst, probe_error(system, params, probe, flow_x, flow_z));
   }
   return worst;
 }
@@ -175,16 +184,8 @@ void test_reflected_flow_reversal_is_detectable() {
     const Real flow_z = pe_z * kDiffusion / kHeight;
     auto system = make_system(flow_z);
     const auto params = make_params();
-    const Vec3 source = {500.0e-6, 500.0e-6,
-                         probe.source_fraction * kHeight};
-    const Vec3 target = {source[0] + probe.rho, source[1],
-                         probe.target_fraction * kHeight};
-    const Real image = system.gf.concentration_bounded(source, target, params);
-    const Real reference = modal_reference(probe, flow_z);
-    const Real error = relative_error(image, reference);
-    if (!(std::isfinite(image) && image > 0.0
-          && std::isfinite(reference) && reference > 0.0
-          && error >= 0.020 * pe_z && error <= 0.070 * pe_z)) {
+    const Real error = probe_error(system, params, probe, kFlowX, flow_z);
+    if (!(error >= 0.020 * pe_z && error <= 0.070 * pe_z)) {
       std::cerr << "reversal-sensitive asymmetric probe outside bounds: Pe_z="
                 << pe_z << " error=" << error << "\n";
       valid = false;
@@ -221,9 +222,9 @@ void test_wall_parallel_flow_is_exact() {
 }
 
 void test_drift_classifier() {
-  const Real classified = neumann::wall_normal_peclet(
-      0.0926 * kDiffusion / kHeight, kHeight, kDiffusion);
-  if (std::abs(classified - 0.0926) > 1.0e-15) {
+  if (const Real classified = neumann::wall_normal_peclet(
+          0.0926 * kDiffusion / kHeight, kHeight, kDiffusion);
+      std::abs(classified - 0.0926) > 1.0e-15) {
     std::cerr << "wall-normal Pe_z classifier was not exact\n";
     std::exit(1);
   }
@@ -300,8 +301,11 @@ void test_runtime_plasmid_basis_closes_gate_hole() {
     qssa.init(cfg, system.domain, system.adv, false, &chemicals,
               &high_runtime_basis);
   } catch (const SimulationError& error) {
-    rejected = std::string(error.what()).find(
-                   "configured-plasmid basis: ColE1") != std::string::npos;
+    const std::string_view message(error.what());
+    const std::string_view expected("configured-plasmid basis: ColE1");
+    rejected = std::search(
+                   message.begin(), message.end(), expected.begin(), expected.end())
+               != message.end();
   }
   if (!rejected) {
     std::cerr << "configured-plasmid drift basis did not close gate hole\n";

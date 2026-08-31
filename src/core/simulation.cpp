@@ -114,6 +114,21 @@ void assign_plasmids(Agent& agent,
   }
 }
 
+void apply_runtime_plasmid_overrides(const SimulationConfig& cfg,
+                                     const PlasmidEntry& entry,
+                                     BICluster& cluster) {
+  if (const auto it = cfg.plasmid_overrides.find(entry.name);
+      it != cfg.plasmid_overrides.end()) {
+    const auto& values = it->second;
+    if (values.retardation.has_value()) {
+      cluster.retardation = *values.retardation;
+    }
+    if (values.diff_coeff.has_value()) {
+      cluster.diff_coeff = *values.diff_coeff;
+    }
+  }
+}
+
 std::optional<RuntimeDriftEnvelopeBasis> configured_runtime_drift_basis(
     const SimulationConfig& cfg) {
   std::optional<RuntimeDriftEnvelopeBasis> result;
@@ -124,16 +139,7 @@ std::optional<RuntimeDriftEnvelopeBasis> configured_runtime_drift_basis(
       BICluster cluster = entry->cluster;
       cluster.retardation = retardation_from_pI(
           cluster.pI, cfg.fixes.bacteriocin.mucin_charge);
-      if (const auto it = cfg.plasmid_overrides.find(entry->name);
-          it != cfg.plasmid_overrides.end()) {
-        const auto& values = it->second;
-        if (values.retardation.has_value()) {
-          cluster.retardation = *values.retardation;
-        }
-        if (values.diff_coeff.has_value()) {
-          cluster.diff_coeff = *values.diff_coeff;
-        }
-      }
+      apply_runtime_plasmid_overrides(cfg, *entry, cluster);
       const Real d_eff = cluster.diff_coeff / cluster.retardation;
       if (!(d_eff > 0.0)) continue;
       if (!result.has_value() || d_eff < result->d_eff) {
