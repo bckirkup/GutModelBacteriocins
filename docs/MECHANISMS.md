@@ -121,9 +121,12 @@ inside implicit diffusion and is capped at analytic diffusive delivery rather
 than unbounded demand. The implicit solve therefore supplies the diffusive
 neighbourhood rather than restricting the draw to the agent's voxel, with no
 conductance or `k/3` splitting bias. Realized removal equals funded uptake by
-construction. If a genuinely starved neighbourhood would become negative,
-local prescribed draws are reduced first and the solve is retried. Each local
-retry halves prescribed mass in the physical delivery-radius neighbourhood of
+construction. The local/global retries guarantee end-of-step positivity but do
+not constrain intermediate directional states; those excursions are measured
+by diagnostics rather than enforced. If a genuinely starved neighbourhood would
+remain negative, local prescribed draws are reduced first and the solve is
+retried. Each local retry halves prescribed mass in the physical delivery-radius
+neighbourhood of
 every negative owned cell, using periodic x/y and clipped z support semantics.
 The local pass runs for up to four attempts and stops early when no affected
 prescribed value can be changed. When more than one quarter of owned cells are

@@ -506,16 +506,97 @@ created `1.086%` of the step's total realized removal in those cells. End-of-ste
 positivity still passed because the epithelial Dirichlet face refilled them, so
 the #338 rationing loop never fired: its positivity guarantee is end-of-step
 only and does not constrain intermediate directional states. Whether to enforce
-intra-step positivity remains an open decision; this implementation uses signed
-ledger accounting and does not settle that question.
+intra-step positivity was left open at this stage; the subsequent measurement
+and decision are recorded below.
 
 The hosted T4 GPU delivery fixture provides a separate device measurement of the
-same open issue. In the CI GPU job, the host delivery run recorded `1184`
+same issue before the subsequent decision. In the CI GPU job, the host delivery
+run recorded `1184`
 negative-concentration excursion events creating `2.60e-17` mol, enough that
 the aggregate signed VBF realized channel was net negative in that configuration.
 This hardware measurement is separate from the local host-only measurements
 above; CUDA carries the signed mass ledger, but its negative-excursion diagnostic
 is not yet instrumented.
+
+## Intra-step delivery positivity: measured, treatment rejected
+
+PR #390 made intra-step negative delivery excursions visible and left the
+question open: should intra-step positivity be enforced? It was measured
+against a specific candidate treatment, and the treatment was rejected. No
+shipped behaviour changed as a result of this measurement.
+
+### The candidate treatment
+
+A per-axis cap on prescribed removal, applied at line-load time in the three
+delivery loaders, limiting each cell's draw to what that cell could supply
+with no diffusive inflow:
+
+```
+avail_i = max(0, total_i / (1 + sink_i))          // sink_i is rate*dt/3
+prescribed_capped_i = min(prescribed_i, avail_i)
+```
+
+It was chosen because it is structural — no extra re-solves — and because the
+implicit diffusion operator is an M-matrix, so a nonnegative RHS guarantees a
+nonnegative solution. That reasoning was sound and the conclusion was still
+wrong.
+
+### What the measurement showed
+
+Four arms (55e-6 gradient on, 200e-6 gradient on, 55e-6 gradient off, 55e-6
+with carbon delivery), 20 steps, same seed, cap off versus cap on:
+
+| Quantity | Cap off | Cap on |
+|---|---|---|
+| Oxygen excursion events (x/y/z) | 7800 / 61900 / 0 | 0 / 0 / 0 |
+| Sink-created inventory | 1.33% of realized removal | 0 |
+| Retry events | 130 (bisection fired) | 0 |
+| Prescribed mass deferred | 0 | 99.94% |
+| Mean `mu_realized` | 3.07e-5 | 3.22e-6 |
+| Mean fermentation fraction, 55e-6 arm | 0.215 | 0.4998 |
+| Mean fermentation fraction, 200e-6 arm | 0.000 | 0.4993 |
+| Worst gross-relative ledger residual | 1.75e-12 | 1.84e-12 |
+
+The cap achieves exactly what it was designed to achieve and destroys the
+delivery model doing it. The decisive column is the 200e-6 arm: that arm is
+fully saturated with zero rationing and zero fermentation when the cap is off,
+and the cap pins its fermentation fraction at 0.4993. A treatment that changes
+the saturated regime is not a positivity guard, it is a different model.
+
+### Why the treatment is wrong in principle, not in tuning
+
+An agent's prescribed draw is 2.98e-17 mol per step against a voxel holding
+4.4e-22 mol — 6.8e4 voxel-fulls. That draw is legitimate: at the 2 µm default
+the voxel diffusion time is `(2e-6)^2 / 2e-9 = 2e-3 s`, so the voxel refills
+approximately 3e4 times within the 60 s step, and the draw sits below the
+quasi-steady Sherwood ceiling `4*pi*D*r*C*dt = 8.3e-17` mol. The mass is
+supplied by intra-step diffusive resupply, so any cap that measures
+availability without inflow must annihilate delivery, at any threshold.
+
+The negative cells are therefore not a positivity failure of the physics. They
+are an artifact of directional splitting: the zero-order prescribed term
+allocates `mass/3` to the x sweep before the y and z sweeps resupply the cell.
+
+A first-order reformulation — converting the prescribed mass to an equivalent
+sink rate so the removal acts on the evolving concentration inside the implicit
+solve — fails the same way for the same reason: for large `s`, `C*s/(1 + s*dt)`
+tends to `C/dt`, so it removes at most one voxel-full per axis and
+under-delivers by the same four orders of magnitude.
+
+### Decision
+
+Intra-step positivity is **not** enforced. The remaining alternatives —
+sub-cycling the delivery step, or an unsplit three-dimensional solve — both
+carry real cost, and the artifact they would remove is bounded at 1.33% of
+realized field-side removal (1.086% in the PR #390 fixture) while end-of-step
+positivity holds and the per-step ledger closes to 1.75e-12 of gross channel
+traffic. The per-axis excursion diagnostics from PR #390 remain, so any run
+reports its own created mass rather than relying on this bound.
+
+Two consequences worth stating explicitly. The GPU cost/benefit benchmark is
+not gated on this: 1.33% is well below the effects it exists to measure.
+And CUDA still carries the signed mass ledger without reporting the per-axis
+diagnostic, so the bound above is host-measured.
 
 **Non-delivery oxygen VBF integration (approved and implemented).** The
 delivery-enabled oxygen path applies the first-order VBF sink implicitly in
