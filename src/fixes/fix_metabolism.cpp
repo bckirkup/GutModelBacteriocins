@@ -137,7 +137,8 @@ Real FixMetabolism::delivery_field_funding(
     if (const Real requested =
             requested_by_cell[static_cast<size_t>(cell)];
         requested > 0.0) {
-      funding += chem.prescribed_sink_global(species_index, cell)
+      funding += std::max(
+          0.0, chem.sink_realized_global(species_index, cell))
           * (share / requested);
     }
     deposited += share;
@@ -533,7 +534,8 @@ void FixMetabolism::commit_delivery_carbon(Real dt, Int carbon) {
       const Real cell_requested = agent.grid_cell >= 0
           ? carbon_demand_by_cell[static_cast<size_t>(agent.grid_cell)] : 0.0;
       field_funding = cell_requested > 0.0 && carbon >= 0
-          ? chem.prescribed_sink_global(carbon, agent.grid_cell)
+          ? std::max(
+              0.0, chem.sink_realized_global(carbon, agent.grid_cell))
               * (agent.pending_carbon_funding / cell_requested)
           : 0.0;
     } else {
@@ -542,6 +544,7 @@ void FixMetabolism::commit_delivery_carbon(Real dt, Int carbon) {
           carbon_demand_by_cell);
     }
     agent.pending_carbon_funding = field_funding;
+    assert(field_funding >= 0.0);
     const DeliveryFunding funding = calculate_delivery_funding(
         agent.pending_growth_carbon, agent.pending_maintenance_carbon,
         field_funding);
@@ -610,7 +613,8 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
       const Real cell_requested = agent.grid_cell >= 0
           ? oxygen_demand_by_cell[static_cast<size_t>(agent.grid_cell)] : 0.0;
       field_funding = cell_requested > 0.0
-          ? chem.prescribed_sink_global(oxygen, agent.grid_cell)
+          ? std::max(
+              0.0, chem.sink_realized_global(oxygen, agent.grid_cell))
               * (agent.pending_oxygen_funding / cell_requested)
           : 0.0;
     } else {
@@ -619,6 +623,7 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
           oxygen_demand_by_cell);
     }
     agent.pending_oxygen_funding = field_funding;
+    assert(field_funding >= 0.0);
     const DeliveryFunding funding = calculate_delivery_funding(
         growth_demand, maintenance_demand,
         field_funding);

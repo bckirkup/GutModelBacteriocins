@@ -375,7 +375,8 @@ void test_delivery_step_mass_closure_vbf_source() {
   assert(relative_residual <= 1.0e-12);
 }
 
-SimulationConfig oxygen_ledger_config(bool z_gradient, Int steps) {
+SimulationConfig oxygen_ledger_config(
+    bool z_gradient, Int steps, Real vbf_sink_rate) {
   constexpr Real dt = 60.0;
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {100.0e-6, 100.0e-6, 40.0e-6};
@@ -398,7 +399,7 @@ SimulationConfig oxygen_ledger_config(bool z_gradient, Int steps) {
   cfg.chem_env.oxygen.tau_metabolic_switch = 1.0;
   cfg.chem_env.oxygen.q_consumption = 1.0e-15;
   cfg.chem_env.oxygen.q_maintenance = 0.0;
-  cfg.chem_env.oxygen.vbf_sink = 0.0;
+  cfg.chem_env.oxygen.vbf_sink = vbf_sink_rate;
   cfg.chem_env.oxygen.epithelial_conc = 55.0e-6;
   cfg.oxygen_z_gradient_enabled = z_gradient;
   cfg.fixes.metabolism.uptake_limit = "delivery";
@@ -424,23 +425,28 @@ struct OxygenLedgerArm {
   bool uniform_init;
   bool z_gradient;
   Int steps;
+  Real vbf_sink_rate;
 };
 
 void test_oxygen_inventory_ledger_closure() {
   constexpr Real dt = 60.0;
   constexpr Real tolerance = 1.0e-9;
+  constexpr Real accounting_tolerance = 1.0e-12;
   constexpr Real oxygen_concentration = 55.0e-6;
   const std::array arms = {
-      OxygenLedgerArm{"uniform init, gradient on", true, true, 1},
-      OxygenLedgerArm{"model init, gradient on", false, true, 1},
-      OxygenLedgerArm{"uniform init, gradient off", true, false, 1},
-      OxygenLedgerArm{"model init, gradient off", false, false, 1},
-      OxygenLedgerArm{"model init, gradient on, 10 steps", false, true, 10},
-      OxygenLedgerArm{"uniform init, gradient off, 10 steps", true, false, 10}};
+      OxygenLedgerArm{"uniform init, gradient on", true, true, 1, 0.0},
+      OxygenLedgerArm{"model init, gradient on", false, true, 1, 0.0},
+      OxygenLedgerArm{"uniform init, gradient off", true, false, 1, 0.0},
+      OxygenLedgerArm{"model init, gradient off", false, false, 1, 0.0},
+      OxygenLedgerArm{"model init, gradient on, 10 steps", false, true, 10, 0.0},
+      OxygenLedgerArm{"uniform init, gradient off, 10 steps", true, false, 10, 0.0},
+      OxygenLedgerArm{"model init, gradient on, VBF sink, 10 steps",
+                      false, true, 10, 1.0e-3}};
 
   for (const OxygenLedgerArm& arm : arms) {
     Simulation sim;
-    sim.init(oxygen_ledger_config(arm.z_gradient, arm.steps));
+    sim.init(oxygen_ledger_config(
+        arm.z_gradient, arm.steps, arm.vbf_sink_rate));
     auto& chem = sim.chemical_field();
     const Int carbon = chem.find(species::CARBON);
     const Int oxygen = chem.find(species::OXYGEN);
@@ -472,10 +478,10 @@ void test_oxygen_inventory_ledger_closure() {
       const Real vbf_sink = flux.vbf_sink_for_step(oxygen);
       const Real reaction_clip = flux.reaction_clip_for_step(oxygen);
       const Real expected_delta = boundary + gradient_source + vbf_source
-          - vbf_sink - total_sink_realized - reaction_clip;
+          - total_sink_realized - reaction_clip;
       const Real residual = (after - before) - expected_delta;
       const Real gross = std::abs(boundary) + std::abs(gradient_source)
-          + std::abs(vbf_source) + std::abs(vbf_sink)
+          + std::abs(vbf_source)
           + std::abs(total_sink_realized) + std::abs(reaction_clip);
       const Real relative_residual =
           std::abs(residual) / std::max(gross, 1.0e-30);
@@ -483,6 +489,28 @@ void test_oxygen_inventory_ledger_closure() {
           std::max(worst_relative_residual, relative_residual);
       assert(std::isfinite(relative_residual));
       assert(relative_residual <= tolerance);
+      if (arm.vbf_sink_rate > 0.0) {
+        assert(vbf_sink > 0.0);
+        assert(vbf_sink <= total_sink_realized);
+        Real agent_sink_realized = 0.0;
+        for (Int cell = 0; cell < chem.global_ncells(); ++cell) {
+          if (!chem.owns_global_cell(cell)) continue;
+          agent_sink_realized += chem.sink_realized_global(oxygen, cell);
+        }
+        assert(std::abs(
+                   total_sink_realized - vbf_sink - agent_sink_realized)
+               <= accounting_tolerance
+                   * std::max(std::abs(agent_sink_realized), 1.0e-30));
+        if (arm.vbf_sink_rate > 0.0) {
+          assert(flux.negative_delivery_mass_for_step(oxygen) > 0.0);
+          assert(flux.negative_delivery_cells_for_step(oxygen) > 0.0);
+        }
+        std::cout << "  test_oxygen_inventory_ledger_closure: " << arm.name
+                  << " step=" << step
+                  << " vbf_sink=" << vbf_sink
+                  << " total_sink_realized=" << total_sink_realized
+                  << " agent_sink_realized=" << agent_sink_realized << "\n";
+      }
     }
     std::cout << "  test_oxygen_inventory_ledger_closure: " << arm.name
               << " worst_relative_residual=" << worst_relative_residual

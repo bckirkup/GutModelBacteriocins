@@ -562,7 +562,7 @@ __global__ void diffuse_x_periodic_delivery_kernel(
         iz, nz, dx_z, initial_conc, lambda, boundary_conc, has_gradient);
     conc[cell] = line[tid];
     atomicAdd(realized + cell, sink[cell] * sink_dt
-        * fmax(line[tid] + gradient, 0.0) * cell_volume);
+        * (line[tid] + gradient) * cell_volume);
   }
 }
 
@@ -598,7 +598,7 @@ __global__ void diffuse_y_periodic_delivery_kernel(
         iz, nz, dx_z, initial_conc, lambda, boundary_conc, has_gradient);
     conc[cell] = line[tid];
     atomicAdd(realized + cell, sink[cell] * sink_dt
-        * fmax(line[tid] + gradient, 0.0) * cell_volume);
+        * (line[tid] + gradient) * cell_volume);
   }
 }
 
@@ -666,7 +666,7 @@ __global__ void diffuse_z_bounded_delivery_kernel(
         iz, nz, dx_z, initial_conc, lambda, boundary_conc, has_gradient);
     conc[cell] = rhs[tid];
     atomicAdd(realized + cell, sink[cell] * sink_dt
-        * fmax(rhs[tid] + gradient, 0.0) * cell_volume);
+        * (rhs[tid] + gradient) * cell_volume);
   }
 }
 
