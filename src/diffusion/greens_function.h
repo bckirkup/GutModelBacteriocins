@@ -54,6 +54,7 @@ struct GreensFunctionParams {
   int image_series_max_shells = kDefaultImageSeriesMaxShells;
   bool image_series_max_shells_explicit = false;
   bool image_series_legacy_reflections = false;
+  bool drift_correction = false;
 
   // NOTE: bacteriocin pI classification lives in a single source of truth,
   // `classify_by_pI()` in src/genome/plasmid.h (pI > 8.5 → CORE, pI < 7.0 →

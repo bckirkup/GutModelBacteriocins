@@ -6,6 +6,7 @@
 
 #include "advection.h"
 #include "error.h"
+#include "neumann_image_series.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -25,6 +26,7 @@ constexpr uint64_t kFnvPrime = 1099511628211ULL;
 constexpr double kBisectionTolerance = 1.0e-13;
 constexpr double kMinimumRho = 1.0e-12;
 constexpr int kSamplesPerPiInterval = 260;
+constexpr int kHistoricalLegacyImageSeriesShells = 3;
 
 void append_hash_bytes(uint64_t& hash, const void* data, size_t size) {
   const auto* bytes = static_cast<const unsigned char*>(data);
@@ -44,7 +46,7 @@ uint64_t table_identity_hash(const Table& table) {
   append_hash_bytes(hash, &table.z_lo, sizeof(table.z_lo));
   append_hash_bytes(hash, &table.height, sizeof(table.height));
   append_hash_bytes(hash, &table.cutoff, sizeof(table.cutoff));
-  for (const double value : table.values) {
+  for (const double value : table.legacy_values) {
     append_hash_bytes(hash, &value, sizeof(value));
   }
   return hash;
@@ -74,7 +76,12 @@ int64_t quantize_relative(double value) {
 TableCacheKey make_cache_key(const AdvectionField& adv, double z_lo,
                              double z_hi, double d_free, double d_eff,
                              double decay_rate, double transfer_length,
-                             double cutoff, TransferBasis basis) {
+                             double cutoff, TransferBasis basis,
+                             double image_series_relative_tolerance,
+                             int image_series_max_shells,
+                             bool image_series_max_shells_explicit,
+                             bool image_series_legacy_reflections,
+                             bool drift_correction) {
   const double height = z_hi - z_lo;
   const Vec3 midpoint = {0.0, 0.0, 0.5 * (z_lo + z_hi)};
   const Vec3 flow = mean_profile_velocity(adv, midpoint[2]);
@@ -89,13 +96,23 @@ TableCacheKey make_cache_key(const AdvectionField& adv, double z_lo,
       quantize_relative(bi),
       quantize_relative(screening_height),
       quantize_relative(lower_coefficient_height),
-      quantize_relative(cutoff / height)}};
+      quantize_relative(cutoff / height),
+      quantize_relative(image_series_relative_tolerance),
+      static_cast<int64_t>(image_series_max_shells),
+      image_series_max_shells_explicit ? 1 : 0,
+      image_series_legacy_reflections ? 1 : 0,
+      drift_correction ? 1 : 0}};
 }
 
 void set_table_metadata(Table& table, const AdvectionField& adv, double z_lo,
                         double z_hi, double d_free, double d_eff,
                         double decay_rate, double lumen_transfer_length,
-                        double cutoff, TransferBasis basis) {
+                        double cutoff, TransferBasis basis,
+                        double image_series_relative_tolerance,
+                        int image_series_max_shells,
+                        bool image_series_max_shells_explicit,
+                        bool image_series_legacy_reflections, bool drift_correction) {
+  table.drift_correction = drift_correction;
   table.biot_number = robin_biot_number(
       d_free, d_eff, table.height, lumen_transfer_length, basis);
   const Vec3 midpoint = {0.0, 0.0, 0.5 * (z_lo + z_hi)};
@@ -110,7 +127,9 @@ void set_table_metadata(Table& table, const AdvectionField& adv, double z_lo,
       midpoint_flow[2] * table.height / (2.0 * d_eff);
   const TableCacheKey key = make_cache_key(
       adv, z_lo, z_hi, d_free, d_eff, decay_rate, lumen_transfer_length,
-      cutoff, basis);
+      cutoff, basis, image_series_relative_tolerance, image_series_max_shells,
+      image_series_max_shells_explicit, image_series_legacy_reflections,
+      table.drift_correction);
   table.quantized_key = key.groups;
   table.basis = basis;
 }
@@ -330,12 +349,17 @@ double mode_sum_betas_lookup(
 double sealed_zero_mode(double z_source, double z_target, double rho,
                         double z_lo, double height, double d_eff,
                         double decay_rate, double flow_x, double flow_y,
-                        double flow_z) {
+                        double flow_z, SealedReference sealed_reference) {
   const double a = flow_z / (2.0 * d_eff);
-  const double norm = std::abs(a) < 1.0e-14
-      ? height : -std::expm1(-2.0 * a * height) / (2.0 * a);
-  const double phi_source = std::exp(-a * (z_source - z_lo));
-  const double phi_target = std::exp(-a * (z_target - z_lo));
+  const double eigen_a = sealed_reference == SealedReference::Physical
+      ? -a : a;
+  const double norm = std::abs(eigen_a) < 1.0e-14
+      ? height
+      : -std::expm1(-2.0 * eigen_a * height) / (2.0 * eigen_a);
+  const double phi_source =
+      std::exp(-eigen_a * (z_source - z_lo));
+  const double phi_target =
+      std::exp(-eigen_a * (z_target - z_lo));
   const double mass_rate = decay_rate
       + (flow_x * flow_x + flow_y * flow_y + flow_z * flow_z)
           / (4.0 * d_eff);
@@ -350,14 +374,17 @@ double mode_sum(double z_source, double z_target, double rho,
                 double z_lo, double z_hi, double d_eff, double decay_rate,
                 double d_free, double lumen_transfer_length,
                 double flow_x, double flow_y, double flow_z,
-                bool robin_boundary, int mode_count, TransferBasis basis) {
+                bool robin_boundary, int mode_count, TransferBasis basis,
+                SealedReference sealed_reference) {
   const double height = z_hi - z_lo;
   const double a = flow_z / (2.0 * d_eff);
   const double bi = robin_boundary
       ? robin_biot_number_impl(
           d_free, d_eff, height, lumen_transfer_length, basis) : 0.0;
   const double b = bi / height + flow_z / (2.0 * d_eff);
-  const double lower = robin_boundary ? -a : a;
+  const double lower = robin_boundary
+      ? -a
+      : (sealed_reference == SealedReference::Physical ? -a : a);
   std::vector<double> betas;
   betas.reserve(static_cast<size_t>(mode_count));
   const bool use_robin_modes = robin_boundary && bi > 0.0;
@@ -373,16 +400,86 @@ double mode_sum(double z_source, double z_target, double rho,
   }
   const double positive_modes = mode_sum_betas(
       z_source, z_target, rho, z_lo, z_hi, d_eff, decay_rate, betas,
-      flow_x, flow_y, flow_z, use_robin_modes ? -a : a);
+      flow_x, flow_y, flow_z,
+      use_robin_modes || sealed_reference == SealedReference::Physical
+          ? -a : a);
   if (!use_robin_modes) {
     return positive_modes + 2.0 * sealed_zero_mode(
         z_source, z_target, rho, z_lo, height, d_eff, decay_rate,
-        flow_x, flow_y, flow_z);
+        flow_x, flow_y, flow_z, sealed_reference);
   }
   return positive_modes;
 }
 
+double normalized_image_value(double image_z, double z_target, double rho,
+                              double d_eff, double decay_rate,
+                              double flow_x, double flow_z, int reflected) {
+  const double dz = z_target - image_z;
+  const double reflected_flow_z = reflected != 0 ? -flow_z : flow_z;
+  const double radius = std::sqrt(rho * rho + dz * dz);
+  if (radius < 1.0e-9) return 0.0;
+  const double flow_magnitude = std::sqrt(
+      flow_x * flow_x + flow_z * flow_z);
+  const double screened_speed = decay_rate <= 0.0
+      ? flow_magnitude
+      : std::sqrt(flow_magnitude * flow_magnitude
+          + 4.0 * d_eff * decay_rate);
+  const double exponent = (flow_x * rho + reflected_flow_z * dz
+      - screened_speed * radius) / (2.0 * d_eff);
+  return std::exp(std::max(exponent, -500.0)) / radius;
+}
+
+double normalized_image_series_impl(double z_source, double z_target, double rho,
+                               double z_lo, double z_hi, double d_eff,
+                               double decay_rate, double flow_x,
+                               double flow_z,
+                               double image_series_relative_tolerance,
+                               int image_series_max_shells,
+                               bool image_series_max_shells_explicit,
+                               bool image_series_legacy_reflections) {
+  const double flow_magnitude = std::sqrt(
+      flow_x * flow_x + flow_z * flow_z);
+  const auto kernel = [=](double image_z, int reflected) {
+    return normalized_image_value(
+        image_z, z_target, rho, d_eff, decay_rate, flow_x, flow_z, reflected);
+  };
+  if (image_series_legacy_reflections) {
+    const int shell_limit = image_series_max_shells_explicit
+        ? image_series_max_shells : kHistoricalLegacyImageSeriesShells;
+    double total = kernel(z_source, 0);
+    for (int shell = 1; shell <= shell_limit; ++shell) {
+      const double offset = 2.0 * static_cast<double>(shell) * (z_hi - z_lo);
+      total += kernel(2.0 * z_lo - z_source - offset, 0)
+          + kernel(2.0 * z_hi - z_source + offset, 0)
+          + kernel(2.0 * z_lo - z_source + offset, 0)
+          + kernel(2.0 * z_hi - z_source - offset, 0);
+    }
+    return total;
+  }
+  const auto budget = neumann::image_series_budget(
+      d_eff, decay_rate, flow_magnitude, std::abs(flow_z),
+      z_hi - z_lo, image_series_relative_tolerance);
+  const int shell_limit = image_series_max_shells_explicit
+      ? image_series_max_shells : budget.max_shells;
+  return neumann::sum_image_series(
+      z_source, z_lo, z_hi, kernel, image_series_relative_tolerance,
+      shell_limit);
+}
+
 }  // namespace
+
+double normalized_image_series(double z_source, double z_target, double rho,
+                               double z_lo, double z_hi, double d_eff,
+                               double decay_rate, double flow_x, double flow_z,
+                               double image_series_relative_tolerance,
+                               int image_series_max_shells,
+                               bool image_series_max_shells_explicit,
+                               bool image_series_legacy_reflections) {
+  return normalized_image_series_impl(
+      z_source, z_target, rho, z_lo, z_hi, d_eff, decay_rate, flow_x, flow_z,
+      image_series_relative_tolerance, image_series_max_shells,
+      image_series_max_shells_explicit, image_series_legacy_reflections);
+}
 
 double robin_biot_number(double d_free, double d_eff, double height,
                          double lumen_transfer_length, TransferBasis basis) {
@@ -420,7 +517,7 @@ double normalized_robin_field(
   const double radial = mode_sum(
       z_source, z_target, rho, z_lo, z_hi, d_eff, decay_rate,
       d_free, lumen_transfer_length, flow_x, flow_y, flow_z,
-      true, mode_count, basis);
+      true, mode_count, basis, SealedReference::Physical);
   return radial * std::exp(
       (flow_x * rho + flow_z * (z_target - z_source)) / (2.0 * d_eff));
 }
@@ -430,7 +527,20 @@ double normalized_sealed_field(const SealedFieldParams& params) {
       params.z_source, params.z_target, params.rho, params.z_lo, params.z_hi,
       params.d_eff, params.decay_rate, params.d_eff, kZeroTransferLength,
       params.flow_x, params.flow_y, params.flow_z, false, params.mode_count,
-      TransferBasis::Effective);
+      TransferBasis::Effective, SealedReference::Physical);
+  return radial * std::exp(
+      (params.flow_x * params.rho
+       + params.flow_z * (params.z_target - params.z_source))
+      / (2.0 * params.d_eff));
+}
+
+double normalized_image_consistent_sealed_field(
+    const SealedFieldParams& params) {
+  const double radial = mode_sum(
+      params.z_source, params.z_target, params.rho, params.z_lo, params.z_hi,
+      params.d_eff, params.decay_rate, params.d_eff, kZeroTransferLength,
+      params.flow_x, params.flow_y, params.flow_z, false, params.mode_count,
+      TransferBasis::Effective, SealedReference::ImageConsistent);
   return radial * std::exp(
       (params.flow_x * params.rho
        + params.flow_z * (params.z_target - params.z_source))
@@ -442,38 +552,63 @@ double normalized_correction(
     double d_eff, double d_free, double decay_rate,
     double lumen_transfer_length,
     double flow_x, double flow_y, double flow_z, int mode_count,
-    TransferBasis basis) {
+    TransferBasis basis, SealedReference sealed_reference) {
   if (!transfer_enabled(lumen_transfer_length)) {
     return 0.0;
   }
   const double robin = mode_sum(
       z_source, z_target, rho, z_lo, z_hi, d_eff, decay_rate,
       d_free, lumen_transfer_length, flow_x, flow_y, flow_z,
-      true, mode_count, basis);
+      true, mode_count, basis, SealedReference::Physical);
   const double sealed = mode_sum(
       z_source, z_target, rho, z_lo, z_hi, d_eff, decay_rate,
       d_free, lumen_transfer_length, flow_x, flow_y, flow_z,
-      false, mode_count, basis);
+      false, mode_count, basis, sealed_reference);
   return robin - sealed;
 }
 
-Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
-                  double d_free, double d_eff, double decay_rate,
-                  double lumen_transfer_length, double cutoff,
-                  TransferBasis basis) {
-  if (!(d_eff > 0.0) || !(z_hi > z_lo) || !(cutoff > 0.0)) {
-    throw ConfigError("invalid Robin correction-table dimensions");
-  }
+double interpolate_drift(const Table& table, double source_z,
+                         double target_z, double rho) {
+  const TableView view{
+      table.drift_values.data(), table.z_lo, table.height, table.cutoff};
+  return interpolate_log(view, source_z, target_z, rho);
+}
+
+double interpolate_legacy(const Table& table, double source_z,
+                          double target_z, double rho) {
+  const TableView view{
+      table.legacy_values.data(), table.z_lo, table.height, table.cutoff, 0.0};
+  return interpolate_uniform(view, source_z, target_z, rho);
+}
+
+double interpolate_physical_correction(const Table& table, double source_z,
+                                       double target_z, double rho) {
+  const TableView view{
+      table.physical_values.data(), table.z_lo, table.height, table.cutoff};
+  return interpolate_log(view, source_z, target_z, rho);
+}
+
+Table build_legacy_table(const AdvectionField& adv, double z_lo, double z_hi,
+                         double d_free, double d_eff, double decay_rate,
+                         double lumen_transfer_length, double cutoff,
+                         TransferBasis basis,
+                         double image_series_relative_tolerance,
+                         int image_series_max_shells,
+                         bool image_series_max_shells_explicit,
+                         bool image_series_legacy_reflections) {
   Table table;
   table.z_lo = z_lo;
   table.height = z_hi - z_lo;
   table.cutoff = cutoff;
-  table.values.resize(kTableValueCount);
   if (!transfer_enabled(lumen_transfer_length)) {
     set_table_metadata(table, adv, z_lo, z_hi, d_free, d_eff, decay_rate,
-                       lumen_transfer_length, cutoff, basis);
+                       lumen_transfer_length, cutoff, basis,
+                       image_series_relative_tolerance, image_series_max_shells,
+                       image_series_max_shells_explicit,
+                       image_series_legacy_reflections, false);
     return table;
   }
+  std::vector<double> legacy_values(kTableValueCount);
   for (int source_index = 0; source_index < kTableNodes; ++source_index) {
     const double z_source = z_lo + table.height * source_index
         / static_cast<double>(kTableNodes - 1);
@@ -528,39 +663,179 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
       const double z_target = z_lo + table.height * target_index
           / static_cast<double>(kTableNodes - 1);
       for (int rho_index = 0; rho_index < kTableNodes; ++rho_index) {
-        table.values[table_index(source_index, target_index, rho_index)] =
+        legacy_values[table_index(source_index, target_index, rho_index)] =
             mode_sum_betas_lookup(
-                z_source, z_target, z_lo, z_hi, d_eff,
-                // Bessel values were precomputed for this source-z row.
-                robin_betas, flow[0], flow[1], flow[2], rho_index,
-                robin_bessel, -a)
+            z_source, z_target, z_lo, z_hi, d_eff,
+            robin_betas, flow[0], flow[1], flow[2], rho_index,
+            robin_bessel, -a)
             - mode_sum_betas_lookup(
-                z_source, z_target, z_lo, z_hi, d_eff,
-                sealed_betas, flow[0], flow[1], flow[2], rho_index,
-                sealed_bessel, a);
-            const double sealed_zero = 2.0 * std::exp(
-                -a * (z_source - z_lo) - a * (z_target - z_lo))
-                * sealed_zero_bessel[rho_index]
-                / (std::abs(a) < 1.0e-14
-                    ? table.height
-                    : -std::expm1(-2.0 * a * table.height) / (2.0 * a));
-            table.values[table_index(source_index, target_index, rho_index)]
-                -= sealed_zero;
+            z_source, z_target, z_lo, z_hi, d_eff,
+            sealed_betas, flow[0], flow[1], flow[2], rho_index,
+            sealed_bessel, a);
+        const double legacy_zero = 2.0 * std::exp(
+            -a * (z_source - z_lo) - a * (z_target - z_lo))
+            * sealed_zero_bessel[rho_index]
+            / (std::abs(a) < 1.0e-14
+                ? table.height
+                : -std::expm1(-2.0 * a * table.height)
+                    / (2.0 * a));
+        legacy_values[table_index(source_index, target_index, rho_index)]
+            -= legacy_zero;
       }
     }
   }
   set_table_metadata(table, adv, z_lo, z_hi, d_free, d_eff, decay_rate,
-                     lumen_transfer_length, cutoff, basis);
+                     lumen_transfer_length, cutoff, basis,
+                     image_series_relative_tolerance, image_series_max_shells,
+                     image_series_max_shells_explicit,
+                     image_series_legacy_reflections, false);
+  table.legacy_values = std::move(legacy_values);
+  return table;
+}
+
+Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
+                  double d_free, double d_eff, double decay_rate,
+                  double lumen_transfer_length, double cutoff,
+                  TransferBasis basis,
+                  double image_series_relative_tolerance,
+                  int image_series_max_shells,
+                  bool image_series_max_shells_explicit,
+                  bool image_series_legacy_reflections,
+                  bool drift_correction) {
+  if (!(d_eff > 0.0) || !(z_hi > z_lo)
+      || !(cutoff >= kMinimumTableRho)) {
+    throw ConfigError("invalid Robin correction-table dimensions");
+  }
+  if (!drift_correction) {
+    return build_legacy_table(
+        adv, z_lo, z_hi, d_free, d_eff, decay_rate, lumen_transfer_length,
+        cutoff, basis, image_series_relative_tolerance, image_series_max_shells,
+        image_series_max_shells_explicit, image_series_legacy_reflections);
+  }
+  Table table;
+  table.z_lo = z_lo;
+  table.height = z_hi - z_lo;
+  table.cutoff = cutoff;
+  table.drift_correction = drift_correction;
+  const bool transfer = transfer_enabled(lumen_transfer_length);
+  table.drift_values.resize(kTableValueCount);
+  if (transfer) {
+    table.physical_values.resize(kTableValueCount);
+  }
+  for (int source_index = 0; source_index < kTableNodes; ++source_index) {
+    const double z_source = z_lo + table.height * source_index
+        / static_cast<double>(kTableNodes - 1);
+    const Vec3 flow = mean_profile_velocity(adv, z_source);
+    const double a = flow[2] / (2.0 * d_eff);
+    const double kc = robin_boundary_coefficient(
+        d_free, d_eff, table.height, lumen_transfer_length, basis);
+    const double b = kc / d_eff + flow[2] / (2.0 * d_eff);
+    std::vector<double> robin_betas;
+    std::vector<double> sealed_betas;
+    robin_betas.reserve(kTableModeCount);
+    sealed_betas.reserve(kTableModeCount - 1);
+    if (transfer) {
+      for (const double root : robin_mode_roots_impl(
+               table.height, -a, b, kTableModeCount)) {
+        robin_betas.push_back(root / table.height);
+      }
+    }
+    for (int n = 1; n < kTableModeCount; ++n) {
+      sealed_betas.push_back(
+          static_cast<double>(n) * std::numbers::pi / table.height);
+    }
+    std::vector<double> robin_bessel;
+    std::vector<double> sealed_bessel;
+    std::vector<double> sealed_zero_bessel;
+    robin_bessel.resize(static_cast<size_t>(kTableNodes)
+                        * robin_betas.size());
+    sealed_bessel.resize(static_cast<size_t>(kTableNodes)
+                         * sealed_betas.size());
+    sealed_zero_bessel.resize(kTableNodes);
+    const double mass_rate = decay_rate
+        + (flow[0] * flow[0] + flow[1] * flow[1]
+           + flow[2] * flow[2]) / (4.0 * d_eff);
+    for (int rho_index = 0; rho_index < kTableNodes; ++rho_index) {
+      const double log_rho = kMinimumTableRho * std::pow(
+          cutoff / kMinimumTableRho,
+          static_cast<double>(rho_index)
+              / static_cast<double>(kTableNodes - 1));
+      const double lateral_rho = std::max(log_rho, kMinimumRho);
+      sealed_zero_bessel[rho_index] = std::cyl_bessel_k(
+          0, std::sqrt(mass_rate / d_eff - a * a) * lateral_rho);
+      for (size_t n = 0; n < robin_betas.size(); ++n) {
+        const double robin_kappa = std::sqrt(
+            mass_rate / d_eff + robin_betas[n] * robin_betas[n]);
+        robin_bessel[rho_index * robin_betas.size() + n] =
+            std::cyl_bessel_k(0, robin_kappa * lateral_rho);
+      }
+      for (size_t n = 0; n < sealed_betas.size(); ++n) {
+        const double sealed_kappa = std::sqrt(
+            mass_rate / d_eff + sealed_betas[n] * sealed_betas[n]);
+        sealed_bessel[rho_index * sealed_betas.size() + n] =
+            std::cyl_bessel_k(0, sealed_kappa * lateral_rho);
+      }
+    }
+    for (int target_index = 0; target_index < kTableNodes; ++target_index) {
+      const double z_target = z_lo + table.height * target_index
+          / static_cast<double>(kTableNodes - 1);
+      for (int rho_index = 0; rho_index < kTableNodes; ++rho_index) {
+        const size_t index = static_cast<size_t>(
+            table_index(source_index, target_index, rho_index));
+        const double rho = kMinimumTableRho * std::pow(
+            cutoff / kMinimumTableRho,
+            static_cast<double>(rho_index)
+                / static_cast<double>(kTableNodes - 1));
+        const double robin = robin_betas.empty() ? 0.0
+            : mode_sum_betas_lookup(
+                z_source, z_target, z_lo, z_hi, d_eff, robin_betas,
+                flow[0], flow[1], flow[2], rho_index, robin_bessel, -a);
+        const double physical_sealed = mode_sum_betas_lookup(
+            z_source, z_target, z_lo, z_hi, d_eff, sealed_betas,
+            flow[0], flow[1], flow[2], rho_index, sealed_bessel, -a)
+            + 2.0 * std::exp(
+                a * (z_source - z_lo) + a * (z_target - z_lo))
+                * sealed_zero_bessel[rho_index]
+                / (std::abs(a) < 1.0e-14
+                    ? table.height
+                    : std::expm1(2.0 * a * table.height)
+                        / (2.0 * a));
+        const double gauge = std::exp(
+            (flow[0] * rho + flow[2] * (z_target - z_source))
+            / (2.0 * d_eff));
+        const double image = normalized_image_series(
+            z_source, z_target, rho, z_lo, z_hi, d_eff, decay_rate,
+            flow[0], flow[2], image_series_relative_tolerance,
+            image_series_max_shells, image_series_max_shells_explicit,
+            image_series_legacy_reflections) / gauge;
+        table.drift_values[index] = std::abs(a) < 1.0e-14
+            ? 0.0 : physical_sealed - image;
+        if (transfer) {
+          table.physical_values[index] = robin - physical_sealed;
+        }
+      }
+    }
+  }
+  set_table_metadata(table, adv, z_lo, z_hi, d_free, d_eff, decay_rate,
+                     lumen_transfer_length, cutoff, basis,
+                     image_series_relative_tolerance, image_series_max_shells,
+                     image_series_max_shells_explicit,
+                     image_series_legacy_reflections, drift_correction);
   return table;
 }
 
 std::shared_ptr<const Table> TableCache::get(
     const AdvectionField& adv, double z_lo, double z_hi,
     double d_free, double d_eff, double decay_rate,
-    double lumen_transfer_length, double cutoff, TransferBasis basis) {
+    double lumen_transfer_length, double cutoff, TransferBasis basis,
+    double image_series_relative_tolerance, int image_series_max_shells,
+    bool image_series_max_shells_explicit,
+    bool image_series_legacy_reflections, bool drift_correction) {
   const TableCacheKey key = make_cache_key(
       adv, z_lo, z_hi, d_free, d_eff, decay_rate, lumen_transfer_length,
-      cutoff, basis);
+      cutoff, basis, image_series_relative_tolerance, image_series_max_shells,
+      image_series_max_shells_explicit, image_series_legacy_reflections,
+      drift_correction);
   std::scoped_lock lock(mutex_);
   if (const auto found = entries_.find(key); found != entries_.end()) {
     lru_.splice(lru_.begin(), lru_, found->second);
@@ -568,7 +843,9 @@ std::shared_ptr<const Table> TableCache::get(
   }
   auto table = std::make_shared<Table>(build_table(
       adv, z_lo, z_hi, d_free, d_eff, decay_rate, lumen_transfer_length,
-      cutoff, basis));
+      cutoff, basis, image_series_relative_tolerance, image_series_max_shells,
+      image_series_max_shells_explicit, image_series_legacy_reflections,
+      drift_correction));
   if (lru_.size() >= kMaximumTables) {
     entries_.erase(lru_.back().key);
     lru_.pop_back();

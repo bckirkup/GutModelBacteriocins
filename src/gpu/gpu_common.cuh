@@ -156,7 +156,7 @@ __device__ inline double concentration_bounded(const double src[3], const double
     robin::TableView table{
         robin_tables + p.robin_table_index * robin::kTableValueCount,
         dom.z_lo, dom.z_hi - dom.z_lo, p.robin_cutoff};
-    double correction = robin::interpolate(table, src[2], tgt[2], rho);
+    double correction = robin::interpolate_uniform(table, src[2], tgt[2], rho);
     double dz = minimum_image_delta(
         tgt[2] - src[2], dom.extent[2], dom.periodic[2]);
     correction *= exp((flow[0] * dx + flow[1] * dy + flow[2] * dz)

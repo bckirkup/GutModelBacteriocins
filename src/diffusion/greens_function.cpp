@@ -354,7 +354,10 @@ std::shared_ptr<const robin::Table> GreensFunction::robin_table(
       ? robin::TransferBasis::Free : robin::TransferBasis::Effective;
   return robin::global_table_cache().get(
       *adv_, z_lo_, z_hi_, params.diff_coeff, d_eff, params.decay_rate,
-      params.lumen_transfer_length, params.robin_cutoff, basis);
+      params.lumen_transfer_length, params.robin_cutoff, basis,
+      params.image_series_relative_tolerance, params.image_series_max_shells,
+      params.image_series_max_shells_explicit,
+      params.image_series_legacy_reflections, params.drift_correction);
 }
 
 Real GreensFunction::concentration_sealed(
@@ -424,6 +427,29 @@ Real GreensFunction::concentration_sealed(
 #endif
     ++low_screening_evaluations_;
   }
+  if (params.drift_correction) {
+    const auto table = robin_table(params);
+    // Table rows use the mean profile flow; the runtime gauge uses the local
+    // velocity, matching the shipped Green's-function convention.
+    const Vec3 delta = domain_->min_image_delta(source, target);
+    const Real rho = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]);
+    const bool use_direct = robin::requires_direct_evaluation(
+        source[2], target[2], rho, z_lo_, z_hi_,
+        std::min({domain_->dx_x(), domain_->dx_y(), domain_->dx_z()}));
+    if (use_direct) {
+      // normalized_sealed_field() already carries the gauge factor, so the
+      // image base is replaced outright rather than corrected.
+      total = Q / (4.0 * PI * D_eff) * robin::normalized_sealed_field({
+          source[2], target[2], rho, z_lo_, z_hi_, D_eff, params.decay_rate,
+          flow[0], flow[1], flow[2], robin::kTableModeCount});
+    } else {
+      const Real drift = robin::interpolate_drift(
+          *table, source[2], target[2], rho);
+      total += Q / (4.0 * PI * D_eff) * drift * std::exp(
+          (flow[0] * delta[0] + flow[1] * delta[1]
+           + flow[2] * delta[2]) / (2.0 * D_eff));
+    }
+  }
   if (total < 0.0) {
 #ifdef GUTIBM_OPENMP
 #pragma omp atomic update
@@ -448,9 +474,9 @@ Real GreensFunction::concentration_bounded(
   const Vec3 delta = domain_->min_image_delta(source, target);
   const Real d_eff = params.diff_coeff / params.retardation;
   const Vec3 flow = adv_->velocity(source);
+  const Vec3 correction_flow = params.drift_correction
+      ? flow : adv_->mean_velocity(source);
   const std::shared_ptr<const robin::Table> table = robin_table(params);
-  const robin::TableView view{
-      table->values.data(), table->z_lo, table->height, table->cutoff};
   const Real rho = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]);
   const bool use_direct = robin::requires_direct_evaluation(
       source[2], target[2], rho, z_lo_, z_hi_,
@@ -461,24 +487,42 @@ Real GreensFunction::concentration_bounded(
 #pragma omp atomic update
 #endif
     ++robin_direct_evaluations_;
-    const Vec3 mean_flow = adv_->mean_velocity(source);
     correction_base = robin::normalized_correction(
         source[2], target[2], rho, z_lo_, z_hi_, d_eff,
         params.diff_coeff, params.decay_rate,
-        params.lumen_transfer_length, mean_flow[0], mean_flow[1],
-        mean_flow[2], robin::kTableModeCount,
+        params.lumen_transfer_length, correction_flow[0], correction_flow[1],
+        correction_flow[2], robin::kTableModeCount,
         params.lumen_transfer_basis_free
             ? robin::TransferBasis::Free
-            : robin::TransferBasis::Effective);
+            : robin::TransferBasis::Effective,
+        params.drift_correction
+            ? robin::SealedReference::Physical
+            : robin::SealedReference::ImageConsistent);
   } else {
-    correction_base = robin::interpolate(view, source[2], target[2], rho);
+    correction_base = params.drift_correction
+        ? robin::interpolate_physical_correction(
+            *table, source[2], target[2], rho)
+        : robin::interpolate_legacy(*table, source[2], target[2], rho);
   }
   const Real correction = correction_base * std::exp(
       (flow[0] * delta[0] + flow[1] * delta[1] + flow[2] * delta[2])
       / (2.0 * d_eff));
-  const Real sealed = concentration_sealed(source, target, params);
-  const Real total = sealed + params.source_rate
-      / (4.0 * PI * d_eff) * correction;
+  Real total = 0.0;
+  if (params.drift_correction && use_direct) {
+    const Real robin_field = robin::normalized_robin_field(
+        source[2], target[2], rho, z_lo_, z_hi_, d_eff, params.diff_coeff,
+        params.decay_rate, params.lumen_transfer_length, flow[0], flow[1],
+        flow[2], robin::kTableModeCount,
+        params.lumen_transfer_basis_free
+            ? robin::TransferBasis::Free
+            : robin::TransferBasis::Effective);
+    // normalized_robin_field() already carries the gauge factor.
+    total = params.source_rate / (4.0 * PI * d_eff) * robin_field;
+  } else {
+    const Real sealed = concentration_sealed(source, target, params);
+    total = sealed + params.source_rate
+        / (4.0 * PI * d_eff) * correction;
+  }
   if (total < 0.0) {
 #ifdef GUTIBM_OPENMP
 #pragma omp atomic update

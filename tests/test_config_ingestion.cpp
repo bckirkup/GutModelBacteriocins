@@ -346,6 +346,10 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return c.qssa.low_screening_policy;
                 }, "allow"));
+  v.push_back(B("qssa.drift_correction",
+                [](const SimulationConfig& c) {
+                  return c.qssa.drift_correction;
+                }));
   v.push_back(R("lumen_transfer_length", [](const SimulationConfig& c) {
     return c.qssa.lumen_transfer_length;
   }, 123.0e-6, false));

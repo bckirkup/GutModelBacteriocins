@@ -89,6 +89,18 @@ void enforce_drift_envelope_policy(
     const QSSAConfig& cfg, const Domain& domain, const AdvectionField& adv,
     const std::vector<ChemicalSpec>* chemicals,
     const RuntimeDriftEnvelopeBasis* runtime_basis) {
+  if (cfg.drift_correction) {
+    // The corrected sealed field satisfies the physical zero-total-flux wall
+    // law, so the first-order Pe_z envelope no longer describes its error; the
+    // remaining error is table interpolation only.
+    std::cerr << "NOTE: wall-normal drift correction enabled: the sealed "
+                 "Neumann field uses the physical zero-total-flux wall law; "
+                 "the residual error is correction-table interpolation, "
+                 "measured at 1.22e-4 median, 3.88e-3 p90, and 1.55e-1 "
+                 "maximum at the ColE1 basis; see "
+                 "docs/NEUMANN_WALL_NORMAL_DRIFT.md\n";
+    return;
+  }
   if (cfg.drift_envelope_policy == "allow") return;
   const Vec3 probe = domain.cell_center(
       domain.nx() / 2, domain.ny() / 2, domain.nz() / 2);
@@ -331,8 +343,11 @@ GreensFunctionParams weighted_avg_params(
   avg_params.image_series_relative_tolerance =
       cfg.image_series_relative_tolerance;
   avg_params.image_series_max_shells = image_series_shells(cfg);
+  avg_params.image_series_max_shells_explicit =
+      cfg.image_series_max_shells_explicit;
   avg_params.image_series_legacy_reflections =
       cfg.image_series_mode == "pre_fix_duplicated_reflection";
+  avg_params.drift_correction = cfg.drift_correction;
   return avg_params;
 }
 
@@ -533,8 +548,11 @@ void collect_microcin_sources(const AgentPool& agents,
       gfp.image_series_relative_tolerance =
           cfg.image_series_relative_tolerance;
       gfp.image_series_max_shells = image_series_shells(cfg);
+      gfp.image_series_max_shells_explicit =
+          cfg.image_series_max_shells_explicit;
       gfp.image_series_legacy_reflections =
           cfg.image_series_mode == "pre_fix_duplicated_reflection";
+      gfp.drift_correction = cfg.drift_correction;
       const Real protease_decay = (protease.enabled
                                    && bi.protease_half_life > 0.0)
           ? k_ln2 / bi.protease_half_life : 0.0;
@@ -710,8 +728,11 @@ void QSSASolver::solve_bacteriocin_field(
     param.image_series_relative_tolerance =
         cfg_.image_series_relative_tolerance;
     param.image_series_max_shells = image_series_shells(cfg_);
+    param.image_series_max_shells_explicit =
+        cfg_.image_series_max_shells_explicit;
     param.image_series_legacy_reflections =
         cfg_.image_series_mode == "pre_fix_duplicated_reflection";
+    param.drift_correction = cfg_.drift_correction;
   }
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
@@ -824,8 +845,11 @@ void QSSASolver::solve_all_bacteriocin_fields(
     param.image_series_relative_tolerance =
         cfg_.image_series_relative_tolerance;
     param.image_series_max_shells = image_series_shells(cfg_);
+    param.image_series_max_shells_explicit =
+        cfg_.image_series_max_shells_explicit;
     param.image_series_legacy_reflections =
         cfg_.image_series_mode == "pre_fix_duplicated_reflection";
+    param.drift_correction = cfg_.drift_correction;
   }
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
