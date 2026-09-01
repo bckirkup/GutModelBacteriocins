@@ -138,9 +138,10 @@ Real probe_error(const TestSystem& system,
   return relative_error(image, reference);
 }
 
-Real worst_case_error(Real flow_x, Real flow_z) {
+Real worst_case_error(Real flow_x, Real flow_z, bool drift_correction = false) {
   auto system = make_system(flow_z, flow_x);
-  const auto params = make_params();
+  auto params = make_params();
+  params.drift_correction = drift_correction;
   Real worst = 0.0;
   for (const Probe& probe : kProbes) {
     worst = std::max(
@@ -491,6 +492,33 @@ void test_physical_sealed_interpolation() {
             << median << ", max=" << maximum << ")\n";
 }
 
+void test_correction_improves_with_wall_normal_flow() {
+  const std::array<Real, 4> pe_values = {0.01, 0.0926, 0.37, 1.5};
+  std::array<Real, 4> corrected_errors = {};
+  std::array<Real, 4> uncorrected_errors = {};
+  std::array<Real, 4> ratios = {};
+  for (size_t i = 0; i < pe_values.size(); ++i) {
+    const Real flow_z = pe_values[i] * kDiffusion / kHeight;
+    corrected_errors[i] = worst_case_error(kFlowX, flow_z, true);
+    uncorrected_errors[i] = worst_case_error(kFlowX, flow_z, false);
+    ratios[i] = corrected_errors[i] / uncorrected_errors[i];
+    require(corrected_errors[i] < uncorrected_errors[i],
+            "drift correction did not improve physical-reference error");
+    std::cout << "  Pe_z=" << pe_values[i]
+              << " corrected=" << corrected_errors[i]
+              << " uncorrected=" << uncorrected_errors[i]
+              << " ratio=" << ratios[i] << "\n";
+  }
+  // The measured ratio is not monotone because interpolation error becomes
+  // visible at low Pe_z. The strict improvement assertion is the primary
+  // graded behavior check; this bound guards against a correction that only
+  // works at one Pe_z.
+  require(std::all_of(ratios.begin(), ratios.end(),
+                      [](Real ratio) { return ratio < 0.7; }),
+          "drift correction improvement lacked measured headroom");
+  std::cout << "  test_correction_improves_with_wall_normal_flow: PASSED\n";
+}
+
 void test_default_off_identity() {
   auto system = make_system(0.822 * kDiffusion / kHeight);
   const auto params = make_params();
@@ -500,6 +528,12 @@ void test_default_off_identity() {
       {0.914, 0.243, 113.0e-6},
   }};
   const std::array<Real, 10> main_values = {{
+      // CHANGE DETECTOR, not a physics assertion. These values were produced
+      // by building this fixture from origin/main in /home/ubuntu/wt-main-drift
+      // with GCC 13, an empty CMAKE_BUILD_TYPE, and -Wall -Wextra; MPICH was
+      // configured with MPICH_CC=gcc-13 and MPICH_CXX=g++-13, then built with
+      // MPICH_CXX=g++-13. Regenerate them only to detect unintended default
+      // path changes, per .agents/skills/ci-test-design/SKILL.md.
       0x1.d0d52ca97fba1p-12, 0x1.d7f536f329f8fp-13,
       0x1.d825310450f75p-13, 0x1.64ef9befbd004p-15,
       0x1.2e5cc26721758p-12, 0x1.2efdc394ed6d3p-13,
@@ -558,6 +592,7 @@ int main() {
   test_physical_wall_law_composition();
   test_zero_drift_correction_invariance();
   test_physical_sealed_interpolation();
+  test_correction_improves_with_wall_normal_flow();
   test_robin_composition();
   test_default_off_identity();
   std::cout << "All wall-normal drift envelope tests passed.\n";
