@@ -130,7 +130,11 @@ bool launch_superpose(const Domain& domain,
           params[i].robin_cutoff,
           params[i].lumen_transfer_basis_free
               ? robin::TransferBasis::Free
-              : robin::TransferBasis::Effective);
+              : robin::TransferBasis::Effective,
+          params[i].image_series_relative_tolerance,
+          params[i].image_series_max_shells,
+          params[i].image_series_max_shells_explicit,
+          params[i].image_series_legacy_reflections);
       source_tables[i] = table;
     }
   }
@@ -154,7 +158,8 @@ bool launch_superpose(const Domain& domain,
         robin_tables.size() * robin::kTableValueCount);
     for (const auto& table : robin_tables) {
       robin_table_values.insert(robin_table_values.end(),
-                                table->values.begin(), table->values.end());
+                                table->legacy_values.begin(),
+                                table->legacy_values.end());
     }
     robin_table_device_buffer.upload(robin_table_values);
     robin_table_device_set = robin_tables;
@@ -307,6 +312,10 @@ std::vector<size_t> robin_host_fallback_sources(
       {domain.dx_x(), domain.dx_y(), domain.dx_z()});
   std::vector<size_t> fallback;
   for (size_t source = 0; source < sources.size(); ++source) {
+    if (params[source].drift_correction) {
+      fallback.push_back(source);
+      continue;
+    }
     if (!robin::transfer_enabled(params[source].lumen_transfer_length)) {
       continue;
     }

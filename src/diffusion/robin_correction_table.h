@@ -41,6 +41,7 @@ constexpr int kTableValueCount =
 constexpr int kTableModeCount = 2048;
 constexpr double kTableRelativeTolerance = 1.0e-6;
 constexpr double kDefaultCutoff = 200.0e-6;
+constexpr double kMinimumTableRho = 0.25e-6;
 constexpr double kZeroTransferLength =
     std::numeric_limits<double>::infinity();
 
@@ -53,6 +54,7 @@ struct TableView {
   double z_lo;
   double height;
   double cutoff;
+  double rho_min = kMinimumTableRho;
 };
 
 GUTIBM_ROBIN_HOST_DEVICE inline double clamp_table_coordinate(
@@ -75,16 +77,22 @@ GUTIBM_ROBIN_HOST_DEVICE inline double table_value(
   return table.values[table_index(source_index, target_index, rho_index)];
 }
 
-GUTIBM_ROBIN_HOST_DEVICE inline double interpolate(
-    const TableView& table, double source_z, double target_z, double rho) {
+GUTIBM_ROBIN_HOST_DEVICE inline double interpolate_impl(
+    const TableView& table, double source_z, double target_z, double rho,
+    bool logarithmic_rho) {
   const double source_coordinate =
       (source_z - table.z_lo) / table.height
       * static_cast<double>(kTableNodes - 1);
   const double target_coordinate =
       (target_z - table.z_lo) / table.height
       * static_cast<double>(kTableNodes - 1);
-  const double rho_coordinate = rho / table.cutoff
-      * static_cast<double>(kTableNodes - 1);
+  const double rho_coordinate = logarithmic_rho
+      ? (rho <= table.rho_min
+          ? 0.0
+          : std::log(rho / table.rho_min)
+              / std::log(table.cutoff / table.rho_min)
+              * static_cast<double>(kTableNodes - 1))
+      : rho / table.cutoff * static_cast<double>(kTableNodes - 1);
   const double source_clamped = clamp_table_coordinate(source_coordinate);
   const double target_clamped = clamp_table_coordinate(target_coordinate);
   const double rho_clamped = clamp_table_coordinate(rho_coordinate);
@@ -128,20 +136,33 @@ GUTIBM_ROBIN_HOST_DEVICE inline double interpolate(
   return c0 + source_weight * (c1 - c0);
 }
 
+GUTIBM_ROBIN_HOST_DEVICE inline double interpolate_log(
+    const TableView& table, double source_z, double target_z, double rho) {
+  return interpolate_impl(table, source_z, target_z, rho, true);
+}
+
+GUTIBM_ROBIN_HOST_DEVICE inline double interpolate_uniform(
+    const TableView& table, double source_z, double target_z, double rho) {
+  return interpolate_impl(table, source_z, target_z, rho, false);
+}
+
 struct Table {
-  std::vector<double> values;
+  std::vector<double> legacy_values;
+  std::vector<double> physical_values;
+  std::vector<double> drift_values;
   double z_lo = 0.0;
   double height = 0.0;
   double cutoff = kDefaultCutoff;
   double biot_number = 0.0;
   double screening_height = 0.0;
   double lower_coefficient_height = 0.0;
-  std::array<int64_t, 4> quantized_key{};
+  bool drift_correction = false;
+  std::array<int64_t, 9> quantized_key{};
   TransferBasis basis = TransferBasis::Effective;
 };
 
 struct TableCacheKey {
-  std::array<int64_t, 4> groups{};
+  std::array<int64_t, 9> groups{};
   bool operator<(const TableCacheKey& other) const {
     return groups < other.groups;
   }
@@ -166,6 +187,11 @@ struct SealedFieldParams {
   int mode_count;
 };
 
+enum class SealedReference {
+  Physical,
+  ImageConsistent
+};
+
 class TableCache {
  public:
   static constexpr size_t kMaximumTables = 64;
@@ -173,7 +199,12 @@ class TableCache {
   std::shared_ptr<const Table> get(
       const AdvectionField& adv, double z_lo, double z_hi,
       double d_free, double d_eff, double decay_rate,
-      double lumen_transfer_length, double cutoff, TransferBasis basis);
+      double lumen_transfer_length, double cutoff, TransferBasis basis,
+      double image_series_relative_tolerance = 1.0e-10,
+      int image_series_max_shells = 512,
+      bool image_series_max_shells_explicit = false,
+      bool image_series_legacy_reflections = false,
+      bool drift_correction = false);
   TableCacheSnapshot snapshot() const;
   size_t size() const;
   uint64_t tables_built() const;
@@ -214,7 +245,12 @@ bool requires_direct_evaluation(double source_z, double target_z, double rho,
 Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
                   double d_free, double d_eff, double decay_rate,
                   double lumen_transfer_length, double cutoff,
-                  TransferBasis basis = TransferBasis::Effective);
+                  TransferBasis basis = TransferBasis::Effective,
+                  double image_series_relative_tolerance = 1.0e-10,
+                  int image_series_max_shells = 512,
+                  bool image_series_max_shells_explicit = false,
+                  bool image_series_legacy_reflections = false,
+                  bool drift_correction = false);
 
 double normalized_robin_field(double z_source, double z_target, double rho,
                               double z_lo, double z_hi, double d_eff,
@@ -225,6 +261,16 @@ double normalized_robin_field(double z_source, double z_target, double rho,
                               TransferBasis basis = TransferBasis::Effective);
 
 double normalized_sealed_field(const SealedFieldParams& params);
+double normalized_image_consistent_sealed_field(
+    const SealedFieldParams& params);
+
+double normalized_image_series(double z_source, double z_target, double rho,
+                               double z_lo, double z_hi, double d_eff,
+                               double decay_rate, double flow_x, double flow_z,
+                               double image_series_relative_tolerance,
+                               int image_series_max_shells,
+                               bool image_series_max_shells_explicit,
+                               bool image_series_legacy_reflections);
 
 double normalized_correction(double z_source, double z_target, double rho,
                              double z_lo, double z_hi, double d_eff,
@@ -232,7 +278,15 @@ double normalized_correction(double z_source, double z_target, double rho,
                              double lumen_transfer_length,
                              double flow_x, double flow_y, double flow_z,
                              int mode_count,
-                             TransferBasis basis = TransferBasis::Effective);
+                             TransferBasis basis,
+                             SealedReference sealed_reference);
+
+double interpolate_drift(const Table& table, double source_z,
+                         double target_z, double rho);
+double interpolate_legacy(const Table& table, double source_z, double target_z,
+                          double rho);
+double interpolate_physical_correction(const Table& table, double source_z,
+                                       double target_z, double rho);
 
 }  // namespace robin
 }  // namespace gutibm

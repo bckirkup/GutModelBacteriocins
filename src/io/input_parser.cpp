@@ -910,6 +910,10 @@ bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::stri
     return true;
   }
   if (apply_drift_envelope_policy_key(cfg, key, val)) return true;
+  if (key == "qssa.drift_correction") {
+    cfg.qssa.drift_correction = parse_bool_config(val);
+    return true;
+  }
   if (key == "nutrient_cutoff")      { cfg.qssa.nutrient_cutoff = parse_config_real(key, val); return true; }
   if (key == "colicin_release_rate") { cfg.qssa.colicin_release_rate = parse_config_real(key, val); return true; }
   if (key == "microcin_secretion")   { cfg.qssa.microcin_secretion = parse_config_real(key, val); return true; }

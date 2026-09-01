@@ -717,6 +717,10 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
       sim.neumann_drift_envelope_evaluations());
   write_scalar_dataset(fid, "run_provenance/neumann_drift_envelope_evaluations",
                        H5T_NATIVE_ULLONG, &drift_envelope);
+  const auto drift_correction =
+      static_cast<int32_t>(sim.config().qssa.drift_correction);
+  write_scalar_dataset(fid, "run_provenance/neumann_drift_correction",
+                       H5T_NATIVE_INT32, &drift_correction);
   const auto negative_count = static_cast<unsigned long long>(
       sim.neumann_negative_field_count());
   write_scalar_dataset(fid, "run_provenance/neumann_negative_field_count",
@@ -836,6 +840,11 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
     write_scalar_dataset(
         fid, "run_provenance/neumann_drift_envelope_evaluations",
         H5T_NATIVE_ULLONG, &drift_envelope);
+    const auto drift_correction =
+        static_cast<int32_t>(sim.config().qssa.drift_correction);
+    write_scalar_dataset(
+        fid, "run_provenance/neumann_drift_correction",
+        H5T_NATIVE_INT32, &drift_correction);
     const auto negative_count = static_cast<unsigned long long>(
         sim.neumann_negative_field_count());
     write_scalar_dataset(fid, "run_provenance/neumann_negative_field_count",

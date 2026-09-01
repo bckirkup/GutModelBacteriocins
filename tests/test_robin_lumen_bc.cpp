@@ -90,7 +90,7 @@ uint64_t table_identity_hash(const robin::Table& table) {
   append_hash_bytes(hash, &table.z_lo, sizeof(table.z_lo));
   append_hash_bytes(hash, &table.height, sizeof(table.height));
   append_hash_bytes(hash, &table.cutoff, sizeof(table.cutoff));
-  for (const double value : table.values) {
+  for (const double value : table.legacy_values) {
     append_hash_bytes(hash, &value, sizeof(value));
   }
   return hash;
@@ -370,14 +370,14 @@ void test_table_against_direct_modes() {
       system.adv, z_lo, z_hi, 4.0e-11, d_eff, decay, transfer_length,
       200.0e-6);
   const robin::TableView view{
-      table.values.data(), table.z_lo, table.height, table.cutoff};
+      table.legacy_values.data(), table.z_lo, table.height, table.cutoff};
   Real maximum = 0.0;
   for (const Real source_fraction : {0.13, 0.41, 0.77}) {
     for (const Real target_fraction : {0.21, 0.58, 0.92}) {
       for (const Real rho : {1.0e-6, 7.0e-6, 31.0e-6, 87.0e-6}) {
         const Real source_z = z_lo + source_fraction * (z_hi - z_lo);
         const Real target_z = z_lo + target_fraction * (z_hi - z_lo);
-        const Real interpolated = robin::interpolate(
+        const Real interpolated = robin::interpolate_uniform(
             view, source_z, target_z, rho);
         const Real sealed = robin::normalized_robin_field(
             source_z, target_z, rho, z_lo, z_hi, d_eff, 4.0e-11, decay,
@@ -657,7 +657,7 @@ void test_shipped_flow_reconstruction() {
       system.adv, 0.0, height, 4.0e-11, d_eff, 5.0e-5,
       transfer_length, 200.0e-6);
   const robin::TableView view{
-      table.values.data(), table.z_lo, table.height, table.cutoff};
+      table.legacy_values.data(), table.z_lo, table.height, table.cutoff};
   Real maximum = 0.0;
   for (const Real source_fraction : {0.25, 0.4, 0.6, 0.75}) {
     const Vec3 source = {500.0e-6, 500.0e-6, source_fraction * height};
@@ -671,7 +671,7 @@ void test_shipped_flow_reconstruction() {
             source, target,
             params_for(d_eff, 5.0e-5,
                        std::numeric_limits<Real>::infinity()));
-        const Real correction = robin::interpolate(
+        const Real correction = robin::interpolate_uniform(
             view, source_z, target_z, rho) * std::exp(
                 (flow[0] * rho + flow[2] * (target_z - source_z))
                 / (2.0 * d_eff));
@@ -819,8 +819,8 @@ void test_peristaltic_mean_profile() {
               "peristaltic modulation changed the Robin cache key");
     }
     const robin::TableView view{
-        table->values.data(), table->z_lo, table->height, table->cutoff};
-    const Real correction_base = robin::interpolate(
+        table->legacy_values.data(), table->z_lo, table->height, table->cutoff};
+    const Real correction_base = robin::interpolate_uniform(
         view, source[2], target[2], rho);
     const Vec3 flow = system.adv.velocity(source);
     corrections[i] = source_rate / (4.0 * std::numbers::pi * d_eff)
