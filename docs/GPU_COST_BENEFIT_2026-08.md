@@ -92,16 +92,36 @@ where mechanics is 10% of the host run rather than 0.5%.
 Cost per completed replicate at $0.526/hour: `s1` $0.099 host vs $0.026 device;
 `s2` $0.123 host vs $0.091 device.
 
-## Unexplained, and deliberately not smoothed over
+## Two profile fields were misattributed, and both are host↔device copies
+
+The first version of this document listed the following as unexplained and
+hypothesized synchronization stalls. That hypothesis was wrong; both fields are
+full-field marshalling counted under a phase name that does not describe it.
+The raw values are retained rather than netted out.
 
 - `spatial_hash_s` is 0.27 s host / 13.67 s device at `s1` and 1.46 / 10.17 at
-  `s2`, and `mpi_reaction_reduce_s` is ~3e-5 s host / 10.84 s device at `s1`,
-  in single-rank runs where there is no peer to reduce with. Together that is
-  ≈13% of the device's `s1` wall time. Neither phase runs on the device, so the
-  likely explanation is that these host-side timers are absorbing
-  synchronization stalls for device work queued earlier in the step; that is a
-  measurement-attribution hypothesis, not a verified cause, and the raw values
-  are retained rather than netted out.
+  `s2`. The step-start device mirror upload — every species' `conc` *and*
+  `reac` — happens inside that profiler lap, so on device the field times a
+  whole-field H2D pass rather than the hash rebuild.
+- `mpi_reaction_reduce_s` is ~3e-5 s host / 10.84 s device at `s1`, in
+  single-rank runs where there is no peer to reduce with. On a single rank
+  `try_sum_reactions_on_device` declines at `ranks <= 1`, so the device path
+  pulled every reaction field back to host, copied it cell-by-cell into the
+  field, called a rank sum that returns immediately for one rank, and the
+  pipeline re-uploaded all of it.
+
+Together that is ≈13% of the device's `s1` wall time, and with the counted
+19.3 s of `gpu_h2d_s` + `gpu_d2h_s` it puts ≈43 s of the device run's 199 s
+into host↔device marshalling — several times the 11 s chemistry regression the
+campaign attributed to device execution. The copies these two fields measure
+are removed in the follow-up work; the timings above are pre-removal.
+
+- Every pass in this campaign reports `openmp_compiled: 0`. The benchmark image
+  did not pass `-DGUTIBM_USE_OPENMP=ON` and the CMake option defaults off, so
+  each host arm ran single-threaded on a 4-vCPU instance, including the QSSA
+  superposition that has an OpenMP path. The host/device comparison is
+  same-image and therefore internally valid, but every ratio here is against a
+  serial CPU baseline, not against this machine's CPU capability.
 - `neumann_drift_envelope_evaluations` reads 0 on every device record while the
   host records 1.24e8 sources outside the validated envelope for the same
   configuration. The counter is incremented in the host sealed concentration
