@@ -397,7 +397,8 @@ def test_report_aggregate_ratio_rejects_mismatched_hosts() -> None:
     )
     report = render_report(merged)
     assert "unavailable: completed records do not share one host fingerprint" in report
-    assert "host-a" in report and "host-b" in report
+    assert "host-a" in report
+    assert "host-b" in report
 
 
 def test_report_aggregate_ratio_rejects_unequal_seed_sets() -> None:

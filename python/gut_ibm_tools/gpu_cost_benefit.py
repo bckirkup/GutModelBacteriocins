@@ -25,9 +25,9 @@ import h5py
 
 from .path_utils import (
     PathValidationError,
+    prepare_output_file,
     validate_input_path,
     validate_input_path_within,
-    validate_output_path,
     validate_path_syntax,
 )
 
@@ -178,7 +178,7 @@ def _json_safe(value: Any) -> Any:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    candidate = validate_output_path(path)
+    candidate = prepare_output_file(path)
     candidate.write_text(
         json.dumps(_json_safe(payload), indent=2) + "\n", encoding="utf-8"
     )
@@ -214,6 +214,7 @@ def generate_configs(
 ) -> dict[str, Any]:
     """Generate matrix configurations and a manifest."""
     base = _read_json(base_path)
+    output_dir = validate_path_syntax(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     arms: dict[str, Any] = {}
     for scale, scale_path in scale_paths.items():
@@ -428,10 +429,11 @@ def _run_pass(
     hdf5_path.parent.mkdir(parents=True, exist_ok=True)
     _write_json(config_path, config)
     config_argument = str(config_path.resolve())
+    launcher = validate_path_syntax(mpirun) if mpirun is not None else None
     command = [str(binary), config_argument]
-    if mpirun is not None:
+    if launcher is not None:
         command = [
-            mpirun, "-np", _validated_mpi_ranks(mpi_ranks),
+            str(launcher), "-np", _validated_mpi_ranks(mpi_ranks),
             str(binary), config_argument
         ]
     stdout_path = hdf5_path.with_suffix(".stdout")
@@ -507,6 +509,7 @@ def run_one_arm(
     arm_info = manifest["arms"][arm]
     if scale not in arm_info.get("configs", {}):
         raise ValueError(f"scale {scale!r} is not configured for arm {arm}")
+    output_dir = validate_path_syntax(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     result_path = output_dir / f"{arm}_{scale}_seed{seed}.json"
     config = _read_declared_json(
@@ -607,37 +610,60 @@ def _record_fingerprint(record: dict[str, Any]) -> str | None:
     return fingerprint if isinstance(fingerprint, str) else None
 
 
-def _summary_for_entries(entries: list[dict[str, Any]]) -> dict[str, Any]:
-    completed = [item for item in entries if _completed_pass_pair(item)]
-    cost_passes = [item["passes"]["cost"] for item in completed]
-    profile_passes = [item["passes"]["profile"] for item in completed]
+_COUNTER_KEYS = (
+    "green_function_kernel_evaluations", "robin_direct_mode_evaluations",
+    "robin_tables_built", "robin_table_evictions"
+)
+
+
+def _phase_totals(profile_passes: list[dict[str, Any]]) -> dict[str, list[float]]:
     phase_totals: dict[str, list[float]] = {}
     for item in profile_passes:
         profile = item.get("provenance", {}).get("step_profile", {})
         for phase, value in profile.items():
             if phase != "step_count" and isinstance(value, (int, float)):
                 phase_totals.setdefault(phase, []).append(float(value))
+    return phase_totals
+
+
+def _steps_per_second(cost_passes: list[dict[str, Any]]) -> list[float]:
+    values = []
+    for item in cost_passes:
+        steps = item.get("provenance", {}).get("termination_step")
+        wall = item.get("wall_seconds")
+        if (
+            isinstance(steps, (int, float))
+            and isinstance(wall, (int, float))
+            and wall > 0
+        ):
+            values.append(float(steps) / float(wall))
+    return values
+
+
+def _counter_values(
+    profile_passes: list[dict[str, Any]]
+) -> dict[str, list[float]]:
+    values = {key: [] for key in _COUNTER_KEYS}
+    for item in profile_passes:
+        provenance = item.get("provenance", {})
+        for key in _COUNTER_KEYS:
+            value = provenance.get(key)
+            if isinstance(value, (int, float)):
+                values[key].append(float(value))
+    return values
+
+
+def _summary_for_entries(entries: list[dict[str, Any]]) -> dict[str, Any]:
+    completed = [item for item in entries if _completed_pass_pair(item)]
+    cost_passes = [item["passes"]["cost"] for item in completed]
+    profile_passes = [item["passes"]["profile"] for item in completed]
     cost_walls = [
         item["wall_seconds"] for item in cost_passes
         if isinstance(item.get("wall_seconds"), (int, float))
     ]
-    steps_per_second = []
-    for item in cost_passes:
-        steps = item.get("provenance", {}).get("termination_step")
-        wall = item.get("wall_seconds")
-        if isinstance(steps, (int, float)) and isinstance(wall, (int, float)) and wall > 0:
-            steps_per_second.append(float(steps) / float(wall))
-    counter_keys = (
-        "green_function_kernel_evaluations", "robin_direct_mode_evaluations",
-        "robin_tables_built", "robin_table_evictions"
-    )
-    counter_values = {key: [] for key in counter_keys}
-    for item in profile_passes:
-        provenance = item.get("provenance", {})
-        for key in counter_keys:
-            value = provenance.get(key)
-            if isinstance(value, (int, float)):
-                counter_values[key].append(float(value))
+    phase_totals = _phase_totals(profile_passes)
+    steps_per_second = _steps_per_second(cost_passes)
+    counter_values = _counter_values(profile_passes)
     return {
         "available_count": len(completed),
         "missing_count": sum(item.get("status") == "missing" for item in entries),
@@ -928,16 +954,83 @@ def _aggregate_ratio(
         result["reason"] = "chemistry_s is absent from completed profile passes"
         return result
     chemistry_denominator = median(base_chemistry)
-    if chemistry_denominator == 0.0:
+    if not chemistry_denominator:
         result["reason"] = "baseline chemistry_s median is zero"
         return result
     result["host_fingerprint"] = fingerprint
     result["chemistry_ratio"] = median(current_chemistry) / chemistry_denominator
-    if current_total and base_total and median(base_total) != 0.0:
+    if current_total and base_total and median(base_total):
         result["total_wall_ratio"] = median(current_total) / median(base_total)
     else:
         result["total_wall_ratio"] = None
     return result
+
+
+def _report_record_row(
+    merged: dict[str, Any],
+    arm: str,
+    scale: str,
+    record: dict[str, Any],
+    baseline: str | None,
+) -> str:
+    status = record.get("status", "unknown")
+    reason = (
+        record.get("blocked_reason")
+        or record.get("invalid_placement_reason")
+        or record.get("reason")
+        or ""
+    )
+    status_text = f"{status}: {reason}" if reason else status
+    chemistry = _record_chemistry_seconds(record)
+    total = record.get("passes", {}).get("cost", {}).get("wall_seconds")
+    precision = record.get("precision_summary") or "not recorded; see raw provenance"
+    raw_path = record.get("raw_result_file", "—")
+    ratio = (
+        _same_group_ratio(merged, arm, scale, int(record["seed"]), baseline)
+        if baseline and arm != baseline
+        else None
+    )
+    cells = [
+        arm, scale, str(record.get("seed", "—")), status_text,
+        f"{chemistry:.6g}" if chemistry is not None else "—",
+        f"{float(total):.6g}" if isinstance(total, (int, float)) else "—",
+        str(precision).replace("|", "\\|"),
+        str(raw_path).replace("|", "\\|"), ratio or "—",
+    ]
+    return "| " + " | ".join(cells) + " |"
+
+
+def _aggregate_report_row(
+    merged: dict[str, Any],
+    arm: str,
+    scale: str,
+    baseline: str,
+) -> str:
+    aggregate = _aggregate_ratio(merged, arm, scale, baseline)
+    seed_counts = (
+        f"{aggregate['arm_seed_count']}/{aggregate['baseline_seed_count']}"
+    )
+    label = (
+        f"{arm}/{baseline} (scale={scale}, "
+        f"seeds={seed_counts}, arms={arm}/{baseline})"
+    )
+    if "chemistry_ratio" in aggregate:
+        chemistry_ratio = f"{label}={aggregate['chemistry_ratio']:.6g}"
+        total_ratio = aggregate.get("total_wall_ratio")
+        total_text = (
+            f"{label}={total_ratio:.6g}"
+            if total_ratio is not None else "unavailable"
+        )
+        status_text = "available"
+    else:
+        chemistry_ratio = "unavailable"
+        total_text = "unavailable"
+        status_text = f"unavailable: {aggregate['reason']}"
+    cells = [
+        arm, scale, seed_counts, f"{arm}/{baseline}",
+        chemistry_ratio, total_text, status_text,
+    ]
+    return "| " + " | ".join(cells) + " |"
 
 
 def render_report(merged: dict[str, Any]) -> str:
@@ -958,37 +1051,9 @@ def render_report(merged: dict[str, Any]) -> str:
         baseline = baselines.get(arm_data.get("axis"))
         for scale, scale_data in arm_data.get("scales", {}).items():
             for record in scale_data.get("records", []):
-                status = record.get("status", "unknown")
-                reason = (
-                    record.get("blocked_reason")
-                    or record.get("invalid_placement_reason")
-                    or record.get("reason")
-                    or ""
+                lines.append(
+                    _report_record_row(merged, arm, scale, record, baseline)
                 )
-                status_text = f"{status}: {reason}" if reason else status
-                chemistry = _record_chemistry_seconds(record)
-                total = record.get("passes", {}).get("cost", {}).get("wall_seconds")
-                precision = (
-                    record.get("precision_summary")
-                    or "not recorded; see raw provenance"
-                )
-                raw_path = record.get("raw_result_file", "—")
-                ratio = (
-                    _same_group_ratio(
-                        merged, arm, scale, int(record["seed"]), baseline
-                    )
-                    if baseline and arm != baseline
-                    else None
-                )
-                cells = [
-                    arm, scale, str(record.get("seed", "—")), status_text,
-                    f"{chemistry:.6g}" if chemistry is not None else "—",
-                    f"{float(total):.6g}"
-                    if isinstance(total, (int, float)) else "—",
-                    str(precision).replace("|", "\\|"),
-                    str(raw_path).replace("|", "\\|"), ratio or "—",
-                ]
-                lines.append("| " + " | ".join(cells) + " |")
     lines.extend([
         "", "## Comparable host groups", "",
         "Ratios are emitted only for records sharing one host fingerprint.", "",
@@ -1015,35 +1080,7 @@ def render_report(merged: dict[str, Any]) -> str:
         if not baseline or arm == baseline:
             continue
         for scale in arm_data.get("scales", {}):
-            aggregate = _aggregate_ratio(merged, arm, scale, baseline)
-            seed_counts = (
-                f"{aggregate['arm_seed_count']}/"
-                f"{aggregate['baseline_seed_count']}"
-            )
-            label = (
-                f"{arm}/{baseline} (scale={scale}, "
-                f"seeds={seed_counts}, arms={arm}/{baseline})"
-            )
-            if "chemistry_ratio" in aggregate:
-                chemistry_ratio = (
-                    f"{label}={aggregate['chemistry_ratio']:.6g}"
-                )
-                total_ratio = aggregate.get("total_wall_ratio")
-                total_text = (
-                    f"{label}={total_ratio:.6g}"
-                    if total_ratio is not None else "unavailable"
-                )
-                status_text = "available"
-            else:
-                chemistry_ratio = "unavailable"
-                total_text = "unavailable"
-                status_text = f"unavailable: {aggregate['reason']}"
-            lines.append(
-                "| " + " | ".join([
-                    arm, scale, seed_counts, f"{arm}/{baseline}",
-                    chemistry_ratio, total_text, status_text,
-                ]) + " |"
-            )
+            lines.append(_aggregate_report_row(merged, arm, scale, baseline))
     return "\n".join(lines) + "\n"
 
 

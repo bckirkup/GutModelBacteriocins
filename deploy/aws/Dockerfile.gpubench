@@ -48,7 +48,7 @@ RUN CC=gcc-13 CXX=g++-13 cmake -B build \
       -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCHITECTURES}" \
  && cmake --build build -j"$(nproc)" --target gut_ibm \
  && python3.11 -m venv /opt/venv \
- && pip install --no-cache-dir ./python \
+ && pip install --no-cache-dir --only-binary :all: ./python \
  && groupadd --gid 1000 gutibm \
  && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash gutibm \
  && chown -R gutibm:gutibm /src

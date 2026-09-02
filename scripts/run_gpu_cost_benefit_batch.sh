@@ -60,6 +60,8 @@ terminate_current_job() {
         --region "${AWS_REGION}" >/dev/null 2>&1 || \
         echo "WARNING: could not terminate Batch job ${CURRENT_JOB_ID}" >&2
       ;;
+    *)
+      ;;
   esac
 }
 
