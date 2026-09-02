@@ -239,6 +239,11 @@ def prepare_output_file(path: str | Path) -> Path:
     return validate_output_path(candidate)
 
 
+def _trusted_external_output_path(path: str | Path) -> Path:
+    """Return a validated output path that may be outside the cwd."""
+    return prepare_output_file(path).resolve()
+
+
 def prepare_output_directory(path: str | Path) -> Path:
     """Validate a directory under cwd, create it, return a trusted rebuilt path.
 
@@ -265,12 +270,18 @@ def prepare_output_directory(path: str | Path) -> Path:
     return trusted
 
 
-def write_text_file(path: str | Path, text: str) -> None:
-    """Write text to a validated output path (must resolve under cwd)."""
+def write_text_file(
+    path: str | Path, text: str, *, allow_external: bool = False
+) -> None:
+    """Write text to a validated output path."""
     candidate = validate_path_syntax(path)
-    candidate = _ensure_output_within_cwd(candidate)
-    candidate = prepare_output_file(candidate)
-    trusted_path = _trusted_output_path(candidate)
+    if not allow_external:
+        candidate = _ensure_output_within_cwd(candidate)
+    if allow_external:
+        trusted_path = _trusted_external_output_path(candidate)
+    else:
+        candidate = prepare_output_file(candidate)
+        trusted_path = _trusted_output_path(candidate)
     _validate_output_parent(trusted_path)
     temp_path: Path | None = None
     temp_fd = -1
@@ -306,6 +317,16 @@ def write_text_file(path: str | Path, text: str) -> None:
                 pass
 
 
-def write_json_file(path: str | Path, payload: Any, *, indent: int = 2) -> None:
+def write_json_file(
+    path: str | Path,
+    payload: Any,
+    *,
+    indent: int = 2,
+    allow_external: bool = False,
+) -> None:
     """Write JSON to a validated output path."""
-    write_text_file(path, json.dumps(payload, indent=indent) + "\n")
+    write_text_file(
+        path,
+        json.dumps(payload, indent=indent) + "\n",
+        allow_external=allow_external,
+    )
