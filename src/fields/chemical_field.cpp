@@ -1651,18 +1651,25 @@ bool ChemicalField::has_sink_rate() const {
   return carbon >= 0 && has_sink_rate(carbon);
 }
 
-void ChemicalField::sum_reactions_across_ranks() {
-#ifdef GUTIBM_MPI
-  if (mode_ == DecompositionMode::Slab) return;
+bool ChemicalField::reaction_reduce_is_noop() const {
+#ifndef GUTIBM_MPI
+  return true;
+#else
+  if (mode_ == DecompositionMode::Slab) return true;
   int initialized = 0;
   int finalized = 0;
   MPI_Initialized(&initialized);
   MPI_Finalized(&finalized);
-  if (!initialized || finalized) return;
-
+  if (!initialized || finalized) return true;
   int ranks = 1;
   MPI_Comm_size(MPI_COMM_WORLD, &ranks);
-  if (ranks <= 1) return;
+  return ranks <= 1;
+#endif
+}
+
+void ChemicalField::sum_reactions_across_ranks() {
+#ifdef GUTIBM_MPI
+  if (reaction_reduce_is_noop()) return;
   for (auto& reaction : reac_) {
     MPI_Allreduce(MPI_IN_PLACE, reaction.data(), ncells_, MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);

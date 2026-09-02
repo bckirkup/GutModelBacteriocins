@@ -32,6 +32,15 @@ bool sum_reactions_with_optional_device(ChemistryPipelineInput& in,
     }
     return true;
   }
+  if (reactions_on_device && in.chem.reaction_reduce_is_noop()) {
+    in.chem.sum_reactions_across_ranks();
+    if (in.step_profile != nullptr) {
+      const auto t1 = std::chrono::steady_clock::now();
+      in.step_profile->mpi_reaction_reduce_s +=
+          std::chrono::duration<double>(t1 - t0).count();
+    }
+    return true;
+  }
   if (reactions_on_device) {
     in.chem_gpu.sync_reactions_to_host(in.chem);
   }
