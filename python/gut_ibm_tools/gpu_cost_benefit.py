@@ -46,8 +46,10 @@ ARM_MATRIX: dict[str, dict[str, Any]] = {
            "accepted_placements": {"host"}, "scales": _A_SCALES},
     "A2": {"axis": "A", UPTAKE_LIMIT_KEY: "sherwood", "gpu_enabled": False,
            "accepted_placements": {"host"}, "scales": _A_SCALES},
+    # host_forced_delivery requires a declined device request, unavailable
+    # when GPU delivery is disabled.
     "A3": {"axis": "A", UPTAKE_LIMIT_KEY: "delivery", "gpu_enabled": False,
-           "accepted_placements": {"host_forced_delivery"}, "scales": _A_SCALES},
+           "accepted_placements": {"host"}, "scales": _A_SCALES},
     "A4": {"axis": "A", UPTAKE_LIMIT_KEY: "none", "gpu_enabled": True,
            "accepted_placements": {"device"}, "scales": _A_SCALES},
     "A5": {"axis": "A", UPTAKE_LIMIT_KEY: "sherwood", "gpu_enabled": True,
@@ -498,6 +500,77 @@ def _placement_validation(
     return validation
 
 
+def _current_arm_definition(
+    arm: str, manifest_definition: dict[str, Any]
+) -> dict[str, Any]:
+    return ARM_MATRIX.get(arm, manifest_definition)
+
+
+def _gpu_requested_for_arm(arm_definition: dict[str, Any]) -> bool:
+    if "gpu_enabled" in arm_definition:
+        return bool(arm_definition["gpu_enabled"])
+    return bool(arm_definition.get("overrides", {}).get("gpu_enabled", False))
+
+
+def _revalidate_record_placement(
+    record: dict[str, Any], arm_definition: dict[str, Any]
+) -> None:
+    if record.get("status") in {"blocked", "missing", "not_applicable"}:
+        return
+    passes = record.get("passes", {})
+    if not isinstance(passes, dict):
+        return
+    gpu_requested = _gpu_requested_for_arm(arm_definition)
+    stored_status = record.get("status")
+    stored_pass_statuses = {
+        name: pass_record.get("placement_status")
+        for name, pass_record in passes.items()
+        if isinstance(pass_record, dict)
+    }
+    invalid_passes: list[str] = []
+    for pass_name, pass_record in passes.items():
+        if not isinstance(pass_record, dict):
+            continue
+        if pass_record.get("status") != "completed":
+            continue
+        validation = _placement_validation(
+            pass_record, arm_definition, gpu_requested
+        )
+        if not validation["valid"]:
+            invalid_passes.append(pass_name)
+    pass_statuses = [
+        pass_record.get("status")
+        for pass_record in passes.values()
+        if isinstance(pass_record, dict)
+    ]
+    if invalid_passes:
+        status = "invalid_placement"
+        record["invalid_placement_passes"] = invalid_passes
+        record["invalid_placement_reason"] = (
+            "provenance gate failed for pass(es): " + ", ".join(invalid_passes)
+        )
+    elif all(item == "completed" for item in pass_statuses):
+        status = "completed"
+        record.pop("invalid_placement_passes", None)
+        record.pop("invalid_placement_reason", None)
+    else:
+        status = "failed"
+    rederived_pass_statuses = {
+        name: pass_record.get("placement_status")
+        for name, pass_record in passes.items()
+        if isinstance(pass_record, dict)
+    }
+    if stored_status != status or stored_pass_statuses != rederived_pass_statuses:
+        record["placement_revalidated"] = {
+            "stored": stored_status,
+            "rederived": status,
+        }
+    record["status"] = status
+    record["completion_status"] = (
+        "not_run" if status == "blocked" else status
+    )
+
+
 def run_one_arm(
     manifest_path: Path, arm: str, scale: str, seed: int, binary: Path,
     output_dir: Path, *, mpirun: str | None = None, mpi_ranks: int = 1
@@ -752,11 +825,14 @@ def merge_results(manifest_path: Path, result_paths: list[Path]) -> dict[str, An
         "reporting": manifest.get("reporting", {}), "arms": {},
     }
     for arm, arm_info in manifest["arms"].items():
+        current_arm_info = _current_arm_definition(arm, arm_info)
         arm_result = {
-            "axis": arm_info["axis"],
-            "status": arm_info.get("status", "runnable"),
-            "blocked_reason": arm_info.get("blocked_reason"),
-            "accepted_placements": arm_info.get("accepted_placements", []),
+            "axis": current_arm_info["axis"],
+            "status": current_arm_info.get("status", "runnable"),
+            "blocked_reason": current_arm_info.get("blocked_reason"),
+            "accepted_placements": sorted(
+                current_arm_info.get("accepted_placements", [])
+            ),
             "scales": {},
         }
         applicable_scales = set(
@@ -767,6 +843,7 @@ def merge_results(manifest_path: Path, result_paths: list[Path]) -> dict[str, An
             for seed in manifest["seeds"]:
                 record = records.get((arm, scale, int(seed)))
                 if record is not None:
+                    _revalidate_record_placement(record, current_arm_info)
                     entries.append(record)
                 elif scale not in applicable_scales:
                     entries.append({
@@ -774,10 +851,11 @@ def merge_results(manifest_path: Path, result_paths: list[Path]) -> dict[str, An
                         "seed": seed, "reason": "arm is declared only at "
                         + ", ".join(sorted(applicable_scales)),
                     })
-                elif arm_info.get("status") == "blocked":
+                elif current_arm_info.get("status") == "blocked":
                     entries.append({
                         "status": "blocked", "arm": arm, "scale": scale,
-                        "seed": seed, "blocked_reason": arm_info["blocked_reason"],
+                        "seed": seed,
+                        "blocked_reason": current_arm_info["blocked_reason"],
                     })
                 else:
                     entries.append({
@@ -978,6 +1056,13 @@ def _report_record_row(
         or ""
     )
     status_text = f"{status}: {reason}" if reason else status
+    revalidation = record.get("placement_revalidated")
+    if isinstance(revalidation, dict):
+        status_text += (
+            " (placement revalidated: "
+            f"stored={revalidation.get('stored')}, "
+            f"rederived={revalidation.get('rederived')})"
+        )
     chemistry = _record_chemistry_seconds(record)
     total = record.get("passes", {}).get("cost", {}).get("wall_seconds")
     precision = record.get("precision_summary") or "not recorded; see raw provenance"
