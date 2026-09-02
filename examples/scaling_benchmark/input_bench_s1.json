@@ -1,0 +1,34 @@
+{
+  "_comment": [
+    "Cost-measurement configuration for s1: 500x500x50 grid and 100000 agents.",
+    "The shipped 1e6 grid is not used because its predicted host RSS is 37.9 GB, exceeding every available GPU instance; nx=1000 also exceeds the 512-line Route B device-delivery scope.",
+    "Dysbiosis guard disabled: this performance configuration intentionally exceeds the science envelope."
+  ],
+  "total_time": 600,
+  "bio_dt": 60,
+  "output_interval": 1.0e9,
+  "seed": 55,
+  "profile_steps": true,
+  "domain_x": 0.001,
+  "domain_y": 0.001,
+  "domain_z": 0.0001,
+  "grid_dx": 2e-6,
+  "dysbiosis_threshold": 0,
+  "toxin_cutoff": 200e-6,
+  "nutrient_cutoff": 50e-6,
+  "use_fmm": true,
+  "fmm_theta": 0.5,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 100000,
+      "mu_max": 5.5e-4,
+      "plasmids": ["ColE1", "ColB"],
+      "conjugative": true
+    }
+  ],
+  "hdf5_file": "scaling_benchmark_s1.h5",
+  "hdf5": {
+    "enabled": false
+  }
+}
