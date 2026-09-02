@@ -239,6 +239,11 @@ def prepare_output_file(path: str | Path) -> Path:
     return validate_output_path(candidate)
 
 
+def _trusted_external_output_path(path: str | Path) -> Path:
+    """Return a validated output path that may be outside the cwd."""
+    return prepare_output_file(path).resolve()
+
+
 def prepare_output_directory(path: str | Path) -> Path:
     """Validate a directory under cwd, create it, return a trusted rebuilt path.
 
@@ -272,10 +277,11 @@ def write_text_file(
     candidate = validate_path_syntax(path)
     if not allow_external:
         candidate = _ensure_output_within_cwd(candidate)
-    candidate = prepare_output_file(candidate)
-    trusted_path = (
-        candidate if allow_external else _trusted_output_path(candidate)
-    )
+    if allow_external:
+        trusted_path = _trusted_external_output_path(candidate)
+    else:
+        candidate = prepare_output_file(candidate)
+        trusted_path = _trusted_output_path(candidate)
     _validate_output_parent(trusted_path)
     temp_path: Path | None = None
     temp_fd = -1
