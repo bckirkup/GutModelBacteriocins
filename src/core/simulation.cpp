@@ -1261,6 +1261,10 @@ void Simulation::print_step_profile() const {
             << "  cleanup=" << step_profile_.cleanup_s * inv << "\n"
             << "  gpu_h2d=" << step_profile_.gpu_h2d_s * inv << "\n"
             << "  gpu_d2h=" << step_profile_.gpu_d2h_s * inv << "\n"
+            << "  gpu_h2d_bytes_total=" << step_profile_.gpu_h2d_bytes << "\n"
+            << "  gpu_d2h_bytes_total=" << step_profile_.gpu_d2h_bytes << "\n"
+            << "  gpu_h2d_calls_total=" << step_profile_.gpu_h2d_calls << "\n"
+            << "  gpu_d2h_calls_total=" << step_profile_.gpu_d2h_calls << "\n"
             << "  gpu_slab_x_roundtrip="
             << step_profile_.gpu_slab_x_roundtrip_s * inv << "\n"
             << "  mpi_reaction_reduce=" << step_profile_.mpi_reaction_reduce_s * inv << "\n"
@@ -1276,6 +1280,10 @@ void Simulation::print_step_profile() const {
             << " cleanup_s=" << step_profile_.cleanup_s * inv
             << " gpu_h2d_s=" << step_profile_.gpu_h2d_s * inv
             << " gpu_d2h_s=" << step_profile_.gpu_d2h_s * inv
+            << " gpu_h2d_bytes_total=" << step_profile_.gpu_h2d_bytes
+            << " gpu_d2h_bytes_total=" << step_profile_.gpu_d2h_bytes
+            << " gpu_h2d_calls_total=" << step_profile_.gpu_h2d_calls
+            << " gpu_d2h_calls_total=" << step_profile_.gpu_d2h_calls
             << " gpu_slab_x_roundtrip_s="
             << step_profile_.gpu_slab_x_roundtrip_s * inv
             << " mpi_reaction_reduce_s=" << step_profile_.mpi_reaction_reduce_s * inv
@@ -1883,6 +1891,10 @@ void Simulation::step(Real dt) {
     const GpuTransferProfile xfer = gpu_transfer_profile_snapshot();
     step_profile_.gpu_h2d_s += xfer.h2d_s;
     step_profile_.gpu_d2h_s += xfer.d2h_s;
+    step_profile_.gpu_h2d_bytes += xfer.h2d_bytes;
+    step_profile_.gpu_d2h_bytes += xfer.d2h_bytes;
+    step_profile_.gpu_h2d_calls += xfer.h2d_calls;
+    step_profile_.gpu_d2h_calls += xfer.d2h_calls;
     step_profile_.gpu_slab_x_roundtrip_s += xfer.slab_x_roundtrip_s;
     gpu_transfer_profile_reset();
   }

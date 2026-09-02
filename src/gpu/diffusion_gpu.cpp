@@ -413,6 +413,7 @@ bool gpu_apply_species_diffusion_slab_device(
   gpu_check_error("slab diffusion boundary");
   const size_t count = static_cast<size_t>(context.storage_nx) * domain.ny()
       * domain.nz();
+  const size_t bytes = count * sizeof(double);
   const auto start = std::chrono::steady_clock::now();
   auto& host_concentration =
       context.field.mutable_species_concentration(context.spec_index);
@@ -425,7 +426,8 @@ bool gpu_apply_species_diffusion_slab_device(
   }
   gpu_transfer_record_d2h(
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
-          .count());
+          .count(),
+      static_cast<unsigned long long>(bytes));
   context.field.apply_periodic_x_diffusion(
       domain, dt, context.spec_index);
   const auto host_done = std::chrono::steady_clock::now();
@@ -438,7 +440,8 @@ bool gpu_apply_species_diffusion_slab_device(
   }
   gpu_transfer_record_h2d(
       std::chrono::duration<double>(std::chrono::steady_clock::now() - host_done)
-          .count());
+          .count(),
+      static_cast<unsigned long long>(bytes));
   gpu_transfer_record_slab_x_roundtrip(
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
           .count());

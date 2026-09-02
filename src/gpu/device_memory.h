@@ -55,10 +55,6 @@ class DeviceBuffer {
 
   void free() {
 #ifdef GUTIBM_CUDA
-    if (host_ptr_) {
-      cudaFreeHost(host_ptr_);
-      host_ptr_ = nullptr;
-    }
     if (ptr_) {
       cudaFree(ptr_);
       ptr_ = nullptr;
@@ -71,6 +67,10 @@ class DeviceBuffer {
     if (count > count_) allocate(count);
 #ifdef GUTIBM_CUDA
     if (count > 0) {
+      if (gpu_transfer_profiling_enabled()) {
+        cudaStreamSynchronize(nullptr);
+        gpu_check_error("cudaStreamSynchronize before H2D profiling");
+      }
       const auto t0 = std::chrono::steady_clock::now();
       cudaStream_t stream = nullptr;
       cudaMemcpyAsync(ptr_, host, count * sizeof(T), cudaMemcpyHostToDevice, stream);
@@ -79,7 +79,8 @@ class DeviceBuffer {
       if (gpu_transfer_profiling_enabled()) {
         const auto t1 = std::chrono::steady_clock::now();
         gpu_transfer_record_h2d(
-            std::chrono::duration<double>(t1 - t0).count());
+            std::chrono::duration<double>(t1 - t0).count(),
+            static_cast<unsigned long long>(count * sizeof(T)));
       }
     }
 #else
@@ -92,6 +93,10 @@ class DeviceBuffer {
   void download(T* host, size_t count) const {
 #ifdef GUTIBM_CUDA
     if (count > 0) {
+      if (gpu_transfer_profiling_enabled()) {
+        cudaStreamSynchronize(nullptr);
+        gpu_check_error("cudaStreamSynchronize before D2H profiling");
+      }
       const auto t0 = std::chrono::steady_clock::now();
       cudaStream_t stream = nullptr;
       cudaMemcpyAsync(host, ptr_, count * sizeof(T), cudaMemcpyDeviceToHost, stream);
@@ -100,7 +105,8 @@ class DeviceBuffer {
       if (gpu_transfer_profiling_enabled()) {
         const auto t1 = std::chrono::steady_clock::now();
         gpu_transfer_record_d2h(
-            std::chrono::duration<double>(t1 - t0).count());
+            std::chrono::duration<double>(t1 - t0).count(),
+            static_cast<unsigned long long>(count * sizeof(T)));
       }
     }
 #else
@@ -120,16 +126,13 @@ class DeviceBuffer {
 
  private:
   T*     ptr_      = nullptr;
-  T*     host_ptr_ = nullptr;
   size_t count_    = 0;
 
   void move_from(DeviceBuffer& other) noexcept {
-    ptr_      = other.ptr_;
-    host_ptr_ = other.host_ptr_;
-    count_    = other.count_;
-    other.ptr_      = nullptr;
-    other.host_ptr_ = nullptr;
-    other.count_    = 0;
+    ptr_   = other.ptr_;
+    count_ = other.count_;
+    other.ptr_   = nullptr;
+    other.count_ = 0;
   }
 };
 
