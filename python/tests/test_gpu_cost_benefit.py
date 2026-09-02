@@ -295,7 +295,10 @@ def test_report_has_status_rows_cost_precision_and_same_host_ratio() -> None:
             {
                 "host_fingerprint": "same",
                 "arms": [{"arm": "A1"}, {"arm": "A3"}],
-                "records": [],
+                "records": [
+                    {"arm": "A1", "scale": "s1", "seed": 55},
+                    {"arm": "A3", "scale": "s1", "seed": 55},
+                ],
             }
         ],
     }
@@ -306,6 +309,129 @@ def test_report_has_status_rows_cost_precision_and_same_host_ratio() -> None:
     assert "scale=s1" in report
     assert "seeds=1" in report
     assert "A1/A3" in report
+
+
+def _aggregate_record(
+    arm: str,
+    seed: int,
+    host: str | None,
+    chemistry: float,
+    total: float,
+) -> dict:
+    return {
+        "arm": arm,
+        "scale": "s1",
+        "seed": seed,
+        "status": "completed",
+        "host": {"host_fingerprint": host},
+        "passes": {
+            "cost": {"status": "completed", "wall_seconds": total},
+            "profile": {
+                "status": "completed",
+                "provenance": {"step_profile": {"chemistry_s": chemistry}},
+            },
+        },
+    }
+
+
+def _aggregate_merged(
+    current_records: list[dict], baseline_records: list[dict]
+) -> dict:
+    all_records = [
+        {
+            "arm": record["arm"],
+            "scale": record["scale"],
+            "seed": record["seed"],
+            "raw_result_file": None,
+        }
+        for record in (*current_records, *baseline_records)
+    ]
+    hosts = {
+        record["host"]["host_fingerprint"]
+        for record in (*current_records, *baseline_records)
+    }
+    return {
+        "baselines": {"A": "A3"},
+        "arms": {
+            "A1": {
+                "axis": "A",
+                "scales": {"s1": {"records": current_records}},
+            },
+            "A3": {
+                "axis": "A",
+                "scales": {"s1": {"records": baseline_records}},
+            },
+        },
+        "comparable_arm_groups": [
+            {
+                "host_fingerprint": next(iter(hosts))
+                if len(hosts) == 1 else "mixed",
+                "records": all_records,
+            }
+        ],
+    }
+
+
+def test_report_aggregate_ratio_uses_matching_hosts_and_seed_counts() -> None:
+    merged = _aggregate_merged(
+        [
+            _aggregate_record("A1", 55, "same", 2.0, 10.0),
+            _aggregate_record("A1", 56, "same", 4.0, 12.0),
+        ],
+        [
+            _aggregate_record("A3", 55, "same", 4.0, 20.0),
+            _aggregate_record("A3", 56, "same", 6.0, 24.0),
+        ],
+    )
+    report = render_report(merged)
+    assert "Aggregate ratios" in report
+    assert "seeds=2/2" in report
+    assert "A1/A3 (scale=s1, seeds=2/2, arms=A1/A3)=0.6" in report
+    assert "A1/A3 (scale=s1, seeds=2/2, arms=A1/A3)=0.5" in report
+
+
+def test_report_aggregate_ratio_rejects_mismatched_hosts() -> None:
+    merged = _aggregate_merged(
+        [_aggregate_record("A1", 55, "host-a", 2.0, 10.0)],
+        [_aggregate_record("A3", 55, "host-b", 4.0, 20.0)],
+    )
+    report = render_report(merged)
+    assert "unavailable: completed records do not share one host fingerprint" in report
+    assert "host-a" in report and "host-b" in report
+
+
+def test_report_aggregate_ratio_rejects_unequal_seed_sets() -> None:
+    merged = _aggregate_merged(
+        [
+            _aggregate_record("A1", 55, "same", 2.0, 10.0),
+            _aggregate_record("A1", 56, "same", 2.0, 10.0),
+        ],
+        [_aggregate_record("A3", 55, "same", 4.0, 20.0)],
+    )
+    report = render_report(merged)
+    assert "completed seed sets differ" in report
+    assert "| 2/1 |" in report
+
+
+@pytest.mark.parametrize(
+    ("baseline_records", "reason"),
+    [
+        (
+            [_aggregate_record("A3", 55, "same", 0.0, 20.0)],
+            "baseline chemistry_s median is zero",
+        ),
+        ([], "completed records unavailable"),
+    ],
+)
+def test_report_aggregate_ratio_rejects_zero_or_absent_baseline(
+    baseline_records: list[dict], reason: str
+) -> None:
+    merged = _aggregate_merged(
+        [_aggregate_record("A1", 55, "same", 2.0, 10.0)],
+        baseline_records,
+    )
+    report = render_report(merged)
+    assert f"unavailable: {reason}" in report
 
 
 def test_runner_rejects_config_outside_manifest_directory(tmp_path: Path) -> None:

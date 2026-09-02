@@ -784,6 +784,25 @@ def _record_chemistry_seconds(record: dict[str, Any]) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
 
 
+def _in_comparable_group(
+    merged: dict[str, Any], records: list[dict[str, Any]], fingerprint: str
+) -> bool:
+    required_keys = {
+        (record.get("arm"), record.get("scale"), int(record["seed"]))
+        for record in records
+    }
+    for group in merged.get("comparable_arm_groups", []):
+        if group.get("host_fingerprint") != fingerprint:
+            continue
+        group_keys = {
+            (record.get("arm"), record.get("scale"), int(record["seed"]))
+            for record in group.get("records", [])
+        }
+        if required_keys <= group_keys:
+            return True
+    return False
+
+
 def _same_group_ratio(
     merged: dict[str, Any], arm: str, scale: str, seed: int, baseline: str
 ) -> str | None:
@@ -806,6 +825,10 @@ def _same_group_ratio(
         ),
         None,
     )
+    if base_record is None or not _in_comparable_group(
+        merged, [current_record, base_record], fingerprint
+    ):
+        return None
     numerator = _record_chemistry_seconds(current_record)
     denominator = _record_chemistry_seconds(base_record or {})
     if numerator is None or denominator in (None, 0.0):
@@ -815,6 +838,106 @@ def _same_group_ratio(
         f"chemistry_s ratio {arm}/{baseline}={ratio:.6g} "
         f"(scale={scale}, seeds=1, host={fingerprint})"
     )
+
+
+def _completed_records(scale_data: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        record for record in scale_data.get("records", [])
+        if _completed_pass_pair(record)
+    ]
+
+
+def _aggregate_ratio(
+    merged: dict[str, Any], arm: str, scale: str, baseline: str
+) -> dict[str, Any]:
+    current = merged["arms"].get(arm, {}).get("scales", {}).get(scale, {})
+    base = merged["arms"].get(baseline, {}).get("scales", {}).get(scale, {})
+    current_records = _completed_records(current)
+    base_records = _completed_records(base)
+    result = {
+        "arm": arm,
+        "baseline": baseline,
+        "scale": scale,
+        "arm_seed_count": len(current_records),
+        "baseline_seed_count": len(base_records),
+    }
+    if not current_records or not base_records:
+        result["reason"] = (
+            "completed records unavailable "
+            f"(arm seeds={len(current_records)}, "
+            f"baseline seeds={len(base_records)})"
+        )
+        return result
+    current_seeds = {int(record["seed"]) for record in current_records}
+    base_seeds = {int(record["seed"]) for record in base_records}
+    if current_seeds != base_seeds:
+        result["reason"] = (
+            "completed seed sets differ "
+            f"(arm={sorted(current_seeds)}, baseline={sorted(base_seeds)})"
+        )
+        return result
+    fingerprints = {
+        _record_fingerprint(record)
+        for record in (*current_records, *base_records)
+    }
+    if None in fingerprints or len(fingerprints) != 1:
+        current_fingerprints = sorted(
+            {_record_fingerprint(item) for item in current_records},
+            key=str,
+        )
+        base_fingerprints = sorted(
+            {_record_fingerprint(item) for item in base_records},
+            key=str,
+        )
+        result["reason"] = (
+            "completed records do not share one host fingerprint "
+            f"(arm={current_fingerprints}, baseline={base_fingerprints})"
+        )
+        return result
+    fingerprint = next(iter(fingerprints))
+    if not _in_comparable_group(
+        merged, [*current_records, *base_records], fingerprint
+    ):
+        result["reason"] = (
+            "completed records are not contained in one comparable host group"
+        )
+        return result
+    current_chemistry = [
+        value for record in current_records
+        if (value := _record_chemistry_seconds(record)) is not None
+    ]
+    base_chemistry = [
+        value for record in base_records
+        if (value := _record_chemistry_seconds(record)) is not None
+    ]
+    current_total = [
+        float(value) for record in current_records
+        if isinstance(
+            value := record.get("passes", {}).get("cost", {}).get("wall_seconds"),
+            (int, float),
+        )
+    ]
+    base_total = [
+        float(value) for record in base_records
+        if isinstance(
+            value := record.get("passes", {}).get("cost", {}).get("wall_seconds"),
+            (int, float),
+        )
+    ]
+    if not current_chemistry or not base_chemistry:
+        result["reason"] = "chemistry_s is absent from completed profile passes"
+        return result
+    chemistry_denominator = median(base_chemistry)
+    if chemistry_denominator == 0.0:
+        result["reason"] = "baseline chemistry_s median is zero"
+        return result
+    result["host_fingerprint"] = fingerprint
+    result["chemistry_ratio"] = median(current_chemistry) / chemistry_denominator
+    if current_total and base_total and median(base_total) != 0.0:
+        result["total_wall_ratio"] = median(current_total) / median(base_total)
+    else:
+        result["total_wall_ratio"] = None
+    return result
 
 
 def render_report(merged: dict[str, Any]) -> str:
@@ -873,6 +996,54 @@ def render_report(merged: dict[str, Any]) -> str:
     for group in merged.get("comparable_arm_groups", []):
         arm_names = ", ".join(item["arm"] for item in group.get("arms", []))
         lines.append(f"- `{group['host_fingerprint']}`: {arm_names}")
+    lines.extend([
+        "", "## Aggregate ratios", "",
+        (
+            "Chemistry is primary; total wall time is explicitly secondary. "
+            "Ratios require matching completed seed sets on one host fingerprint."
+        ),
+        "",
+        (
+            "| Arm | Scale | Seed counts (arm/baseline) | Arms | "
+            "Chemistry ratio (primary) | Total wall ratio (secondary) | "
+            "Status / reason |"
+        ),
+        "|---|---|---:|---|---:|---:|---|",
+    ])
+    for arm, arm_data in merged.get("arms", {}).items():
+        baseline = baselines.get(arm_data.get("axis"))
+        if not baseline or arm == baseline:
+            continue
+        for scale in arm_data.get("scales", {}):
+            aggregate = _aggregate_ratio(merged, arm, scale, baseline)
+            seed_counts = (
+                f"{aggregate['arm_seed_count']}/"
+                f"{aggregate['baseline_seed_count']}"
+            )
+            label = (
+                f"{arm}/{baseline} (scale={scale}, "
+                f"seeds={seed_counts}, arms={arm}/{baseline})"
+            )
+            if "chemistry_ratio" in aggregate:
+                chemistry_ratio = (
+                    f"{label}={aggregate['chemistry_ratio']:.6g}"
+                )
+                total_ratio = aggregate.get("total_wall_ratio")
+                total_text = (
+                    f"{label}={total_ratio:.6g}"
+                    if total_ratio is not None else "unavailable"
+                )
+                status_text = "available"
+            else:
+                chemistry_ratio = "unavailable"
+                total_text = "unavailable"
+                status_text = f"unavailable: {aggregate['reason']}"
+            lines.append(
+                "| " + " | ".join([
+                    arm, scale, seed_counts, f"{arm}/{baseline}",
+                    chemistry_ratio, total_text, status_text,
+                ]) + " |"
+            )
     return "\n".join(lines) + "\n"
 
 
