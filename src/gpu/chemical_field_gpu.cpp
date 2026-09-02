@@ -259,41 +259,32 @@ void ChemicalFieldGpu::sync_to_host(ChemicalField& field) {
 void ChemicalFieldGpu::sync_concentrations_to_device(const ChemicalField& field) {
   if (!active_) return;
   for (Int s = 0; s < nspec_; ++s) {
-    d_conc_[static_cast<size_t>(s)].upload(
-        field.conc_data()[static_cast<size_t>(s)]);
+    const auto& row = field.species_concentration(s);
+    d_conc_[static_cast<size_t>(s)].upload(row.data(), row.size());
   }
 }
 
 void ChemicalFieldGpu::sync_reactions_to_device(const ChemicalField& field) {
   if (!active_) return;
   for (Int s = 0; s < nspec_; ++s) {
-    std::vector<double> host(static_cast<size_t>(ncells_));
-    for (Int c = 0; c < ncells_; ++c) {
-      host[static_cast<size_t>(c)] = field.reac(s, c);
-    }
-    d_reac_[static_cast<size_t>(s)].upload(host);
+    const auto& row = field.species_reaction(s);
+    d_reac_[static_cast<size_t>(s)].upload(row.data(), row.size());
   }
 }
 
 void ChemicalFieldGpu::sync_concentrations_to_host(ChemicalField& field) {
   if (!active_) return;
   for (Int s = 0; s < nspec_; ++s) {
-    std::vector<double> host(static_cast<size_t>(ncells_));
-    d_conc_[static_cast<size_t>(s)].download(host);
-    for (Int c = 0; c < ncells_; ++c) {
-      field.conc(s, c) = host[static_cast<size_t>(c)];
-    }
+    auto& row = field.mutable_species_concentration(s);
+    d_conc_[static_cast<size_t>(s)].download(row.data(), row.size());
   }
 }
 
 void ChemicalFieldGpu::sync_reactions_to_host(ChemicalField& field) {
   if (!active_) return;
   for (Int s = 0; s < nspec_; ++s) {
-    std::vector<double> host(static_cast<size_t>(ncells_));
-    d_reac_[static_cast<size_t>(s)].download(host);
-    for (Int c = 0; c < ncells_; ++c) {
-      field.reac(s, c) = host[static_cast<size_t>(c)];
-    }
+    auto& row = field.mutable_species_reaction(s);
+    d_reac_[static_cast<size_t>(s)].download(row.data(), row.size());
   }
 }
 

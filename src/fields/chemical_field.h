@@ -622,9 +622,29 @@ class ChemicalField {
 
   // Raw data for HDF5 output
   const std::vector<std::vector<Real>>& conc_data() const { return conc_; }
+  const std::vector<Real>& species_concentration(Int spec) const {
+    assert(spec >= 0 && spec < nspec_);
+    const auto& row = conc_[static_cast<size_t>(spec)];
+    assert(static_cast<Int>(row.size()) == ncells_);
+    return row;
+  }
+  const std::vector<Real>& species_reaction(Int spec) const {
+    assert(spec >= 0 && spec < nspec_);
+    const auto& row = reac_[static_cast<size_t>(spec)];
+    assert(static_cast<Int>(row.size()) == ncells_);
+    return row;
+  }
   std::vector<Real>& mutable_species_concentration(Int spec) {
     assert(spec >= 0 && spec < nspec_);
-    return conc_[static_cast<size_t>(spec)];
+    auto& row = conc_[static_cast<size_t>(spec)];
+    assert(static_cast<Int>(row.size()) == ncells_);
+    return row;
+  }
+  std::vector<Real>& mutable_species_reaction(Int spec) {
+    assert(spec >= 0 && spec < nspec_);
+    auto& row = reac_[static_cast<size_t>(spec)];
+    assert(static_cast<Int>(row.size()) == ncells_);
+    return row;
   }
 
  private:
