@@ -604,6 +604,7 @@ class ChemicalField {
   void debug_report_step(const Domain& domain) const;
 
   // Sum rank-local agent reaction fields before spatial diffusion.
+  bool reaction_reduce_is_noop() const;
   void sum_reactions_across_ranks();
   void sum_prescribed_sinks_across_ranks();
   void sum_agent_uptake_across_ranks();
