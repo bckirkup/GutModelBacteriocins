@@ -1813,7 +1813,7 @@ void Simulation::step(Real dt) {
 
   if (gpu_.active) {
     gpu_.agents.sync_from_host(agents_);
-    gpu_.chem.sync_to_device(chem_);
+    gpu_.chem.sync_concentrations_to_device(chem_);
 #ifdef GUTIBM_CUDA
     gpu::launch_grid_coupling_kernel(
         gpu_.agents.x(), gpu_.agents.y(), gpu_.agents.z(),
