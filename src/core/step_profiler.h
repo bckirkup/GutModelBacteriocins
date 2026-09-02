@@ -19,6 +19,10 @@ struct StepProfile {
   double cleanup_s = 0.0;
   double gpu_h2d_s = 0.0;
   double gpu_d2h_s = 0.0;
+  unsigned long long gpu_h2d_bytes = 0;
+  unsigned long long gpu_d2h_bytes = 0;
+  unsigned long long gpu_h2d_calls = 0;
+  unsigned long long gpu_d2h_calls = 0;
   double gpu_slab_x_roundtrip_s = 0.0;
   double mpi_reaction_reduce_s = 0.0;
   double hdf5_s = 0.0;

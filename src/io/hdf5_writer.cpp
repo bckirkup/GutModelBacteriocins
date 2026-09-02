@@ -277,6 +277,11 @@ void write_step_profile(hid_t fid, const StepProfile& profile,
     write_scalar_dataset(fid, "run_provenance/step_profile/" + std::string(name),
                          H5T_NATIVE_DOUBLE, &value);
   };
+  const auto write_counter = [fid](const char* name,
+                                    unsigned long long value) {
+    write_scalar_dataset(fid, "run_provenance/step_profile/" + std::string(name),
+                         H5T_NATIVE_ULLONG, &value);
+  };
   write_phase("ghost_exchange_s", profile.ghost_exchange_s);
   write_phase("spatial_hash_s", profile.spatial_hash_s);
   write_phase("biology_s", profile.biology_s);
@@ -286,6 +291,10 @@ void write_step_profile(hid_t fid, const StepProfile& profile,
   write_phase("cleanup_s", profile.cleanup_s);
   write_phase("gpu_h2d_s", profile.gpu_h2d_s);
   write_phase("gpu_d2h_s", profile.gpu_d2h_s);
+  write_counter("gpu_h2d_bytes_total", profile.gpu_h2d_bytes);
+  write_counter("gpu_d2h_bytes_total", profile.gpu_d2h_bytes);
+  write_counter("gpu_h2d_calls_total", profile.gpu_h2d_calls);
+  write_counter("gpu_d2h_calls_total", profile.gpu_d2h_calls);
   write_phase("gpu_slab_x_roundtrip_s", profile.gpu_slab_x_roundtrip_s);
   write_phase("mpi_reaction_reduce_s", profile.mpi_reaction_reduce_s);
   write_phase("hdf5_s", profile.hdf5_s);

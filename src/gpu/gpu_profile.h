@@ -6,14 +6,18 @@ namespace gutibm {
 struct GpuTransferProfile {
   double h2d_s = 0.0;
   double d2h_s = 0.0;
+  unsigned long long h2d_bytes = 0;
+  unsigned long long d2h_bytes = 0;
+  unsigned long long h2d_calls = 0;
+  unsigned long long d2h_calls = 0;
   double slab_x_roundtrip_s = 0.0;
 };
 
 bool gpu_transfer_profiling_enabled();
 void gpu_transfer_profile_set_enabled(bool enabled);
 void gpu_transfer_profile_reset();
-void gpu_transfer_record_h2d(double seconds);
-void gpu_transfer_record_d2h(double seconds);
+void gpu_transfer_record_h2d(double seconds, unsigned long long bytes);
+void gpu_transfer_record_d2h(double seconds, unsigned long long bytes);
 GpuTransferProfile gpu_transfer_profile_snapshot();
 void gpu_transfer_record_slab_x_roundtrip(double seconds);
 

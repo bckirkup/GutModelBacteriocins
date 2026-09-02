@@ -69,8 +69,10 @@ void assert_run_provenance(hid_t file,
   for (const char* phase : {
            "ghost_exchange_s", "spatial_hash_s", "biology_s", "chemistry_s",
            "physics_s", "mpi_migrate_s", "cleanup_s", "gpu_h2d_s",
-           "gpu_d2h_s", "gpu_slab_x_roundtrip_s", "mpi_reaction_reduce_s",
-           "hdf5_s", "total_s", "step_count"}) {
+           "gpu_d2h_s", "gpu_h2d_bytes_total", "gpu_d2h_bytes_total",
+           "gpu_h2d_calls_total", "gpu_d2h_calls_total",
+           "gpu_slab_x_roundtrip_s", "mpi_reaction_reduce_s", "hdf5_s",
+           "total_s", "step_count"}) {
     assert(gutibm::test::hdf5_dataset_exists(
         file, std::string("run_provenance/step_profile/") + phase));
   }
