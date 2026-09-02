@@ -25,10 +25,11 @@ import h5py
 
 from .path_utils import (
     PathValidationError,
-    prepare_output_file,
+    prepare_output_directory_anywhere,
     validate_input_path,
     validate_input_path_within,
     validate_path_syntax,
+    write_json_file_anywhere,
 )
 
 UPTAKE_LIMIT_KEY = "metabolism.uptake_limit"
@@ -178,9 +179,8 @@ def _json_safe(value: Any) -> Any:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    candidate = prepare_output_file(path)
-    candidate.write_text(
-        json.dumps(_json_safe(payload), indent=2) + "\n", encoding="utf-8"
+    write_json_file_anywhere(
+        path, _json_safe(payload), indent=2
     )
 
 
@@ -214,8 +214,7 @@ def generate_configs(
 ) -> dict[str, Any]:
     """Generate matrix configurations and a manifest."""
     base = _read_json(base_path)
-    output_dir = validate_path_syntax(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = prepare_output_directory_anywhere(output_dir)
     arms: dict[str, Any] = {}
     for scale, scale_path in scale_paths.items():
         if scale not in SCALES:
@@ -229,8 +228,7 @@ def generate_configs(
             # Strict JSON parsing accepts dotted root keys, not nested fix
             # objects.  Keep these keys literal in generated JSON.
             config.update(overrides)
-            arm_dir = output_dir / arm
-            arm_dir.mkdir(parents=True, exist_ok=True)
+            arm_dir = prepare_output_directory_anywhere(output_dir / arm)
             config_path = arm_dir / f"{scale}.json"
             _write_json(config_path, config)
             arm_entry = arms.setdefault(
@@ -509,8 +507,7 @@ def run_one_arm(
     arm_info = manifest["arms"][arm]
     if scale not in arm_info.get("configs", {}):
         raise ValueError(f"scale {scale!r} is not configured for arm {arm}")
-    output_dir = validate_path_syntax(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = prepare_output_directory_anywhere(output_dir)
     result_path = output_dir / f"{arm}_{scale}_seed{seed}.json"
     config = _read_declared_json(
         manifest_path.parent, arm_info["configs"][scale]

@@ -265,6 +265,30 @@ def prepare_output_directory(path: str | Path) -> Path:
     return trusted
 
 
+def prepare_output_directory_anywhere(path: str | Path) -> Path:
+    """Validate and create an output directory, including absolute paths."""
+    candidate = validate_path_syntax(path)
+    if not candidate.is_absolute():
+        return prepare_output_directory(candidate)
+    if candidate.exists():
+        if candidate.is_symlink():
+            raise PathValidationError(
+                f"refusing to create directory through symlink: {candidate}"
+            )
+        if not candidate.is_dir():
+            raise PathValidationError(
+                f"output path exists and is not a directory: {candidate}"
+            )
+        return candidate
+
+    parent = candidate.parent
+    _validate_output_parent_directory(parent)
+    _reject_symlink_in_world_writable_parent(candidate, "create")
+    _mkdir_validated_parents(parent)
+    candidate.mkdir(exist_ok=True)
+    return candidate
+
+
 def write_text_file(path: str | Path, text: str) -> None:
     """Write text to a validated output path (must resolve under cwd)."""
     candidate = validate_path_syntax(path)
@@ -309,3 +333,11 @@ def write_text_file(path: str | Path, text: str) -> None:
 def write_json_file(path: str | Path, payload: Any, *, indent: int = 2) -> None:
     """Write JSON to a validated output path."""
     write_text_file(path, json.dumps(payload, indent=indent) + "\n")
+
+
+def write_json_file_anywhere(
+    path: str | Path, payload: Any, *, indent: int = 2
+) -> None:
+    """Write JSON after validating a path that may be absolute."""
+    candidate = prepare_output_file(path)
+    candidate.write_text(json.dumps(payload, indent=indent) + "\n", encoding="utf-8")
