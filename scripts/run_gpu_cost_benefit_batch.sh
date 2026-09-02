@@ -370,74 +370,183 @@ JOB_DEF_ARN="$(aws batch register-job-definition \
 echo "JOB_DEFINITION_ARN=${JOB_DEF_ARN}"
 
 mkdir -p "${OUTDIR}"
-for arm in "${ARM_ARRAY[@]}"; do
-  for scale in "${SCALE_ARRAY[@]}"; do
-    CURRENT_LOG_FILE="${OUTDIR}/${arm}_${scale}.log"
-    : > "${CURRENT_LOG_FILE}"
-    CURRENT_JOB_ID="$(aws batch submit-job \
-      --job-name "gutibm-gpubench-${arm}-${scale}-${GIT_SHORT_SHA}" \
-      --job-queue "${BATCH_QUEUE}" \
-      --job-definition "${JOB_DEF_ARN}" \
-      --container-overrides "$(jq -cn \
-        --arg arm "${arm}" --arg scale "${scale}" \
-        '{environment: [{name: "BENCH_ARM", value: $arm}, {name: "BENCH_SCALE", value: $scale}]}' )" \
-      --region "${AWS_REGION}" \
-      --query jobId --output text)"
-    [[ -n "${CURRENT_JOB_ID}" && "${CURRENT_JOB_ID}" != "None" ]] \
-      || die "Batch submission returned no job ID"
-    echo "JOB_ID=${CURRENT_JOB_ID} ARM=${arm} SCALE=${scale}"
-    while :; do
-      status="$(aws batch describe-jobs \
-        --jobs "${CURRENT_JOB_ID}" --region "${AWS_REGION}" \
-        --query 'jobs[0].status' --output text)"
-      echo "  status=${status}"
-      case "${status}" in
-        SUCCEEDED|FAILED) break ;;
-        SUBMITTED|PENDING|RUNNABLE|STARTING|RUNNING)
-          sleep "${BATCH_POLL_SECONDS}" ;;
-        *) die "unexpected Batch status: ${status}" ;;
-      esac
-    done
-    log_stream=""
-    for _ in $(seq 0 5 "${BATCH_LOG_WAIT_SECONDS}"); do
-      log_stream="$(aws batch describe-jobs \
-        --jobs "${CURRENT_JOB_ID}" --region "${AWS_REGION}" \
-        --query 'jobs[0].container.logStreamName' --output text \
-        2>/dev/null || true)"
-      if [[ -n "${log_stream}" && "${log_stream}" != "None" ]]; then
+SUMMARY_FILE="${OUTDIR}/campaign_summary.json"
+printf '%s\n' '{"jobs":[]}' > "${SUMMARY_FILE}"
+FAILED_JOBS=()
+
+reasons_to_json() {
+  if [[ "$#" -eq 0 ]]; then
+    printf '[]'
+  else
+    printf '%s\n' "$@" | jq -R . | jq -s .
+  fi
+}
+
+append_campaign_summary() {
+  local arm="$1"
+  local scale="$2"
+  local job_id="$3"
+  local batch_status="$4"
+  local log_file="$5"
+  local extraction_file="$6"
+  local shell_reasons_json="$7"
+  local extraction_json='{"result_files":[],"found_block_count":0,"failure_reasons":[]}'
+  local result_files
+  local found_block_count
+  local expected_block_count
+  local combined_reasons
+  if [[ -f "${extraction_file}" ]]; then
+    extraction_json="$(cat "${extraction_file}")"
+  fi
+  result_files="$(jq -c '.result_files // []' <<< "${extraction_json}")"
+  found_block_count="$(jq -c '.found_block_count // 0' <<< "${extraction_json}")"
+  expected_block_count="$(jq -c '.expected_block_count // 3' <<< "${extraction_json}")"
+  combined_reasons="$(jq -c \
+    --argjson extraction "${extraction_json}" \
+    --argjson shell "${shell_reasons_json}" \
+    '($extraction.failure_reasons // []) + $shell | unique' <<< '{}')"
+  jq \
+    --arg arm "${arm}" \
+    --arg scale "${scale}" \
+    --arg job_id "${job_id}" \
+    --arg batch_status "${batch_status}" \
+    --arg log_file "${log_file}" \
+    --argjson result_files "${result_files}" \
+    --argjson expected_block_count "${expected_block_count}" \
+    --argjson found_block_count "${found_block_count}" \
+    --argjson failure_reasons "${combined_reasons}" \
+    '
+      .jobs += [{
+        arm: $arm,
+        scale: $scale,
+        job_id: (if $job_id == "" then null else $job_id end),
+        batch_status: $batch_status,
+        log_file: $log_file,
+        result_files: $result_files,
+        expected_block_count: $expected_block_count,
+        found_block_count: $found_block_count,
+        failure_reasons: $failure_reasons
+      }]
+    ' "${SUMMARY_FILE}" > "${SUMMARY_FILE}.tmp" \
+    && mv "${SUMMARY_FILE}.tmp" "${SUMMARY_FILE}"
+}
+
+run_benchmark_job() {
+  local arm="$1"
+  local scale="$2"
+  local job_id=""
+  local status="UNKNOWN"
+  local log_stream=""
+  local next_token=""
+  local events=""
+  local new_token=""
+  local extraction_file="${OUTDIR}/.${arm}_${scale}.extraction.json"
+  local submit_output=""
+  local submit_status=0
+  local describe_status=0
+  local log_status=0
+  local extraction_status=0
+  local shell_reasons_json
+  local status_line=""
+  local -a reasons=()
+
+  CURRENT_LOG_FILE="${OUTDIR}/${arm}_${scale}.log"
+  : > "${CURRENT_LOG_FILE}"
+  rm -f "${extraction_file}"
+  submit_output="$(aws batch submit-job \
+    --job-name "gutibm-gpubench-${arm}-${scale}-${GIT_SHORT_SHA}" \
+    --job-queue "${BATCH_QUEUE}" \
+    --job-definition "${JOB_DEF_ARN}" \
+    --container-overrides "$(jq -cn \
+      --arg arm "${arm}" --arg scale "${scale}" \
+      '{environment: [{name: "BENCH_ARM", value: $arm}, {name: "BENCH_SCALE", value: $scale}]}' )" \
+    --region "${AWS_REGION}" \
+    --query jobId --output text 2>/dev/null)"
+  submit_status=$?
+  if [[ "${submit_status}" -ne 0 || -z "${submit_output}" ||
+        "${submit_output}" == "None" ]]; then
+    reasons+=("Batch submission failed")
+    shell_reasons_json="$(reasons_to_json "${reasons[@]}")"
+    append_campaign_summary "${arm}" "${scale}" "" "SUBMIT_FAILED" \
+      "${CURRENT_LOG_FILE}" "${extraction_file}" "${shell_reasons_json}" \
+      || echo "WARNING: could not update ${SUMMARY_FILE}" >&2
+    return 1
+  fi
+  job_id="${submit_output}"
+  CURRENT_JOB_ID="${job_id}"
+  echo "JOB_ID=${job_id} ARM=${arm} SCALE=${scale}"
+  while :; do
+    status="$(aws batch describe-jobs \
+      --jobs "${job_id}" --region "${AWS_REGION}" \
+      --query 'jobs[0].status' --output text 2>/dev/null)"
+    describe_status=$?
+    if [[ "${describe_status}" -ne 0 || -z "${status}" || "${status}" == "None" ]]; then
+      reasons+=("Batch status lookup failed")
+      status="UNKNOWN"
+      terminate_current_job
+      break
+    fi
+    echo "  status=${status}"
+    case "${status}" in
+      SUCCEEDED|FAILED) break ;;
+      SUBMITTED|PENDING|RUNNABLE|STARTING|RUNNING)
+        sleep "${BATCH_POLL_SECONDS}" ;;
+      *)
+        reasons+=("unexpected Batch status: ${status}")
+        terminate_current_job
         break
-      fi
-      sleep 5
-    done
-    [[ -n "${log_stream}" && "${log_stream}" != "None" ]] \
-      || die "Batch job has no CloudWatch log stream: ${CURRENT_JOB_ID}"
-    next_token=""
+        ;;
+    esac
+  done
+  [[ "${status}" == "FAILED" ]] && reasons+=("Batch job FAILED")
+
+  for _ in $(seq 0 5 "${BATCH_LOG_WAIT_SECONDS}"); do
+    log_stream="$(aws batch describe-jobs \
+      --jobs "${job_id}" --region "${AWS_REGION}" \
+      --query 'jobs[0].container.logStreamName' --output text \
+      2>/dev/null)"
+    if [[ -n "${log_stream}" && "${log_stream}" != "None" ]]; then
+      break
+    fi
+    sleep 5
+  done
+  if [[ -z "${log_stream}" || "${log_stream}" == "None" ]]; then
+    reasons+=("Batch job has no CloudWatch log stream")
+  else
     while :; do
       if [[ -n "${next_token}" ]]; then
         events="$(aws logs get-log-events \
           --log-group-name "${BATCH_LOG_GROUP}" --log-stream-name "${log_stream}" \
-          --start-from-head --next-token "${next_token}" --output json)"
+          --start-from-head --next-token "${next_token}" --output json 2>/dev/null)"
       else
         events="$(aws logs get-log-events \
           --log-group-name "${BATCH_LOG_GROUP}" --log-stream-name "${log_stream}" \
-          --start-from-head --output json)"
+          --start-from-head --output json 2>/dev/null)"
       fi
-      jq -r '.events[]?.message // empty' <<< "${events}" | tee -a "${CURRENT_LOG_FILE}"
+      log_status=$?
+      if [[ "${log_status}" -ne 0 ]]; then
+        reasons+=("CloudWatch log retrieval failed")
+        break
+      fi
+      jq -r '.events[]?.message // empty' <<< "${events}" \
+        | tee -a "${CURRENT_LOG_FILE}"
       new_token="$(jq -r '.nextForwardToken // empty' <<< "${events}")"
       [[ -z "${new_token}" || "${new_token}" == "${next_token}" ]] && break
       next_token="${new_token}"
     done
-    if [[ "${arm}" =~ ^A[456]$ ]]; then
-      grep -Eq 'NVIDIA-SMI [0-9]' "${CURRENT_LOG_FILE}" \
-        || die "GPU benchmark log lacks NVIDIA-SMI evidence: ${CURRENT_LOG_FILE}"
-    fi
-    python3 - "${CURRENT_LOG_FILE}" "${OUTDIR}" "${arm}" "${scale}" <<'PY'
+  fi
+  if [[ "${arm}" =~ ^A[456]$ ]] &&
+     ! grep -Eq 'NVIDIA-SMI [0-9]' "${CURRENT_LOG_FILE}"; then
+    reasons+=("GPU log lacks NVIDIA-SMI evidence")
+  fi
+  python3 - "${CURRENT_LOG_FILE}" "${OUTDIR}" "${arm}" "${scale}" \
+    "${extraction_file}" <<'PY'
 import json
 import re
 import sys
 from pathlib import Path
 
-log_path, output_dir, arm, scale = sys.argv[1:]
+log_path, output_dir, arm, scale, extraction_path = sys.argv[1:]
 text = Path(log_path).read_text(encoding="utf-8")
 pattern = re.compile(
     rf"===BENCH_RESULT_BEGIN ({re.escape(arm)}_{re.escape(scale)}_seed\d+)===\n"
@@ -445,24 +554,95 @@ pattern = re.compile(
     re.DOTALL,
 )
 matches = list(pattern.finditer(text))
-if len(matches) != 3:
-    raise SystemExit(
-        f"expected 3 benchmark result blocks for {arm}/{scale}, found {len(matches)}"
-    )
+summary = {
+    "expected_block_count": 3,
+    "found_block_count": 0,
+    "result_files": [],
+    "failure_reasons": [],
+}
+begin_ids = set(re.findall(
+    rf"^===BENCH_RESULT_BEGIN {re.escape(arm)}_{re.escape(scale)}_seed\d+===$",
+    text,
+    re.MULTILINE,
+))
+blocks = {}
 for match in matches:
     identifier = match.group(1)
-    payload = json.loads(match.group(2))
-    Path(output_dir, f"{identifier}.json").write_text(
+    body = match.group(2)
+    previous = blocks.get(identifier)
+    if previous is not None:
+        if previous != body:
+            summary["failure_reasons"].append(
+                f"conflicting duplicate result block: {identifier}"
+            )
+        continue
+    blocks[identifier] = body
+summary["found_block_count"] = len(blocks)
+if len(begin_ids) > len(blocks):
+    summary["failure_reasons"].append(
+        f"incomplete result block(s): {len(begin_ids) - len(blocks)}"
+    )
+if len(blocks) < summary["expected_block_count"]:
+    summary["failure_reasons"].append(
+        "result block shortfall: expected "
+        f"{summary['expected_block_count']}, found {len(blocks)}"
+    )
+for identifier, body in blocks.items():
+    try:
+        payload = json.loads(body)
+    except json.JSONDecodeError as error:
+        summary["failure_reasons"].append(
+            f"unparseable JSON for {identifier}: {error.msg}"
+        )
+        continue
+    result_path = Path(output_dir, f"{identifier}.json")
+    result_path.write_text(
         json.dumps(payload, indent=2) + "\n", encoding="utf-8"
     )
+    summary["result_files"].append(str(result_path))
+if len(summary["result_files"]) < summary["expected_block_count"]:
+    summary["failure_reasons"].append(
+        "valid result file shortfall: expected "
+        f"{summary['expected_block_count']}, found "
+        f"{len(summary['result_files'])}"
+    )
+Path(extraction_path).write_text(
+    json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+)
 PY
-    status_line="$(grep -E 'BENCH_JOB_STATUS=[^[:space:]]+' \
-      "${CURRENT_LOG_FILE}" | tail -1 || true)"
-    [[ -n "${status_line}" ]] \
-      || die "missing BENCH_JOB_STATUS in ${CURRENT_LOG_FILE}"
-    [[ "${status}" == "SUCCEEDED" ]] \
-      || die "Batch benchmark job failed: ${CURRENT_JOB_ID}"
-    CURRENT_JOB_ID=""
+  extraction_status=$?
+  [[ "${extraction_status}" -eq 0 ]] \
+    || reasons+=("result extraction failed")
+  status_line="$(grep -E 'BENCH_JOB_STATUS=[^[:space:]]+' \
+    "${CURRENT_LOG_FILE}" | tail -1 || true)"
+  if [[ -z "${status_line}" ]]; then
+    reasons+=("missing BENCH_JOB_STATUS")
+  elif [[ "${status_line}" != "BENCH_JOB_STATUS=0" ]]; then
+    reasons+=("container reported ${status_line}")
+  fi
+  shell_reasons_json="$(reasons_to_json "${reasons[@]}")"
+  append_campaign_summary "${arm}" "${scale}" "${job_id}" "${status}" \
+    "${CURRENT_LOG_FILE}" "${extraction_file}" "${shell_reasons_json}" \
+    || reasons+=("campaign summary update failed")
+  CURRENT_JOB_ID=""
+  CURRENT_LOG_FILE=""
+  if [[ "${#reasons[@]}" -gt 0 ]]; then
+    return 1
+  fi
+  return 0
+}
+
+for arm in "${ARM_ARRAY[@]}"; do
+  for scale in "${SCALE_ARRAY[@]}"; do
+    if ! run_benchmark_job "${arm}" "${scale}"; then
+      FAILED_JOBS+=("${arm}/${scale}")
+      echo "FAILED: ${arm}/${scale}; continuing campaign" >&2
+    fi
   done
 done
+if [[ "${#FAILED_JOBS[@]}" -gt 0 ]]; then
+  printf 'Campaign completed with failed jobs:\n' >&2
+  printf '  %s\n' "${FAILED_JOBS[@]}" >&2
+  exit 1
+fi
 echo "GPU benchmark retrieval complete."
