@@ -129,6 +129,65 @@ are removed in the follow-up work; the timings above are pre-removal.
   device runs stayed inside the envelope. The pre-run `drift_envelope_policy`
   gate still applies to both backends.
 
+## Remeasurement after #400 and #401: the chemistry regression was placement
+
+The `A1`/`A4` `s1` pair was rerun on the same practice queue and instance type
+with both mechanistic fixes in the image (`gutibm:gpubench-6bd6a522e3ad`,
+digest `sha256:0dce54243b3503b5d1e4d9c4b3ece3b7f209d9f3116e9103eadf52f7a1855645`,
+`git_sha 6bd6a522e3ad68ab9438a9527d32b47728451fb8`). Raw records:
+`bench_results/gpu_cost_benefit_2026-08_postfix/`. Container time 3,484 s
+≈ 0.97 instance-hours ≈ $0.51. Medians over seeds 55/56/57; both arms
+`SUCCEEDED` with `openmp_compiled: 1` on every pass and
+`chemistry_placement: host`/`device` as declared, so neither arm was silently
+host-forced.
+
+| Phase (s), `s1` | Host A1 pre-fix | Host A1 now | Device A4 pre-fix | Device A4 now |
+|---|---:|---:|---:|---:|
+| `chemistry_s` | 38.71 | 21.41 | 49.87 | **11.18** |
+| `biology_s` | 602.99 | 445.16 | 92.49 | 94.46 |
+| `spatial_hash_s` | 0.27 | 0.25 | 13.67 | 2.85 |
+| `mpi_reaction_reduce_s` | ~3e-5 | ~3e-5 | 10.84 | 2.7e-5 |
+| cost-pass wall | 674.9 | 369.4 | 178.4 | **129.0** |
+
+Three corrections to the campaign above follow from this, and the first
+retracts its headline finding:
+
+1. **Device chemistry is not a regression; it is 1.91× faster than the host**
+   (21.41 vs 11.18 s). The earlier 1.29× regression was host↔device
+   marshalling charged to the chemistry phase, not device arithmetic: removing
+   the dead whole-field uploads and the single-rank reaction round trip (#400)
+   cut device chemistry 4.46× on unchanged numerics.
+2. **The host baseline was serial.** With OpenMP compiled in, host chemistry
+   improves 1.81× and host wall 1.83× on the same 4 vCPUs, so the campaign's
+   3.78× end-to-end figure was T4-against-one-core. Against the CPU this
+   machine actually has, the device wins **2.86×** end-to-end at `s1`
+   (biology 4.71×, mechanics 8.8×).
+3. **The two misattributed profile fields resolve as predicted.** The
+   single-rank reaction round trip is gone entirely (10.84 s → 2.7e-5 s);
+   `spatial_hash_s` falls 13.67 → 2.85 s, the residue being the concentration
+   upload that still happens inside that lap after the concentration halo
+   exchange.
+
+### Transfers, now measured rather than inferred
+
+With #401 the transfer profile reports bytes and call counts, and the timed
+interval excludes queued kernel drain. Device `s1`, medians:
+
+| Direction | Seconds | Bytes | Calls | Effective bandwidth |
+|---|---:|---:|---:|---:|
+| H2D | 6.07 | 28.37 GB | 1,950 | 4.67 GB/s |
+| D2H | 6.03 | 28.97 GB | 678 | 4.80 GB/s |
+
+Transfers are 12.1 s of the 133 s profiled run (9.1%), at ≈22 MB per call, so
+per-call launch overhead is not the cost — bandwidth is, and 4.7-4.8 GB/s is
+the expected pageable-memory rate on this link rather than an anomaly. Pinned
+host staging would raise that toward the ≈10 GB/s pinned rate, saving ≈6 s of a
+129 s run (≈5%), and it is not the largest remaining lever: the run still moves
+57 GB in ten steps, ≈5.7 GB/step against a 100 MB species field, so eliminating
+copies buys more than making the same copies faster. Neither is implemented,
+and no bandwidth claim here is extrapolated — every number is from the
+committed records.
+
 ## What this does and does not decide
 
 It does not move any scientific default. The `delivery` uptake mode costs 1.27×
@@ -136,13 +195,20 @@ the host wall time of shipped `none` at `s1` (859.3 vs 674.9 s) and 2.28× its
 host chemistry — but on device its chemistry is *cheaper* than shipped `none`'s
 (44.65 vs 49.87 s), so device execution removes the chemistry-cost argument
 against funded uptake at this scale. Whether funded uptake becomes a default
-still rests on outcome movement, not on these timings.
+still rests on outcome movement, not on these timings. Those two chemistry
+figures are pre-#400 and pre-OpenMP; the A2/A3/A5/A6 arms have not been rerun,
+so the delivery-vs-`none` chemistry comparison is not current, while the
+conclusion it supports — that device execution removes the chemistry-cost
+argument — only strengthens now that device chemistry is faster in every mode
+measured.
 
 For anyone sizing a run: the T4 is worth its price for toxin-sampling-dominated
 configurations (low agent count, many Green's-function sources) and for
-mechanics-dominated ones, roughly breaks even on non-delivery chemistry, and
-returns 1.36× at a million agents — not the order-of-magnitude the phrase "GPU
-port" tends to imply.
+mechanics-dominated ones, wins ≈1.9× on non-delivery chemistry after #400, and
+returns 1.36× at a million agents against a serial host baseline — not the
+order-of-magnitude the phrase "GPU port" tends to imply. The `s2` ratios and
+the A2/A3/A5/A6 arms were measured before both fixes and against a
+single-threaded CPU; only the `A1`/`A4` `s1` pair above is current.
 
 ## Arms not measured
 
