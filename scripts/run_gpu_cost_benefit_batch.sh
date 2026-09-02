@@ -19,6 +19,7 @@ BENCH_SCALES="${BENCH_SCALES:-s1 s2}"
 BENCH_SEEDS="${BENCH_SEEDS:-55 56 57}"
 BENCH_S3_URI="${GUTIBM_BENCH_S3_URI:-}"
 BENCH_ATTEMPT_SECONDS="${BENCH_ATTEMPT_SECONDS:-7200}"
+REUSE_IMAGE="${GUTIBM_BENCH_REUSE_IMAGE:-0}"
 OUTDIR="${BENCH_OUTDIR:-${ROOT}/bench_results/gpubench}"
 IMAGE_TAG="${GUTIBM_IMAGE_TAG:-}"
 DRY_RUN=0
@@ -144,6 +145,10 @@ IMAGE_TAG="${IMAGE_TAG:-gpubench-${GIT_SHORT_SHA}}"
   || die "GUTIBM_IMAGE_TAG must be gpubench-<short sha>: ${IMAGE_TAG}"
 [[ "${IMAGE_TAG}" != *campaign* ]] \
   || die "campaign image tags are forbidden"
+case "${REUSE_IMAGE}" in
+  0|1) ;;
+  *) die "GUTIBM_BENCH_REUSE_IMAGE must be 0 or 1" ;;
+esac
 
 read -r -a ARM_ARRAY <<< "${BENCH_ARMS}"
 read -r -a SCALE_ARRAY <<< "${BENCH_SCALES}"
@@ -229,44 +234,55 @@ else
   echo "  s3=disabled; write check not applicable"
 fi
 
-if aws ecr describe-images \
-  --repository-name "${ECR_REPOSITORY_NAME}" \
-  --image-ids "imageTag=${IMAGE_TAG}" \
-  --region "${AWS_REGION}" \
-  --query 'imageDetails[0].imageDigest' --output text 2>/dev/null \
-  | grep -qv '^None$'; then
-  die "refusing to overwrite existing ECR tag: ${IMAGE_TAG}"
-fi
-
-echo "Build ${IMAGE_URI}"
-aws ecr get-login-password --region "${AWS_REGION}" \
-  | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
-docker build \
-  --file "${ROOT}/deploy/aws/Dockerfile.gpubench" \
-  --build-arg "GUTIBM_GIT_SHA=${GIT_SHA}" \
-  --tag "${IMAGE_URI}" \
-  "${ROOT}"
-
+IMAGE_DIGEST=""
 IMAGE_REF="${IMAGE_URI}"
-if [[ "${DRY_RUN}" -eq 1 ]]; then
-  IMAGE_REF="${ECR_REPOSITORY}@sha256:dry-run-no-push"
-else
-  docker push "${IMAGE_URI}"
-  IMAGE_DIGEST=""
-  for _ in $(seq 1 12); do
-    IMAGE_DIGEST="$(aws ecr describe-images \
-      --repository-name "${ECR_REPOSITORY_NAME}" \
-      --image-ids "imageTag=${IMAGE_TAG}" \
-      --region "${AWS_REGION}" \
-      --query 'imageDetails[0].imageDigest' \
-      --output text 2>/dev/null || true)"
-    [[ -n "${IMAGE_DIGEST}" && "${IMAGE_DIGEST}" != "None" ]] && break
-    sleep 5
-  done
+if [[ "${REUSE_IMAGE}" -eq 1 ]]; then
+  IMAGE_DIGEST="$(aws ecr describe-images \
+    --repository-name "${ECR_REPOSITORY_NAME}" \
+    --image-ids "imageTag=${IMAGE_TAG}" \
+    --region "${AWS_REGION}" \
+    --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || true)"
   [[ -n "${IMAGE_DIGEST}" && "${IMAGE_DIGEST}" != "None" ]] \
-    || die "ECR did not return a digest for ${IMAGE_TAG}"
+    || die "cannot reuse missing ECR image tag: ${IMAGE_TAG}"
   IMAGE_REF="${ECR_REPOSITORY}@${IMAGE_DIGEST}"
-  echo "IMAGE_DIGEST=${IMAGE_DIGEST}"
+else
+  if aws ecr describe-images \
+    --repository-name "${ECR_REPOSITORY_NAME}" \
+    --image-ids "imageTag=${IMAGE_TAG}" \
+    --region "${AWS_REGION}" \
+    --query 'imageDetails[0].imageDigest' --output text 2>/dev/null \
+    | grep -qv '^None$'; then
+    die "refusing to overwrite existing ECR tag: ${IMAGE_TAG}"
+  fi
+
+  echo "Build ${IMAGE_URI}"
+  aws ecr get-login-password --region "${AWS_REGION}" \
+    | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+  docker build \
+    --file "${ROOT}/deploy/aws/Dockerfile.gpubench" \
+    --build-arg "GUTIBM_GIT_SHA=${GIT_SHA}" \
+    --tag "${IMAGE_URI}" \
+    "${ROOT}"
+
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    IMAGE_REF="${ECR_REPOSITORY}@sha256:dry-run-no-push"
+  else
+    docker push "${IMAGE_URI}"
+    for _ in $(seq 1 12); do
+      IMAGE_DIGEST="$(aws ecr describe-images \
+        --repository-name "${ECR_REPOSITORY_NAME}" \
+        --image-ids "imageTag=${IMAGE_TAG}" \
+        --region "${AWS_REGION}" \
+        --query 'imageDetails[0].imageDigest' \
+        --output text 2>/dev/null || true)"
+      [[ -n "${IMAGE_DIGEST}" && "${IMAGE_DIGEST}" != "None" ]] && break
+      sleep 5
+    done
+    [[ -n "${IMAGE_DIGEST}" && "${IMAGE_DIGEST}" != "None" ]] \
+      || die "ECR did not return a digest for ${IMAGE_TAG}"
+    IMAGE_REF="${ECR_REPOSITORY}@${IMAGE_DIGEST}"
+    echo "IMAGE_DIGEST=${IMAGE_DIGEST}"
+  fi
 fi
 
 JOB_COUNT=$(( ${#ARM_ARRAY[@]} * ${#SCALE_ARRAY[@]} ))
@@ -285,6 +301,13 @@ ESTIMATED_COST="$(awk -v hours="${ESTIMATED_INSTANCE_HOURS}" \
   'BEGIN { printf "%.2f", hours * 0.526 }')"
 
 echo "Benchmark plan (serial jobs, 4 vCPU, 1 GPU, 13000 MiB, retry attempts=1)"
+echo "  image_tag=${IMAGE_TAG}"
+if [[ "${REUSE_IMAGE}" -eq 1 ]]; then
+  echo "  image_reuse=active"
+  echo "  image_digest=${IMAGE_DIGEST}"
+else
+  echo "  image_reuse=inactive"
+fi
 echo "  expected_seeds=${BENCH_SEEDS}"
 echo "  attempt_duration_seconds=${BENCH_ATTEMPT_SECONDS}"
 echo "  estimated_hours_per_job=${ESTIMATED_HOURS_PER_JOB}"
@@ -299,7 +322,11 @@ echo "  estimated_instance_hours=${ESTIMATED_INSTANCE_HOURS}"
 echo "  estimated_cost_usd_at_0.526_per_hour=${ESTIMATED_COST}"
 
 if [[ "${DRY_RUN}" -eq 1 ]]; then
-  echo "DRY_RUN: skipping docker push, job-definition registration, and submission"
+  if [[ "${REUSE_IMAGE}" -eq 1 ]]; then
+    echo "DRY_RUN: reusing existing image; skipping docker build, push, job-definition registration, and submission"
+  else
+    echo "DRY_RUN: skipping docker push, job-definition registration, and submission"
+  fi
 fi
 
 CURRENT_JOB_DEF_JSON="$(mktemp)"
