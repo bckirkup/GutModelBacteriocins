@@ -16,7 +16,9 @@ BATCH_POLL_SECONDS="${BATCH_POLL_SECONDS:-20}"
 BATCH_LOG_WAIT_SECONDS="${BATCH_LOG_WAIT_SECONDS:-300}"
 BENCH_ARMS="${BENCH_ARMS:-A1 A2 A3 A4 A5 A6}"
 BENCH_SCALES="${BENCH_SCALES:-s1 s2}"
+BENCH_SEEDS="${BENCH_SEEDS:-55 56 57}"
 BENCH_S3_URI="${GUTIBM_BENCH_S3_URI:-}"
+BENCH_ATTEMPT_SECONDS="${BENCH_ATTEMPT_SECONDS:-7200}"
 OUTDIR="${BENCH_OUTDIR:-${ROOT}/bench_results/gpubench}"
 IMAGE_TAG="${GUTIBM_IMAGE_TAG:-}"
 DRY_RUN=0
@@ -155,6 +157,20 @@ for scale in "${SCALE_ARRAY[@]}"; do
   [[ "${scale}" =~ ^s[012]$ ]] \
     || die "unsupported benchmark scale: ${scale}"
 done
+[[ -n "${BENCH_SEEDS//[[:space:]]/}" ]] \
+  || die "BENCH_SEEDS must not be empty"
+read -r -a SEED_ARRAY <<< "${BENCH_SEEDS}"
+for seed in "${SEED_ARRAY[@]}"; do
+  [[ "${seed}" =~ ^[1-9][0-9]*$ ]] \
+    || die "BENCH_SEEDS must contain positive integers: ${BENCH_SEEDS}"
+done
+[[ "${BENCH_ATTEMPT_SECONDS}" =~ ^[1-9][0-9]*$ ]] \
+  || die "BENCH_ATTEMPT_SECONDS must be a positive integer"
+if ! awk -v value="${BENCH_ATTEMPT_SECONDS}" \
+  'BEGIN { exit !(value <= 21600) }'; then
+  die "BENCH_ATTEMPT_SECONDS must not exceed 21600"
+fi
+EXPECTED_SEEDS_JSON="$(printf '%s\n' "${SEED_ARRAY[@]}" | jq -R . | jq -s .)"
 
 ACCOUNT="$(aws sts get-caller-identity \
   --query Account --output text --region "${AWS_REGION}")"
@@ -254,17 +270,25 @@ else
 fi
 
 JOB_COUNT=$(( ${#ARM_ARRAY[@]} * ${#SCALE_ARRAY[@]} ))
-ESTIMATED_HOURS_PER_JOB="${BENCH_ESTIMATED_HOURS_PER_JOB:-2}"
+ATTEMPT_HOURS_PER_JOB="$(awk -v seconds="${BENCH_ATTEMPT_SECONDS}" \
+  'BEGIN { printf "%.6f", seconds / 3600 }')"
+ESTIMATED_HOURS_PER_JOB="${BENCH_ESTIMATED_HOURS_PER_JOB:-${ATTEMPT_HOURS_PER_JOB}}"
 if ! awk -v value="${ESTIMATED_HOURS_PER_JOB}" \
   'BEGIN { exit !(value > 0) }'; then
   die "BENCH_ESTIMATED_HOURS_PER_JOB must be positive"
 fi
+ESTIMATED_COST_PER_JOB="$(awk -v hours="${ESTIMATED_HOURS_PER_JOB}" \
+  'BEGIN { printf "%.2f", hours * 0.526 }')"
 ESTIMATED_INSTANCE_HOURS="$(awk -v jobs="${JOB_COUNT}" -v hours="${ESTIMATED_HOURS_PER_JOB}" \
   'BEGIN { printf "%.3f", jobs * hours }')"
 ESTIMATED_COST="$(awk -v hours="${ESTIMATED_INSTANCE_HOURS}" \
   'BEGIN { printf "%.2f", hours * 0.526 }')"
 
-echo "Benchmark plan (serial jobs, 4 vCPU, 1 GPU, 13000 MiB, max attempt 2h)"
+echo "Benchmark plan (serial jobs, 4 vCPU, 1 GPU, 13000 MiB, retry attempts=1)"
+echo "  expected_seeds=${BENCH_SEEDS}"
+echo "  attempt_duration_seconds=${BENCH_ATTEMPT_SECONDS}"
+echo "  estimated_hours_per_job=${ESTIMATED_HOURS_PER_JOB}"
+echo "  estimated_cost_usd_per_job_at_0.526_per_hour=${ESTIMATED_COST_PER_JOB}"
 for arm in "${ARM_ARRAY[@]}"; do
   for scale in "${SCALE_ARRAY[@]}"; do
     echo "  ${arm}/${scale}"
@@ -298,7 +322,8 @@ python3 -m gut_ibm_tools.gpu_cost_benefit generate \
 if [[ "$?" -ne 0 ]]; then
   job_status=1
 fi
-for seed in 55 56 57; do
+read -r -a seed_array <<< "${BENCH_SEEDS}"
+for seed in "${seed_array[@]}"; do
   result="${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json"
   python3 -m gut_ibm_tools.gpu_cost_benefit run \
     --manifest "${work}/config/manifest.json" \
@@ -335,6 +360,8 @@ jq -n \
   --arg command "${BENCH_CONTAINER_SCRIPT}" \
   --arg log_group "${BATCH_LOG_GROUP}" \
   --arg s3_uri "${BENCH_S3_URI}" \
+  --arg seeds "${BENCH_SEEDS}" \
+  --argjson attempt_seconds "${BENCH_ATTEMPT_SECONDS}" \
   '{
     jobDefinitionName: $name,
     type: "container",
@@ -349,13 +376,14 @@ jq -n \
       environment: (
         [
           {name: "PYTHONUNBUFFERED", value: "1"},
-          {name: "BATCH_LOG_GROUP", value: $log_group}
+          {name: "BATCH_LOG_GROUP", value: $log_group},
+          {name: "BENCH_SEEDS", value: $seeds}
         ]
         + (if $s3_uri == "" then [] else
           [{name: "GUTIBM_BENCH_S3_URI", value: $s3_uri}] end)
       )
     },
-    timeout: {attemptDurationSeconds: 7200},
+    timeout: {attemptDurationSeconds: $attempt_seconds},
     retryStrategy: {attempts: 1}
   }' > "${CURRENT_JOB_DEF_JSON}"
 
@@ -396,13 +424,17 @@ append_campaign_summary() {
   local result_files
   local found_block_count
   local expected_block_count
+  local expected_seeds
   local combined_reasons
   if [[ -f "${extraction_file}" ]]; then
     extraction_json="$(cat "${extraction_file}")"
   fi
   result_files="$(jq -c '.result_files // []' <<< "${extraction_json}")"
   found_block_count="$(jq -c '.found_block_count // 0' <<< "${extraction_json}")"
-  expected_block_count="$(jq -c '.expected_block_count // 3' <<< "${extraction_json}")"
+  expected_seeds="$(jq -c --argjson default "${EXPECTED_SEEDS_JSON}" \
+    '.expected_seeds // $default' <<< "${extraction_json}")"
+  expected_block_count="$(jq -c --argjson default "${EXPECTED_SEEDS_JSON}" \
+    '.expected_block_count // ($default | length)' <<< "${extraction_json}")"
   combined_reasons="$(jq -c \
     --argjson extraction "${extraction_json}" \
     --argjson shell "${shell_reasons_json}" \
@@ -414,6 +446,7 @@ append_campaign_summary() {
     --arg batch_status "${batch_status}" \
     --arg log_file "${log_file}" \
     --argjson result_files "${result_files}" \
+    --argjson expected_seeds "${expected_seeds}" \
     --argjson expected_block_count "${expected_block_count}" \
     --argjson found_block_count "${found_block_count}" \
     --argjson failure_reasons "${combined_reasons}" \
@@ -425,6 +458,7 @@ append_campaign_summary() {
         batch_status: $batch_status,
         log_file: $log_file,
         result_files: $result_files,
+        expected_seeds: $expected_seeds,
         expected_block_count: $expected_block_count,
         found_block_count: $found_block_count,
         failure_reasons: $failure_reasons
@@ -542,13 +576,14 @@ run_benchmark_job() {
     reasons+=("GPU log lacks NVIDIA-SMI evidence")
   fi
   python3 - "${CURRENT_LOG_FILE}" "${OUTDIR}" "${arm}" "${scale}" \
-    "${extraction_file}" <<'PY'
+    "${extraction_file}" "${BENCH_SEEDS}" <<'PY'
 import json
 import re
 import sys
 from pathlib import Path
 
-log_path, output_dir, arm, scale, extraction_path = sys.argv[1:]
+log_path, output_dir, arm, scale, extraction_path, expected_seed_text = sys.argv[1:]
+expected_seeds = [int(seed) for seed in expected_seed_text.split()]
 text = Path(log_path).read_text(encoding="utf-8")
 pattern = re.compile(
     rf"===BENCH_RESULT_BEGIN ({re.escape(arm)}_{re.escape(scale)}_seed\d+)===\n"
@@ -557,7 +592,8 @@ pattern = re.compile(
 )
 matches = list(pattern.finditer(text))
 summary = {
-    "expected_block_count": 3,
+    "expected_seeds": expected_seeds,
+    "expected_block_count": len(expected_seeds),
     "found_block_count": 0,
     "result_files": [],
     "failure_reasons": [],
