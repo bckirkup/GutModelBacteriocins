@@ -25,17 +25,18 @@ import h5py
 
 from .path_utils import (
     PathValidationError,
-    prepare_output_directory_anywhere,
+    prepare_output_file,
     validate_input_path,
     validate_input_path_within,
     validate_path_syntax,
-    write_json_file_anywhere,
+    write_json_file,
 )
 
 UPTAKE_LIMIT_KEY = "metabolism.uptake_limit"
 LUMEN_TRANSFER_LENGTH_KEY = "toxin.lumen_transfer_length"
 LUMEN_TRANSFER_BASIS_KEY = "toxin.lumen_transfer_basis"
 DRIFT_CORRECTION_KEY = "qssa.drift_correction"
+MPI_LAUNCHER = "/usr/bin/mpirun"
 
 _A_SCALES = ("s1", "s2")
 _CPU_SCALES = ("s0",)
@@ -179,9 +180,7 @@ def _json_safe(value: Any) -> Any:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    write_json_file_anywhere(
-        path, _json_safe(payload), indent=2
-    )
+    write_json_file(path, _json_safe(payload), indent=2, allow_external=True)
 
 
 def _scale_config(base: dict[str, Any], scale: dict[str, Any]) -> dict[str, Any]:
@@ -214,7 +213,6 @@ def generate_configs(
 ) -> dict[str, Any]:
     """Generate matrix configurations and a manifest."""
     base = _read_json(base_path)
-    output_dir = prepare_output_directory_anywhere(output_dir)
     arms: dict[str, Any] = {}
     for scale, scale_path in scale_paths.items():
         if scale not in SCALES:
@@ -228,7 +226,7 @@ def generate_configs(
             # Strict JSON parsing accepts dotted root keys, not nested fix
             # objects.  Keep these keys literal in generated JSON.
             config.update(overrides)
-            arm_dir = prepare_output_directory_anywhere(output_dir / arm)
+            arm_dir = output_dir / arm
             config_path = arm_dir / f"{scale}.json"
             _write_json(config_path, config)
             arm_entry = arms.setdefault(
@@ -427,11 +425,13 @@ def _run_pass(
     hdf5_path.parent.mkdir(parents=True, exist_ok=True)
     _write_json(config_path, config)
     config_argument = str(config_path.resolve())
-    launcher = validate_path_syntax(mpirun) if mpirun is not None else None
+    launcher = mpirun is not None
+    if launcher:
+        _validated_mpi_launcher(mpirun)
     command = [str(binary), config_argument]
-    if launcher is not None:
+    if launcher:
         command = [
-            str(launcher), "-np", _validated_mpi_ranks(mpi_ranks),
+            MPI_LAUNCHER, "-np", _validated_mpi_ranks(mpi_ranks),
             str(binary), config_argument
         ]
     stdout_path = hdf5_path.with_suffix(".stdout")
@@ -507,8 +507,8 @@ def run_one_arm(
     arm_info = manifest["arms"][arm]
     if scale not in arm_info.get("configs", {}):
         raise ValueError(f"scale {scale!r} is not configured for arm {arm}")
-    output_dir = prepare_output_directory_anywhere(output_dir)
     result_path = output_dir / f"{arm}_{scale}_seed{seed}.json"
+    prepare_output_file(result_path)
     config = _read_declared_json(
         manifest_path.parent, arm_info["configs"][scale]
     )

@@ -26,10 +26,6 @@
         "args": [1]
       },
       {
-        "methodId": "gut_ibm_tools.path_utils.prepare_output_directory_anywhere",
-        "args": [1]
-      },
-      {
         "methodId": "gut_ibm_tools.path_utils.validate_output_path",
         "args": [1]
       },
