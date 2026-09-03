@@ -266,6 +266,7 @@ void ChemicalFieldGpu::sync_concentrations_to_device(const ChemicalField& field)
 
 void ChemicalFieldGpu::sync_reactions_to_device(const ChemicalField& field) {
   if (!active_) return;
+  GpuTransferSite site("chem_reactions");
   for (Int s = 0; s < nspec_; ++s) {
     const auto& row = field.species_reaction(s);
     d_reac_[static_cast<size_t>(s)].upload(row.data(), row.size());
@@ -282,6 +283,7 @@ void ChemicalFieldGpu::sync_concentrations_to_host(ChemicalField& field) {
 
 void ChemicalFieldGpu::sync_reactions_to_host(ChemicalField& field) {
   if (!active_) return;
+  GpuTransferSite site("chem_reactions");
   for (Int s = 0; s < nspec_; ++s) {
     auto& row = field.mutable_species_reaction(s);
     d_reac_[static_cast<size_t>(s)].download(row.data(), row.size());
@@ -290,6 +292,7 @@ void ChemicalFieldGpu::sync_reactions_to_host(ChemicalField& field) {
 
 void ChemicalFieldGpu::accumulate_reactions_to_host(ChemicalField& field) {
   if (!active_) return;
+  GpuTransferSite site("chem_reactions");
   for (Int s = 0; s < nspec_; ++s) {
     std::vector<double> device_reactions(static_cast<size_t>(ncells_));
     d_reac_[static_cast<size_t>(s)].download(device_reactions);
@@ -459,6 +462,7 @@ void ChemicalFieldGpu::prepare_delivery_species(
     Int spec, const std::vector<Real>& sink,
     const std::vector<Real>& prescribed) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
+  GpuTransferSite site("delivery");
   d_delivery_sink_.upload(sink);
   d_delivery_prescribed_.upload(prescribed);
 #ifdef GUTIBM_CUDA
@@ -529,17 +533,20 @@ void ChemicalFieldGpu::restore_delivery_original(Int spec) {
 void ChemicalFieldGpu::upload_delivery_concentration(
     Int spec, const std::vector<Real>& concentration) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
+  GpuTransferSite site("delivery");
   d_conc_[static_cast<size_t>(spec)].upload(concentration);
 }
 
 void ChemicalFieldGpu::upload_delivery_prescribed(
     const std::vector<Real>& prescribed) {
   if (!active_) return;
+  GpuTransferSite site("delivery");
   d_delivery_prescribed_.upload(prescribed);
 }
 
 Real ChemicalFieldGpu::download_delivery_gradient_source() const {
   if (!active_) return 0.0;
+  GpuTransferSite site("delivery");
   gpu_sync_compute();
   double value = 0.0;
   d_delivery_gradient_source_.download(&value, 1);
@@ -548,6 +555,7 @@ Real ChemicalFieldGpu::download_delivery_gradient_source() const {
 
 Real ChemicalFieldGpu::download_delivery_reaction_clip() const {
   if (!active_) return 0.0;
+  GpuTransferSite site("delivery");
   gpu_sync_compute();
   double clipped = 0.0;
   d_delivery_reaction_clip_.download(&clipped, 1);
@@ -558,6 +566,7 @@ void ChemicalFieldGpu::download_delivery_species(
     Int spec, std::vector<Real>& concentration,
     std::vector<Real>& realized) const {
   if (!active_ || spec < 0 || spec >= nspec_) return;
+  GpuTransferSite site("delivery");
   gpu_sync_compute();
   d_conc_[static_cast<size_t>(spec)].download(concentration);
   d_delivery_realized_.download(realized);
@@ -575,6 +584,7 @@ bool ChemicalFieldGpu::delivery_has_negative(Int spec) {
     delivery_negative_count_spec_ = -1;
     return false;
   }
+  GpuTransferSite site("delivery");
   if (const cudaError_t status = cudaMemset(
           d_delivery_negative_count_.data(), 0,
           sizeof(unsigned long long));
@@ -625,6 +635,7 @@ void ChemicalFieldGpu::reset_delivery_boundary(Int spec) {
 
 Real ChemicalFieldGpu::download_delivery_boundary(Int spec) const {
   if (!active_ || spec < 0 || spec >= nspec_) return 0.0;
+  GpuTransferSite site("delivery");
   gpu_sync_compute();
   std::vector<double> values(static_cast<size_t>(nspec_), 0.0);
   d_boundary_injected_.download(values);

@@ -1269,8 +1269,24 @@ void Simulation::print_step_profile() const {
             << step_profile_.gpu_slab_x_roundtrip_s * inv << "\n"
             << "  mpi_reaction_reduce=" << step_profile_.mpi_reaction_reduce_s * inv << "\n"
             << "  hdf5=" << step_profile_.hdf5_s * inv << "\n"
-            << "  total=" << total << "\n"
-            << "PROFILE_CSV steps=" << n
+            << "  total=" << total << "\n";
+  auto sites = step_profile_.gpu_transfer_sites;
+  std::ranges::sort(sites, [](const auto& lhs, const auto& rhs) {
+    const auto lhs_bytes = lhs.h2d_bytes + lhs.d2h_bytes;
+    const auto rhs_bytes = rhs.h2d_bytes + rhs.d2h_bytes;
+    if (lhs_bytes != rhs_bytes) return lhs_bytes > rhs_bytes;
+    return lhs.label < rhs.label;
+  });
+  for (const auto& site : sites) {
+    std::cout << "  gpu_transfer_site label=" << site.label
+              << " h2d_s=" << site.h2d_s
+              << " d2h_s=" << site.d2h_s
+              << " h2d_bytes=" << site.h2d_bytes
+              << " d2h_bytes=" << site.d2h_bytes
+              << " h2d_calls=" << site.h2d_calls
+              << " d2h_calls=" << site.d2h_calls << "\n";
+  }
+  std::cout << "PROFILE_CSV steps=" << n
             << " ghost_s=" << step_profile_.ghost_exchange_s * inv
             << " hash_s=" << step_profile_.spatial_hash_s * inv
             << " biology_s=" << step_profile_.biology_s * inv
@@ -1820,8 +1836,12 @@ void Simulation::step(Real dt) {
   chem_.exchange_concentration_halos();
 
   if (gpu_.active) {
+    GpuTransferSite agent_site("step_agents");
     gpu_.agents.sync_from_host(agents_);
-    gpu_.chem.sync_concentrations_to_device(chem_);
+    {
+      GpuTransferSite concentration_site("step_conc_upload");
+      gpu_.chem.sync_concentrations_to_device(chem_);
+    }
 #ifdef GUTIBM_CUDA
     gpu::launch_grid_coupling_kernel(
         gpu_.agents.x(), gpu_.agents.y(), gpu_.agents.z(),
@@ -1889,12 +1909,28 @@ void Simulation::step(Real dt) {
   if (cfg_.profile_steps) {
     step_profile_.step_count++;
     const GpuTransferProfile xfer = gpu_transfer_profile_snapshot();
+    const auto sites = gpu_transfer_site_profiles();
     step_profile_.gpu_h2d_s += xfer.h2d_s;
     step_profile_.gpu_d2h_s += xfer.d2h_s;
     step_profile_.gpu_h2d_bytes += xfer.h2d_bytes;
     step_profile_.gpu_d2h_bytes += xfer.d2h_bytes;
     step_profile_.gpu_h2d_calls += xfer.h2d_calls;
     step_profile_.gpu_d2h_calls += xfer.d2h_calls;
+    for (const auto& site : sites) {
+      const auto existing = std::ranges::find_if(
+          step_profile_.gpu_transfer_sites,
+          [&site](const auto& value) { return value.label == site.label; });
+      if (existing == step_profile_.gpu_transfer_sites.end()) {
+        step_profile_.gpu_transfer_sites.push_back(site);
+        continue;
+      }
+      existing->h2d_s += site.h2d_s;
+      existing->d2h_s += site.d2h_s;
+      existing->h2d_bytes += site.h2d_bytes;
+      existing->d2h_bytes += site.d2h_bytes;
+      existing->h2d_calls += site.h2d_calls;
+      existing->d2h_calls += site.d2h_calls;
+    }
     step_profile_.gpu_slab_x_roundtrip_s += xfer.slab_x_roundtrip_s;
     gpu_transfer_profile_reset();
   }

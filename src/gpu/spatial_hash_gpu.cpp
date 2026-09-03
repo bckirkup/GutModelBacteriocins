@@ -33,6 +33,7 @@ bool gpu_build_spatial_hash(const AgentPoolGpu& agents, Int num_agents,
   return false;
 #else
   if (!gpu_runtime_enabled() || num_agents <= 0) return false;
+  GpuTransferSite site("spatial_hash");
 
   out.lo = lo;
   out.cell_size = cell_size;

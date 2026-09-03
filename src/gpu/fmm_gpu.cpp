@@ -40,6 +40,7 @@ bool gpu_accumulate_far_field_local(const FMM& fmm,
   return false;
 #else
   if (!gpu_runtime_enabled() || !fmm.locals_ready() || fmm.empty()) return false;
+  GpuTransferSite site("qssa_fmm");
 
   const int num_leaves = leaf_count(fmm);
   if (num_leaves <= 0) return false;

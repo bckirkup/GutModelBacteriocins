@@ -299,6 +299,31 @@ void write_step_profile(hid_t fid, const StepProfile& profile,
   write_phase("mpi_reaction_reduce_s", profile.mpi_reaction_reduce_s);
   write_phase("hdf5_s", profile.hdf5_s);
   write_phase("total_s", profile.total_s());
+  if (!profile.gpu_transfer_sites.empty()) {
+    ensure_group(fid, "run_provenance/step_profile/gpu_transfer_sites", cfg);
+    for (const auto& site : profile.gpu_transfer_sites) {
+      const std::string base =
+          "run_provenance/step_profile/gpu_transfer_sites/" + site.label;
+      ensure_group(fid, base, cfg);
+      const auto write_site_phase = [fid, &base](
+                                        const char* name, double value) {
+        write_scalar_dataset(fid, base + "/" + std::string(name),
+                             H5T_NATIVE_DOUBLE, &value);
+      };
+      const auto write_site_counter = [fid, &base](
+                                          const char* name,
+                                          unsigned long long value) {
+        write_scalar_dataset(fid, base + "/" + std::string(name),
+                             H5T_NATIVE_ULLONG, &value);
+      };
+      write_site_phase("h2d_s", site.h2d_s);
+      write_site_phase("d2h_s", site.d2h_s);
+      write_site_counter("h2d_bytes", site.h2d_bytes);
+      write_site_counter("d2h_bytes", site.d2h_bytes);
+      write_site_counter("h2d_calls", site.h2d_calls);
+      write_site_counter("d2h_calls", site.d2h_calls);
+    }
+  }
   const int32_t step_count = profile.step_count;
   write_scalar_dataset(fid, "run_provenance/step_profile/step_count",
                        H5T_NATIVE_INT32, &step_count);

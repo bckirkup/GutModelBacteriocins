@@ -58,6 +58,7 @@ bool gpu_run_mechanics(AgentPoolGpu& agents, Int num_agents,
   return false;
 #else
   if (!gpu_runtime_enabled() || num_agents <= 0 || !hash.active()) return false;
+  GpuTransferSite site("mechanics");
   if (hash.cell_offsets.size() == 0 || hash.sorted_agent_indices.size() == 0) {
     return false;
   }

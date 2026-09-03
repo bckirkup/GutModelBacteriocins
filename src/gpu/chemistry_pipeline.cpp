@@ -216,13 +216,17 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     }
     if (result.diffusion_on_gpu) {
       in.chem_gpu.apply_boundaries(in.domain, in.chem);
-      in.chem_gpu.sync_concentrations_to_host(in.chem);
+      {
+        GpuTransferSite site("chem_diffusion_result");
+        in.chem_gpu.sync_concentrations_to_host(in.chem);
+      }
     }
   }
 
   if (!result.diffusion_on_gpu) {
     result.delivery_chemistry_host_forced =
         in.gpu_active && in.delivery_mode;
+    GpuTransferSite site("chem_host_fallback");
     if (in.gpu_active && result.reactions_on_gpu) {
       in.chem_gpu.sync_concentrations_to_host(in.chem);
     }

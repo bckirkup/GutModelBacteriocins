@@ -178,6 +178,8 @@ interval excludes queued kernel drain. Device `s1`, medians:
 | H2D | 6.07 | 28.37 GB | 1,950 | 4.67 GB/s |
 | D2H | 6.03 | 28.97 GB | 678 | 4.80 GB/s |
 
+The aggregate 57.3 GB transfer volume in this existing record is now attributable per call site, but that record itself remains unattributed; residency decisions are pending the new attribution data.
+
 Transfers are 12.1 s of the 133 s profiled run (9.1%), at ≈22 MB per call, so
 per-call launch overhead is not the cost — bandwidth is, and 4.7-4.8 GB/s is
 the expected pageable-memory rate on this link rather than an anomaly. Pinned
