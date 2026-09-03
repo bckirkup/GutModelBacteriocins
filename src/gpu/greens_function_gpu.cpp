@@ -84,6 +84,7 @@ bool launch_superpose(const Domain& domain,
                       Real* most_negative_field) {
   if (!gpu_runtime_enabled() || sources.empty()) return false;
   if (d_grid == nullptr) return false;
+  GpuTransferSite site("greens_near_field");
   if (cap_hits != nullptr) *cap_hits = 0;
   if (kernel_evaluations != nullptr) *kernel_evaluations = 0;
   if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
@@ -356,6 +357,7 @@ bool gpu_superpose_to_grid(
   (void)most_negative_field;
   return false;
 #else
+  GpuTransferSite site("greens_grid_download");
   if (sources.empty()) {
     grid_conc.assign(domain.ncells(), 0.0);
     if (cap_hits != nullptr) *cap_hits = 0;

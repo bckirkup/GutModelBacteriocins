@@ -501,6 +501,7 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
       gf.superpose_to_grid(
           host_sources, host_params, host_strengths, host_grid,
           cutoff_radius);
+      GpuTransferSite site("qssa_toxin_robin_mix");
       chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
       std::vector<Real>& device_grid =
           chem.mutable_species_concentration(toxin_species_idx);
@@ -639,6 +640,7 @@ void zero_species_field(ChemicalField& chem,
     }
   }
   if (chem_gpu != nullptr && chem_gpu->active()) {
+    GpuTransferSite site("qssa_toxin_zero");
     chem_gpu->sync_species_concentrations_to_device(chem, species_idx);
   }
 }
@@ -701,6 +703,7 @@ void QSSASolver::solve_lumped_bacteriocin_fields(
   }
 
   if (chem_gpu != nullptr && chem_gpu->active()) {
+    GpuTransferSite site("qssa_toxin_host_sync");
     chem_gpu->sync_species_concentrations_to_host(chem, lumped_idx);
   }
 }
@@ -923,6 +926,7 @@ void QSSASolver::solve_all_bacteriocin_fields(
   }
 
   if (chem_gpu != nullptr && chem_gpu->active()) {
+    GpuTransferSite site("qssa_toxin_host_sync");
     for (Int spec : solved_indices) {
       chem_gpu->sync_species_concentrations_to_host(chem, spec);
     }
@@ -1151,6 +1155,7 @@ void QSSASolver::solve_bacteriocin_field_fmm(
       throw SimulationError(
           "GPU near-field evaluation succeeded without a GPU chemical field");
     }
+    GpuTransferSite site("qssa_fmm");
     chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
     for (Int c = 0; c < ncells; ++c) {
       toxin_conc[static_cast<size_t>(c)] = chem.conc(toxin_species_idx, c);
@@ -1176,6 +1181,7 @@ void QSSASolver::solve_bacteriocin_field_fmm(
   }
   deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
   if (chem_gpu != nullptr && chem_gpu->active()) {
+    GpuTransferSite site("qssa_fmm");
     chem_gpu->sync_species_concentrations_to_device(chem, toxin_species_idx);
   }
 }

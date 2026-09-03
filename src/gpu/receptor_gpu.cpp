@@ -82,6 +82,7 @@ bool gpu_compute_receptor_kill_probs_host_packed(
   using enum ReceptorType;
   const Int n = pool.size();
   if (!gpu_runtime_enabled() || !chem_gpu.active() || n <= 0) return false;
+  GpuTransferSite site("receptor");
 
   std::vector<double> immunity;
   std::vector<double> toxin_aff;
