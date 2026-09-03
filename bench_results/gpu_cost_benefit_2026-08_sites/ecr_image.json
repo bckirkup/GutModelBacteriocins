@@ -1,0 +1,18 @@
+{
+    "imageDetails": [
+        {
+            "registryId": "994254241749",
+            "repositoryName": "gutibm",
+            "imageDigest": "sha256:3c834dbeef76425a75cd183bba9efb03e5770ab6556e2c872aafe9632fe98f0b",
+            "imageTags": [
+                "gpubench-6d67d3648888"
+            ],
+            "imageSizeInBytes": 4481784355,
+            "imagePushedAt": "2026-09-03T09:37:17.888000+00:00",
+            "imageManifestMediaType": "application/vnd.docker.distribution.manifest.v2+json",
+            "artifactMediaType": "application/vnd.docker.container.image.v1+json",
+            "lastRecordedPullTime": "2026-09-03T09:39:05.114000+00:00",
+            "imageStatus": "ACTIVE"
+        }
+    ]
+}
