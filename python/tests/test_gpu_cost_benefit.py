@@ -58,7 +58,7 @@ def test_matrix_matches_reconciled_scopes() -> None:
     assert benchmark.SCALES == ("s0", "s1", "s2")
     for arm in ("A1", "A2"):
         assert ARM_MATRIX[arm]["accepted_placements"] == {"host"}
-    assert ARM_MATRIX["A3"]["accepted_placements"] == {"host_forced_delivery"}
+    assert ARM_MATRIX["A3"]["accepted_placements"] == {"host"}
     for arm in ("A4", "A5"):
         assert ARM_MATRIX[arm]["accepted_placements"] == {"device"}
     assert ARM_MATRIX["A6"]["accepted_placements"] == {"device_delivery"}
@@ -71,6 +71,22 @@ def test_matrix_matches_reconciled_scopes() -> None:
     assert all("mixed" not in item["accepted_placements"] for item in ARM_MATRIX.values())
     assert all(ARM_MATRIX[arm]["scales"] == ("s1", "s2") for arm in ("A1", "A6"))
     assert all(ARM_MATRIX[arm]["scales"] == ("s0",) for arm in ("B1", "C1", "D1"))
+
+
+@pytest.mark.parametrize("placement", ["device", "mixed"])
+def test_a3_accepts_host_and_rejects_other_placements(placement: str) -> None:
+    accepted = {
+        "provenance": {"chemistry_placement": "host", "gpu_compiled": 0}
+    }
+    assert benchmark._placement_validation(
+        accepted, ARM_MATRIX["A3"], gpu_requested=False
+    )["valid"]
+    rejected = {
+        "provenance": {"chemistry_placement": placement, "gpu_compiled": 0}
+    }
+    assert not benchmark._placement_validation(
+        rejected, ARM_MATRIX["A3"], gpu_requested=False
+    )["valid"]
 
 
 def test_generated_configs_have_parser_compatible_shape(tmp_path: Path) -> None:
@@ -210,7 +226,13 @@ def test_merge_excludes_invalid_records_and_groups_hosts(tmp_path: Path) -> None
     manifest_path = tmp_path / "manifest.json"
     _write_config(manifest_path, manifest)
 
-    def record(arm: str, seed: int, status: str, wall: float) -> Path:
+    def record(
+        arm: str,
+        seed: int,
+        status: str,
+        wall: float,
+        placement: str = "host",
+    ) -> Path:
         path = tmp_path / f"{arm}_{seed}.json"
         _write_config(
             path,
@@ -224,13 +246,19 @@ def test_merge_excludes_invalid_records_and_groups_hosts(tmp_path: Path) -> None
                     "cost": {
                         "status": "completed",
                         "wall_seconds": wall,
-                        "provenance": {"termination_step": 2},
+                        "provenance": {
+                            "termination_step": 2,
+                            "chemistry_placement": placement,
+                            "gpu_compiled": 0,
+                        },
                     },
                     "profile": {
                         "status": "completed",
                         "wall_seconds": wall,
                         "provenance": {
-                            "step_profile": {"chemistry_s": wall / 2}
+                            "chemistry_placement": placement,
+                            "gpu_compiled": 0,
+                            "step_profile": {"chemistry_s": wall / 2},
                         },
                     },
                 },
@@ -239,7 +267,7 @@ def test_merge_excludes_invalid_records_and_groups_hosts(tmp_path: Path) -> None
         return path
 
     valid = record("A1", 55, "completed", 10.0)
-    invalid = record("A1", 56, "invalid_placement", 1.0)
+    invalid = record("A1", 56, "invalid_placement", 1.0, "device")
     baseline = record("A3", 55, "completed", 20.0)
     merged = merge_results(manifest_path, [valid, invalid, baseline])
     scale_data = merged["arms"]["A1"]["scales"]["s1"]
@@ -251,6 +279,108 @@ def test_merge_excludes_invalid_records_and_groups_hosts(tmp_path: Path) -> None
     assert {item["arm"] for item in merged["comparable_arm_groups"][0]["records"]} == {
         "A1",
         "A3",
+    }
+
+
+def _placement_manifest(tmp_path: Path) -> Path:
+    manifest_path = tmp_path / "manifest.json"
+    _write_config(
+        manifest_path,
+        {
+            "scales": ["s1"],
+            "seeds": [55],
+            "baselines": {"A": "A3"},
+            "arms": {
+                arm: {
+                    "axis": "A",
+                    "status": "runnable",
+                    "scales": ["s1"],
+                    "accepted_placements": ["host"],
+                    "configs": {},
+                }
+                for arm in ("A1", "A3")
+            },
+        },
+    )
+    return manifest_path
+
+
+def _placement_record(
+    tmp_path: Path,
+    arm: str,
+    record_status: str,
+    placement_status: str,
+    placement: str,
+) -> Path:
+    path = tmp_path / f"{arm}_{record_status}_{placement}.json"
+    passes = {}
+    for pass_name in ("cost", "profile"):
+        passes[pass_name] = {
+            "status": "completed",
+            "completion_status": "completed",
+            "placement_status": placement_status,
+            "wall_seconds": 10.0,
+            "provenance": {
+                "chemistry_placement": placement,
+                "gpu_compiled": 0,
+                "step_profile": {"chemistry_s": 1.0},
+            },
+        }
+    _write_config(
+        path,
+        {
+            "arm": arm,
+            "scale": "s1",
+            "seed": 55,
+            "status": record_status,
+            "completion_status": record_status,
+            "host": {"host_fingerprint": "same-host"},
+            "passes": passes,
+        },
+    )
+    return path
+
+
+def test_merge_revalidates_stored_invalid_placement_as_accepted(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _placement_manifest(tmp_path)
+    raw = _placement_record(
+        tmp_path, "A3", "invalid_placement", "invalid_placement", "host"
+    )
+    merged = merge_results(manifest_path, [raw])
+    record = merged["arms"]["A3"]["scales"]["s1"]["records"][0]
+    assert record["status"] == "completed"
+    assert record["completion_status"] == "completed"
+    assert all(
+        item["placement_status"] == "accepted"
+        for item in record["passes"].values()
+    )
+    assert record["placement_revalidated"] == {
+        "stored": "invalid_placement",
+        "rederived": "completed",
+    }
+    assert "placement revalidated: stored=invalid_placement" in render_report(
+        merged
+    )
+
+
+def test_merge_revalidates_stored_accepted_placement_as_invalid(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _placement_manifest(tmp_path)
+    raw = _placement_record(tmp_path, "A3", "completed", "accepted", "device")
+    merged = merge_results(manifest_path, [raw])
+    record = merged["arms"]["A3"]["scales"]["s1"]["records"][0]
+    assert record["status"] == "invalid_placement"
+    assert record["completion_status"] == "invalid_placement"
+    assert all(
+        item["placement_status"] == "invalid_placement"
+        for item in record["passes"].values()
+    )
+    assert record["placement_revalidated"] == {
+        "stored": "completed",
+        "rederived": "invalid_placement",
     }
 
 
