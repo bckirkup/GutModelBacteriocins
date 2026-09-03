@@ -26,6 +26,10 @@ struct GpuTransferSiteProfile {
   unsigned long long d2h_calls = 0;
 };
 
+// Labels the transfers issued by the calling thread while in scope; nesting is
+// allowed and the innermost label wins. The label is thread-local, so a
+// transfer issued from a worker thread inside a parallel region is recorded as
+// "unattributed" unless the scope is entered on that thread.
 class GpuTransferSite {
  public:
   explicit GpuTransferSite(const char* label);
