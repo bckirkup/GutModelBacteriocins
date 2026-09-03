@@ -1,0 +1,15 @@
+{
+  "expected_seeds": [
+    55,
+    56,
+    57
+  ],
+  "expected_block_count": 3,
+  "found_block_count": 3,
+  "result_files": [
+    "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A3_s1_seed55.json",
+    "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A3_s1_seed56.json",
+    "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A3_s1_seed57.json"
+  ],
+  "failure_reasons": []
+}

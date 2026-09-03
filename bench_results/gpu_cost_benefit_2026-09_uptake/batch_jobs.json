@@ -1,0 +1,368 @@
+{
+    "jobs": [
+        {
+            "jobArn": "arn:aws:batch:us-east-1:994254241749:job/b2ffb5d0-87d7-49a7-9b10-38a341a4532d",
+            "jobName": "gutibm-gpubench-A2-s1-310e97b04f38",
+            "jobId": "b2ffb5d0-87d7-49a7-9b10-38a341a4532d",
+            "jobQueue": "arn:aws:batch:us-east-1:994254241749:job-queue/gutibm-gpu-practice",
+            "status": "SUCCEEDED",
+            "attempts": [
+                {
+                    "container": {
+                        "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+                        "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/b54dabd09685435b945c00271b4cd7fd",
+                        "exitCode": 0,
+                        "logStreamName": "gutibm-gpubench/default/b54dabd09685435b945c00271b4cd7fd",
+                        "networkInterfaces": []
+                    },
+                    "startedAt": 1788430579671,
+                    "stoppedAt": 1788433233128,
+                    "statusReason": "Essential container in task exited"
+                }
+            ],
+            "statusReason": "Essential container in task exited",
+            "createdAt": 1788430320830,
+            "retryStrategy": {
+                "attempts": 1,
+                "evaluateOnExit": []
+            },
+            "startedAt": 1788430579671,
+            "stoppedAt": 1788433233128,
+            "dependsOn": [],
+            "jobDefinition": "arn:aws:batch:us-east-1:994254241749:job-definition/gutibm-gpubench:7",
+            "parameters": {},
+            "container": {
+                "image": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:f5a03461190a111ea1e6594913c146c484bfc8c140375f360163811a6a5b4ce4",
+                "vcpus": 4,
+                "memory": 13000,
+                "command": [
+                    "-lc",
+                    "\nset +e\njob_status=0\nwork=/tmp/gutibm-gpubench\nrm -rf \"${work}\"\nmkdir -p \"${work}/config\" \"${work}/results\"\nif [[ \"${BENCH_ARM}\" =~ ^A[456]$ ]]; then\n  nvidia-smi || job_status=1\nfi\npython3 -m gut_ibm_tools.gpu_cost_benefit generate \\\n  --base \"examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json\" \\\n  --output-dir \"${work}/config\" \\\n  --scale \"${BENCH_SCALE}\" \\\n    \"examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json\"\nif [[ \"$?\" -ne 0 ]]; then\n  job_status=1\nfi\nread -r -a seed_array <<< \"${BENCH_SEEDS}\"\nfor seed in \"${seed_array[@]}\"; do\n  result=\"${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json\"\n  python3 -m gut_ibm_tools.gpu_cost_benefit run \\\n    --manifest \"${work}/config/manifest.json\" \\\n    --arm \"${BENCH_ARM}\" --scale \"${BENCH_SCALE}\" --seed \"${seed}\" \\\n    --binary /src/build/gut_ibm --output-dir \"${work}/results\"\n  run_status=$?\n  if [[ -f \"${result}\" ]]; then\n    echo \"===BENCH_RESULT_BEGIN ${BENCH_ARM}_${BENCH_SCALE}_seed${seed}===\"\n    cat \"${result}\"\n    echo \"===BENCH_RESULT_END===\"\n  else\n    echo \"WARNING: missing result JSON for seed ${seed}\" >&2\n    job_status=1\n  fi\n  if [[ -n \"${GUTIBM_BENCH_S3_URI:-}\" ]]; then\n    aws s3 cp \"${result}\" \\\n      \"${GUTIBM_BENCH_S3_URI%/}/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json\" \\\n      || echo \"WARNING: failed optional S3 copy for ${result}\" >&2\n    for hdf5 in \"${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.\"*.h5; do\n      [[ -f \"${hdf5}\" ]] || continue\n      aws s3 cp \"${hdf5}\" \\\n        \"${GUTIBM_BENCH_S3_URI%/}/$(basename \"${hdf5}\")\" \\\n        || echo \"WARNING: failed optional S3 copy for ${hdf5}\" >&2\n    done\n  fi\n  [[ \"${run_status}\" -eq 0 ]] || job_status=1\ndone\necho \"BENCH_JOB_STATUS=${job_status}\"\nexit \"${job_status}\"\n"
+                ],
+                "volumes": [],
+                "environment": [
+                    {
+                        "name": "PYTHONUNBUFFERED",
+                        "value": "1"
+                    },
+                    {
+                        "name": "BENCH_SCALE",
+                        "value": "s1"
+                    },
+                    {
+                        "name": "BENCH_SEEDS",
+                        "value": "55 56 57"
+                    },
+                    {
+                        "name": "BATCH_LOG_GROUP",
+                        "value": "/aws/batch/job"
+                    },
+                    {
+                        "name": "BENCH_ARM",
+                        "value": "A2"
+                    }
+                ],
+                "mountPoints": [],
+                "ulimits": [],
+                "exitCode": 0,
+                "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+                "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/b54dabd09685435b945c00271b4cd7fd",
+                "logStreamName": "gutibm-gpubench/default/b54dabd09685435b945c00271b4cd7fd",
+                "networkInterfaces": [],
+                "resourceRequirements": [
+                    {
+                        "value": "1",
+                        "type": "GPU"
+                    }
+                ],
+                "linuxParameters": {
+                    "devices": [],
+                    "sharedMemorySize": 2048,
+                    "tmpfs": []
+                },
+                "secrets": []
+            },
+            "timeout": {
+                "attemptDurationSeconds": 7200
+            },
+            "tags": {},
+            "platformCapabilities": [
+                "EC2"
+            ],
+            "eksAttempts": []
+        },
+        {
+            "jobArn": "arn:aws:batch:us-east-1:994254241749:job/7d0b7db8-eba0-4962-bc29-cbd96ce7a6e6",
+            "jobName": "gutibm-gpubench-A6-s1-310e97b04f38",
+            "jobId": "7d0b7db8-eba0-4962-bc29-cbd96ce7a6e6",
+            "jobQueue": "arn:aws:batch:us-east-1:994254241749:job-queue/gutibm-gpu-practice",
+            "status": "SUCCEEDED",
+            "attempts": [
+                {
+                    "container": {
+                        "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+                        "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/f72d6f2bef164bd89322d5ec6af34cce",
+                        "exitCode": 0,
+                        "logStreamName": "gutibm-gpubench/default/f72d6f2bef164bd89322d5ec6af34cce",
+                        "networkInterfaces": []
+                    },
+                    "startedAt": 1788437518564,
+                    "stoppedAt": 1788438808763,
+                    "statusReason": "Essential container in task exited"
+                }
+            ],
+            "statusReason": "Essential container in task exited",
+            "createdAt": 1788437514063,
+            "retryStrategy": {
+                "attempts": 1,
+                "evaluateOnExit": []
+            },
+            "startedAt": 1788437518564,
+            "stoppedAt": 1788438808763,
+            "dependsOn": [],
+            "jobDefinition": "arn:aws:batch:us-east-1:994254241749:job-definition/gutibm-gpubench:7",
+            "parameters": {},
+            "container": {
+                "image": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:f5a03461190a111ea1e6594913c146c484bfc8c140375f360163811a6a5b4ce4",
+                "vcpus": 4,
+                "memory": 13000,
+                "command": [
+                    "-lc",
+                    "\nset +e\njob_status=0\nwork=/tmp/gutibm-gpubench\nrm -rf \"${work}\"\nmkdir -p \"${work}/config\" \"${work}/results\"\nif [[ \"${BENCH_ARM}\" =~ ^A[456]$ ]]; then\n  nvidia-smi || job_status=1\nfi\npython3 -m gut_ibm_tools.gpu_cost_benefit generate \\\n  --base \"examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json\" \\\n  --output-dir \"${work}/config\" \\\n  --scale \"${BENCH_SCALE}\" \\\n    \"examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json\"\nif [[ \"$?\" -ne 0 ]]; then\n  job_status=1\nfi\nread -r -a seed_array <<< \"${BENCH_SEEDS}\"\nfor seed in \"${seed_array[@]}\"; do\n  result=\"${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json\"\n  python3 -m gut_ibm_tools.gpu_cost_benefit run \\\n    --manifest \"${work}/config/manifest.json\" \\\n    --arm \"${BENCH_ARM}\" --scale \"${BENCH_SCALE}\" --seed \"${seed}\" \\\n    --binary /src/build/gut_ibm --output-dir \"${work}/results\"\n  run_status=$?\n  if [[ -f \"${result}\" ]]; then\n    echo \"===BENCH_RESULT_BEGIN ${BENCH_ARM}_${BENCH_SCALE}_seed${seed}===\"\n    cat \"${result}\"\n    echo \"===BENCH_RESULT_END===\"\n  else\n    echo \"WARNING: missing result JSON for seed ${seed}\" >&2\n    job_status=1\n  fi\n  if [[ -n \"${GUTIBM_BENCH_S3_URI:-}\" ]]; then\n    aws s3 cp \"${result}\" \\\n      \"${GUTIBM_BENCH_S3_URI%/}/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json\" \\\n      || echo \"WARNING: failed optional S3 copy for ${result}\" >&2\n    for hdf5 in \"${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.\"*.h5; do\n      [[ -f \"${hdf5}\" ]] || continue\n      aws s3 cp \"${hdf5}\" \\\n        \"${GUTIBM_BENCH_S3_URI%/}/$(basename \"${hdf5}\")\" \\\n        || echo \"WARNING: failed optional S3 copy for ${hdf5}\" >&2\n    done\n  fi\n  [[ \"${run_status}\" -eq 0 ]] || job_status=1\ndone\necho \"BENCH_JOB_STATUS=${job_status}\"\nexit \"${job_status}\"\n"
+                ],
+                "volumes": [],
+                "environment": [
+                    {
+                        "name": "PYTHONUNBUFFERED",
+                        "value": "1"
+                    },
+                    {
+                        "name": "BENCH_SCALE",
+                        "value": "s1"
+                    },
+                    {
+                        "name": "BENCH_SEEDS",
+                        "value": "55 56 57"
+                    },
+                    {
+                        "name": "BATCH_LOG_GROUP",
+                        "value": "/aws/batch/job"
+                    },
+                    {
+                        "name": "BENCH_ARM",
+                        "value": "A6"
+                    }
+                ],
+                "mountPoints": [],
+                "ulimits": [],
+                "exitCode": 0,
+                "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+                "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/f72d6f2bef164bd89322d5ec6af34cce",
+                "logStreamName": "gutibm-gpubench/default/f72d6f2bef164bd89322d5ec6af34cce",
+                "networkInterfaces": [],
+                "resourceRequirements": [
+                    {
+                        "value": "1",
+                        "type": "GPU"
+                    }
+                ],
+                "linuxParameters": {
+                    "devices": [],
+                    "sharedMemorySize": 2048,
+                    "tmpfs": []
+                },
+                "secrets": []
+            },
+            "timeout": {
+                "attemptDurationSeconds": 7200
+            },
+            "tags": {},
+            "platformCapabilities": [
+                "EC2"
+            ],
+            "eksAttempts": []
+        },
+        {
+            "jobArn": "arn:aws:batch:us-east-1:994254241749:job/19514d8d-a698-4e74-bf00-93711d107fa2",
+            "jobName": "gutibm-gpubench-A5-s1-310e97b04f38",
+            "jobId": "19514d8d-a698-4e74-bf00-93711d107fa2",
+            "jobQueue": "arn:aws:batch:us-east-1:994254241749:job-queue/gutibm-gpu-practice",
+            "status": "SUCCEEDED",
+            "attempts": [
+                {
+                    "container": {
+                        "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+                        "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/b38db6708b2c4af4a484ff8df31465d0",
+                        "exitCode": 0,
+                        "logStreamName": "gutibm-gpubench/default/b38db6708b2c4af4a484ff8df31465d0",
+                        "networkInterfaces": []
+                    },
+                    "startedAt": 1788436724483,
+                    "stoppedAt": 1788437499765,
+                    "statusReason": "Essential container in task exited"
+                }
+            ],
+            "statusReason": "Essential container in task exited",
+            "createdAt": 1788436719894,
+            "retryStrategy": {
+                "attempts": 1,
+                "evaluateOnExit": []
+            },
+            "startedAt": 1788436724483,
+            "stoppedAt": 1788437499765,
+            "dependsOn": [],
+            "jobDefinition": "arn:aws:batch:us-east-1:994254241749:job-definition/gutibm-gpubench:7",
+            "parameters": {},
+            "container": {
+                "image": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:f5a03461190a111ea1e6594913c146c484bfc8c140375f360163811a6a5b4ce4",
+                "vcpus": 4,
+                "memory": 13000,
+                "command": [
+                    "-lc",
+                    "\nset +e\njob_status=0\nwork=/tmp/gutibm-gpubench\nrm -rf \"${work}\"\nmkdir -p \"${work}/config\" \"${work}/results\"\nif [[ \"${BENCH_ARM}\" =~ ^A[456]$ ]]; then\n  nvidia-smi || job_status=1\nfi\npython3 -m gut_ibm_tools.gpu_cost_benefit generate \\\n  --base \"examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json\" \\\n  --output-dir \"${work}/config\" \\\n  --scale \"${BENCH_SCALE}\" \\\n    \"examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json\"\nif [[ \"$?\" -ne 0 ]]; then\n  job_status=1\nfi\nread -r -a seed_array <<< \"${BENCH_SEEDS}\"\nfor seed in \"${seed_array[@]}\"; do\n  result=\"${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json\"\n  python3 -m gut_ibm_tools.gpu_cost_benefit run \\\n    --manifest \"${work}/config/manifest.json\" \\\n    --arm \"${BENCH_ARM}\" --scale \"${BENCH_SCALE}\" --seed \"${seed}\" \\\n    --binary /src/build/gut_ibm --output-dir \"${work}/results\"\n  run_status=$?\n  if [[ -f \"${result}\" ]]; then\n    echo \"===BENCH_RESULT_BEGIN ${BENCH_ARM}_${BENCH_SCALE}_seed${seed}===\"\n    cat \"${result}\"\n    echo \"===BENCH_RESULT_END===\"\n  else\n    echo \"WARNING: missing result JSON for seed ${seed}\" >&2\n    job_status=1\n  fi\n  if [[ -n \"${GUTIBM_BENCH_S3_URI:-}\" ]]; then\n    aws s3 cp \"${result}\" \\\n      \"${GUTIBM_BENCH_S3_URI%/}/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json\" \\\n      || echo \"WARNING: failed optional S3 copy for ${result}\" >&2\n    for hdf5 in \"${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.\"*.h5; do\n      [[ -f \"${hdf5}\" ]] || continue\n      aws s3 cp \"${hdf5}\" \\\n        \"${GUTIBM_BENCH_S3_URI%/}/$(basename \"${hdf5}\")\" \\\n        || echo \"WARNING: failed optional S3 copy for ${hdf5}\" >&2\n    done\n  fi\n  [[ \"${run_status}\" -eq 0 ]] || job_status=1\ndone\necho \"BENCH_JOB_STATUS=${job_status}\"\nexit \"${job_status}\"\n"
+                ],
+                "volumes": [],
+                "environment": [
+                    {
+                        "name": "PYTHONUNBUFFERED",
+                        "value": "1"
+                    },
+                    {
+                        "name": "BENCH_SCALE",
+                        "value": "s1"
+                    },
+                    {
+                        "name": "BENCH_SEEDS",
+                        "value": "55 56 57"
+                    },
+                    {
+                        "name": "BATCH_LOG_GROUP",
+                        "value": "/aws/batch/job"
+                    },
+                    {
+                        "name": "BENCH_ARM",
+                        "value": "A5"
+                    }
+                ],
+                "mountPoints": [],
+                "ulimits": [],
+                "exitCode": 0,
+                "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+                "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/b38db6708b2c4af4a484ff8df31465d0",
+                "logStreamName": "gutibm-gpubench/default/b38db6708b2c4af4a484ff8df31465d0",
+                "networkInterfaces": [],
+                "resourceRequirements": [
+                    {
+                        "value": "1",
+                        "type": "GPU"
+                    }
+                ],
+                "linuxParameters": {
+                    "devices": [],
+                    "sharedMemorySize": 2048,
+                    "tmpfs": []
+                },
+                "secrets": []
+            },
+            "timeout": {
+                "attemptDurationSeconds": 7200
+            },
+            "tags": {},
+            "platformCapabilities": [
+                "EC2"
+            ],
+            "eksAttempts": []
+        },
+        {
+            "jobArn": "arn:aws:batch:us-east-1:994254241749:job/a7a82649-07b4-4419-b050-0ea5c5d44381",
+            "jobName": "gutibm-gpubench-A3-s1-310e97b04f38",
+            "jobId": "a7a82649-07b4-4419-b050-0ea5c5d44381",
+            "jobQueue": "arn:aws:batch:us-east-1:994254241749:job-queue/gutibm-gpu-practice",
+            "status": "SUCCEEDED",
+            "attempts": [
+                {
+                    "container": {
+                        "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+                        "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/429d21143a7e4a1a86eb9aa4c99d6210",
+                        "exitCode": 0,
+                        "logStreamName": "gutibm-gpubench/default/429d21143a7e4a1a86eb9aa4c99d6210",
+                        "networkInterfaces": []
+                    },
+                    "startedAt": 1788433258734,
+                    "stoppedAt": 1788436703836,
+                    "statusReason": "Essential container in task exited"
+                }
+            ],
+            "statusReason": "Essential container in task exited",
+            "createdAt": 1788433250495,
+            "retryStrategy": {
+                "attempts": 1,
+                "evaluateOnExit": []
+            },
+            "startedAt": 1788433258734,
+            "stoppedAt": 1788436703836,
+            "dependsOn": [],
+            "jobDefinition": "arn:aws:batch:us-east-1:994254241749:job-definition/gutibm-gpubench:7",
+            "parameters": {},
+            "container": {
+                "image": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:f5a03461190a111ea1e6594913c146c484bfc8c140375f360163811a6a5b4ce4",
+                "vcpus": 4,
+                "memory": 13000,
+                "command": [
+                    "-lc",
+                    "\nset +e\njob_status=0\nwork=/tmp/gutibm-gpubench\nrm -rf \"${work}\"\nmkdir -p \"${work}/config\" \"${work}/results\"\nif [[ \"${BENCH_ARM}\" =~ ^A[456]$ ]]; then\n  nvidia-smi || job_status=1\nfi\npython3 -m gut_ibm_tools.gpu_cost_benefit generate \\\n  --base \"examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json\" \\\n  --output-dir \"${work}/config\" \\\n  --scale \"${BENCH_SCALE}\" \\\n    \"examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json\"\nif [[ \"$?\" -ne 0 ]]; then\n  job_status=1\nfi\nread -r -a seed_array <<< \"${BENCH_SEEDS}\"\nfor seed in \"${seed_array[@]}\"; do\n  result=\"${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json\"\n  python3 -m gut_ibm_tools.gpu_cost_benefit run \\\n    --manifest \"${work}/config/manifest.json\" \\\n    --arm \"${BENCH_ARM}\" --scale \"${BENCH_SCALE}\" --seed \"${seed}\" \\\n    --binary /src/build/gut_ibm --output-dir \"${work}/results\"\n  run_status=$?\n  if [[ -f \"${result}\" ]]; then\n    echo \"===BENCH_RESULT_BEGIN ${BENCH_ARM}_${BENCH_SCALE}_seed${seed}===\"\n    cat \"${result}\"\n    echo \"===BENCH_RESULT_END===\"\n  else\n    echo \"WARNING: missing result JSON for seed ${seed}\" >&2\n    job_status=1\n  fi\n  if [[ -n \"${GUTIBM_BENCH_S3_URI:-}\" ]]; then\n    aws s3 cp \"${result}\" \\\n      \"${GUTIBM_BENCH_S3_URI%/}/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json\" \\\n      || echo \"WARNING: failed optional S3 copy for ${result}\" >&2\n    for hdf5 in \"${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.\"*.h5; do\n      [[ -f \"${hdf5}\" ]] || continue\n      aws s3 cp \"${hdf5}\" \\\n        \"${GUTIBM_BENCH_S3_URI%/}/$(basename \"${hdf5}\")\" \\\n        || echo \"WARNING: failed optional S3 copy for ${hdf5}\" >&2\n    done\n  fi\n  [[ \"${run_status}\" -eq 0 ]] || job_status=1\ndone\necho \"BENCH_JOB_STATUS=${job_status}\"\nexit \"${job_status}\"\n"
+                ],
+                "volumes": [],
+                "environment": [
+                    {
+                        "name": "PYTHONUNBUFFERED",
+                        "value": "1"
+                    },
+                    {
+                        "name": "BENCH_SCALE",
+                        "value": "s1"
+                    },
+                    {
+                        "name": "BENCH_SEEDS",
+                        "value": "55 56 57"
+                    },
+                    {
+                        "name": "BATCH_LOG_GROUP",
+                        "value": "/aws/batch/job"
+                    },
+                    {
+                        "name": "BENCH_ARM",
+                        "value": "A3"
+                    }
+                ],
+                "mountPoints": [],
+                "ulimits": [],
+                "exitCode": 0,
+                "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+                "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/429d21143a7e4a1a86eb9aa4c99d6210",
+                "logStreamName": "gutibm-gpubench/default/429d21143a7e4a1a86eb9aa4c99d6210",
+                "networkInterfaces": [],
+                "resourceRequirements": [
+                    {
+                        "value": "1",
+                        "type": "GPU"
+                    }
+                ],
+                "linuxParameters": {
+                    "devices": [],
+                    "sharedMemorySize": 2048,
+                    "tmpfs": []
+                },
+                "secrets": []
+            },
+            "timeout": {
+                "attemptDurationSeconds": 7200
+            },
+            "tags": {},
+            "platformCapabilities": [
+                "EC2"
+            ],
+            "eksAttempts": []
+        }
+    ]
+}
