@@ -1,0 +1,293 @@
+{
+  "schema_version": 3,
+  "arm": "A5",
+  "axis": "A",
+  "scale": "s1",
+  "seed": 55,
+  "host": {
+    "hostname": "ip-172-31-82-103.ec2.internal",
+    "cpu_model": "Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz",
+    "logical_cores": 4,
+    "mem_total_kib": 16170052,
+    "gpu": {
+      "name": "Tesla T4",
+      "driver_version": "580.159.03",
+      "memory_total": "15360"
+    },
+    "aws_batch": {
+      "job_id": "19514d8d-a698-4e74-bf00-93711d107fa2",
+      "jq_name": "gutibm-gpu-practice",
+      "ce_name": "gutibm-gpu-practice-od"
+    },
+    "instance_type": null,
+    "host_fingerprint": "050c1b55d28924055f761df7c0663963201f04b75a51983802247dbc24c97b5a"
+  },
+  "backend": {
+    "gpu_requested": true
+  },
+  "accepted_placements": [
+    "device"
+  ],
+  "status": "completed",
+  "completion_status": "completed",
+  "passes": {
+    "cost": {
+      "name": "cost",
+      "profile_steps": false,
+      "config_file": "/tmp/gutibm-gpubench/results/A5_s1_seed55.cost.config.json",
+      "hdf5_file": "/tmp/gutibm-gpubench/results/A5_s1_seed55.cost.h5",
+      "stdout_file": "/tmp/gutibm-gpubench/results/A5_s1_seed55.cost.stdout",
+      "stderr_file": "/tmp/gutibm-gpubench/results/A5_s1_seed55.cost.stderr",
+      "status": "completed",
+      "completion_status": "completed",
+      "exit_code": 0,
+      "wall_seconds": 128.50274518700007,
+      "provenance": {
+        "chemistry_placement": "device",
+        "completed_total_time": 1,
+        "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+        "gpu_compiled": 1,
+        "green_function_kernel_evaluations": 0,
+        "halt_density_cells_per_mL": 0.0,
+        "halt_reason_code": 0,
+        "halt_step": 0,
+        "halt_time": 0.0,
+        "hdf5_compiled": 1,
+        "image_series_mode": "corrected",
+        "job_id": "19514d8d-a698-4e74-bf00-93711d107fa2",
+        "mpi_compiled": 1,
+        "mpi_rank_count": 1,
+        "neumann_drift_correction": 0,
+        "neumann_drift_envelope_evaluations": 0,
+        "neumann_image_series_cap_hits": 78860209,
+        "neumann_low_screening_evaluations": 0,
+        "neumann_most_negative_field": 0.0,
+        "neumann_negative_field_count": 0,
+        "openmp_compiled": 1,
+        "resolved_config": "{\"total_time\":600,\"bio_dt\":60,\"output_interval\":1000000000,\"seed\":55,\"grid_dx\":1.9999999999999999e-06,\"domain_x\":0.001,\"domain_y\":0.001,\"domain_z\":0.0001,\"hash_cell_size\":1.0000000000000001e-05,\"ghost_width\":1.0000000000000001e-05,\"domain.chemistry_stride_x\":1,\"domain.chemistry_stride_y\":1,\"domain.chemistry_stride_z\":1,\"domain.grid_halo_width\":1,\"hdf5.file\":\"/tmp/gutibm-gpubench/results/A5_s1_seed55.cost.h5\",\"initial_population.placement\":\"legacy\",\"initial_population.z_min\":0,\"initial_population.z_max\":9.9999999999999995e-07,\"initial_population.anatomic_exclusion_floor\":2.0000000000000002e-05,\"initial_population.anatomic_exponential_scale\":4.0000000000000003e-05,\"initial_population.anatomic_outer_extent\":0.00014999999999999999,\"immigration.enabled\":false,\"immigration.count\":1,\"immigration.strain_index\":0,\"immigration.placement\":\"uniform\",\"immigration.distance\":0,\"immigration.distance_tolerance\":0,\"immigration.distance_reference\":\"nearest_agent\",\"immigration.z_min\":0,\"immigration.z_max\":0,\"immigration.schedule\":\"pulse\",\"immigration.step\":0,\"immigration.rate\":0,\"chemistry_decomposition\":\"replicated\",\"species_subset\":\"full\",\"uptake_limit\":\"sherwood\",\"chemistry.toxin_evaluation\":\"grid\",\"chemistry.toxin_lumping\":\"per_receptor\",\"mucus_thickness\":0.0001,\"radial_turnover\":5400,\"washout.trap\":\"emergent\",\"distal_transit\":43200,\"distal_length\":0.001,\"profile_alpha\":1.5,\"peristaltic_enabled\":false,\"peristaltic_period\":20,\"peristaltic_amplitude\":0.5,\"peristaltic_wavelength\":0,\"crypts_enabled\":false,\"crypt_depth\":1.0000000000000001e-05,\"crypt_exit_rate\":0.0001,\"crypt_entry_rate\":5.0000000000000002e-05,\"crypt_carrying_capacity\":50,\"vbf_density\":100000000000,\"vbf_viscosity\":0.01,\"vbf_nutrient_sink\":0.0001,\"vbf_mucin_liberation\":5.0000000000000002e-05,\"vbf_mucin_z_gradient\":true,\"vbf_mucin_z_lambda\":2.5000000000000001e-05,\"vbf_carbon_sink_vmax\":5.5000000000000002e-05,\"vbf_carbon_sink_km\":0.0001,\"vbf.agent_carbon_coupling\":0,\"carbon_boundary_conc\":0.0050000000000000001,\"oxygen.enabled\":false,\"oxygen.epithelial_conc\":5.5000000000000002e-05,\"oxygen.epithelial_boundary\":\"dirichlet\",\"oxygen.epithelial_transfer_coeff\":0,\"oxygen.epithelial_flux\":0,\"oxygen.z_gradient\":true,\"oxygen.delivery_uptake_enabled\":false,\"oxygen.respiration_driver\":\"ambient\",\"oxygen.ros_driver\":\"ambient\",\"oxygen.D_free\":2.1000000000000002e-09,\"oxygen.Km\":9.9999999999999995e-07,\"oxygen.metabolic_switch_enabled\":false,\"oxygen.mu_crit\":9.7e-05,\"oxygen.aerobic_mu_factor\":1,\"oxygen.anaerobic_mu_factor\":0.55000000000000004,\"oxygen.aerobic_carbon_cost_factor\":1,\"oxygen.anaerobic_carbon_cost_factor\":4.0999999999999996,\"oxygen.tau_metabolic_switch\":3600,\"oxygen.ferm_acid_yield\":1,\"oxygen.anaerobic_maintenance_factor\":15,\"oxygen.boost_max\":2,\"oxygen.q_consumption\":1e-14,\"oxygen.q_maintenance\":1.0000000000000001e-18,\"oxygen.vbf_sink\":0.001,\"oxygen.k_ROS\":0,\"oxygen.k_ROS_respiratory\":0,\"oxygen.k_ROS_funded\":0,\"acetate.enabled\":false,\"acetate.D_free\":1.2e-09,\"acetate.vbf_production\":0.001,\"acetate.vbf_consumption\":0.00020000000000000001,\"acetate.overflow_threshold\":0.00029999999999999997,\"acetate.overflow_rate\":1.0000000000000001e-15,\"acetate.scavenge_rate\":1.0000000000000001e-15,\"acetate.scavenge_Km\":5,\"acetate.epithelial_uptake\":0.00050000000000000001,\"mucin.enabled\":false,\"mucin.initial_conc\":0.01,\"mucin.secretion_rate\":0.0001,\"mucin.Km_degradation\":0.001,\"mucin.k_liberation\":5.0000000000000004e-16,\"protease.enabled\":true,\"protease.default_half_life\":1800,\"protease.dilution_rate\":0.0001,\"siderophore.enabled\":true,\"siderophore.secretion_rate\":1.0000000000000001e-05,\"siderophore.D_free\":1e-10,\"siderophore.chelation_rate\":1000,\"siderophore.Km_reimport\":9.9999999999999995e-07,\"siderophore.Vmax_reimport\":1.0000000000000001e-05,\"ferrichrome.enabled\":false,\"ferrichrome.initial_conc\":0,\"ferrichrome.boundary_conc\":0,\"quorum_sensing.enabled\":false,\"quorum_sensing.ai2_basal_rate\":9.9999999999999995e-21,\"quorum_sensing.ai2_growth_coupled\":9.9999999999999998e-17,\"quorum_sensing.lsr_vmax\":1.0000000000000001e-18,\"quorum_sensing.lsr_km\":9.9999999999999995e-08,\"quorum_sensing.ai2_D_free\":5.0000000000000003e-10,\"quorum_sensing.ai2_decay_rate\":0.0001,\"quorum_sensing.ai2_chemotaxis\":false,\"quorum_sensing.chi_ai2\":3,\"toxin_cutoff\":0.00020000000000000001,\"toxin.lumen_transfer_length\":\"inf\",\"toxin.lumen_transfer_basis\":\"effective\",\"image_series_relative_tolerance\":1e-10,\"image_series_max_shells\":512,\"image_series_mode\":\"corrected\",\"qssa.low_screening_policy\":\"warn\",\"qssa.drift_envelope_policy\":\"warn\",\"qssa.drift_correction\":false,\"nutrient_cutoff\":5.0000000000000002e-05,\"colicin_release_rate\":1.0000000000000001e-18,\"microcin_secretion\":9.9999999999999995e-21,\"use_fmm\":true,\"fmm_theta\":0.5,\"fmm_expansion_order\":2,\"division_threshold\":2,\"bacteriostasis_threshold\":9.9999999999999995e-07,\"maintenance_rate\":1.0000000000000001e-05,\"carbon_maintenance_rate\":0,\"delivery_far_field_radius\":1.0000000000000001e-05,\"acid_inhibition_enabled\":false,\"acid_inhibition_max\":0.80000000000000004,\"acid_inhibition_Ki\":50,\"acetate_pKa\":4.7599999999999998,\"metE_penalty\":0.050000000000000003,\"metE_acetate_km\":40,\"metE_acetate_max_factor\":2.5,\"eut_km\":0.0001,\"eut_max_penalty\":0.10000000000000001,\"km_iron_primary\":1.0000000000000001e-05,\"km_iron_iroN\":5.0000000000000002e-05,\"km_iron_iutA\":0.0001,\"km_iron_fiu\":0.00020000000000000001,\"kd_b12_btuB\":9.9999999999999995e-07,\"kd_colicinE_btuB\":4.9999999999999998e-07,\"kd_enterobactin\":9.9999999999999995e-07,\"kd_colicinB_fepA\":1.9999999999999999e-06,\"kd_lin_enterobactin\":5.0000000000000002e-05,\"kd_colicinIa_cirA\":3.0000000000000001e-06,\"kill_rate_colicin\":0.001,\"kill_rate_microcin\":0.00050000000000000001,\"immunity_factor\":0.001,\"sos_lysis_prob\":0.01,\"sos_basal_rate\":9.9999999999999995e-07,\"D_free_colicin\":3.9999999999999998e-11,\"burst_release_tau\":300,\"microcin_mu_penalty\":0.029999999999999999,\"sos_cross_induction_rate\":1000,\"bacteriocin.mucin_charge.r_min\":1.2,\"bacteriocin.mucin_charge.amplitude\":60,\"bacteriocin.mucin_charge.dz_half\":1.3500000000000001,\"bacteriocin.mucin_charge.width\":1,\"bacteriocin.mucin_charge.ph\":7,\"pili_length\":3.9999999999999998e-06,\"base_transfer_rate\":0.0001,\"shear_critical\":10,\"plasmid_copy_cost\":0.02,\"pili_heterogeneity\":false,\"pili_length_min\":9.9999999999999995e-07,\"pili_length_max\":3.9999999999999998e-06,\"bi_duplication_rate\":1.0000000000000001e-05,\"bi_recombination_rate\":5.0000000000000004e-06,\"receptor_mutation_rate\":9.9999999999999995e-08,\"super_killer_rate\":1e-08,\"partial_resistance_rate\":4.9999999999999998e-07,\"receptor_reduction\":0.10000000000000001,\"max_bi_loci\":8,\"immunity_escape_prob\":0.5,\"escape_affinity_lo\":0.01,\"escape_affinity_hi\":0.29999999999999999,\"compensatory_rate\":9.9999999999999995e-07,\"compensatory_reduction\":0.0050000000000000001,\"hertz_k\":9.9999999999999995e-07,\"hertzian_enabled\":true,\"adhesion_enabled\":false,\"adhesion_strength\":9.9999999999999998e-13,\"adhesion_range\":4.9999999999999998e-07,\"gpu_enabled\":true,\"gpu_device_id\":-1,\"adaptive_dt_enabled\":false,\"dt_min\":1,\"dt_max\":300,\"dt_safety\":0.80000000000000004,\"dt_growth_limit\":0.10000000000000001,\"profile_steps\":false,\"dysbiosis_threshold\":0,\"dysbiosis_sampling_interval\":300,\"dysbiosis_sample_count\":7,\"closure.enforce_delivery_realization\":true,\"closure.zero_realization_grace_steps\":5,\"closure.enforce_reaction_clip\":false,\"closure.reaction_clip_tolerance_fraction\":0,\"restart.enabled\":false,\"restart.directory\":\"restart\",\"restart.interval_steps\":0,\"hdf5.enabled\":true,\"hdf5.compression\":\"gzip\",\"hdf5.compression_level\":4,\"hdf5.schedule.summary\":1,\"hdf5.schedule.agents\":5,\"hdf5.schedule.grid\":0,\"hdf5.schedule.lineage\":100,\"hdf5.schedule.genome\":100,\"hdf5.schedule.provenance\":1,\"b12.initial_conc\":0.001,\"hdf5.schedule.grid_species\":[],\"initial_strains\":[{\"type\":1,\"count\":100000,\"mu_max\":0.00055000000000000003,\"conjugative\":true,\"cdi_type\":0,\"cdi_immunity\":0,\"plasmids\":[\"ColE1\",\"ColB\"],\"receptor_expression\":{}}],\"plasmid_overrides\":{},\"fixes\":[],\"disabled_fixes\":[],\"disabled_mechanisms\":[]}",
+        "robin_direct_mode_evaluations": 0,
+        "robin_gpu_host_fallback_sources": 0,
+        "robin_table_evictions": 0,
+        "robin_table_hash": "0000000000000000",
+        "robin_table_metadata": "nodes=33;modes=2048;relative_tolerance=9.9999999999999995e-07;cutoff=0.00020000000000000001;lumen_transfer_length=inf;boundary_mapping=effective;boundary_status=disabled;capacity=64;tables_built=0;table_evictions=0",
+        "robin_tables_built": 0,
+        "step_profile": {
+          "biology_s": 0.0,
+          "chemistry_s": 0.0,
+          "cleanup_s": 0.0,
+          "ghost_exchange_s": 0.0,
+          "gpu_d2h_bytes_total": 0,
+          "gpu_d2h_calls_total": 0,
+          "gpu_d2h_s": 0.0,
+          "gpu_h2d_bytes_total": 0,
+          "gpu_h2d_calls_total": 0,
+          "gpu_h2d_s": 0.0,
+          "gpu_slab_x_roundtrip_s": 0.0,
+          "hdf5_s": 0.0,
+          "mpi_migrate_s": 0.0,
+          "mpi_reaction_reduce_s": 0.0,
+          "physics_s": 0.0,
+          "spatial_hash_s": 0.0,
+          "step_count": 0,
+          "total_s": 0.0
+        },
+        "termination_cause": "horizon_reached",
+        "termination_cause_code": 0,
+        "termination_detail": "requested simulation horizon reached",
+        "termination_reason_code": 0,
+        "termination_step": 10,
+        "termination_time": 600.0,
+        "termination_wall_seconds": 120.522107563,
+        "version": "0.1.0"
+      },
+      "placement_status": "accepted",
+      "placement_validation": {
+        "observed_placement": "device",
+        "gpu_compiled": 1,
+        "accepted_placements": [
+          "device"
+        ],
+        "valid": true
+      }
+    },
+    "profile": {
+      "name": "profile",
+      "profile_steps": true,
+      "config_file": "/tmp/gutibm-gpubench/results/A5_s1_seed55.profile.config.json",
+      "hdf5_file": "/tmp/gutibm-gpubench/results/A5_s1_seed55.profile.h5",
+      "stdout_file": "/tmp/gutibm-gpubench/results/A5_s1_seed55.profile.stdout",
+      "stderr_file": "/tmp/gutibm-gpubench/results/A5_s1_seed55.profile.stderr",
+      "status": "completed",
+      "completion_status": "completed",
+      "exit_code": 0,
+      "wall_seconds": 127.61271173499972,
+      "provenance": {
+        "chemistry_placement": "device",
+        "completed_total_time": 1,
+        "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+        "gpu_compiled": 1,
+        "green_function_kernel_evaluations": 14770371216,
+        "halt_density_cells_per_mL": 0.0,
+        "halt_reason_code": 0,
+        "halt_step": 0,
+        "halt_time": 0.0,
+        "hdf5_compiled": 1,
+        "image_series_mode": "corrected",
+        "job_id": "19514d8d-a698-4e74-bf00-93711d107fa2",
+        "mpi_compiled": 1,
+        "mpi_rank_count": 1,
+        "neumann_drift_correction": 0,
+        "neumann_drift_envelope_evaluations": 0,
+        "neumann_image_series_cap_hits": 78860209,
+        "neumann_low_screening_evaluations": 0,
+        "neumann_most_negative_field": 0.0,
+        "neumann_negative_field_count": 0,
+        "openmp_compiled": 1,
+        "resolved_config": "{\"total_time\":600,\"bio_dt\":60,\"output_interval\":1000000000,\"seed\":55,\"grid_dx\":1.9999999999999999e-06,\"domain_x\":0.001,\"domain_y\":0.001,\"domain_z\":0.0001,\"hash_cell_size\":1.0000000000000001e-05,\"ghost_width\":1.0000000000000001e-05,\"domain.chemistry_stride_x\":1,\"domain.chemistry_stride_y\":1,\"domain.chemistry_stride_z\":1,\"domain.grid_halo_width\":1,\"hdf5.file\":\"/tmp/gutibm-gpubench/results/A5_s1_seed55.profile.h5\",\"initial_population.placement\":\"legacy\",\"initial_population.z_min\":0,\"initial_population.z_max\":9.9999999999999995e-07,\"initial_population.anatomic_exclusion_floor\":2.0000000000000002e-05,\"initial_population.anatomic_exponential_scale\":4.0000000000000003e-05,\"initial_population.anatomic_outer_extent\":0.00014999999999999999,\"immigration.enabled\":false,\"immigration.count\":1,\"immigration.strain_index\":0,\"immigration.placement\":\"uniform\",\"immigration.distance\":0,\"immigration.distance_tolerance\":0,\"immigration.distance_reference\":\"nearest_agent\",\"immigration.z_min\":0,\"immigration.z_max\":0,\"immigration.schedule\":\"pulse\",\"immigration.step\":0,\"immigration.rate\":0,\"chemistry_decomposition\":\"replicated\",\"species_subset\":\"full\",\"uptake_limit\":\"sherwood\",\"chemistry.toxin_evaluation\":\"grid\",\"chemistry.toxin_lumping\":\"per_receptor\",\"mucus_thickness\":0.0001,\"radial_turnover\":5400,\"washout.trap\":\"emergent\",\"distal_transit\":43200,\"distal_length\":0.001,\"profile_alpha\":1.5,\"peristaltic_enabled\":false,\"peristaltic_period\":20,\"peristaltic_amplitude\":0.5,\"peristaltic_wavelength\":0,\"crypts_enabled\":false,\"crypt_depth\":1.0000000000000001e-05,\"crypt_exit_rate\":0.0001,\"crypt_entry_rate\":5.0000000000000002e-05,\"crypt_carrying_capacity\":50,\"vbf_density\":100000000000,\"vbf_viscosity\":0.01,\"vbf_nutrient_sink\":0.0001,\"vbf_mucin_liberation\":5.0000000000000002e-05,\"vbf_mucin_z_gradient\":true,\"vbf_mucin_z_lambda\":2.5000000000000001e-05,\"vbf_carbon_sink_vmax\":5.5000000000000002e-05,\"vbf_carbon_sink_km\":0.0001,\"vbf.agent_carbon_coupling\":0,\"carbon_boundary_conc\":0.0050000000000000001,\"oxygen.enabled\":false,\"oxygen.epithelial_conc\":5.5000000000000002e-05,\"oxygen.epithelial_boundary\":\"dirichlet\",\"oxygen.epithelial_transfer_coeff\":0,\"oxygen.epithelial_flux\":0,\"oxygen.z_gradient\":true,\"oxygen.delivery_uptake_enabled\":false,\"oxygen.respiration_driver\":\"ambient\",\"oxygen.ros_driver\":\"ambient\",\"oxygen.D_free\":2.1000000000000002e-09,\"oxygen.Km\":9.9999999999999995e-07,\"oxygen.metabolic_switch_enabled\":false,\"oxygen.mu_crit\":9.7e-05,\"oxygen.aerobic_mu_factor\":1,\"oxygen.anaerobic_mu_factor\":0.55000000000000004,\"oxygen.aerobic_carbon_cost_factor\":1,\"oxygen.anaerobic_carbon_cost_factor\":4.0999999999999996,\"oxygen.tau_metabolic_switch\":3600,\"oxygen.ferm_acid_yield\":1,\"oxygen.anaerobic_maintenance_factor\":15,\"oxygen.boost_max\":2,\"oxygen.q_consumption\":1e-14,\"oxygen.q_maintenance\":1.0000000000000001e-18,\"oxygen.vbf_sink\":0.001,\"oxygen.k_ROS\":0,\"oxygen.k_ROS_respiratory\":0,\"oxygen.k_ROS_funded\":0,\"acetate.enabled\":false,\"acetate.D_free\":1.2e-09,\"acetate.vbf_production\":0.001,\"acetate.vbf_consumption\":0.00020000000000000001,\"acetate.overflow_threshold\":0.00029999999999999997,\"acetate.overflow_rate\":1.0000000000000001e-15,\"acetate.scavenge_rate\":1.0000000000000001e-15,\"acetate.scavenge_Km\":5,\"acetate.epithelial_uptake\":0.00050000000000000001,\"mucin.enabled\":false,\"mucin.initial_conc\":0.01,\"mucin.secretion_rate\":0.0001,\"mucin.Km_degradation\":0.001,\"mucin.k_liberation\":5.0000000000000004e-16,\"protease.enabled\":true,\"protease.default_half_life\":1800,\"protease.dilution_rate\":0.0001,\"siderophore.enabled\":true,\"siderophore.secretion_rate\":1.0000000000000001e-05,\"siderophore.D_free\":1e-10,\"siderophore.chelation_rate\":1000,\"siderophore.Km_reimport\":9.9999999999999995e-07,\"siderophore.Vmax_reimport\":1.0000000000000001e-05,\"ferrichrome.enabled\":false,\"ferrichrome.initial_conc\":0,\"ferrichrome.boundary_conc\":0,\"quorum_sensing.enabled\":false,\"quorum_sensing.ai2_basal_rate\":9.9999999999999995e-21,\"quorum_sensing.ai2_growth_coupled\":9.9999999999999998e-17,\"quorum_sensing.lsr_vmax\":1.0000000000000001e-18,\"quorum_sensing.lsr_km\":9.9999999999999995e-08,\"quorum_sensing.ai2_D_free\":5.0000000000000003e-10,\"quorum_sensing.ai2_decay_rate\":0.0001,\"quorum_sensing.ai2_chemotaxis\":false,\"quorum_sensing.chi_ai2\":3,\"toxin_cutoff\":0.00020000000000000001,\"toxin.lumen_transfer_length\":\"inf\",\"toxin.lumen_transfer_basis\":\"effective\",\"image_series_relative_tolerance\":1e-10,\"image_series_max_shells\":512,\"image_series_mode\":\"corrected\",\"qssa.low_screening_policy\":\"warn\",\"qssa.drift_envelope_policy\":\"warn\",\"qssa.drift_correction\":false,\"nutrient_cutoff\":5.0000000000000002e-05,\"colicin_release_rate\":1.0000000000000001e-18,\"microcin_secretion\":9.9999999999999995e-21,\"use_fmm\":true,\"fmm_theta\":0.5,\"fmm_expansion_order\":2,\"division_threshold\":2,\"bacteriostasis_threshold\":9.9999999999999995e-07,\"maintenance_rate\":1.0000000000000001e-05,\"carbon_maintenance_rate\":0,\"delivery_far_field_radius\":1.0000000000000001e-05,\"acid_inhibition_enabled\":false,\"acid_inhibition_max\":0.80000000000000004,\"acid_inhibition_Ki\":50,\"acetate_pKa\":4.7599999999999998,\"metE_penalty\":0.050000000000000003,\"metE_acetate_km\":40,\"metE_acetate_max_factor\":2.5,\"eut_km\":0.0001,\"eut_max_penalty\":0.10000000000000001,\"km_iron_primary\":1.0000000000000001e-05,\"km_iron_iroN\":5.0000000000000002e-05,\"km_iron_iutA\":0.0001,\"km_iron_fiu\":0.00020000000000000001,\"kd_b12_btuB\":9.9999999999999995e-07,\"kd_colicinE_btuB\":4.9999999999999998e-07,\"kd_enterobactin\":9.9999999999999995e-07,\"kd_colicinB_fepA\":1.9999999999999999e-06,\"kd_lin_enterobactin\":5.0000000000000002e-05,\"kd_colicinIa_cirA\":3.0000000000000001e-06,\"kill_rate_colicin\":0.001,\"kill_rate_microcin\":0.00050000000000000001,\"immunity_factor\":0.001,\"sos_lysis_prob\":0.01,\"sos_basal_rate\":9.9999999999999995e-07,\"D_free_colicin\":3.9999999999999998e-11,\"burst_release_tau\":300,\"microcin_mu_penalty\":0.029999999999999999,\"sos_cross_induction_rate\":1000,\"bacteriocin.mucin_charge.r_min\":1.2,\"bacteriocin.mucin_charge.amplitude\":60,\"bacteriocin.mucin_charge.dz_half\":1.3500000000000001,\"bacteriocin.mucin_charge.width\":1,\"bacteriocin.mucin_charge.ph\":7,\"pili_length\":3.9999999999999998e-06,\"base_transfer_rate\":0.0001,\"shear_critical\":10,\"plasmid_copy_cost\":0.02,\"pili_heterogeneity\":false,\"pili_length_min\":9.9999999999999995e-07,\"pili_length_max\":3.9999999999999998e-06,\"bi_duplication_rate\":1.0000000000000001e-05,\"bi_recombination_rate\":5.0000000000000004e-06,\"receptor_mutation_rate\":9.9999999999999995e-08,\"super_killer_rate\":1e-08,\"partial_resistance_rate\":4.9999999999999998e-07,\"receptor_reduction\":0.10000000000000001,\"max_bi_loci\":8,\"immunity_escape_prob\":0.5,\"escape_affinity_lo\":0.01,\"escape_affinity_hi\":0.29999999999999999,\"compensatory_rate\":9.9999999999999995e-07,\"compensatory_reduction\":0.0050000000000000001,\"hertz_k\":9.9999999999999995e-07,\"hertzian_enabled\":true,\"adhesion_enabled\":false,\"adhesion_strength\":9.9999999999999998e-13,\"adhesion_range\":4.9999999999999998e-07,\"gpu_enabled\":true,\"gpu_device_id\":-1,\"adaptive_dt_enabled\":false,\"dt_min\":1,\"dt_max\":300,\"dt_safety\":0.80000000000000004,\"dt_growth_limit\":0.10000000000000001,\"profile_steps\":true,\"dysbiosis_threshold\":0,\"dysbiosis_sampling_interval\":300,\"dysbiosis_sample_count\":7,\"closure.enforce_delivery_realization\":true,\"closure.zero_realization_grace_steps\":5,\"closure.enforce_reaction_clip\":false,\"closure.reaction_clip_tolerance_fraction\":0,\"restart.enabled\":false,\"restart.directory\":\"restart\",\"restart.interval_steps\":0,\"hdf5.enabled\":true,\"hdf5.compression\":\"gzip\",\"hdf5.compression_level\":4,\"hdf5.schedule.summary\":1,\"hdf5.schedule.agents\":5,\"hdf5.schedule.grid\":0,\"hdf5.schedule.lineage\":100,\"hdf5.schedule.genome\":100,\"hdf5.schedule.provenance\":1,\"b12.initial_conc\":0.001,\"hdf5.schedule.grid_species\":[],\"initial_strains\":[{\"type\":1,\"count\":100000,\"mu_max\":0.00055000000000000003,\"conjugative\":true,\"cdi_type\":0,\"cdi_immunity\":0,\"plasmids\":[\"ColE1\",\"ColB\"],\"receptor_expression\":{}}],\"plasmid_overrides\":{},\"fixes\":[],\"disabled_fixes\":[],\"disabled_mechanisms\":[]}",
+        "robin_direct_mode_evaluations": 0,
+        "robin_gpu_host_fallback_sources": 0,
+        "robin_table_evictions": 0,
+        "robin_table_hash": "0000000000000000",
+        "robin_table_metadata": "nodes=33;modes=2048;relative_tolerance=9.9999999999999995e-07;cutoff=0.00020000000000000001;lumen_transfer_length=inf;boundary_mapping=effective;boundary_status=disabled;capacity=64;tables_built=0;table_evictions=0",
+        "robin_tables_built": 0,
+        "step_profile": {
+          "biology_s": 92.730559567,
+          "chemistry_s": 11.148280145000001,
+          "cleanup_s": 0.265662862,
+          "ghost_exchange_s": 10.685200378,
+          "gpu_d2h_bytes_total": 29366712872,
+          "gpu_d2h_calls_total": 692,
+          "gpu_d2h_s": 6.0525485990000005,
+          "gpu_h2d_bytes_total": 31470969816,
+          "gpu_h2d_calls_total": 1994,
+          "gpu_h2d_s": 6.671675817999999,
+          "gpu_slab_x_roundtrip_s": 0.0,
+          "gpu_transfer_sites": {
+            "chem_diffusion_result": {
+              "d2h_bytes": 11000000000,
+              "d2h_calls": 110,
+              "d2h_s": 2.2811127300000003,
+              "h2d_bytes": 0,
+              "h2d_calls": 0,
+              "h2d_s": 0.0
+            },
+            "chem_reactions": {
+              "d2h_bytes": 11000000000,
+              "d2h_calls": 110,
+              "d2h_s": 2.245064439,
+              "h2d_bytes": 11000000000,
+              "h2d_calls": 110,
+              "h2d_s": 2.2920725909999997
+            },
+            "greens_near_field": {
+              "d2h_bytes": 640,
+              "d2h_calls": 80,
+              "d2h_s": 0.00082136,
+              "h2d_bytes": 11904,
+              "h2d_calls": 64,
+              "h2d_s": 0.000513089
+            },
+            "mechanics": {
+              "d2h_bytes": 80,
+              "d2h_calls": 20,
+              "d2h_s": 0.000269218,
+              "h2d_bytes": 0,
+              "h2d_calls": 0,
+              "h2d_s": 0.0
+            },
+            "qssa_fmm": {
+              "d2h_bytes": 3200000000,
+              "d2h_calls": 32,
+              "d2h_s": 0.6532391430000001,
+              "h2d_bytes": 5600005408,
+              "h2d_calls": 96,
+              "h2d_s": 1.172902529
+            },
+            "qssa_toxin_host_sync": {
+              "d2h_bytes": 4000000000,
+              "d2h_calls": 40,
+              "d2h_s": 0.82013467,
+              "h2d_bytes": 0,
+              "h2d_calls": 0,
+              "h2d_s": 0.0
+            },
+            "qssa_toxin_zero": {
+              "d2h_bytes": 0,
+              "d2h_calls": 0,
+              "d2h_s": 0.0,
+              "h2d_bytes": 2400000000,
+              "h2d_calls": 24,
+              "h2d_s": 0.499327838
+            },
+            "receptor": {
+              "d2h_bytes": 5748568,
+              "d2h_calls": 10,
+              "d2h_s": 0.001975964,
+              "h2d_bytes": 68982816,
+              "h2d_calls": 20,
+              "h2d_s": 0.016628173
+            },
+            "spatial_hash": {
+              "d2h_bytes": 5748568,
+              "d2h_calls": 20,
+              "d2h_s": 0.002108179,
+              "h2d_bytes": 21748648,
+              "h2d_calls": 60,
+              "h2d_s": 0.008005874999999999
+            },
+            "step_agents": {
+              "d2h_bytes": 37365692,
+              "d2h_calls": 70,
+              "d2h_s": 0.01272618,
+              "h2d_bytes": 229943040,
+              "h2d_calls": 220,
+              "h2d_s": 0.065580625
+            },
+            "step_conc_upload": {
+              "d2h_bytes": 0,
+              "d2h_calls": 0,
+              "d2h_s": 0.0,
+              "h2d_bytes": 11000000000,
+              "h2d_calls": 110,
+              "h2d_s": 2.28201527
+            },
+            "unattributed": {
+              "d2h_bytes": 117849324,
+              "d2h_calls": 200,
+              "d2h_s": 0.035096716,
+              "h2d_bytes": 1150278000,
+              "h2d_calls": 1290,
+              "h2d_s": 0.33462982799999996
+            }
+          },
+          "hdf5_s": 1.4582767300000001,
+          "mpi_migrate_s": 0.006275308,
+          "mpi_reaction_reduce_s": 2.4068e-05,
+          "physics_s": 0.341664504,
+          "spatial_hash_s": 2.7963744869999996,
+          "step_count": 10,
+          "total_s": 132.15654246599996
+        },
+        "termination_cause": "horizon_reached",
+        "termination_cause_code": 0,
+        "termination_detail": "requested simulation horizon reached",
+        "termination_reason_code": 0,
+        "termination_step": 10,
+        "termination_time": 600.0,
+        "termination_wall_seconds": 119.67584621,
+        "version": "0.1.0"
+      },
+      "placement_status": "accepted",
+      "placement_validation": {
+        "observed_placement": "device",
+        "gpu_compiled": 1,
+        "accepted_placements": [
+          "device"
+        ],
+        "valid": true
+      }
+    }
+  },
+  "profiling_wall_difference_seconds": -0.8900334520003526,
+  "profiling_wall_difference_fraction": -0.006926182399490033
+}

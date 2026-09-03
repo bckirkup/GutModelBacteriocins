@@ -1,0 +1,2953 @@
+{
+  "source_commit": "310e97b04f386ff434c724218643d5602558b41f",
+  "image_tag": "gpubench-310e97b04f38",
+  "image_digest": "sha256:f5a03461190a111ea1e6594913c146c484bfc8c140375f360163811a6a5b4ce4",
+  "rate_usd_per_instance_hour": 0.526,
+  "arms": {
+    "A2": {
+      "job_id": "b2ffb5d0-87d7-49a7-9b10-38a341a4532d",
+      "job_name": "gutibm-gpubench-A2-s1-310e97b04f38",
+      "batch_status": "SUCCEEDED",
+      "status_reason": "Essential container in task exited",
+      "exit_code": 0,
+      "started_at_ms": 1788430579671,
+      "stopped_at_ms": 1788433233128,
+      "container_duration_s": 2653.457,
+      "estimated_container_cost_usd": 0.3876995505555556,
+      "expected_placement": "host",
+      "seeds": {
+        "55": {
+          "status": "completed",
+          "completion_status": "completed",
+          "accepted_placements": [
+            "host"
+          ],
+          "pass_placements": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "placement_valid": true,
+          "cost_pass_wall_s": 370.964213527,
+          "profile_pass_wall_s": 497.27580182199995,
+          "phases": {
+            "biology_s": 452.391229608,
+            "chemistry_s": 21.853675833000004,
+            "physics_s": 2.9074003850000003,
+            "spatial_hash_s": 0.244142725,
+            "ghost_exchange_s": 10.669697484
+          },
+          "transfer": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0.0,
+            "d2h_s": 0.0
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "step_agents": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_reactions": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_near_field": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "delivery": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "spatial_hash": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "unattributed": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            }
+          },
+          "emitted_site_labels": [],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        },
+        "56": {
+          "status": "completed",
+          "completion_status": "completed",
+          "accepted_placements": [
+            "host"
+          ],
+          "pass_placements": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "placement_valid": true,
+          "cost_pass_wall_s": 411.423984045,
+          "profile_pass_wall_s": 511.05415909499993,
+          "phases": {
+            "biology_s": 467.45215700200004,
+            "chemistry_s": 20.673585028000005,
+            "physics_s": 2.8173112910000007,
+            "spatial_hash_s": 0.23850377,
+            "ghost_exchange_s": 10.678035160999999
+          },
+          "transfer": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0.0,
+            "d2h_s": 0.0
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "step_agents": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_reactions": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_near_field": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "delivery": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "spatial_hash": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "unattributed": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            }
+          },
+          "emitted_site_labels": [],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        },
+        "57": {
+          "status": "completed",
+          "completion_status": "completed",
+          "accepted_placements": [
+            "host"
+          ],
+          "pass_placements": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "placement_valid": true,
+          "cost_pass_wall_s": 363.49001750100024,
+          "profile_pass_wall_s": 496.7071722370001,
+          "phases": {
+            "biology_s": 452.192527875,
+            "chemistry_s": 21.597634788,
+            "physics_s": 2.824691267,
+            "spatial_hash_s": 0.233697127,
+            "ghost_exchange_s": 10.67839934
+          },
+          "transfer": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0.0,
+            "d2h_s": 0.0
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "step_agents": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_reactions": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_near_field": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "delivery": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "spatial_hash": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "unattributed": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            }
+          },
+          "emitted_site_labels": [],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        }
+      },
+      "invariant_diffs": [
+        {
+          "seed": 55,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        },
+        {
+          "seed": 56,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        },
+        {
+          "seed": 57,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        }
+      ],
+      "median": {
+        "cost_pass_wall_s": 370.964213527,
+        "profile_pass_wall_s": 497.27580182199995,
+        "phases": {
+          "biology_s": 452.391229608,
+          "chemistry_s": 21.597634788,
+          "physics_s": 2.824691267,
+          "spatial_hash_s": 0.23850377,
+          "ghost_exchange_s": 10.678035160999999
+        },
+        "transfer": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0.0,
+          "d2h_s": 0.0
+        },
+        "sites": {
+          "step_conc_upload": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "step_agents": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "chem_reactions": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "chem_diffusion_result": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "chem_host_fallback": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_host_sync": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_robin_mix": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_zero": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_fmm": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "greens_near_field": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "greens_grid_download": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "receptor": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "delivery": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "spatial_hash": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "mechanics": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "unattributed": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          }
+        }
+      },
+      "placement_summary": {
+        "recorded_per_seed": {
+          "55": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "56": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "57": {
+            "cost": "host",
+            "profile": "host"
+          }
+        },
+        "matches_expected_per_seed": {
+          "55": true,
+          "56": true,
+          "57": true
+        },
+        "reportable_as_expected": true
+      },
+      "failure_reasons": []
+    },
+    "A3": {
+      "job_id": "a7a82649-07b4-4419-b050-0ea5c5d44381",
+      "job_name": "gutibm-gpubench-A3-s1-310e97b04f38",
+      "batch_status": "SUCCEEDED",
+      "status_reason": "Essential container in task exited",
+      "exit_code": 0,
+      "started_at_ms": 1788433258734,
+      "stopped_at_ms": 1788436703836,
+      "container_duration_s": 3445.102,
+      "estimated_container_cost_usd": 0.5033676811111112,
+      "expected_placement": "host_forced_delivery",
+      "seeds": {
+        "55": {
+          "status": "invalid_placement",
+          "completion_status": "invalid_placement",
+          "accepted_placements": [
+            "host_forced_delivery"
+          ],
+          "pass_placements": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "placement_valid": false,
+          "cost_pass_wall_s": 428.7194698590001,
+          "profile_pass_wall_s": 512.5673499330001,
+          "phases": {
+            "biology_s": 406.254610813,
+            "chemistry_s": 75.375626301,
+            "physics_s": 10.756128325999999,
+            "spatial_hash_s": 0.24405851,
+            "ghost_exchange_s": 10.686532439000002
+          },
+          "transfer": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0.0,
+            "d2h_s": 0.0
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "step_agents": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_reactions": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_near_field": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "delivery": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "spatial_hash": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "unattributed": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            }
+          },
+          "emitted_site_labels": [],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        },
+        "56": {
+          "status": "invalid_placement",
+          "completion_status": "invalid_placement",
+          "accepted_placements": [
+            "host_forced_delivery"
+          ],
+          "pass_placements": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "placement_valid": false,
+          "cost_pass_wall_s": 523.5677770549996,
+          "profile_pass_wall_s": 652.7973547920001,
+          "phases": {
+            "biology_s": 545.994499618,
+            "chemistry_s": 75.84485745700002,
+            "physics_s": 10.796944016000001,
+            "spatial_hash_s": 0.259986663,
+            "ghost_exchange_s": 10.681945469999999
+          },
+          "transfer": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0.0,
+            "d2h_s": 0.0
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "step_agents": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_reactions": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_near_field": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "delivery": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "spatial_hash": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "unattributed": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            }
+          },
+          "emitted_site_labels": [],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        },
+        "57": {
+          "status": "invalid_placement",
+          "completion_status": "invalid_placement",
+          "accepted_placements": [
+            "host_forced_delivery"
+          ],
+          "pass_placements": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "placement_valid": false,
+          "cost_pass_wall_s": 581.2703084470004,
+          "profile_pass_wall_s": 743.6111853749999,
+          "phases": {
+            "biology_s": 636.50042768,
+            "chemistry_s": 75.59397264799999,
+            "physics_s": 11.273476616999998,
+            "spatial_hash_s": 0.26648211,
+            "ghost_exchange_s": 10.683933698999999
+          },
+          "transfer": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0.0,
+            "d2h_s": 0.0
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "step_agents": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_reactions": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_near_field": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "delivery": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "spatial_hash": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "unattributed": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            }
+          },
+          "emitted_site_labels": [],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        }
+      },
+      "invariant_diffs": [
+        {
+          "seed": 55,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        },
+        {
+          "seed": 56,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        },
+        {
+          "seed": 57,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        }
+      ],
+      "median": {
+        "cost_pass_wall_s": 523.5677770549996,
+        "profile_pass_wall_s": 652.7973547920001,
+        "phases": {
+          "biology_s": 545.994499618,
+          "chemistry_s": 75.59397264799999,
+          "physics_s": 10.796944016000001,
+          "spatial_hash_s": 0.259986663,
+          "ghost_exchange_s": 10.683933698999999
+        },
+        "transfer": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0.0,
+          "d2h_s": 0.0
+        },
+        "sites": {
+          "step_conc_upload": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "step_agents": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "chem_reactions": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "chem_diffusion_result": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "chem_host_fallback": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_host_sync": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_robin_mix": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_zero": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_fmm": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "greens_near_field": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "greens_grid_download": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "receptor": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "delivery": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "spatial_hash": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "mechanics": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "unattributed": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          }
+        }
+      },
+      "placement_summary": {
+        "recorded_per_seed": {
+          "55": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "56": {
+            "cost": "host",
+            "profile": "host"
+          },
+          "57": {
+            "cost": "host",
+            "profile": "host"
+          }
+        },
+        "matches_expected_per_seed": {
+          "55": false,
+          "56": false,
+          "57": false
+        },
+        "reportable_as_expected": false
+      },
+      "failure_reasons": []
+    },
+    "A5": {
+      "job_id": "19514d8d-a698-4e74-bf00-93711d107fa2",
+      "job_name": "gutibm-gpubench-A5-s1-310e97b04f38",
+      "batch_status": "SUCCEEDED",
+      "status_reason": "Essential container in task exited",
+      "exit_code": 0,
+      "started_at_ms": 1788436724483,
+      "stopped_at_ms": 1788437499765,
+      "container_duration_s": 775.282,
+      "estimated_container_cost_usd": 0.11327731444444444,
+      "expected_placement": "device",
+      "seeds": {
+        "55": {
+          "status": "completed",
+          "completion_status": "completed",
+          "accepted_placements": [
+            "device"
+          ],
+          "pass_placements": {
+            "cost": "device",
+            "profile": "device"
+          },
+          "placement_valid": true,
+          "cost_pass_wall_s": 128.50274518700007,
+          "profile_pass_wall_s": 127.61271173499972,
+          "phases": {
+            "biology_s": 92.730559567,
+            "chemistry_s": 11.148280145000001,
+            "physics_s": 0.341664504,
+            "spatial_hash_s": 2.7963744869999996,
+            "ghost_exchange_s": 10.685200378
+          },
+          "transfer": {
+            "h2d_bytes": 31470969816,
+            "d2h_bytes": 29366712872,
+            "h2d_calls": 1994,
+            "d2h_calls": 692,
+            "h2d_s": 6.671675817999999,
+            "d2h_s": 6.0525485990000005
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 110,
+              "d2h_calls": 0,
+              "h2d_s": 2.28201527,
+              "d2h_s": 0.0
+            },
+            "step_agents": {
+              "h2d_bytes": 229943040,
+              "d2h_bytes": 37365692,
+              "h2d_calls": 220,
+              "d2h_calls": 70,
+              "h2d_s": 0.065580625,
+              "d2h_s": 0.01272618
+            },
+            "chem_reactions": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 11000000000,
+              "h2d_calls": 110,
+              "d2h_calls": 110,
+              "h2d_s": 2.2920725909999997,
+              "d2h_s": 2.245064439
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 11000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 110,
+              "h2d_s": 0.0,
+              "d2h_s": 2.2811127300000003
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 4000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 40,
+              "h2d_s": 0.0,
+              "d2h_s": 0.82013467
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 2400000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 24,
+              "d2h_calls": 0,
+              "h2d_s": 0.499327838,
+              "d2h_s": 0.0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 5600005408,
+              "d2h_bytes": 3200000000,
+              "h2d_calls": 96,
+              "d2h_calls": 32,
+              "h2d_s": 1.172902529,
+              "d2h_s": 0.6532391430000001
+            },
+            "greens_near_field": {
+              "h2d_bytes": 11904,
+              "d2h_bytes": 640,
+              "h2d_calls": 64,
+              "d2h_calls": 80,
+              "h2d_s": 0.000513089,
+              "d2h_s": 0.00082136
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 68982816,
+              "d2h_bytes": 5748568,
+              "h2d_calls": 20,
+              "d2h_calls": 10,
+              "h2d_s": 0.016628173,
+              "d2h_s": 0.001975964
+            },
+            "delivery": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "spatial_hash": {
+              "h2d_bytes": 21748648,
+              "d2h_bytes": 5748568,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.008005874999999999,
+              "d2h_s": 0.002108179
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 80,
+              "h2d_calls": 0,
+              "d2h_calls": 20,
+              "h2d_s": 0.0,
+              "d2h_s": 0.000269218
+            },
+            "unattributed": {
+              "h2d_bytes": 1150278000,
+              "d2h_bytes": 117849324,
+              "h2d_calls": 1290,
+              "d2h_calls": 200,
+              "h2d_s": 0.33462982799999996,
+              "d2h_s": 0.035096716
+            }
+          },
+          "emitted_site_labels": [
+            "chem_diffusion_result",
+            "chem_reactions",
+            "greens_near_field",
+            "mechanics",
+            "qssa_fmm",
+            "qssa_toxin_host_sync",
+            "qssa_toxin_zero",
+            "receptor",
+            "spatial_hash",
+            "step_agents",
+            "step_conc_upload",
+            "unattributed"
+          ],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        },
+        "56": {
+          "status": "completed",
+          "completion_status": "completed",
+          "accepted_placements": [
+            "device"
+          ],
+          "pass_placements": {
+            "cost": "device",
+            "profile": "device"
+          },
+          "placement_valid": true,
+          "cost_pass_wall_s": 128.50987328099927,
+          "profile_pass_wall_s": 128.86913653800002,
+          "phases": {
+            "biology_s": 93.89502124,
+            "chemistry_s": 11.160057024999997,
+            "physics_s": 0.360728707,
+            "spatial_hash_s": 2.831464495,
+            "ghost_exchange_s": 10.675912404
+          },
+          "transfer": {
+            "h2d_bytes": 29969728056,
+            "d2h_bytes": 28166569720,
+            "h2d_calls": 1940,
+            "d2h_calls": 650,
+            "h2d_s": 6.381078089,
+            "d2h_s": 5.841900127000001
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 110,
+              "d2h_calls": 0,
+              "h2d_s": 2.287900113,
+              "d2h_s": 0.0
+            },
+            "step_agents": {
+              "h2d_bytes": 229745920,
+              "d2h_bytes": 37333660,
+              "h2d_calls": 220,
+              "d2h_calls": 70,
+              "h2d_s": 0.066908215,
+              "d2h_s": 0.012859203
+            },
+            "chem_reactions": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 11000000000,
+              "h2d_calls": 110,
+              "d2h_calls": 110,
+              "h2d_s": 2.2985303679999998,
+              "d2h_s": 2.2633563819999996
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 11000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 110,
+              "h2d_s": 0.0,
+              "d2h_s": 2.285887162
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 4000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 40,
+              "h2d_s": 0.0,
+              "d2h_s": 0.824795122
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 3000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 30,
+              "d2h_calls": 0,
+              "h2d_s": 0.631316185,
+              "d2h_s": 0.0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 3500005824,
+              "d2h_bytes": 2000000000,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.7332797959999999,
+              "d2h_s": 0.414868123
+            },
+            "greens_near_field": {
+              "h2d_bytes": 16512,
+              "d2h_bytes": 400,
+              "h2d_calls": 40,
+              "d2h_calls": 50,
+              "h2d_s": 0.000328549,
+              "d2h_s": 0.000563439
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 68923680,
+              "d2h_bytes": 5743640,
+              "h2d_calls": 20,
+              "d2h_calls": 10,
+              "h2d_s": 0.016812164,
+              "d2h_s": 0.0019977149999999997
+            },
+            "delivery": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "spatial_hash": {
+              "h2d_bytes": 21743720,
+              "d2h_bytes": 5743640,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.008055196,
+              "d2h_s": 0.002122939
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 80,
+              "h2d_calls": 0,
+              "d2h_calls": 20,
+              "h2d_s": 0.0,
+              "d2h_s": 0.000274243
+            },
+            "unattributed": {
+              "h2d_bytes": 1149292400,
+              "d2h_bytes": 117748300,
+              "h2d_calls": 1290,
+              "d2h_calls": 200,
+              "h2d_s": 0.33794750300000004,
+              "d2h_s": 0.035175799
+            }
+          },
+          "emitted_site_labels": [
+            "chem_diffusion_result",
+            "chem_reactions",
+            "greens_near_field",
+            "mechanics",
+            "qssa_fmm",
+            "qssa_toxin_host_sync",
+            "qssa_toxin_zero",
+            "receptor",
+            "spatial_hash",
+            "step_agents",
+            "step_conc_upload",
+            "unattributed"
+          ],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        },
+        "57": {
+          "status": "completed",
+          "completion_status": "completed",
+          "accepted_placements": [
+            "device"
+          ],
+          "pass_placements": {
+            "cost": "device",
+            "profile": "device"
+          },
+          "placement_valid": true,
+          "cost_pass_wall_s": 129.50930803499978,
+          "profile_pass_wall_s": 129.40393267000036,
+          "phases": {
+            "biology_s": 94.463365327,
+            "chemistry_s": 11.153103102,
+            "physics_s": 0.328502951,
+            "spatial_hash_s": 2.834161225,
+            "ghost_exchange_s": 10.679636507000001
+          },
+          "transfer": {
+            "h2d_bytes": 30967776632,
+            "d2h_bytes": 28966346232,
+            "h2d_calls": 1976,
+            "d2h_calls": 678,
+            "h2d_s": 6.571494187,
+            "d2h_s": 5.965328353
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 110,
+              "d2h_calls": 0,
+              "h2d_s": 2.293340466,
+              "d2h_s": 0.0
+            },
+            "step_agents": {
+              "h2d_bytes": 229437440,
+              "d2h_bytes": 37283532,
+              "h2d_calls": 220,
+              "d2h_calls": 70,
+              "h2d_s": 0.067708912,
+              "d2h_s": 0.012662290000000001
+            },
+            "chem_reactions": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 11000000000,
+              "h2d_calls": 110,
+              "d2h_calls": 110,
+              "h2d_s": 2.287127076,
+              "d2h_s": 2.242890139
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 11000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 110,
+              "h2d_s": 0.0,
+              "d2h_s": 2.276079279
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 4000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 40,
+              "h2d_s": 0.0,
+              "d2h_s": 0.8208277350000002
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 2600000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 26,
+              "d2h_calls": 0,
+              "h2d_s": 0.541413092,
+              "d2h_s": 0.0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 4900007072,
+              "d2h_bytes": 2800000000,
+              "h2d_calls": 84,
+              "d2h_calls": 28,
+              "h2d_s": 1.022407064,
+              "d2h_s": 0.572853146
+            },
+            "greens_near_field": {
+              "h2d_bytes": 14976,
+              "d2h_bytes": 560,
+              "h2d_calls": 56,
+              "d2h_calls": 70,
+              "h2d_s": 0.00044291499999999994,
+              "d2h_s": 0.000792694
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 68831136,
+              "d2h_bytes": 5735928,
+              "h2d_calls": 20,
+              "d2h_calls": 10,
+              "h2d_s": 0.016580492999999998,
+              "d2h_s": 0.0020004610000000003
+            },
+            "delivery": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "spatial_hash": {
+              "h2d_bytes": 21736008,
+              "d2h_bytes": 5735928,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.008002844,
+              "d2h_s": 0.0020862100000000002
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 80,
+              "h2d_calls": 0,
+              "d2h_calls": 20,
+              "h2d_s": 0.0,
+              "d2h_s": 0.000269245
+            },
+            "unattributed": {
+              "h2d_bytes": 1147750000,
+              "d2h_bytes": 117590204,
+              "h2d_calls": 1290,
+              "d2h_calls": 200,
+              "h2d_s": 0.33447132499999993,
+              "d2h_s": 0.034867154
+            }
+          },
+          "emitted_site_labels": [
+            "chem_diffusion_result",
+            "chem_reactions",
+            "greens_near_field",
+            "mechanics",
+            "qssa_fmm",
+            "qssa_toxin_host_sync",
+            "qssa_toxin_zero",
+            "receptor",
+            "spatial_hash",
+            "step_agents",
+            "step_conc_upload",
+            "unattributed"
+          ],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        }
+      },
+      "invariant_diffs": [
+        {
+          "seed": 55,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        },
+        {
+          "seed": 56,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        },
+        {
+          "seed": 57,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        }
+      ],
+      "median": {
+        "cost_pass_wall_s": 128.50987328099927,
+        "profile_pass_wall_s": 128.86913653800002,
+        "phases": {
+          "biology_s": 93.89502124,
+          "chemistry_s": 11.153103102,
+          "physics_s": 0.341664504,
+          "spatial_hash_s": 2.831464495,
+          "ghost_exchange_s": 10.679636507000001
+        },
+        "transfer": {
+          "h2d_bytes": 30967776632,
+          "d2h_bytes": 28966346232,
+          "h2d_calls": 1976,
+          "d2h_calls": 678,
+          "h2d_s": 6.571494187,
+          "d2h_s": 5.965328353
+        },
+        "sites": {
+          "step_conc_upload": {
+            "h2d_bytes": 11000000000,
+            "d2h_bytes": 0,
+            "h2d_calls": 110,
+            "d2h_calls": 0,
+            "h2d_s": 2.287900113,
+            "d2h_s": 0.0
+          },
+          "step_agents": {
+            "h2d_bytes": 229745920,
+            "d2h_bytes": 37333660,
+            "h2d_calls": 220,
+            "d2h_calls": 70,
+            "h2d_s": 0.066908215,
+            "d2h_s": 0.01272618
+          },
+          "chem_reactions": {
+            "h2d_bytes": 11000000000,
+            "d2h_bytes": 11000000000,
+            "h2d_calls": 110,
+            "d2h_calls": 110,
+            "h2d_s": 2.2920725909999997,
+            "d2h_s": 2.245064439
+          },
+          "chem_diffusion_result": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 11000000000,
+            "h2d_calls": 0,
+            "d2h_calls": 110,
+            "h2d_s": 0.0,
+            "d2h_s": 2.2811127300000003
+          },
+          "chem_host_fallback": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_host_sync": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 4000000000,
+            "h2d_calls": 0,
+            "d2h_calls": 40,
+            "h2d_s": 0.0,
+            "d2h_s": 0.8208277350000002
+          },
+          "qssa_toxin_robin_mix": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_zero": {
+            "h2d_bytes": 2600000000,
+            "d2h_bytes": 0,
+            "h2d_calls": 26,
+            "d2h_calls": 0,
+            "h2d_s": 0.541413092,
+            "d2h_s": 0.0
+          },
+          "qssa_fmm": {
+            "h2d_bytes": 4900007072,
+            "d2h_bytes": 2800000000,
+            "h2d_calls": 84,
+            "d2h_calls": 28,
+            "h2d_s": 1.022407064,
+            "d2h_s": 0.572853146
+          },
+          "greens_near_field": {
+            "h2d_bytes": 14976,
+            "d2h_bytes": 560,
+            "h2d_calls": 56,
+            "d2h_calls": 70,
+            "h2d_s": 0.00044291499999999994,
+            "d2h_s": 0.000792694
+          },
+          "greens_grid_download": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "receptor": {
+            "h2d_bytes": 68923680,
+            "d2h_bytes": 5743640,
+            "h2d_calls": 20,
+            "d2h_calls": 10,
+            "h2d_s": 0.016628173,
+            "d2h_s": 0.0019977149999999997
+          },
+          "delivery": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "spatial_hash": {
+            "h2d_bytes": 21743720,
+            "d2h_bytes": 5743640,
+            "h2d_calls": 60,
+            "d2h_calls": 20,
+            "h2d_s": 0.008005874999999999,
+            "d2h_s": 0.002108179
+          },
+          "mechanics": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 80,
+            "h2d_calls": 0,
+            "d2h_calls": 20,
+            "h2d_s": 0.0,
+            "d2h_s": 0.000269245
+          },
+          "unattributed": {
+            "h2d_bytes": 1149292400,
+            "d2h_bytes": 117748300,
+            "h2d_calls": 1290,
+            "d2h_calls": 200,
+            "h2d_s": 0.33462982799999996,
+            "d2h_s": 0.035096716
+          }
+        }
+      },
+      "placement_summary": {
+        "recorded_per_seed": {
+          "55": {
+            "cost": "device",
+            "profile": "device"
+          },
+          "56": {
+            "cost": "device",
+            "profile": "device"
+          },
+          "57": {
+            "cost": "device",
+            "profile": "device"
+          }
+        },
+        "matches_expected_per_seed": {
+          "55": true,
+          "56": true,
+          "57": true
+        },
+        "reportable_as_expected": true
+      },
+      "failure_reasons": []
+    },
+    "A6": {
+      "job_id": "7d0b7db8-eba0-4962-bc29-cbd96ce7a6e6",
+      "job_name": "gutibm-gpubench-A6-s1-310e97b04f38",
+      "batch_status": "SUCCEEDED",
+      "status_reason": "Essential container in task exited",
+      "exit_code": 0,
+      "started_at_ms": 1788437518564,
+      "stopped_at_ms": 1788438808763,
+      "container_duration_s": 1290.199,
+      "estimated_container_cost_usd": 0.18851240944444447,
+      "expected_placement": "device_delivery",
+      "seeds": {
+        "55": {
+          "status": "completed",
+          "completion_status": "completed",
+          "accepted_placements": [
+            "device_delivery"
+          ],
+          "pass_placements": {
+            "cost": "device_delivery",
+            "profile": "device_delivery"
+          },
+          "placement_valid": true,
+          "cost_pass_wall_s": 213.88278777399955,
+          "profile_pass_wall_s": 211.68277889399997,
+          "phases": {
+            "biology_s": 154.229047209,
+            "chemistry_s": 25.706945441000002,
+            "physics_s": 8.234957265,
+            "spatial_hash_s": 2.8739137,
+            "ghost_exchange_s": 10.684417418999999
+          },
+          "transfer": {
+            "h2d_bytes": 35551506696,
+            "d2h_bytes": 19284079452,
+            "h2d_calls": 1738,
+            "d2h_calls": 554,
+            "h2d_s": 7.523884762999998,
+            "d2h_s": 3.960502464
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 110,
+              "d2h_calls": 0,
+              "h2d_s": 2.309803625,
+              "d2h_s": 0.0
+            },
+            "step_agents": {
+              "h2d_bytes": 231927040,
+              "d2h_bytes": 37688092,
+              "h2d_calls": 220,
+              "d2h_calls": 70,
+              "h2d_s": 0.06705187400000001,
+              "d2h_s": 0.013133977
+            },
+            "chem_reactions": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 110,
+              "d2h_calls": 0,
+              "h2d_s": 2.2868330930000003,
+              "d2h_s": 0.0
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 11000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 110,
+              "h2d_s": 0.0,
+              "d2h_s": 2.275313242
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 4000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 40,
+              "h2d_s": 0.0,
+              "d2h_s": 0.7973879010000001
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 3000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 30,
+              "d2h_calls": 0,
+              "h2d_s": 0.6265039590000001,
+              "d2h_s": 0.0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 3500003744,
+              "d2h_bytes": 2000000000,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.729692091,
+              "d2h_s": 0.40835372000000003
+            },
+            "greens_near_field": {
+              "h2d_bytes": 9408,
+              "d2h_bytes": 400,
+              "h2d_calls": 40,
+              "d2h_calls": 50,
+              "h2d_s": 0.000327921,
+              "d2h_s": 0.0006068649999999999
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 69578016,
+              "d2h_bytes": 5798168,
+              "h2d_calls": 20,
+              "d2h_calls": 10,
+              "h2d_s": 0.016956361,
+              "d2h_s": 0.0020350489999999997
+            },
+            "delivery": {
+              "h2d_bytes": 5800000000,
+              "d2h_bytes": 2200002576,
+              "h2d_calls": 58,
+              "d2h_calls": 114,
+              "h2d_s": 1.2076737970000002,
+              "d2h_s": 0.44897587499999997
+            },
+            "spatial_hash": {
+              "h2d_bytes": 21798248,
+              "d2h_bytes": 5798168,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.00806047,
+              "d2h_s": 0.002121892
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 80,
+              "h2d_calls": 0,
+              "d2h_calls": 20,
+              "h2d_s": 0.0,
+              "d2h_s": 0.000299356
+            },
+            "unattributed": {
+              "h2d_bytes": 928190240,
+              "d2h_bytes": 34791968,
+              "h2d_calls": 1030,
+              "d2h_calls": 100,
+              "h2d_s": 0.27098157200000006,
+              "d2h_s": 0.012274587000000002
+            }
+          },
+          "emitted_site_labels": [
+            "chem_diffusion_result",
+            "chem_reactions",
+            "delivery",
+            "greens_near_field",
+            "mechanics",
+            "qssa_fmm",
+            "qssa_toxin_host_sync",
+            "qssa_toxin_zero",
+            "receptor",
+            "spatial_hash",
+            "step_agents",
+            "step_conc_upload",
+            "unattributed"
+          ],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        },
+        "56": {
+          "status": "completed",
+          "completion_status": "completed",
+          "accepted_placements": [
+            "device_delivery"
+          ],
+          "pass_placements": {
+            "cost": "device_delivery",
+            "profile": "device_delivery"
+          },
+          "placement_valid": true,
+          "cost_pass_wall_s": 213.8332392250004,
+          "profile_pass_wall_s": 216.02182382400042,
+          "phases": {
+            "biology_s": 158.488900648,
+            "chemistry_s": 25.731304522,
+            "physics_s": 8.259986111,
+            "spatial_hash_s": 2.868648393,
+            "ghost_exchange_s": 10.682612971000001
+          },
+          "transfer": {
+            "h2d_bytes": 35550236376,
+            "d2h_bytes": 19283992452,
+            "h2d_calls": 1738,
+            "d2h_calls": 554,
+            "h2d_s": 7.517341802000002,
+            "d2h_s": 3.987625304
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 110,
+              "d2h_calls": 0,
+              "h2d_s": 2.293392484,
+              "d2h_s": 0.0
+            },
+            "step_agents": {
+              "h2d_bytes": 231687040,
+              "d2h_bytes": 37649092,
+              "h2d_calls": 220,
+              "d2h_calls": 70,
+              "h2d_s": 0.067404911,
+              "d2h_s": 0.012932006000000001
+            },
+            "chem_reactions": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 110,
+              "d2h_calls": 0,
+              "h2d_s": 2.2976314889999996,
+              "d2h_s": 0.0
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 11000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 110,
+              "h2d_s": 0.0,
+              "d2h_s": 2.280489025
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 4000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 40,
+              "h2d_s": 0.0,
+              "d2h_s": 0.812509653
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 3000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 30,
+              "d2h_calls": 0,
+              "h2d_s": 0.6254910050000001,
+              "d2h_s": 0.0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 3500006240,
+              "d2h_bytes": 2000000000,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.7290128180000001,
+              "d2h_s": 0.409414948
+            },
+            "greens_near_field": {
+              "h2d_bytes": 14592,
+              "d2h_bytes": 400,
+              "h2d_calls": 40,
+              "d2h_calls": 50,
+              "h2d_s": 0.000322286,
+              "d2h_s": 0.0005907250000000001
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 69506016,
+              "d2h_bytes": 5792168,
+              "h2d_calls": 20,
+              "d2h_calls": 10,
+              "h2d_s": 0.016921868,
+              "d2h_s": 0.002057143
+            },
+            "delivery": {
+              "h2d_bytes": 5800000000,
+              "d2h_bytes": 2200002576,
+              "h2d_calls": 58,
+              "d2h_calls": 114,
+              "h2d_s": 1.208100117,
+              "d2h_s": 0.454946758
+            },
+            "spatial_hash": {
+              "h2d_bytes": 21792248,
+              "d2h_bytes": 5792168,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.008069926000000002,
+              "d2h_s": 0.0021182320000000003
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 80,
+              "h2d_calls": 0,
+              "d2h_calls": 20,
+              "h2d_s": 0.0,
+              "d2h_s": 0.00029062600000000005
+            },
+            "unattributed": {
+              "h2d_bytes": 927230240,
+              "d2h_bytes": 34755968,
+              "h2d_calls": 1030,
+              "d2h_calls": 100,
+              "h2d_s": 0.270994898,
+              "d2h_s": 0.012276188
+            }
+          },
+          "emitted_site_labels": [
+            "chem_diffusion_result",
+            "chem_reactions",
+            "delivery",
+            "greens_near_field",
+            "mechanics",
+            "qssa_fmm",
+            "qssa_toxin_host_sync",
+            "qssa_toxin_zero",
+            "receptor",
+            "spatial_hash",
+            "step_agents",
+            "step_conc_upload",
+            "unattributed"
+          ],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        },
+        "57": {
+          "status": "completed",
+          "completion_status": "completed",
+          "accepted_placements": [
+            "device_delivery"
+          ],
+          "pass_placements": {
+            "cost": "device_delivery",
+            "profile": "device_delivery"
+          },
+          "placement_valid": true,
+          "cost_pass_wall_s": 216.20125393199942,
+          "profile_pass_wall_s": 215.75055135900038,
+          "phases": {
+            "biology_s": 158.394743301,
+            "chemistry_s": 25.767554460999996,
+            "physics_s": 8.091666855,
+            "spatial_hash_s": 2.842206069,
+            "ghost_exchange_s": 10.685353097
+          },
+          "transfer": {
+            "h2d_bytes": 35546809200,
+            "d2h_bytes": 19283758944,
+            "h2d_calls": 1738,
+            "d2h_calls": 554,
+            "h2d_s": 7.537363524,
+            "d2h_s": 4.006020907000001
+          },
+          "sites": {
+            "step_conc_upload": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 110,
+              "d2h_calls": 0,
+              "h2d_s": 2.291659334,
+              "d2h_s": 0.0
+            },
+            "step_agents": {
+              "h2d_bytes": 231042880,
+              "d2h_bytes": 37544416,
+              "h2d_calls": 220,
+              "d2h_calls": 70,
+              "h2d_s": 0.066636099,
+              "d2h_s": 0.012907849000000002
+            },
+            "chem_reactions": {
+              "h2d_bytes": 11000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 110,
+              "d2h_calls": 0,
+              "h2d_s": 2.3117520209999998,
+              "d2h_s": 0.0
+            },
+            "chem_diffusion_result": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 11000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 110,
+              "h2d_s": 0.0,
+              "d2h_s": 2.2856648889999995
+            },
+            "chem_host_fallback": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_host_sync": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 4000000000,
+              "h2d_calls": 0,
+              "d2h_calls": 40,
+              "h2d_s": 0.0,
+              "d2h_s": 0.8157908760000001
+            },
+            "qssa_toxin_robin_mix": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "qssa_toxin_zero": {
+              "h2d_bytes": 3000000000,
+              "d2h_bytes": 0,
+              "h2d_calls": 30,
+              "d2h_calls": 0,
+              "h2d_s": 0.6276824450000001,
+              "d2h_s": 0.0
+            },
+            "qssa_fmm": {
+              "h2d_bytes": 3500007488,
+              "d2h_bytes": 2000000000,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.734150408,
+              "d2h_s": 0.412981732
+            },
+            "greens_near_field": {
+              "h2d_bytes": 16320,
+              "d2h_bytes": 400,
+              "h2d_calls": 40,
+              "d2h_calls": 50,
+              "h2d_s": 0.00033190300000000004,
+              "d2h_s": 0.000578801
+            },
+            "greens_grid_download": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 0,
+              "h2d_calls": 0,
+              "d2h_calls": 0,
+              "h2d_s": 0,
+              "d2h_s": 0
+            },
+            "receptor": {
+              "h2d_bytes": 69312768,
+              "d2h_bytes": 5776064,
+              "h2d_calls": 20,
+              "d2h_calls": 10,
+              "h2d_s": 0.016815191999999996,
+              "d2h_s": 0.0020396969999999996
+            },
+            "delivery": {
+              "h2d_bytes": 5800000000,
+              "d2h_bytes": 2200002576,
+              "h2d_calls": 58,
+              "d2h_calls": 114,
+              "h2d_s": 1.2101345619999997,
+              "d2h_s": 0.461260139
+            },
+            "spatial_hash": {
+              "h2d_bytes": 21776144,
+              "d2h_bytes": 5776064,
+              "h2d_calls": 60,
+              "d2h_calls": 20,
+              "h2d_s": 0.008105555,
+              "d2h_s": 0.0021285500000000003
+            },
+            "mechanics": {
+              "h2d_bytes": 0,
+              "d2h_bytes": 80,
+              "h2d_calls": 0,
+              "d2h_calls": 20,
+              "h2d_s": 0.0,
+              "d2h_s": 0.000287783
+            },
+            "unattributed": {
+              "h2d_bytes": 924653600,
+              "d2h_bytes": 34659344,
+              "h2d_calls": 1030,
+              "d2h_calls": 100,
+              "h2d_s": 0.270096005,
+              "d2h_s": 0.012380591000000002
+            }
+          },
+          "emitted_site_labels": [
+            "chem_diffusion_result",
+            "chem_reactions",
+            "delivery",
+            "greens_near_field",
+            "mechanics",
+            "qssa_fmm",
+            "qssa_toxin_host_sync",
+            "qssa_toxin_zero",
+            "receptor",
+            "spatial_hash",
+            "step_agents",
+            "step_conc_upload",
+            "unattributed"
+          ],
+          "git_sha": "310e97b04f386ff434c724218643d5602558b41f",
+          "openmp_compiled": 1,
+          "mpi_rank_count": 1,
+          "gpu": {
+            "name": "Tesla T4",
+            "driver_version": "580.159.03",
+            "memory_total": "15360"
+          },
+          "failure_reasons": []
+        }
+      },
+      "invariant_diffs": [
+        {
+          "seed": 55,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        },
+        {
+          "seed": 56,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        },
+        {
+          "seed": 57,
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0
+        }
+      ],
+      "median": {
+        "cost_pass_wall_s": 213.88278777399955,
+        "profile_pass_wall_s": 215.75055135900038,
+        "phases": {
+          "biology_s": 158.394743301,
+          "chemistry_s": 25.731304522,
+          "physics_s": 8.234957265,
+          "spatial_hash_s": 2.868648393,
+          "ghost_exchange_s": 10.684417418999999
+        },
+        "transfer": {
+          "h2d_bytes": 35550236376,
+          "d2h_bytes": 19283992452,
+          "h2d_calls": 1738,
+          "d2h_calls": 554,
+          "h2d_s": 7.523884762999998,
+          "d2h_s": 3.987625304
+        },
+        "sites": {
+          "step_conc_upload": {
+            "h2d_bytes": 11000000000,
+            "d2h_bytes": 0,
+            "h2d_calls": 110,
+            "d2h_calls": 0,
+            "h2d_s": 2.293392484,
+            "d2h_s": 0.0
+          },
+          "step_agents": {
+            "h2d_bytes": 231687040,
+            "d2h_bytes": 37649092,
+            "h2d_calls": 220,
+            "d2h_calls": 70,
+            "h2d_s": 0.06705187400000001,
+            "d2h_s": 0.012932006000000001
+          },
+          "chem_reactions": {
+            "h2d_bytes": 11000000000,
+            "d2h_bytes": 0,
+            "h2d_calls": 110,
+            "d2h_calls": 0,
+            "h2d_s": 2.2976314889999996,
+            "d2h_s": 0.0
+          },
+          "chem_diffusion_result": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 11000000000,
+            "h2d_calls": 0,
+            "d2h_calls": 110,
+            "h2d_s": 0.0,
+            "d2h_s": 2.280489025
+          },
+          "chem_host_fallback": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_host_sync": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 4000000000,
+            "h2d_calls": 0,
+            "d2h_calls": 40,
+            "h2d_s": 0.0,
+            "d2h_s": 0.812509653
+          },
+          "qssa_toxin_robin_mix": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "qssa_toxin_zero": {
+            "h2d_bytes": 3000000000,
+            "d2h_bytes": 0,
+            "h2d_calls": 30,
+            "d2h_calls": 0,
+            "h2d_s": 0.6265039590000001,
+            "d2h_s": 0.0
+          },
+          "qssa_fmm": {
+            "h2d_bytes": 3500006240,
+            "d2h_bytes": 2000000000,
+            "h2d_calls": 60,
+            "d2h_calls": 20,
+            "h2d_s": 0.729692091,
+            "d2h_s": 0.409414948
+          },
+          "greens_near_field": {
+            "h2d_bytes": 14592,
+            "d2h_bytes": 400,
+            "h2d_calls": 40,
+            "d2h_calls": 50,
+            "h2d_s": 0.000327921,
+            "d2h_s": 0.0005907250000000001
+          },
+          "greens_grid_download": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 0,
+            "h2d_calls": 0,
+            "d2h_calls": 0,
+            "h2d_s": 0,
+            "d2h_s": 0
+          },
+          "receptor": {
+            "h2d_bytes": 69506016,
+            "d2h_bytes": 5792168,
+            "h2d_calls": 20,
+            "d2h_calls": 10,
+            "h2d_s": 0.016921868,
+            "d2h_s": 0.0020396969999999996
+          },
+          "delivery": {
+            "h2d_bytes": 5800000000,
+            "d2h_bytes": 2200002576,
+            "h2d_calls": 58,
+            "d2h_calls": 114,
+            "h2d_s": 1.208100117,
+            "d2h_s": 0.454946758
+          },
+          "spatial_hash": {
+            "h2d_bytes": 21792248,
+            "d2h_bytes": 5792168,
+            "h2d_calls": 60,
+            "d2h_calls": 20,
+            "h2d_s": 0.008069926000000002,
+            "d2h_s": 0.002121892
+          },
+          "mechanics": {
+            "h2d_bytes": 0,
+            "d2h_bytes": 80,
+            "h2d_calls": 0,
+            "d2h_calls": 20,
+            "h2d_s": 0.0,
+            "d2h_s": 0.00029062600000000005
+          },
+          "unattributed": {
+            "h2d_bytes": 927230240,
+            "d2h_bytes": 34755968,
+            "h2d_calls": 1030,
+            "d2h_calls": 100,
+            "h2d_s": 0.27098157200000006,
+            "d2h_s": 0.012276188
+          }
+        }
+      },
+      "placement_summary": {
+        "recorded_per_seed": {
+          "55": {
+            "cost": "device_delivery",
+            "profile": "device_delivery"
+          },
+          "56": {
+            "cost": "device_delivery",
+            "profile": "device_delivery"
+          },
+          "57": {
+            "cost": "device_delivery",
+            "profile": "device_delivery"
+          }
+        },
+        "matches_expected_per_seed": {
+          "55": true,
+          "56": true,
+          "57": true
+        },
+        "reportable_as_expected": true
+      },
+      "failure_reasons": []
+    }
+  }
+}

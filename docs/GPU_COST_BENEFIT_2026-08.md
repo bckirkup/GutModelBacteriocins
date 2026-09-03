@@ -43,6 +43,10 @@ touches; total wall is the whole run.
 Placements observed: `host` for A1/A2/A3, `device` for A4/A5,
 `device_delivery` for A6 — Route B ran at `s1`, it was not host-forced.
 
+This table is superseded at `s1` by the post-fix rerun below: it predates #400
+and #401 and its host arms were built without OpenMP. It is retained because
+the corrections to it are part of the record.
+
 Three results, and the first contradicts the premise the benchmark was designed
 around:
 
@@ -263,27 +267,110 @@ small parameter and agent-array traffic issued outside any labelled scope,
 costing 0.37 s in aggregate. It is a latency figure, not a bandwidth one, and
 it is not worth attributing further.
 
+## The complete post-fix uptake-mode table (A2/A3/A5/A6, `s1`)
+
+The four remaining A-axis arms were rerun with #400, #401, #403 and #404 in the
+image (`gutibm:gpubench-310e97b04f38`, digest
+`sha256:f5a03461190a111ea1e6594913c146c484bfc8c140375f360163811a6a5b4ce4`,
+`git_sha 310e97b04f386ff434c724218643d5602558b41f`, job definition
+`gutibm-gpubench:7`). Raw records:
+`bench_results/gpu_cost_benefit_2026-09_uptake/`. Four practice-queue jobs, all
+`SUCCEEDED` with exit 0, container time 8,164 s ≈ 2.27 instance-hours ≈ $1.19,
+bringing the total measured spend to ≈$4.75 of the authorized $5-10. Medians
+over seeds 55/56/57; `openmp_compiled: 1` and `mpi_rank_count: 1` on every
+pass; placements as declared (`host` for A2/A3, `device` for A5,
+`device_delivery` for A6, so Route B ran and was not host-forced).
+
+End-to-end, from the unprofiled cost pass. The `none` row is the #402 rerun
+above, so all three modes are now post-fix and OpenMP-on:
+
+| Uptake mode | Host wall (s) | Device wall (s) | Device |
+|---|---:|---:|---:|
+| `none` (shipped) | 369.4 (A1) | 129.0 (A4) | 2.86× |
+| `sherwood` | 370.96 (A2) | 128.51 (A5) | 2.89× |
+| `delivery` | 523.57 (A3) | 213.88 (A6) | 2.45× |
+
+Chemistry phase, from the profile pass (see the profiling-overhead caveat
+below):
+
+| Uptake mode | Host chemistry (s) | Device chemistry (s) | Device |
+|---|---:|---:|---:|
+| `none` | 21.41 | 11.18 | 1.91× |
+| `sherwood` | 21.60 | 11.15 | 1.94× |
+| `delivery` | 75.59 | 25.73 | 2.94× |
+
+Transfers on the two device arms, medians:
+
+| Arm | H2D | D2H | Share of profiled wall |
+|---|---|---|---:|
+| A5 `sherwood` | 30.97 GB / 1,976 calls / 6.57 s | 28.97 GB / 678 calls / 5.97 s | 9.7% of 128.9 s |
+| A6 `delivery` | 35.55 GB / 1,738 calls / 7.52 s | 19.28 GB / 554 calls / 3.99 s | 5.3% of 215.8 s |
+
+Four results, and the first retracts a conclusion from the campaign above:
+
+1. **Device execution does not make `delivery` chemistry cheaper than shipped
+   `none`'s.** That claim rested on the pre-#400 pair (44.65 vs 49.87 s), where
+   `none`'s device chemistry was inflated by marshalling. Measured properly,
+   device `delivery` chemistry is 2.30× device `none` chemistry (25.73 vs
+   11.18 s), and `delivery` costs 1.42× the host end-to-end wall of `none`
+   (523.6 vs 369.4 s) and 1.66× the device one (213.9 vs 129.0 s). So the
+   chemistry-cost argument against funded uptake survives on both backends;
+   what device execution does is shrink it, from 3.53× to 2.30× of `none`'s
+   chemistry.
+2. **`sherwood` is free.** 370.96 vs 369.4 s on host and 128.51 vs 129.0 s on
+   device are inside seed spread, as expected for a per-agent algebraic cap on
+   requested uptake that adds no field work. Whatever the scientific case for
+   funded uptake, `sherwood` costs nothing measurable and `delivery` is the
+   mode that has a price.
+3. **`delivery` is where the device port helps most per phase and least
+   end-to-end** (chemistry 2.94×, wall 2.45×), because the mode's extra cost is
+   not confined to chemistry: `physics_s` is 10.80 s host / 8.24 s device
+   against 2.83 / 0.34 s for `sherwood`, and A6 moves the most H2D volume of
+   any arm measured.
+4. **A profiling-overhead correction that applies to every phase ratio in this
+   document.** `profile_steps` costs the host arms 25-35% of wall and the
+   device arms nothing (profile/cost wall medians: A1 1.351, A2 1.340, A3 1.247
+   against A4 1.005, A5 0.999, A6 0.998). All phase seconds here and above come
+   from the profile pass, so host phase seconds carry that overhead and every
+   host-versus-device *phase* ratio in this document — including #402's
+   "biology 4.71×" and the chemistry ratios in the table just above — is an
+   upper bound. End-to-end ratios come from the unprofiled cost pass and are
+   unaffected. The overhead is not attributed per phase; it sits inside the
+   profiled phases (A2 `total_s` 489.6 s against a 371.0 s cost wall) and
+   isolating it would need a per-phase instrumentation cost measurement that
+   was not run.
+
+### The A3 placement verdict in the raw records is the harness's, not the run's
+
+All three A3 seeds recorded `chemistry_placement: host` and were stored as
+`invalid_placement`, because the arm matrix expected `host_forced_delivery`.
+That expectation was wrong: A3 runs with GPU disabled, and
+`Simulation::chemistry_placement()` returns `host_forced_delivery` only when a
+device delivery path was requested and declined. #406 corrects the accepted set
+to `{host}` and re-derives stored placement verdicts against the current matrix
+at merge time. The raw records are committed unmodified and still carry the
+original verdict; the A3 medians above were computed from them under the
+corrected definition. This is also the only run in this document without a
+rendered `merged.json`/`report.md`: the manifest the jobs ran from was generated
+inside the container under `/tmp` and not retained, and it was not worth a rerun
+or a reconstructed manifest to render a report over records that are already
+intact.
+
 ## What this does and does not decide
 
-It does not move any scientific default. The `delivery` uptake mode costs 1.27×
-the host wall time of shipped `none` at `s1` (859.3 vs 674.9 s) and 2.28× its
-host chemistry — but on device its chemistry is *cheaper* than shipped `none`'s
-(44.65 vs 49.87 s), so device execution removes the chemistry-cost argument
-against funded uptake at this scale. Whether funded uptake becomes a default
-still rests on outcome movement, not on these timings. Those two chemistry
-figures are pre-#400 and pre-OpenMP; the A2/A3/A5/A6 arms have not been rerun,
-so the delivery-vs-`none` chemistry comparison is not current, while the
-conclusion it supports — that device execution removes the chemistry-cost
-argument — only strengthens now that device chemistry is faster in every mode
-measured.
+It does not move any scientific default. Whether funded uptake becomes a
+default rests on outcome movement, which nothing here measures; the timings say
+only that `sherwood` is free on both backends and `delivery` costs 1.42×
+(host) / 1.66× (device) the end-to-end wall of shipped `none` at `s1`.
 
 For anyone sizing a run: the T4 is worth its price for toxin-sampling-dominated
 configurations (low agent count, many Green's-function sources) and for
-mechanics-dominated ones, wins ≈1.9× on non-delivery chemistry after #400, and
-returns 1.36× at a million agents against a serial host baseline — not the
-order-of-magnitude the phrase "GPU port" tends to imply. The `s2` ratios and
-the A2/A3/A5/A6 arms were measured before both fixes and against a
-single-threaded CPU; only the `A1`/`A4` `s1` pair above is current.
+mechanics-dominated ones, returning 2.45-2.89× end-to-end at `s1` in every
+uptake mode and ≈1.9-2.9× on the chemistry phase — but 1.36× at a million
+agents, and that `s2` figure is still against a serial host baseline and
+pre-#400, so it is the one number in this document that has not been remeasured
+and is the least trustworthy. Nothing here is the order of magnitude the phrase
+"GPU port" tends to imply.
 
 ## Arms not measured
 

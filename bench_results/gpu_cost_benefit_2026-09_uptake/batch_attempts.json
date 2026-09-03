@@ -1,0 +1,94 @@
+[
+  {
+    "jobId": "b2ffb5d0-87d7-49a7-9b10-38a341a4532d",
+    "jobName": "gutibm-gpubench-A2-s1-310e97b04f38",
+    "status": "SUCCEEDED",
+    "statusReason": "Essential container in task exited",
+    "startedAt": 1788430579671,
+    "stoppedAt": 1788433233128,
+    "containerExitCode": 0,
+    "attempts": [
+      {
+        "container": {
+          "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+          "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/b54dabd09685435b945c00271b4cd7fd",
+          "exitCode": 0,
+          "logStreamName": "gutibm-gpubench/default/b54dabd09685435b945c00271b4cd7fd",
+          "networkInterfaces": []
+        },
+        "startedAt": 1788430579671,
+        "stoppedAt": 1788433233128,
+        "statusReason": "Essential container in task exited"
+      }
+    ]
+  },
+  {
+    "jobId": "7d0b7db8-eba0-4962-bc29-cbd96ce7a6e6",
+    "jobName": "gutibm-gpubench-A6-s1-310e97b04f38",
+    "status": "SUCCEEDED",
+    "statusReason": "Essential container in task exited",
+    "startedAt": 1788437518564,
+    "stoppedAt": 1788438808763,
+    "containerExitCode": 0,
+    "attempts": [
+      {
+        "container": {
+          "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+          "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/f72d6f2bef164bd89322d5ec6af34cce",
+          "exitCode": 0,
+          "logStreamName": "gutibm-gpubench/default/f72d6f2bef164bd89322d5ec6af34cce",
+          "networkInterfaces": []
+        },
+        "startedAt": 1788437518564,
+        "stoppedAt": 1788438808763,
+        "statusReason": "Essential container in task exited"
+      }
+    ]
+  },
+  {
+    "jobId": "19514d8d-a698-4e74-bf00-93711d107fa2",
+    "jobName": "gutibm-gpubench-A5-s1-310e97b04f38",
+    "status": "SUCCEEDED",
+    "statusReason": "Essential container in task exited",
+    "startedAt": 1788436724483,
+    "stoppedAt": 1788437499765,
+    "containerExitCode": 0,
+    "attempts": [
+      {
+        "container": {
+          "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+          "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/b38db6708b2c4af4a484ff8df31465d0",
+          "exitCode": 0,
+          "logStreamName": "gutibm-gpubench/default/b38db6708b2c4af4a484ff8df31465d0",
+          "networkInterfaces": []
+        },
+        "startedAt": 1788436724483,
+        "stoppedAt": 1788437499765,
+        "statusReason": "Essential container in task exited"
+      }
+    ]
+  },
+  {
+    "jobId": "a7a82649-07b4-4419-b050-0ea5c5d44381",
+    "jobName": "gutibm-gpubench-A3-s1-310e97b04f38",
+    "status": "SUCCEEDED",
+    "statusReason": "Essential container in task exited",
+    "startedAt": 1788433258734,
+    "stoppedAt": 1788436703836,
+    "containerExitCode": 0,
+    "attempts": [
+      {
+        "container": {
+          "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/0b785a143058485ba1be2b7897bd65d0",
+          "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/429d21143a7e4a1a86eb9aa4c99d6210",
+          "exitCode": 0,
+          "logStreamName": "gutibm-gpubench/default/429d21143a7e4a1a86eb9aa4c99d6210",
+          "networkInterfaces": []
+        },
+        "startedAt": 1788433258734,
+        "stoppedAt": 1788436703836,
+        "statusReason": "Essential container in task exited"
+      }
+    ]
+  }
+]

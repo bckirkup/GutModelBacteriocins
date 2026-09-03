@@ -1,0 +1,84 @@
+{
+  "jobs": [
+    {
+      "arm": "A2",
+      "scale": "s1",
+      "job_id": "b2ffb5d0-87d7-49a7-9b10-38a341a4532d",
+      "batch_status": "SUCCEEDED",
+      "log_file": "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A2_s1.log",
+      "result_files": [
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A2_s1_seed55.json",
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A2_s1_seed56.json",
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A2_s1_seed57.json"
+      ],
+      "expected_seeds": [
+        55,
+        56,
+        57
+      ],
+      "expected_block_count": 3,
+      "found_block_count": 3,
+      "failure_reasons": []
+    },
+    {
+      "arm": "A3",
+      "scale": "s1",
+      "job_id": "a7a82649-07b4-4419-b050-0ea5c5d44381",
+      "batch_status": "SUCCEEDED",
+      "log_file": "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A3_s1.log",
+      "result_files": [
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A3_s1_seed55.json",
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A3_s1_seed56.json",
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A3_s1_seed57.json"
+      ],
+      "expected_seeds": [
+        55,
+        56,
+        57
+      ],
+      "expected_block_count": 3,
+      "found_block_count": 3,
+      "failure_reasons": []
+    },
+    {
+      "arm": "A5",
+      "scale": "s1",
+      "job_id": "19514d8d-a698-4e74-bf00-93711d107fa2",
+      "batch_status": "SUCCEEDED",
+      "log_file": "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A5_s1.log",
+      "result_files": [
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A5_s1_seed55.json",
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A5_s1_seed56.json",
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A5_s1_seed57.json"
+      ],
+      "expected_seeds": [
+        55,
+        56,
+        57
+      ],
+      "expected_block_count": 3,
+      "found_block_count": 3,
+      "failure_reasons": []
+    },
+    {
+      "arm": "A6",
+      "scale": "s1",
+      "job_id": "7d0b7db8-eba0-4962-bc29-cbd96ce7a6e6",
+      "batch_status": "SUCCEEDED",
+      "log_file": "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A6_s1.log",
+      "result_files": [
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A6_s1_seed55.json",
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A6_s1_seed56.json",
+        "/home/ubuntu/wt-bench/bench_results/gpubench_remaining_2026-09/A6_s1_seed57.json"
+      ],
+      "expected_seeds": [
+        55,
+        56,
+        57
+      ],
+      "expected_block_count": 3,
+      "found_block_count": 3,
+      "failure_reasons": []
+    }
+  ]
+}
