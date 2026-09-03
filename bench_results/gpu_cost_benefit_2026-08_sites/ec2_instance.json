@@ -1,0 +1,182 @@
+{
+    "Reservations": [
+        {
+            "ReservationId": "r-0957dbc7de506c398",
+            "OwnerId": "994254241749",
+            "RequesterId": "376696368883",
+            "Groups": [],
+            "Instances": [
+                {
+                    "Architecture": "x86_64",
+                    "BlockDeviceMappings": [
+                        {
+                            "DeviceName": "/dev/xvda",
+                            "Ebs": {
+                                "AttachTime": "2026-09-03T09:38:14+00:00",
+                                "DeleteOnTermination": true,
+                                "Status": "attached",
+                                "VolumeId": "vol-0228a2a3961083a51",
+                                "EbsCardIndex": 0
+                            }
+                        }
+                    ],
+                    "ClientToken": "fleet-fb17bb2e-ab0c-4c16-0418-0d08083aee2b-0",
+                    "EbsOptimized": false,
+                    "EnaSupport": true,
+                    "Hypervisor": "xen",
+                    "IamInstanceProfile": {
+                        "Arn": "arn:aws:iam::994254241749:instance-profile/ecsInstanceRole",
+                        "Id": "AIPA6O7RLX7KSB5EMDE5D"
+                    },
+                    "NetworkInterfaces": [
+                        {
+                            "Association": {
+                                "IpOwnerId": "amazon",
+                                "PublicDnsName": "ec2-32-197-251-105.compute-1.amazonaws.com",
+                                "PublicIp": "32.197.251.105"
+                            },
+                            "Attachment": {
+                                "AttachTime": "2026-09-03T09:38:13+00:00",
+                                "AttachmentId": "eni-attach-0735839e6286511ea",
+                                "DeleteOnTermination": true,
+                                "DeviceIndex": 0,
+                                "Status": "attached",
+                                "NetworkCardIndex": 0
+                            },
+                            "Description": "",
+                            "Groups": [
+                                {
+                                    "GroupId": "sg-0842264e2d23e6b5d",
+                                    "GroupName": "gutibm-batch-sg"
+                                }
+                            ],
+                            "Ipv6Addresses": [],
+                            "MacAddress": "12:6d:75:c0:01:1d",
+                            "NetworkInterfaceId": "eni-0cddddcb1484791d9",
+                            "OwnerId": "994254241749",
+                            "PrivateDnsName": "ip-172-31-83-250.ec2.internal",
+                            "PrivateIpAddress": "172.31.83.250",
+                            "PrivateIpAddresses": [
+                                {
+                                    "Association": {
+                                        "IpOwnerId": "amazon",
+                                        "PublicDnsName": "ec2-32-197-251-105.compute-1.amazonaws.com",
+                                        "PublicIp": "32.197.251.105"
+                                    },
+                                    "Primary": true,
+                                    "PrivateDnsName": "ip-172-31-83-250.ec2.internal",
+                                    "PrivateIpAddress": "172.31.83.250"
+                                }
+                            ],
+                            "SourceDestCheck": true,
+                            "Status": "in-use",
+                            "SubnetId": "subnet-0dfd15e585b9b7e84",
+                            "VpcId": "vpc-0c48ab770558cec55",
+                            "InterfaceType": "interface",
+                            "Operator": {
+                                "Managed": false
+                            }
+                        }
+                    ],
+                    "RootDeviceName": "/dev/xvda",
+                    "RootDeviceType": "ebs",
+                    "SecurityGroups": [
+                        {
+                            "GroupId": "sg-0842264e2d23e6b5d",
+                            "GroupName": "gutibm-batch-sg"
+                        }
+                    ],
+                    "SourceDestCheck": true,
+                    "Tags": [
+                        {
+                            "Key": "aws:ec2launchtemplate:version",
+                            "Value": "1"
+                        },
+                        {
+                            "Key": "aws:autoscaling:groupName",
+                            "Value": "gutibm-gpu-practice-od-asg-1015182d-6dff-3471-8e15-76290583bb0d"
+                        },
+                        {
+                            "Key": "aws:ec2:fleet-id",
+                            "Value": "fleet-fb17bb2e-ab0c-4c16-0418-0d08083aee2b"
+                        },
+                        {
+                            "Key": "aws:ec2launchtemplate:id",
+                            "Value": "lt-0f75a324303b897ec"
+                        }
+                    ],
+                    "VirtualizationType": "hvm",
+                    "CpuOptions": {
+                        "CoreCount": 2,
+                        "ThreadsPerCore": 2
+                    },
+                    "CapacityReservationSpecification": {
+                        "CapacityReservationPreference": "open"
+                    },
+                    "HibernationOptions": {
+                        "Configured": false
+                    },
+                    "MetadataOptions": {
+                        "State": "applied",
+                        "HttpTokens": "required",
+                        "HttpPutResponseHopLimit": 2,
+                        "HttpEndpoint": "enabled",
+                        "HttpProtocolIpv6": "disabled",
+                        "InstanceMetadataTags": "disabled"
+                    },
+                    "EnclaveOptions": {
+                        "Enabled": false
+                    },
+                    "BootMode": "uefi-preferred",
+                    "PlatformDetails": "Linux/UNIX",
+                    "UsageOperation": "RunInstances",
+                    "UsageOperationUpdateTime": "2026-09-03T09:38:13+00:00",
+                    "PrivateDnsNameOptions": {
+                        "HostnameType": "ip-name",
+                        "EnableResourceNameDnsARecord": false,
+                        "EnableResourceNameDnsAAAARecord": false
+                    },
+                    "MaintenanceOptions": {
+                        "AutoRecovery": "default",
+                        "RebootMigration": "default"
+                    },
+                    "CurrentInstanceBootMode": "uefi",
+                    "NetworkPerformanceOptions": {
+                        "BandwidthWeighting": "default"
+                    },
+                    "Operator": {
+                        "Managed": false,
+                        "HiddenByDefault": false
+                    },
+                    "SecondaryInterfaces": [],
+                    "InstanceId": "i-01dc710b76590de73",
+                    "ImageId": "ami-0693ff1e649d168d1",
+                    "State": {
+                        "Code": 16,
+                        "Name": "running"
+                    },
+                    "PrivateDnsName": "ip-172-31-83-250.ec2.internal",
+                    "PublicDnsName": "ec2-32-197-251-105.compute-1.amazonaws.com",
+                    "StateTransitionReason": "",
+                    "AmiLaunchIndex": 0,
+                    "ProductCodes": [],
+                    "InstanceType": "g4dn.xlarge",
+                    "LaunchTime": "2026-09-03T09:38:13+00:00",
+                    "Placement": {
+                        "AvailabilityZoneId": "use1-az2",
+                        "GroupName": "",
+                        "Tenancy": "default",
+                        "AvailabilityZone": "us-east-1b"
+                    },
+                    "Monitoring": {
+                        "State": "disabled"
+                    },
+                    "SubnetId": "subnet-0dfd15e585b9b7e84",
+                    "VpcId": "vpc-0c48ab770558cec55",
+                    "PrivateIpAddress": "172.31.83.250",
+                    "PublicIpAddress": "32.197.251.105"
+                }
+            ]
+        }
+    ]
+}

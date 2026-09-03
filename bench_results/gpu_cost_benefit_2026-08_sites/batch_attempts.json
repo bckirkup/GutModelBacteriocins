@@ -1,0 +1,14 @@
+[
+    {
+        "container": {
+            "containerInstanceArn": "arn:aws:ecs:us-east-1:994254241749:container-instance/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/d29bb25718ef4cd390e146f6ba9033a6",
+            "taskArn": "arn:aws:ecs:us-east-1:994254241749:task/gutibm-gpu-practice-od_Batch_e7e6dced-3511-350a-a1e9-b257fe608566/b5eba3ad0290421492fead7b9a42fe0e",
+            "exitCode": 0,
+            "logStreamName": "gutibm-gpubench/default/b5eba3ad0290421492fead7b9a42fe0e",
+            "networkInterfaces": []
+        },
+        "startedAt": 1788428439636,
+        "stoppedAt": 1788429213364,
+        "statusReason": "Essential container in task exited"
+    }
+]

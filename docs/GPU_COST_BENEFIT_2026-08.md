@@ -178,7 +178,8 @@ interval excludes queued kernel drain. Device `s1`, medians:
 | H2D | 6.07 | 28.37 GB | 1,950 | 4.67 GB/s |
 | D2H | 6.03 | 28.97 GB | 678 | 4.80 GB/s |
 
-The aggregate 57.3 GB transfer volume in this existing record is now attributable per call site, but that record itself remains unattributed; residency decisions are pending the new attribution data.
+The aggregate 57.3 GB transfer volume in this existing record is unattributed;
+the per-call-site measurement below supersedes it for residency purposes.
 
 Transfers are 12.1 s of the 133 s profiled run (9.1%), at ≈22 MB per call, so
 per-call launch overhead is not the cost — bandwidth is, and 4.7-4.8 GB/s is
@@ -189,6 +190,76 @@ host staging would raise that toward the ≈10 GB/s pinned rate, saving ≈6 s o
 copies buys more than making the same copies faster. Neither is implemented,
 and no bandwidth claim here is extrapolated — every number is from the
 committed records.
+
+## Where the transfer volume actually goes (#404 attribution, A4/s1)
+
+The `A4`/`s1` arm was rerun once more with the per-call-site attribution of
+#404 in the image (`gutibm:gpubench-6d67d3648888`, digest
+`sha256:3c834dbeef76425a75cd183bba9efb03e5770ab6556e2c872aafe9632fe98f0b`,
+`git_sha 6d67d3648888b8ad3c1fedeb7a8ff5e90f576d88`). Raw records:
+`bench_results/gpu_cost_benefit_2026-08_sites/`. One job, practice queue,
+`SUCCEEDED`, 773.7 s ≈ $0.11. `g4dn.xlarge` / `Tesla T4` driver 580.159.03,
+`chemistry_placement: device`, `openmp_compiled: 1`, `mpi_rank_count: 1`,
+10 profiled steps per seed, medians over seeds 55/56/57. Site sums equal the
+scalar H2D/D2H byte and call totals exactly on every seed, so no traffic is
+missing from this table.
+
+| Site | H2D bytes | D2H bytes | Share of 59.93 GB | Calls | Seconds |
+|---|---:|---:|---:|---:|---:|
+| `chem_reactions` | 11.00 GB | 11.00 GB | 36.7% | 110 + 110 | 4.62 |
+| `step_conc_upload` | 11.00 GB | — | 18.4% | 110 | 2.33 |
+| `chem_diffusion_result` | — | 11.00 GB | 18.4% | 110 | 2.34 |
+| `qssa_fmm` | 4.90 GB | 2.80 GB | 12.8% | 84 + 28 | 1.63 |
+| `qssa_toxin_host_sync` | — | 4.00 GB | 6.7% | 40 | 0.83 |
+| `qssa_toxin_zero` | 2.60 GB | — | 4.3% | 26 | 0.56 |
+| `unattributed` | 1.15 GB | 0.118 GB | 2.1% | 1,290 + 200 | 0.37 |
+| `step_agents` | 0.230 GB | 0.037 GB | 0.4% | 220 + 70 | 0.08 |
+| `receptor` | 0.069 GB | 0.006 GB | 0.1% | 20 + 10 | 0.02 |
+| `spatial_hash` | 0.022 GB | 0.006 GB | <0.1% | 60 + 20 | 0.01 |
+| `greens_near_field` | 15.0 kB | 560 B | ~0 | 56 + 70 | ~0.001 |
+| `mechanics` | — | 80 B | ~0 | 20 | ~0.0003 |
+
+`chem_host_fallback`, `qssa_toxin_robin_mix`, `greens_grid_download` and
+`delivery` emit no rows at all, which is the expected shape for this arm:
+device chemistry was accepted for the whole field on every step, no Robin
+near-wall mixing occurred, and delivery is off in shipped `none`.
+
+Four observations, and the first bounds every residency change that could
+follow:
+
+1. **Residency is worth about 10%, not a step change.** Transfers are 12.83 s
+   of a 128.2 s run; biology alone is 92.9 s. Eliminating *all* copies would
+   give ≈1.11× end-to-end at `s1`. The 59.9 GB figure sounds large only
+   because the link is slow relative to the field size, and the earlier
+   57.3 GB aggregate led to the same conclusion by accident rather than by
+   measurement.
+2. **The largest single site is a whole-field round trip inside biology.**
+   `chem_reactions` is `ChemicalFieldGpu::accumulate_reactions_to_host()` in
+   the GPU metabolism path, which downloads all 11 species' reaction rows,
+   adds them into the host field element-wise and zeroes the device, followed
+   by `sync_reactions_to_device()` at the top of the chemistry pipeline, which
+   uploads all 11 again. It is not dead: host siderophore chemistry
+   (`fix_metabolism`) and quorum-sensing decay (`fix_quorum_sensing`) write
+   host reaction rows in between. But they write four species, not eleven, and
+   they *add* to the field, so the merge could travel as a host-side delta in
+   one direction rather than a full field in both.
+3. **The concentration pair is a dirty-tracking problem, not a dead copy.**
+   `chem_diffusion_result` downloads the post-diffusion field and
+   `step_conc_upload` re-uploads it a step later, at `output_interval: 1e9`
+   with nothing reading the HDF5 grid. Host accounting and the QSSA solve do
+   read host concentrations, so the download is load-bearing as the code
+   stands; the upload is only needed for species the host actually wrote,
+   which for this arm is the toxin rows the QSSA path already re-uploads
+   itself under `qssa_fmm`.
+4. **`qssa_toxin_zero` is the cost of the #403 correctness fix**, 2.6 GB of
+   zeroed 100 MB rows per profiled run. A device-side memset of the row would
+   remove it entirely at identical semantics; the upload was chosen for being
+   obviously correct, not for being cheap.
+
+`unattributed` is 2.1% of bytes but 56% of calls (1,490 of 2,654), all of it
+small parameter and agent-array traffic issued outside any labelled scope,
+costing 0.37 s in aggregate. It is a latency figure, not a bandwidth one, and
+it is not worth attributing further.
 
 ## What this does and does not decide
 

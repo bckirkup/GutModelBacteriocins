@@ -1,0 +1,749 @@
+{
+  "measurement": {
+    "arm": "A4",
+    "scale": "s1",
+    "seeds": [
+      55,
+      56,
+      57
+    ],
+    "queue": "gutibm-gpu-practice",
+    "job_definition": "gutibm-gpubench:6",
+    "job_id": "e2e37b2a-ff6e-487d-b91e-6539993c50a8",
+    "job_status": "SUCCEEDED",
+    "region": "us-east-1",
+    "profile": "gutibm",
+    "source_commit": "6d67d3648888b8ad3c1fedeb7a8ff5e90f576d88",
+    "image_tag": "gpubench-6d67d3648888",
+    "image_digest": "sha256:3c834dbeef76425a75cd183bba9efb03e5770ab6556e2c872aafe9632fe98f0b",
+    "instance_type": "g4dn.xlarge",
+    "gpu_name": "Tesla T4",
+    "driver_version": "580.159.03",
+    "chemistry_placement": "device",
+    "openmp_compiled": true
+  },
+  "artifacts": {
+    "runner_log": "bench_results/gpubench/A4_s1.log",
+    "cloudwatch_events": "bench_results/gpubench/cloudwatch_events.json",
+    "campaign_summary": "bench_results/gpubench/campaign_summary.json",
+    "raw_records": [
+      "bench_results/gpubench/A4_s1_seed55.json",
+      "bench_results/gpubench/A4_s1_seed56.json",
+      "bench_results/gpubench/A4_s1_seed57.json"
+    ],
+    "hdf5_local_artifacts": [],
+    "hdf5_paths_in_records": [
+      "/tmp/gutibm-gpubench/results/A4_s1_seed55.profile.h5",
+      "/tmp/gutibm-gpubench/results/A4_s1_seed56.profile.h5",
+      "/tmp/gutibm-gpubench/results/A4_s1_seed57.profile.h5"
+    ]
+  },
+  "per_seed": [
+    {
+      "seed": 55,
+      "cost_wall_seconds": 127.44729821900003,
+      "profile_wall_seconds": 127.87135387699999,
+      "termination_wall_seconds": 119.805050018,
+      "chemistry_placement": "device",
+      "openmp_compiled": true,
+      "gpu_name": "Tesla T4",
+      "driver_version": "580.159.03",
+      "instance_type": "g4dn.xlarge",
+      "step_count": 10,
+      "biology_s": 92.72025339000001,
+      "chemistry_s": 11.16859739,
+      "physics_s": 0.340451822,
+      "spatial_hash_s": 2.8457193309999997,
+      "h2d_s": 6.729198723,
+      "d2h_s": 6.0959481890000005,
+      "transfer_s": 12.825146912000001,
+      "total_s": 132.374514846,
+      "scalar": {
+        "gpu_h2d_bytes_total": 31470969816,
+        "gpu_d2h_bytes_total": 29366712872,
+        "gpu_h2d_calls_total": 1994,
+        "gpu_d2h_calls_total": 692
+      },
+      "sites": {
+        "step_conc_upload": {
+          "h2d_bytes": 11000000000,
+          "d2h_bytes": 0,
+          "h2d_calls": 110,
+          "d2h_calls": 0,
+          "h2d_s": 2.3106188930000005,
+          "d2h_s": 0.0
+        },
+        "step_agents": {
+          "h2d_bytes": 229943040,
+          "d2h_bytes": 37365692,
+          "h2d_calls": 220,
+          "d2h_calls": 70,
+          "h2d_s": 0.066835745,
+          "d2h_s": 0.012898779999999999
+        },
+        "chem_reactions": {
+          "h2d_bytes": 11000000000,
+          "d2h_bytes": 11000000000,
+          "h2d_calls": 110,
+          "d2h_calls": 110,
+          "h2d_s": 2.309383899,
+          "d2h_s": 2.2674247829999996
+        },
+        "chem_diffusion_result": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 11000000000,
+          "h2d_calls": 0,
+          "d2h_calls": 110,
+          "h2d_s": 0.0,
+          "d2h_s": 2.304102854
+        },
+        "chem_host_fallback": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "qssa_toxin_host_sync": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 4000000000,
+          "h2d_calls": 0,
+          "d2h_calls": 40,
+          "h2d_s": 0.0,
+          "d2h_s": 0.818278663
+        },
+        "qssa_toxin_robin_mix": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "qssa_toxin_zero": {
+          "h2d_bytes": 2400000000,
+          "d2h_bytes": 0,
+          "h2d_calls": 24,
+          "d2h_calls": 0,
+          "h2d_s": 0.504174138,
+          "d2h_s": 0.0
+        },
+        "qssa_fmm": {
+          "h2d_bytes": 5600005408,
+          "d2h_bytes": 3200000000,
+          "h2d_calls": 96,
+          "d2h_calls": 32,
+          "h2d_s": 1.177251289,
+          "d2h_s": 0.652380628
+        },
+        "greens_near_field": {
+          "h2d_bytes": 11904,
+          "d2h_bytes": 640,
+          "h2d_calls": 64,
+          "d2h_calls": 80,
+          "h2d_s": 0.000530536,
+          "d2h_s": 0.000843689
+        },
+        "greens_grid_download": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "receptor": {
+          "h2d_bytes": 68982816,
+          "d2h_bytes": 5748568,
+          "h2d_calls": 20,
+          "d2h_calls": 10,
+          "h2d_s": 0.016726592999999998,
+          "d2h_s": 0.0020586099999999998
+        },
+        "delivery": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "spatial_hash": {
+          "h2d_bytes": 21748648,
+          "d2h_bytes": 5748568,
+          "h2d_calls": 60,
+          "d2h_calls": 20,
+          "h2d_s": 0.008102751,
+          "d2h_s": 0.002116811
+        },
+        "mechanics": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 80,
+          "h2d_calls": 0,
+          "d2h_calls": 20,
+          "h2d_s": 0.0,
+          "d2h_s": 0.00026343
+        },
+        "unattributed": {
+          "h2d_bytes": 1150278000,
+          "d2h_bytes": 117849324,
+          "h2d_calls": 1290,
+          "d2h_calls": 200,
+          "h2d_s": 0.33557487899999994,
+          "d2h_s": 0.035579941
+        }
+      },
+      "site_sums": {
+        "h2d_bytes": 31470969816,
+        "d2h_bytes": 29366712872,
+        "h2d_calls": 1994,
+        "d2h_calls": 692
+      },
+      "invariant_differences": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "h2d_calls": 0,
+        "d2h_calls": 0
+      },
+      "unattributed_share": {
+        "h2d_fraction": 0.036550446545666755,
+        "d2h_fraction": 0.004013024015104008,
+        "combined_fraction": 0.02084443831471137,
+        "h2d_calls_fraction": 0.6469408224674023,
+        "d2h_calls_fraction": 0.28901734104046245
+      }
+    },
+    {
+      "seed": 56,
+      "cost_wall_seconds": 128.19980895600003,
+      "profile_wall_seconds": 128.13607990799994,
+      "termination_wall_seconds": 120.157945212,
+      "chemistry_placement": "device",
+      "openmp_compiled": true,
+      "gpu_name": "Tesla T4",
+      "driver_version": "580.159.03",
+      "instance_type": "g4dn.xlarge",
+      "step_count": 10,
+      "biology_s": 92.883849091,
+      "chemistry_s": 11.237384781000001,
+      "physics_s": 0.345464238,
+      "spatial_hash_s": 2.83598857,
+      "h2d_s": 6.476397632000001,
+      "d2h_s": 5.929932753999999,
+      "transfer_s": 12.406330386,
+      "total_s": 132.313549246,
+      "scalar": {
+        "gpu_h2d_bytes_total": 29969728056,
+        "gpu_d2h_bytes_total": 28166569720,
+        "gpu_h2d_calls_total": 1940,
+        "gpu_d2h_calls_total": 650
+      },
+      "sites": {
+        "step_conc_upload": {
+          "h2d_bytes": 11000000000,
+          "d2h_bytes": 0,
+          "h2d_calls": 110,
+          "d2h_calls": 0,
+          "h2d_s": 2.329274174,
+          "d2h_s": 0.0
+        },
+        "step_agents": {
+          "h2d_bytes": 229745920,
+          "d2h_bytes": 37333660,
+          "h2d_calls": 220,
+          "d2h_calls": 70,
+          "h2d_s": 0.066169794,
+          "d2h_s": 0.012747333000000001
+        },
+        "chem_reactions": {
+          "h2d_bytes": 11000000000,
+          "d2h_bytes": 11000000000,
+          "h2d_calls": 110,
+          "d2h_calls": 110,
+          "h2d_s": 2.329134835,
+          "d2h_s": 2.290399041
+        },
+        "chem_diffusion_result": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 11000000000,
+          "h2d_calls": 0,
+          "d2h_calls": 110,
+          "h2d_s": 0.0,
+          "d2h_s": 2.3377087539999994
+        },
+        "chem_host_fallback": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "qssa_toxin_host_sync": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 4000000000,
+          "h2d_calls": 0,
+          "d2h_calls": 40,
+          "h2d_s": 0.0,
+          "d2h_s": 0.8343985929999999
+        },
+        "qssa_toxin_robin_mix": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "qssa_toxin_zero": {
+          "h2d_bytes": 3000000000,
+          "d2h_bytes": 0,
+          "h2d_calls": 30,
+          "d2h_calls": 0,
+          "h2d_s": 0.641319341,
+          "d2h_s": 0.0
+        },
+        "qssa_fmm": {
+          "h2d_bytes": 3500005824,
+          "d2h_bytes": 2000000000,
+          "h2d_calls": 60,
+          "d2h_calls": 20,
+          "h2d_s": 0.747045075,
+          "d2h_s": 0.414628876
+        },
+        "greens_near_field": {
+          "h2d_bytes": 16512,
+          "d2h_bytes": 400,
+          "h2d_calls": 40,
+          "d2h_calls": 50,
+          "h2d_s": 0.000320069,
+          "d2h_s": 0.0005941490000000001
+        },
+        "greens_grid_download": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "receptor": {
+          "h2d_bytes": 68923680,
+          "d2h_bytes": 5743640,
+          "h2d_calls": 20,
+          "d2h_calls": 10,
+          "h2d_s": 0.016890118,
+          "d2h_s": 0.002006814
+        },
+        "delivery": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "spatial_hash": {
+          "h2d_bytes": 21743720,
+          "d2h_bytes": 5743640,
+          "h2d_calls": 60,
+          "d2h_calls": 20,
+          "h2d_s": 0.008149093,
+          "d2h_s": 0.00210552
+        },
+        "mechanics": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 80,
+          "h2d_calls": 0,
+          "d2h_calls": 20,
+          "h2d_s": 0.0,
+          "d2h_s": 0.000265503
+        },
+        "unattributed": {
+          "h2d_bytes": 1149292400,
+          "d2h_bytes": 117748300,
+          "h2d_calls": 1290,
+          "d2h_calls": 200,
+          "h2d_s": 0.338095133,
+          "d2h_s": 0.035078171000000005
+        }
+      },
+      "site_sums": {
+        "h2d_bytes": 29969728056,
+        "d2h_bytes": 28166569720,
+        "h2d_calls": 1940,
+        "d2h_calls": 650
+      },
+      "invariant_differences": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "h2d_calls": 0,
+        "d2h_calls": 0
+      },
+      "unattributed_share": {
+        "h2d_fraction": 0.03834844273036069,
+        "d2h_fraction": 0.004180427406337359,
+        "combined_fraction": 0.021794313509297173,
+        "h2d_calls_fraction": 0.6649484536082474,
+        "d2h_calls_fraction": 0.3076923076923077
+      }
+    },
+    {
+      "seed": 57,
+      "cost_wall_seconds": 129.31678018999992,
+      "profile_wall_seconds": 129.937928243,
+      "termination_wall_seconds": 121.907082437,
+      "chemistry_placement": "device",
+      "openmp_compiled": true,
+      "gpu_name": "Tesla T4",
+      "driver_version": "580.159.03",
+      "instance_type": "g4dn.xlarge",
+      "step_count": 10,
+      "biology_s": 94.48578257999999,
+      "chemistry_s": 11.272720043000001,
+      "physics_s": 0.34663206300000005,
+      "spatial_hash_s": 2.874174305,
+      "h2d_s": 6.724605783,
+      "d2h_s": 6.134818826999999,
+      "transfer_s": 12.85942461,
+      "total_s": 134.51595192499997,
+      "scalar": {
+        "gpu_h2d_bytes_total": 30967776632,
+        "gpu_d2h_bytes_total": 28966346232,
+        "gpu_h2d_calls_total": 1976,
+        "gpu_d2h_calls_total": 678
+      },
+      "sites": {
+        "step_conc_upload": {
+          "h2d_bytes": 11000000000,
+          "d2h_bytes": 0,
+          "h2d_calls": 110,
+          "d2h_calls": 0,
+          "h2d_s": 2.344829894,
+          "d2h_s": 0.0
+        },
+        "step_agents": {
+          "h2d_bytes": 229437440,
+          "d2h_bytes": 37283532,
+          "h2d_calls": 220,
+          "d2h_calls": 70,
+          "h2d_s": 0.06727361300000001,
+          "d2h_s": 0.012766023999999999
+        },
+        "chem_reactions": {
+          "h2d_bytes": 11000000000,
+          "d2h_bytes": 11000000000,
+          "h2d_calls": 110,
+          "d2h_calls": 110,
+          "h2d_s": 2.3435737309999998,
+          "d2h_s": 2.309058248
+        },
+        "chem_diffusion_result": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 11000000000,
+          "h2d_calls": 0,
+          "d2h_calls": 110,
+          "h2d_s": 0.0,
+          "d2h_s": 2.3482940029999995
+        },
+        "chem_host_fallback": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "qssa_toxin_host_sync": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 4000000000,
+          "h2d_calls": 0,
+          "d2h_calls": 40,
+          "h2d_s": 0.0,
+          "d2h_s": 0.8429387230000001
+        },
+        "qssa_toxin_robin_mix": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "qssa_toxin_zero": {
+          "h2d_bytes": 2600000000,
+          "d2h_bytes": 0,
+          "h2d_calls": 26,
+          "d2h_calls": 0,
+          "h2d_s": 0.5561026949999999,
+          "d2h_s": 0.0
+        },
+        "qssa_fmm": {
+          "h2d_bytes": 4900007072,
+          "d2h_bytes": 2800000000,
+          "h2d_calls": 84,
+          "d2h_calls": 28,
+          "h2d_s": 1.046976634,
+          "d2h_s": 0.581701729
+        },
+        "greens_near_field": {
+          "h2d_bytes": 14976,
+          "d2h_bytes": 560,
+          "h2d_calls": 56,
+          "d2h_calls": 70,
+          "h2d_s": 0.00043662,
+          "d2h_s": 0.000751213
+        },
+        "greens_grid_download": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "receptor": {
+          "h2d_bytes": 68831136,
+          "d2h_bytes": 5735928,
+          "h2d_calls": 20,
+          "d2h_calls": 10,
+          "h2d_s": 0.017001497,
+          "d2h_s": 0.002018223
+        },
+        "delivery": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 0,
+          "h2d_calls": 0,
+          "d2h_calls": 0,
+          "h2d_s": 0,
+          "d2h_s": 0
+        },
+        "spatial_hash": {
+          "h2d_bytes": 21736008,
+          "d2h_bytes": 5735928,
+          "h2d_calls": 60,
+          "d2h_calls": 20,
+          "h2d_s": 0.008131674,
+          "d2h_s": 0.0021132659999999995
+        },
+        "mechanics": {
+          "h2d_bytes": 0,
+          "d2h_bytes": 80,
+          "h2d_calls": 0,
+          "d2h_calls": 20,
+          "h2d_s": 0.0,
+          "d2h_s": 0.000289644
+        },
+        "unattributed": {
+          "h2d_bytes": 1147750000,
+          "d2h_bytes": 117590204,
+          "h2d_calls": 1290,
+          "d2h_calls": 200,
+          "h2d_s": 0.340279425,
+          "d2h_s": 0.034887754
+        }
+      },
+      "site_sums": {
+        "h2d_bytes": 30967776632,
+        "d2h_bytes": 28966346232,
+        "h2d_calls": 1976,
+        "d2h_calls": 678
+      },
+      "invariant_differences": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "h2d_calls": 0,
+        "d2h_calls": 0
+      },
+      "unattributed_share": {
+        "h2d_fraction": 0.037062718891287566,
+        "d2h_fraction": 0.004059545620914195,
+        "combined_fraction": 0.021112183569804748,
+        "h2d_calls_fraction": 0.652834008097166,
+        "d2h_calls_fraction": 0.2949852507374631
+      }
+    }
+  ],
+  "median": {
+    "phase_timings_seconds": {
+      "cost_wall_seconds": 128.19980895600003,
+      "profile_wall_seconds": 128.13607990799994,
+      "termination_wall_seconds": 120.157945212,
+      "biology_s": 92.883849091,
+      "chemistry_s": 11.237384781000001,
+      "physics_s": 0.345464238,
+      "spatial_hash_s": 2.8457193309999997,
+      "h2d_s": 6.724605783,
+      "d2h_s": 6.0959481890000005,
+      "transfer_s": 12.825146912000001,
+      "total_s": 132.374514846
+    },
+    "scalar_totals": {
+      "gpu_h2d_bytes_total": 30967776632,
+      "gpu_d2h_bytes_total": 28966346232,
+      "gpu_h2d_calls_total": 1976,
+      "gpu_d2h_calls_total": 678
+    },
+    "sites": {
+      "step_conc_upload": {
+        "h2d_bytes": 11000000000,
+        "d2h_bytes": 0,
+        "h2d_calls": 110,
+        "d2h_calls": 0,
+        "h2d_s": 2.329274174,
+        "d2h_s": 0.0
+      },
+      "step_agents": {
+        "h2d_bytes": 229745920,
+        "d2h_bytes": 37333660,
+        "h2d_calls": 220,
+        "d2h_calls": 70,
+        "h2d_s": 0.066835745,
+        "d2h_s": 0.012766023999999999
+      },
+      "chem_reactions": {
+        "h2d_bytes": 11000000000,
+        "d2h_bytes": 11000000000,
+        "h2d_calls": 110,
+        "d2h_calls": 110,
+        "h2d_s": 2.329134835,
+        "d2h_s": 2.290399041
+      },
+      "chem_diffusion_result": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 11000000000,
+        "h2d_calls": 0,
+        "d2h_calls": 110,
+        "h2d_s": 0.0,
+        "d2h_s": 2.3377087539999994
+      },
+      "chem_host_fallback": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "h2d_calls": 0,
+        "d2h_calls": 0,
+        "h2d_s": 0,
+        "d2h_s": 0
+      },
+      "qssa_toxin_host_sync": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 4000000000,
+        "h2d_calls": 0,
+        "d2h_calls": 40,
+        "h2d_s": 0.0,
+        "d2h_s": 0.8343985929999999
+      },
+      "qssa_toxin_robin_mix": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "h2d_calls": 0,
+        "d2h_calls": 0,
+        "h2d_s": 0,
+        "d2h_s": 0
+      },
+      "qssa_toxin_zero": {
+        "h2d_bytes": 2600000000,
+        "d2h_bytes": 0,
+        "h2d_calls": 26,
+        "d2h_calls": 0,
+        "h2d_s": 0.5561026949999999,
+        "d2h_s": 0.0
+      },
+      "qssa_fmm": {
+        "h2d_bytes": 4900007072,
+        "d2h_bytes": 2800000000,
+        "h2d_calls": 84,
+        "d2h_calls": 28,
+        "h2d_s": 1.046976634,
+        "d2h_s": 0.581701729
+      },
+      "greens_near_field": {
+        "h2d_bytes": 14976,
+        "d2h_bytes": 560,
+        "h2d_calls": 56,
+        "d2h_calls": 70,
+        "h2d_s": 0.00043662,
+        "d2h_s": 0.000751213
+      },
+      "greens_grid_download": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "h2d_calls": 0,
+        "d2h_calls": 0,
+        "h2d_s": 0,
+        "d2h_s": 0
+      },
+      "receptor": {
+        "h2d_bytes": 68923680,
+        "d2h_bytes": 5743640,
+        "h2d_calls": 20,
+        "d2h_calls": 10,
+        "h2d_s": 0.016890118,
+        "d2h_s": 0.002018223
+      },
+      "delivery": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 0,
+        "h2d_calls": 0,
+        "d2h_calls": 0,
+        "h2d_s": 0,
+        "d2h_s": 0
+      },
+      "spatial_hash": {
+        "h2d_bytes": 21743720,
+        "d2h_bytes": 5743640,
+        "h2d_calls": 60,
+        "d2h_calls": 20,
+        "h2d_s": 0.008131674,
+        "d2h_s": 0.0021132659999999995
+      },
+      "mechanics": {
+        "h2d_bytes": 0,
+        "d2h_bytes": 80,
+        "h2d_calls": 0,
+        "d2h_calls": 20,
+        "h2d_s": 0.0,
+        "d2h_s": 0.000265503
+      },
+      "unattributed": {
+        "h2d_bytes": 1149292400,
+        "d2h_bytes": 117748300,
+        "h2d_calls": 1290,
+        "d2h_calls": 200,
+        "h2d_s": 0.338095133,
+        "d2h_s": 0.035078171000000005
+      }
+    },
+    "unattributed_share": {
+      "h2d_fraction": 0.03711252550215049,
+      "d2h_fraction": 0.0040650035408994695,
+      "combined_bytes_fraction": 0.02114055632173204,
+      "combined_calls_fraction": 0.5614167294649586
+    }
+  },
+  "notes": [
+    "Per-site values are from passes.profile.provenance.step_profile.gpu_transfer_sites in the saved JSON records, also present in the CloudWatch result blocks.",
+    "No HDF5 files are present under bench_results/gpubench because GUTIBM_BENCH_S3_URI was unset; the container HDF5 paths and extracted provenance are retained in the records."
+  ],
+  "per_seed_invariant_differences": {
+    "55": {
+      "h2d_bytes": 0,
+      "d2h_bytes": 0,
+      "h2d_calls": 0,
+      "d2h_calls": 0
+    },
+    "56": {
+      "h2d_bytes": 0,
+      "d2h_bytes": 0,
+      "h2d_calls": 0,
+      "d2h_calls": 0
+    },
+    "57": {
+      "h2d_bytes": 0,
+      "d2h_bytes": 0,
+      "h2d_calls": 0,
+      "d2h_calls": 0
+    }
+  }
+}
