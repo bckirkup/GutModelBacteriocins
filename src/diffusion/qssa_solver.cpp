@@ -377,6 +377,7 @@ FarFieldGridContext make_far_field_grid(const Domain& domain, Real fmm_theta) {
 void deposit_to_chemical_field(ChemicalField& chem,
                                Int toxin_species_idx,
                                const std::vector<Real>& concentrations) {
+  chem.mark_host_conc_dirty(toxin_species_idx);
   if (chem.slab_mode()) {
     assert(static_cast<Int>(concentrations.size()) == chem.ncells());
     #ifdef GUTIBM_OPENMP
@@ -505,6 +506,7 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
       chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
       std::vector<Real>& device_grid =
           chem.mutable_species_concentration(toxin_species_idx);
+      chem.mark_host_conc_dirty(toxin_species_idx);
       for (size_t cell = 0; cell < device_grid.size(); ++cell) {
         device_grid[cell] += host_grid[cell];
       }
@@ -626,6 +628,7 @@ void filter_nuclease_sources_by_target(
 void zero_species_field(ChemicalField& chem,
                         Int species_idx,
                         ChemicalFieldGpu* chem_gpu) {
+  chem.mark_host_conc_dirty(species_idx);
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for collapse(3) schedule(static)
   #endif
@@ -640,8 +643,8 @@ void zero_species_field(ChemicalField& chem,
     }
   }
   if (chem_gpu != nullptr && chem_gpu->active()) {
-    GpuTransferSite site("qssa_toxin_zero");
-    chem_gpu->sync_species_concentrations_to_device(chem, species_idx);
+    chem_gpu->zero_species_concentration_on_device(species_idx);
+    chem.clear_host_conc_dirty(species_idx);
   }
 }
 

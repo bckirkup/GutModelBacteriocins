@@ -424,6 +424,7 @@ bool gpu_apply_species_diffusion_slab_device(
     throw Error(std::string("slab diffusion D2H: ")
                 + cudaGetErrorString(d2h_status));
   }
+  context.field.clear_host_conc_dirty(context.spec_index);
   gpu_transfer_record_d2h(
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
           .count(),
@@ -438,6 +439,7 @@ bool gpu_apply_species_diffusion_slab_device(
     throw Error(std::string("slab diffusion H2D: ")
                 + cudaGetErrorString(h2d_status));
   }
+  context.field.clear_host_conc_dirty(context.spec_index);
   gpu_transfer_record_h2d(
       std::chrono::duration<double>(std::chrono::steady_clock::now() - host_done)
           .count(),
