@@ -622,7 +622,9 @@ void filter_nuclease_sources_by_target(
   }
 }
 
-void zero_species_field(ChemicalField& chem, Int species_idx) {
+void zero_species_field(ChemicalField& chem,
+                        Int species_idx,
+                        ChemicalFieldGpu* chem_gpu) {
   #ifdef GUTIBM_OPENMP
   #pragma omp parallel for collapse(3) schedule(static)
   #endif
@@ -635,6 +637,9 @@ void zero_species_field(ChemicalField& chem, Int species_idx) {
         chem.conc(species_idx, c) = 0.0;
       }
     }
+  }
+  if (chem_gpu != nullptr && chem_gpu->active()) {
+    chem_gpu->sync_species_concentrations_to_device(chem, species_idx);
   }
 }
 
@@ -689,7 +694,7 @@ void QSSASolver::solve_lumped_bacteriocin_fields(
                              ReceptorType::BtuB);
   }
   if (!materialize_grid || sources.empty()) {
-    zero_species_field(chem, lumped_idx);
+    zero_species_field(chem, lumped_idx, chem_gpu);
   } else {
     solve_bacteriocin_field_from_sources(
         sources, params, strength_factors, adv, chem, lumped_idx, chem_gpu);
@@ -762,19 +767,19 @@ void QSSASolver::solve_bacteriocin_field(
                              target);
     if (materialize_grid) {
       if (sources.empty()) {
-        zero_species_field(chem, toxin_species_idx);
+        zero_species_field(chem, toxin_species_idx, chem_gpu);
       } else {
         solve_bacteriocin_field_from_sources(
             sources, params, strength_factors, adv, chem, toxin_species_idx,
             chem_gpu);
       }
     } else {
-      zero_species_field(chem, toxin_species_idx);
+      zero_species_field(chem, toxin_species_idx, chem_gpu);
     }
     return;
   }
   if (sources.empty()) {
-    zero_species_field(chem, toxin_species_idx);
+    zero_species_field(chem, toxin_species_idx, chem_gpu);
     return;
   }
   solve_bacteriocin_field_from_sources(sources, params, strength_factors, adv,
@@ -884,7 +889,7 @@ void QSSASolver::solve_all_bacteriocin_fields(
       sample_bacteriocin_field(sources, params, strength_factors, agents,
                                target);
       if (sources.empty() || !materialize_grid) {
-        zero_species_field(chem, idx);
+        zero_species_field(chem, idx, chem_gpu);
       } else {
         solve_bacteriocin_field_from_sources(
             sources, params, strength_factors, adv, chem, idx, chem_gpu);
@@ -904,7 +909,7 @@ void QSSASolver::solve_all_bacteriocin_fields(
     filter_sources_by_target(all_sources, all_params, all_strengths, all_targets,
                              target, sources, params, strength_factors);
     if (sources.empty()) {
-      zero_species_field(chem, idx);
+      zero_species_field(chem, idx, chem_gpu);
     } else {
       solve_bacteriocin_field_from_sources(
           sources, params, strength_factors, adv, chem, idx, chem_gpu);
