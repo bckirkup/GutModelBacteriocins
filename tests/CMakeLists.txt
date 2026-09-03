@@ -317,6 +317,8 @@ gutibm_add_test(neumann_image_series_gpu test_neumann_image_series_gpu.cpp
   LABELS "gpu")
 gutibm_add_test(robin_lumen_gpu test_robin_lumen_gpu.cpp LABELS "gpu")
 gutibm_add_test(gpu_toxin_burst_parity test_gpu_toxin_burst_parity.cpp LABELS "gpu;integration")
+gutibm_add_test(gpu_toxin_source_clearing
+  test_gpu_toxin_source_clearing.cpp LABELS "gpu")
 gutibm_add_test(gpu_nutrient_feedback test_gpu_nutrient_feedback.cpp LABELS "gpu;integration")
 gutibm_add_test(gpu_metabolism_fur test_gpu_metabolism_fur.cpp LABELS "gpu;integration")
 gutibm_add_test(gpu_uptake_limit test_gpu_uptake_limit.cpp LABELS "gpu;integration")
