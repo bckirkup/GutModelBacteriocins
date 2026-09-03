@@ -1319,6 +1319,7 @@ void ChemicalField::init(const Domain& domain,
       static_cast<size_t>(nspec_),
       std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
   prescribed_active_.assign(static_cast<size_t>(nspec_), false);
+  host_conc_dirty_.assign(static_cast<size_t>(nspec_), true);
   for (Int s = 0; s < nspec_; ++s) {
     conc_[s].assign(ncells_, specs_[s].initial_conc);
     reac_[s].assign(ncells_, 0.0);
@@ -1335,6 +1336,25 @@ void ChemicalField::init(const Domain& domain,
       }
     }
   }
+}
+
+void ChemicalField::mark_host_conc_dirty(Int spec) {
+  assert(spec >= 0 && spec < nspec_);
+  host_conc_dirty_[static_cast<size_t>(spec)] = true;
+}
+
+void ChemicalField::mark_all_host_conc_dirty() {
+  std::fill(host_conc_dirty_.begin(), host_conc_dirty_.end(), true);
+}
+
+bool ChemicalField::host_conc_dirty(Int spec) const {
+  assert(spec >= 0 && spec < nspec_);
+  return host_conc_dirty_[static_cast<size_t>(spec)];
+}
+
+void ChemicalField::clear_host_conc_dirty(Int spec) const {
+  assert(spec >= 0 && spec < nspec_);
+  host_conc_dirty_[static_cast<size_t>(spec)] = false;
 }
 
 Int ChemicalField::global_to_storage_cell(Int global_cell) const {
@@ -1380,6 +1400,7 @@ void ChemicalField::exchange_concentration_halos() {
   const Int halo_cells = halo_width_ * plane_cells;
   const Int local_nx = owned_x_end_ - owned_x_begin_;
   if (halo_cells <= 0 || local_nx <= 0) return;
+  mark_all_host_conc_dirty();
 
   if (domain_->nprocs() <= 1) {
     for (Int s = 0; s < nspec_; ++s) {
@@ -3184,6 +3205,7 @@ bool ChemicalField::apply_diffusion_gpu(
     const auto restore = [&gpu, this, s, &concentration_snapshot,
                           &flux_snapshot, &realized_snapshot] {
       conc_[static_cast<size_t>(s)] = concentration_snapshot;
+      mark_host_conc_dirty(s);
       flux_accounting_ = flux_snapshot;
       total_sink_realized_[static_cast<size_t>(s)] = realized_snapshot;
       gpu.restore_delivery_species(s);
@@ -3235,6 +3257,7 @@ bool ChemicalField::apply_diffusion_gpu(
           std::vector<Real> realized;
           gpu.download_delivery_species(
               s, conc_[static_cast<size_t>(s)], realized);
+          mark_host_conc_dirty(s);
           auto& current = prescribed_sink_[static_cast<size_t>(s)];
           const Real reduced = reduce_prescribed_near_negative_cells(
               conc_[static_cast<size_t>(s)], current, domain,
@@ -3263,6 +3286,7 @@ bool ChemicalField::apply_diffusion_gpu(
         prescribed_snapshot, callbacks);
     std::vector<Real> realized;
     gpu.download_delivery_species(s, concentration, realized);
+    mark_host_conc_dirty(s);
     auto& total_realized = total_sink_realized_[static_cast<size_t>(s)];
     assert(total_realized.size() == realized_snapshot.size());
     assert(total_realized.size() == realized.size());
@@ -3285,6 +3309,7 @@ DeliveryRetryResult ChemicalField::run_delivery_rationing_for_species(
       this, species, &concentration_snapshot, &flux_snapshot,
       &realized_snapshot] {
     conc_[static_cast<size_t>(species)] = concentration_snapshot;
+    mark_host_conc_dirty(species);
     flux_accounting_ = flux_snapshot;
     total_sink_realized_[static_cast<size_t>(species)] = realized_snapshot;
   };
@@ -3377,6 +3402,7 @@ void ChemicalField::apply_diffusion_species(
     const Domain& domain, Real dt, Int s) {
   const ChemicalSpec& chemical = specs_[s];
   if (!chemical.diffuses()) return;
+  mark_host_conc_dirty(s);
   const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
   const Real alpha_x = effective_diffusion * dt
       / (domain.dx_x() * domain.dx_x());
@@ -3444,6 +3470,7 @@ void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt,
   if (dt <= 0.0 || domain.dx_x() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
   if (!chemical.diffuses()) return;
+  mark_host_conc_dirty(spec);
   const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt
       / (domain.dx_x() * domain.dx_x());
   if (mode_ == DecompositionMode::Slab) {
@@ -3460,6 +3487,7 @@ void ChemicalField::apply_periodic_y_diffusion(const Domain& domain, Real dt,
   if (dt <= 0.0 || domain.dx_y() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
   if (!chemical.diffuses()) return;
+  mark_host_conc_dirty(spec);
   const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt
       / (domain.dx_y() * domain.dx_y());
   diffuse_periodic_y(conc_[static_cast<size_t>(spec)], domain, alpha);
@@ -3470,6 +3498,7 @@ void ChemicalField::apply_bounded_z_diffusion(const Domain& domain, Real dt,
   if (dt <= 0.0 || domain.dx_z() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
   if (!chemical.diffuses()) return;
+  mark_host_conc_dirty(spec);
   const Real effective_diffusion =
       chemical.diff_coeff / chemical.retardation;
   const Real alpha = effective_diffusion * dt
@@ -3505,6 +3534,7 @@ void ChemicalField::apply_diffusion_slab_species(
     const Domain& domain, Real dt, Int s) {
   const ChemicalSpec& chemical = specs_[s];
   if (!chemical.diffuses()) return;
+  mark_host_conc_dirty(s);
   const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
   const Real alpha_x = effective_diffusion * dt
       / (domain.dx_x() * domain.dx_x());
@@ -3596,6 +3626,7 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
     // configured, this is the peak concentration at the epithelium.
     if (specs_[s].epithelial_boundary_mode
         == EpithelialBoundaryMode::Dirichlet) {
+      mark_host_conc_dirty(s);
       apply_epithelial_boundary_layer(
           conc_, domain, s, bc, flux_accounting_);
     }
@@ -3603,6 +3634,7 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
     // The implicit z solve enforces the luminal zero-flux condition directly.
     // Non-diffusing fields retain the legacy mirrored top layer.
     if (!specs_[s].diffusion_enabled && nz >= 2) {
+      mark_host_conc_dirty(s);
       mirror_non_diffusing_top_layer(conc_, domain, s);
     }
   }
@@ -3614,12 +3646,14 @@ void ChemicalField::apply_boundaries_slab(const Domain& domain) {
     auto& concentration = conc_[static_cast<size_t>(s)];
     if (specs_[s].epithelial_boundary_mode
         == EpithelialBoundaryMode::Dirichlet) {
+      mark_host_conc_dirty(s);
       flux_accounting_.add_boundary(
           s, set_epithelial_boundary_slab(
                  concentration, domain, storage_nx_, halo_width_,
                  specs_[s].boundary_conc, cell_volume));
     }
     if (!specs_[s].diffusion_enabled && domain.nz() >= 2) {
+      mark_host_conc_dirty(s);
       set_luminal_neumann_boundary_slab(
           concentration, domain, storage_nx_, halo_width_);
     }

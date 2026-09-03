@@ -567,6 +567,16 @@ class ChemicalField {
   // biology pass. Replicated mode is intentionally a no-op.
   void exchange_concentration_halos();
 
+  // Host concentration residency invariant:
+  // the flag means the host row may hold writes not present on the device.
+  // Clear it only after an actual upload or download of that species. Every
+  // new host concentration writer must mark the species; set
+  // GUTIBM_GPU_RESIDENCY_AUDIT=1 to catch missed marks.
+  void mark_host_conc_dirty(Int spec);
+  void mark_all_host_conc_dirty();
+  bool host_conc_dirty(Int spec) const;
+  void clear_host_conc_dirty(Int spec) const;
+
   // Reset reaction rates to zero each timestep
   void zero_reactions();
   void add_sink_rate_global(Int spec, Int cell, Real rate);
@@ -639,6 +649,7 @@ class ChemicalField {
     assert(spec >= 0 && spec < nspec_);
     auto& row = conc_[static_cast<size_t>(spec)];
     assert(static_cast<Int>(row.size()) == ncells_);
+    mark_host_conc_dirty(spec);
     return row;
   }
   std::vector<Real>& mutable_species_reaction(Int spec) {
@@ -667,6 +678,7 @@ class ChemicalField {
   const Domain* domain_ = nullptr;
   std::vector<ChemicalSpec> specs_;
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
+  mutable std::vector<bool> host_conc_dirty_;
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]
   std::vector<std::vector<Real>> sink_rate_;      // [species][ncells], 1/s
   std::vector<std::vector<Real>> vbf_sink_rate_;  // [species][ncells], 1/s

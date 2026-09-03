@@ -432,6 +432,7 @@ void restore_checkpoint_grid(ChemicalField& chem,
     if (static_cast<Int>(values.size()) != chem.global_ncells()) {
       throw SimulationError("checkpoint grid size mismatch for species: " + name);
     }
+    chem.mark_host_conc_dirty(spec);
     if (chem.slab_mode()) {
       for (Int iz = 0; iz < domain.nz(); ++iz) {
         for (Int iy = 0; iy < domain.ny(); ++iy) {

@@ -182,6 +182,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     Int s = 0;
     for (const auto& conc_row : in.chem.conc_data()) {
       (void)conc_row;
+      in.chem.mark_host_conc_dirty(s);
       #ifdef GUTIBM_OPENMP
       #pragma omp parallel for collapse(3) schedule(static)
       #endif

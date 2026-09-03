@@ -11,7 +11,10 @@
 #include "carbon_maintenance.h"
 
 #include <cstdlib>
+#include <cstring>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <cassert>
 
@@ -24,6 +27,18 @@
 #endif
 
 namespace gutibm {
+
+namespace {
+
+bool gpu_residency_audit_enabled() {
+  static const bool enabled = [] {
+    const char* value = std::getenv("GUTIBM_GPU_RESIDENCY_AUDIT");
+    return value != nullptr && value[0] != '\0' && value[0] != '0';
+  }();
+  return enabled;
+}
+
+}  // namespace
 
 #ifdef GUTIBM_CUDA
 namespace {
@@ -259,8 +274,36 @@ void ChemicalFieldGpu::sync_to_host(ChemicalField& field) {
 void ChemicalFieldGpu::sync_concentrations_to_device(const ChemicalField& field) {
   if (!active_) return;
   for (Int s = 0; s < nspec_; ++s) {
+    if (!field.host_conc_dirty(s)) {
+      if (!gpu_residency_audit_enabled()) continue;
+      std::vector<double> device_row;
+      d_conc_[static_cast<size_t>(s)].download(device_row);
+      const auto& host_row = field.species_concentration(s);
+      if (device_row.size() != host_row.size()) {
+        std::ostringstream message;
+        message << "GPU concentration residency size mismatch for species '"
+                << field.spec(s).name << "' (index " << s << "): host row has "
+                << host_row.size() << " cells, device row has "
+                << device_row.size() << " cells";
+        throw SimulationError(message.str());
+      }
+      for (size_t cell = 0; cell < host_row.size(); ++cell) {
+        if (std::memcmp(&host_row[cell], &device_row[cell],
+                        sizeof(double)) == 0) {
+          continue;
+        }
+        std::ostringstream message;
+        message << "GPU concentration residency mismatch for species '"
+                << field.spec(s).name << "' (index " << s << ") at cell "
+                << cell << ": host=" << std::setprecision(17)
+                << host_row[cell] << ", device=" << device_row[cell];
+        throw SimulationError(message.str());
+      }
+      continue;
+    }
     const auto& row = field.species_concentration(s);
     d_conc_[static_cast<size_t>(s)].upload(row.data(), row.size());
+    field.clear_host_conc_dirty(s);
   }
 }
 
@@ -278,6 +321,7 @@ void ChemicalFieldGpu::sync_concentrations_to_host(ChemicalField& field) {
   for (Int s = 0; s < nspec_; ++s) {
     auto& row = field.mutable_species_concentration(s);
     d_conc_[static_cast<size_t>(s)].download(row.data(), row.size());
+    field.clear_host_conc_dirty(s);
   }
 }
 
@@ -311,6 +355,7 @@ void ChemicalFieldGpu::sync_species_concentrations_to_host(ChemicalField& field,
   for (Int c = 0; c < ncells_; ++c) {
     field.conc(spec, c) = host[static_cast<size_t>(c)];
   }
+  field.clear_host_conc_dirty(spec);
 }
 
 void ChemicalFieldGpu::sync_species_concentrations_to_device(
@@ -318,6 +363,18 @@ void ChemicalFieldGpu::sync_species_concentrations_to_device(
   if (!active_ || spec < 0 || spec >= nspec_) return;
   d_conc_[static_cast<size_t>(spec)].upload(
       field.conc_data()[static_cast<size_t>(spec)]);
+  field.clear_host_conc_dirty(spec);
+}
+
+void ChemicalFieldGpu::zero_species_concentration_on_device(Int spec) {
+#ifndef GUTIBM_CUDA
+  (void)spec;
+  return;
+#else
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  cudaMemset(d_conc_[static_cast<size_t>(spec)].data(), 0,
+             static_cast<size_t>(ncells_) * sizeof(double));
+#endif
 }
 
 void ChemicalFieldGpu::zero_reactions_on_device() {

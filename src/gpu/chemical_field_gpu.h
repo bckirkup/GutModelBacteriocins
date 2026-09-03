@@ -24,6 +24,7 @@ class ChemicalFieldGpu {
   void accumulate_reactions_to_host(ChemicalField& field);
   void sync_species_concentrations_to_host(ChemicalField& field, Int spec);
   void sync_species_concentrations_to_device(const ChemicalField& field, Int spec);
+  void zero_species_concentration_on_device(Int spec);
   void zero_reactions_on_device();
 
   bool apply_reactions(double dt, const Domain& domain);
