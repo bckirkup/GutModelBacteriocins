@@ -77,7 +77,12 @@ void test_dirty_state_and_marked_writers() {
   field.clear_host_conc_dirty(0);
   field.clear_host_conc_dirty(1);
   auto& row = field.mutable_species_concentration(0);
+  assert(field.host_conc_dirty(0));
   row.front() = 3.0;
+  assert(field.host_conc_dirty(0));
+
+  field.clear_host_conc_dirty(0);
+  field.conc(0, 0) = 4.0;
   assert(!field.host_conc_dirty(0));
   field.mark_host_conc_dirty(0);
   assert(field.host_conc_dirty(0));

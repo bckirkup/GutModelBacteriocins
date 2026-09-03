@@ -279,6 +279,14 @@ void ChemicalFieldGpu::sync_concentrations_to_device(const ChemicalField& field)
       std::vector<double> device_row;
       d_conc_[static_cast<size_t>(s)].download(device_row);
       const auto& host_row = field.species_concentration(s);
+      if (device_row.size() != host_row.size()) {
+        std::ostringstream message;
+        message << "GPU concentration residency size mismatch for species '"
+                << field.spec(s).name << "' (index " << s << "): host row has "
+                << host_row.size() << " cells, device row has "
+                << device_row.size() << " cells";
+        throw SimulationError(message.str());
+      }
       for (size_t cell = 0; cell < host_row.size(); ++cell) {
         if (std::memcmp(&host_row[cell], &device_row[cell],
                         sizeof(double)) == 0) {
