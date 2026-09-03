@@ -198,7 +198,9 @@ The `A4`/`s1` arm was rerun once more with the per-call-site attribution of
 `sha256:3c834dbeef76425a75cd183bba9efb03e5770ab6556e2c872aafe9632fe98f0b`,
 `git_sha 6d67d3648888b8ad3c1fedeb7a8ff5e90f576d88`). Raw records:
 `bench_results/gpu_cost_benefit_2026-08_sites/`. One job, practice queue,
-`SUCCEEDED`, 773.7 s ≈ $0.11. `g4dn.xlarge` / `Tesla T4` driver 580.159.03,
+`SUCCEEDED`, 773.7 s ≈ $0.11. `g4dn.xlarge` (resolved from the ECS container
+instance; the harness records `host.instance_type` as null) / `Tesla T4`
+driver 580.159.03,
 `chemistry_placement: device`, `openmp_compiled: 1`, `mpi_rank_count: 1`,
 10 profiled steps per seed, medians over seeds 55/56/57. Site sums equal the
 scalar H2D/D2H byte and call totals exactly on every seed, so no traffic is
