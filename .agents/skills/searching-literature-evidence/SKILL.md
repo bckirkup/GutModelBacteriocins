@@ -13,12 +13,15 @@ returns Results, Methods and tables, including for paywalled articles — query
 construction, filter behaviour, result handling, and recording which section of
 the paper a number was read from.
 
-This skill is the other half: what needs sourcing in [GutIBM], and what a hit is
+This skill is the other half: what needs sourcing in GutIBM, and what a hit is
 allowed to become here.
 
 ## Query construction
 
-- Good: `mucin gel diffusion coefficient FRAP protein retardation` (also: `colonic mucus yield stress rheology measurement`)
+A useful query names the measured quantity plus its preparation:
+
+- Good: `mucin gel diffusion coefficient FRAP protein retardation`
+- Weak: `how fast do colicins move through mucus`
 
 Quantities this repo actually needs sourced, and the words that find them:
 
@@ -32,16 +35,21 @@ Quantities this repo actually needs sourced, and the words that find them:
   `expression level`.
 - Degradation — `protease`, `half-life`, `stability`, `inactivation rate`.
 
+The paper establishing that mucin retards a solute is rarely the one that
+measured the coefficient.
+
 ## Filter discipline
+
+Two filters are actively harmful here:
 
 - `medical_mode=true` restricts to ~8M top medical documents and drops
   *Applied and Environmental Microbiology*, *Journal of Bacteriology*,
   *Biophysical Journal*, and the rheology literature — that is, nearly every
   journal a GutIBM constant comes from.
-
 - `human=true` drops in-vitro, murine and gnotobiotic work, which is where
   essentially all mucus-layer and colicin measurements were made.
-The useful narrowing is `domain="bio,med,chem"` when a query drags in unrelated
+
+Reasonable filters: `domain="bio,med,chem"` when a query drags in unrelated
 fields. Do not set `year_min` — a 1990s diffusion measurement is not stale.
 
 ## Capture the unit and the assay, not just the number
@@ -97,3 +105,5 @@ right — the density reconciliation, the Section 8 validation, or an AWS
 calibration run. Sourcing a constant independently is what makes the later
 comparison a real test; screening candidate papers by which value helps destroys
 that test just as surely as fitting the constant by hand.
+
+If a sourced constant makes a target worse, that is a result: report it.
