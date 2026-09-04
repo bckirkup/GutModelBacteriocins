@@ -34,6 +34,11 @@ __global__ void field_update_kernel(double* conc, const double* reac,
   conc[spec * ncells + cell] = c > 0.0 ? c : 0.0;
 }
 
+__global__ void add_into_kernel(double* dst, const double* src, int n) {
+  const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (idx < n) dst[idx] += src[idx];
+}
+
 __global__ void apply_boundaries_kernel(double* conc, int nx, int ny, int nz,
                                         int num_species, const double* boundary_conc) {
   int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -93,6 +98,14 @@ void launch_field_update_kernel(double* conc, const double* reac, int ncells,
   field_update_kernel<<<grid, block, 0, stream>>>(
       conc, reac, ncells, num_species, dt, reaction_clip, cell_volume,
       storage_nx, global_ny, global_nz, owned_x_begin, owned_x_end);
+}
+
+void launch_add_into_kernel(double* dst, const double* src, int n,
+                            cudaStream_t stream) {
+  if (n <= 0) return;
+  constexpr int block = 256;
+  const int grid = (n + block - 1) / block;
+  add_into_kernel<<<grid, block, 0, stream>>>(dst, src, n);
 }
 
 void launch_apply_boundaries_kernel(double* conc, int nx, int ny, int nz,

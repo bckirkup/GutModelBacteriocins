@@ -100,6 +100,8 @@ gutibm_add_test(iron_fallback test_iron_fallback.cpp LABELS "unit")
 gutibm_add_test(octree test_octree.cpp LABELS "unit")
 gutibm_add_test(fmm test_fmm.cpp LABELS "unit")
 gutibm_add_test(qssa_stoichiometry test_qssa_stoichiometry.cpp LABELS "unit")
+gutibm_add_test(chemical_field_reaction_residency
+  test_chemical_field_reaction_residency.cpp LABELS "unit")
 gutibm_add_test(conjugation test_conjugation.cpp LABELS "unit")
 gutibm_add_test(z_gradient test_z_gradient.cpp LABELS "unit")
 gutibm_add_test(nutrient_diffusion test_nutrient_diffusion.cpp LABELS "unit")
@@ -312,6 +314,8 @@ gutibm_add_test(gpu_diffusion_species_mask
   test_gpu_diffusion_species_mask.cpp LABELS "unit")
 gutibm_add_test(gpu_chemical_field test_gpu_chemical_field.cpp LABELS "gpu")
 gutibm_add_test(gpu_residency_audit test_gpu_residency_audit.cpp LABELS "gpu")
+gutibm_add_test(gpu_reaction_residency test_gpu_reaction_residency.cpp
+  LABELS "gpu")
 gutibm_add_test(gpu_feature_combinations test_gpu_feature_combinations.cpp LABELS "gpu;integration")
 gutibm_add_test(gpu_production_path test_gpu_production_path.cpp LABELS "gpu;integration")
 gutibm_add_test(gpu_smoke test_gpu_smoke.cpp LABELS "gpu")

@@ -1230,6 +1230,9 @@ void QSSASolver::solve_nutrient_depletion(
       chem.reac_global(i_oxygen, cell) -= o2_use / cell_vol;
     }
   }
+  if (i_oxygen >= 0 && oxygen.enabled && !oxygen.delivery_uptake_enabled) {
+    chem.mark_host_reac_dirty(i_oxygen);
+  }
 }
 
 Real QSSASolver::point_concentration(

@@ -61,6 +61,9 @@ void launch_field_update_kernel(
     int owned_x_begin, int owned_x_end,
     cudaStream_t stream);
 
+void launch_add_into_kernel(double* dst, const double* src, int n,
+                            cudaStream_t stream);
+
 void launch_apply_boundaries_kernel(
     double* conc, int nx, int ny, int nz, int num_species,
     const double* boundary_conc, cudaStream_t stream);

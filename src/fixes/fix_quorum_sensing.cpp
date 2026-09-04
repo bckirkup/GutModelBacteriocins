@@ -58,6 +58,7 @@ void FixQuorumSensing::compute(Real /*dt*/) {
       }
     }
   }
+  chem.mark_host_reac_dirty(i_ai2);
 }
 
 }  // namespace gutibm

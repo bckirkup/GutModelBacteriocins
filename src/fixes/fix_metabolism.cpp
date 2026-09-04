@@ -796,6 +796,9 @@ void FixMetabolism::apply_siderophore_chelation(
       }
     }
   }
+  chem.mark_host_reac_dirty(i_iron);
+  chem.mark_host_reac_dirty(i_sid);
+  chem.mark_host_reac_dirty(i_ferric_enterobactin);
 }
 
 void FixMetabolism::apply_siderophore_reimport(
@@ -842,6 +845,9 @@ void FixMetabolism::apply_siderophore_reimport(
       }
     }
   }
+  chem.mark_host_reac_dirty(i_sid);
+  chem.mark_host_reac_dirty(i_iron);
+  chem.mark_host_reac_dirty(i_ferric_enterobactin);
 }
 
 void FixMetabolism::perform_divisions() {

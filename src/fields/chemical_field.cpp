@@ -1301,6 +1301,7 @@ void ChemicalField::init(const Domain& domain,
 
   conc_.resize(nspec_);
   reac_.resize(nspec_);
+  host_reac_dirty_.assign(static_cast<size_t>(nspec_), false);
   sink_rate_.assign(static_cast<size_t>(nspec_),
                     std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
   vbf_sink_rate_.assign(
@@ -1485,6 +1486,7 @@ void ChemicalField::exchange_concentration_halos() {
 void ChemicalField::zero_reactions() {
   for (Int s = 0; s < nspec_; ++s) {
     std::ranges::fill(reac_[s], 0.0);
+    host_reac_dirty_[static_cast<size_t>(s)] = false;
     std::ranges::fill(sink_rate_[s], 0.0);
     std::ranges::fill(vbf_sink_rate_[s], 0.0);
     std::ranges::fill(sink_realized_[s], 0.0);
@@ -1509,6 +1511,25 @@ void ChemicalField::zero_reactions() {
         : owned_content(
               conc_[static_cast<size_t>(s)], *domain_, domain_->cell_volume());
   }
+}
+
+void ChemicalField::mark_host_reac_dirty(Int spec) {
+  if (spec < 0 || spec >= nspec_) return;
+  host_reac_dirty_[static_cast<size_t>(spec)] = true;
+}
+
+void ChemicalField::mark_all_host_reac_dirty() {
+  std::fill(host_reac_dirty_.begin(), host_reac_dirty_.end(), true);
+}
+
+bool ChemicalField::host_reac_dirty(Int spec) const {
+  if (spec < 0 || spec >= nspec_) return false;
+  return host_reac_dirty_[static_cast<size_t>(spec)];
+}
+
+void ChemicalField::clear_host_reac_dirty(Int spec) const {
+  if (spec < 0 || spec >= nspec_) return;
+  host_reac_dirty_[static_cast<size_t>(spec)] = false;
 }
 
 void ChemicalField::add_sink_rate_global(Int spec, Int cell, Real rate) {
@@ -1699,6 +1720,7 @@ void ChemicalField::sum_reactions_across_ranks() {
     MPI_Allreduce(MPI_IN_PLACE, sink.data(), ncells_, MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
   }
+  mark_all_host_reac_dirty();
 #endif
 }
 
