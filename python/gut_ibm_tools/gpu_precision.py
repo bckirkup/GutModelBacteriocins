@@ -56,6 +56,12 @@ class Estimand:
     index: int | None = None
     #: Arms whose uptake mode makes the quantity meaningful; empty means all.
     arms: tuple[str, ...] = ()
+    #: ``dynamical`` quantities carry state or draw-derived counts, so any
+    #: repeat mismatch means the runs are different realizations.  An
+    #: ``accounting`` quantity is a diagnostic accumulator that no state
+    #: variable reads back, so last-bit repeat noise cannot change the
+    #: trajectory.
+    repeat_class: str = "dynamical"
 
 
 STOCHASTIC_ESTIMANDS: tuple[Estimand, ...] = (
@@ -98,17 +104,23 @@ STOCHASTIC_ESTIMANDS: tuple[Estimand, ...] = (
 INVARIANT_ESTIMANDS: tuple[Estimand, ...] = (
     Estimand("halt_reason_code", "halt_reason_code", "invariant"),
     Estimand("reaction_clip_cumulative_total",
-             "nutrient_flux/reaction_clip_cumulative", "invariant"),
+             "nutrient_flux/reaction_clip_cumulative", "invariant",
+             repeat_class="accounting"),
     Estimand("uptake_shortfall_cumulative_total",
-             "nutrient_flux/uptake_shortfall_cumulative", "invariant"),
+             "nutrient_flux/uptake_shortfall_cumulative", "invariant",
+             repeat_class="accounting"),
     Estimand("maintenance_shortfall_cumulative_total",
-             "nutrient_flux/maintenance_shortfall_cumulative", "invariant"),
+             "nutrient_flux/maintenance_shortfall_cumulative", "invariant",
+             repeat_class="accounting"),
     Estimand("delivery_infeasible_cumulative_total",
-             "nutrient_flux/delivery_infeasible_cumulative", "invariant"),
+             "nutrient_flux/delivery_infeasible_cumulative", "invariant",
+             repeat_class="accounting"),
     Estimand("delivery_retry_events_cumulative_total",
-             "nutrient_flux/delivery_retry_events_cumulative", "invariant"),
+             "nutrient_flux/delivery_retry_events_cumulative", "invariant",
+             repeat_class="accounting"),
     Estimand("delivery_reduction_cumulative_total",
-             "nutrient_flux/delivery_reduction_cumulative", "invariant"),
+             "nutrient_flux/delivery_reduction_cumulative", "invariant",
+             repeat_class="accounting"),
 )
 
 ALL_ESTIMANDS = STOCHASTIC_ESTIMANDS + INVARIANT_ESTIMANDS
@@ -325,6 +337,17 @@ def bitwise_equal(lhs: float, rhs: float) -> bool:
     return struct.pack("<d", lhs) == struct.pack("<d", rhs)
 
 
+def ulp_distance(lhs: float, rhs: float) -> int:
+    """Return the monotone IEEE-754 representation distance between doubles."""
+    lhs_bits = struct.unpack("<q", struct.pack("<d", lhs))[0]
+    rhs_bits = struct.unpack("<q", struct.pack("<d", rhs))[0]
+    if lhs_bits < 0:
+        lhs_bits = 0x8000000000000000 - lhs_bits
+    if rhs_bits < 0:
+        rhs_bits = 0x8000000000000000 - rhs_bits
+    return abs(lhs_bits - rhs_bits)
+
+
 def repeat_report(first: RunSeries, second: RunSeries) -> dict[str, Any]:
     """Compare two runs that should be bit-identical.
 
@@ -333,28 +356,48 @@ def repeat_report(first: RunSeries, second: RunSeries) -> dict[str, Any]:
     evaluated before any verdict is formed.
     """
     shared = sorted(set(first.series) & set(second.series))
+    repeat_classes = {
+        estimand.name: estimand.repeat_class for estimand in ALL_ESTIMANDS
+    }
     mismatches: list[dict[str, Any]] = []
     for name in shared:
         lhs = first.series[name]
         rhs = second.series[name]
         limit = min(len(lhs), len(rhs))
+        mismatch_steps: list[int] = []
+        max_relative = 0.0
+        max_ulp = 0
         for index in range(limit):
             if not bitwise_equal(lhs[index], rhs[index]):
-                mismatches.append({
-                    "estimand": name,
-                    "step": first.steps[index],
-                    "first": lhs[index],
-                    "second": rhs[index],
-                    "relative_difference": relative_difference(
-                        lhs[index], rhs[index]),
-                })
-                break
+                mismatch_steps.append(first.steps[index])
+                max_relative = max(
+                    max_relative,
+                    relative_difference(lhs[index], rhs[index]),
+                )
+                max_ulp = max(max_ulp, ulp_distance(lhs[index], rhs[index]))
+        if mismatch_steps:
+            mismatches.append({
+                "estimand": name,
+                "repeat_class": repeat_classes.get(name, "dynamical"),
+                "first_mismatch_step": mismatch_steps[0],
+                "mismatch_step_count": len(mismatch_steps),
+                "max_relative_difference": max_relative,
+                "max_ulp_distance": max_ulp,
+            })
+    dynamical_mismatches = [
+        item for item in mismatches if item["repeat_class"] == "dynamical"
+    ]
+    accounting_mismatches = [
+        item for item in mismatches if item["repeat_class"] == "accounting"
+    ]
     return {
         "arm": first.arm,
         "seed": first.seed,
         "compared_estimands": len(shared),
         "step_count": min(len(first.steps), len(second.steps)),
         "reproducible": not mismatches,
+        "dynamical_reproducible": not dynamical_mismatches,
+        "accounting_reproducible": not accounting_mismatches,
         "mismatches": mismatches,
     }
 
@@ -520,19 +563,75 @@ def mann_whitney_exact_two_sided(lhs: list[float],
     }
 
 
+def _accounting_noise_entries(
+    repeat_reports: list[dict],
+) -> list[dict]:
+    entries = []
+    for report in repeat_reports:
+        for mismatch in report["mismatches"]:
+            if mismatch["repeat_class"] == "accounting":
+                entries.append({
+                    "arm": report["arm"],
+                    "seed": report["seed"],
+                    **mismatch,
+                })
+    return entries
+
+
+def _accounting_noise_floors(
+    accounting_noise: list[dict],
+) -> dict[str, float]:
+    floors: dict[str, float] = {}
+    for entry in accounting_noise:
+        name = entry["estimand"]
+        floors[name] = max(
+            floors.get(name, 0.0),
+            entry["max_relative_difference"],
+        )
+    return floors
+
+
+def _accounting_noise_text(
+    accounting_noise: list[dict],
+) -> str:
+    details = "; ".join(
+        f"{entry['estimand']} (max ULP "
+        f"{entry['max_ulp_distance']}, max relative difference "
+        f"{entry['max_relative_difference']:.6g})"
+        for entry in accounting_noise
+    )
+    return (
+        "Accounting repeat noise was observed in: "
+        f"{details}. Verdicts stand; these accounting counters are judged "
+        "against their measured repeat noise, and a host/device difference "
+        "below that floor is not attributable to the backend."
+    )
+
+
 def distributional_verdict(name: str, kind: str, host_values: list[float],
                            device_values: list[float],
-                           paired_identical: bool) -> dict[str, Any]:
+                           paired_identical: bool,
+                           repeat_noise: float | None = None,
+                           ) -> dict[str, Any]:
     """Judge one estimand: backend shift against within-backend seed spread."""
     host_median = median(host_values)
     device_median = median(device_values)
     shift = abs(device_median - host_median)
     spread = max(interquartile_range(host_values),
                  interquartile_range(device_values))
+    repeat_noise_floor = max(
+        IDENTICAL_RELATIVE_TOLERANCE,
+        repeat_noise if repeat_noise is not None else 0.0,
+    )
     if paired_identical:
         verdict = "identical"
     elif kind == "invariant":
-        verdict = "invariant_match" if shift <= 0.0 else "invariant_differs"
+        verdict = (
+            "invariant_match"
+            if relative_difference(device_median, host_median)
+            <= repeat_noise_floor
+            else "invariant_differs"
+        )
     elif shift <= spread:
         verdict = "interchangeable"
     else:
@@ -547,6 +646,7 @@ def distributional_verdict(name: str, kind: str, host_values: list[float],
         "shift": shift,
         "seed_spread": spread,
         "shift_over_spread": (shift / spread) if spread > 0.0 else None,
+        "repeat_noise_floor": repeat_noise_floor,
         "verdict": verdict,
         "mann_whitney": mann_whitney_exact_two_sided(host_values,
                                                      device_values),
@@ -561,6 +661,14 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
     comparison_step = metadata["comparison_step"]
     repeat_reports = [repeat_report(first, second) for first, second in repeats]
     reproducible = all(report["reproducible"] for report in repeat_reports)
+    dynamical_reproducible = all(
+        report["dynamical_reproducible"] for report in repeat_reports
+    )
+    accounting_reproducible = all(
+        report["accounting_reproducible"] for report in repeat_reports
+    )
+    accounting_noise = _accounting_noise_entries(repeat_reports)
+    accounting_noise_floors = _accounting_noise_floors(accounting_noise)
 
     host_by_seed = {run.seed: run for run in host_runs}
     device_by_seed = {run.seed: run for run in device_runs}
@@ -570,37 +678,43 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
             host_by_seed[seed], device_by_seed[seed], comparison_step
         )
         for seed in paired_seeds
-    ]
+    ] if dynamical_reproducible else []
 
     verdicts: list[dict[str, Any]] = []
     available = sorted(
         set.intersection(*[set(run.series) for run in host_runs + device_runs])
     ) if host_runs and device_runs else []
     by_name = {estimand.name: estimand for estimand in ALL_ESTIMANDS}
-    for name in available:
-        host_values = [
-            _value_at_step(run, name, comparison_step)
-            for run in host_runs
-        ]
-        device_values = [
-            _value_at_step(run, name, comparison_step)
-            for run in device_runs
-        ]
-        paired_identical = all(
-            relative_difference(
-                _value_at_step(
-                    host_by_seed[seed], name, comparison_step
-                ),
-                _value_at_step(
-                    device_by_seed[seed], name, comparison_step
-                ),
+    if dynamical_reproducible:
+        for name in available:
+            host_values = [
+                _value_at_step(run, name, comparison_step)
+                for run in host_runs
+            ]
+            device_values = [
+                _value_at_step(run, name, comparison_step)
+                for run in device_runs
+            ]
+            noise_floor = accounting_noise_floors.get(name)
+            paired_tolerance = max(
+                IDENTICAL_RELATIVE_TOLERANCE,
+                noise_floor if noise_floor is not None else 0.0,
             )
-            <= IDENTICAL_RELATIVE_TOLERANCE
-            for seed in paired_seeds
-        ) if paired_seeds else False
-        verdicts.append(distributional_verdict(
-            name, by_name[name].kind, host_values, device_values,
-            paired_identical))
+            paired_identical = all(
+                relative_difference(
+                    _value_at_step(
+                        host_by_seed[seed], name, comparison_step
+                    ),
+                    _value_at_step(
+                        device_by_seed[seed], name, comparison_step
+                    ),
+                )
+                <= paired_tolerance
+                for seed in paired_seeds
+            ) if paired_seeds else False
+            verdicts.append(distributional_verdict(
+                name, by_name[name].kind, host_values, device_values,
+                paired_identical, noise_floor))
 
     non_finite = [
         {"path": run.path, "estimand": name}
@@ -618,6 +732,25 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
     flagged = [item["estimand"] for item in verdicts
                if item["verdict"] in {"flagged", "invariant_differs",
                                       "non_finite"}]
+    flagged.extend(sorted(non_finite_estimands - set(flagged)))
+    if not dynamical_reproducible:
+        interpretation = (
+            "Reproducibility control FAILED: the device is not bit-identical "
+            "across repeats of one seed at this scale, so paired divergence "
+            "cannot be attributed to the backend and no distributional "
+            "verdict should be quoted."
+        )
+    elif accounting_noise:
+        interpretation = _accounting_noise_text(accounting_noise)
+    else:
+        interpretation = (
+            "Paired divergence is descriptive: a stochastic nonlinear model "
+            "separates once a field difference flips one draw. The verdict is "
+            "distributional; 'interchangeable' means the backend shift in the "
+            "median is within the within-backend seed spread, which is "
+            "reported alongside so the resolution of the measurement is "
+            "visible."
+        )
     record = {
         "schema_version": SCHEMA_VERSION,
         "host_arm": host_runs[0].arm if host_runs else None,
@@ -627,25 +760,18 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
         "paired_seeds": paired_seeds,
         "reproducibility": {
             "reproducible": reproducible,
+            "dynamical_reproducible": dynamical_reproducible,
+            "accounting_reproducible": accounting_reproducible,
             "reports": repeat_reports,
         },
+        "dynamical_reproducible": dynamical_reproducible,
+        "accounting_reproducible": accounting_reproducible,
+        "accounting_repeat_noise": accounting_noise,
         "divergence_profiles": profiles,
         "verdicts": verdicts,
         "flagged_estimands": flagged,
         "non_finite": non_finite,
-        "interpretation": (
-            "Paired divergence is descriptive: a stochastic nonlinear model "
-            "separates once a field difference flips one draw. The verdict is "
-            "distributional; 'interchangeable' means the backend shift in the "
-            "median is within the within-backend seed spread, which is "
-            "reported alongside so the resolution of the measurement is "
-            "visible."
-            if reproducible else
-            "Reproducibility control FAILED: the device is not bit-identical "
-            "across repeats of one seed at this scale, so paired divergence "
-            "cannot be attributed to the backend and no distributional "
-            "verdict should be quoted."
-        ),
+        "interpretation": interpretation,
     }
     record.update(metadata)
     if metadata["truncated_runs_present"]:
@@ -677,6 +803,28 @@ def _verdict_table(record: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _repeat_table(record: dict) -> list[str]:
+    mismatches = [
+        mismatch
+        for report in record["reproducibility"]["reports"]
+        for mismatch in report["mismatches"]
+    ]
+    lines = [
+        (
+            "| estimand | class | mismatch steps | max ULP |"
+            " max relative difference |"
+        ),
+        "|---|---|---:|---:|---:|",
+    ]
+    lines.extend(
+        f"| `{item['estimand']}` | {item['repeat_class']} "
+        f"| {item['mismatch_step_count']} | {item['max_ulp_distance']} "
+        f"| {item['max_relative_difference']:.6g} |"
+        for item in mismatches
+    )
+    return lines
+
+
 def render_markdown(record: dict[str, Any]) -> str:
     lines = [
         (f"# GPU-vs-CPU outcome comparison: {record['host_arm']} vs "
@@ -702,6 +850,27 @@ def render_markdown(record: dict[str, Any]) -> str:
         "",
         ("Device repeats bit-identical: "
          f"{record['reproducibility']['reproducible']}"),
+        ("Dynamical reproducibility: "
+         f"{record['dynamical_reproducible']}"),
+        ("Accounting reproducibility: "
+         f"{record['accounting_reproducible']}"),
+        "",
+        "### Repeat mismatch details",
+        "",
+    ])
+    mismatch_rows = _repeat_table(record)
+    if len(mismatch_rows) == 2:
+        lines.append("No repeat mismatches recorded.")
+    else:
+        lines.extend(mismatch_rows)
+    if record["accounting_repeat_noise"]:
+        lines.extend([
+            "",
+            "### Accounting repeat-noise caveat",
+            "",
+            record["interpretation"],
+        ])
+    lines.extend([
         "",
         "## Distributional verdict",
         "",
@@ -823,6 +992,9 @@ def main(argv: list[str] | None = None) -> int:
         "run_last_steps": record["run_last_steps"],
         "truncated_runs_present": record["truncated_runs_present"],
         "reproducible": record["reproducibility"]["reproducible"],
+        "dynamical_reproducible": record["dynamical_reproducible"],
+        "accounting_reproducible": record["accounting_reproducible"],
+        "accounting_repeat_noise": record["accounting_repeat_noise"],
         "flagged": record["flagged_estimands"],
         "paired_seeds": record["paired_seeds"],
     }, indent=2))

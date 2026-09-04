@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from gut_ibm_tools.gpu_precision import (
     load_run,
     mann_whitney_exact_two_sided,
     render_markdown,
+    ulp_distance,
 )
 
 BASE_OXYGEN = [1.0, 1.0, 1.0, 1.0]
@@ -203,6 +205,139 @@ def _load_pair(
 
 def _verdicts(record: dict) -> dict[str, dict]:
     return {item["estimand"]: item for item in record["verdicts"]}
+
+
+def _repeat_run(
+    arm: str,
+    seed: int,
+    *,
+    n_total: list[float],
+    reaction_clip: list[float],
+) -> RunSeries:
+    return RunSeries(
+        path=f"{arm}_{seed}.h5",
+        arm=arm,
+        seed=seed,
+        steps=list(range(len(n_total))),
+        series={
+            "n_total": n_total,
+            "reaction_clip_cumulative_total": reaction_clip,
+        },
+    )
+
+
+def test_ulp_distance_counts_adjacent_and_two_step_pairs() -> None:
+    adjacent = math.nextafter(1.0, 2.0)
+    two_steps = math.nextafter(adjacent, 2.0)
+    negative_zero_neighbor = math.nextafter(0.0, -1.0)
+    assert ulp_distance(1.0, adjacent) == 1
+    assert ulp_distance(1.0, two_steps) == 2
+    assert ulp_distance(-0.0, negative_zero_neighbor) == 1
+    assert ulp_distance(-1.0, 1.0) >= 0
+
+
+def test_dynamical_repeat_noise_suppresses_verdicts() -> None:
+    first = _repeat_run(
+        "E2", 55, n_total=[1.0, 2.0], reaction_clip=[0.0, 0.0]
+    )
+    repeat = _repeat_run(
+        "E2r",
+        55,
+        n_total=[1.0, math.nextafter(2.0, 3.0)],
+        reaction_clip=[0.0, 0.0],
+    )
+    record = compare([first], [first], [(first, repeat)])
+    report = record["reproducibility"]["reports"][0]
+    assert record["reproducibility"]["reproducible"] is False
+    assert record["dynamical_reproducible"] is False
+    assert record["accounting_reproducible"] is True
+    assert record["verdicts"] == []
+    assert record["divergence_profiles"] == []
+    assert report["mismatches"][0]["repeat_class"] == "dynamical"
+    assert report["mismatches"][0]["max_ulp_distance"] == 1
+
+
+def test_accounting_repeat_noise_keeps_verdicts_with_caveat() -> None:
+    first = _repeat_run(
+        "E2", 55, n_total=[1.0, 2.0], reaction_clip=[1.0, 2.0]
+    )
+    repeat = _repeat_run(
+        "E2r",
+        55,
+        n_total=[1.0, 2.0],
+        reaction_clip=[
+            math.nextafter(1.0, 2.0),
+            math.nextafter(2.0, 3.0),
+        ],
+    )
+    record = compare([first], [first], [(first, repeat)])
+    assert record["reproducibility"]["reproducible"] is False
+    assert record["dynamical_reproducible"] is True
+    assert record["accounting_reproducible"] is False
+    assert record["verdicts"]
+    mismatch = record["accounting_repeat_noise"][0]
+    assert mismatch["first_mismatch_step"] == 0
+    assert mismatch["mismatch_step_count"] == 2
+    assert mismatch["max_ulp_distance"] == 1
+    assert "reaction_clip_cumulative_total" in record["interpretation"]
+    markdown = render_markdown(record)
+    assert "repeat_class" not in markdown
+    assert "reaction_clip_cumulative_total" in markdown
+    assert "max ULP" in markdown
+
+
+def test_accounting_noise_floor_controls_invariant_judgment() -> None:
+    repeat_source = _repeat_run(
+        "E2",
+        55,
+        n_total=[1.0, 2.0],
+        reaction_clip=[1.0e12, 1.0e12],
+    )
+    repeat = _repeat_run(
+        "E2r",
+        55,
+        n_total=[1.0, 2.0],
+        reaction_clip=[1.0e12, 1.0e12 + 2.0],
+    )
+    below_noise = _repeat_run(
+        "E2",
+        56,
+        n_total=[1.0, 2.0],
+        reaction_clip=[1.0e12, 1.0e12 + 1.5],
+    )
+    above_noise = _repeat_run(
+        "E2",
+        57,
+        n_total=[1.0, 2.0],
+        reaction_clip=[1.0e12, 1.0e12 + 5.0],
+    )
+    below_record = compare(
+        [repeat_source], [below_noise], [(repeat_source, repeat)]
+    )
+    above_record = compare(
+        [repeat_source], [above_noise], [(repeat_source, repeat)]
+    )
+    assert _verdicts(below_record)[
+        "reaction_clip_cumulative_total"
+    ]["verdict"] == "invariant_match"
+    assert _verdicts(above_record)[
+        "reaction_clip_cumulative_total"
+    ]["verdict"] == "invariant_differs"
+
+
+def test_clean_repeats_keep_all_reproducible_record() -> None:
+    first = _repeat_run(
+        "E2", 55, n_total=[1.0, 2.0], reaction_clip=[0.0, 1.0]
+    )
+    repeat = _repeat_run(
+        "E2r", 55, n_total=[1.0, 2.0], reaction_clip=[0.0, 1.0]
+    )
+    record = compare([first], [first], [(first, repeat)])
+    assert record["reproducibility"]["reproducible"] is True
+    assert record["dynamical_reproducible"] is True
+    assert record["accounting_reproducible"] is True
+    assert record["accounting_repeat_noise"] == []
+    assert "Paired divergence is descriptive" in record["interpretation"]
 
 
 def test_backend_shift_inside_seed_spread_is_interchangeable(
