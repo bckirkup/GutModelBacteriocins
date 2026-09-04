@@ -155,11 +155,11 @@ read -r -a SCALE_ARRAY <<< "${BENCH_SCALES}"
 [[ "${#ARM_ARRAY[@]}" -gt 0 && "${#SCALE_ARRAY[@]}" -gt 0 ]] \
   || die "BENCH_ARMS and BENCH_SCALES must not be empty"
 for arm in "${ARM_ARRAY[@]}"; do
-  [[ "${arm}" =~ ^A[1-6]$ ]] \
+  [[ "${arm}" =~ ^(A[1-6]|E[1-4]r?)$ ]] \
     || die "unsupported benchmark arm: ${arm}"
 done
 for scale in "${SCALE_ARRAY[@]}"; do
-  [[ "${scale}" =~ ^s[012]$ ]] \
+  [[ "${scale}" =~ ^(s[012]|p1)$ ]] \
     || die "unsupported benchmark scale: ${scale}"
 done
 [[ -n "${BENCH_SEEDS//[[:space:]]/}" ]] \
@@ -338,14 +338,18 @@ job_status=0
 work=/tmp/gutibm-gpubench
 rm -rf "${work}"
 mkdir -p "${work}/config" "${work}/results"
-if [[ "${BENCH_ARM}" =~ ^A[456]$ ]]; then
+if [[ "${BENCH_ARM}" =~ ^(A[456]|E[24]r?)$ ]]; then
   nvidia-smi || job_status=1
 fi
+if [[ "${BENCH_SCALE}" == "p1" ]]; then
+  base_config="examples/single_colony/input.json"
+else
+  base_config="examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json"
+fi
 python3 -m gut_ibm_tools.gpu_cost_benefit generate \
-  --base "examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json" \
+  --base "${base_config}" \
   --output-dir "${work}/config" \
-  --scale "${BENCH_SCALE}" \
-    "examples/scaling_benchmark/input_bench_${BENCH_SCALE}.json"
+  --scale "${BENCH_SCALE}" "${base_config}"
 if [[ "$?" -ne 0 ]]; then
   job_status=1
 fi
