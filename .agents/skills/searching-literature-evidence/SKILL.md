@@ -41,9 +41,8 @@ Quantities this repo actually needs sourced, and the words that find them:
 
 - `human=true` drops in-vitro, murine and gnotobiotic work, which is where
   essentially all mucus-layer and colicin measurements were made.
-Reasonable filters: `domain="bio,med,chem"` when a query drags in unrelated
-fields; `exclude_preprints=true` when a value must be peer-reviewed to earn its
-grade. Do not set `year_min` — a 1990s diffusion measurement is not stale.
+The useful narrowing is `domain="bio,med,chem"` when a query drags in unrelated
+fields. Do not set `year_min` — a 1990s diffusion measurement is not stale.
 
 ## Capture the unit and the assay, not just the number
 
