@@ -30,7 +30,7 @@ from typing import Any
 
 import h5py
 
-from .path_utils import validate_input_path, write_json_file
+from .path_utils import validate_input_path, write_json_file, write_text_file
 
 SCHEMA_VERSION = 1
 
@@ -39,6 +39,7 @@ IDENTICAL_RELATIVE_TOLERANCE = 1.0e-12
 
 #: Divergence-onset thresholds for the descriptive paired profile.
 DIVERGENCE_THRESHOLDS = (1.0e-12, 1.0e-6, 1.0e-1)
+RUN_SPEC_METAVAR = "ARM:SEED:PATH"
 
 
 @dataclass(frozen=True)
@@ -377,7 +378,7 @@ def mann_whitney_exact_two_sided(lhs: list[float],
             for right in others:
                 if left > right:
                     count += 1.0
-                elif not (left < right):
+                elif left >= right:
                     count += 0.5
         return count
 
@@ -615,7 +616,7 @@ def _parse_run_spec(spec: str) -> tuple[str, int, Path]:
     parts = spec.split(":", 2)
     if len(parts) != 3:
         raise argparse.ArgumentTypeError(
-            "run spec must be ARM:SEED:PATH, got " + spec)
+            f"run spec must be {RUN_SPEC_METAVAR}, got {spec}")
     arm, seed, path = parts
     try:
         seed_value = int(seed)
@@ -629,11 +630,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Compare host and device runs on reported estimands.")
     parser.add_argument("--host", action="append", default=[],
-                        type=_parse_run_spec, metavar="ARM:SEED:PATH")
+                        type=_parse_run_spec, metavar=RUN_SPEC_METAVAR)
     parser.add_argument("--device", action="append", default=[],
-                        type=_parse_run_spec, metavar="ARM:SEED:PATH")
+                        type=_parse_run_spec, metavar=RUN_SPEC_METAVAR)
     parser.add_argument("--repeat", action="append", default=[],
-                        type=_parse_run_spec, metavar="ARM:SEED:PATH",
+                        type=_parse_run_spec, metavar=RUN_SPEC_METAVAR,
                         help="device repeat of an already supplied seed")
     parser.add_argument("--json-out", type=Path, required=True)
     parser.add_argument("--markdown-out", type=Path)
@@ -655,7 +656,11 @@ def main(argv: list[str] | None = None) -> int:
     record = compare(host_runs, device_runs, repeats)
     write_json_file(args.json_out, record, indent=2, allow_external=True)
     if args.markdown_out:
-        args.markdown_out.write_text(render_markdown(record), encoding="utf-8")
+        write_text_file(
+            args.markdown_out,
+            render_markdown(record),
+            allow_external=True,
+        )
     if record["truncated_runs_present"]:
         print(record["horizon_warning"])
     print(json.dumps({

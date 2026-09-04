@@ -522,10 +522,10 @@ def _pass_pair_overhead(passes: dict[str, Any]) -> tuple[float | None, float | N
     )
 
 
-def _pass_plan(arm_info: dict[str, Any]) -> tuple[tuple[str, bool], ...]:
+def _pass_plan(arm_info: dict[str, Any]) -> list[tuple[str, bool]]:
     if arm_info.get("outcome_only"):
-        return (("outcome", False),)
-    return (("cost", False), ("profile", True))
+        return [("outcome", False)]
+    return [("cost", False), ("profile", True)]
 
 
 def _placement_validation(
