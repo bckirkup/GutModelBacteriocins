@@ -385,6 +385,29 @@ for seed in "${seed_array[@]}"; do
     echo "WARNING: missing result JSON for seed ${seed}" >&2
     job_status=1
   fi
+  if [[ "${BENCH_ARM}" =~ ^E[1-4]r?$ ]]; then
+    outcome_hdf5="${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.outcome.h5"
+    precision_output="${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.precision.jsonl"
+    if [[ -f "${outcome_hdf5}" ]]; then
+      python3 -m gut_ibm_tools.gpu_precision export \
+        --hdf5 "${outcome_hdf5}" \
+        --arm "${BENCH_ARM}" \
+        --seed "${seed}" \
+        --output "${precision_output}"
+      export_status=$?
+      if [[ "${export_status}" -eq 0 && -f "${precision_output}" ]]; then
+        echo "===BENCH_PRECISION_BEGIN ${BENCH_ARM}_${BENCH_SCALE}_seed${seed}==="
+        cat "${precision_output}"
+        echo "===BENCH_PRECISION_END==="
+      else
+        echo "WARNING: precision export failed for ${outcome_hdf5}" >&2
+        job_status=1
+      fi
+    else
+      echo "WARNING: missing outcome HDF5 for precision export: ${outcome_hdf5}" >&2
+      job_status=1
+    fi
+  fi
   if [[ -n "${GUTIBM_BENCH_S3_URI:-}" ]]; then
     aws s3 cp "${result}" \
       "${GUTIBM_BENCH_S3_URI%/}/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json" \
@@ -395,6 +418,11 @@ for seed in "${seed_array[@]}"; do
         "${GUTIBM_BENCH_S3_URI%/}/$(basename "${hdf5}")" \
         || echo "WARNING: failed optional S3 copy for ${hdf5}" >&2
     done
+    if [[ -f "${precision_output:-}" ]]; then
+      aws s3 cp "${precision_output}" \
+        "${GUTIBM_BENCH_S3_URI%/}/$(basename "${precision_output}")" \
+        || echo "WARNING: failed optional S3 copy for ${precision_output}" >&2
+    fi
   fi
   [[ "${run_status}" -eq 0 ]] || job_status=1
 done
@@ -470,21 +498,29 @@ append_campaign_summary() {
   local log_file="$5"
   local extraction_file="$6"
   local shell_reasons_json="$7"
-  local extraction_json='{"result_files":[],"found_block_count":0,"failure_reasons":[]}'
+  local extraction_json='{"result_files":[],"precision_files":[],"found_block_count":0,"precision_found_block_count":0,"failure_reasons":[]}'
   local result_files
+  local precision_files
   local found_block_count
+  local precision_found_block_count
   local expected_block_count
+  local expected_precision_block_count
   local expected_seeds
   local combined_reasons
   if [[ -f "${extraction_file}" ]]; then
     extraction_json="$(cat "${extraction_file}")"
   fi
   result_files="$(jq -c '.result_files // []' <<< "${extraction_json}")"
+  precision_files="$(jq -c '.precision_files // []' <<< "${extraction_json}")"
   found_block_count="$(jq -c '.found_block_count // 0' <<< "${extraction_json}")"
+  precision_found_block_count="$(jq -c \
+    '.precision_found_block_count // 0' <<< "${extraction_json}")"
   expected_seeds="$(jq -c --argjson default "${EXPECTED_SEEDS_JSON}" \
     '.expected_seeds // $default' <<< "${extraction_json}")"
   expected_block_count="$(jq -c --argjson default "${EXPECTED_SEEDS_JSON}" \
     '.expected_block_count // ($default | length)' <<< "${extraction_json}")"
+  expected_precision_block_count="$(jq -c \
+    '.expected_precision_block_count // 0' <<< "${extraction_json}")"
   combined_reasons="$(jq -c \
     --argjson extraction "${extraction_json}" \
     --argjson shell "${shell_reasons_json}" \
@@ -496,9 +532,13 @@ append_campaign_summary() {
     --arg batch_status "${batch_status}" \
     --arg log_file "${log_file}" \
     --argjson result_files "${result_files}" \
+    --argjson precision_files "${precision_files}" \
     --argjson expected_seeds "${expected_seeds}" \
     --argjson expected_block_count "${expected_block_count}" \
     --argjson found_block_count "${found_block_count}" \
+    --argjson expected_precision_block_count \
+      "${expected_precision_block_count}" \
+    --argjson precision_found_block_count "${precision_found_block_count}" \
     --argjson failure_reasons "${combined_reasons}" \
     '
       .jobs += [{
@@ -508,9 +548,12 @@ append_campaign_summary() {
         batch_status: $batch_status,
         log_file: $log_file,
         result_files: $result_files,
+        precision_files: $precision_files,
         expected_seeds: $expected_seeds,
         expected_block_count: $expected_block_count,
         found_block_count: $found_block_count,
+        expected_precision_block_count: $expected_precision_block_count,
+        precision_found_block_count: $precision_found_block_count,
         failure_reasons: $failure_reasons
       }]
     ' "${SUMMARY_FILE}" > "${SUMMARY_FILE}.tmp" \
@@ -650,6 +693,13 @@ summary = {
     "expected_block_count": len(expected_seeds),
     "found_block_count": 0,
     "result_files": [],
+    "expected_precision_block_count": (
+        len(expected_seeds)
+        if re.fullmatch(r"E[1-4]r?", arm)
+        else 0
+    ),
+    "precision_found_block_count": 0,
+    "precision_files": [],
     "failure_reasons": [],
 }
 begin_ids = set(re.findall(
@@ -697,6 +747,44 @@ if len(summary["result_files"]) < summary["expected_block_count"]:
         "valid result file shortfall: expected "
         f"{summary['expected_block_count']}, found "
         f"{len(summary['result_files'])}"
+    )
+precision_pattern = re.compile(
+    rf"===BENCH_PRECISION_BEGIN ({re.escape(arm)}_{re.escape(scale)}_seed\d+)===\n"
+    r"(.*?)\n===BENCH_PRECISION_END===",
+    re.DOTALL,
+)
+precision_matches = list(precision_pattern.finditer(text))
+precision_blocks = {}
+for match in precision_matches:
+    identifier = match.group(1)
+    body = match.group(2)
+    previous = precision_blocks.get(identifier)
+    if previous is not None:
+        if previous != body:
+            summary["failure_reasons"].append(
+                f"conflicting duplicate precision block: {identifier}"
+            )
+        continue
+    precision_blocks[identifier] = body
+summary["precision_found_block_count"] = len(precision_blocks)
+if (
+    summary["precision_found_block_count"]
+    < summary["expected_precision_block_count"]
+):
+    summary["failure_reasons"].append(
+        "precision block shortfall: expected "
+        f"{summary['expected_precision_block_count']}, found "
+        f"{summary['precision_found_block_count']}"
+    )
+for identifier, body in precision_blocks.items():
+    precision_path = Path(output_dir, f"{identifier}.precision.json")
+    precision_path.write_text(body + "\n", encoding="utf-8")
+    summary["precision_files"].append(str(precision_path))
+if len(summary["precision_files"]) < summary["expected_precision_block_count"]:
+    summary["failure_reasons"].append(
+        "valid precision file shortfall: expected "
+        f"{summary['expected_precision_block_count']}, found "
+        f"{len(summary['precision_files'])}"
     )
 Path(extraction_path).write_text(
     json.dumps(summary, indent=2) + "\n", encoding="utf-8"

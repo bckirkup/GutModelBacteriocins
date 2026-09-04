@@ -10,12 +10,15 @@ import h5py
 import numpy as np
 import pytest
 
+from gut_ibm_tools import gpu_precision
 from gut_ibm_tools.gpu_cost_benefit import generate_configs, run_one_arm
 from gut_ibm_tools.gpu_precision import (
     ALL_ESTIMANDS,
     PrecisionInputError,
     RunSeries,
     compare,
+    export_run,
+    load_export,
     load_run,
     mann_whitney_exact_two_sided,
     render_markdown,
@@ -141,6 +144,11 @@ def test_real_e1_p1_preflight(tmp_path: Path) -> None:
                 pytest.approx(300.0)
             )
         loaded = load_run(hdf5_path, "E1", record["seed"])
+        export_path = tmp_path / f"E1_p1_seed{record['seed']}.jsonl"
+        export_run(hdf5_path, "E1", record["seed"], export_path)
+        exported = load_export(export_path)
+        assert exported.series == loaded.series
+        assert exported.steps == loaded.steps
         missing = {
             estimand.name: estimand.dataset
             for estimand in ALL_ESTIMANDS
@@ -148,7 +156,7 @@ def test_real_e1_p1_preflight(tmp_path: Path) -> None:
         }
         assert not missing, f"missing real-output estimands: {missing}"
         assert set(loaded.series) == expected_estimands
-        loaded_runs.append(loaded)
+        loaded_runs.append(loaded if record["seed"] == 55 else exported)
 
     result = compare([loaded_runs[0]], [loaded_runs[1]], [])
     assert result["paired_seeds"] == []
@@ -282,6 +290,140 @@ def test_zero_step_run_is_rejected() -> None:
     )
     with pytest.raises(PrecisionInputError, match="no common comparison step"):
         compare([disjoint], [populated], [])
+
+
+def _export_fixture(
+    tmp_path: Path,
+    name: str,
+    values: list[int],
+    arm: str,
+    seed: int,
+) -> tuple[Path, Path]:
+    hdf5_path = tmp_path / f"{name}.h5"
+    export_path = tmp_path / f"{name}.jsonl"
+    _write_run(hdf5_path, values)
+    export_run(hdf5_path, arm, seed, export_path)
+    return hdf5_path, export_path
+
+
+def test_export_round_trip_preserves_comparison_and_repeat_bits(
+    tmp_path: Path,
+) -> None:
+    host_h5, host_export = _export_fixture(
+        tmp_path, "host", [10, 40, 70, 100], "E1", 55
+    )
+    device_h5, device_export = _export_fixture(
+        tmp_path, "device", [10, 40, 70, 100], "E2", 55
+    )
+    repeat_h5, repeat_export = _export_fixture(
+        tmp_path, "repeat", [10, 40, 70, 103], "E2r", 55
+    )
+    original = compare(
+        [load_run(host_h5, "E1", 55)],
+        [load_run(device_h5, "E2", 55)],
+        [(load_run(device_h5, "E2", 55), load_run(repeat_h5, "E2r", 55))],
+    )
+    exported = compare(
+        [load_export(host_export)],
+        [load_export(device_export)],
+        [(
+            load_export(device_export),
+            load_export(repeat_export),
+        )],
+    )
+    assert exported == original
+    assert exported["reproducibility"]["reproducible"] is False
+
+
+def test_export_rejects_series_length_mismatch(tmp_path: Path) -> None:
+    _, export_path = _export_fixture(
+        tmp_path, "length", [10, 40], "E1", 55
+    )
+    lines = export_path.read_text(encoding="utf-8").splitlines()
+    payload = json.loads(lines[1])
+    payload["values"].pop()
+    export_path.write_text(
+        "\n".join([lines[0], json.dumps(payload)]) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PrecisionInputError, match="length differs"):
+        load_export(export_path)
+
+
+def test_export_rejects_bad_schema_version(tmp_path: Path) -> None:
+    _, export_path = _export_fixture(
+        tmp_path, "schema", [10, 40], "E1", 55
+    )
+    lines = export_path.read_text(encoding="utf-8").splitlines()
+    header = json.loads(lines[0])
+    header["schema_version"] = 99
+    export_path.write_text(
+        "\n".join([json.dumps(header), *lines[1:]]) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PrecisionInputError, match="schema_version"):
+        load_export(export_path)
+
+
+def test_export_rejects_unparseable_json(tmp_path: Path) -> None:
+    export_path = tmp_path / "malformed.jsonl"
+    export_path.write_text("{not-json}\n", encoding="utf-8")
+    with pytest.raises(PrecisionInputError, match="unparseable JSON"):
+        load_export(export_path)
+
+
+def test_export_rejects_duplicate_series(tmp_path: Path) -> None:
+    _, export_path = _export_fixture(
+        tmp_path, "duplicate", [10, 40], "E1", 55
+    )
+    lines = export_path.read_text(encoding="utf-8").splitlines()
+    export_path.write_text(
+        "\n".join([*lines, lines[1]]) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(PrecisionInputError, match="duplicate series"):
+        load_export(export_path)
+
+
+def test_export_identity_must_match_run_spec(tmp_path: Path) -> None:
+    _, export_path = _export_fixture(
+        tmp_path, "identity", [10, 40], "E1", 55
+    )
+    with pytest.raises(PrecisionInputError, match="does not match"):
+        gpu_precision._load_spec_run(export_path, "E2", 55)
+
+
+def test_export_cli_writes_jsonl(tmp_path: Path) -> None:
+    hdf5_path, _ = _export_fixture(
+        tmp_path, "export_cli", [10, 40], "E1", 55
+    )
+    output = tmp_path / "export_cli_output.jsonl"
+    assert gpu_precision.main([
+        "export",
+        "--hdf5", str(hdf5_path),
+        "--arm", "E1",
+        "--seed", "55",
+        "--output", str(output),
+    ]) == 0
+    assert load_export(output).arm == "E1"
+
+
+def test_cli_accepts_mixed_hdf5_and_export_inputs(tmp_path: Path) -> None:
+    host_h5, _ = _export_fixture(
+        tmp_path, "mixed_host", [10, 40], "E1", 55
+    )
+    _, device_export = _export_fixture(
+        tmp_path, "mixed_device", [10, 40], "E2", 55
+    )
+    output = tmp_path / "mixed.json"
+    gpu_precision.main([
+        "--host", f"E1:55:{host_h5}",
+        "--device", f"E2:55:{device_export}",
+        "--json-out", str(output),
+    ])
+    record = json.loads(output.read_text(encoding="utf-8"))
+    assert record["comparison_step"] == 1
+    assert record["device_arm"] == "E2"
 
 
 def test_device_reaction_clip_surge_is_an_invariant_difference(

@@ -23,6 +23,7 @@ import itertools
 import json
 import math
 import struct
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from statistics import median
@@ -187,6 +188,127 @@ def load_run(path: Path, arm: str, seed: int) -> RunSeries:
     if not run.series:
         raise PrecisionInputError(f"no comparable estimand in {resolved}")
     return run
+
+
+def export_run(path: Path, arm: str, seed: int, output: Path) -> None:
+    """Export one loaded run as newline-delimited JSON."""
+    run = load_run(path, arm, seed)
+    header = {
+        "schema_version": SCHEMA_VERSION,
+        "kind": "header",
+        "arm": run.arm,
+        "seed": run.seed,
+        "source": Path(run.path).name,
+        "steps": run.steps,
+        "times": [run.times.get(step) for step in run.steps],
+    }
+    lines = [json.dumps(header)]
+    lines.extend(
+        json.dumps({"kind": "series", "name": name, "values": values})
+        for name, values in run.series.items()
+    )
+    write_text_file(output, "\n".join(lines) + "\n", allow_external=True)
+
+
+def load_export(path: Path) -> RunSeries:
+    """Load and validate a newline-delimited precision export."""
+    resolved = validate_input_path(path)
+    try:
+        lines = resolved.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as error:
+        raise PrecisionInputError(
+            f"could not read precision export {resolved}: {error}"
+        ) from error
+    if not lines:
+        raise PrecisionInputError(f"missing header line in {resolved}")
+    try:
+        header = json.loads(lines[0])
+    except json.JSONDecodeError as error:
+        raise PrecisionInputError(
+            f"unparseable JSON in {resolved} line 1: {error.msg}"
+        ) from error
+    if not isinstance(header, dict) or header.get("kind") != "header":
+        raise PrecisionInputError(f"missing header line in {resolved}")
+    schema_version = header.get("schema_version")
+    if type(schema_version) is not int or schema_version != SCHEMA_VERSION:
+        raise PrecisionInputError(
+            f"unexpected schema_version in {resolved}: {schema_version!r}"
+        )
+    required = {"arm", "seed", "source", "steps", "times"}
+    missing = sorted(required - set(header))
+    if missing:
+        raise PrecisionInputError(
+            f"missing header fields in {resolved}: {', '.join(missing)}"
+        )
+    arm = header["arm"]
+    seed = header["seed"]
+    steps = header["steps"]
+    times = header["times"]
+    if not isinstance(arm, str) or type(seed) is not int:
+        raise PrecisionInputError(f"invalid arm or seed in {resolved}")
+    if (
+        not isinstance(steps, list)
+        or any(type(step) is not int for step in steps)
+        or len(set(steps)) != len(steps)
+    ):
+        raise PrecisionInputError(f"invalid steps in {resolved}")
+    if not isinstance(times, list) or len(times) != len(steps):
+        raise PrecisionInputError(
+            f"times length differs from steps length in {resolved}"
+        )
+    run_times: dict[int, float] = {}
+    for step, value in zip(steps, times):
+        if value is not None:
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise PrecisionInputError(
+                    f"invalid time for step {step} in {resolved}"
+                )
+            run_times[step] = float(value)
+
+    series: dict[str, list[float]] = {}
+    for line_number, line in enumerate(lines[1:], 2):
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as error:
+            raise PrecisionInputError(
+                f"unparseable JSON in {resolved} line {line_number}: {error.msg}"
+            ) from error
+        if (
+            not isinstance(payload, dict)
+            or payload.get("kind") != "series"
+            or not isinstance(payload.get("name"), str)
+        ):
+            raise PrecisionInputError(
+                f"unexpected record in {resolved} line {line_number}"
+            )
+        name = payload["name"]
+        values = payload.get("values")
+        if name in series:
+            raise PrecisionInputError(
+                f"duplicate series {name!r} in {resolved}"
+            )
+        if not isinstance(values, list) or len(values) != len(steps):
+            raise PrecisionInputError(
+                f"series {name!r} length differs from steps length in {resolved}"
+            )
+        if any(
+            not isinstance(value, (int, float)) or isinstance(value, bool)
+            for value in values
+        ):
+            raise PrecisionInputError(
+                f"invalid values for series {name!r} in {resolved}"
+            )
+        series[name] = [float(value) for value in values]
+    if not series:
+        raise PrecisionInputError(f"no series in precision export {resolved}")
+    return RunSeries(
+        path=str(resolved),
+        arm=arm,
+        seed=seed,
+        steps=steps,
+        times=run_times,
+        series=series,
+    )
 
 
 def relative_difference(lhs: float, rhs: float) -> float:
@@ -626,7 +748,35 @@ def _parse_run_spec(spec: str) -> tuple[str, int, Path]:
     return arm, seed_value, Path(path)
 
 
+def _load_spec_run(path: Path, arm: str, seed: int) -> RunSeries:
+    if path.suffix.lower() in {".json", ".jsonl"}:
+        run = load_export(path)
+        if run.arm != arm or run.seed != seed:
+            raise PrecisionInputError(
+                f"run spec identity {arm}:{seed} does not match "
+                f"export {run.arm}:{run.seed} in {path}"
+            )
+        return run
+    return load_run(path, arm, seed)
+
+
+def _export_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        description="Export one HDF5 run for CloudWatch transport."
+    )
+    parser.add_argument("--hdf5", type=Path, required=True)
+    parser.add_argument("--arm", required=True)
+    parser.add_argument("--seed", type=int, required=True)
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args(argv)
+    export_run(args.hdf5, args.arm, args.seed, args.output)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments and arguments[0] == "export":
+        return _export_main(arguments[1:])
     parser = argparse.ArgumentParser(
         description="Compare host and device runs on reported estimands.")
     parser.add_argument("--host", action="append", default=[],
@@ -643,15 +793,19 @@ def main(argv: list[str] | None = None) -> int:
     if not args.host or not args.device:
         parser.error("at least one --host and one --device run are required")
 
-    host_runs = [load_run(path, arm, seed) for arm, seed, path in args.host]
-    device_runs = [load_run(path, arm, seed) for arm, seed, path in args.device]
+    host_runs = [
+        _load_spec_run(path, arm, seed) for arm, seed, path in args.host
+    ]
+    device_runs = [
+        _load_spec_run(path, arm, seed) for arm, seed, path in args.device
+    ]
     device_by_seed = {run.seed: run for run in device_runs}
     repeats: list[tuple[RunSeries, RunSeries]] = []
     for arm, seed, path in args.repeat:
         original = device_by_seed.get(seed)
         if original is None:
             parser.error(f"--repeat seed {seed} has no matching --device run")
-        repeats.append((original, load_run(path, arm, seed)))
+        repeats.append((original, _load_spec_run(path, arm, seed)))
 
     record = compare(host_runs, device_runs, repeats)
     write_json_file(args.json_out, record, indent=2, allow_external=True)
