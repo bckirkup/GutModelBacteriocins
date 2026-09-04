@@ -166,6 +166,7 @@ void test_host_reaction_survives_gpu_round_trip() {
   host.init(domain, {static_species(0.2, 0.5)});
   const Int reaction_cell = domain.cell_index(1, 1, 1);
   host.reac(0, reaction_cell) = -0.125;
+  host.mark_host_reac_dirty(0);
 
   ChemicalFieldGpu chem_gpu;
   chem_gpu.init(host);

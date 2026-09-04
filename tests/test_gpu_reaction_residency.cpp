@@ -113,7 +113,11 @@ void compare_results(const char* lhs_path, const char* rhs_path) {
   const unsigned long long rhs_bytes = rhs_h2d + rhs_d2h;
   Real lhs_value = 0.0;
   Real rhs_value = 0.0;
-  while (lhs >> lhs_value && rhs >> rhs_value) {
+  while (true) {
+    const bool lhs_read = static_cast<bool>(lhs >> lhs_value);
+    const bool rhs_read = static_cast<bool>(rhs >> rhs_value);
+    assert(lhs_read == rhs_read);
+    if (!lhs_read) break;
     const Real scale = std::max({1.0, std::abs(lhs_value), std::abs(rhs_value)});
     assert(std::isfinite(lhs_value) && std::isfinite(rhs_value));
     assert(std::abs(lhs_value - rhs_value) <= 1.0e-12 * scale);
