@@ -354,6 +354,9 @@ if [[ "$?" -ne 0 ]]; then
   job_status=1
 fi
 read -r -a seed_array <<< "${BENCH_SEEDS}"
+if [[ "${BENCH_ARM}" == "E2r" ]]; then
+  seed_array=(55 56)
+fi
 for seed in "${seed_array[@]}"; do
   result="${work}/results/${BENCH_ARM}_${BENCH_SCALE}_seed${seed}.json"
   python3 -m gut_ibm_tools.gpu_cost_benefit run \

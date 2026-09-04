@@ -61,26 +61,31 @@ ARM_MATRIX: dict[str, dict[str, Any]] = {
     "E1": {
         "axis": "E", UPTAKE_LIMIT_KEY: "none", "gpu_enabled": False,
         "accepted_placements": {"host"}, "scales": _E_SCALES,
+        "seeds": _E_SEEDS,
         "outcome_only": True,
     },
     "E2": {
         "axis": "E", UPTAKE_LIMIT_KEY: "none", "gpu_enabled": True,
         "accepted_placements": {"device"}, "scales": _E_SCALES,
+        "seeds": _E_SEEDS,
         "outcome_only": True,
     },
     "E3": {
         "axis": "E", UPTAKE_LIMIT_KEY: "delivery", "gpu_enabled": False,
         "accepted_placements": {"host"}, "scales": _E_SCALES,
+        "seeds": _E_SEEDS,
         "outcome_only": True,
     },
     "E4": {
         "axis": "E", UPTAKE_LIMIT_KEY: "delivery", "gpu_enabled": True,
         "accepted_placements": {"device_delivery"}, "scales": _E_SCALES,
+        "seeds": _E_SEEDS,
         "outcome_only": True,
     },
     "E2r": {
         "axis": "E", UPTAKE_LIMIT_KEY: "none", "gpu_enabled": True,
         "accepted_placements": {"device"}, "scales": _E_SCALES,
+        "seeds": (55, 56),
         "outcome_only": True,
     },
     "B1": {
@@ -245,7 +250,7 @@ def _scale_config(
 def _arm_overrides(definition: dict[str, Any]) -> dict[str, Any]:
     excluded = {
         "axis", "status", "blocked_reason", "accepted_placements", "scales",
-        "outcome_only",
+        "seeds", "outcome_only",
     }
     return {
         key: copy.deepcopy(value)
@@ -284,6 +289,7 @@ def generate_configs(
                     "status": definition.get("status", "runnable"),
                     "blocked_reason": definition.get("blocked_reason"),
                     "outcome_only": definition.get("outcome_only", False),
+                    "seeds": list(definition.get("seeds", SEEDS)),
                     "accepted_placements": sorted(
                         definition["accepted_placements"]
                     ),
@@ -632,6 +638,8 @@ def run_one_arm(
     arm_info = manifest["arms"][arm]
     if scale not in arm_info.get("configs", {}):
         raise ValueError(f"scale {scale!r} is not configured for arm {arm}")
+    if seed not in arm_info.get("seeds", SEEDS):
+        raise ValueError(f"seed {seed} is not configured for arm {arm}")
     result_path = output_dir / f"{arm}_{scale}_seed{seed}.json"
     prepare_output_file(result_path)
     config = _read_declared_json(

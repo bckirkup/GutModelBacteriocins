@@ -91,6 +91,8 @@ def test_precision_matrix_uses_five_outcome_arms() -> None:
         assert definition["accepted_placements"] == {placement}
         assert definition["scales"] == ("p1",)
         assert definition["outcome_only"] is True
+        expected_seeds = (55, 56) if arm == "E2r" else (55, 56, 57, 58, 59)
+        assert definition["seeds"] == expected_seeds
 
 
 @pytest.mark.parametrize("placement", ["device", "mixed"])
@@ -143,6 +145,7 @@ def test_precision_configs_match_single_colony_with_only_spec_deviations(
     )
     assert manifest["seeds"] == [55, 56, 57, 58, 59]
     assert set(manifest["arms"]) == {"E1", "E2", "E3", "E4", "E2r"}
+    assert manifest["arms"]["E2r"]["seeds"] == [55, 56]
     expected_schedule = {
         "summary": 1,
         "provenance": 1,
@@ -211,7 +214,8 @@ def test_precision_runner_uses_one_unique_outcome_hdf5_per_seed(
 
     monkeypatch.setattr(benchmark, "_run_pass", fake_run_pass)
     for arm in ("E1", "E2", "E3", "E4", "E2r"):
-        for seed in range(55, 60):
+        seeds = range(55, 57) if arm == "E2r" else range(55, 60)
+        for seed in seeds:
             result = run_one_arm(
                 generated / "manifest.json", arm, "p1", seed,
                 binary, tmp_path / "results",
@@ -220,7 +224,7 @@ def test_precision_runner_uses_one_unique_outcome_hdf5_per_seed(
             assert payload["status"] == "completed"
             assert set(payload["passes"]) == {"outcome"}
             assert payload["passes"]["outcome"]["profile_steps"] is False
-    assert len(hdf5_paths) == 25
+    assert len(hdf5_paths) == 22
     assert len(set(hdf5_paths)) == len(hdf5_paths)
     assert all(path.name.endswith(".outcome.h5") for path in hdf5_paths)
 
