@@ -16,6 +16,10 @@ BATCH_POLL_SECONDS="${BATCH_POLL_SECONDS:-20}"
 BATCH_LOG_WAIT_SECONDS="${BATCH_LOG_WAIT_SECONDS:-300}"
 BENCH_ARMS="${BENCH_ARMS:-A1 A2 A3 A4 A5 A6}"
 BENCH_SCALES="${BENCH_SCALES:-s1 s2}"
+BENCH_SEEDS_EXPLICIT=0
+if [[ -n "${BENCH_SEEDS+x}" ]]; then
+  BENCH_SEEDS_EXPLICIT=1
+fi
 BENCH_SEEDS="${BENCH_SEEDS:-55 56 57}"
 BENCH_S3_URI="${GUTIBM_BENCH_S3_URI:-}"
 BENCH_ATTEMPT_SECONDS="${BENCH_ATTEMPT_SECONDS:-7200}"
@@ -154,6 +158,14 @@ read -r -a ARM_ARRAY <<< "${BENCH_ARMS}"
 read -r -a SCALE_ARRAY <<< "${BENCH_SCALES}"
 [[ "${#ARM_ARRAY[@]}" -gt 0 && "${#SCALE_ARRAY[@]}" -gt 0 ]] \
   || die "BENCH_ARMS and BENCH_SCALES must not be empty"
+if [[ "${BENCH_SEEDS_EXPLICIT}" -eq 0 ]]; then
+  for arm in "${ARM_ARRAY[@]}"; do
+    if [[ "${arm}" =~ ^E[1-4]$ ]]; then
+      BENCH_SEEDS="55 56 57 58 59"
+      break
+    fi
+  done
+fi
 for arm in "${ARM_ARRAY[@]}"; do
   [[ "${arm}" =~ ^(A[1-6]|E[1-4]r?)$ ]] \
     || die "unsupported benchmark arm: ${arm}"
