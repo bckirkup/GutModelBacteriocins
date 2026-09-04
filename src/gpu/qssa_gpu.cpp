@@ -63,6 +63,7 @@ bool gpu_solve_nutrient_depletion(const AgentPoolGpu& agents,
 
   gpu_sync_compute();
   gpu_check_error("gpu_solve_nutrient_depletion");
+  chem_gpu.mark_reactions_pending();
   return true;
 #endif
 }

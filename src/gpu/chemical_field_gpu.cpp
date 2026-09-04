@@ -40,6 +40,27 @@ bool gpu_residency_audit_enabled() {
 
 }  // namespace
 
+namespace {
+
+bool reaction_residency_enabled() {
+  static const bool enabled = [] {
+    const char* value = std::getenv("GUTIBM_GPU_REACTION_RESIDENCY");
+    return value == nullptr || value[0] != '0';
+  }();
+  return enabled;
+}
+
+bool reaction_residency_audit_enabled() {
+  static const bool enabled = [] {
+    const char* value = std::getenv("GUTIBM_GPU_RESIDENCY_AUDIT");
+    return value != nullptr
+        && (value[0] == '1' || value[0] == 't' || value[0] == 'T');
+  }();
+  return enabled;
+}
+
+}  // namespace
+
 #ifdef GUTIBM_CUDA
 namespace {
 
@@ -103,6 +124,7 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
     d_conc_[static_cast<size_t>(s)].allocate(static_cast<size_t>(ncells_));
     d_reac_[static_cast<size_t>(s)].allocate(static_cast<size_t>(ncells_));
   }
+  d_reaction_scratch_.allocate(static_cast<size_t>(ncells_));
 
   std::vector<double> bc(static_cast<size_t>(nspec_));
   for (Int s = 0; s < nspec_; ++s) {
@@ -129,6 +151,7 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   d_delivery_gradient_source_.allocate(1);
   d_delivery_reaction_clip_.allocate(1);
   d_delivery_negative_count_.allocate(1);
+  zero_reactions_on_device();
   sync_to_device(field);
 }
 
@@ -261,7 +284,7 @@ void ChemicalFieldGpu::download_reaction_clip(ChemicalField& field) const {
 #endif
 }
 
-void ChemicalFieldGpu::sync_to_device(const ChemicalField& field) {
+void ChemicalFieldGpu::sync_to_device(ChemicalField& field) {
   sync_concentrations_to_device(field);
   sync_reactions_to_device(field);
 }
@@ -307,13 +330,39 @@ void ChemicalFieldGpu::sync_concentrations_to_device(const ChemicalField& field)
   }
 }
 
-void ChemicalFieldGpu::sync_reactions_to_device(const ChemicalField& field) {
+void ChemicalFieldGpu::sync_reactions_to_device(ChemicalField& field) {
   if (!active_) return;
+#ifndef GUTIBM_CUDA
+  (void)field;
+  return;
+#else
   GpuTransferSite site("chem_reactions");
-  for (Int s = 0; s < nspec_; ++s) {
-    const auto& row = field.species_reaction(s);
-    d_reac_[static_cast<size_t>(s)].upload(row.data(), row.size());
+  if (!reaction_residency_enabled()) {
+    for (Int s = 0; s < nspec_; ++s) {
+      const auto& row = field.species_reaction(s);
+      d_reac_[static_cast<size_t>(s)].upload(row.data(), row.size());
+      field.clear_host_reac_dirty(s);
+    }
+    reactions_pending_ = true;
+    validate_reaction_device_state(field);
+    return;
   }
+  for (Int s = 0; s < nspec_; ++s) {
+    if (!field.host_reac_dirty(s)) continue;
+    const auto& row = field.species_reaction(s);
+    d_reaction_scratch_.upload(row.data(), row.size());
+    gpu::launch_add_into_kernel(
+        d_reac_[static_cast<size_t>(s)].data(),
+        d_reaction_scratch_.data(), ncells_, gpu_compute_stream());
+    gpu_sync_compute();
+    gpu_check_error("add_into_kernel");
+    auto& mutable_row = field.mutable_species_reaction(s);
+    std::fill(mutable_row.begin(), mutable_row.end(), 0.0);
+    field.clear_host_reac_dirty(s);
+    reactions_pending_ = true;
+  }
+  validate_reaction_device_state(field);
+#endif
 }
 
 void ChemicalFieldGpu::sync_concentrations_to_host(ChemicalField& field) {
@@ -327,15 +376,25 @@ void ChemicalFieldGpu::sync_concentrations_to_host(ChemicalField& field) {
 
 void ChemicalFieldGpu::sync_reactions_to_host(ChemicalField& field) {
   if (!active_) return;
+  if (reaction_residency_enabled()) {
+    materialize_reactions_on_host(field);
+    return;
+  }
   GpuTransferSite site("chem_reactions");
   for (Int s = 0; s < nspec_; ++s) {
     auto& row = field.mutable_species_reaction(s);
     d_reac_[static_cast<size_t>(s)].download(row.data(), row.size());
+    field.clear_host_reac_dirty(s);
   }
 }
 
 void ChemicalFieldGpu::accumulate_reactions_to_host(ChemicalField& field) {
   if (!active_) return;
+  if (reaction_residency_enabled()) {
+    (void)field;
+    reactions_pending_ = true;
+    return;
+  }
   GpuTransferSite site("chem_reactions");
   for (Int s = 0; s < nspec_; ++s) {
     std::vector<double> device_reactions(static_cast<size_t>(ncells_));
@@ -345,6 +404,30 @@ void ChemicalFieldGpu::accumulate_reactions_to_host(ChemicalField& field) {
     }
   }
   zero_reactions_on_device();
+}
+
+void ChemicalFieldGpu::materialize_reactions_on_host(ChemicalField& field) {
+  if (!active_) return;
+  if (!reaction_residency_enabled()) {
+    sync_reactions_to_host(field);
+    return;
+  }
+  if (!reactions_pending_) return;
+  GpuTransferSite site("chem_reactions");
+  std::vector<double> device_reactions(static_cast<size_t>(ncells_));
+  for (Int s = 0; s < nspec_; ++s) {
+    d_reac_[static_cast<size_t>(s)].download(device_reactions);
+    auto& row = field.mutable_species_reaction(s);
+    for (Int c = 0; c < ncells_; ++c) {
+      row[static_cast<size_t>(c)] +=
+          device_reactions[static_cast<size_t>(c)];
+    }
+  }
+  zero_reactions_on_device();
+  if (reaction_residency_audit_enabled() && reactions_pending_) {
+    throw SimulationError(
+        "reaction residency audit: pending remains true after materialize");
+  }
 }
 
 void ChemicalFieldGpu::sync_species_concentrations_to_host(ChemicalField& field,
@@ -379,14 +462,36 @@ void ChemicalFieldGpu::zero_species_concentration_on_device(Int spec) {
 
 void ChemicalFieldGpu::zero_reactions_on_device() {
 #ifndef GUTIBM_CUDA
+  reactions_pending_ = false;
   return;
 #else
-  if (!active_) return;
+  if (!active_) {
+    reactions_pending_ = false;
+    return;
+  }
   for (Int s = 0; s < nspec_; ++s) {
     cudaMemset(d_reac_[static_cast<size_t>(s)].data(), 0,
                static_cast<size_t>(ncells_) * sizeof(double));
   }
+  reactions_pending_ = false;
 #endif
+}
+
+void ChemicalFieldGpu::audit_reactions(const ChemicalField& field) const {
+  validate_reaction_device_state(field);
+}
+
+void ChemicalFieldGpu::validate_reaction_device_state(
+    const ChemicalField& field) const {
+  if (!reaction_residency_audit_enabled() || !reactions_pending_) return;
+  for (Int s = 0; s < nspec_; ++s) {
+    if (field.host_reac_dirty(s)) {
+      throw SimulationError(
+          "reaction residency audit: host reaction species "
+          + std::to_string(s)
+          + " is dirty while device reactions are authoritative");
+    }
+  }
 }
 
 bool ChemicalFieldGpu::apply_reactions(double dt, const Domain& domain) {
@@ -794,6 +899,7 @@ bool ChemicalFieldGpu::try_sum_reactions_on_device(ChemicalField& field) {
     return false;
   }
 
+  validate_reaction_device_state(field);
   for (Int s = 0; s < nspec_; ++s) {
     double* d_reac = reac_device(s);
     if (d_reac == nullptr) return false;

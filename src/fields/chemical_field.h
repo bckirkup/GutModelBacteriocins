@@ -579,6 +579,14 @@ class ChemicalField {
 
   // Reset reaction rates to zero each timestep
   void zero_reactions();
+  // The flag means the host row may hold writes that are not on the device.
+  // It is cleared only after an actual upload or download of that species.
+  // Every new host reaction writer must mark its species dirty; the cached
+  // GPU residency audit checks this invariant at device-authoritative points.
+  void mark_host_reac_dirty(Int spec);
+  void mark_all_host_reac_dirty();
+  bool host_reac_dirty(Int spec) const;
+  void clear_host_reac_dirty(Int spec) const;
   void add_sink_rate_global(Int spec, Int cell, Real rate);
   void add_prescribed_sink_global(Int spec, Int cell, Real amount);
   void add_vbf_sink_rate_global(Int spec, Int cell, Real rate);
@@ -656,6 +664,7 @@ class ChemicalField {
     assert(spec >= 0 && spec < nspec_);
     auto& row = reac_[static_cast<size_t>(spec)];
     assert(static_cast<Int>(row.size()) == ncells_);
+    mark_host_reac_dirty(spec);
     return row;
   }
 
@@ -680,6 +689,7 @@ class ChemicalField {
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
   mutable std::vector<bool> host_conc_dirty_;
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]
+  mutable std::vector<bool> host_reac_dirty_;
   std::vector<std::vector<Real>> sink_rate_;      // [species][ncells], 1/s
   std::vector<std::vector<Real>> vbf_sink_rate_;  // [species][ncells], 1/s
   std::vector<std::vector<Real>> sink_realized_;  // agent share, mol this step

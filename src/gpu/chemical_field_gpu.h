@@ -15,13 +15,17 @@ struct ChemicalSpec;
 class ChemicalFieldGpu {
  public:
   void init(ChemicalField& field);
-  void sync_to_device(const ChemicalField& field);
+  void sync_to_device(ChemicalField& field);
   void sync_to_host(ChemicalField& field);
   void sync_concentrations_to_device(const ChemicalField& field);
-  void sync_reactions_to_device(const ChemicalField& field);
+  void sync_reactions_to_device(ChemicalField& field);
   void sync_concentrations_to_host(ChemicalField& field);
   void sync_reactions_to_host(ChemicalField& field);
   void accumulate_reactions_to_host(ChemicalField& field);
+  void materialize_reactions_on_host(ChemicalField& field);
+  void mark_reactions_pending() { reactions_pending_ = true; }
+  bool reactions_pending() const { return reactions_pending_; }
+  void audit_reactions(const ChemicalField& field) const;
   void sync_species_concentrations_to_host(ChemicalField& field, Int spec);
   void sync_species_concentrations_to_device(const ChemicalField& field, Int spec);
   void zero_species_concentration_on_device(Int spec);
@@ -112,6 +116,7 @@ class ChemicalFieldGpu {
   bool diffusion_fallback_warning_emitted_ = false;
   std::vector<DeviceBuffer<double>> d_conc_;
   std::vector<DeviceBuffer<double>> d_reac_;
+  DeviceBuffer<double> d_reaction_scratch_;
   DeviceBuffer<double> d_boundary_conc_;
   DeviceBuffer<double> d_boundary_injected_;
   DeviceBuffer<double> d_agent_uptake_;
@@ -131,6 +136,9 @@ class ChemicalFieldGpu {
   DeviceBuffer<unsigned long long> d_delivery_negative_count_;
   unsigned long long delivery_negative_count_host_ = 0;
   Int delivery_negative_count_spec_ = -1;
+  bool reactions_pending_ = false;
+
+  void validate_reaction_device_state(const ChemicalField& field) const;
 };
 
 }  // namespace gutibm

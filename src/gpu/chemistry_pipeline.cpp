@@ -42,7 +42,7 @@ bool sum_reactions_with_optional_device(ChemistryPipelineInput& in,
     return true;
   }
   if (reactions_on_device) {
-    in.chem_gpu.sync_reactions_to_host(in.chem);
+    in.chem_gpu.materialize_reactions_on_host(in.chem);
   }
   in.chem.sum_reactions_across_ranks();
   if (in.step_profile != nullptr) {
@@ -72,7 +72,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
 
   if (!oxygen_on_gpu) {
     if (reactions_on_device) {
-      in.chem_gpu.sync_reactions_to_host(in.chem);
+      in.chem_gpu.materialize_reactions_on_host(in.chem);
       reactions_on_device = false;
     }
     in.qssa.solve_nutrient_depletion(in.agents, in.chem, in.oxygen);
@@ -102,7 +102,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   }
   if (!applied_vbf_on_gpu) {
     if (reactions_on_device) {
-      in.chem_gpu.sync_reactions_to_host(in.chem);
+      in.chem_gpu.materialize_reactions_on_host(in.chem);
     }
     std::vector<Int> agent_counts;
     if (in.vbf.config().agent_carbon_coupling != 0.0) {
@@ -169,11 +169,12 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     }
   }
   if (in.gpu_active && applied_vbf_on_gpu) {
+    in.chem_gpu.audit_reactions(in.chem);
     result.reactions_on_gpu = in.chem_gpu.apply_reactions(dt, in.domain);
     if (result.reactions_on_gpu) {
       in.chem_gpu.download_reaction_clip(in.chem);
     } else {
-      in.chem_gpu.sync_reactions_to_host(in.chem);
+      in.chem_gpu.materialize_reactions_on_host(in.chem);
     }
   }
 

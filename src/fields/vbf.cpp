@@ -197,6 +197,11 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
                                    VbfFluxTotals* totals,
                                    const std::vector<Int>& agent_counts) const {
   const VbfSpeciesIndices idx = find_vbf_species(chem);
+  chem.mark_host_reac_dirty(idx.carbon);
+  chem.mark_host_reac_dirty(idx.iron);
+  chem.mark_host_reac_dirty(idx.oxygen);
+  chem.mark_host_reac_dirty(idx.acetate);
+  chem.mark_host_reac_dirty(idx.mucin);
 
   const Int nx = domain.nx();
   const Int ny = domain.ny();
