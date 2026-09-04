@@ -1,29 +1,24 @@
 ---
 name: searching-literature-evidence
-description: Search the peer-reviewed literature with the Consensus MCP server to source a GutIBM constant — mucus rheology, diffusion and binding coefficients, mucosal densities, degradation rates — including query construction, filter discipline, and how a hit becomes a provenance record in types.h and docs/PARAMETERS.md. Use whenever a physical or biological constant needs a citation, or when asked what the literature says about a mechanism.
+description: Search the peer-reviewed literature with the Consensus MCP server to source a GutIBM constant — mucus rheology, diffusion and binding coefficients, mucosal densities, degradation rates — including how a hit becomes a provenance record in types.h and docs/PARAMETERS.md. Use whenever a physical or biological constant needs a citation, or when asked what the literature says about a mechanism. Pairs with the org-level consensus-literature-retrieval skill, which owns retrieval mechanics.
 ---
 
 # Searching the Literature (Consensus MCP)
 
-The `consensus` MCP server has one tool, `search`, over ~220M papers
-(Semantic Scholar, PubMed, Scopus, ArXiv). It returns title, authors, year,
-journal, citation count, DOI, a Consensus URL, and the abstract.
+## Retrieval mechanics are in the org-level skill
 
-```
-mcp_tool(command="call_tool", server="consensus", tool_name="search",
-         tool_args='{"query": "colonic mucus yield stress rheology measurement"}')
-```
+Load `consensus-literature-retrieval` (`~/.agents/skills/`) before searching. It
+owns the tool surface, `include_full_text_chunks: true` — which is mandatory and
+returns Results, Methods and tables, including for paywalled articles — query
+construction, filter behaviour, result handling, and recording which section of
+the paper a number was read from.
 
-Run `mcp_tool(command="list_tools", server="consensus")` for the current
-parameter list before using an unfamiliar filter.
+This skill is the other half: what needs sourcing in [GutIBM], and what a hit is
+allowed to become here.
 
 ## Query construction
 
-Query in the vocabulary of the paper you want, not the question you have. A
-useful query names the **measured quantity plus its preparation**:
-
-- Good: `mucin gel diffusion coefficient FRAP protein retardation`
-- Weak: `how fast do colicins move through mucus`
+- Good: `mucin gel diffusion coefficient FRAP protein retardation` (also: `colonic mucus yield stress rheology measurement`)
 
 Quantities this repo actually needs sourced, and the words that find them:
 
@@ -37,45 +32,18 @@ Quantities this repo actually needs sourced, and the words that find them:
   `expression level`.
 - Degradation — `protease`, `half-life`, `stability`, `inactivation rate`.
 
-Search for the mechanism, then separately for the number. The paper
-establishing that mucin retards a solute is rarely the one that measured the
-coefficient.
-
 ## Filter discipline
-
-Default to **no filters**. Every filter silently removes evidence, and the
-ranking is already topical. Two filters are actively harmful here:
 
 - `medical_mode=true` restricts to ~8M top medical documents and drops
   *Applied and Environmental Microbiology*, *Journal of Bacteriology*,
   *Biophysical Journal*, and the rheology literature — that is, nearly every
   journal a GutIBM constant comes from.
+
 - `human=true` drops in-vitro, murine and gnotobiotic work, which is where
   essentially all mucus-layer and colicin measurements were made.
-
 Reasonable filters: `domain="bio,med,chem"` when a query drags in unrelated
 fields; `exclude_preprints=true` when a value must be peer-reviewed to earn its
 grade. Do not set `year_min` — a 1990s diffusion measurement is not stale.
-`sjr_max=1` gives Q1 only; never reach for `sjr_min`, which *excludes* the top
-tiers.
-
-Filters reorder as well as remove: the top hit for the same query changes when
-`domain` and `year_min` are set. Re-run a promising query without filters before
-calling any value *the* measurement.
-
-## Result handling
-
-- Default page returns 20 papers; `page_size` narrows it (5 works). `page=1`
-  returns a genuinely different set on this organisation's plan, so paginate
-  when the first page is all reviews.
-- Twenty abstracts overflow the tool result. The output is truncated and the
-  full text written to a file named in the truncation notice — **read that
-  file**. Items 15-20 are frequently the measurement papers, because reviews
-  rank higher.
-- The abstract gives a magnitude; it rarely gives the assay. When the constant
-  matters, open the DOI and read the methods.
-- Consensus asks for numbered inline citations with hyperlinked titles and the
-  exact URLs it returned. Preserve the DOI when it gives one.
 
 ## Capture the unit and the assay, not just the number
 
@@ -130,8 +98,3 @@ right — the density reconciliation, the Section 8 validation, or an AWS
 calibration run. Sourcing a constant independently is what makes the later
 comparison a real test; screening candidate papers by which value helps destroys
 that test just as surely as fitting the constant by hand.
-
-Fix the query and the filters from the definition of the quantity, before
-looking at what the model needs. If several papers measure it, take a stated
-central value or the midpoint of the range and say which — not the end that
-helps. If a sourced constant makes a target worse, that is a result: report it.
