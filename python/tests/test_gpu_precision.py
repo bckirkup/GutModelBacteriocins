@@ -100,7 +100,11 @@ def test_real_e1_p1_preflight(tmp_path: Path) -> None:
     )
     config_path = generated / "E1" / "p1.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["domain_x"] = 100e-6
+    config["domain_y"] = 100e-6
+    config["domain_z"] = 50e-6
     config["total_time"] = 300
+    config["initial_strains"][0]["count"] = 50
     config_path.write_text(json.dumps(config) + "\n", encoding="utf-8")
 
     results = tmp_path / "results"
@@ -127,10 +131,12 @@ def test_real_e1_p1_preflight(tmp_path: Path) -> None:
             ]
             for layer in ("agents", "grid", "lineage", "genome"):
                 assert layer not in handle
-            assert int(handle["run_provenance/termination_reason_code"][()]) == 0
-            assert float(
-                handle["run_provenance/termination_time"][()]
-            ) == pytest.approx(300.0)
+            assert (
+                handle["run_provenance/termination_reason_code"][()].item() == 0
+            )
+            assert handle["run_provenance/termination_time"][()].item() == (
+                pytest.approx(300.0)
+            )
         loaded = load_run(hdf5_path, "E1", record["seed"])
         missing = {
             estimand.name: estimand.dataset

@@ -155,8 +155,10 @@ def _scalar(node: Any) -> float:
     if hasattr(value, "size"):
         if value.size == 0:
             return 0.0
+        flattened = value.reshape(-1)
         if value.size > 1:
-            return float(value.reshape(-1).sum())
+            return float(flattened.sum())
+        return float(flattened[0])
     return float(value)
 
 
