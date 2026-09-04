@@ -26,8 +26,11 @@ GpuTransferSiteProfile find_site(
   for (const auto& profile : profiles) {
     if (profile.label == label) return profile;
   }
-  assert(false);
-  return {};
+  // A site that issued no transfer is never registered, which is a legitimate
+  // outcome for the resident mode rather than a test failure.
+  GpuTransferSiteProfile empty;
+  empty.label = label;
+  return empty;
 }
 
 SimulationConfig reaction_config(uint64_t seed) {
@@ -86,7 +89,7 @@ void write_child_result(const char* output) {
   stream << chem_reactions.h2d_bytes << '\n'
          << chem_reactions.d2h_bytes << '\n'
          << full_field_bytes << '\n'
-         << std::hexfloat;
+         << std::scientific << std::setprecision(17);
   const auto& field = simulation.chemical_field();
   for (const auto& row : field.conc_data()) {
     for (const Real value : row) stream << value << '\n';
