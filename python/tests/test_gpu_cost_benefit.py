@@ -172,7 +172,7 @@ def test_precision_configs_match_single_colony_with_only_spec_deviations(
         assert config["hdf5"] == {
             "enabled": True, "schedule": expected_schedule
         }
-        assert config["hdf5_file"] == f"{arm}_p1_seed{{seed}}.h5"
+        assert config["hdf5_file"] == "gpu-precision-p1.h5"
         assert config[UPTAKE_LIMIT_KEY] == ARM_MATRIX[arm][UPTAKE_LIMIT_KEY]
         assert config["gpu_enabled"] is ARM_MATRIX[arm]["gpu_enabled"]
         assert set(info["accepted_placements"]) == (

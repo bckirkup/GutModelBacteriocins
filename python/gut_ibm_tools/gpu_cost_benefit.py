@@ -277,7 +277,6 @@ def generate_configs(
             # Strict JSON parsing accepts dotted root keys, not nested fix
             # objects.  Keep these keys literal in generated JSON.
             config.update(overrides)
-            config["hdf5_file"] = f"{arm}_{scale}_seed{{seed}}.h5"
             arm_dir = output_dir / arm
             config_path = arm_dir / f"{scale}.json"
             _write_json(config_path, config)

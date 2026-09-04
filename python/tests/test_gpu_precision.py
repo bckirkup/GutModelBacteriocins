@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
 
 import h5py
 import numpy as np
 import pytest
 
+from gut_ibm_tools.gpu_cost_benefit import generate_configs, run_one_arm
 from gut_ibm_tools.gpu_precision import (
+    ALL_ESTIMANDS,
     compare,
     load_run,
     mann_whitney_exact_two_sided,
@@ -75,6 +79,70 @@ def _write_run(
             nutrient_flux.create_dataset(
                 "maintenance_shortfall_cumulative", data=np.array([0.0, 0.0])
             )
+
+
+@pytest.mark.integration
+def test_real_e1_p1_preflight(tmp_path: Path) -> None:
+    """Run the shortened shipped E1 configuration through the real binary."""
+    binary_value = os.environ.get("GUTIBM_TEST_BINARY")
+    if not binary_value:
+        pytest.skip("GUTIBM_TEST_BINARY is not set")
+    binary = Path(binary_value)
+    if not binary.is_file():
+        pytest.skip("GUTIBM_TEST_BINARY is not available")
+
+    repository = Path(__file__).resolve().parents[2]
+    generated = tmp_path / "generated"
+    generate_configs(
+        repository / "examples/single_colony/input.json",
+        generated,
+        {"p1": repository / "examples/single_colony/input.json"},
+    )
+    config_path = generated / "E1" / "p1.json"
+    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config["total_time"] = 300
+    config_path.write_text(json.dumps(config) + "\n", encoding="utf-8")
+
+    results = tmp_path / "results"
+    records = [
+        run_one_arm(
+            generated / "manifest.json",
+            "E1",
+            "p1",
+            seed,
+            binary,
+            results,
+        )
+        for seed in (55, 56)
+    ]
+    loaded_runs = []
+    expected_estimands = {estimand.name for estimand in ALL_ESTIMANDS}
+    for record_path in records:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        assert record["status"] == "completed"
+        hdf5_path = Path(record["passes"]["outcome"]["hdf5_file"])
+        with h5py.File(hdf5_path, "r") as handle:
+            assert sorted(handle["summary"]) == [
+                f"step_{step:06d}" for step in range(6)
+            ]
+            for layer in ("agents", "grid", "lineage", "genome"):
+                assert layer not in handle
+            assert int(handle["run_provenance/termination_reason_code"][()]) == 0
+            assert float(
+                handle["run_provenance/termination_time"][()]
+            ) == pytest.approx(300.0)
+        loaded = load_run(hdf5_path, "E1", record["seed"])
+        missing = {
+            estimand.name: estimand.dataset
+            for estimand in ALL_ESTIMANDS
+            if estimand.name not in loaded.series
+        }
+        assert not missing, f"missing real-output estimands: {missing}"
+        assert set(loaded.series) == expected_estimands
+        loaded_runs.append(loaded)
+
+    result = compare([loaded_runs[0]], [loaded_runs[1]], [])
+    assert result["paired_seeds"] == []
 
 
 def _load_pair(
