@@ -13,6 +13,7 @@ import pytest
 import gut_ibm_tools.gpu_cost_benefit as benchmark
 from gut_ibm_tools.gpu_cost_benefit import (
     ARM_MATRIX,
+    UPTAKE_LIMIT_KEY,
     generate_configs,
     merge_results,
     render_report,
@@ -47,7 +48,7 @@ def _base_configs(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
         },
     )
     scales = {}
-    for scale in benchmark.SCALES:
+    for scale in ("s0", "s1", "s2"):
         path = tmp_path / f"{scale}.json"
         _write_config(path, {"total_time": 600, "initial_strains": []})
         scales[scale] = path
@@ -55,7 +56,7 @@ def _base_configs(tmp_path: Path) -> tuple[Path, dict[str, Path]]:
 
 
 def test_matrix_matches_reconciled_scopes() -> None:
-    assert benchmark.SCALES == ("s0", "s1", "s2")
+    assert benchmark.SCALES == ("s0", "s1", "s2", "p1")
     for arm in ("A1", "A2"):
         assert ARM_MATRIX[arm]["accepted_placements"] == {"host"}
     assert ARM_MATRIX["A3"]["accepted_placements"] == {"host"}
@@ -71,6 +72,27 @@ def test_matrix_matches_reconciled_scopes() -> None:
     assert all("mixed" not in item["accepted_placements"] for item in ARM_MATRIX.values())
     assert all(ARM_MATRIX[arm]["scales"] == ("s1", "s2") for arm in ("A1", "A6"))
     assert all(ARM_MATRIX[arm]["scales"] == ("s0",) for arm in ("B1", "C1", "D1"))
+
+
+def test_precision_matrix_uses_five_outcome_arms() -> None:
+    assert {"E1", "E2", "E3", "E4", "E2r"} <= set(ARM_MATRIX)
+    expected = {
+        "E1": ("none", False, "host"),
+        "E2": ("none", True, "device"),
+        "E3": ("delivery", False, "host"),
+        "E4": ("delivery", True, "device_delivery"),
+        "E2r": ("none", True, "device"),
+    }
+    for arm, (uptake, gpu_enabled, placement) in expected.items():
+        definition = ARM_MATRIX[arm]
+        assert definition["axis"] == "E"
+        assert definition[UPTAKE_LIMIT_KEY] == uptake
+        assert definition["gpu_enabled"] is gpu_enabled
+        assert definition["accepted_placements"] == {placement}
+        assert definition["scales"] == ("p1",)
+        assert definition["outcome_only"] is True
+        expected_seeds = (55, 56) if arm == "E2r" else (55, 56, 57, 58, 59)
+        assert definition["seeds"] == expected_seeds
 
 
 @pytest.mark.parametrize("placement", ["device", "mixed"])
@@ -93,7 +115,7 @@ def test_generated_configs_have_parser_compatible_shape(tmp_path: Path) -> None:
     base, scales = _base_configs(tmp_path)
     generated = tmp_path / "generated"
     manifest = generate_configs(base, generated, scales)
-    assert set(manifest["scales"]) == set(benchmark.SCALES)
+    assert set(manifest["scales"]) == set(scales)
     expected_hdf5 = {
         "enabled": True,
         "schedule": {"summary": 1, "provenance": 1, "grid_species": []},
@@ -110,6 +132,135 @@ def test_generated_configs_have_parser_compatible_shape(tmp_path: Path) -> None:
             assert set(info["accepted_placements"]) == ARM_MATRIX[arm][
                 "accepted_placements"
             ]
+
+
+def test_precision_configs_match_single_colony_with_only_spec_deviations(
+    tmp_path: Path,
+) -> None:
+    repo_root = Path(__file__).parents[2]
+    base_path = repo_root / "examples/single_colony/input.json"
+    generated = tmp_path / "precision"
+    manifest = generate_configs(
+        base_path, generated, {"p1": base_path}
+    )
+    assert manifest["seeds"] == [55, 56, 57, 58, 59]
+    assert set(manifest["arms"]) == {"E1", "E2", "E3", "E4", "E2r"}
+    assert manifest["arms"]["E2r"]["seeds"] == [55, 56]
+    expected_schedule = {
+        "summary": 1,
+        "provenance": 1,
+        "agents": 0,
+        "grid": 0,
+        "lineage": 0,
+        "genome": 0,
+    }
+    allowed = {
+        "total_time", "profile_steps", "hdf5_file", "hdf5",
+        "gpu_enabled", UPTAKE_LIMIT_KEY,
+    }
+    base = json.loads(base_path.read_text(encoding="utf-8"))
+    base.pop("_comment", None)
+    for arm, info in manifest["arms"].items():
+        config = json.loads(
+            Path(info["configs"]["p1"]).read_text(encoding="utf-8")
+        )
+        for key, value in base.items():
+            if key not in allowed:
+                assert config[key] == value
+        assert config["total_time"] == 21600
+        assert config["profile_steps"] is False
+        assert config["hdf5"] == {
+            "enabled": True, "schedule": expected_schedule
+        }
+        assert config["hdf5_file"] == "gpu-precision-p1.h5"
+        assert config[UPTAKE_LIMIT_KEY] == ARM_MATRIX[arm][UPTAKE_LIMIT_KEY]
+        assert config["gpu_enabled"] is ARM_MATRIX[arm]["gpu_enabled"]
+        assert set(info["accepted_placements"]) == (
+            ARM_MATRIX[arm]["accepted_placements"]
+        )
+
+
+def test_precision_runner_uses_one_unique_outcome_hdf5_per_seed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = Path(__file__).parents[2]
+    base_path = repo_root / "examples/single_colony/input.json"
+    generated = tmp_path / "precision"
+    generate_configs(base_path, generated, {"p1": base_path})
+    binary = _make_binary(tmp_path / "gut_ibm")
+    hdf5_paths: list[Path] = []
+
+    def fake_run_pass(
+        pass_name, profile_steps, config, config_path, hdf5_path, binary, **kwargs
+    ):
+        hdf5_paths.append(hdf5_path)
+        gpu_enabled = bool(config.get("gpu_enabled"))
+        placement = (
+            "device_delivery"
+            if gpu_enabled and config.get(UPTAKE_LIMIT_KEY) == "delivery"
+            else "device" if gpu_enabled else "host"
+        )
+        return {
+            "name": pass_name,
+            "status": "completed",
+            "completion_status": "completed",
+            "profile_steps": profile_steps,
+            "wall_seconds": 1.0,
+            "provenance": {
+                "chemistry_placement": placement,
+                "gpu_compiled": int(gpu_enabled),
+            },
+        }
+
+    monkeypatch.setattr(benchmark, "_run_pass", fake_run_pass)
+    for arm in ("E1", "E2", "E3", "E4", "E2r"):
+        seeds = range(55, 57) if arm == "E2r" else range(55, 60)
+        for seed in seeds:
+            result = run_one_arm(
+                generated / "manifest.json", arm, "p1", seed,
+                binary, tmp_path / "results",
+            )
+            payload = json.loads(result.read_text(encoding="utf-8"))
+            assert payload["status"] == "completed"
+            assert set(payload["passes"]) == {"outcome"}
+            assert payload["passes"]["outcome"]["profile_steps"] is False
+    assert len(hdf5_paths) == 22
+    assert len(set(hdf5_paths)) == len(hdf5_paths)
+    assert all(path.name.endswith(".outcome.h5") for path in hdf5_paths)
+
+
+def test_precision_runner_rejects_invalid_device_placement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo_root = Path(__file__).parents[2]
+    base_path = repo_root / "examples/single_colony/input.json"
+    generated = tmp_path / "precision"
+    generate_configs(base_path, generated, {"p1": base_path})
+    binary = _make_binary(tmp_path / "gut_ibm")
+
+    def fake_run_pass(
+        pass_name, profile_steps, config, config_path, hdf5_path, binary, **kwargs
+    ):
+        return {
+            "name": pass_name,
+            "status": "completed",
+            "completion_status": "completed",
+            "profile_steps": profile_steps,
+            "wall_seconds": 1.0,
+            "provenance": {
+                "chemistry_placement": "host",
+                "gpu_compiled": 0,
+            },
+        }
+
+    monkeypatch.setattr(benchmark, "_run_pass", fake_run_pass)
+    result = run_one_arm(
+        generated / "manifest.json", "E2", "p1", 55, binary,
+        tmp_path / "results",
+    )
+    payload = json.loads(result.read_text(encoding="utf-8"))
+    assert payload["status"] == "invalid_placement"
+    assert payload["invalid_placement_passes"] == ["outcome"]
 
 
 def test_runner_accepts_expected_provenance(

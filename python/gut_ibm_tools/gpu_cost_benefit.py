@@ -40,6 +40,8 @@ MPI_LAUNCHER = "/usr/bin/mpirun"
 
 _A_SCALES = ("s1", "s2")
 _CPU_SCALES = ("s0",)
+_E_SCALES = ("p1",)
+_E_SEEDS = (55, 56, 57, 58, 59)
 
 ARM_MATRIX: dict[str, dict[str, Any]] = {
     "A1": {"axis": "A", UPTAKE_LIMIT_KEY: "none", "gpu_enabled": False,
@@ -56,6 +58,36 @@ ARM_MATRIX: dict[str, dict[str, Any]] = {
            "accepted_placements": {"device"}, "scales": _A_SCALES},
     "A6": {"axis": "A", UPTAKE_LIMIT_KEY: "delivery", "gpu_enabled": True,
            "accepted_placements": {"device_delivery"}, "scales": _A_SCALES},
+    "E1": {
+        "axis": "E", UPTAKE_LIMIT_KEY: "none", "gpu_enabled": False,
+        "accepted_placements": {"host"}, "scales": _E_SCALES,
+        "seeds": _E_SEEDS,
+        "outcome_only": True,
+    },
+    "E2": {
+        "axis": "E", UPTAKE_LIMIT_KEY: "none", "gpu_enabled": True,
+        "accepted_placements": {"device"}, "scales": _E_SCALES,
+        "seeds": _E_SEEDS,
+        "outcome_only": True,
+    },
+    "E3": {
+        "axis": "E", UPTAKE_LIMIT_KEY: "delivery", "gpu_enabled": False,
+        "accepted_placements": {"host"}, "scales": _E_SCALES,
+        "seeds": _E_SEEDS,
+        "outcome_only": True,
+    },
+    "E4": {
+        "axis": "E", UPTAKE_LIMIT_KEY: "delivery", "gpu_enabled": True,
+        "accepted_placements": {"device_delivery"}, "scales": _E_SCALES,
+        "seeds": _E_SEEDS,
+        "outcome_only": True,
+    },
+    "E2r": {
+        "axis": "E", UPTAKE_LIMIT_KEY: "none", "gpu_enabled": True,
+        "accepted_placements": {"device"}, "scales": _E_SCALES,
+        "seeds": (55, 56),
+        "outcome_only": True,
+    },
     "B1": {
         "axis": "B", UPTAKE_LIMIT_KEY: "sherwood", "gpu_enabled": False,
         "image_series_mode": "pre_fix_duplicated_reflection",
@@ -135,7 +167,7 @@ ARM_MATRIX: dict[str, dict[str, Any]] = {
     },
 }
 
-SCALES = ("s0", "s1", "s2")
+SCALES = ("s0", "s1", "s2", "p1")
 SEEDS = (55, 56, 57)
 
 
@@ -185,23 +217,40 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     write_json_file(path, _json_safe(payload), indent=2, allow_external=True)
 
 
-def _scale_config(base: dict[str, Any], scale: dict[str, Any]) -> dict[str, Any]:
+def _scale_config(
+    base: dict[str, Any], scale: dict[str, Any], scale_name: str | None = None
+) -> dict[str, Any]:
     result = copy.deepcopy(base)
     for key, value in scale.items():
         if key not in {"hdf5_file", "hdf5"}:
             result[key] = copy.deepcopy(value)
-    result["profile_steps"] = True
-    result["hdf5_file"] = "benchmark-output.h5"
-    result["hdf5"] = {
-        "enabled": True,
-        "schedule": {"summary": 1, "provenance": 1, "grid_species": []},
-    }
+    if scale_name == "p1":
+        result["total_time"] = 21600
+        result["profile_steps"] = False
+        result["hdf5"] = {
+            "enabled": True,
+            "schedule": {
+                "summary": 1, "provenance": 1, "agents": 0, "grid": 0,
+                "lineage": 0, "genome": 0,
+            },
+        }
+        result["hdf5_file"] = "gpu-precision-p1.h5"
+    else:
+        result["profile_steps"] = True
+        result["hdf5_file"] = (
+            f"benchmark-{scale_name}.h5" if scale_name else "benchmark-output.h5"
+        )
+        result["hdf5"] = {
+            "enabled": True,
+            "schedule": {"summary": 1, "provenance": 1, "grid_species": []},
+        }
     return result
 
 
 def _arm_overrides(definition: dict[str, Any]) -> dict[str, Any]:
     excluded = {
-        "axis", "status", "blocked_reason", "accepted_placements", "scales"
+        "axis", "status", "blocked_reason", "accepted_placements", "scales",
+        "seeds", "outcome_only",
     }
     return {
         key: copy.deepcopy(value)
@@ -219,7 +268,7 @@ def generate_configs(
     for scale, scale_path in scale_paths.items():
         if scale not in SCALES:
             raise ValueError(f"unknown benchmark scale: {scale}")
-        scale_base = _scale_config(base, _read_json(scale_path))
+        scale_base = _scale_config(base, _read_json(scale_path), scale)
         for arm, definition in ARM_MATRIX.items():
             if scale not in definition["scales"]:
                 continue
@@ -238,6 +287,8 @@ def generate_configs(
                     "overrides": overrides,
                     "status": definition.get("status", "runnable"),
                     "blocked_reason": definition.get("blocked_reason"),
+                    "outcome_only": definition.get("outcome_only", False),
+                    "seeds": list(definition.get("seeds", SEEDS)),
                     "accepted_placements": sorted(
                         definition["accepted_placements"]
                     ),
@@ -249,7 +300,7 @@ def generate_configs(
     manifest = {
         "schema_version": 2,
         "scales": list(scale_paths),
-        "seeds": list(SEEDS),
+        "seeds": list(_E_SEEDS if "p1" in scale_paths else SEEDS),
         "arms": arms,
         "baselines": {"A": "A3", "B": "B2", "C": "C1", "D": "D1"},
         "reporting": {
@@ -471,6 +522,12 @@ def _pass_pair_overhead(passes: dict[str, Any]) -> tuple[float | None, float | N
     )
 
 
+def _pass_plan(arm_info: dict[str, Any]) -> list[tuple[str, bool]]:
+    if arm_info.get("outcome_only"):
+        return [("outcome", False)]
+    return [("cost", False), ("profile", True)]
+
+
 def _placement_validation(
     pass_record: dict[str, Any],
     arm_info: dict[str, Any],
@@ -575,11 +632,13 @@ def run_one_arm(
     manifest_path: Path, arm: str, scale: str, seed: int, binary: Path,
     output_dir: Path, *, mpirun: str | None = None, mpi_ranks: int = 1
 ) -> Path:
-    """Run one arm/scale/seed with separate cost and profile passes."""
+    """Run one arm/scale/seed with timing or outcome-only passes."""
     manifest = _read_json(manifest_path)
     arm_info = manifest["arms"][arm]
     if scale not in arm_info.get("configs", {}):
         raise ValueError(f"scale {scale!r} is not configured for arm {arm}")
+    if seed not in arm_info.get("seeds", SEEDS):
+        raise ValueError(f"seed {seed} is not configured for arm {arm}")
     result_path = output_dir / f"{arm}_{scale}_seed{seed}.json"
     prepare_output_file(result_path)
     config = _read_declared_json(
@@ -600,7 +659,7 @@ def run_one_arm(
                 "status": "blocked", "completion_status": "not_run",
                 "exit_code": None, "wall_seconds": None, "provenance": {},
             }
-            for name, profile_steps in (("cost", False), ("profile", True))
+            for name, profile_steps in _pass_plan(arm_info)
         }
         record.update({
             "status": "blocked", "completion_status": "not_run",
@@ -614,7 +673,7 @@ def run_one_arm(
     binary = _validated_binary_path(binary)
     mpirun = _validated_mpi_launcher(mpirun)
     passes: dict[str, Any] = {}
-    for pass_name, profile_steps in (("cost", False), ("profile", True)):
+    for pass_name, profile_steps in _pass_plan(arm_info):
         pass_config = copy.deepcopy(config)
         pass_config_path = output_dir / (
             f"{arm}_{scale}_seed{seed}.{pass_name}.config.json"
@@ -655,10 +714,21 @@ def run_one_arm(
 
 def _completed_pass_pair(record: dict[str, Any]) -> bool:
     passes = record.get("passes", {})
-    return record.get("status") == "completed" and all(
-        passes.get(name, {}).get("status") == "completed"
-        for name in ("cost", "profile")
+    return bool(passes) and record.get("status") == "completed" and all(
+        isinstance(pass_record, dict)
+        and pass_record.get("status") == "completed"
+        for pass_record in passes.values()
     )
+
+
+def _cost_pass(record: dict[str, Any]) -> dict[str, Any]:
+    passes = record.get("passes", {})
+    return passes.get("cost") or passes.get("outcome") or {}
+
+
+def _profile_pass(record: dict[str, Any]) -> dict[str, Any]:
+    passes = record.get("passes", {})
+    return passes.get("profile") or passes.get("outcome") or {}
 
 
 def _numeric_pass_values(records: list[dict[str, Any]], key: str) -> list[float]:
@@ -725,8 +795,8 @@ def _counter_values(
 
 def _summary_for_entries(entries: list[dict[str, Any]]) -> dict[str, Any]:
     completed = [item for item in entries if _completed_pass_pair(item)]
-    cost_passes = [item["passes"]["cost"] for item in completed]
-    profile_passes = [item["passes"]["profile"] for item in completed]
+    cost_passes = [_cost_pass(item) for item in completed]
+    profile_passes = [_profile_pass(item) for item in completed]
     cost_walls = [
         item["wall_seconds"] for item in cost_passes
         if isinstance(item.get("wall_seconds"), (int, float))
@@ -879,7 +949,7 @@ def _record_chemistry_seconds(record: dict[str, Any]) -> float | None:
     if not _completed_pass_pair(record):
         return None
     value = (
-        record["passes"]["profile"].get("provenance", {})
+        _profile_pass(record).get("provenance", {})
         .get("step_profile", {}).get("chemistry_s")
     )
     return float(value) if isinstance(value, (int, float)) else None
@@ -1014,14 +1084,14 @@ def _aggregate_ratio(
     current_total = [
         float(value) for record in current_records
         if isinstance(
-            value := record.get("passes", {}).get("cost", {}).get("wall_seconds"),
+            value := _cost_pass(record).get("wall_seconds"),
             (int, float),
         )
     ]
     base_total = [
         float(value) for record in base_records
         if isinstance(
-            value := record.get("passes", {}).get("cost", {}).get("wall_seconds"),
+            value := _cost_pass(record).get("wall_seconds"),
             (int, float),
         )
     ]
@@ -1064,7 +1134,7 @@ def _report_record_row(
             f"rederived={revalidation.get('rederived')})"
         )
     chemistry = _record_chemistry_seconds(record)
-    total = record.get("passes", {}).get("cost", {}).get("wall_seconds")
+    total = _cost_pass(record).get("wall_seconds")
     precision = record.get("precision_summary") or "not recorded; see raw provenance"
     raw_path = record.get("raw_result_file", "—")
     ratio = (
