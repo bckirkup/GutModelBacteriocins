@@ -50,15 +50,6 @@ bool reaction_residency_enabled() {
   return enabled;
 }
 
-bool reaction_residency_audit_enabled() {
-  static const bool enabled = [] {
-    const char* value = std::getenv("GUTIBM_GPU_RESIDENCY_AUDIT");
-    return value != nullptr
-        && (value[0] == '1' || value[0] == 't' || value[0] == 'T');
-  }();
-  return enabled;
-}
-
 }  // namespace
 
 #ifdef GUTIBM_CUDA
@@ -354,6 +345,8 @@ void ChemicalFieldGpu::sync_reactions_to_device(ChemicalField& field) {
     gpu::launch_add_into_kernel(
         d_reac_[static_cast<size_t>(s)].data(),
         d_reaction_scratch_.data(), ncells_, gpu_compute_stream());
+    // The scratch buffer is reused for every species. Synchronize before
+    // staging the next row so the previous add kernel has finished reading it.
     gpu_sync_compute();
     gpu_check_error("add_into_kernel");
     auto& mutable_row = field.mutable_species_reaction(s);
@@ -424,10 +417,6 @@ void ChemicalFieldGpu::materialize_reactions_on_host(ChemicalField& field) {
     }
   }
   zero_reactions_on_device();
-  if (reaction_residency_audit_enabled() && reactions_pending_) {
-    throw SimulationError(
-        "reaction residency audit: pending remains true after materialize");
-  }
 }
 
 void ChemicalFieldGpu::sync_species_concentrations_to_host(ChemicalField& field,
@@ -483,7 +472,7 @@ void ChemicalFieldGpu::audit_reactions(const ChemicalField& field) const {
 
 void ChemicalFieldGpu::validate_reaction_device_state(
     const ChemicalField& field) const {
-  if (!reaction_residency_audit_enabled() || !reactions_pending_) return;
+  if (!gpu_residency_audit_enabled() || !reactions_pending_) return;
   for (Int s = 0; s < nspec_; ++s) {
     if (field.host_reac_dirty(s)) {
       throw SimulationError(

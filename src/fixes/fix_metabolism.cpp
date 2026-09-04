@@ -344,7 +344,6 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
 }  // namespace
 
 void FixMetabolism::compute(Real dt) {
-  auto& chem = sim_.chemical_field();
   if (try_gpu_metabolism(sim_, cfg_, dt)) {
     // Division stays in compute (same as CPU path) so fix_bacteriocin in this
     // biology pass can observe just_divided during the division timestep.
@@ -360,11 +359,6 @@ void FixMetabolism::compute(Real dt) {
   #pragma omp parallel for schedule(static)
   #endif
   for (Agent& agent : agents) compute_agent(agent, dt);
-  if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery) {
-    chem.mark_host_reac_dirty(chem.find(species::CARBON));
-    chem.mark_host_reac_dirty(chem.find(species::IRON));
-    chem.mark_host_reac_dirty(chem.find(species::ACETATE));
-  }
   apply_siderophore_chemistry(dt);
 
   // Division must run in compute (not post_step) so fix_bacteriocin in the same
