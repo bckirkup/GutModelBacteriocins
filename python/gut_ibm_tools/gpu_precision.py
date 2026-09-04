@@ -124,6 +124,7 @@ class RunSeries:
     arm: str
     seed: int
     steps: list[int] = field(default_factory=list)
+    times: dict[int, float] = field(default_factory=dict)
     series: dict[str, list[float]] = field(default_factory=dict)
 
     def final(self, name: str) -> float:
@@ -169,6 +170,10 @@ def load_run(path: Path, arm: str, seed: int) -> RunSeries:
     with h5py.File(resolved, "r") as handle:
         names = _step_groups(handle)
         run.steps = [int(name.removeprefix("step_")) for name in names]
+        for name, step in zip(names, run.steps):
+            node = handle[f"summary/{name}"].get("time")
+            if node is not None:
+                run.times[step] = _scalar(node)
         for estimand in ALL_ESTIMANDS:
             values: list[float] = []
             for name in names:
@@ -231,20 +236,95 @@ def repeat_report(first: RunSeries, second: RunSeries) -> dict[str, Any]:
     }
 
 
-def divergence_profile(host: RunSeries, device: RunSeries) -> dict[str, Any]:
+def _run_label(run: RunSeries) -> str:
+    return f"{run.arm}:{run.seed} ({run.path})"
+
+
+def _comparison_runs(
+    host_runs: list[RunSeries],
+    device_runs: list[RunSeries],
+    repeats: list[tuple[RunSeries, RunSeries]],
+) -> list[RunSeries]:
+    runs = [*host_runs, *device_runs]
+    for first, second in repeats:
+        runs.extend((first, second))
+    if not runs:
+        raise PrecisionInputError("no runs supplied for comparison")
+    empty = [run for run in runs if not run.steps]
+    if empty:
+        labels = ", ".join(_run_label(run) for run in empty)
+        raise PrecisionInputError(f"run has no steps: {labels}")
+    return runs
+
+
+def _comparison_metadata(runs: list[RunSeries]) -> dict[str, Any]:
+    common_steps = set(runs[0].steps)
+    for run in runs[1:]:
+        common_steps.intersection_update(run.steps)
+    if not common_steps:
+        labels = ", ".join(_run_label(run) for run in runs)
+        raise PrecisionInputError(
+            f"no common comparison step across runs: {labels}"
+        )
+    comparison_step = max(common_steps)
+    last_steps = {
+        f"{run.arm}:{run.seed}": max(run.steps)
+        for run in runs
+    }
+    comparison_time = next(
+        (
+            run.times[comparison_step]
+            for run in runs
+            if comparison_step in run.times
+        ),
+        None,
+    )
+    return {
+        "comparison_step": comparison_step,
+        "comparison_time_seconds": comparison_time,
+        "run_last_steps": last_steps,
+        "truncated_runs_present": len(set(last_steps.values())) > 1,
+    }
+
+
+def _value_at_step(run: RunSeries, name: str, step: int) -> float:
+    try:
+        index = run.steps.index(step)
+    except ValueError as error:
+        raise PrecisionInputError(
+            f"run {_run_label(run)} has no step {step}"
+        ) from error
+    values = run.series.get(name)
+    if values is None or index >= len(values):
+        raise PrecisionInputError(
+            f"run {_run_label(run)} has no value for {name} at step {step}"
+        )
+    return values[index]
+
+
+def divergence_profile(
+    host: RunSeries,
+    device: RunSeries,
+    comparison_step: int | None = None,
+) -> dict[str, Any]:
     """First step at which a seed-matched pair separates, per threshold."""
     shared = sorted(set(host.series) & set(device.series))
+    shared_steps = sorted(set(host.steps) & set(device.steps))
+    if comparison_step is not None:
+        shared_steps = [
+            step for step in shared_steps if step <= comparison_step
+        ]
     onsets: dict[str, dict[str, int | None]] = {}
     for name in shared:
-        lhs = host.series[name]
-        rhs = device.series[name]
-        limit = min(len(lhs), len(rhs))
         per_threshold: dict[str, int | None] = {}
         for threshold in DIVERGENCE_THRESHOLDS:
             onset: int | None = None
-            for index in range(limit):
-                if relative_difference(lhs[index], rhs[index]) > threshold:
-                    onset = host.steps[index]
+            for step in shared_steps:
+                if relative_difference(
+                    _value_at_step(host, name, step),
+                    _value_at_step(device, name, step),
+                ) > threshold:
+                    onset = step
                     break
             per_threshold[f"{threshold:g}"] = onset
         onsets[name] = per_threshold
@@ -252,7 +332,8 @@ def divergence_profile(host: RunSeries, device: RunSeries) -> dict[str, Any]:
         "seed": host.seed,
         "host_arm": host.arm,
         "device_arm": device.arm,
-        "compared_steps": min(len(host.steps), len(device.steps)),
+        "compared_steps": len(shared_steps),
+        "comparison_step": comparison_step,
         "onset_step": onsets,
     }
 
@@ -352,6 +433,9 @@ def distributional_verdict(name: str, kind: str, host_values: list[float],
 def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
             repeats: list[tuple[RunSeries, RunSeries]]) -> dict[str, Any]:
     """Full comparison record for one uptake mode."""
+    runs = _comparison_runs(host_runs, device_runs, repeats)
+    metadata = _comparison_metadata(runs)
+    comparison_step = metadata["comparison_step"]
     repeat_reports = [repeat_report(first, second) for first, second in repeats]
     reproducible = all(report["reproducible"] for report in repeat_reports)
 
@@ -359,7 +443,9 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
     device_by_seed = {run.seed: run for run in device_runs}
     paired_seeds = sorted(set(host_by_seed) & set(device_by_seed))
     profiles = [
-        divergence_profile(host_by_seed[seed], device_by_seed[seed])
+        divergence_profile(
+            host_by_seed[seed], device_by_seed[seed], comparison_step
+        )
         for seed in paired_seeds
     ]
 
@@ -369,11 +455,23 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
     ) if host_runs and device_runs else []
     by_name = {estimand.name: estimand for estimand in ALL_ESTIMANDS}
     for name in available:
-        host_values = [run.final(name) for run in host_runs]
-        device_values = [run.final(name) for run in device_runs]
+        host_values = [
+            _value_at_step(run, name, comparison_step)
+            for run in host_runs
+        ]
+        device_values = [
+            _value_at_step(run, name, comparison_step)
+            for run in device_runs
+        ]
         paired_identical = all(
-            relative_difference(host_by_seed[seed].final(name),
-                                device_by_seed[seed].final(name))
+            relative_difference(
+                _value_at_step(
+                    host_by_seed[seed], name, comparison_step
+                ),
+                _value_at_step(
+                    device_by_seed[seed], name, comparison_step
+                ),
+            )
             <= IDENTICAL_RELATIVE_TOLERANCE
             for seed in paired_seeds
         ) if paired_seeds else False
@@ -397,7 +495,7 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
     flagged = [item["estimand"] for item in verdicts
                if item["verdict"] in {"flagged", "invariant_differs",
                                       "non_finite"}]
-    return {
+    record = {
         "schema_version": SCHEMA_VERSION,
         "host_arm": host_runs[0].arm if host_runs else None,
         "device_arm": device_runs[0].arm if device_runs else None,
@@ -426,6 +524,16 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
             "verdict should be quoted."
         ),
     }
+    record.update(metadata)
+    if metadata["truncated_runs_present"]:
+        record["horizon_warning"] = (
+            "WARNING: supplied runs have different trajectory depths; "
+            f"all verdicts use common step {comparison_step}, not each "
+            "run's own final step."
+        )
+    else:
+        record["horizon_warning"] = None
+    return record
 
 
 def _verdict_table(record: dict[str, Any]) -> list[str]:
@@ -452,7 +560,21 @@ def render_markdown(record: dict[str, Any]) -> str:
          f"{record['device_arm']}"),
         "",
         f"Paired seeds: {record['paired_seeds']}",
+        (f"Comparison step: {record['comparison_step']} "
+         f"(time={record['comparison_time_seconds']})"),
         "",
+    ]
+    if record["truncated_runs_present"]:
+        lines.extend([
+            "",
+            "## WARNING: TRUNCATED RUNS PRESENT",
+            "",
+            f"**{record['horizon_warning']}**",
+            "",
+            f"Run last steps: `{record['run_last_steps']}`",
+            "",
+        ])
+    lines.extend([
         "## Reproducibility control",
         "",
         ("Device repeats bit-identical: "
@@ -460,7 +582,7 @@ def render_markdown(record: dict[str, Any]) -> str:
         "",
         "## Distributional verdict",
         "",
-    ]
+    ])
     lines.extend(_verdict_table(record))
     lines.extend([
         "",
@@ -534,7 +656,13 @@ def main(argv: list[str] | None = None) -> int:
     write_json_file(args.json_out, record, indent=2, allow_external=True)
     if args.markdown_out:
         args.markdown_out.write_text(render_markdown(record), encoding="utf-8")
+    if record["truncated_runs_present"]:
+        print(record["horizon_warning"])
     print(json.dumps({
+        "comparison_step": record["comparison_step"],
+        "comparison_time_seconds": record["comparison_time_seconds"],
+        "run_last_steps": record["run_last_steps"],
+        "truncated_runs_present": record["truncated_runs_present"],
         "reproducible": record["reproducibility"]["reproducible"],
         "flagged": record["flagged_estimands"],
         "paired_seeds": record["paired_seeds"],

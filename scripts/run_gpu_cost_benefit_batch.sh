@@ -366,7 +366,8 @@ if [[ "$?" -ne 0 ]]; then
   job_status=1
 fi
 read -r -a seed_array <<< "${BENCH_SEEDS}"
-if [[ "${BENCH_ARM}" == "E2r" ]]; then
+if [[ "${BENCH_ARM}" == "E2r" &&
+      "${BENCH_SEEDS_EXPLICIT:-0}" -eq 0 ]]; then
   seed_array=(55 56)
 fi
 for seed in "${seed_array[@]}"; do
@@ -407,6 +408,7 @@ jq -n \
   --arg log_group "${BATCH_LOG_GROUP}" \
   --arg s3_uri "${BENCH_S3_URI}" \
   --arg seeds "${BENCH_SEEDS}" \
+  --arg seeds_explicit "${BENCH_SEEDS_EXPLICIT}" \
   --argjson attempt_seconds "${BENCH_ATTEMPT_SECONDS}" \
   '{
     jobDefinitionName: $name,
@@ -423,7 +425,9 @@ jq -n \
         [
           {name: "PYTHONUNBUFFERED", value: "1"},
           {name: "BATCH_LOG_GROUP", value: $log_group},
-          {name: "BENCH_SEEDS", value: $seeds}
+          {name: "BENCH_SEEDS", value: $seeds},
+          {name: "BENCH_SEEDS_EXPLICIT",
+           value: $seeds_explicit}
         ]
         + (if $s3_uri == "" then [] else
           [{name: "GUTIBM_BENCH_S3_URI", value: $s3_uri}] end)
@@ -621,8 +625,12 @@ run_benchmark_job() {
      ! grep -Eq 'NVIDIA-SMI [0-9]' "${CURRENT_LOG_FILE}"; then
     reasons+=("GPU log lacks NVIDIA-SMI evidence")
   fi
+  expected_seed_text="${BENCH_SEEDS}"
+  if [[ "${arm}" == "E2r" && "${BENCH_SEEDS_EXPLICIT}" -eq 0 ]]; then
+    expected_seed_text="55 56"
+  fi
   python3 - "${CURRENT_LOG_FILE}" "${OUTDIR}" "${arm}" "${scale}" \
-    "${extraction_file}" "${BENCH_SEEDS}" <<'PY'
+    "${extraction_file}" "${expected_seed_text}" <<'PY'
 import json
 import re
 import sys

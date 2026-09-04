@@ -13,12 +13,14 @@ import pytest
 from gut_ibm_tools.gpu_cost_benefit import generate_configs, run_one_arm
 from gut_ibm_tools.gpu_precision import (
     ALL_ESTIMANDS,
+    PrecisionInputError,
+    RunSeries,
     compare,
     load_run,
     mann_whitney_exact_two_sided,
+    render_markdown,
 )
 
-STEPS = [0, 1, 2, 3]
 BASE_OXYGEN = [1.0, 1.0, 1.0, 1.0]
 ZERO_CLIP = [0.0, 0.0, 0.0, 0.0]
 
@@ -33,8 +35,9 @@ def _write_run(
     clip_values = clip or ZERO_CLIP
     oxygen_values = oxygen or BASE_OXYGEN
     with h5py.File(path, "w") as handle:
-        for index, step in enumerate(STEPS):
+        for index, step in enumerate(range(len(populations))):
             group = handle.create_group(f"summary/step_{step:06d}")
+            group.create_dataset("time", data=np.float64(step * 60.0))
             group.create_dataset("n_total", data=np.int32(populations[index]))
             group.create_dataset("num_lineages", data=np.int32(3))
             group.create_dataset(
@@ -210,6 +213,9 @@ def test_backend_shift_inside_seed_spread_is_interchangeable(
         tmp_path, "inside", host, device, repeat_values=device[55]
     )
     assert _verdicts(record)["n_total"]["verdict"] == "interchangeable"
+    assert record["comparison_step"] == 3
+    assert record["comparison_time_seconds"] == pytest.approx(180.0)
+    assert record["truncated_runs_present"] is False
 
 
 def test_backend_shift_beyond_seed_spread_is_flagged(tmp_path: Path) -> None:
@@ -226,6 +232,56 @@ def test_backend_shift_beyond_seed_spread_is_flagged(tmp_path: Path) -> None:
         tmp_path, "beyond", host, device, repeat_values=device[55]
     )
     assert _verdicts(record)["n_total"]["verdict"] == "flagged"
+
+
+def test_short_device_run_uses_common_step_and_warns(tmp_path: Path) -> None:
+    host = {
+        seed: [10, 40, 70, 100]
+        for seed in range(55, 60)
+    }
+    device = {
+        seed: values[:2]
+        for seed, values in host.items()
+    }
+    record = _load_pair(tmp_path, "short", host, device)
+    assert record["comparison_step"] == 1
+    assert record["truncated_runs_present"] is True
+    assert record["run_last_steps"]["E1:55"] == 3
+    assert record["run_last_steps"]["E2:55"] == 1
+    assert "TRUNCATED RUNS PRESENT" in render_markdown(record)
+
+
+def test_single_step_run_compares_with_longer_run(tmp_path: Path) -> None:
+    host = {seed: [10] for seed in range(55, 60)}
+    device = {
+        seed: [10, 40, 70, 100]
+        for seed in range(55, 60)
+    }
+    record = _load_pair(tmp_path, "single", host, device)
+    assert record["comparison_step"] == 0
+    assert record["truncated_runs_present"] is True
+
+
+def test_zero_step_run_is_rejected() -> None:
+    empty = RunSeries(path="empty.h5", arm="E1", seed=55)
+    populated = RunSeries(
+        path="populated.h5",
+        arm="E2",
+        seed=55,
+        steps=[0],
+        series={"n_total": [1.0]},
+    )
+    with pytest.raises(PrecisionInputError, match="E1:55"):
+        compare([empty], [populated], [])
+    disjoint = RunSeries(
+        path="disjoint.h5",
+        arm="E1",
+        seed=56,
+        steps=[1],
+        series={"n_total": [1.0]},
+    )
+    with pytest.raises(PrecisionInputError, match="no common comparison step"):
+        compare([disjoint], [populated], [])
 
 
 def test_device_reaction_clip_surge_is_an_invariant_difference(
