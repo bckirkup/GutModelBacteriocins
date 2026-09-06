@@ -693,7 +693,7 @@ void Simulation::prepare_step_events_for_summary() {
   event_ledger_.summary_events = event_ledger_.step_events;
 #ifdef GUTIBM_MPI
   if (domain_.nprocs() > 1) {
-    std::array<Int, 11> local = {
+    std::array<Int, 11 + MAX_AGENT_TYPES> local = {
         event_ledger_.step_events.sos_inductions,
         event_ledger_.step_events.phage_inductions,
         event_ledger_.step_events.mortality_colicin,
@@ -705,7 +705,11 @@ void Simulation::prepare_step_events_for_summary() {
         event_ledger_.step_events.conjugation_transfers,
         event_ledger_.step_events.mutations,
         event_ledger_.step_events.immigrations};
-    std::array<Int, 11> global{};
+    for (Int i = 0; i < MAX_AGENT_TYPES; ++i) {
+      local[static_cast<size_t>(11 + i)] =
+          event_ledger_.step_events.divisions_by_type[static_cast<size_t>(i)];
+    }
+    std::array<Int, 11 + MAX_AGENT_TYPES> global{};
     MPI_Allreduce(local.data(), global.data(), static_cast<int>(local.size()),
                   MPI_INT, MPI_SUM, MPI_COMM_WORLD);
     event_ledger_.summary_events.sos_inductions = global[0];
@@ -719,6 +723,10 @@ void Simulation::prepare_step_events_for_summary() {
     event_ledger_.summary_events.conjugation_transfers = global[8];
     event_ledger_.summary_events.mutations = global[9];
     event_ledger_.summary_events.immigrations = global[10];
+    for (Int i = 0; i < MAX_AGENT_TYPES; ++i) {
+      event_ledger_.summary_events.divisions_by_type[static_cast<size_t>(i)] =
+          global[static_cast<size_t>(11 + i)];
+    }
     const std::array<Real, 4> local_rates = {
         event_ledger_.step_events.sos_basal_rate,
         event_ledger_.step_events.sos_post_division_rate,

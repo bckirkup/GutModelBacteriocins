@@ -45,11 +45,19 @@ class PackageTests(unittest.TestCase):
   self.assertEqual(cw['samples'],tw['samples']); self.assertGreater(cw['samples'],1)
   self.assertNotEqual(own['slope_log10_ratio_per_h'],tw['slope_log10_ratio_per_h'])
   self.assertTrue(all(x[0]<=t_common for x in null if x[0]>=t_common-analyze.TAIL_S))
- def test_producer_division_exposure_is_composition_weighted(self):
+ def test_producer_divisions_use_integer_by_type_counter(self):
   sys.path.insert(0,str(ROOT)); import analyze
-  rows=[{'t':0,'n1':50,'n2':50,'cumdiv':0},{'t':60,'n1':90,'n2':10,'cumdiv':100},{'t':120,'n1':99,'n2':1,'cumdiv':200}]
-  # First increment: 100 * 0.5 = 50; second: 100 * 0.9 = 90 → 140 (not raw 200).
-  self.assertAlmostEqual(analyze.producer_division_exposure(rows),140.0)
-  self.assertIn('realized_lysis_per_total_division',(ROOT/'analyze.py').read_text())
-  self.assertIn('t_common', (ROOT/'analyze.py').read_text())
+  class FakeEv(dict):
+   def get(self,k,default=None): return super().get(k,default)
+  class Arr:
+   def __init__(self,a): self._a=a
+   def __getitem__(self,_): return self._a
+  last={'events':FakeEv({'cumulative_divisions_by_type':Arr([0,17,9,0,0,0,0,0])})}
+  self.assertEqual(analyze.producer_divisions_from_events(last),17)
+  self.assertIsNone(analyze.producer_divisions_from_events({'events':{}}))
+  text=(ROOT/'analyze.py').read_text()
+  self.assertIn('cumulative_divisions_by_type',text)
+  self.assertIn('realized_lysis_per_total_division',text)
+  self.assertNotIn('producer_division_exposure',text)
+  self.assertIn('t_common',text)
 if __name__=='__main__': unittest.main(verbosity=2)

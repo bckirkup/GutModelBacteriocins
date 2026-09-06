@@ -897,7 +897,7 @@ void FixMetabolism::perform_divisions() {
       a.flags.just_divided = true;
       daughter.flags.just_divided = true;
 
-      sim_.step_events().divisions++;
+      sim_.step_events().record_division(a.identity.type);
       new_agents.push_back(std::move(daughter));
     }
   }

@@ -133,6 +133,7 @@ gutibm_add_test(config_ingestion test_config_ingestion.cpp
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(kill_provenance test_kill_provenance.cpp LABELS "unit")
 gutibm_add_test(counter_resume test_counter_resume.cpp LABELS "unit")
+gutibm_add_test(divisions_by_type test_divisions_by_type.cpp LABELS "unit;hdf5")
 gutibm_add_test(vbf_accounting test_vbf_accounting.cpp LABELS "unit")
 gutibm_add_test(data_defaults test_data_defaults.cpp LABELS "unit")
 gutibm_add_test(bacteriocin test_bacteriocin.cpp LABELS "unit")

@@ -6,8 +6,9 @@ Paired slopes/tails are recomputed on a shared calendar window ending at
 min(t_end_treatment, t_end_control). Own-end windows remain on run rows for
 diagnostics only.
 
-realized_lysis_per_division uses a producer-exposure division denominator
-(composition-weighted cumulative division increments). The all-type ratio is
+realized_lysis_per_division uses integer cumulative_divisions_by_type[1]
+(producer identity type). Files without that dataset leave the ratio missing;
+do not infer a composition-weighted exposure proxy. The all-type ratio is
 retained only as realized_lysis_per_total_division and must not be used as the
 Stage D lysis response.
 """
@@ -56,22 +57,22 @@ def get_event(last,names):
  for n in names:
   if n in ev:return val(ev[n])
  return None
-def producer_division_exposure(summaries):
- """Allocate cumulative-division increments by live type-1 fraction at interval start.
+PRODUCER_TYPE=1
+def producer_divisions_from_events(last):
+ """Integer cumulative producer divisions from events/cumulative_divisions_by_type.
 
- HDF5 does not emit per-type divisions. Interval `divisions` is often zero on
- sparse dumps; cumulative deltas between summary samples are the durable signal.
- Type-1 fraction at the start of each increment is the producer-exposure weight.
+ Returns None when the dataset is absent (legacy outputs) or too short.
  """
- if len(summaries)<2: return None
- total=0.0
- for prev,cur in zip(summaries,summaries[1:]):
-  ddiv=cur['cumdiv']-prev['cumdiv']
-  if ddiv<=0: continue
-  n1,n2=prev['n1'],prev['n2']; denom=n1+n2
-  if denom<=0: continue
-  total+=ddiv*(n1/denom)
- return float(total)
+ ev=last.get('events')
+ if ev is None or 'cumulative_divisions_by_type' not in ev: return None
+ raw=ev['cumulative_divisions_by_type']
+ data=raw[()] if hasattr(raw,'__getitem__') else raw
+ try:
+  values=list(data)
+ except TypeError:
+  values=[data]
+ if len(values)<=PRODUCER_TYPE: return None
+ return int(values[PRODUCER_TYPE])
 def output_for(stage,index,entry):
  candidates=[G/f'stage_{stage}'/'results'/str(index)/'output.h5.gz',G/f'stage_{stage}'/'results'/str(index)/'output.h5',(ROOT/entry['input_relpath']).parent/'output.h5',(ROOT/entry['input_relpath']).parent/'output.h5.gz']
  return next((p for p in candidates if p.exists()),None)
@@ -88,13 +89,7 @@ def one(entry):
     if req not in h: raise ValueError(f'missing /{req}')
    rp=h['run_provenance']; source=str(val(rp['git_sha'])) if 'git_sha' in rp else None; placement=str(val(rp['chemistry_placement'])) if 'chemistry_placement' in rp else None
    term=str(val(rp['termination_cause'])) if 'termination_cause' in rp else 'missing'
-   ss=steps(h['summary']); aa=steps(h['agents']); series=[]; summary_rows=[]
-   for sk in ss:
-    s=h['summary'][sk]; t=float(val(s['time'])) if 'time' in s else int(sk.rsplit('_',1)[1])*float(cfg['bio_dt'])
-    nbt=np.asarray(s['n_by_type'][()]).ravel() if 'n_by_type' in s else None
-    n1=int(nbt[1]) if nbt is not None and nbt.size>1 else None; n2=int(nbt[2]) if nbt is not None and nbt.size>2 else None
-    cumdiv=get_event(s,['cumulative_divisions','divisions'])
-    if n1 is not None and n2 is not None and cumdiv is not None: summary_rows.append({'t':t,'n1':n1,'n2':n2,'cumdiv':float(cumdiv)})
+   ss=steps(h['summary']); aa=steps(h['agents']); series=[]
    # Agent dumps drive the composition time series used for slopes.
    for sk in aa:
     ag=h['agents'][sk]; typ=np.asarray(ag['type'][()]); step=int(sk.rsplit('_',1)[1]); t=step*float(cfg['bio_dt'])
@@ -105,13 +100,13 @@ def one(entry):
    tend=series[-1][0]; last=h['summary'][ss[-1]]
    w2=window_metrics(series,tend,TAIL_S); w1=window_metrics(series,tend,SENS_S)
    kills=get_event(last,['cumulative_mortality_colicin','mortality_colicin']); lys=get_event(last,['cumulative_mortality_lysis','mortality_lysis']); div=get_event(last,['cumulative_divisions','divisions']); outflow=get_event(last,['cumulative_outflow_boundary','outflow_boundary','cumulative_boundary_exports'])
-   prod_div=producer_division_exposure(summary_rows)
+   prod_div=producer_divisions_from_events(last)
    ag=h['agents'][aa[-1]]; typ=np.asarray(ag['type'][()]); mu=np.asarray(ag['mu_realized'][()] if 'mu_realized' in ag else ag['mu'][()]) if ('mu_realized'in ag or'mu'in ag) else np.array([])
    for t in (1,2): base[f'n_type{t}']=int((typ==t).sum()); base[f'mean_mu_type{t}']=float(np.mean(mu[typ==t])) if mu.size and np.any(typ==t) else None
    btu=[]
    if 'lineage' in h and aa[-1] in h['lineage'] and 'btuB_expression' in h['lineage'][aa[-1]]: btu=np.asarray(h['lineage'][aa[-1]]['btuB_expression'][()])
    # Own-end windows are diagnostics; paired contrasts recompute on t_common below.
-   base.update({'output_status':'complete' if term=='horizon_reached' else 'terminated','execution_source_sha_observed':source,'execution_source_sha_match':source==m['execution_source_sha'],'chemistry_placement':placement,'termination_cause':term,'t_end_s':tend,**w2,'sensitivity_1h_slope_log10_ratio_per_h':w1['slope_log10_ratio_per_h'],'sensitivity_1h_tail_median_log10_ratio':w1['tail_median_log10_ratio'],'divisions':div,'producer_divisions_exposure':prod_div,'mortality_colicin':kills,'mortality_lysis':lys,'outflow_boundary':outflow,'kills_per_lysis':kills/lys if kills is not None and lys else None,'kills_per_division':kills/div if kills is not None and div else None,'realized_lysis_per_total_division':lys/div if lys is not None and div else None,'realized_lysis_per_division':lys/prod_div if lys is not None and prod_div else None,'realized_lysis_per_producer_division':lys/prod_div if lys is not None and prod_div else None,'mean_btuB_expression_final':float(np.mean(btu)) if len(btu) else None,'_series':series})
+   base.update({'output_status':'complete' if term=='horizon_reached' else 'terminated','execution_source_sha_observed':source,'execution_source_sha_match':source==m['execution_source_sha'],'chemistry_placement':placement,'termination_cause':term,'t_end_s':tend,**w2,'sensitivity_1h_slope_log10_ratio_per_h':w1['slope_log10_ratio_per_h'],'sensitivity_1h_tail_median_log10_ratio':w1['tail_median_log10_ratio'],'divisions':div,'producer_divisions':prod_div,'mortality_colicin':kills,'mortality_lysis':lys,'outflow_boundary':outflow,'kills_per_lysis':kills/lys if kills is not None and lys else None,'kills_per_division':kills/div if kills is not None and div else None,'realized_lysis_per_total_division':lys/div if lys is not None and div else None,'realized_lysis_per_division':lys/prod_div if lys is not None and prod_div else None,'realized_lysis_per_producer_division':lys/prod_div if lys is not None and prod_div else None,'mean_btuB_expression_final':float(np.mean(btu)) if len(btu) else None,'_series':series})
    if m['stage']=='C':
     names=[]
     if 'grid'in h:
@@ -152,6 +147,6 @@ def main():
   if any(not r.get('execution_source_sha_match') or r.get('chemistry_placement')!='device_delivery' for r in q): gates['Q']['status']='FAIL_PROVENANCE_OR_PLACEMENT'
  cgood=[r for r in stages['C'] if r['output_status'] in ('complete','terminated')]
  if len(cgood)==12 and any(not r.get('btuB_grid_present') or r.get('source_centered_profile_status','').startswith('BLOCKED') for r in cgood): gates['C']['status']='BLOCKED_TRANSPORT_PROVENANCE'
- report={'campaign_id':cm['campaign_id'],'runs_total':len(rows),'outputs_readable':len(complete),'missing_or_invalid':len(missing),'gates':gates,'interpretation':'Sequential scientific gates require review of all seed-level rows; this analyzer never auto-promotes downstream stages. Paired deltas use a shared calendar window ending at t_common_s. realized_lysis_per_division is producer-exposure-denominator only.'}
+ report={'campaign_id':cm['campaign_id'],'runs_total':len(rows),'outputs_readable':len(complete),'missing_or_invalid':len(missing),'gates':gates,'interpretation':'Sequential scientific gates require review of all seed-level rows; this analyzer never auto-promotes downstream stages. Paired deltas use a shared calendar window ending at t_common_s. realized_lysis_per_division uses integer cumulative_divisions_by_type[1] when present.'}
  (a.results_dir/'missing_outputs.json').write_text(json.dumps(missing,indent=2)+'\n');(a.results_dir/'gate_status.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2));return 0
 if __name__=='__main__': raise SystemExit(main())
