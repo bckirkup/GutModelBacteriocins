@@ -1,0 +1,1588 @@
+{
+  "schema_version": 1,
+  "host_arm": "E3",
+  "device_arm": "E4",
+  "host_seeds": [
+    55,
+    56,
+    57,
+    58,
+    59
+  ],
+  "device_seeds": [
+    55,
+    56,
+    57,
+    58,
+    59
+  ],
+  "paired_seeds": [
+    55,
+    56,
+    57,
+    58,
+    59
+  ],
+  "reproducibility": {
+    "reproducible": true,
+    "dynamical_reproducible": true,
+    "accounting_reproducible": true,
+    "reports": []
+  },
+  "dynamical_reproducible": true,
+  "accounting_reproducible": true,
+  "accounting_repeat_noise": [],
+  "divergence_profiles": [
+    {
+      "seed": 55,
+      "host_arm": "E3",
+      "device_arm": "E4",
+      "compared_steps": 361,
+      "comparison_step": 360,
+      "onset_step": {
+        "bacteriostatic_live_agents": {
+          "1e-12": 282,
+          "1e-06": 282,
+          "0.1": 282
+        },
+        "cumulative_conjugation_transfers": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_divisions": {
+          "1e-12": 280,
+          "1e-06": 280,
+          "0.1": null
+        },
+        "cumulative_mortality_cdi": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_colicin": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_lysis": {
+          "1e-12": 301,
+          "1e-06": 301,
+          "0.1": 301
+        },
+        "cumulative_outflow_boundary": {
+          "1e-12": 282,
+          "1e-06": 282,
+          "0.1": null
+        },
+        "cumulative_outflow_washout": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_sos_inductions": {
+          "1e-12": 297,
+          "1e-06": 297,
+          "0.1": 297
+        },
+        "delivery_infeasible_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_reduction_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_retry_events_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "halt_reason_code": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "maintenance_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_BtuB": {
+          "1e-12": 111,
+          "1e-06": 302,
+          "0.1": null
+        },
+        "max_toxin_CirA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FepA": {
+          "1e-12": 302,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FhuA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_carbon": {
+          "1e-12": 86,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_iron": {
+          "1e-12": 184,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_oxygen": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_realized_fermentation_fraction": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "n_total": {
+          "1e-12": 280,
+          "1e-06": 280,
+          "0.1": null
+        },
+        "num_lineages": {
+          "1e-12": 303,
+          "1e-06": 303,
+          "0.1": 352
+        },
+        "reaction_clip_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "uptake_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "washout_trapped_live_agents": {
+          "1e-12": 280,
+          "1e-06": 280,
+          "0.1": 296
+        }
+      }
+    },
+    {
+      "seed": 56,
+      "host_arm": "E3",
+      "device_arm": "E4",
+      "compared_steps": 361,
+      "comparison_step": 360,
+      "onset_step": {
+        "bacteriostatic_live_agents": {
+          "1e-12": 310,
+          "1e-06": 310,
+          "0.1": 316
+        },
+        "cumulative_conjugation_transfers": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_divisions": {
+          "1e-12": 320,
+          "1e-06": 320,
+          "0.1": null
+        },
+        "cumulative_mortality_cdi": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_colicin": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_lysis": {
+          "1e-12": 324,
+          "1e-06": 324,
+          "0.1": 324
+        },
+        "cumulative_outflow_boundary": {
+          "1e-12": 307,
+          "1e-06": 307,
+          "0.1": null
+        },
+        "cumulative_outflow_washout": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_sos_inductions": {
+          "1e-12": 320,
+          "1e-06": 320,
+          "0.1": 320
+        },
+        "delivery_infeasible_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_reduction_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_retry_events_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "halt_reason_code": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "maintenance_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_BtuB": {
+          "1e-12": 175,
+          "1e-06": 300,
+          "0.1": null
+        },
+        "max_toxin_CirA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FepA": {
+          "1e-12": 300,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FhuA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_carbon": {
+          "1e-12": 104,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_iron": {
+          "1e-12": 225,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_oxygen": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_realized_fermentation_fraction": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "n_total": {
+          "1e-12": 307,
+          "1e-06": 307,
+          "0.1": null
+        },
+        "num_lineages": {
+          "1e-12": 307,
+          "1e-06": 307,
+          "0.1": null
+        },
+        "reaction_clip_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "uptake_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "washout_trapped_live_agents": {
+          "1e-12": 305,
+          "1e-06": 305,
+          "0.1": 314
+        }
+      }
+    },
+    {
+      "seed": 57,
+      "host_arm": "E3",
+      "device_arm": "E4",
+      "compared_steps": 361,
+      "comparison_step": 360,
+      "onset_step": {
+        "bacteriostatic_live_agents": {
+          "1e-12": 208,
+          "1e-06": 208,
+          "0.1": 209
+        },
+        "cumulative_conjugation_transfers": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_divisions": {
+          "1e-12": 205,
+          "1e-06": 205,
+          "0.1": null
+        },
+        "cumulative_mortality_cdi": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_colicin": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_lysis": {
+          "1e-12": 245,
+          "1e-06": 245,
+          "0.1": 245
+        },
+        "cumulative_outflow_boundary": {
+          "1e-12": 209,
+          "1e-06": 209,
+          "0.1": null
+        },
+        "cumulative_outflow_washout": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_sos_inductions": {
+          "1e-12": 241,
+          "1e-06": 241,
+          "0.1": 241
+        },
+        "delivery_infeasible_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_reduction_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_retry_events_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "halt_reason_code": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "maintenance_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_BtuB": {
+          "1e-12": 161,
+          "1e-06": 246,
+          "0.1": null
+        },
+        "max_toxin_CirA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FepA": {
+          "1e-12": 246,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FhuA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_carbon": {
+          "1e-12": 36,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_iron": {
+          "1e-12": 104,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_oxygen": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_realized_fermentation_fraction": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "n_total": {
+          "1e-12": 205,
+          "1e-06": 205,
+          "0.1": 290
+        },
+        "num_lineages": {
+          "1e-12": 210,
+          "1e-06": 210,
+          "0.1": 332
+        },
+        "reaction_clip_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "uptake_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "washout_trapped_live_agents": {
+          "1e-12": 208,
+          "1e-06": 208,
+          "0.1": 215
+        }
+      }
+    },
+    {
+      "seed": 58,
+      "host_arm": "E3",
+      "device_arm": "E4",
+      "compared_steps": 361,
+      "comparison_step": 360,
+      "onset_step": {
+        "bacteriostatic_live_agents": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_conjugation_transfers": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_divisions": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_cdi": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_colicin": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_lysis": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_outflow_boundary": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_outflow_washout": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_sos_inductions": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_infeasible_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_reduction_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_retry_events_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "halt_reason_code": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "maintenance_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_BtuB": {
+          "1e-12": 214,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_CirA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FepA": {
+          "1e-12": 214,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FhuA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_carbon": {
+          "1e-12": 89,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_iron": {
+          "1e-12": 325,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_oxygen": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_realized_fermentation_fraction": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "n_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "num_lineages": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "reaction_clip_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "uptake_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "washout_trapped_live_agents": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        }
+      }
+    },
+    {
+      "seed": 59,
+      "host_arm": "E3",
+      "device_arm": "E4",
+      "compared_steps": 361,
+      "comparison_step": 360,
+      "onset_step": {
+        "bacteriostatic_live_agents": {
+          "1e-12": 279,
+          "1e-06": 279,
+          "0.1": 347
+        },
+        "cumulative_conjugation_transfers": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_divisions": {
+          "1e-12": 358,
+          "1e-06": 358,
+          "0.1": null
+        },
+        "cumulative_mortality_cdi": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_colicin": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_mortality_lysis": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_outflow_boundary": {
+          "1e-12": 347,
+          "1e-06": 347,
+          "0.1": null
+        },
+        "cumulative_outflow_washout": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "cumulative_sos_inductions": {
+          "1e-12": 358,
+          "1e-06": 358,
+          "0.1": null
+        },
+        "delivery_infeasible_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_reduction_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "delivery_retry_events_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "halt_reason_code": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "maintenance_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_BtuB": {
+          "1e-12": 157,
+          "1e-06": 299,
+          "0.1": null
+        },
+        "max_toxin_CirA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FepA": {
+          "1e-12": 252,
+          "1e-06": null,
+          "0.1": null
+        },
+        "max_toxin_FhuA": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_carbon": {
+          "1e-12": 92,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_iron": {
+          "1e-12": 151,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_oxygen": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "mean_realized_fermentation_fraction": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "n_total": {
+          "1e-12": 347,
+          "1e-06": 347,
+          "0.1": null
+        },
+        "num_lineages": {
+          "1e-12": 352,
+          "1e-06": 352,
+          "0.1": null
+        },
+        "reaction_clip_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "uptake_shortfall_cumulative_total": {
+          "1e-12": null,
+          "1e-06": null,
+          "0.1": null
+        },
+        "washout_trapped_live_agents": {
+          "1e-12": 177,
+          "1e-06": 177,
+          "0.1": null
+        }
+      }
+    }
+  ],
+  "verdicts": [
+    {
+      "estimand": "bacteriostatic_live_agents",
+      "kind": "stochastic",
+      "host_median": 6.0,
+      "device_median": 6.0,
+      "host_values": [
+        6.0,
+        5.0,
+        8.0,
+        3.0,
+        7.0
+      ],
+      "device_values": [
+        5.0,
+        6.0,
+        8.0,
+        3.0,
+        8.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 4.0,
+      "shift_over_spread": 0.0,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 11.5,
+        "p_two_sided": 0.9761904761904762,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "cumulative_conjugation_transfers",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "cumulative_divisions",
+      "kind": "stochastic",
+      "host_median": 100.0,
+      "device_median": 100.0,
+      "host_values": [
+        89.0,
+        118.0,
+        98.0,
+        100.0,
+        133.0
+      ],
+      "device_values": [
+        88.0,
+        122.0,
+        94.0,
+        100.0,
+        134.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 37.0,
+      "shift_over_spread": 0.0,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "cumulative_mortality_cdi",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "cumulative_mortality_colicin",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "cumulative_mortality_lysis",
+      "kind": "stochastic",
+      "host_median": 5.0,
+      "device_median": 5.0,
+      "host_values": [
+        3.0,
+        6.0,
+        3.0,
+        5.0,
+        12.0
+      ],
+      "device_values": [
+        3.0,
+        5.0,
+        5.0,
+        5.0,
+        12.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 6.0,
+      "shift_over_spread": 0.0,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 12.0,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "cumulative_outflow_boundary",
+      "kind": "stochastic",
+      "host_median": 522.0,
+      "device_median": 520.0,
+      "host_values": [
+        514.0,
+        522.0,
+        533.0,
+        520.0,
+        533.0
+      ],
+      "device_values": [
+        516.0,
+        519.0,
+        530.0,
+        520.0,
+        533.0
+      ],
+      "shift": 2.0,
+      "seed_spread": 16.0,
+      "shift_over_spread": 0.125,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 14.5,
+        "p_two_sided": 0.7380952380952381,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "cumulative_outflow_washout",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "cumulative_sos_inductions",
+      "kind": "stochastic",
+      "host_median": 5.0,
+      "device_median": 5.0,
+      "host_values": [
+        3.0,
+        6.0,
+        3.0,
+        5.0,
+        11.0
+      ],
+      "device_values": [
+        3.0,
+        5.0,
+        5.0,
+        5.0,
+        12.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 5.5,
+      "shift_over_spread": 0.0,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 11.5,
+        "p_two_sided": 0.9047619047619048,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "delivery_infeasible_cumulative_total",
+      "kind": "invariant",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "delivery_reduction_cumulative_total",
+      "kind": "invariant",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "delivery_retry_events_cumulative_total",
+      "kind": "invariant",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "halt_reason_code",
+      "kind": "invariant",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "maintenance_shortfall_cumulative_total",
+      "kind": "invariant",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "max_toxin_BtuB",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        3.3774081935382823e-06
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        1.0982140265555856e-05,
+        0.0,
+        3.3774293680821117e-06
+      ],
+      "shift": 0.0,
+      "seed_spread": 7.179784816818984e-06,
+      "shift_over_spread": 0.0,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 9.0,
+        "p_two_sided": 0.4444444444444444,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "max_toxin_CirA",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "max_toxin_FepA",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        9.011950942485431e-09
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        2.8983372493572036e-08,
+        0.0,
+        9.012004449148842e-09
+      ],
+      "shift": 0.0,
+      "seed_spread": 1.8997688471360437e-08,
+      "shift_over_spread": 0.0,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 9.0,
+        "p_two_sided": 0.4444444444444444,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "max_toxin_FhuA",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "mean_carbon",
+      "kind": "stochastic",
+      "host_median": 0.0012096869773437653,
+      "device_median": 0.0012096869760894506,
+      "host_values": [
+        0.0012096889740201425,
+        0.0012096718990974057,
+        0.0012096973231101387,
+        0.0012096869773437653,
+        0.0012096796780419257
+      ],
+      "device_values": [
+        0.0012096901913215643,
+        0.001209672327224226,
+        0.0012097002494018628,
+        0.0012096869760894506,
+        0.0012096818941614111
+      ],
+      "shift": 1.254314794391087e-12,
+      "seed_spread": 1.810966889490874e-08,
+      "shift_over_spread": 6.926216054362644e-05,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 11.0,
+        "p_two_sided": 0.8412698412698413,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "mean_iron",
+      "kind": "stochastic",
+      "host_median": 9.994904289029134e-05,
+      "device_median": 9.9949421763103e-05,
+      "host_values": [
+        9.994904289029134e-05,
+        9.994887258237766e-05,
+        9.99497134589519e-05,
+        9.995016277694923e-05,
+        9.994833479344621e-05
+      ],
+      "device_values": [
+        9.9949421763103e-05,
+        9.994872232493642e-05,
+        9.994975943899046e-05,
+        9.995016277724726e-05,
+        9.99484640455408e-05
+      ],
+      "shift": 3.7887281166386084e-10,
+      "seed_spread": 1.367922880247648e-09,
+      "shift_over_spread": 0.27696942359445725,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 11.0,
+        "p_two_sided": 0.8412698412698413,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "mean_oxygen",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "mean_realized_fermentation_fraction",
+      "kind": "stochastic",
+      "host_median": 0.0,
+      "device_median": 0.0,
+      "host_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "device_values": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 0.0,
+      "shift_over_spread": null,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "n_total",
+      "kind": "stochastic",
+      "host_median": 75.0,
+      "device_median": 75.0,
+      "host_values": [
+        72.0,
+        90.0,
+        62.0,
+        75.0,
+        88.0
+      ],
+      "device_values": [
+        69.0,
+        98.0,
+        59.0,
+        75.0,
+        89.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 29.5,
+      "shift_over_spread": 0.0,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 12.5,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "num_lineages",
+      "kind": "stochastic",
+      "host_median": 17.0,
+      "device_median": 17.0,
+      "host_values": [
+        17.0,
+        16.0,
+        13.0,
+        18.0,
+        25.0
+      ],
+      "device_values": [
+        15.0,
+        17.0,
+        17.0,
+        18.0,
+        25.0
+      ],
+      "shift": 0.0,
+      "seed_spread": 7.0,
+      "shift_over_spread": 0.0,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 11.0,
+        "p_two_sided": 0.8253968253968254,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "reaction_clip_cumulative_total",
+      "kind": "invariant",
+      "host_median": 3.258434695190224e-15,
+      "device_median": 3.2493626956317276e-15,
+      "host_values": [
+        3.258434695190224e-15,
+        3.4316483760719945e-15,
+        3.1617567919941955e-15,
+        3.120665585439939e-15,
+        3.664929840387749e-15
+      ],
+      "device_values": [
+        3.2493626956317276e-15,
+        3.4227566731213962e-15,
+        3.196086594473659e-15,
+        3.1206674049546203e-15,
+        3.663981632794248e-15
+      ],
+      "shift": 9.071999558496247e-18,
+      "seed_spread": 4.070779195128049e-16,
+      "shift_over_spread": 0.02228565865069201,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 13.0,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "uptake_shortfall_cumulative_total",
+      "kind": "invariant",
+      "host_median": 3.888260336024029e-16,
+      "device_median": 3.888260468584483e-16,
+      "host_values": [
+        3.3902053569725595e-16,
+        4.531772042346051e-16,
+        3.5722974701082226e-16,
+        3.888260336024029e-16,
+        4.959189632543147e-16
+      ],
+      "device_values": [
+        3.391698044100998e-16,
+        4.754508816493555e-16,
+        3.3126099538535776e-16,
+        3.888260468584483e-16,
+        4.980700405254147e-16
+      ],
+      "shift": 1.3256045373997047e-23,
+      "seed_spread": 1.5154506118965635e-16,
+      "shift_over_spread": 8.747263203389588e-08,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "identical",
+      "mann_whitney": {
+        "u": 12.0,
+        "p_two_sided": 1.0,
+        "p_floor": 0.007936507936507936
+      }
+    },
+    {
+      "estimand": "washout_trapped_live_agents",
+      "kind": "stochastic",
+      "host_median": 31.0,
+      "device_median": 30.0,
+      "host_values": [
+        35.0,
+        31.0,
+        26.0,
+        25.0,
+        41.0
+      ],
+      "device_values": [
+        29.0,
+        33.0,
+        30.0,
+        25.0,
+        40.0
+      ],
+      "shift": 1.0,
+      "seed_spread": 12.5,
+      "shift_over_spread": 0.08,
+      "repeat_noise_floor": 1e-12,
+      "verdict": "interchangeable",
+      "mann_whitney": {
+        "u": 13.5,
+        "p_two_sided": 0.8968253968253969,
+        "p_floor": 0.007936507936507936
+      }
+    }
+  ],
+  "flagged_estimands": [],
+  "non_finite": [],
+  "interpretation": "Paired divergence is descriptive: a stochastic nonlinear model separates once a field difference flips one draw. The verdict is distributional; 'interchangeable' means the backend shift in the median is within the within-backend seed spread, which is reported alongside so the resolution of the measurement is visible.",
+  "comparison_step": 360,
+  "comparison_time_seconds": 21600.0,
+  "run_last_steps": {
+    "E3:55": 360,
+    "E3:56": 360,
+    "E3:57": 360,
+    "E3:58": 360,
+    "E3:59": 360,
+    "E4:55": 360,
+    "E4:56": 360,
+    "E4:57": 360,
+    "E4:58": 360,
+    "E4:59": 360
+  },
+  "truncated_runs_present": false,
+  "horizon_warning": null
+}
