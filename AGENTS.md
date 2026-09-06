@@ -92,6 +92,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | `docs/DELIVERY_ROS_CAMPAIGN.md` | Consolidated delivery/ROS campaign findings and retired claims |
 | `docs/EXTERNAL_AUDIT_2026-08.md` | External audit claims, per-claim verdicts, and the decisions taken |
 | `docs/GPU_COST_BENEFIT_2026-08.md` | Measured T4 cost/benefit per uptake mode and scale, with raw records under `bench_results/` |
+| `docs/GPU_PRECISION_CAMPAIGN_2026-09.md` | Host/device outcome interchangeability (p1 precision + 1440-step agent-dense science arm) and speedup vs agent load, records under `bench_results/gpu_precision_2026-09/` |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
 | `python/gut_ibm_tools/colony.py` and `spatial_stats.py` | Colony catalogs and 3-D spatial observables |
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `batch_scan/`, `scaling_benchmark/` |
