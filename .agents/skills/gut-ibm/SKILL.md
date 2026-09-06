@@ -105,6 +105,7 @@ CTest targets (including custom script and MPI targets; inventory from
 | `config_ingestion` | unit | Every parser key reaches `SimulationConfig` |
 | `kill_provenance` | unit | Kill provenance metadata |
 | `counter_resume` | unit | Counter persistence and resume |
+| `divisions_by_type` | unit, hdf5 | Per-type mother divisions + restart continuity |
 | `vbf_accounting` | unit | VBF source/sink accounting |
 | `data_defaults` | unit | Analysis data defaults |
 | `bacteriocin` | unit | SOS lysis and secretion |

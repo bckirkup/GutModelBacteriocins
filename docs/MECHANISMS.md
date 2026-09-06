@@ -867,6 +867,9 @@ After the physics module (advection + mechanics), agents that have moved past th
 HDF5 summary interval and cumulative event counters are likewise globally reduced once per summary, so they describe the same global population as `n_total`.
 Death-channel counters include `mortality_lysis` for actual SOS/phage lysis deaths;
 induction counters are not death counts.
+Mother divisions are counted both as scalar `divisions` and as
+`divisions_by_type[identity.type]` (length 8, matching `n_by_type`); the
+cumulative datasets are restart-safe.
 The summary also contains the instantaneous `bacteriostatic_live_agents` and
 `washout_trapped_live_agents` stocks; these are not event counters and are not
 part of population closure.

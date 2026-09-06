@@ -13,6 +13,7 @@
 #include "hdf5_test_helpers.h"
 
 #include <cassert>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <format>
@@ -162,6 +163,9 @@ void set_all_events(Simulation& sim, Int value) {
   events.outflow_boundary = value;
   events.mortality_lysis = value;
   events.divisions = value;
+  // Rank-local type-1 and type-2 mother divisions; sum matches `divisions`.
+  events.divisions_by_type[1] = value;
+  events.divisions_by_type[2] = 0;
   events.conjugation_transfers = value;
   events.mutations = value;
   events.immigrations = value;
@@ -210,6 +214,19 @@ void test_global_event_counter_reduction() {
     assert(read_event(file, prefix + "outflow_boundary") == expected);
     assert(read_event(file, prefix + "mortality_lysis") == expected);
     assert(read_event(file, prefix + "divisions") == expected);
+    {
+      hid_t dset = H5Dopen2(file, (prefix + "divisions_by_type").c_str(),
+                            H5P_DEFAULT);
+      assert(dset >= 0);
+      std::array<int32_t, MAX_AGENT_TYPES> by_type{};
+      assert(H5Dread(dset, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT,
+                     by_type.data()) >= 0);
+      H5Dclose(dset);
+      assert(by_type[1] == expected);
+      Int sum = 0;
+      for (int32_t v : by_type) sum += v;
+      assert(sum == expected);
+    }
     assert(read_event(file, prefix + "conjugation_transfers") == expected);
     assert(read_event(file, prefix + "mutations") == expected);
     assert(read_event(file, prefix + "immigrations") == expected);

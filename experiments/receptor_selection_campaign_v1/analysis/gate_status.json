@@ -1,18 +1,18 @@
 {
   "campaign_id": "receptor_selection_campaign_v1",
   "runs_total": 62,
-  "outputs_readable": 0,
-  "missing_or_invalid": 62,
+  "outputs_readable": 26,
+  "missing_or_invalid": 36,
   "gates": {
     "Q": {
-      "status": "BLOCKED_MISSING_OUTPUTS",
+      "status": "READY_FOR_SCIENTIFIC_REVIEW",
       "expected": 2,
-      "missing_or_invalid": 2
+      "missing_or_invalid": 0
     },
     "A": {
-      "status": "BLOCKED_MISSING_OUTPUTS",
+      "status": "READY_FOR_SCIENTIFIC_REVIEW",
       "expected": 24,
-      "missing_or_invalid": 24
+      "missing_or_invalid": 0
     },
     "B": {
       "status": "BLOCKED_MISSING_OUTPUTS",
@@ -30,5 +30,5 @@
       "missing_or_invalid": 12
     }
   },
-  "interpretation": "Sequential scientific gates require review of all seed-level rows; this analyzer never auto-promotes downstream stages."
+  "interpretation": "Sequential scientific gates require review of all seed-level rows; this analyzer never auto-promotes downstream stages. Paired deltas use a shared calendar window ending at t_common_s. realized_lysis_per_division is producer-exposure-denominator only."
 }

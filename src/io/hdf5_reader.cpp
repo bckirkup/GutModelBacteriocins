@@ -4,6 +4,7 @@
 
 #include "hdf5_reader.h"
 #include "path_utils.h"
+#include "step_events.h"
 
 #include <algorithm>
 #include <array>
@@ -320,6 +321,13 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   read_event("outflow_boundary", meta.interval_events.outflow_boundary);
   read_event("mortality_lysis", meta.interval_events.mortality_lysis);
   read_event("divisions", meta.interval_events.divisions);
+  if (link_exists(file, events + "divisions_by_type")) {
+    auto values = read_dataset_1d<int32_t>(file, events + "divisions_by_type",
+                                           H5T_NATIVE_INT32);
+    for (size_t i = 0; i < values.size() && i < MAX_AGENT_TYPES; ++i) {
+      meta.interval_events.divisions_by_type[i] = values[i];
+    }
+  }
   read_event("conjugation_transfers", meta.interval_events.conjugation_transfers);
   read_event("mutations", meta.interval_events.mutations);
   read_event("immigrations", meta.interval_events.immigrations);
@@ -331,6 +339,13 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   read_event("cumulative_outflow_boundary", meta.cumulative_events.outflow_boundary);
   read_event("cumulative_mortality_lysis", meta.cumulative_events.mortality_lysis);
   read_event("cumulative_divisions", meta.cumulative_events.divisions);
+  if (link_exists(file, events + "cumulative_divisions_by_type")) {
+    auto values = read_dataset_1d<int32_t>(
+        file, events + "cumulative_divisions_by_type", H5T_NATIVE_INT32);
+    for (size_t i = 0; i < values.size() && i < MAX_AGENT_TYPES; ++i) {
+      meta.cumulative_events.divisions_by_type[i] = values[i];
+    }
+  }
   read_event("cumulative_conjugation_transfers",
              meta.cumulative_events.conjugation_transfers);
   read_event("cumulative_mutations", meta.cumulative_events.mutations);

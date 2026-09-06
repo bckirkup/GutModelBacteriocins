@@ -1225,6 +1225,16 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_event("outflow_boundary", events.outflow_boundary);
   write_event("mortality_lysis", events.mortality_lysis);
   write_event("divisions", events.divisions);
+  {
+    std::array<int32_t, MAX_AGENT_TYPES> divisions_by_type{};
+    for (Int i = 0; i < MAX_AGENT_TYPES; ++i) {
+      divisions_by_type[static_cast<size_t>(i)] =
+          events.divisions_by_type[static_cast<size_t>(i)];
+    }
+    write_dataset_1d_serial(fid, group + "/events/divisions_by_type",
+                            H5T_NATIVE_INT32, divisions_by_type.data(),
+                            MAX_AGENT_TYPES);
+  }
   write_event("conjugation_transfers", events.conjugation_transfers);
   write_event("mutations", events.mutations);
   write_event("immigrations", events.immigrations);
@@ -1256,6 +1266,16 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_cumulative_event("outflow_boundary", cumulative.outflow_boundary);
   write_cumulative_event("mortality_lysis", cumulative.mortality_lysis);
   write_cumulative_event("divisions", cumulative.divisions);
+  {
+    std::array<int32_t, MAX_AGENT_TYPES> divisions_by_type{};
+    for (Int i = 0; i < MAX_AGENT_TYPES; ++i) {
+      divisions_by_type[static_cast<size_t>(i)] =
+          cumulative.divisions_by_type[static_cast<size_t>(i)];
+    }
+    write_dataset_1d_serial(fid, group + "/events/cumulative_divisions_by_type",
+                            H5T_NATIVE_INT32, divisions_by_type.data(),
+                            MAX_AGENT_TYPES);
+  }
   write_cumulative_event("conjugation_transfers", cumulative.conjugation_transfers);
   write_cumulative_event("mutations", cumulative.mutations);
   write_cumulative_event("immigrations", cumulative.immigrations);

@@ -96,8 +96,12 @@ class GutIBMData:
         }
         if "num_lineages" in grp:
             out["num_lineages"] = read_scalar("num_lineages")
+        def read_scalar_or_list(ds: Any) -> Any:
+            arr = np.array(ds)
+            return arr.item() if arr.size == 1 else arr.tolist()
+
         if "events" in grp:
-            out["events"] = {name: np.array(ds).item() for name, ds in grp["events"].items()}
+            out["events"] = {name: read_scalar_or_list(ds) for name, ds in grp["events"].items()}
         if "chem" in grp:
             out["chem"] = {name: np.array(ds).item() for name, ds in grp["chem"].items()}
         if "spatial" in grp:
