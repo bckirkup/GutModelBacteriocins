@@ -34,4 +34,22 @@ class PackageTests(unittest.TestCase):
   self.assertNotEqual(p.returncode,0); self.assertIn('normal git checkout',p.stdout+p.stderr)
  def test_runtime_analysis_uses_exact_execution_sha(self):
   text=(ROOT/'analyze.py').read_text(); self.assertIn("source==m['execution_source_sha']",text); self.assertNotIn("startswith(source)",text)
+ def test_paired_windows_share_calendar_end(self):
+  sys.path.insert(0,str(ROOT)); import analyze
+  # Treatment continues past the null; own-end slopes would disagree with a shared end.
+  null=[(t,10,10,0.0) for t in range(0,16801,600)]
+  prod=[(t,10+t//600,max(1,10-t//1200),math.log10(((10+t//600)+0.5)/(max(1,10-t//1200)+0.5))) for t in range(0,20401,600)]
+  t_common=16800.0
+  cw=analyze.window_metrics(null,t_common,analyze.TAIL_S); tw=analyze.window_metrics(prod,t_common,analyze.TAIL_S)
+  own=analyze.window_metrics(prod,20400.0,analyze.TAIL_S)
+  self.assertEqual(cw['samples'],tw['samples']); self.assertGreater(cw['samples'],1)
+  self.assertNotEqual(own['slope_log10_ratio_per_h'],tw['slope_log10_ratio_per_h'])
+  self.assertTrue(all(x[0]<=t_common for x in null if x[0]>=t_common-analyze.TAIL_S))
+ def test_producer_division_exposure_is_composition_weighted(self):
+  sys.path.insert(0,str(ROOT)); import analyze
+  rows=[{'t':0,'n1':50,'n2':50,'cumdiv':0},{'t':60,'n1':90,'n2':10,'cumdiv':100},{'t':120,'n1':99,'n2':1,'cumdiv':200}]
+  # First increment: 100 * 0.5 = 50; second: 100 * 0.9 = 90 → 140 (not raw 200).
+  self.assertAlmostEqual(analyze.producer_division_exposure(rows),140.0)
+  self.assertIn('realized_lysis_per_total_division',(ROOT/'analyze.py').read_text())
+  self.assertIn('t_common', (ROOT/'analyze.py').read_text())
 if __name__=='__main__': unittest.main(verbosity=2)
