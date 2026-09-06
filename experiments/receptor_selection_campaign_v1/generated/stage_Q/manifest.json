@@ -1,0 +1,38 @@
+{
+  "attempt_timeout_s": 7200,
+  "campaign_id": "receptor_selection_campaign_v1",
+  "container_image_digest": "REQUIRED_BEFORE_SUBMISSION",
+  "execution_source_sha": "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_CAMPAIGN_COMMIT",
+  "gate_locked": false,
+  "gate_requires": null,
+  "gpu_required": true,
+  "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
+  "mpi_ranks": 1,
+  "promotion_inputs": {
+    "rule": "Regenerate downstream stages with recorded gate decisions after upstream results.",
+    "selected_b12_initial_conc_mol_m3": 0.0001,
+    "selected_kd_corrinoid_btuB_mol_m3": 0.0001,
+    "selected_mucin_charge_amplitude": 60,
+    "status": "PLANNING_ONLY_NOT_SCIENTIFICALLY_PROMOTED"
+  },
+  "runs": [
+    {
+      "array_index": 0,
+      "input_relpath": "generated/stage_Q/jobs/0/input.json",
+      "input_sha256": "e36360afa9d3261186dc6936fcc9c49c2d245255af17763a0c5409aba1f15522",
+      "output_relpath": "generated/stage_Q/results/0/output.h5.gz",
+      "run_id": "Q_repeat1_s20260911",
+      "stage": "Q"
+    },
+    {
+      "array_index": 1,
+      "input_relpath": "generated/stage_Q/jobs/1/input.json",
+      "input_sha256": "28cc23a799d57a53233ab415710885f8c81f6088c6f94d55c9e38a66fa1c28d0",
+      "output_relpath": "generated/stage_Q/results/1/output.h5.gz",
+      "run_id": "Q_repeat2_s20260911",
+      "stage": "Q"
+    }
+  ],
+  "schema_version": 2,
+  "stage": "Q"
+}

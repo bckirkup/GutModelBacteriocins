@@ -1,0 +1,95 @@
+{
+  "_campaign": {
+    "arm": "producer",
+    "axes": {
+      "amplitude": 0,
+      "selected_b12": 0.0001,
+      "selected_kd": 0.0001
+    },
+    "campaign_id": "receptor_selection_campaign_v1",
+    "execution_source_sha": "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_CAMPAIGN_COMMIT",
+    "gate_locked": true,
+    "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
+    "paired_seed": 20260913,
+    "run_id": "C_amp0_producer_s20260913",
+    "stage": "C"
+  },
+  "_comment": [
+    "GPU-only receptor-selection campaign v1.",
+    "Audited design baseline: ad037ef96f3433a1ad4008994956f89c68a3ed39.",
+    "Execution source: EXECUTION_SOURCE_SHA_REQUIRED_AFTER_CAMPAIGN_COMMIT.",
+    "Runtime /run_provenance/git_sha must match execution_source_sha.",
+    "AWS image digest is enforced by handoff/preflight, outside parser config."
+  ],
+  "b12_initial_conc": 0.0001,
+  "bacteriocin.mucin_charge.amplitude": 0,
+  "bio_dt": 60.0,
+  "carbon.boundary_conc": 0.05,
+  "carbon_z_gradient": false,
+  "chemistry.toxin_evaluation": "grid",
+  "chemistry.toxin_lumping": "per_receptor",
+  "crypts_enabled": false,
+  "distal_transit": 1000000000.0,
+  "domain_x": 0.0001,
+  "domain_y": 0.0001,
+  "domain_z": 0.0001,
+  "dysbiosis_threshold": 10000000000.0,
+  "fixes": [
+    "metabolism",
+    "bacteriocin",
+    "receptor",
+    "mechanics"
+  ],
+  "gpu_device_id": 0,
+  "gpu_enabled": true,
+  "grid_dx": 2e-06,
+  "hdf5": {
+    "compression": "gzip",
+    "compression_level": 4,
+    "enabled": true,
+    "schedule": {
+      "agents": 10,
+      "genome": 0,
+      "grid": 60,
+      "grid_species": [
+        "bacteriocin_BtuB"
+      ],
+      "lineage": 0,
+      "provenance": 10,
+      "summary": 1
+    }
+  },
+  "hdf5_file": "output.h5",
+  "initial_population.placement": "z_slab",
+  "initial_population.z_max": 0.0001,
+  "initial_population.z_min": 0.0,
+  "initial_strains": [
+    {
+      "conjugative": false,
+      "count": 60,
+      "mu_max": 0.00055,
+      "plasmids": [
+        "ColE1"
+      ],
+      "type": 1
+    },
+    {
+      "conjugative": false,
+      "count": 60,
+      "mu_max": 0.00055,
+      "plasmids": [],
+      "type": 2
+    }
+  ],
+  "kd_colicinE_btuB": 5e-07,
+  "kd_corrinoid_btuB": 0.0001,
+  "metabolism.uptake_limit": "delivery",
+  "motility.enabled": false,
+  "mucus_thickness": 0.0001,
+  "output_interval": 300.0,
+  "oxygen.k_ROS": 0.0,
+  "peristaltic_enabled": false,
+  "radial_turnover": 1000000000.0,
+  "seed": 20260913,
+  "total_time": 21600.0
+}

@@ -1,0 +1,34 @@
+{
+  "campaign_id": "receptor_selection_campaign_v1",
+  "runs_total": 62,
+  "outputs_readable": 0,
+  "missing_or_invalid": 62,
+  "gates": {
+    "Q": {
+      "status": "BLOCKED_MISSING_OUTPUTS",
+      "expected": 2,
+      "missing_or_invalid": 2
+    },
+    "A": {
+      "status": "BLOCKED_MISSING_OUTPUTS",
+      "expected": 24,
+      "missing_or_invalid": 24
+    },
+    "B": {
+      "status": "BLOCKED_MISSING_OUTPUTS",
+      "expected": 12,
+      "missing_or_invalid": 12
+    },
+    "C": {
+      "status": "BLOCKED_MISSING_OUTPUTS",
+      "expected": 12,
+      "missing_or_invalid": 12
+    },
+    "D": {
+      "status": "BLOCKED_MISSING_OUTPUTS",
+      "expected": 12,
+      "missing_or_invalid": 12
+    }
+  },
+  "interpretation": "Sequential scientific gates require review of all seed-level rows; this analyzer never auto-promotes downstream stages."
+}
