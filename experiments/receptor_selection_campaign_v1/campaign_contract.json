@@ -1,0 +1,152 @@
+{
+  "schema_version": 2,
+  "campaign_id": "receptor_selection_campaign_v1",
+  "source_repository": "https://github.com/bckirkup/GutModelBacteriocins",
+  "source_branch": "main",
+  "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
+  "model_baseline_snapshot_manifest": "../../KOSMOS_RETRIEVAL_MANIFEST.json",
+  "execution_source_sha_policy": {
+    "planning_placeholder": "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_CAMPAIGN_COMMIT",
+    "deployment_requires_git_head_match": true,
+    "hdf5_runtime_git_sha_must_match": true,
+    "meaning": "Commit containing this campaign package and used to build the runtime image; it may be later than the audited model baseline."
+  },
+  "execution": {
+    "gpu_required": true,
+    "mpi_ranks": 1,
+    "gpu_device_id": 0,
+    "require_gpu_env": 1,
+    "domain_m": [
+      0.0001,
+      0.0001,
+      0.0001
+    ],
+    "grid_dx_m": 2e-06,
+    "grid_shape": [
+      50,
+      50,
+      50
+    ],
+    "grid_cells": 125000,
+    "total_time_s": 21600,
+    "bio_dt_s": 60,
+    "nominal_steps": 360,
+    "attempt_timeout_s": 7200,
+    "spot_checkpointing": false,
+    "image_digest_pattern": "^sha256:[0-9a-f]{64}$"
+  },
+  "seeds": [
+    20260911,
+    20260913,
+    20260917
+  ],
+  "stages": {
+    "Q": {
+      "jobs": 2,
+      "requires": null
+    },
+    "A": {
+      "jobs": 24,
+      "requires": "Q_pass"
+    },
+    "B": {
+      "jobs": 12,
+      "requires": "A_pass"
+    },
+    "C": {
+      "jobs": 12,
+      "requires": "B_pass"
+    },
+    "D": {
+      "jobs": 12,
+      "requires": "C_pass"
+    }
+  },
+  "axes": {
+    "A": {
+      "kd_corrinoid_btuB_mol_m3": [
+        1e-06,
+        1e-05,
+        0.0001,
+        0.001
+      ],
+      "treatments": [
+        "producer",
+        "null"
+      ]
+    },
+    "B": {
+      "b12_initial_conc_mol_m3": [
+        0.001,
+        0.0001,
+        1e-05,
+        1e-06
+      ]
+    },
+    "C": {
+      "bacteriocin.mucin_charge.amplitude": [
+        0,
+        15,
+        60
+      ]
+    },
+    "D": {
+      "realized_lysis_target_per_generation": [
+        0,
+        0.01,
+        0.02,
+        0.05
+      ],
+      "sos_lysis_prob": [
+        0,
+        0.00501256289338,
+        0.0100505063388,
+        0.0253205655191
+      ]
+    }
+  },
+  "planning_promotions": {
+    "selected_kd_corrinoid_btuB_mol_m3": 0.0001,
+    "selected_b12_initial_conc_mol_m3": 0.0001,
+    "selected_mucin_charge_amplitude": 60,
+    "status": "PLANNING_ONLY_NOT_SCIENTIFICALLY_PROMOTED",
+    "rule": "Regenerate downstream stages with recorded gate decisions after upstream results."
+  },
+  "output": {
+    "summary_interval_steps": 1,
+    "agents_interval_steps": 10,
+    "provenance_interval_steps": 10,
+    "stage_c_grid_interval_steps": 60,
+    "stage_c_grid_species": [
+      "bacteriocin_BtuB"
+    ],
+    "other_grid_interval_steps": 0
+  },
+  "analysis": {
+    "tail_window_s": 7200,
+    "sensitivity_window_s": 3600,
+    "pseudocount": 0.5,
+    "unit_of_analysis": "paired_seed",
+    "screening_inference": "report seeds and median/range; no p-values"
+  },
+  "digest_policy": {
+    "planning_placeholder": "REQUIRED_BEFORE_SUBMISSION",
+    "submission_requires_digest": true,
+    "comparable_arms_require_one_digest": true
+  },
+  "exclusions": [
+    "AWS submission by package preparation",
+    "CPU fallback",
+    "multi-rank",
+    "Cartesian crossing of staged axes",
+    "historical campaign modification",
+    "ColB",
+    "conjugation",
+    "mutation",
+    "CDI",
+    "motility",
+    "crypts",
+    "peristalsis",
+    "phage/prophage"
+  ]
+}
