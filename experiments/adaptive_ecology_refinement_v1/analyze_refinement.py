@@ -481,7 +481,7 @@ def select_amplitude(records: list[dict]) -> dict:
         and len(deltas) == len(SEEDS)
         and all(value is not None and value > 0.0 for value in deltas)
         and med_final is not None
-        and med_final >= 500
+        and med_final >= RULE["per_seed_final_susceptible_min"]
     )
     if reproduces:
         outcome.update(
