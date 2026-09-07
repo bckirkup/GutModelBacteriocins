@@ -164,6 +164,97 @@ Treat these as facts to check against the current account, not as permission
 to mutate it. Capacity, quota, subnet, IAM, image, and job-definition
 validation remains an authorized operator action.
 
+## Same-identity experiment campaigns
+
+An experiment package must be committed before the runtime image is built
+from that exact HEAD. A new or amended tooling PR therefore produces a new
+execution SHA, and every arm that must be formally comparable has to be
+rerun on the image built from that SHA. Plan the job count accordingly:
+adding ecological refinement tooling after a passing 18-job intrinsic assay
+cost a full 18-job intrinsic rerun plus 12 ecological jobs before the gate
+could close, then 15 Stage D jobs.
+
+Verify this identity chain before any submission:
+
+- the full 40-hex execution SHA equals `git rev-parse HEAD`;
+- the ECR image reference is the immutable `<repo>@sha256:<64hex>` digest,
+  never a mutable tag such as `cuda`;
+- the generated manifest carries both the SHA and the digest;
+- deployment preflight reports PASS at the exact run count;
+- the Batch job definition revision resolves to exactly that digest; and
+- the S3 input/output prefixes are isolated per campaign.
+
+A digest-pinned job definition revision can be reused across packages when
+its image digest, resources, and attempt timeout already match the new
+package's requirements. Verify with
+`batch describe-job-definitions --status ACTIVE` and compare
+`containerProperties.image` and `timeout.attemptDurationSeconds` before
+reusing; register a new revision only when something genuinely differs. This
+campaign needed revision 10 at 3600 s for the intrinsic assay and revision
+11 at 7200 s for the ecological and Stage D arrays, both on one digest.
+
+`deploy/aws/entry.sh` derives `INPUT_S3_URI` as
+`${INPUT_S3_PREFIX}/${INDEX}/input.json` and `OUTPUT_S3_URI` as
+`${OUTPUT_S3_PREFIX}/${INDEX}/output.h5.gz`, so the array index is the
+contract between the manifest and S3. Upload with
+`--recursive --exclude '*' --include '*/input.json'` from the package
+`jobs/` directory and confirm the uploaded object count equals the array
+size before submitting.
+
+A gate flips only on an approval artifact that binds the decision to the
+exact identity. Record the gate flag (`single_source_transport_gate`,
+`C_transport_gate`), the execution SHA, the image digest, the job count, the
+selected parameter value, and who approved it when. An analyzer that finds
+outputs complete but no approval must report a distinct pending status
+rather than promoting the gate; treat a `READY_FOR_APPROVAL` /
+`READY_FOR_SCIENTIFIC_REVIEW` status and its non-zero exit code as a working
+fail-closed guard, not a failure.
+
+Prefer the compiled-in git SHA embedded in the image binary when verifying
+provenance. `--version`/`--help` are not a usable check on a host without a
+GPU because the binary initializes MPI/hwloc and aborts; extract the image
+and search the binary for the 40-hex SHA, confirming there is no `-dirty`
+suffix.
+
+Short-horizon guard halts change the analysis window. In this campaign every
+ecological and Stage D run halted on the dysbiosis guard at simulated
+20000 s against a nominal 21600 s horizon, with producers and nulls stopping
+at different steps. Paired contrasts must therefore use the shared calendar
+window ending at `t_common = min(t_end_producer, t_end_null)`, and the halt
+must be reported as a scientific termination condition. Exit code 0 plus a
+guard halt is not a Batch failure.
+
+Analysis output directories are validated to resolve under the repository
+working directory (`python/gut_ibm_tools/path_utils.py`), so write analysis
+artifacts into the package's `generated/` tree and copy them into an
+external evidence directory afterwards, rather than pointing the analyzer
+outside the repo.
+
+Package generators refuse real SHA/digest values without `--deployment` and
+refuse placeholder values with it. Note the current inconsistency to check
+per package before use:
+`experiments/adaptive_ecology_refinement_v1/prepare_refinement.py` and
+`experiments/single_source_transport_assay_v1/prepare_assay.py` take
+`--image-digest` as the full `<repo>@sha256:<64hex>` URI, while
+`experiments/receptor_selection_campaign_v1/prepare.py` takes the bare
+`sha256:<64hex>`. Deployment regeneration in the receptor package rewrites
+the in-version-control planning artifacts for all stages; leave that
+uncommitted.
+
+Package the following evidence so an external reviewer can verify a gate
+independently:
+
+- the immutable image URI and digest and the execution SHA;
+- per-package manifests with input hashes;
+- the deployment preflight output;
+- the reviewed generated AWS commands;
+- Batch parent and child `describe-jobs` exports and the job definition
+  revision;
+- the S3 output listing;
+- every `output.h5.gz` with its SHA-256;
+- the analysis artifacts; and
+- the gate approval file.
+
 ## Security and evidence handling
 
 - Never print, echo, commit, or paste credentials.
