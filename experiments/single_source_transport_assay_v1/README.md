@@ -79,6 +79,12 @@ shared support, hence its narrower predeclared margin.
 authentication, missing paired times), 1 when the assay ran and the predeclared
 ordering failed. The assay result validates the intrinsic transport law; it does **not** by itself calibrate or select a mucin-charge amplitude. A pass must be combined with the already-passed ecological Stage C population result (amplitudes 0/15/60) to support **amplitude 15 as a conditional D choice**. Record `C_transport_gate=true` only for the assay's exact execution SHA and image digest, then regenerate D with amplitude 15 on those same identities. Until that recorded pass, D remains blocked. Any code/image revision requires a new assay.
 
+**First AWS Batch attempt (job `231c8870…`, SHA `d7b16c3`):** scientific ordering
+passed on all 36 paired times; the gate was `BLOCKED` solely because inputs
+omitted `metabolism.uptake_limit=delivery`, so provenance wrote `device` instead
+of `device_delivery`. See `analysis/ASSAY_RUN_2026-09-07.md`. The generator now
+sets delivery; resubmit after merge+rebuild before recording the gate.
+
 ## Running it
 
 Planning generation (no real SHA or digest, never submits anything):

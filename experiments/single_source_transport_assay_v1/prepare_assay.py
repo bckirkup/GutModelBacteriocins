@@ -49,10 +49,10 @@ def git(*args: str) -> str:
 
 def dump(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = json.dumps(obj, indent=2, sort_keys=True) + "\n"
+    data = (json.dumps(obj, indent=2, sort_keys=True) + "\n").encode("utf-8")
     handle, tmp = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
     try:
-        with os.fdopen(handle, "w") as stream:
+        with os.fdopen(handle, "wb") as stream:
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
@@ -155,6 +155,9 @@ def config(
         "carbon_z_gradient": False,
         "oxygen.k_ROS": 0.0,
         "dysbiosis_threshold": 1.0e10,
+        # Required so /run_provenance/chemistry_placement records device_delivery
+        # (GPU diffusion alone writes "device"; the contract authenticates delivery).
+        "metabolism.uptake_limit": "delivery",
         "gpu_enabled": True,
         "gpu_device_id": 0,
         "chemistry.toxin_evaluation": "grid",

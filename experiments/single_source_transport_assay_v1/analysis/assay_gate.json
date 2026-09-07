@@ -1,0 +1,40 @@
+{
+  "status": "BLOCKED",
+  "single_source_transport_gate": false,
+  "C_transport_gate": false,
+  "checks": {
+    "all_outputs_returned": true,
+    "all_runs_authenticated": false,
+    "single_source_per_producer_run": true,
+    "source_identical_across_amplitudes": true,
+    "paired_times_complete": true,
+    "n_paired_snapshot_times": 36,
+    "intrinsic_radii_ordered_0_gt_15_gt_60": true,
+    "nulls_toxin_free": true
+  },
+  "blockers": [
+    "SS_amp0_producer_s20260911: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp0_producer_s20260913: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp0_producer_s20260917: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp15_producer_s20260911: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp15_producer_s20260913: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp15_producer_s20260917: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp60_producer_s20260911: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp60_producer_s20260913: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp60_producer_s20260917: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp60_toxin_free_null_s20260911: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp60_toxin_free_null_s20260913: chemistry_placement 'device' != 'device_delivery'",
+    "SS_amp60_toxin_free_null_s20260917: chemistry_placement 'device' != 'device_delivery'"
+  ],
+  "criteria": [
+    "all 12 runs returned an output file",
+    "every run authenticates against the execution source SHA, device_delivery, one rank, its seed and amplitude, kd_corrinoid_btuB=1e-4, b12_initial_conc=1e-3, burst_release_tau=300 s, the ColE1 pI/diffusion/burst-size identity, and the grid/provenance schedules",
+    "every producer run recorded exactly one strain-1 LYSIS provenance event carrying exact event timing",
+    "the source position is identical across the three amplitudes of a seed to 1e-12 m and its in-domain radial support is at least 40 um",
+    "paired snapshot times are complete across the three amplitudes of every seed",
+    "at every paired time in the analysis window and every seed, profile r50 decreases with amplitude 0 > 15 > 60 by at least 0.5 um and profile r90 by at least 0.1 um",
+    "at every paired time in the analysis window and every seed, the 0-10 um near-field mean increases with amplitude 0 < 15 < 60",
+    "every analyzed shell contains at least one voxel centre and every analyzed value is finite",
+    "the toxin-free nulls hold |bacteriocin_BtuB| <= 1e-15 everywhere"
+  ]
+}

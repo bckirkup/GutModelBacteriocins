@@ -36,7 +36,7 @@
     "id": "single_source_transport_gate",
     "criteria": [
       "all 12 runs returned an output file",
-      "every run authenticates against the execution source SHA, device_delivery, one rank, its seed and amplitude, kd_corrinoid_btuB=1e-4, b12_initial_conc=1e-3, burst_release_tau=300 s, the ColE1 pI/diffusion/burst-size identity, and the grid/provenance schedules",
+      "every run authenticates against the execution source SHA, device_delivery (requires metabolism.uptake_limit=delivery so the device delivery path is exercised), one rank, its seed and amplitude, kd_corrinoid_btuB=1e-4, b12_initial_conc=1e-3, burst_release_tau=300 s, the ColE1 pI/diffusion/burst-size identity, and the grid/provenance schedules",
       "every producer run recorded exactly one strain-1 LYSIS provenance event carrying exact event timing",
       "the source position is identical across the three amplitudes of a seed to 1e-12 m and its in-domain radial support is at least 40 um",
       "paired snapshot times are complete across the three amplitudes of every seed",

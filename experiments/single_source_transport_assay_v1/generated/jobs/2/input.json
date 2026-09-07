@@ -83,6 +83,7 @@
   ],
   "kd_colicinE_btuB": 5e-07,
   "kd_corrinoid_btuB": 0.0001,
+  "metabolism.uptake_limit": "delivery",
   "motility.enabled": false,
   "mucus_thickness": 0.0001,
   "output_interval": 300.0,

@@ -209,6 +209,8 @@ def test_generated_assay_package_shape(runs, contract):
         cfg = json.loads((ASSAY / run["input_relpath"]).read_text())
         assert cfg["seed"] == run["seed"]
         assert cfg["bacteriocin.mucin_charge.amplitude"] == pytest.approx(run["amplitude"])
+        assert cfg["metabolism.uptake_limit"] == "delivery"
+        assert cfg["gpu_enabled"] is True
         assert cfg["hdf5"]["schedule"]["provenance"] == 1
         assert cfg["hdf5"]["schedule"]["grid_species"] == ["bacteriocin_BtuB"]
 

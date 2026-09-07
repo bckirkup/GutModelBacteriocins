@@ -65,7 +65,9 @@ def main():
   if by_gate['B_pass'].get('execution_source_sha')!='b884cc54b1c0684c079a90195c031e388fe70534' or not approx(by_gate['B_pass'].get('selected_b12_initial_conc_mol_m3'),1e-3): fail('authoritative Stage B decision drift')
   if by_gate['C_population_gate'].get('execution_source_sha')!='3f176b26c0d18a22a61db218e56106b1355b781e' or by_gate['C_population_gate'].get('amplitudes_tested')!=[0,15,60]: fail('authoritative ecological Stage C decision drift')
   if by_gate['PR416_intrinsic_transport_gate'].get('status')!='INVALID_FAILED_SUPERSEDED': fail('PR416 gate must remain superseded')
-  if by_gate['single_source_transport_assay_v1'].get('status')!='PENDING': fail('revised transport assay must remain pending in planning patch')
+  if by_gate['single_source_transport_assay_v1'].get('status') not in (
+      'PENDING', 'PENDING_RESUBMIT'):
+    fail('revised transport assay must remain pending until a recorded pass')
   if by_gate['D_release'].get('status')!='BLOCKED' or by_gate['D_release'].get('conditional_selected_mucin_charge_amplitude')!=15: fail('Stage D handoff must remain blocked/conditional')
  except Exception as e: fail(f'authoritative decision record missing/unreadable: {e}')
  expected={'Q':2,'A':24,'B':12,'C':12,'D':15}; configs={}; ids=[]; signatures=[]; image_digests=set(); execution_shas=set(); baseline_shas=set()
