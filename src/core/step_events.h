@@ -21,6 +21,11 @@ enum class ProvenanceCause : Int {
 
 struct KillProvenanceEvent {
   TagID victim_id = 0;
+  // Simulation clock at the kill, stamped by Simulation::record_kill_provenance.
+  // Same clock as ToxinBurstSource::creation_time, so a LYSIS event's
+  // event_time_s is the release-window origin of the burst it spawned.
+  Int event_step = 0;
+  Real event_time_s = 0.0;
   Vec3 position{};
   Int strain = 0;
   ProvenanceCause cause = ProvenanceCause::COLICIN;

@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
-"""Source-centred Stage C bacteriocin transport profiles.
+"""Source-centred Stage C bacteriocin transport diagnostics.
 
 Builds radial profiles around active producer-lysis burst sources using the
 model's exponential release window (tau=300 s, prune after 5 tau = 1500 s),
 nearest-source voxel assignment, and active-source-weight normalization.
+
+The nearest-source radii this program reports are diagnostics only and cannot
+pass a transport gate: distance to the nearest of many sources measures source
+packing as well as diffusion, and Stage C source counts differ across amplitude
+arms by up to eightfold at matched times.  The transport gate lives in
+``experiments/single_source_transport_assay_v1``, which controls the source
+geometry instead of correcting for it.  Lysis times are read from exact
+provenance ``event_time_s``; outputs that predate that field are refused rather
+than reinterpreted through their provenance-export step.
 """
 from __future__ import annotations
 
@@ -31,9 +40,18 @@ except ImportError as exc:  # pragma: no cover
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT.parents[1] / "python"))
 from gut_ibm_tools.path_utils import prepare_output_directory
+from gut_ibm_tools.transport_metrics import (
+    ExpectedRun,
+    TransportInputError,
+    authenticate_run,
+    paired_times,
+    read_lysis_sources,
+)
 
 CAUSE_LYSIS = 5
 PRODUCER_STRAIN = 1
+SEEDS = (20260911, 20260913, 20260917)
+AMPLITUDES = (0.0, 15.0, 60.0)
 BURST_TAU_S = 300.0
 BURST_PRUNE_S = 5.0 * BURST_TAU_S  # 1500 s
 BIN_EDGES_UM = np.array([0.0, 10.0, 25.0, 50.0, 75.0, 100.0], dtype=float)
@@ -90,25 +108,15 @@ def voxel_centers(nx: int, ny: int, nz: int, dx: float):
     return xx, yy, zz
 
 
-def load_lysis_sources(h, bio_dt: float):
-    """Return list of (t_s, x, y, z) for producer lysis events."""
-    out = []
-    if "provenance" not in h:
-        return out
-    for sk in steps(h["provenance"]):
-        g = h["provenance"][sk]
-        if "cause" not in g or g["cause"].shape[0] == 0:
-            continue
-        cause = np.asarray(g["cause"][()])
-        strain = np.asarray(g["strain"][()])
-        x = np.asarray(g["x"][()], dtype=float)
-        y = np.asarray(g["y"][()], dtype=float)
-        z = np.asarray(g["z"][()], dtype=float)
-        t = float(step_index(sk) * bio_dt)
-        mask = (cause == CAUSE_LYSIS) & (strain == PRODUCER_STRAIN)
-        for i in np.flatnonzero(mask):
-            out.append((t, float(x[i]), float(y[i]), float(z[i])))
-    return out
+def load_lysis_sources(h):
+    """Return list of (t_s, x, y, z) for producer lysis events.
+
+    Times are the exact simulation clock of each event.  A file whose
+    provenance layer carries no event timing raises TransportInputError; the
+    provenance-export step is up to one export interval later than the event,
+    which under the 300 s release decay can inflate a source's weight severalfold.
+    """
+    return [(s.time_s, s.x, s.y, s.z) for s in read_lysis_sources(h, PRODUCER_STRAIN)]
 
 
 def active_sources(sources, t_grid: float):
@@ -249,9 +257,24 @@ def stage_c_runs(results_root: Path):
                 "output_path": find_output(results_root, entry["array_index"]),
                 "burst_release_tau": float(cfg.get("burst_release_tau", BURST_TAU_S)),
                 "burst_size_cfg": cfg.get("burst_size"),  # may be absent (plasmid default)
+                "execution_source_sha": manifest["execution_source_sha"],
+                "hdf5_schedule": {
+                    key: int(value)
+                    for key, value in cfg["hdf5"]["schedule"].items()
+                    if key != "grid_species"
+                },
             }
         )
     return runs
+
+
+def expected_run(run) -> ExpectedRun:
+    return ExpectedRun(
+        execution_source_sha=run["execution_source_sha"],
+        seed=int(run["seed"]),
+        amplitude=float(run["amplitude"]),
+        hdf5_schedule=run["hdf5_schedule"],
+    )
 
 
 def analyze_null(run) -> dict:
@@ -276,6 +299,7 @@ def analyze_null(run) -> dict:
             "run_id": run["run_id"],
             "seed": run["seed"],
             "status": "ok",
+            "authentication_violations": authenticate_run(h, expected_run(run)),
             "n_grid_snapshots": n_grids,
             "max_abs_bacteriocin_BtuB": max_abs,
             "toxin_free": max_abs <= NULL_ABS_TOL,
@@ -299,7 +323,13 @@ def analyze_producer(run) -> dict:
 
     h, tmp = open_h5(path)
     try:
-        sources = load_lysis_sources(h, run["bio_dt"])
+        violations = authenticate_run(h, expected_run(run))
+        try:
+            sources = load_lysis_sources(h)
+        except TransportInputError as exc:
+            return {**base, "status": "refused", "refusal": str(exc),
+                    "authentication_violations": violations, "snapshots": [],
+                    "n_excluded_no_source": 0}
         grid_keys = steps(h["grid"])
         sample = np.asarray(h["grid"][grid_keys[0]]["bacteriocin_BtuB"][()])
         nz, ny, nx = sample.shape
@@ -365,6 +395,7 @@ def analyze_producer(run) -> dict:
         return {
             **base,
             "status": "ok",
+            "authentication_violations": violations,
             "burst_release_tau": burst_tau,
             "burst_size": burst_size,
             "n_grid_snapshots": len(grid_keys),
@@ -510,7 +541,7 @@ def main() -> int:
 
     # Across-seed summary per amplitude
     amp_summary = {}
-    for amp in (0.0, 15.0, 60.0):
+    for amp in AMPLITUDES:
         rows = [r for r in seed_level if r["amplitude"] == amp]
         seeds = [r["seed"] for r in rows]
 
@@ -559,8 +590,8 @@ def main() -> int:
     # Gate checks
     null_ok = all(n.get("toxin_free") for n in null_reports) and len(null_reports) == 3
     snapshot_ok = True
-    for amp in (0.0, 15.0, 60.0):
-        for seed in (20260911, 20260913, 20260917):
+    for amp in AMPLITUDES:
+        for seed in SEEDS:
             nq = next(
                 (r["n_qualified_snapshots"] for r in seed_level if r["amplitude"] == amp and r["seed"] == seed),
                 0,
@@ -572,11 +603,11 @@ def main() -> int:
     r50_order_ok = True
     r90_order_ok = True
     order_detail = {}
-    for seed in (20260911, 20260913, 20260917):
+    for seed in SEEDS:
         near = []
         r50 = []
         r90 = []
-        for amp in (0.0, 15.0, 60.0):
+        for amp in AMPLITUDES:
             row = next((r for r in seed_level if r["amplitude"] == amp and r["seed"] == seed), None)
             near.append(None if row is None else row["near_field_0_10"])
             r50.append(None if row is None else row["r50_um"])
@@ -596,8 +627,54 @@ def main() -> int:
         r50_order_ok = r50_order_ok and r50_ok
         r90_order_ok = r90_order_ok and r90_ok
 
-    gate_pass = bool(
-        null_ok and snapshot_ok and near_order_ok and r50_order_ok and r90_order_ok and law_ok and burst_tau_ok
+    # Paired snapshot times across the amplitude arms of a seed. A missing
+    # paired time blocks rather than letting each arm's median use its own times.
+    pairing = {}
+    paired_ok = True
+    for seed in SEEDS:
+        times_by_amp = {
+            amp: sorted(
+                row["t_grid_s"]
+                for row in profile_rows
+                if float(row["amplitude"]) == amp and int(row["seed"]) == seed
+            )
+            for amp in AMPLITUDES
+        }
+        pairs = paired_times(times_by_amp)
+        pairing[str(seed)] = {
+            "paired_times_s": pairs.common_s,
+            "missing_times_s": {str(amp): times for amp, times in pairs.missing_s.items()},
+            "complete": pairs.complete,
+        }
+        paired_ok = paired_ok and pairs.complete and bool(pairs.common_s)
+
+    authenticated = all(
+        not report.get("authentication_violations")
+        for report in producer_reports + null_reports
+    )
+    outputs_ok = all(
+        report.get("status") != "missing_output"
+        for report in producer_reports + null_reports
+    )
+    exact_times_ok = all(report.get("status") != "refused" for report in producer_reports)
+
+    # The transport gate is not decidable from this stage: its radii are
+    # nearest-source distances under uncontrolled, amplitude-dependent source
+    # density. Only the single-source assay can pass a transport gate.
+    gate_pass = False
+    blockers = []
+    if not outputs_ok:
+        blockers.append("one or more runs have no returned output file")
+    if not authenticated:
+        blockers.append("one or more runs failed transport-input authentication")
+    if not exact_times_ok:
+        blockers.append("one or more runs lack exact provenance event timing")
+    if not paired_ok:
+        blockers.append("amplitude arms do not share every analyzed snapshot time")
+    blockers.append(
+        "gate metric retired: nearest-source radii are confounded by active-source "
+        "density (Spearman ~-0.96 against r50); the transport gate is decided by "
+        "experiments/single_source_transport_assay_v1"
     )
 
     metrics = {
@@ -626,6 +703,11 @@ def main() -> int:
         "amplitude_summary": amp_summary,
         "transport_law": transport_law,
         "order_checks_by_seed": order_detail,
+        "authentication_violations": {
+            report["run_id"]: report.get("authentication_violations") or []
+            for report in producer_reports + null_reports
+        },
+        "paired_times_by_seed": pairing,
         "n_profile_rows": len(profile_rows),
     }
     (args.output_dir / "transport_metrics.json").write_text(
@@ -633,9 +715,12 @@ def main() -> int:
     )
 
     gate = {
-        "status": "PASS" if gate_pass else "FAIL",
+        "status": "BLOCKED",
         "C_transport_gate": gate_pass,
         "checks": {
+            "all_runs_authenticated": authenticated,
+            "exact_provenance_event_timing": exact_times_ok,
+            "paired_snapshot_times_complete": paired_ok,
             "nulls_toxin_free": null_ok,
             "ge_2_qualified_snapshots_per_amp_seed": snapshot_ok,
             "near_field_ordered_0_le_15_le_60_all_seeds": near_order_ok,
@@ -644,13 +729,15 @@ def main() -> int:
             "transport_law_match": law_ok,
             "burst_release_tau_identical": burst_tau_ok,
         },
-        "selected_mucin_charge_amplitude_if_pass": 15,
+        "blockers": blockers,
         "null_max_abs": {n["run_id"]: n.get("max_abs_bacteriocin_BtuB") for n in null_reports},
         "order_detail": order_detail,
         "notes": [
-            "r50/r90 are volume-weighted concentration-mass radii vs nearest active source.",
-            "Early sparse-source snapshots have large Voronoi cells and inflate radii; this can break amplitude ordering of seed medians even when late, density-matched snapshots are ordered.",
+            "r50/r90 are volume-weighted concentration-mass radii vs nearest active source and are diagnostics, not gate inputs.",
+            "Distance to the nearest of many sources measures source packing as well as diffusion; Stage C source counts differ across amplitudes by up to eightfold at matched times.",
             "r50_shape_um/r90_shape_um are diagnostic shell-mean (measure dr) radii and are not gate inputs.",
+            "Lysis times are exact provenance event times; outputs without event_time_s are refused.",
+            "The ecological amplitude effect (near-field ordering, producer-null slopes) remains exploratory support, not an isolated transport validation.",
         ],
     }
     (args.output_dir / "transport_gate.json").write_text(
@@ -663,8 +750,18 @@ def main() -> int:
         json.dumps(jsonable(metrics), indent=2, allow_nan=False) + "\n"
     )
 
-    print(json.dumps({"transport_gate": gate["status"], "C_transport_gate": gate_pass, "n_profile_rows": len(profile_rows)}, indent=2))
-    return 0 if gate_pass else 1
+    print(
+        json.dumps(
+            {
+                "transport_gate": gate["status"],
+                "C_transport_gate": gate_pass,
+                "blockers": blockers,
+                "n_profile_rows": len(profile_rows),
+            },
+            indent=2,
+        )
+    )
+    return 2
 
 
 if __name__ == "__main__":

@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "assay_id": "single_source_transport_assay_v1",
+  "purpose": "Measure the intrinsic mucin-charge dependence of colicin transport around one identical fixed source, replacing the source-density-confounded nearest-source radius used by the receptor-selection Stage C transport analysis.",
+  "design": {
+    "arms": {
+      "producer": "one ColE1 producer plus three toxin-blind bystanders",
+      "toxin_free_null": "identical geometry with the producer's ColE1 plasmid removed"
+    },
+    "axes": {
+      "bacteriocin.mucin_charge.amplitude": [0, 15, 60]
+    },
+    "seeds": [20260911, 20260913, 20260917],
+    "jobs": 12,
+    "controlled_source_geometry": [
+      "Exactly one plasmid-bearing cell exists, so exactly one release source can ever exist.",
+      "All cells have mu_max=0, so no division creates a second producer and no cell moves by growth.",
+      "Bystanders carry no bacteriocin locus, so they are never SOS-induced and never release toxin; they exist only to keep the global agent count above the population-stop threshold.",
+      "Bystander BtuB expression is zero, so the toxin field has no receptor sink and the measured profile is transport, not consumption.",
+      "Initial placement is drawn before any amplitude-dependent state is consumed, so the source position is identical across the three amplitude arms of one seed; the analyzer asserts this rather than assuming it.",
+      "Initial placement is confined to a 2 um band at mid-depth so the analyzed radial support is fully inside the domain for every draw."
+    ]
+  },
+  "predeclared_analysis": {
+    "source_time": "The exact simulation clock of the lysis event, read from provenance event_time_s; provenance-export time is refused.",
+    "analysis_window_s": "event_time_s < t <= event_time_s + 1500 (five release timescales); the snapshot coincident with the lysis step is excluded because the grid may be exported before the burst's first chemistry application",
+    "shell_averaging": "Fixed 2 um spherical shells centred on the source; a shell value is the unweighted arithmetic mean of the concentrations of the voxel centres with radius in [r_lo, r_hi) (measure dr).",
+    "radial_support_um": 40.0,
+    "shell_width_um": 2.0,
+    "boundary_handling": "Minimum-image distance in periodic x and y, plain distance in non-periodic z, no image sources. A requested support larger than the in-domain support is an error, never a silent trim.",
+    "profile_r50_r90": "Shell means are converted to radial mass density mean(r) * r^2 and accumulated over the support; rXX is the radius where the normalized cumulative mass first reaches XX/100, linearly interpolated between shell centres and from F(0)=0 inside the first shell.",
+    "near_field_um": [0.0, 10.0],
+    "paired_times": "Amplitude arms of one seed are compared only at snapshot times all three arms observed. A missing paired time blocks the assay; per-arm medians are never taken over different times."
+  },
+  "gate": {
+    "id": "single_source_transport_gate",
+    "criteria": [
+      "all 12 runs returned an output file",
+      "every run authenticates against the execution source SHA, device_delivery, one rank, its seed and amplitude, kd_corrinoid_btuB=1e-4, b12_initial_conc=1e-3, burst_release_tau=300 s, the ColE1 pI/diffusion/burst-size identity, and the grid/provenance schedules",
+      "every producer run recorded exactly one strain-1 LYSIS provenance event carrying exact event timing",
+      "the source position is identical across the three amplitudes of a seed to 1e-12 m and its in-domain radial support is at least 40 um",
+      "paired snapshot times are complete across the three amplitudes of every seed",
+      "at every paired time in the analysis window and every seed, profile r50 decreases with amplitude 0 > 15 > 60 by at least 0.5 um and profile r90 by at least 0.1 um",
+      "at every paired time in the analysis window and every seed, the 0-10 um near-field mean increases with amplitude 0 < 15 < 60",
+      "every analyzed shell contains at least one voxel centre and every analyzed value is finite",
+      "the toxin-free nulls hold |bacteriocin_BtuB| <= 1e-15 everywhere"
+    ],
+    "order_margin_r50_um": 0.5,
+    "order_margin_r90_um": 0.1,
+    "margin_provenance": "Margins are set from a three-amplitude single-seed pilot of this exact configuration (600 s horizon, seed 20260913): r50 28.72/27.22/25.44 um and r90 37.25/36.95/36.51 um, so the separations to exceed are ~1.5 um for r50 and ~0.30 um for r90. r90 separates weakly because the outer profile is dominated by the shared radial support, which is why r50 carries the wider margin.",
+    "null_abs_tol": 1e-15,
+    "position_tol_m": 1e-12,
+    "consumes": "nothing; this assay is an instrument check of the transport law and does not by itself promote a mucin-charge amplitude"
+  },
+  "runtime": {
+    "mpi_ranks": 1,
+    "gpu_required": true,
+    "chemistry_placement": "device_delivery",
+    "attempt_timeout_s": 3600
+  }
+}

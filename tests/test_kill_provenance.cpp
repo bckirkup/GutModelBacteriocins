@@ -112,6 +112,23 @@ void test_lysis_provenance() {
       "provenance/step_{:06}/cause", sim.step_count());
   const auto causes = read_int_vector(file, provenance_path);
   assert(count_cause(causes, ProvenanceCause::LYSIS) == 1);
+
+  const std::string group = std::format("provenance/step_{:06}", sim.step_count());
+  const auto event_step = read_double_vector(file, group + "/event_step");
+  const auto event_time = read_double_vector(file, group + "/event_time_s");
+  assert(event_step.size() == causes.size());
+  assert(event_time.size() == causes.size());
+  const auto& bursts = sim.toxin_bursts();
+  for (size_t i = 0; i < causes.size(); ++i) {
+    assert(event_time[i] == event_step[i] * cfg.time.bio_dt);
+    assert(event_step[i] < static_cast<double>(sim.step_count()));
+    if (causes[i] != to_underlying(ProvenanceCause::LYSIS)) continue;
+    bool matched_burst = false;
+    for (const auto& burst : bursts) {
+      if (burst.creation_time == event_time[i]) matched_burst = true;
+    }
+    assert(matched_burst);
+  }
   H5Fclose(file);
 }
 
