@@ -2586,7 +2586,10 @@ void Simulation::add_toxin_burst(const ToxinBurstSource& burst) {
 }
 
 void Simulation::record_kill_provenance(const KillProvenanceEvent& event) {
-  event_ledger_.kill_provenance.push_back(event);
+  KillProvenanceEvent stamped = event;
+  stamped.event_step = clock_.step_count;
+  stamped.event_time_s = clock_.time;
+  event_ledger_.kill_provenance.push_back(stamped);
 }
 
 void Simulation::prune_toxin_bursts(Real current_time) {

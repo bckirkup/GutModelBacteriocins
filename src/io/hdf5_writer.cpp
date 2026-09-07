@@ -1328,6 +1328,8 @@ void HDF5Writer::write_provenance_layer(Simulation& sim,
   const auto local_n = static_cast<hsize_t>(events.size());
 
   std::vector<int64_t> victim_id(events.size());
+  std::vector<int64_t> event_step(events.size());
+  std::vector<double> event_time_s(events.size());
   std::vector<double> x(events.size());
   std::vector<double> y(events.size());
   std::vector<double> z(events.size());
@@ -1342,6 +1344,8 @@ void HDF5Writer::write_provenance_layer(Simulation& sim,
   for (size_t i = 0; i < events.size(); ++i) {
     const auto& event = events[i];
     victim_id[i] = event.victim_id;
+    event_step[i] = event.event_step;
+    event_time_s[i] = event.event_time_s;
     x[i] = event.position[0];
     y[i] = event.position[1];
     z[i] = event.position[2];
@@ -1359,6 +1363,10 @@ void HDF5Writer::write_provenance_layer(Simulation& sim,
 
   write_dataset_1d(fid, group + "/victim_id", H5T_NATIVE_INT64,
                    victim_id.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/event_step", H5T_NATIVE_INT64,
+                   event_step.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/event_time_s", H5T_NATIVE_DOUBLE,
+                   event_time_s.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/x", H5T_NATIVE_DOUBLE, x.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/y", H5T_NATIVE_DOUBLE, y.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/z", H5T_NATIVE_DOUBLE, z.data(), local_n, cfg_);

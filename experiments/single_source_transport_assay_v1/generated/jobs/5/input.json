@@ -1,0 +1,96 @@
+{
+  "_assay": {
+    "amplitude": 15.0,
+    "arm": "producer",
+    "assay_id": "single_source_transport_assay_v1",
+    "cole1_identity": {
+      "burst_size": 100000.0,
+      "diff_coeff": 4e-11,
+      "pI": 9.0
+    },
+    "execution_source_sha": "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_ASSAY_COMMIT",
+    "run_id": "SS_amp15_producer_s20260917",
+    "seed": 20260917
+  },
+  "_comment": [
+    "Single-source transport assay: one identical fixed release source per seed.",
+    "Execution source: EXECUTION_SOURCE_SHA_REQUIRED_AFTER_ASSAY_COMMIT.",
+    "Runtime /run_provenance/git_sha must match execution_source_sha."
+  ],
+  "b12_initial_conc": 0.001,
+  "bacteriocin.mucin_charge.amplitude": 15.0,
+  "bio_dt": 60.0,
+  "burst_release_tau": 300.0,
+  "carbon_z_gradient": false,
+  "chemistry.toxin_evaluation": "grid",
+  "chemistry.toxin_lumping": "per_receptor",
+  "crypts_enabled": false,
+  "distal_transit": 1000000000.0,
+  "domain_x": 0.0001,
+  "domain_y": 0.0001,
+  "domain_z": 0.0001,
+  "dysbiosis_threshold": 10000000000.0,
+  "fixes": [
+    "bacteriocin",
+    "receptor"
+  ],
+  "gpu_device_id": 0,
+  "gpu_enabled": true,
+  "grid_dx": 2e-06,
+  "hdf5": {
+    "compression": "gzip",
+    "compression_level": 4,
+    "enabled": true,
+    "schedule": {
+      "agents": 10,
+      "genome": 10,
+      "grid": 2,
+      "grid_species": [
+        "bacteriocin_BtuB"
+      ],
+      "lineage": 0,
+      "provenance": 1,
+      "summary": 1
+    }
+  },
+  "hdf5_file": "output.h5",
+  "initial_population.placement": "z_slab",
+  "initial_population.z_max": 5.1e-05,
+  "initial_population.z_min": 4.9000000000000005e-05,
+  "initial_strains": [
+    {
+      "conjugative": false,
+      "count": 1,
+      "mu_max": 0.0,
+      "plasmids": [
+        "ColE1"
+      ],
+      "receptor_expression": {
+        "BtuB": 0.0
+      },
+      "type": 1
+    },
+    {
+      "conjugative": false,
+      "count": 3,
+      "mu_max": 0.0,
+      "plasmids": [],
+      "receptor_expression": {
+        "BtuB": 0.0
+      },
+      "type": 2
+    }
+  ],
+  "kd_colicinE_btuB": 5e-07,
+  "kd_corrinoid_btuB": 0.0001,
+  "motility.enabled": false,
+  "mucus_thickness": 0.0001,
+  "output_interval": 300.0,
+  "oxygen.k_ROS": 0.0,
+  "peristaltic_enabled": false,
+  "radial_turnover": 1000000000.0,
+  "seed": 20260917,
+  "sos_basal_rate": 1.0,
+  "sos_lysis_prob": 0.0,
+  "total_time": 3600.0
+}
