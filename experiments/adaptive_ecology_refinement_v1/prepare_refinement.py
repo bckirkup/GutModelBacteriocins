@@ -4,19 +4,22 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
-import os
-import re
 import shutil
-import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
 sys.path.insert(0, str(REPO / "python"))
+from gut_ibm_tools.experiment_packaging import (
+    require_ancestor,
+    require_checkout_head,
+    require_immutable_identity,
+    require_package_clean,
+    sha256_file,
+    write_json_atomic,
+)
 from gut_ibm_tools.transport_metrics import (
     COLE1_LIBRARY_BURST_SIZE,
     COLE1_LIBRARY_DIFF_COEFF,
@@ -27,8 +30,6 @@ CONTRACT_FILENAME = "refinement_contract.json"
 CONTRACT = json.loads((ROOT / CONTRACT_FILENAME).read_text())
 EXEC_PLACEHOLDER = CONTRACT["execution_source_sha_policy"]["planning_placeholder"]
 IMAGE_PLACEHOLDER = CONTRACT["digest_policy"]["planning_placeholder"]
-SHA40 = re.compile(r"[0-9a-f]{40}")
-IMAGE_RE = re.compile(CONTRACT["digest_policy"]["image_digest_pattern"])
 SEEDS = CONTRACT["design"]["seeds"]
 AMPLITUDES = CONTRACT["design"]["axes"]["bacteriocin.mucin_charge.amplitude"]
 NULL_AMPLITUDE = float(CONTRACT["design"]["null_amplitude"])
@@ -53,77 +54,11 @@ PACKAGE_FILES = [
 ]
 
 
-def git(*args: str) -> str:
-    return subprocess.check_output(
-        ["git", "-C", str(REPO), *args], text=True, stderr=subprocess.STDOUT
-    ).strip()
-
-
-def dump(path: Path, obj: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data = (json.dumps(obj, indent=2, sort_keys=True) + "\n").encode("utf-8")
-    handle, tmp = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
-    try:
-        with os.fdopen(handle, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-
-
-def digest(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def validate_deployment_identity(execution_sha: str, image_digest: str) -> None:
-    if not SHA40.fullmatch(execution_sha or ""):
-        raise SystemExit(
-            "REFUSED: --deployment requires --execution-source-sha as a full "
-            "lowercase 40-hex commit"
-        )
-    if not IMAGE_RE.fullmatch(image_digest or ""):
-        raise SystemExit(
-            "REFUSED: --deployment requires --image-digest <repo>@sha256:<64 hex>"
-        )
-    try:
-        inside = git("rev-parse", "--is-inside-work-tree")
-        head = git("rev-parse", "HEAD")
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise SystemExit(
-            f"REFUSED: deployment generation requires a git checkout: {exc}"
-        ) from exc
-    if inside != "true" or head != execution_sha:
-        raise SystemExit(
-            f"REFUSED: --execution-source-sha {execution_sha} does not match git HEAD {head}"
-        )
-    ancestor = CONTRACT["lineage"]["required_ancestor_sha"]
-    try:
-        git("cat-file", "-e", ancestor + "^{commit}")
-        ancestry = subprocess.call(
-            ["git", "-C", str(REPO), "merge-base", "--is-ancestor", ancestor, head],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise SystemExit(
-            f"REFUSED: cannot verify required ancestry of {ancestor}: {exc}"
-        ) from exc
-    if ancestry != 0:
-        raise SystemExit(
-            f"REFUSED: required ancestor {ancestor} is not an ancestor of HEAD {head}"
-        )
-    relative = ROOT.relative_to(REPO)
-    dirty = git(
-        "status", "--porcelain", "--", *[str(relative / name) for name in PACKAGE_FILES]
-    )
-    if dirty:
-        raise SystemExit(
-            "REFUSED: refinement package files differ from HEAD; commit them before "
-            "deployment generation:\n" + dirty
-        )
+    require_immutable_identity(execution_sha, image_digest)
+    head = require_checkout_head(REPO, execution_sha)
+    require_ancestor(REPO, CONTRACT["lineage"]["required_ancestor_sha"], head)
+    require_package_clean(REPO, ROOT, PACKAGE_FILES)
 
 
 def strain(strain_type: int, *, plasmids: list[str]) -> dict:
@@ -241,13 +176,50 @@ def planned_runs(execution_sha: str) -> list[tuple[str, dict]]:
     return runs
 
 
-def main() -> int:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--deployment", action="store_true")
     parser.add_argument("--execution-source-sha")
     parser.add_argument("--image-digest", default=IMAGE_PLACEHOLDER)
     parser.add_argument("--clean", action="store_true")
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def manifest_document(
+    entries: list[dict], execution_sha: str, image_digest: str
+) -> dict:
+    runtime = CONTRACT["runtime"]
+    return {
+        "schema_version": 2,
+        "refinement_id": CONTRACT["refinement_id"],
+        "refinement_contract_sha256": sha256_file(ROOT / CONTRACT_FILENAME),
+        "execution_source_sha": execution_sha,
+        "container_image_digest": image_digest,
+        "mpi_ranks": runtime["mpi_ranks"],
+        "gpu_required": runtime["gpu_required"],
+        "chemistry_placement": runtime["chemistry_placement"],
+        "attempt_timeout_s": runtime["attempt_timeout_s"],
+        "gate": CONTRACT["gate"]["id"],
+        "runs": entries,
+    }
+
+
+def manifest_entry(index: int, run_id: str, cfg: dict, input_path: Path) -> dict:
+    meta = cfg["_refinement"]
+    return {
+        "array_index": index,
+        "run_id": run_id,
+        "arm": meta["arm"],
+        "seed": meta["seed"],
+        "amplitude": meta["amplitude"],
+        "input_relpath": input_path.relative_to(ROOT).as_posix(),
+        "input_sha256": sha256_file(input_path),
+        "output_relpath": f"generated/results/{index}/output.h5.gz",
+    }
+
+
+def main() -> int:
+    args = parse_args()
 
     execution_sha = args.execution_source_sha or EXEC_PLACEHOLDER
     if args.deployment:
@@ -265,51 +237,24 @@ def main() -> int:
     entries = []
     for index, (run_id, cfg) in enumerate(planned_runs(execution_sha)):
         input_path = generated / "jobs" / str(index) / "input.json"
-        dump(input_path, cfg)
-        entries.append(
-            {
-                "array_index": index,
-                "run_id": run_id,
-                "arm": cfg["_refinement"]["arm"],
-                "seed": cfg["_refinement"]["seed"],
-                "amplitude": cfg["_refinement"]["amplitude"],
-                "input_relpath": input_path.relative_to(ROOT).as_posix(),
-                "input_sha256": digest(input_path),
-                "output_relpath": f"generated/results/{index}/output.h5.gz",
-            }
-        )
+        write_json_atomic(input_path, cfg)
+        entries.append(manifest_entry(index, run_id, cfg, input_path))
 
     if len(entries) != JOBS:
         raise SystemExit(
             f"REFUSED: generated {len(entries)} runs but the contract declares {JOBS}"
         )
 
-    dump(
+    write_json_atomic(
         generated / "manifest.json",
-        {
-            "schema_version": 2,
-            "refinement_id": CONTRACT["refinement_id"],
-            "refinement_contract_sha256": digest(ROOT / CONTRACT_FILENAME),
-            "execution_source_sha": execution_sha,
-            "container_image_digest": args.image_digest,
-            "mpi_ranks": CONTRACT["runtime"]["mpi_ranks"],
-            "gpu_required": CONTRACT["runtime"]["gpu_required"],
-            "chemistry_placement": CONTRACT["runtime"]["chemistry_placement"],
-            "attempt_timeout_s": CONTRACT["runtime"]["attempt_timeout_s"],
-            "gate": CONTRACT["gate"]["id"],
-            "runs": entries,
-        },
+        manifest_document(entries, execution_sha, args.image_digest),
     )
-    print(
-        json.dumps(
-            {
-                "generated_runs": len(entries),
-                "execution_source_sha": execution_sha,
-                "container_image_digest": args.image_digest,
-            },
-            indent=2,
-        )
-    )
+    summary = {
+        "generated_runs": len(entries),
+        "execution_source_sha": execution_sha,
+        "container_image_digest": args.image_digest,
+    }
+    print(json.dumps(summary, indent=2))
     return 0
 
 

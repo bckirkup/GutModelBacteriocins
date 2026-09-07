@@ -38,6 +38,7 @@ except ImportError as exc:  # pragma: no cover
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
 sys.path.insert(0, str(REPO / "python"))
+from gut_ibm_tools.experiment_packaging import json_safe
 from gut_ibm_tools.path_utils import (
     PathValidationError,
     prepare_output_directory,
@@ -574,18 +575,6 @@ def write_csv(path: Path, rows: list[dict]) -> None:
         writer.writerows(rows)
 
 
-def jsonable(value):
-    if isinstance(value, float) and (math.isnan(value) or math.isinf(value)):
-        return None
-    if isinstance(value, dict):
-        return {key: jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [jsonable(item) for item in value]
-    if isinstance(value, (np.floating, np.integer, np.bool_)):
-        return value.item()
-    return value
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -624,7 +613,7 @@ def main() -> int:
         csv_rows.append(csv_row)
     write_csv(output_dir / "run_metrics.csv", csv_rows)
     (output_dir / "run_metrics.json").write_text(
-        json.dumps(jsonable(public), indent=2, allow_nan=False) + "\n"
+        json.dumps(json_safe(public), indent=2, allow_nan=False) + "\n"
     )
 
     missing_rows = [
@@ -633,7 +622,7 @@ def main() -> int:
         if row["output_status"] not in ("complete", "terminated")
     ]
     (output_dir / "missing_outputs.json").write_text(
-        json.dumps(jsonable(missing_rows), indent=2, allow_nan=False) + "\n"
+        json.dumps(json_safe(missing_rows), indent=2, allow_nan=False) + "\n"
     )
 
     complete = [
@@ -656,7 +645,7 @@ def main() -> int:
             pairs.append(paired_contrast(row, null, manifest))
     write_csv(output_dir / "paired_metrics.csv", pairs)
     (output_dir / "paired_metrics.json").write_text(
-        json.dumps(jsonable(pairs), indent=2, allow_nan=False) + "\n"
+        json.dumps(json_safe(pairs), indent=2, allow_nan=False) + "\n"
     )
 
     producers = [row for row in complete if row["arm"] == "producer"]
@@ -664,14 +653,14 @@ def main() -> int:
         [amplitude_record(amp, producers, pairs) for amp in CANDIDATES]
     )
     (output_dir / "amplitude_selection.json").write_text(
-        json.dumps(jsonable(selection), indent=2, allow_nan=False) + "\n"
+        json.dumps(json_safe(selection), indent=2, allow_nan=False) + "\n"
     )
 
     gate = build_gate(manifest, rows, selection, args)
     (output_dir / "refinement_gate.json").write_text(
-        json.dumps(jsonable(gate), indent=2, allow_nan=False) + "\n"
+        json.dumps(json_safe(gate), indent=2, allow_nan=False) + "\n"
     )
-    print(json.dumps(jsonable({"status": gate["status"], "gate": gate}), indent=2))
+    print(json.dumps(json_safe({"status": gate["status"], "gate": gate}), indent=2))
     if gate["status"] == STATUS_PASS:
         return 0
     return 1 if gate["status"] == STATUS_READY else 2
