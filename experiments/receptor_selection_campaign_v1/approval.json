@@ -1,8 +1,10 @@
 {
-  "execution_source_sha": "b884cc54b1c0684c079a90195c031e388fe70534",
+  "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
+  "execution_source_sha": "3f176b26c0d18a22a61db218e56106b1355b781e",
+  "image_digest": "sha256:24a08caa2ad31040229c2d31ba9c5b279d61a100732660a51534bc15249c842d",
   "Q_pass": true,
-  "image_digest": "sha256:f10b2a63b2ea26e5912f46f5561bbd4d807adc8b687d933b6313c3b7ef4a94e5",
   "A_pass": true,
   "selected_kd_corrinoid_btuB_mol_m3": 0.0001,
-  "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39"
+  "B_pass": true,
+  "selected_b12_initial_conc_mol_m3": 0.001
 }

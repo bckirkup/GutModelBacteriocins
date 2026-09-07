@@ -112,7 +112,9 @@ def one(entry):
     if 'grid'in h:
      for sk in steps(h['grid']): names.extend(list(h['grid'][sk].keys()))
     base['btuB_grid_present']=bool(names) and set(names)=={'bacteriocin_BtuB'}; base['grid_species_observed']=';'.join(sorted(set(names)))
-    base['source_centered_profile_status']='AVAILABLE_FOR_POSTPROCESSING' if base['btuB_grid_present'] and 'kill_provenance' in h else 'BLOCKED_MISSING_SOURCE_EVENT_COORDINATES'
+    # Runtime HDF5 writes kill-event coordinates under /provenance (not /kill_provenance).
+    has_source_coords=('provenance' in h) or ('kill_provenance' in h)
+    base['source_centered_profile_status']='AVAILABLE_FOR_POSTPROCESSING' if base['btuB_grid_present'] and has_source_coords else 'BLOCKED_MISSING_SOURCE_EVENT_COORDINATES'
  except Exception as e: base['output_status']='invalid';base['analysis_error']=f'{type(e).__name__}: {e}'
  finally:
   if temp: temp.unlink(missing_ok=True)

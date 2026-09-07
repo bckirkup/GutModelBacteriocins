@@ -59,6 +59,16 @@ Submit **Q only**. A–D remain gate-locked. After each scientific gate, regener
 
 Place returned files at `generated/stage_X/results/<array-index>/output.h5.gz` (uncompressed `.h5` is accepted), then run `python3 analyze.py`. It writes run and paired metrics plus explicit gate and missing-output JSON. The analyzer requires exact equality between `/run_provenance/git_sha` and `execution_source_sha`; a baseline SHA or prefix match does not pass. It also requires Q `chemistry_placement=device_delivery`.
 
+For Stage C transport, also run:
+
+```bash
+python3 analyze_transport.py \
+  --results-root generated/stage_C/results \
+  --output-dir analysis
+```
+
+That writes `transport_profiles.csv`, `transport_metrics.json`, `transport_gate.json`, and `transport_profiles.png`. Kill-event coordinates are read from `/provenance` (runtime HDF5 name); the ecological analyzer accepts `/provenance` or legacy `/kill_provenance`.
+
 Missing outputs are blocked, not inferred as zero. Guard halts remain outcomes. Time points are not replicates; screening summaries are seed-level medians/ranges, not p-values. Stage C blocks if named-grid or source-event-coordinate provenance is absent.
 
 ## Package files
@@ -67,6 +77,7 @@ Missing outputs are blocked, not inferred as zero. Guard halts remain outcomes. 
 - `prepare.py` — explicit planning or deployment generator; submits nothing.
 - `preflight.py` — planning and fail-closed deployment validation.
 - `analyze.py` — HDF5, provenance, agent, and gate analysis.
+- `analyze_transport.py` — Stage C source-centred bacteriocin transport profiles and gate.
 - `aws_commands.py` — prints digest-pinned upload/array commands; executes nothing.
 - `AWS_HANDOFF.md` — operator procedure and gates.
 - `COMPLETION_NOTE.md` — correction scope and validation status.
