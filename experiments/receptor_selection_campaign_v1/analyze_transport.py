@@ -13,6 +13,7 @@ import gzip
 import json
 import math
 import shutil
+import sys
 import tempfile
 from collections import defaultdict
 from pathlib import Path
@@ -28,6 +29,9 @@ except ImportError as exc:  # pragma: no cover
     raise SystemExit(f"h5py required: {exc}") from exc
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT.parents[1] / "python"))
+from gut_ibm_tools.path_utils import prepare_output_directory
+
 CAUSE_LYSIS = 5
 PRODUCER_STRAIN = 1
 BURST_TAU_S = 300.0
@@ -470,7 +474,7 @@ def main() -> int:
     ap.add_argument("--results-root", type=Path, default=ROOT / "generated" / "stage_C" / "results")
     ap.add_argument("--output-dir", type=Path, default=ROOT / "analysis")
     args = ap.parse_args()
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    args.output_dir = prepare_output_directory(args.output_dir)
 
     runs = stage_c_runs(args.results_root)
     producers = [r for r in runs if r["arm"] == "producer"]
