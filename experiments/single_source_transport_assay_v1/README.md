@@ -77,9 +77,7 @@ shared support, hence its narrower predeclared margin.
 
 `analyze_assay.py` exits 0 on pass, 2 when blocked (missing outputs, failed
 authentication, missing paired times), 1 when the assay ran and the predeclared
-ordering failed. It always writes `C_transport_gate: false`: this assay
-validates the transport law, and promoting the Stage C gate or launching Stage D
-stays a separate recorded decision.
+ordering failed. The assay result validates the intrinsic transport law; it does **not** by itself calibrate or select a mucin-charge amplitude. A pass must be combined with the already-passed ecological Stage C population result (amplitudes 0/15/60) to support **amplitude 15 as a conditional D choice**. Record `C_transport_gate=true` only for the assay's exact execution SHA and image digest, then regenerate D with amplitude 15 on those same identities. Until that recorded pass, D remains blocked. Any code/image revision requires a new assay.
 
 ## Running it
 

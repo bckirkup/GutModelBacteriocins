@@ -2,8 +2,8 @@
   "_campaign": {
     "arm": "shared_null",
     "axes": {
-      "amplitude": 60,
-      "selected_b12": 0.0001,
+      "amplitude": 15,
+      "selected_b12": 0.001,
       "selected_kd": 0.0001
     },
     "campaign_id": "receptor_selection_campaign_v1",
@@ -11,7 +11,7 @@
     "gate_locked": true,
     "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
     "paired_seed": 20260911,
-    "run_id": "C_shared_null_amp60_s20260911",
+    "run_id": "C_shared_null_amp15_s20260911",
     "stage": "C"
   },
   "_comment": [
@@ -21,8 +21,8 @@
     "Runtime /run_provenance/git_sha must match execution_source_sha.",
     "AWS image digest is enforced by handoff/preflight, outside parser config."
   ],
-  "b12_initial_conc": 0.0001,
-  "bacteriocin.mucin_charge.amplitude": 60,
+  "b12_initial_conc": 0.001,
+  "bacteriocin.mucin_charge.amplitude": 15,
   "bio_dt": 60.0,
   "carbon.boundary_conc": 0.05,
   "carbon_z_gradient": false,

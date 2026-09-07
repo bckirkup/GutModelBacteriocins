@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "campaign_id": "receptor_selection_campaign_v1",
   "source_repository": "https://github.com/bckirkup/GutModelBacteriocins",
   "source_branch": "main",
@@ -58,8 +58,8 @@
       "requires": "B_pass"
     },
     "D": {
-      "jobs": 12,
-      "requires": "C_pass"
+      "jobs": 15,
+      "requires": "C_transport_gate"
     }
   },
   "axes": {
@@ -102,15 +102,22 @@
         0.00501256289338,
         0.0100505063388,
         0.0253205655191
-      ]
+      ],
+      "formal_controls": {
+        "arm": "plasmid_free_null",
+        "jobs": 3,
+        "one_per_seed": true,
+        "same_execution_sha_and_image_as_D_carriers": true
+      }
     }
   },
   "planning_promotions": {
     "selected_kd_corrinoid_btuB_mol_m3": 0.0001,
-    "selected_b12_initial_conc_mol_m3": 0.0001,
-    "selected_mucin_charge_amplitude": 60,
-    "status": "PLANNING_ONLY_NOT_SCIENTIFICALLY_PROMOTED",
-    "rule": "Regenerate downstream stages with recorded gate decisions after upstream results."
+    "selected_b12_initial_conc_mol_m3": 0.001,
+    "selected_mucin_charge_amplitude": 15,
+    "status": "CONDITIONAL_REVISED_C_TO_D_HANDOFF",
+    "rule": "A/B selections are authoritative; amplitude 15 is conditional on assay pass. Regenerate D on the assay execution SHA and digest only.",
+    "D_release_blocked_until": "C_transport_gate=true"
   },
   "output": {
     "summary_interval_steps": 1,
@@ -148,5 +155,6 @@
     "crypts",
     "peristalsis",
     "phage/prophage"
-  ]
+  ],
+  "authoritative_decision_record": "campaign_decision_record.json"
 }

@@ -138,8 +138,11 @@ def main():
   ctrl=None; label=None
   if r['stage']=='A' and r['arm']=='producer': ctrl=idx.get(('A','null',r['seed'],r.get('axis_kd_corrinoid_btuB_mol_m3'),None));label='producer_minus_null'
   elif r['stage']=='C' and r['arm']=='producer': ctrl=next((x for x in complete if x['stage']=='C' and x['arm']=='shared_null' and x['seed']==r['seed']),None);label='producer_minus_shared_null'
-  elif r['stage']=='D': ctrl=next((x for x in complete if x['stage']=='C' and x['arm']=='shared_null' and x['seed']==r['seed']),None);label='producer_minus_plasmid_free_null'
-  if ctrl: pairs.append(paired_contrast(r,ctrl,label))
+  elif r['stage']=='D' and r['arm']=='producer': ctrl=next((x for x in complete if x['stage']=='D' and x['arm']=='plasmid_free_null' and x['seed']==r['seed']),None);label='producer_minus_same_image_plasmid_free_null'
+  if ctrl:
+   pair=paired_contrast(r,ctrl,label)
+   pair.update({'execution_source_sha_expected':r['execution_source_sha_expected'],'container_image_digest':cm.get('container_image_digest'),'same_stage_control':ctrl['stage']==r['stage'],'execution_source_sha_match_both':bool(r.get('execution_source_sha_match') and ctrl.get('execution_source_sha_match'))})
+   pairs.append(pair)
  write_csv(a.results_dir/'paired_metrics.csv',pairs);(a.results_dir/'paired_metrics.json').write_text(json.dumps(pairs,indent=2)+'\n')
  stages={s:[r for r in rows if r['stage']==s] for s in 'QABCD'}; gates={}
  for s in 'QABCD':
@@ -149,6 +152,9 @@ def main():
   if any(not r.get('execution_source_sha_match') or r.get('chemistry_placement')!='device_delivery' for r in q): gates['Q']['status']='FAIL_PROVENANCE_OR_PLACEMENT'
  cgood=[r for r in stages['C'] if r['output_status'] in ('complete','terminated')]
  if len(cgood)==12 and any(not r.get('btuB_grid_present') or r.get('source_centered_profile_status','').startswith('BLOCKED') for r in cgood): gates['C']['status']='BLOCKED_TRANSPORT_PROVENANCE'
+ dgood=[r for r in stages['D'] if r['output_status'] in ('complete','terminated')]
+ if len(dgood)==15 and any(not r.get('execution_source_sha_match') for r in dgood): gates['D']['status']='FAIL_EXECUTION_SOURCE_PROVENANCE'
+ if len(dgood)==15 and sum(r['arm']=='plasmid_free_null' for r in dgood)!=3: gates['D']['status']='BLOCKED_MISSING_SAME_IMAGE_NULLS'
  report={'campaign_id':cm['campaign_id'],'runs_total':len(rows),'outputs_readable':len(complete),'missing_or_invalid':len(missing),'gates':gates,'interpretation':'Sequential scientific gates require review of all seed-level rows; this analyzer never auto-promotes downstream stages. Paired deltas use a shared calendar window ending at t_common_s. realized_lysis_per_division uses integer cumulative_divisions_by_type[1] when present.'}
  (a.results_dir/'missing_outputs.json').write_text(json.dumps(missing,indent=2)+'\n');(a.results_dir/'gate_status.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2));return 0
 if __name__=='__main__': raise SystemExit(main())

@@ -17,7 +17,7 @@ The campaign is a sequential, explicit-run ladder, not a sweep product:
 | A | 24 | corrected corrinoid–BtuB Kd `{1e-6,1e-5,1e-4,1e-3}` mol/m³ × producer/null × 3 paired seeds | receptor engagement |
 | B | 12 | toxin-free BtuB-normal versus BtuB-null over corrinoid `{1e-3,1e-4,1e-5,1e-6}` mol/m³ | viable-growth/action intersection |
 | C | 12 | ColE1 mucin-charge amplitude `{0,15,60}` (9 producers + 3 shared nulls) | ordered source-centred transport |
-| D | 12 | realized lysis targets `{0,1%,2%,5%}` × 3 seeds | graded realized lysis and producer benefit |
+| D | 15 | 12 ColE1 carriers: realized lysis targets `{0,1%,2%,5%}` × 3 seeds, plus 3 same-image plasmid-free nulls | graded realized lysis and producer benefit |
 
 Every run is a 100 µm cube, 2 µm grid (50³), 6 h maximum, CUDA enabled, GPU 0, and one Message Passing Interface (MPI) rank. Only Stage C requests grids: every 60 steps, named species `bacteriocin_BtuB`; provenance is every 10 steps. Other stages set grid output to zero.
 
@@ -53,7 +53,7 @@ python3 preflight.py --deployment --execution-source-sha "$EXECUTION_SOURCE_SHA"
 
 `prepare.py --deployment` fails unless it is in a Git checkout, the supplied execution SHA equals `HEAD`, the audited baseline is an ancestor, the provenance-bearing package files are committed and unchanged, and the image digest is immutable. The manifests and every input record both SHAs. Generated deployment artifacts can differ from HEAD because they are operational records created after the image digest is known.
 
-Submit **Q only**. A–D remain gate-locked. After each scientific gate, regenerate with the recorded choice (for example `--selected-kd`, `--selected-b12`, or `--selected-amplitude`) using the same execution SHA and digest unless a new runtime commit/image is deliberately introduced.
+Submit **Q only**. A–D remain gate-locked. A/B selections are `Kd=1e-4 mol/m³` and `B12=1e-3 mol/m³`. The ecological C population gate passed for amplitudes 0/15/60, but the PR416 intrinsic-transport gate is invalid/failed and superseded. Run the revised single-source assay first. Only its pass, combined with ecological C, supports conditional amplitude 15. Regenerate D with that amplitude on the assay's exact execution SHA and digest; any revision change requires a new assay.
 
 ## Outputs and analysis
 
@@ -74,6 +74,8 @@ Missing outputs are blocked, not inferred as zero. Guard halts remain outcomes. 
 ## Package files
 
 - `campaign_contract.json` — science/execution contract and two-SHA provenance policy.
+- `campaign_decision_record.json` — authoritative, stage-specific revised C-to-D decisions and execution identities.
+- `CURSOR_HANDOFF.md` — exact no-shortcuts assay-to-D operator workflow.
 - `prepare.py` — explicit planning or deployment generator; submits nothing.
 - `preflight.py` — planning and fail-closed deployment validation.
 - `analyze.py` — HDF5, provenance, agent, and gate analysis.
@@ -82,3 +84,7 @@ Missing outputs are blocked, not inferred as zero. Guard halts remain outcomes. 
 - `AWS_HANDOFF.md` — operator procedure and gates.
 - `COMPLETION_NOTE.md` — correction scope and validation status.
 - `generated/` — planning artifacts in version control; deployment regeneration may be uncommitted.
+
+## Revised C-to-D status
+
+Stage D is blocked until `single_source_transport_assay_v1` passes and a stage-specific record sets `C_transport_gate=true` for the assay execution SHA and digest. Stage D then uses that same identity and 15 jobs. Its P=0 ColE1 carrier remains a mechanistic no-release arm; it is not the plasmid-free null. The analyzer pairs each of the 12 D carriers only to the D plasmid-free null with the same seed and never searches Stage C controls. `approval.json` is historical and not revised-D authorization.

@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "record_id": "receptor_selection_revised_C_to_D_handoff_2026-09-07",
+  "campaign_id": "receptor_selection_campaign_v1",
+  "authoritative_for": "revised_C_to_D_handoff",
+  "source_state": {
+    "canonical_main_merge_sha": "f9a908e0eb5323cfaeea82501a8ca16b1a95910c"
+  },
+  "decisions": [
+    {
+      "stage": "A",
+      "gate": "A_pass",
+      "status": "PASS",
+      "execution_source_sha": "b884cc54b1c0684c079a90195c031e388fe70534",
+      "selected_kd_corrinoid_btuB_mol_m3": 0.0001
+    },
+    {
+      "stage": "B",
+      "gate": "B_pass",
+      "status": "PASS",
+      "execution_source_sha": "b884cc54b1c0684c079a90195c031e388fe70534",
+      "selected_b12_initial_conc_mol_m3": 0.001
+    },
+    {
+      "stage": "C",
+      "gate": "C_population_gate",
+      "status": "PASS",
+      "execution_source_sha": "3f176b26c0d18a22a61db218e56106b1355b781e",
+      "amplitudes_tested": [
+        0,
+        15,
+        60
+      ]
+    },
+    {
+      "stage": "C",
+      "gate": "PR416_intrinsic_transport_gate",
+      "status": "INVALID_FAILED_SUPERSEDED",
+      "execution_source_sha": "3f176b26c0d18a22a61db218e56106b1355b781e",
+      "superseded_by": "single_source_transport_assay_v1"
+    },
+    {
+      "stage": "C",
+      "gate": "single_source_transport_assay_v1",
+      "status": "PENDING",
+      "execution_source_sha": null,
+      "container_image_digest": null,
+      "jobs": 12,
+      "required_outcome_field": "C_transport_gate",
+      "pass_value": true
+    },
+    {
+      "stage": "D",
+      "gate": "D_release",
+      "status": "BLOCKED",
+      "requires": {
+        "C_population_gate": true,
+        "C_transport_gate": true,
+        "assay_and_D_same_execution_source_sha": true,
+        "assay_and_D_same_container_image_digest": true
+      },
+      "conditional_selected_mucin_charge_amplitude": 15,
+      "amplitude_status": "CONDITIONAL_NOT_CALIBRATED_BY_ASSAY_ALONE",
+      "jobs": 15
+    }
+  ],
+  "constraints": [
+    "Amplitude 15 is conditional only.",
+    "Do not release Stage D until single_source_transport_assay_v1 passes.",
+    "After assay pass, regenerate Stage D using the assay's exact execution_source_sha and container_image_digest.",
+    "approval.json is a historical record and is not authorization for the revised assay or Stage D."
+  ]
+}
