@@ -27,7 +27,7 @@ GENERATED = ASSAY / "generated"
 LYSIS_TIME_S = 240.0
 LYSIS_STEP = 4
 GRID_STEPS = (6, 8, 10)
-DECAY_UM = {0.0: 10.0, 15.0: 8.0, 60.0: 6.0}
+DECAY_UM = {0.0: 10.0, 15.0: 8.0, 20.0: 7.5, 30.0: 7.0, 60.0: 6.0}
 SOURCE_FRACTION = 0.5
 
 
@@ -91,6 +91,7 @@ def write_output(
     producer: bool,
     source_m: tuple[float, float, float],
     exact_timing: bool = True,
+    event_time_s: float = LYSIS_TIME_S,
     grid_steps: tuple[int, ...] = GRID_STEPS,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -109,7 +110,7 @@ def write_output(
     with h5py.File(path, "w") as h5:
         prov = h5.create_group("run_provenance")
         prov.create_dataset("git_sha", data=np.bytes_(sha))
-        prov.create_dataset("chemistry_placement", data=np.bytes_("device_delivery"))
+        prov.create_dataset("chemistry_placement", data=np.bytes_("device"))
         prov.create_dataset("mpi_rank_count", data=np.int64(1))
         prov.create_dataset(
             "resolved_config", data=np.bytes_(json.dumps(resolved_config(cfg)))
@@ -130,7 +131,7 @@ def write_output(
         if exact_timing:
             group.create_dataset("event_step", data=np.array([LYSIS_STEP], dtype=np.int64))
             group.create_dataset(
-                "event_time_s", data=np.array([LYSIS_TIME_S], dtype=float)
+                "event_time_s", data=np.array([event_time_s], dtype=float)
             )
 
 
@@ -143,6 +144,7 @@ def build_results(
     skip_index: int | None = None,
     drop_grid_step_for_index: int | None = None,
     move_source_for_index: int | None = None,
+    move_time_for_index: int | None = None,
 ) -> None:
     for run in runs:
         index = int(run["array_index"])
@@ -163,6 +165,7 @@ def build_results(
             producer=run["arm"] == "producer",
             source_m=source,
             exact_timing=exact_timing,
+            event_time_s=LYSIS_TIME_S + (60.0 if index == move_time_for_index else 0.0),
             grid_steps=steps,
         )
 
@@ -195,12 +198,12 @@ def runs(analyze_assay):
 
 def test_generated_assay_package_shape(runs, contract):
     manifest_runs, _sha = runs
-    assert len(manifest_runs) == 12
+    assert len(manifest_runs) == 18
     manifest = json.loads((GENERATED / "manifest.json").read_text())
     assert manifest["mpi_ranks"] == 1
     producers = [r for r in manifest_runs if r["arm"] == "producer"]
     nulls = [r for r in manifest_runs if r["arm"] == "toxin_free_null"]
-    assert len(producers) == 9
+    assert len(producers) == 15
     assert len(nulls) == 3
     amplitudes = contract["design"]["axes"]["bacteriocin.mucin_charge.amplitude"]
     assert sorted({r["amplitude"] for r in producers}) == list(amplitudes)
@@ -209,7 +212,9 @@ def test_generated_assay_package_shape(runs, contract):
         cfg = json.loads((ASSAY / run["input_relpath"]).read_text())
         assert cfg["seed"] == run["seed"]
         assert cfg["bacteriocin.mucin_charge.amplitude"] == pytest.approx(run["amplitude"])
-        assert cfg["metabolism.uptake_limit"] == "delivery"
+        assert "metabolism.uptake_limit" not in cfg
+        assert not any(key.startswith("metabolism.") for key in cfg)
+        assert cfg["fixes"] == ["bacteriocin", "receptor"]
         assert cfg["gpu_enabled"] is True
         assert cfg["hdf5"]["schedule"]["provenance"] == 1
         assert cfg["hdf5"]["schedule"]["grid_species"] == ["bacteriocin_BtuB"]
@@ -258,7 +263,7 @@ def test_analyzer_fails_when_amplitudes_share_one_profile(tmp_path, runs, monkey
     code, gate = run_analyzer(tmp_path, results)
     assert gate["status"] == "FAIL"
     assert code == 1
-    assert gate["checks"]["intrinsic_radii_ordered_0_gt_15_gt_60"] is False
+    assert gate["checks"]["endpoint_original_criteria_0_gt_15_gt_60"] is False
     assert gate["blockers"] == []
 
 
@@ -312,3 +317,68 @@ def test_analyzer_blocks_on_foreign_execution_sha(tmp_path, runs):
     assert gate["status"] == "BLOCKED"
     assert code == 2
     assert gate["checks"]["all_runs_authenticated"] is False
+
+
+def test_manifest_paths_are_portable_and_resolve_on_posix():
+    manifest = json.loads((GENERATED / "manifest.json").read_text())
+    for index, run in enumerate(manifest["runs"]):
+        rel = run["input_relpath"]
+        assert "\\" not in rel
+        assert rel == f"generated/jobs/{index}/input.json"
+        assert (ASSAY / rel).resolve(strict=True).is_file()
+
+
+def test_planning_preflight_passes_with_explicit_warnings():
+    proc = subprocess.run(
+        [sys.executable, str(ASSAY / "preflight_assay.py")],
+        capture_output=True, text=True, check=False,
+    )
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    result = json.loads(proc.stdout)
+    assert result["status"] == "PASS"
+    assert result["mode"] == "planning"
+    assert result["warnings"]
+
+
+def test_analyzer_fails_on_nonmonotonic_interpolation_without_changing_endpoints(tmp_path, runs, monkeypatch):
+    manifest_runs, sha = runs
+    monkeypatch.setitem(DECAY_UM, 20.0, 9.0)  # reverses 15 -> 20; 0/15/60 remain original
+    results = tmp_path / "results"
+    build_results(results, manifest_runs, sha)
+    code, gate = run_analyzer(tmp_path, results)
+    assert code == 1
+    assert gate["status"] == "FAIL"
+    assert gate["checks"]["endpoint_original_criteria_0_gt_15_gt_60"] is True
+    assert gate["checks"]["adaptive_interpolation_monotonic_0_15_20_30_60"] is False
+
+
+def test_analyzer_blocks_when_source_time_moves_between_arms(tmp_path, runs):
+    manifest_runs, sha = runs
+    results = tmp_path / "results"
+    build_results(results, manifest_runs, sha, move_time_for_index=3)
+    code, gate = run_analyzer(tmp_path, results)
+    assert code == 2
+    assert gate["status"] == "BLOCKED"
+    assert gate["checks"]["source_time_identical_across_amplitudes"] is False
+
+
+@pytest.mark.parametrize(
+    "extra, needle",
+    [
+        (["--image-uri", "mutable:latest"], "image URI must be immutable"),
+        (["--image-uri", "repo@sha256:" + "1" * 64,
+          "--input-prefix", "s3://bucket/receptor-v1/stage_C/inputs",
+          "--output-prefix", "s3://bucket/single-source-assay/outputs"],
+         "stale ecological campaign path"),
+    ],
+)
+def test_command_generator_refuses_invalid_deployment_requests(extra, needle):
+    base = [sys.executable, str(ASSAY / "aws_commands_assay.py"),
+            "--execution-source-sha", "0" * 40,
+            "--input-prefix", "s3://bucket/single-source-assay/inputs",
+            "--output-prefix", "s3://bucket/single-source-assay/outputs",
+            "--job-queue", "queue", "--job-definition", "definition"]
+    # Let later duplicate options win in argparse where a parametrization replaces a value.
+    proc = subprocess.run(base + extra, capture_output=True, text=True, check=False)
+    assert proc.returncode != 0
+    assert needle in proc.stdout + proc.stderr

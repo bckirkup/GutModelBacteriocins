@@ -1,125 +1,55 @@
 # Single-source transport assay v1
 
-This assay isolates the mucin-charge dependence of colicin transport. It exists
-because the receptor-selection Stage C transport analysis measured radii from
-all domain toxin mass to the *nearest of many* active sources, which measures
-source packing as much as diffusion: sparse-source snapshots own larger Voronoi
-cells and report larger radii at identical diffusivity, and in the committed
-Stage C results the active-source count explains most of the radius variation
-(Spearman ≈ −0.96 against r50, ≈ −0.90 against r90) while source counts differed
-across amplitude arms by up to eightfold at matched times.
+This intrinsic assay isolates mucin-charge-dependent colicin transport around one controlled release source. It does **not** enable metabolism, select a mucin amplitude, authorize the separate ecological refinement, or release Stage D.
 
-Here the source geometry is controlled instead of corrected for: one release
-event, at one position, identical across the amplitude arms of a seed.
+## Correct physical contract
 
-## What is controlled
+Each run uses a 100 µm cube, 2 µm grid, 1 h simulated duration, one GPU, one Message Passing Interface (MPI) rank, and only the `bacteriocin` and `receptor` fixes. One source cell and three bystanders all have `mu_max=0` and `BtuB=0`; producer arms give only the source cell `ColE1`, while nulls remove it. `kd_corrinoid_btuB=1e-4`, `b12_initial_conc=1e-3`, and `burst_release_tau=300 s`. Grids are written every 120 s and provenance every step.
 
-| Control | Mechanism |
-|---|---|
-| exactly one possible source | one cell carries ColE1; nothing else can release colicin |
-| no second producer | every strain has `mu_max = 0`, so no division |
-| bystanders never release | no bacteriocin locus ⇒ never SOS-induced (`FixBacteriocin::compute` skips agents without BI loci) |
-| run does not end at lysis | three bystanders keep the global agent count above the population-stop threshold of 1 |
-| no receptor sink | all `BtuB` expression is 0, so the profile is transport, not consumption |
-| identical source position across amplitudes | initial placement is drawn before any amplitude-dependent state is consumed, so one seed gives one position; the analyzer asserts it to 1e-12 m rather than assuming it |
-| radial support inside the domain | placement is confined to a 2 µm band at mid-depth, so every draw supports the predeclared 40 µm support |
-| exact source time | the release window decays on a 300 s timescale, so the analyzer requires the provenance `event_time_s` of the lysis itself and refuses outputs that only carry provenance-export steps |
+`/run_provenance/chemistry_placement = device` is the required physical GPU placement. This assay has no metabolism, so it must not set `metabolism.uptake_limit=delivery` and must not require `device_delivery`. `host` and `host_forced_delivery` are not accepted.
 
-## Predeclared analysis
+## Adaptive design (issue 420)
 
-`assay_contract.json` is the contract, committed before any run exists, and
-`analyze_assay.py` reads its definitions rather than restating them:
+The deployment package has **18 explicit jobs**:
 
-- **shell averaging** — fixed 2 µm spherical shells around the source; a shell
-  value is the unweighted arithmetic mean of the concentrations of the voxel
-  centres with radius in `[r_lo, r_hi)` (measure `dr`).
-- **radial support** — 40 µm, and a run whose in-domain support is smaller is a
-  blocker, never a silently trimmed profile.
-- **boundary handling** — minimum image in periodic x and y, plain distance in
-  non-periodic z, no image sources.
-- **profile r50/r90** — shell means become a radial mass density `mean(r)·r²`
-  accumulated over the support; `rXX` is where the normalized cumulative mass
-  first reaches `XX/100`, linearly interpolated between shell centres.
-- **analysis window** — `event_time_s < t ≤ event_time_s + 1500 s`; the snapshot
-  coincident with the lysis step is excluded because the grid can be written
-  before the burst's first chemistry application.
-- **paired times** — amplitude arms are compared only at snapshot times all
-  three arms observed; a missing paired time blocks the assay instead of
-  changing each arm's support.
+- producer amplitudes `0, 15, 20, 30, 60` × three paired seeds = 15;
+- three toxin-free nulls, one per seed, at amplitude 60.
 
-## Gate
+All IDs begin `SS_amp`. Source position, exact lysis time, and snapshot times are paired across all five producer amplitudes. Missing any arm or paired time blocks the assay.
 
-`single_source_transport_gate` passes only if all 12 runs returned, every run
-authenticates against the execution source SHA, `device_delivery`, one rank, its
-seed and amplitude, `kd_corrinoid_btuB = 1e-4`, `b12_initial_conc = 1e-3`,
-`burst_release_tau = 300 s`, the ColE1 pI/diffusion/burst-size identity and the
-grid/provenance schedules; every producer run recorded exactly one strain-1
-lysis with exact timing; the source position is shared across amplitudes; paired
-times are complete; and at every paired time in every seed `r50` decreases
-across amplitude 0 → 15 → 60 by at least 0.5 µm and `r90` by at least 0.1 µm,
-while the 0–10 µm near-field mean increases.
+The original endpoint gate is preserved without reinterpretation: at every paired time and seed, `r50` must decrease across `0 > 15 > 60` by at least 0.5 µm per endpoint interval, `r90` by at least 0.1 µm, and the 0–10 µm near-field mean must strictly increase. The added interpolation criterion requires `r50/r90` to be nonincreasing and near field nondecreasing across `0,15,20,30,60`, using only a `1e-9` numeric tolerance. The endpoint margins are **not** imposed on adjacent interpolation pairs.
 
-The margins come from a single-seed pilot of this exact configuration (seed
-20260913, 600 s horizon, run on a serial host build):
+Shell averaging, 40 µm support, periodic x/y minimum-image distance, nonperiodic z, r50/r90 definitions, and the exact `event_time_s < t <= event_time_s + 1500 s` window are fixed in `assay_contract.json`.
 
-| amplitude | r50 (µm) | r90 (µm) | peak `bacteriocin_BtuB` |
-|---|---|---|---|
-| 0 | 28.72 | 37.25 | 1.15e-06 |
-| 15 | 27.22 | 36.95 | 1.26e-05 |
-| 60 | 25.44 | 36.51 | 4.65e-05 |
+## Historical attempt and corrected adjudication
 
-The pilot also shows what the assay is designed to give: one source at an
-identical position and identical exact lysis time in all three arms, radii that
-are stationary in time (the QSSA profile shape is set by amplitude, not by
-snapshot age), and radii far enough inside the 40 µm support to be unclipped.
-`r90` separates by only ~0.3 µm because the outer profile is dominated by the
-shared support, hence its narrower predeclared margin.
+The original 12-job `d7b16c30…` attempt and its committed `analysis/assay_gate.json`, `assay_metrics.json`, and CSV remain unchanged as historical evidence. Its only recorded blocker was the inherited, scientifically irrelevant expectation `device_delivery`; the outputs actually recorded the correct physical placement `device`. All scientific criteria then declared passed. See `analysis/ASSAY_RUN_2026-09-07_ADJUDICATION.md` for the separate adjudication.
 
-`analyze_assay.py` exits 0 on pass, 2 when blocked (missing outputs, failed
-authentication, missing paired times), 1 when the assay ran and the predeclared
-ordering failed. The assay result validates the intrinsic transport law; it does **not** by itself calibrate or select a mucin-charge amplitude. A pass must be combined with the already-passed ecological Stage C population result (amplitudes 0/15/60) to support **amplitude 15 as a conditional D choice**. Record `C_transport_gate=true` only for the assay's exact execution SHA and image digest, then regenerate D with amplitude 15 on those same identities. Until that recorded pass, D remains blocked. Any code/image revision requires a new assay.
+Those outputs support the original endpoint transport conclusion, but they do not contain amplitudes 20/30. Therefore the 18-job adaptive assay remains formally pending. Stage D remains blocked and its amplitude selection is unchanged.
 
-**First AWS Batch attempt (job `231c8870…`, SHA `d7b16c3`):** scientific ordering
-passed on all 36 paired times; the gate was `BLOCKED` solely because inputs
-omitted `metabolism.uptake_limit=delivery`, so provenance wrote `device` instead
-of `device_delivery`. See `analysis/ASSAY_RUN_2026-09-07.md`. The generator now
-sets delivery; resubmit after merge+rebuild before recording the gate.
+## Separate ecological refinement
 
-## Running it
+Issue 420 also defines a distinct **12-job ecological refinement**: amplitudes 15/20/30 × three seeds plus three same-image nulls. It retains ecological `C_amp` identities and is not generated, preflighted, or submitted by this intrinsic `SS_amp` package. Do not use this package to submit it.
 
-Planning generation (no real SHA or digest, never submits anything):
+## Planning and deployment
+
+Planning generation is safe in a codeload tree and uses explicit identity placeholders:
 
 ```bash
-cd experiments/single_source_transport_assay_v1
 python3 prepare_assay.py --clean
+python3 preflight_assay.py
 ```
 
-Deployment generation requires the exact commit that is built:
+Planning preflight passes with warnings because it cannot prove a deployable commit/image. Deployment requires a normal clean git checkout whose exact HEAD descends from PR417 event-time commit `f9a908e0eb5323cfaeea82501a8ca16b1a95910c`, plus an immutable image URI:
 
 ```bash
 EXECUTION_SOURCE_SHA=$(git rev-parse HEAD)
-python3 prepare_assay.py --clean --deployment \
-  --execution-source-sha "$EXECUTION_SOURCE_SHA" \
-  --image-digest "<repo>@sha256:<64 hex>"
+IMAGE_URI='<repository>@sha256:<64 hex>'
+python3 prepare_assay.py --clean --deployment   --execution-source-sha "$EXECUTION_SOURCE_SHA" --image-digest "$IMAGE_URI"
+python3 preflight_assay.py --deployment --execution-source-sha "$EXECUTION_SOURCE_SHA"
+python3 aws_commands_assay.py   --execution-source-sha "$EXECUTION_SOURCE_SHA" --image-uri "$IMAGE_URI"   --input-prefix 's3://<bucket>/single-source-assay-v1/inputs'   --output-prefix 's3://<bucket>/single-source-assay-v1/outputs'   --job-queue '<queue>' --job-definition '<definition>'
 ```
 
-Each of the 12 jobs is one GPU, one MPI rank, a 100 µm cube on a 2 µm grid, 1 h
-simulated time, with `bacteriocin_BtuB` grids every 120 s and provenance every
-step. Return files as `generated/results/<array-index>/output.h5.gz`
-(uncompressed `.h5` accepted), then:
+`aws_commands_assay.py` only prints an upload command and an 18-element AWS Batch array command compatible with `deploy/aws/entry.sh`; it never calls AWS. It fixes `REQUIRE_GPU=1`, `MPI_RANKS=1`, and a 3600 s attempt timeout and rejects ecological paths/IDs. An optional authorization JSON may set `authorize_single_source_assay_submission=true` and match the exact SHA, image URI, and `jobs=18`.
 
-```bash
-python3 analyze_assay.py
-```
-
-Outputs land in `analysis/`: `assay_snapshots.csv` (every analyzed snapshot),
-`assay_metrics.json` (authentication, source, profiles, ordering) and
-`assay_gate.json` (the gate and its blockers).
-
-## Requirement on the execution image
-
-The provenance layer must carry `event_time_s`/`event_step`. Outputs produced
-before that field existed are refused rather than reinterpreted, because the
-provenance-export step is up to one export interval later than the event, and
-under the 300 s release decay that error can inflate a source's release weight
-several-fold.
+Returned outputs belong only at `generated/results/<array-index>/output.h5.gz` (uncompressed `.h5` is accepted for analysis). Run `python3 analyze_assay.py`; exit codes are 0 pass, 1 scientific fail, and 2 blocked.

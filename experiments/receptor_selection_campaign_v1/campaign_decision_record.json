@@ -42,10 +42,10 @@
     {
       "stage": "C",
       "gate": "single_source_transport_assay_v1",
-      "status": "PENDING_RESUBMIT",
+      "status": "PENDING_ADAPTIVE_RUNS",
       "execution_source_sha": null,
       "container_image_digest": null,
-      "jobs": 12,
+      "jobs": 18,
       "required_outcome_field": "C_transport_gate",
       "pass_value": true,
       "prior_attempt": {
@@ -53,11 +53,37 @@
         "execution_source_sha": "d7b16c30d4afdd3a317133e4db13ba8686a2027b",
         "container_image_digest": "sha256:786576980ca74d836a4cf006c66a65cfd33fa6d8f7311fdf77cc77384020d9d8",
         "batch_job_id": "231c8870-2564-4734-ab8c-1359f9a62afa",
-        "blocker": "chemistry_placement device != device_delivery (inputs omitted metabolism.uptake_limit=delivery)",
         "science_checks": "all non-auth checks passed; radii ordered 0>15>60 on 36 paired times",
         "evidence": "experiments/single_source_transport_assay_v1/analysis/",
-        "invalidates_for_D": true
-      }
+        "invalidates_for_D": true,
+        "blocker_as_recorded": "chemistry_placement device != device_delivery",
+        "adjudication": "SCIENTIFICALLY_SUPPORTIVE_UNDER_CORRECTED_DEVICE_CONTRACT",
+        "formal_adaptive_gate": "PENDING_NEW_RUNS_FOR_20_AND_30"
+      },
+      "amplitudes": [
+        0,
+        15,
+        20,
+        30,
+        60
+      ],
+      "expected_chemistry_placement": "device",
+      "metabolism_enabled": false
+    },
+    {
+      "stage": "C",
+      "gate": "issue420_ecological_refinement",
+      "status": "PENDING_SEPARATE",
+      "amplitudes": [
+        15,
+        20,
+        30
+      ],
+      "producer_jobs": 9,
+      "same_image_null_jobs": 3,
+      "jobs": 12,
+      "run_id_prefix": "C_amp",
+      "must_not_use_intrinsic_assay_submission": true
     },
     {
       "stage": "D",
@@ -75,11 +101,11 @@
     }
   ],
   "constraints": [
-    "Amplitude 15 is conditional only.",
-    "Do not release Stage D until single_source_transport_assay_v1 passes.",
-    "After assay pass, regenerate Stage D using the assay's exact execution_source_sha and container_image_digest.",
-    "approval.json is a historical record and is not authorization for the revised assay or Stage D.",
-    "The d7b16c3 Batch assay attempt is blocked on device_delivery auth and does not authorize C_transport_gate or Stage D.",
-    "Assay inputs must set metabolism.uptake_limit=delivery so provenance records device_delivery."
+    "The d7b16c attempt remains historically BLOCKED, but its HDF5 is scientifically supportive under the corrected physical device contract.",
+    "The adaptive 18-job intrinsic assay remains pending because d7b16c did not test amplitudes 20/30.",
+    "Intrinsic assay inputs enable only bacteriocin and receptor; they must not add metabolism merely to obtain device_delivery.",
+    "The issue420 12-job ecological refinement is separate and pending; do not submit C_amp jobs as SS_amp jobs.",
+    "Do not release Stage D or change its selection until the pending evidence is completed and explicitly adjudicated.",
+    "approval.json remains historical and is not current authorization."
   ]
 }

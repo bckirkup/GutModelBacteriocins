@@ -66,6 +66,10 @@ ORDER_MARGIN_R50_UM = float(GATE["order_margin_r50_um"])
 ORDER_MARGIN_R90_UM = float(GATE["order_margin_r90_um"])
 NULL_ABS_TOL = float(GATE["null_abs_tol"])
 POSITION_TOL_M = float(GATE["position_tol_m"])
+EVENT_TIME_TOL_S = float(GATE["event_time_tol_s"])
+MONOTONIC_ABS_TOL = float(GATE["monotonic_abs_tol"])
+AMPLITUDES = [float(v) for v in CONTRACT["design"]["axes"]["bacteriocin.mucin_charge.amplitude"]]
+ENDPOINT_AMPLITUDES = [float(v) for v in CONTRACT["design"]["endpoint_amplitudes"]]
 STATUS_BLOCKED = "BLOCKED"
 STATUS_FAIL = "FAIL"
 STATUS_PASS = "PASS"
@@ -117,6 +121,7 @@ def analyze_producer(run: dict, path: Path, execution_sha: str) -> dict:
             seed=int(run["seed"]),
             amplitude=float(run["amplitude"]),
             hdf5_schedule=run["hdf5_schedule"],
+            chemistry_placement=CONTRACT["runtime"]["chemistry_placement"],
         )
         report["violations"] = authenticate_run(h5, expected)
 
@@ -190,6 +195,7 @@ def analyze_null(run: dict, path: Path, execution_sha: str) -> dict:
                 seed=int(run["seed"]),
                 amplitude=float(run["amplitude"]),
                 hdf5_schedule=run["hdf5_schedule"],
+                chemistry_placement=CONTRACT["runtime"]["chemistry_placement"],
             ),
         )
         max_abs = 0.0
@@ -229,8 +235,35 @@ def load_runs(results_root: Path) -> tuple[list[dict], str]:
     return runs, manifest["execution_source_sha"]
 
 
+def endpoint_decreasing(values_by_amp: dict[float, float], margin: float) -> bool:
+    values = [values_by_amp[a] for a in ENDPOINT_AMPLITUDES]
+    return all(
+        np.isfinite(a) and np.isfinite(b) and a - b >= margin
+        for a, b in pairwise(values)
+    )
+
+
+def endpoint_increasing(values_by_amp: dict[float, float]) -> bool:
+    values = [values_by_amp[a] for a in ENDPOINT_AMPLITUDES]
+    return all(np.isfinite(a) and np.isfinite(b) and b > a for a, b in pairwise(values))
+
+
+def nonincreasing(values: list[float], tolerance: float) -> bool:
+    return all(
+        np.isfinite(a) and np.isfinite(b) and b <= a + tolerance
+        for a, b in pairwise(values)
+    )
+
+
+def nondecreasing(values: list[float], tolerance: float) -> bool:
+    return all(
+        np.isfinite(a) and np.isfinite(b) and b + tolerance >= a
+        for a, b in pairwise(values)
+    )
+
+
 def order_checks(producer_reports: list[dict]) -> tuple[dict, list[str]]:
-    """Ordering of the intrinsic radii at identical times, per seed."""
+    """Endpoint margins plus interpolation monotonicity at paired times, per seed."""
     by_seed_amp: dict[int, dict[float, dict[float, dict]]] = defaultdict(
         lambda: defaultdict(dict)
     )
@@ -242,96 +275,93 @@ def order_checks(producer_reports: list[dict]) -> tuple[dict, list[str]]:
 
     detail: dict[str, dict] = {}
     blockers: list[str] = []
-    for seed, by_amp in sorted(by_seed_amp.items()):
-        pairs = paired_times({amp: sorted(times) for amp, times in by_amp.items()})
+    expected = set(AMPLITUDES)
+    for seed in CONTRACT["design"]["seeds"]:
+        by_amp = by_seed_amp.get(int(seed), {})
+        observed = set(by_amp)
+        pairs = paired_times({amp: sorted(by_amp.get(amp, {})) for amp in AMPLITUDES})
         seed_detail = {
             "paired_times_s": pairs.common_s,
-            "missing_times_s": {
-                str(amp): times for amp, times in pairs.missing_s.items()
-            },
-            "n_amplitude_arms": len(by_amp),
+            "missing_times_s": {str(amp): times for amp, times in pairs.missing_s.items()},
+            "n_amplitude_arms": len(observed),
+            "missing_amplitudes": sorted(expected - observed),
             "times": [],
         }
-        if len(by_amp) != 3:
+        if observed != expected:
             blockers.append(
-                f"seed {seed}: {len(by_amp)} amplitude arms with profiles, expected 3"
+                f"seed {seed}: amplitude arms {sorted(observed)}, expected {AMPLITUDES}"
             )
         if not pairs.complete:
             blockers.append(
-                f"seed {seed}: snapshot times are not shared by all amplitudes "
-                f"({pairs.missing_s})"
+                f"seed {seed}: snapshot times are not shared by all amplitudes ({pairs.missing_s})"
             )
         if not pairs.common_s:
-            blockers.append(
-                f"seed {seed}: no snapshot time is shared by all amplitudes"
-            )
+            blockers.append(f"seed {seed}: no snapshot time is shared by all amplitudes")
 
-        amplitudes = sorted(by_amp)
         for t_s in pairs.common_s:
-            snaps = [by_amp[amp][t_s] for amp in amplitudes]
-            r50 = [s["r50_um"] for s in snaps]
-            r90 = [s["r90_um"] for s in snaps]
-            near = [s["near_field_0_10_mean"] for s in snaps]
+            snaps = [by_amp[amp][t_s] for amp in AMPLITUDES]
+            r50 = [snap["r50_um"] for snap in snaps]
+            r90 = [snap["r90_um"] for snap in snaps]
+            near = [snap["near_field_0_10_mean"] for snap in snaps]
+            r50_by_amp = dict(zip(AMPLITUDES, r50))
+            r90_by_amp = dict(zip(AMPLITUDES, r90))
+            near_by_amp = dict(zip(AMPLITUDES, near))
             finite = all(np.isfinite(value) for value in (*r50, *r90, *near)) and all(
-                s["profile_complete"] for s in snaps
+                snap["profile_complete"] for snap in snaps
             )
-            seed_detail["times"].append(
-                {
-                    "t_s": t_s,
-                    "amplitudes": amplitudes,
-                    "r50_um": r50,
-                    "r90_um": r90,
-                    "near_field_0_10_mean": near,
-                    "finite_and_complete": finite,
-                    "r50_ordered": decreasing(r50, ORDER_MARGIN_R50_UM),
-                    "r90_ordered": decreasing(r90, ORDER_MARGIN_R90_UM),
-                    "near_field_ordered": increasing(near),
-                }
-            )
+            seed_detail["times"].append({
+                "t_s": t_s,
+                "amplitudes": AMPLITUDES,
+                "r50_um": r50,
+                "r90_um": r90,
+                "near_field_0_10_mean": near,
+                "finite_and_complete": finite,
+                "endpoint_r50_ordered_0_gt_15_gt_60": endpoint_decreasing(r50_by_amp, ORDER_MARGIN_R50_UM),
+                "endpoint_r90_ordered_0_gt_15_gt_60": endpoint_decreasing(r90_by_amp, ORDER_MARGIN_R90_UM),
+                "endpoint_near_field_ordered_0_lt_15_lt_60": endpoint_increasing(near_by_amp),
+                "interpolation_r50_nonincreasing": nonincreasing(r50, MONOTONIC_ABS_TOL),
+                "interpolation_r90_nonincreasing": nonincreasing(r90, MONOTONIC_ABS_TOL),
+                "interpolation_near_field_nondecreasing": nondecreasing(near, MONOTONIC_ABS_TOL),
+            })
         detail[str(seed)] = seed_detail
     return detail, blockers
 
 
-def decreasing(values: list[float], margin: float) -> bool:
-    return all(
-        np.isfinite(a) and np.isfinite(b) and a - b >= margin
-        for a, b in pairwise(values)
-    )
-
-
-def increasing(values: list[float]) -> bool:
-    return all(np.isfinite(a) and np.isfinite(b) and b > a for a, b in pairwise(values))
-
-
 def position_checks(producer_reports: list[dict]) -> tuple[dict, list[str]]:
-    """The three amplitude arms of a seed must share one source position."""
+    """All five amplitude arms of a seed must share source position and time."""
     by_seed: dict[int, list[dict]] = defaultdict(list)
     for report in producer_reports:
         if "source" in report:
             by_seed[int(report["seed"])].append(report)
     detail: dict[str, dict] = {}
     blockers: list[str] = []
-    for seed, reports in sorted(by_seed.items()):
-        positions = [
-            (r["source"]["x"], r["source"]["y"], r["source"]["z"]) for r in reports
-        ]
-        spread = [
-            max(abs(p[axis] - positions[0][axis]) for p in positions)
-            for axis in range(3)
-        ]
-        identical = max(spread) <= POSITION_TOL_M
+    for seed in CONTRACT["design"]["seeds"]:
+        reports = sorted(by_seed.get(int(seed), []), key=lambda r: float(r["amplitude"]))
+        amplitudes = [float(r["amplitude"]) for r in reports]
+        positions = [(r["source"]["x"], r["source"]["y"], r["source"]["z"]) for r in reports]
+        times = [float(r["source"]["event_time_s"]) for r in reports]
+        if positions:
+            spread = [max(abs(p[axis] - positions[0][axis]) for p in positions) for axis in range(3)]
+            max_position_spread = max(spread)
+            max_time_spread = max(abs(t - times[0]) for t in times)
+        else:
+            max_position_spread = math.inf
+            max_time_spread = math.inf
+        complete = amplitudes == AMPLITUDES
+        identical_position = complete and max_position_spread <= POSITION_TOL_M
+        identical_time = complete and max_time_spread <= EVENT_TIME_TOL_S
         detail[str(seed)] = {
-            "n_arms": len(reports),
-            "positions_m": positions,
-            "max_spread_m": max(spread),
-            "identical_across_amplitudes": identical,
-            "event_times_s": [r["source"]["event_time_s"] for r in reports],
+            "n_arms": len(reports), "amplitudes": amplitudes, "positions_m": positions,
+            "max_spread_m": max_position_spread, "identical_across_amplitudes": identical_position,
+            "event_times_s": times, "max_event_time_spread_s": max_time_spread,
+            "event_time_identical_across_amplitudes": identical_time,
         }
-        if not identical:
-            blockers.append(
-                f"seed {seed}: source position differs across amplitudes by "
-                f"{max(spread):.3e} m"
-            )
+        if not complete:
+            blockers.append(f"seed {seed}: source records for amplitudes {amplitudes}, expected {AMPLITUDES}")
+        if complete and not identical_position:
+            blockers.append(f"seed {seed}: source position differs across amplitudes by {max_position_spread:.3e} m")
+        if complete and not identical_time:
+            blockers.append(f"seed {seed}: source event time differs across amplitudes by {max_time_spread:.3e} s")
     return detail, blockers
 
 
@@ -408,14 +438,21 @@ def main() -> int:
     if not nulls_toxin_free:
         blockers.append("toxin-free nulls did not hold |bacteriocin_BtuB| <= tolerance")
 
-    ordered = bool(orders) and all(
+    endpoint_ordered = bool(orders) and all(
         time_detail["finite_and_complete"]
-        and time_detail["r50_ordered"]
-        and time_detail["r90_ordered"]
-        and time_detail["near_field_ordered"]
-        for seed_detail in orders.values()
-        for time_detail in seed_detail["times"]
+        and time_detail["endpoint_r50_ordered_0_gt_15_gt_60"]
+        and time_detail["endpoint_r90_ordered_0_gt_15_gt_60"]
+        and time_detail["endpoint_near_field_ordered_0_lt_15_lt_60"]
+        for seed_detail in orders.values() for time_detail in seed_detail["times"]
     )
+    interpolation_monotonic = bool(orders) and all(
+        time_detail["finite_and_complete"]
+        and time_detail["interpolation_r50_nonincreasing"]
+        and time_detail["interpolation_r90_nonincreasing"]
+        and time_detail["interpolation_near_field_nondecreasing"]
+        for seed_detail in orders.values() for time_detail in seed_detail["times"]
+    )
+    ordered = endpoint_ordered and interpolation_monotonic
     n_paired_times = sum(len(detail["times"]) for detail in orders.values())
 
     if blockers:
@@ -458,9 +495,14 @@ def main() -> int:
             "source_identical_across_amplitudes": all(
                 detail["identical_across_amplitudes"] for detail in positions.values()
             ),
+            "source_time_identical_across_amplitudes": all(
+                detail["event_time_identical_across_amplitudes"] for detail in positions.values()
+            ),
             "paired_times_complete": not order_blockers,
             "n_paired_snapshot_times": n_paired_times,
-            "intrinsic_radii_ordered_0_gt_15_gt_60": ordered,
+            "endpoint_original_criteria_0_gt_15_gt_60": endpoint_ordered,
+            "adaptive_interpolation_monotonic_0_15_20_30_60": interpolation_monotonic,
+            "intrinsic_radii_ordered_0_gt_15_gt_60": endpoint_ordered,
             "nulls_toxin_free": nulls_toxin_free,
         },
         "blockers": blockers,

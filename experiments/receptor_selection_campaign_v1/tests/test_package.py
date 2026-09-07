@@ -47,7 +47,7 @@ class PackageTests(unittest.TestCase):
   self.assertEqual(by_gate['B_pass']['selected_b12_initial_conc_mol_m3'],1e-3)
   self.assertEqual(by_gate['C_population_gate']['execution_source_sha'],'3f176b26c0d18a22a61db218e56106b1355b781e')
   self.assertEqual(by_gate['PR416_intrinsic_transport_gate']['status'],'INVALID_FAILED_SUPERSEDED')
-  self.assertEqual(by_gate['single_source_transport_assay_v1']['status'],'PENDING_RESUBMIT')
+  self.assertEqual(by_gate['single_source_transport_assay_v1']['status'],'PENDING_ADAPTIVE_RUNS'); self.assertEqual(by_gate['single_source_transport_assay_v1']['jobs'],18); self.assertEqual(by_gate['issue420_ecological_refinement']['status'],'PENDING_SEPARATE')
   self.assertEqual(
       by_gate['single_source_transport_assay_v1']['prior_attempt']['status'],
       'BLOCKED',

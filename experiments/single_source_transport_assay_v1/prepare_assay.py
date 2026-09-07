@@ -89,7 +89,10 @@ def validate_deployment_identity(execution_sha: str, image_digest: str) -> None:
         )
     tracked = [
         "assay_contract.json",
+        "assay_decision_record.json",
         "prepare_assay.py",
+        "preflight_assay.py",
+        "aws_commands_assay.py",
         "analyze_assay.py",
         "README.md",
     ]
@@ -155,9 +158,6 @@ def config(
         "carbon_z_gradient": False,
         "oxygen.k_ROS": 0.0,
         "dysbiosis_threshold": 1.0e10,
-        # Required so /run_provenance/chemistry_placement records device_delivery
-        # (GPU diffusion alone writes "device"; the contract authenticates delivery).
-        "metabolism.uptake_limit": "delivery",
         "gpu_enabled": True,
         "gpu_device_id": 0,
         "chemistry.toxin_evaluation": "grid",
@@ -277,12 +277,14 @@ def main() -> int:
     dump(
         generated / "manifest.json",
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "assay_id": CONTRACT["assay_id"],
+            "assay_contract_sha256": digest(ROOT / "assay_contract.json"),
             "execution_source_sha": execution_sha,
             "container_image_digest": args.image_digest,
             "mpi_ranks": CONTRACT["runtime"]["mpi_ranks"],
             "gpu_required": CONTRACT["runtime"]["gpu_required"],
+            "chemistry_placement": CONTRACT["runtime"]["chemistry_placement"],
             "attempt_timeout_s": CONTRACT["runtime"]["attempt_timeout_s"],
             "gate": CONTRACT["gate"]["id"],
             "runs": entries,

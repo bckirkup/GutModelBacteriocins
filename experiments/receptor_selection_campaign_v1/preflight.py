@@ -66,7 +66,7 @@ def main():
   if by_gate['C_population_gate'].get('execution_source_sha')!='3f176b26c0d18a22a61db218e56106b1355b781e' or by_gate['C_population_gate'].get('amplitudes_tested')!=[0,15,60]: fail('authoritative ecological Stage C decision drift')
   if by_gate['PR416_intrinsic_transport_gate'].get('status')!='INVALID_FAILED_SUPERSEDED': fail('PR416 gate must remain superseded')
   if by_gate['single_source_transport_assay_v1'].get('status') not in (
-      'PENDING', 'PENDING_RESUBMIT'):
+      'PENDING', 'PENDING_RESUBMIT', 'PENDING_ADAPTIVE_RUNS'):
     fail('revised transport assay must remain pending until a recorded pass')
   if by_gate['D_release'].get('status')!='BLOCKED' or by_gate['D_release'].get('conditional_selected_mucin_charge_amplitude')!=15: fail('Stage D handoff must remain blocked/conditional')
  except Exception as e: fail(f'authoritative decision record missing/unreadable: {e}')
