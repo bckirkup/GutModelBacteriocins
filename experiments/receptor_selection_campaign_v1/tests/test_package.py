@@ -60,4 +60,15 @@ class PackageTests(unittest.TestCase):
   self.assertIn('realized_lysis_per_total_division',text)
   self.assertNotIn('producer_division_exposure',text)
   self.assertIn('t_common',text)
+ def test_stage_c_transport_analyzer_and_provenance_path(self):
+  text=(ROOT/'analyze.py').read_text()
+  self.assertIn("'provenance' in h",text)
+  self.assertIn('kill_provenance',text)
+  sys.path.insert(0,str(ROOT)); import analyze_transport as at
+  for amp,retardation,deff in ((0,1.200,3.333e-11),(15,13.456,2.973e-12),(60,50.225,7.964e-13)):
+   r=at.retardation_from_pI(float(amp)); d=at.D_FREE/r
+   self.assertTrue(math.isclose(r,retardation,rel_tol=1e-3,abs_tol=1e-6),amp)
+   self.assertTrue(math.isclose(d,deff,rel_tol=1e-3,abs_tol=0.0),amp)
+  self.assertEqual(at.CAUSE_LYSIS,5); self.assertEqual(at.BURST_PRUNE_S,1500.0)
+  self.assertTrue((ROOT/'analyze_transport.py').is_file())
 if __name__=='__main__': unittest.main(verbosity=2)

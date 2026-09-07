@@ -1,0 +1,86 @@
+{
+  "status": "FAIL",
+  "C_transport_gate": false,
+  "checks": {
+    "nulls_toxin_free": true,
+    "ge_2_qualified_snapshots_per_amp_seed": true,
+    "near_field_ordered_0_le_15_le_60_all_seeds": true,
+    "r50_ordered_0_ge_15_ge_60_all_seeds": false,
+    "r90_ordered_0_ge_15_ge_60_all_seeds": false,
+    "transport_law_match": true,
+    "burst_release_tau_identical": true
+  },
+  "selected_mucin_charge_amplitude_if_pass": 15,
+  "null_max_abs": {
+    "C_shared_null_amp60_s20260911": 0.0,
+    "C_shared_null_amp60_s20260913": 0.0,
+    "C_shared_null_amp60_s20260917": 0.0
+  },
+  "order_detail": {
+    "20260911": {
+      "near_field_0_10": [
+        2.669693334404437e-08,
+        1.2719246742327848e-07,
+        4.248048455026817e-07
+      ],
+      "near_ordered_0_le_15_le_60": true,
+      "r50_um": [
+        22.26890904317692,
+        20.98468003258813,
+        21.889903119069967
+      ],
+      "r50_ordered_0_ge_15_ge_60": false,
+      "r90_um": [
+        36.23624885963607,
+        33.508487957383494,
+        35.42199060189861
+      ],
+      "r90_ordered_0_ge_15_ge_60": false
+    },
+    "20260913": {
+      "near_field_0_10": [
+        2.4937395079789075e-08,
+        1.5539765238133098e-07,
+        3.0377211963315007e-07
+      ],
+      "near_ordered_0_le_15_le_60": true,
+      "r50_um": [
+        19.69397582844518,
+        23.560712140558774,
+        15.28480453411632
+      ],
+      "r50_ordered_0_ge_15_ge_60": false,
+      "r90_um": [
+        31.329064656825608,
+        36.0042789063008,
+        23.610279076790277
+      ],
+      "r90_ordered_0_ge_15_ge_60": false
+    },
+    "20260917": {
+      "near_field_0_10": [
+        2.9429589754311964e-08,
+        2.872551557096018e-07,
+        7.928551113430235e-07
+      ],
+      "near_ordered_0_le_15_le_60": true,
+      "r50_um": [
+        25.776172637625653,
+        31.40398538045048,
+        27.969235366049638
+      ],
+      "r50_ordered_0_ge_15_ge_60": false,
+      "r90_um": [
+        39.415503687464515,
+        47.26539538008358,
+        47.80119597469429
+      ],
+      "r90_ordered_0_ge_15_ge_60": false
+    }
+  },
+  "notes": [
+    "r50/r90 are volume-weighted concentration-mass radii vs nearest active source.",
+    "Early sparse-source snapshots have large Voronoi cells and inflate radii; this can break amplitude ordering of seed medians even when late, density-matched snapshots are ordered.",
+    "r50_shape_um/r90_shape_um are diagnostic shell-mean (measure dr) radii and are not gate inputs."
+  ]
+}

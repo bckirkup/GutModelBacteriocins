@@ -24,6 +24,9 @@ gut_ibm
 *.h5
 *.hdf5
 batch_results/
+practice_outputs/
+experiments/**/generated/**/results/
+experiments/**/analysis/
 
 # Python
 .venv/
