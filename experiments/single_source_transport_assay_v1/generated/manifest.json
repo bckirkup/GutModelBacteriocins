@@ -1,6 +1,8 @@
 {
+  "assay_contract_sha256": "d31ac7d38eabeef4a1a52f080a3f5cc7535e74e3b19415ac4d324303cf5b564d",
   "assay_id": "single_source_transport_assay_v1",
   "attempt_timeout_s": 3600,
+  "chemistry_placement": "device",
   "container_image_digest": "REQUIRED_BEFORE_SUBMISSION",
   "execution_source_sha": "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_ASSAY_COMMIT",
   "gate": "single_source_transport_gate",
@@ -68,65 +70,125 @@
       "seed": 20260917
     },
     {
-      "amplitude": 60.0,
+      "amplitude": 20.0,
       "arm": "producer",
       "array_index": 6,
       "input_relpath": "generated/jobs/6/input.json",
-      "input_sha256": "7c8bf82f1ff6b4122c30e9b605e4395ba2a15ae1f9842f1a7d892a6cc5115879",
+      "input_sha256": "34d103a0cf5239d1f28af35d0547c416189a5846c47b18692c3cb9619c4ca80f",
       "output_relpath": "generated/results/6/output.h5.gz",
+      "run_id": "SS_amp20_producer_s20260911",
+      "seed": 20260911
+    },
+    {
+      "amplitude": 20.0,
+      "arm": "producer",
+      "array_index": 7,
+      "input_relpath": "generated/jobs/7/input.json",
+      "input_sha256": "ba1c6f8b6a7a7e4ad52fb6fd2b8f4577d7c2ee6c2f8dacad6f297fc52519f2f9",
+      "output_relpath": "generated/results/7/output.h5.gz",
+      "run_id": "SS_amp20_producer_s20260913",
+      "seed": 20260913
+    },
+    {
+      "amplitude": 20.0,
+      "arm": "producer",
+      "array_index": 8,
+      "input_relpath": "generated/jobs/8/input.json",
+      "input_sha256": "914558f99b5f59d916a9d8a74990fa674ddf779c72de49a8686e7ae665e5d58e",
+      "output_relpath": "generated/results/8/output.h5.gz",
+      "run_id": "SS_amp20_producer_s20260917",
+      "seed": 20260917
+    },
+    {
+      "amplitude": 30.0,
+      "arm": "producer",
+      "array_index": 9,
+      "input_relpath": "generated/jobs/9/input.json",
+      "input_sha256": "6d4a9febfab39b64908d6d8c49034ef47fbb4befafe403bdced42a2317602d68",
+      "output_relpath": "generated/results/9/output.h5.gz",
+      "run_id": "SS_amp30_producer_s20260911",
+      "seed": 20260911
+    },
+    {
+      "amplitude": 30.0,
+      "arm": "producer",
+      "array_index": 10,
+      "input_relpath": "generated/jobs/10/input.json",
+      "input_sha256": "8ae02f32bfe369783f5e2c8a0f7bc1a6e111372d37daba45a95379c354113cfc",
+      "output_relpath": "generated/results/10/output.h5.gz",
+      "run_id": "SS_amp30_producer_s20260913",
+      "seed": 20260913
+    },
+    {
+      "amplitude": 30.0,
+      "arm": "producer",
+      "array_index": 11,
+      "input_relpath": "generated/jobs/11/input.json",
+      "input_sha256": "a7fc302e9851ba9aa16262a3b233f03e37889406d909ae856135a802d0f4b794",
+      "output_relpath": "generated/results/11/output.h5.gz",
+      "run_id": "SS_amp30_producer_s20260917",
+      "seed": 20260917
+    },
+    {
+      "amplitude": 60.0,
+      "arm": "producer",
+      "array_index": 12,
+      "input_relpath": "generated/jobs/12/input.json",
+      "input_sha256": "7c8bf82f1ff6b4122c30e9b605e4395ba2a15ae1f9842f1a7d892a6cc5115879",
+      "output_relpath": "generated/results/12/output.h5.gz",
       "run_id": "SS_amp60_producer_s20260911",
       "seed": 20260911
     },
     {
       "amplitude": 60.0,
       "arm": "producer",
-      "array_index": 7,
-      "input_relpath": "generated/jobs/7/input.json",
+      "array_index": 13,
+      "input_relpath": "generated/jobs/13/input.json",
       "input_sha256": "17fb2f24393a65a291211fba1976a59b3903b9dc4d1211c876c9048e8fcf6f11",
-      "output_relpath": "generated/results/7/output.h5.gz",
+      "output_relpath": "generated/results/13/output.h5.gz",
       "run_id": "SS_amp60_producer_s20260913",
       "seed": 20260913
     },
     {
       "amplitude": 60.0,
       "arm": "producer",
-      "array_index": 8,
-      "input_relpath": "generated/jobs/8/input.json",
+      "array_index": 14,
+      "input_relpath": "generated/jobs/14/input.json",
       "input_sha256": "751299802a66676f431d9ca3048df37988dc28c311fc7e0a509cd0d4dfd3179d",
-      "output_relpath": "generated/results/8/output.h5.gz",
+      "output_relpath": "generated/results/14/output.h5.gz",
       "run_id": "SS_amp60_producer_s20260917",
       "seed": 20260917
     },
     {
       "amplitude": 60.0,
       "arm": "toxin_free_null",
-      "array_index": 9,
-      "input_relpath": "generated/jobs/9/input.json",
+      "array_index": 15,
+      "input_relpath": "generated/jobs/15/input.json",
       "input_sha256": "c399cbea1856aa06895292ea055268a0df79e6eda6f1b1b47775d21c60d54563",
-      "output_relpath": "generated/results/9/output.h5.gz",
+      "output_relpath": "generated/results/15/output.h5.gz",
       "run_id": "SS_amp60_toxin_free_null_s20260911",
       "seed": 20260911
     },
     {
       "amplitude": 60.0,
       "arm": "toxin_free_null",
-      "array_index": 10,
-      "input_relpath": "generated/jobs/10/input.json",
+      "array_index": 16,
+      "input_relpath": "generated/jobs/16/input.json",
       "input_sha256": "cd31701936f872c93c2ddd9870d475e7d6b08d29a37899e88e1e583e06be33ef",
-      "output_relpath": "generated/results/10/output.h5.gz",
+      "output_relpath": "generated/results/16/output.h5.gz",
       "run_id": "SS_amp60_toxin_free_null_s20260913",
       "seed": 20260913
     },
     {
       "amplitude": 60.0,
       "arm": "toxin_free_null",
-      "array_index": 11,
-      "input_relpath": "generated/jobs/11/input.json",
+      "array_index": 17,
+      "input_relpath": "generated/jobs/17/input.json",
       "input_sha256": "5535fb35eed14cf48467007a4e6de9d2c9409801d6b12241b29d31069e823b19",
-      "output_relpath": "generated/results/11/output.h5.gz",
+      "output_relpath": "generated/results/17/output.h5.gz",
       "run_id": "SS_amp60_toxin_free_null_s20260917",
       "seed": 20260917
     }
   ],
-  "schema_version": 1
+  "schema_version": 2
 }

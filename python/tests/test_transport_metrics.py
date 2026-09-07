@@ -57,7 +57,7 @@ def resolved_config(**overrides) -> dict:
     return cfg
 
 
-def write_run(path, *, config=None, sha=SHA, placement="device_delivery", ranks=1, events=None):
+def write_run(path, *, config=None, sha=SHA, placement="device", ranks=1, events=None):
     """Write a minimal output file with run provenance and a provenance layer."""
     with h5py.File(path, "w") as h:
         group = h.create_group("run_provenance")
@@ -212,6 +212,7 @@ class TestAuthentication:
         ("kwargs", "needle"),
         [
             ({"sha": "b" * 40}, "git_sha"),
+            ({"placement": "host"}, "chemistry_placement"),
             ({"placement": "host_forced_delivery"}, "chemistry_placement"),
             ({"ranks": 2}, "mpi_rank_count"),
         ],

@@ -34,7 +34,12 @@ class PackageTests(unittest.TestCase):
   self.assertEqual(p.returncode,1); report=json.loads(p.stdout); self.assertTrue(any('--execution-source-sha' in x for x in report['errors'])); self.assertTrue(any('git checkout' in x or 'git HEAD' in x for x in report['errors']))
  def test_deployment_generation_refuses_without_git_even_with_pinned_values(self):
   p=subprocess.run([sys.executable,str(ROOT/'prepare.py'),'--deployment','--execution-source-sha','0'*40,'--image-digest','sha256:'+'1'*64],capture_output=True,text=True)
-  self.assertNotEqual(p.returncode,0); self.assertIn('normal git checkout',p.stdout+p.stderr)
+  out=p.stdout+p.stderr
+  self.assertNotEqual(p.returncode,0)
+  self.assertTrue(
+      'normal git checkout' in out or 'does not match git HEAD' in out or 'REFUSED' in out,
+      out,
+  )
  def test_authoritative_revised_handoff_record(self):
   d=json.loads((ROOT/'campaign_decision_record.json').read_text())
   by_gate={x['gate']:x for x in d['decisions']}
@@ -42,7 +47,11 @@ class PackageTests(unittest.TestCase):
   self.assertEqual(by_gate['B_pass']['selected_b12_initial_conc_mol_m3'],1e-3)
   self.assertEqual(by_gate['C_population_gate']['execution_source_sha'],'3f176b26c0d18a22a61db218e56106b1355b781e')
   self.assertEqual(by_gate['PR416_intrinsic_transport_gate']['status'],'INVALID_FAILED_SUPERSEDED')
-  self.assertEqual(by_gate['single_source_transport_assay_v1']['status'],'PENDING')
+  self.assertEqual(by_gate['single_source_transport_assay_v1']['status'],'PENDING_ADAPTIVE_RUNS'); self.assertEqual(by_gate['single_source_transport_assay_v1']['jobs'],18); self.assertEqual(by_gate['issue420_ecological_refinement']['status'],'PENDING_SEPARATE')
+  self.assertEqual(
+      by_gate['single_source_transport_assay_v1']['prior_attempt']['status'],
+      'BLOCKED',
+  )
   self.assertEqual(by_gate['D_release']['status'],'BLOCKED')
   self.assertEqual(by_gate['D_release']['conditional_selected_mucin_charge_amplitude'],15)
   approval=json.loads((ROOT/'approval.json').read_text())

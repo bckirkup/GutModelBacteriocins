@@ -273,6 +273,7 @@ def expected_run(run) -> ExpectedRun:
         execution_source_sha=run["execution_source_sha"],
         seed=int(run["seed"]),
         amplitude=float(run["amplitude"]),
+        chemistry_placement="device_delivery",
         hdf5_schedule=run["hdf5_schedule"],
     )
 

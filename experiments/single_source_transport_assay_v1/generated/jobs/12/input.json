@@ -1,6 +1,6 @@
 {
   "_assay": {
-    "amplitude": 20.0,
+    "amplitude": 60.0,
     "arm": "producer",
     "assay_id": "single_source_transport_assay_v1",
     "cole1_identity": {
@@ -9,8 +9,8 @@
       "pI": 9.0
     },
     "execution_source_sha": "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_ASSAY_COMMIT",
-    "run_id": "SS_amp20_producer_s20260913",
-    "seed": 20260913
+    "run_id": "SS_amp60_producer_s20260911",
+    "seed": 20260911
   },
   "_comment": [
     "Single-source transport assay: one identical fixed release source per seed.",
@@ -18,7 +18,7 @@
     "Runtime /run_provenance/git_sha must match execution_source_sha."
   ],
   "b12_initial_conc": 0.001,
-  "bacteriocin.mucin_charge.amplitude": 20.0,
+  "bacteriocin.mucin_charge.amplitude": 60.0,
   "bio_dt": 60.0,
   "burst_release_tau": 300.0,
   "carbon_z_gradient": false,
@@ -89,7 +89,7 @@
   "oxygen.k_ROS": 0.0,
   "peristaltic_enabled": false,
   "radial_turnover": 1000000000.0,
-  "seed": 20260913,
+  "seed": 20260911,
   "sos_basal_rate": 1.0,
   "sos_lysis_prob": 0.0,
   "total_time": 3600.0

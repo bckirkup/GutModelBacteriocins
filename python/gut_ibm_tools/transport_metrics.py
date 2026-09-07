@@ -99,8 +99,9 @@ def _scalar(h5, path: str) -> float | None:
 class ExpectedRun:
     """The settings a transport analysis requires of one run.
 
-    Defaults carry the receptor-selection Stage C transport settings; the
-    per-run axes (commit, seed, amplitude) have no defaults.
+    Defaults carry shared transport settings and physical GPU placement
+    (``device``); callers exercising ecological device delivery must request
+    ``device_delivery`` explicitly. Per-run commit, seed, and amplitude have no defaults.
     """
 
     execution_source_sha: str
@@ -114,7 +115,7 @@ class ExpectedRun:
     cole1_diff_coeff: float = COLE1_LIBRARY_DIFF_COEFF
     cole1_burst_size: float = COLE1_LIBRARY_BURST_SIZE
     mpi_ranks: int = 1
-    chemistry_placement: str = "device_delivery"
+    chemistry_placement: str = "device"
     grid_species: tuple[str, ...] = ("bacteriocin_BtuB",)
     hdf5_schedule: Mapping[str, int] = field(
         default_factory=lambda: {

@@ -49,10 +49,10 @@ def git(*args: str) -> str:
 
 def dump(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    data = json.dumps(obj, indent=2, sort_keys=True) + "\n"
+    data = (json.dumps(obj, indent=2, sort_keys=True) + "\n").encode("utf-8")
     handle, tmp = tempfile.mkstemp(prefix=path.name + ".", dir=path.parent)
     try:
-        with os.fdopen(handle, "w") as stream:
+        with os.fdopen(handle, "wb") as stream:
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
@@ -89,7 +89,10 @@ def validate_deployment_identity(execution_sha: str, image_digest: str) -> None:
         )
     tracked = [
         "assay_contract.json",
+        "assay_decision_record.json",
         "prepare_assay.py",
+        "preflight_assay.py",
+        "aws_commands_assay.py",
         "analyze_assay.py",
         "README.md",
     ]
@@ -259,7 +262,7 @@ def main() -> int:
                 "arm": cfg["_assay"]["arm"],
                 "seed": cfg["_assay"]["seed"],
                 "amplitude": cfg["_assay"]["amplitude"],
-                "input_relpath": str(input_path.relative_to(ROOT)),
+                "input_relpath": input_path.relative_to(ROOT).as_posix(),
                 "input_sha256": digest(input_path),
                 "output_relpath": f"generated/results/{index}/output.h5.gz",
             }
@@ -274,12 +277,14 @@ def main() -> int:
     dump(
         generated / "manifest.json",
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "assay_id": CONTRACT["assay_id"],
+            "assay_contract_sha256": digest(ROOT / "assay_contract.json"),
             "execution_source_sha": execution_sha,
             "container_image_digest": args.image_digest,
             "mpi_ranks": CONTRACT["runtime"]["mpi_ranks"],
             "gpu_required": CONTRACT["runtime"]["gpu_required"],
+            "chemistry_placement": CONTRACT["runtime"]["chemistry_placement"],
             "attempt_timeout_s": CONTRACT["runtime"]["attempt_timeout_s"],
             "gate": CONTRACT["gate"]["id"],
             "runs": entries,

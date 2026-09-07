@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "record_id": "single_source_transport_assay_v1_adaptive_issue420_2026-09-07",
+  "historical_attempt": {
+    "execution_source_sha": "d7b16c30d4afdd3a317133e4db13ba8686a2027b",
+    "status_recorded": "BLOCKED",
+    "artifacts_preserved": true,
+    "sole_recorded_blocker": "inherited device_delivery expectation",
+    "corrected_physical_placement": "device",
+    "scientific_adjudication": "SUPPORTIVE_ALL_DECLARED_SCIENTIFIC_CRITERIA_PASSED",
+    "formal_adaptive_gate": "NOT_SATISFIED_MISSING_AMPLITUDES_20_30"
+  },
+  "adaptive_intrinsic_assay": {
+    "status": "PENDING_NEW_RUNS",
+    "amplitudes": [
+      0,
+      15,
+      20,
+      30,
+      60
+    ],
+    "seeds": 3,
+    "nulls": 3,
+    "jobs": 18,
+    "run_id_prefix": "SS_amp",
+    "expected_chemistry_placement": "device",
+    "metabolism_enabled": false
+  },
+  "separate_ecological_refinement": {
+    "issue": 420,
+    "status": "PENDING_SEPARATE",
+    "amplitudes": [
+      15,
+      20,
+      30
+    ],
+    "producer_jobs": 9,
+    "same_image_null_jobs": 3,
+    "jobs": 12,
+    "run_id_prefix": "C_amp",
+    "must_not_be_submitted_as_intrinsic_assay": true
+  },
+  "stage_D": {
+    "status": "BLOCKED",
+    "selection_changed": false
+  }
+}

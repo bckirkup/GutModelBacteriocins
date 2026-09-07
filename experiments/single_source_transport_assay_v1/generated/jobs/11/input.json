@@ -1,7 +1,7 @@
 {
   "_assay": {
-    "amplitude": 60.0,
-    "arm": "toxin_free_null",
+    "amplitude": 30.0,
+    "arm": "producer",
     "assay_id": "single_source_transport_assay_v1",
     "cole1_identity": {
       "burst_size": 100000.0,
@@ -9,7 +9,7 @@
       "pI": 9.0
     },
     "execution_source_sha": "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_ASSAY_COMMIT",
-    "run_id": "SS_amp60_toxin_free_null_s20260917",
+    "run_id": "SS_amp30_producer_s20260917",
     "seed": 20260917
   },
   "_comment": [
@@ -18,7 +18,7 @@
     "Runtime /run_provenance/git_sha must match execution_source_sha."
   ],
   "b12_initial_conc": 0.001,
-  "bacteriocin.mucin_charge.amplitude": 60.0,
+  "bacteriocin.mucin_charge.amplitude": 30.0,
   "bio_dt": 60.0,
   "burst_release_tau": 300.0,
   "carbon_z_gradient": false,
@@ -62,7 +62,9 @@
       "conjugative": false,
       "count": 1,
       "mu_max": 0.0,
-      "plasmids": [],
+      "plasmids": [
+        "ColE1"
+      ],
       "receptor_expression": {
         "BtuB": 0.0
       },
