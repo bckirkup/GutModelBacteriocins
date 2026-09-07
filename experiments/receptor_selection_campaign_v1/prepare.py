@@ -12,7 +12,7 @@ IMAGE_PLACEHOLDER=CONTRACT['digest_policy']['planning_placeholder']
 SEEDS=CONTRACT['seeds']
 SHA40=re.compile(r'[0-9a-f]{40}')
 IMAGE_RE=re.compile(CONTRACT['execution']['image_digest_pattern'])
-CORE_FILES=['campaign_contract.json','prepare.py','preflight.py','analyze.py','aws_commands.py','README.md','AWS_HANDOFF.md','COMPLETION_NOTE.md','prepare_and_preflight.sh','tests/test_package.py']
+CORE_FILES=['campaign_contract.json','campaign_decision_record.json','CURSOR_HANDOFF.md','prepare.py','preflight.py','analyze.py','aws_commands.py','README.md','AWS_HANDOFF.md','COMPLETION_NOTE.md','prepare_and_preflight.sh','tests/test_package.py']
 
 def dump(path,obj):
     path.parent.mkdir(parents=True,exist_ok=True)
@@ -95,10 +95,16 @@ def planned_runs(prom,execution_sha):
       rid=f'C_amp{amp}_producer_s{seed}'; out['C'].append((rid,make('C',rid,'producer',seed,{'amplitude':amp,'selected_kd':kd,'selected_b12':b12},[strain(1,['ColE1']),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp},grid=True)))
     for seed in SEEDS:
       rid=f'C_shared_null_amp{amp0}_s{seed}'; out['C'].append((rid,make('C',rid,'shared_null',seed,{'amplitude':amp0,'selected_kd':kd,'selected_b12':b12},[strain(1),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp0},grid=True)))
+    # Twelve ColE1-carrier arms; P=0 remains a carrier and is not the null.
     for target,p in zip(CONTRACT['axes']['D']['realized_lysis_target_per_generation'],CONTRACT['axes']['D']['sos_lysis_prob']):
      for seed in SEEDS:
       rid=f'D_target{target:.3f}_producer_s{seed}'; updates={**fixed,'bacteriocin.mucin_charge.amplitude':amp0,'sos_basal_rate':0.0,'sos_lysis_prob':p}
       out['D'].append((rid,make('D',rid,'producer',seed,{'nominal_target_per_generation':target,'sos_lysis_prob':p,'selected_amplitude':amp0},[strain(1,['ColE1']),strain(2)],execution_sha,updates)))
+    # Three formal same-revision controls, generated once per seed (not crossed with lysis targets).
+    for seed in SEEDS:
+      rid=f'D_plasmid_free_null_s{seed}'; updates={**fixed,'bacteriocin.mucin_charge.amplitude':amp0,'sos_basal_rate':0.0,'sos_lysis_prob':0.0}
+      axes={'control':'plasmid_free_null','selected_amplitude':amp0,'selected_kd':kd,'selected_b12':b12}
+      out['D'].append((rid,make('D',rid,'plasmid_free_null',seed,axes,[strain(1),strain(2)],execution_sha,updates)))
     return out
 def main():
  p=argparse.ArgumentParser(); p.add_argument('--deployment',action='store_true'); p.add_argument('--execution-source-sha'); p.add_argument('--image-digest',default=IMAGE_PLACEHOLDER); p.add_argument('--selected-kd',type=float); p.add_argument('--selected-b12',type=float); p.add_argument('--selected-amplitude',type=float); p.add_argument('--clean',action='store_true'); a=p.parse_args()

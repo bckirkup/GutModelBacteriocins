@@ -9,17 +9,18 @@
   "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
   "mpi_ranks": 1,
   "promotion_inputs": {
-    "rule": "Regenerate downstream stages with recorded gate decisions after upstream results.",
-    "selected_b12_initial_conc_mol_m3": 0.0001,
+    "D_release_blocked_until": "C_transport_gate=true",
+    "rule": "A/B selections are authoritative; amplitude 15 is conditional on assay pass. Regenerate D on the assay execution SHA and digest only.",
+    "selected_b12_initial_conc_mol_m3": 0.001,
     "selected_kd_corrinoid_btuB_mol_m3": 0.0001,
-    "selected_mucin_charge_amplitude": 60,
-    "status": "PLANNING_ONLY_NOT_SCIENTIFICALLY_PROMOTED"
+    "selected_mucin_charge_amplitude": 15,
+    "status": "CONDITIONAL_REVISED_C_TO_D_HANDOFF"
   },
   "runs": [
     {
       "array_index": 0,
       "input_relpath": "generated/stage_C/jobs/0/input.json",
-      "input_sha256": "cd1fadefd6200801a6b35169d80b199dded0a5ee5d273be2c35d36edfc3810e7",
+      "input_sha256": "e60dc0ac1cd96823b5198daa6a0a260e207b73b42cf97b0eeac1b39e1464153b",
       "output_relpath": "generated/stage_C/results/0/output.h5.gz",
       "run_id": "C_amp0_producer_s20260911",
       "stage": "C"
@@ -27,7 +28,7 @@
     {
       "array_index": 1,
       "input_relpath": "generated/stage_C/jobs/1/input.json",
-      "input_sha256": "6d58143938b25cb26c4a750f35fd05d47654dbe22210e7548e7fbf4b37946adf",
+      "input_sha256": "fc6e0d410f6e60cee8ee36b3c0acdec166428175f23fe90046ecbbaa14ec6ccf",
       "output_relpath": "generated/stage_C/results/1/output.h5.gz",
       "run_id": "C_amp0_producer_s20260913",
       "stage": "C"
@@ -35,7 +36,7 @@
     {
       "array_index": 2,
       "input_relpath": "generated/stage_C/jobs/2/input.json",
-      "input_sha256": "c6b468008a6ceb68f2a8dc1f239fd218f877536a27b5b85c614cf8d5ba23b730",
+      "input_sha256": "7d009f0805a9caf30a8a17d54e83cfe4df1d42b4edc20ceaee6bb50f7b9e3fb0",
       "output_relpath": "generated/stage_C/results/2/output.h5.gz",
       "run_id": "C_amp0_producer_s20260917",
       "stage": "C"
@@ -43,7 +44,7 @@
     {
       "array_index": 3,
       "input_relpath": "generated/stage_C/jobs/3/input.json",
-      "input_sha256": "51822d10ccd0ab61e5e14015f6d6792452d929c6da0f442f4f58da443e2d5086",
+      "input_sha256": "fdd405dcd622adce95a6d58e99db62d0ff217fb691770935d46ca3cbd290089c",
       "output_relpath": "generated/stage_C/results/3/output.h5.gz",
       "run_id": "C_amp15_producer_s20260911",
       "stage": "C"
@@ -51,7 +52,7 @@
     {
       "array_index": 4,
       "input_relpath": "generated/stage_C/jobs/4/input.json",
-      "input_sha256": "b1c3447899a2d5ced43c15e9bd4be00ad1128575e059f4e02ad24dbfd0e38e9b",
+      "input_sha256": "8a6bfd1ccc0785559adcd6ac75ac0fee84b22c3e2754d8c6c3b5dfde9038a5a9",
       "output_relpath": "generated/stage_C/results/4/output.h5.gz",
       "run_id": "C_amp15_producer_s20260913",
       "stage": "C"
@@ -59,7 +60,7 @@
     {
       "array_index": 5,
       "input_relpath": "generated/stage_C/jobs/5/input.json",
-      "input_sha256": "f1d789bb4145579517d2462deef3bccd740b17558a7bc54cb8510aab7590b914",
+      "input_sha256": "7095585dbca2fa716364aa078a04d2b43111662a97016c470f5252ae0ea6fad8",
       "output_relpath": "generated/stage_C/results/5/output.h5.gz",
       "run_id": "C_amp15_producer_s20260917",
       "stage": "C"
@@ -67,7 +68,7 @@
     {
       "array_index": 6,
       "input_relpath": "generated/stage_C/jobs/6/input.json",
-      "input_sha256": "c015b318ec33ec2d1d1f8a009ed072def154804ce3627f7685d33ef99f26d56f",
+      "input_sha256": "057a472191ef8144c213822ee862094cd7e38f35cff3c7a0b94eae2b7335dd45",
       "output_relpath": "generated/stage_C/results/6/output.h5.gz",
       "run_id": "C_amp60_producer_s20260911",
       "stage": "C"
@@ -75,7 +76,7 @@
     {
       "array_index": 7,
       "input_relpath": "generated/stage_C/jobs/7/input.json",
-      "input_sha256": "af86dfbb1e2d67442e4b8b294a703b98822fb11d0d9d2cb4a6f7eeecc9e48d82",
+      "input_sha256": "ec96b245334fac69a802886314ff02b69ed483254ef7a5f52ec9dbb35460b4be",
       "output_relpath": "generated/stage_C/results/7/output.h5.gz",
       "run_id": "C_amp60_producer_s20260913",
       "stage": "C"
@@ -83,7 +84,7 @@
     {
       "array_index": 8,
       "input_relpath": "generated/stage_C/jobs/8/input.json",
-      "input_sha256": "cdffd1ce4a536503bf8944cd41020030e4ef74fbc398ed0fd64db15a9b56f7bb",
+      "input_sha256": "f0fc603e6058da935a8ed932341287fe2a4c7a3c06cd13c4c771dc8c47463c61",
       "output_relpath": "generated/stage_C/results/8/output.h5.gz",
       "run_id": "C_amp60_producer_s20260917",
       "stage": "C"
@@ -91,25 +92,25 @@
     {
       "array_index": 9,
       "input_relpath": "generated/stage_C/jobs/9/input.json",
-      "input_sha256": "c7feb1fdd12fd4e2011d533748a1c80e118ee1f9e3bc4d10e3b6a1a06327bc68",
+      "input_sha256": "dd2334998525a784c0cdb828a93bdeb6fb19dfed81ec21b3e627794f7af0b522",
       "output_relpath": "generated/stage_C/results/9/output.h5.gz",
-      "run_id": "C_shared_null_amp60_s20260911",
+      "run_id": "C_shared_null_amp15_s20260911",
       "stage": "C"
     },
     {
       "array_index": 10,
       "input_relpath": "generated/stage_C/jobs/10/input.json",
-      "input_sha256": "d2cf03a6dc27301f3df4aa02921cf7436919dad7f348c8096ec97eb0c94bf45c",
+      "input_sha256": "9fe2247c5d1c5bf67732d64b3062bf56054c169c5c443543cb8be522cbddf9ff",
       "output_relpath": "generated/stage_C/results/10/output.h5.gz",
-      "run_id": "C_shared_null_amp60_s20260913",
+      "run_id": "C_shared_null_amp15_s20260913",
       "stage": "C"
     },
     {
       "array_index": 11,
       "input_relpath": "generated/stage_C/jobs/11/input.json",
-      "input_sha256": "b2ac6506dec6a7fe14d80f726bd44a9a59d5e579db482266173b05430309f2ae",
+      "input_sha256": "15b93424f2044223575113e8083a293ad3bab514ba453a4e83d7da91305ebfe7",
       "output_relpath": "generated/stage_C/results/11/output.h5.gz",
-      "run_id": "C_shared_null_amp60_s20260917",
+      "run_id": "C_shared_null_amp15_s20260917",
       "stage": "C"
     }
   ],

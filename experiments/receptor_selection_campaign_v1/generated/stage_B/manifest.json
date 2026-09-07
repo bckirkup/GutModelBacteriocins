@@ -9,11 +9,12 @@
   "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
   "mpi_ranks": 1,
   "promotion_inputs": {
-    "rule": "Regenerate downstream stages with recorded gate decisions after upstream results.",
-    "selected_b12_initial_conc_mol_m3": 0.0001,
+    "D_release_blocked_until": "C_transport_gate=true",
+    "rule": "A/B selections are authoritative; amplitude 15 is conditional on assay pass. Regenerate D on the assay execution SHA and digest only.",
+    "selected_b12_initial_conc_mol_m3": 0.001,
     "selected_kd_corrinoid_btuB_mol_m3": 0.0001,
-    "selected_mucin_charge_amplitude": 60,
-    "status": "PLANNING_ONLY_NOT_SCIENTIFICALLY_PROMOTED"
+    "selected_mucin_charge_amplitude": 15,
+    "status": "CONDITIONAL_REVISED_C_TO_D_HANDOFF"
   },
   "runs": [
     {

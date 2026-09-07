@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse, hashlib, json, math, re, subprocess, sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent; REPO=ROOT.parents[1]
+MUCIN_AMPLITUDE_KEY='bacteriocin.mucin_charge.amplitude'
 C=json.loads((ROOT/'campaign_contract.json').read_text()); G=ROOT/'generated'; ERR=[]; WARN=[]
 BASELINE=C['model_baseline_sha']; EXEC_PLACEHOLDER=C['execution_source_sha_policy']['planning_placeholder']
 SHA40=re.compile(r'[0-9a-f]{40}')
@@ -50,7 +51,7 @@ def main():
   if head is None: fail('deployment preflight requires a normal git checkout; retrieval-manifest-only/tarball provenance is planning-only')
   elif a.execution_source_sha!=head: fail(f'execution source SHA does not match git HEAD: {a.execution_source_sha} != {head}')
   else:
-   core=['campaign_contract.json','prepare.py','preflight.py','analyze.py','aws_commands.py','README.md','AWS_HANDOFF.md','COMPLETION_NOTE.md','prepare_and_preflight.sh','tests/test_package.py']; rel=ROOT.relative_to(REPO)
+   core=['campaign_contract.json','campaign_decision_record.json','CURSOR_HANDOFF.md','prepare.py','preflight.py','analyze.py','aws_commands.py','README.md','AWS_HANDOFF.md','COMPLETION_NOTE.md','prepare_and_preflight.sh','tests/test_package.py']; rel=ROOT.relative_to(REPO)
    for name in core:
     try: git('ls-files','--error-unmatch','--',str(rel/name))
     except Exception: fail(f'deployment package file is not committed at execution_source_sha: {rel/name}')
@@ -58,13 +59,22 @@ def main():
    except Exception as e: fail(f'cannot inspect deployment package working-tree state: {e}'); dirty=''
    if dirty: fail('provenance-bearing campaign files differ from execution_source_sha:\n'+dirty)
  elif a.execution_source_sha: fail('--execution-source-sha is only accepted with --deployment')
- expected={'Q':2,'A':24,'B':12,'C':12,'D':12}; configs={}; ids=[]; signatures=[]; image_digests=set(); execution_shas=set(); baseline_shas=set()
+ try:
+  decision=json.loads((ROOT/C['authoritative_decision_record']).read_text()); by_gate={x['gate']:x for x in decision['decisions']}
+  if by_gate['A_pass'].get('execution_source_sha')!='b884cc54b1c0684c079a90195c031e388fe70534' or not approx(by_gate['A_pass'].get('selected_kd_corrinoid_btuB_mol_m3'),1e-4): fail('authoritative Stage A decision drift')
+  if by_gate['B_pass'].get('execution_source_sha')!='b884cc54b1c0684c079a90195c031e388fe70534' or not approx(by_gate['B_pass'].get('selected_b12_initial_conc_mol_m3'),1e-3): fail('authoritative Stage B decision drift')
+  if by_gate['C_population_gate'].get('execution_source_sha')!='3f176b26c0d18a22a61db218e56106b1355b781e' or by_gate['C_population_gate'].get('amplitudes_tested')!=[0,15,60]: fail('authoritative ecological Stage C decision drift')
+  if by_gate['PR416_intrinsic_transport_gate'].get('status')!='INVALID_FAILED_SUPERSEDED': fail('PR416 gate must remain superseded')
+  if by_gate['single_source_transport_assay_v1'].get('status')!='PENDING': fail('revised transport assay must remain pending in planning patch')
+  if by_gate['D_release'].get('status')!='BLOCKED' or by_gate['D_release'].get('conditional_selected_mucin_charge_amplitude')!=15: fail('Stage D handoff must remain blocked/conditional')
+ except Exception as e: fail(f'authoritative decision record missing/unreadable: {e}')
+ expected={'Q':2,'A':24,'B':12,'C':12,'D':15}; configs={}; ids=[]; signatures=[]; image_digests=set(); execution_shas=set(); baseline_shas=set()
  try: campaign_manifest=json.loads((G/'campaign_manifest.json').read_text())
  except Exception as e: fail(f'campaign manifest missing/unreadable: {e}'); campaign_manifest={}
  # Source-backed audit of every deliberate scalar key. Nested HDF5/strain objects are parsed by config_json.cpp.
  try: parser_text=(REPO/'src/io/input_parser.cpp').read_text()+(REPO/'src/io/config_json.cpp').read_text()
  except Exception as e: fail(f'cannot read execution-source parser files: {e}'); parser_text=''
- required_exact=['total_time','bio_dt','output_interval','seed','domain_x','domain_y','domain_z','grid_dx','mucus_thickness','radial_turnover','distal_transit','peristaltic_enabled','crypts_enabled','motility.enabled','carbon_z_gradient','carbon.boundary_conc','metabolism.uptake_limit','oxygen.k_ROS','dysbiosis_threshold','gpu_enabled','gpu_device_id','chemistry.toxin_evaluation','chemistry.toxin_lumping','initial_population.placement','initial_population.z_min','initial_population.z_max','fixes','hdf5_file','kd_corrinoid_btuB','kd_colicinE_btuB','b12_initial_conc','bacteriocin.mucin_charge.amplitude','sos_basal_rate','sos_lysis_prob','grid_species','receptor_expression']
+ required_exact=['total_time','bio_dt','output_interval','seed','domain_x','domain_y','domain_z','grid_dx','mucus_thickness','radial_turnover','distal_transit','peristaltic_enabled','crypts_enabled','motility.enabled','carbon_z_gradient','carbon.boundary_conc','metabolism.uptake_limit','oxygen.k_ROS','dysbiosis_threshold','gpu_enabled','gpu_device_id','chemistry.toxin_evaluation','chemistry.toxin_lumping','initial_population.placement','initial_population.z_min','initial_population.z_max','fixes','hdf5_file','kd_corrinoid_btuB','kd_colicinE_btuB','b12_initial_conc',MUCIN_AMPLITUDE_KEY,'sos_basal_rate','sos_lysis_prob','grid_species','receptor_expression']
  for key in required_exact:
   if f'"{key}"' not in parser_text: fail(f'exact config key not found in execution-source parser: {key}')
  aliases=[('b12.initial_conc','b12_initial_conc','corrinoid.initial_conc','corrinoid_initial_conc'),('kd_b12_btuB','kd_corrinoid_btuB'),('hdf5_file','hdf5.file')]
@@ -106,9 +116,9 @@ def main():
  if campaign_manifest:
   for k,want in [('schema_version',2),('model_baseline_sha',BASELINE),('execution_source_sha',a.execution_source_sha if a.deployment else EXEC_PLACEHOLDER)]:
    if campaign_manifest.get(k)!=want: fail(f'campaign manifest {k} mismatch: {campaign_manifest.get(k)!r} != {want!r}')
-  if len(campaign_manifest.get('runs',[]))!=62: fail('campaign manifest does not contain 62 runs')
+  if len(campaign_manifest.get('runs',[]))!=65: fail('campaign manifest does not contain 65 runs')
  if len(ids)!=len(set(ids)): fail('run-id collision')
- if len(signatures)!=62: fail(f'total explicit runs {len(signatures)} != 62')
+ if len(signatures)!=65: fail(f'total explicit runs {len(signatures)} != 65')
  q=[s for st,_,s in signatures if st=='Q']
  if len(set(q))!=1: fail('Q repeats are not parser-identical')
  A=[c for r,c in configs.items() if r.startswith('A_')]
@@ -122,13 +132,21 @@ def main():
  for c in B:
   if c['initial_strains'][0].get('receptor_expression')!={'BtuB':1.0} or c['initial_strains'][1].get('receptor_expression')!={'BtuB':0.0} or any(x['plasmids'] for x in c['initial_strains']): fail(f"{c['_campaign']['run_id']}: Stage B is not toxin-free BtuB-normal/null")
  CP=[c for r,c in configs.items() if r.startswith('C_amp')]; CN=[c for r,c in configs.items() if r.startswith('C_shared')]
- if len(CP)!=9 or len(CN)!=3 or {c['bacteriocin.mucin_charge.amplitude'] for c in CP}!={0,15,60}: fail('Stage C explicit 9 producer + 3 shared-null design violated')
+ if len(CP)!=9 or len(CN)!=3 or {c[MUCIN_AMPLITUDE_KEY] for c in CP}!={0,15,60}: fail('Stage C explicit 9 producer + 3 shared-null design violated')
  D=[c for r,c in configs.items() if r.startswith('D_')]
- if len({(c['kd_corrinoid_btuB'],c['b12_initial_conc'],c['bacteriocin.mucin_charge.amplitude']) for c in D})!=1: fail('Stage D fixed upstream axes violated')
- for c in D:
+ if len({(c['kd_corrinoid_btuB'],c['b12_initial_conc'],c[MUCIN_AMPLITUDE_KEY]) for c in D})!=1: fail('Stage D fixed upstream axes violated')
+ DP=[c for c in D if c['_campaign']['arm']=='producer']; DN=[c for c in D if c['_campaign']['arm']=='plasmid_free_null']
+ if len(DP)!=12 or len(DN)!=3: fail('Stage D must contain exactly 12 ColE1 carriers plus 3 plasmid-free nulls')
+ if {c['seed'] for c in DN}!=set(C['seeds']): fail('Stage D plasmid-free null set must contain exactly one run per seed')
+ if any(c['initial_strains'][0].get('plasmids')!=[] for c in DN): fail('Stage D formal null unexpectedly carries a plasmid')
+ if any(c['initial_strains'][0].get('plasmids')!=['ColE1'] for c in DP): fail('Stage D carrier arm lost ColE1')
+ if any(c['_campaign']['axes'].get('nominal_target_per_generation') is not None for c in DN): fail('Stage D null controls were accidentally crossed with the lysis axis')
+ for c in DP:
   target=c['_campaign']['axes']['nominal_target_per_generation']; want=1-math.sqrt(1-target)
   if not approx(c['sos_lysis_prob'],want,1e-10): fail(f"{c['_campaign']['run_id']}: lysis transform incorrect")
   if c.get('sos_basal_rate')!=0 or c.get('oxygen.k_ROS')!=0: fail(f"{c['_campaign']['run_id']}: lysis attribution controls missing")
+ for c in DN:
+  if c.get('sos_basal_rate')!=0 or c.get('sos_lysis_prob')!=0 or c.get('oxygen.k_ROS')!=0: fail(f"{c['_campaign']['run_id']}: null attribution controls missing")
  if len(image_digests)!=1: fail(f'mixed image digests: {image_digests}')
  image=next(iter(image_digests),None); pattern=C['execution']['image_digest_pattern']
  if not image or not re.fullmatch(pattern,image):

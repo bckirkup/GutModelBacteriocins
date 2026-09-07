@@ -7,10 +7,13 @@ IMAGE_PLACEHOLDER='REQUIRED_BEFORE_SUBMISSION'
 class PackageTests(unittest.TestCase):
  def test_contract_separates_design_and_execution_identity(self):
   c=json.loads((ROOT/'campaign_contract.json').read_text())
-  self.assertEqual(c['schema_version'],2); self.assertEqual(c['model_baseline_sha'],BASELINE)
+  self.assertEqual(c['schema_version'],3); self.assertEqual(c['model_baseline_sha'],BASELINE)
   self.assertEqual(c['execution_source_sha_policy']['planning_placeholder'],EXEC_PLACEHOLDER)
   self.assertNotIn('source_sha',c)
-  self.assertEqual(sum(v['jobs'] for v in c['stages'].values()),62)
+  self.assertEqual(sum(v['jobs'] for v in c['stages'].values()),65)
+  self.assertEqual(c['stages']['D'],{'jobs':15,'requires':'C_transport_gate'})
+  self.assertEqual(c['planning_promotions']['selected_b12_initial_conc_mol_m3'],1e-3)
+  self.assertEqual(c['planning_promotions']['selected_mucin_charge_amplitude'],15)
   for target,p in zip(c['axes']['D']['realized_lysis_target_per_generation'],c['axes']['D']['sos_lysis_prob']): self.assertTrue(math.isclose(p,1-math.sqrt(1-target),rel_tol=1e-10,abs_tol=1e-12))
  def test_planning_artifacts_record_both_identities(self):
   c=json.loads((ROOT/'campaign_contract.json').read_text())
@@ -32,8 +35,37 @@ class PackageTests(unittest.TestCase):
  def test_deployment_generation_refuses_without_git_even_with_pinned_values(self):
   p=subprocess.run([sys.executable,str(ROOT/'prepare.py'),'--deployment','--execution-source-sha','0'*40,'--image-digest','sha256:'+'1'*64],capture_output=True,text=True)
   self.assertNotEqual(p.returncode,0); self.assertIn('normal git checkout',p.stdout+p.stderr)
+ def test_authoritative_revised_handoff_record(self):
+  d=json.loads((ROOT/'campaign_decision_record.json').read_text())
+  by_gate={x['gate']:x for x in d['decisions']}
+  self.assertEqual(by_gate['A_pass']['execution_source_sha'],'b884cc54b1c0684c079a90195c031e388fe70534')
+  self.assertEqual(by_gate['B_pass']['selected_b12_initial_conc_mol_m3'],1e-3)
+  self.assertEqual(by_gate['C_population_gate']['execution_source_sha'],'3f176b26c0d18a22a61db218e56106b1355b781e')
+  self.assertEqual(by_gate['PR416_intrinsic_transport_gate']['status'],'INVALID_FAILED_SUPERSEDED')
+  self.assertEqual(by_gate['single_source_transport_assay_v1']['status'],'PENDING')
+  self.assertEqual(by_gate['D_release']['status'],'BLOCKED')
+  self.assertEqual(by_gate['D_release']['conditional_selected_mucin_charge_amplitude'],15)
+  approval=json.loads((ROOT/'approval.json').read_text())
+  self.assertTrue(approval['record_status'].startswith('HISTORICAL_'))
+  self.assertEqual(approval['recorded_execution_source_sha'],'3f176b26c0d18a22a61db218e56106b1355b781e')
+ def test_stage_d_has_same_revision_nulls_without_factorial(self):
+  m=json.loads((ROOT/'generated/stage_D/manifest.json').read_text())
+  cfgs=[json.loads((ROOT/e['input_relpath']).read_text()) for e in m['runs']]
+  producers=[x for x in cfgs if x['_campaign']['arm']=='producer']
+  nulls=[x for x in cfgs if x['_campaign']['arm']=='plasmid_free_null']
+  self.assertEqual(len(producers),12); self.assertEqual(len(nulls),3)
+  self.assertEqual({x['seed'] for x in nulls},{20260911,20260913,20260917})
+  self.assertTrue(all(x['initial_strains'][0]['plasmids']==['ColE1'] for x in producers))
+  self.assertTrue(all(x['initial_strains'][0]['plasmids']==[] for x in nulls))
+  self.assertTrue(all('nominal_target_per_generation' not in x['_campaign']['axes'] for x in nulls))
+  pzero=[x for x in producers if x['_campaign']['axes']['nominal_target_per_generation']==0]
+  self.assertEqual(len(pzero),3); self.assertTrue(all(x['initial_strains'][0]['plasmids']==['ColE1'] for x in pzero))
  def test_runtime_analysis_uses_exact_execution_sha(self):
   text=(ROOT/'analyze.py').read_text(); self.assertIn("source==m['execution_source_sha']",text); self.assertNotIn("startswith(source)",text)
+  self.assertIn("x['stage']=='D' and x['arm']=='plasmid_free_null'",text)
+  d_pair_line=next(line for line in text.splitlines() if "elif r['stage']=='D'" in line)
+  self.assertIn("x['stage']=='D'",d_pair_line)
+  self.assertNotIn("x['stage']=='C'",d_pair_line)
  def test_paired_windows_share_calendar_end(self):
   sys.path.insert(0,str(ROOT)); import analyze
   # Treatment continues past the null; own-end slopes would disagree with a shared end.

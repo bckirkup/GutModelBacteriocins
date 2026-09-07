@@ -3,7 +3,7 @@
     "arm": "producer",
     "axes": {
       "nominal_target_per_generation": 0.01,
-      "selected_amplitude": 60,
+      "selected_amplitude": 15,
       "sos_lysis_prob": 0.00501256289338
     },
     "campaign_id": "receptor_selection_campaign_v1",
@@ -21,8 +21,8 @@
     "Runtime /run_provenance/git_sha must match execution_source_sha.",
     "AWS image digest is enforced by handoff/preflight, outside parser config."
   ],
-  "b12_initial_conc": 0.0001,
-  "bacteriocin.mucin_charge.amplitude": 60,
+  "b12_initial_conc": 0.001,
+  "bacteriocin.mucin_charge.amplitude": 15,
   "bio_dt": 60.0,
   "carbon.boundary_conc": 0.05,
   "carbon_z_gradient": false,

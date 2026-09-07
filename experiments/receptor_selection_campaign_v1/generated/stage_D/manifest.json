@@ -4,22 +4,23 @@
   "container_image_digest": "REQUIRED_BEFORE_SUBMISSION",
   "execution_source_sha": "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_CAMPAIGN_COMMIT",
   "gate_locked": true,
-  "gate_requires": "C_pass",
+  "gate_requires": "C_transport_gate",
   "gpu_required": true,
   "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
   "mpi_ranks": 1,
   "promotion_inputs": {
-    "rule": "Regenerate downstream stages with recorded gate decisions after upstream results.",
-    "selected_b12_initial_conc_mol_m3": 0.0001,
+    "D_release_blocked_until": "C_transport_gate=true",
+    "rule": "A/B selections are authoritative; amplitude 15 is conditional on assay pass. Regenerate D on the assay execution SHA and digest only.",
+    "selected_b12_initial_conc_mol_m3": 0.001,
     "selected_kd_corrinoid_btuB_mol_m3": 0.0001,
-    "selected_mucin_charge_amplitude": 60,
-    "status": "PLANNING_ONLY_NOT_SCIENTIFICALLY_PROMOTED"
+    "selected_mucin_charge_amplitude": 15,
+    "status": "CONDITIONAL_REVISED_C_TO_D_HANDOFF"
   },
   "runs": [
     {
       "array_index": 0,
       "input_relpath": "generated/stage_D/jobs/0/input.json",
-      "input_sha256": "da2e5a8abac5207f3bd488f7aba1bb93691ac0dda9a64293b8159f61108c6b58",
+      "input_sha256": "67c3ef605c6276fec67af47737f3a9f26ae54fbab963ba53dcb913b3ce1adae3",
       "output_relpath": "generated/stage_D/results/0/output.h5.gz",
       "run_id": "D_target0.000_producer_s20260911",
       "stage": "D"
@@ -27,7 +28,7 @@
     {
       "array_index": 1,
       "input_relpath": "generated/stage_D/jobs/1/input.json",
-      "input_sha256": "57658a8f7a2d37547ad2f8e70ab4bbb49505c01f57d49fc6d81eac672054ccee",
+      "input_sha256": "4d360bb6b0c8437b47b812113abfe71ecf16f17b9d8498dd78503cd8db3ac526",
       "output_relpath": "generated/stage_D/results/1/output.h5.gz",
       "run_id": "D_target0.000_producer_s20260913",
       "stage": "D"
@@ -35,7 +36,7 @@
     {
       "array_index": 2,
       "input_relpath": "generated/stage_D/jobs/2/input.json",
-      "input_sha256": "abcec35f76af634b90edbcebc1c60910be5be4e798f8aa9999dc1018de328c34",
+      "input_sha256": "a6d6fe50b58bef522f07b7adb2498c89021711103c5acaa5ece5aa3d2b21989a",
       "output_relpath": "generated/stage_D/results/2/output.h5.gz",
       "run_id": "D_target0.000_producer_s20260917",
       "stage": "D"
@@ -43,7 +44,7 @@
     {
       "array_index": 3,
       "input_relpath": "generated/stage_D/jobs/3/input.json",
-      "input_sha256": "4fe1435a6800b5f621efee7b62ae97e59d727658d35b913af3c5dc7ee09ad919",
+      "input_sha256": "de4d8c4702cf1ec41d5de67169a9fd53300ed7892ee9306cb33dbd4eea57cb59",
       "output_relpath": "generated/stage_D/results/3/output.h5.gz",
       "run_id": "D_target0.010_producer_s20260911",
       "stage": "D"
@@ -51,7 +52,7 @@
     {
       "array_index": 4,
       "input_relpath": "generated/stage_D/jobs/4/input.json",
-      "input_sha256": "707b9f5dd430c2ae79a58f07ec161c8068dff777cc6ac541a47dfff3363ba62e",
+      "input_sha256": "900f9341a449c3ffcd03cb0ab7e8f1b0ff4bfcea84311e4a6bff2e59378667ba",
       "output_relpath": "generated/stage_D/results/4/output.h5.gz",
       "run_id": "D_target0.010_producer_s20260913",
       "stage": "D"
@@ -59,7 +60,7 @@
     {
       "array_index": 5,
       "input_relpath": "generated/stage_D/jobs/5/input.json",
-      "input_sha256": "1b0c23c8cea29cb911f4d6d4da6ed2919ffe2351beaa05d1a82532ad31b2f689",
+      "input_sha256": "7799e51132d589e155f9c081c635d6f20ae8fb94ad6f686a08d430eff07d7016",
       "output_relpath": "generated/stage_D/results/5/output.h5.gz",
       "run_id": "D_target0.010_producer_s20260917",
       "stage": "D"
@@ -67,7 +68,7 @@
     {
       "array_index": 6,
       "input_relpath": "generated/stage_D/jobs/6/input.json",
-      "input_sha256": "904e264d30e184d6903d825665ae75b8d9dfeca539bd54fabcb7cfe137039906",
+      "input_sha256": "19e380fb18b28f518e6f51aef48cc94836ae9a5862ea1ba6ae2d5997da6531cf",
       "output_relpath": "generated/stage_D/results/6/output.h5.gz",
       "run_id": "D_target0.020_producer_s20260911",
       "stage": "D"
@@ -75,7 +76,7 @@
     {
       "array_index": 7,
       "input_relpath": "generated/stage_D/jobs/7/input.json",
-      "input_sha256": "3d79a38ff65c3edf0541667254b8e441911cd89613113cf494d5a3d965c848f6",
+      "input_sha256": "94438e1b4be9ee5f1fc1d7d682d70363cb2d9fd351e8b3a7c05d5145fa2c7f9a",
       "output_relpath": "generated/stage_D/results/7/output.h5.gz",
       "run_id": "D_target0.020_producer_s20260913",
       "stage": "D"
@@ -83,7 +84,7 @@
     {
       "array_index": 8,
       "input_relpath": "generated/stage_D/jobs/8/input.json",
-      "input_sha256": "b68c7a0b34d9db7f592278c5362bed905fc44b8972d61d862dfae7927bda5c4b",
+      "input_sha256": "f431b9706893313f2e9f7931112622f8cdee28ec736de471fb5109f4c0b7caeb",
       "output_relpath": "generated/stage_D/results/8/output.h5.gz",
       "run_id": "D_target0.020_producer_s20260917",
       "stage": "D"
@@ -91,7 +92,7 @@
     {
       "array_index": 9,
       "input_relpath": "generated/stage_D/jobs/9/input.json",
-      "input_sha256": "d66b96ff8d076588d1153d50015d749a80c43edf0dc506647bb500a7e5e9c790",
+      "input_sha256": "b607fc133543055d7569c6b3b7c0037ad9bb30ce5ebb92e11f5dd2f7864aed81",
       "output_relpath": "generated/stage_D/results/9/output.h5.gz",
       "run_id": "D_target0.050_producer_s20260911",
       "stage": "D"
@@ -99,7 +100,7 @@
     {
       "array_index": 10,
       "input_relpath": "generated/stage_D/jobs/10/input.json",
-      "input_sha256": "ecdf0ce6766495bb7506f26df40a119e79a5c361216ded2fb3d33c21b7c880ba",
+      "input_sha256": "28fac79288b884eedffc7957a3ab813017adad0303f7da0ac1ef5fe39fdb862f",
       "output_relpath": "generated/stage_D/results/10/output.h5.gz",
       "run_id": "D_target0.050_producer_s20260913",
       "stage": "D"
@@ -107,9 +108,33 @@
     {
       "array_index": 11,
       "input_relpath": "generated/stage_D/jobs/11/input.json",
-      "input_sha256": "9bff132020101c0a962bd9e74cb8995cf8a9fad515454ba9059848a18b7c131c",
+      "input_sha256": "54290ae1593a46647e18d011c6b1d6783e540379a9d5681485046d66fc3a3837",
       "output_relpath": "generated/stage_D/results/11/output.h5.gz",
       "run_id": "D_target0.050_producer_s20260917",
+      "stage": "D"
+    },
+    {
+      "array_index": 12,
+      "input_relpath": "generated/stage_D/jobs/12/input.json",
+      "input_sha256": "09e70744ac8312d0080f76f433dc065a228616c7bfea3c7b2713c694fd67f48e",
+      "output_relpath": "generated/stage_D/results/12/output.h5.gz",
+      "run_id": "D_plasmid_free_null_s20260911",
+      "stage": "D"
+    },
+    {
+      "array_index": 13,
+      "input_relpath": "generated/stage_D/jobs/13/input.json",
+      "input_sha256": "42bd646cb885b923019c04afabecbcbdc2fc6c404c34f290dad2d4e62c895416",
+      "output_relpath": "generated/stage_D/results/13/output.h5.gz",
+      "run_id": "D_plasmid_free_null_s20260913",
+      "stage": "D"
+    },
+    {
+      "array_index": 14,
+      "input_relpath": "generated/stage_D/jobs/14/input.json",
+      "input_sha256": "4a3e39b8dcfea203895aa560a816e7a708c56272f54ea48e74cc421baef8c479",
+      "output_relpath": "generated/stage_D/results/14/output.h5.gz",
+      "run_id": "D_plasmid_free_null_s20260917",
       "stage": "D"
     }
   ],

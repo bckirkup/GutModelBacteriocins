@@ -1,10 +1,15 @@
 {
+  "schema_version": 1,
+  "record_status": "HISTORICAL_NOT_VALID_FOR_REVISED_C_TO_D_HANDOFF",
+  "recorded_execution_source_sha": "3f176b26c0d18a22a61db218e56106b1355b781e",
+  "recorded_image_digest": "sha256:24a08caa2ad31040229c2d31ba9c5b279d61a100732660a51534bc15249c842d",
   "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
-  "execution_source_sha": "3f176b26c0d18a22a61db218e56106b1355b781e",
-  "image_digest": "sha256:24a08caa2ad31040229c2d31ba9c5b279d61a100732660a51534bc15249c842d",
-  "Q_pass": true,
-  "A_pass": true,
-  "selected_kd_corrinoid_btuB_mol_m3": 0.0001,
-  "B_pass": true,
-  "selected_b12_initial_conc_mol_m3": 0.001
+  "recorded_fields": {
+    "Q_pass": true,
+    "A_pass": true,
+    "selected_kd_corrinoid_btuB_mol_m3": 0.0001,
+    "B_pass": true,
+    "selected_b12_initial_conc_mol_m3": 0.001
+  },
+  "note": "Preserved from the prior campaign lineage. This file must not be passed as approval for single_source_transport_assay_v1 or revised Stage D; use a new stage-specific approval matching the assay/D SHA and digest."
 }
