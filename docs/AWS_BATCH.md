@@ -655,3 +655,14 @@ Start smaller with `batch_baseline.json` (3 runs) to measure cost/wall time firs
 | `smoke_gpu` (parser fix) | `g4dn.xlarge` | No (OD) | ~3.3 s container | ~$0.05 | `04cc2257-…`; no JSON warning; 20 agents from nested strains; `REQUIRE_GPU=1` |
 | `smoke_gpu_batch` ×2 | `g4dn.xlarge` | No (OD) | ~4–5 s / child | ~$0.05 | Array `f12ed608-…`; both SUCCEEDED; seeds 4092/4093 → final agents 13 vs 12; `gut-ibm-aws-qa` fingerprints differ |
 | `3a_baseline` seed | `g5.2xlarge` | | | | Phase 2 |
+| `single_source_transport_assay_v1` ×18 | `g4dn/g5` pool | Spot | ~6 min array; 5.4–7.0 s / child | n/a | Array `dd6c6a43-…` on SHA `3078c5a5`, job def `gutibm-cuda-campaign:10` (3600 s); 18/18 SUCCEEDED; instance not pinned per child |
+| `adaptive_ecology_refinement_v1` ×12 | `g4dn/g5` pool | Spot | ~50 min array; 140–258 s / child | n/a | Array `f97f8c67-…` on SHA `3078c5a5`, job def `gutibm-cuda-campaign:11` (7200 s); 12/12 SUCCEEDED; producers 226–258 s, nulls 140–144 s; all dysbiosis-guard halted at 20000 s; instance not pinned per child |
+| `receptor_selection_campaign_v1` Stage D ×15 | `g4dn/g5` pool | Spot | ~52 min array; 140–271 s / child | n/a | Array `06e22770-…` on SHA `3078c5a5`, job def `gutibm-cuda-campaign:11` (7200 s); 15/15 SUCCEEDED; all dysbiosis-guard halted at 20000 s; instance not pinned per child |
+
+These `device_delivery` ecological and Stage D runs completed 285–340
+biological steps in 140–271 s of wall time, roughly 0.5–0.8 wall-seconds per
+biological step at 17,000–30,000 agents, i.e. one to two orders of magnitude
+faster per step than the 16.8–25.3 s/step recorded for the earlier
+large-population campaign configuration. These are different configurations;
+per-step cost must be measured for the configuration actually being planned,
+not carried over. Cost was not itemized for these arrays.
