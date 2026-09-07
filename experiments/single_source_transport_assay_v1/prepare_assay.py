@@ -262,7 +262,7 @@ def main() -> int:
                 "arm": cfg["_assay"]["arm"],
                 "seed": cfg["_assay"]["seed"],
                 "amplitude": cfg["_assay"]["amplitude"],
-                "input_relpath": str(input_path.relative_to(ROOT)),
+                "input_relpath": input_path.relative_to(ROOT).as_posix(),
                 "input_sha256": digest(input_path),
                 "output_relpath": f"generated/results/{index}/output.h5.gz",
             }
