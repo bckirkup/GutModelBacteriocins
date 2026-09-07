@@ -1,0 +1,20 @@
+{
+  "record": "adaptive_ecology_refinement_v1 decision record",
+  "issue": 420,
+  "decided_before_execution": true,
+  "why_this_package_exists": [
+    "Gate C requires two evidence streams: the intrinsic single-source transport stream and an ecological producer-versus-plasmid-free-null stream at the candidate mucin-charge amplitudes. The ecological stream was never deployable at 39bb1e8: the historical Stage C campaign hard-codes amplitudes 0/15/60 and predates the delivery-authentication ancestry introduced by PR419, so it cannot supply the 20/30 interpolation or a same-image null.",
+    "PR419 delivers the intrinsic (SS_amp) stream only. It explicitly does not generate, preflight, or submit the ecological C_amp jobs. This package is the second, self-contained Gate C evidence stream: exactly 12 jobs, nine producers at amplitudes 15/20/30 across the three predeclared seeds and three plasmid-free nulls at amplitude 15, one per seed.",
+    "Amplitude 15 must be rerun even though a historical Stage C amplitude-15 record exists: that record came from a different container image and a different execution source, so it is not a formal control for the same-image 20/30 contrasts. Every comparison this package makes is between runs of one immutable image."
+  ],
+  "provenance_route": [
+    "Merge this package.",
+    "Build exactly one immutable container image from the resulting HEAD commit.",
+    "Rerun the 18-job intrinsic single-source transport assay on that image; its gate file is a required input to this gate.",
+    "Run these 12 ecological jobs on the same image.",
+    "Apply the predeclared selection rule to the same-seed producer-null contrasts.",
+    "An operator approval naming the same execution SHA, image digest, job count, and the selected amplitude is required before the C_transport_gate reports PASS; the analyzer never writes an approval and never releases Stage D."
+  ],
+  "selection_rule_fixed_before_execution": "The candidate amplitudes, per-seed positivity requirement, median-slope window [0.25, 0.40] log10 ratio per hour, susceptible-count floors, kills-per-lysis maximization with the 10 percent lower-amplitude tie rule, and the fallback reproduction criterion were fixed in refinement_contract.json before any output of this package was read. Changing the rule after results exist voids the gate.",
+  "immutability_of_historical_streams": "experiments/receptor_selection_campaign_v1 generated inputs and analyses are an immutable historical record, and experiments/single_source_transport_assay_v1 owns the intrinsic stream; this package neither reads nor modifies either."
+}

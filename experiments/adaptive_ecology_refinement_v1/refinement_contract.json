@@ -1,0 +1,124 @@
+{
+  "schema_version": 2,
+  "refinement_id": "adaptive_ecology_refinement_v1",
+  "issue": 420,
+  "purpose": "Select the ecological mucin-charge amplitude from same-image producer/plasmid-free-null contrasts at amplitudes 15, 20, and 30, the pending second Gate C evidence stream that the intrinsic single-source transport assay explicitly does not supply.",
+  "relationship_to_existing_packages": {
+    "experiments/single_source_transport_assay_v1": "Intrinsic transport stream only (SS_amp, physical chemistry_placement=device). This package neither generates, preflights, nor submits SS_amp runs, and refuses SS_amp identities.",
+    "experiments/receptor_selection_campaign_v1": "Historical staged campaign at ecological amplitudes 0/15/60. Its generated Stage C inputs are an immutable historical record; this package never reads, regenerates, or modifies them."
+  },
+  "design": {
+    "arms": {
+      "producer": "60 ColE1 carriers (type 1) plus 60 plasmid-free susceptibles (type 2), unchanged ecological Stage C settings",
+      "plasmid_free_null": "identical geometry and settings with the type-1 ColE1 plasmid removed"
+    },
+    "axes": {
+      "bacteriocin.mucin_charge.amplitude": [
+        15,
+        20,
+        30
+      ]
+    },
+    "seeds": [
+      20260911,
+      20260913,
+      20260917
+    ],
+    "null_amplitude": 15,
+    "null_amplitude_rationale": "A plasmid-free null releases no colicin, so the mucin-charge retardation amplitude has no toxin to act on and the null is a valid shared control for all three producer amplitudes. The value is pinned to 15 so the three nulls are byte-identical across the amplitude axis and the authenticated amplitude of a null is unambiguous.",
+    "producer_jobs": 9,
+    "null_jobs": 3,
+    "jobs": 12,
+    "run_id_prefix": "C_amp",
+    "fixed_settings": {
+      "kd_corrinoid_btuB": 0.0001,
+      "b12_initial_conc": 0.001,
+      "kd_colicinE_btuB": 5e-07,
+      "total_time": 21600.0,
+      "bio_dt": 60.0,
+      "burst_release_tau": 300.0,
+      "metabolism.uptake_limit": "delivery"
+    }
+  },
+  "predeclared_analysis": {
+    "composition_series": "One point per agent snapshot: log10((n_type1 + 0.5) / (n_type2 + 0.5)), timed by the coincident summary time when present and by step * bio_dt otherwise.",
+    "shared_calendar_window": "A producer run is contrasted only against the plasmid-free null of its own seed on the shared window t in [t_common - 7200, t_common] with t_common = min(t_end_producer, t_end_null). Own-end windows are diagnostics and are never used in the selection.",
+    "window_s": 7200,
+    "producer_null_slope": "delta_slope = slope_producer - slope_null, each an ordinary least-squares slope of the composition series over the shared window, reported in log10 ratio per hour.",
+    "final_susceptible_count": "n_type2 at the final agent snapshot of the producer run.",
+    "kills_per_producer_lysis": "cumulative_mortality_colicin / cumulative_mortality_lysis at the final summary step.",
+    "producer_division_denominator": "Integer events/cumulative_divisions_by_type[1]. A file without that dataset leaves producer-normalized ratios missing; a composition-weighted proxy is never substituted.",
+    "blocking": "A missing, unreadable, or unauthenticated output blocks the gate. Absent values are never inferred as zero and a missing seed is never dropped from a median."
+  },
+  "selection_rule": {
+    "predeclared_before_execution": true,
+    "candidates": [
+      15,
+      20,
+      30
+    ],
+    "criteria_in_order": [
+      "all three seed-level producer-null delta slopes are positive",
+      "the median of the three delta slopes lies in [0.25, 0.40] log10 ratio per hour, inclusive",
+      "the median final susceptible count is at least 1000 and no seed is below 500",
+      "among qualifying amplitudes, maximize the median kills per producer lysis",
+      "if a lower qualifying amplitude is within 10 percent of the maximum median kills per producer lysis, select the lower amplitude"
+    ],
+    "median_slope_min": 0.25,
+    "median_slope_max": 0.4,
+    "median_final_susceptible_min": 1000,
+    "per_seed_final_susceptible_min": 500,
+    "tie_relative_tolerance": 0.1,
+    "fallback": "If no amplitude qualifies, amplitude 15 is retained only when it reproduces the earlier ecological effect on this image, defined before execution as all three seed-level delta slopes positive and the median final susceptible count at least 500. The retention is recorded as fallback_reproduction_of_prior_effect and never satisfies the gate by itself.",
+    "no_post_hoc_amendment": "This rule is fixed before any output of this package is read. Changing it after results exist voids the gate."
+  },
+  "gate": {
+    "id": "C_transport_gate",
+    "requires_all": [
+      "all 12 runs returned a readable output file",
+      "every run authenticates against the execution source SHA, chemistry_placement=device_delivery, one MPI rank, its seed and amplitude, kd_corrinoid_btuB=1e-4, kd_colicinE_btuB=5e-7, b12_initial_conc=1e-3, burst_release_tau=300 s, the ColE1 release identity, and the declared HDF5 schedules",
+      "every run carries the same execution source SHA and the same immutable container image digest as the manifest",
+      "the intrinsic single_source_transport_gate passed on that same SHA and image digest",
+      "the predeclared selection rule resolves to one amplitude",
+      "an explicit operator approval names that exact SHA, image digest, and selected amplitude"
+    ],
+    "statuses": [
+      "BLOCKED_MISSING_OUTPUTS",
+      "BLOCKED_AUTHENTICATION",
+      "BLOCKED_NO_QUALIFYING_AMPLITUDE",
+      "BLOCKED_MISSING_INTRINSIC_GATE",
+      "READY_FOR_APPROVAL",
+      "PASS"
+    ],
+    "stage_d_release": "Stage D remains BLOCKED until this gate is PASS; the analyzer never promotes Stage D and never writes an approval."
+  },
+  "runtime": {
+    "mpi_ranks": 1,
+    "gpu_required": true,
+    "chemistry_placement": "device_delivery",
+    "attempt_timeout_s": 7200,
+    "hdf5_schedule": {
+      "summary": 1,
+      "agents": 10,
+      "grid": 60,
+      "lineage": 0,
+      "genome": 0,
+      "provenance": 10,
+      "grid_species": [
+        "bacteriocin_BtuB"
+      ]
+    }
+  },
+  "lineage": {
+    "required_ancestor_sha": "39bb1e8956301bfb119999428a80b058e803f3f2",
+    "reason": "PR419 delivery-authentication ancestry; the intrinsic assay that supplies the first Gate C stream is only meaningful at or after this commit."
+  },
+  "digest_policy": {
+    "planning_placeholder": "REQUIRED_BEFORE_SUBMISSION",
+    "image_digest_pattern": "[^\\s@]+@sha256:[0-9a-f]{64}"
+  },
+  "execution_source_sha_policy": {
+    "planning_placeholder": "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_REFINEMENT_COMMIT",
+    "rule": "Deployment generation requires --deployment, a full 40-hex SHA equal to git HEAD, a clean committed package, and an immutable image digest."
+  }
+}
