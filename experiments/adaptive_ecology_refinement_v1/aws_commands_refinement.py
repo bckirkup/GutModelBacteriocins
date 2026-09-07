@@ -13,6 +13,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
+sys.path.insert(0, str(REPO / "python"))
+from gut_ibm_tools.path_utils import PathValidationError, validate_input_path
+
 CONTRACT = json.loads((ROOT / "refinement_contract.json").read_text())
 JOBS = int(CONTRACT["design"]["jobs"])
 SHA40 = re.compile(r"[0-9a-f]{40}")
@@ -52,32 +55,7 @@ def validate_prefix(label: str, value: str) -> None:
         refuse(f"{label} prefix looks like an intrinsic assay or stale stage-C path")
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--execution-source-sha", required=True)
-    ap.add_argument(
-        "--image-uri", required=True, help="immutable image URI <repo>@sha256:<64 hex>"
-    )
-    ap.add_argument(
-        "--input-prefix",
-        required=True,
-        help="isolated s3://.../adaptive-ecology-refinement.../inputs prefix",
-    )
-    ap.add_argument(
-        "--output-prefix",
-        required=True,
-        help="isolated s3://.../adaptive-ecology-refinement.../outputs prefix",
-    )
-    ap.add_argument("--job-name", default="gutibm-adaptive-ecology-refinement-v1")
-    ap.add_argument("--job-queue", required=True)
-    ap.add_argument("--job-definition", required=True)
-    ap.add_argument(
-        "--authorization-file",
-        type=Path,
-        help="optional operator authorization JSON, validated if supplied",
-    )
-    args = ap.parse_args()
-
+def _validate_args(args) -> None:
     if not SHA40.fullmatch(args.execution_source_sha):
         refuse("execution SHA must be full lowercase 40-hex")
     if not IMAGE.fullmatch(args.image_uri):
@@ -91,13 +69,9 @@ def main() -> int:
         token in job_name for token in ("single-source", "ss-amp")
     ):
         refuse("job name must identify only the adaptive ecology refinement")
-    try:
-        head = git("rev-parse", "HEAD")
-    except (OSError, subprocess.CalledProcessError) as exc:
-        refuse(f"normal git checkout required: {exc}")
-    if head != args.execution_source_sha:
-        refuse(f"execution SHA differs from git HEAD {head}")
-    manifest = load_manifest()
+
+
+def _validate_against_deployment(args, manifest: dict, head: str) -> None:
     if manifest.get("execution_source_sha") != head:
         refuse("deployment manifest SHA differs from exact HEAD; regenerate it")
     if manifest.get("container_image_digest") != args.image_uri:
@@ -108,6 +82,9 @@ def main() -> int:
     ids = [str(run.get("run_id", "")) for run in runs]
     if any(not rid.startswith("C_amp") or "SS_amp" in rid for rid in ids):
         refuse("manifest contains non-ecological run IDs")
+
+
+def _run_preflight(head: str) -> None:
     # Reuse the complete deployment preflight; capture it so this program emits
     # commands only on PASS.
     check = subprocess.run(
@@ -124,22 +101,28 @@ def main() -> int:
     )
     if check.returncode != 0:
         refuse("deployment preflight failed:\n" + check.stdout + check.stderr)
-    if args.authorization_file:
-        try:
-            auth = json.loads(args.authorization_file.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            refuse(f"authorization file unreadable: {exc}")
-        if (
-            auth.get("authorize_adaptive_ecology_refinement_submission") is not True
-            or auth.get("execution_source_sha") != head
-            or auth.get("container_image_digest") != args.image_uri
-            or auth.get("jobs") != JOBS
-        ):
-            refuse(
-                f"authorization must approve this exact {JOBS}-job refinement SHA "
-                "and image"
-            )
 
+
+def _load_authorization(args, image_uri: str, head: str) -> None:
+    if not args.authorization_file:
+        return
+    try:
+        auth = json.loads(validate_input_path(args.authorization_file).read_text())
+    except (OSError, json.JSONDecodeError, PathValidationError) as exc:
+        refuse(f"authorization file unreadable: {exc}")
+    if (
+        auth.get("authorize_adaptive_ecology_refinement_submission") is not True
+        or auth.get("execution_source_sha") != head
+        or auth.get("container_image_digest") != image_uri
+        or auth.get("jobs") != JOBS
+    ):
+        refuse(
+            f"authorization must approve this exact {JOBS}-job refinement SHA "
+            "and image"
+        )
+
+
+def _print_commands(args, head: str) -> None:
     q = shlex.quote
     local_jobs = ROOT / "generated" / "jobs"
     in_prefix = args.input_prefix.rstrip("/")
@@ -173,6 +156,46 @@ def main() -> int:
         "--exclude '*' --include '*/input.json'"
     )
     print(" ".join(q(part) for part in submit))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--execution-source-sha", required=True)
+    ap.add_argument(
+        "--image-uri", required=True, help="immutable image URI <repo>@sha256:<64 hex>"
+    )
+    ap.add_argument(
+        "--input-prefix",
+        required=True,
+        help="isolated s3://.../adaptive-ecology-refinement.../inputs prefix",
+    )
+    ap.add_argument(
+        "--output-prefix",
+        required=True,
+        help="isolated s3://.../adaptive-ecology-refinement.../outputs prefix",
+    )
+    ap.add_argument("--job-name", default="gutibm-adaptive-ecology-refinement-v1")
+    ap.add_argument("--job-queue", required=True)
+    ap.add_argument("--job-definition", required=True)
+    ap.add_argument(
+        "--authorization-file",
+        type=Path,
+        help="optional operator authorization JSON, validated if supplied",
+    )
+    args = ap.parse_args()
+
+    _validate_args(args)
+    try:
+        head = git("rev-parse", "HEAD")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        refuse(f"normal git checkout required: {exc}")
+    if head != args.execution_source_sha:
+        refuse(f"execution SHA differs from git HEAD {head}")
+    manifest = load_manifest()
+    _validate_against_deployment(args, manifest, head)
+    _run_preflight(head)
+    _load_authorization(args, args.image_uri, head)
+    _print_commands(args, head)
     return 0
 
 

@@ -40,7 +40,8 @@ AGENT_STEPS = (60, 240, 300, 360)
 
 def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
-    assert spec and spec.loader
+    assert spec is not None
+    assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)
@@ -219,8 +220,8 @@ def qualifying_plan() -> dict[float, dict]:
     }
 
 
-def test_expected_run_defaults_match_contract_identity():
-    sys.path.insert(0, str(REPO / "python"))
+def test_expected_run_defaults_match_contract_identity(monkeypatch):
+    monkeypatch.syspath_prepend(str(REPO / "python"))
     from gut_ibm_tools.transport_metrics import ExpectedRun
 
     expected = ExpectedRun(
@@ -407,7 +408,7 @@ def test_preflight_fails_on_device_placement(tmp_path):
     assert any("device_delivery" in error for error in result["errors"])
 
 
-@pytest.fixture()
+@pytest.fixture
 def aws():
     return load_module(
         "refinement_aws_under_test", PKG / "aws_commands_refinement.py"
@@ -500,8 +501,10 @@ def test_command_generator_prints_but_never_executes(aws, monkeypatch, capsys):
     assert aws.main() == 0
     out = capsys.readouterr().out
     assert "# REVIEW ONLY. This program did not execute AWS commands." in out
-    assert "aws s3 cp" in out and "--include '*/input.json'" in out
-    assert "aws batch submit-job" in out and "size=12" in out
+    assert "aws s3 cp" in out
+    assert "--include '*/input.json'" in out
+    assert "aws batch submit-job" in out
+    assert "size=12" in out
     assert "attemptDurationSeconds=7200" in out
 
 
@@ -610,6 +613,32 @@ def test_analyzer_blocks_without_intrinsic_gate(tmp_path):
     )
     assert gate["status"] == "BLOCKED_MISSING_INTRINSIC_GATE"
     assert gate["single_source_transport_gate"] is False
+
+
+def test_analyzer_reports_intrinsic_gate_traversal_as_problem(tmp_path):
+    man = manifest()
+    results = tmp_path / "results"
+    build_results(results, man, plan=qualifying_plan())
+    _code, gate = run_analyzer(
+        tmp_path, results, "--intrinsic-gate-file", "../outside_gate.json"
+    )
+    assert gate["status"] == "BLOCKED_MISSING_INTRINSIC_GATE"
+    assert any("unreadable" in p for p in gate["intrinsic_gate_problems"])
+
+
+def test_analyzer_reports_approval_traversal_as_problem(tmp_path):
+    man = manifest()
+    results = tmp_path / "results"
+    build_results(results, man, plan=qualifying_plan())
+    gate_file = intrinsic_gate_file(tmp_path, man)
+    _code, gate = run_analyzer(
+        tmp_path, results,
+        "--intrinsic-gate-file", str(gate_file),
+        "--approval-file", "../outside_approval.json",
+    )
+    assert gate["status"] == "READY_FOR_APPROVAL"
+    assert gate["C_transport_gate"] is False
+    assert any("unreadable" in p for p in gate["approval_problems"])
 
 
 def test_gate_passes_only_with_matching_approval(tmp_path):

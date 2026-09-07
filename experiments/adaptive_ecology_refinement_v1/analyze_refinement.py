@@ -38,7 +38,11 @@ except ImportError as exc:  # pragma: no cover
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
 sys.path.insert(0, str(REPO / "python"))
-from gut_ibm_tools.path_utils import prepare_output_directory
+from gut_ibm_tools.path_utils import (
+    PathValidationError,
+    prepare_output_directory,
+    validate_input_path,
+)
 from gut_ibm_tools.transport_metrics import ExpectedRun, authenticate_run
 
 CONTRACT = json.loads((ROOT / "refinement_contract.json").read_text())
@@ -186,6 +190,59 @@ def expected_run(entry: dict, execution_sha: str) -> ExpectedRun:
     )
 
 
+def _read_provenance(h5) -> dict:
+    """Scalar provenance fields; absent datasets read as None."""
+    provenance = h5["run_provenance"]
+    return {
+        "observed": (
+            str(val(provenance["git_sha"])) if "git_sha" in provenance else None
+        ),
+        "placement": (
+            str(val(provenance["chemistry_placement"]))
+            if "chemistry_placement" in provenance
+            else None
+        ),
+        "ranks": (
+            int(val(provenance["mpi_rank_count"]))
+            if "mpi_rank_count" in provenance
+            else None
+        ),
+        "termination": (
+            str(val(provenance["termination_cause"]))
+            if "termination_cause" in provenance
+            else "missing"
+        ),
+    }
+
+
+def _run_metrics(h5, series: list[tuple]) -> dict:
+    """Event counters, final composition, and the own-end diagnostic window."""
+    t_end = series[-1][0]
+    last = h5["summary"][step_keys(h5["summary"])[-1]]
+    kills = get_event(last, ["cumulative_mortality_colicin", "mortality_colicin"])
+    lysis = get_event(last, ["cumulative_mortality_lysis", "mortality_lysis"])
+    divisions = producer_divisions_from_events(last)
+    final_types = np.asarray(
+        h5["agents"][step_keys(h5["agents"])[-1]]["type"][()]
+    )
+    own_end = window_metrics(series, t_end, WINDOW_S)
+    return {
+        "t_end_s": t_end,
+        "n_type1": int((final_types == 1).sum()),
+        "n_type2": int((final_types == 2).sum()),
+        "mortality_colicin": kills,
+        "mortality_lysis": lysis,
+        "producer_divisions": divisions,
+        "kills_per_lysis": (kills / lysis if kills is not None and lysis else None),
+        "realized_lysis_per_producer_division": (
+            lysis / divisions if lysis is not None and divisions else None
+        ),
+        "slope_log10_ratio_per_h": own_end["slope_log10_ratio_per_h"],
+        "tail_median_log10_ratio": own_end["tail_median_log10_ratio"],
+        "window_samples": own_end["samples"],
+    }
+
+
 def analyze_run(
     entry: dict, cfg: dict, manifest: dict, results_root: Path
 ) -> dict:
@@ -223,79 +280,36 @@ def analyze_run(
             for required in ("run_provenance", "summary", "agents"):
                 if required not in h5:
                     raise ValueError(f"missing /{required}")
-            provenance = h5["run_provenance"]
-            observed = (
-                str(val(provenance["git_sha"])) if "git_sha" in provenance else None
-            )
-            placement = (
-                str(val(provenance["chemistry_placement"]))
-                if "chemistry_placement" in provenance
-                else None
-            )
-            ranks = (
-                int(val(provenance["mpi_rank_count"]))
-                if "mpi_rank_count" in provenance
-                else None
-            )
-            termination = (
-                str(val(provenance["termination_cause"]))
-                if "termination_cause" in provenance
-                else "missing"
-            )
+            provenance = _read_provenance(h5)
             try:
                 row["authentication_violations"] = authenticate_run(
                     h5, expected_run(entry, manifest["execution_source_sha"])
                 )
-            except Exception as exc:  # noqa: BLE001 - authentication reports, never raises
+            # Authentication reports violations; a hard failure is itself a violation.
+            except Exception as exc:  # noqa: BLE001
                 row["authentication_violations"] = [f"{type(exc).__name__}: {exc}"]
             series = composition_series(h5, cfg["bio_dt"])
             if not series:
                 raise ValueError("no agent snapshots")
-            t_end = series[-1][0]
-            last = h5["summary"][step_keys(h5["summary"])[-1]]
-            kills = get_event(
-                last, ["cumulative_mortality_colicin", "mortality_colicin"]
-            )
-            lysis = get_event(last, ["cumulative_mortality_lysis", "mortality_lysis"])
-            divisions = producer_divisions_from_events(last)
-            final_types = np.asarray(h5["agents"][step_keys(h5["agents"])[-1]]["type"][()])
-            own_end = window_metrics(series, t_end, WINDOW_S)
             row.update(
                 {
                     "output_status": (
-                        "complete" if termination == "horizon_reached" else "terminated"
+                        "complete"
+                        if provenance["termination"] == "horizon_reached"
+                        else "terminated"
                     ),
-                    "execution_source_sha_observed": observed,
-                    "execution_source_sha_match": observed
+                    "execution_source_sha_observed": provenance["observed"],
+                    "execution_source_sha_match": provenance["observed"]
                     == manifest["execution_source_sha"],
-                    "chemistry_placement": placement,
-                    "mpi_rank_count": ranks,
-                    "termination_cause": termination,
-                    "t_end_s": t_end,
-                    "n_type1": int((final_types == 1).sum()),
-                    "n_type2": int((final_types == 2).sum()),
-                    "mortality_colicin": kills,
-                    "mortality_lysis": lysis,
-                    "producer_divisions": divisions,
-                    "kills_per_lysis": (
-                        kills / lysis if kills is not None and lysis else None
-                    ),
-                    "realized_lysis_per_producer_division": (
-                        lysis / divisions
-                        if lysis is not None and divisions
-                        else None
-                    ),
-                    "slope_log10_ratio_per_h": own_end[
-                        "slope_log10_ratio_per_h"
-                    ],
-                    "tail_median_log10_ratio": own_end[
-                        "tail_median_log10_ratio"
-                    ],
-                    "window_samples": own_end["samples"],
+                    "chemistry_placement": provenance["placement"],
+                    "mpi_rank_count": provenance["ranks"],
+                    "termination_cause": provenance["termination"],
                     "_series": series,
                 }
             )
-    except Exception as exc:  # noqa: BLE001 - a bad output is data, not a crash
+            row.update(_run_metrics(h5, series))
+    # A malformed output is evidence of a bad run, not an analyzer crash.
+    except Exception as exc:  # noqa: BLE001
         row["output_status"] = "invalid"
         row["analysis_error"] = f"{type(exc).__name__}: {exc}"
     return row
@@ -401,7 +415,7 @@ def amplitude_record(
             "inferred as zero and seeds are never dropped",
         )
     else:
-        bad = [seed for seed, value in deltas.items() if not value > 0.0]
+        bad = [seed for seed, value in deltas.items() if value <= 0.0]
         criterion(
             "all three seed-level producer-null delta slopes are positive",
             not bad,
@@ -500,8 +514,8 @@ def intrinsic_gate(path: Path | None, manifest: dict) -> tuple[bool | None, list
     if path is None:
         return None, ["no --intrinsic-gate-file supplied"]
     try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+        data = json.loads(validate_input_path(path).read_text())
+    except (OSError, json.JSONDecodeError, PathValidationError) as exc:
         return False, [f"intrinsic gate file unreadable: {exc}"]
     problems = []
     if data.get("single_source_transport_gate") is not True:
@@ -520,8 +534,8 @@ def approval_status(
     if path is None:
         return None, ["no --approval-file supplied"]
     try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, json.JSONDecodeError) as exc:
+        data = json.loads(validate_input_path(path).read_text())
+    except (OSError, json.JSONDecodeError, PathValidationError) as exc:
         return False, [f"approval file unreadable: {exc}"]
     problems = []
     if data.get("authorize_c_transport_gate") is not True:
@@ -663,6 +677,51 @@ def main() -> int:
     return 1 if gate["status"] == STATUS_READY else 2
 
 
+def _authentication_problems(rows: list[dict]) -> list[str]:
+    problems = []
+    for row in rows:
+        if row["output_status"] not in ("complete", "terminated"):
+            continue
+        for violation in row["authentication_violations"]:
+            problems.append(f"{row['run_id']}: {violation}")
+        if row["execution_source_sha_match"] is not True:
+            problems.append(
+                f"{row['run_id']}: run_provenance/git_sha does not match the "
+                "manifest execution source"
+            )
+        if row["chemistry_placement"] != "device_delivery":
+            problems.append(
+                f"{row['run_id']}: chemistry_placement "
+                f"{row['chemistry_placement']!r} != 'device_delivery'"
+            )
+        if row["mpi_rank_count"] != 1:
+            problems.append(
+                f"{row['run_id']}: mpi_rank_count {row['mpi_rank_count']!r} != 1"
+            )
+    return problems
+
+
+def _resolve_status(
+    unreadable: list[str],
+    auth_problems: list[str],
+    intrinsic_ok: bool | None,
+    qualified: bool,
+    approval_ok: bool | None,
+) -> str:
+    """The contract's status precedence; first blocking condition wins."""
+    if unreadable:
+        return "BLOCKED_MISSING_OUTPUTS"
+    if auth_problems:
+        return "BLOCKED_AUTHENTICATION"
+    if intrinsic_ok is not True:
+        return "BLOCKED_MISSING_INTRINSIC_GATE"
+    if not qualified:
+        return "BLOCKED_NO_QUALIFYING_AMPLITUDE"
+    if approval_ok is True:
+        return STATUS_PASS
+    return STATUS_READY
+
+
 def build_gate(manifest: dict, rows: list[dict], selection: dict, args) -> dict:
     """Apply the contract's status precedence, first blocking condition wins."""
     unreadable = [
@@ -670,26 +729,7 @@ def build_gate(manifest: dict, rows: list[dict], selection: dict, args) -> dict:
         for row in rows
         if row["output_status"] not in ("complete", "terminated")
     ]
-    auth_problems = []
-    for row in rows:
-        if row["output_status"] not in ("complete", "terminated"):
-            continue
-        for violation in row["authentication_violations"]:
-            auth_problems.append(f"{row['run_id']}: {violation}")
-        if row["execution_source_sha_match"] is not True:
-            auth_problems.append(
-                f"{row['run_id']}: run_provenance/git_sha does not match the "
-                "manifest execution source"
-            )
-        if row["chemistry_placement"] != "device_delivery":
-            auth_problems.append(
-                f"{row['run_id']}: chemistry_placement "
-                f"{row['chemistry_placement']!r} != 'device_delivery'"
-            )
-        if row["mpi_rank_count"] != 1:
-            auth_problems.append(
-                f"{row['run_id']}: mpi_rank_count {row['mpi_rank_count']!r} != 1"
-            )
+    auth_problems = _authentication_problems(rows)
     intrinsic_ok, intrinsic_problems = intrinsic_gate(args.intrinsic_gate_file, manifest)
     selected = selection.get("selected_amplitude")
     approval_ok, approval_problems = (
@@ -699,18 +739,9 @@ def build_gate(manifest: dict, rows: list[dict], selection: dict, args) -> dict:
     )
     qualified = selection.get("basis") == "qualified" and selected is not None
 
-    if unreadable:
-        status = "BLOCKED_MISSING_OUTPUTS"
-    elif auth_problems:
-        status = "BLOCKED_AUTHENTICATION"
-    elif intrinsic_ok is not True:
-        status = "BLOCKED_MISSING_INTRINSIC_GATE"
-    elif not qualified:
-        status = "BLOCKED_NO_QUALIFYING_AMPLITUDE"
-    elif approval_ok is True:
-        status = STATUS_PASS
-    else:
-        status = STATUS_READY
+    status = _resolve_status(
+        unreadable, auth_problems, intrinsic_ok, qualified, approval_ok
+    )
     passed = status == STATUS_PASS
     return {
         "gate": GATE["id"],

@@ -76,9 +76,48 @@ def git_head() -> str | None:
         return None
 
 
+def check_ancestry(head: str) -> None:
+    ancestor = CONTRACT["lineage"]["required_ancestor_sha"]
+    try:
+        subprocess.check_call(
+            ["git", "-C", str(REPO), "cat-file", "-e", ancestor + "^{commit}"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        ancestry = subprocess.call(
+            ["git", "-C", str(REPO), "merge-base", "--is-ancestor", ancestor, head],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if ancestry != 0:
+            fail(f"required ancestor {ancestor} is not an ancestor of HEAD {head}")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        fail(f"cannot verify required ancestry of {ancestor}: {exc}")
+
+
+def check_package_tracked_clean() -> None:
+    rel = ROOT.relative_to(REPO)
+    for name in PACKAGE_FILES:
+        try:
+            git("ls-files", "--error-unmatch", "--", (rel / name).as_posix())
+        except (OSError, subprocess.CalledProcessError):
+            fail(
+                "refinement package file is not tracked at HEAD: "
+                f"{(rel / name).as_posix()}"
+            )
+    try:
+        dirty = git(
+            "status", "--porcelain", "--",
+            *[(rel / name).as_posix() for name in PACKAGE_FILES],
+        )
+        if dirty:
+            fail("tracked refinement package differs from HEAD:\n" + dirty)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        fail(f"cannot verify tracked refinement package cleanliness: {exc}")
+
+
 def validate_git(deployment: bool, supplied_sha: str | None) -> str | None:
     head = git_head()
-    ancestor = CONTRACT["lineage"]["required_ancestor_sha"]
     if not deployment:
         if head is None:
             warn(
@@ -98,46 +137,12 @@ def validate_git(deployment: bool, supplied_sha: str | None) -> str | None:
         return head
     if supplied_sha != head:
         fail(f"supplied execution SHA {supplied_sha!r} != git HEAD {head!r}")
-    try:
-        subprocess.check_call(
-            ["git", "-C", str(REPO), "cat-file", "-e", ancestor + "^{commit}"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        ancestry = subprocess.call(
-            ["git", "-C", str(REPO), "merge-base", "--is-ancestor", ancestor, head],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        if ancestry != 0:
-            fail(f"required ancestor {ancestor} is not an ancestor of HEAD {head}")
-    except (OSError, subprocess.CalledProcessError) as exc:
-        fail(f"cannot verify required ancestry of {ancestor}: {exc}")
-    rel = ROOT.relative_to(REPO)
-    for name in PACKAGE_FILES:
-        try:
-            git("ls-files", "--error-unmatch", "--", (rel / name).as_posix())
-        except (OSError, subprocess.CalledProcessError):
-            fail(
-                "refinement package file is not tracked at HEAD: "
-                f"{(rel / name).as_posix()}"
-            )
-    try:
-        dirty = git(
-            "status", "--porcelain", "--",
-            *[(rel / name).as_posix() for name in PACKAGE_FILES],
-        )
-        if dirty:
-            fail("tracked refinement package differs from HEAD:\n" + dirty)
-    except (OSError, subprocess.CalledProcessError) as exc:
-        fail(f"cannot verify tracked refinement package cleanliness: {exc}")
+    check_ancestry(head)
+    check_package_tracked_clean()
     return head
 
 
-def validate_config(entry: dict, cfg: dict, expected_sha: str) -> None:
-    rid = entry.get("run_id", "<missing>")
-    amp = float(entry.get("amplitude", -1))
-    arm = entry.get("arm")
+def check_fixed_scalars(rid: str, cfg: dict, amp: float) -> None:
     exact = {
         "total_time": 21600.0,
         "bio_dt": 60.0,
@@ -172,7 +177,9 @@ def validate_config(entry: dict, cfg: dict, expected_sha: str) -> None:
         or not approx(cfg.get("initial_population.z_max"), 1e-4)
     ):
         fail(f"{rid}: required full-depth z_slab placement drift")
-    strains = cfg.get("initial_strains") or []
+
+
+def check_strains(rid: str, arm: str, strains: list) -> None:
     if len(strains) != 2 or [s.get("count") for s in strains] != [60, 60]:
         fail(f"{rid}: expected two strains of 60 cells each")
     for s in strains:
@@ -186,6 +193,14 @@ def validate_config(entry: dict, cfg: dict, expected_sha: str) -> None:
             "plasmids"
         ) != []:
             fail(f"{rid}: producer/null plasmid identity drift")
+
+
+def check_schedule_and_meta(
+    entry: dict, cfg: dict, expected_sha: str
+) -> None:
+    rid = entry.get("run_id", "<missing>")
+    amp = float(entry.get("amplitude", -1))
+    arm = entry.get("arm")
     schedule = (cfg.get("hdf5") or {}).get("schedule") or {}
     if schedule != RUNTIME["hdf5_schedule"]:
         fail(f"{rid}: HDF5 schedule drift: {schedule!r}")
@@ -201,6 +216,78 @@ def validate_config(entry: dict, cfg: dict, expected_sha: str) -> None:
         fail(f"{rid}: _refinement metadata does not match manifest/deployment identity")
 
 
+def validate_config(entry: dict, cfg: dict, expected_sha: str) -> None:
+    rid = entry.get("run_id", "<missing>")
+    amp = float(entry.get("amplitude", -1))
+    check_fixed_scalars(rid, cfg, amp)
+    check_strains(rid, entry.get("arm"), cfg.get("initial_strains") or [])
+    check_schedule_and_meta(entry, cfg, expected_sha)
+
+
+def check_run_identity(index: int, entry: dict) -> str:
+    rid = str(entry.get("run_id", ""))
+    if entry.get("array_index") != index:
+        fail(f"array indices are not contiguous at position {index}")
+    if (
+        not rid.startswith("C_amp")
+        or "SS_amp" in rid
+        or "single_source" in rid
+    ):
+        fail(f"{rid!r}: only ecological C_amp run IDs are allowed")
+    return rid
+
+
+def check_input_file(index: int, entry: dict, expected_sha: str) -> None:
+    rid = str(entry.get("run_id", ""))
+    relraw = entry.get("input_relpath")
+    if (
+        not isinstance(relraw, str)
+        or "\\" in relraw
+        or PurePosixPath(relraw).as_posix() != relraw
+    ):
+        fail(f"{rid}: input_relpath is not portable POSIX syntax: {relraw!r}")
+        return
+    expected_rel = f"generated/jobs/{index}/input.json"
+    if relraw != expected_rel:
+        fail(f"{rid}: input_relpath {relraw!r} != {expected_rel!r}")
+    path = ROOT / PurePosixPath(relraw)
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError as exc:
+        fail(f"{rid}: input path does not resolve on POSIX: {exc}")
+        return
+    if ROOT.resolve() not in resolved.parents:
+        fail(f"{rid}: input path escapes refinement root")
+    if digest(path) != entry.get("input_sha256"):
+        fail(f"{rid}: input SHA-256 mismatch")
+    try:
+        cfg = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"{rid}: input JSON unreadable: {exc}")
+        return
+    validate_config(entry, cfg, expected_sha)
+
+
+def check_output_and_arm(
+    index: int, entry: dict, outputs: set, producers: set, nulls: set
+) -> None:
+    rid = str(entry.get("run_id", ""))
+    out = entry.get("output_relpath")
+    expected_out = f"generated/results/{index}/output.h5.gz"
+    if out != expected_out or "\\" in str(out):
+        fail(f"{rid}: output path is not isolated expected path {expected_out!r}")
+    if out in outputs:
+        fail(f"{rid}: duplicate output path {out!r}")
+    outputs.add(out)
+    pair = (float(entry.get("amplitude", -1)), int(entry.get("seed", -1)))
+    if entry.get("arm") == "producer":
+        producers.add(pair)
+    elif entry.get("arm") == "plasmid_free_null":
+        nulls.add(pair)
+    else:
+        fail(f"{rid}: invalid arm {entry.get('arm')!r}")
+
+
 def validate_runs(manifest: dict, expected_sha: str) -> None:
     runs = manifest.get("runs") or []
     if len(runs) != JOBS:
@@ -211,77 +298,24 @@ def validate_runs(manifest: dict, expected_sha: str) -> None:
     seen_nulls: set = set()
     outputs: set = set()
     for index, entry in enumerate(runs):
-        rid = str(entry.get("run_id", ""))
-        if entry.get("array_index") != index:
-            fail(f"array indices are not contiguous at position {index}")
-        if (
-            not rid.startswith("C_amp")
-            or "SS_amp" in rid
-            or "single_source" in rid
-        ):
-            fail(f"{rid!r}: only ecological C_amp run IDs are allowed")
-        relraw = entry.get("input_relpath")
-        if (
-            not isinstance(relraw, str)
-            or "\\" in relraw
-            or PurePosixPath(relraw).as_posix() != relraw
-        ):
-            fail(f"{rid}: input_relpath is not portable POSIX syntax: {relraw!r}")
-            continue
-        expected_rel = f"generated/jobs/{index}/input.json"
-        if relraw != expected_rel:
-            fail(f"{rid}: input_relpath {relraw!r} != {expected_rel!r}")
-        path = ROOT / PurePosixPath(relraw)
-        try:
-            resolved = path.resolve(strict=True)
-        except OSError as exc:
-            fail(f"{rid}: input path does not resolve on POSIX: {exc}")
-            continue
-        if ROOT.resolve() not in resolved.parents:
-            fail(f"{rid}: input path escapes refinement root")
-        if digest(path) != entry.get("input_sha256"):
-            fail(f"{rid}: input SHA-256 mismatch")
-        try:
-            cfg = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError) as exc:
-            fail(f"{rid}: input JSON unreadable: {exc}")
-            continue
-        validate_config(entry, cfg, expected_sha)
-        out = entry.get("output_relpath")
-        expected_out = f"generated/results/{index}/output.h5.gz"
-        if out != expected_out or "\\" in str(out):
-            fail(f"{rid}: output path is not isolated expected path {expected_out!r}")
-        if out in outputs:
-            fail(f"{rid}: duplicate output path {out!r}")
-        outputs.add(out)
-        pair = (float(entry.get("amplitude", -1)), int(entry.get("seed", -1)))
-        if entry.get("arm") == "producer":
-            seen_producers.add(pair)
-        elif entry.get("arm") == "plasmid_free_null":
-            seen_nulls.add(pair)
-        else:
-            fail(f"{rid}: invalid arm {entry.get('arm')!r}")
+        check_run_identity(index, entry)
+        check_input_file(index, entry, expected_sha)
+        check_output_and_arm(index, entry, outputs, seen_producers, seen_nulls)
     if seen_producers != wanted_producers:
         fail(f"producer amplitude/seed set mismatch: {sorted(seen_producers)}")
     if seen_nulls != wanted_nulls:
         fail(f"plasmid-free null set mismatch: {sorted(seen_nulls)}")
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--deployment", action="store_true")
-    parser.add_argument("--execution-source-sha")
-    args = parser.parse_args()
-    if args.execution_source_sha and not args.deployment:
-        fail("--execution-source-sha is accepted only with --deployment")
-    head = validate_git(args.deployment, args.execution_source_sha)
-
+def load_manifest() -> dict:
     try:
-        manifest = json.loads((GENERATED / "manifest.json").read_text())
+        return json.loads((GENERATED / "manifest.json").read_text())
     except (OSError, json.JSONDecodeError) as exc:
         fail(f"generated deployment manifest missing/unreadable: {exc}")
-        manifest = {}
-    expected_sha = args.execution_source_sha if args.deployment else EXEC_PLACEHOLDER
+        return {}
+
+
+def check_manifest_header(manifest: dict, deployment: bool, expected_sha: str) -> None:
     if manifest.get("schema_version") != 2:
         fail("manifest schema_version must be 2")
     if manifest.get("refinement_id") != CONTRACT["refinement_id"]:
@@ -291,7 +325,7 @@ def main() -> int:
     if manifest.get("execution_source_sha") != expected_sha:
         fail(f"manifest execution_source_sha must equal {expected_sha!r}")
     image = manifest.get("container_image_digest")
-    if args.deployment:
+    if deployment:
         if not isinstance(image, str) or not IMAGE.fullmatch(image):
             fail(
                 "deployment manifest requires immutable <repo>@sha256:<64 hex> image"
@@ -300,6 +334,9 @@ def main() -> int:
         fail("planning manifest must retain the explicit image placeholder")
     else:
         warn("planning mode: image digest is a placeholder; no submission is authorized")
+
+
+def check_manifest_runtime(manifest: dict) -> None:
     if (
         manifest.get("mpi_ranks") != 1
         or manifest.get("gpu_required") is not True
@@ -315,6 +352,21 @@ def main() -> int:
             "ecological refinement must require chemistry_placement=device_delivery; "
             "device, host, and host_forced_delivery are forbidden"
         )
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--deployment", action="store_true")
+    parser.add_argument("--execution-source-sha")
+    args = parser.parse_args()
+    if args.execution_source_sha and not args.deployment:
+        fail("--execution-source-sha is accepted only with --deployment")
+    head = validate_git(args.deployment, args.execution_source_sha)
+
+    manifest = load_manifest()
+    expected_sha = args.execution_source_sha if args.deployment else EXEC_PLACEHOLDER
+    check_manifest_header(manifest, args.deployment, expected_sha)
+    check_manifest_runtime(manifest)
     validate_runs(manifest, expected_sha)
 
     result = {

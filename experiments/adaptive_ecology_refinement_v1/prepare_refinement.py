@@ -23,7 +23,8 @@ from gut_ibm_tools.transport_metrics import (
     COLE1_LIBRARY_PI,
 )
 
-CONTRACT = json.loads((ROOT / "refinement_contract.json").read_text())
+CONTRACT_FILENAME = "refinement_contract.json"
+CONTRACT = json.loads((ROOT / CONTRACT_FILENAME).read_text())
 EXEC_PLACEHOLDER = CONTRACT["execution_source_sha_policy"]["planning_placeholder"]
 IMAGE_PLACEHOLDER = CONTRACT["digest_policy"]["planning_placeholder"]
 SHA40 = re.compile(r"[0-9a-f]{40}")
@@ -42,7 +43,7 @@ STRAIN_MU_MAX = 5.5e-4
 FIXES = ["metabolism", "bacteriocin", "receptor", "mechanics"]
 
 PACKAGE_FILES = [
-    "refinement_contract.json",
+    CONTRACT_FILENAME,
     "refinement_decision_record.json",
     "prepare_refinement.py",
     "preflight_refinement.py",
@@ -288,7 +289,7 @@ def main() -> int:
         {
             "schema_version": 2,
             "refinement_id": CONTRACT["refinement_id"],
-            "refinement_contract_sha256": digest(ROOT / "refinement_contract.json"),
+            "refinement_contract_sha256": digest(ROOT / CONTRACT_FILENAME),
             "execution_source_sha": execution_sha,
             "container_image_digest": args.image_digest,
             "mpi_ranks": CONTRACT["runtime"]["mpi_ranks"],
