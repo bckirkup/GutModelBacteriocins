@@ -27,6 +27,7 @@
 #include "agent.h"
 #include "delivery_support.h"
 #include "uptake_limit.h"
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -124,6 +125,9 @@ class FixMetabolism : public Fix {
   std::vector<Int> occupancy_by_cell_;
   std::vector<Real> chelation_by_cell_;
   std::vector<Int> touched_cells_;
+  // Prepared serially; parallel biology only reads. Mutex covers the rare
+  // miss path that rebuilds the stencil and any future cache mutation.
+  mutable std::mutex delivery_support_mutex_;
   mutable std::unordered_map<TagID, std::vector<Int>>
       delivery_support_cache_;
   mutable DeliverySupportStencil delivery_support_stencil_;

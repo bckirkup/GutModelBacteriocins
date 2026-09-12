@@ -307,8 +307,8 @@ void test_cross_boundary_conjugation_four_ranks() {
       {10e-6, 12e-6},
   }};
   for (const auto& [donor_x, recipient_x] : pairs) {
-    const Vec3 donor_pos = {donor_x, 50e-6, 25e-6};
-    if (sim.domain().is_local(donor_pos)) {
+    if (const Vec3 donor_pos = {donor_x, 50e-6, 25e-6};
+        sim.domain().is_local(donor_pos)) {
       Agent donor = Agent::create_default(
           sim.agents().next_tag(), 1, donor_pos, 5e-4);
       Int ix;

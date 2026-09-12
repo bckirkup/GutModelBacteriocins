@@ -15,6 +15,7 @@
 #define GUTIBM_HDF5_WRITER_H
 
 #include "types.h"
+#include <atomic>
 #include <string>
 #include <vector>
 
@@ -91,7 +92,9 @@ class HDF5Writer {
   void initialize_file(std::string& error_message);
   int64_t file_id_ = -1;
 #endif
-  mutable bool run_provenance_written_ = false;
+  // Written from const write_* helpers that also own the HDF5 handle; atomic
+  // so the mutable flag is synchronized without serializing the I/O path.
+  mutable std::atomic<bool> run_provenance_written_{false};
 };
 
 }  // namespace gutibm

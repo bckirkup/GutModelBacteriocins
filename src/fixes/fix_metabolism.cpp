@@ -62,6 +62,7 @@ std::vector<Int> FixMetabolism::enumerate_delivery_support_cells(
 }
 
 void FixMetabolism::ensure_delivery_support_stencil() const {
+  std::lock_guard<std::mutex> lock(delivery_support_mutex_);
   if (!delivery_support_stencil_.matches(
           sim_.domain(), cfg_.delivery_far_field_radius)) {
     delivery_support_stencil_ = make_delivery_support_stencil(
@@ -71,10 +72,15 @@ void FixMetabolism::ensure_delivery_support_stencil() const {
 
 const std::vector<Int>& FixMetabolism::delivery_support_cells(
     const Agent& agent) const {
-  auto cached = delivery_support_cache_.find(agent.identity.tag);
-  if (cached != delivery_support_cache_.end()) {
-    return cached->second;
+  {
+    std::lock_guard<std::mutex> lock(delivery_support_mutex_);
+    if (auto cached = delivery_support_cache_.find(agent.identity.tag);
+        cached != delivery_support_cache_.end()) {
+      // Cache is immutable between prepare_delivery_support_cache() calls.
+      return cached->second;
+    }
   }
+  // Miss path: unlock first so ensure_delivery_support_stencil can lock.
   // Prepared entries are read-only; an unexpected miss uses per-thread
   // scratch rather than mutating the shared cache.
   static thread_local std::vector<Int> scratch;
@@ -83,6 +89,7 @@ const std::vector<Int>& FixMetabolism::delivery_support_cells(
 }
 
 void FixMetabolism::prepare_delivery_support_cache() {
+  std::lock_guard<std::mutex> lock(delivery_support_mutex_);
   delivery_support_cache_.clear();
   if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery
       || cfg_.delivery_far_field_radius <= 0.0) {
@@ -94,8 +101,23 @@ void FixMetabolism::prepare_delivery_support_cache() {
         || agent.grid_cell < 0) {
       continue;
     }
-    delivery_support_cache_.try_emplace(
-        agent.identity.tag, enumerate_delivery_support_cells(agent));
+    // Build stencil once under the same lock as the cache fill.
+    if (!delivery_support_stencil_.matches(
+            sim_.domain(), cfg_.delivery_far_field_radius)) {
+      delivery_support_stencil_ = make_delivery_support_stencil(
+          sim_.domain(), cfg_.delivery_far_field_radius);
+    }
+    std::vector<Int> support;
+    if (cfg_.delivery_far_field_radius <= 0.0) {
+      support = {agent.grid_cell};
+    } else {
+      enumerate_physical_delivery_ball(
+          sim_.domain(), agent.x, delivery_support_stencil_, support);
+      if (support.empty() && agent.grid_cell >= 0) {
+        support.push_back(agent.grid_cell);
+      }
+    }
+    delivery_support_cache_.try_emplace(agent.identity.tag, std::move(support));
   }
 }
 

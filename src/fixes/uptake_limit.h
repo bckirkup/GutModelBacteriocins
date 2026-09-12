@@ -11,6 +11,8 @@
 #define GUTIBM_UPTAKE_HOST_DEVICE
 #endif
 
+#include <numbers>
+
 namespace gutibm {
 
 enum class UptakeLimitMode : int {
@@ -22,7 +24,7 @@ enum class UptakeLimitMode : int {
 
 namespace uptake {
 
-constexpr double kPi = 3.14159265358979323846;
+constexpr double kPi = std::numbers::pi;
 
 // Returns the per-step uptake ceiling in mol, or a negative value when the
 // selected model imposes no ceiling.

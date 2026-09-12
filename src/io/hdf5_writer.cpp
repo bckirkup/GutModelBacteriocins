@@ -259,11 +259,11 @@ void write_scalar_dataset(hid_t fid, const std::string& path, hid_t h5_type,
   hsize_t one = 1;
   hid_t space = H5Screate_simple(1, &one, nullptr);
   const bool exists = H5Lexists(fid, path.c_str(), H5P_DEFAULT) > 0;
-  hid_t ds = exists
-      ? H5Dopen2(fid, path.c_str(), H5P_DEFAULT)
-      : H5Dcreate2(fid, path.c_str(), h5_type, space,
-                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-  if (ds >= 0) {
+  if (hid_t ds = exists
+          ? H5Dopen2(fid, path.c_str(), H5P_DEFAULT)
+          : H5Dcreate2(fid, path.c_str(), h5_type, space,
+                       H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+      ds >= 0) {
     H5Dwrite(ds, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, value);
     H5Dclose(ds);
   }

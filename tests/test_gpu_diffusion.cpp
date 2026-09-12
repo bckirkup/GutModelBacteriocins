@@ -14,6 +14,7 @@
 #include "gpu_test_support.h"
 
 #include <algorithm>
+#include <ranges>
 #include <cassert>
 #include <cmath>
 #include <iostream>
@@ -244,8 +245,8 @@ SimulationConfig mixed_boundary_config() {
     spec.diffusion_enabled = false;
   }
 
-  const auto carbon = std::find_if(
-      cfg.chemicals.begin(), cfg.chemicals.end(),
+  const auto carbon = std::ranges::find_if(
+      cfg.chemicals,
       [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
   assert(carbon != cfg.chemicals.end());
   carbon->diffusion_enabled = true;
@@ -255,11 +256,11 @@ SimulationConfig mixed_boundary_config() {
   carbon->boundary_conc = 0.25;
 
   InputParser::finalize_config(cfg);
-  const auto final_carbon = std::find_if(
-      cfg.chemicals.begin(), cfg.chemicals.end(),
+  const auto final_carbon = std::ranges::find_if(
+      cfg.chemicals,
       [](const ChemicalSpec& spec) { return spec.name == species::CARBON; });
-  const auto final_oxygen = std::find_if(
-      cfg.chemicals.begin(), cfg.chemicals.end(),
+  const auto final_oxygen = std::ranges::find_if(
+      cfg.chemicals,
       [](const ChemicalSpec& spec) { return spec.name == species::OXYGEN; });
   assert(final_carbon != cfg.chemicals.end());
   assert(final_oxygen != cfg.chemicals.end());

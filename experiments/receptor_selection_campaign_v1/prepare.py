@@ -12,6 +12,7 @@ IMAGE_PLACEHOLDER=CONTRACT['digest_policy']['planning_placeholder']
 SEEDS=CONTRACT['seeds']
 SHA40=re.compile(r'[0-9a-f]{40}')
 IMAGE_RE=re.compile(CONTRACT['execution']['image_digest_pattern'])
+MUCIN_AMPLITUDE_KEY='bacteriocin.mucin_charge.amplitude'
 CORE_FILES=['campaign_contract.json','campaign_decision_record.json','CURSOR_HANDOFF.md','prepare.py','preflight.py','analyze.py','aws_commands.py','README.md','AWS_HANDOFF.md','COMPLETION_NOTE.md','prepare_and_preflight.sh','tests/test_package.py']
 
 def dump(path,obj):
@@ -76,7 +77,7 @@ def make(stage,run_id,arm,seed,axes,strains,execution_sha,updates=None,grid=Fals
     return annotate(c,stage,run_id,arm,seed,axes,gate_locked,execution_sha)
 def planned_runs(prom,execution_sha):
     out={s:[] for s in 'QABCD'}
-    base={'kd_corrinoid_btuB':1e-6,'kd_colicinE_btuB':5e-7,'b12_initial_conc':1e-3,'bacteriocin.mucin_charge.amplitude':60}
+    base={'kd_corrinoid_btuB':1e-6,'kd_colicinE_btuB':5e-7,'b12_initial_conc':1e-3,MUCIN_AMPLITUDE_KEY:60}
     for rep in (1,2):
       rid=f'Q_repeat{rep}_s{SEEDS[0]}'; out['Q'].append((rid,make('Q',rid,'qualification',SEEDS[0],{'repeat':rep},[strain(1,['ColE1']),strain(2)],execution_sha,base,gate_locked=False)))
     for kd in CONTRACT['axes']['A']['kd_corrinoid_btuB_mol_m3']:
@@ -90,19 +91,19 @@ def planned_runs(prom,execution_sha):
       rid=f'B_b12{b12:.0e}_competition_s{seed}'; ss=[strain(1,[],1.0),strain(2,[],0.0)]
       out['B'].append((rid,make('B',rid,'btuB_normal_vs_null',seed,{'selected_kd_corrinoid_btuB_mol_m3':kd,'b12_initial_conc_mol_m3':b12},ss,execution_sha,{**base,'kd_corrinoid_btuB':kd,'b12_initial_conc':b12})))
     b12=prom['selected_b12_initial_conc_mol_m3']; amp0=prom['selected_mucin_charge_amplitude']; fixed={**base,'kd_corrinoid_btuB':kd,'b12_initial_conc':b12}
-    for amp in CONTRACT['axes']['C']['bacteriocin.mucin_charge.amplitude']:
+    for amp in CONTRACT['axes']['C'][MUCIN_AMPLITUDE_KEY]:
      for seed in SEEDS:
-      rid=f'C_amp{amp}_producer_s{seed}'; out['C'].append((rid,make('C',rid,'producer',seed,{'amplitude':amp,'selected_kd':kd,'selected_b12':b12},[strain(1,['ColE1']),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp},grid=True)))
+      rid=f'C_amp{amp}_producer_s{seed}'; out['C'].append((rid,make('C',rid,'producer',seed,{'amplitude':amp,'selected_kd':kd,'selected_b12':b12},[strain(1,['ColE1']),strain(2)],execution_sha,{**fixed,MUCIN_AMPLITUDE_KEY:amp},grid=True)))
     for seed in SEEDS:
-      rid=f'C_shared_null_amp{amp0}_s{seed}'; out['C'].append((rid,make('C',rid,'shared_null',seed,{'amplitude':amp0,'selected_kd':kd,'selected_b12':b12},[strain(1),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp0},grid=True)))
+      rid=f'C_shared_null_amp{amp0}_s{seed}'; out['C'].append((rid,make('C',rid,'shared_null',seed,{'amplitude':amp0,'selected_kd':kd,'selected_b12':b12},[strain(1),strain(2)],execution_sha,{**fixed,MUCIN_AMPLITUDE_KEY:amp0},grid=True)))
     # Twelve ColE1-carrier arms; P=0 remains a carrier and is not the null.
     for target,p in zip(CONTRACT['axes']['D']['realized_lysis_target_per_generation'],CONTRACT['axes']['D']['sos_lysis_prob']):
      for seed in SEEDS:
-      rid=f'D_target{target:.3f}_producer_s{seed}'; updates={**fixed,'bacteriocin.mucin_charge.amplitude':amp0,'sos_basal_rate':0.0,'sos_lysis_prob':p}
+      rid=f'D_target{target:.3f}_producer_s{seed}'; updates={**fixed,MUCIN_AMPLITUDE_KEY:amp0,'sos_basal_rate':0.0,'sos_lysis_prob':p}
       out['D'].append((rid,make('D',rid,'producer',seed,{'nominal_target_per_generation':target,'sos_lysis_prob':p,'selected_amplitude':amp0},[strain(1,['ColE1']),strain(2)],execution_sha,updates)))
     # Three formal same-revision controls, generated once per seed (not crossed with lysis targets).
     for seed in SEEDS:
-      rid=f'D_plasmid_free_null_s{seed}'; updates={**fixed,'bacteriocin.mucin_charge.amplitude':amp0,'sos_basal_rate':0.0,'sos_lysis_prob':0.0}
+      rid=f'D_plasmid_free_null_s{seed}'; updates={**fixed,MUCIN_AMPLITUDE_KEY:amp0,'sos_basal_rate':0.0,'sos_lysis_prob':0.0}
       axes={'control':'plasmid_free_null','selected_amplitude':amp0,'selected_kd':kd,'selected_b12':b12}
       out['D'].append((rid,make('D',rid,'plasmid_free_null',seed,axes,[strain(1),strain(2)],execution_sha,updates)))
     return out

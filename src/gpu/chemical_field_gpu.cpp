@@ -17,6 +17,8 @@
 #include <sstream>
 #include <string>
 #include <cassert>
+#include <algorithm>
+#include <ranges>
 
 #ifdef GUTIBM_CUDA
 #include <cuda_runtime.h>
@@ -285,7 +287,7 @@ void ChemicalFieldGpu::sync_to_host(ChemicalField& field) {
   sync_reactions_to_host(field);
 }
 
-void ChemicalFieldGpu::sync_concentrations_to_device(const ChemicalField& field) {
+void ChemicalFieldGpu::sync_concentrations_to_device(ChemicalField& field) {
   if (!active_) return;
   for (Int s = 0; s < nspec_; ++s) {
     if (!field.host_conc_dirty(s)) {
@@ -350,7 +352,7 @@ void ChemicalFieldGpu::sync_reactions_to_device(ChemicalField& field) {
     gpu_sync_compute();
     gpu_check_error("add_into_kernel");
     auto& mutable_row = field.mutable_species_reaction(s);
-    std::fill(mutable_row.begin(), mutable_row.end(), 0.0);
+    std::ranges::fill(mutable_row, 0.0);
     field.clear_host_reac_dirty(s);
     reactions_pending_ = true;
   }
@@ -431,7 +433,7 @@ void ChemicalFieldGpu::sync_species_concentrations_to_host(ChemicalField& field,
 }
 
 void ChemicalFieldGpu::sync_species_concentrations_to_device(
-    const ChemicalField& field, Int spec) {
+    ChemicalField& field, Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
   d_conc_[static_cast<size_t>(spec)].upload(
       field.conc_data()[static_cast<size_t>(spec)]);
@@ -520,8 +522,8 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
 #else
   if (!active_) return false;
 
-  const int max_line = gpu::diffusion_max_line_length();
-  if (!diffusion_all_species_within(domain, field, max_line)) {
+  if (const int max_line = gpu::diffusion_max_line_length();
+      !diffusion_all_species_within(domain, field, max_line)) {
     if (!diffusion_fallback_warning_emitted_) {
       diffusion_fallback_warning_emitted_ = true;
       warn_diffusion_line_length_fallback(domain, field, max_line);
@@ -788,7 +790,7 @@ Real ChemicalFieldGpu::download_delivery_boundary(Int spec) const {
   if (!active_ || spec < 0 || spec >= nspec_) return 0.0;
   GpuTransferSite site("delivery");
   gpu_sync_compute();
-  std::vector<double> values(static_cast<size_t>(nspec_), 0.0);
+  std::vector values(static_cast<size_t>(nspec_), 0.0);
   d_boundary_injected_.download(values);
   return values[static_cast<size_t>(spec)];
 }

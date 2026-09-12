@@ -1090,11 +1090,14 @@ void test_delivery_prescribed_mass_closure_all_boundaries() {
            1.0e-300});
       const Real relative_error =
           std::abs(result.field_removed - result.prescribed) / scale;
+      const char* mode_name = "flux";
+      if (mode == EpithelialBoundaryMode::Dirichlet) {
+        mode_name = "dirichlet";
+      } else if (mode == EpithelialBoundaryMode::Robin) {
+        mode_name = "robin";
+      }
       std::cout << "  prescribed_mass mode="
-                << (mode == EpithelialBoundaryMode::Dirichlet
-                        ? "dirichlet"
-                        : (mode == EpithelialBoundaryMode::Robin
-                               ? "robin" : "flux"))
+                << mode_name
                 << " decomposition=" << decomposition
                 << " prescribed=" << result.prescribed
                 << " removed=" << result.field_removed

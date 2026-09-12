@@ -108,8 +108,7 @@ FixReceptor::KillAssessment FixReceptor::assess_kill(
 
 Real FixReceptor::compute_kill_prob(const Agent& agent, Int agent_index, Real dt,
                                     KillAssessment* diagnostics) const {
-  const Int cell = agent.grid_cell;
-  if (cell < 0) return 0.0;
+  if (const Int cell = agent.grid_cell; cell < 0) return 0.0;
 
   const std::array<ReceptorDescriptor, 4> descriptors = {{
       {ReceptorType::BtuB,

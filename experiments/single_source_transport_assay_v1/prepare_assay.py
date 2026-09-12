@@ -23,7 +23,8 @@ from gut_ibm_tools.transport_metrics import (
     COLE1_LIBRARY_PI,
 )
 
-CONTRACT = json.loads((ROOT / "assay_contract.json").read_text())
+ASSAY_CONTRACT_FILE = "assay_contract.json"
+CONTRACT = json.loads((ROOT / ASSAY_CONTRACT_FILE).read_text())
 EXEC_PLACEHOLDER = "EXECUTION_SOURCE_SHA_REQUIRED_AFTER_ASSAY_COMMIT"
 IMAGE_PLACEHOLDER = "REQUIRED_BEFORE_SUBMISSION"
 SHA40 = re.compile(r"[0-9a-f]{40}")
@@ -88,7 +89,7 @@ def validate_deployment_identity(execution_sha: str, image_digest: str) -> None:
             f"REFUSED: --execution-source-sha {execution_sha} does not match git HEAD {head}"
         )
     tracked = [
-        "assay_contract.json",
+        ASSAY_CONTRACT_FILE,
         "assay_decision_record.json",
         "prepare_assay.py",
         "preflight_assay.py",
@@ -279,7 +280,7 @@ def main() -> int:
         {
             "schema_version": 2,
             "assay_id": CONTRACT["assay_id"],
-            "assay_contract_sha256": digest(ROOT / "assay_contract.json"),
+            "assay_contract_sha256": digest(ROOT / ASSAY_CONTRACT_FILE),
             "execution_source_sha": execution_sha,
             "container_image_digest": args.image_digest,
             "mpi_ranks": CONTRACT["runtime"]["mpi_ranks"],

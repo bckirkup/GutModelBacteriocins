@@ -145,16 +145,18 @@ class TestSensitivity:
 class TestBoundaryHandling:
     def test_support_beyond_domain_is_refused(self):
         near_wall = (CENTER[0], CENTER[1], 10 * DX)
+        field = exponential_field(8.0)
         with pytest.raises(TransportInputError, match="exceeds the in-domain support"):
-            shell_profile(exponential_field(8.0), DX, near_wall, BOX, R_MAX_UM, SHELL_UM)
+            shell_profile(field, DX, near_wall, BOX, R_MAX_UM, SHELL_UM)
 
     def test_support_reports_the_binding_constraint(self):
         profile = profile_for(8.0)
         assert profile.support_um == pytest.approx(50.0)
 
     def test_non_integral_shell_count_is_refused(self):
+        field = exponential_field(8.0)
         with pytest.raises(TransportInputError, match="whole shells"):
-            shell_profile(exponential_field(8.0), DX, CENTER, BOX, 41.0, SHELL_UM)
+            shell_profile(field, DX, CENTER, BOX, 41.0, SHELL_UM)
 
     def test_empty_shell_yields_undefined_radii(self):
         profile = shell_profile(exponential_field(8.0), DX, CENTER, BOX, 4.0, 0.25)
@@ -273,8 +275,10 @@ class TestAuthentication:
         path = tmp_path / "bare.h5"
         with h5py.File(path, "w") as h:
             h.create_group("run_provenance")
-        with h5py.File(path, "r") as h, pytest.raises(TransportInputError):
-            authenticate_run(h, self.expected())
+        expected = self.expected()
+        with h5py.File(path, "r") as h:
+            with pytest.raises(TransportInputError):
+                authenticate_run(h, expected)
 
 
 class TestPairedTimes:
