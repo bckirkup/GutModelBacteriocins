@@ -24,8 +24,10 @@
 #include "types.h"
 #include "robin_correction_table.h"
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <ranges>
 #include <numeric>
 #include <utility>
@@ -106,27 +108,28 @@ class GreensFunction {
   Real peclet(const Vec3& pos, Real D_eff, Real length_scale) const;
 
   uint64_t image_series_cap_hits() const {
-    return image_series_cap_hits_;
+    return image_series_cap_hits_.load(std::memory_order_relaxed);
   }
   uint64_t low_screening_evaluations() const {
-    return low_screening_evaluations_;
+    return low_screening_evaluations_.load(std::memory_order_relaxed);
   }
   uint64_t drift_envelope_evaluations() const {
-    return drift_envelope_evaluations_;
+    return drift_envelope_evaluations_.load(std::memory_order_relaxed);
   }
   uint64_t negative_field_count() const {
-    return negative_field_count_;
+    return negative_field_count_.load(std::memory_order_relaxed);
   }
   Real most_negative_field() const {
-    return most_negative_field_;
+    return most_negative_field_.load(std::memory_order_relaxed);
   }
   uint64_t robin_direct_evaluations() const {
-    return robin_direct_evaluations_;
+    return robin_direct_evaluations_.load(std::memory_order_relaxed);
   }
   uint64_t robin_host_fallback_sources() const {
-    return robin_host_fallback_sources_;
+    return robin_host_fallback_sources_.load(std::memory_order_relaxed);
   }
   uint64_t kernel_evaluations() const {
+    std::lock_guard<std::mutex> lock(kernel_evaluations_mutex_);
     return std::accumulate(kernel_evaluations_by_thread_.begin(),
                            kernel_evaluations_by_thread_.end(),
                            uint64_t{0});
@@ -136,35 +139,39 @@ class GreensFunction {
     return kernel_evaluation_counting_enabled_;
   }
   void add_image_series_cap_hits(uint64_t count) const {
-    image_series_cap_hits_ += count;
+    image_series_cap_hits_.fetch_add(count, std::memory_order_relaxed);
   }
   void add_low_screening_evaluations(uint64_t count) const {
-    low_screening_evaluations_ += count;
+    low_screening_evaluations_.fetch_add(count, std::memory_order_relaxed);
   }
   void add_drift_envelope_evaluations(uint64_t count) const {
-    drift_envelope_evaluations_ += count;
+    drift_envelope_evaluations_.fetch_add(count, std::memory_order_relaxed);
   }
   void add_negative_field_diagnostics(uint64_t count,
                                       Real most_negative) const;
   void add_kernel_evaluations(uint64_t count) const {
-    if (kernel_evaluation_counting_enabled_
-        && !kernel_evaluations_by_thread_.empty()) {
+    if (!kernel_evaluation_counting_enabled_) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(kernel_evaluations_mutex_);
+    if (!kernel_evaluations_by_thread_.empty()) {
       kernel_evaluations_by_thread_[0] += count;
     }
   }
   void reset_image_series_cap_hits() {
-    image_series_cap_hits_ = 0;
+    image_series_cap_hits_.store(0, std::memory_order_relaxed);
   }
   void reset_low_screening_diagnostics() {
-    low_screening_evaluations_ = 0;
-    drift_envelope_evaluations_ = 0;
-    negative_field_count_ = 0;
-    most_negative_field_ = 0.0;
+    low_screening_evaluations_.store(0, std::memory_order_relaxed);
+    drift_envelope_evaluations_.store(0, std::memory_order_relaxed);
+    negative_field_count_.store(0, std::memory_order_relaxed);
+    most_negative_field_.store(0.0, std::memory_order_relaxed);
   }
   void add_robin_host_fallback_sources(uint64_t count) const {
-    robin_host_fallback_sources_ += count;
+    robin_host_fallback_sources_.fetch_add(count, std::memory_order_relaxed);
   }
   void reset_kernel_evaluations() {
+    std::lock_guard<std::mutex> lock(kernel_evaluations_mutex_);
     std::ranges::fill(kernel_evaluations_by_thread_, uint64_t{0});
   }
 
@@ -185,14 +192,17 @@ class GreensFunction {
 
   Real z_lo_ = 0.0;
   Real z_hi_ = 100.0e-6;
-  mutable uint64_t image_series_cap_hits_ = 0;
-  mutable uint64_t low_screening_evaluations_ = 0;
-  mutable uint64_t drift_envelope_evaluations_ = 0;
-  mutable uint64_t negative_field_count_ = 0;
-  mutable Real most_negative_field_ = 0.0;
-  mutable uint64_t robin_direct_evaluations_ = 0;
-  mutable uint64_t robin_host_fallback_sources_ = 0;
+  // Diagnostics updated from const concentration queries under OpenMP;
+  // atomics replace #pragma omp atomic update / an unused mutex.
+  mutable std::atomic<uint64_t> image_series_cap_hits_{0};
+  mutable std::atomic<uint64_t> low_screening_evaluations_{0};
+  mutable std::atomic<uint64_t> drift_envelope_evaluations_{0};
+  mutable std::atomic<uint64_t> negative_field_count_{0};
+  mutable std::atomic<Real> most_negative_field_{0.0};
+  mutable std::atomic<uint64_t> robin_direct_evaluations_{0};
+  mutable std::atomic<uint64_t> robin_host_fallback_sources_{0};
   bool kernel_evaluation_counting_enabled_ = false;
+  mutable std::mutex kernel_evaluations_mutex_;
   mutable std::vector<uint64_t> kernel_evaluations_by_thread_;
 };
 

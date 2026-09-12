@@ -6,6 +6,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[1]
+sys.path.insert(0, str(REPO / "python"))
+from gut_ibm_tools.path_utils import PathValidationError, validate_input_path
 SHA40 = re.compile(r"[0-9a-f]{40}")
 IMAGE = re.compile(r"[^\s@]+@sha256:[0-9a-f]{64}")
 S3 = re.compile(r"s3://[^\s/]+/.+")
@@ -50,8 +52,10 @@ def main() -> int:
     check = subprocess.run([sys.executable, str(ROOT / "preflight_assay.py"), "--deployment", "--execution-source-sha", head], text=True, capture_output=True, check=False)
     if check.returncode != 0: refuse("deployment preflight failed:\n" + check.stdout + check.stderr)
     if args.authorization_file:
-        try: auth = json.loads(args.authorization_file.read_text())
-        except Exception as exc: refuse(f"authorization file unreadable: {exc}")
+        try:
+            auth = json.loads(validate_input_path(args.authorization_file).read_text())
+        except (OSError, json.JSONDecodeError, PathValidationError) as exc:
+            refuse(f"authorization file unreadable: {exc}")
         if auth.get("authorize_single_source_assay_submission") is not True or auth.get("execution_source_sha") != head or auth.get("container_image_digest") != args.image_uri or auth.get("jobs") != 18:
             refuse("authorization must approve this exact 18-job assay SHA and image")
     q = shlex.quote
