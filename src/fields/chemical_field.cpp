@@ -1347,7 +1347,7 @@ void ChemicalField::mark_host_conc_dirty(Int spec) {
 }
 
 void ChemicalField::mark_all_host_conc_dirty() {
-  std::ranges::fill(host_conc_dirty_, true);
+  host_conc_dirty_.assign(host_conc_dirty_.size(), true);
 }
 
 bool ChemicalField::host_conc_dirty(Int spec) const {
@@ -1521,7 +1521,7 @@ void ChemicalField::mark_host_reac_dirty(Int spec) {
 }
 
 void ChemicalField::mark_all_host_reac_dirty() {
-  std::ranges::fill(host_reac_dirty_, true);
+  host_reac_dirty_.assign(host_reac_dirty_.size(), true);
 }
 
 bool ChemicalField::host_reac_dirty(Int spec) const {
