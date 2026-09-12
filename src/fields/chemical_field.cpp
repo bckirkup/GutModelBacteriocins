@@ -484,8 +484,10 @@ DeliveryRetryResult run_delivery_rationing(
     for (Int attempt = 0;
          result.negative_after_solve && attempt < kMaxDeliveryLocalRetries;
          ++attempt) {
-      const auto reduced = callbacks.reduce();
-      if (!collective_positive(reduced)) break;
+      if (const auto reduced = callbacks.reduce();
+          !collective_positive(reduced)) {
+        break;
+      }
       callbacks.restore();
       callbacks.solve();
       result.retry_events += 1.0;
@@ -842,7 +844,7 @@ void solve_replicated_delivery_z_line(
   const Int nz = context.domain.nz();
   std::vector<Real> line(static_cast<size_t>(nz - 1));
   std::vector<Real> sink(static_cast<size_t>(nz - 1));
-  std::vector<Real> prescribed(static_cast<size_t>(nz - 1), 0.0);
+  std::vector prescribed(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = context.domain.cell_index(ix, iy, iz);
     const auto index = static_cast<size_t>(iz - 1);
@@ -1345,7 +1347,7 @@ void ChemicalField::mark_host_conc_dirty(Int spec) {
 }
 
 void ChemicalField::mark_all_host_conc_dirty() {
-  std::fill(host_conc_dirty_.begin(), host_conc_dirty_.end(), true);
+  std::ranges::fill(host_conc_dirty_, true);
 }
 
 bool ChemicalField::host_conc_dirty(Int spec) const {
@@ -1353,7 +1355,7 @@ bool ChemicalField::host_conc_dirty(Int spec) const {
   return host_conc_dirty_[static_cast<size_t>(spec)];
 }
 
-void ChemicalField::clear_host_conc_dirty(Int spec) const {
+void ChemicalField::clear_host_conc_dirty(Int spec) {
   assert(spec >= 0 && spec < nspec_);
   host_conc_dirty_[static_cast<size_t>(spec)] = false;
 }
@@ -1519,7 +1521,7 @@ void ChemicalField::mark_host_reac_dirty(Int spec) {
 }
 
 void ChemicalField::mark_all_host_reac_dirty() {
-  std::fill(host_reac_dirty_.begin(), host_reac_dirty_.end(), true);
+  std::ranges::fill(host_reac_dirty_, true);
 }
 
 bool ChemicalField::host_reac_dirty(Int spec) const {
@@ -1527,7 +1529,7 @@ bool ChemicalField::host_reac_dirty(Int spec) const {
   return host_reac_dirty_[static_cast<size_t>(spec)];
 }
 
-void ChemicalField::clear_host_reac_dirty(Int spec) const {
+void ChemicalField::clear_host_reac_dirty(Int spec) {
   if (spec < 0 || spec >= nspec_) return;
   host_reac_dirty_[static_cast<size_t>(spec)] = false;
 }
@@ -1945,7 +1947,7 @@ void solve_slab_delivery_line(
   const Int ny = context.domain.ny();
   std::vector<Real> line(static_cast<size_t>(nz - 1));
   std::vector<Real> sink(static_cast<size_t>(nz - 1));
-  std::vector<Real> prescribed(static_cast<size_t>(nz - 1), 0.0);
+  std::vector prescribed(static_cast<size_t>(nz - 1), 0.0);
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = slab_storage_index(
         context.halo_width + ix, iy, iz, context.storage_nx, ny);
@@ -2381,7 +2383,7 @@ void diffuse_periodic_y_slab_delivery(
     for (Int ix = 0; ix < nx; ++ix) {
       std::vector<Real> line(static_cast<size_t>(ny));
       std::vector<Real> sink(static_cast<size_t>(ny));
-      std::vector<Real> prescribed(static_cast<size_t>(ny), 0.0);
+      std::vector prescribed(static_cast<size_t>(ny), 0.0);
       for (Int iy = 0; iy < ny; ++iy) {
         const Int cell = slab_storage_index(
             halo_width + ix, iy, iz, storage_nx, ny);
@@ -3233,7 +3235,7 @@ bool ChemicalField::apply_diffusion_gpu(
       gpu.restore_delivery_species(s);
     };
     const auto restore_original =
-        [&gpu, this, s, &restore, &prescribed, &prescribed_snapshot] {
+        [&gpu, &restore, &prescribed, &prescribed_snapshot] {
           restore();
           prescribed = prescribed_snapshot;
           gpu.upload_delivery_prescribed(prescribed);

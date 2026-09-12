@@ -17,7 +17,7 @@ class ChemicalFieldGpu {
   void init(ChemicalField& field);
   void sync_to_device(ChemicalField& field);
   void sync_to_host(ChemicalField& field);
-  void sync_concentrations_to_device(const ChemicalField& field);
+  void sync_concentrations_to_device(ChemicalField& field);
   void sync_reactions_to_device(ChemicalField& field);
   void sync_concentrations_to_host(ChemicalField& field);
   void sync_reactions_to_host(ChemicalField& field);
@@ -27,7 +27,7 @@ class ChemicalFieldGpu {
   bool reactions_pending() const { return reactions_pending_; }
   void audit_reactions(const ChemicalField& field) const;
   void sync_species_concentrations_to_host(ChemicalField& field, Int spec);
-  void sync_species_concentrations_to_device(const ChemicalField& field, Int spec);
+  void sync_species_concentrations_to_device(ChemicalField& field, Int spec);
   void zero_species_concentration_on_device(Int spec);
   void zero_reactions_on_device();
 

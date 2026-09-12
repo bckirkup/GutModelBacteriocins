@@ -9,6 +9,7 @@ for ((i=0; i<${#args[@]}; i++)); do
     --deployment) mode=deployment ;;
     --execution-source-sha) ((i+=1)); execution_sha="${args[$i]:-}" ;;
     --execution-source-sha=*) execution_sha="${args[$i]#*=}" ;;
+    *) ;;
   esac
 done
 python3 prepare.py --clean "$@"

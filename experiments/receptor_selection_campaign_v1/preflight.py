@@ -5,6 +5,7 @@ import argparse, hashlib, json, math, re, subprocess, sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent; REPO=ROOT.parents[1]
 MUCIN_AMPLITUDE_KEY='bacteriocin.mucin_charge.amplitude'
+OXYGEN_K_ROS_KEY='oxygen.k_ROS'
 C=json.loads((ROOT/'campaign_contract.json').read_text()); G=ROOT/'generated'; ERR=[]; WARN=[]
 BASELINE=C['model_baseline_sha']; EXEC_PLACEHOLDER=C['execution_source_sha_policy']['planning_placeholder']
 SHA40=re.compile(r'[0-9a-f]{40}')
@@ -76,7 +77,7 @@ def main():
  # Source-backed audit of every deliberate scalar key. Nested HDF5/strain objects are parsed by config_json.cpp.
  try: parser_text=(REPO/'src/io/input_parser.cpp').read_text()+(REPO/'src/io/config_json.cpp').read_text()
  except Exception as e: fail(f'cannot read execution-source parser files: {e}'); parser_text=''
- required_exact=['total_time','bio_dt','output_interval','seed','domain_x','domain_y','domain_z','grid_dx','mucus_thickness','radial_turnover','distal_transit','peristaltic_enabled','crypts_enabled','motility.enabled','carbon_z_gradient','carbon.boundary_conc','metabolism.uptake_limit','oxygen.k_ROS','dysbiosis_threshold','gpu_enabled','gpu_device_id','chemistry.toxin_evaluation','chemistry.toxin_lumping','initial_population.placement','initial_population.z_min','initial_population.z_max','fixes','hdf5_file','kd_corrinoid_btuB','kd_colicinE_btuB','b12_initial_conc',MUCIN_AMPLITUDE_KEY,'sos_basal_rate','sos_lysis_prob','grid_species','receptor_expression']
+ required_exact=['total_time','bio_dt','output_interval','seed','domain_x','domain_y','domain_z','grid_dx','mucus_thickness','radial_turnover','distal_transit','peristaltic_enabled','crypts_enabled','motility.enabled','carbon_z_gradient','carbon.boundary_conc','metabolism.uptake_limit',OXYGEN_K_ROS_KEY,'dysbiosis_threshold','gpu_enabled','gpu_device_id','chemistry.toxin_evaluation','chemistry.toxin_lumping','initial_population.placement','initial_population.z_min','initial_population.z_max','fixes','hdf5_file','kd_corrinoid_btuB','kd_colicinE_btuB','b12_initial_conc',MUCIN_AMPLITUDE_KEY,'sos_basal_rate','sos_lysis_prob','grid_species','receptor_expression']
  for key in required_exact:
   if f'"{key}"' not in parser_text: fail(f'exact config key not found in execution-source parser: {key}')
  aliases=[('b12.initial_conc','b12_initial_conc','corrinoid.initial_conc','corrinoid_initial_conc'),('kd_b12_btuB','kd_corrinoid_btuB'),('hdf5_file','hdf5.file')]
@@ -146,9 +147,9 @@ def main():
  for c in DP:
   target=c['_campaign']['axes']['nominal_target_per_generation']; want=1-math.sqrt(1-target)
   if not approx(c['sos_lysis_prob'],want,1e-10): fail(f"{c['_campaign']['run_id']}: lysis transform incorrect")
-  if c.get('sos_basal_rate')!=0 or c.get('oxygen.k_ROS')!=0: fail(f"{c['_campaign']['run_id']}: lysis attribution controls missing")
+  if c.get('sos_basal_rate')!=0 or c.get(OXYGEN_K_ROS_KEY)!=0: fail(f"{c['_campaign']['run_id']}: lysis attribution controls missing")
  for c in DN:
-  if c.get('sos_basal_rate')!=0 or c.get('sos_lysis_prob')!=0 or c.get('oxygen.k_ROS')!=0: fail(f"{c['_campaign']['run_id']}: null attribution controls missing")
+  if c.get('sos_basal_rate')!=0 or c.get('sos_lysis_prob')!=0 or c.get(OXYGEN_K_ROS_KEY)!=0: fail(f"{c['_campaign']['run_id']}: null attribution controls missing")
  if len(image_digests)!=1: fail(f'mixed image digests: {image_digests}')
  image=next(iter(image_digests),None); pattern=C['execution']['image_digest_pattern']
  if not image or not re.fullmatch(pattern,image):

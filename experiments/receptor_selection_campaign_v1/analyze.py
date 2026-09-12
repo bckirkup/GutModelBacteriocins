@@ -101,7 +101,10 @@ def one(entry):
    w2=window_metrics(series,tend,TAIL_S); w1=window_metrics(series,tend,SENS_S)
    kills=get_event(last,['cumulative_mortality_colicin','mortality_colicin']); lys=get_event(last,['cumulative_mortality_lysis','mortality_lysis']); div=get_event(last,['cumulative_divisions','divisions']); outflow=get_event(last,['cumulative_outflow_boundary','outflow_boundary','cumulative_boundary_exports'])
    prod_div=producer_divisions_from_events(last)
-   ag=h['agents'][aa[-1]]; typ=np.asarray(ag['type'][()]); mu=np.asarray(ag['mu_realized'][()] if 'mu_realized' in ag else ag['mu'][()]) if ('mu_realized'in ag or'mu'in ag) else np.array([])
+   ag=h['agents'][aa[-1]]; typ=np.asarray(ag['type'][()])
+   if 'mu_realized' in ag: mu=np.asarray(ag['mu_realized'][()])
+   elif 'mu' in ag: mu=np.asarray(ag['mu'][()])
+   else: mu=np.array([])
    for t in (1,2): base[f'n_type{t}']=int((typ==t).sum()); base[f'mean_mu_type{t}']=float(np.mean(mu[typ==t])) if mu.size and np.any(typ==t) else None
    btu=[]
    if 'lineage' in h and aa[-1] in h['lineage'] and 'btuB_expression' in h['lineage'][aa[-1]]: btu=np.asarray(h['lineage'][aa[-1]]['btuB_expression'][()])

@@ -12,6 +12,7 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include <string_view>
 #include <unistd.h>
 #include <vector>
 
@@ -22,7 +23,7 @@ namespace {
 #ifdef GUTIBM_CUDA
 GpuTransferSiteProfile find_site(
     const std::vector<GpuTransferSiteProfile>& profiles,
-    const std::string& label) {
+    std::string_view label) {
   for (const auto& profile : profiles) {
     if (profile.label == label) return profile;
   }
@@ -114,8 +115,8 @@ void compare_results(const char* lhs_path, const char* rhs_path) {
   Real lhs_value = 0.0;
   Real rhs_value = 0.0;
   while (true) {
-    const bool lhs_read = static_cast<bool>(lhs >> lhs_value);
-    const bool rhs_read = static_cast<bool>(rhs >> rhs_value);
+    const auto lhs_read = static_cast<bool>(lhs >> lhs_value);
+    const auto rhs_read = static_cast<bool>(rhs >> rhs_value);
     assert(lhs_read == rhs_read);
     if (!lhs_read) break;
     const Real scale = std::max({1.0, std::abs(lhs_value), std::abs(rhs_value)});

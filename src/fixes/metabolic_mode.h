@@ -8,6 +8,7 @@
 #endif
 
 #include <cmath>
+#include <numbers>
 
 namespace gutibm::metabolic_mode {
 
@@ -57,7 +58,7 @@ GUTIBM_METABOLIC_MODE_HOST_DEVICE inline double relax(
 
 GUTIBM_METABOLIC_MODE_HOST_DEVICE inline double undissociated_fraction(
     double ph, double pka) {
-  return clamp01(1.0 / (1.0 + exp(2.302585092994046 * (ph - pka))));
+  return clamp01(1.0 / (1.0 + exp(std::numbers::ln10 * (ph - pka))));
 }
 
 GUTIBM_METABOLIC_MODE_HOST_DEVICE inline double acid_inhibition(

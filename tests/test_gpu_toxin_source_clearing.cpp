@@ -73,7 +73,7 @@ int main() {
   const Int toxin = sim.chemical_field().find(species::BACTERIOCIN_BTUB);
   assert(toxin >= 0);
 
-  const std::vector<ToxinBurstSource> bursts{make_burst(sim)};
+  const std::vector bursts{make_burst(sim)};
   sim.qssa().solve_bacteriocin_field(
       sim.agents(), bursts, 0.0, cfg.chem_env.protease, sim.advection(),
       sim.chemical_field(), toxin, ReceptorType::BtuB, &sim.chem_gpu(), true);

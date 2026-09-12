@@ -41,7 +41,7 @@ uint64_t table_identity_hash(const Table& table) {
   for (const int64_t group : table.quantized_key) {
     append_hash_bytes(hash, &group, sizeof(group));
   }
-  const int basis = static_cast<int>(table.basis);
+  const auto basis = static_cast<int>(table.basis);
   append_hash_bytes(hash, &basis, sizeof(basis));
   append_hash_bytes(hash, &table.z_lo, sizeof(table.z_lo));
   append_hash_bytes(hash, &table.height, sizeof(table.height));
@@ -382,9 +382,10 @@ double mode_sum(double z_source, double z_target, double rho,
       ? robin_biot_number_impl(
           d_free, d_eff, height, lumen_transfer_length, basis) : 0.0;
   const double b = bi / height + flow_z / (2.0 * d_eff);
-  const double lower = robin_boundary
-      ? -a
-      : (sealed_reference == SealedReference::Physical ? -a : a);
+  double lower = a;
+  if (robin_boundary || sealed_reference == SealedReference::Physical) {
+    lower = -a;
+  }
   std::vector<double> betas;
   betas.reserve(static_cast<size_t>(mode_count));
   const bool use_robin_modes = robin_boundary && bi > 0.0;
@@ -780,7 +781,7 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
       const double z_target = z_lo + table.height * target_index
           / static_cast<double>(kTableNodes - 1);
       for (int rho_index = 0; rho_index < kTableNodes; ++rho_index) {
-        const size_t index = static_cast<size_t>(
+        const auto index = static_cast<size_t>(
             table_index(source_index, target_index, rho_index));
         const double rho = kMinimumTableRho * std::pow(
             cutoff / kMinimumTableRho,
