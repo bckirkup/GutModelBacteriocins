@@ -13,7 +13,7 @@ is left sitting on the dashboard as "probably fine".
 | **B** | Won’t Fix accepted complexity/architecture debt | Reclassified — see below |
 | **C** | This doc + skill remaining-work map | Done |
 | **D** | `pythonsecurity:S6549` manifest path taint (8) | Done in code (PR #370) |
-| **E** | Concurrency triage of `cpp:S8379` (13) | 1 real race fixed (PR #371); 2 under audit; rest accepted |
+| **E** | Concurrency triage of `cpp:S8379` (14) | Fixed in code — atomics/mutex/`mutable` removal |
 | **F** | Type/template modernization sweep (125) | Fixed in code |
 | **F2** | `cpp:S6185`/`cpp:S6484` `std::format` (11) | Reopened from debt — fixed in code |
 | **G** | Algorithms, control flow, and the `cpp:S1669` BLOCKER | Queued |
@@ -58,13 +58,11 @@ survives being read out loud.
    Neither is bit-identical to the current arithmetic, and both sites are
    validated against Python oracles at ~1e-9 and regression-guarded. Trading
    reproducibility of the scientific output for a style rule is not a trade.
-3. **Synchronization the rule cannot see** — `cpp:S8379` wants a mutex on
-   `mutable` members that are in fact protected by OpenMP `atomic update`,
-   per-thread slots, or serial-only mutation. A mutex in the QSSA/Green's
-   function hot loop would serialize it for no correctness gain. This category
-   is earned per finding, not per rule: triaging it turned up one genuine race
-   (below), so the rule stays open on the dashboard until the last two findings
-   are audited.
+3. **Synchronization the rule cannot see** — historically `cpp:S8379`
+   flagged `mutable` members that were already protected by OpenMP atomics
+   or serial-only mutation. Those findings are now fixed in code (atomics,
+   an explicit mutex on the delivery-support cache, and removal of needless
+   `mutable`). Do not re-open this category for the cleared sites.
 4. **Architecture of a research prototype** — parameter counts, nesting,
    cognitive complexity, and type size in the diffusion kernels, the NUFEB-style
    `Fix` base, and the config parser (`cpp:S107`, `S134`, `S3776`,
@@ -129,27 +127,21 @@ so a reader of the dashboard sees why without finding this file.
 | `cpp:S3656` protected | 1 | Architecture | NUFEB-style `Fix` base contract |
 | `cpp:S924` nested break | 1 | Architecture | coupled to `Simulation::run` |
 
-### `cpp:S8379` — held open on purpose
+### `cpp:S8379` — fixed in code
 
-The rule flags 13 `mutable` members as needing a mutex. Twelve are protected by
-something the rule does not model: `#pragma omp atomic update` and a per-thread
-`kernel_evaluations_by_thread_` vector in `GreensFunction`, `omp critical` in
-`FixMetabolism`, and serial-only mutation of `Simulation::fixes_` and the HDF5
-`run_provenance_written_` flag.
+The rule flagged `mutable` members as needing synchronization. Resolution:
 
-The thirteenth was real. `QSSASolver::sampled_toxin_conc()` lazily called
-`field.samples.resize()` on a shared vector from inside `fix_receptor`'s
-`omp parallel for`, reachable whenever an agent count grew since the sampling
-pass — routine, because `FixMetabolism::compute()` divides earlier in the same
-biology phase. Fixed in PR #371 by making the out-of-range case non-mutating,
-which also let `sampled_fields_`/`sampled_nuclease_fields_` drop `mutable` so
-the pattern cannot come back silently.
+- `GreensFunction` diagnostics use `std::atomic` (replacing `#pragma omp atomic
+  update`); per-thread kernel counters are guarded by `kernel_evaluations_mutex_`.
+- `FixMetabolism` delivery-support cache/stencil take `delivery_support_mutex_`
+  (prepare fills under the lock; parallel biology only reads; miss path uses
+  thread-local scratch). This closes the former under-audit race.
+- `ChemicalField` host dirty flags are no longer `mutable`; clear helpers are
+  non-const and GPU sync takes a non-const field reference.
+- `Simulation::fixes_` dropped needless `mutable`.
+- `HDF5Writer::run_provenance_written_` is `std::atomic<bool>`.
 
-Because of that, the family is **not** in the Won't Fix rule list: the two
-`FixMetabolism` findings (`delivery_support_cache_`, `delivery_support_stencil_`)
-are still under audit — the fast-path cache `find()` is unsynchronized while a
-miss inserts under `omp critical` — and a wholesale resolution would bury them.
-Add `cpp:S8379` to the script only once that audit lands.
+Do not add `cpp:S8379` to the Won't Fix script.
 
 ### Clear dashboard after Batch A merges
 

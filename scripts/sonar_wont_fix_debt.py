@@ -46,14 +46,8 @@ DEBT_RULES: dict[str, str] = {
     # cpp:S6185 and cpp:S6484 (std::format) are NOT debt: <format> is a C++20
     # header, libstdc++ 13 has it, and src/io/hdf5_writer.cpp already uses it.
     # They are fixed in code. Do not re-add them on a GCC-11 assumption.
-    # cpp:S8379 is deliberately NOT listed yet. Most of its findings are
-    # already synchronized by a mechanism the rule cannot see (OpenMP atomic
-    # updates and per-thread slots for the Green's-function diagnostics,
-    # serial-only mutation for the Fix vector and the HDF5 provenance flag),
-    # but triaging it found one genuine race, fixed in PR #371, and the two
-    # FixMetabolism findings are still under audit. Resolving the family
-    # wholesale would resolve those two as well. Add it here only once the
-    # audit lands.
+    # cpp:S8379 was cleared in code (atomics / mutex / drop needless mutable).
+    # Do not list it here.
     # Complexity and architecture of a research prototype: NUFEB-style Fix
     # plugins, the diffusion kernels, and the config parser. Refactoring these
     # is a redesign, not a cleanup, and would put the scientific code at risk.
