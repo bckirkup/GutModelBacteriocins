@@ -265,6 +265,75 @@ void superpose_cpu_local(
 
 }  // namespace
 
+GreensFunction::GreensFunction(GreensFunction&& other) noexcept
+    : domain_(other.domain_),
+      adv_(other.adv_),
+      z_lo_(other.z_lo_),
+      z_hi_(other.z_hi_),
+      image_series_cap_hits_(
+          other.image_series_cap_hits_.load(std::memory_order_relaxed)),
+      low_screening_evaluations_(
+          other.low_screening_evaluations_.load(std::memory_order_relaxed)),
+      drift_envelope_evaluations_(
+          other.drift_envelope_evaluations_.load(std::memory_order_relaxed)),
+      negative_field_count_(
+          other.negative_field_count_.load(std::memory_order_relaxed)),
+      most_negative_field_(
+          other.most_negative_field_.load(std::memory_order_relaxed)),
+      robin_direct_evaluations_(
+          other.robin_direct_evaluations_.load(std::memory_order_relaxed)),
+      robin_host_fallback_sources_(
+          other.robin_host_fallback_sources_.load(std::memory_order_relaxed)),
+      kernel_evaluation_counting_enabled_(
+          other.kernel_evaluation_counting_enabled_),
+      kernel_evaluations_by_thread_(
+          std::move(other.kernel_evaluations_by_thread_)) {
+  other.domain_ = nullptr;
+  other.adv_ = nullptr;
+  other.kernel_evaluation_counting_enabled_ = false;
+}
+
+GreensFunction& GreensFunction::operator=(GreensFunction&& other) noexcept {
+  if (this == &other) {
+    return *this;
+  }
+  std::lock_guard<std::mutex> lock(kernel_evaluations_mutex_);
+  std::lock_guard<std::mutex> other_lock(other.kernel_evaluations_mutex_);
+  domain_ = other.domain_;
+  adv_ = other.adv_;
+  z_lo_ = other.z_lo_;
+  z_hi_ = other.z_hi_;
+  image_series_cap_hits_.store(
+      other.image_series_cap_hits_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  low_screening_evaluations_.store(
+      other.low_screening_evaluations_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  drift_envelope_evaluations_.store(
+      other.drift_envelope_evaluations_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  negative_field_count_.store(
+      other.negative_field_count_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  most_negative_field_.store(
+      other.most_negative_field_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  robin_direct_evaluations_.store(
+      other.robin_direct_evaluations_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  robin_host_fallback_sources_.store(
+      other.robin_host_fallback_sources_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  kernel_evaluation_counting_enabled_ =
+      other.kernel_evaluation_counting_enabled_;
+  kernel_evaluations_by_thread_ =
+      std::move(other.kernel_evaluations_by_thread_);
+  other.domain_ = nullptr;
+  other.adv_ = nullptr;
+  other.kernel_evaluation_counting_enabled_ = false;
+  return *this;
+}
+
 void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   domain_ = &domain;
   adv_    = &adv;

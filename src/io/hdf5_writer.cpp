@@ -44,6 +44,53 @@ extern "C" {
 
 namespace gutibm {
 
+HDF5Writer::HDF5Writer(HDF5Writer&& other) noexcept
+    : cfg_(std::move(other.cfg_)),
+      include_dead_agents_(other.include_dead_agents_),
+      enabled_(other.enabled_),
+      nx_(other.nx_),
+      ny_(other.ny_),
+      nz_(other.nz_),
+      grid_dx_(other.grid_dx_),
+      domain_lo_(other.domain_lo_),
+      domain_hi_(other.domain_hi_),
+#ifdef GUTIBM_HDF5
+      file_id_(other.file_id_),
+#endif
+      run_provenance_written_(
+          other.run_provenance_written_.load(std::memory_order_relaxed)) {
+#ifdef GUTIBM_HDF5
+  other.file_id_ = -1;
+#endif
+  other.enabled_ = false;
+  other.run_provenance_written_.store(false, std::memory_order_relaxed);
+}
+
+HDF5Writer& HDF5Writer::operator=(HDF5Writer&& other) noexcept {
+  if (this == &other) {
+    return *this;
+  }
+  cfg_ = std::move(other.cfg_);
+  include_dead_agents_ = other.include_dead_agents_;
+  enabled_ = other.enabled_;
+  nx_ = other.nx_;
+  ny_ = other.ny_;
+  nz_ = other.nz_;
+  grid_dx_ = other.grid_dx_;
+  domain_lo_ = other.domain_lo_;
+  domain_hi_ = other.domain_hi_;
+#ifdef GUTIBM_HDF5
+  file_id_ = other.file_id_;
+  other.file_id_ = -1;
+#endif
+  run_provenance_written_.store(
+      other.run_provenance_written_.load(std::memory_order_relaxed),
+      std::memory_order_relaxed);
+  other.enabled_ = false;
+  other.run_provenance_written_.store(false, std::memory_order_relaxed);
+  return *this;
+}
+
 namespace {
 
 std::string robin_table_metadata(const SimulationConfig& cfg) {

@@ -69,8 +69,8 @@ class GreensFunction {
   GreensFunction() = default;
   GreensFunction(const GreensFunction&) = delete;
   GreensFunction& operator=(const GreensFunction&) = delete;
-  GreensFunction(GreensFunction&&) noexcept = default;
-  GreensFunction& operator=(GreensFunction&&) noexcept = default;
+  GreensFunction(GreensFunction&& other) noexcept;
+  GreensFunction& operator=(GreensFunction&& other) noexcept;
 
   void init(const Domain& domain, const AdvectionField& adv);
 

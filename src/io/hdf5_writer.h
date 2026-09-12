@@ -45,6 +45,10 @@ struct HDF5Config {
 class HDF5Writer {
  public:
   HDF5Writer() = default;
+  HDF5Writer(const HDF5Writer&) = delete;
+  HDF5Writer& operator=(const HDF5Writer&) = delete;
+  HDF5Writer(HDF5Writer&& other) noexcept;
+  HDF5Writer& operator=(HDF5Writer&& other) noexcept;
 
   void init(const HDF5Config& cfg, const class Domain& domain);
   void write_step(Simulation& sim, Int step, Real time, Real dt) const;
