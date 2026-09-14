@@ -9,7 +9,6 @@
 #include <cstdint>
 #include <array>
 #include <cmath>
-#include <compare>
 #include <list>
 #include <limits>
 #include <map>
@@ -166,7 +165,9 @@ struct Table {
 
 struct TableCacheKey {
   std::array<int64_t, 9> groups{};
-  auto operator<=>(const TableCacheKey& other) const = default;
+  bool operator<(const TableCacheKey& other) const {
+    return groups < other.groups;
+  }
 };
 
 struct TableCacheSnapshot {
