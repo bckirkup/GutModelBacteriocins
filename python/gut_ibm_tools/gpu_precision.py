@@ -222,9 +222,7 @@ def export_run(path: Path, arm: str, seed: int, output: Path) -> None:
     write_text_file(output, "\n".join(lines) + "\n", allow_external=True)
 
 
-def load_export(path: Path) -> RunSeries:
-    """Load and validate a newline-delimited precision export."""
-    resolved = validate_input_path(path)
+def _read_export_lines(resolved: Path) -> list[str]:
     try:
         lines = resolved.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError) as error:
@@ -233,12 +231,24 @@ def load_export(path: Path) -> RunSeries:
         ) from error
     if not lines:
         raise PrecisionInputError(f"missing header line in {resolved}")
+    return lines
+
+
+def _parse_export_json(line: str, resolved: Path, line_number: int) -> Any:
     try:
-        header = json.loads(lines[0])
+        return json.loads(line)
     except json.JSONDecodeError as error:
         raise PrecisionInputError(
-            f"unparseable JSON in {resolved} line 1: {error.msg}"
+            f"unparseable JSON in {resolved} line {line_number}: {error.msg}"
         ) from error
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _parse_export_header(line: str, resolved: Path) -> dict[str, Any]:
+    header = _parse_export_json(line, resolved, 1)
     if not isinstance(header, dict) or header.get("kind") != "header":
         raise PrecisionInputError(f"missing header line in {resolved}")
     schema_version = header.get("schema_version")
@@ -268,23 +278,30 @@ def load_export(path: Path) -> RunSeries:
         raise PrecisionInputError(
             f"times length differs from steps length in {resolved}"
         )
+    return header
+
+
+def _parse_export_times(
+    steps: list[int], times: list[Any], resolved: Path
+) -> dict[int, float]:
     run_times: dict[int, float] = {}
     for step, value in zip(steps, times):
-        if value is not None:
-            if not isinstance(value, (int, float)) or isinstance(value, bool):
-                raise PrecisionInputError(
-                    f"invalid time for step {step} in {resolved}"
-                )
-            run_times[step] = float(value)
-
-    series: dict[str, list[float]] = {}
-    for line_number, line in enumerate(lines[1:], 2):
-        try:
-            payload = json.loads(line)
-        except json.JSONDecodeError as error:
+        if value is None:
+            continue
+        if not _is_number(value):
             raise PrecisionInputError(
-                f"unparseable JSON in {resolved} line {line_number}: {error.msg}"
-            ) from error
+                f"invalid time for step {step} in {resolved}"
+            )
+        run_times[step] = float(value)
+    return run_times
+
+
+def _parse_export_series(
+    lines: list[str], steps: list[int], resolved: Path
+) -> dict[str, list[float]]:
+    series: dict[str, list[float]] = {}
+    for line_number, line in enumerate(lines, 2):
+        payload = _parse_export_json(line, resolved, line_number)
         if (
             not isinstance(payload, dict)
             or payload.get("kind") != "series"
@@ -303,23 +320,29 @@ def load_export(path: Path) -> RunSeries:
             raise PrecisionInputError(
                 f"series {name!r} length differs from steps length in {resolved}"
             )
-        if any(
-            not isinstance(value, (int, float)) or isinstance(value, bool)
-            for value in values
-        ):
+        if not all(_is_number(value) for value in values):
             raise PrecisionInputError(
                 f"invalid values for series {name!r} in {resolved}"
             )
         series[name] = [float(value) for value in values]
     if not series:
         raise PrecisionInputError(f"no series in precision export {resolved}")
+    return series
+
+
+def load_export(path: Path) -> RunSeries:
+    """Load and validate a newline-delimited precision export."""
+    resolved = validate_input_path(path)
+    lines = _read_export_lines(resolved)
+    header = _parse_export_header(lines[0], resolved)
+    steps = header["steps"]
     return RunSeries(
         path=str(resolved),
-        arm=arm,
-        seed=seed,
+        arm=header["arm"],
+        seed=header["seed"],
         steps=steps,
-        times=run_times,
-        series=series,
+        times=_parse_export_times(steps, header["times"], resolved),
+        series=_parse_export_series(lines[1:], steps, resolved),
     )
 
 
@@ -653,6 +676,92 @@ def distributional_verdict(name: str, kind: str, host_values: list[float],
     }
 
 
+def _estimand_verdicts(
+    host_runs: list[RunSeries], device_runs: list[RunSeries],
+    paired_seeds: list[int], comparison_step: int,
+    accounting_noise_floors: dict[str, float],
+) -> list[dict[str, Any]]:
+    if not (host_runs and device_runs):
+        return []
+    host_by_seed = {run.seed: run for run in host_runs}
+    device_by_seed = {run.seed: run for run in device_runs}
+    available = sorted(
+        set.intersection(*[set(run.series) for run in host_runs + device_runs])
+    )
+    by_name = {estimand.name: estimand for estimand in ALL_ESTIMANDS}
+    verdicts: list[dict[str, Any]] = []
+    for name in available:
+        host_values = [
+            _value_at_step(run, name, comparison_step) for run in host_runs
+        ]
+        device_values = [
+            _value_at_step(run, name, comparison_step) for run in device_runs
+        ]
+        noise_floor = accounting_noise_floors.get(name)
+        paired_tolerance = max(
+            IDENTICAL_RELATIVE_TOLERANCE,
+            noise_floor if noise_floor is not None else 0.0,
+        )
+        paired_identical = bool(paired_seeds) and all(
+            relative_difference(
+                _value_at_step(host_by_seed[seed], name, comparison_step),
+                _value_at_step(device_by_seed[seed], name, comparison_step),
+            )
+            <= paired_tolerance
+            for seed in paired_seeds
+        )
+        verdicts.append(distributional_verdict(
+            name, by_name[name].kind, host_values, device_values,
+            paired_identical, noise_floor))
+    return verdicts
+
+
+def _non_finite_entries(runs: list[RunSeries]) -> list[dict[str, str]]:
+    return [
+        {"path": run.path, "estimand": name}
+        for run in runs
+        for name, values in run.series.items()
+        if any(not math.isfinite(value) for value in values)
+    ]
+
+
+def _flag_estimands(verdicts: list[dict[str, Any]],
+                    non_finite: list[dict[str, str]]) -> list[str]:
+    # A non-finite value anywhere in a trajectory is a defect even when the
+    # final step it is judged on happens to be finite again, so it forces the
+    # estimand into the flagged set rather than resting on its verdict.
+    non_finite_estimands = {item["estimand"] for item in non_finite}
+    for item in verdicts:
+        if item["estimand"] in non_finite_estimands:
+            item["verdict"] = "non_finite"
+    flagged = [item["estimand"] for item in verdicts
+               if item["verdict"] in {"flagged", "invariant_differs",
+                                      "non_finite"}]
+    flagged.extend(sorted(non_finite_estimands - set(flagged)))
+    return flagged
+
+
+def _interpretation_text(dynamical_reproducible: bool,
+                         accounting_noise: list[dict[str, Any]]) -> str:
+    if not dynamical_reproducible:
+        return (
+            "Reproducibility control FAILED: the device is not bit-identical "
+            "across repeats of one seed at this scale, so paired divergence "
+            "cannot be attributed to the backend and no distributional "
+            "verdict should be quoted."
+        )
+    if accounting_noise:
+        return _accounting_noise_text(accounting_noise)
+    return (
+        "Paired divergence is descriptive: a stochastic nonlinear model "
+        "separates once a field difference flips one draw. The verdict is "
+        "distributional; 'interchangeable' means the backend shift in the "
+        "median is within the within-backend seed spread, which is "
+        "reported alongside so the resolution of the measurement is "
+        "visible."
+    )
+
+
 def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
             repeats: list[tuple[RunSeries, RunSeries]]) -> dict[str, Any]:
     """Full comparison record for one uptake mode."""
@@ -673,84 +782,22 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
     host_by_seed = {run.seed: run for run in host_runs}
     device_by_seed = {run.seed: run for run in device_runs}
     paired_seeds = sorted(set(host_by_seed) & set(device_by_seed))
-    profiles = [
-        divergence_profile(
-            host_by_seed[seed], device_by_seed[seed], comparison_step
-        )
-        for seed in paired_seeds
-    ] if dynamical_reproducible else []
-
+    profiles: list[dict[str, Any]] = []
     verdicts: list[dict[str, Any]] = []
-    available = sorted(
-        set.intersection(*[set(run.series) for run in host_runs + device_runs])
-    ) if host_runs and device_runs else []
-    by_name = {estimand.name: estimand for estimand in ALL_ESTIMANDS}
     if dynamical_reproducible:
-        for name in available:
-            host_values = [
-                _value_at_step(run, name, comparison_step)
-                for run in host_runs
-            ]
-            device_values = [
-                _value_at_step(run, name, comparison_step)
-                for run in device_runs
-            ]
-            noise_floor = accounting_noise_floors.get(name)
-            paired_tolerance = max(
-                IDENTICAL_RELATIVE_TOLERANCE,
-                noise_floor if noise_floor is not None else 0.0,
+        profiles = [
+            divergence_profile(
+                host_by_seed[seed], device_by_seed[seed], comparison_step
             )
-            paired_identical = all(
-                relative_difference(
-                    _value_at_step(
-                        host_by_seed[seed], name, comparison_step
-                    ),
-                    _value_at_step(
-                        device_by_seed[seed], name, comparison_step
-                    ),
-                )
-                <= paired_tolerance
-                for seed in paired_seeds
-            ) if paired_seeds else False
-            verdicts.append(distributional_verdict(
-                name, by_name[name].kind, host_values, device_values,
-                paired_identical, noise_floor))
+            for seed in paired_seeds
+        ]
+        verdicts = _estimand_verdicts(
+            host_runs, device_runs, paired_seeds, comparison_step,
+            accounting_noise_floors,
+        )
 
-    non_finite = [
-        {"path": run.path, "estimand": name}
-        for run in host_runs + device_runs
-        for name, values in run.series.items()
-        if any(not math.isfinite(value) for value in values)
-    ]
-    # A non-finite value anywhere in a trajectory is a defect even when the
-    # final step it is judged on happens to be finite again, so it forces the
-    # estimand into the flagged set rather than resting on its verdict.
-    non_finite_estimands = {item["estimand"] for item in non_finite}
-    for item in verdicts:
-        if item["estimand"] in non_finite_estimands:
-            item["verdict"] = "non_finite"
-    flagged = [item["estimand"] for item in verdicts
-               if item["verdict"] in {"flagged", "invariant_differs",
-                                      "non_finite"}]
-    flagged.extend(sorted(non_finite_estimands - set(flagged)))
-    if not dynamical_reproducible:
-        interpretation = (
-            "Reproducibility control FAILED: the device is not bit-identical "
-            "across repeats of one seed at this scale, so paired divergence "
-            "cannot be attributed to the backend and no distributional "
-            "verdict should be quoted."
-        )
-    elif accounting_noise:
-        interpretation = _accounting_noise_text(accounting_noise)
-    else:
-        interpretation = (
-            "Paired divergence is descriptive: a stochastic nonlinear model "
-            "separates once a field difference flips one draw. The verdict is "
-            "distributional; 'interchangeable' means the backend shift in the "
-            "median is within the within-backend seed spread, which is "
-            "reported alongside so the resolution of the measurement is "
-            "visible."
-        )
+    non_finite = _non_finite_entries(host_runs + device_runs)
+    flagged = _flag_estimands(verdicts, non_finite)
     record = {
         "schema_version": SCHEMA_VERSION,
         "host_arm": host_runs[0].arm if host_runs else None,
@@ -771,17 +818,16 @@ def compare(host_runs: list[RunSeries], device_runs: list[RunSeries],
         "verdicts": verdicts,
         "flagged_estimands": flagged,
         "non_finite": non_finite,
-        "interpretation": interpretation,
+        "interpretation": _interpretation_text(
+            dynamical_reproducible, accounting_noise
+        ),
     }
     record.update(metadata)
-    if metadata["truncated_runs_present"]:
-        record["horizon_warning"] = (
-            "WARNING: supplied runs have different trajectory depths; "
-            f"all verdicts use common step {comparison_step}, not each "
-            "run's own final step."
-        )
-    else:
-        record["horizon_warning"] = None
+    record["horizon_warning"] = (
+        "WARNING: supplied runs have different trajectory depths; "
+        f"all verdicts use common step {comparison_step}, not each "
+        "run's own final step."
+    ) if metadata["truncated_runs_present"] else None
     return record
 
 

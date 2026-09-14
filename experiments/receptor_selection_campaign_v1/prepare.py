@@ -74,38 +74,52 @@ def make(stage,run_id,arm,seed,axes,strains,execution_sha,updates=None,grid=Fals
     for k,v in (updates or {}).items(): c[k]=v
     if grid: c['hdf5']['schedule']['grid']=60; c['hdf5']['schedule']['grid_species']=['bacteriocin_BtuB']
     return annotate(c,stage,run_id,arm,seed,axes,gate_locked,execution_sha)
-def planned_runs(prom,execution_sha):
-    out={s:[] for s in 'QABCD'}
-    base={'kd_corrinoid_btuB':1e-6,'kd_colicinE_btuB':5e-7,'b12_initial_conc':1e-3,'bacteriocin.mucin_charge.amplitude':60}
+BASE_UPDATES={'kd_corrinoid_btuB':1e-6,'kd_colicinE_btuB':5e-7,'b12_initial_conc':1e-3,'bacteriocin.mucin_charge.amplitude':60}
+def stage_q_runs(execution_sha):
+    out=[]
     for rep in (1,2):
-      rid=f'Q_repeat{rep}_s{SEEDS[0]}'; out['Q'].append((rid,make('Q',rid,'qualification',SEEDS[0],{'repeat':rep},[strain(1,['ColE1']),strain(2)],execution_sha,base,gate_locked=False)))
+      rid=f'Q_repeat{rep}_s{SEEDS[0]}'; out.append((rid,make('Q',rid,'qualification',SEEDS[0],{'repeat':rep},[strain(1,['ColE1']),strain(2)],execution_sha,BASE_UPDATES,gate_locked=False)))
+    return out
+def stage_a_runs(execution_sha):
+    out=[]
     for kd in CONTRACT['axes']['A']['kd_corrinoid_btuB_mol_m3']:
       for arm in ('producer','null'):
        for seed in SEEDS:
         rid=f'A_kd{kd:.0e}_{arm}_s{seed}'; ss=[strain(1,['ColE1'] if arm=='producer' else []),strain(2)]
-        out['A'].append((rid,make('A',rid,arm,seed,{'kd_corrinoid_btuB_mol_m3':kd},ss,execution_sha,{**base,'kd_corrinoid_btuB':kd})))
-    kd=prom['selected_kd_corrinoid_btuB_mol_m3']
+        out.append((rid,make('A',rid,arm,seed,{'kd_corrinoid_btuB_mol_m3':kd},ss,execution_sha,{**BASE_UPDATES,'kd_corrinoid_btuB':kd})))
+    return out
+def stage_b_runs(kd,execution_sha):
+    out=[]
     for b12 in CONTRACT['axes']['B']['b12_initial_conc_mol_m3']:
      for seed in SEEDS:
       rid=f'B_b12{b12:.0e}_competition_s{seed}'; ss=[strain(1,[],1.0),strain(2,[],0.0)]
-      out['B'].append((rid,make('B',rid,'btuB_normal_vs_null',seed,{'selected_kd_corrinoid_btuB_mol_m3':kd,'b12_initial_conc_mol_m3':b12},ss,execution_sha,{**base,'kd_corrinoid_btuB':kd,'b12_initial_conc':b12})))
-    b12=prom['selected_b12_initial_conc_mol_m3']; amp0=prom['selected_mucin_charge_amplitude']; fixed={**base,'kd_corrinoid_btuB':kd,'b12_initial_conc':b12}
+      out.append((rid,make('B',rid,'btuB_normal_vs_null',seed,{'selected_kd_corrinoid_btuB_mol_m3':kd,'b12_initial_conc_mol_m3':b12},ss,execution_sha,{**BASE_UPDATES,'kd_corrinoid_btuB':kd,'b12_initial_conc':b12})))
+    return out
+def stage_c_runs(kd,b12,amp0,fixed,execution_sha):
+    out=[]
     for amp in CONTRACT['axes']['C']['bacteriocin.mucin_charge.amplitude']:
      for seed in SEEDS:
-      rid=f'C_amp{amp}_producer_s{seed}'; out['C'].append((rid,make('C',rid,'producer',seed,{'amplitude':amp,'selected_kd':kd,'selected_b12':b12},[strain(1,['ColE1']),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp},grid=True)))
+      rid=f'C_amp{amp}_producer_s{seed}'; out.append((rid,make('C',rid,'producer',seed,{'amplitude':amp,'selected_kd':kd,'selected_b12':b12},[strain(1,['ColE1']),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp},grid=True)))
     for seed in SEEDS:
-      rid=f'C_shared_null_amp{amp0}_s{seed}'; out['C'].append((rid,make('C',rid,'shared_null',seed,{'amplitude':amp0,'selected_kd':kd,'selected_b12':b12},[strain(1),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp0},grid=True)))
+      rid=f'C_shared_null_amp{amp0}_s{seed}'; out.append((rid,make('C',rid,'shared_null',seed,{'amplitude':amp0,'selected_kd':kd,'selected_b12':b12},[strain(1),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp0},grid=True)))
+    return out
+def stage_d_runs(kd,b12,amp0,fixed,execution_sha):
+    out=[]
     # Twelve ColE1-carrier arms; P=0 remains a carrier and is not the null.
     for target,p in zip(CONTRACT['axes']['D']['realized_lysis_target_per_generation'],CONTRACT['axes']['D']['sos_lysis_prob']):
      for seed in SEEDS:
       rid=f'D_target{target:.3f}_producer_s{seed}'; updates={**fixed,'bacteriocin.mucin_charge.amplitude':amp0,'sos_basal_rate':0.0,'sos_lysis_prob':p}
-      out['D'].append((rid,make('D',rid,'producer',seed,{'nominal_target_per_generation':target,'sos_lysis_prob':p,'selected_amplitude':amp0},[strain(1,['ColE1']),strain(2)],execution_sha,updates)))
+      out.append((rid,make('D',rid,'producer',seed,{'nominal_target_per_generation':target,'sos_lysis_prob':p,'selected_amplitude':amp0},[strain(1,['ColE1']),strain(2)],execution_sha,updates)))
     # Three formal same-revision controls, generated once per seed (not crossed with lysis targets).
     for seed in SEEDS:
       rid=f'D_plasmid_free_null_s{seed}'; updates={**fixed,'bacteriocin.mucin_charge.amplitude':amp0,'sos_basal_rate':0.0,'sos_lysis_prob':0.0}
       axes={'control':'plasmid_free_null','selected_amplitude':amp0,'selected_kd':kd,'selected_b12':b12}
-      out['D'].append((rid,make('D',rid,'plasmid_free_null',seed,axes,[strain(1),strain(2)],execution_sha,updates)))
+      out.append((rid,make('D',rid,'plasmid_free_null',seed,axes,[strain(1),strain(2)],execution_sha,updates)))
     return out
+def planned_runs(prom,execution_sha):
+    kd=prom['selected_kd_corrinoid_btuB_mol_m3']; b12=prom['selected_b12_initial_conc_mol_m3']; amp0=prom['selected_mucin_charge_amplitude']
+    fixed={**BASE_UPDATES,'kd_corrinoid_btuB':kd,'b12_initial_conc':b12}
+    return {'Q':stage_q_runs(execution_sha),'A':stage_a_runs(execution_sha),'B':stage_b_runs(kd,execution_sha),'C':stage_c_runs(kd,b12,amp0,fixed,execution_sha),'D':stage_d_runs(kd,b12,amp0,fixed,execution_sha)}
 def main():
  p=argparse.ArgumentParser(); p.add_argument('--deployment',action='store_true'); p.add_argument('--execution-source-sha'); p.add_argument('--image-digest',default=IMAGE_PLACEHOLDER); p.add_argument('--selected-kd',type=float); p.add_argument('--selected-b12',type=float); p.add_argument('--selected-amplitude',type=float); p.add_argument('--clean',action='store_true'); a=p.parse_args()
  execution_sha=a.execution_source_sha or EXEC_PLACEHOLDER

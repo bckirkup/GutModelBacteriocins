@@ -87,7 +87,7 @@ cd build && ctest -R "smoke|config_diversity" --output-on-failure
 | Batch | Scope | Outcome |
 |-------|-------|---------|
 | **A (done)** | ~25 mechanical smells (`S1192`, `S6009`, `S5566`, `S3358`, `S1854`, `S1905`, `S125`, `S5827`, `S5421`, `S1188`, `S5812`, `S6177`, `S5945`, `S6022`) | Fixed in code |
-| **B** | ~54 complexity/architecture smells (`S134`, `S107`, `S6004`, `S3776`, `python:S3776`, `S995`, `S5008`, `S1820`, `S1448`, `S3656`, `S924`, `S7034`) | Won’t Fix via `scripts/sonar_wont_fix_debt.py` after merge re-scan (auto-analysis ignores multicriteria) |
+| **B** | ~54 complexity/architecture smells (`S134`, `S107`, `S6004`, `S3776`, `S995`, `S5008`, `S1820`, `S1448`, `S3656`, `S924`, `S7034`) | Won’t Fix via `scripts/sonar_wont_fix_debt.py` after merge re-scan (auto-analysis ignores multicriteria) |
 | **C (done)** | `docs/SONARQUBE_PLAN.md` + this map | Policy + monitoring |
 
 **Target:** 0 open issues on the SonarCloud dashboard after A merge + B Won’t Fix.

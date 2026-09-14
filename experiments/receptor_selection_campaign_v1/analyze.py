@@ -76,6 +76,48 @@ def producer_divisions_from_events(last):
 def output_for(stage,index,entry):
  candidates=[G/f'stage_{stage}'/'results'/str(index)/'output.h5.gz',G/f'stage_{stage}'/'results'/str(index)/'output.h5',(ROOT/entry['input_relpath']).parent/'output.h5',(ROOT/entry['input_relpath']).parent/'output.h5.gz']
  return next((p for p in candidates if p.exists()),None)
+def composition_series(h,cfg,aa):
+ series=[]
+ # Agent dumps drive the composition time series used for slopes.
+ for sk in aa:
+  ag=h['agents'][sk]; typ=np.asarray(ag['type'][()]); step=int(sk.rsplit('_',1)[1]); t=step*float(cfg['bio_dt'])
+  sumkey=sk if sk in h['summary'] else None
+  if sumkey and 'time' in h['summary'][sumkey]: t=float(val(h['summary'][sumkey]['time']))
+  n1=int((typ==1).sum());n2=int((typ==2).sum()); series.append((t,n1,n2,math.log10((n1+0.5)/(n2+0.5))))
+ if not series: raise ValueError('no agent snapshots')
+ return series
+def final_agent_metrics(h,aa,base):
+ ag=h['agents'][aa[-1]]; typ=np.asarray(ag['type'][()]); mu=np.asarray(ag['mu_realized'][()] if 'mu_realized' in ag else ag['mu'][()]) if ('mu_realized'in ag or'mu'in ag) else np.array([])
+ for t in (1,2): base[f'n_type{t}']=int((typ==t).sum()); base[f'mean_mu_type{t}']=float(np.mean(mu[typ==t])) if mu.size and np.any(typ==t) else None
+ btu=[]
+ if 'lineage' in h and aa[-1] in h['lineage'] and 'btuB_expression' in h['lineage'][aa[-1]]: btu=np.asarray(h['lineage'][aa[-1]]['btuB_expression'][()])
+ return float(np.mean(btu)) if len(btu) else None
+def ratio(num,den): return num/den if num is not None and den else None
+def event_metrics(last):
+ kills=get_event(last,['cumulative_mortality_colicin','mortality_colicin']); lys=get_event(last,['cumulative_mortality_lysis','mortality_lysis']); div=get_event(last,['cumulative_divisions','divisions']); outflow=get_event(last,['cumulative_outflow_boundary','outflow_boundary','cumulative_boundary_exports'])
+ prod_div=producer_divisions_from_events(last)
+ return {'divisions':div,'producer_divisions':prod_div,'mortality_colicin':kills,'mortality_lysis':lys,'outflow_boundary':outflow,'kills_per_lysis':ratio(kills,lys),'kills_per_division':ratio(kills,div),'realized_lysis_per_total_division':ratio(lys,div),'realized_lysis_per_division':ratio(lys,prod_div),'realized_lysis_per_producer_division':ratio(lys,prod_div)}
+def stage_c_metrics(h,base):
+ names=[]
+ if 'grid'in h:
+  for sk in steps(h['grid']): names.extend(list(h['grid'][sk].keys()))
+ base['btuB_grid_present']=bool(names) and set(names)=={'bacteriocin_BtuB'}; base['grid_species_observed']=';'.join(sorted(set(names)))
+ # Runtime HDF5 writes kill-event coordinates under /provenance (not /kill_provenance).
+ has_source_coords=('provenance' in h) or ('kill_provenance' in h)
+ base['source_centered_profile_status']='AVAILABLE_FOR_POSTPROCESSING' if base['btuB_grid_present'] and has_source_coords else 'BLOCKED_MISSING_SOURCE_EVENT_COORDINATES'
+def run_metrics(h,cfg,m,base):
+ for req in ('run_provenance','summary','agents'):
+  if req not in h: raise ValueError(f'missing /{req}')
+ rp=h['run_provenance']; source=str(val(rp['git_sha'])) if 'git_sha' in rp else None; placement=str(val(rp['chemistry_placement'])) if 'chemistry_placement' in rp else None
+ term=str(val(rp['termination_cause'])) if 'termination_cause' in rp else 'missing'
+ ss=steps(h['summary']); aa=steps(h['agents']); series=composition_series(h,cfg,aa)
+ tend=series[-1][0]; last=h['summary'][ss[-1]]
+ w2=window_metrics(series,tend,TAIL_S); w1=window_metrics(series,tend,SENS_S)
+ events=event_metrics(last)
+ mean_btu=final_agent_metrics(h,aa,base)
+ # Own-end windows are diagnostics; paired contrasts recompute on t_common below.
+ base.update({'output_status':'complete' if term=='horizon_reached' else 'terminated','execution_source_sha_observed':source,'execution_source_sha_match':source==m['execution_source_sha'],'chemistry_placement':placement,'termination_cause':term,'t_end_s':tend,**w2,'sensitivity_1h_slope_log10_ratio_per_h':w1['slope_log10_ratio_per_h'],'sensitivity_1h_tail_median_log10_ratio':w1['tail_median_log10_ratio'],**events,'mean_btuB_expression_final':mean_btu,'_series':series})
+ if m['stage']=='C': stage_c_metrics(h,base)
 def one(entry):
  cfg=json.loads((ROOT/entry['input_relpath']).read_text()); m=cfg['_campaign']; p=output_for(m['stage'],entry['array_index'],entry)
  base={'run_id':entry['run_id'],'stage':m['stage'],'arm':m['arm'],'seed':cfg['seed'],'output_status':'missing','output_path':str(p) if p else None,'analysis_error':None,'model_baseline_sha':m['model_baseline_sha'],'execution_source_sha_expected':m['execution_source_sha']}
@@ -84,37 +126,7 @@ def one(entry):
  temp=None
  try:
   h,temp=open_h5(p)
-  with h:
-   for req in ('run_provenance','summary','agents'):
-    if req not in h: raise ValueError(f'missing /{req}')
-   rp=h['run_provenance']; source=str(val(rp['git_sha'])) if 'git_sha' in rp else None; placement=str(val(rp['chemistry_placement'])) if 'chemistry_placement' in rp else None
-   term=str(val(rp['termination_cause'])) if 'termination_cause' in rp else 'missing'
-   ss=steps(h['summary']); aa=steps(h['agents']); series=[]
-   # Agent dumps drive the composition time series used for slopes.
-   for sk in aa:
-    ag=h['agents'][sk]; typ=np.asarray(ag['type'][()]); step=int(sk.rsplit('_',1)[1]); t=step*float(cfg['bio_dt'])
-    sumkey=sk if sk in h['summary'] else None
-    if sumkey and 'time' in h['summary'][sumkey]: t=float(val(h['summary'][sumkey]['time']))
-    n1=int((typ==1).sum());n2=int((typ==2).sum()); series.append((t,n1,n2,math.log10((n1+0.5)/(n2+0.5))))
-   if not series: raise ValueError('no agent snapshots')
-   tend=series[-1][0]; last=h['summary'][ss[-1]]
-   w2=window_metrics(series,tend,TAIL_S); w1=window_metrics(series,tend,SENS_S)
-   kills=get_event(last,['cumulative_mortality_colicin','mortality_colicin']); lys=get_event(last,['cumulative_mortality_lysis','mortality_lysis']); div=get_event(last,['cumulative_divisions','divisions']); outflow=get_event(last,['cumulative_outflow_boundary','outflow_boundary','cumulative_boundary_exports'])
-   prod_div=producer_divisions_from_events(last)
-   ag=h['agents'][aa[-1]]; typ=np.asarray(ag['type'][()]); mu=np.asarray(ag['mu_realized'][()] if 'mu_realized' in ag else ag['mu'][()]) if ('mu_realized'in ag or'mu'in ag) else np.array([])
-   for t in (1,2): base[f'n_type{t}']=int((typ==t).sum()); base[f'mean_mu_type{t}']=float(np.mean(mu[typ==t])) if mu.size and np.any(typ==t) else None
-   btu=[]
-   if 'lineage' in h and aa[-1] in h['lineage'] and 'btuB_expression' in h['lineage'][aa[-1]]: btu=np.asarray(h['lineage'][aa[-1]]['btuB_expression'][()])
-   # Own-end windows are diagnostics; paired contrasts recompute on t_common below.
-   base.update({'output_status':'complete' if term=='horizon_reached' else 'terminated','execution_source_sha_observed':source,'execution_source_sha_match':source==m['execution_source_sha'],'chemistry_placement':placement,'termination_cause':term,'t_end_s':tend,**w2,'sensitivity_1h_slope_log10_ratio_per_h':w1['slope_log10_ratio_per_h'],'sensitivity_1h_tail_median_log10_ratio':w1['tail_median_log10_ratio'],'divisions':div,'producer_divisions':prod_div,'mortality_colicin':kills,'mortality_lysis':lys,'outflow_boundary':outflow,'kills_per_lysis':kills/lys if kills is not None and lys else None,'kills_per_division':kills/div if kills is not None and div else None,'realized_lysis_per_total_division':lys/div if lys is not None and div else None,'realized_lysis_per_division':lys/prod_div if lys is not None and prod_div else None,'realized_lysis_per_producer_division':lys/prod_div if lys is not None and prod_div else None,'mean_btuB_expression_final':float(np.mean(btu)) if len(btu) else None,'_series':series})
-   if m['stage']=='C':
-    names=[]
-    if 'grid'in h:
-     for sk in steps(h['grid']): names.extend(list(h['grid'][sk].keys()))
-    base['btuB_grid_present']=bool(names) and set(names)=={'bacteriocin_BtuB'}; base['grid_species_observed']=';'.join(sorted(set(names)))
-    # Runtime HDF5 writes kill-event coordinates under /provenance (not /kill_provenance).
-    has_source_coords=('provenance' in h) or ('kill_provenance' in h)
-    base['source_centered_profile_status']='AVAILABLE_FOR_POSTPROCESSING' if base['btuB_grid_present'] and has_source_coords else 'BLOCKED_MISSING_SOURCE_EVENT_COORDINATES'
+  with h: run_metrics(h,cfg,m,base)
  except Exception as e: base['output_status']='invalid';base['analysis_error']=f'{type(e).__name__}: {e}'
  finally:
   if temp: temp.unlink(missing_ok=True)
@@ -128,33 +140,45 @@ def paired_contrast(r,ctrl,label):
  t_common=min(r['t_end_s'],ctrl['t_end_s'])
  rw=window_metrics(r.get('_series') or [],t_common,TAIL_S); cw=window_metrics(ctrl.get('_series') or [],t_common,TAIL_S)
  return {'stage':r['stage'],'run_id':r['run_id'],'control_run_id':ctrl['run_id'],'seed':r['seed'],'contrast':label,'t_common_s':t_common,'window_s':TAIL_S,'slope_log10_ratio_per_h_treatment':rw['slope_log10_ratio_per_h'],'slope_log10_ratio_per_h_control':cw['slope_log10_ratio_per_h'],'tail_median_log10_ratio_treatment':rw['tail_median_log10_ratio'],'tail_median_log10_ratio_control':cw['tail_median_log10_ratio'],'delta_slope_log10_ratio_per_h':None if rw['slope_log10_ratio_per_h'] is None or cw['slope_log10_ratio_per_h'] is None else rw['slope_log10_ratio_per_h']-cw['slope_log10_ratio_per_h'],'delta_tail_median_log10_ratio':None if rw['tail_median_log10_ratio'] is None or cw['tail_median_log10_ratio'] is None else rw['tail_median_log10_ratio']-cw['tail_median_log10_ratio'],'samples_treatment':rw['samples'],'samples_control':cw['samples']}
-def main():
- ap=argparse.ArgumentParser();ap.add_argument('--results-dir',type=Path,default=ROOT/'analysis');a=ap.parse_args();a.results_dir.mkdir(parents=True,exist_ok=True)
- cm=json.loads((G/'campaign_manifest.json').read_text()); rows=[one(e) for e in cm['runs']]; pub=[public_row(r) for r in rows]
- write_csv(a.results_dir/'run_metrics.csv',pub);(a.results_dir/'run_metrics.json').write_text(json.dumps(pub,indent=2,allow_nan=False)+'\n')
- complete=[r for r in rows if r['output_status'] in ('complete','terminated')]; missing=[public_row(r) for r in rows if r['output_status'] not in ('complete','terminated')]
+READABLE=('complete','terminated')
+def control_for(r,complete,idx):
+ if r['arm']!='producer': return None,None
+ ctrl=None; label=None
+ if r['stage']=='A': ctrl=idx.get(('A','null',r['seed'],r.get('axis_kd_corrinoid_btuB_mol_m3'),None)); label='producer_minus_null'
+ elif r['stage']=='C': ctrl=next((x for x in complete if x['stage']=='C' and x['arm']=='shared_null' and x['seed']==r['seed']),None); label='producer_minus_shared_null'
+ elif r['stage']=='D': ctrl=next((x for x in complete if x['stage']=='D' and x['arm']=='plasmid_free_null' and x['seed']==r['seed']),None); label='producer_minus_same_image_plasmid_free_null'
+ return ctrl,label
+def paired_rows(complete,cm):
  idx={(r['stage'],r['arm'],r['seed'],r.get('axis_kd_corrinoid_btuB_mol_m3'),r.get('axis_amplitude')):r for r in complete}; pairs=[]
  for r in complete:
-  ctrl=None; label=None
-  if r['stage']=='A' and r['arm']=='producer': ctrl=idx.get(('A','null',r['seed'],r.get('axis_kd_corrinoid_btuB_mol_m3'),None));label='producer_minus_null'
-  elif r['stage']=='C' and r['arm']=='producer': ctrl=next((x for x in complete if x['stage']=='C' and x['arm']=='shared_null' and x['seed']==r['seed']),None);label='producer_minus_shared_null'
-  elif r['stage']=='D' and r['arm']=='producer': ctrl=next((x for x in complete if x['stage']=='D' and x['arm']=='plasmid_free_null' and x['seed']==r['seed']),None);label='producer_minus_same_image_plasmid_free_null'
+  ctrl,label=control_for(r,complete,idx)
   if ctrl:
    pair=paired_contrast(r,ctrl,label)
    pair.update({'execution_source_sha_expected':r['execution_source_sha_expected'],'container_image_digest':cm.get('container_image_digest'),'same_stage_control':ctrl['stage']==r['stage'],'execution_source_sha_match_both':bool(r.get('execution_source_sha_match') and ctrl.get('execution_source_sha_match'))})
    pairs.append(pair)
- write_csv(a.results_dir/'paired_metrics.csv',pairs);(a.results_dir/'paired_metrics.json').write_text(json.dumps(pairs,indent=2)+'\n')
- stages={s:[r for r in rows if r['stage']==s] for s in 'QABCD'}; gates={}
- for s in 'QABCD':
-  miss=sum(r['output_status'] not in ('complete','terminated') for r in stages[s]); gates[s]={'status':'BLOCKED_MISSING_OUTPUTS' if miss else 'READY_FOR_SCIENTIFIC_REVIEW','expected':len(stages[s]),'missing_or_invalid':miss}
+ return pairs
+def provenance_gate_overrides(stages,gates):
  q=stages['Q']
- if not any(r['output_status'] not in ('complete','terminated') for r in q):
-  if any(not r.get('execution_source_sha_match') or r.get('chemistry_placement')!='device_delivery' for r in q): gates['Q']['status']='FAIL_PROVENANCE_OR_PLACEMENT'
- cgood=[r for r in stages['C'] if r['output_status'] in ('complete','terminated')]
+ if all(r['output_status'] in READABLE for r in q) and any(not r.get('execution_source_sha_match') or r.get('chemistry_placement')!='device_delivery' for r in q): gates['Q']['status']='FAIL_PROVENANCE_OR_PLACEMENT'
+ cgood=[r for r in stages['C'] if r['output_status'] in READABLE]
  if len(cgood)==12 and any(not r.get('btuB_grid_present') or r.get('source_centered_profile_status','').startswith('BLOCKED') for r in cgood): gates['C']['status']='BLOCKED_TRANSPORT_PROVENANCE'
- dgood=[r for r in stages['D'] if r['output_status'] in ('complete','terminated')]
+ dgood=[r for r in stages['D'] if r['output_status'] in READABLE]
  if len(dgood)==15 and any(not r.get('execution_source_sha_match') for r in dgood): gates['D']['status']='FAIL_EXECUTION_SOURCE_PROVENANCE'
  if len(dgood)==15 and sum(r['arm']=='plasmid_free_null' for r in dgood)!=3: gates['D']['status']='BLOCKED_MISSING_SAME_IMAGE_NULLS'
+def gate_statuses(rows):
+ stages={s:[r for r in rows if r['stage']==s] for s in 'QABCD'}; gates={}
+ for s in 'QABCD':
+  miss=sum(r['output_status'] not in READABLE for r in stages[s]); gates[s]={'status':'BLOCKED_MISSING_OUTPUTS' if miss else 'READY_FOR_SCIENTIFIC_REVIEW','expected':len(stages[s]),'missing_or_invalid':miss}
+ provenance_gate_overrides(stages,gates)
+ return gates
+def main():
+ ap=argparse.ArgumentParser();ap.add_argument('--results-dir',type=Path,default=ROOT/'analysis');a=ap.parse_args();a.results_dir.mkdir(parents=True,exist_ok=True)
+ cm=json.loads((G/'campaign_manifest.json').read_text()); rows=[one(e) for e in cm['runs']]; pub=[public_row(r) for r in rows]
+ write_csv(a.results_dir/'run_metrics.csv',pub);(a.results_dir/'run_metrics.json').write_text(json.dumps(pub,indent=2,allow_nan=False)+'\n')
+ complete=[r for r in rows if r['output_status'] in READABLE]; missing=[public_row(r) for r in rows if r['output_status'] not in READABLE]
+ pairs=paired_rows(complete,cm)
+ write_csv(a.results_dir/'paired_metrics.csv',pairs);(a.results_dir/'paired_metrics.json').write_text(json.dumps(pairs,indent=2)+'\n')
+ gates=gate_statuses(rows)
  report={'campaign_id':cm['campaign_id'],'runs_total':len(rows),'outputs_readable':len(complete),'missing_or_invalid':len(missing),'gates':gates,'interpretation':'Sequential scientific gates require review of all seed-level rows; this analyzer never auto-promotes downstream stages. Paired deltas use a shared calendar window ending at t_common_s. realized_lysis_per_division uses integer cumulative_divisions_by_type[1] when present.'}
  (a.results_dir/'missing_outputs.json').write_text(json.dumps(missing,indent=2)+'\n');(a.results_dir/'gate_status.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2));return 0
 if __name__=='__main__': raise SystemExit(main())
