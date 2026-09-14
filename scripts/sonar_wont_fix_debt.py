@@ -46,21 +46,18 @@ DEBT_RULES: dict[str, str] = {
     # cpp:S6185 and cpp:S6484 (std::format) are NOT debt: <format> is a C++20
     # header, libstdc++ 13 has it, and src/io/hdf5_writer.cpp already uses it.
     # They are fixed in code. Do not re-add them on a GCC-11 assumption.
-    # cpp:S8379 is deliberately NOT listed yet. Most of its findings are
-    # already synchronized by a mechanism the rule cannot see (OpenMP atomic
-    # updates and per-thread slots for the Green's-function diagnostics,
-    # serial-only mutation for the Fix vector and the HDF5 provenance flag),
-    # but triaging it found one genuine race, fixed in PR #371, and the two
-    # FixMetabolism findings are still under audit. Resolving the family
-    # wholesale would resolve those two as well. Add it here only once the
-    # audit lands.
+    # cpp:S8379 is NOT debt: one finding was a real race (PR #371) and the
+    # remaining 14 were fixed in code without a mutex (PR #424: std::atomic
+    # diagnostics, serial preparation of the delivery-support cache, non-const
+    # APIs instead of mutable members). A new finding needs the same treatment.
     # Complexity and architecture of a research prototype: NUFEB-style Fix
     # plugins, the diffusion kernels, and the config parser. Refactoring these
     # is a redesign, not a cleanup, and would put the scientific code at risk.
+    # python:S3776 is NOT listed: the Python analysis/preflight scripts are
+    # pytest-covered post-processing and are refactored in code instead.
     "cpp:S107": "diffusion/GPU APIs need a context-struct redesign",
     "cpp:S134": "nesting in hot kernels, receptor, and GPU paths",
     "cpp:S3776": "parser/HDF5/GPU complexity; redesign, not cleanup",
-    "python:S3776": "batch CLI and analysis complexity; redesign",
     "cpp:S1820": "Simulation/GPU type size is the architecture",
     "cpp:S1448": "Simulation/GPU method count is the architecture",
     "cpp:S995": "GPU buffer mutability",

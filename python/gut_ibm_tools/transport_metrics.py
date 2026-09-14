@@ -136,14 +136,7 @@ def _close(observed: float | None, expected: float, rtol: float) -> bool:
     return abs(observed - expected) <= rtol * abs(expected)
 
 
-def authenticate_run(h5, expected: ExpectedRun) -> list[str]:
-    """Return every way ``h5`` fails to be the run ``expected`` describes.
-
-    An empty list means the file's runtime provenance and resolved
-    configuration match the claimed execution image and scientific settings
-    exactly, so a transport measurement taken from it can be attributed to
-    those settings.
-    """
+def _provenance_violations(h5, expected: ExpectedRun) -> list[str]:
     violations: list[str] = []
 
     git_sha = read_string(h5, "run_provenance/git_sha")
@@ -162,8 +155,13 @@ def authenticate_run(h5, expected: ExpectedRun) -> list[str]:
     ranks = _scalar(h5, "run_provenance/mpi_rank_count")
     if ranks is None or int(ranks) != expected.mpi_ranks:
         violations.append(f"mpi_rank_count {ranks} != {expected.mpi_ranks}")
+    return violations
 
-    cfg = read_resolved_config(h5)
+
+def _resolved_config_violations(
+    cfg: Mapping[str, Any], expected: ExpectedRun
+) -> list[str]:
+    violations: list[str] = []
 
     if int(cfg.get("seed", -1)) != int(expected.seed):
         violations.append(f"resolved seed {cfg.get('seed')} != {expected.seed}")
@@ -189,20 +187,27 @@ def authenticate_run(h5, expected: ExpectedRun) -> list[str]:
     species = tuple(cfg.get("hdf5.schedule.grid_species") or ())
     if species != tuple(expected.grid_species):
         violations.append(f"resolved grid_species {species} != {tuple(expected.grid_species)}")
+    return violations
 
+
+def authenticate_run(h5, expected: ExpectedRun) -> list[str]:
+    """Return every way ``h5`` fails to be the run ``expected`` describes.
+
+    An empty list means the file's runtime provenance and resolved
+    configuration match the claimed execution image and scientific settings
+    exactly, so a transport measurement taken from it can be attributed to
+    those settings.
+    """
+    violations = _provenance_violations(h5, expected)
+    cfg = read_resolved_config(h5)
+    violations.extend(_resolved_config_violations(cfg, expected))
     violations.extend(_cole1_violations(h5, cfg, expected))
     return violations
 
 
-def _cole1_violations(h5, cfg: Mapping[str, Any], expected: ExpectedRun) -> list[str]:
-    """Authenticate the ColE1 release identity.
-
-    ``pI``, ``diff_coeff`` and ``burst_size`` are plasmid-library constants of
-    the execution source, so an authenticated commit plus the absence of a
-    conflicting ``plasmid_overrides`` entry pins them.  When the run also
-    emitted the genome layer, the producer's realized locus is compared
-    directly.
-    """
+def _cole1_override_violations(
+    cfg: Mapping[str, Any], expected: ExpectedRun
+) -> list[str]:
     violations: list[str] = []
     overrides = (cfg.get("plasmid_overrides") or {}).get("ColE1") or {}
     override_expectations = {
@@ -219,23 +224,49 @@ def _cole1_violations(h5, cfg: Mapping[str, Any], expected: ExpectedRun) -> list
         want = override_expectations.get(key)
         if want is None or not _close(float(value), want, expected.rtol):
             violations.append(f"plasmid_overrides.ColE1.{key} {value} != {want}")
+    return violations
 
+
+def _first_populated_genome_step(h5):
+    """Return ``(step_key, group)`` of the first genome step with a BI locus."""
     if "genome" not in h5:
-        return violations
+        return None
     for step_key in sorted(h5["genome"].keys()):
         group = h5["genome"][step_key]
-        if "bi_pI" not in group or group["bi_pI"].shape[0] == 0:
-            continue
-        pI = np.asarray(group["bi_pI"][()], dtype=float)
-        diff = np.asarray(group["bi_diff_coeff"][()], dtype=float)
-        if not np.all(np.isclose(pI, expected.cole1_pI, rtol=expected.rtol, atol=0.0)):
-            violations.append(f"genome/{step_key} bi_pI {sorted(set(pI))} != {expected.cole1_pI}")
-        if not np.all(np.isclose(diff, expected.cole1_diff_coeff, rtol=expected.rtol, atol=0.0)):
-            violations.append(
-                f"genome/{step_key} bi_diff_coeff {sorted(set(diff))} != "
-                f"{expected.cole1_diff_coeff}"
-            )
-        break
+        if "bi_pI" in group and group["bi_pI"].shape[0] != 0:
+            return step_key, group
+    return None
+
+
+def _cole1_genome_violations(h5, expected: ExpectedRun) -> list[str]:
+    found = _first_populated_genome_step(h5)
+    if found is None:
+        return []
+    step_key, group = found
+    violations: list[str] = []
+    pI = np.asarray(group["bi_pI"][()], dtype=float)
+    diff = np.asarray(group["bi_diff_coeff"][()], dtype=float)
+    if not np.all(np.isclose(pI, expected.cole1_pI, rtol=expected.rtol, atol=0.0)):
+        violations.append(f"genome/{step_key} bi_pI {sorted(set(pI))} != {expected.cole1_pI}")
+    if not np.all(np.isclose(diff, expected.cole1_diff_coeff, rtol=expected.rtol, atol=0.0)):
+        violations.append(
+            f"genome/{step_key} bi_diff_coeff {sorted(set(diff))} != "
+            f"{expected.cole1_diff_coeff}"
+        )
+    return violations
+
+
+def _cole1_violations(h5, cfg: Mapping[str, Any], expected: ExpectedRun) -> list[str]:
+    """Authenticate the ColE1 release identity.
+
+    ``pI``, ``diff_coeff`` and ``burst_size`` are plasmid-library constants of
+    the execution source, so an authenticated commit plus the absence of a
+    conflicting ``plasmid_overrides`` entry pins them.  When the run also
+    emitted the genome layer, the producer's realized locus is compared
+    directly.
+    """
+    violations = _cole1_override_violations(cfg, expected)
+    violations.extend(_cole1_genome_violations(h5, expected))
     return violations
 
 

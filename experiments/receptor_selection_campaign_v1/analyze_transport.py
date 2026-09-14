@@ -311,6 +311,75 @@ def analyze_null(run) -> dict:
             tmp.unlink(missing_ok=True)
 
 
+def resolved_burst_identity(h, run) -> tuple[float, float | None]:
+    """Burst identity from the resolved config when present, else the input config."""
+    burst_tau = run["burst_release_tau"]
+    burst_size = None
+    if "run_provenance" in h and "resolved_config" in h["run_provenance"]:
+        raw = h["run_provenance"]["resolved_config"][()]
+        if isinstance(raw, bytes):
+            raw = raw.decode()
+        elif hasattr(raw, "tobytes"):
+            raw = raw.tobytes().decode()
+        resolved = json.loads(str(raw))
+        burst_tau = float(resolved.get("burst_release_tau", burst_tau))
+        # ColE1 burst_size lives on the plasmid, not always a top-level key.
+        # Prefer explicit key if present.
+        if "burst_size" in resolved:
+            burst_size = float(resolved["burst_size"])
+    return burst_tau, burst_size
+
+
+def grid_time(h, run, sk: str) -> float:
+    if "time" in h["summary"].get(sk, {}):
+        return float(np.asarray(h["summary"][sk]["time"][()]).reshape(-1)[0])
+    return float(step_index(sk) * run["bio_dt"])
+
+
+def snapshot_row(run, sk: str, t_grid: float, prof: dict) -> dict:
+    row = {
+        "run_id": run["run_id"],
+        "seed": run["seed"],
+        "amplitude": run["amplitude"],
+        "grid_step": step_index(sk),
+        "t_grid_s": t_grid,
+        "n_active_sources": prof["n_active_sources"],
+        "active_source_weight_sum": prof["active_source_weight_sum"],
+        "near_field_0_10": prof["near_field"],
+        "intermediate_10_25": prof["intermediate"],
+        "far_field_50_100": prof["far_field_50_100"],
+        "r50_um": prof["r50_um"],
+        "r90_um": prof["r90_um"],
+        "r50_shape_um": prof["r50_shape_um"],
+        "r90_shape_um": prof["r90_shape_um"],
+    }
+    for label, mean, count in zip(BIN_LABELS, prof["bin_means"], prof["bin_counts"]):
+        row[f"bin_{label}_mean"] = mean
+        row[f"bin_{label}_n_voxels"] = count
+    return row
+
+
+def qualified_snapshots(h, run, sources, grid_keys) -> tuple[list[dict], int]:
+    sample = np.asarray(h["grid"][grid_keys[0]]["bacteriocin_BtuB"][()])
+    nz, ny, nx = sample.shape
+    xx, yy, zz = voxel_centers(nx, ny, nz, run["dx"])
+    snaps = []
+    n_excluded = 0
+    for sk in grid_keys:
+        t_grid = grid_time(h, run, sk)
+        active = active_sources(sources, t_grid)
+        prof = None
+        if active:
+            conc = np.asarray(h["grid"][sk]["bacteriocin_BtuB"][()], dtype=float)
+            prof = profile_snapshot(conc, xx, yy, zz, active, run["Lx"], run["Ly"])
+        # Drop zero-mass snapshots (active sources but undefined radii).
+        if prof is None or math.isnan(prof["r50_um"]) or math.isnan(prof["r90_um"]):
+            n_excluded += 1
+            continue
+        snaps.append(snapshot_row(run, sk, t_grid, prof))
+    return snaps, n_excluded
+
+
 def analyze_producer(run) -> dict:
     path = run["output_path"]
     base = {
@@ -332,67 +401,8 @@ def analyze_producer(run) -> dict:
                     "authentication_violations": violations, "snapshots": [],
                     "n_excluded_no_source": 0}
         grid_keys = steps(h["grid"])
-        sample = np.asarray(h["grid"][grid_keys[0]]["bacteriocin_BtuB"][()])
-        nz, ny, nx = sample.shape
-        xx, yy, zz = voxel_centers(nx, ny, nz, run["dx"])
-
-        # Burst identity check from resolved config when present.
-        burst_tau = run["burst_release_tau"]
-        burst_size = None
-        if "run_provenance" in h and "resolved_config" in h["run_provenance"]:
-            raw = h["run_provenance"]["resolved_config"][()]
-            if isinstance(raw, bytes):
-                raw = raw.decode()
-            elif hasattr(raw, "tobytes"):
-                raw = raw.tobytes().decode()
-            resolved = json.loads(str(raw))
-            burst_tau = float(resolved.get("burst_release_tau", burst_tau))
-            # ColE1 burst_size lives on the plasmid, not always a top-level key.
-            # Prefer explicit key if present.
-            if "burst_size" in resolved:
-                burst_size = float(resolved["burst_size"])
-
-        snaps = []
-        n_excluded = 0
-        for sk in grid_keys:
-            if "time" in h["summary"].get(sk, {}):
-                t_grid = float(np.asarray(h["summary"][sk]["time"][()]).reshape(-1)[0])
-            else:
-                t_grid = float(step_index(sk) * run["bio_dt"])
-            active = active_sources(sources, t_grid)
-            if not active:
-                n_excluded += 1
-                continue
-            conc = np.asarray(h["grid"][sk]["bacteriocin_BtuB"][()], dtype=float)
-            prof = profile_snapshot(conc, xx, yy, zz, active, run["Lx"], run["Ly"])
-            if prof is None:
-                n_excluded += 1
-                continue
-            row = {
-                "run_id": run["run_id"],
-                "seed": run["seed"],
-                "amplitude": run["amplitude"],
-                "grid_step": step_index(sk),
-                "t_grid_s": t_grid,
-                "n_active_sources": prof["n_active_sources"],
-                "active_source_weight_sum": prof["active_source_weight_sum"],
-                "near_field_0_10": prof["near_field"],
-                "intermediate_10_25": prof["intermediate"],
-                "far_field_50_100": prof["far_field_50_100"],
-                "r50_um": prof["r50_um"],
-                "r90_um": prof["r90_um"],
-                "r50_shape_um": prof["r50_shape_um"],
-                "r90_shape_um": prof["r90_shape_um"],
-            }
-            for label, mean, count in zip(BIN_LABELS, prof["bin_means"], prof["bin_counts"]):
-                row[f"bin_{label}_mean"] = mean
-                row[f"bin_{label}_n_voxels"] = count
-            # Drop zero-mass snapshots (active sources but undefined radii).
-            if math.isnan(prof["r50_um"]) or math.isnan(prof["r90_um"]):
-                n_excluded += 1
-                continue
-            snaps.append(row)
-
+        burst_tau, burst_size = resolved_burst_identity(h, run)
+        snaps, n_excluded = qualified_snapshots(h, run, sources, grid_keys)
         return {
             **base,
             "status": "ok",
@@ -457,6 +467,31 @@ def ordered_nonincreasing(vals) -> bool:
     return all(a >= b - 1e-15 for a, b in zip(vals, vals[1:]))
 
 
+def plot_radial_profiles(ax, seed_rows: list[dict], amps: list[int], colors: dict):
+    # Radial bin medians (seed-level medians averaged for display as three lines)
+    centers = 0.5 * (BIN_EDGES_UM[:-1] + BIN_EDGES_UM[1:])
+    for amp in amps:
+        rows = [r for r in seed_rows if int(r["amplitude"]) == amp]
+        ys = [median_or_none([r[f"bin_{label}_mean"] for r in rows]) for label in BIN_LABELS]
+        ax.plot(centers, ys, marker="o", label=f"amp {amp}", color=colors.get(amp))
+    ax.set_xlabel("Source distance (µm)")
+    ax.set_ylabel("Source-weight-normalized mean conc.")
+    ax.set_title("Radial bacteriocin_BtuB profiles")
+    ax.legend(frameon=False)
+
+
+def plot_near_field_by_seed(ax, seed_rows: list[dict], amps: list[int], colors: dict):
+    for amp in amps:
+        rows = sorted([r for r in seed_rows if int(r["amplitude"]) == amp], key=lambda x: x["seed"])
+        xs = [amp + 0.15 * (i - 1) for i in range(len(rows))]
+        ax.scatter(xs, [r["near_field_0_10"] for r in rows], color=colors.get(amp), label=f"near amp {amp}")
+    ax.set_xticks(amps)
+    ax.set_xlabel("Mucin-charge amplitude")
+    ax.set_ylabel("Near-field 0–10 µm (normalized)")
+    ax.set_title("Near-field by seed")
+    ax.legend(frameon=False, fontsize=8)
+
+
 def write_profiles_png(path: Path, seed_rows: list[dict]):
     try:
         import matplotlib
@@ -469,108 +504,64 @@ def write_profiles_png(path: Path, seed_rows: list[dict]):
     amps = sorted({int(r["amplitude"]) for r in seed_rows})
     colors = {0: "#4C78A8", 15: "#F58518", 60: "#54A24B"}
     fig, axes = plt.subplots(1, 2, figsize=(10.5, 4.2), constrained_layout=True)
-
-    # Left: radial bin medians (seed-level medians averaged for display as three lines)
-    ax = axes[0]
-    centers = 0.5 * (BIN_EDGES_UM[:-1] + BIN_EDGES_UM[1:])
-    for amp in amps:
-        rows = [r for r in seed_rows if int(r["amplitude"]) == amp]
-        ys = []
-        for label in BIN_LABELS:
-            ys.append(median_or_none([r[f"bin_{label}_mean"] for r in rows]))
-        ax.plot(centers, ys, marker="o", label=f"amp {amp}", color=colors.get(amp))
-    ax.set_xlabel("Source distance (µm)")
-    ax.set_ylabel("Source-weight-normalized mean conc.")
-    ax.set_title("Radial bacteriocin_BtuB profiles")
-    ax.legend(frameon=False)
-
-    # Right: near-field and r50 by amplitude (three seeds)
-    ax = axes[1]
-    for amp in amps:
-        rows = sorted([r for r in seed_rows if int(r["amplitude"]) == amp], key=lambda x: x["seed"])
-        xs = [amp + 0.15 * (i - 1) for i in range(len(rows))]
-        ax.scatter(xs, [r["near_field_0_10"] for r in rows], color=colors.get(amp), label=f"near amp {amp}")
-    ax.set_xticks(amps)
-    ax.set_xlabel("Mucin-charge amplitude")
-    ax.set_ylabel("Near-field 0–10 µm (normalized)")
-    ax.set_title("Near-field by seed")
-    ax.legend(frameon=False, fontsize=8)
-
+    plot_radial_profiles(axes[0], seed_rows, amps, colors)
+    plot_near_field_by_seed(axes[1], seed_rows, amps, colors)
     fig.savefig(path, dpi=140)
     plt.close(fig)
     return True
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--results-root", type=Path, default=ROOT / "generated" / "stage_C" / "results")
-    ap.add_argument("--output-dir", type=Path, default=ROOT / "analysis")
-    args = ap.parse_args()
-    args.output_dir = prepare_output_directory(args.output_dir)
-
-    runs = stage_c_runs(args.results_root)
-    producers = [r for r in runs if r["arm"] == "producer"]
-    nulls = [r for r in runs if r["arm"] == "shared_null"]
-
-    null_reports = [analyze_null(r) for r in nulls]
-    producer_reports = [analyze_producer(r) for r in producers]
-
-    profile_rows = []
-    for rep in producer_reports:
-        profile_rows.extend(rep.get("snapshots") or [])
-
-    # CSV of every qualified snapshot
-    csv_path = args.output_dir / "transport_profiles.csv"
-    if profile_rows:
-        keys = list(profile_rows[0].keys())
-        with csv_path.open("w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=keys)
-            w.writeheader()
-            w.writerows(profile_rows)
-    else:
+def write_profile_csv(csv_path: Path, profile_rows: list[dict]) -> None:
+    if not profile_rows:
         csv_path.write_text("")
+        return
+    with csv_path.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(profile_rows[0].keys()))
+        w.writeheader()
+        w.writerows(profile_rows)
 
-    # Aggregate: within amplitude × seed, median across qualified snapshots
+
+def seed_level_rows(profile_rows: list[dict]) -> list[dict]:
+    """Within amplitude x seed, median across qualified snapshots."""
     by_amp_seed: dict[tuple[float, int], list[dict]] = defaultdict(list)
     for row in profile_rows:
         by_amp_seed[(float(row["amplitude"]), int(row["seed"]))].append(row)
+    return [
+        {"amplitude": amp, "seed": seed, **seed_aggregate(snaps)}
+        for (amp, seed), snaps in sorted(by_amp_seed.items())
+    ]
 
-    seed_level = []
-    for (amp, seed), snaps in sorted(by_amp_seed.items()):
-        agg = seed_aggregate(snaps)
-        seed_level.append({"amplitude": amp, "seed": seed, **agg})
 
-    # Across-seed summary per amplitude
-    amp_summary = {}
+def pack_by_seed(rows: list[dict], key: str) -> dict:
+    vals = [r[key] for r in rows]
+    finite = [v for v in vals if v is not None and not math.isnan(v)]
+    return {
+        "by_seed": {str(r["seed"]): v for r, v in zip(rows, vals)},
+        "median": median_or_none(finite),
+        "min": min(finite) if finite else None,
+        "max": max(finite) if finite else None,
+    }
+
+
+def amplitude_summary(seed_level: list[dict]) -> dict:
+    """Across-seed summary per amplitude."""
+    summary = {}
     for amp in AMPLITUDES:
         rows = [r for r in seed_level if r["amplitude"] == amp]
-        seeds = [r["seed"] for r in rows]
-
-        def pack(key):
-            vals = [r[key] for r in rows]
-            finite = [v for v in vals if v is not None and not math.isnan(v)]
-            return {
-                "by_seed": {str(s): v for s, v in zip(seeds, vals)},
-                "median": median_or_none(finite),
-                "min": min(finite) if finite else None,
-                "max": max(finite) if finite else None,
-            }
-
-        amp_summary[str(int(amp))] = {
+        summary[str(int(amp))] = {
             "n_seeds": len(rows),
             "qualified_snapshots_by_seed": {str(r["seed"]): r["n_qualified_snapshots"] for r in rows},
-            "near_field_0_10": pack("near_field_0_10"),
-            "intermediate_10_25": pack("intermediate_10_25"),
-            "far_field_50_100": pack("far_field_50_100"),
-            "r50_um": pack("r50_um"),
-            "r90_um": pack("r90_um"),
+            "near_field_0_10": pack_by_seed(rows, "near_field_0_10"),
+            "intermediate_10_25": pack_by_seed(rows, "intermediate_10_25"),
+            "far_field_50_100": pack_by_seed(rows, "far_field_50_100"),
+            "r50_um": pack_by_seed(rows, "r50_um"),
+            "r90_um": pack_by_seed(rows, "r90_um"),
         }
+    return summary
 
-    # Burst identity across producers
-    taus = {r.get("burst_release_tau") for r in producer_reports if r.get("status") == "ok"}
-    burst_tau_ok = taus == {BURST_TAU_S}
 
-    # pI-law resolution check
+def transport_law_check() -> tuple[dict, bool]:
+    """pI-law resolution check against the expected retardation/D_eff table."""
     transport_law = {}
     law_ok = True
     for amp in (0, 15, 60):
@@ -587,49 +578,58 @@ def main() -> int:
             "match": bool(r_ok and d_ok),
         }
         law_ok = law_ok and r_ok and d_ok
+    return transport_law, law_ok
 
-    # Gate checks
-    null_ok = all(n.get("toxin_free") for n in null_reports) and len(null_reports) == 3
-    snapshot_ok = True
+
+def seed_row(seed_level: list[dict], amp: float, seed: int) -> dict | None:
+    return next((r for r in seed_level if r["amplitude"] == amp and r["seed"] == seed), None)
+
+
+def snapshots_sufficient(seed_level: list[dict]) -> bool:
     for amp in AMPLITUDES:
         for seed in SEEDS:
-            nq = next(
-                (r["n_qualified_snapshots"] for r in seed_level if r["amplitude"] == amp and r["seed"] == seed),
-                0,
-            )
-            if nq < 2:
-                snapshot_ok = False
+            row = seed_row(seed_level, amp, seed)
+            if (0 if row is None else row["n_qualified_snapshots"]) < 2:
+                return False
+    return True
 
-    near_order_ok = True
-    r50_order_ok = True
-    r90_order_ok = True
-    order_detail = {}
-    for seed in SEEDS:
-        near = []
-        r50 = []
-        r90 = []
-        for amp in AMPLITUDES:
-            row = next((r for r in seed_level if r["amplitude"] == amp and r["seed"] == seed), None)
-            near.append(None if row is None else row["near_field_0_10"])
-            r50.append(None if row is None else row["r50_um"])
-            r90.append(None if row is None else row["r90_um"])
-        near_ok = all(v is not None and not math.isnan(v) for v in near) and ordered_nondecreasing(near)
-        r50_ok = all(v is not None and not math.isnan(v) for v in r50) and ordered_nonincreasing(r50)
-        r90_ok = all(v is not None and not math.isnan(v) for v in r90) and ordered_nonincreasing(r90)
-        order_detail[str(seed)] = {
-            "near_field_0_10": near,
-            "near_ordered_0_le_15_le_60": near_ok,
-            "r50_um": r50,
-            "r50_ordered_0_ge_15_ge_60": r50_ok,
-            "r90_um": r90,
-            "r90_ordered_0_ge_15_ge_60": r90_ok,
-        }
-        near_order_ok = near_order_ok and near_ok
-        r50_order_ok = r50_order_ok and r50_ok
-        r90_order_ok = r90_order_ok and r90_ok
 
-    # Paired snapshot times across the amplitude arms of a seed. A missing
-    # paired time blocks rather than letting each arm's median use its own times.
+def all_finite(vals) -> bool:
+    return all(v is not None and not math.isnan(v) for v in vals)
+
+
+def seed_order_detail(seed_level: list[dict], seed: int) -> dict:
+    rows = [seed_row(seed_level, amp, seed) for amp in AMPLITUDES]
+    near = [None if row is None else row["near_field_0_10"] for row in rows]
+    r50 = [None if row is None else row["r50_um"] for row in rows]
+    r90 = [None if row is None else row["r90_um"] for row in rows]
+    return {
+        "near_field_0_10": near,
+        "near_ordered_0_le_15_le_60": all_finite(near) and ordered_nondecreasing(near),
+        "r50_um": r50,
+        "r50_ordered_0_ge_15_ge_60": all_finite(r50) and ordered_nonincreasing(r50),
+        "r90_um": r90,
+        "r90_ordered_0_ge_15_ge_60": all_finite(r90) and ordered_nonincreasing(r90),
+    }
+
+
+def order_checks(seed_level: list[dict]) -> tuple[dict, dict]:
+    """Per-seed amplitude ordering of near-field and radii, plus the all-seed verdicts."""
+    order_detail = {str(seed): seed_order_detail(seed_level, seed) for seed in SEEDS}
+    verdict = {
+        "near": all(d["near_ordered_0_le_15_le_60"] for d in order_detail.values()),
+        "r50": all(d["r50_ordered_0_ge_15_ge_60"] for d in order_detail.values()),
+        "r90": all(d["r90_ordered_0_ge_15_ge_60"] for d in order_detail.values()),
+    }
+    return order_detail, verdict
+
+
+def pairing_checks(profile_rows: list[dict]) -> tuple[dict, bool]:
+    """Paired snapshot times across the amplitude arms of a seed.
+
+    A missing paired time blocks rather than letting each arm's median use its
+    own times.
+    """
     pairing = {}
     paired_ok = True
     for seed in SEEDS:
@@ -648,21 +648,13 @@ def main() -> int:
             "complete": pairs.complete,
         }
         paired_ok = paired_ok and pairs.complete and bool(pairs.common_s)
+    return pairing, paired_ok
 
-    authenticated = all(
-        not report.get("authentication_violations")
-        for report in producer_reports + null_reports
-    )
-    outputs_ok = all(
-        report.get("status") != "missing_output"
-        for report in producer_reports + null_reports
-    )
-    exact_times_ok = all(report.get("status") != "refused" for report in producer_reports)
 
+def gate_blockers(outputs_ok: bool, authenticated: bool, exact_times_ok: bool, paired_ok: bool) -> list[str]:
     # The transport gate is not decidable from this stage: its radii are
     # nearest-source distances under uncontrolled, amplitude-dependent source
     # density. Only the single-source assay can pass a transport gate.
-    gate_pass = False
     blockers = []
     if not outputs_ok:
         blockers.append("one or more runs have no returned output file")
@@ -677,6 +669,83 @@ def main() -> int:
         "density (Spearman ~-0.96 against r50); the transport gate is decided by "
         "experiments/single_source_transport_assay_v1"
     )
+    return blockers
+
+
+def burst_identity(producer_reports: list[dict]) -> tuple[set, bool]:
+    """Burst identity across producers."""
+    taus = {r.get("burst_release_tau") for r in producer_reports if r.get("status") == "ok"}
+    return taus, taus == {BURST_TAU_S}
+
+
+def report_flags(producer_reports: list[dict], null_reports: list[dict]) -> tuple[bool, bool, bool]:
+    all_reports = producer_reports + null_reports
+    authenticated = all(not report.get("authentication_violations") for report in all_reports)
+    outputs_ok = all(report.get("status") != "missing_output" for report in all_reports)
+    exact_times_ok = all(report.get("status") != "refused" for report in producer_reports)
+    return authenticated, outputs_ok, exact_times_ok
+
+
+def producer_status_rows(producer_reports: list[dict]) -> list[dict]:
+    return [
+        {
+            "run_id": r["run_id"],
+            "seed": r["seed"],
+            "amplitude": r["amplitude"],
+            "status": r["status"],
+            "n_qualified": r.get("n_qualified"),
+            "n_excluded_no_source": r.get("n_excluded_no_source"),
+            "burst_release_tau": r.get("burst_release_tau"),
+        }
+        for r in producer_reports
+    ]
+
+
+GATE_NOTES = [
+    "r50/r90 are volume-weighted concentration-mass radii vs nearest active source and are diagnostics, not gate inputs.",
+    "Distance to the nearest of many sources measures source packing as well as diffusion; Stage C source counts differ across amplitudes by up to eightfold at matched times.",
+    "r50_shape_um/r90_shape_um are diagnostic shell-mean (measure dr) radii and are not gate inputs.",
+    "Lysis times are exact provenance event times; outputs without event_time_s are refused.",
+    "The ecological amplitude effect (near-field ordering, producer-null slopes) remains exploratory support, not an isolated transport validation.",
+]
+
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--results-root", type=Path, default=ROOT / "generated" / "stage_C" / "results")
+    ap.add_argument("--output-dir", type=Path, default=ROOT / "analysis")
+    args = ap.parse_args()
+    args.output_dir = prepare_output_directory(args.output_dir)
+
+    runs = stage_c_runs(args.results_root)
+    producers = [r for r in runs if r["arm"] == "producer"]
+    nulls = [r for r in runs if r["arm"] == "shared_null"]
+
+    null_reports = [analyze_null(r) for r in nulls]
+    producer_reports = [analyze_producer(r) for r in producers]
+    all_reports = producer_reports + null_reports
+
+    profile_rows = []
+    for rep in producer_reports:
+        profile_rows.extend(rep.get("snapshots") or [])
+
+    write_profile_csv(args.output_dir / "transport_profiles.csv", profile_rows)
+    seed_level = seed_level_rows(profile_rows)
+    amp_summary = amplitude_summary(seed_level)
+
+    taus, burst_tau_ok = burst_identity(producer_reports)
+    transport_law, law_ok = transport_law_check()
+
+    # Gate checks
+    null_ok = all(n.get("toxin_free") for n in null_reports) and len(null_reports) == 3
+    snapshot_ok = snapshots_sufficient(seed_level)
+    order_detail, ordered = order_checks(seed_level)
+    pairing, paired_ok = pairing_checks(profile_rows)
+    authenticated, outputs_ok, exact_times_ok = report_flags(producer_reports, null_reports)
+
+    gate_pass = False
+    blockers = gate_blockers(outputs_ok, authenticated, exact_times_ok, paired_ok)
 
     metrics = {
         "campaign_id": "receptor_selection_campaign_v1",
@@ -688,25 +757,13 @@ def main() -> int:
         "burst_release_tau_identical": burst_tau_ok,
         "observed_burst_release_tau": sorted(t for t in taus if t is not None),
         "null_checks": null_reports,
-        "producer_run_status": [
-            {
-                "run_id": r["run_id"],
-                "seed": r["seed"],
-                "amplitude": r["amplitude"],
-                "status": r["status"],
-                "n_qualified": r.get("n_qualified"),
-                "n_excluded_no_source": r.get("n_excluded_no_source"),
-                "burst_release_tau": r.get("burst_release_tau"),
-            }
-            for r in producer_reports
-        ],
+        "producer_run_status": producer_status_rows(producer_reports),
         "seed_level_medians": seed_level,
         "amplitude_summary": amp_summary,
         "transport_law": transport_law,
         "order_checks_by_seed": order_detail,
         "authentication_violations": {
-            report["run_id"]: report.get("authentication_violations") or []
-            for report in producer_reports + null_reports
+            report["run_id"]: report.get("authentication_violations") or [] for report in all_reports
         },
         "paired_times_by_seed": pairing,
         "n_profile_rows": len(profile_rows),
@@ -724,29 +781,24 @@ def main() -> int:
             "paired_snapshot_times_complete": paired_ok,
             "nulls_toxin_free": null_ok,
             "ge_2_qualified_snapshots_per_amp_seed": snapshot_ok,
-            "near_field_ordered_0_le_15_le_60_all_seeds": near_order_ok,
-            "r50_ordered_0_ge_15_ge_60_all_seeds": r50_order_ok,
-            "r90_ordered_0_ge_15_ge_60_all_seeds": r90_order_ok,
+            "near_field_ordered_0_le_15_le_60_all_seeds": ordered["near"],
+            "r50_ordered_0_ge_15_ge_60_all_seeds": ordered["r50"],
+            "r90_ordered_0_ge_15_ge_60_all_seeds": ordered["r90"],
             "transport_law_match": law_ok,
             "burst_release_tau_identical": burst_tau_ok,
         },
         "blockers": blockers,
         "null_max_abs": {n["run_id"]: n.get("max_abs_bacteriocin_BtuB") for n in null_reports},
         "order_detail": order_detail,
-        "notes": [
-            "r50/r90 are volume-weighted concentration-mass radii vs nearest active source and are diagnostics, not gate inputs.",
-            "Distance to the nearest of many sources measures source packing as well as diffusion; Stage C source counts differ across amplitudes by up to eightfold at matched times.",
-            "r50_shape_um/r90_shape_um are diagnostic shell-mean (measure dr) radii and are not gate inputs.",
-            "Lysis times are exact provenance event times; outputs without event_time_s are refused.",
-            "The ecological amplitude effect (near-field ordering, producer-null slopes) remains exploratory support, not an isolated transport validation.",
-        ],
+        "notes": GATE_NOTES,
     }
     (args.output_dir / "transport_gate.json").write_text(
         json.dumps(jsonable(gate), indent=2, allow_nan=False) + "\n"
     )
 
-    png_ok = write_profiles_png(args.output_dir / "transport_profiles.png", seed_level)
-    metrics["transport_profiles_png_written"] = png_ok
+    metrics["transport_profiles_png_written"] = write_profiles_png(
+        args.output_dir / "transport_profiles.png", seed_level
+    )
     (args.output_dir / "transport_metrics.json").write_text(
         json.dumps(jsonable(metrics), indent=2, allow_nan=False) + "\n"
     )

@@ -13,12 +13,14 @@ is left sitting on the dashboard as "probably fine".
 | **B** | Won’t Fix accepted complexity/architecture debt | Reclassified — see below |
 | **C** | This doc + skill remaining-work map | Done |
 | **D** | `pythonsecurity:S6549` manifest path taint (8) | Done in code (PR #370) |
-| **E** | Concurrency triage of `cpp:S8379` (13) | 1 real race fixed (PR #371); 2 under audit; rest accepted |
+| **E** | Concurrency triage of `cpp:S8379` (13 + 14) | 1 real race fixed (PR #371); remaining 14 fixed in code (PR #424) |
 | **F** | Type/template modernization sweep (125) | Fixed in code |
 | **F2** | `cpp:S6185`/`cpp:S6484` `std::format` (11) | Reopened from debt — fixed in code |
 | **G** | Algorithms, control flow, and the `cpp:S1669` BLOCKER | Queued |
 | **H** | `cpp:S6004` init-if (56) | Queued — reclassified from accepted debt to code fix |
 | **I** | Python / Docker / shell findings (9) | Queued |
+| **J** | `pythonsecurity:S8707` (2) + `cpp:S8379` (14) | Fixed in code (PR #424) |
+| **K** | `python:S3776` (16) refactored; `cpp:S107`/`S134`/`S3776` (18) Won't Fix | In progress |
 
 ## Policy
 
@@ -59,18 +61,24 @@ survives being read out loud.
    validated against Python oracles at ~1e-9 and regression-guarded. Trading
    reproducibility of the scientific output for a style rule is not a trade.
 3. **Synchronization the rule cannot see** — `cpp:S8379` wants a mutex on
-   `mutable` members that are in fact protected by OpenMP `atomic update`,
-   per-thread slots, or serial-only mutation. A mutex in the QSSA/Green's
-   function hot loop would serialize it for no correctness gain. This category
-   is earned per finding, not per rule: triaging it turned up one genuine race
-   (below), so the rule stays open on the dashboard until the last two findings
-   are audited.
+   `mutable` members. This category is now empty: every finding was either a
+   genuine race (fixed, PR #371) or removable without a mutex by dropping
+   `mutable` and making the mutation explicit (PR #424, see below). Do not add
+   a mutex to the QSSA/Green's function hot loop or the per-agent delivery
+   lookup to satisfy the rule; that serializes OpenMP for no correctness gain
+   (PR #423 did exactly that and was closed).
 4. **Architecture of a research prototype** — parameter counts, nesting,
    cognitive complexity, and type size in the diffusion kernels, the NUFEB-style
    `Fix` base, and the config parser (`cpp:S107`, `S134`, `S3776`,
-   `python:S3776`, `S1820`, `S1448`, `S995`, `S5008`, `S3656`, `S924`).
+   `S1820`, `S1448`, `S995`, `S5008`, `S3656`, `S924`).
    Addressing these is a redesign that would put working scientific code at
    risk to move a maintainability rating.
+
+   `python:S3776` is **not** in this category any more. The Python analysis and
+   preflight scripts are pure post-processing covered by pytest and by
+   before/after output comparison, so complexity there is fixed in code by
+   extracting helpers (no algorithm changes), and the rule was removed from the
+   script's Won't Fix map so a run cannot bury a new Python finding.
 
 `cpp:S6004` (init-if, 56 findings) was previously in this list as "low-value
 modernization" and has been moved out: it is a mechanical, behaviour-preserving
@@ -122,34 +130,37 @@ so a reader of the dashboard sees why without finding this file.
 | `cpp:S6179` `std::lerp` | 11 | Numerical | not bit-identical; FP reproducibility |
 | `cpp:S107` param count | 45 | Architecture | diffusion/GPU APIs need a context-struct redesign |
 | `cpp:S134` nesting | 41 | Architecture | hot kernels / receptor / GPU |
-| `cpp:S3776` / `python:S3776` | 39 | Architecture | parser, HDF5, GPU, batch CLI |
+| `cpp:S3776` | 39 | Architecture | parser, HDF5, GPU |
 | `cpp:S1820` / `cpp:S1448` | 17 | Architecture | `Simulation` / GPU type size |
 | `cpp:S995` const ptr | 5 | Architecture | GPU buffer mutability |
 | `cpp:S5008` `void*` | 4 | Architecture | HDF5 C API buffers |
 | `cpp:S3656` protected | 1 | Architecture | NUFEB-style `Fix` base contract |
 | `cpp:S924` nested break | 1 | Architecture | coupled to `Simulation::run` |
 
-### `cpp:S8379` — held open on purpose
+### `cpp:S8379` — fixed in code (PR #371, PR #424)
 
-The rule flags 13 `mutable` members as needing a mutex. Twelve are protected by
-something the rule does not model: `#pragma omp atomic update` and a per-thread
-`kernel_evaluations_by_thread_` vector in `GreensFunction`, `omp critical` in
-`FixMetabolism`, and serial-only mutation of `Simulation::fixes_` and the HDF5
-`run_provenance_written_` flag.
+The rule flags `mutable` members as needing a mutex. One finding was a real
+race: `QSSASolver::sampled_toxin_conc()` lazily called `field.samples.resize()`
+on a shared vector from inside `fix_receptor`'s `omp parallel for`. Fixed in
+PR #371 by making the out-of-range case non-mutating, which also let
+`sampled_fields_`/`sampled_nuclease_fields_` drop `mutable`.
 
-The thirteenth was real. `QSSASolver::sampled_toxin_conc()` lazily called
-`field.samples.resize()` on a shared vector from inside `fix_receptor`'s
-`omp parallel for`, reachable whenever an agent count grew since the sampling
-pass — routine, because `FixMetabolism::compute()` divides earlier in the same
-biology phase. Fixed in PR #371 by making the out-of-range case non-mutating,
-which also let `sampled_fields_`/`sampled_nuclease_fields_` drop `mutable` so
-the pattern cannot come back silently.
+The remaining 14 were cleared in PR #424 without adding any lock:
 
-Because of that, the family is **not** in the Won't Fix rule list: the two
-`FixMetabolism` findings (`delivery_support_cache_`, `delivery_support_stencil_`)
-are still under audit — the fast-path cache `find()` is unsynchronized while a
-miss inserts under `omp critical` — and a wholesale resolution would bury them.
-Add `cpp:S8379` to the script only once that audit lands.
+- `GreensFunction` diagnostics are plain `std::atomic` members of a heap-owned
+  `GreensFunctionDiagnostics` struct (`diag_`), with the per-thread kernel
+  counter kept as cache-line-padded atomic slots. No `mutable`, no
+  `#pragma omp atomic`, `GreensFunction` stays movable.
+- `FixMetabolism` delivery-support cache/stencil are prepared serially before
+  the parallel biology pass and are read-only inside it; the lazy `omp critical`
+  insert path is gone, so the members are no longer `mutable`.
+- `Simulation::fixes_`, the `ChemicalField` dirty flags, and the HDF5
+  `run_provenance_written_` flag became ordinary members behind non-const
+  methods; every caller was already non-const.
+
+The family is therefore **not** in the Won't Fix rule list and should not be
+added: a new `S8379` finding means a new `mutable` shared member and needs the
+same treatment (make the mutation explicit or per-thread), not a mutex.
 
 ### Clear dashboard after Batch A merges
 
@@ -248,6 +259,13 @@ componentKeys=bckirkup_GutModelBacteriocins&resolved=false&facets=types&ps=1" \
 
 **Target:** 0 open BUG/VULNERABILITY at all times; 0 total open issues after
 Batch A merge + Batch B Won’t Fix.
+
+**Sep 2026 sequence:** PR #424 cleared security (`pythonsecurity:S8707` x2) and
+reliability (`cpp:S8379` x14). The next PR refactors the 16 `python:S3776`
+findings in code and resolves the 18 C++ complexity findings (`cpp:S107` x7,
+`cpp:S134` x6, `cpp:S3776` x5) as Batch B debt. The ~90 remaining mechanical
+smells (`cpp:S6004`, `S6197`, `S5827`, `S6012`, `python:S116`/`S117`, …) follow
+as a separate code-fix batch.
 
 ## Related docs
 

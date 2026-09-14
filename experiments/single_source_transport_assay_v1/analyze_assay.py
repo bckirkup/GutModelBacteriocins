@@ -262,8 +262,7 @@ def nondecreasing(values: list[float], tolerance: float) -> bool:
     )
 
 
-def order_checks(producer_reports: list[dict]) -> tuple[dict, list[str]]:
-    """Endpoint margins plus interpolation monotonicity at paired times, per seed."""
+def snapshots_by_seed_amp(producer_reports: list[dict]) -> dict[int, dict[float, dict[float, dict]]]:
     by_seed_amp: dict[int, dict[float, dict[float, dict]]] = defaultdict(
         lambda: defaultdict(dict)
     )
@@ -272,58 +271,102 @@ def order_checks(producer_reports: list[dict]) -> tuple[dict, list[str]]:
             by_seed_amp[int(snap["seed"])][float(snap["amplitude"])][
                 float(snap["t_s"])
             ] = snap
+    return by_seed_amp
 
+
+def paired_time_detail(by_amp: dict[float, dict[float, dict]], t_s: float) -> dict:
+    snaps = [by_amp[amp][t_s] for amp in AMPLITUDES]
+    r50 = [snap["r50_um"] for snap in snaps]
+    r90 = [snap["r90_um"] for snap in snaps]
+    near = [snap["near_field_0_10_mean"] for snap in snaps]
+    r50_by_amp = dict(zip(AMPLITUDES, r50))
+    r90_by_amp = dict(zip(AMPLITUDES, r90))
+    near_by_amp = dict(zip(AMPLITUDES, near))
+    finite = all(np.isfinite(value) for value in (*r50, *r90, *near)) and all(
+        snap["profile_complete"] for snap in snaps
+    )
+    return {
+        "t_s": t_s,
+        "amplitudes": AMPLITUDES,
+        "r50_um": r50,
+        "r90_um": r90,
+        "near_field_0_10_mean": near,
+        "finite_and_complete": finite,
+        "endpoint_r50_ordered_0_gt_15_gt_60": endpoint_decreasing(r50_by_amp, ORDER_MARGIN_R50_UM),
+        "endpoint_r90_ordered_0_gt_15_gt_60": endpoint_decreasing(r90_by_amp, ORDER_MARGIN_R90_UM),
+        "endpoint_near_field_ordered_0_lt_15_lt_60": endpoint_increasing(near_by_amp),
+        "interpolation_r50_nonincreasing": nonincreasing(r50, MONOTONIC_ABS_TOL),
+        "interpolation_r90_nonincreasing": nonincreasing(r90, MONOTONIC_ABS_TOL),
+        "interpolation_near_field_nondecreasing": nondecreasing(near, MONOTONIC_ABS_TOL),
+    }
+
+
+def seed_order_checks(seed, by_amp: dict[float, dict[float, dict]]) -> tuple[dict, list[str]]:
+    expected = set(AMPLITUDES)
+    observed = set(by_amp)
+    pairs = paired_times({amp: sorted(by_amp.get(amp, {})) for amp in AMPLITUDES})
+    seed_detail = {
+        "paired_times_s": pairs.common_s,
+        "missing_times_s": {str(amp): times for amp, times in pairs.missing_s.items()},
+        "n_amplitude_arms": len(observed),
+        "missing_amplitudes": sorted(expected - observed),
+        "times": [paired_time_detail(by_amp, t_s) for t_s in pairs.common_s],
+    }
+    blockers: list[str] = []
+    if observed != expected:
+        blockers.append(
+            f"seed {seed}: amplitude arms {sorted(observed)}, expected {AMPLITUDES}"
+        )
+    if not pairs.complete:
+        blockers.append(
+            f"seed {seed}: snapshot times are not shared by all amplitudes ({pairs.missing_s})"
+        )
+    if not pairs.common_s:
+        blockers.append(f"seed {seed}: no snapshot time is shared by all amplitudes")
+    return seed_detail, blockers
+
+
+def order_checks(producer_reports: list[dict]) -> tuple[dict, list[str]]:
+    """Endpoint margins plus interpolation monotonicity at paired times, per seed."""
+    by_seed_amp = snapshots_by_seed_amp(producer_reports)
     detail: dict[str, dict] = {}
     blockers: list[str] = []
-    expected = set(AMPLITUDES)
     for seed in CONTRACT["design"]["seeds"]:
-        by_amp = by_seed_amp.get(int(seed), {})
-        observed = set(by_amp)
-        pairs = paired_times({amp: sorted(by_amp.get(amp, {})) for amp in AMPLITUDES})
-        seed_detail = {
-            "paired_times_s": pairs.common_s,
-            "missing_times_s": {str(amp): times for amp, times in pairs.missing_s.items()},
-            "n_amplitude_arms": len(observed),
-            "missing_amplitudes": sorted(expected - observed),
-            "times": [],
-        }
-        if observed != expected:
-            blockers.append(
-                f"seed {seed}: amplitude arms {sorted(observed)}, expected {AMPLITUDES}"
-            )
-        if not pairs.complete:
-            blockers.append(
-                f"seed {seed}: snapshot times are not shared by all amplitudes ({pairs.missing_s})"
-            )
-        if not pairs.common_s:
-            blockers.append(f"seed {seed}: no snapshot time is shared by all amplitudes")
-
-        for t_s in pairs.common_s:
-            snaps = [by_amp[amp][t_s] for amp in AMPLITUDES]
-            r50 = [snap["r50_um"] for snap in snaps]
-            r90 = [snap["r90_um"] for snap in snaps]
-            near = [snap["near_field_0_10_mean"] for snap in snaps]
-            r50_by_amp = dict(zip(AMPLITUDES, r50))
-            r90_by_amp = dict(zip(AMPLITUDES, r90))
-            near_by_amp = dict(zip(AMPLITUDES, near))
-            finite = all(np.isfinite(value) for value in (*r50, *r90, *near)) and all(
-                snap["profile_complete"] for snap in snaps
-            )
-            seed_detail["times"].append({
-                "t_s": t_s,
-                "amplitudes": AMPLITUDES,
-                "r50_um": r50,
-                "r90_um": r90,
-                "near_field_0_10_mean": near,
-                "finite_and_complete": finite,
-                "endpoint_r50_ordered_0_gt_15_gt_60": endpoint_decreasing(r50_by_amp, ORDER_MARGIN_R50_UM),
-                "endpoint_r90_ordered_0_gt_15_gt_60": endpoint_decreasing(r90_by_amp, ORDER_MARGIN_R90_UM),
-                "endpoint_near_field_ordered_0_lt_15_lt_60": endpoint_increasing(near_by_amp),
-                "interpolation_r50_nonincreasing": nonincreasing(r50, MONOTONIC_ABS_TOL),
-                "interpolation_r90_nonincreasing": nonincreasing(r90, MONOTONIC_ABS_TOL),
-                "interpolation_near_field_nondecreasing": nondecreasing(near, MONOTONIC_ABS_TOL),
-            })
+        seed_detail, seed_blockers = seed_order_checks(seed, by_seed_amp.get(int(seed), {}))
         detail[str(seed)] = seed_detail
+        blockers.extend(seed_blockers)
+    return detail, blockers
+
+
+def source_spread(positions: list[tuple], times: list[float]) -> tuple[float, float]:
+    if not positions:
+        return math.inf, math.inf
+    spread = [max(abs(p[axis] - positions[0][axis]) for p in positions) for axis in range(3)]
+    return max(spread), max(abs(t - times[0]) for t in times)
+
+
+def seed_position_checks(seed, reports: list[dict]) -> tuple[dict, list[str]]:
+    reports = sorted(reports, key=lambda r: float(r["amplitude"]))
+    amplitudes = [float(r["amplitude"]) for r in reports]
+    positions = [(r["source"]["x"], r["source"]["y"], r["source"]["z"]) for r in reports]
+    times = [float(r["source"]["event_time_s"]) for r in reports]
+    max_position_spread, max_time_spread = source_spread(positions, times)
+    complete = amplitudes == AMPLITUDES
+    identical_position = complete and max_position_spread <= POSITION_TOL_M
+    identical_time = complete and max_time_spread <= EVENT_TIME_TOL_S
+    detail = {
+        "n_arms": len(reports), "amplitudes": amplitudes, "positions_m": positions,
+        "max_spread_m": max_position_spread, "identical_across_amplitudes": identical_position,
+        "event_times_s": times, "max_event_time_spread_s": max_time_spread,
+        "event_time_identical_across_amplitudes": identical_time,
+    }
+    blockers: list[str] = []
+    if not complete:
+        blockers.append(f"seed {seed}: source records for amplitudes {amplitudes}, expected {AMPLITUDES}")
+    if complete and not identical_position:
+        blockers.append(f"seed {seed}: source position differs across amplitudes by {max_position_spread:.3e} m")
+    if complete and not identical_time:
+        blockers.append(f"seed {seed}: source event time differs across amplitudes by {max_time_spread:.3e} s")
     return detail, blockers
 
 
@@ -336,32 +379,9 @@ def position_checks(producer_reports: list[dict]) -> tuple[dict, list[str]]:
     detail: dict[str, dict] = {}
     blockers: list[str] = []
     for seed in CONTRACT["design"]["seeds"]:
-        reports = sorted(by_seed.get(int(seed), []), key=lambda r: float(r["amplitude"]))
-        amplitudes = [float(r["amplitude"]) for r in reports]
-        positions = [(r["source"]["x"], r["source"]["y"], r["source"]["z"]) for r in reports]
-        times = [float(r["source"]["event_time_s"]) for r in reports]
-        if positions:
-            spread = [max(abs(p[axis] - positions[0][axis]) for p in positions) for axis in range(3)]
-            max_position_spread = max(spread)
-            max_time_spread = max(abs(t - times[0]) for t in times)
-        else:
-            max_position_spread = math.inf
-            max_time_spread = math.inf
-        complete = amplitudes == AMPLITUDES
-        identical_position = complete and max_position_spread <= POSITION_TOL_M
-        identical_time = complete and max_time_spread <= EVENT_TIME_TOL_S
-        detail[str(seed)] = {
-            "n_arms": len(reports), "amplitudes": amplitudes, "positions_m": positions,
-            "max_spread_m": max_position_spread, "identical_across_amplitudes": identical_position,
-            "event_times_s": times, "max_event_time_spread_s": max_time_spread,
-            "event_time_identical_across_amplitudes": identical_time,
-        }
-        if not complete:
-            blockers.append(f"seed {seed}: source records for amplitudes {amplitudes}, expected {AMPLITUDES}")
-        if complete and not identical_position:
-            blockers.append(f"seed {seed}: source position differs across amplitudes by {max_position_spread:.3e} m")
-        if complete and not identical_time:
-            blockers.append(f"seed {seed}: source event time differs across amplitudes by {max_time_spread:.3e} s")
+        seed_detail, seed_blockers = seed_position_checks(seed, by_seed.get(int(seed), []))
+        detail[str(seed)] = seed_detail
+        blockers.extend(seed_blockers)
     return detail, blockers
 
 
@@ -393,20 +413,12 @@ def jsonable(value):
     return value
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--results-root", type=Path, default=ROOT / "generated" / "results"
-    )
-    parser.add_argument("--output-dir", type=Path, default=ROOT / "analysis")
-    args = parser.parse_args()
-    output_dir = prepare_output_directory(args.output_dir)
-
-    runs, execution_sha = load_runs(args.results_root)
+def analyze_runs(
+    runs: list[dict], execution_sha: str
+) -> tuple[list[dict], list[dict], list[str]]:
     blockers: list[str] = []
     producer_reports: list[dict] = []
     null_reports: list[dict] = []
-
     for run in runs:
         if run["output_path"] is None:
             blockers.append(f"{run['run_id']}: no returned output file")
@@ -422,10 +434,53 @@ def main() -> int:
                 )
         except TransportInputError as exc:
             blockers.append(f"{run['run_id']}: {exc}")
-
     for report in producer_reports + null_reports:
         for violation in report["violations"]:
             blockers.append(f"{report['run_id']}: {violation}")
+    return producer_reports, null_reports, blockers
+
+
+def all_paired_times(orders: dict, keys: tuple[str, ...]) -> bool:
+    return bool(orders) and all(
+        all(time_detail[key] for key in keys)
+        for seed_detail in orders.values() for time_detail in seed_detail["times"]
+    )
+
+
+ENDPOINT_KEYS = (
+    "finite_and_complete",
+    "endpoint_r50_ordered_0_gt_15_gt_60",
+    "endpoint_r90_ordered_0_gt_15_gt_60",
+    "endpoint_near_field_ordered_0_lt_15_lt_60",
+)
+INTERPOLATION_KEYS = (
+    "finite_and_complete",
+    "interpolation_r50_nonincreasing",
+    "interpolation_r90_nonincreasing",
+    "interpolation_near_field_nondecreasing",
+)
+
+
+def gate_status(blockers: list[str], ordered: bool, n_paired_times: int) -> str:
+    if blockers:
+        return STATUS_BLOCKED
+    if ordered and n_paired_times > 0:
+        return STATUS_PASS
+    return STATUS_FAIL
+
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--results-root", type=Path, default=ROOT / "generated" / "results"
+    )
+    parser.add_argument("--output-dir", type=Path, default=ROOT / "analysis")
+    args = parser.parse_args()
+    output_dir = prepare_output_directory(args.output_dir)
+
+    runs, execution_sha = load_runs(args.results_root)
+    producer_reports, null_reports, blockers = analyze_runs(runs, execution_sha)
 
     positions, position_blockers = position_checks(producer_reports)
     orders, order_blockers = order_checks(producer_reports)
@@ -438,29 +493,11 @@ def main() -> int:
     if not nulls_toxin_free:
         blockers.append("toxin-free nulls did not hold |bacteriocin_BtuB| <= tolerance")
 
-    endpoint_ordered = bool(orders) and all(
-        time_detail["finite_and_complete"]
-        and time_detail["endpoint_r50_ordered_0_gt_15_gt_60"]
-        and time_detail["endpoint_r90_ordered_0_gt_15_gt_60"]
-        and time_detail["endpoint_near_field_ordered_0_lt_15_lt_60"]
-        for seed_detail in orders.values() for time_detail in seed_detail["times"]
-    )
-    interpolation_monotonic = bool(orders) and all(
-        time_detail["finite_and_complete"]
-        and time_detail["interpolation_r50_nonincreasing"]
-        and time_detail["interpolation_r90_nonincreasing"]
-        and time_detail["interpolation_near_field_nondecreasing"]
-        for seed_detail in orders.values() for time_detail in seed_detail["times"]
-    )
+    endpoint_ordered = all_paired_times(orders, ENDPOINT_KEYS)
+    interpolation_monotonic = all_paired_times(orders, INTERPOLATION_KEYS)
     ordered = endpoint_ordered and interpolation_monotonic
     n_paired_times = sum(len(detail["times"]) for detail in orders.values())
-
-    if blockers:
-        status = STATUS_BLOCKED
-    elif ordered and n_paired_times > 0:
-        status = STATUS_PASS
-    else:
-        status = STATUS_FAIL
+    status = gate_status(blockers, ordered, n_paired_times)
 
     n_rows = write_snapshot_csv(output_dir / "assay_snapshots.csv", producer_reports)
     metrics = {
