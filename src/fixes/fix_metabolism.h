@@ -88,7 +88,7 @@ class FixMetabolism : public Fix {
   void compute_agent(Agent& agent, Real dt);
   Real delivery_concentration(const Agent& agent, Int species_index) const;
   std::vector<Int> enumerate_delivery_support_cells(const Agent& agent) const;
-  void ensure_delivery_support_stencil() const;
+  void ensure_delivery_support_stencil();
   const std::vector<Int>& delivery_support_cells(const Agent& agent) const;
   void prepare_delivery_support_cache();
   void add_delivery_mass(
@@ -124,9 +124,10 @@ class FixMetabolism : public Fix {
   std::vector<Int> occupancy_by_cell_;
   std::vector<Real> chelation_by_cell_;
   std::vector<Int> touched_cells_;
-  mutable std::unordered_map<TagID, std::vector<Int>>
-      delivery_support_cache_;
-  mutable DeliverySupportStencil delivery_support_stencil_;
+  // Both are rebuilt serially (init / prepare_delivery_support_cache) and
+  // only read from the parallel biology pass.
+  std::unordered_map<TagID, std::vector<Int>> delivery_support_cache_;
+  DeliverySupportStencil delivery_support_stencil_;
 };
 
 }  // namespace gutibm

@@ -285,7 +285,7 @@ void ChemicalFieldGpu::sync_to_host(ChemicalField& field) {
   sync_reactions_to_host(field);
 }
 
-void ChemicalFieldGpu::sync_concentrations_to_device(const ChemicalField& field) {
+void ChemicalFieldGpu::sync_concentrations_to_device(ChemicalField& field) {
   if (!active_) return;
   for (Int s = 0; s < nspec_; ++s) {
     if (!field.host_conc_dirty(s)) {
@@ -431,7 +431,7 @@ void ChemicalFieldGpu::sync_species_concentrations_to_host(ChemicalField& field,
 }
 
 void ChemicalFieldGpu::sync_species_concentrations_to_device(
-    const ChemicalField& field, Int spec) {
+    ChemicalField& field, Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
   d_conc_[static_cast<size_t>(spec)].upload(
       field.conc_data()[static_cast<size_t>(spec)]);

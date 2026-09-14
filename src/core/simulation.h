@@ -361,8 +361,7 @@ class Simulation {
   RNG             rng_;
   ImmigrationEngine immigration_;
 
-  // Fix modules (mutable: compute() updates simulation state via sim_ reference)
-  mutable std::vector<std::unique_ptr<Fix>> fixes_;
+  std::vector<std::unique_ptr<Fix>> fixes_;
 
   // Config
   SimulationConfig cfg_;

@@ -575,7 +575,7 @@ class ChemicalField {
   void mark_host_conc_dirty(Int spec);
   void mark_all_host_conc_dirty();
   bool host_conc_dirty(Int spec) const;
-  void clear_host_conc_dirty(Int spec) const;
+  void clear_host_conc_dirty(Int spec);
 
   // Reset reaction rates to zero each timestep
   void zero_reactions();
@@ -586,7 +586,7 @@ class ChemicalField {
   void mark_host_reac_dirty(Int spec);
   void mark_all_host_reac_dirty();
   bool host_reac_dirty(Int spec) const;
-  void clear_host_reac_dirty(Int spec) const;
+  void clear_host_reac_dirty(Int spec);
   void add_sink_rate_global(Int spec, Int cell, Real rate);
   void add_prescribed_sink_global(Int spec, Int cell, Real amount);
   void add_vbf_sink_rate_global(Int spec, Int cell, Real rate);
@@ -687,9 +687,9 @@ class ChemicalField {
   const Domain* domain_ = nullptr;
   std::vector<ChemicalSpec> specs_;
   std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
-  mutable std::vector<bool> host_conc_dirty_;
+  std::vector<bool> host_conc_dirty_;
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]
-  mutable std::vector<bool> host_reac_dirty_;
+  std::vector<bool> host_reac_dirty_;
   std::vector<std::vector<Real>> sink_rate_;      // [species][ncells], 1/s
   std::vector<std::vector<Real>> vbf_sink_rate_;  // [species][ncells], 1/s
   std::vector<std::vector<Real>> sink_realized_;  // agent share, mol this step

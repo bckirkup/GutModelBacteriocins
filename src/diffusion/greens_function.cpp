@@ -270,8 +270,8 @@ void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   adv_    = &adv;
   z_lo_   = domain.lo()[2];
   z_hi_   = domain.hi()[2];
-  robin_direct_evaluations_ = 0;
-  robin_host_fallback_sources_ = 0;
+  diag_->robin_direct_evaluations.store(0);
+  diag_->robin_host_fallback_sources.store(0);
 }
 
 void GreensFunction::require_init() const {
@@ -284,22 +284,23 @@ void GreensFunction::require_init() const {
 void GreensFunction::set_kernel_evaluation_counting(bool enabled) {
   kernel_evaluation_counting_enabled_ = enabled;
   if (!enabled) {
-    kernel_evaluations_by_thread_.clear();
+    diag_->kernel_evaluations_by_thread.clear();
     return;
   }
   int slot_count = 1;
 #ifdef GUTIBM_OPENMP
   slot_count = omp_get_max_threads();
 #endif
-  kernel_evaluations_by_thread_.assign(
-      static_cast<std::size_t>(slot_count), uint64_t{0});
+  diag_->kernel_evaluations_by_thread =
+      std::vector<GreensFunctionDiagnostics::KernelEvaluationSlot>(
+          static_cast<std::size_t>(slot_count));
 }
 
 void GreensFunction::add_negative_field_diagnostics(
     uint64_t count, Real most_negative) const {
-  negative_field_count_ += count;
-  if (count != 0 && most_negative < most_negative_field_) {
-    most_negative_field_ = most_negative;
+  diag_->negative_field_count.fetch_add(count);
+  if (count != 0) {
+    diag_->record_negative_field(most_negative);
   }
 }
 
@@ -311,7 +312,8 @@ Real GreensFunction::single_kernel(const Vec3& src, const Vec3& tgt,
 #ifdef GUTIBM_OPENMP
     slot = omp_get_thread_num();
 #endif
-    ++kernel_evaluations_by_thread_[static_cast<std::size_t>(slot)];
+    diag_->kernel_evaluations_by_thread[static_cast<std::size_t>(slot)]
+        .count.fetch_add(1);
   }
   Vec3 delta = domain_->min_image_delta(src, tgt);
   Real r = std::sqrt(delta[0]*delta[0] + delta[1]*delta[1] + delta[2]*delta[2]);
@@ -368,10 +370,7 @@ Real GreensFunction::concentration_sealed(
   Vec3 flow  = adv_->velocity(source);
   if (neumann::drift_envelope_exceeded(
           flow[2], z_hi_ - z_lo_, D_eff)) {
-#ifdef GUTIBM_OPENMP
-#pragma omp atomic update
-#endif
-    ++drift_envelope_evaluations_;
+    diag_->drift_envelope_evaluations.fetch_add(1);
   }
   const Real Q = params.source_rate;
   const auto evaluate_image = [this, &source, &target, D_eff, Q,
@@ -416,16 +415,10 @@ Real GreensFunction::concentration_sealed(
     low_screening_floor = budget.low_screening_floor ? 1 : 0;
   }
   if (cap_hit != 0) {
-#ifdef GUTIBM_OPENMP
-#pragma omp atomic update
-#endif
-    ++image_series_cap_hits_;
+    diag_->image_series_cap_hits.fetch_add(1);
   }
   if (low_screening_floor != 0) {
-#ifdef GUTIBM_OPENMP
-#pragma omp atomic update
-#endif
-    ++low_screening_evaluations_;
+    diag_->low_screening_evaluations.fetch_add(1);
   }
   if (params.drift_correction) {
     const auto table = robin_table(params);
@@ -451,14 +444,8 @@ Real GreensFunction::concentration_sealed(
     }
   }
   if (total < 0.0) {
-#ifdef GUTIBM_OPENMP
-#pragma omp atomic update
-#endif
-    ++negative_field_count_;
-#ifdef GUTIBM_OPENMP
-#pragma omp critical(gutibm_negative_field_min)
-#endif
-    most_negative_field_ = std::min(most_negative_field_, total);
+    diag_->negative_field_count.fetch_add(1);
+    diag_->record_negative_field(total);
   }
   return std::max(total, 0.0);
 }
@@ -483,10 +470,7 @@ Real GreensFunction::concentration_bounded(
       std::min({domain_->dx_x(), domain_->dx_y(), domain_->dx_z()}));
   Real correction_base = 0.0;
   if (use_direct) {
-#ifdef GUTIBM_OPENMP
-#pragma omp atomic update
-#endif
-    ++robin_direct_evaluations_;
+    diag_->robin_direct_evaluations.fetch_add(1);
     correction_base = robin::normalized_correction(
         source[2], target[2], rho, z_lo_, z_hi_, d_eff,
         params.diff_coeff, params.decay_rate,
@@ -524,14 +508,8 @@ Real GreensFunction::concentration_bounded(
         / (4.0 * PI * d_eff) * correction;
   }
   if (total < 0.0) {
-#ifdef GUTIBM_OPENMP
-#pragma omp atomic update
-#endif
-    ++negative_field_count_;
-#ifdef GUTIBM_OPENMP
-#pragma omp critical(gutibm_negative_field_min)
-#endif
-    most_negative_field_ = std::min(most_negative_field_, total);
+    diag_->negative_field_count.fetch_add(1);
+    diag_->record_negative_field(total);
   }
   return std::max(total, 0.0);
 }
@@ -557,10 +535,12 @@ void GreensFunction::superpose_to_grid(
   if (const std::vector<size_t> fallback =
           ::gutibm::robin_host_fallback_sources(*domain_, sources, params);
       fallback.empty()) {
+    uint64_t gpu_cap_hits = 0;
     if (adv_ && domain_ && try_gpu_superpose(
             *domain_, *adv_, sources, params, grid_conc, cutoff_radius,
-            &image_series_cap_hits_, kernel_evaluations, &gpu_low_screening,
+            &gpu_cap_hits, kernel_evaluations, &gpu_low_screening,
             &gpu_negative_count, &gpu_most_negative)) {
+      add_image_series_cap_hits(gpu_cap_hits);
       add_low_screening_evaluations(gpu_low_screening);
       add_negative_field_diagnostics(gpu_negative_count, gpu_most_negative);
       if (kernel_evaluations != nullptr) {
@@ -602,13 +582,13 @@ void GreensFunction::superpose_to_grid(
       for (size_t cell = 0; cell < grid_conc.size(); ++cell) {
         grid_conc[cell] += host_grid[cell];
       }
-      image_series_cap_hits_ += gpu_cap_hits;
+      add_image_series_cap_hits(gpu_cap_hits);
       add_low_screening_evaluations(gpu_low_screening);
       add_negative_field_diagnostics(gpu_negative_count, gpu_most_negative);
       if (kernel_evaluations != nullptr) {
         add_kernel_evaluations(gpu_kernel_evaluations);
       }
-      robin_host_fallback_sources_ += fallback.size();
+      add_robin_host_fallback_sources(fallback.size());
       return;
     }
   }

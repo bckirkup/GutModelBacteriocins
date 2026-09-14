@@ -46,10 +46,10 @@ class HDF5Writer {
   HDF5Writer() = default;
 
   void init(const HDF5Config& cfg, const class Domain& domain);
-  void write_step(Simulation& sim, Int step, Real time, Real dt) const;
-  void write_halt_metadata(const Simulation& sim, Int step) const;
-  void write_run_provenance(const Simulation& sim) const;
-  void write_run_termination(const Simulation& sim, Int step, Real time) const;
+  void write_step(Simulation& sim, Int step, Real time, Real dt);
+  void write_halt_metadata(const Simulation& sim, Int step);
+  void write_run_provenance(const Simulation& sim);
+  void write_run_termination(const Simulation& sim, Int step, Real time);
   void finalize();
 
   bool is_enabled() const { return enabled_; }
@@ -91,7 +91,7 @@ class HDF5Writer {
   void initialize_file(std::string& error_message);
   int64_t file_id_ = -1;
 #endif
-  mutable bool run_provenance_written_ = false;
+  bool run_provenance_written_ = false;
 };
 
 }  // namespace gutibm
