@@ -270,8 +270,8 @@ void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   adv_    = &adv;
   z_lo_   = domain.lo()[2];
   z_hi_   = domain.hi()[2];
-  robin_direct_evaluations_.store(0);
-  robin_host_fallback_sources_.store(0);
+  diag_->robin_direct_evaluations.store(0);
+  diag_->robin_host_fallback_sources.store(0);
 }
 
 void GreensFunction::require_init() const {
@@ -284,26 +284,23 @@ void GreensFunction::require_init() const {
 void GreensFunction::set_kernel_evaluation_counting(bool enabled) {
   kernel_evaluation_counting_enabled_ = enabled;
   if (!enabled) {
-    kernel_evaluations_by_thread_.clear();
+    diag_->kernel_evaluations_by_thread.clear();
     return;
   }
   int slot_count = 1;
 #ifdef GUTIBM_OPENMP
   slot_count = omp_get_max_threads();
 #endif
-  kernel_evaluations_by_thread_ =
-      std::vector<KernelEvaluationSlot>(static_cast<std::size_t>(slot_count));
-}
-
-void GreensFunction::record_negative_field(Real value) const {
-  most_negative_field_.fetch_min(value);
+  diag_->kernel_evaluations_by_thread =
+      std::vector<GreensFunctionDiagnostics::KernelEvaluationSlot>(
+          static_cast<std::size_t>(slot_count));
 }
 
 void GreensFunction::add_negative_field_diagnostics(
     uint64_t count, Real most_negative) const {
-  negative_field_count_.fetch_add(count);
+  diag_->negative_field_count.fetch_add(count);
   if (count != 0) {
-    record_negative_field(most_negative);
+    diag_->record_negative_field(most_negative);
   }
 }
 
@@ -315,7 +312,7 @@ Real GreensFunction::single_kernel(const Vec3& src, const Vec3& tgt,
 #ifdef GUTIBM_OPENMP
     slot = omp_get_thread_num();
 #endif
-    kernel_evaluations_by_thread_[static_cast<std::size_t>(slot)]
+    diag_->kernel_evaluations_by_thread[static_cast<std::size_t>(slot)]
         .count.fetch_add(1);
   }
   Vec3 delta = domain_->min_image_delta(src, tgt);
@@ -373,7 +370,7 @@ Real GreensFunction::concentration_sealed(
   Vec3 flow  = adv_->velocity(source);
   if (neumann::drift_envelope_exceeded(
           flow[2], z_hi_ - z_lo_, D_eff)) {
-    drift_envelope_evaluations_.fetch_add(1);
+    diag_->drift_envelope_evaluations.fetch_add(1);
   }
   const Real Q = params.source_rate;
   const auto evaluate_image = [this, &source, &target, D_eff, Q,
@@ -418,10 +415,10 @@ Real GreensFunction::concentration_sealed(
     low_screening_floor = budget.low_screening_floor ? 1 : 0;
   }
   if (cap_hit != 0) {
-    image_series_cap_hits_.fetch_add(1);
+    diag_->image_series_cap_hits.fetch_add(1);
   }
   if (low_screening_floor != 0) {
-    low_screening_evaluations_.fetch_add(1);
+    diag_->low_screening_evaluations.fetch_add(1);
   }
   if (params.drift_correction) {
     const auto table = robin_table(params);
@@ -447,8 +444,8 @@ Real GreensFunction::concentration_sealed(
     }
   }
   if (total < 0.0) {
-    negative_field_count_.fetch_add(1);
-    record_negative_field(total);
+    diag_->negative_field_count.fetch_add(1);
+    diag_->record_negative_field(total);
   }
   return std::max(total, 0.0);
 }
@@ -473,7 +470,7 @@ Real GreensFunction::concentration_bounded(
       std::min({domain_->dx_x(), domain_->dx_y(), domain_->dx_z()}));
   Real correction_base = 0.0;
   if (use_direct) {
-    robin_direct_evaluations_.fetch_add(1);
+    diag_->robin_direct_evaluations.fetch_add(1);
     correction_base = robin::normalized_correction(
         source[2], target[2], rho, z_lo_, z_hi_, d_eff,
         params.diff_coeff, params.decay_rate,
@@ -511,8 +508,8 @@ Real GreensFunction::concentration_bounded(
         / (4.0 * PI * d_eff) * correction;
   }
   if (total < 0.0) {
-    negative_field_count_.fetch_add(1);
-    record_negative_field(total);
+    diag_->negative_field_count.fetch_add(1);
+    diag_->record_negative_field(total);
   }
   return std::max(total, 0.0);
 }
