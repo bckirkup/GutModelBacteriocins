@@ -48,20 +48,24 @@ Real FixMetabolism::delivery_concentration(
 std::vector<Int> FixMetabolism::enumerate_delivery_support_cells(
     const Agent& agent) const {
   const auto& domain = sim_.domain();
-  if (const auto radius = cfg_.delivery_far_field_radius; radius <= 0.0) {
+  const Real radius = cfg_.delivery_far_field_radius;
+  if (radius <= 0.0) {
     return {agent.grid_cell};
   }
-  ensure_delivery_support_stencil();
   std::vector<Int> support;
-  enumerate_physical_delivery_ball(
-      domain, agent.x, delivery_support_stencil_, support);
+  if (delivery_support_stencil_.matches(domain, radius)) {
+    enumerate_physical_delivery_ball(
+        domain, agent.x, delivery_support_stencil_, support);
+  } else {
+    support = enumerate_physical_delivery_ball(domain, agent.x, radius);
+  }
   if (support.empty() && agent.grid_cell >= 0) {
     support.push_back(agent.grid_cell);
   }
   return support;
 }
 
-void FixMetabolism::ensure_delivery_support_stencil() const {
+void FixMetabolism::ensure_delivery_support_stencil() {
   if (!delivery_support_stencil_.matches(
           sim_.domain(), cfg_.delivery_far_field_radius)) {
     delivery_support_stencil_ = make_delivery_support_stencil(
@@ -83,6 +87,7 @@ const std::vector<Int>& FixMetabolism::delivery_support_cells(
 }
 
 void FixMetabolism::prepare_delivery_support_cache() {
+  ensure_delivery_support_stencil();
   delivery_support_cache_.clear();
   if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery
       || cfg_.delivery_far_field_radius <= 0.0) {

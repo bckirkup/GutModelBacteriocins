@@ -676,7 +676,7 @@ void HDF5Writer::init(const HDF5Config& cfg, const Domain& domain) {
 #endif
 }
 
-void HDF5Writer::write_run_provenance(const Simulation& sim) const {
+void HDF5Writer::write_run_provenance(const Simulation& sim) {
 #ifdef GUTIBM_HDF5
   if (!enabled_ || io_rank(cfg_) != 0 || file_id_ < 0) {
     return;
@@ -787,7 +787,7 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) const {
 #endif
 }
 
-void HDF5Writer::write_halt_metadata(const Simulation& sim, Int step) const {
+void HDF5Writer::write_halt_metadata(const Simulation& sim, Int step) {
 #ifdef GUTIBM_HDF5
   if (enabled_ && io_rank(cfg_) == 0 && file_id_ >= 0) {
     write_run_provenance(sim);
@@ -811,7 +811,7 @@ void HDF5Writer::write_halt_metadata(const Simulation& sim, Int step) const {
 }
 
 void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
-                                       Real time) const {
+                                       Real time) {
 #ifdef GUTIBM_HDF5
   if (enabled_ && io_rank(cfg_) == 0 && file_id_ >= 0) {
     write_run_provenance(sim);
@@ -908,7 +908,7 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
 #endif
 }
 
-void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) const {
+void HDF5Writer::write_step(Simulation& sim, Int step, Real time, Real dt) {
 #ifdef GUTIBM_HDF5
   if (!enabled_) return;
 

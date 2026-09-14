@@ -24,6 +24,7 @@
 #include "types.h"
 #include "robin_correction_table.h"
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <ranges>
@@ -60,6 +61,41 @@ struct GreensFunctionParams {
   // `classify_by_pI()` in src/genome/plasmid.h (pI > 8.5 → CORE, pI < 7.0 →
   // HALO, else NEUTRAL). The Green's function / QSSA code consumes the
   // pre-computed `BICluster.bclass` and must never re-classify from pI here.
+};
+
+// Relaxed atomic counter that stays movable so the owning class keeps its
+// defaulted move operations. Moves copy the current value and are only valid
+// while no other thread touches either operand.
+template <typename T>
+class RelaxedAtomic {
+ public:
+  RelaxedAtomic() = default;
+  explicit RelaxedAtomic(T value) : value_(value) {}
+  RelaxedAtomic(const RelaxedAtomic&) = delete;
+  RelaxedAtomic& operator=(const RelaxedAtomic&) = delete;
+  RelaxedAtomic(RelaxedAtomic&& other) noexcept : value_(other.load()) {}
+  RelaxedAtomic& operator=(RelaxedAtomic&& other) noexcept {
+    store(other.load());
+    return *this;
+  }
+  ~RelaxedAtomic() = default;
+
+  T load() const { return value_.load(std::memory_order_relaxed); }
+  void store(T value) { value_.store(value, std::memory_order_relaxed); }
+  T fetch_add(T delta) {
+    return value_.fetch_add(delta, std::memory_order_relaxed);
+  }
+  // Lowers the stored value to `candidate` if it is smaller.
+  void fetch_min(T candidate) {
+    T current = load();
+    while (candidate < current
+           && !value_.compare_exchange_weak(current, candidate,
+                                            std::memory_order_relaxed)) {
+    }
+  }
+
+ private:
+  std::atomic<T> value_{};
 };
 
 class GreensFunction {
@@ -106,66 +142,70 @@ class GreensFunction {
   Real peclet(const Vec3& pos, Real D_eff, Real length_scale) const;
 
   uint64_t image_series_cap_hits() const {
-    return image_series_cap_hits_;
+    return image_series_cap_hits_.load();
   }
   uint64_t low_screening_evaluations() const {
-    return low_screening_evaluations_;
+    return low_screening_evaluations_.load();
   }
   uint64_t drift_envelope_evaluations() const {
-    return drift_envelope_evaluations_;
+    return drift_envelope_evaluations_.load();
   }
   uint64_t negative_field_count() const {
-    return negative_field_count_;
+    return negative_field_count_.load();
   }
   Real most_negative_field() const {
-    return most_negative_field_;
+    return most_negative_field_.load();
   }
   uint64_t robin_direct_evaluations() const {
-    return robin_direct_evaluations_;
+    return robin_direct_evaluations_.load();
   }
   uint64_t robin_host_fallback_sources() const {
-    return robin_host_fallback_sources_;
+    return robin_host_fallback_sources_.load();
   }
   uint64_t kernel_evaluations() const {
-    return std::accumulate(kernel_evaluations_by_thread_.begin(),
-                           kernel_evaluations_by_thread_.end(),
-                           uint64_t{0});
+    uint64_t total = 0;
+    for (const auto& slot : kernel_evaluations_by_thread_) {
+      total += slot.count.load();
+    }
+    return total;
   }
   void set_kernel_evaluation_counting(bool enabled);
   bool kernel_evaluation_counting_enabled() const {
     return kernel_evaluation_counting_enabled_;
   }
   void add_image_series_cap_hits(uint64_t count) const {
-    image_series_cap_hits_ += count;
+    image_series_cap_hits_.fetch_add(count);
   }
   void add_low_screening_evaluations(uint64_t count) const {
-    low_screening_evaluations_ += count;
+    low_screening_evaluations_.fetch_add(count);
   }
   void add_drift_envelope_evaluations(uint64_t count) const {
-    drift_envelope_evaluations_ += count;
+    drift_envelope_evaluations_.fetch_add(count);
   }
   void add_negative_field_diagnostics(uint64_t count,
                                       Real most_negative) const;
   void add_kernel_evaluations(uint64_t count) const {
     if (kernel_evaluation_counting_enabled_
         && !kernel_evaluations_by_thread_.empty()) {
-      kernel_evaluations_by_thread_[0] += count;
+      kernel_evaluations_by_thread_[0].count.fetch_add(count);
     }
   }
   void reset_image_series_cap_hits() {
-    image_series_cap_hits_ = 0;
+    image_series_cap_hits_.store(0);
   }
   void reset_low_screening_diagnostics() {
-    low_screening_evaluations_ = 0;
-    drift_envelope_evaluations_ = 0;
-    negative_field_count_ = 0;
-    most_negative_field_ = 0.0;
+    low_screening_evaluations_.store(0);
+    drift_envelope_evaluations_.store(0);
+    negative_field_count_.store(0);
+    most_negative_field_.store(0.0);
   }
   void add_robin_host_fallback_sources(uint64_t count) const {
-    robin_host_fallback_sources_ += count;
+    robin_host_fallback_sources_.fetch_add(count);
   }
   void reset_kernel_evaluations() {
-    std::ranges::fill(kernel_evaluations_by_thread_, uint64_t{0});
+    for (auto& slot : kernel_evaluations_by_thread_) {
+      slot.count.store(0);
+    }
   }
 
  private:
@@ -185,15 +225,22 @@ class GreensFunction {
 
   Real z_lo_ = 0.0;
   Real z_hi_ = 100.0e-6;
-  mutable uint64_t image_series_cap_hits_ = 0;
-  mutable uint64_t low_screening_evaluations_ = 0;
-  mutable uint64_t drift_envelope_evaluations_ = 0;
-  mutable uint64_t negative_field_count_ = 0;
-  mutable Real most_negative_field_ = 0.0;
-  mutable uint64_t robin_direct_evaluations_ = 0;
-  mutable uint64_t robin_host_fallback_sources_ = 0;
+  void record_negative_field(Real value) const;
+
+  // One slot per OpenMP thread, padded to its own cache line.
+  struct alignas(64) KernelEvaluationSlot {
+    RelaxedAtomic<uint64_t> count{0};
+  };
+
+  mutable RelaxedAtomic<uint64_t> image_series_cap_hits_{0};
+  mutable RelaxedAtomic<uint64_t> low_screening_evaluations_{0};
+  mutable RelaxedAtomic<uint64_t> drift_envelope_evaluations_{0};
+  mutable RelaxedAtomic<uint64_t> negative_field_count_{0};
+  mutable RelaxedAtomic<Real> most_negative_field_{0.0};
+  mutable RelaxedAtomic<uint64_t> robin_direct_evaluations_{0};
+  mutable RelaxedAtomic<uint64_t> robin_host_fallback_sources_{0};
   bool kernel_evaluation_counting_enabled_ = false;
-  mutable std::vector<uint64_t> kernel_evaluations_by_thread_;
+  mutable std::vector<KernelEvaluationSlot> kernel_evaluations_by_thread_;
 };
 
 }  // namespace gutibm

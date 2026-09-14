@@ -1353,7 +1353,7 @@ bool ChemicalField::host_conc_dirty(Int spec) const {
   return host_conc_dirty_[static_cast<size_t>(spec)];
 }
 
-void ChemicalField::clear_host_conc_dirty(Int spec) const {
+void ChemicalField::clear_host_conc_dirty(Int spec) {
   assert(spec >= 0 && spec < nspec_);
   host_conc_dirty_[static_cast<size_t>(spec)] = false;
 }
@@ -1527,7 +1527,7 @@ bool ChemicalField::host_reac_dirty(Int spec) const {
   return host_reac_dirty_[static_cast<size_t>(spec)];
 }
 
-void ChemicalField::clear_host_reac_dirty(Int spec) const {
+void ChemicalField::clear_host_reac_dirty(Int spec) {
   if (spec < 0 || spec >= nspec_) return;
   host_reac_dirty_[static_cast<size_t>(spec)] = false;
 }
