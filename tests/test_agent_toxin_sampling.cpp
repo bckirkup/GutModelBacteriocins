@@ -227,7 +227,7 @@ void test_sampling_does_not_cache_appended_agents() {
   assert(sim.qssa().sampled_toxin_sample_count(toxin) == initial_count);
 
 #ifdef GUTIBM_OPENMP
-  std::vector<Real> parallel_samples(96, 0.0);
+  std::vector parallel_samples(96, 0.0);
 #pragma omp parallel for
   for (Int i = 0; i < static_cast<Int>(parallel_samples.size()); ++i) {
     const Int appended_index =

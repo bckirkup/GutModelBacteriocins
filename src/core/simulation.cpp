@@ -1282,8 +1282,10 @@ void Simulation::print_step_profile() const {
   auto sites = step_profile_.gpu_transfer_sites;
   std::ranges::sort(sites, [](const auto& lhs, const auto& rhs) {
     const auto lhs_bytes = lhs.h2d_bytes + lhs.d2h_bytes;
-    const auto rhs_bytes = rhs.h2d_bytes + rhs.d2h_bytes;
-    if (lhs_bytes != rhs_bytes) return lhs_bytes > rhs_bytes;
+    if (const auto rhs_bytes = rhs.h2d_bytes + rhs.d2h_bytes;
+        lhs_bytes != rhs_bytes) {
+      return lhs_bytes > rhs_bytes;
+    }
     return lhs.label < rhs.label;
   });
   for (const auto& site : sites) {

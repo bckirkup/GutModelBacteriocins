@@ -25,8 +25,8 @@ SHA = "a" * 40
 SEED = 20260911
 DX = 2.0e-6
 N = 50
-BOX = Box(Lx=N * DX, Ly=N * DX, Lz=N * DX)
-CENTER = (0.5 * BOX.Lx, 0.5 * BOX.Ly, 0.5 * BOX.Lz)
+BOX = Box(lx=N * DX, ly=N * DX, lz=N * DX)
+CENTER = (0.5 * BOX.lx, 0.5 * BOX.ly, 0.5 * BOX.lz)
 R_MAX_UM = 40.0
 SHELL_UM = 2.0
 
@@ -36,9 +36,9 @@ def resolved_config(**overrides) -> dict:
         "seed": SEED,
         "bio_dt": 60.0,
         "grid_dx": DX,
-        "domain_x": BOX.Lx,
-        "domain_y": BOX.Ly,
-        "domain_z": BOX.Lz,
+        "domain_x": BOX.lx,
+        "domain_y": BOX.ly,
+        "domain_z": BOX.lz,
         "bacteriocin.mucin_charge.amplitude": 15.0,
         "kd_b12_btuB": 1.0e-4,
         "kd_colicinE_btuB": 5.0e-7,
@@ -131,8 +131,8 @@ class TestSensitivity:
         dz = axis[:, None, None] - offset[2]
         dy = axis[None, :, None] - offset[1]
         dx = axis[None, None, :] - offset[0]
-        dy -= BOX.Ly * np.round(dy / BOX.Ly)
-        dx -= BOX.Lx * np.round(dx / BOX.Lx)
+        dy -= BOX.ly * np.round(dy / BOX.ly)
+        dx -= BOX.lx * np.round(dx / BOX.lx)
         r_um = np.maximum(np.sqrt(dz**2 + dy**2 + dx**2) * 1.0e6, 0.5 * DX * 1.0e6)
         field = np.exp(-r_um / 8.0) / r_um
 
@@ -145,16 +145,18 @@ class TestSensitivity:
 class TestBoundaryHandling:
     def test_support_beyond_domain_is_refused(self):
         near_wall = (CENTER[0], CENTER[1], 10 * DX)
+        field = exponential_field(8.0)
         with pytest.raises(TransportInputError, match="exceeds the in-domain support"):
-            shell_profile(exponential_field(8.0), DX, near_wall, BOX, R_MAX_UM, SHELL_UM)
+            shell_profile(field, DX, near_wall, BOX, R_MAX_UM, SHELL_UM)
 
     def test_support_reports_the_binding_constraint(self):
         profile = profile_for(8.0)
         assert profile.support_um == pytest.approx(50.0)
 
     def test_non_integral_shell_count_is_refused(self):
+        field = exponential_field(8.0)
         with pytest.raises(TransportInputError, match="whole shells"):
-            shell_profile(exponential_field(8.0), DX, CENTER, BOX, 41.0, SHELL_UM)
+            shell_profile(field, DX, CENTER, BOX, 41.0, SHELL_UM)
 
     def test_empty_shell_yields_undefined_radii(self):
         profile = shell_profile(exponential_field(8.0), DX, CENTER, BOX, 4.0, 0.25)
@@ -273,8 +275,9 @@ class TestAuthentication:
         path = tmp_path / "bare.h5"
         with h5py.File(path, "w") as h:
             h.create_group("run_provenance")
+        expected = self.expected()
         with h5py.File(path, "r") as h, pytest.raises(TransportInputError):
-            authenticate_run(h, self.expected())
+            authenticate_run(h, expected)
 
 
 class TestPairedTimes:

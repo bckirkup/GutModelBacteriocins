@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 #ifdef GUTIBM_HDF5
 extern "C" {
@@ -43,7 +44,7 @@ std::array<int32_t, MAX_AGENT_TYPES> read_i32_array(hid_t file,
   return values;
 }
 
-SimulationConfig make_cfg(const std::string& h5_path) {
+SimulationConfig make_cfg(std::string_view h5_path) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.domain.hi = {30e-6, 30e-6, 30e-6};
   cfg.domain.grid_dx = 5e-6;

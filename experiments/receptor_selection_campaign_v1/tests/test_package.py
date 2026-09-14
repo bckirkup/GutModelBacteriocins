@@ -107,7 +107,7 @@ class PackageTests(unittest.TestCase):
   self.assertIn('kill_provenance',text)
   sys.path.insert(0,str(ROOT)); import analyze_transport as at
   for amp,retardation,deff in ((0,1.200,3.333e-11),(15,13.456,2.973e-12),(60,50.225,7.964e-13)):
-   r=at.retardation_from_pI(float(amp)); d=at.D_FREE/r
+   r=at.retardation_from_pi(float(amp)); d=at.D_FREE/r
    self.assertTrue(math.isclose(r,retardation,rel_tol=1e-3,abs_tol=1e-6),amp)
    self.assertTrue(math.isclose(d,deff,rel_tol=1e-3,abs_tol=0.0),amp)
   self.assertEqual(at.CAUSE_LYSIS,5); self.assertEqual(at.BURST_PRUNE_S,1500.0)

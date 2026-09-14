@@ -28,6 +28,9 @@ using namespace gutibm;
 
 class ScopedStrictConfig {
  public:
+  ScopedStrictConfig(const ScopedStrictConfig&) = delete;
+  ScopedStrictConfig& operator=(const ScopedStrictConfig&) = delete;
+
   explicit ScopedStrictConfig(const char* value) {
     const char* previous = std::getenv("GUTIBM_STRICT_CONFIG");
     had_previous_ = previous != nullptr;

@@ -47,10 +47,10 @@ int main() {
   disabled.init(disabled_cfg, domain);
   assert(!disabled.is_enabled());
 
-  const std::string valid_path =
+  const std::filesystem::path valid_path =
       resolve_test_h5_path("GUTIBM_FAIL_CLOSED_H5", "fail_closed");
   HDF5Config valid_cfg;
-  valid_cfg.filename = valid_path;
+  valid_cfg.filename = valid_path.string();
   valid_cfg.schedule.summary = 1;
   valid_cfg.schedule.agents = 0;
   valid_cfg.schedule.grid = 0;

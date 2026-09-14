@@ -10,9 +10,10 @@
 #include "species_names.h"
 #include "carbon_maintenance.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
-#include <iomanip>
+#include <format>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -56,12 +57,13 @@ bool reaction_residency_enabled() {
 namespace {
 
 const char* diffusion_boundary_mode_name(EpithelialBoundaryMode mode) {
+  using enum EpithelialBoundaryMode;
   switch (mode) {
-    case EpithelialBoundaryMode::Dirichlet:
+    case Dirichlet:
       return "Dirichlet";
-    case EpithelialBoundaryMode::Robin:
+    case Robin:
       return "Robin";
-    case EpithelialBoundaryMode::Flux:
+    case Flux:
       return "Flux";
   }
   return "unknown";
@@ -306,12 +308,10 @@ void ChemicalFieldGpu::sync_concentrations_to_device(ChemicalField& field) {
                         sizeof(double)) == 0) {
           continue;
         }
-        std::ostringstream message;
-        message << "GPU concentration residency mismatch for species '"
-                << field.spec(s).name << "' (index " << s << ") at cell "
-                << cell << ": host=" << std::setprecision(17)
-                << host_row[cell] << ", device=" << device_row[cell];
-        throw SimulationError(message.str());
+        throw SimulationError(std::format(
+            "GPU concentration residency mismatch for species '{}' (index {})"
+            " at cell {}: host={:.17g}, device={:.17g}",
+            field.spec(s).name, s, cell, host_row[cell], device_row[cell]));
       }
       continue;
     }
@@ -350,7 +350,7 @@ void ChemicalFieldGpu::sync_reactions_to_device(ChemicalField& field) {
     gpu_sync_compute();
     gpu_check_error("add_into_kernel");
     auto& mutable_row = field.mutable_species_reaction(s);
-    std::fill(mutable_row.begin(), mutable_row.end(), 0.0);
+    std::ranges::fill(mutable_row, 0.0);
     field.clear_host_reac_dirty(s);
     reactions_pending_ = true;
   }
@@ -475,10 +475,9 @@ void ChemicalFieldGpu::validate_reaction_device_state(
   if (!gpu_residency_audit_enabled() || !reactions_pending_) return;
   for (Int s = 0; s < nspec_; ++s) {
     if (field.host_reac_dirty(s)) {
-      throw SimulationError(
-          "reaction residency audit: host reaction species "
-          + std::to_string(s)
-          + " is dirty while device reactions are authoritative");
+      throw SimulationError(std::format(
+          "reaction residency audit: host reaction species {} is dirty while"
+          " device reactions are authoritative", s));
     }
   }
 }
@@ -520,8 +519,8 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
 #else
   if (!active_) return false;
 
-  const int max_line = gpu::diffusion_max_line_length();
-  if (!diffusion_all_species_within(domain, field, max_line)) {
+  if (const int max_line = gpu::diffusion_max_line_length();
+      !diffusion_all_species_within(domain, field, max_line)) {
     if (!diffusion_fallback_warning_emitted_) {
       diffusion_fallback_warning_emitted_ = true;
       warn_diffusion_line_length_fallback(domain, field, max_line);
@@ -755,7 +754,7 @@ bool ChemicalFieldGpu::delivery_has_negative(Int spec) {
 #endif
 }
 
-Real ChemicalFieldGpu::delivery_negative_fraction(Int spec) {
+Real ChemicalFieldGpu::delivery_negative_fraction(Int spec) const {
 #ifndef GUTIBM_CUDA
   (void)spec;
   return 0.0;
@@ -788,7 +787,7 @@ Real ChemicalFieldGpu::download_delivery_boundary(Int spec) const {
   if (!active_ || spec < 0 || spec >= nspec_) return 0.0;
   GpuTransferSite site("delivery");
   gpu_sync_compute();
-  std::vector<double> values(static_cast<size_t>(nspec_), 0.0);
+  std::vector values(static_cast<size_t>(nspec_), 0.0);
   d_boundary_injected_.download(values);
   return values[static_cast<size_t>(spec)];
 }

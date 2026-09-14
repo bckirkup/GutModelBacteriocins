@@ -72,7 +72,7 @@ RETARDATION_RTOL = 1e-3
 DEFF_RTOL = 1e-3
 
 
-def retardation_from_pI(amplitude: float) -> float:
+def retardation_from_pi(amplitude: float) -> float:
     exponent = (DZ_HALF - (PI_COLE1 - PH)) / WIDTH
     return R_MIN + amplitude / (1.0 + 10.0**exponent)
 
@@ -130,15 +130,15 @@ def active_sources(sources, t_grid: float):
     return active
 
 
-def nearest_source_distances(xx, yy, zz, active, Lx: float, Ly: float):
+def nearest_source_distances(xx, yy, zz, active, box_x: float, box_y: float):
     n = xx.size
     best_d = np.full(n, np.inf, dtype=float)
     flat_x = xx.ravel()
     flat_y = yy.ravel()
     flat_z = zz.ravel()
     for _w, sx, sy, sz, _age in active:
-        dx = min_image_delta_vec(flat_x - sx, Lx)
-        dy = min_image_delta_vec(flat_y - sy, Ly)
+        dx = min_image_delta_vec(flat_x - sx, box_x)
+        dy = min_image_delta_vec(flat_y - sy, box_y)
         dz = flat_z - sz  # non-periodic
         d = np.sqrt(dx * dx + dy * dy + dz * dz)
         best_d = np.minimum(best_d, d)
@@ -149,11 +149,11 @@ def min_image_delta_vec(delta: np.ndarray, length: float) -> np.ndarray:
     return delta - length * np.round(delta / length)
 
 
-def profile_snapshot(conc, xx, yy, zz, active, Lx: float, Ly: float):
+def profile_snapshot(conc, xx, yy, zz, active, box_x: float, box_y: float):
     w_sum = float(sum(a[0] for a in active))
     if w_sum <= 0.0:
         return None
-    dist_m = nearest_source_distances(xx, yy, zz, active, Lx, Ly)
+    dist_m = nearest_source_distances(xx, yy, zz, active, box_x, box_y)
     dist_um = dist_m * 1.0e6
     c_norm = conc / w_sum
 
@@ -565,7 +565,7 @@ def transport_law_check() -> tuple[dict, bool]:
     transport_law = {}
     law_ok = True
     for amp in (0, 15, 60):
-        r = retardation_from_pI(float(amp))
+        r = retardation_from_pi(float(amp))
         deff = D_FREE / r
         exp = EXPECTED_TRANSPORT[amp]
         r_ok = abs(r - exp["retardation"]) <= RETARDATION_RTOL * abs(exp["retardation"])

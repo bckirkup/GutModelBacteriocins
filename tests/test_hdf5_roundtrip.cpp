@@ -21,6 +21,16 @@
 #include <vector>
 
 #ifdef GUTIBM_HDF5
+extern "C" {
+#include <hdf5.h>
+}
+#endif
+
+#ifdef GUTIBM_MPI
+#include <mpi.h>
+#endif
+
+#ifdef GUTIBM_HDF5
 
 std::string read_string_dataset(hid_t file, const char* path) {
   hid_t dataset = H5Dopen2(file, path, H5P_DEFAULT);
@@ -115,13 +125,6 @@ void assert_run_provenance(hid_t file,
          == expected.chem_env.oxygen.delivery_uptake_enabled);
   assert(restored.initial_strains.size() == expected.initial_strains.size());
 }
-extern "C" {
-#include <hdf5.h>
-}
-#endif
-
-#ifdef GUTIBM_MPI
-#include <mpi.h>
 #endif
 
 using namespace gutibm;

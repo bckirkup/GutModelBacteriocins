@@ -104,7 +104,8 @@ def stage_c_metrics(h,base):
  base['btuB_grid_present']=bool(names) and set(names)=={'bacteriocin_BtuB'}; base['grid_species_observed']=';'.join(sorted(set(names)))
  # Runtime HDF5 writes kill-event coordinates under /provenance (not /kill_provenance).
  has_source_coords=('provenance' in h) or ('kill_provenance' in h)
- base['source_centered_profile_status']='AVAILABLE_FOR_POSTPROCESSING' if base['btuB_grid_present'] and has_source_coords else 'BLOCKED_MISSING_SOURCE_EVENT_COORDINATES'
+ if base['btuB_grid_present'] and has_source_coords: base['source_centered_profile_status']='AVAILABLE_FOR_POSTPROCESSING'
+ else: base['source_centered_profile_status']='BLOCKED_MISSING_SOURCE_EVENT_COORDINATES'
 def run_metrics(h,cfg,m,base):
  for req in ('run_provenance','summary','agents'):
   if req not in h: raise ValueError(f'missing /{req}')

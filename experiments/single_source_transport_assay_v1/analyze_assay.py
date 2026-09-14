@@ -133,7 +133,7 @@ def analyze_producer(run: dict, path: Path, execution_sha: str) -> dict:
             )
             return report
         source = sources[0]
-        box = Box(Lx=run["Lx"], Ly=run["Ly"], Lz=run["Lz"])
+        box = Box(lx=run["Lx"], ly=run["Ly"], lz=run["Lz"])
         support_um = radial_support_m(source.position, box) * 1.0e6
         report["source"] = {
             "event_time_s": source.time_s,
