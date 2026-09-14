@@ -228,8 +228,8 @@ def test_expected_run_defaults_match_contract_identity(monkeypatch):
         execution_source_sha="x", seed=1, amplitude=15.0,
         chemistry_placement="device_delivery",
     )
-    assert expected.kd_corrinoid_btuB == pytest.approx(1.0e-4)
-    assert expected.kd_colicinE_btuB == pytest.approx(5.0e-7)
+    assert expected.kd_corrinoid_btub == pytest.approx(1.0e-4)
+    assert expected.kd_colicine_btub == pytest.approx(5.0e-7)
     assert expected.b12_initial_conc == pytest.approx(1.0e-3)
     assert expected.burst_release_tau_s == pytest.approx(300.0)
     assert expected.grid_species == ("bacteriocin_BtuB",)

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace gutibm;
@@ -16,7 +17,7 @@ namespace {
 
 GpuTransferSiteProfile find_site(
     const std::vector<GpuTransferSiteProfile>& profiles,
-    const std::string& label) {
+    std::string_view label) {
   for (const auto& profile : profiles) {
     if (profile.label == label) return profile;
   }

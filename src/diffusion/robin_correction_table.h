@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <array>
 #include <cmath>
+#include <compare>
 #include <list>
 #include <limits>
 #include <map>
@@ -86,13 +87,15 @@ GUTIBM_ROBIN_HOST_DEVICE inline double interpolate_impl(
   const double target_coordinate =
       (target_z - table.z_lo) / table.height
       * static_cast<double>(kTableNodes - 1);
-  const double rho_coordinate = logarithmic_rho
-      ? (rho <= table.rho_min
-          ? 0.0
-          : std::log(rho / table.rho_min)
-              / std::log(table.cutoff / table.rho_min)
-              * static_cast<double>(kTableNodes - 1))
-      : rho / table.cutoff * static_cast<double>(kTableNodes - 1);
+  double rho_coordinate = rho / table.cutoff
+      * static_cast<double>(kTableNodes - 1);
+  if (logarithmic_rho) {
+    rho_coordinate = rho <= table.rho_min
+        ? 0.0
+        : std::log(rho / table.rho_min)
+            / std::log(table.cutoff / table.rho_min)
+            * static_cast<double>(kTableNodes - 1);
+  }
   const double source_clamped = clamp_table_coordinate(source_coordinate);
   const double target_clamped = clamp_table_coordinate(target_coordinate);
   const double rho_clamped = clamp_table_coordinate(rho_coordinate);
@@ -163,9 +166,7 @@ struct Table {
 
 struct TableCacheKey {
   std::array<int64_t, 9> groups{};
-  bool operator<(const TableCacheKey& other) const {
-    return groups < other.groups;
-  }
+  auto operator<=>(const TableCacheKey& other) const = default;
 };
 
 struct TableCacheSnapshot {

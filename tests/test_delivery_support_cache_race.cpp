@@ -115,7 +115,7 @@ DeliveryResult run_delivery(Real far_field_radius, int thread_count) {
     result.deposits.push_back(deposit);
   }
   const auto& flux = chem.flux_accounting();
-  const size_t index = static_cast<size_t>(carbon);
+  const auto index = static_cast<size_t>(carbon);
   result.funded = flux.agent_uptake_interval[index]
       + flux.agent_uptake_cumulative[index];
   result.demanded = flux.uptake_demand_interval[index]

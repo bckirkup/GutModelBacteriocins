@@ -38,8 +38,8 @@ void FixQuorumSensing::compute(Real /*dt*/) {
   }
 
   // First-order background decay (uses ChemicalSpec.decay_rate when set)
-  const Real decay = std::max(chem.spec(i_ai2).decay_rate, 0.0);
-  if (decay > 0.0) {
+  if (const Real decay = std::max(chem.spec(i_ai2).decay_rate, 0.0);
+      decay > 0.0) {
     const Int x_begin = chem.slab_mode()
         ? chem.owned_storage_x_begin()
         : sim_.domain().local_grid_x_begin();

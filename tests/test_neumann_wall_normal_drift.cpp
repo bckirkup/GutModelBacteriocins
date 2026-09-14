@@ -317,9 +317,7 @@ void test_runtime_plasmid_basis_closes_gate_hole() {
   } catch (const SimulationError& error) {
     const std::string_view message(error.what());
     const std::string_view expected("configured-plasmid basis: ColE1");
-    rejected = std::search(
-                   message.begin(), message.end(), expected.begin(), expected.end())
-               != message.end();
+    rejected = message.find(expected) != std::string_view::npos;
   }
   if (!rejected) {
     std::cerr << "configured-plasmid drift basis did not close gate hole\n";
@@ -433,7 +431,7 @@ void test_zero_drift_correction_invariance() {
   const Real rho = robin::kMinimumTableRho * std::pow(
       robin::kDefaultCutoff / robin::kMinimumTableRho,
       static_cast<Real>(rho_index) / static_cast<Real>(robin::kTableNodes - 1));
-  const size_t node = static_cast<size_t>(
+  const auto node = static_cast<size_t>(
       robin::table_index(source_index, target_index, rho_index));
   const Real physical = robin::normalized_sealed_field({
       source_z, target_z, rho, 0.0, kHeight, kDiffusion, kDecay,
@@ -483,7 +481,7 @@ void test_physical_sealed_interpolation() {
   for (size_t i = 0; i < probes.size(); ++i) {
     errors[i] = probe_error(system, params, probes[i], kFlowX, flow_z);
   }
-  std::sort(errors.begin(), errors.end());
+  std::ranges::sort(errors);
   const Real median = errors[errors.size() / 2];
   const Real maximum = errors.back();
   require(median <= 1.0e-3 && maximum <= 0.2,
@@ -513,8 +511,7 @@ void test_correction_improves_with_wall_normal_flow() {
   // visible at low Pe_z. The strict improvement assertion is the primary
   // graded behavior check; this bound guards against a correction that only
   // works at one Pe_z.
-  require(std::all_of(ratios.begin(), ratios.end(),
-                      [](Real ratio) { return ratio < 0.7; }),
+  require(std::ranges::all_of(ratios, [](Real ratio) { return ratio < 0.7; }),
           "drift correction improvement lacked measured headroom");
   std::cout << "  test_correction_improves_with_wall_normal_flow: PASSED\n";
 }

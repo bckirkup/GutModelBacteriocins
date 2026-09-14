@@ -85,7 +85,7 @@ uint64_t table_identity_hash(const robin::Table& table) {
   for (const int64_t group : table.quantized_key) {
     append_hash_bytes(hash, &group, sizeof(group));
   }
-  const int basis = static_cast<int>(table.basis);
+  const auto basis = static_cast<int>(table.basis);
   append_hash_bytes(hash, &basis, sizeof(basis));
   append_hash_bytes(hash, &table.z_lo, sizeof(table.z_lo));
   append_hash_bytes(hash, &table.height, sizeof(table.height));
@@ -249,7 +249,7 @@ void test_disabled_default_is_inert() {
   require(!robin::transfer_enabled(config.qssa.lumen_transfer_length),
           "Robin transfer must be disabled by default");
   const std::string resolved = ConfigJson::serialize_document(config);
-  require(resolved.find("\"toxin.lumen_transfer_length\":\"inf\"")
+  require(resolved.find(R"("toxin.lumen_transfer_length":"inf")")
               != std::string::npos,
           "resolved provenance must serialize disabled Robin transfer");
 

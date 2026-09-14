@@ -107,11 +107,11 @@ class ExpectedRun:
     execution_source_sha: str
     seed: int
     amplitude: float
-    kd_corrinoid_btuB: float = 1.0e-4
-    kd_colicinE_btuB: float = 5.0e-7
+    kd_corrinoid_btub: float = 1.0e-4
+    kd_colicine_btub: float = 5.0e-7
     b12_initial_conc: float = 1.0e-3
     burst_release_tau_s: float = 300.0
-    cole1_pI: float = COLE1_LIBRARY_PI
+    cole1_pi: float = COLE1_LIBRARY_PI
     cole1_diff_coeff: float = COLE1_LIBRARY_DIFF_COEFF
     cole1_burst_size: float = COLE1_LIBRARY_BURST_SIZE
     mpi_ranks: int = 1
@@ -168,8 +168,8 @@ def _resolved_config_violations(
 
     checks: list[tuple[str, float]] = [
         ("bacteriocin.mucin_charge.amplitude", expected.amplitude),
-        ("kd_b12_btuB", expected.kd_corrinoid_btuB),
-        ("kd_colicinE_btuB", expected.kd_colicinE_btuB),
+        ("kd_b12_btuB", expected.kd_corrinoid_btub),
+        ("kd_colicinE_btuB", expected.kd_colicine_btub),
         ("b12.initial_conc", expected.b12_initial_conc),
         ("burst_release_tau", expected.burst_release_tau_s),
     ]
@@ -244,10 +244,10 @@ def _cole1_genome_violations(h5, expected: ExpectedRun) -> list[str]:
         return []
     step_key, group = found
     violations: list[str] = []
-    pI = np.asarray(group["bi_pI"][()], dtype=float)
+    pi_values = np.asarray(group["bi_pI"][()], dtype=float)
     diff = np.asarray(group["bi_diff_coeff"][()], dtype=float)
-    if not np.all(np.isclose(pI, expected.cole1_pI, rtol=expected.rtol, atol=0.0)):
-        violations.append(f"genome/{step_key} bi_pI {sorted(set(pI))} != {expected.cole1_pI}")
+    if not np.all(np.isclose(pi_values, expected.cole1_pi, rtol=expected.rtol, atol=0.0)):
+        violations.append(f"genome/{step_key} bi_pI {sorted(set(pi_values))} != {expected.cole1_pi}")
     if not np.all(np.isclose(diff, expected.cole1_diff_coeff, rtol=expected.rtol, atol=0.0)):
         violations.append(
             f"genome/{step_key} bi_diff_coeff {sorted(set(diff))} != "
@@ -350,14 +350,14 @@ def release_weight(source: LysisSource, t_s: float, tau_s: float, prune_tau: flo
 class Box:
     """Domain extents; x and y are periodic, z is not."""
 
-    Lx: float
-    Ly: float
-    Lz: float
+    lx: float
+    ly: float
+    lz: float
 
 
 def radial_support_m(source: Sequence[float], box: Box) -> float:
     """Largest radius whose full sphere around ``source`` is inside the domain."""
-    return min(0.5 * box.Lx, 0.5 * box.Ly, source[2], box.Lz - source[2])
+    return min(0.5 * box.lx, 0.5 * box.ly, source[2], box.lz - source[2])
 
 
 def voxel_radius_m(shape: tuple[int, int, int], dx: float, source: Sequence[float], box: Box):
@@ -369,8 +369,8 @@ def voxel_radius_m(shape: tuple[int, int, int], dx: float, source: Sequence[floa
     dxs = xs - source[0]
     dys = ys - source[1]
     dzs = zs - source[2]
-    dxs -= box.Lx * np.round(dxs / box.Lx)
-    dys -= box.Ly * np.round(dys / box.Ly)
+    dxs -= box.lx * np.round(dxs / box.lx)
+    dys -= box.ly * np.round(dys / box.ly)
     return np.sqrt(
         dzs[:, None, None] ** 2 + dys[None, :, None] ** 2 + dxs[None, None, :] ** 2
     )

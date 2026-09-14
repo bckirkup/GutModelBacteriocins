@@ -41,7 +41,7 @@ class ChemicalFieldGpu {
   Real download_delivery_boundary(Int species) const;
   Real download_delivery_reaction_clip() const;
   bool delivery_has_negative(Int spec);
-  Real delivery_negative_fraction(Int spec);
+  Real delivery_negative_fraction(Int spec) const;
   void prepare_delivery_species(
       Int spec, const std::vector<Real>& sink,
       const std::vector<Real>& prescribed);

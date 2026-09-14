@@ -862,7 +862,7 @@ bool apply_advection_key(SimulationConfig& cfg, std::string_view key, const std:
 }
 
 bool apply_drift_envelope_policy_key(
-    SimulationConfig& cfg, std::string_view key, const std::string& val) {
+    SimulationConfig& cfg, std::string_view key, std::string_view val) {
   if (key == "drift_envelope_policy"
       || key == "qssa.drift_envelope_policy") {
     if (val != "warn" && val != "error" && val != "allow") {

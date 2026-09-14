@@ -75,8 +75,8 @@ void FixMetabolism::ensure_delivery_support_stencil() {
 
 const std::vector<Int>& FixMetabolism::delivery_support_cells(
     const Agent& agent) const {
-  auto cached = delivery_support_cache_.find(agent.identity.tag);
-  if (cached != delivery_support_cache_.end()) {
+  if (auto cached = delivery_support_cache_.find(agent.identity.tag);
+      cached != delivery_support_cache_.end()) {
     return cached->second;
   }
   // Prepared entries are read-only; an unexpected miss uses per-thread

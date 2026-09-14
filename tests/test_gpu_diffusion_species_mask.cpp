@@ -118,7 +118,7 @@ int main() {
       mixed_delivery_domain, EpithelialBoundaryMode::Dirichlet, 512));
   assert(!diffusion_line_lengths_within(
       mixed_delivery_domain, EpithelialBoundaryMode::Robin, 512));
-  const std::vector<ChemicalSpec> mixed_delivery_specs{
+  const std::vector mixed_delivery_specs{
       delivery_species("eligible_delivery", EpithelialBoundaryMode::Dirichlet),
       delivery_species("ineligible_delivery", EpithelialBoundaryMode::Robin),
       diffusing_species("ordinary", EpithelialBoundaryMode::Robin)};
