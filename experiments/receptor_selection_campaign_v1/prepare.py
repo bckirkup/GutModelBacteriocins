@@ -74,7 +74,8 @@ def make(stage,run_id,arm,seed,axes,strains,execution_sha,updates=None,grid=Fals
     for k,v in (updates or {}).items(): c[k]=v
     if grid: c['hdf5']['schedule']['grid']=60; c['hdf5']['schedule']['grid_species']=['bacteriocin_BtuB']
     return annotate(c,stage,run_id,arm,seed,axes,gate_locked,execution_sha)
-BASE_UPDATES={'kd_corrinoid_btuB':1e-6,'kd_colicinE_btuB':5e-7,'b12_initial_conc':1e-3,'bacteriocin.mucin_charge.amplitude':60}
+MUCIN_AMPLITUDE_KEY='bacteriocin.mucin_charge.amplitude'
+BASE_UPDATES={'kd_corrinoid_btuB':1e-6,'kd_colicinE_btuB':5e-7,'b12_initial_conc':1e-3,MUCIN_AMPLITUDE_KEY:60}
 def stage_q_runs(execution_sha):
     out=[]
     for rep in (1,2):
@@ -97,22 +98,22 @@ def stage_b_runs(kd,execution_sha):
     return out
 def stage_c_runs(kd,b12,amp0,fixed,execution_sha):
     out=[]
-    for amp in CONTRACT['axes']['C']['bacteriocin.mucin_charge.amplitude']:
+    for amp in CONTRACT['axes']['C'][MUCIN_AMPLITUDE_KEY]:
      for seed in SEEDS:
-      rid=f'C_amp{amp}_producer_s{seed}'; out.append((rid,make('C',rid,'producer',seed,{'amplitude':amp,'selected_kd':kd,'selected_b12':b12},[strain(1,['ColE1']),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp},grid=True)))
+      rid=f'C_amp{amp}_producer_s{seed}'; out.append((rid,make('C',rid,'producer',seed,{'amplitude':amp,'selected_kd':kd,'selected_b12':b12},[strain(1,['ColE1']),strain(2)],execution_sha,{**fixed,MUCIN_AMPLITUDE_KEY:amp},grid=True)))
     for seed in SEEDS:
-      rid=f'C_shared_null_amp{amp0}_s{seed}'; out.append((rid,make('C',rid,'shared_null',seed,{'amplitude':amp0,'selected_kd':kd,'selected_b12':b12},[strain(1),strain(2)],execution_sha,{**fixed,'bacteriocin.mucin_charge.amplitude':amp0},grid=True)))
+      rid=f'C_shared_null_amp{amp0}_s{seed}'; out.append((rid,make('C',rid,'shared_null',seed,{'amplitude':amp0,'selected_kd':kd,'selected_b12':b12},[strain(1),strain(2)],execution_sha,{**fixed,MUCIN_AMPLITUDE_KEY:amp0},grid=True)))
     return out
 def stage_d_runs(kd,b12,amp0,fixed,execution_sha):
     out=[]
     # Twelve ColE1-carrier arms; P=0 remains a carrier and is not the null.
     for target,p in zip(CONTRACT['axes']['D']['realized_lysis_target_per_generation'],CONTRACT['axes']['D']['sos_lysis_prob']):
      for seed in SEEDS:
-      rid=f'D_target{target:.3f}_producer_s{seed}'; updates={**fixed,'bacteriocin.mucin_charge.amplitude':amp0,'sos_basal_rate':0.0,'sos_lysis_prob':p}
+      rid=f'D_target{target:.3f}_producer_s{seed}'; updates={**fixed,MUCIN_AMPLITUDE_KEY:amp0,'sos_basal_rate':0.0,'sos_lysis_prob':p}
       out.append((rid,make('D',rid,'producer',seed,{'nominal_target_per_generation':target,'sos_lysis_prob':p,'selected_amplitude':amp0},[strain(1,['ColE1']),strain(2)],execution_sha,updates)))
     # Three formal same-revision controls, generated once per seed (not crossed with lysis targets).
     for seed in SEEDS:
-      rid=f'D_plasmid_free_null_s{seed}'; updates={**fixed,'bacteriocin.mucin_charge.amplitude':amp0,'sos_basal_rate':0.0,'sos_lysis_prob':0.0}
+      rid=f'D_plasmid_free_null_s{seed}'; updates={**fixed,MUCIN_AMPLITUDE_KEY:amp0,'sos_basal_rate':0.0,'sos_lysis_prob':0.0}
       axes={'control':'plasmid_free_null','selected_amplitude':amp0,'selected_kd':kd,'selected_b12':b12}
       out.append((rid,make('D',rid,'plasmid_free_null',seed,axes,[strain(1),strain(2)],execution_sha,updates)))
     return out

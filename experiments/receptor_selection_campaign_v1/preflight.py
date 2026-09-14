@@ -5,6 +5,7 @@ import argparse, hashlib, json, math, re, subprocess, sys
 from pathlib import Path
 ROOT=Path(__file__).resolve().parent; REPO=ROOT.parents[1]
 MUCIN_AMPLITUDE_KEY='bacteriocin.mucin_charge.amplitude'
+K_ROS_KEY='oxygen.k_ROS'
 C=json.loads((ROOT/'campaign_contract.json').read_text()); G=ROOT/'generated'; ERR=[]; WARN=[]
 BASELINE=C['model_baseline_sha']; EXEC_PLACEHOLDER=C['execution_source_sha_policy']['planning_placeholder']
 SHA40=re.compile(r'[0-9a-f]{40}')
@@ -69,7 +70,7 @@ def check_decision_record():
     fail('revised transport assay must remain pending until a recorded pass')
   if by_gate['D_release'].get('status')!='BLOCKED' or by_gate['D_release'].get('conditional_selected_mucin_charge_amplitude')!=15: fail('Stage D handoff must remain blocked/conditional')
  except Exception as e: fail(f'authoritative decision record missing/unreadable: {e}')
-REQUIRED_EXACT_KEYS=['total_time','bio_dt','output_interval','seed','domain_x','domain_y','domain_z','grid_dx','mucus_thickness','radial_turnover','distal_transit','peristaltic_enabled','crypts_enabled','motility.enabled','carbon_z_gradient','carbon.boundary_conc','metabolism.uptake_limit','oxygen.k_ROS','dysbiosis_threshold','gpu_enabled','gpu_device_id','chemistry.toxin_evaluation','chemistry.toxin_lumping','initial_population.placement','initial_population.z_min','initial_population.z_max','fixes','hdf5_file','kd_corrinoid_btuB','kd_colicinE_btuB','b12_initial_conc',MUCIN_AMPLITUDE_KEY,'sos_basal_rate','sos_lysis_prob','grid_species','receptor_expression']
+REQUIRED_EXACT_KEYS=['total_time','bio_dt','output_interval','seed','domain_x','domain_y','domain_z','grid_dx','mucus_thickness','radial_turnover','distal_transit','peristaltic_enabled','crypts_enabled','motility.enabled','carbon_z_gradient','carbon.boundary_conc','metabolism.uptake_limit',K_ROS_KEY,'dysbiosis_threshold','gpu_enabled','gpu_device_id','chemistry.toxin_evaluation','chemistry.toxin_lumping','initial_population.placement','initial_population.z_min','initial_population.z_max','fixes','hdf5_file','kd_corrinoid_btuB','kd_colicinE_btuB','b12_initial_conc',MUCIN_AMPLITUDE_KEY,'sos_basal_rate','sos_lysis_prob','grid_species','receptor_expression']
 def check_parser_keys():
  # Source-backed audit of every deliberate scalar key. Nested HDF5/strain objects are parsed by config_json.cpp.
  try: parser_text=(REPO/'src/io/input_parser.cpp').read_text()+(REPO/'src/io/config_json.cpp').read_text()
@@ -148,19 +149,19 @@ def check_stage_b(configs):
 def check_stage_c(configs):
  CP=[c for r,c in configs.items() if r.startswith('C_amp')]; CN=[c for r,c in configs.items() if r.startswith('C_shared')]
  if len(CP)!=9 or len(CN)!=3 or {c[MUCIN_AMPLITUDE_KEY] for c in CP}!={0,15,60}: fail('Stage C explicit 9 producer + 3 shared-null design violated')
-def check_stage_d_carrier_lysis(DP):
- for c in DP:
+def check_stage_d_carrier_lysis(producers):
+ for c in producers:
   target=c['_campaign']['axes']['nominal_target_per_generation']; want=1-math.sqrt(1-target)
   if not approx(c['sos_lysis_prob'],want,1e-10): fail(f"{c['_campaign']['run_id']}: lysis transform incorrect")
-  if c.get('sos_basal_rate')!=0 or c.get('oxygen.k_ROS')!=0: fail(f"{c['_campaign']['run_id']}: lysis attribution controls missing")
-def check_stage_d_null_controls(DN):
- for c in DN:
-  if c.get('sos_basal_rate')!=0 or c.get('sos_lysis_prob')!=0 or c.get('oxygen.k_ROS')!=0: fail(f"{c['_campaign']['run_id']}: null attribution controls missing")
-def check_stage_d_arms(DP,DN):
- if {c['seed'] for c in DN}!=set(C['seeds']): fail('Stage D plasmid-free null set must contain exactly one run per seed')
- if any(c['initial_strains'][0].get('plasmids')!=[] for c in DN): fail('Stage D formal null unexpectedly carries a plasmid')
- if any(c['initial_strains'][0].get('plasmids')!=['ColE1'] for c in DP): fail('Stage D carrier arm lost ColE1')
- if any(c['_campaign']['axes'].get('nominal_target_per_generation') is not None for c in DN): fail('Stage D null controls were accidentally crossed with the lysis axis')
+  if c.get('sos_basal_rate')!=0 or c.get(K_ROS_KEY)!=0: fail(f"{c['_campaign']['run_id']}: lysis attribution controls missing")
+def check_stage_d_null_controls(nulls):
+ for c in nulls:
+  if c.get('sos_basal_rate')!=0 or c.get('sos_lysis_prob')!=0 or c.get(K_ROS_KEY)!=0: fail(f"{c['_campaign']['run_id']}: null attribution controls missing")
+def check_stage_d_arms(producers,nulls):
+ if {c['seed'] for c in nulls}!=set(C['seeds']): fail('Stage D plasmid-free null set must contain exactly one run per seed')
+ if any(c['initial_strains'][0].get('plasmids')!=[] for c in nulls): fail('Stage D formal null unexpectedly carries a plasmid')
+ if any(c['initial_strains'][0].get('plasmids')!=['ColE1'] for c in producers): fail('Stage D carrier arm lost ColE1')
+ if any(c['_campaign']['axes'].get('nominal_target_per_generation') is not None for c in nulls): fail('Stage D null controls were accidentally crossed with the lysis axis')
 def check_stage_d(configs):
  D=[c for r,c in configs.items() if r.startswith('D_')]
  if len({(c['kd_corrinoid_btuB'],c['b12_initial_conc'],c[MUCIN_AMPLITUDE_KEY]) for c in D})!=1: fail('Stage D fixed upstream axes violated')

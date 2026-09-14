@@ -469,9 +469,6 @@ def gate_status(blockers: list[str], ordered: bool, n_paired_times: int) -> str:
     return STATUS_FAIL
 
 
-def write_json(path: Path, payload: dict) -> None:
-    path.write_text(json.dumps(jsonable(payload), indent=2, allow_nan=False) + "\n")
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -514,7 +511,9 @@ def main() -> int:
         "order_checks_by_seed": orders,
         "n_snapshot_rows": n_rows,
     }
-    write_json(output_dir / "assay_metrics.json", metrics)
+    (output_dir / "assay_metrics.json").write_text(
+        json.dumps(jsonable(metrics), indent=2, allow_nan=False) + "\n"
+    )
 
     gate = {
         "status": status,
@@ -546,7 +545,9 @@ def main() -> int:
         "blockers": blockers,
         "criteria": GATE["criteria"],
     }
-    write_json(output_dir / "assay_gate.json", gate)
+    (output_dir / "assay_gate.json").write_text(
+        json.dumps(jsonable(gate), indent=2, allow_nan=False) + "\n"
+    )
 
     print(json.dumps({"status": status, "blockers": blockers[:10]}, indent=2))
     if status == STATUS_PASS:

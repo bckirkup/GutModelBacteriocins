@@ -710,9 +710,6 @@ GATE_NOTES = [
 ]
 
 
-def write_json(path: Path, payload) -> None:
-    path.write_text(json.dumps(jsonable(payload), indent=2, allow_nan=False) + "\n")
-
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -771,7 +768,9 @@ def main() -> int:
         "paired_times_by_seed": pairing,
         "n_profile_rows": len(profile_rows),
     }
-    write_json(args.output_dir / "transport_metrics.json", metrics)
+    (args.output_dir / "transport_metrics.json").write_text(
+        json.dumps(jsonable(metrics), indent=2, allow_nan=False) + "\n"
+    )
 
     gate = {
         "status": "BLOCKED",
@@ -793,12 +792,16 @@ def main() -> int:
         "order_detail": order_detail,
         "notes": GATE_NOTES,
     }
-    write_json(args.output_dir / "transport_gate.json", gate)
+    (args.output_dir / "transport_gate.json").write_text(
+        json.dumps(jsonable(gate), indent=2, allow_nan=False) + "\n"
+    )
 
     metrics["transport_profiles_png_written"] = write_profiles_png(
         args.output_dir / "transport_profiles.png", seed_level
     )
-    write_json(args.output_dir / "transport_metrics.json", metrics)
+    (args.output_dir / "transport_metrics.json").write_text(
+        json.dumps(jsonable(metrics), indent=2, allow_nan=False) + "\n"
+    )
 
     print(
         json.dumps(
