@@ -94,8 +94,12 @@ class GutIBMData:
             "n_total": read_scalar("n_total") if "n_total" in grp else read_scalar("num_agents"),
             "num_agents": read_scalar("num_agents") if "num_agents" in grp else read_scalar("n_total"),
         }
-        if "num_lineages" in grp:
-            out["num_lineages"] = read_scalar("num_lineages")
+        self._collect_summary_details(grp, out)
+        return out
+
+    @staticmethod
+    def _collect_summary_details(grp: h5py.Group, out: dict[str, Any]) -> None:
+        """Populate optional summary members (groups, scalars, arrays)."""
 
         def read_scalar_or_list(ds: Any) -> Any:
             arr = np.array(ds)
@@ -108,8 +112,14 @@ class GutIBMData:
                 out[group_key] = {
                     name: np.array(ds).item() for name, ds in grp[group_key].items()
                 }
-        if "dt" in grp:
-            out["dt"] = read_scalar("dt")
+        for name in (
+            "num_lineages",
+            "dt",
+            "halt_reason_code",
+            "halt_density_cells_per_mL",
+        ):
+            if name in grp:
+                out[name] = np.array(grp[name]).item()
         for array_key in (
             "n_by_type",
             "n_in_crypt",
@@ -120,10 +130,6 @@ class GutIBMData:
         ):
             if array_key in grp:
                 out[array_key] = np.array(grp[array_key])
-        for name in ("halt_reason_code", "halt_density_cells_per_mL"):
-            if name in grp:
-                out[name] = read_scalar(name)
-        return out
 
     def get_run_provenance(self) -> dict[str, Any]:
         """Return run-level provenance and termination metadata."""
