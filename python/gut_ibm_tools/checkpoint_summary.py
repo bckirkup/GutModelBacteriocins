@@ -204,21 +204,23 @@ def _flatten_summary_scalars(summary: dict[str, Any]) -> dict[str, float | int]:
     for key, value in spatial.items():
         out[f"summary_spatial_{key}"] = float(value)
 
+    _flatten_summary_arrays(summary, out)
+    return out
+
+
+def _flatten_summary_arrays(
+    summary: dict[str, Any], out: dict[str, float | int]
+) -> None:
     for array_key in ("n_by_type", "n_in_crypt", "n_by_state"):
         if array_key not in summary:
             continue
-        arr = np.asarray(summary[array_key]).ravel()
-        for i, value in enumerate(arr):
-            out[f"{array_key}_{i}"] = int(value) if array_key.startswith("n_") else float(value)
-
+        for i, value in enumerate(np.asarray(summary[array_key]).ravel()):
+            out[f"{array_key}_{i}"] = int(value)
     for array_key in ("mean_z_by_type", "mean_mu_by_type"):
         if array_key not in summary:
             continue
-        arr = np.asarray(summary[array_key]).ravel()
-        for i, value in enumerate(arr):
+        for i, value in enumerate(np.asarray(summary[array_key]).ravel()):
             out[f"{array_key}_{i}"] = float(value)
-
-    return out
 
 
 def _agent_layer_stats(agents: dict[str, np.ndarray]) -> dict[str, float]:

@@ -203,7 +203,7 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    except (OSError, ValueError, json.JSONDecodeError, pd.errors.ParserError) as exc:
+    except (OSError, ValueError) as exc:  # JSONDecodeError/ParserError subclass ValueError
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
