@@ -21,6 +21,7 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
     """Write a minimal Spec-4-compatible HDF5 file for tests."""
     rng = np.random.default_rng(42)
     nx, ny, nz = 4, 5, 1
+    ncells = nx * ny * nz
 
     with h5py.File(path, "w") as f:
         f.attrs["gutibm_version"] = 4
@@ -96,6 +97,10 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
                 x_profile, (nz, ny, nx)
             ) ** (1 + 0.2 * step_idx)
             grid.create_dataset("bacteriocin_BtuB", data=btub)
+            carbon = np.full((nz, ny, nx), 1.0 + 0.1 * step_idx)
+            grid.create_dataset("carbon", data=carbon)
+            acetate = np.linspace(0.0, 1.0, ncells).reshape(nz, ny, nx)
+            grid.create_dataset("acetate", data=acetate)
 
             summary = f.require_group("summary").require_group(step_name)
             summary.create_dataset("time", data=np.array(step_idx * 3600.0))
@@ -103,6 +108,21 @@ def write_sample_hdf5(path: Path, *, n_agents: int = 12, n_steps: int = 2) -> No
             summary.create_dataset("n_total", data=np.array(n_agents, dtype=np.int32))
             summary.create_dataset("num_agents", data=np.array(n_agents, dtype=np.int32))
             summary.create_dataset("num_lineages", data=np.array(3, dtype=np.int32))
+            summary.create_dataset(
+                "n_by_type",
+                data=np.array([0, n_per_type, n_per_type] + [0] * 5, dtype=np.int32),
+            )
+            events = summary.require_group("events")
+            events.create_dataset(
+                "mortality_colicin", data=np.array(step_idx * 2, dtype=np.int32)
+            )
+            events.create_dataset("mortality_cdi", data=np.array(step_idx, dtype=np.int32))
+            events.create_dataset("divisions", data=np.array(n_agents + step_idx, dtype=np.int32))
+            events.create_dataset("outflow_washout", data=np.array(0, dtype=np.int32))
+            chem = summary.require_group("chem")
+            chem.create_dataset("mean_carbon", data=np.array(1.0 + 0.1 * step_idx))
+            chem.create_dataset("mean_oxygen", data=np.array(0.05))
+            chem.create_dataset("max_toxin_BtuB", data=np.array(float(btub.max())))
             summary.create_dataset("halt_reason_code", data=np.array(0, dtype=np.int32))
             summary.create_dataset(
                 "halt_density_cells_per_mL", data=np.array(0.0, dtype=np.float64)

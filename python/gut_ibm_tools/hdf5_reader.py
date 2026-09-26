@@ -112,6 +112,18 @@ class GutIBMData:
             out["mechanics"] = {
                 name: np.array(ds).item() for name, ds in grp["mechanics"].items()
             }
+        if "dt" in grp:
+            out["dt"] = read_scalar("dt")
+        for array_key in (
+            "n_by_type",
+            "n_in_crypt",
+            "n_by_state",
+            "mean_z_by_type",
+            "mean_mu_by_type",
+            "mean_receptor_expr",
+        ):
+            if array_key in grp:
+                out[array_key] = np.array(grp[array_key])
         for name in ("halt_reason_code", "halt_density_cells_per_mL"):
             if name in grp:
                 out[name] = read_scalar(name)
@@ -172,21 +184,41 @@ class GutIBMData:
 
     def get_grid(self, step: str) -> dict[str, np.ndarray]:
         """Return chemical grid arrays for a step (3D datasets flattened to 1D)."""
+        return {name: arr.ravel() for name, arr in self.get_grid_volumes(step).items()}
+
+    def get_grid_volumes(self, step: str) -> dict[str, np.ndarray]:
+        """Return chemical grid arrays preserving native dataset shapes."""
         assert self._file is not None
         path = f"grid/{step}"
         if path not in self._file:
             return {}
         grp = self._file[path]
-        out: dict[str, np.ndarray] = {}
-        for name, ds in grp.items():
-            arr = np.array(ds)
-            out[name] = arr.ravel()
-        return out
+        return {name: np.array(ds) for name, ds in grp.items()}
+
+    def has_layer(self, layer: str) -> bool:
+        """Return True if a top-level Spec-4 group exists (e.g. ``summary``)."""
+        assert self._file is not None
+        return layer in self._file
 
     def grid_shape(self) -> tuple[int, int, int]:
         """Return the grid shape as ``(nx, ny, nz)``."""
         assert self._file is not None
         return self._nx, self._ny, self._nz
+
+    @property
+    def grid_dx(self) -> float:
+        """Return a representative grid spacing (m).
+
+        Legacy ``grid_dx`` attribute when present; otherwise the mean of the
+        per-axis spacings derived by :meth:`_grid_origins_and_spacings`.
+        """
+        assert self._file is not None
+        legacy_dx = float(self._file.attrs.get("grid_dx", 0.0))
+        if legacy_dx > 0:
+            return legacy_dx
+        _, spacings = self._grid_origins_and_spacings()
+        nonzero = spacings[spacings > 0]
+        return float(np.mean(nonzero)) if nonzero.size else 0.0
 
     def _grid_origins_and_spacings(self) -> tuple[np.ndarray, np.ndarray]:
         """Return physical grid origins and cell spacings for each axis."""

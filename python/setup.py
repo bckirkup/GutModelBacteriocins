@@ -10,6 +10,7 @@ setup(
         "numpy>=1.21",
         "h5py>=3.0",
         "scipy>=1.7",
+        "pandas>=1.5",
     ],
     extras_require={
         "viz": ["matplotlib>=3.5"],
@@ -18,6 +19,7 @@ setup(
     entry_points={
         "console_scripts": [
             "gut-ibm-batch=gut_ibm_tools.batch_runner:main",
+            "gut-ibm-analyze=gut_ibm_tools.checkpoint_analyze:main",
             "gut-ibm-aws-export=gut_ibm_tools.aws_batch_export:main",
             "gut-ibm-aws-status=gut_ibm_tools.aws_batch_status:main",
             "gut-ibm-aws-estimate=gut_ibm_tools.aws_batch_estimate:main",
