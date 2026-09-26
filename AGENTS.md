@@ -93,7 +93,7 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | `docs/EXTERNAL_AUDIT_2026-08.md` | External audit claims, per-claim verdicts, and the decisions taken |
 | `docs/GPU_COST_BENEFIT_2026-08.md` | Measured T4 cost/benefit per uptake mode and scale, with raw records under `bench_results/` |
 | `docs/GPU_PRECISION_CAMPAIGN_2026-09.md` | Host/device outcome interchangeability (p1 precision + 1440-step agent-dense science arm) and speedup vs agent load, records under `bench_results/gpu_precision_2026-09/` |
-| `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization |
+| `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization, checkpoint analyze CLI |
 | `python/gut_ibm_tools/colony.py` and `spatial_stats.py` | Colony catalogs and 3-D spatial observables |
 | `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `batch_scan/`, `scaling_benchmark/` |
 | `tests/` | CTest targets (see test map below) |
@@ -314,6 +314,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `docs/API.md` — class reference
 - `docs/CONFIG_FORMAT.md` — strict JSON input format
 - `docs/BATCH_RUNNER.md` — resumable parameter-scan CLI
+- `docs/CHECKPOINT_ANALYSIS.md` — stream Spec-4 `step_*.h5` checkpoints → CSV/PNG
 - `docs/PARAMETERS.md` — configurable parameters
 - `docs/SCALING.md` — agent-count benchmarks and profiling
 - `docs/AWS_BATCH.md` — AWS Batch Spot + CUDA deployment + Phase Observability

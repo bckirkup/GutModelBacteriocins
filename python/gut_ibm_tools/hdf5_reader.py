@@ -94,28 +94,42 @@ class GutIBMData:
             "n_total": read_scalar("n_total") if "n_total" in grp else read_scalar("num_agents"),
             "num_agents": read_scalar("num_agents") if "num_agents" in grp else read_scalar("n_total"),
         }
-        if "num_lineages" in grp:
-            out["num_lineages"] = read_scalar("num_lineages")
+        self._collect_summary_details(grp, out)
+        return out
+
+    @staticmethod
+    def _collect_summary_details(grp: h5py.Group, out: dict[str, Any]) -> None:
+        """Populate optional summary members (groups, scalars, arrays)."""
+
         def read_scalar_or_list(ds: Any) -> Any:
             arr = np.array(ds)
             return arr.item() if arr.size == 1 else arr.tolist()
 
         if "events" in grp:
             out["events"] = {name: read_scalar_or_list(ds) for name, ds in grp["events"].items()}
-        if "chem" in grp:
-            out["chem"] = {name: np.array(ds).item() for name, ds in grp["chem"].items()}
-        if "spatial" in grp:
-            out["spatial"] = {name: np.array(ds).item() for name, ds in grp["spatial"].items()}
-        if "stocks" in grp:
-            out["stocks"] = {name: np.array(ds).item() for name, ds in grp["stocks"].items()}
-        if "mechanics" in grp:
-            out["mechanics"] = {
-                name: np.array(ds).item() for name, ds in grp["mechanics"].items()
-            }
-        for name in ("halt_reason_code", "halt_density_cells_per_mL"):
+        for group_key in ("chem", "spatial", "stocks", "mechanics"):
+            if group_key in grp:
+                out[group_key] = {
+                    name: np.array(ds).item() for name, ds in grp[group_key].items()
+                }
+        for name in (
+            "num_lineages",
+            "dt",
+            "halt_reason_code",
+            "halt_density_cells_per_mL",
+        ):
             if name in grp:
-                out[name] = read_scalar(name)
-        return out
+                out[name] = np.array(grp[name]).item()
+        for array_key in (
+            "n_by_type",
+            "n_in_crypt",
+            "n_by_state",
+            "mean_z_by_type",
+            "mean_mu_by_type",
+            "mean_receptor_expr",
+        ):
+            if array_key in grp:
+                out[array_key] = np.array(grp[array_key])
 
     def get_run_provenance(self) -> dict[str, Any]:
         """Return run-level provenance and termination metadata."""
@@ -172,21 +186,41 @@ class GutIBMData:
 
     def get_grid(self, step: str) -> dict[str, np.ndarray]:
         """Return chemical grid arrays for a step (3D datasets flattened to 1D)."""
+        return {name: arr.ravel() for name, arr in self.get_grid_volumes(step).items()}
+
+    def get_grid_volumes(self, step: str) -> dict[str, np.ndarray]:
+        """Return chemical grid arrays preserving native dataset shapes."""
         assert self._file is not None
         path = f"grid/{step}"
         if path not in self._file:
             return {}
         grp = self._file[path]
-        out: dict[str, np.ndarray] = {}
-        for name, ds in grp.items():
-            arr = np.array(ds)
-            out[name] = arr.ravel()
-        return out
+        return {name: np.array(ds) for name, ds in grp.items()}
+
+    def has_layer(self, layer: str) -> bool:
+        """Return True if a top-level Spec-4 group exists (e.g. ``summary``)."""
+        assert self._file is not None
+        return layer in self._file
 
     def grid_shape(self) -> tuple[int, int, int]:
         """Return the grid shape as ``(nx, ny, nz)``."""
         assert self._file is not None
         return self._nx, self._ny, self._nz
+
+    @property
+    def grid_dx(self) -> float:
+        """Return a representative grid spacing (m).
+
+        Legacy ``grid_dx`` attribute when present; otherwise the mean of the
+        per-axis spacings derived by :meth:`_grid_origins_and_spacings`.
+        """
+        assert self._file is not None
+        legacy_dx = float(self._file.attrs.get("grid_dx", 0.0))
+        if legacy_dx > 0:
+            return legacy_dx
+        _, spacings = self._grid_origins_and_spacings()
+        nonzero = spacings[spacings > 0]
+        return float(np.mean(nonzero)) if nonzero.size else 0.0
 
     def _grid_origins_and_spacings(self) -> tuple[np.ndarray, np.ndarray]:
         """Return physical grid origins and cell spacings for each axis."""
