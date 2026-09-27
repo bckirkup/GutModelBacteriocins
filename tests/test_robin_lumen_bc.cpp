@@ -111,11 +111,16 @@ SimulationConfig provenance_test_config() {
   return config;
 }
 
+// A disabled-transfer (lumen_transfer_length = inf) table build is
+// metadata-only, so cache bookkeeping assertions can key tables by
+// image_series_max_shells — an exact-integer key field — instead of paying
+// for a full mode-expansion build per distinct key.
 std::shared_ptr<const robin::Table> build_identity_table(
-    const TestSystem& system, Real transfer_length) {
+    const TestSystem& system, int image_series_max_shells) {
   return robin::global_table_cache().get(
       system.adv, 0.0, 100.0e-6, 4.0e-11, 2.0e-11, 5.0e-5,
-      transfer_length, 173.0e-6, robin::TransferBasis::Effective);
+      std::numeric_limits<Real>::infinity(), 173.0e-6,
+      robin::TransferBasis::Effective, 1.0e-10, image_series_max_shells);
 }
 
 void test_run_scoped_identity_and_eviction() {
@@ -128,13 +133,12 @@ void test_run_scoped_identity_and_eviction() {
   const uint64_t evictions_before = cache.table_evictions();
   const uint64_t identity_before = cache.built_identity();
 
-  constexpr Real set_base = 7.123e-6;
+  constexpr int set_shells_base = 700;
   std::array<std::shared_ptr<const robin::Table>, 3> set_tables;
   uint64_t expected_identity = 0;
   for (size_t index = 0; index < set_tables.size(); ++index) {
-    const Real transfer_length = set_base
-        * std::pow(1.05, static_cast<Real>(index));
-    set_tables[index] = build_identity_table(system, transfer_length);
+    const int shells = set_shells_base + static_cast<int>(index);
+    set_tables[index] = build_identity_table(system, shells);
     expected_identity ^= table_identity_hash(*set_tables[index]);
   }
   const uint64_t set_identity = expected_identity;
@@ -146,9 +150,7 @@ void test_run_scoped_identity_and_eviction() {
 
   constexpr int filler_count = 64;
   for (int index = 0; index < filler_count; ++index) {
-    const Real transfer_length = 1.234e-6
-        * std::pow(1.05, static_cast<Real>(index));
-    const auto filler = build_identity_table(system, transfer_length);
+    const auto filler = build_identity_table(system, index);
     expected_identity ^= table_identity_hash(*filler);
   }
   require(cache.table_evictions() > evictions_before,
@@ -159,9 +161,8 @@ void test_run_scoped_identity_and_eviction() {
   second.init(second_config);
   uint64_t reverse_identity = 0;
   for (size_t index = set_tables.size(); index > 0; --index) {
-    const Real transfer_length = set_base
-        * std::pow(1.05, static_cast<Real>(index - 1));
-    const auto table = build_identity_table(system, transfer_length);
+    const int shells = set_shells_base + static_cast<int>(index - 1);
+    const auto table = build_identity_table(system, shells);
     reverse_identity ^= table_identity_hash(*table);
   }
 
@@ -849,26 +850,56 @@ void test_peristaltic_mean_profile() {
 
 }  // namespace
 
-int main() {
+namespace {
+
+struct NamedTest {
+  const char* name;
+  void (*run)();
+};
+
+const std::array<NamedTest, 18> kTests = {{
+    {"launch_local_table_mapping", test_launch_local_table_mapping},
+    {"robin_fallback_preflight", test_robin_fallback_preflight},
+    {"disabled_default_is_inert", test_disabled_default_is_inert},
+    {"enabled_boundary_impact", test_enabled_boundary_impact},
+    {"flux_residual", test_flux_residual},
+    {"table_against_direct_modes", test_table_against_direct_modes},
+    {"sealed_limit", test_sealed_limit},
+    {"robin_mode_residuals", test_robin_mode_residuals},
+    {"colE1_pole_regression", test_colE1_pole_regression},
+    {"sink_limit", test_sink_limit},
+    {"cross_language_anchors", test_cross_language_anchors},
+    {"shipped_screening_sealed_series", test_shipped_screening_sealed_series},
+    {"shipped_flow_direct_boundary", test_shipped_flow_direct_boundary},
+    {"shipped_flow_reconstruction", test_shipped_flow_reconstruction},
+    {"shipped_flow_interpolated_wall_guard",
+     test_shipped_flow_interpolated_wall_guard},
+    {"basis_and_cache", test_basis_and_cache},
+    {"run_scoped_identity_and_eviction", test_run_scoped_identity_and_eviction},
+    {"peristaltic_mean_profile", test_peristaltic_mean_profile},
+}};
+
+}  // namespace
+
+int main(int argc, char** argv) {
   std::cout << "=== Independent Robin Lumen-Boundary Tests ===\n";
-  test_launch_local_table_mapping();
-  test_robin_fallback_preflight();
-  test_disabled_default_is_inert();
-  test_enabled_boundary_impact();
-  test_flux_residual();
-  test_table_against_direct_modes();
-  test_sealed_limit();
-  test_robin_mode_residuals();
-  test_colE1_pole_regression();
-  test_sink_limit();
-  test_cross_language_anchors();
-  test_shipped_screening_sealed_series();
-  test_shipped_flow_direct_boundary();
-  test_shipped_flow_reconstruction();
-  test_shipped_flow_interpolated_wall_guard();
-  test_basis_and_cache();
-  test_run_scoped_identity_and_eviction();
-  test_peristaltic_mean_profile();
+  if (argc > 1) {
+    for (int i = 1; i < argc; ++i) {
+      const std::string shard = argv[i];
+      const auto it = std::find_if(
+          kTests.begin(), kTests.end(),
+          [&shard](const NamedTest& test) { return shard == test.name; });
+      if (it == kTests.end()) {
+        std::cerr << "unknown Robin test shard: " << shard << "\n";
+        return 2;
+      }
+      it->run();
+    }
+    return 0;
+  }
+  for (const NamedTest& test : kTests) {
+    test.run();
+  }
   std::cout << "All independent Robin lumen-boundary tests passed.\n";
   return 0;
 }

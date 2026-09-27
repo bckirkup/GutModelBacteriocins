@@ -63,7 +63,7 @@ endif()
 target_link_libraries(gutibm PUBLIC ${MATH_LIB})
 
 function(gutibm_add_test name source)
-  cmake_parse_arguments(ARG "" "" "LABELS;COMPILE_DEFINITIONS" ${ARGN})
+  cmake_parse_arguments(ARG "" "" "LABELS;COMPILE_DEFINITIONS;SHARDS" ${ARGN})
   set(exe test_${name})
   add_executable(${exe} ${source})
   gutibm_enable_test_assertions(${exe})
@@ -71,16 +71,27 @@ function(gutibm_add_test name source)
   if(ARG_COMPILE_DEFINITIONS)
     target_compile_definitions(${exe} PRIVATE ${ARG_COMPILE_DEFINITIONS})
   endif()
-  add_test(NAME ${name} COMMAND ${exe})
+  if(ARG_SHARDS)
+    set(test_names "")
+    foreach(shard IN LISTS ARG_SHARDS)
+      add_test(NAME ${name}_${shard} COMMAND ${exe} ${shard})
+      list(APPEND test_names ${name}_${shard})
+    endforeach()
+  else()
+    add_test(NAME ${name} COMMAND ${exe})
+    set(test_names ${name})
+  endif()
   if(ARG_LABELS)
-    if("gpu" IN_LIST ARG_LABELS)
-      set_tests_properties(${name} PROPERTIES
-        LABELS "${ARG_LABELS}"
-        SKIP_RETURN_CODE 77
-      )
-    else()
-      set_tests_properties(${name} PROPERTIES LABELS "${ARG_LABELS}")
-    endif()
+    foreach(test_name IN LISTS test_names)
+      if("gpu" IN_LIST ARG_LABELS)
+        set_tests_properties(${test_name} PROPERTIES
+          LABELS "${ARG_LABELS}"
+          SKIP_RETURN_CODE 77
+        )
+      else()
+        set_tests_properties(${test_name} PROPERTIES LABELS "${ARG_LABELS}")
+      endif()
+    endforeach()
   endif()
 endfunction()
 
@@ -93,12 +104,47 @@ gutibm_add_test(dysbiosis_guardrail test_dysbiosis_guardrail.cpp LABELS "unit")
 gutibm_add_test(spatial_hash test_spatial_hash.cpp LABELS "unit")
 gutibm_add_test(greens_function test_greens_function.cpp LABELS "unit")
 gutibm_add_test(neumann_image_series test_neumann_image_series.cpp LABELS "unit")
-gutibm_add_test(neumann_wall_normal_drift test_neumann_wall_normal_drift.cpp LABELS "unit")
-gutibm_add_test(robin_lumen_bc test_robin_lumen_bc.cpp LABELS "unit")
+gutibm_add_test(neumann_wall_normal_drift test_neumann_wall_normal_drift.cpp LABELS "unit"
+  SHARDS
+    zero_wall_normal_flow_is_exact
+    wall_normal_flow_sweep
+    reflected_flow_reversal
+    wall_parallel_flow_is_exact
+    drift_classifier
+    drift_envelope_policy
+    runtime_plasmid_basis
+    physical_wall_law_composition
+    zero_drift_correction_invariance
+    physical_sealed_interpolation
+    correction_improves_with_wall_normal_flow
+    robin_composition
+    default_off_identity)
+# Sharded: the eviction exercise alone builds 60+ Robin tables; one CTest
+# entry per sub-test lets --parallel keep the job's wall clock near the
+# longest shard instead of the whole binary.
+gutibm_add_test(robin_lumen_bc test_robin_lumen_bc.cpp LABELS "unit"
+  SHARDS launch_local_table_mapping robin_fallback_preflight
+         disabled_default_is_inert enabled_boundary_impact flux_residual
+         table_against_direct_modes sealed_limit robin_mode_residuals
+         colE1_pole_regression sink_limit cross_language_anchors
+         shipped_screening_sealed_series shipped_flow_direct_boundary
+         shipped_flow_reconstruction shipped_flow_interpolated_wall_guard
+         basis_and_cache run_scoped_identity_and_eviction
+         peristaltic_mean_profile)
 gutibm_add_test(agent test_agent.cpp LABELS "unit")
 gutibm_add_test(iron_fallback test_iron_fallback.cpp LABELS "unit")
 gutibm_add_test(octree test_octree.cpp LABELS "unit")
-gutibm_add_test(fmm test_fmm.cpp LABELS "unit")
+gutibm_add_test(fmm test_fmm.cpp LABELS "unit"
+  SHARDS
+    coefficient_count
+    build_and_moments
+    degenerate_clusters_match_direct_field
+    accuracy_order2_vs_exact
+    higher_order_vs_monopole
+    local_expansion_nonnegative
+    kernel_derivative_accuracy
+    large_tree_locals_ready
+    config_defaults)
 gutibm_add_test(qssa_stoichiometry test_qssa_stoichiometry.cpp LABELS "unit")
 gutibm_add_test(chemical_field_reaction_residency
   test_chemical_field_reaction_residency.cpp LABELS "unit")

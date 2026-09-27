@@ -577,21 +577,51 @@ void test_robin_composition() {
 
 }  // namespace
 
-int main() {
+namespace {
+
+struct NamedTest {
+  const char* name;
+  void (*run)();
+};
+
+const std::array<NamedTest, 13> kTests = {{
+    {"zero_wall_normal_flow_is_exact", test_zero_wall_normal_flow_is_exact},
+    {"wall_normal_flow_sweep", test_wall_normal_flow_sweep_is_sensitive_and_ordered},
+    {"reflected_flow_reversal", test_reflected_flow_reversal_is_detectable},
+    {"wall_parallel_flow_is_exact", test_wall_parallel_flow_is_exact},
+    {"drift_classifier", test_drift_classifier},
+    {"drift_envelope_policy", test_drift_envelope_policy},
+    {"runtime_plasmid_basis", test_runtime_plasmid_basis_closes_gate_hole},
+    {"physical_wall_law_composition", test_physical_wall_law_composition},
+    {"zero_drift_correction_invariance", test_zero_drift_correction_invariance},
+    {"physical_sealed_interpolation", test_physical_sealed_interpolation},
+    {"correction_improves_with_wall_normal_flow",
+     test_correction_improves_with_wall_normal_flow},
+    {"robin_composition", test_robin_composition},
+    {"default_off_identity", test_default_off_identity},
+}};
+
+}  // namespace
+
+int main(int argc, char** argv) {
   std::cout << "=== Wall-Normal Drift Envelope Tests ===\n";
-  test_zero_wall_normal_flow_is_exact();
-  test_wall_normal_flow_sweep_is_sensitive_and_ordered();
-  test_reflected_flow_reversal_is_detectable();
-  test_wall_parallel_flow_is_exact();
-  test_drift_classifier();
-  test_drift_envelope_policy();
-  test_runtime_plasmid_basis_closes_gate_hole();
-  test_physical_wall_law_composition();
-  test_zero_drift_correction_invariance();
-  test_physical_sealed_interpolation();
-  test_correction_improves_with_wall_normal_flow();
-  test_robin_composition();
-  test_default_off_identity();
+  if (argc > 1) {
+    for (int i = 1; i < argc; ++i) {
+      const std::string shard = argv[i];
+      const auto it = std::find_if(
+          kTests.begin(), kTests.end(),
+          [&shard](const NamedTest& test) { return shard == test.name; });
+      if (it == kTests.end()) {
+        std::cerr << "unknown drift-envelope test shard: " << shard << "\n";
+        return 2;
+      }
+      it->run();
+    }
+    return 0;
+  }
+  for (const NamedTest& test : kTests) {
+    test.run();
+  }
   std::cout << "All wall-normal drift envelope tests passed.\n";
   return 0;
 }

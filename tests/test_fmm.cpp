@@ -12,10 +12,13 @@
 #include "domain.h"
 #include "advection.h"
 #include "random.h"
+#include <algorithm>
+#include <array>
 #include <cassert>
 #include <iostream>
 #include <cmath>
 #include <functional>
+#include <string>
 #include <vector>
 
 using namespace gutibm;
@@ -368,17 +371,48 @@ void test_fmm_config_defaults() {
   std::cout << "  test_fmm_config_defaults: PASSED\n";
 }
 
-int main() {
+namespace {
+
+struct NamedTest {
+  const char* name;
+  void (*run)();
+};
+
+const std::array<NamedTest, 9> kTests = {{
+    {"coefficient_count", test_fmm_coefficient_count},
+    {"build_and_moments", test_fmm_build_and_moments},
+    {"degenerate_clusters_match_direct_field",
+     test_fmm_degenerate_clusters_match_direct_field},
+    {"accuracy_order2_vs_exact", test_fmm_accuracy_order2_vs_exact},
+    {"higher_order_vs_monopole",
+     test_fmm_higher_order_more_accurate_than_monopole},
+    {"local_expansion_nonnegative", test_fmm_local_expansion_nonnegative},
+    {"kernel_derivative_accuracy", test_fmm_kernel_derivative_accuracy},
+    {"large_tree_locals_ready", test_fmm_large_tree_locals_ready},
+    {"config_defaults", test_fmm_config_defaults},
+}};
+
+}  // namespace
+
+int main(int argc, char** argv) {
   std::cout << "=== FMM Tests ===\n";
-  test_fmm_coefficient_count();
-  test_fmm_build_and_moments();
-  test_fmm_degenerate_clusters_match_direct_field();
-  test_fmm_accuracy_order2_vs_exact();
-  test_fmm_higher_order_more_accurate_than_monopole();
-  test_fmm_local_expansion_nonnegative();
-  test_fmm_kernel_derivative_accuracy();
-  test_fmm_large_tree_locals_ready();
-  test_fmm_config_defaults();
+  if (argc > 1) {
+    for (int i = 1; i < argc; ++i) {
+      const std::string shard = argv[i];
+      const auto it = std::find_if(
+          kTests.begin(), kTests.end(),
+          [&shard](const NamedTest& test) { return shard == test.name; });
+      if (it == kTests.end()) {
+        std::cerr << "unknown FMM test shard: " << shard << "\n";
+        return 2;
+      }
+      it->run();
+    }
+    return 0;
+  }
+  for (const NamedTest& test : kTests) {
+    test.run();
+  }
   std::cout << "All FMM tests passed.\n";
   return 0;
 }

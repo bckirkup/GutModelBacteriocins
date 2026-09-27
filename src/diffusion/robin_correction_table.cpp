@@ -318,29 +318,46 @@ double mode_sum_betas(double z_source, double z_target, double rho,
   return 2.0 * sum;
 }
 
+// Eigenfunction and normalization values depend on (beta, z) only, so a
+// table build computes them once per (grid node, mode) instead of once per
+// (source, target, rho) cell.
+struct ModeBasis {
+  std::vector<double> phi;
+  std::vector<double> norm;
+};
+
+ModeBasis build_mode_basis(const std::vector<double>& betas, double eigen_a,
+                           double z_lo, double height) {
+  ModeBasis basis;
+  const size_t modes = betas.size();
+  basis.phi.resize(static_cast<size_t>(kTableNodes) * modes);
+  basis.norm.resize(modes);
+  for (int index = 0; index < kTableNodes; ++index) {
+    const double z = z_lo
+        + height * index / static_cast<double>(kTableNodes - 1);
+    for (size_t mode = 0; mode < modes; ++mode) {
+      basis.phi[static_cast<size_t>(index) * modes + mode] =
+          eigenfunction(betas[mode], eigen_a, z - z_lo);
+    }
+  }
+  for (size_t mode = 0; mode < modes; ++mode) {
+    basis.norm[mode] = normalization(betas[mode], eigen_a, height);
+  }
+  return basis;
+}
+
 double mode_sum_betas_lookup(
-    double z_source, double z_target, double z_lo, double z_hi,
-    double d_eff, const std::vector<double>& betas,
-    double flow_x, double flow_y, double flow_z, int rho_index,
-    const std::vector<double>& bessel_values, double eigen_a) {
-  const double height = z_hi - z_lo;
-  (void)d_eff;
-  (void)flow_x;
-  (void)flow_y;
-  (void)flow_z;
+    const ModeBasis& basis, int source_index, int target_index,
+    int rho_index, const std::vector<double>& bessel_values) {
+  const size_t modes = basis.norm.size();
+  const size_t source_base = static_cast<size_t>(source_index) * modes;
+  const size_t target_base = static_cast<size_t>(target_index) * modes;
+  const size_t rho_base = static_cast<size_t>(rho_index) * modes;
   double sum = 0.0;
-  for (size_t mode = 0; mode < betas.size(); ++mode) {
-    const double beta = betas[mode];
-    const double phi_source =
-        eigenfunction(beta, eigen_a, z_source - z_lo);
-    const double phi_target =
-        eigenfunction(beta, eigen_a, z_target - z_lo);
-    const double normalization_value = normalization(
-        beta, eigen_a, height);
-    sum += phi_source * phi_target
-        * bessel_values[static_cast<size_t>(rho_index) * betas.size()
-                        + mode]
-        / normalization_value;
+  for (size_t mode = 0; mode < modes; ++mode) {
+    sum += basis.phi[source_base + mode] * basis.phi[target_base + mode]
+        * bessel_values[rho_base + mode]
+        / basis.norm[mode];
   }
   // The correction table stores the gauge-transformed field only.
   return 2.0 * sum;
@@ -660,19 +677,21 @@ Table build_legacy_table(const AdvectionField& adv, double z_lo, double z_hi,
             std::cyl_bessel_k(0, sealed_kappa * lateral_rho);
       }
     }
+    const ModeBasis robin_basis =
+        build_mode_basis(robin_betas, -a, z_lo, table.height);
+    const ModeBasis sealed_basis =
+        build_mode_basis(sealed_betas, a, z_lo, table.height);
     for (int target_index = 0; target_index < kTableNodes; ++target_index) {
       const double z_target = z_lo + table.height * target_index
           / static_cast<double>(kTableNodes - 1);
       for (int rho_index = 0; rho_index < kTableNodes; ++rho_index) {
         legacy_values[table_index(source_index, target_index, rho_index)] =
             mode_sum_betas_lookup(
-            z_source, z_target, z_lo, z_hi, d_eff,
-            robin_betas, flow[0], flow[1], flow[2], rho_index,
-            robin_bessel, -a)
+                robin_basis, source_index, target_index, rho_index,
+                robin_bessel)
             - mode_sum_betas_lookup(
-            z_source, z_target, z_lo, z_hi, d_eff,
-            sealed_betas, flow[0], flow[1], flow[2], rho_index,
-            sealed_bessel, a);
+                sealed_basis, source_index, target_index, rho_index,
+                sealed_bessel);
         const double legacy_zero = 2.0 * std::exp(
             -a * (z_source - z_lo) - a * (z_target - z_lo))
             * sealed_zero_bessel[rho_index]
@@ -777,6 +796,10 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
             std::cyl_bessel_k(0, sealed_kappa * lateral_rho);
       }
     }
+    const ModeBasis robin_basis =
+        build_mode_basis(robin_betas, -a, z_lo, table.height);
+    const ModeBasis sealed_basis =
+        build_mode_basis(sealed_betas, -a, z_lo, table.height);
     for (int target_index = 0; target_index < kTableNodes; ++target_index) {
       const double z_target = z_lo + table.height * target_index
           / static_cast<double>(kTableNodes - 1);
@@ -789,11 +812,11 @@ Table build_table(const AdvectionField& adv, double z_lo, double z_hi,
                 / static_cast<double>(kTableNodes - 1));
         const double robin = robin_betas.empty() ? 0.0
             : mode_sum_betas_lookup(
-                z_source, z_target, z_lo, z_hi, d_eff, robin_betas,
-                flow[0], flow[1], flow[2], rho_index, robin_bessel, -a);
+                robin_basis, source_index, target_index, rho_index,
+                robin_bessel);
         const double physical_sealed = mode_sum_betas_lookup(
-            z_source, z_target, z_lo, z_hi, d_eff, sealed_betas,
-            flow[0], flow[1], flow[2], rho_index, sealed_bessel, -a)
+            sealed_basis, source_index, target_index, rho_index,
+            sealed_bessel)
             + 2.0 * std::exp(
                 a * (z_source - z_lo) + a * (z_target - z_lo))
                 * sealed_zero_bessel[rho_index]
