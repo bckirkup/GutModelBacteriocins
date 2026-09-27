@@ -68,6 +68,11 @@ ctest -L 'integration|slow|benchmark' -LE gpu   # integration job
 ctest -L gpu                                     # CUDA job only
 ```
 
+`robin_lumen_bc`, `neumann_wall_normal_drift`, and `fmm` register one CTest
+entry per named sub-test (see the `SHARDS` argument in `tests/CMakeLists.txt`;
+the binaries accept sub-test names as arguments, or run all with none). A
+single shard is run as `ctest -R robin_lumen_bc_sealed_limit`.
+
 CTest targets (including custom script and MPI targets; inventory from
 `tests/CMakeLists.txt`):
 
@@ -82,7 +87,9 @@ CTest targets (including custom script and MPI targets; inventory from
 | `agent` | unit | Agent pool and plasmid library |
 | `iron_fallback` | unit | Secondary iron receptors |
 | `octree` | unit | Barnes-Hut FMM versus exact Green's function |
-| `fmm` | unit | Higher-order FMM accuracy |
+| `fmm_<shard>` | unit | Higher-order FMM accuracy (9 shards) |
+| `neumann_wall_normal_drift_<shard>` | unit | Wall-normal drift envelope (13 shards) |
+| `robin_lumen_bc_<shard>` | unit | Robin lumen-boundary transfer (18 shards) |
 | `qssa_stoichiometry` | unit | QSSA reaction stoichiometry |
 | `conjugation` | unit | Pili length heterogeneity and transfer |
 | `z_gradient` | unit | Z-dependent nutrient gradients |
