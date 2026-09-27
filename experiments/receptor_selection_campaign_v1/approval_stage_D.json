@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "approval_id": "stage_D_release_C_transport_gate_2026-09-27",
+  "campaign_id": "receptor_selection_campaign_v1",
+  "stage": "D",
+  "operator_approval": "Benjamin (bckirkup) — explicit in-session approval, 2026-09-27",
+  "authorize_c_transport_gate": true,
+  "C_transport_gate": true,
+  "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
+  "execution_source_sha": "29fd563ce73b28059cb439694e92466f451ddb4a",
+  "container_image_digest": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
+  "image_digest": "sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
+  "jobs": 12,
+  "selected_mucin_charge_amplitude": 15.0,
+  "evidence": {
+    "intrinsic_assay_gate": "experiments/single_source_transport_assay_v1/analysis/assay_gate.json (PASS, single_source_transport_gate=true; array cd7fc9b3-e6b6-43e6-ab23-a98ef1b1e4ee)",
+    "refinement_gate": "experiments/adaptive_ecology_refinement_v1/analysis/refinement_gate.json (READY_FOR_APPROVAL → approved here; array 2355877a-a3a0-4765-8863-b84346868e0d; amplitude 15.0 qualified)",
+    "adjudication_note": "experiments/adaptive_ecology_refinement_v1/analysis/GATE_C_ADJUDICATION_2026-09-27.md",
+    "adjudication_pr": "https://github.com/bckirkup/GutModelBacteriocins/pull/429"
+  },
+  "scope": "Authorizes C_transport_gate for the issue-420 revised C-to-D handoff and releases Stage D (15 jobs) bound to exactly this execution source SHA, image digest, and selected amplitude. Does not authorize any other stage, re-runs, or a different SHA/digest/amplitude.",
+  "note": "container_image_digest is the full pinned URI as recorded in the adaptive_ecology_refinement_v1 manifest; image_digest is the bare sha256 digest as recorded in the stage_D manifest — both encode digest fafc77ee."
+}

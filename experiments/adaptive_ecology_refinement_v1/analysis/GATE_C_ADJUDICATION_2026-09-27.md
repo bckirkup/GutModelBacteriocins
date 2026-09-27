@@ -120,3 +120,25 @@ with zero blockers (the stamp is metadata binding, not a criterion).
 - `approval.json` and the campaign decision record untouched — the record
   still shows `single_source_transport_assay_v1: PENDING_ADAPTIVE_RUNS` and
   `D_release: BLOCKED`, which is what the operator approval step updates.
+
+## Post-adjudication addendum — approval granted and Stage D released (2026-09-27)
+
+The operator approved promotion in-session ("Proceed with approval and D").
+
+- `experiments/receptor_selection_campaign_v1/approval_stage_D.json`
+  records `authorize_c_transport_gate=true` / `C_transport_gate=true` bound
+  to baseline `ad037ef9…`, SHA `29fd563c…`, digest `fafc77ee…`, refinement
+  `jobs=12`, `selected_mucin_charge_amplitude=15.0`.
+- Re-ran `analyze_refinement.py --approval-file …`: gate is now **PASS**,
+  `C_transport_gate=true`, `stage_d_release=RELEASED` (see
+  `refinement_gate.json` — updated in place).
+- Stage D submitted on the same identity: Batch array
+  `47460bfa-1558-47b6-9a48-47b1bd9a7b0d` (15 jobs, queue
+  `gutibm-gpu-campaign`, job def `gutibm-cuda-campaign:14`, 7200 s).
+  Inputs at
+  `s3://gutibm-inputs-994254241749/receptor-selection-v1/29fd563c/stage-d/inputs`,
+  outputs land under
+  `s3://gutibm-outputs-994254241749/receptor-selection-v1/29fd563c/stage-d/outputs`.
+- `campaign_decision_record.json` updated: assay `PASS`, refinement `PASS`,
+  `D_release: RELEASED` with the execution record. Stage D analysis remains
+  pending until the array completes.
