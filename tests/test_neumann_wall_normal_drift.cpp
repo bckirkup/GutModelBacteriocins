@@ -11,6 +11,7 @@
 #include "qssa_solver.h"
 #include "robin_correction_table.h"
 #include "species_names.h"
+#include "test_shard_dispatch.h"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -579,12 +580,7 @@ void test_robin_composition() {
 
 namespace {
 
-struct NamedTest {
-  const char* name;
-  void (*run)();
-};
-
-const std::array<NamedTest, 13> kTests = {{
+const std::array<testshards::NamedTest, 13> kTests = {{
     {"zero_wall_normal_flow_is_exact", test_zero_wall_normal_flow_is_exact},
     {"wall_normal_flow_sweep", test_wall_normal_flow_sweep_is_sensitive_and_ordered},
     {"reflected_flow_reversal", test_reflected_flow_reversal_is_detectable},
@@ -604,24 +600,8 @@ const std::array<NamedTest, 13> kTests = {{
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::cout << "=== Wall-Normal Drift Envelope Tests ===\n";
-  if (argc > 1) {
-    for (int i = 1; i < argc; ++i) {
-      const std::string shard = argv[i];
-      const auto it = std::find_if(
-          kTests.begin(), kTests.end(),
-          [&shard](const NamedTest& test) { return shard == test.name; });
-      if (it == kTests.end()) {
-        std::cerr << "unknown drift-envelope test shard: " << shard << "\n";
-        return 2;
-      }
-      it->run();
-    }
-    return 0;
-  }
-  for (const NamedTest& test : kTests) {
-    test.run();
-  }
-  std::cout << "All wall-normal drift envelope tests passed.\n";
-  return 0;
+  return testshards::shard_main(
+      argc, argv, kTests,
+      "=== Wall-Normal Drift Envelope Tests ===\n",
+      "All wall-normal drift envelope tests passed.\n");
 }

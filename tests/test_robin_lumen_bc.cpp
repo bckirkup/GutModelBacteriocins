@@ -12,6 +12,7 @@
 #include "plasmid.h"
 #include "robin_correction_table.h"
 #include "simulation.h"
+#include "test_shard_dispatch.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -852,12 +853,7 @@ void test_peristaltic_mean_profile() {
 
 namespace {
 
-struct NamedTest {
-  const char* name;
-  void (*run)();
-};
-
-const std::array<NamedTest, 18> kTests = {{
+const std::array<testshards::NamedTest, 18> kTests = {{
     {"launch_local_table_mapping", test_launch_local_table_mapping},
     {"robin_fallback_preflight", test_robin_fallback_preflight},
     {"disabled_default_is_inert", test_disabled_default_is_inert},
@@ -882,24 +878,8 @@ const std::array<NamedTest, 18> kTests = {{
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::cout << "=== Independent Robin Lumen-Boundary Tests ===\n";
-  if (argc > 1) {
-    for (int i = 1; i < argc; ++i) {
-      const std::string shard = argv[i];
-      const auto it = std::find_if(
-          kTests.begin(), kTests.end(),
-          [&shard](const NamedTest& test) { return shard == test.name; });
-      if (it == kTests.end()) {
-        std::cerr << "unknown Robin test shard: " << shard << "\n";
-        return 2;
-      }
-      it->run();
-    }
-    return 0;
-  }
-  for (const NamedTest& test : kTests) {
-    test.run();
-  }
-  std::cout << "All independent Robin lumen-boundary tests passed.\n";
-  return 0;
+  return testshards::shard_main(
+      argc, argv, kTests,
+      "=== Independent Robin Lumen-Boundary Tests ===\n",
+      "All independent Robin lumen-boundary tests passed.\n");
 }

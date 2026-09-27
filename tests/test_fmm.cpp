@@ -12,6 +12,7 @@
 #include "domain.h"
 #include "advection.h"
 #include "random.h"
+#include "test_shard_dispatch.h"
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -373,12 +374,7 @@ void test_fmm_config_defaults() {
 
 namespace {
 
-struct NamedTest {
-  const char* name;
-  void (*run)();
-};
-
-const std::array<NamedTest, 9> kTests = {{
+const std::array<testshards::NamedTest, 9> kTests = {{
     {"coefficient_count", test_fmm_coefficient_count},
     {"build_and_moments", test_fmm_build_and_moments},
     {"degenerate_clusters_match_direct_field",
@@ -395,24 +391,7 @@ const std::array<NamedTest, 9> kTests = {{
 }  // namespace
 
 int main(int argc, char** argv) {
-  std::cout << "=== FMM Tests ===\n";
-  if (argc > 1) {
-    for (int i = 1; i < argc; ++i) {
-      const std::string shard = argv[i];
-      const auto it = std::find_if(
-          kTests.begin(), kTests.end(),
-          [&shard](const NamedTest& test) { return shard == test.name; });
-      if (it == kTests.end()) {
-        std::cerr << "unknown FMM test shard: " << shard << "\n";
-        return 2;
-      }
-      it->run();
-    }
-    return 0;
-  }
-  for (const NamedTest& test : kTests) {
-    test.run();
-  }
-  std::cout << "All FMM tests passed.\n";
-  return 0;
+  return testshards::shard_main(
+      argc, argv, kTests,
+      "=== FMM Tests ===\n", "All FMM tests passed.\n");
 }
