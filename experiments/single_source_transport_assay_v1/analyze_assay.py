@@ -480,6 +480,9 @@ def main() -> int:
     output_dir = prepare_output_directory(args.output_dir)
 
     runs, execution_sha = load_runs(args.results_root)
+    image_digest = json.loads(
+        (ROOT / "generated" / "manifest.json").read_text()
+    ).get("container_image_digest")
     producer_reports, null_reports, blockers = analyze_runs(runs, execution_sha)
 
     positions, position_blockers = position_checks(producer_reports)
@@ -518,6 +521,8 @@ def main() -> int:
     gate = {
         "status": status,
         GATE["id"]: status == STATUS_PASS,
+        "execution_source_sha": execution_sha,
+        "container_image_digest": image_digest,
         # This assay measures the transport law; promoting a Stage C gate or
         # launching Stage D remains a separate, recorded maintainer decision.
         "C_transport_gate": False,
