@@ -1,0 +1,132 @@
+{
+  "selected_amplitude": 15.0,
+  "basis": "qualified",
+  "per_amplitude": [
+    {
+      "amplitude": 15.0,
+      "delta_slope_log10_ratio_per_h": {
+        "20260911": 0.30048673431898126,
+        "20260913": 0.30019889352191526,
+        "20260917": 0.26179087464503337
+      },
+      "median_delta_slope_log10_ratio_per_h": 0.30019889352191526,
+      "final_susceptible_counts": {
+        "20260911": 1290,
+        "20260913": 1317,
+        "20260917": 1751
+      },
+      "median_final_susceptible": 1317.0,
+      "kills_per_lysis": {
+        "20260911": 10.043233082706767,
+        "20260913": 9.44186046511628,
+        "20260917": 11.684108527131784
+      },
+      "median_kills_per_lysis": 10.043233082706767,
+      "criteria": [
+        {
+          "criterion": "all three seed-level producer-null delta slopes are positive",
+          "pass": true,
+          "reason": null
+        },
+        {
+          "criterion": "median delta slope in [0.25, 0.4] log10 per hour inclusive",
+          "pass": true,
+          "reason": null
+        },
+        {
+          "criterion": "median final susceptible count >= 1000 and no seed below 500",
+          "pass": true,
+          "reason": null
+        }
+      ],
+      "qualifying": true,
+      "non_qualifying_reason": null
+    },
+    {
+      "amplitude": 20.0,
+      "delta_slope_log10_ratio_per_h": {
+        "20260911": 0.347344773737432,
+        "20260913": 0.32015824179366087,
+        "20260917": 0.26791590707302654
+      },
+      "median_delta_slope_log10_ratio_per_h": 0.32015824179366087,
+      "final_susceptible_counts": {
+        "20260911": 1029,
+        "20260913": 904,
+        "20260917": 1428
+      },
+      "median_final_susceptible": 1029.0,
+      "kills_per_lysis": {
+        "20260911": 8.94055944055944,
+        "20260913": 9.03921568627451,
+        "20260917": 10.743589743589743
+      },
+      "median_kills_per_lysis": 9.03921568627451,
+      "criteria": [
+        {
+          "criterion": "all three seed-level producer-null delta slopes are positive",
+          "pass": true,
+          "reason": null
+        },
+        {
+          "criterion": "median delta slope in [0.25, 0.4] log10 per hour inclusive",
+          "pass": true,
+          "reason": null
+        },
+        {
+          "criterion": "median final susceptible count >= 1000 and no seed below 500",
+          "pass": true,
+          "reason": null
+        }
+      ],
+      "qualifying": true,
+      "non_qualifying_reason": null
+    },
+    {
+      "amplitude": 30.0,
+      "delta_slope_log10_ratio_per_h": {
+        "20260911": 0.41082144951488364,
+        "20260913": 0.35356163365977666,
+        "20260917": 0.3529100661605455
+      },
+      "median_delta_slope_log10_ratio_per_h": 0.35356163365977666,
+      "final_susceptible_counts": {
+        "20260911": 636,
+        "20260913": 825,
+        "20260917": 574
+      },
+      "median_final_susceptible": 636.0,
+      "kills_per_lysis": {
+        "20260911": 7.385008517887564,
+        "20260913": 8.65,
+        "20260917": 6.985840707964602
+      },
+      "median_kills_per_lysis": 7.385008517887564,
+      "criteria": [
+        {
+          "criterion": "all three seed-level producer-null delta slopes are positive",
+          "pass": true,
+          "reason": null
+        },
+        {
+          "criterion": "median delta slope in [0.25, 0.4] log10 per hour inclusive",
+          "pass": true,
+          "reason": null
+        },
+        {
+          "criterion": "median final susceptible count >= 1000 and no seed below 500",
+          "pass": false,
+          "reason": null
+        }
+      ],
+      "qualifying": false,
+      "non_qualifying_reason": ""
+    }
+  ],
+  "max_median_kills_per_lysis": 10.043233082706767,
+  "tie_relative_tolerance": 0.1,
+  "amplitudes_within_tolerance": [
+    15.0,
+    20.0
+  ]
+}

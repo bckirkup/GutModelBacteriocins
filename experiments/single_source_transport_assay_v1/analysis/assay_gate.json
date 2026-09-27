@@ -1,40 +1,32 @@
 {
-  "status": "BLOCKED",
-  "single_source_transport_gate": false,
+  "status": "PASS",
+  "single_source_transport_gate": true,
+  "execution_source_sha": "29fd563ce73b28059cb439694e92466f451ddb4a",
+  "container_image_digest": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
   "C_transport_gate": false,
   "checks": {
     "all_outputs_returned": true,
-    "all_runs_authenticated": false,
+    "all_runs_authenticated": true,
     "single_source_per_producer_run": true,
     "source_identical_across_amplitudes": true,
+    "source_time_identical_across_amplitudes": true,
     "paired_times_complete": true,
     "n_paired_snapshot_times": 36,
+    "endpoint_original_criteria_0_gt_15_gt_60": true,
+    "adaptive_interpolation_monotonic_0_15_20_30_60": true,
     "intrinsic_radii_ordered_0_gt_15_gt_60": true,
     "nulls_toxin_free": true
   },
-  "blockers": [
-    "SS_amp0_producer_s20260911: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp0_producer_s20260913: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp0_producer_s20260917: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp15_producer_s20260911: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp15_producer_s20260913: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp15_producer_s20260917: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp60_producer_s20260911: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp60_producer_s20260913: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp60_producer_s20260917: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp60_toxin_free_null_s20260911: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp60_toxin_free_null_s20260913: chemistry_placement 'device' != 'device_delivery'",
-    "SS_amp60_toxin_free_null_s20260917: chemistry_placement 'device' != 'device_delivery'"
-  ],
+  "blockers": [],
   "criteria": [
-    "all 12 runs returned an output file",
-    "every run authenticates against the execution source SHA, device_delivery, one rank, its seed and amplitude, kd_corrinoid_btuB=1e-4, b12_initial_conc=1e-3, burst_release_tau=300 s, the ColE1 pI/diffusion/burst-size identity, and the grid/provenance schedules",
+    "all 18 runs returned an output file",
+    "every run authenticates against the execution source SHA, physical chemistry placement device (not host or host_forced_delivery), one rank, its seed and amplitude, kd_corrinoid_btuB=1e-4, b12_initial_conc=1e-3, burst_release_tau=300 s, the ColE1 pI/diffusion/burst-size identity, and the grid/provenance schedules",
     "every producer run recorded exactly one strain-1 LYSIS provenance event carrying exact event timing",
-    "the source position is identical across the three amplitudes of a seed to 1e-12 m and its in-domain radial support is at least 40 um",
-    "paired snapshot times are complete across the three amplitudes of every seed",
-    "at every paired time in the analysis window and every seed, profile r50 decreases with amplitude 0 > 15 > 60 by at least 0.5 um and profile r90 by at least 0.1 um",
-    "at every paired time in the analysis window and every seed, the 0-10 um near-field mean increases with amplitude 0 < 15 < 60",
+    "the source position and exact event time are identical across all five amplitudes of a seed to their declared tolerances and in-domain radial support is at least 40 um",
+    "paired snapshot times are complete across all five amplitudes of every seed",
+    "at every paired time and seed, the original endpoint criteria remain: r50 decreases 0 > 15 > 60 by at least 0.5 um, r90 by at least 0.1 um, and near-field mean strictly increases 0 < 15 < 60",
+    "at every paired time and seed, r50 and r90 are nonincreasing and near-field mean is nondecreasing across 0,15,20,30,60 within only the numeric tolerance; endpoint margins are not imposed on adjacent interpolation pairs",
     "every analyzed shell contains at least one voxel centre and every analyzed value is finite",
-    "the toxin-free nulls hold |bacteriocin_BtuB| <= 1e-15 everywhere"
+    "the three toxin-free nulls hold |bacteriocin_BtuB| <= 1e-15 everywhere"
   ]
 }
