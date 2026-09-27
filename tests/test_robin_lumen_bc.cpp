@@ -879,7 +879,7 @@ const std::array<testshards::NamedTest, 18> kTests = {{
 
 int main(int argc, char** argv) {
   return testshards::shard_main(
-      argc, argv, kTests,
+      {argv, static_cast<std::size_t>(argc)}, kTests,
       "=== Independent Robin Lumen-Boundary Tests ===\n",
       "All independent Robin lumen-boundary tests passed.\n");
 }

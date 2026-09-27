@@ -601,7 +601,7 @@ const std::array<testshards::NamedTest, 13> kTests = {{
 
 int main(int argc, char** argv) {
   return testshards::shard_main(
-      argc, argv, kTests,
+      {argv, static_cast<std::size_t>(argc)}, kTests,
       "=== Wall-Normal Drift Envelope Tests ===\n",
       "All wall-normal drift envelope tests passed.\n");
 }

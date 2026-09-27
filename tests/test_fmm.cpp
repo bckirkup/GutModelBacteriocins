@@ -392,6 +392,6 @@ const std::array<testshards::NamedTest, 9> kTests = {{
 
 int main(int argc, char** argv) {
   return testshards::shard_main(
-      argc, argv, kTests,
+      {argv, static_cast<std::size_t>(argc)}, kTests,
       "=== FMM Tests ===\n", "All FMM tests passed.\n");
 }

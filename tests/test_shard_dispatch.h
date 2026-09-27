@@ -11,6 +11,7 @@
 #include <array>
 #include <cstddef>
 #include <iostream>
+#include <span>
 #include <string>
 
 namespace testshards {
@@ -21,16 +22,17 @@ struct NamedTest {
 };
 
 template <std::size_t N>
-int shard_main(int argc, char** argv,
+int shard_main(std::span<const char* const> args,
                const std::array<NamedTest, N>& tests,
                const char* banner, const char* pass_message) {
   std::cout << banner;
-  if (argc > 1) {
-    for (int i = 1; i < argc; ++i) {
-      const std::string shard = argv[i];
-      const auto it = std::find_if(
-          tests.begin(), tests.end(),
-          [&shard](const NamedTest& test) { return shard == test.name; });
+  if (args.size() > 1) {
+    for (const char* arg : args.subspan(1)) {
+      const std::string shard = arg;
+      const auto it = std::ranges::find_if(
+          tests, [&shard](const NamedTest& test) {
+            return shard == test.name;
+          });
       if (it == tests.end()) {
         std::cerr << "unknown test shard: " << shard << "\n";
         return 2;
