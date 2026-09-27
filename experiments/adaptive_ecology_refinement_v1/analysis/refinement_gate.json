@@ -1,9 +1,9 @@
 {
   "gate": "C_transport_gate",
-  "status": "READY_FOR_APPROVAL",
+  "status": "PASS",
   "single_source_transport_gate": true,
-  "C_transport_gate": false,
-  "stage_d_release": "BLOCKED",
+  "C_transport_gate": true,
+  "stage_d_release": "RELEASED",
   "execution_source_sha": "29fd563ce73b28059cb439694e92466f451ddb4a",
   "container_image_digest": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
   "selected_amplitude": 15.0,
@@ -13,8 +13,6 @@
   "unreadable_runs": [],
   "authentication_problems": [],
   "intrinsic_gate_problems": [],
-  "approval_problems": [
-    "no --approval-file supplied"
-  ],
+  "approval_problems": [],
   "fallback_note": null
 }

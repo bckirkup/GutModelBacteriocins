@@ -42,10 +42,14 @@
     {
       "stage": "C",
       "gate": "single_source_transport_assay_v1",
-      "status": "PENDING_ADAPTIVE_RUNS",
-      "execution_source_sha": null,
-      "container_image_digest": null,
+      "status": "PASS",
+      "execution_source_sha": "29fd563ce73b28059cb439694e92466f451ddb4a",
+      "container_image_digest": "sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
       "jobs": 18,
+      "batch_job_id": "cd7fc9b3-e6b6-43e6-ab23-a98ef1b1e4ee",
+      "result_field": "single_source_transport_gate",
+      "evidence": "experiments/single_source_transport_assay_v1/analysis/assay_gate.json",
+      "completed": "2026-09-27",
       "required_outcome_field": "C_transport_gate",
       "pass_value": true,
       "prior_attempt": {
@@ -73,7 +77,14 @@
     {
       "stage": "C",
       "gate": "issue420_ecological_refinement",
-      "status": "PENDING_SEPARATE",
+      "status": "PASS",
+      "execution_source_sha": "29fd563ce73b28059cb439694e92466f451ddb4a",
+      "container_image_digest": "sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
+      "batch_job_id": "2355877a-a3a0-4765-8863-b84346868e0d",
+      "result_field": "C_transport_gate",
+      "evidence": "experiments/adaptive_ecology_refinement_v1/analysis/refinement_gate.json",
+      "approval_file": "experiments/receptor_selection_campaign_v1/approval_stage_D.json",
+      "completed": "2026-09-27",
       "amplitudes": [
         15,
         20,
@@ -88,16 +99,26 @@
     {
       "stage": "D",
       "gate": "D_release",
-      "status": "BLOCKED",
+      "status": "RELEASED",
       "requires": {
         "C_population_gate": true,
         "C_transport_gate": true,
         "assay_and_D_same_execution_source_sha": true,
         "assay_and_D_same_container_image_digest": true
       },
-      "conditional_selected_mucin_charge_amplitude": 15,
-      "amplitude_status": "CONDITIONAL_NOT_CALIBRATED_BY_ASSAY_ALONE",
-      "jobs": 15
+      "selected_mucin_charge_amplitude": 15.0,
+      "amplitude_status": "QUALIFIED_BY_REFINEMENT_SELECTION_RULE",
+      "execution_source_sha": "29fd563ce73b28059cb439694e92466f451ddb4a",
+      "container_image_digest": "sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
+      "approval_file": "experiments/receptor_selection_campaign_v1/approval_stage_D.json",
+      "jobs": 15,
+      "batch_job_id": "47460bfa-1558-47b6-9a48-47b1bd9a7b0d",
+      "batch_queue": "gutibm-gpu-campaign",
+      "batch_job_definition": "gutibm-cuda-campaign:14",
+      "input_prefix": "s3://gutibm-inputs-994254241749/receptor-selection-v1/29fd563c/stage-d/inputs",
+      "output_prefix": "s3://gutibm-outputs-994254241749/receptor-selection-v1/29fd563c/stage-d/outputs",
+      "submitted": "2026-09-27",
+      "analysis_pending": true
     }
   ],
   "constraints": [
