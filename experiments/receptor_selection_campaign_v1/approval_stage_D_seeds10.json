@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "approval_id": "stage_D_seed_extension_C_transport_gate_2026-09-28",
+  "campaign_id": "receptor_selection_campaign_v1",
+  "stage": "D",
+  "operator_approval": "Benjamin (bckirkup) — explicit in-session instruction 2026-09-28: 'run the same 5 arms against 10 new seeds on AWS; keeping everything else constant'",
+  "authorize_c_transport_gate": true,
+  "C_transport_gate": true,
+  "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
+  "execution_source_sha": "29fd563ce73b28059cb439694e92466f451ddb4a",
+  "container_image_digest": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
+  "image_digest": "sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
+  "jobs": 50,
+  "selected_mucin_charge_amplitude": 15.0,
+  "extends_approval": "stage_D_release_C_transport_gate_2026-09-27",
+  "extends_array": "47460bfa-1558-47b6-9a48-47b1bd9a7b0d",
+  "seed_extension": {
+    "original_seeds": [20260911, 20260913, 20260917],
+    "new_seeds": [20260919, 20260921, 20260923, 20260925, 20260927, 20260929, 20261001, 20261003, 20261005, 20261007],
+    "verification": "All 50 inputs are byte-identical to the deployed stage-d inputs except seed, _campaign.run_id, and _campaign.paired_seed (verified against s3://gutibm-inputs-994254241749/receptor-selection-v1/29fd563c/stage-d/inputs/)."
+  },
+  "scope": "Extends the 2026-09-27 C_transport_gate release: re-runs the same 5 Stage D arms against 10 new seeds bound to exactly this execution source SHA and image digest. Does not authorize other stages, parameter changes, or a different SHA/digest."
+}
