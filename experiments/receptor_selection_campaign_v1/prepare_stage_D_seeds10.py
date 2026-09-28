@@ -11,7 +11,6 @@ inputs are byte-identical to the deployed stage-d S3 inputs except `seed`,
 `_campaign.run_id`, and `_campaign.paired_seed`.
 """
 import hashlib
-import json
 import shutil
 import sys
 from pathlib import Path
