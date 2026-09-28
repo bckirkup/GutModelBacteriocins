@@ -1,0 +1,34 @@
+{
+  "campaign_id": "receptor_selection_campaign_v1",
+  "runs_total": 65,
+  "outputs_readable": 65,
+  "missing_or_invalid": 0,
+  "gates": {
+    "Q": {
+      "status": "READY_FOR_SCIENTIFIC_REVIEW",
+      "expected": 0,
+      "missing_or_invalid": 0
+    },
+    "A": {
+      "status": "READY_FOR_SCIENTIFIC_REVIEW",
+      "expected": 0,
+      "missing_or_invalid": 0
+    },
+    "B": {
+      "status": "READY_FOR_SCIENTIFIC_REVIEW",
+      "expected": 0,
+      "missing_or_invalid": 0
+    },
+    "C": {
+      "status": "READY_FOR_SCIENTIFIC_REVIEW",
+      "expected": 0,
+      "missing_or_invalid": 0
+    },
+    "D": {
+      "status": "READY_FOR_SCIENTIFIC_REVIEW",
+      "expected": 65,
+      "missing_or_invalid": 0
+    }
+  },
+  "interpretation": "Sequential scientific gates require review of all seed-level rows; this analyzer never auto-promotes downstream stages. Paired deltas use a shared calendar window ending at t_common_s. realized_lysis_per_division uses integer cumulative_divisions_by_type[1] when present."
+}
