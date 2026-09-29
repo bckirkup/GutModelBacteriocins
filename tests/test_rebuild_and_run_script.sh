@@ -49,17 +49,19 @@ printf '%s\n' '{"base_config":"experiments/smoke_single.json"}' \
 
 mapfile -t single_configs < <(collect_json_files single)
 mapfile -t batch_configs < <(collect_json_files batch)
-printf '%s\n' "${single_configs[@]}" |
-  grep -qx "$ROOT/experiments/smoke_single.json" ||
+printf '%s\n' "${single_configs[@]}" >"$temporary_dir/single-configs.txt"
+printf '%s\n' "${batch_configs[@]}" >"$temporary_dir/batch-configs.txt"
+grep -qx "$ROOT/experiments/smoke_single.json" \
+  "$temporary_dir/single-configs.txt" ||
   fail "single config discovery omitted smoke_single.json"
-printf '%s\n' "${batch_configs[@]}" |
-  grep -qx "$ROOT/experiments/smoke_batch.json" ||
+grep -qx "$ROOT/experiments/smoke_batch.json" \
+  "$temporary_dir/batch-configs.txt" ||
   fail "batch discovery omitted smoke_batch.json"
-printf '%s\n' "${single_configs[@]}" |
-  grep -q "stage1_motility_validation/1a_motility_off.json" ||
+grep -q "stage1_motility_validation/1a_motility_off.json" \
+  "$temporary_dir/single-configs.txt" ||
   fail "single discovery omitted stage1 1a"
-printf '%s\n' "${batch_configs[@]}" |
-  grep -q "stage3_campaign/batch_kd_sweep.json" ||
+grep -q "stage3_campaign/batch_kd_sweep.json" \
+  "$temporary_dir/batch-configs.txt" ||
   fail "batch discovery omitted stage3 kd sweep"
 
 mapfile -t stages < <(collect_campaign_stages)
