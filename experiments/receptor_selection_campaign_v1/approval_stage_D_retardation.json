@@ -10,7 +10,7 @@
   "execution_source_sha": "29fd563ce73b28059cb439694e92466f451ddb4a",
   "container_image_digest": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
   "image_digest": "sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
-  "jobs": 18,
+  "jobs": 24,
   "selected_mucin_charge_amplitude": 15.0,
   "extends_approval": "stage_D_subgrid_C_transport_gate_2026-09-29",
   "extends_arrays": [
@@ -23,8 +23,9 @@
     "deployed_retardation_resolved": 13.456,
     "targets": [0.0025, 0.01, 0.05],
     "seeds": [20261009, 20261011, 20261013],
-    "note": "Brackets the amplitude axis: the deployed Stage D gradient was measured at amplitude 15 (retardation ~13.5). Amplitude 0 and 60 give ColE1 retardation 1.2 and ~50.2 — the literature D_eff endpoint and the pI-derived shipped endpoint. The amp-15 refine runs at the same targets/seeds complete the three-point transport comparison. Same-seed plasmid-free nulls and zero-lysis carriers remain valid shared controls: a null releases no colicin and a P=0 carrier emits no toxin, so amplitude does not act on either.",
-    "verification": "All 18 inputs are byte-identical to the deployed stage-d producer inputs except seed, _campaign.run_id, _campaign.paired_seed, sos_lysis_prob, bacteriocin.mucin_charge.amplitude, and the _campaign.axes fields (verified against s3://gutibm-inputs-994254241749/receptor-selection-v1/29fd563c/stage-d/inputs/)."
+    "mid_fill": "6 same-seed amp-15 anchors at targets 1% and 5% (deployed amp-15 grid ran those targets on other seeds) so every cell pairs within seed",
+    "note": "Brackets the amplitude axis: the deployed Stage D gradient was measured at amplitude 15 (retardation ~13.5). Amplitude 0 and 60 give ColE1 retardation 1.2 and ~50.2 — the literature D_eff endpoint and the pI-derived shipped endpoint. The amp-15 refine runs at 0.25% and the mid fills at 1%/5% complete the three-amplitude x three-target same-seed comparison. Same-seed plasmid-free nulls and zero-lysis carriers remain valid shared controls: a null releases no colicin and a P=0 carrier emits no toxin, so amplitude does not act on either.",
+    "verification": "All 24 inputs are byte-identical to the deployed stage-d producer inputs except seed, _campaign.run_id, _campaign.paired_seed, sos_lysis_prob, bacteriocin.mucin_charge.amplitude, and the _campaign.axes fields (verified against s3://gutibm-inputs-994254241749/receptor-selection-v1/29fd563c/stage-d/inputs/)."
   },
   "scope": "Extends the Stage D approvals: tests whether the graded lysis response is transport-limited by rerunning three points of the gradient at the two mucin-charge endpoints, bound to exactly this execution source SHA and image digest. Does not authorize other stages, other parameter changes, new seeds, or a different image.",
   "submitted": "2026-09-29"
