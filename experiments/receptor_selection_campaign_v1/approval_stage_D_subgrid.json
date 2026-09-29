@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "approval_id": "stage_D_subgrid_C_transport_gate_2026-09-29",
+  "campaign_id": "receptor_selection_campaign_v1",
+  "stage": "D",
+  "operator_approval": "Benjamin (bckirkup) — explicit in-session instruction 2026-09-29: 'work the sub 0.25 realm: 0, 0.05, 0.1, 0.15, 0.20, 0.25' — resolved interactively to the 4 new targets on the existing refine seeds",
+  "authorize_c_transport_gate": true,
+  "C_transport_gate": true,
+  "model_baseline_sha": "ad037ef96f3433a1ad4008994956f89c68a3ed39",
+  "execution_source_sha": "29fd563ce73b28059cb439694e92466f451ddb4a",
+  "container_image_digest": "994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
+  "image_digest": "sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748",
+  "jobs": 12,
+  "selected_mucin_charge_amplitude": 15.0,
+  "extends_approval": "stage_D_grid_refinement_C_transport_gate_2026-09-29",
+  "extends_arrays": ["adfd5af1-3fd1-4ea8-b3d2-6b7d40609d66"],
+  "grid_refinement": {
+    "seeds": [20261009, 20261011, 20261013],
+    "arms": ["producer_target_0.0005", "producer_target_0.001", "producer_target_0.0015", "producer_target_0.002"],
+    "note": "Sub-0.25% fill-in; the stage-d-refine null, zero-lysis carrier, and 0.25% runs on the same seeds complete the six-point sub-grid with same-seed pairing.",
+    "verification": "All 12 inputs are byte-identical to the deployed stage-d producer inputs except seed, _campaign.run_id, _campaign.paired_seed, sos_lysis_prob, and the _campaign.axes lysis fields (verified against s3://gutibm-inputs-994254241749/receptor-selection-v1/29fd563c/stage-d/inputs/)."
+  },
+  "scope": "Extends the 2026-09-29 grid-refinement approval: fills the 0-0.25% lysis interval with four new producer targets on the existing refine seeds, bound to exactly this execution source SHA and image digest. Does not authorize other stages, other parameter changes, new seeds, or a different SHA/digest."
+}
