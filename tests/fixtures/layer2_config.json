@@ -1,0 +1,24 @@
+{
+  "layer2": {
+    "enabled": true,
+    "n_patches": 64,
+    "contraction_rate_per_min": 0.7,
+    "agent_loss_fraction": 0.4,
+    "transit_half_life_h": 3.0,
+    "reattach_prob_per_transit": 0.05,
+    "establish_prob_single": 0.02,
+    "establish_ratio": 25.0,
+    "crypt_fraction": 0.1,
+    "crypt_disruption_prob": 0.08,
+    "crypt_single_cell_loss_per_h": 0.02,
+    "crypt_supply_mult": 2.0,
+    "proximal_fraction": 0.5,
+    "proximal_disruption_prob": 0.55,
+    "proximal_single_cell_loss_per_h": 0.1,
+    "proximal_supply_mult": 1.5,
+    "distal_fraction": 0.4,
+    "distal_disruption_prob": 0.6,
+    "distal_single_cell_loss_per_h": 0.2,
+    "distal_supply_mult": 0.75
+  }
+}

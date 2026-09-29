@@ -1909,6 +1909,11 @@ void Simulation::step(Real dt) {
     gpu_.agents.sync_from_host(agents_);
   }
 
+  // Spec 13 Layer-2 hook: post-migration, pre-washout/cleanup.
+  if (late_step_hook_) {
+    late_step_hook_();
+  }
+
   // Cleanup
   check_washout();
   remove_dead_agents();
@@ -2123,6 +2128,9 @@ void Simulation::check_washout() {
         record_kill_provenance(event);
       }
       lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
+      if (departure_hook_) {
+        departure_hook_(a);  // Spec 13 Layer-2: export before deletion
+      }
       continue;
     }
 
@@ -2141,6 +2149,9 @@ void Simulation::check_washout() {
           record_kill_provenance(event);
         }
         lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
+        if (departure_hook_) {
+          departure_hook_(a);  // Spec 13 Layer-2: export before deletion
+        }
       }
     }
   }

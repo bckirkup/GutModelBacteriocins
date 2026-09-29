@@ -6,6 +6,7 @@ file(GLOB_RECURSE LIB_SOURCES
   ${CMAKE_SOURCE_DIR}/src/genome/*.cpp
   ${CMAKE_SOURCE_DIR}/src/io/*.cpp
   ${CMAKE_SOURCE_DIR}/src/gpu/*.cpp
+  ${CMAKE_SOURCE_DIR}/src/layer2/*.cpp
 )
 
 set(LIB_CUDA_SOURCES "")
@@ -23,6 +24,7 @@ set(TEST_INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}/src/genome
   ${CMAKE_SOURCE_DIR}/src/io
   ${CMAKE_SOURCE_DIR}/src/gpu
+  ${CMAKE_SOURCE_DIR}/src/layer2
 )
 
 # Shared static library — compile core once instead of per-test executable.
@@ -178,6 +180,9 @@ gutibm_add_test(config_ingestion test_config_ingestion.cpp
   LABELS "unit"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(kill_provenance test_kill_provenance.cpp LABELS "unit")
+gutibm_add_test(layer2_segment test_layer2_segment.cpp
+  LABELS "unit"
+  COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(counter_resume test_counter_resume.cpp LABELS "unit")
 gutibm_add_test(divisions_by_type test_divisions_by_type.cpp LABELS "unit;hdf5")
 gutibm_add_test(vbf_accounting test_vbf_accounting.cpp LABELS "unit")

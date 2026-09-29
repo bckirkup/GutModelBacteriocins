@@ -74,6 +74,7 @@ file(GLOB_RECURSE SOURCES
   src/genome/*.cpp
   src/io/*.cpp
   src/gpu/*.cpp
+  src/layer2/*.cpp
 )
 
 set(GPU_CUDA_SOURCES "")
@@ -94,6 +95,7 @@ target_include_directories(gut_ibm PRIVATE
   ${CMAKE_SOURCE_DIR}/src/genome
   ${CMAKE_SOURCE_DIR}/src/io
   ${CMAKE_SOURCE_DIR}/src/gpu
+  ${CMAKE_SOURCE_DIR}/src/layer2
 )
 
 if(GUTIBM_USE_MPI)

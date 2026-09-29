@@ -28,6 +28,7 @@
 #include "step_profiler.h"
 #include "dysbiosis_guard.h"
 #include <cstdint>
+#include <functional>
 #include "agent.h"
 #include "domain.h"
 #include "random.h"
@@ -185,6 +186,28 @@ class Simulation {
   }
   void record_kill_provenance(const KillProvenanceEvent& event);
   void clear_kill_provenance() { event_ledger_.kill_provenance.clear(); }
+
+  // Spec 13 Layer-2 coupling hooks (both unset by default — a null hook
+  // is a no-op, so default-mode behaviour is unchanged).
+  //
+  // departure_hook: invoked once per agent the single-cell loss channel
+  // is about to delete (boundary export and, in IMPOSED mode, the
+  // probabilistic washout), after the standard counter/provenance/
+  // lineage bookkeeping. The cell is still removed from the sim; the
+  // hook receives a const reference to copy from. One call per departing
+  // agent, attributed to exactly one channel.
+  //
+  // late_step_hook: invoked once per step after MPI migration and before
+  // washout/cleanup — the settled-position point where a coupling layer
+  // marks contraction-fragment cells DEAD so the existing cleanup path
+  // books them in the same step.
+  using AgentHook = std::function<void(const Agent&)>;
+  void set_departure_hook(AgentHook hook) {
+    departure_hook_ = std::move(hook);
+  }
+  void set_late_step_hook(std::function<void()> hook) {
+    late_step_hook_ = std::move(hook);
+  }
 
   // Spec 1: local oxygen and ROS induction hook (Spec 2)
   Real local_O2(const Agent& agent) const;
@@ -394,6 +417,10 @@ class Simulation {
   uint64_t robin_table_evictions_baseline_ = 0;
   uint64_t robin_table_identity_baseline_ = 0;
   Int zero_realization_steps_ = 0;
+
+  // Spec 13 Layer-2 coupling hooks (null = disabled).
+  AgentHook departure_hook_;
+  std::function<void()> late_step_hook_;
 };
 
 }  // namespace gutibm

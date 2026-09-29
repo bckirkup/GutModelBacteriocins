@@ -7,8 +7,10 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "segment.h"
 #include "input_parser.h"
 #include "stop_signal.h"
+#include "error.h"
 
 #include <exception>
 #include <iostream>
@@ -63,13 +65,36 @@ int main(int argc, char** argv) {
 
     gutibm::install_stop_signal_handlers();
 
-    gutibm::Simulation sim;
-    if (!cfg.checkpoint.file.empty()) {
-      sim.init_from_checkpoint(cfg, cfg.checkpoint.file, cfg.checkpoint.step);
-    } else {
-      sim.init(cfg);
+    int exit_code = 0;
+    int n_ranks = 1;
+#ifdef GUTIBM_MPI
+    MPI_Comm_size(MPI_COMM_WORLD, &n_ranks);
+#endif
+    if (cfg.layer2.enabled && n_ranks > 1) {
+      throw gutibm::ConfigError(
+          "layer2.enabled requires a single rank in Phase 1 "
+          "(concurrent-CPU patches; MPI segment decomposition is a "
+          "later phase)");
     }
-    const int exit_code = sim.run();
+    if (cfg.layer2.enabled) {
+      // Spec 13 Phase 1: the Layer-2 mucus segment drives the run;
+      // Layer-1 Simulation instances appear only inside audit slots.
+      gutibm::MucusSegment segment;
+      if (!cfg.checkpoint.file.empty()) {
+        segment.init_from_checkpoint(cfg, cfg.checkpoint.file);
+      } else {
+        segment.init(cfg);
+      }
+      exit_code = segment.run();
+    } else {
+      gutibm::Simulation sim;
+      if (!cfg.checkpoint.file.empty()) {
+        sim.init_from_checkpoint(cfg, cfg.checkpoint.file, cfg.checkpoint.step);
+      } else {
+        sim.init(cfg);
+      }
+      exit_code = sim.run();
+    }
 
 #ifdef GUTIBM_MPI
     MPI_Finalize();
