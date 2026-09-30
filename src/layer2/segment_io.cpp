@@ -35,7 +35,9 @@ extern "C" {
 
 namespace gutibm {
 
+#ifdef GUTIBM_HDF5
 using namespace h5;
+#endif
 
 namespace {
 
