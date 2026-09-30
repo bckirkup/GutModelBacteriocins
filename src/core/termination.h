@@ -18,6 +18,10 @@ enum class TerminationCause : Int {
   StopRequested = 3,
   ClosureViolation = 4,
   IncompleteUnknown = 5,
+  // Spec 13 Layer-2 run-level causes (per-patch status stays distinct,
+  // see PatchStatus in layer2_config.h).
+  PatchInvalidLimit = 6,
+  AuditDivergence = 7,
 };
 
 constexpr std::string_view termination_cause_name(TerminationCause cause) {
@@ -29,6 +33,8 @@ constexpr std::string_view termination_cause_name(TerminationCause cause) {
     case StopRequested: return "stop_requested";
     case ClosureViolation: return "closure_violation";
     case IncompleteUnknown: return "incomplete_unknown";
+    case PatchInvalidLimit: return "patch_invalid_limit";
+    case AuditDivergence: return "audit_divergence";
   }
   return "incomplete_unknown";
 }

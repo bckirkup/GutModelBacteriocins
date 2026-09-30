@@ -1806,7 +1806,80 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 31> k_flat_key_handlers = {
+// Spec 13 Phase 1 — Layer-2 mucus-segment keys (layer2.*). All flat;
+// per-type fields are spelled layer2.<crypt|proximal|distal>_<field>
+// where field ∈ {fraction, disruption_prob, single_cell_loss_per_h,
+// supply_mult}. Off by default; see src/layer2/layer2_config.h.
+bool apply_layer2_key(SimulationConfig& cfg, std::string_view key,
+                      const std::string& val) {
+  if (!key.starts_with("layer2.")) return false;
+  const std::string_view sub = key.substr(7);
+  Layer2Config& c = cfg.layer2;
+
+  const size_t us = sub.find('_');
+  const std::string_view head = us == std::string_view::npos
+                                    ? sub
+                                    : sub.substr(0, us);
+  Layer2TypeConfig* tc = nullptr;
+  if (head == "crypt") tc = &c.crypt;
+  if (head == "proximal") tc = &c.exposed_proximal;
+  if (head == "distal") tc = &c.exposed_distal;
+  if (tc != nullptr) {
+    const std::string_view field =
+        us == std::string_view::npos ? std::string_view{} : sub.substr(us + 1);
+    if (field == "fraction") {
+      tc->fraction = parse_config_real(key, val); return true;
+    }
+    if (field == "disruption_prob") {
+      tc->disruption_prob = parse_config_real(key, val); return true;
+    }
+    if (field == "single_cell_loss_per_h") {
+      tc->single_cell_loss_per_s = parse_config_real(key, val) / 3600.0;
+      return true;
+    }
+    if (field == "supply_mult") {
+      tc->supply_mult = parse_config_real(key, val); return true;
+    }
+    return false;
+  }
+
+  if (sub == "enabled") { c.enabled = parse_bool_config(val); return true; }
+  if (sub == "n_patches") { c.n_patches = parse_positive_config_int(key, val); return true; }
+  if (sub == "patch_lateral_m") { c.patch_lateral_m = parse_positive_config_real(key, val); return true; }
+  if (sub == "patch_depth_m") { c.patch_depth_m = parse_positive_config_real(key, val); return true; }
+  if (sub == "mucus_thickness_m") { c.mucus_thickness_m = parse_positive_config_real(key, val); return true; }
+  if (sub == "contraction_rate_per_min") { c.contraction_rate_per_min = parse_config_real(key, val); return true; }
+  if (sub == "agent_loss_fraction") { c.agent_loss_fraction = parse_config_real(key, val); return true; }
+  if (sub == "transit_half_life_s") { c.transit_half_life_s = parse_positive_config_real(key, val); return true; }
+  if (sub == "transit_half_life_h") { c.transit_half_life_s = parse_positive_config_real(key, val) * 3600.0; return true; }
+  if (sub == "reattach_prob_per_transit") { c.reattach_prob_per_transit = parse_config_real(key, val); return true; }
+  if (sub == "establish_prob_single") { c.establish_prob_single = parse_config_real(key, val); return true; }
+  if (sub == "establish_ratio") { c.establish_ratio = parse_config_real(key, val); return true; }
+  if (sub == "occupancy_min_agents") { c.occupancy_min_agents = parse_positive_config_int(key, val); return true; }
+  if (sub == "initial_patch_fraction") { c.initial_patch_fraction = parse_config_real(key, val); return true; }
+  if (sub == "initial_founder_cells") { c.initial_founder_cells = parse_positive_config_int(key, val); return true; }
+  if (sub == "initial_pool_cells") { c.initial_pool_cells = parse_config_int(key, val); return true; }
+  if (sub == "bloom_factor") { c.bloom_factor = parse_positive_config_real(key, val); return true; }
+  if (sub == "bloom_sustain_s") { c.bloom_sustain_s = parse_positive_config_real(key, val); return true; }
+  if (sub == "spatial_packing_fraction") { c.spatial_packing_fraction = parse_positive_config_real(key, val); return true; }
+  if (sub == "cell_radius_m") { c.cell_radius_m = parse_positive_config_real(key, val); return true; }
+  if (sub == "segment_dysbiosis_threshold") { c.segment_dysbiosis_threshold = parse_config_real(key, val); return true; }
+  if (sub == "segment_guard_window_s") { c.segment_guard_window_s = parse_positive_config_real(key, val); return true; }
+  if (sub == "invalid_patch_fraction_stop") { c.invalid_patch_fraction_stop = parse_config_real(key, val); return true; }
+  if (sub == "audit_patch_index") { c.audit.patch_index = parse_config_int(key, val); return true; }
+  if (sub == "audit_interval_s") { c.audit.interval_s = parse_positive_config_real(key, val); return true; }
+  if (sub == "audit_tolerance") { c.audit.tolerance = parse_positive_config_real(key, val); return true; }
+  if (sub == "audit_halt") { c.audit.halt_on_exceed = parse_bool_config(val); return true; }
+  if (sub == "timeseries_file") { c.timeseries_file = val; return true; }
+  if (sub == "summary_interval_steps") { c.summary_interval_steps = parse_positive_config_int(key, val); return true; }
+  if (sub == "provenance_file") { c.provenance_file = val; return true; }
+  if (sub == "checkpoint_file") { c.checkpoint_file = val; return true; }
+  if (sub == "checkpoint_interval_steps") { c.checkpoint_interval_steps = parse_config_int(key, val); return true; }
+  if (sub == "checkpoint_final") { c.checkpoint_final = parse_bool_config(val); return true; }
+  return false;
+}
+
+constexpr std::array<FlatKeyHandler, 32> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_chemistry_key,
@@ -1838,6 +1911,7 @@ constexpr std::array<FlatKeyHandler, 31> k_flat_key_handlers = {
   apply_cdi_key,
   apply_motility_key,
   apply_quorum_sensing_key,
+  apply_layer2_key,
 };
 
 bool parse_legacy_key_value(const std::string& line,

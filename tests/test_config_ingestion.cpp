@@ -869,6 +869,7 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
       "advection", "washout", "closure", "bacteriocin", "mucin_charge",
+      "layer2",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity", "receptor_expression", "receptor_genotype", "receptors",

@@ -697,6 +697,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
       cursor.parse_initial_population_object(cfg);
     } else if (key == "closure") {
       cursor.parse_prefixed_object(cfg, "closure", "closure");
+    } else if (key == "layer2") {
+      cursor.parse_prefixed_object(cfg, "layer2", "layer2");
     } else if (key == "domain") {
       cursor.parse_domain_object(cfg);
     } else if (key == "advection") {
