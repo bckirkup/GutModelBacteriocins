@@ -1,0 +1,240 @@
+{
+ "gradient": {
+  "1001": {
+   "stool_cfu_g": 8279531.25,
+   "fractions": {
+    "cecum": 0.13721892,
+    "transverse": 0.19392801379310345,
+    "descending": 0.40580601379310344
+   },
+   "flatness": 2.9573619570326266,
+   "occupancy": {
+    "cecum": 0.993603448275862,
+    "transverse": 0.9985172413793103,
+    "descending": 0.9981551724137933
+   },
+   "lumen_cells": {
+    "cecum": 1354844179.310345,
+    "transverse": 702341551.7241379,
+    "descending": 514448882.7586207
+   },
+   "lumen_mu_per_s": {
+    "cecum": 4.796790137931034e-05,
+    "transverse": 1.567279096551724e-05,
+    "descending": 4.272844565517241e-06
+   },
+   "diurnal_ratio": 1.063648464403984,
+   "recovery_ratio_12h": 0.12402178241662577,
+   "amplification": 3.278609197362859,
+   "termination_cause": 0,
+   "ledger": {
+    "initial_cells": 9260,
+    "mucosal_births": 504521,
+    "luminal_births": 17683900000.0,
+    "stool_exports": 5393720000.0,
+    "luminal_deaths": 2114090000.0,
+    "purged": 5676040000.0,
+    "expected_stocks": 4500560000.0,
+    "stocks": 4500560000.0,
+    "closed": true
+   }
+  },
+  "1002": {
+   "stool_cfu_g": 8279453.125,
+   "fractions": {
+    "cecum": 0.1376687179310345,
+    "transverse": 0.20701470344827588,
+    "descending": 0.30155909655172414
+   },
+   "flatness": 2.1904692735120186,
+   "occupancy": {
+    "cecum": 0.9959482758620689,
+    "transverse": 0.9984655172413793,
+    "descending": 0.9982241379310345
+   },
+   "lumen_cells": {
+    "cecum": 1354841041.3793104,
+    "transverse": 702340082.7586207,
+    "descending": 514441882.7586207
+   },
+   "lumen_mu_per_s": {
+    "cecum": 4.796801310344828e-05,
+    "transverse": 1.5672851379310345e-05,
+    "descending": 4.272910503448276e-06
+   },
+   "diurnal_ratio": 1.0631655913512763,
+   "recovery_ratio_12h": 0.12402117186161418,
+   "amplification": 3.2781762000708077,
+   "termination_cause": 0,
+   "ledger": {
+    "initial_cells": 9360,
+    "mucosal_births": 461658,
+    "luminal_births": 17685400000.0,
+    "stool_exports": 5394890000.0,
+    "luminal_deaths": 2114510000.0,
+    "purged": 5675960000.0,
+    "expected_stocks": 4500520000.0,
+    "stocks": 4500520000.0,
+    "closed": true
+   }
+  },
+  "1003": {
+   "stool_cfu_g": 8279375.0,
+   "fractions": {
+    "cecum": 0.1347458820689655,
+    "transverse": 0.19336413103448277,
+    "descending": 0.2782687793103448
+   },
+   "flatness": 2.0651375391785374,
+   "occupancy": {
+    "cecum": 0.9945172413793104,
+    "transverse": 0.9984827586206897,
+    "descending": 0.9981724137931035
+   },
+   "lumen_cells": {
+    "cecum": 1354845620.689655,
+    "transverse": 702340200.0,
+    "descending": 514438855.17241377
+   },
+   "lumen_mu_per_s": {
+    "cecum": 4.796783586206897e-05,
+    "transverse": 1.567278151724138e-05,
+    "descending": 4.272900213793103e-06
+   },
+   "diurnal_ratio": 1.0636100954493968,
+   "recovery_ratio_12h": 0.12401944894651538,
+   "amplification": 3.2786335118138266,
+   "termination_cause": 0,
+   "ledger": {
+    "initial_cells": 9200,
+    "mucosal_births": 406182,
+    "luminal_births": 17683900000.0,
+    "stool_exports": 5393680000.0,
+    "luminal_deaths": 2114140000.0,
+    "purged": 5675990000.0,
+    "expected_stocks": 4500510000.0,
+    "stocks": 4500510000.0,
+    "closed": true
+   }
+  }
+ },
+ "uniform": {
+  "1001": {
+   "stool_cfu_g": 8115078.125,
+   "fractions": {
+    "cecum": 0.19744364827586208,
+    "transverse": 0.16723029655172414,
+    "descending": 0.1771152896551724
+   },
+   "flatness": 1.1806691272283487,
+   "occupancy": {
+    "cecum": 0.998448275862069,
+    "transverse": 0.9981724137931035,
+    "descending": 0.9972413793103447
+   },
+   "lumen_cells": {
+    "cecum": 692852965.5172414,
+    "transverse": 595614689.6551725,
+    "descending": 392993455.17241377
+   },
+   "lumen_mu_per_s": {
+    "cecum": 6.050035793103448e-05,
+    "transverse": 2.219052455172414e-05,
+    "descending": 8.980138531034483e-06
+   },
+   "diurnal_ratio": 1.41908575387356,
+   "recovery_ratio_12h": 0.12922271251633013,
+   "amplification": 2.964356678523243,
+   "termination_cause": 0,
+   "ledger": {
+    "initial_cells": 9260,
+    "mucosal_births": 387382,
+    "luminal_births": 12084200000.0,
+    "stool_exports": 4076500000.0,
+    "luminal_deaths": 1363000000.0,
+    "purged": 3520130000.0,
+    "expected_stocks": 3124960000.0,
+    "stocks": 3124960000.0,
+    "closed": true
+   }
+  },
+  "1002": {
+   "stool_cfu_g": 8115078.125,
+   "fractions": {
+    "cecum": 0.19025304137931034,
+    "transverse": 0.21498745517241377,
+    "descending": 0.1560184482758621
+   },
+   "flatness": 1.3779617573960636,
+   "occupancy": {
+    "cecum": 0.9985689655172413,
+    "transverse": 0.9982413793103448,
+    "descending": 0.9971724137931035
+   },
+   "lumen_cells": {
+    "cecum": 692851413.7931035,
+    "transverse": 595615124.137931,
+    "descending": 392990958.62068963
+   },
+   "lumen_mu_per_s": {
+    "cecum": 6.050035517241379e-05,
+    "transverse": 2.2190510827586207e-05,
+    "descending": 8.980166455172415e-06
+   },
+   "diurnal_ratio": 1.4181204770556883,
+   "recovery_ratio_12h": 0.12922507569810476,
+   "amplification": 2.9638358032169387,
+   "termination_cause": 0,
+   "ledger": {
+    "initial_cells": 9360,
+    "mucosal_births": 392870,
+    "luminal_births": 12085900000.0,
+    "stool_exports": 4077790000.0,
+    "luminal_deaths": 1363490000.0,
+    "purged": 3520040000.0,
+    "expected_stocks": 3124950000.0,
+    "stocks": 3124950000.0,
+    "closed": true
+   }
+  },
+  "1003": {
+   "stool_cfu_g": 8115000.0,
+   "fractions": {
+    "cecum": 0.1723196551724138,
+    "transverse": 0.1959891448275862,
+    "descending": 0.17044829655172414
+   },
+   "flatness": 1.1498451365755449,
+   "occupancy": {
+    "cecum": 0.9981724137931035,
+    "transverse": 0.9983103448275862,
+    "descending": 0.9971379310344828
+   },
+   "lumen_cells": {
+    "cecum": 692849317.2413793,
+    "transverse": 595612524.137931,
+    "descending": 392990744.82758623
+   },
+   "lumen_mu_per_s": {
+    "cecum": 6.0500547586206895e-05,
+    "transverse": 2.2190650137931036e-05,
+    "descending": 8.980214393103448e-06
+   },
+   "diurnal_ratio": 1.419331912468458,
+   "recovery_ratio_12h": 0.12922000370065098,
+   "amplification": 2.9645349008370707,
+   "termination_cause": 0,
+   "ledger": {
+    "initial_cells": 9200,
+    "mucosal_births": 352003,
+    "luminal_births": 12083800000.0,
+    "stool_exports": 4076120000.0,
+    "luminal_deaths": 1363030000.0,
+    "purged": 3520090000.0,
+    "expected_stocks": 3124950000.0,
+    "stocks": 3124950000.0,
+    "closed": true
+   }
+  }
+ }
+}

@@ -7,6 +7,7 @@ file(GLOB_RECURSE LIB_SOURCES
   ${CMAKE_SOURCE_DIR}/src/io/*.cpp
   ${CMAKE_SOURCE_DIR}/src/gpu/*.cpp
   ${CMAKE_SOURCE_DIR}/src/layer2/*.cpp
+  ${CMAKE_SOURCE_DIR}/src/layer3/*.cpp
 )
 
 set(LIB_CUDA_SOURCES "")
@@ -25,6 +26,7 @@ set(TEST_INCLUDE_DIRS
   ${CMAKE_SOURCE_DIR}/src/io
   ${CMAKE_SOURCE_DIR}/src/gpu
   ${CMAKE_SOURCE_DIR}/src/layer2
+  ${CMAKE_SOURCE_DIR}/src/layer3
 )
 
 # Shared static library — compile core once instead of per-test executable.
@@ -181,6 +183,9 @@ gutibm_add_test(config_ingestion test_config_ingestion.cpp
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(kill_provenance test_kill_provenance.cpp LABELS "unit")
 gutibm_add_test(layer2_segment test_layer2_segment.cpp
+  LABELS "unit"
+  COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+gutibm_add_test(layer3_chain test_layer3_chain.cpp
   LABELS "unit"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(counter_resume test_counter_resume.cpp LABELS "unit")

@@ -33,9 +33,16 @@
 #include "termination.h"
 #include "types.h"
 
+#ifdef GUTIBM_HDF5
+extern "C" {
+#include <hdf5.h>
+}
+#endif
+
 #include <cstdint>
 #include <deque>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -77,17 +84,23 @@ struct LuminalPacket {
 // Population ledger for the closure gate: every cell is either in a
 // patch, in the pool, exported distally, or never existed. Internal
 // patch<->pool transfers are net-zero; closure reads
-//   stocks == initial + births - distal_losses.
+//   stocks == initial + births + external_arrivals - distal_losses.
+// `external_arrivals` counts cells injected by a Layer-3 driver via
+// try_deposit (a mucosal arrival crossing the luminal boundary is a
+// transfer-in at this ledger, which the chain ledger pairs with a
+// luminal decrement).
 struct SegmentLedger {
   Int initial_cells = 0;
   Int births = 0;
   Int washout_departures = 0;      // cells patch->pool, single channel
   Int contraction_departures = 0;  // cells patch->pool, fragment channel
+  Int edge_departures = 0;         // cells patch->pool, growth-edge channel
   Int reseeds = 0;                 // cells pool->patch
   Int distal_losses = 0;           // cells pool->distal exit
+  Int external_arrivals = 0;       // cells external->patch (Layer-3)
 
   [[nodiscard]] Int expected_stocks() const {
-    return initial_cells + births - distal_losses;
+    return initial_cells + births + external_arrivals - distal_losses;
   }
 };
 
@@ -158,10 +171,31 @@ class MucusSegment {
   // trajectory must be identical for any permutation.
   void permute_patch_order_for_testing(const std::vector<Int>& order);
 
+  // Layer-3 coupling hooks (all inert in standalone Layer-2 runs).
+  // Override the contraction frequency for subsequent steps (rate < 0
+  // restores the config value); the chain driver uses this to apply
+  // the k0 + alpha_HAPC * I_HAPC(t) schedule per region.
+  void set_contraction_rate_per_min(Real rate_per_min);
+  // Route pool distal exits to a caller instead of dropping them. The
+  // cells still count as distal_losses at this ledger; the receiving
+  // (luminal) ledger books the same cells as arrivals.
+  void set_pool_exit_sink(std::function<void(std::vector<Agent>&&)> sink);
+  // One external arrival attempt into the mucosal layer: the target
+  // patch is drawn uniformly via `stream_key` (caller supplies an
+  // order-stable key so results are order-invariant under G3).
+  // Succeeds only when the draw lands on an Active, non-live patch;
+  // returns false otherwise and the caller keeps the cell.
+  bool try_deposit(Agent&& a, uint64_t stream_key);
+
   [[nodiscard]] const std::vector<Patch>& patches() const { return patches_; }
   [[nodiscard]] const std::deque<LuminalPacket>& pool() const { return pool_; }
   [[nodiscard]] const SegmentLedger& ledger() const { return ledger_; }
   [[nodiscard]] SegmentObservables observables() const;
+
+  // Read-only traversal of every live patch colonist (testing/audit
+  // observability; no RNG draws).
+  void for_each_colonist(
+      const std::function<void(const Agent&)>& f) const;
   [[nodiscard]] TerminationCause termination_cause() const {
     return termination_cause_;
   }
@@ -177,6 +211,15 @@ class MucusSegment {
 
   // Checkpoint I/O (requires GUTIBM_HDF5; throws ConfigError otherwise).
   void write_checkpoint(const std::string& path) const;
+  // Layer-3 checkpoint I/O: state nests under `prefix` inside `path`
+  // ("" = the standalone layout). `truncate` controls whether the file
+  // is recreated (first region of a chain) or opened for append.
+  void write_checkpoint_group(const std::string& path,
+                              const std::string& prefix,
+                              bool truncate) const;
+  void init_from_checkpoint_group(const SimulationConfig& cfg,
+                                  const std::string& path,
+                                  const std::string& prefix);
 
  private:
   // init helpers
@@ -205,6 +248,12 @@ class MucusSegment {
   void emit_timeseries_row(std::ofstream& out) const;
   void write_provenance(const std::string& path) const;
   void write_checkpoint_now() const;
+#ifdef GUTIBM_HDF5
+  // Prefixed group bodies used by write/init_from_checkpoint_group;
+  // declared against hid_t so callers only pass the file and a path.
+  void write_state(hid_t fid, const std::string& prefix) const;
+  void read_state(hid_t fid, const std::string& prefix);
+#endif
 
   // helpers
   const Layer2TypeConfig& type_config(PatchType t) const;
@@ -244,6 +293,10 @@ class MucusSegment {
   TerminationCause termination_cause_ = TerminationCause::IncompleteUnknown;
   std::string termination_detail_;
   std::vector<AuditRecord> audit_records_;
+
+  // Layer-3 coupling state (inert in standalone runs).
+  Real contraction_rate_override_ = -1.0;  // <0 = use config value
+  std::function<void(std::vector<Agent>&&)> pool_exit_sink_;
 };
 
 }  // namespace gutibm

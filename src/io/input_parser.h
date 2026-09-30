@@ -24,6 +24,7 @@
 #include "fix_mechanics.h"
 #include "hdf5_writer.h"
 #include "layer2_config.h"
+#include "layer3_config.h"
 
 #include <functional>
 #include "hdf5_reader.h"
@@ -177,6 +178,7 @@ struct SimulationConfig {
   // Spec 13 Phase 1 — Layer-2 mucus segment. Disabled by default; when
   // enabled, main() runs MucusSegment instead of Simulation.
   Layer2Config layer2;
+  Layer3Config layer3;
 };
 
 class InputParser {
