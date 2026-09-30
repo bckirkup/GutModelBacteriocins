@@ -357,30 +357,7 @@ void ColonicChain::write_checkpoint(const std::string& path) const {
 
 void ColonicChain::init_from_checkpoint(const SimulationConfig& cfg,
                                         const std::string& h5_file) {
-  cfg_ = &cfg;
-  const Layer3Config& c = cfg.layer3;
-  regions_cfg_.assign({c.cecum, c.transverse, c.descending});
-  if (c.uniform_profile) {
-    regions_cfg_.assign(kRegionCount, c.transverse);
-  }
-  validate_config();
-
-  physio_.yield_carbon = cfg.fixes.metabolism.yield_carbon;
-  physio_.carbon_cost_factor =
-      cfg.chem_env.oxygen.anaerobic_carbon_cost_factor;
-  physio_.anaerobic_mu_factor = cfg.chem_env.oxygen.anaerobic_mu_factor;
-  physio_.ferm_acid_yield = cfg.chem_env.oxygen.ferm_acid_yield;
-  physio_.acid_inhibition_max = cfg.fixes.metabolism.acid_inhibition_max;
-  physio_.acid_inhibition_ki = cfg.fixes.metabolism.acid_inhibition_Ki;
-  physio_.acetate_pka = cfg.fixes.metabolism.acetate_pKa;
-  physio_.diet_carbon_mol_m3 =
-      regions_cfg_.front().lumen_carbon_mol_m3;
-
-  regions_.clear();
-  regions_.resize(kRegionCount);
-  region_cfgs_.clear();
-  order_.resize(kRegionCount);
-  std::iota(order_.begin(), order_.end(), 0);
+  resolve_common_config(cfg);
 
   FileGuard fg{H5Fopen(h5_file.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT)};
   if (fg.f < 0) {
@@ -400,35 +377,14 @@ void ColonicChain::init_from_checkpoint(const SimulationConfig& cfg,
     RegionState& rs = regions_[i];
     const std::string base = "/regions/" + std::to_string(r);
 
-    SimulationConfig& rcfg = region_cfgs_.emplace_back(cfg);
-    rcfg.seed = mix_seed(cfg.seed, static_cast<uint64_t>(0x5EED),
-                         static_cast<uint64_t>(r));
-    rcfg.layer2.tag_prefix = static_cast<TagID>(r + 1) << 56;
-    rcfg.layer2.n_patches = c.n_patches_per_region;
-    rcfg.layer2.edge_shed_fraction = c.f_edge;
-    rcfg.layer2.crypt.supply_mult *=
-        regions_cfg_[i].patch_supply_scale;
-    rcfg.layer2.exposed_proximal.supply_mult *=
-        regions_cfg_[i].patch_supply_scale;
-    rcfg.layer2.exposed_distal.supply_mult *=
-        regions_cfg_[i].patch_supply_scale;
-    rcfg.layer2.timeseries_file.clear();
-    rcfg.layer2.provenance_file.clear();
-    rcfg.layer2.checkpoint_file.clear();
-    rcfg.layer2.checkpoint_final = false;
-
+    SimulationConfig& rcfg = emplace_region_cfg(cfg, r);
     rs.segment = std::make_unique<MucusSegment>();
     rs.segment->init_from_checkpoint_group(rcfg, h5_file,
                                            base + "/segment");
     rs.next_deposit_tag = static_cast<TagID>(
         read_scalar_i64(fg.f, (base + "/deposit_tag").c_str()));
     rs.lumen.read_state(fg.f, base + "/lumen");
-    rs.segment->set_pool_exit_sink(
-        [this, i](std::vector<Agent>&& cells) {
-          regions_[i].lumen.add_cells(cells);
-        });
-    rs.segment->set_contraction_rate_per_min(
-        regions_cfg_[i].contraction_k0_per_min);
+    wire_region(r);
   }
 
   ledger_.initial_cells = read_scalar_f64(fg.f, "/ledger/initial_cells");

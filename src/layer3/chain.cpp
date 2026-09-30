@@ -129,7 +129,7 @@ std::vector<Agent> ColonicChain::seed_lumen_exemplars() const {
   return out;
 }
 
-void ColonicChain::init(const SimulationConfig& cfg) {
+void ColonicChain::resolve_common_config(const SimulationConfig& cfg) {
   cfg_ = &cfg;
   const Layer3Config& c = cfg.layer3;
 
@@ -153,13 +153,51 @@ void ColonicChain::init(const SimulationConfig& cfg) {
   // the ileocecal endpoint of the sourced axial profile.
   physio_.diet_carbon_mol_m3 = regions_cfg_.front().lumen_carbon_mol_m3;
 
-  const std::vector<Agent> exemplars = seed_lumen_exemplars();
-
   regions_.clear();
   regions_.resize(kRegionCount);
   region_cfgs_.clear();
   order_.resize(kRegionCount);
   std::iota(order_.begin(), order_.end(), 0);
+}
+
+SimulationConfig& ColonicChain::emplace_region_cfg(
+    const SimulationConfig& cfg, Int r) {
+  const auto i = static_cast<size_t>(r);
+  const Layer3Config& c = cfg.layer3;
+  SimulationConfig& rcfg = region_cfgs_.emplace_back(cfg);
+  // Per-region seed so contraction/init/pool streams are distinct;
+  // tag prefix so cell tags cannot collide across regions.
+  rcfg.seed = mix_seed(cfg.seed, static_cast<uint64_t>(0x5EED),
+                       static_cast<uint64_t>(r));
+  rcfg.layer2.tag_prefix = static_cast<TagID>(r + 1) << 56;
+  rcfg.layer2.n_patches = c.n_patches_per_region;
+  rcfg.layer2.edge_shed_fraction = c.f_edge;
+  rcfg.layer2.crypt.supply_mult *= regions_cfg_[i].patch_supply_scale;
+  rcfg.layer2.exposed_proximal.supply_mult *=
+      regions_cfg_[i].patch_supply_scale;
+  rcfg.layer2.exposed_distal.supply_mult *=
+      regions_cfg_[i].patch_supply_scale;
+  rcfg.layer2.timeseries_file.clear();
+  rcfg.layer2.provenance_file.clear();
+  rcfg.layer2.checkpoint_file.clear();
+  rcfg.layer2.checkpoint_final = false;
+  return rcfg;
+}
+
+void ColonicChain::wire_region(Int r) {
+  const auto i = static_cast<size_t>(r);
+  RegionState& rs = regions_[i];
+  rs.segment->set_pool_exit_sink([this, i](std::vector<Agent>&& cells) {
+    regions_[i].lumen.add_cells(cells);
+  });
+  rs.segment->set_contraction_rate_per_min(
+      regions_cfg_[i].contraction_k0_per_min);
+}
+
+void ColonicChain::init(const SimulationConfig& cfg) {
+  resolve_common_config(cfg);
+  const Layer3Config& c = cfg.layer3;
+  const std::vector<Agent> exemplars = seed_lumen_exemplars();
 
   for (Int r = 0; r < kRegionCount; ++r) {
     const auto i = static_cast<size_t>(r);
@@ -167,33 +205,10 @@ void ColonicChain::init(const SimulationConfig& cfg) {
     rs.next_deposit_tag = (static_cast<TagID>(r + 1) << 56) |
                           kDepositMarker;
 
-    SimulationConfig& rcfg = region_cfgs_.emplace_back(cfg);
-    // Per-region seed so contraction/init/pool streams are distinct;
-    // tag prefix so cell tags cannot collide across regions.
-    rcfg.seed = mix_seed(cfg.seed, static_cast<uint64_t>(0x5EED),
-                         static_cast<uint64_t>(r));
-    rcfg.layer2.tag_prefix = static_cast<TagID>(r + 1) << 56;
-    rcfg.layer2.n_patches = c.n_patches_per_region;
-    rcfg.layer2.edge_shed_fraction = c.f_edge;
-    rcfg.layer2.crypt.supply_mult *=
-        regions_cfg_[i].patch_supply_scale;
-    rcfg.layer2.exposed_proximal.supply_mult *=
-        regions_cfg_[i].patch_supply_scale;
-    rcfg.layer2.exposed_distal.supply_mult *=
-        regions_cfg_[i].patch_supply_scale;
-    rcfg.layer2.timeseries_file.clear();
-    rcfg.layer2.provenance_file.clear();
-    rcfg.layer2.checkpoint_file.clear();
-    rcfg.layer2.checkpoint_final = false;
-
+    SimulationConfig& rcfg = emplace_region_cfg(cfg, r);
     rs.segment = std::make_unique<MucusSegment>();
     rs.segment->init(rcfg);
-    rs.segment->set_pool_exit_sink(
-        [this, i](std::vector<Agent>&& cells) {
-          regions_[i].lumen.add_cells(cells);
-        });
-    rs.segment->set_contraction_rate_per_min(
-        regions_cfg_[i].contraction_k0_per_min);
+    wire_region(r);
     rs.lumen.init(regions_cfg_[i], exemplars, c.lumen_seed_cells);
   }
 

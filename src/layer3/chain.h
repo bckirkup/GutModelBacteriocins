@@ -135,6 +135,14 @@ class ColonicChain {
   };
 
   void validate_config() const;
+  // Shared init prelude for init() and init_from_checkpoint(): resolves
+  // the uniform-aware region rows, the shared luminal physiology, and the
+  // empty regions/order containers.
+  void resolve_common_config(const SimulationConfig& cfg);
+  // Emplaces and derives one region's SimulationConfig copy.
+  SimulationConfig& emplace_region_cfg(const SimulationConfig& cfg, Int r);
+  // Attaches the pool-exit sink and the region contraction override.
+  void wire_region(Int r);
   [[nodiscard]] std::vector<Agent> seed_lumen_exemplars() const;
   void process_reattach(Int r, const LumenStepPlan& plan,
                         std::map<TagID, Int>& deposited);
