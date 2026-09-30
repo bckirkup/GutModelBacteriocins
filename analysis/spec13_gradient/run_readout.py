@@ -17,15 +17,45 @@ mucosal purge (90% luminal) at 48 h. Runs are sequential (~2.7 GB RSS each).
 """
 
 import csv
+import importlib.util
+import io
 import json
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 csv.field_size_limit(10**9)
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
+
+_REPO_PYTHON = REPO / "python"
+sys.path.insert(0, str(_REPO_PYTHON))
+try:
+    from gut_ibm_tools.path_utils import (
+        validate_input_path,
+        write_json_file,
+        write_text_file,
+    )
+except ModuleNotFoundError as error:
+    if error.name != "h5py":
+        raise
+    package = types.ModuleType("gut_ibm_tools")
+    package.__path__ = [str(_REPO_PYTHON / "gut_ibm_tools")]
+    sys.modules["gut_ibm_tools"] = package
+    module_path = _REPO_PYTHON / "gut_ibm_tools" / "path_utils.py"
+    spec = importlib.util.spec_from_file_location(
+        "gut_ibm_tools.path_utils", module_path
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load {module_path}") from error
+    path_utils = importlib.util.module_from_spec(spec)
+    sys.modules["gut_ibm_tools.path_utils"] = path_utils
+    spec.loader.exec_module(path_utils)
+    validate_input_path = path_utils.validate_input_path
+    write_json_file = path_utils.write_json_file
+    write_text_file = path_utils.write_text_file
 BINARY = REPO / "build-serial" / "gut_ibm"
 CONFIG_DIR = HERE / "configs"
 RUN_DIR = HERE / "out"
@@ -140,7 +170,7 @@ def arm_config(arm: str, seed: int) -> dict:
 def run_arm(arm: str, seed: int) -> None:
     cfg = arm_config(arm, seed)
     cfg_path = CONFIG_DIR / f"{arm}_seed{seed}.json"
-    cfg_path.write_text(json.dumps(cfg, indent=1))
+    write_json_file(cfg_path, cfg, indent=1)
     print(f"[run] {arm} seed={seed} -> {cfg_path.name}", flush=True)
     proc = subprocess.run(
         [str(BINARY), str(cfg_path.relative_to(REPO))],
@@ -149,14 +179,16 @@ def run_arm(arm: str, seed: int) -> None:
         text=True,
         check=False,
     )
-    (RUN_DIR / f"{arm}_seed{seed}.log").write_text(proc.stdout + proc.stderr)
+    write_text_file(
+        RUN_DIR / f"{arm}_seed{seed}.log", proc.stdout + proc.stderr
+    )
     if proc.returncode != 0:
         tail = (proc.stdout + proc.stderr).strip().splitlines()[-3:]
         raise RuntimeError(f"{arm} seed={seed} exited {proc.returncode}: {tail}")
 
 
 def rows_for(path: Path) -> list[dict]:
-    with open(path) as f:
+    with open(validate_input_path(path)) as f:
         return [r for r in csv.DictReader(f) if r["region"] in REGIONS]
 
 
@@ -252,10 +284,10 @@ def tail_metrics(ts_path: Path) -> dict:
     recovery_ratio = post_rate / pre_rate if pre_rate else float("nan")
 
     # Growth-in-transit amplification: luminal births vs stool exports.
-    prov = json.loads(
-        (ts_path.parent / ts_path.name.replace("_timeseries.csv", "_prov.json"))
-        .read_text()
+    prov_path = ts_path.parent / ts_path.name.replace(
+        "_timeseries.csv", "_prov.json"
     )
+    prov = json.loads(validate_input_path(prov_path).read_text())
     led = prov["ledger"]
     amplification = (
         led["luminal_births"] / led["stool_exports"]
@@ -292,7 +324,7 @@ def main() -> int:
             ts = RUN_DIR / f"{arm}_seed{seed}_timeseries.csv"
             if ts.exists():
                 summary[arm][seed] = tail_metrics(ts)
-    SUMMARY.write_text(json.dumps(summary, indent=1, default=str))
+    write_json_file(SUMMARY, summary, indent=1)
 
     verdict_rows = []
     for arm in ARMS:
@@ -315,10 +347,12 @@ def main() -> int:
                 "amplification": f"{min(v['amplification'] for v in vals):.2f}..{max(v['amplification'] for v in vals):.2f}",
             }
         )
-    with open(VERDICTS, "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(verdict_rows[0].keys()))
-        w.writeheader()
-        w.writerows(verdict_rows)
+    header = list(verdict_rows[0].keys())
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=header)
+    w.writeheader()
+    w.writerows(verdict_rows)
+    write_text_file(VERDICTS, buf.getvalue())
     print(json.dumps(summary, indent=1, default=str)[:4000])
     return 0
 
