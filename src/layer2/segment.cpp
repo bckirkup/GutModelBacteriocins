@@ -139,6 +139,10 @@ void MucusSegment::validate_config() const {
       c.establish_ratio < 0.0) {
     throw ConfigError("layer2 establishment parameters out of range");
   }
+  if (c.edge_shed_fraction < 0.0 || c.edge_shed_fraction > 1.0 ||
+      c.tag_prefix < 0) {
+    throw ConfigError("layer2 edge_shed_fraction/tag_prefix out of range");
+  }
   if (cfg_->initial_strains.empty()) {
     throw ConfigError("layer2 requires at least one initial_strains entry");
   }
@@ -258,10 +262,12 @@ void MucusSegment::init(const SimulationConfig& cfg) {
   for (size_t i = 0; i < patches_.size(); ++i) {
     patches_[i].id = static_cast<Int>(i);
     patches_[i].next_cell_tag =
-        static_cast<TagID>(static_cast<int64_t>(i) + 1) << 32;
+        c.tag_prefix |
+        (static_cast<TagID>(static_cast<int64_t>(i) + 1) << 32);
     patches_[i].rng.seed(mix_seed(cfg.seed, static_cast<uint64_t>(i)));
   }
-  next_tag_ = (static_cast<TagID>(c.n_patches) + 1) << 32;
+  next_tag_ =
+      c.tag_prefix | ((static_cast<TagID>(c.n_patches) + 1) << 32);
 
   assign_patch_types();
   seed_initial_colonists();
@@ -337,6 +343,27 @@ void MucusSegment::grow_tabulated(Patch& patch, Real dt) {
     patch.colonists.push_back(std::move(daughter));
   }
   ledger_.births += births;
+
+  // Layer-3 growth-edge shedding: a fraction of the newborn cohort is
+  // shed at the colony margin into the pool. Draws come from the
+  // patch-keyed stream (G3).
+  const Real f_edge = cfg_->layer2.edge_shed_fraction;
+  if (f_edge > 0.0 && births > 0) {
+    const Int n_shed = std::min<Int>(
+        births,
+        patch.rng.poisson(f_edge * static_cast<Real>(births)));
+    std::vector<Agent> shed;
+    shed.reserve(static_cast<size_t>(n_shed));
+    for (Int i = 0; i < n_shed; ++i) {
+      shed.push_back(std::move(patch.colonists.back()));
+      patch.colonists.pop_back();
+    }
+    ledger_.edge_departures += n_shed;
+    push_packet(PacketKind::Single, std::move(shed),
+                mix_seed(static_cast<uint64_t>(patch.id),
+                         static_cast<uint64_t>(step_count_),
+                         tag_hash("edge")));
+  }
 }
 
 void MucusSegment::contract_tabulated(Patch& patch, bool ledger) {
@@ -532,7 +559,10 @@ void MucusSegment::shadow_step(Patch& live_patch, Real dt) {
 void MucusSegment::step(Real dt) {
   if (termination_cause_ != TerminationCause::IncompleteUnknown) return;
 
-  const Real p_contract = cfg_->layer2.contraction_rate_per_min * dt / 60.0;
+  const Real rate = contraction_rate_override_ >= 0.0
+                        ? contraction_rate_override_
+                        : cfg_->layer2.contraction_rate_per_min;
+  const Real p_contract = rate * dt / 60.0;
   const bool fire = p_contract > 0.0 && contraction_stream_.bernoulli(p_contract);
 
   for (const Int idx : order_) {
@@ -583,6 +613,9 @@ void MucusSegment::pool_phase(Real dt) {
     pool_.pop_front();
     if (packet.rng.bernoulli(p_exit)) {
       ledger_.distal_losses += static_cast<Int>(packet.cells.size());
+      if (pool_exit_sink_) {
+        pool_exit_sink_(std::move(packet.cells));
+      }
       continue;
     }
     if (packet.rng.bernoulli(p_attempt)) {
@@ -613,6 +646,31 @@ void MucusSegment::pool_phase(Real dt) {
     }
     pool_.push_back(std::move(packet));
   }
+}
+
+// ── Layer-3 coupling hooks ───────────────────────────────────────────────
+
+void MucusSegment::set_contraction_rate_per_min(Real rate_per_min) {
+  contraction_rate_override_ = rate_per_min;
+}
+
+void MucusSegment::set_pool_exit_sink(
+    std::function<void(std::vector<Agent>&&)> sink) {
+  pool_exit_sink_ = std::move(sink);
+}
+
+bool MucusSegment::try_deposit(Agent&& a, uint64_t stream_key) {
+  RNG draw;
+  draw.seed(mix_seed(cfg_->seed, stream_key));
+  const Int target =
+      draw.randint(0, static_cast<Int>(patches_.size()) - 1);
+  Patch& dest = patches_[static_cast<size_t>(target)];
+  if (dest.status != PatchStatus::Active || dest.live) {
+    return false;
+  }
+  dest.colonists.push_back(std::move(a));
+  ++ledger_.external_arrivals;
+  return true;
 }
 
 // ── Guards (S4) ──────────────────────────────────────────────────────────
@@ -834,8 +892,10 @@ uint64_t MucusSegment::fingerprint() const {
   h = hash_combine(h, static_cast<uint64_t>(ledger_.births));
   h = hash_combine(h, static_cast<uint64_t>(ledger_.washout_departures));
   h = hash_combine(h, static_cast<uint64_t>(ledger_.contraction_departures));
+  h = hash_combine(h, static_cast<uint64_t>(ledger_.edge_departures));
   h = hash_combine(h, static_cast<uint64_t>(ledger_.reseeds));
   h = hash_combine(h, static_cast<uint64_t>(ledger_.distal_losses));
+  h = hash_combine(h, static_cast<uint64_t>(ledger_.external_arrivals));
   return h;
 }
 
@@ -845,6 +905,15 @@ void MucusSegment::permute_patch_order_for_testing(
     throw ConfigError("patch iteration order has wrong size");
   }
   order_ = order;
+}
+
+void MucusSegment::for_each_colonist(
+    const std::function<void(const Agent&)>& f) const {
+  for (const Patch& patch : patches_) {
+    for (const Agent& a : patch.colonists) {
+      f(a);
+    }
+  }
 }
 
 }  // namespace gutibm

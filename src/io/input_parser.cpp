@@ -1879,7 +1879,81 @@ bool apply_layer2_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 32> k_flat_key_handlers = {
+bool apply_layer3_key(SimulationConfig& cfg, std::string_view key,
+                      const std::string& val) {
+  if (!key.starts_with("layer3.")) return false;
+  const std::string_view sub = key.substr(7);
+  Layer3Config& c = cfg.layer3;
+
+  const size_t us = sub.find('_');
+  const std::string_view head = us == std::string_view::npos
+                                    ? sub
+                                    : sub.substr(0, us);
+  Layer3RegionConfig* rc = nullptr;
+  if (head == "cecum") rc = &c.cecum;
+  if (head == "transverse") rc = &c.transverse;
+  if (head == "descending") rc = &c.descending;
+  if (rc != nullptr) {
+    const std::string_view field =
+        us == std::string_view::npos ? std::string_view{} : sub.substr(us + 1);
+    if (field == "transit_h") {
+      rc->transit_h = parse_positive_config_real(key, val); return true;
+    }
+    if (field == "ph") {
+      rc->ph = parse_positive_config_real(key, val); return true;
+    }
+    if (field == "lumen_carbon_mol_m3") {
+      rc->lumen_carbon_mol_m3 = parse_positive_config_real(key, val);
+      return true;
+    }
+    if (field == "lumen_volume_l") {
+      rc->lumen_volume_L = parse_positive_config_real(key, val);
+      return true;
+    }
+    if (field == "contraction_k0_per_min") {
+      rc->contraction_k0_per_min = parse_config_real(key, val);
+      return true;
+    }
+    if (field == "outflow_survival") {
+      rc->outflow_survival = parse_config_real(key, val); return true;
+    }
+    if (field == "flora_density_cfu_ml") {
+      rc->flora_density_cfu_ml = parse_positive_config_real(key, val);
+      return true;
+    }
+    if (field == "patch_supply_scale") {
+      rc->patch_supply_scale = parse_positive_config_real(key, val);
+      return true;
+    }
+    return false;
+  }
+
+  if (sub == "enabled") { c.enabled = parse_bool_config(val); return true; }
+  if (sub == "uniform_profile") { c.uniform_profile = parse_bool_config(val); return true; }
+  if (sub == "n_patches_per_region") { c.n_patches_per_region = parse_positive_config_int(key, val); return true; }
+  if (sub == "f_edge") { c.f_edge = parse_config_real(key, val); return true; }
+  if (sub == "reattach_p0") { c.reattach_p0 = parse_config_real(key, val); return true; }
+  if (sub == "hapc_rate_per_day") { c.hapc_rate_per_day = parse_config_real(key, val); return true; }
+  if (sub == "hapc_antegrade_fraction") { c.hapc_antegrade_fraction = parse_config_real(key, val); return true; }
+  if (sub == "hapc_day_fraction") { c.hapc_day_fraction = parse_config_real(key, val); return true; }
+  if (sub == "hapc_day_start_h") { c.hapc_day_start_h = parse_config_real(key, val); return true; }
+  if (sub == "alpha_hapc_per_min") { c.alpha_hapc_per_min = parse_config_real(key, val); return true; }
+  if (sub == "stool_g_per_day") { c.stool_g_per_day = parse_positive_config_real(key, val); return true; }
+  if (sub == "flatness_bound") { c.flatness_bound = parse_positive_config_real(key, val); return true; }
+  if (sub == "lumen_seed_cells") { c.lumen_seed_cells = parse_config_real(key, val); return true; }
+  if (sub == "purge_at_s") { c.purge_at_s = parse_config_real(key, val); return true; }
+  if (sub == "purge_at_h") { c.purge_at_s = parse_config_real(key, val) * 3600.0; return true; }
+  if (sub == "purge_fraction") { c.purge_fraction = parse_config_real(key, val); return true; }
+  if (sub == "timeseries_file") { c.timeseries_file = val; return true; }
+  if (sub == "summary_interval_steps") { c.summary_interval_steps = parse_positive_config_int(key, val); return true; }
+  if (sub == "provenance_file") { c.provenance_file = val; return true; }
+  if (sub == "checkpoint_file") { c.checkpoint_file = val; return true; }
+  if (sub == "checkpoint_interval_steps") { c.checkpoint_interval_steps = parse_config_int(key, val); return true; }
+  if (sub == "checkpoint_final") { c.checkpoint_final = parse_bool_config(val); return true; }
+  return false;
+}
+
+constexpr std::array<FlatKeyHandler, 33> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_chemistry_key,
@@ -1912,6 +1986,7 @@ constexpr std::array<FlatKeyHandler, 32> k_flat_key_handlers = {
   apply_motility_key,
   apply_quorum_sensing_key,
   apply_layer2_key,
+  apply_layer3_key,
 };
 
 bool parse_legacy_key_value(const std::string& line,

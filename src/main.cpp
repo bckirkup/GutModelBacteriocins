@@ -8,6 +8,7 @@
 
 #include "simulation.h"
 #include "segment.h"
+#include "chain.h"
 #include "input_parser.h"
 #include "stop_signal.h"
 #include "error.h"
@@ -70,13 +71,27 @@ int main(int argc, char** argv) {
 #ifdef GUTIBM_MPI
     MPI_Comm_size(MPI_COMM_WORLD, &n_ranks);
 #endif
-    if (cfg.layer2.enabled && n_ranks > 1) {
+    if ((cfg.layer2.enabled || cfg.layer3.enabled) && n_ranks > 1) {
       throw gutibm::ConfigError(
-          "layer2.enabled requires a single rank in Phase 1 "
-          "(concurrent-CPU patches; MPI segment decomposition is a "
-          "later phase)");
+          "layer2.enabled / layer3.enabled require a single rank "
+          "(concurrent-CPU patches; MPI decomposition is a later "
+          "phase)");
     }
-    if (cfg.layer2.enabled) {
+    if (cfg.layer2.enabled && cfg.layer3.enabled) {
+      throw gutibm::ConfigError(
+          "layer2.enabled and layer3.enabled are mutually exclusive");
+    }
+    if (cfg.layer3.enabled) {
+      // Spec 13 Phase 3: the Layer-3 colonic chain drives the run;
+      // each region hosts a MucusSegment plus a luminal compartment.
+      gutibm::ColonicChain chain;
+      if (!cfg.checkpoint.file.empty()) {
+        chain.init_from_checkpoint(cfg, cfg.checkpoint.file);
+      } else {
+        chain.init(cfg);
+      }
+      exit_code = chain.run();
+    } else if (cfg.layer2.enabled) {
       // Spec 13 Phase 1: the Layer-2 mucus segment drives the run;
       // Layer-1 Simulation instances appear only inside audit slots.
       gutibm::MucusSegment segment;

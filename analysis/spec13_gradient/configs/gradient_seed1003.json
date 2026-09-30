@@ -1,0 +1,81 @@
+{
+ "seed": 1003,
+ "total_time": 259200.0,
+ "bio_dt": 60.0,
+ "hdf5": {
+  "enabled": false
+ },
+ "initial_strains": [
+  {
+   "type": 1,
+   "count": 100,
+   "mu_max": 0.0005,
+   "plasmids": [
+    "ColE1"
+   ],
+   "conjugative": false
+  }
+ ],
+ "layer2": {
+  "initial_patch_fraction": 0.01,
+  "initial_founder_cells": 20,
+  "contraction_rate_per_min": 0.5,
+  "agent_loss_fraction": 0.2,
+  "transit_half_life_h": 4.0,
+  "reattach_prob_per_transit": 0.05,
+  "establish_prob_single": 0.01,
+  "establish_ratio": 10.0,
+  "crypt_fraction": 0.1,
+  "crypt_disruption_prob": 0.07,
+  "crypt_single_cell_loss_per_h": 0.02,
+  "crypt_supply_mult": 2.0,
+  "proximal_fraction": 0.45,
+  "proximal_disruption_prob": 0.5,
+  "proximal_single_cell_loss_per_h": 0.1,
+  "proximal_supply_mult": 1.0,
+  "distal_fraction": 0.45,
+  "distal_disruption_prob": 0.5,
+  "distal_single_cell_loss_per_h": 0.2,
+  "distal_supply_mult": 0.5,
+  "invalid_patch_fraction_stop": 1.0,
+  "n_patches": 400
+ },
+ "layer3": {
+  "n_patches_per_region": 400,
+  "f_edge": 0.2,
+  "reattach_p0": 0.05,
+  "hapc_rate_per_day": 6.0,
+  "hapc_antegrade_fraction": 0.95,
+  "hapc_day_fraction": 0.8,
+  "hapc_day_start_h": 8.0,
+  "alpha_hapc_per_min": 0.2,
+  "stool_g_per_day": 128.0,
+  "flatness_bound": 4.0,
+  "lumen_seed_cells": 3000,
+  "purge_at_h": 48.0,
+  "purge_fraction": 0.9,
+  "summary_interval_steps": 10,
+  "cecum_transit_h": 12.0,
+  "cecum_ph": 6.25,
+  "cecum_lumen_carbon_mol_m3": 0.008,
+  "cecum_lumen_volume_l": 0.4,
+  "cecum_contraction_k0_per_min": 0.5,
+  "cecum_outflow_survival": 0.92,
+  "transverse_transit_h": 8.0,
+  "transverse_ph": 6.6,
+  "transverse_lumen_carbon_mol_m3": 0.005,
+  "transverse_lumen_volume_l": 0.35,
+  "transverse_contraction_k0_per_min": 0.4,
+  "transverse_outflow_survival": 0.9,
+  "descending_transit_h": 10.0,
+  "descending_ph": 6.8,
+  "descending_lumen_carbon_mol_m3": 0.0025,
+  "descending_lumen_volume_l": 0.3,
+  "descending_contraction_k0_per_min": 0.3,
+  "descending_outflow_survival": 0.88,
+  "enabled": true,
+  "uniform_profile": false,
+  "timeseries_file": "analysis/spec13_gradient/out/gradient_seed1003_timeseries.csv",
+  "provenance_file": "analysis/spec13_gradient/out/gradient_seed1003_prov.json"
+ }
+}

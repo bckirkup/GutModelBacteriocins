@@ -12,6 +12,7 @@
    ----------------------------------------------------------------------- */
 
 #include "error.h"
+#include "h5_util.h"
 #include "input_parser.h"
 #include "patch_table.h"
 #include "path_utils.h"
@@ -34,6 +35,8 @@ extern "C" {
 
 namespace gutibm {
 
+using namespace h5;
+
 namespace {
 
 const char* kTimeseriesHeader =
@@ -45,7 +48,8 @@ const char* kTimeseriesHeader =
     "density_occupied_distal_cfu_ml,"
     "segment_mean_cfu_ml,segment_cfu_cm2,"
     "n_occupied_total,patch_cells,pool_cells,pool_packets,"
-    "births_cum,washout_cum,contraction_cum,reseeds_cum,distal_cum";
+    "births_cum,washout_cum,contraction_cum,reseeds_cum,distal_cum,"
+    "edge_cum,external_cum";
 
 std::string json_escape(const std::string& s) {
   std::string out;
@@ -61,177 +65,6 @@ std::string json_escape(const std::string& s) {
   }
   return out;
 }
-
-#ifdef GUTIBM_HDF5
-
-constexpr hsize_t kRngStrLen = 16384;
-
-std::string rng_to_string(const RNG& rng) {
-  std::ostringstream oss;
-  oss << rng.engine();
-  return oss.str();
-}
-
-void rng_from_string(const char* buf, RNG& rng) {
-  std::istringstream iss{std::string(buf)};
-  iss >> rng.engine();
-}
-
-struct GroupGuard {
-  hid_t g;
-  ~GroupGuard() { H5Gclose(g); }
-};
-
-void make_group(hid_t fid, const char* name) {
-  GroupGuard g{H5Gcreate2(fid, name, H5P_DEFAULT, H5P_DEFAULT,
-                          H5P_DEFAULT)};
-}
-
-void write_scalar_i64(hid_t fid, const char* name, int64_t v) {
-  hid_t space = H5Screate(H5S_SCALAR);
-  hid_t ds = H5Dcreate2(fid, name, H5T_NATIVE_INT64, space, H5P_DEFAULT,
-                        H5P_DEFAULT, H5P_DEFAULT);
-  if (ds < 0 || H5Dwrite(ds, H5T_NATIVE_INT64, H5S_ALL, H5S_ALL,
-                         H5P_DEFAULT, &v) < 0) {
-    throw HDF5Error(std::string("layer2 checkpoint write failed: ") + name);
-  }
-  H5Dclose(ds);
-  H5Sclose(space);
-}
-
-void write_scalar_f64(hid_t fid, const char* name, double v) {
-  hid_t space = H5Screate(H5S_SCALAR);
-  hid_t ds = H5Dcreate2(fid, name, H5T_NATIVE_DOUBLE, space, H5P_DEFAULT,
-                        H5P_DEFAULT, H5P_DEFAULT);
-  if (ds < 0 || H5Dwrite(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
-                         H5P_DEFAULT, &v) < 0) {
-    throw HDF5Error(std::string("layer2 checkpoint write failed: ") + name);
-  }
-  H5Dclose(ds);
-  H5Sclose(space);
-}
-
-template <typename T>
-void write_vec(hid_t fid, const char* name, hid_t type,
-               const std::vector<T>& v) {
-  hsize_t dims[1] = {v.empty() ? 0 : v.size()};
-  hid_t space = H5Screate_simple(1, dims, nullptr);
-  hid_t ds = H5Dcreate2(fid, name, type, space, H5P_DEFAULT, H5P_DEFAULT,
-                        H5P_DEFAULT);
-  if (ds < 0) {
-    H5Sclose(space);
-    throw HDF5Error(std::string("layer2 checkpoint write failed: ") + name);
-  }
-  if (!v.empty() &&
-      H5Dwrite(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, v.data()) < 0) {
-    H5Dclose(ds);
-    H5Sclose(space);
-    throw HDF5Error(std::string("layer2 checkpoint write failed: ") + name);
-  }
-  H5Dclose(ds);
-  H5Sclose(space);
-}
-
-void write_str_vec(hid_t fid, const char* name,
-                   const std::vector<std::string>& v) {
-  hsize_t dims[1] = {v.empty() ? 0 : v.size()};
-  hid_t type = H5Tcopy(H5T_C_S1);
-  H5Tset_size(type, kRngStrLen);
-  hid_t space = H5Screate_simple(1, dims, nullptr);
-  hid_t ds = H5Dcreate2(fid, name, type, space, H5P_DEFAULT, H5P_DEFAULT,
-                        H5P_DEFAULT);
-  if (ds < 0) {
-    H5Sclose(space);
-    H5Tclose(type);
-    throw HDF5Error(std::string("layer2 checkpoint write failed: ") + name);
-  }
-  if (!v.empty()) {
-    std::vector<char> flat(v.size() * kRngStrLen, '\0');
-    for (size_t i = 0; i < v.size(); ++i) {
-      std::copy_n(v[i].data(),
-                  std::min(v[i].size(), static_cast<size_t>(kRngStrLen)),
-                  flat.data() + i * kRngStrLen);
-    }
-    H5Dwrite(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, flat.data());
-  }
-  H5Dclose(ds);
-  H5Sclose(space);
-  H5Tclose(type);
-}
-
-int64_t read_scalar_i64(hid_t fid, const char* name) {
-  hid_t ds = H5Dopen2(fid, name, H5P_DEFAULT);
-  if (ds < 0) {
-    throw HDF5Error(std::string("layer2 checkpoint missing dataset: ") +
-                    name);
-  }
-  int64_t v = 0;
-  H5Dread(ds, H5T_NATIVE_INT64, H5S_ALL, H5S_ALL, H5P_DEFAULT, &v);
-  H5Dclose(ds);
-  return v;
-}
-
-double read_scalar_f64(hid_t fid, const char* name) {
-  hid_t ds = H5Dopen2(fid, name, H5P_DEFAULT);
-  if (ds < 0) {
-    throw HDF5Error(std::string("layer2 checkpoint missing dataset: ") +
-                    name);
-  }
-  double v = 0;
-  H5Dread(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, &v);
-  H5Dclose(ds);
-  return v;
-}
-
-template <typename T>
-std::vector<T> read_vec(hid_t fid, const char* name, hid_t type) {
-  hid_t ds = H5Dopen2(fid, name, H5P_DEFAULT);
-  if (ds < 0) {
-    throw HDF5Error(std::string("layer2 checkpoint missing dataset: ") +
-                    name);
-  }
-  hid_t space = H5Dget_space(ds);
-  hsize_t dims[1] = {0};
-  H5Sget_simple_extent_dims(space, dims, nullptr);
-  std::vector<T> v(dims[0]);
-  if (dims[0] > 0) {
-    H5Dread(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, v.data());
-  }
-  H5Sclose(space);
-  H5Dclose(ds);
-  return v;
-}
-
-std::vector<std::string> read_str_vec(hid_t fid, const char* name) {
-  hid_t ds = H5Dopen2(fid, name, H5P_DEFAULT);
-  if (ds < 0) {
-    throw HDF5Error(std::string("layer2 checkpoint missing dataset: ") +
-                    name);
-  }
-  hid_t space = H5Dget_space(ds);
-  hsize_t dims[1] = {0};
-  H5Sget_simple_extent_dims(space, dims, nullptr);
-  hid_t type = H5Tcopy(H5T_C_S1);
-  H5Tset_size(type, kRngStrLen);
-  std::vector<std::string> out(dims[0]);
-  if (dims[0] > 0) {
-    std::vector<char> flat(dims[0] * kRngStrLen);
-    H5Dread(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, flat.data());
-    for (size_t i = 0; i < dims[0]; ++i) {
-      out[i] = std::string(flat.data() + i * kRngStrLen);
-      const auto nul = out[i].find('\0');
-      if (nul != std::string::npos) {
-        out[i].resize(nul);
-      }
-    }
-  }
-  H5Sclose(space);
-  H5Dclose(ds);
-  H5Tclose(type);
-  return out;
-}
-
-#endif  // GUTIBM_HDF5
 
 }  // namespace
 
@@ -297,7 +130,9 @@ void MucusSegment::emit_timeseries_row(std::ofstream& out) const {
       << o.n_occupied_total << ',' << o.patch_cells << ',' << o.pool_cells
       << ',' << o.pool_packets << ',' << ledger_.births << ','
       << ledger_.washout_departures << ',' << ledger_.contraction_departures
-      << ',' << ledger_.reseeds << ',' << ledger_.distal_losses << '\n';
+      << ',' << ledger_.reseeds << ',' << ledger_.distal_losses << ','
+      << ledger_.edge_departures << ',' << ledger_.external_arrivals
+      << '\n';
 }
 
 void MucusSegment::write_provenance(const std::string& path) const {
@@ -334,8 +169,10 @@ void MucusSegment::write_provenance(const std::string& path) const {
       << ", \"births\": " << ledger_.births
       << ", \"washout\": " << ledger_.washout_departures
       << ", \"contraction\": " << ledger_.contraction_departures
+      << ", \"edge\": " << ledger_.edge_departures
       << ", \"reseeds\": " << ledger_.reseeds
-      << ", \"distal\": " << ledger_.distal_losses << "},\n";
+      << ", \"distal\": " << ledger_.distal_losses
+      << ", \"external\": " << ledger_.external_arrivals << "},\n";
   out << "  \"occupancy\": {";
   for (Int t = 0; t < kPatchTypeCount; ++t) {
     const auto& to = o.per_type[t];
@@ -367,8 +204,16 @@ void MucusSegment::write_checkpoint_now() const {
 }
 
 void MucusSegment::write_checkpoint(const std::string& path) const {
+  write_checkpoint_group(path, "", true);
+}
+
+void MucusSegment::write_checkpoint_group(const std::string& path,
+                                          const std::string& prefix,
+                                          bool truncate) const {
 #ifndef GUTIBM_HDF5
   (void)path;
+  (void)prefix;
+  (void)truncate;
   throw ConfigError("layer2 checkpoint requires a GUTIBM_HDF5 build");
 #else
   if (!live_.empty()) {
@@ -378,6 +223,32 @@ void MucusSegment::write_checkpoint(const std::string& path) const {
         "serializable)");
   }
   validate_output_file_path(path);
+
+  hid_t fid = -1;
+  if (truncate) {
+    fid = H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT,
+                    H5P_DEFAULT);
+  } else {
+    fid = H5Fopen(path.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+  }
+  if (fid < 0) {
+    throw HDF5Error("cannot open layer2 checkpoint for write: " + path);
+  }
+  struct FileGuard {
+    hid_t f;
+    ~FileGuard() { H5Fclose(f); }
+  } guard{fid};
+
+  write_state(fid, prefix);
+#endif  // GUTIBM_HDF5
+}
+
+#ifdef GUTIBM_HDF5
+void MucusSegment::write_state(hid_t fid,
+                               const std::string& prefix) const {
+  const auto p = [&prefix](const char* leaf) {
+    return prefix + leaf;
+  };
 
   std::vector<std::vector<char>> patch_blobs(patches_.size());
   std::vector<int64_t> patch_counts(patches_.size());
@@ -434,67 +305,73 @@ void MucusSegment::write_checkpoint(const std::string& path) const {
     }
   }
 
-  hid_t fid = H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT,
-                        H5P_DEFAULT);
-  if (fid < 0) {
-    throw HDF5Error("cannot create layer2 checkpoint: " + path);
-  }
-  struct FileGuard {
-    hid_t f;
-    ~FileGuard() { H5Fclose(f); }
-  } guard{fid};
+  make_group(fid, p("/ledger"));
+  make_group(fid, p("/patches"));
+  make_group(fid, p("/pool"));
+  make_group(fid, p("/audit"));
+  make_group(fid, p("/streams"));
+  make_group(fid, p("/mean_window"));
 
-  make_group(fid, "/ledger");
-  make_group(fid, "/patches");
-  make_group(fid, "/pool");
-  make_group(fid, "/audit");
-  make_group(fid, "/streams");
-  make_group(fid, "/mean_window");
-
-  write_scalar_i64(fid, "/format_version", 1);
-  write_scalar_f64(fid, "/time", static_cast<double>(time_));
-  write_scalar_i64(fid, "/step_count", static_cast<int64_t>(step_count_));
-  write_scalar_i64(fid, "/seed", static_cast<int64_t>(cfg_->seed));
-  write_scalar_i64(fid, "/next_tag", static_cast<int64_t>(next_tag_));
-  write_scalar_i64(fid, "/next_packet_id",
+  write_scalar_i64(fid, p("/format_version").c_str(), 1);
+  write_scalar_f64(fid, p("/time").c_str(), static_cast<double>(time_));
+  write_scalar_i64(fid, p("/step_count").c_str(),
+                   static_cast<int64_t>(step_count_));
+  write_scalar_i64(fid, p("/seed").c_str(),
+                   static_cast<int64_t>(cfg_->seed));
+  write_scalar_i64(fid, p("/next_tag").c_str(),
+                   static_cast<int64_t>(next_tag_));
+  write_scalar_i64(fid, p("/next_packet_id").c_str(),
                    static_cast<int64_t>(next_packet_id_));
-  write_scalar_f64(fid, "/audit_next_time",
+  write_scalar_f64(fid, p("/audit_next_time").c_str(),
                    static_cast<double>(audit_next_time_));
 
-  write_scalar_i64(fid, "/ledger/initial_cells", ledger_.initial_cells);
-  write_scalar_i64(fid, "/ledger/births", ledger_.births);
-  write_scalar_i64(fid, "/ledger/washout_departures",
+  write_scalar_i64(fid, p("/ledger/initial_cells").c_str(),
+                   ledger_.initial_cells);
+  write_scalar_i64(fid, p("/ledger/births").c_str(), ledger_.births);
+  write_scalar_i64(fid, p("/ledger/washout_departures").c_str(),
                    ledger_.washout_departures);
-  write_scalar_i64(fid, "/ledger/contraction_departures",
+  write_scalar_i64(fid, p("/ledger/contraction_departures").c_str(),
                    ledger_.contraction_departures);
-  write_scalar_i64(fid, "/ledger/reseeds", ledger_.reseeds);
-  write_scalar_i64(fid, "/ledger/distal_losses", ledger_.distal_losses);
+  write_scalar_i64(fid, p("/ledger/edge_departures").c_str(),
+                   ledger_.edge_departures);
+  write_scalar_i64(fid, p("/ledger/reseeds").c_str(), ledger_.reseeds);
+  write_scalar_i64(fid, p("/ledger/distal_losses").c_str(),
+                   ledger_.distal_losses);
+  write_scalar_i64(fid, p("/ledger/external_arrivals").c_str(),
+                   ledger_.external_arrivals);
 
-  write_vec(fid, "/patches/id", H5T_NATIVE_INT64, patch_ids);
-  write_vec(fid, "/patches/type", H5T_NATIVE_INT32, patch_types);
-  write_vec(fid, "/patches/status", H5T_NATIVE_INT32, patch_status);
-  write_vec(fid, "/patches/baseline_count", H5T_NATIVE_INT64,
+  write_vec(fid, p("/patches/id").c_str(), H5T_NATIVE_INT64, patch_ids);
+  write_vec(fid, p("/patches/type").c_str(), H5T_NATIVE_INT32,
+            patch_types);
+  write_vec(fid, p("/patches/status").c_str(), H5T_NATIVE_INT32,
+            patch_status);
+  write_vec(fid, p("/patches/baseline_count").c_str(), H5T_NATIVE_INT64,
             patch_baseline);
-  write_vec(fid, "/patches/next_cell_tag", H5T_NATIVE_INT64,
+  write_vec(fid, p("/patches/next_cell_tag").c_str(), H5T_NATIVE_INT64,
             patch_next_tag);
-  write_vec(fid, "/patches/bloom_excess_since", H5T_NATIVE_DOUBLE,
-            patch_bloom_since);
-  write_vec(fid, "/patches/colonist_counts", H5T_NATIVE_INT64,
+  write_vec(fid, p("/patches/bloom_excess_since").c_str(),
+            H5T_NATIVE_DOUBLE, patch_bloom_since);
+  write_vec(fid, p("/patches/colonist_counts").c_str(), H5T_NATIVE_INT64,
             patch_counts);
-  write_vec(fid, "/patches/colonist_offsets", H5T_NATIVE_INT64,
+  write_vec(fid, p("/patches/colonist_offsets").c_str(), H5T_NATIVE_INT64,
             patch_offsets);
-  write_vec(fid, "/patches/colonists", H5T_STD_I8LE, patch_blob);
-  write_str_vec(fid, "/patches/rng_state", patch_rng);
+  write_vec(fid, p("/patches/colonists").c_str(), H5T_STD_I8LE,
+            patch_blob);
+  write_str_vec(fid, p("/patches/rng_state").c_str(), patch_rng);
 
-  write_vec(fid, "/pool/packet_id", H5T_NATIVE_INT64, packet_ids);
-  write_vec(fid, "/pool/kind", H5T_NATIVE_INT32, packet_kinds);
-  write_vec(fid, "/pool/entry_time", H5T_NATIVE_DOUBLE, packet_times);
-  write_vec(fid, "/pool/cell_counts", H5T_NATIVE_INT64, packet_counts);
-  write_vec(fid, "/pool/blob_offsets", H5T_NATIVE_INT64, packet_offsets);
-  write_vec(fid, "/pool/cells", H5T_STD_I8LE, packet_blob);
-  write_str_vec(fid, "/pool/rng_state", packet_rng);
+  write_vec(fid, p("/pool/packet_id").c_str(), H5T_NATIVE_INT64,
+            packet_ids);
+  write_vec(fid, p("/pool/kind").c_str(), H5T_NATIVE_INT32, packet_kinds);
+  write_vec(fid, p("/pool/entry_time").c_str(), H5T_NATIVE_DOUBLE,
+            packet_times);
+  write_vec(fid, p("/pool/cell_counts").c_str(), H5T_NATIVE_INT64,
+            packet_counts);
+  write_vec(fid, p("/pool/blob_offsets").c_str(), H5T_NATIVE_INT64,
+            packet_offsets);
+  write_vec(fid, p("/pool/cells").c_str(), H5T_STD_I8LE, packet_blob);
+  write_str_vec(fid, p("/pool/rng_state").c_str(), packet_rng);
 
-  write_str_vec(fid, "/streams/state",
+  write_str_vec(fid, p("/streams/state").c_str(),
                 {rng_to_string(contraction_stream_),
                  rng_to_string(init_stream_)});
 
@@ -511,11 +388,16 @@ void MucusSegment::write_checkpoint(const std::string& path) const {
       audit_shadow.push_back(r.n_shadow);
       audit_rel.push_back(static_cast<double>(r.rel_diff));
     }
-    write_vec(fid, "/audit/time", H5T_NATIVE_DOUBLE, audit_time);
-    write_vec(fid, "/audit/patch", H5T_NATIVE_INT64, audit_patch);
-    write_vec(fid, "/audit/n_live", H5T_NATIVE_INT64, audit_live);
-    write_vec(fid, "/audit/n_shadow", H5T_NATIVE_INT64, audit_shadow);
-    write_vec(fid, "/audit/rel_diff", H5T_NATIVE_DOUBLE, audit_rel);
+    write_vec(fid, p("/audit/time").c_str(), H5T_NATIVE_DOUBLE,
+              audit_time);
+    write_vec(fid, p("/audit/patch").c_str(), H5T_NATIVE_INT64,
+              audit_patch);
+    write_vec(fid, p("/audit/n_live").c_str(), H5T_NATIVE_INT64,
+              audit_live);
+    write_vec(fid, p("/audit/n_shadow").c_str(), H5T_NATIVE_INT64,
+              audit_shadow);
+    write_vec(fid, p("/audit/rel_diff").c_str(), H5T_NATIVE_DOUBLE,
+              audit_rel);
   }
 
   std::vector<double> win_time;
@@ -524,16 +406,25 @@ void MucusSegment::write_checkpoint(const std::string& path) const {
     win_time.push_back(static_cast<double>(t));
     win_value.push_back(static_cast<double>(v));
   }
-  write_vec(fid, "/mean_window/time", H5T_NATIVE_DOUBLE, win_time);
-  write_vec(fid, "/mean_window/value", H5T_NATIVE_DOUBLE, win_value);
-#endif  // GUTIBM_HDF5
+  write_vec(fid, p("/mean_window/time").c_str(), H5T_NATIVE_DOUBLE,
+            win_time);
+  write_vec(fid, p("/mean_window/value").c_str(), H5T_NATIVE_DOUBLE,
+            win_value);
 }
+#endif  // GUTIBM_HDF5
 
 void MucusSegment::init_from_checkpoint(const SimulationConfig& cfg,
                                         const std::string& h5_file) {
+  init_from_checkpoint_group(cfg, h5_file, "");
+}
+
+void MucusSegment::init_from_checkpoint_group(
+    const SimulationConfig& cfg, const std::string& h5_file,
+    const std::string& prefix) {
 #ifndef GUTIBM_HDF5
   (void)cfg;
   (void)h5_file;
+  (void)prefix;
   throw ConfigError("layer2 checkpoint requires a GUTIBM_HDF5 build");
 #else
   validate_input_file_path(h5_file);
@@ -550,51 +441,71 @@ void MucusSegment::init_from_checkpoint(const SimulationConfig& cfg,
     ~FileGuard() { H5Fclose(f); }
   } guard{fid};
 
-  const int64_t version = read_scalar_i64(fid, "/format_version");
+  read_state(fid, prefix);
+#endif  // GUTIBM_HDF5
+}
+
+#ifdef GUTIBM_HDF5
+void MucusSegment::read_state(hid_t fid, const std::string& prefix) {
+  const auto gp = [&prefix](const char* leaf) {
+    return prefix + leaf;
+  };
+
+  const int64_t version =
+      read_scalar_i64(fid, gp("/format_version").c_str());
   if (version != 1) {
     throw HDF5Error("unsupported layer2 checkpoint format_version " +
                     std::to_string(version));
   }
-  if (read_scalar_i64(fid, "/seed") != static_cast<int64_t>(cfg.seed)) {
+  if (read_scalar_i64(fid, gp("/seed").c_str()) !=
+      static_cast<int64_t>(cfg_->seed)) {
     throw ConfigError(
         "layer2 checkpoint seed does not match configured seed");
   }
-  time_ = static_cast<Real>(read_scalar_f64(fid, "/time"));
-  step_count_ = static_cast<Int>(read_scalar_i64(fid, "/step_count"));
-  next_tag_ = static_cast<TagID>(read_scalar_i64(fid, "/next_tag"));
-  next_packet_id_ =
-      static_cast<uint64_t>(read_scalar_i64(fid, "/next_packet_id"));
-  audit_next_time_ = static_cast<Real>(read_scalar_f64(
-      fid, "/audit_next_time"));
+  time_ = static_cast<Real>(read_scalar_f64(fid, gp("/time").c_str()));
+  step_count_ =
+      static_cast<Int>(read_scalar_i64(fid, gp("/step_count").c_str()));
+  next_tag_ =
+      static_cast<TagID>(read_scalar_i64(fid, gp("/next_tag").c_str()));
+  next_packet_id_ = static_cast<uint64_t>(
+      read_scalar_i64(fid, gp("/next_packet_id").c_str()));
+  audit_next_time_ = static_cast<Real>(
+      read_scalar_f64(fid, gp("/audit_next_time").c_str()));
 
-  ledger_.initial_cells = read_scalar_i64(fid, "/ledger/initial_cells");
-  ledger_.births = read_scalar_i64(fid, "/ledger/births");
+  ledger_.initial_cells =
+      read_scalar_i64(fid, gp("/ledger/initial_cells").c_str());
+  ledger_.births = read_scalar_i64(fid, gp("/ledger/births").c_str());
   ledger_.washout_departures =
-      read_scalar_i64(fid, "/ledger/washout_departures");
+      read_scalar_i64(fid, gp("/ledger/washout_departures").c_str());
   ledger_.contraction_departures =
-      read_scalar_i64(fid, "/ledger/contraction_departures");
-  ledger_.reseeds = read_scalar_i64(fid, "/ledger/reseeds");
-  ledger_.distal_losses = read_scalar_i64(fid, "/ledger/distal_losses");
+      read_scalar_i64(fid, gp("/ledger/contraction_departures").c_str());
+  ledger_.edge_departures =
+      read_scalar_i64_opt(fid, gp("/ledger/edge_departures"), 0);
+  ledger_.reseeds = read_scalar_i64(fid, gp("/ledger/reseeds").c_str());
+  ledger_.distal_losses =
+      read_scalar_i64(fid, gp("/ledger/distal_losses").c_str());
+  ledger_.external_arrivals =
+      read_scalar_i64_opt(fid, gp("/ledger/external_arrivals"), 0);
 
-  const auto patch_ids = read_vec<int64_t>(fid, "/patches/id",
+  const auto patch_ids = read_vec<int64_t>(fid, gp("/patches/id").c_str(),
                                            H5T_NATIVE_INT64);
-  const auto patch_types = read_vec<int32_t>(fid, "/patches/type",
-                                             H5T_NATIVE_INT32);
-  const auto patch_status = read_vec<int32_t>(fid, "/patches/status",
-                                              H5T_NATIVE_INT32);
+  const auto patch_types = read_vec<int32_t>(
+      fid, gp("/patches/type").c_str(), H5T_NATIVE_INT32);
+  const auto patch_status = read_vec<int32_t>(
+      fid, gp("/patches/status").c_str(), H5T_NATIVE_INT32);
   const auto patch_baseline = read_vec<int64_t>(
-      fid, "/patches/baseline_count", H5T_NATIVE_INT64);
+      fid, gp("/patches/baseline_count").c_str(), H5T_NATIVE_INT64);
   const auto patch_next_tag = read_vec<int64_t>(
-      fid, "/patches/next_cell_tag", H5T_NATIVE_INT64);
+      fid, gp("/patches/next_cell_tag").c_str(), H5T_NATIVE_INT64);
   const auto patch_bloom = read_vec<double>(
-      fid, "/patches/bloom_excess_since", H5T_NATIVE_DOUBLE);
+      fid, gp("/patches/bloom_excess_since").c_str(), H5T_NATIVE_DOUBLE);
   const auto patch_counts = read_vec<int64_t>(
-      fid, "/patches/colonist_counts", H5T_NATIVE_INT64);
+      fid, gp("/patches/colonist_counts").c_str(), H5T_NATIVE_INT64);
   const auto patch_offsets = read_vec<int64_t>(
-      fid, "/patches/colonist_offsets", H5T_NATIVE_INT64);
-  const auto patch_blob = read_vec<char>(fid, "/patches/colonists",
-                                       H5T_STD_I8LE);
-  const auto patch_rng = read_str_vec(fid, "/patches/rng_state");
+      fid, gp("/patches/colonist_offsets").c_str(), H5T_NATIVE_INT64);
+  const auto patch_blob = read_vec<char>(
+      fid, gp("/patches/colonists").c_str(), H5T_STD_I8LE);
+  const auto patch_rng = read_str_vec(fid, gp("/patches/rng_state").c_str());
 
   patches_.clear();
   patches_.resize(patch_ids.size());
@@ -618,7 +529,7 @@ void MucusSegment::init_from_checkpoint(const SimulationConfig& cfg,
         throw HDF5Error("layer2 checkpoint patch colonist count mismatch");
       }
     }
-    if (p.live || cfg.layer2.audit.patch_index == p.id) {
+    if (p.live || cfg_->layer2.audit.patch_index == p.id) {
       throw ConfigError(
           "layer2 checkpoint with a live audit slot is not supported in "
           "Phase 1");
@@ -627,19 +538,19 @@ void MucusSegment::init_from_checkpoint(const SimulationConfig& cfg,
   order_.resize(patches_.size());
   std::iota(order_.begin(), order_.end(), 0);
 
-  const auto packet_ids = read_vec<int64_t>(fid, "/pool/packet_id",
-                                            H5T_NATIVE_INT64);
-  const auto packet_kinds = read_vec<int32_t>(fid, "/pool/kind",
-                                              H5T_NATIVE_INT32);
-  const auto packet_times = read_vec<double>(fid, "/pool/entry_time",
-                                             H5T_NATIVE_DOUBLE);
-  const auto packet_counts = read_vec<int64_t>(fid, "/pool/cell_counts",
-                                             H5T_NATIVE_INT64);
-  const auto packet_offsets = read_vec<int64_t>(fid, "/pool/blob_offsets",
-                                              H5T_NATIVE_INT64);
-  const auto packet_blob = read_vec<char>(fid, "/pool/cells",
+  const auto packet_ids = read_vec<int64_t>(
+      fid, gp("/pool/packet_id").c_str(), H5T_NATIVE_INT64);
+  const auto packet_kinds = read_vec<int32_t>(
+      fid, gp("/pool/kind").c_str(), H5T_NATIVE_INT32);
+  const auto packet_times = read_vec<double>(
+      fid, gp("/pool/entry_time").c_str(), H5T_NATIVE_DOUBLE);
+  const auto packet_counts = read_vec<int64_t>(
+      fid, gp("/pool/cell_counts").c_str(), H5T_NATIVE_INT64);
+  const auto packet_offsets = read_vec<int64_t>(
+      fid, gp("/pool/blob_offsets").c_str(), H5T_NATIVE_INT64);
+  const auto packet_blob = read_vec<char>(fid, gp("/pool/cells").c_str(),
                                         H5T_STD_I8LE);
-  const auto packet_rng = read_str_vec(fid, "/pool/rng_state");
+  const auto packet_rng = read_str_vec(fid, gp("/pool/rng_state").c_str());
 
   pool_.clear();
   for (size_t i = 0; i < packet_ids.size(); ++i) {
@@ -662,22 +573,22 @@ void MucusSegment::init_from_checkpoint(const SimulationConfig& cfg,
     pool_.push_back(std::move(packet));
   }
 
-  const auto streams = read_str_vec(fid, "/streams/state");
+  const auto streams = read_str_vec(fid, gp("/streams/state").c_str());
   if (streams.size() == 2) {
     rng_from_string(streams[0].c_str(), contraction_stream_);
     rng_from_string(streams[1].c_str(), init_stream_);
   }
 
-  const auto audit_time = read_vec<double>(fid, "/audit/time",
-                                           H5T_NATIVE_DOUBLE);
-  const auto audit_patch = read_vec<int64_t>(fid, "/audit/patch",
-                                             H5T_NATIVE_INT64);
-  const auto audit_live = read_vec<int64_t>(fid, "/audit/n_live",
-                                            H5T_NATIVE_INT64);
-  const auto audit_shadow = read_vec<int64_t>(fid, "/audit/n_shadow",
-                                              H5T_NATIVE_INT64);
-  const auto audit_rel = read_vec<double>(fid, "/audit/rel_diff",
-                                          H5T_NATIVE_DOUBLE);
+  const auto audit_time = read_vec<double>(
+      fid, gp("/audit/time").c_str(), H5T_NATIVE_DOUBLE);
+  const auto audit_patch = read_vec<int64_t>(
+      fid, gp("/audit/patch").c_str(), H5T_NATIVE_INT64);
+  const auto audit_live = read_vec<int64_t>(
+      fid, gp("/audit/n_live").c_str(), H5T_NATIVE_INT64);
+  const auto audit_shadow = read_vec<int64_t>(
+      fid, gp("/audit/n_shadow").c_str(), H5T_NATIVE_INT64);
+  const auto audit_rel = read_vec<double>(
+      fid, gp("/audit/rel_diff").c_str(), H5T_NATIVE_DOUBLE);
   for (size_t i = 0; i < audit_time.size(); ++i) {
     audit_records_.push_back(
         {static_cast<Real>(audit_time[i]),
@@ -687,10 +598,10 @@ void MucusSegment::init_from_checkpoint(const SimulationConfig& cfg,
          static_cast<Real>(audit_rel[i])});
   }
 
-  const auto win_time = read_vec<double>(fid, "/mean_window/time",
-                                         H5T_NATIVE_DOUBLE);
-  const auto win_value = read_vec<double>(fid, "/mean_window/value",
-                                          H5T_NATIVE_DOUBLE);
+  const auto win_time = read_vec<double>(
+      fid, gp("/mean_window/time").c_str(), H5T_NATIVE_DOUBLE);
+  const auto win_value = read_vec<double>(
+      fid, gp("/mean_window/value").c_str(), H5T_NATIVE_DOUBLE);
   for (size_t i = 0; i < win_time.size(); ++i) {
     mean_window_.emplace_back(static_cast<Real>(win_time[i]),
                               static_cast<Real>(win_value[i]));
@@ -700,7 +611,7 @@ void MucusSegment::init_from_checkpoint(const SimulationConfig& cfg,
     throw HDF5Error(
         "layer2 checkpoint restored a ledger that does not close");
   }
-#endif  // GUTIBM_HDF5
 }
+#endif  // GUTIBM_HDF5
 
 }  // namespace gutibm

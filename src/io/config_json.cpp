@@ -699,6 +699,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
       cursor.parse_prefixed_object(cfg, "closure", "closure");
     } else if (key == "layer2") {
       cursor.parse_prefixed_object(cfg, "layer2", "layer2");
+    } else if (key == "layer3") {
+      cursor.parse_prefixed_object(cfg, "layer3", "layer3");
     } else if (key == "domain") {
       cursor.parse_domain_object(cfg);
     } else if (key == "advection") {

@@ -1,0 +1,50 @@
+{
+  "layer3": {
+    "enabled": true,
+    "uniform_profile": false,
+    "n_patches_per_region": 400,
+    "f_edge": 0.2,
+    "reattach_p0": 0.05,
+    "hapc_rate_per_day": 6,
+    "hapc_antegrade_fraction": 0.95,
+    "hapc_day_fraction": 0.8,
+    "alpha_hapc_per_min": 0.2,
+    "stool_g_per_day": 128,
+    "flatness_bound": 4,
+    "lumen_seed_cells": 3000,
+    "purge_at_s": 172800,
+    "purge_fraction": 0.9,
+    "regions": [
+      {"name": "cecum", "transit_h": 12, "ph": 6.25, "lumen_carbon_mol_m3": 0.008, "lumen_volume_L": 0.4, "contraction_k0_per_min": 0.5, "outflow_survival": 0.92, "flora_density_cfu_ml": 1e+07, "patch_supply_scale": 1},
+      {"name": "transverse", "transit_h": 8, "ph": 6.6, "lumen_carbon_mol_m3": 0.005, "lumen_volume_L": 0.35, "contraction_k0_per_min": 0.4, "outflow_survival": 0.9, "flora_density_cfu_ml": 1e+07, "patch_supply_scale": 1},
+      {"name": "descending", "transit_h": 10, "ph": 6.8, "lumen_carbon_mol_m3": 0.0025, "lumen_volume_L": 0.3, "contraction_k0_per_min": 0.3, "outflow_survival": 0.88, "flora_density_cfu_ml": 1e+07, "patch_supply_scale": 1}
+    ]
+  },
+  "seed": 1002,
+  "dt_s": 60,
+  "steps_completed": 4320,
+  "wall_time_s": 259200,
+  "termination": {
+    "cause": 0,
+    "detail": "reached configured horizon"
+  },
+  "ledger": {
+    "initial_cells": 9360,
+    "mucosal_births": 461658,
+    "luminal_births": 1.76854e+10,
+    "stool_exports": 5.39489e+09,
+    "luminal_deaths": 2.11451e+09,
+    "purged": 5.67596e+09,
+    "expected_stocks": 4.50052e+09,
+    "stocks": 4.50052e+09,
+    "closed": true
+  },
+  "observables": {
+    "stool_cfu_per_g": 1.40492e+07,
+    "regions": [
+      {"name": "cecum", "occupancy_frac": 0.9625, "patch_cells": 5169, "mean_cfu_ml": 1.13093e+06, "enterobacteriaceae_fraction": 0.113093, "lumen_cells": 2.21314e+09, "lumen_lineages": 121, "lumen_mean_mu_per_s": 2.67453e-05, "lumen_carbon_mol_m3": 0.000538535, "lumen_acetate_mol_m3": 0.00746146},
+      {"name": "transverse", "occupancy_frac": 1, "patch_cells": 11445, "mean_cfu_ml": 2.08481e+06, "enterobacteriaceae_fraction": 0.208481, "lumen_cells": 1.27116e+09, "lumen_lineages": 301, "lumen_mean_mu_per_s": 3.96226e-06, "lumen_carbon_mol_m3": 7.30441e-05, "lumen_acetate_mol_m3": 0.00792659},
+      {"name": "descending", "occupancy_frac": 0.9975, "patch_cells": 19255, "mean_cfu_ml": 3.35366e+06, "enterobacteriaceae_fraction": 0.335366, "lumen_cells": 1.01601e+09, "lumen_lineages": 361, "lumen_mean_mu_per_s": 5.10705e-07, "lumen_carbon_mol_m3": 9.28661e-06, "lumen_acetate_mol_m3": 0.00797912}
+    ]
+  }
+}

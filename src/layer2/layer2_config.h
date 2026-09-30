@@ -72,6 +72,17 @@ struct Layer2Config {
   Real establish_prob_single = 0.01;      // establishment kernel for single cells
   Real establish_ratio = 10.0;            // fragment:single establishment ratio
 
+  // Spec 13 Phase 3 (Layer-3 coupling): growth-edge shedding sheds a
+  // fraction of each step's tabulated births into the pool as Single
+  // packets (spec mechanism 3, J = f_edge * mu * N). 0 disables and is
+  // the Layer-2 default.
+  Real edge_shed_fraction = 0.0;
+  // High-bit prefix OR'd into the (patch_index + 1) << 32 cell-tag
+  // bases so a chain of segments mints non-colliding tags. The Layer-3
+  // driver sets one prefix per region; standalone Layer-2 runs leave
+  // this 0.
+  TagID tag_prefix = 0;
+
   Int occupancy_min_agents = 1;      // a patch counts occupied at >= this many cells
 
   Real initial_patch_fraction = 0.05;  // fraction of patches seeded at t=0
