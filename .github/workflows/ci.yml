@@ -91,7 +91,10 @@ jobs:
           UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: |
           cd build-san
-          ctest -L unit -LE slow --output-on-failure --parallel $(nproc)
+          # species_subset needs ~8 GB uninstrumented; sanitizer shadow +
+          # quarantine pushes it past the 16 GB runner and SIGTERMs the job.
+          ctest -L unit -LE slow -E species_subset \
+            --output-on-failure --parallel $(nproc)
 
   tsan:
     name: ThreadSanitizer
@@ -122,7 +125,9 @@ jobs:
           TSAN_OPTIONS: halt_on_error=1
         run: |
           cd build-tsan
-          ctest -L unit -LE slow --output-on-failure --parallel $(nproc)
+          # species_subset OOMs the runner under sanitizer overhead (see above).
+          ctest -L unit -LE slow -E species_subset \
+            --output-on-failure --parallel $(nproc)
 
   integration-tests:
     name: Integration tests
