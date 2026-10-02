@@ -3,6 +3,7 @@ build-release/
 build-openmp-off/
 build-openmp-on/
 build-san/
+build-asan/
 build-tsan/
 batch_results/
 .venv/
