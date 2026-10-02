@@ -61,6 +61,69 @@ jobs:
       - name: Build
         run: cmake --build build-serial -j$(nproc)
 
+  sanitizers:
+    name: Sanitizers (ASan+UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake libhdf5-dev
+
+      - name: Configure
+        run: |
+          cmake -B build-san \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DGUTIBM_USE_MPI=OFF \
+            -DGUTIBM_USE_HDF5=ON \
+            -DGUTIBM_USE_OPENMP=OFF \
+            -DGUTIBM_SANITIZERS=ON \
+            -DHDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/serial
+
+      - name: Build
+        run: cmake --build build-san -j$(nproc)
+
+      - name: Unit tests under ASan+UBSan
+        env:
+          ASAN_OPTIONS: halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          cd build-san
+          ctest -L unit -LE slow --output-on-failure --parallel $(nproc)
+
+  tsan:
+    name: ThreadSanitizer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake libhdf5-dev
+
+      - name: Configure
+        run: |
+          cmake -B build-tsan \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DGUTIBM_USE_MPI=OFF \
+            -DGUTIBM_USE_HDF5=ON \
+            -DGUTIBM_USE_OPENMP=OFF \
+            -DGUTIBM_TSAN=ON \
+            -DHDF5_ROOT=/usr/lib/x86_64-linux-gnu/hdf5/serial
+
+      - name: Build
+        run: cmake --build build-tsan -j$(nproc)
+
+      - name: Unit tests under TSan
+        env:
+          TSAN_OPTIONS: halt_on_error=1
+        run: |
+          cd build-tsan
+          ctest -L unit -LE slow --output-on-failure --parallel $(nproc)
+
   integration-tests:
     name: Integration tests
     runs-on: ubuntu-latest
