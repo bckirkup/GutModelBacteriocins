@@ -42,6 +42,13 @@ cmake .. -DGUTIBM_USE_CUDA=ON ...
 # Runtime: gpu_enabled true in input file, or cfg.gpu.enabled = true in code
 ```
 
+Sanitizers (optional, off by default, mutually exclusive with each other):
+
+```bash
+cmake .. -DGUTIBM_SANITIZERS=ON ...   # ASan + UBSan (+LSan)
+cmake .. -DGUTIBM_TSAN=ON ...         # ThreadSanitizer
+```
+
 Prerequisites (Ubuntu):
 
 ```bash
