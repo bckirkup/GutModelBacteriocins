@@ -1,0 +1,242 @@
+name: campaign-collect
+
+# Short, bounded collection pass over s3://.../campaign/* on the outputs
+# and inputs buckets via the read-only collector role. Publishes a compact
+# index as a GitHub issue (API-readable by anything that can read the repo,
+# including Edison's GitHub connector). Deliberately does NOT stream raw
+# campaign objects: prefix enumeration is paged up to the cap, per-prefix
+# listing is capped and truncation flagged. An optional exact_key input
+# fetches ONE reviewed object under a byte ceiling, verifies nothing beyond
+# its own integrity, and exposes it only as a workflow artifact — never
+# inline in an issue body.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_prefixes:
+        description: "cap on campaign prefixes enumerated this pass"
+        required: false
+        default: "50"
+      keys_per_prefix:
+        description: "cap on keys listed per prefix (bounded read)"
+        required: false
+        default: "5000"
+      fetch_bucket:
+        description: "bucket for exact_key fetch: outputs or inputs"
+        required: false
+        default: "outputs"
+      exact_key:
+        description: "optional single object key under campaign/ to fetch"
+        required: false
+        default: ""
+      max_fetch_bytes:
+        description: "byte ceiling for exact_key fetch"
+        required: false
+        default: "52428800"
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC; remove if unwanted
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+concurrency:
+  group: campaign-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    environment: aws-campaign
+    timeout-minutes: 20
+    env:
+      AWS_REGION: us-east-1
+      OUTPUTS_BUCKET: gutibm-outputs-994254241749
+      INPUTS_BUCKET: gutibm-inputs-994254241749
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_COLLECTOR_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify assumed identity (must be github-gutibm-collector)
+        run: aws sts get-caller-identity
+
+      - name: Denial probe — write must be refused
+        run: |
+          echo probe > /tmp/probe.txt
+          OUT=$(aws s3api put-object --bucket "$OUTPUTS_BUCKET" \
+              --key "campaign/.write-probe" --body /tmp/probe.txt 2>&1) && {
+            echo "::error::put-object was NOT denied — collector role is over-scoped"
+            exit 1
+          }
+          if echo "$OUT" | grep -q "AccessDenied"; then
+            echo "put-object correctly denied (AccessDenied)"
+          else
+            echo "::error::put-object failed but NOT with AccessDenied — unexpected failure:"; echo "$OUT"; exit 1
+          fi
+
+      - name: Build bounded campaign index
+        env:
+          MAX_PREFIXES: ${{ inputs.max_prefixes }}
+          KEYS_PER_PREFIX: ${{ inputs.keys_per_prefix }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          from datetime import datetime, timezone
+
+          buckets = {
+              "outputs": os.environ["OUTPUTS_BUCKET"],
+              "inputs": os.environ["INPUTS_BUCKET"],
+          }
+          max_prefixes = int(os.environ.get("MAX_PREFIXES") or 50)
+          max_keys = int(os.environ.get("KEYS_PER_PREFIX") or 5000)
+
+          def aws(*args):
+              return subprocess.run(
+                  ["aws", "s3api", *args], capture_output=True, text=True, check=True
+              ).stdout
+
+          # Manual pagination: --max-items bounds the CLI paginator's Contents
+          # count, NOT CommonPrefixes. Drive raw pages ourselves (no-paginate,
+          # service-level max-keys) and stop once we hold more than the cap.
+          all_rows, cap_hit = [], False
+          for label, bucket in buckets.items():
+              prefixes, token = [], None
+              while len(prefixes) < max_prefixes + 1:
+                  args = [
+                      "list-objects-v2", "--bucket", bucket,
+                      "--prefix", "campaign/", "--delimiter", "/",
+                      "--max-keys", str(max_prefixes + 1 - len(prefixes)),
+                      "--no-paginate", "--output", "json",
+                  ]
+                  if token:
+                      args += ["--continuation-token", token]
+                  page = json.loads(aws(*args))
+                  prefixes += [cp["Prefix"] for cp in page.get("CommonPrefixes") or []]
+                  token = page.get("NextContinuationToken")
+                  if not token:
+                      break
+              prefixes = sorted(p for p in prefixes if p != "campaign/")
+              cap_hit = cap_hit or len(prefixes) > max_prefixes or bool(token)
+              for p in prefixes[:max_prefixes]:
+                  page = json.loads(aws(
+                      "list-objects-v2", "--bucket", bucket, "--prefix", p,
+                      "--max-items", str(max_keys), "--output", "json",
+                  ))
+                  contents = page.get("Contents") or []
+                  all_rows.append({
+                      "bucket": label,
+                      "prefix": p,
+                      "objects_listed": len(contents),
+                      "bytes_listed": sum(o["Size"] for o in contents),
+                      "truncated": bool(page.get("IsTruncated")) or bool(page.get("NextToken")),
+                  })
+
+          index = {
+              "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+              "buckets": buckets,
+              "bounds": {"max_prefixes": max_prefixes, "keys_per_prefix": max_keys},
+              "prefixes": all_rows,
+              "prefix_enumeration_hit_cap": cap_hit,
+          }
+          with open("campaign_index.json", "w") as f:
+              json.dump(index, f, indent=2)
+
+          lines = [
+              "| bucket | prefix | objects (<= cap) | bytes | truncated |",
+              "|---|---|---|---|---|",
+          ]
+          for r in all_rows:
+              lines.append(
+                  f"| `{r['bucket']}` | `{r['prefix']}` | {r['objects_listed']} "
+                  f"| {r['bytes_listed']/1e9:.2f} GB | {r['truncated']} |"
+              )
+          open("campaign_index.md", "w").write("\n".join(lines) + "\n")
+          print(f"indexed {len(all_rows)} prefixes; cap hit: {cap_hit}")
+          PY
+
+      - name: Bounded exact-object fetch (when exact_key supplied)
+        if: ${{ inputs.exact_key != '' }}
+        env:
+          FETCH_BUCKET: ${{ inputs.fetch_bucket }}
+          EXACT_KEY: ${{ inputs.exact_key }}
+          MAX_FETCH_BYTES: ${{ inputs.max_fetch_bytes }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          buckets = {
+              "outputs": os.environ["OUTPUTS_BUCKET"],
+              "inputs": os.environ["INPUTS_BUCKET"],
+          }
+          label = os.environ["FETCH_BUCKET"].strip()
+          if label not in buckets:
+              raise SystemExit(f"fetch_bucket must be one of {sorted(buckets)}")
+          bucket = buckets[label]
+          key = os.environ["EXACT_KEY"].strip()
+          ceiling = int(os.environ.get("MAX_FETCH_BYTES") or 52428800)
+          if not key.startswith("campaign/") or ".." in key or key.endswith("/"):
+              raise SystemExit(f"refusing key outside campaign/ or malformed: {key!r}")
+          head = json.loads(subprocess.run(
+              ["aws", "s3api", "head-object", "--bucket", bucket, "--key", key,
+               "--output", "json"], capture_output=True, text=True, check=True).stdout)
+          size = head["ContentLength"]
+          sc = (head.get("StorageClass") or "STANDARD").upper()
+          if "ARCHIVE" in sc or sc == "GLACIER":
+              raise SystemExit(f"refusing archived object (class {sc}); restore first")
+          if size > ceiling:
+              raise SystemExit(f"refusing {size} B object; ceiling {ceiling} B")
+          # Pin the GET to what HEAD saw: VersionId when versioned, else ETag.
+          dest = "/tmp/fetched_object"
+          gargs = ["aws", "s3api", "get-object", "--bucket", bucket,
+                   "--key", key]
+          if head.get("VersionId"):
+              gargs += ["--version-id", head["VersionId"]]
+          elif head.get("ETag"):
+              gargs += ["--if-match", head["ETag"]]
+          gargs += [dest]
+          subprocess.run(gargs, check=True)
+          actual = os.path.getsize(dest)
+          if actual > ceiling:
+              raise SystemExit(
+                  f"downloaded {actual} B exceeds ceiling {ceiling} B — refusing")
+          sha = subprocess.run(["sha256sum", dest], capture_output=True,
+                               text=True, check=True).stdout.split()[0]
+          os.makedirs("fetched", exist_ok=True)
+          out_path = os.path.join("fetched", key.rsplit("/", 1)[-1])
+          os.rename(dest, out_path)
+          with open("fetched/SHA256SUMS", "w") as f:
+              f.write(f"{sha}  {label}:{key}\n")
+          print(f"fetched {bucket}/{key} ({size} B), sha256 {sha}")
+          PY
+
+      - name: Publish index to tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TITLE="Campaign storage index (collector)"
+          ISSUE=$(gh issue list --state open --search "in:title \"$TITLE\"" \
+                  --json number --jq '.[0].number')
+          if [ -z "$ISSUE" ] || [ "$ISSUE" = "null" ]; then
+            URL=$(gh issue create --title "$TITLE" \
+              --body "Auto-updated by the campaign-collect workflow. Latest bounded index below.")
+            ISSUE=${URL##*/}
+          fi
+          BODY=$(cat campaign_index.md)
+          gh issue comment "$ISSUE" --body "$(printf '```\n%s\n```' "$BODY")"
+          echo "published to issue #$ISSUE"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: campaign-index
+          path: |
+            campaign_index.json
+            campaign_index.md
+            fetched/
+          retention-days: 30
+          if-no-files-found: ignore
