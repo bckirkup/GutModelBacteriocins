@@ -3,7 +3,8 @@ Description: >-
   GitHub Actions OIDC access for campaign dispatch and collection.
   Creates the token.actions.githubusercontent.com OIDC provider plus two
   assumable roles: a dispatch role (Batch submit/describe + S3 write on
-  campaign/*) and a read-only collector role (S3 read on campaign/*).
+  the campaign buckets) and a read-only collector role (S3 read on the
+  campaign buckets).
   Trust is limited to the named repository and a protected GitHub
   environment. No long-lived credentials are created.
 
@@ -27,10 +28,6 @@ Parameters:
     Type: String
     Default: gutibm-inputs-994254241749
     Description: S3 bucket holding campaign manifests and job inputs.
-  CampaignPrefix:
-    Type: String
-    Default: campaign
-    Description: Top-level key prefix the roles may touch (no leading slash).
   CreateOidcProvider:
     Type: String
     Default: "yes"
@@ -76,7 +73,7 @@ Resources:
       RoleName: github-gutibm-dispatch
       Description: >-
         Assumed by GitHub Actions (OIDC) to submit and monitor campaign
-        Batch jobs and write receipts under s3://<bucket>/campaign/*.
+        Batch jobs and write receipts/artifacts under s3://<buckets>/*.
       MaxSessionDuration: 3600
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
@@ -125,23 +122,20 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: ListCampaignPrefix
+              - Sid: ListBuckets
                 Effect: Allow
                 Action: s3:ListBucket
                 Resource:
                   - !Sub "arn:aws:s3:::${CampaignBucket}"
                   - !Sub "arn:aws:s3:::${InputsBucket}"
-                Condition:
-                  StringLike:
-                    "s3:prefix": !Sub "${CampaignPrefix}/*"
-              - Sid: ReadWriteCampaignObjects
+              - Sid: ReadWriteObjects
                 Effect: Allow
                 Action:
                   - s3:PutObject
                   - s3:GetObject
                 Resource:
-                  - !Sub "arn:aws:s3:::${CampaignBucket}/${CampaignPrefix}/*"
-                  - !Sub "arn:aws:s3:::${InputsBucket}/${CampaignPrefix}/*"
+                  - !Sub "arn:aws:s3:::${CampaignBucket}/*"
+                  - !Sub "arn:aws:s3:::${InputsBucket}/*"
 
   GitHubCollectorRole:
     Type: AWS::IAM::Role
@@ -149,7 +143,7 @@ Resources:
       RoleName: github-gutibm-collector
       Description: >-
         Assumed by GitHub Actions (OIDC) to read campaign receipts and
-        artifacts under s3://<bucket>/campaign/*. Read-only by policy; no
+        artifacts under s3://<buckets>/*. Read-only by policy; no
         DeleteObject, no RestoreObject, no write of any kind.
       MaxSessionDuration: 3600
       AssumeRolePolicyDocument:
@@ -171,26 +165,21 @@ Resources:
           PolicyDocument:
             Version: "2012-10-17"
             Statement:
-              - Sid: ListCampaignPrefix
+              - Sid: ListBuckets
                 Effect: Allow
                 Action: s3:ListBucket
                 Resource:
                   - !Sub "arn:aws:s3:::${CampaignBucket}"
                   - !Sub "arn:aws:s3:::${InputsBucket}"
-                Condition:
-                  StringLike:
-                    "s3:prefix":
-                      - !Sub "${CampaignPrefix}"
-                      - !Sub "${CampaignPrefix}/*"
-              - Sid: ReadCampaignObjects
+              - Sid: ReadObjects
                 Effect: Allow
                 Action:
                   - s3:GetObject
                   - s3:GetObjectAttributes
                   - s3:GetObjectVersion
                 Resource:
-                  - !Sub "arn:aws:s3:::${CampaignBucket}/${CampaignPrefix}/*"
-                  - !Sub "arn:aws:s3:::${InputsBucket}/${CampaignPrefix}/*"
+                  - !Sub "arn:aws:s3:::${CampaignBucket}/*"
+                  - !Sub "arn:aws:s3:::${InputsBucket}/*"
               - Sid: BatchJobReadback
                 Effect: Allow
                 Action:

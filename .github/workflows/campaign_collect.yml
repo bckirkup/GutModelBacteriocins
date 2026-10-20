@@ -1,14 +1,14 @@
 name: campaign-collect
 
-# Short, bounded collection pass over s3://.../campaign/* on the outputs
-# and inputs buckets via the read-only collector role. Publishes a compact
-# index as a GitHub issue (API-readable by anything that can read the repo,
-# including Edison's GitHub connector). Deliberately does NOT stream raw
-# campaign objects: prefix enumeration is paged up to the cap, per-prefix
-# listing is capped and truncation flagged. An optional exact_key input
-# fetches ONE reviewed object under a byte ceiling, verifies nothing beyond
-# its own integrity, and exposes it only as a workflow artifact — never
-# inline in an issue body.
+# Short, bounded collection pass over the outputs and inputs buckets via
+# the read-only collector role. Publishes a compact index as a GitHub issue
+# (API-readable by anything that can read the repo, including Edison's
+# GitHub connector). Deliberately does NOT stream raw campaign objects:
+# prefix enumeration is paged up to the cap, per-prefix listing is capped
+# and truncation flagged. An optional exact_key input fetches ONE reviewed
+# object under a byte ceiling, verifies nothing beyond its own integrity,
+# and exposes it only as a workflow artifact — never inline in an issue
+# body.
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ on:
         required: false
         default: "outputs"
       exact_key:
-        description: "optional single object key under campaign/ to fetch"
+        description: "optional single object key to fetch"
         required: false
         default: ""
       max_fetch_bytes:
@@ -71,7 +71,7 @@ jobs:
         run: |
           echo probe > /tmp/probe.txt
           OUT=$(aws s3api put-object --bucket "$OUTPUTS_BUCKET" \
-              --key "campaign/.write-probe" --body /tmp/probe.txt 2>&1) && {
+              --key ".write-probe" --body /tmp/probe.txt 2>&1) && {
             echo "::error::put-object was NOT denied — collector role is over-scoped"
             exit 1
           }
@@ -105,26 +105,35 @@ jobs:
           # Manual pagination: --max-items bounds the CLI paginator's Contents
           # count, NOT CommonPrefixes. Drive raw pages ourselves (no-paginate,
           # service-level max-keys) and stop once we hold more than the cap.
-          all_rows, cap_hit = [], False
-          for label, bucket in buckets.items():
-              prefixes, token = [], None
-              while len(prefixes) < max_prefixes + 1:
+          # Two-level enumeration: top-level prefixes, then one level
+          # deeper so `campaign/<run>/` style layouts stay readable.
+          def enum_prefixes(bucket, parent):
+              found, token = [], None
+              while True:
                   args = [
                       "list-objects-v2", "--bucket", bucket,
-                      "--prefix", "campaign/", "--delimiter", "/",
-                      "--max-keys", str(max_prefixes + 1 - len(prefixes)),
+                      "--prefix", parent, "--delimiter", "/",
+                      "--max-keys", str(max_prefixes + 1),
                       "--no-paginate", "--output", "json",
                   ]
                   if token:
                       args += ["--continuation-token", token]
                   page = json.loads(aws(*args))
-                  prefixes += [cp["Prefix"] for cp in page.get("CommonPrefixes") or []]
+                  found += [cp["Prefix"] for cp in page.get("CommonPrefixes") or []]
                   token = page.get("NextContinuationToken")
-                  if not token:
-                      break
-              prefixes = sorted(p for p in prefixes if p != "campaign/")
-              cap_hit = cap_hit or len(prefixes) > max_prefixes or bool(token)
-              for p in prefixes[:max_prefixes]:
+                  if not token or len(found) > max_prefixes:
+                      return sorted(found), bool(token)
+
+          all_rows, cap_hit = [], False
+          for label, bucket in buckets.items():
+              tops, hit = enum_prefixes(bucket, "")
+              cap_hit = cap_hit or hit
+              drill = []
+              for top in tops[:max_prefixes]:
+                  subs, hit = enum_prefixes(bucket, top)
+                  cap_hit = cap_hit or hit
+                  drill += subs[:max_prefixes] if subs else [top]
+              for p in drill[:max_prefixes]:
                   page = json.loads(aws(
                       "list-objects-v2", "--bucket", bucket, "--prefix", p,
                       "--max-items", str(max_keys), "--output", "json",
@@ -180,8 +189,8 @@ jobs:
           bucket = buckets[label]
           key = os.environ["EXACT_KEY"].strip()
           ceiling = int(os.environ.get("MAX_FETCH_BYTES") or 52428800)
-          if not key.startswith("campaign/") or ".." in key or key.endswith("/"):
-              raise SystemExit(f"refusing key outside campaign/ or malformed: {key!r}")
+          if not key or key.startswith("/") or ".." in key or key.endswith("/"):
+              raise SystemExit(f"refusing malformed key: {key!r}")
           head = json.loads(subprocess.run(
               ["aws", "s3api", "head-object", "--bucket", bucket, "--key", key,
                "--output", "json"], capture_output=True, text=True, check=True).stdout)

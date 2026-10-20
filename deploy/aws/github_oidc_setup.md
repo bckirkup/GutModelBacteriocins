@@ -5,10 +5,10 @@ stored keys anywhere**. GitHub mints an OIDC token per workflow run; AWS
 trades it for a scoped role. Two roles:
 
 - `github-gutibm-dispatch` — Batch submit/describe on `gutibm-*`
-  queues/jobdefs + S3 read/write on `campaign/*` in both
+  queues/jobdefs + S3 read/write anywhere in both
   `gutibm-outputs-994254241749` and `gutibm-inputs-994254241749`
-  (receipts, manifests, job inputs).
-- `github-gutibm-collector` — read-only S3 on `campaign/*` in both buckets +
+  (receipts, manifests, job inputs, run artifacts).
+- `github-gutibm-collector` — read-only S3 anywhere in both buckets +
   Batch describe/list. Cannot delete, restore, or write anything.
 
 Both require the GitHub environment `aws-campaign`, so every run must pass
@@ -64,8 +64,9 @@ the environment approval; approve it. Expected:
 - `aws sts get-caller-identity` shows `assumed-role/github-gutibm-collector`
 - the write denial-probe is **denied** (proves the role is correctly
   under-scoped)
-- a bounded index of `campaign/` prefixes on both buckets is published as a
-  comment on a tracking issue — that issue is the Edison-readable surface
+- a bounded index of prefixes (two levels deep) on both buckets is
+  published as a comment on a tracking issue — that issue is the
+  Edison-readable surface
 
 If a step fails with `AccessDenied`, the error names the action — the fix
 is a policy edit in `github_oidc_stack.yaml` and a re-deploy, not a
@@ -82,9 +83,11 @@ always start a fresh run after a fix.
   bearer tokens cannot assume roles.
 - No real submits yet: only the collector workflow exists. Wiring an actual
   `submit` behind the dispatch role is a separate, deliberate step.
-- Only `campaign/` prefixes are in scope. Older flat campaign prefixes
-  (`receptor-selection-v1/`, `stage-d-*`, `practice/`, …) sit outside the
-  roles' grant; widen `CampaignPrefix`/add prefixes in the stack if Edison
-  should index those too.
+- The grant is the whole of both buckets — `campaign/`, the older flat
+  campaign prefixes (`receptor-selection-v1/`, `stage-d-*`, `practice/`,
+  `mechanism_probe/`, …), and anything that lands later. Edison's read
+  surface is still bounded: the collector indexes only up to the prefix
+  caps, and single-object fetches go through the byte-ceiling `exact_key`
+  path one reviewed object at a time.
 - No cleanup rights: deletion/Glacier restoration stays on the
   `PowerUserAccess` admin profile — deliberately.
