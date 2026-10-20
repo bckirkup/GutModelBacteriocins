@@ -1,0 +1,231 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  GitHub Actions OIDC access for campaign dispatch and collection.
+  Creates the token.actions.githubusercontent.com OIDC provider plus two
+  assumable roles: a dispatch role (Batch submit/describe + S3 write on
+  the campaign buckets) and a read-only collector role (S3 read on the
+  campaign buckets).
+  Trust is limited to the named repository and a protected GitHub
+  environment. No long-lived credentials are created.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: bckirkup/GutModelBacteriocins
+    Description: GitHub repository allowed to assume the roles (owner/name).
+  GitHubEnvironment:
+    Type: String
+    Default: aws-campaign
+    Description: >-
+      GitHub environment name the workflows run under. The OIDC subject is
+      pinned to this environment, so only runs that pass its protection
+      rules (e.g. required reviewer) can assume the roles.
+  CampaignBucket:
+    Type: String
+    Default: gutibm-outputs-994254241749
+    Description: S3 bucket holding campaign run artifacts (outputs).
+  InputsBucket:
+    Type: String
+    Default: gutibm-inputs-994254241749
+    Description: S3 bucket holding campaign manifests and job inputs.
+  CreateOidcProvider:
+    Type: String
+    Default: "yes"
+    AllowedValues: ["yes", "no"]
+    Description: >-
+      "no" when token.actions.githubusercontent.com is already an OIDC
+      provider in this account (one per URL); pass its ARN via
+      ExistingOidcProviderArn.
+  ExistingOidcProviderArn:
+    Type: String
+    Default: arn:aws:iam::994254241749:oidc-provider/token.actions.githubusercontent.com
+    Description: ARN of the existing GitHub OIDC provider (used only when CreateOidcProvider=no).
+  NotificationEmail:
+    Type: String
+    Default: ""
+    Description: >-
+      Optional email for a monthly AWS Budgets alert. Leave empty to skip
+      the budget resource.
+
+Conditions:
+  CreateBudget: !Not [!Equals [!Ref NotificationEmail, ""]]
+  CreateOidc: !Equals [!Ref CreateOidcProvider, "yes"]
+  UseExistingOidc: !Equals [!Ref CreateOidcProvider, "no"]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateOidc
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        # DigiCert high-assurance root (documented in the AWS OIDC-for-GitHub
+        # guide) plus the GitHub intermediate seen in the wild. AWS validates
+        # the certificate chain; these are pinned to satisfy the API.
+        - "6938fd4d98bab03faadb97b34396831e3780aea1"
+        - "1c58a3a8518e8759bf075b76b750d4f2df264fcd"
+
+  GitHubDispatchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: github-gutibm-dispatch
+      Description: >-
+        Assumed by GitHub Actions (OIDC) to submit and monitor campaign
+        Batch jobs and write receipts/artifacts under s3://<buckets>/*.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [CreateOidc, !GetAtt GitHubOidcProvider.Arn, !Ref ExistingOidcProviderArn]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+                "token.actions.githubusercontent.com:sub": !Sub
+                  - "repo:${Repo}:environment:${Env}"
+                  - Repo: !Ref GitHubRepo
+                    Env: !Ref GitHubEnvironment
+      Policies:
+        - PolicyName: dispatch-batch
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: BatchRead
+                Effect: Allow
+                Action:
+                  - batch:DescribeJobQueues
+                  - batch:DescribeJobDefinitions
+                  - batch:DescribeComputeEnvironments
+                  - batch:DescribeJobs
+                  - batch:ListJobs
+                Resource: "*"
+              - Sid: BatchSubmit
+                Effect: Allow
+                Action:
+                  - batch:SubmitJob
+                  - batch:RegisterJobDefinition
+                  - batch:CancelJob
+                  - batch:TerminateJob
+                Resource:
+                  - !Sub "arn:aws:batch:*:${AWS::AccountId}:job-queue/gutibm-*"
+                  - !Sub "arn:aws:batch:*:${AWS::AccountId}:job-definition/gutibm-*"
+                  - !Sub "arn:aws:batch:*:${AWS::AccountId}:job/*"
+              - Sid: PassRoleToBatchJobs
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/gutibm-*"
+        - PolicyName: dispatch-s3-receipts
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListBuckets
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${CampaignBucket}"
+                  - !Sub "arn:aws:s3:::${InputsBucket}"
+              - Sid: ReadWriteObjects
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${CampaignBucket}/*"
+                  - !Sub "arn:aws:s3:::${InputsBucket}/*"
+
+  GitHubCollectorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: github-gutibm-collector
+      Description: >-
+        Assumed by GitHub Actions (OIDC) to read campaign receipts and
+        artifacts under s3://<buckets>/*. Read-only by policy; no
+        DeleteObject, no RestoreObject, no write of any kind.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If [CreateOidc, !GetAtt GitHubOidcProvider.Arn, !Ref ExistingOidcProviderArn]
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+                "token.actions.githubusercontent.com:sub": !Sub
+                  - "repo:${Repo}:environment:${Env}"
+                  - Repo: !Ref GitHubRepo
+                    Env: !Ref GitHubEnvironment
+      Policies:
+        - PolicyName: collector-s3-read
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ListBuckets
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${CampaignBucket}"
+                  - !Sub "arn:aws:s3:::${InputsBucket}"
+              - Sid: ReadObjects
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectAttributes
+                  - s3:GetObjectVersion
+                Resource:
+                  - !Sub "arn:aws:s3:::${CampaignBucket}/*"
+                  - !Sub "arn:aws:s3:::${InputsBucket}/*"
+              - Sid: BatchJobReadback
+                Effect: Allow
+                Action:
+                  - batch:DescribeJobs
+                  - batch:ListJobs
+                  - batch:DescribeJobQueues
+                Resource: "*"
+
+  CampaignBudget:
+    Type: AWS::Budgets::Budget
+    Condition: CreateBudget
+    Properties:
+      Budget:
+        BudgetName: gutibm-campaign-compute-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: 500
+          Unit: USD
+        CostFilters:
+          Service:
+            - Amazon Elastic Compute Cloud - Compute
+            - Amazon Simple Storage Service
+            - Amazon Elastic Container Service
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref NotificationEmail
+
+Outputs:
+  DispatchRoleArn:
+    Value: !GetAtt GitHubDispatchRole.Arn
+    Description: Paste into the GitHub environment variable AWS_DISPATCH_ROLE_ARN.
+  CollectorRoleArn:
+    Value: !GetAtt GitHubCollectorRole.Arn
+    Description: Paste into the GitHub environment variable AWS_COLLECTOR_ROLE_ARN.
