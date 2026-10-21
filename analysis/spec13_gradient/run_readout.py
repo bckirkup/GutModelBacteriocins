@@ -217,13 +217,16 @@ def tail_metrics(ts_path: Path) -> dict:
     stool_cfu_g = stool_cells / days / LAYER3["stool_g_per_day"]
 
     # Mucosal flatness: Enterobacteriaceae fraction per region vs flora proxy.
+    # Denominator = shipped layer3 flora_density_cfu_ml default (1e8 cells/mL,
+    # FISH-scale total community; docs/gutibm_density_reconciliation.md).
+    flora_density = 1e8
     fractions = {}
     occ = {}
     for region in REGIONS:
         region_tail = [r for r in tail if r["region"] == region]
         fractions[region] = sum(
             float(r["mean_cfu_ml"]) for r in region_tail
-        ) / max(1, len(region_tail)) / 1e7
+        ) / max(1, len(region_tail)) / flora_density
         occ[region] = sum(float(r["occ_frac"]) for r in region_tail) / max(
             1, len(region_tail)
         )

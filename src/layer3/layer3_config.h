@@ -40,7 +40,13 @@ struct Layer3RegionConfig {
   Real lumen_volume_L = 0.35;          // luminal content volume of the region
   Real contraction_k0_per_min = 0.4;   // baseline contraction frequency (<=0.6 admissible)
   Real outflow_survival = 0.9;         // fraction of outflow cells reaching downstream
-  Real flora_density_cfu_ml = 1.0e7;   // background flora proxy (flatness denominator)
+  // Total mucosal community density: the denominator that turns
+  // segment_mean_cfu_ml into an Enterobacteriaceae fraction. This is a
+  // FISH-scale cells/mL figure (viable + non-viable community), NOT a
+  // viable-CFU measure — Swidsinski 2005 reports ~2e8 cells/mL in healthy
+  // mucosa and the VBF ships at 1e8 cells/mL
+  // (docs/gutibm_density_reconciliation.md). Declared interval 1e8-2e8.
+  Real flora_density_cfu_ml = 1.0e8;
   Real patch_supply_scale = 1.0;       // scalar on per-type supply_mults
 };
 

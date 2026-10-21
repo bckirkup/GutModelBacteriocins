@@ -123,6 +123,37 @@ total community, not the viable-culture-scale community.
    with FISH-based total mucosal bacteria (~2×10⁸ cells/mL in healthy
    controls, Swidsinski 2005). This is the right scale for the VBF.
 
+## Layer 3 fraction denominator — resolved 2026-10-21
+
+The Layer-3 Enterobacteriaceae fraction readout
+(`enterobacteriaceae_fraction = segment_mean_cfu_ml / flora_density_cfu_ml`)
+shipped with `flora_density_cfu_ml = 1e7`, which reported 0.14–0.41
+mucosal fractions — against a ~1–3% empirical band that suggested a real
+physics defect. It was a denominator error: the proxy had been set an
+order of magnitude below the VBF/FISH scale this doc already derives.
+
+Literature check (Consensus deep-research thread, record committed at
+`analysis/spec13_gradient/literature_mucosal_density_consensus.md`):
+
+- **Absolute cells/mL of native human colonic mucus is not directly
+  measured.** Closest measured quantities: Earley 2020 copies/mg mucus
+  (RT-qPCR), Poxton 1997 CFU/biopsy (aerobes 2.4e3–1.3e6, anaerobes
+  1.4e5–3e7 per ~5.6 mg biopsy), Zoetendal 2002 1e5–1e6 cells/biopsy
+  (flow cytometry), Lyra 2012 log10 genomes/g wet tissue (qPCR),
+  Swidsinski FISH ~0.02×10^10/mL ≈ 2e8 cells/mL healthy controls.
+- **Mucosal Enterobacteriaceae fraction**: Hong 2011 (16S
+  pyrosequencing, Table 2) — 0.68–3.81% across 5 healthy individuals;
+  consistent with Ahmed's 1–2%. Proteobacteria fraction: 8.6% (Hong),
+  11% (Shen), 19.3% distal mucosa vs 9.3% feces (Ringel).
+
+Resolution: `flora_density_cfu_ml` is a **FISH-scale total-community
+cells/mL** denominator, shipped at 1e8 (declared interval 1e8–2e8,
+Swidsinski + VBF scale). At that denominator the audited spec13 runs'
+0.14–0.41 fractions become 1.4–4.1% (0.7–2% at 2e8) — inside or at the
+top of the Hong/Ahmed empirical band. The fraction *level* was a
+measurement-scale defect in the readout denominator, not a physics
+error; `patch_supply_scale` needed no correction for this question.
+
 ## Generalization
 
 This is not specific to density. The same substitution — a precise
