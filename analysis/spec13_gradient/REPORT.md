@@ -79,6 +79,12 @@ contribution; both arms stay under the bound.
    gate asks for flatness (achieved); the level is pinned by
    `patch_supply_scale` / `flora_density_cfu_ml` and is a parameter
    consequence to report, not a fitted quantity.
+   **Resolved 2026-10-21**: the 1e7 proxy was a denominator-scale defect.
+   At the sourced FISH-scale denominator (1e8 cells/mL, declared interval
+   1e8–2e8) the same runs report 1.4–4.1 % — inside/at the top of the
+   empirical band (Hong 0.68–3.81 %, Ahmed 1–2 %). See
+   `docs/gutibm_density_reconciliation.md` and
+   `literature_mucosal_density_consensus.md`.
 3. **Luminal growth dominates stool production.** Luminal births
    (≈1.77e10) exceed mucosal births (≈5e5) by ~10⁴×; stool composition is
    set by the distal compartment's growth + outflow, as S10 requires.
