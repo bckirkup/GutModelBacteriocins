@@ -15,6 +15,8 @@
 #include "genotype_test_helpers.h"
 #include "input_parser.h"
 #include "layer2_config.h"
+#include "layer3_config.h"
+#include "lumen.h"
 #include "mechanism_capability.h"
 #include "path_utils.h"
 #include "plasmid.h"
@@ -533,6 +535,190 @@ void test_capability_limit_reports_dead_params() {
   std::cout << "capability_limit: " << refused << " dead knobs refused\n";
 }
 
+// ── Live audit slot (Edison step 2): mechanism-capable patch ────────────
+// One small-domain patch substituted by a real Simulation so each step
+// is fast enough for unit coverage.
+SimulationConfig live_cfg_for_test() {
+  SimulationConfig cfg = base_cfg();
+  auto& l = cfg.layer2;
+  l.n_patches = 1;
+  l.initial_patch_fraction = 1.0;
+  l.initial_founder_cells = 20;
+  l.patch_lateral_m = 60.0e-6;
+  l.patch_depth_m = 60.0e-6;
+  l.contraction_rate_per_min = 0.0;
+  l.transit_half_life_s = 600.0;
+  l.reattach_prob_per_transit = 0.0;
+  l.establish_prob_single = 0.0;
+  l.audit.patch_index = 0;
+  l.audit.halt_on_exceed = false;
+  return cfg;
+}
+
+// Biological deaths inside the live engine book into
+// ledger_.biological_deaths: with basal SOS lysis forcing kills while
+// contraction harvests fragments, closure must hold at every step —
+// the same cells cannot be counted as both death and departure.
+void test_live_patch_death_accounting() {
+  SimulationConfig cfg = live_cfg_for_test();
+  cfg.layer2.contraction_rate_per_min = 60.0;  // fragment harvest every step
+  cfg.fixes.bacteriocin.sos_basal_rate = 0.02; // ~70% SOS induction per step
+
+  MucusSegment seg;
+  seg.init(cfg);
+  assert(seg.patches()[0].live);
+
+  Int colonists = 0;
+  seg.for_each_colonist([&colonists](const Agent&) { ++colonists; });
+  assert(colonists == 20);  // founders mirrored into the live engine
+
+  for (int i = 0; i < 15; ++i) {
+    seg.step(cfg.time.bio_dt);
+    // Every cell lysing or departing early is a legitimate stop; the
+    // ledger must still have closed at the final step.
+    assert(seg.termination_cause() ==
+               TerminationCause::IncompleteUnknown ||
+           seg.termination_cause() == TerminationCause::PopulationStop);
+    assert(seg.ledger_closed());
+    // Explicit conservation identity: cells in == cells out + deaths.
+    Int stocks = 0;
+    seg.for_each_colonist([&stocks](const Agent&) { ++stocks; });
+    for (const auto& q : seg.pool()) {
+      stocks += static_cast<Int>(q.cells.size());
+    }
+    const auto& L = seg.ledger();
+    assert(stocks + L.distal_losses + L.biological_deaths ==
+           L.initial_cells + L.births + L.external_arrivals);
+    if (seg.termination_cause() != TerminationCause::IncompleteUnknown) {
+      break;
+    }
+  }
+  assert(seg.ledger().biological_deaths > 0);
+  assert(seg.ledger().contraction_departures > 0);
+  std::cout << "live_death_accounting: deaths="
+            << seg.ledger().biological_deaths
+            << " contraction=" << seg.ledger().contraction_departures
+            << " births=" << seg.ledger().births << '\n';
+}
+
+// Influx: a pre-seeded luminal pool reattaching into the (only, live)
+// patch lands inside the embedded Simulation, not the colonist vector.
+void test_live_patch_pool_influx() {
+  SimulationConfig cfg = live_cfg_for_test();
+  auto& l = cfg.layer2;
+  l.initial_pool_cells = 60;
+  l.transit_half_life_s = 300.0;
+  l.reattach_prob_per_transit = 1.0;
+  l.establish_prob_single = 1.0;
+
+  MucusSegment seg;
+  seg.init(cfg);
+  for (int i = 0; i < 60 && seg.ledger().reseeds == 0; ++i) {
+    seg.step(cfg.time.bio_dt);
+    assert(seg.termination_cause() ==
+               TerminationCause::IncompleteUnknown ||
+           seg.termination_cause() == TerminationCause::PopulationStop);
+    assert(seg.ledger_closed());
+  }
+  assert(seg.ledger().reseeds > 0);
+  // Reseeded cells are visible through the live-aware colonist view.
+  Int colonists = 0;
+  seg.for_each_colonist([&colonists](const Agent&) { ++colonists; });
+  assert(colonists > 20);
+  std::cout << "live_pool_influx: reseeds=" << seg.ledger().reseeds
+            << " colonists=" << colonists << '\n';
+}
+
+// Efflux + handoff: pool distal exits routed through the pool-exit sink
+// land in a LumenCompartment keyed by founder lineage_id — the minimal
+// segment->chain handoff the Layer-3 driver wires identically.
+void test_live_patch_pool_handoff() {
+  SimulationConfig cfg = live_cfg_for_test();
+  auto& l = cfg.layer2;
+  l.n_patches = 2;
+  l.crypt = {0.0, 0.0, 0.0, 0.0};
+  l.exposed_proximal = {1.0, 0.9, 1e-3, 1.0};  // heavy single-cell washout
+  l.exposed_distal = {0.0, 0.9, 1e-3, 1.0};
+  l.transit_half_life_s = 300.0;
+  l.reattach_prob_per_transit = 0.0;
+
+  Layer3RegionConfig rc;
+  LumenCompartment lumen;
+  lumen.init(rc, {}, 0.0);
+  MucusSegment seg;
+  seg.init(cfg);
+  seg.set_pool_exit_sink(
+      [&lumen](std::vector<Agent>&& cells) { lumen.add_cells(cells); });
+
+  for (int i = 0; i < 60 && seg.ledger().distal_losses == 0; ++i) {
+    seg.step(cfg.time.bio_dt);
+    assert(seg.termination_cause() ==
+               TerminationCause::IncompleteUnknown ||
+           seg.termination_cause() == TerminationCause::PopulationStop);
+    assert(seg.ledger_closed());
+  }
+  assert(seg.ledger().distal_losses > 0);
+  assert(!lumen.lineages().empty());
+  // Every delivered cell resolves to its founder lineage.
+  Real total = 0.0;
+  for (const auto& [lin, entry] : lumen.lineages()) {
+    assert(lin == entry.exemplar.genome.lineage_id);
+    total += entry.count;
+  }
+  assert(std::abs(total - static_cast<Real>(seg.ledger().distal_losses)) <
+         1e-9);
+  std::cout << "live_pool_handoff: distal=" << seg.ledger().distal_losses
+            << " lumen_lineages=" << lumen.lineages().size() << '\n';
+}
+
+// Seed invariance for the live slot: two segments with the same config
+// produce identical live-patch trajectories (fingerprint covers live
+// agent tags + lineage ids now).
+void test_live_patch_seed_invariance() {
+  SimulationConfig cfg = live_cfg_for_test();
+  cfg.layer2.contraction_rate_per_min = 5.0;
+
+  MucusSegment seg_a;
+  seg_a.init(cfg);
+  MucusSegment seg_b;
+  seg_b.init(cfg);
+  for (int i = 0; i < 10; ++i) {
+    seg_a.step(cfg.time.bio_dt);
+    seg_b.step(cfg.time.bio_dt);
+    // Identical seeds must terminate identically (population_stop on a
+    // fully drained patch is a legitimate identical end).
+    assert(seg_a.termination_cause() == seg_b.termination_cause());
+  }
+  assert(seg_a.fingerprint() == seg_b.fingerprint());
+  std::cout << "live_seed_invariance: fingerprint=" << seg_a.fingerprint()
+            << '\n';
+}
+
+// The audit slot is the sanctioned mechanism-execution hole in the
+// capability gate: the same sos_basal_rate that is refused on a fully
+// tabulated segment is admitted when a live patch hosts it.
+void test_audit_slot_admits_mechanism_config() {
+  SimulationConfig live_cfg = live_cfg_for_test();
+  live_cfg.fixes.bacteriocin.sos_basal_rate = 0.02;
+  {
+    MucusSegment seg;
+    seg.init(live_cfg);  // audit.patch_index = 0: admitted
+  }
+  SimulationConfig tab_cfg = live_cfg;
+  tab_cfg.layer2.audit.patch_index = -1;
+  bool refused = false;
+  try {
+    MucusSegment seg;
+    seg.init(tab_cfg);
+  } catch (const ConfigError& e) {
+    refused = std::string(e.what()).find("sos_basal_rate") !=
+              std::string::npos;
+  }
+  assert(refused);
+  std::cout << "audit_capability: mechanism config admitted only "
+               "with live slot\n";
+}
+
 }  // namespace
 
 int main() {
@@ -547,6 +733,11 @@ int main() {
   test_founder_genotype_helper_contract();
   test_genotype_survives_checkpoint();
   test_capability_limit_reports_dead_params();
+  test_live_patch_death_accounting();
+  test_live_patch_pool_influx();
+  test_live_patch_pool_handoff();
+  test_live_patch_seed_invariance();
+  test_audit_slot_admits_mechanism_config();
   std::cout << "test_layer2_segment: all passed\n";
   return 0;
 }

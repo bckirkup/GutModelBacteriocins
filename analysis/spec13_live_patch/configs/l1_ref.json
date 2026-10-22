@@ -1,0 +1,18 @@
+{
+  "total_time": 3600, "bio_dt": 60, "seed": "12980195782491225043",
+  "sos_basal_rate": 0.005,
+  "initial_strains": [{"type":1,"count":20,"mu_max":5e-4,"plasmids":["ColE1"]}],
+  "domain_x": 60e-6, "domain_y": 60e-6, "domain_z": 60e-6,
+  "carbon_boundary_conc": 1.0e-2,
+  "mucus_thickness": 60e-6, "distal_length": 60e-6,
+  "crypts_enabled": false,
+  "oxygen.enabled": false,
+  "oxygen.k_ROS_respiratory": 0.0, "oxygen.k_ROS_funded": 0.0,
+  "dysbiosis_threshold": 0.0,
+  "immigration.enabled": false,
+  "gpu_enabled": false,
+  "hdf5.enabled": true,
+  "hdf5.file": "/tmp/livepatch/l1_ref.h5",
+  "hdf5.schedule.agents": 5,
+  "hdf5.schedule.summary": 5
+}

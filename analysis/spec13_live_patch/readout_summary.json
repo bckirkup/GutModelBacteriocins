@@ -1,0 +1,25 @@
+{
+  "validation": {
+    "lineage_alive_count_mismatches": 0,
+    "phases_identical": "40/40 (positions, state, mu, C, Fe through 10 steps)",
+    "ledger": "initial=20, deaths=11, distal=9, stocks=0 closed"
+  },
+  "cost": {
+    "live_patch_ms_per_step": 39.5,
+    "standalone_ms_per_step": 75,
+    "tabulated_arm_wall_s": 0.0,
+    "live_arm_wall_s": 2.37,
+    "live_arm_steps": 60,
+    "rss_delta_mb": 19.7,
+    "note": "tabulated patches unmeasurable at this size; live patch = full Simulation + ChemicalField per patch"
+  },
+  "defects_fixed": [
+    "shadow-birth double count",
+    "biological_deaths ledger channel",
+    "corpse counting in patch_count/stocks",
+    "dead-cell harvest double-booking",
+    "step_events vs cumulative_events stale counters",
+    "DEAD-before-hook packet export",
+    "carbon spec boundary_conc/initial_conc stale after supply_mult rescale"
+  ]
+}

@@ -1,0 +1,39 @@
+{
+ "total_time": 3600,
+ "bio_dt": 60,
+ "seed": 4242,
+ "initial_strains": [
+  {
+   "type": 1,
+   "count": 100,
+   "mu_max": 0.0005,
+   "plasmids": [
+    "ColE1"
+   ]
+  }
+ ],
+ "layer2.enabled": true,
+ "layer2.n_patches": 1,
+ "layer2.initial_patch_fraction": 1.0,
+ "layer2.initial_founder_cells": 20,
+ "layer2.patch_lateral_m": 6e-05,
+ "layer2.patch_depth_m": 6e-05,
+ "layer2.crypt_fraction": 1.0,
+ "layer2.crypt_disruption_prob": 0.0,
+ "layer2.crypt_single_cell_loss_per_h": 0.0,
+ "layer2.crypt_supply_mult": 2.0,
+ "layer2.proximal_fraction": 0.0,
+ "layer2.distal_fraction": 0.0,
+ "layer2.contraction_rate_per_min": 0.0,
+ "layer2.agent_loss_fraction": 0.0,
+ "layer2.transit_half_life_s": 300,
+ "layer2.reattach_prob_per_transit": 0.0,
+ "layer2.establish_prob_single": 0.0,
+ "layer2.invalid_patch_fraction_stop": 1.0,
+ "layer2.summary_interval_steps": 5,
+ "layer2.audit_patch_index": "-1",
+ "layer2.audit_halt": false,
+ "layer2.audit_lineage_file": "/tmp/livepatch/iso_lineage.csv",
+ "layer2.provenance_file": "/tmp/livepatch/iso_prov.json",
+ "layer2.timeseries_file": "/tmp/livepatch/iso_ts.csv"
+}
