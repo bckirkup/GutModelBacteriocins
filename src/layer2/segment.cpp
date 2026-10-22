@@ -13,6 +13,8 @@
 #include "mechanism_capability.h"
 #include "plasmid.h"
 #include "simulation.h"
+#include "species_names.h"
+#include "step_events.h"
 
 #include <algorithm>
 #include <cmath>
@@ -46,6 +48,25 @@ uint64_t hash_combine(uint64_t h, uint64_t v) {
 }
 
 constexpr Real kLn2 = 0.6931471805599453;
+
+// Cumulative biological kills inside a live patch: the only ledger
+// channel that removes a cell without a packet (colicin/CDI/lysis
+// mortalities are marked DEAD inside the embedded Simulation and reaped
+// by remove_dead_agents). Outflow deaths are excluded — they reach the
+// ledger as emigrants through the departure hook.
+Int live_deaths(const Simulation& sim) {
+  // step_events holds the running (uncommitted) window; cumulative_events
+  // is only advanced by commit_step_events_after_summary. Their sum is
+  // invariant across summary commits, so per-step deltas stay correct.
+  const StepEvents& ev = sim.step_events();
+  const StepEvents& cu = sim.cumulative_events();
+  return ev.mortality_colicin + ev.mortality_cdi + ev.mortality_lysis +
+         cu.mortality_colicin + cu.mortality_cdi + cu.mortality_lysis;
+}
+
+Int live_divisions(const Simulation& sim) {
+  return sim.step_events().divisions + sim.cumulative_events().divisions;
+}
 
 }  // namespace
 
@@ -354,8 +375,15 @@ void MucusSegment::init(const SimulationConfig& cfg) {
 Int MucusSegment::patch_count(const Patch& patch) const {
   if (patch.live) {
     const auto it = live_.find(patch.id);
-    return it == live_.end() ? 0
-                             : static_cast<Int>(it->second.sim->agents().size());
+    if (it == live_.end()) return 0;
+    // Stocks are live cells only: CDI-killed agents persist as corpses
+    // inside the Simulation and must not count here (their death was
+    // already booked to ledger_.biological_deaths at mark time).
+    Int n = 0;
+    for (const auto& a : it->second.sim->agents()) {
+      if (a.state != PhenoState::DEAD) ++n;
+    }
+    return n;
   }
   return static_cast<Int>(patch.colonists.size());
 }
@@ -374,7 +402,7 @@ void MucusSegment::push_packet(PacketKind kind, std::vector<Agent> cells,
 
 // ── Tabulated patch mechanics ────────────────────────────────────────────
 
-void MucusSegment::grow_tabulated(Patch& patch, Real dt) {
+void MucusSegment::grow_tabulated(Patch& patch, Real dt, bool ledger) {
   const Int n = static_cast<Int>(patch.colonists.size());
   if (n == 0) return;
   const auto& tc = type_config(patch.type);
@@ -393,11 +421,15 @@ void MucusSegment::grow_tabulated(Patch& patch, Real dt) {
     daughter.genome.generation++;
     patch.colonists.push_back(std::move(daughter));
   }
-  ledger_.births += births;
+  if (ledger) {
+    ledger_.births += births;
+  }
 
   // Layer-3 growth-edge shedding: a fraction of the newborn cohort is
   // shed at the colony margin into the pool. Draws come from the
-  // patch-keyed stream (G3).
+  // patch-keyed stream (G3). The shadow keeps the draw and the colonist
+  // removal so its trajectory stays consistent; only the ledger and the
+  // real pool are skipped.
   const Real f_edge = cfg_->layer2.edge_shed_fraction;
   if (f_edge > 0.0 && births > 0) {
     const Int n_shed = std::min<Int>(
@@ -409,11 +441,13 @@ void MucusSegment::grow_tabulated(Patch& patch, Real dt) {
       shed.push_back(std::move(patch.colonists.back()));
       patch.colonists.pop_back();
     }
-    ledger_.edge_departures += n_shed;
-    push_packet(PacketKind::Single, std::move(shed),
-                mix_seed(static_cast<uint64_t>(patch.id),
-                         static_cast<uint64_t>(step_count_),
-                         tag_hash("edge")));
+    if (ledger) {
+      ledger_.edge_departures += n_shed;
+      push_packet(PacketKind::Single, std::move(shed),
+                  mix_seed(static_cast<uint64_t>(patch.id),
+                           static_cast<uint64_t>(step_count_),
+                           tag_hash("edge")));
+    }
   }
 }
 
@@ -480,6 +514,20 @@ SimulationConfig MucusSegment::live_config_for(const Patch& patch) const {
   live.seed = mix_seed(cfg_->seed, static_cast<uint64_t>(patch.id),
                        tag_hash("live"));
   live.carbon_boundary_conc = 5.0e-3 * tc.supply_mult;
+  // The parser bakes the carbon spec's boundary_conc (and, when
+  // carbon_z_amplitude is unset, initial_conc) from the *unscaled* boundary
+  // concentration; reapply its rule to the rescaled value or the patch runs
+  // with a stale carbon spec. An explicit carbon_z_amplitude override wins
+  // (same precedence as the parser).
+  for (auto& c : live.chemicals) {
+    if (c.name == species::CARBON) {
+      c.boundary_conc = live.carbon_boundary_conc;
+      if (live.carbon_z_amplitude <= 0.0) {
+        c.initial_conc = live.carbon_boundary_conc;
+      }
+      break;
+    }
+  }
   live.advection.mucus_thickness = cfg_->layer2.patch_depth_m;
   live.advection.distal_length = cfg_->layer2.patch_lateral_m;
   live.advection.crypts_enabled = false;  // S2: crypt is patch type only
@@ -505,6 +553,7 @@ void MucusSegment::init_audit_slot() {
   LivePatchState state;
   state.sim = std::make_unique<Simulation>();
   SimulationConfig live_cfg = live_config_for(patch);
+  state.live_seed = live_cfg.seed;
   // Founders mirror the patch's seeded colonist composition.
   live_cfg.initial_strains.clear();
   for (const auto& strain : cfg_->initial_strains) {
@@ -527,13 +576,19 @@ void MucusSegment::init_audit_slot() {
     LivePatchState& st = live_[id];
     if (st.pending_fragment_fraction <= 0.0) return;
     AgentPool& agents = st.sim->agents();
-    const Int n = agents.size();
+    // Harvest selects among live cells only: an agent already killed by
+    // biology this step is booked once via StepEvents mortality
+    // (ledger_.biological_deaths) and must not also depart as a fragment.
+    std::vector<Int> order;
+    order.reserve(agents.size());
+    for (Int i = 0; i < static_cast<Int>(agents.size()); ++i) {
+      if (agents[i].state != PhenoState::DEAD) order.push_back(i);
+    }
+    const Int n = static_cast<Int>(order.size());
     const Int take = std::min<Int>(
         n, static_cast<Int>(std::ceil(st.pending_fragment_fraction *
                                       static_cast<Real>(n))));
     // Fragment = contiguous downstream chunk: sort indices by x desc.
-    std::vector<Int> order(static_cast<size_t>(n));
-    std::iota(order.begin(), order.end(), 0);
     std::sort(order.begin(), order.end(),
               [&agents](Int a, Int b) {
                 return agents[a].x[0] > agents[b].x[0];
@@ -558,7 +613,8 @@ void MucusSegment::init_audit_slot() {
       static_cast<Int>(state.shadow.colonists.size());
   state.shadow_valid = true;
   state.window_start_time = time_;
-  state.last_live_birth_count = state.sim->cumulative_events().divisions;
+  state.last_live_birth_count = live_divisions(*state.sim);
+  state.last_live_death_count = live_deaths(*state.sim);
 
   patch.live = true;
   patch.colonists.clear();  // population lives inside the live sim now
@@ -570,14 +626,21 @@ void MucusSegment::step_live(Patch& patch, Real dt) {
   st.pending_fragment_fraction =
       patch.disrupted ? cfg_->layer2.agent_loss_fraction : 0.0;
   const Int born_before = st.last_live_birth_count;
+  const Int dead_before = st.last_live_death_count;
   st.sim->step(dt);
-  const Int divisions = st.sim->cumulative_events().divisions;
+  const Int divisions = live_divisions(*st.sim);
   ledger_.births += divisions - born_before;
   st.last_live_birth_count = divisions;
+  const Int deaths = live_deaths(*st.sim);
+  ledger_.biological_deaths += deaths - dead_before;
+  st.last_live_death_count = deaths;
 
   if (!st.harvested_fragment.empty()) {
     ledger_.contraction_departures +=
         static_cast<Int>(st.harvested_fragment.size());
+    for (const auto& cell : st.harvested_fragment) {
+      ++st.emigrants_by_lineage[cell.genome.lineage_id];
+    }
     const uint64_t key = mix_seed(static_cast<uint64_t>(patch.id),
                                   static_cast<uint64_t>(step_count_));
     push_packet(PacketKind::Fragment, std::move(st.harvested_fragment),
@@ -585,6 +648,7 @@ void MucusSegment::step_live(Patch& patch, Real dt) {
     st.harvested_fragment.clear();
   }
   for (auto& cell : st.harvested_singles) {
+    ++st.emigrants_by_lineage[cell.genome.lineage_id];
     push_packet(PacketKind::Single, {std::move(cell)},
                 mix_seed(static_cast<uint64_t>(cell.identity.tag),
                          static_cast<uint64_t>(patch.id)));
@@ -598,7 +662,7 @@ void MucusSegment::step_live(Patch& patch, Real dt) {
 void MucusSegment::shadow_step(Patch& live_patch, Real dt) {
   LivePatchState& st = live_.at(live_patch.id);
   if (!st.shadow_valid) return;
-  grow_tabulated(st.shadow, dt);
+  grow_tabulated(st.shadow, dt, false);
   if (live_patch.disrupted) {
     contract_tabulated(st.shadow, false);
   }
@@ -630,7 +694,7 @@ void MucusSegment::step(Real dt) {
       step_live(patch, dt);
       continue;
     }
-    grow_tabulated(patch, dt);
+    grow_tabulated(patch, dt, true);
     if (patch.disrupted) {
       contract_tabulated(patch, true);
     }
@@ -812,7 +876,12 @@ void MucusSegment::audit_check() {
   if (audit_next_time_ < 0.0 || time_ < audit_next_time_) return;
   audit_next_time_ += c.audit.interval_s;
   for (auto& [id, st] : live_) {
-    const Int n_live = static_cast<Int>(st.sim->agents().size());
+    // Live count excludes corpses retained by the CDI persistence
+    // window; the tabulated shadow holds live cells only.
+    Int n_live = 0;
+    for (const auto& a : st.sim->agents()) {
+      if (a.state != PhenoState::DEAD) ++n_live;
+    }
     const Int n_shadow = static_cast<Int>(st.shadow.colonists.size());
     const Real denom = std::max<Real>(static_cast<Real>(n_shadow), 1.0);
     const Real rel = std::abs(n_live - n_shadow) / denom;
@@ -827,6 +896,7 @@ void MucusSegment::audit_check() {
     // Reset the comparison window: shadow re-seeded from live state.
     st.shadow.colonists.clear();
     for (const auto& a : st.sim->agents()) {
+      if (a.state == PhenoState::DEAD) continue;
       st.shadow.colonists.push_back(a);
     }
     st.shadow.baseline_count =
@@ -909,7 +979,9 @@ uint64_t MucusSegment::fingerprint() const {
     if (patch.live) {
       const auto& st = live_.at(patch.id);
       for (const auto& a : st.sim->agents()) {
+        if (a.state == PhenoState::DEAD) continue;
         h = hash_combine(h, static_cast<uint64_t>(a.identity.tag));
+        h = hash_combine(h, static_cast<uint64_t>(a.genome.lineage_id));
       }
     } else {
       for (const auto& a : patch.colonists) {
@@ -961,8 +1033,17 @@ void MucusSegment::permute_patch_order_for_testing(
 void MucusSegment::for_each_colonist(
     const std::function<void(const Agent&)>& f) const {
   for (const Patch& patch : patches_) {
-    for (const Agent& a : patch.colonists) {
-      f(a);
+    if (patch.live) {
+      const auto it = live_.find(patch.id);
+      if (it == live_.end()) continue;
+      for (const Agent& a : it->second.sim->agents()) {
+        if (a.state == PhenoState::DEAD) continue;
+        f(a);
+      }
+    } else {
+      for (const Agent& a : patch.colonists) {
+        f(a);
+      }
     }
   }
 }

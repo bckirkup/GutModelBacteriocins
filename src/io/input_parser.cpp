@@ -1870,6 +1870,7 @@ bool apply_layer2_key(SimulationConfig& cfg, std::string_view key,
   if (sub == "audit_interval_s") { c.audit.interval_s = parse_positive_config_real(key, val); return true; }
   if (sub == "audit_tolerance") { c.audit.tolerance = parse_positive_config_real(key, val); return true; }
   if (sub == "audit_halt") { c.audit.halt_on_exceed = parse_bool_config(val); return true; }
+  if (sub == "audit_lineage_file") { c.audit.lineage_file = val; return true; }
   if (sub == "timeseries_file") { c.timeseries_file = val; return true; }
   if (sub == "summary_interval_steps") { c.summary_interval_steps = parse_positive_config_int(key, val); return true; }
   if (sub == "provenance_file") { c.provenance_file = val; return true; }
