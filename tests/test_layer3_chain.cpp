@@ -13,10 +13,13 @@
 
 #include "agent.h"
 #include "chain.h"
+#include "error.h"
 #include "input_parser.h"
 #include "layer3_config.h"
 #include "lumen.h"
+#include "mechanism_capability.h"
 #include "path_utils.h"
+#include "plasmid.h"
 #include "segment.h"
 
 #include <cassert>
@@ -173,9 +176,15 @@ void test_order_invariance() {
 // ── (iv) Genotype-preserving count->agent reattachment ─────────────────
 // Chain-minted deposits carry a deposit marker tag. Every deposit
 // landing in mucosa must carry the lineage exemplar's genotype: seed
-// lineage id, the founder's BI loci, and parent_id == exemplar tag.
+// lineage id, the founder's BI loci, declared phenotype (RESISTANT
+// state, receptor expression, CDI fields), and parent_id == exemplar
+// tag.
 void test_genotype_preserving_reattach() {
   SimulationConfig cfg = base_cfg();
+  auto& strain = cfg.initial_strains.front();  // seed lineage 0
+  strain.receptor_expression = {{"BtuB", 0.0}};
+  strain.cdi_type = 7;
+  strain.cdi_immunity = 3;
   cfg.layer2.initial_patch_fraction = 0.1;
   cfg.layer3.reattach_p0 = 0.9;
   ColonicChain chain;
@@ -187,6 +196,7 @@ void test_genotype_preserving_reattach() {
            TerminationCause::IncompleteUnknown);
   }
 
+  const Int btub = to_underlying(ReceptorType::BtuB);
   Int deposits = 0;
   Int genotype_ok = 0;
   for (Int r = 0; r < kRegionCount; ++r) {
@@ -195,17 +205,112 @@ void test_genotype_preserving_reattach() {
       ++deposits;
       if (a.genome.lineage_id == kSeedLineageTag &&
           a.genome.parent_id == kSeedLineageTag &&
-          a.genome.bi_loci.size() == 1) {
+          a.genome.bi_loci.size() == 1 &&
+          a.state == PhenoState::RESISTANT &&
+          a.receptor_expr[btub] == 0.0 &&
+          a.genome.receptor_expression[btub] == 0.0 &&
+          a.genome.cdi_type == 7 && a.genome.cdi_immunity == 3) {
         ++genotype_ok;
       }
     });
   }
   // With lumen_seed_cells = 3000 and p0 = 0.9 the seed lineage must have
-  // deposited intact at least once in 100 steps.
+  // deposited intact — full declared phenotype — at least once.
   assert(deposits > 0);
   assert(genotype_ok > 0);
   std::cout << "genotype_reattach: deposits=" << deposits
             << " genotype_ok=" << genotype_ok << '\n';
+}
+
+// ── Founder genotype propagation (external audit, step 1) ─────────────
+// Every region's lumen must seed its lineages from the full founder
+// declaration — receptor expression, RESISTANT state, configured plasmid
+// cluster, CDI fields — not a bare Agent::create_default.
+void test_lumen_exemplar_genotype() {
+  SimulationConfig cfg = base_cfg();
+  auto& strain = cfg.initial_strains.front();
+  strain.receptor_expression = {{"BtuB", 0.0}};
+  strain.cdi_type = 7;
+  strain.cdi_immunity = 3;
+
+  const Real expected_ret = retardation_from_pI(
+      PlasmidLibrary::find("ColE1")->cluster.pI,
+      cfg.fixes.bacteriocin.mucin_charge);
+  const Int btub = to_underlying(ReceptorType::BtuB);
+
+  ColonicChain chain;
+  chain.init(cfg);
+  for (Int r = 0; r < kRegionCount; ++r) {
+    const auto& lineages = chain.region(r).lumen.lineages();
+    const auto it = lineages.find(kSeedLineageTag);
+    assert(it != lineages.end());
+    const Agent& a = it->second.exemplar;
+    assert(a.state == PhenoState::RESISTANT);
+    assert(a.receptor_expr[btub] == 0.0);
+    assert(a.receptor_expr_base[btub] == 0.0);
+    assert(a.genome.receptor_expression[btub] == 0.0);
+    assert(a.genome.cdi_type == 7);
+    assert(a.genome.cdi_immunity == 3);
+    assert(a.genome.bi_loci.size() == 1);
+    assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) <
+           1e-9);
+  }
+  std::cout << "lumen_exemplar_genotype: all regions carry declared "
+               "phenotype\n";
+}
+
+// ── Capability limit (external audit, step 1) ─────────────────────────
+// Layer 3 executes no mechanism-dynamics parameters; a config that sets
+// them must be refused with the unsupported keys named.
+void test_capability_limit_reports_dead_params() {
+  // Founder genotype declarations are carried state, not mechanism
+  // knobs — a clean cfg with them must pass validation.
+  {
+    SimulationConfig cfg = base_cfg();
+    cfg.initial_strains[0].receptor_expression = {{"BtuB", 0.0}};
+    cfg.initial_strains[0].cdi_type = 7;
+    assert(unexecuted_mechanism_params(cfg).empty());
+    ColonicChain chain;
+    chain.init(cfg);
+  }
+
+  const struct {
+    const char* name;
+    const char* expected_key;
+    void (*set)(SimulationConfig&);
+  } cases[] = {
+      {"sos_lysis_prob sweep", "fixes.bacteriocin.sos_lysis_prob",
+       [](SimulationConfig& c) { c.fixes.bacteriocin.sos_lysis_prob = 0.05; }},
+      {"retardation override sweep", "plasmid_overrides",
+       [](SimulationConfig& c) {
+         c.plasmid_overrides["ColE1"].retardation = 1.2;
+       }},
+      {"fix list", "enabled_fixes",
+       [](SimulationConfig& c) { c.enabled_fixes = {"bacteriocin"}; }},
+      {"receptor kill rate", "fixes.receptor.kill_rate_colicin",
+       [](SimulationConfig& c) {
+         c.fixes.receptor.kill_rate_colicin = 1e-2;
+       }},
+      {"toxin evaluation", "qssa.toxin_evaluation",
+       [](SimulationConfig& c) { c.qssa.toxin_evaluation = "brute"; }},
+  };
+
+  for (const auto& tc : cases) {
+    SimulationConfig cfg = base_cfg();
+    tc.set(cfg);
+    bool threw = false;
+    try {
+      ColonicChain chain;
+      chain.init(cfg);
+    } catch (const ConfigError& e) {
+      threw = true;
+      assert(std::string(e.what()).find(tc.expected_key) !=
+             std::string::npos);
+    }
+    assert(threw);
+  }
+  std::cout << "capability_limit: "
+            << sizeof(cases) / sizeof(cases[0]) << " dead knobs refused\n";
 }
 
 // ── (iii) Checkpoint round-trip ────────────────────────────────────────
@@ -270,6 +375,8 @@ int main() {
 #ifdef GUTIBM_HDF5
   test_checkpoint_roundtrip();
 #endif
+  test_lumen_exemplar_genotype();
+  test_capability_limit_reports_dead_params();
   std::cout << "test_layer3_chain: all tests passed\n";
   return 0;
 }

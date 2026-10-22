@@ -5,7 +5,9 @@
 #include "chain.h"
 
 #include "error.h"
+#include "founder_genotype.h"
 #include "input_parser.h"
+#include "mechanism_capability.h"
 #include "plasmid.h"
 
 #include <algorithm>
@@ -102,6 +104,19 @@ void ColonicChain::validate_config() const {
   if (cfg_->initial_strains.empty()) {
     throw ConfigError("layer3 requires at least one initial_strains entry");
   }
+  // Capability limit: no live patch runs at this layer — a config
+  // sweeping mechanism parameters would produce identical outputs, so
+  // report it instead of accepting the sweep.
+  if (const auto dead = unexecuted_mechanism_params(*cfg_); !dead.empty()) {
+    std::string keys;
+    for (const auto& k : dead) {
+      keys += " " + k;
+    }
+    throw ConfigError(
+        "layer3 executes no mechanism-dynamics parameters:" + keys +
+        ". Founder genotype state still propagates; to execute a "
+        "mechanism use a live Simulation.");
+  }
 }
 
 std::vector<Agent> ColonicChain::seed_lumen_exemplars() const {
@@ -116,14 +131,7 @@ std::vector<Agent> ColonicChain::seed_lumen_exemplars() const {
                                     Vec3{0, 0, 0}, strain.mu_max);
     a.genome.lineage_id = a.identity.tag;
     a.genome.parent_id = 0;
-    for (const auto& name : strain.plasmids) {
-      const PlasmidEntry* entry = PlasmidLibrary::find(name);
-      if (entry == nullptr) {
-        throw ConfigError("layer3 founder plasmid not found: " + name);
-      }
-      a.genome.bi_loci.push_back(entry->cluster);
-    }
-    a.genome.has_conjugative_plasmid = strain.conjugative;
+    apply_founder_genotype(a, strain, *cfg_);
     out.push_back(std::move(a));
   }
   return out;

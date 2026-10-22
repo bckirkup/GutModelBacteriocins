@@ -9,6 +9,8 @@
 #include "error.h"
 #include "input_parser.h"
 #include "patch_table.h"
+#include "founder_genotype.h"
+#include "mechanism_capability.h"
 #include "plasmid.h"
 #include "simulation.h"
 
@@ -149,6 +151,23 @@ void MucusSegment::validate_config() const {
   if (c.audit.patch_index >= c.n_patches) {
     throw ConfigError("layer2.audit_patch_index out of range");
   }
+  // Capability limit: with no live patch the tabulated segment executes
+  // no mechanism — a config sweeping mechanism parameters would produce
+  // identical outputs, so report it instead of accepting the sweep.
+  if (c.audit.patch_index < 0) {
+    if (const auto dead = unexecuted_mechanism_params(*cfg_);
+        !dead.empty()) {
+      std::string keys;
+      for (const auto& k : dead) {
+        keys += " " + k;
+      }
+      throw ConfigError(
+          "layer2 executes no mechanism-dynamics parameters (no live "
+          "patch):" + keys +
+          ". Founder genotype state still propagates; to execute a "
+          "mechanism use a live Simulation or the audit slot.");
+    }
+  }
 }
 
 void MucusSegment::assign_patch_types() {
@@ -169,26 +188,41 @@ void MucusSegment::assign_patch_types() {
   }
 }
 
-void MucusSegment::make_founder(Patch& patch, Int strain_type, Real mu_max,
-                                const std::vector<std::string>& plasmids,
-                                bool conjugative) {
-  const Vec3 pos{0.5 * cfg_->layer2.patch_lateral_m,
-                 0.5 * cfg_->layer2.patch_lateral_m,
-                 0.5 * cfg_->layer2.patch_depth_m};
-  Agent a = Agent::create_default(patch.next_cell_tag++, strain_type, pos,
-                                  mu_max);
+namespace {
+
+// One founder cell with the full initial_strains[] declaration applied —
+// same genotype the live Simulation gives founders (founder_genotype.h):
+// receptor expression and RESISTANT state, configured plasmid clusters
+// (pI retardation + plasmid_overrides), CDI fields.
+void make_founder(Patch& patch,
+                  const SimulationConfig::InitialStrain& strain,
+                  const SimulationConfig& cfg) {
+  const Vec3 pos{0.5 * cfg.layer2.patch_lateral_m,
+                 0.5 * cfg.layer2.patch_lateral_m,
+                 0.5 * cfg.layer2.patch_depth_m};
+  Agent a = Agent::create_default(patch.next_cell_tag++, strain.type, pos,
+                                  strain.mu_max);
   a.genome.lineage_id = a.identity.tag;  // each founder roots a lineage
   a.genome.parent_id = 0;
-  for (const auto& name : plasmids) {
-    const PlasmidEntry* entry = PlasmidLibrary::find(name);
-    if (entry == nullptr) {
-      throw ConfigError("layer2 founder plasmid not found: " + name);
-    }
-    a.genome.bi_loci.push_back(entry->cluster);
-  }
-  a.genome.has_conjugative_plasmid = conjugative;
+  apply_founder_genotype(a, strain, cfg);
   patch.colonists.push_back(std::move(a));
 }
+
+// Proportional n_i ~ cells * strain.count / total_count; the last strain
+// absorbs the rounding remainder.
+Int proportional_share(Int cells, const SimulationConfig::InitialStrain& strain,
+                       Int total_strain_count, bool is_last, Int remaining) {
+  if (is_last) {
+    return std::clamp<Int>(remaining, 0, cells);
+  }
+  Int n = static_cast<Int>(
+      std::llround(static_cast<Real>(cells) *
+                   static_cast<Real>(strain.count) /
+                   static_cast<Real>(total_strain_count)));
+  return std::clamp<Int>(n, 0, remaining);
+}
+
+}  // namespace
 
 void MucusSegment::seed_initial_colonists() {
   const Layer2Config& c = cfg_->layer2;
@@ -216,13 +250,41 @@ void MucusSegment::seed_initial_colonists() {
       n = std::clamp<Int>(n, 0, remaining);
       remaining -= n;
       for (Int i = 0; i < n; ++i) {
-        make_founder(patch, strain.type, strain.mu_max, strain.plasmids,
-                     strain.conjugative);
+        make_founder(patch, strain, *cfg_);
       }
     }
   }
   for (auto& patch : patches_) {
     patch.baseline_count = static_cast<Int>(patch.colonists.size());
+  }
+}
+
+void MucusSegment::seed_initial_pool() {
+  const Layer2Config& c = cfg_->layer2;
+  // Optional pre-seeded singles in the pool — same founder genotype as
+  // patch colonists, split proportionally over the configured strains.
+  Int total_strain_count = 0;
+  for (const auto& s : cfg_->initial_strains) {
+    total_strain_count += std::max<Int>(s.count, 0);
+  }
+  Int remaining = c.initial_pool_cells;
+  for (size_t si = 0; si < cfg_->initial_strains.size(); ++si) {
+    const auto& strain = cfg_->initial_strains[si];
+    const Int n = proportional_share(c.initial_pool_cells, strain,
+                                     total_strain_count,
+                                     si + 1 == cfg_->initial_strains.size(),
+                                     remaining);
+    remaining -= n;
+    for (Int i = 0; i < n; ++i) {
+      Agent a = Agent::create_default(next_tag_++, strain.type,
+                                      Vec3{0, 0, 0}, strain.mu_max);
+      a.genome.lineage_id = a.identity.tag;
+      apply_founder_genotype(a, strain, *cfg_);
+      const uint64_t key =
+          mix_seed(static_cast<uint64_t>(a.identity.tag),
+                   tag_hash("pool_origin"));
+      push_packet(PacketKind::Single, {std::move(a)}, key);
+    }
   }
 }
 
@@ -272,18 +334,7 @@ void MucusSegment::init(const SimulationConfig& cfg) {
   assign_patch_types();
   seed_initial_colonists();
 
-  // Optional pre-seeded singles in the pool.
-  for (Int i = 0; i < c.initial_pool_cells; ++i) {
-    const auto& strain = cfg.initial_strains.front();
-    const Vec3 pos{0, 0, 0};
-    Agent a = Agent::create_default(next_tag_++, strain.type, pos,
-                                    strain.mu_max);
-    a.genome.lineage_id = a.identity.tag;
-    const uint64_t key =
-        mix_seed(static_cast<uint64_t>(a.identity.tag),
-                 tag_hash("pool_origin"));
-    push_packet(PacketKind::Single, {std::move(a)}, key);
-  }
+  seed_initial_pool();
 
   init_audit_slot();
   admissibility_check();

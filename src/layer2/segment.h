@@ -226,9 +226,7 @@ class MucusSegment {
   void validate_config() const;
   void assign_patch_types();
   void seed_initial_colonists();
-  void make_founder(Patch& patch, Int strain_type, Real mu_max,
-                    const std::vector<std::string>& plasmids,
-                    bool conjugative);
+  void seed_initial_pool();
   void admissibility_check() const;
   void init_audit_slot();
   SimulationConfig live_config_for(const Patch& patch) const;

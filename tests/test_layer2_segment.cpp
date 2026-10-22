@@ -10,9 +10,13 @@
    Plus bounds/invariant coverage per the observables contract (G5/G6).
    ----------------------------------------------------------------------- */
 
+#include "error.h"
+#include "founder_genotype.h"
 #include "input_parser.h"
 #include "layer2_config.h"
+#include "mechanism_capability.h"
 #include "path_utils.h"
+#include "plasmid.h"
 #include "segment.h"
 
 #include <algorithm>
@@ -343,6 +347,235 @@ void test_bloom_halt_is_patch_local() {
   std::cout << "bloom_halt: run survived with halted patches\n";
 }
 
+// ── Founder genotype propagation (external audit, step 1) ────────────
+// The declared resistant phenotype, configured plasmid cluster and CDI
+// fields must reach every construction site — patch founders AND the
+// initial pool — not just the live-Simulation path.
+void test_founder_genotype_propagation() {
+  SimulationConfig cfg = base_cfg();
+  cfg.initial_strains.clear();
+
+  SimulationConfig::InitialStrain s_strain;  // sensitive, no plasmids
+  s_strain.type = 1;
+  s_strain.count = 50;
+  s_strain.mu_max = 5.0e-4;
+
+  SimulationConfig::InitialStrain r_strain;  // declared R phenocopy
+  r_strain.type = 2;
+  r_strain.count = 50;
+  r_strain.mu_max = 4.0e-4;
+  r_strain.plasmids = {"ColE1"};
+  r_strain.cdi_type = 7;
+  r_strain.cdi_immunity = 3;
+  r_strain.receptor_expression = {{"BtuB", 0.0}};
+  cfg.initial_strains = {s_strain, r_strain};
+
+  auto& l = cfg.layer2;
+  l.n_patches = 8;
+  l.initial_patch_fraction = 1.0;  // every patch seeded
+  l.initial_founder_cells = 8;     // proportional 4 + 4 split
+  l.initial_pool_cells = 4;        // 2 + 2 pool singles
+
+  MucusSegment seg;
+  seg.init(cfg);
+
+  // The cluster founders must carry pI-derived retardation (the
+  // configured_plasmid_cluster path), not the raw library entry.
+  const Real expected_ret = retardation_from_pI(
+      PlasmidLibrary::find("ColE1")->cluster.pI,
+      cfg.fixes.bacteriocin.mucin_charge);
+  const Int btub = to_underlying(ReceptorType::BtuB);
+
+  int r_colonists = 0;
+  int s_colonists = 0;
+  seg.for_each_colonist([&](const Agent& a) {
+    if (a.identity.type == 2) {
+      ++r_colonists;
+      assert(a.state == PhenoState::RESISTANT);
+      assert(a.receptor_expr[btub] == 0.0);
+      assert(a.receptor_expr_base[btub] == 0.0);
+      assert(a.genome.receptor_expression[btub] == 0.0);
+      assert(a.genome.cdi_type == 7);
+      assert(a.genome.cdi_immunity == 3);
+      assert(a.genome.bi_loci.size() == 1);
+      assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) <
+             1e-9);
+      assert(a.genome.lineage_id == a.identity.tag);
+    } else {
+      ++s_colonists;
+      assert(a.state != PhenoState::RESISTANT);
+      assert(a.genome.cdi_type == 0);
+    }
+  });
+  assert(r_colonists > 0);
+  assert(s_colonists > 0);
+
+  int r_pool = 0;
+  int s_pool = 0;
+  for (const auto& q : seg.pool()) {
+    for (const auto& a : q.cells) {
+      if (a.identity.type == 2) {
+        ++r_pool;
+        assert(a.state == PhenoState::RESISTANT);
+        assert(a.receptor_expr[btub] == 0.0);
+        assert(a.genome.cdi_type == 7);
+        assert(a.genome.bi_loci.size() == 1);
+        assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) <
+               1e-9);
+        assert(a.genome.lineage_id == a.identity.tag);
+      } else {
+        ++s_pool;
+      }
+    }
+  }
+  assert(r_pool > 0);
+  assert(s_pool > 0);
+  std::cout << "founder_genotype: r_colonists=" << r_colonists
+            << " s_colonists=" << s_colonists << " r_pool=" << r_pool
+            << " s_pool=" << s_pool << '\n';
+}
+
+// plasmid_overrides change the carried cluster through
+// configured_plasmid_cluster — the same semantics the live path applies.
+void test_founder_genotype_helper_contract() {
+  SimulationConfig cfg = base_cfg();
+  auto& strain = cfg.initial_strains.front();
+  strain.receptor_expression = {{"BtuB", 0.0}};
+  strain.cdi_type = 7;
+  strain.cdi_immunity = 3;
+  cfg.plasmid_overrides["ColE1"].retardation = 1.2;
+  cfg.plasmid_overrides["ColE1"].burst_size = 42.0;
+
+  Agent a = Agent::create_default(1001, strain.type, Vec3{0, 0, 0},
+                                  strain.mu_max);
+  apply_founder_genotype(a, strain, cfg);
+  assert(a.state == PhenoState::RESISTANT);
+  const Int btub = to_underlying(ReceptorType::BtuB);
+  assert(a.receptor_expr[btub] == 0.0);
+  assert(a.receptor_expr_base[btub] == 0.0);
+  assert(a.genome.receptor_expression[btub] == 0.0);
+  assert(a.genome.bi_loci.size() == 1);
+  assert(a.genome.bi_loci[0].retardation == 1.2);
+  assert(a.genome.bi_loci[0].burst_size == 42.0);
+  assert(a.genome.cdi_type == 7);
+  assert(a.genome.cdi_immunity == 3);
+  std::cout << "founder_genotype_helper: overrides applied\n";
+}
+
+// Declared phenotype survives checkpoint/restart via the agent_transfer
+// blobs that already serialize patch + pool cells.
+void test_genotype_survives_checkpoint() {
+#ifdef GUTIBM_HDF5
+  const std::string path =
+      resolve_test_h5_path("GUTIBM_LAYER2_CKPT_H5", "layer2_genotype");
+
+  SimulationConfig cfg = base_cfg();
+  auto& strain = cfg.initial_strains.front();
+  strain.receptor_expression = {{"BtuB", 0.0}};
+  strain.cdi_type = 7;
+  strain.cdi_immunity = 3;
+  cfg.layer2.n_patches = 8;
+  cfg.layer2.initial_patch_fraction = 1.0;
+  cfg.layer2.initial_founder_cells = 8;
+  cfg.layer2.initial_pool_cells = 4;
+
+  MucusSegment seg_a;
+  seg_a.init(cfg);
+  seg_a.write_checkpoint(path);
+
+  MucusSegment seg_b;
+  seg_b.init_from_checkpoint(cfg, path);
+
+  const Int btub = to_underlying(ReceptorType::BtuB);
+  int restored = 0;
+  seg_b.for_each_colonist([&](const Agent& a) {
+    ++restored;
+    assert(a.state == PhenoState::RESISTANT);
+    assert(a.receptor_expr[btub] == 0.0);
+    assert(a.receptor_expr_base[btub] == 0.0);
+    assert(a.genome.receptor_expression[btub] == 0.0);
+    assert(a.genome.cdi_type == 7);
+    assert(a.genome.cdi_immunity == 3);
+    assert(a.genome.bi_loci.size() == 1);
+  });
+  assert(restored > 0);
+  int pool_restored = 0;
+  for (const auto& q : seg_b.pool()) {
+    for (const auto& a : q.cells) {
+      ++pool_restored;
+      assert(a.state == PhenoState::RESISTANT);
+      assert(a.receptor_expr[btub] == 0.0);
+      assert(a.genome.cdi_type == 7);
+    }
+  }
+  assert(pool_restored > 0);
+  std::cout << "genotype_checkpoint: colonists=" << restored
+            << " pool=" << pool_restored << '\n';
+#else
+  std::cout << "genotype_checkpoint: skipped (no HDF5 build)\n";
+#endif
+}
+
+// ── Capability limit (external audit, step 1) ────────────────────────
+// A tabulated-layer config that sets mechanism-dynamics parameters is a
+// sweep of unused parameters: validate_config must refuse it and name
+// the unsupported keys rather than produce identical outputs.
+void test_capability_limit_reports_dead_params() {
+  // A clean tabulated config passes, and founder genotype declarations
+  // are carried state — they must NOT be flagged as mechanism knobs.
+  {
+    SimulationConfig cfg = base_cfg();
+    cfg.initial_strains[0].receptor_expression = {{"BtuB", 0.0}};
+    cfg.initial_strains[0].plasmids = {"ColE1"};
+    cfg.initial_strains[0].cdi_type = 7;
+    assert(unexecuted_mechanism_params(cfg).empty());
+    MucusSegment seg;
+    seg.init(cfg);
+  }
+
+  const struct {
+    const char* name;
+    const char* expected_key;
+    void (*set)(SimulationConfig&);
+  } cases[] = {
+      {"sos_lysis_prob sweep", "fixes.bacteriocin.sos_lysis_prob",
+       [](SimulationConfig& c) { c.fixes.bacteriocin.sos_lysis_prob = 0.05; }},
+      {"retardation override sweep", "plasmid_overrides",
+       [](SimulationConfig& c) {
+         c.plasmid_overrides["ColE1"].retardation = 1.2;
+       }},
+      {"fix list", "enabled_fixes",
+       [](SimulationConfig& c) { c.enabled_fixes = {"bacteriocin"}; }},
+      {"receptor affinity", "fixes.receptor.kd_b12_btuB",
+       [](SimulationConfig& c) { c.fixes.receptor.kd_b12_btuB = 1e-3; }},
+      {"ROS mortality", "chem_env.oxygen.k_ROS",
+       [](SimulationConfig& c) { c.chem_env.oxygen.k_ROS = 1e-6; }},
+      {"immigration", "immigration.enabled",
+       [](SimulationConfig& c) { c.immigration.enabled = true; }},
+      {"motility knob", "cell_bio.motility.enabled",
+       [](SimulationConfig& c) { c.cell_bio.motility.enabled = false; }},
+      {"toxin lumping", "qssa.toxin_lumping",
+       [](SimulationConfig& c) { c.qssa.toxin_lumping = "lumped"; }},
+  };
+
+  for (const auto& tc : cases) {
+    SimulationConfig cfg = base_cfg();
+    tc.set(cfg);
+    bool threw = false;
+    try {
+      MucusSegment seg;
+      seg.init(cfg);
+    } catch (const ConfigError& e) {
+      threw = true;
+      assert(std::string(e.what()).find(tc.expected_key) !=
+             std::string::npos);
+    }
+    assert(threw);
+  }
+  std::cout << "capability_limit: "
+            << sizeof(cases) / sizeof(cases[0]) << " dead knobs refused\n";
+}
+
 }  // namespace
 
 int main() {
@@ -353,6 +586,10 @@ int main() {
   test_observables_bounds();
   test_layer2_config_parsing();
   test_bloom_halt_is_patch_local();
+  test_founder_genotype_propagation();
+  test_founder_genotype_helper_contract();
+  test_genotype_survives_checkpoint();
+  test_capability_limit_reports_dead_params();
   std::cout << "test_layer2_segment: all passed\n";
   return 0;
 }
