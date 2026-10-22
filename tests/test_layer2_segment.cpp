@@ -385,7 +385,8 @@ void test_founder_genotype_propagation() {
 
   int r_colonists = 0;
   int s_colonists = 0;
-  seg.for_each_colonist([&](const Agent& a) {
+  seg.for_each_colonist([&r_colonists, &s_colonists, btub,
+                         expected_ret](const Agent& a) {
     if (a.identity.type == 2) {
       ++r_colonists;
       test::expect_declared_r_phenotype(a, btub);
@@ -465,7 +466,7 @@ void test_genotype_survives_checkpoint() {
 
   const Int btub = to_underlying(ReceptorType::BtuB);
   int restored = 0;
-  seg_b.for_each_colonist([&](const Agent& a) {
+  seg_b.for_each_colonist([&restored, btub](const Agent& a) {
     ++restored;
     test::expect_declared_r_phenotype(a, btub);
     assert(a.genome.bi_loci.size() == 1);
@@ -525,7 +526,7 @@ void test_capability_limit_reports_dead_params() {
            [](SimulationConfig& c) { c.qssa.toxin_lumping = "lumped"; }},
       },
       base_cfg(),
-      [](SimulationConfig& c) {
+      [](const SimulationConfig& c) {
         MucusSegment seg;
         seg.init(c);
       });

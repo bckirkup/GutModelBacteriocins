@@ -199,15 +199,16 @@ void test_genotype_preserving_reattach() {
   Int deposits = 0;
   Int genotype_ok = 0;
   for (Int r = 0; r < kRegionCount; ++r) {
-    chain.region(r).segment.for_each_colonist([&](const Agent& a) {
-      if (!is_deposit_tag(a.identity.tag)) return;
-      ++deposits;
-      if (a.genome.lineage_id == kSeedLineageTag &&
-          a.genome.parent_id == kSeedLineageTag &&
-          test::carries_declared_r_genotype(a, btub)) {
-        ++genotype_ok;
-      }
-    });
+    chain.region(r).segment.for_each_colonist(
+        [&deposits, &genotype_ok, btub](const Agent& a) {
+          if (!is_deposit_tag(a.identity.tag)) return;
+          ++deposits;
+          if (a.genome.lineage_id == kSeedLineageTag &&
+              a.genome.parent_id == kSeedLineageTag &&
+              test::carries_declared_r_genotype(a, btub)) {
+            ++genotype_ok;
+          }
+        });
   }
   // With lumen_seed_cells = 3000 and p0 = 0.9 the seed lineage must have
   // deposited intact — full declared phenotype — at least once.
@@ -274,7 +275,7 @@ void test_capability_limit_reports_dead_params() {
            }},
       },
       base_cfg(),
-      [](SimulationConfig& c) {
+      [](const SimulationConfig& c) {
         ColonicChain chain;
         chain.init(c);
       });

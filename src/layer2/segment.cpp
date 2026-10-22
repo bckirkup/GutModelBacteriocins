@@ -215,7 +215,7 @@ Int proportional_share(Int cells, const SimulationConfig::InitialStrain& strain,
   if (is_last) {
     return std::clamp<Int>(remaining, 0, cells);
   }
-  Int n = static_cast<Int>(
+  const auto n = static_cast<Int>(
       std::llround(static_cast<Real>(cells) *
                    static_cast<Real>(strain.count) /
                    static_cast<Real>(total_strain_count)));
