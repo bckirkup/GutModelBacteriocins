@@ -14,6 +14,7 @@
 #include "agent.h"
 #include "chain.h"
 #include "error.h"
+#include "genotype_test_helpers.h"
 #include "input_parser.h"
 #include "layer3_config.h"
 #include "lumen.h"
@@ -41,29 +42,6 @@ constexpr TagID kSeedLineageTag =
 
 bool is_deposit_tag(TagID t) {
   return (t & kDepositMarkerMask) == kDepositMarkerMask;
-}
-
-// Shared expectations for a cell built from the declared resistant
-// founder strain (receptor_expression {"BtuB": 0.0}, cdi 7/3, ColE1).
-void expect_declared_r_phenotype(const Agent& a, Int btub) {
-  assert(a.state == PhenoState::RESISTANT);
-  assert(a.receptor_expr[btub] == 0.0);
-  assert(a.receptor_expr_base[btub] == 0.0);
-  assert(a.genome.receptor_expression[btub] == 0.0);
-  assert(a.genome.cdi_type == 7);
-  assert(a.genome.cdi_immunity == 3);
-}
-
-void expect_configured_cluster(const Agent& a, Real expected_ret) {
-  assert(a.genome.bi_loci.size() == 1);
-  assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) < 1e-9);
-}
-
-bool carries_declared_r_genotype(const Agent& a, Int btub) {
-  return a.genome.bi_loci.size() == 1 &&
-         a.state == PhenoState::RESISTANT && a.receptor_expr[btub] == 0.0 &&
-         a.genome.receptor_expression[btub] == 0.0 &&
-         a.genome.cdi_type == 7 && a.genome.cdi_immunity == 3;
 }
 
 SimulationConfig base_cfg(bool uniform = false) {
@@ -205,9 +183,7 @@ void test_order_invariance() {
 void test_genotype_preserving_reattach() {
   SimulationConfig cfg = base_cfg();
   auto& strain = cfg.initial_strains.front();  // seed lineage 0
-  strain.receptor_expression = {{"BtuB", 0.0}};
-  strain.cdi_type = 7;
-  strain.cdi_immunity = 3;
+  test::declare_resistant_founder(strain);
   cfg.layer2.initial_patch_fraction = 0.1;
   cfg.layer3.reattach_p0 = 0.9;
   ColonicChain chain;
@@ -228,7 +204,7 @@ void test_genotype_preserving_reattach() {
       ++deposits;
       if (a.genome.lineage_id == kSeedLineageTag &&
           a.genome.parent_id == kSeedLineageTag &&
-          carries_declared_r_genotype(a, btub)) {
+          test::carries_declared_r_genotype(a, btub)) {
         ++genotype_ok;
       }
     });
@@ -248,13 +224,9 @@ void test_genotype_preserving_reattach() {
 void test_lumen_exemplar_genotype() {
   SimulationConfig cfg = base_cfg();
   auto& strain = cfg.initial_strains.front();
-  strain.receptor_expression = {{"BtuB", 0.0}};
-  strain.cdi_type = 7;
-  strain.cdi_immunity = 3;
+  test::declare_resistant_founder(strain);
 
-  const Real expected_ret = retardation_from_pI(
-      PlasmidLibrary::find("ColE1")->cluster.pI,
-      cfg.fixes.bacteriocin.mucin_charge);
+  const Real expected_ret = test::declared_cluster_retardation(cfg);
   const Int btub = to_underlying(ReceptorType::BtuB);
 
   ColonicChain chain;
@@ -264,8 +236,8 @@ void test_lumen_exemplar_genotype() {
     const auto it = lineages.find(kSeedLineageTag);
     assert(it != lineages.end());
     const Agent& a = it->second.exemplar;
-    expect_declared_r_phenotype(a, btub);
-    expect_configured_cluster(a, expected_ret);
+    test::expect_declared_r_phenotype(a, btub);
+    test::expect_configured_cluster(a, expected_ret);
   }
   std::cout << "lumen_exemplar_genotype: all regions carry declared "
                "phenotype\n";
@@ -279,50 +251,34 @@ void test_capability_limit_reports_dead_params() {
   // knobs — a clean cfg with them must pass validation.
   {
     SimulationConfig cfg = base_cfg();
-    cfg.initial_strains[0].receptor_expression = {{"BtuB", 0.0}};
-    cfg.initial_strains[0].cdi_type = 7;
+    test::declare_resistant_founder(cfg.initial_strains[0]);
     assert(unexecuted_mechanism_params(cfg).empty());
     ColonicChain chain;
     chain.init(cfg);
   }
 
-  const struct {
-    const char* name;
-    const char* expected_key;
-    void (*set)(SimulationConfig&);
-  } cases[] = {
-      {"sos_lysis_prob sweep", "fixes.bacteriocin.sos_lysis_prob",
-       [](SimulationConfig& c) { c.fixes.bacteriocin.sos_lysis_prob = 0.05; }},
-      {"retardation override sweep", "plasmid_overrides",
-       [](SimulationConfig& c) {
-         c.plasmid_overrides["ColE1"].retardation = 1.2;
-       }},
-      {"fix list", "enabled_fixes",
-       [](SimulationConfig& c) { c.enabled_fixes = {"bacteriocin"}; }},
-      {"receptor kill rate", "fixes.receptor.kill_rate_colicin",
-       [](SimulationConfig& c) {
-         c.fixes.receptor.kill_rate_colicin = 1e-2;
-       }},
-      {"toxin evaluation", "qssa.toxin_evaluation",
-       [](SimulationConfig& c) { c.qssa.toxin_evaluation = "brute"; }},
-  };
-
-  for (const auto& tc : cases) {
-    SimulationConfig cfg = base_cfg();
-    tc.set(cfg);
-    bool threw = false;
-    try {
-      ColonicChain chain;
-      chain.init(cfg);
-    } catch (const ConfigError& e) {
-      threw = true;
-      assert(std::string(e.what()).find(tc.expected_key) !=
-             std::string::npos);
-    }
-    assert(threw);
-  }
-  std::cout << "capability_limit: "
-            << sizeof(cases) / sizeof(cases[0]) << " dead knobs refused\n";
+  const int refused = test::expect_dead_knobs_refused(
+      {
+          {"sos_lysis_prob sweep", "fixes.bacteriocin.sos_lysis_prob",
+           test::knob_sos_lysis},
+          {"retardation override sweep", "plasmid_overrides",
+           test::knob_retardation_override},
+          {"fix list", "enabled_fixes", test::knob_fix_list},
+          {"receptor kill rate", "fixes.receptor.kill_rate_colicin",
+           [](SimulationConfig& c) {
+             c.fixes.receptor.kill_rate_colicin = 1e-2;
+           }},
+          {"toxin evaluation", "qssa.toxin_evaluation",
+           [](SimulationConfig& c) {
+             c.qssa.toxin_evaluation = "brute";
+           }},
+      },
+      base_cfg(),
+      [](SimulationConfig& c) {
+        ColonicChain chain;
+        chain.init(c);
+      });
+  std::cout << "capability_limit: " << refused << " dead knobs refused\n";
 }
 
 // ── (iii) Checkpoint round-trip ────────────────────────────────────────

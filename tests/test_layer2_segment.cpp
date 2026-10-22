@@ -12,6 +12,7 @@
 
 #include "error.h"
 #include "founder_genotype.h"
+#include "genotype_test_helpers.h"
 #include "input_parser.h"
 #include "layer2_config.h"
 #include "mechanism_capability.h"
@@ -62,22 +63,6 @@ SimulationConfig base_cfg() {
   l.establish_ratio = 10.0;
   l.invalid_patch_fraction_stop = 1.0;  // never stop mid-test on invalidity
   return cfg;
-}
-
-// Shared expectations for a cell built from the declared resistant
-// founder strain (receptor_expression {"BtuB": 0.0}, cdi 7/3, ColE1).
-void expect_declared_r_phenotype(const Agent& a, Int btub) {
-  assert(a.state == PhenoState::RESISTANT);
-  assert(a.receptor_expr[btub] == 0.0);
-  assert(a.receptor_expr_base[btub] == 0.0);
-  assert(a.genome.receptor_expression[btub] == 0.0);
-  assert(a.genome.cdi_type == 7);
-  assert(a.genome.cdi_immunity == 3);
-}
-
-void expect_configured_cluster(const Agent& a, Real expected_ret) {
-  assert(a.genome.bi_loci.size() == 1);
-  assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) < 1e-9);
 }
 
 // Drive `n` steps; returns false if the run terminated early.
@@ -381,9 +366,7 @@ void test_founder_genotype_propagation() {
   r_strain.count = 50;
   r_strain.mu_max = 4.0e-4;
   r_strain.plasmids = {"ColE1"};
-  r_strain.cdi_type = 7;
-  r_strain.cdi_immunity = 3;
-  r_strain.receptor_expression = {{"BtuB", 0.0}};
+  test::declare_resistant_founder(r_strain);
   cfg.initial_strains = {s_strain, r_strain};
 
   auto& l = cfg.layer2;
@@ -397,9 +380,7 @@ void test_founder_genotype_propagation() {
 
   // The cluster founders must carry pI-derived retardation (the
   // configured_plasmid_cluster path), not the raw library entry.
-  const Real expected_ret = retardation_from_pI(
-      PlasmidLibrary::find("ColE1")->cluster.pI,
-      cfg.fixes.bacteriocin.mucin_charge);
+  const Real expected_ret = test::declared_cluster_retardation(cfg);
   const Int btub = to_underlying(ReceptorType::BtuB);
 
   int r_colonists = 0;
@@ -407,8 +388,8 @@ void test_founder_genotype_propagation() {
   seg.for_each_colonist([&](const Agent& a) {
     if (a.identity.type == 2) {
       ++r_colonists;
-      expect_declared_r_phenotype(a, btub);
-      expect_configured_cluster(a, expected_ret);
+      test::expect_declared_r_phenotype(a, btub);
+      test::expect_configured_cluster(a, expected_ret);
       assert(a.genome.lineage_id == a.identity.tag);
     } else {
       ++s_colonists;
@@ -425,8 +406,8 @@ void test_founder_genotype_propagation() {
     for (const auto& a : q.cells) {
       if (a.identity.type == 2) {
         ++r_pool;
-        expect_declared_r_phenotype(a, btub);
-        expect_configured_cluster(a, expected_ret);
+        test::expect_declared_r_phenotype(a, btub);
+        test::expect_configured_cluster(a, expected_ret);
         assert(a.genome.lineage_id == a.identity.tag);
       } else {
         ++s_pool;
@@ -445,9 +426,7 @@ void test_founder_genotype_propagation() {
 void test_founder_genotype_helper_contract() {
   SimulationConfig cfg = base_cfg();
   auto& strain = cfg.initial_strains.front();
-  strain.receptor_expression = {{"BtuB", 0.0}};
-  strain.cdi_type = 7;
-  strain.cdi_immunity = 3;
+  test::declare_resistant_founder(strain);
   cfg.plasmid_overrides["ColE1"].retardation = 1.2;
   cfg.plasmid_overrides["ColE1"].burst_size = 42.0;
 
@@ -455,7 +434,7 @@ void test_founder_genotype_helper_contract() {
                                   strain.mu_max);
   apply_founder_genotype(a, strain, cfg);
   const Int btub = to_underlying(ReceptorType::BtuB);
-  expect_declared_r_phenotype(a, btub);
+  test::expect_declared_r_phenotype(a, btub);
   assert(a.genome.bi_loci.size() == 1);
   assert(a.genome.bi_loci[0].retardation == 1.2);
   assert(a.genome.bi_loci[0].burst_size == 42.0);
@@ -471,9 +450,7 @@ void test_genotype_survives_checkpoint() {
 
   SimulationConfig cfg = base_cfg();
   auto& strain = cfg.initial_strains.front();
-  strain.receptor_expression = {{"BtuB", 0.0}};
-  strain.cdi_type = 7;
-  strain.cdi_immunity = 3;
+  test::declare_resistant_founder(strain);
   cfg.layer2.n_patches = 8;
   cfg.layer2.initial_patch_fraction = 1.0;
   cfg.layer2.initial_founder_cells = 8;
@@ -490,7 +467,7 @@ void test_genotype_survives_checkpoint() {
   int restored = 0;
   seg_b.for_each_colonist([&](const Agent& a) {
     ++restored;
-    expect_declared_r_phenotype(a, btub);
+    test::expect_declared_r_phenotype(a, btub);
     assert(a.genome.bi_loci.size() == 1);
   });
   assert(restored > 0);
@@ -498,7 +475,7 @@ void test_genotype_survives_checkpoint() {
   for (const auto& q : seg_b.pool()) {
     for (const auto& a : q.cells) {
       ++pool_restored;
-      expect_declared_r_phenotype(a, btub);
+      test::expect_declared_r_phenotype(a, btub);
     }
   }
   assert(pool_restored > 0);
@@ -518,55 +495,41 @@ void test_capability_limit_reports_dead_params() {
   // are carried state — they must NOT be flagged as mechanism knobs.
   {
     SimulationConfig cfg = base_cfg();
-    cfg.initial_strains[0].receptor_expression = {{"BtuB", 0.0}};
     cfg.initial_strains[0].plasmids = {"ColE1"};
-    cfg.initial_strains[0].cdi_type = 7;
+    test::declare_resistant_founder(cfg.initial_strains[0]);
     assert(unexecuted_mechanism_params(cfg).empty());
     MucusSegment seg;
     seg.init(cfg);
   }
 
-  const struct {
-    const char* name;
-    const char* expected_key;
-    void (*set)(SimulationConfig&);
-  } cases[] = {
-      {"sos_lysis_prob sweep", "fixes.bacteriocin.sos_lysis_prob",
-       [](SimulationConfig& c) { c.fixes.bacteriocin.sos_lysis_prob = 0.05; }},
-      {"retardation override sweep", "plasmid_overrides",
-       [](SimulationConfig& c) {
-         c.plasmid_overrides["ColE1"].retardation = 1.2;
-       }},
-      {"fix list", "enabled_fixes",
-       [](SimulationConfig& c) { c.enabled_fixes = {"bacteriocin"}; }},
-      {"receptor affinity", "fixes.receptor.kd_b12_btuB",
-       [](SimulationConfig& c) { c.fixes.receptor.kd_b12_btuB = 1e-3; }},
-      {"ROS mortality", "chem_env.oxygen.k_ROS",
-       [](SimulationConfig& c) { c.chem_env.oxygen.k_ROS = 1e-6; }},
-      {"immigration", "immigration.enabled",
-       [](SimulationConfig& c) { c.immigration.enabled = true; }},
-      {"motility knob", "cell_bio.motility.enabled",
-       [](SimulationConfig& c) { c.cell_bio.motility.enabled = false; }},
-      {"toxin lumping", "qssa.toxin_lumping",
-       [](SimulationConfig& c) { c.qssa.toxin_lumping = "lumped"; }},
-  };
-
-  for (const auto& tc : cases) {
-    SimulationConfig cfg = base_cfg();
-    tc.set(cfg);
-    bool threw = false;
-    try {
-      MucusSegment seg;
-      seg.init(cfg);
-    } catch (const ConfigError& e) {
-      threw = true;
-      assert(std::string(e.what()).find(tc.expected_key) !=
-             std::string::npos);
-    }
-    assert(threw);
-  }
-  std::cout << "capability_limit: "
-            << sizeof(cases) / sizeof(cases[0]) << " dead knobs refused\n";
+  const int refused = test::expect_dead_knobs_refused(
+      {
+          {"sos_lysis_prob sweep", "fixes.bacteriocin.sos_lysis_prob",
+           test::knob_sos_lysis},
+          {"retardation override sweep", "plasmid_overrides",
+           test::knob_retardation_override},
+          {"fix list", "enabled_fixes", test::knob_fix_list},
+          {"receptor affinity", "fixes.receptor.kd_b12_btuB",
+           [](SimulationConfig& c) {
+             c.fixes.receptor.kd_b12_btuB = 1e-3;
+           }},
+          {"ROS mortality", "chem_env.oxygen.k_ROS",
+           [](SimulationConfig& c) { c.chem_env.oxygen.k_ROS = 1e-6; }},
+          {"immigration", "immigration.enabled",
+           [](SimulationConfig& c) { c.immigration.enabled = true; }},
+          {"motility knob", "cell_bio.motility.enabled",
+           [](SimulationConfig& c) {
+             c.cell_bio.motility.enabled = false;
+           }},
+          {"toxin lumping", "qssa.toxin_lumping",
+           [](SimulationConfig& c) { c.qssa.toxin_lumping = "lumped"; }},
+      },
+      base_cfg(),
+      [](SimulationConfig& c) {
+        MucusSegment seg;
+        seg.init(c);
+      });
+  std::cout << "capability_limit: " << refused << " dead knobs refused\n";
 }
 
 }  // namespace
