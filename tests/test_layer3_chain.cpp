@@ -43,6 +43,29 @@ bool is_deposit_tag(TagID t) {
   return (t & kDepositMarkerMask) == kDepositMarkerMask;
 }
 
+// Shared expectations for a cell built from the declared resistant
+// founder strain (receptor_expression {"BtuB": 0.0}, cdi 7/3, ColE1).
+void expect_declared_r_phenotype(const Agent& a, Int btub) {
+  assert(a.state == PhenoState::RESISTANT);
+  assert(a.receptor_expr[btub] == 0.0);
+  assert(a.receptor_expr_base[btub] == 0.0);
+  assert(a.genome.receptor_expression[btub] == 0.0);
+  assert(a.genome.cdi_type == 7);
+  assert(a.genome.cdi_immunity == 3);
+}
+
+void expect_configured_cluster(const Agent& a, Real expected_ret) {
+  assert(a.genome.bi_loci.size() == 1);
+  assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) < 1e-9);
+}
+
+bool carries_declared_r_genotype(const Agent& a, Int btub) {
+  return a.genome.bi_loci.size() == 1 &&
+         a.state == PhenoState::RESISTANT && a.receptor_expr[btub] == 0.0 &&
+         a.genome.receptor_expression[btub] == 0.0 &&
+         a.genome.cdi_type == 7 && a.genome.cdi_immunity == 3;
+}
+
 SimulationConfig base_cfg(bool uniform = false) {
   SimulationConfig cfg = InputParser::default_config();
   cfg.hdf5.enabled = false;
@@ -205,11 +228,7 @@ void test_genotype_preserving_reattach() {
       ++deposits;
       if (a.genome.lineage_id == kSeedLineageTag &&
           a.genome.parent_id == kSeedLineageTag &&
-          a.genome.bi_loci.size() == 1 &&
-          a.state == PhenoState::RESISTANT &&
-          a.receptor_expr[btub] == 0.0 &&
-          a.genome.receptor_expression[btub] == 0.0 &&
-          a.genome.cdi_type == 7 && a.genome.cdi_immunity == 3) {
+          carries_declared_r_genotype(a, btub)) {
         ++genotype_ok;
       }
     });
@@ -245,15 +264,8 @@ void test_lumen_exemplar_genotype() {
     const auto it = lineages.find(kSeedLineageTag);
     assert(it != lineages.end());
     const Agent& a = it->second.exemplar;
-    assert(a.state == PhenoState::RESISTANT);
-    assert(a.receptor_expr[btub] == 0.0);
-    assert(a.receptor_expr_base[btub] == 0.0);
-    assert(a.genome.receptor_expression[btub] == 0.0);
-    assert(a.genome.cdi_type == 7);
-    assert(a.genome.cdi_immunity == 3);
-    assert(a.genome.bi_loci.size() == 1);
-    assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) <
-           1e-9);
+    expect_declared_r_phenotype(a, btub);
+    expect_configured_cluster(a, expected_ret);
   }
   std::cout << "lumen_exemplar_genotype: all regions carry declared "
                "phenotype\n";

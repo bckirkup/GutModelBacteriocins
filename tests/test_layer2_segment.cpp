@@ -64,6 +64,22 @@ SimulationConfig base_cfg() {
   return cfg;
 }
 
+// Shared expectations for a cell built from the declared resistant
+// founder strain (receptor_expression {"BtuB": 0.0}, cdi 7/3, ColE1).
+void expect_declared_r_phenotype(const Agent& a, Int btub) {
+  assert(a.state == PhenoState::RESISTANT);
+  assert(a.receptor_expr[btub] == 0.0);
+  assert(a.receptor_expr_base[btub] == 0.0);
+  assert(a.genome.receptor_expression[btub] == 0.0);
+  assert(a.genome.cdi_type == 7);
+  assert(a.genome.cdi_immunity == 3);
+}
+
+void expect_configured_cluster(const Agent& a, Real expected_ret) {
+  assert(a.genome.bi_loci.size() == 1);
+  assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) < 1e-9);
+}
+
 // Drive `n` steps; returns false if the run terminated early.
 bool run_steps(MucusSegment& seg, Real dt, int n) {
   for (int i = 0; i < n; ++i) {
@@ -391,15 +407,8 @@ void test_founder_genotype_propagation() {
   seg.for_each_colonist([&](const Agent& a) {
     if (a.identity.type == 2) {
       ++r_colonists;
-      assert(a.state == PhenoState::RESISTANT);
-      assert(a.receptor_expr[btub] == 0.0);
-      assert(a.receptor_expr_base[btub] == 0.0);
-      assert(a.genome.receptor_expression[btub] == 0.0);
-      assert(a.genome.cdi_type == 7);
-      assert(a.genome.cdi_immunity == 3);
-      assert(a.genome.bi_loci.size() == 1);
-      assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) <
-             1e-9);
+      expect_declared_r_phenotype(a, btub);
+      expect_configured_cluster(a, expected_ret);
       assert(a.genome.lineage_id == a.identity.tag);
     } else {
       ++s_colonists;
@@ -416,12 +425,8 @@ void test_founder_genotype_propagation() {
     for (const auto& a : q.cells) {
       if (a.identity.type == 2) {
         ++r_pool;
-        assert(a.state == PhenoState::RESISTANT);
-        assert(a.receptor_expr[btub] == 0.0);
-        assert(a.genome.cdi_type == 7);
-        assert(a.genome.bi_loci.size() == 1);
-        assert(std::abs(a.genome.bi_loci[0].retardation - expected_ret) <
-               1e-9);
+        expect_declared_r_phenotype(a, btub);
+        expect_configured_cluster(a, expected_ret);
         assert(a.genome.lineage_id == a.identity.tag);
       } else {
         ++s_pool;
@@ -449,16 +454,11 @@ void test_founder_genotype_helper_contract() {
   Agent a = Agent::create_default(1001, strain.type, Vec3{0, 0, 0},
                                   strain.mu_max);
   apply_founder_genotype(a, strain, cfg);
-  assert(a.state == PhenoState::RESISTANT);
   const Int btub = to_underlying(ReceptorType::BtuB);
-  assert(a.receptor_expr[btub] == 0.0);
-  assert(a.receptor_expr_base[btub] == 0.0);
-  assert(a.genome.receptor_expression[btub] == 0.0);
+  expect_declared_r_phenotype(a, btub);
   assert(a.genome.bi_loci.size() == 1);
   assert(a.genome.bi_loci[0].retardation == 1.2);
   assert(a.genome.bi_loci[0].burst_size == 42.0);
-  assert(a.genome.cdi_type == 7);
-  assert(a.genome.cdi_immunity == 3);
   std::cout << "founder_genotype_helper: overrides applied\n";
 }
 
@@ -490,12 +490,7 @@ void test_genotype_survives_checkpoint() {
   int restored = 0;
   seg_b.for_each_colonist([&](const Agent& a) {
     ++restored;
-    assert(a.state == PhenoState::RESISTANT);
-    assert(a.receptor_expr[btub] == 0.0);
-    assert(a.receptor_expr_base[btub] == 0.0);
-    assert(a.genome.receptor_expression[btub] == 0.0);
-    assert(a.genome.cdi_type == 7);
-    assert(a.genome.cdi_immunity == 3);
+    expect_declared_r_phenotype(a, btub);
     assert(a.genome.bi_loci.size() == 1);
   });
   assert(restored > 0);
@@ -503,9 +498,7 @@ void test_genotype_survives_checkpoint() {
   for (const auto& q : seg_b.pool()) {
     for (const auto& a : q.cells) {
       ++pool_restored;
-      assert(a.state == PhenoState::RESISTANT);
-      assert(a.receptor_expr[btub] == 0.0);
-      assert(a.genome.cdi_type == 7);
+      expect_declared_r_phenotype(a, btub);
     }
   }
   assert(pool_restored > 0);
