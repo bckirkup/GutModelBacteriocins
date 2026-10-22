@@ -1,5 +1,14 @@
 # Spec 13 Phase 1 — Layer 2 occupancy readout
 
+*Declared limitation 2026-10-21: per-arm raw run records (`sweep_runs/`
+per-step `ts.csv` and `prov.json`) were produced by a local
+`sweep.py` run and were never committed or uploaded to S3 — they are
+lost with the machine that ran the sweep. The surviving record is the
+committed arm-level table `results.csv` (all 4,374 arms) plus
+`results_seeds.csv` (stage-B seeded arms), which fully supports the
+published admissible-region claim; per-step trajectories are not
+recoverable.*
+
 **Verdict: admissible region found.** Across the SPEC13_MULTISCALE
 physiological table, a nonempty region of parameter space produces
 stationary patch occupancy in the 0.1–1% band with segment mean density
