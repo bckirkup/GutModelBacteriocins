@@ -518,44 +518,86 @@ void test_correction_improves_with_wall_normal_flow() {
 }
 
 void test_default_off_identity() {
-  auto system = make_system(0.822 * kDiffusion / kHeight);
-  const auto params = make_params();
+  // Same-binary contract for the shipped default. Hexadecimal literals
+  // captured with GCC 13 matched ubuntu-24.04 (GCC 13.3) and diverged when
+  // ubuntu-latest moved to ubuntu-26.04 (GCC 15.2), with no change to the
+  // series. The default stays on the legacy image series: it must match an
+  // explicit drift_correction=false evaluation in this binary, and at the
+  // ColE1 mid-depth Pe_z=0.822 it must remain in the measured first-order
+  // error band of docs/NEUMANN_WALL_NORMAL_DRIFT.md (nine-probe median
+  // 0.132, max 0.278) rather than collapse onto the physical field.
+  const Real flow_z = 0.822 * kDiffusion / kHeight;
+  auto system = make_system(flow_z);
+  const auto shipped = make_params();
+  require(!shipped.drift_correction,
+          "shipped Green's function parameters enable drift correction");
+  auto legacy = shipped;
+  legacy.drift_correction = false;
+  auto corrected = shipped;
+  corrected.drift_correction = true;
+  auto shipped_bounded = shipped;
+  shipped_bounded.lumen_transfer_length = 100.0e-6;
+  auto legacy_bounded = legacy;
+  legacy_bounded.lumen_transfer_length = 100.0e-6;
   const std::array<Probe, 5> probes = {{
       {0.137, 0.291, 1.13e-6}, {0.243, 0.814, 8.19e-6},
       {0.500, 0.500, 27.3e-6}, {0.726, 0.354, 71.8e-6},
       {0.914, 0.243, 113.0e-6},
   }};
-  const std::array<Real, 10> main_values = {{
-      // CHANGE DETECTOR, not a physics assertion. These values were produced
-      // by building this fixture from origin/main in /home/ubuntu/wt-main-drift
-      // with GCC 13, an empty CMAKE_BUILD_TYPE, and -Wall -Wextra; MPICH was
-      // configured with MPICH_CC=gcc-13 and MPICH_CXX=g++-13, then built with
-      // MPICH_CXX=g++-13. Regenerate them only to detect unintended default
-      // path changes, per .agents/skills/ci-test-design/SKILL.md.
-      0x1.d0d52ca97fba1p-12, 0x1.d7f536f329f8fp-13,
-      0x1.d825310450f75p-13, 0x1.64ef9befbd004p-15,
-      0x1.2e5cc26721758p-12, 0x1.2efdc394ed6d3p-13,
-      0x1.7a8e9eb585528p-13, 0x1.1331c424b79acp-14,
-      0x1.3c5d0c7f8d2bap-13, 0x1.ea8d2b9b7d99ep-15,
-  }};
+  std::array<Real, 5> legacy_errors{};
+  std::array<Real, 5> corrected_errors{};
   for (size_t i = 0; i < probes.size(); ++i) {
     const Vec3 source = {500.0e-6, 500.0e-6,
                          probes[i].source_fraction * kHeight};
     const Vec3 target = {500.0e-6 + probes[i].rho, 500.0e-6,
                          probes[i].target_fraction * kHeight};
     const Real sealed = system.gf.concentration_bounded(
-        source, target, params);
-    auto bounded_params = params;
-    bounded_params.lumen_transfer_length = 100.0e-6;
+        source, target, shipped);
+    const Real sealed_legacy = system.gf.concentration_bounded(
+        source, target, legacy);
     const Real bounded = system.gf.concentration_bounded(
-        source, target, bounded_params);
+        source, target, shipped_bounded);
+    const Real bounded_legacy = system.gf.concentration_bounded(
+        source, target, legacy_bounded);
+    const Real sealed_corrected = system.gf.concentration_bounded(
+        source, target, corrected);
+    const Real physical = modal_reference(probes[i], flow_z, true);
     require(std::bit_cast<uint64_t>(sealed)
-                == std::bit_cast<uint64_t>(main_values[2 * i])
-            && std::bit_cast<uint64_t>(bounded)
-                == std::bit_cast<uint64_t>(main_values[2 * i + 1]),
-            "default-off Green's function changed from origin/main");
+                    == std::bit_cast<uint64_t>(sealed_legacy)
+                && std::bit_cast<uint64_t>(bounded)
+                    == std::bit_cast<uint64_t>(bounded_legacy),
+            "shipped default diverged from explicit drift_correction=false");
+    require(std::isfinite(sealed) && sealed > 0.0 && std::isfinite(bounded)
+                && bounded > 0.0 && std::isfinite(sealed_corrected)
+                && sealed_corrected > 0.0 && std::isfinite(physical)
+                && physical > 0.0,
+            "default-off or corrected field was non-finite or non-positive");
+    legacy_errors[i] = relative_error(sealed, physical);
+    corrected_errors[i] = relative_error(sealed_corrected, physical);
+    std::cout << "  probe " << i << " legacy=" << legacy_errors[i]
+              << " corrected=" << corrected_errors[i] << "\n";
+    require(corrected_errors[i] < legacy_errors[i],
+            "drift correction did not move a default-off probe toward the "
+            "physical field");
   }
-  std::cout << "  test_default_off_identity: PASSED (5 fixed geometries)\n";
+  std::ranges::sort(legacy_errors);
+  std::ranges::sort(corrected_errors);
+  const Real legacy_median = legacy_errors[legacy_errors.size() / 2];
+  const Real corrected_median = corrected_errors[corrected_errors.size() / 2];
+  // GCC 13.3 Release on these five probes: legacy median 0.151, max 0.271;
+  // corrected median 4.8e-5, max 1.6e-4. The §4 nine-probe band at this
+  // Pe_z is median 0.132 and max 0.278. The floor 0.05 is about a third of
+  // either median; the ceiling 0.45 sits above both maxima. A silent switch
+  // onto the physical field drops the median far below the floor.
+  require(legacy_median >= 0.05 && legacy_errors.back() <= 0.45,
+          "default-off physical error left the ColE1 Pe_z=0.822 band");
+  require(corrected_median <= 0.02,
+          "corrected field on the default-off geometries missed the physical "
+          "reference");
+  std::cout << "  test_default_off_identity: PASSED (legacy median/max="
+            << legacy_median << "/" << legacy_errors.back()
+            << ", corrected median/max=" << corrected_median << "/"
+            << corrected_errors.back() << ")\n";
 }
 
 void test_robin_composition() {

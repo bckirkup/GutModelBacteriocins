@@ -279,7 +279,16 @@ follow-up work; drift-corrected GPU diffusion is routed to the host fallback.
 
 With `qssa.drift_correction` unset or false, the sealed and bounded paths retain
 the legacy image-consistent table and interpolation axis, preserving shipped
-results bit-for-bit. The opt-in host correction adds the physical sealed modal
+results bit-for-bit within a build. The default-off regression is that
+same-binary contract, not a hexadecimal pin: the shipped parameter object must
+match an explicit disabled correction, and the legacy median error at the
+ColE1 mid-depth basis must stay at least 0.05 (measured 0.151 on the five
+probes; the §4 nine-probe median is 0.132) rather than collapse onto the
+physical modal field. Literals captured with GCC 13 matched Ubuntu 24.04 CI
+and diverged when `ubuntu-latest` moved to GCC 15.2, without any change to
+the series.
+
+The opt-in host correction adds the physical sealed modal
 reference and the runtime-budget-matched drift table; it records
 `/run_provenance/neumann_drift_correction` and preserves the existing
 `neumann_drift_envelope_evaluations` counter. Near-wall direct evaluation avoids
