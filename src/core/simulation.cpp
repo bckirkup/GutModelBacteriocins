@@ -2061,6 +2061,12 @@ void Simulation::check_washout() {
     if (a.flags.in_crypt) continue;
 
     if (a.x[2] >= z_max) {
+      // Export before the DEAD mark: the packet copy must carry the
+      // departing cell's live phenotype state (the mark is internal
+      // bookkeeping for remove_dead_agents, not migrant state).
+      if (departure_hook_) {
+        departure_hook_(a);  // Spec 13 Layer-2: export before deletion
+      }
       a.state = PhenoState::DEAD;
       event_ledger_.step_events.outflow_boundary++;
       if (provenance_enabled()) {
@@ -2072,9 +2078,6 @@ void Simulation::check_washout() {
         record_kill_provenance(event);
       }
       lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
-      if (departure_hook_) {
-        departure_hook_(a);  // Spec 13 Layer-2: export before deletion
-      }
       continue;
     }
 
@@ -2082,6 +2085,9 @@ void Simulation::check_washout() {
       // The imposed variant removes cells before transport reaches the lumen.
       Real gamma = advection_.washout_rate(a.x[2]);
       if (a.mu_realized < gamma) {
+        if (departure_hook_) {
+          departure_hook_(a);  // Spec 13 Layer-2: export before deletion
+        }
         a.state = PhenoState::DEAD;
         event_ledger_.step_events.outflow_washout++;
         if (provenance_enabled()) {
@@ -2093,9 +2099,6 @@ void Simulation::check_washout() {
           record_kill_provenance(event);
         }
         lineage_.record_washout(a.identity.tag, a.genome.lineage_id, a.x);
-        if (departure_hook_) {
-          departure_hook_(a);  // Spec 13 Layer-2: export before deletion
-        }
       }
     }
   }

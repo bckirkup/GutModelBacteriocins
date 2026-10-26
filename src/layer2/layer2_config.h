@@ -47,6 +47,7 @@ struct Layer2AuditConfig {
   Real interval_s = 21600.0;   // discrepancy comparison cadence (6 h)
   Real tolerance = 0.25;       // |N_live - N_shadow| / max(N_shadow, 1) bound
   bool halt_on_exceed = true;  // terminate run vs record-only
+  std::string lineage_file;    // CSV per-lineage live-patch census; empty off
 };
 
 struct Layer2Config {

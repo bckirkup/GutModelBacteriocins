@@ -1,0 +1,23 @@
+{
+  "spec": "spec13_phase1_layer2",
+  "seed": 4242,
+  "bio_dt_s": 60,
+  "steps": 60,
+  "time_s": 3600,
+  "n_patches": 1,
+  "patch_volume_mL": 2.16e-07,
+  "contraction_rate_per_min": 0,
+  "agent_loss_fraction": 0,
+  "transit_half_life_s": 300,
+  "reattach_prob_per_transit": 0,
+  "establish_prob_single": 0,
+  "establish_ratio": 10,
+  "termination_cause": "incomplete_unknown",
+  "termination_detail": "",
+  "ledger_closed": true,
+  "ledger": {"initial": 20, "births": 4, "washout": 0, "contraction": 0, "edge": 0, "reseeds": 0, "distal": 0, "external": 0, "deaths": 0},
+  "occupancy": {"crypt": {"patches": 1, "occupied": 1, "halted": 0, "occ": 1, "density_occupied_cfu_ml": 1.11111e+08}, "exposed_proximal": {"patches": 0, "occupied": 0, "halted": 0, "occ": 0, "density_occupied_cfu_ml": 0}, "exposed_distal": {"patches": 0, "occupied": 0, "halted": 0, "occ": 0, "density_occupied_cfu_ml": 0}},
+  "segment_mean_cfu_ml": 1.11111e+08,
+  "segment_cfu_cm2": 2.22222e+06,
+  "audit_records": []
+}

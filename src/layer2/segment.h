@@ -82,13 +82,17 @@ struct LuminalPacket {
 };
 
 // Population ledger for the closure gate: every cell is either in a
-// patch, in the pool, exported distally, or never existed. Internal
-// patch<->pool transfers are net-zero; closure reads
-//   stocks == initial + births + external_arrivals - distal_losses.
+// patch, in the pool, exported distally, biologically dead, or never
+// existed. Internal patch<->pool transfers are net-zero; closure reads
+//   stocks == initial + births + external_arrivals
+//             - distal_losses - biological_deaths.
 // `external_arrivals` counts cells injected by a Layer-3 driver via
 // try_deposit (a mucosal arrival crossing the luminal boundary is a
 // transfer-in at this ledger, which the chain ledger pairs with a
-// luminal decrement).
+// luminal decrement). `biological_deaths` is the only channel that
+// removes a cell without a packet: kills inside a live patch
+// (colicin/CDI/lysis) harvested from the embedded Simulation's
+// StepEvents mortality counters each step.
 struct SegmentLedger {
   Int initial_cells = 0;
   Int births = 0;
@@ -98,9 +102,11 @@ struct SegmentLedger {
   Int reseeds = 0;                 // cells pool->patch
   Int distal_losses = 0;           // cells pool->distal exit
   Int external_arrivals = 0;       // cells external->patch (Layer-3)
+  Int biological_deaths = 0;       // cells killed inside a live patch
 
   [[nodiscard]] Int expected_stocks() const {
-    return initial_cells + births + external_arrivals - distal_losses;
+    return initial_cells + births + external_arrivals - distal_losses -
+           biological_deaths;
   }
 };
 
@@ -140,6 +146,11 @@ struct LivePatchState {
   Real window_start_time = -1;
   bool shadow_valid = false;
   Int last_live_birth_count = 0;
+  Int last_live_death_count = 0;   // cumulative mortality counters seen
+  TagID live_seed = 0;             // resolved Simulation seed (provenance)
+  // Cumulative cells exported patch->pool per founder lineage
+  // (single-channel cells + fragment-channel cells).
+  std::unordered_map<TagID, Int> emigrants_by_lineage;
 };
 
 class MucusSegment {
@@ -232,9 +243,10 @@ class MucusSegment {
   SimulationConfig live_config_for(const Patch& patch) const;
 
   // per-step phases
-  // `ledger=true` accounts departures into the real pool; the audit
-  // shadow passes false so its fictional losses are discarded.
-  void grow_tabulated(Patch& patch, Real dt);
+  // `ledger=true` accounts births/departures into the real ledger and
+  // pool; the audit shadow passes false so its fictional dynamics never
+  // touch the real counters.
+  void grow_tabulated(Patch& patch, Real dt, bool ledger);
   void contract_tabulated(Patch& patch, bool ledger);
   void washout_tabulated(Patch& patch, Real dt, bool ledger);
   void step_live(Patch& patch, Real dt);
@@ -244,6 +256,7 @@ class MucusSegment {
   void guard_update(Patch& patch);
   void run_level_guards();
   void emit_timeseries_row(std::ofstream& out) const;
+  void emit_lineage_rows(std::ofstream& out) const;
   void write_provenance(const std::string& path) const;
   void write_checkpoint_now() const;
 #ifdef GUTIBM_HDF5

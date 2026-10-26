@@ -31,6 +31,7 @@ extern "C" {
 #include <iostream>
 #include <numeric>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace gutibm {
@@ -51,7 +52,10 @@ const char* kTimeseriesHeader =
     "segment_mean_cfu_ml,segment_cfu_cm2,"
     "n_occupied_total,patch_cells,pool_cells,pool_packets,"
     "births_cum,washout_cum,contraction_cum,reseeds_cum,distal_cum,"
-    "edge_cum,external_cum";
+    "edge_cum,external_cum,deaths_cum";
+
+const char* kLiveLineageHeader =
+    "step,time_s,patch_id,lineage_id,alive_count,emigrants_cum";
 
 std::string json_escape(const std::string& s) {
   std::string out;
@@ -86,12 +90,25 @@ int MucusSegment::run() {
     emit_timeseries_row(ts);  // t=0 row
   }
 
+  std::ofstream lin;
+  if (!c.audit.lineage_file.empty() && !live_.empty()) {
+    validate_output_file_path(c.audit.lineage_file);
+    lin.open(c.audit.lineage_file, std::ios::trunc);
+    if (!lin) {
+      throw IOError("layer2 cannot open audit lineage file: " +
+                    c.audit.lineage_file);
+    }
+    lin << kLiveLineageHeader << '\n';
+    emit_lineage_rows(lin);  // t=0 census
+  }
+
   while (time_ < cfg_->time.total_time &&
          termination_cause_ == TerminationCause::IncompleteUnknown) {
     step(dt);
-    if (ts.is_open() && c.summary_interval_steps > 0 &&
+    if (c.summary_interval_steps > 0 &&
         step_count_ % c.summary_interval_steps == 0) {
-      emit_timeseries_row(ts);
+      if (ts.is_open()) emit_timeseries_row(ts);
+      if (lin.is_open()) emit_lineage_rows(lin);
     }
     if (!c.checkpoint_file.empty() && c.checkpoint_interval_steps > 0 &&
         step_count_ % c.checkpoint_interval_steps == 0) {
@@ -100,6 +117,9 @@ int MucusSegment::run() {
   }
   if (ts.is_open()) {
     emit_timeseries_row(ts);
+  }
+  if (lin.is_open()) {
+    emit_lineage_rows(lin);
   }
   if (c.checkpoint_final && !c.checkpoint_file.empty()) {
     write_checkpoint_now();
@@ -134,7 +154,38 @@ void MucusSegment::emit_timeseries_row(std::ofstream& out) const {
       << ledger_.washout_departures << ',' << ledger_.contraction_departures
       << ',' << ledger_.reseeds << ',' << ledger_.distal_losses << ','
       << ledger_.edge_departures << ',' << ledger_.external_arrivals
-      << '\n';
+      << ',' << ledger_.biological_deaths << '\n';
+}
+
+void MucusSegment::emit_lineage_rows(std::ofstream& out) const {
+  // Per-lineage census of each live patch: alive stocks plus cumulative
+  // patch->pool exports, keyed by founder lineage_id. This is the
+  // lineage-resolved readout the Layer-1 reference comparison uses.
+  for (const auto& [id, st] : live_) {
+    std::unordered_map<TagID, Int> alive;
+    for (const auto& a : st.sim->agents()) {
+      if (a.state != PhenoState::DEAD) ++alive[a.genome.lineage_id];
+    }
+    std::vector<TagID> keys;
+    keys.reserve(alive.size() + st.emigrants_by_lineage.size());
+    for (const auto& [lin, n] : alive) {
+      (void)n;
+      keys.push_back(lin);
+    }
+    for (const auto& [lin, n] : st.emigrants_by_lineage) {
+      (void)n;
+      if (!alive.contains(lin)) keys.push_back(lin);
+    }
+    std::sort(keys.begin(), keys.end());
+    for (const TagID lin : keys) {
+      const Int n_alive = alive.contains(lin) ? alive.at(lin) : 0;
+      const Int n_em = st.emigrants_by_lineage.contains(lin)
+                           ? st.emigrants_by_lineage.at(lin)
+                           : 0;
+      out << step_count_ << ',' << time_ << ',' << id << ',' << lin << ','
+          << n_alive << ',' << n_em << '\n';
+    }
+  }
 }
 
 void MucusSegment::write_provenance(const std::string& path) const {
@@ -174,7 +225,12 @@ void MucusSegment::write_provenance(const std::string& path) const {
       << ", \"edge\": " << ledger_.edge_departures
       << ", \"reseeds\": " << ledger_.reseeds
       << ", \"distal\": " << ledger_.distal_losses
-      << ", \"external\": " << ledger_.external_arrivals << "},\n";
+      << ", \"external\": " << ledger_.external_arrivals
+      << ", \"deaths\": " << ledger_.biological_deaths << "},\n";
+  for (const auto& [id, st] : live_) {
+    out << "  \"audit_live\": {\"patch\": " << id
+        << ", \"live_seed\": " << st.live_seed << "},\n";
+  }
   out << "  \"occupancy\": {";
   for (Int t = 0; t < kPatchTypeCount; ++t) {
     const auto& to = o.per_type[t];
@@ -341,6 +397,8 @@ void MucusSegment::write_state(hid_t fid,
                    ledger_.distal_losses);
   write_scalar_i64(fid, p("/ledger/external_arrivals").c_str(),
                    ledger_.external_arrivals);
+  write_scalar_i64(fid, p("/ledger/biological_deaths").c_str(),
+                   ledger_.biological_deaths);
 
   write_vec(fid, p("/patches/id").c_str(), H5T_NATIVE_INT64, patch_ids);
   write_vec(fid, p("/patches/type").c_str(), H5T_NATIVE_INT32,
@@ -488,6 +546,8 @@ void MucusSegment::read_state(hid_t fid, const std::string& prefix) {
       read_scalar_i64(fid, gp("/ledger/distal_losses").c_str());
   ledger_.external_arrivals =
       read_scalar_i64_opt(fid, gp("/ledger/external_arrivals"), 0);
+  ledger_.biological_deaths =
+      read_scalar_i64_opt(fid, gp("/ledger/biological_deaths"), 0);
 
   const auto patch_ids = read_vec<int64_t>(fid, gp("/patches/id").c_str(),
                                            H5T_NATIVE_INT64);
