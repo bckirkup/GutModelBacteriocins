@@ -41,6 +41,13 @@ stool + deaths + purged) **closed exactly at every step of every arm**
 
 ## Verdicts (tail 24 h, post-purge recovery window)
 
+*Correction 2026-10-21: the realized tail spans 47h50–71h50 (last sampled
+row t = 258,600 s), not 48–72 h; a 48–72 h sensitivity preserves the
+stool verdict. The (c) retention verdict rests on configured transit
+sums (30 h gradient / 24 h uniform) — "effective ~29 h" was not computed
+by the analyzer and measured microbial retention time is not
+established by these runs.*
+
 | Observable | Target | Gradient arm | Uniform arm | Met? |
 |---|---|---|---|---|
 | (a) Stool CFU/g | 1e6–1e8 | 8.28e6 (all seeds) | 8.12e6 (all seeds) | **yes** |
@@ -59,16 +66,21 @@ contribution; both arms stay under the bound.
 |---|---|---|
 | Stool CFU/g | 8.1–8.3e6 | distal outflow × `descending_outflow_survival` × `stool_g_per_day` |
 | Flatness | 2.1–3.0 (grad) / 1.2–1.4 (unif) | regional `patch_supply_scale`, `flora_density_cfu_ml` proxy |
-| Effective chain transit | ~29 h realized vs 30 h configured | `transit_h` profile |
+| Effective chain transit | 30 h configured (gradient) / 24 h (uniform); realized retention not measured by the analyzer | `transit_h` profile |
 | Diurnal envelope of stool exports | day/night = 1.06 (grad), 1.42 (unif) | `hapc_*` vs basal outflow — HAPC modulation is visible but second-order to basal washout |
 | Growth-in-transit amplification | luminal births / stool exports = 3.28 (grad), 2.96 (unif) | `lumen_carbon_mol_m3` profile, `anaerobic_mu_factor`, yield/acid params |
 | Purge recovery | 12 h post-purge stool rate = 12–13 % of pre-purge | `reattach_p0`, `lumen_seed_cells`-independent regrowth, `purge_fraction` |
 
 ## Findings beyond the gate
 
-1. **The mucosa saturates under luminal feedback.** Occupancy crosses the
-   Phase-1 0.1–1 % band at ~6 h, ~78–84 % by 12 h, and is ~100 % by 24 h in
-   both arms. The Phase-1 "stationary" window was transient: in standalone
+1. **The mucosa saturates under luminal feedback.** Occupancy passes the
+   Phase-1 0.1–1 % band early and saturates high by 24 h.
+   *Corrected numbers 2026-10-21: initial patches are Bernoulli-seeded at
+   an expected 1 %, so the first strict exceedance of 1 % (0.167–0.667 h
+   across series) is not an unambiguous growth crossing; at exactly 12 h
+   occupancy is 71.5–87.25 % (gradient) and 48–82 % (uniform); at 24 h
+   it is 100 % (gradient) and 96.75–99.75 % (uniform) — not "~78–84 % by
+   12 h / ~100 % by 24 h in both arms".* The Phase-1 "stationary" window was transient: in standalone
    Layer 2 the pool drains (4 h half-life) and cannot sustain reseeding;
    the Layer-3 lumen *grows*, so `p_attach = p0·(1−occ)` feedback reaches
    its attracting equilibrium at occ → 1. Ledger stays closed throughout —
