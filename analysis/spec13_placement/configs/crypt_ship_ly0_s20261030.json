@@ -1,0 +1,60 @@
+{
+  "total_time": 86400,
+  "bio_dt": 60,
+  "seed": 20261030,
+  "sos_lysis_prob": 0.0,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 10,
+      "mu_max": 0.0005,
+      "plasmids": [
+        "ColE1"
+      ]
+    },
+    {
+      "type": 2,
+      "count": 10,
+      "mu_max": 0.0005
+    },
+    {
+      "type": 3,
+      "count": 10,
+      "mu_max": 0.0005,
+      "receptor_expression": {
+        "BtuB": 0.0
+      }
+    }
+  ],
+  "layer2.enabled": true,
+  "layer2.n_patches": 10,
+  "layer2.initial_patch_fraction": 1.0,
+  "layer2.initial_founder_cells": 30,
+  "layer2.patch_lateral_m": 6e-05,
+  "layer2.patch_depth_m": 6e-05,
+  "layer2.contraction_rate_per_min": 0.5,
+  "layer2.agent_loss_fraction": 0.3,
+  "layer2.transit_half_life_s": 14400,
+  "layer2.reattach_prob_per_transit": 0.05,
+  "layer2.establish_prob_single": 0.01,
+  "layer2.establish_ratio": 10.0,
+  "layer2.invalid_patch_fraction_stop": 1.0,
+  "layer2.summary_interval_steps": 30,
+  "layer2.audit_patch_index": 0,
+  "layer2.audit_halt": false,
+  "layer2.audit_lineage_file": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0_s20261030/lineage.csv",
+  "layer2.provenance_file": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0_s20261030/prov.json",
+  "layer2.timeseries_file": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0_s20261030/ts.csv",
+  "receptor_mutation_rate": 0.0,
+  "partial_resistance_rate": 0.0,
+  "bi_duplication_rate": 0.0,
+  "bi_recombination_rate": 0.0,
+  "super_killer_rate": 0.0,
+  "compensatory_rate": 0.0,
+  "immunity_escape_prob": 0.0,
+  "base_transfer_rate": 0.0,
+  "sos_basal_rate": 0.0,
+  "layer2.crypt_fraction": 1.0,
+  "layer2.proximal_fraction": 0.0,
+  "layer2.distal_fraction": 0.0
+}

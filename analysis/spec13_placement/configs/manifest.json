@@ -1,0 +1,202 @@
+[
+  {
+    "name": "crypt_lit_ly0_s20261027",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0_s20261027.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0_s20261027"
+  },
+  {
+    "name": "crypt_lit_ly0_s20261028",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0_s20261028.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0_s20261028"
+  },
+  {
+    "name": "crypt_lit_ly0_s20261029",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0_s20261029.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0_s20261029"
+  },
+  {
+    "name": "crypt_lit_ly0_s20261030",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0_s20261030.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0_s20261030"
+  },
+  {
+    "name": "crypt_lit_ly0_s20261031",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0_s20261031.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0_s20261031"
+  },
+  {
+    "name": "crypt_lit_ly0.02_s20261027",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.02_s20261027.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.02_s20261027"
+  },
+  {
+    "name": "crypt_lit_ly0.02_s20261028",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.02_s20261028.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.02_s20261028"
+  },
+  {
+    "name": "crypt_lit_ly0.02_s20261029",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.02_s20261029.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.02_s20261029"
+  },
+  {
+    "name": "crypt_lit_ly0.02_s20261030",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.02_s20261030.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.02_s20261030"
+  },
+  {
+    "name": "crypt_lit_ly0.02_s20261031",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.02_s20261031.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.02_s20261031"
+  },
+  {
+    "name": "crypt_lit_ly0.1_s20261027",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.1_s20261027.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.1_s20261027"
+  },
+  {
+    "name": "crypt_lit_ly0.1_s20261028",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.1_s20261028.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.1_s20261028"
+  },
+  {
+    "name": "crypt_lit_ly0.1_s20261029",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.1_s20261029.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.1_s20261029"
+  },
+  {
+    "name": "crypt_lit_ly0.1_s20261030",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.1_s20261030.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.1_s20261030"
+  },
+  {
+    "name": "crypt_lit_ly0.1_s20261031",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_lit_ly0.1_s20261031.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_lit_ly0.1_s20261031"
+  },
+  {
+    "name": "crypt_ship_ly0_s20261027",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0_s20261027.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0_s20261027"
+  },
+  {
+    "name": "crypt_ship_ly0_s20261028",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0_s20261028.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0_s20261028"
+  },
+  {
+    "name": "crypt_ship_ly0_s20261029",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0_s20261029.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0_s20261029"
+  },
+  {
+    "name": "crypt_ship_ly0_s20261030",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0_s20261030.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0_s20261030"
+  },
+  {
+    "name": "crypt_ship_ly0_s20261031",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0_s20261031.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0_s20261031"
+  },
+  {
+    "name": "crypt_ship_ly0.1_s20261027",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0.1_s20261027.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0.1_s20261027"
+  },
+  {
+    "name": "crypt_ship_ly0.1_s20261028",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0.1_s20261028.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0.1_s20261028"
+  },
+  {
+    "name": "crypt_ship_ly0.1_s20261029",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0.1_s20261029.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0.1_s20261029"
+  },
+  {
+    "name": "crypt_ship_ly0.1_s20261030",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0.1_s20261030.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0.1_s20261030"
+  },
+  {
+    "name": "crypt_ship_ly0.1_s20261031",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/crypt_ship_ly0.1_s20261031.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/crypt_ship_ly0.1_s20261031"
+  },
+  {
+    "name": "prox_lit_ly0_s20261027",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0_s20261027.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0_s20261027"
+  },
+  {
+    "name": "prox_lit_ly0_s20261028",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0_s20261028.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0_s20261028"
+  },
+  {
+    "name": "prox_lit_ly0_s20261029",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0_s20261029.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0_s20261029"
+  },
+  {
+    "name": "prox_lit_ly0_s20261030",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0_s20261030.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0_s20261030"
+  },
+  {
+    "name": "prox_lit_ly0_s20261031",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0_s20261031.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0_s20261031"
+  },
+  {
+    "name": "prox_lit_ly0.02_s20261027",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.02_s20261027.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.02_s20261027"
+  },
+  {
+    "name": "prox_lit_ly0.02_s20261028",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.02_s20261028.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.02_s20261028"
+  },
+  {
+    "name": "prox_lit_ly0.02_s20261029",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.02_s20261029.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.02_s20261029"
+  },
+  {
+    "name": "prox_lit_ly0.02_s20261030",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.02_s20261030.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.02_s20261030"
+  },
+  {
+    "name": "prox_lit_ly0.02_s20261031",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.02_s20261031.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.02_s20261031"
+  },
+  {
+    "name": "prox_lit_ly0.1_s20261027",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.1_s20261027.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.1_s20261027"
+  },
+  {
+    "name": "prox_lit_ly0.1_s20261028",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.1_s20261028.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.1_s20261028"
+  },
+  {
+    "name": "prox_lit_ly0.1_s20261029",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.1_s20261029.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.1_s20261029"
+  },
+  {
+    "name": "prox_lit_ly0.1_s20261030",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.1_s20261030.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.1_s20261030"
+  },
+  {
+    "name": "prox_lit_ly0.1_s20261031",
+    "config": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/configs/prox_lit_ly0.1_s20261031.json",
+    "out": "/home/ubuntu/repos/GutModelBacteriocins/analysis/spec13_placement/out/prox_lit_ly0.1_s20261031"
+  }
+]
