@@ -1,0 +1,1082 @@
+[
+  {
+    "arm": "crypt_lit_ly0.02_s20261027",
+    "last_alive_h": {
+      "C": 1.0,
+      "S": 3.0,
+      "R": 0.5
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 5,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 92,
+      "washout": 29,
+      "contraction": 363,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 381,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0.1_s20261027",
+    "last_alive_h": {
+      "C": 1.0,
+      "S": 3.0,
+      "R": 0.5
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 5,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 92,
+      "washout": 29,
+      "contraction": 363,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 381,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0.1_s20261028",
+    "last_alive_h": {
+      "C": 0.5,
+      "S": 0.0,
+      "R": 0.5
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 105,
+      "washout": 35,
+      "contraction": 370,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 396,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0.1_s20261029",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 1.5,
+      "R": 2.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 2,
+      "S": 1,
+      "R": 2
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 113,
+      "washout": 34,
+      "contraction": 380,
+      "edge": 0,
+      "reseeds": 1,
+      "distal": 407,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0.1_s20261030",
+    "last_alive_h": {
+      "C": 0.5,
+      "S": 0.0,
+      "R": 1.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 65,
+      "washout": 32,
+      "contraction": 333,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 358,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0.1_s20261031",
+    "last_alive_h": {
+      "C": 0.5,
+      "S": 0.5,
+      "R": 1.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 89,
+      "washout": 23,
+      "contraction": 367,
+      "edge": 0,
+      "reseeds": 1,
+      "distal": 384,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0_s20261027",
+    "last_alive_h": {
+      "C": 1.0,
+      "S": 3.0,
+      "R": 0.5
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 5,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 92,
+      "washout": 29,
+      "contraction": 363,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 381,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0_s20261028",
+    "last_alive_h": {
+      "C": 0.5,
+      "S": 0.0,
+      "R": 0.5
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 105,
+      "washout": 35,
+      "contraction": 370,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 396,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0_s20261029",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 1.5,
+      "R": 2.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 2,
+      "S": 1,
+      "R": 2
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 113,
+      "washout": 34,
+      "contraction": 380,
+      "edge": 0,
+      "reseeds": 1,
+      "distal": 407,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0_s20261030",
+    "last_alive_h": {
+      "C": 0.5,
+      "S": 0.0,
+      "R": 1.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 65,
+      "washout": 32,
+      "contraction": 333,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 358,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "crypt_lit_ly0_s20261031",
+    "last_alive_h": {
+      "C": 0.5,
+      "S": 0.5,
+      "R": 1.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 89,
+      "washout": 23,
+      "contraction": 367,
+      "edge": 0,
+      "reseeds": 1,
+      "distal": 384,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "prox_lit_ly0.1_s20261027",
+    "last_alive_h": {
+      "C": 0.0,
+      "S": 0.0,
+      "R": 0.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 2,
+      "washout": 13,
+      "contraction": 289,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 292,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "prox_lit_ly0.1_s20261028",
+    "last_alive_h": {
+      "C": 0.0,
+      "S": 0.0,
+      "R": 0.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 2,
+      "washout": 20,
+      "contraction": 282,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 300,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "prox_lit_ly0.1_s20261029",
+    "last_alive_h": {
+      "C": 0.5,
+      "S": 0.0,
+      "R": 0.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 2,
+      "washout": 19,
+      "contraction": 283,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 302,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "prox_lit_ly0.1_s20261030",
+    "last_alive_h": {
+      "C": 0.0,
+      "S": 0.0,
+      "R": 0.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 1,
+      "washout": 22,
+      "contraction": 279,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 301,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "prox_lit_ly0.1_s20261031",
+    "last_alive_h": {
+      "C": 0.0,
+      "S": 0.0,
+      "R": 0.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 0,
+      "washout": 14,
+      "contraction": 286,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 295,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0.1_s20261027",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 28,
+      "S": 984,
+      "R": 2
+    },
+    "emigrants": {
+      "C": 12,
+      "S": 36,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 823,
+      "washout": 82,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 74,
+      "external": 0,
+      "deaths": 13
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0.1_s20261028",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 24.0,
+      "R": 3.5
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 836,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 101,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 797,
+      "washout": 158,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 136,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0.1_s20261029",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 24,
+      "S": 906,
+      "R": 4
+    },
+    "emigrants": {
+      "C": 21,
+      "S": 5,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 764,
+      "washout": 66,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 61,
+      "external": 0,
+      "deaths": 10
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0.1_s20261030",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 0.5,
+      "R": 17.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 2,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 251,
+      "washout": 31,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 31,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0.1_s20261031",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 90,
+      "S": 962,
+      "R": 2
+    },
+    "emigrants": {
+      "C": 4,
+      "S": 9,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 806,
+      "washout": 42,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 40,
+      "external": 0,
+      "deaths": 15
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0_s20261027",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 34,
+      "S": 904,
+      "R": 2
+    },
+    "emigrants": {
+      "C": 19,
+      "S": 38,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 784,
+      "washout": 93,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 82,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0_s20261028",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 24.0,
+      "R": 3.5
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 836,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 101,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 797,
+      "washout": 158,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 136,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0_s20261029",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 40,
+      "S": 886,
+      "R": 4
+    },
+    "emigrants": {
+      "C": 20,
+      "S": 13,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 764,
+      "washout": 78,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 72,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0_s20261030",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 0.5,
+      "R": 17.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 2,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 251,
+      "washout": 31,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 31,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_lit_ly0_s20261031",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 128,
+      "S": 932,
+      "R": 2
+    },
+    "emigrants": {
+      "C": 10,
+      "S": 11,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 803,
+      "washout": 50,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 47,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0.1_s20261027",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 22,
+      "S": 952,
+      "R": 2
+    },
+    "emigrants": {
+      "C": 14,
+      "S": 38,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 838,
+      "washout": 87,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 81,
+      "external": 0,
+      "deaths": 42
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0.1_s20261028",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 24.0,
+      "R": 3.5
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 836,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 101,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 797,
+      "washout": 158,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 136,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0.1_s20261029",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 10,
+      "S": 906,
+      "R": 4
+    },
+    "emigrants": {
+      "C": 15,
+      "S": 6,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 777,
+      "washout": 52,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 48,
+      "external": 0,
+      "deaths": 44
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0.1_s20261030",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 0.5,
+      "R": 17.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 2,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 251,
+      "washout": 31,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 31,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0.1_s20261031",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 160,
+      "S": 460,
+      "R": 2
+    },
+    "emigrants": {
+      "C": 3,
+      "S": 10,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 856,
+      "washout": 42,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 39,
+      "external": 0,
+      "deaths": 281
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0_s20261027",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 34,
+      "S": 904,
+      "R": 2
+    },
+    "emigrants": {
+      "C": 19,
+      "S": 38,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 784,
+      "washout": 93,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 82,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0_s20261028",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 24.0,
+      "R": 3.5
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 836,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 1,
+      "S": 101,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 797,
+      "washout": 158,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 136,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0_s20261029",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 40,
+      "S": 886,
+      "R": 4
+    },
+    "emigrants": {
+      "C": 20,
+      "S": 13,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 764,
+      "washout": 78,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 72,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0_s20261030",
+    "last_alive_h": {
+      "C": 1.5,
+      "S": 0.5,
+      "R": 17.0
+    },
+    "final_alive": {
+      "C": 0,
+      "S": 0,
+      "R": 0
+    },
+    "emigrants": {
+      "C": 2,
+      "S": 1,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 251,
+      "washout": 31,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 31,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  },
+  {
+    "arm": "incub_ship_ly0_s20261031",
+    "last_alive_h": {
+      "C": 24.0,
+      "S": 24.0,
+      "R": 24.0
+    },
+    "final_alive": {
+      "C": 128,
+      "S": 932,
+      "R": 2
+    },
+    "emigrants": {
+      "C": 10,
+      "S": 11,
+      "R": 1
+    },
+    "ledger": {
+      "initial": 300,
+      "births": 803,
+      "washout": 50,
+      "contraction": 0,
+      "edge": 0,
+      "reseeds": 0,
+      "distal": 47,
+      "external": 0,
+      "deaths": 0
+    },
+    "ledger_closed": true
+  }
+]
