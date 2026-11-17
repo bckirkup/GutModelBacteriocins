@@ -2,8 +2,10 @@
 
 Churn arms read out/<name>_s<seed>/{lineage,prov}.*; incubator arms read
 out/incub_<ret>_ly<ly>_s<seed>_*.{csv,json}.  Per arm we record the
-per-strain last-alive hour, final alive counts, per-strain emigrant
-totals, the aggregate ledger, and whether the ledger closed.
+per-strain last-alive hour, final alive counts (deduplicating repeated
+terminal census emissions per lineage), per-strain emigrant totals
+(summing each lineage's cumulative emigrants within strain), the aggregate
+ledger, and whether the ledger closed.
 """
 
 import csv
@@ -26,28 +28,43 @@ def strain(lineage_id):
     return "R"
 
 
+def deduplicate_lineage_rows(rows, path):
+    dedup = {}
+    for row in rows:
+        key = (round(float(row["time_s"]) * 1000), int(row["lineage_id"]))
+        if key in dedup and dedup[key] != row:
+            raise ValueError(f"Conflicting duplicate row in {path}: {key}")
+        dedup[key] = row
+    return list(dedup.values())
+
+
 def summarize_lineage(path):
     last_alive_h = defaultdict(float)
     fin = defaultdict(int)
-    emig = defaultdict(int)
-    t_max = 0.0
-    with open(path) as fh:
-        rows = list(csv.DictReader(fh))
+    max_emig_by_lineage = defaultdict(int)
+    with open(path, encoding="utf-8") as fh:
+        rows = deduplicate_lineage_rows(list(csv.DictReader(fh)), path)
+    t_max_ms = max((round(float(r["time_s"]) * 1000) for r in rows), default=0)
     for r in rows:
         t = float(r["time_s"])
-        t_max = max(t_max, t)
-        s = strain(r["lineage_id"])
+        t_ms = round(t * 1000)
+        lid = int(r["lineage_id"])
+        s = strain(lid)
         if int(r["alive_count"]) > 0:
             last_alive_h[s] = max(last_alive_h[s], t / 3600.0)
-        emig[s] = max(emig[s], int(r["emigrants_cum"]))
-    for r in rows:
-        if float(r["time_s"]) == t_max:
-            fin[strain(r["lineage_id"])] += int(r["alive_count"])
+        max_emig_by_lineage[lid] = max(
+            max_emig_by_lineage[lid], int(r["emigrants_cum"])
+        )
+        if t_ms == t_max_ms:
+            fin[s] += int(r["alive_count"])
+    emig = {"C": 0, "S": 0, "R": 0}
+    for lid, count in max_emig_by_lineage.items():
+        emig[strain(lid)] += count
     return last_alive_h, fin, emig
 
 
 def summarize(label, lineage_csv, prov_json):
-    with open(prov_json) as fh:
+    with open(prov_json, encoding="utf-8") as fh:
         p = json.load(fh)
     last_alive_h, fin, emig = summarize_lineage(lineage_csv)
     return {
@@ -76,7 +93,7 @@ def main():
             summarize(os.path.basename(stem), stem + "_lineage.csv", pf)
         )
     dest = os.path.join(HERE, "readout_summary.json")
-    with open(dest, "w") as fh:
+    with open(dest, "w", encoding="utf-8") as fh:
         json.dump(rows, fh, indent=2)
         fh.write("\n")
     print(f"wrote {len(rows)} rows to {dest}")
