@@ -45,8 +45,9 @@ is confirmed: 5 µM B12 preincubation blocks ColE1 killing (Masi et al. 2007).
 | `kd_colicinE_btuB` | `5e-7 mol/m³` (0.5 nM) | No better data; colicins operate at pM–nM potency |
 
 **Consequence.** At `[corrinoid]` = 1 µM and `kd_ligand` = 1 nM the competitive
-factor is `1 + 1e-3/1e-6 ≈ 1001`, so `apparent_Kd ≈ 0.5 mM`. Colicin E is ~1000×
-less potent than under the old `[B12]` = 1 nM field (competitive factor ≈ 2).
+factor is `1 + 1e-3/1e-6 = 1001`, so `apparent_Kd = 5.005e-4 mol/m³ ≈ 0.50 µM`
+(`0.00050 mM`). Relative to zero competing ligand, Colicin E apparent Kd shifts
+`1001×` (`500.5×` relative to a `1 nM` corrinoid field where competitive factor = 2).
 This is the single most consequential downstream effect of the nutrient rework.
 
 **Key unknown / future sweep.** BtuB affinity for the dominant analog

@@ -68,9 +68,10 @@ response measured in the deaths channel:
 | ship, lysis 0.10 | 42, 0, 44, 0, 281 |
 
 - The **lysis null is a clean falsifier**: deaths=0 in every lysis=0
-  run.  The **retardation lever is strongly discriminated**: shipped
-  ret=50 holds toxin in the patch and produces up to 21× the deaths
-  of the literature analogue on the same seed (281 vs 15).  The ledger
+  run.  The **joint transport lever (`ship`: `D=4e-11, ret=50.2` vs
+  `lit`: `D=7e-11, ret=1.2`) is strongly discriminated**: `ship`
+  holds toxin in the patch and produces up to 18.7× the total
+  biological deaths of `lit` on the same seed (281 vs 15).  The ledger
   does not decompose lysis self-kills vs receptor-mediated kills —
   attribution is inferential, not measured.
 - The **lysis lever does not move composition inside the window**:
@@ -86,9 +87,11 @@ response measured in the deaths channel:
   10×30=300 bound at ~30 min; the audit record shows n_live=488 vs
   n_shadow=57 at 12 h (the live sim carries ~8× the tabulated capacity,
   rel_diff 7.56), the patch is marked halted (`n_halted_crypt=1`), and
-  composition is frozen from ~10–12 h into the 24 h run.  The final
-  census row roughly doubles the frozen counts (492→984) — a terminal
-  emit artifact worth checking before the campaign.
+  composition is frozen from ~10–12 h into the 24 h run.  Note: `lineage.csv` emits a duplicate terminal `t_max` snapshot per
+  lineage; `analyze.py` deduplicates `(time_s, lineage_id)` rows so
+  `readout_summary.json` records true single-snapshot `final_alive`
+  counts (e.g. `14/492/1` rather than `28/984/2` on `s20261027`) and
+  sums per-lineage cumulative emigrants (`sum(emigrants) == washout`).
 - **reseeds=0 in every run**: `emigrants_by_lineage` resolves fine
   (per-strain emigrant counts above), but no emigrant lineage ever
   returned to a live patch within 24 h.  Patch→patch lineage spread —
