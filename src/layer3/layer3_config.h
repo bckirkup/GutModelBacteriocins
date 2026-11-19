@@ -58,9 +58,9 @@ struct Layer3Config {
 
   // Sourced defaults = transverse row midpoints; per-region values
   // below carry the axial profile.
-  Layer3RegionConfig cecum{12.0, 6.25, 8.0e-3, 0.40, 0.50, 0.92, 1.0e7, 1.0};
-  Layer3RegionConfig transverse{8.0, 6.60, 5.0e-3, 0.35, 0.40, 0.90, 1.0e7, 1.0};
-  Layer3RegionConfig descending{10.0, 6.80, 2.5e-3, 0.30, 0.30, 0.88, 1.0e7, 1.0};
+  Layer3RegionConfig cecum{12.0, 6.25, 8.0e-3, 0.40, 0.50, 0.92};
+  Layer3RegionConfig transverse{8.0, 6.60, 5.0e-3, 0.35, 0.40, 0.90};
+  Layer3RegionConfig descending{10.0, 6.80, 2.5e-3, 0.30, 0.30, 0.88};
 
   Int n_patches_per_region = 400;
 

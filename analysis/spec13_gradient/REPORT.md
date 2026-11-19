@@ -29,8 +29,8 @@ Sources of parameterization, per the design contract:
   `src/fixes/metabolic_mode.h`, used by both layers.
 - **Stool normalization**: 128 g/day (median of the 100–200 g range).
 - **Flatness bound** (declared, pre-run): max/min regional
-  Enterobacteriaceae fraction ≤ 4.0, fraction = regional mean CFU/mL ÷
-  uniform flora-density proxy 1e7 CFU/mL.
+  Enterobacteriaceae fraction ≤ 4.0. The same community-density denominator
+  applies to every region in these arms, so its value cancels in the ratio.
 
 Runs: `run_readout.py` — {gradient, uniform} × seeds {1001,1002,1003},
 72 h at dt = 60 s, mucosal purge (90 % of luminal cells removed) at 48 h.
@@ -54,11 +54,33 @@ established by these runs.*
 | (b) Mucosal flatness | ≤ 4.0 | 2.07–2.96 | 1.15–1.38 | **yes** |
 | (c) Retention / shedding | transit 30–70 h (lit.) | effective ~29 h in-chain; distal residence ~5.7 h | same | **yes, marginal** |
 
-Per-region fractions (gradient, tail): cecum 0.135–0.138, transverse
-0.19–0.21, descending 0.28–0.41 — a real ~2–3× proximal→distal gradient
-*within* the declared flatness bound. The uniform arm collapses it to
-1.15–1.38, so the residual gradient-arm spread is the gradient's
-contribution; both arms stay under the bound.
+### Mucosal fraction: historical versus corrected denominator (GAP-04)
+
+The six archived runs used a community-density proxy of **1e7 cells/mL**,
+as recorded in each `out/*_prov.json`. Those records describe the original
+runs; their final-sample fractions are not 24 h means. The table compares
+the historical tail fractions in `readout_summary.json` at `28242fd` with
+the corrected summary: the same regional mean CFU/mL divided by the
+declared **1e8 cells/mL** FISH-scale total community density.
+
+Regional means over 47h50–71h50 inclusive (145 samples per region).
+Each entry is **historical % → reinterpreted %**:
+
+| Arm | Seed | Cecum | Transverse | Descending |
+|---|---:|---:|---:|---:|
+| Gradient | 1001 | 13.722 → 1.372 | 19.393 → 1.939 | 40.581 → 4.058 |
+| Gradient | 1002 | 13.767 → 1.377 | 20.701 → 2.070 | 30.156 → 3.016 |
+| Gradient | 1003 | 13.475 → 1.347 | 19.336 → 1.934 | 27.827 → 2.783 |
+| Uniform | 1001 | 19.744 → 1.974 | 16.723 → 1.672 | 17.712 → 1.771 |
+| Uniform | 1002 | 19.025 → 1.903 | 21.499 → 2.150 | 15.602 → 1.560 |
+| Uniform | 1003 | 17.232 → 1.723 | 19.599 → 1.960 | 17.045 → 1.704 |
+
+`run_readout.py --analyze-only` (Python 3.12) recomputed all 18 fractions
+from the archived series; each is one tenth of the historical fraction
+within floating-point rounding. No trajectories were rerun. Regional mean
+CFU/mL and stool CFU/g are unchanged, as are the six closed ledgers and
+all non-fraction summary fields. Both arms still pass stool and flatness;
+`verdicts.csv` is byte-identical to the historical file.
 
 ## S9 observable set — what each pins
 
@@ -85,17 +107,11 @@ contribution; both arms stay under the bound.
    the Layer-3 lumen *grows*, so `p_attach = p0·(1−occ)` feedback reaches
    its attracting equilibrium at occ → 1. Ledger stays closed throughout —
    this is coupling physics, not a bookkeeping defect.
-2. **Fraction level vs flatness must be kept distinct.** At the saturated
-   equilibrium the regional fraction is 0.14–0.41 against the 1e7 flora
-   proxy — above the empirical ~1–3 % Enterobacteriaceae fraction. The
-   gate asks for flatness (achieved); the level is pinned by
-   `patch_supply_scale` / `flora_density_cfu_ml` and is a parameter
-   consequence to report, not a fitted quantity.
-   **Resolved 2026-10-21**: the 1e7 proxy was a denominator-scale defect.
-   At the sourced FISH-scale denominator (1e8 cells/mL, declared interval
-   1e8–2e8) the same runs report 1.4–4.1 % — inside/at the top of the
-   empirical band (Hong 0.68–3.81 %, Ahmed 1–2 %). See
-   `docs/gutibm_density_reconciliation.md` and
+2. **Fraction level is not the flatness gate.** The denominator correction
+   changes the estimated level, not the relative spread across regions.
+   The declared density interval (1e8–2e8 cells/mL) is an observation
+   assumption, not a measurement from these runs. For the empirical
+   context see `docs/gutibm_density_reconciliation.md` and
    `literature_mucosal_density_consensus.md`.
 3. **Luminal growth dominates stool production.** Luminal births
    (≈1.77e10) exceed mucosal births (≈5e5) by ~10⁴×; stool composition is
@@ -120,8 +136,7 @@ result is reported.
 ## Reproduce
 
 ```
-python3 analysis/spec13_gradient/run_readout.py            # runs all arms
-python3 analysis/spec13_gradient/run_readout.py --analyze-only  # re-tally
+python3 analysis/spec13_gradient/run_readout.py --analyze-only
 ```
 
 Per-arm configs are generated under `configs/`; raw rows under
