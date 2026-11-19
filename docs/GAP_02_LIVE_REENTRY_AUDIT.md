@@ -1,6 +1,22 @@
 # GAP-02: live packet re-entry (v1)
 
-**Decision:** Require an `Active` destination for either Layer-2 slot and test landing coordinates in the existing single live slot. The missing state check is visible in code. Neither a coordinate-frame mismatch nor a placement failure in the archived runs is established.
+**Decision:** Require an `Active` destination for either Layer-2 slot. The tagged single-slot test below establishes a boundary placement failure in the fixture, not in the archived runs. It does not establish a coordinate-frame mismatch.
+
+## Single-slot transfer results
+
+[Neutral fixture](../tests/test_layer2_reentry.cpp): one tagged cell, segment seed 1234, packet seeds 3 and 4. With one transit half-life per routing phase, both streams survive distal exit, attempt reattachment, and draw slot 0. Establishment probability is one. All live steps use a single inactive Fix. Read placement immediately after pool routing; read fate after one live step, **before** another routing opportunity.
+
+| Destination / source | Before (`e5c5421`) | After (`78d170c`) | Next live step (both revisions) |
+|---|---|---|---|
+| Active live / interior (7, 11, 13) µm | 1 reseed, same position | Same | Same tag resident |
+| BloomHalted live / interior | 1 reseed, same position | 0 reseeds; original packet pooled | Not stepped |
+| SpatialHalted live / interior | 1 reseed, same position | 0 reseeds; original packet pooled | Not stepped |
+| Tabulated / same interior | Active accepts; both halted states retain | Unchanged | Not a live slot |
+| Active live / actual boundary export (7.05556, 11, 30) µm | 1 reseed, same position | Same | Same tag washed out to pool |
+
+Stocks closed throughout. The eligibility test checks identity, lineage, position, pool ownership and per-cell reseeds; a retained halted packet's RNG is at the post-target draw, not the pre-attempt state.
+
+**Open height decision:** The box is 40 × 40 × 30 µm. The boundary hook exported tag 1 at exactly `z = D`. The accepted cell already failed `0 <= z < D` **before** its subsequent washout. The separate `layer2_reentry_boundary_witness` reports this predicate; passing its transfer checks is not a passing placement result. The establishment kernel specifies a chance, not an arrival height. Should such a packet remain pooled, or what valid entry height should it receive? No translation, depth or distribution is introduced for either input.
 
 ## What main does at `28242fd`
 
