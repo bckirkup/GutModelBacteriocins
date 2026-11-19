@@ -233,6 +233,8 @@ class MucusSegment {
                                   const std::string& prefix);
 
  private:
+  friend struct SingleSlotReentryFixture;
+
   // init helpers
   void validate_config() const;
   void assign_patch_types();

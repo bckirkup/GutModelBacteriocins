@@ -740,21 +740,19 @@ void MucusSegment::pool_phase(Real dt) {
       const Real p_est = packet.kind == PacketKind::Fragment
                              ? p_frag
                              : c.establish_prob_single;
-      if (dest.status == PatchStatus::Active && !dest.live &&
-          packet.rng.bernoulli(p_est)) {
+      if (dest.status == PatchStatus::Active && packet.rng.bernoulli(p_est)) {
         ledger_.reseeds += static_cast<Int>(packet.cells.size());
-        for (auto& cell : packet.cells) {
-          dest.colonists.push_back(std::move(cell));
-        }
-        continue;
-      }
-      if (dest.live && packet.rng.bernoulli(p_est)) {
-        ledger_.reseeds += static_cast<Int>(packet.cells.size());
-        for (auto& cell : packet.cells) {
-          cell.identity.owner_rank = 0;
-          cell.grid_cell = -1;
-          LivePatchState& st = live_.at(dest.id);
-          st.sim->agents().push_back(std::move(cell));
+        if (dest.live) {
+          auto& agents = live_.at(dest.id).sim->agents();
+          for (auto& cell : packet.cells) {
+            cell.identity.owner_rank = 0;
+            cell.grid_cell = -1;
+            agents.push_back(std::move(cell));
+          }
+        } else {
+          for (auto& cell : packet.cells) {
+            dest.colonists.push_back(std::move(cell));
+          }
         }
         continue;
       }
