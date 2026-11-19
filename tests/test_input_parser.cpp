@@ -654,6 +654,22 @@ void test_chem_env_fixture() {
   std::cout << "  test_chem_env_fixture: PASSED\n";
 }
 
+void test_layer3_flora_density_defaults_and_override() {
+  SimulationConfig cfg = InputParser::default_config();
+  const auto& regions = cfg.layer3;
+  const Real declared = Layer3RegionConfig{}.flora_density_cfu_ml;
+  assert(declared == 1.0e8);
+  assert(regions.cecum.flora_density_cfu_ml == declared);
+  assert(regions.transverse.flora_density_cfu_ml == declared);
+  assert(regions.descending.flora_density_cfu_ml == declared);
+
+  assert(InputParser::apply_flat_key(
+      cfg, "layer3.transverse_flora_density_cfu_ml", "2e8"));
+  assert(regions.transverse.flora_density_cfu_ml == 2.0e8);
+  assert(regions.cecum.flora_density_cfu_ml == declared);
+  assert(regions.descending.flora_density_cfu_ml == declared);
+}
+
 void test_carbon_z_amplitude_parser_keys() {
   const std::array<std::string, 2> amplitude_keys = {
       "carbon.z_amplitude", "carbon_z_amplitude"};
@@ -1545,6 +1561,7 @@ int main() {
   test_strain_spawn_integration();
   test_fixes_fixture();
   test_chem_env_fixture();
+  test_layer3_flora_density_defaults_and_override();
   test_carbon_z_amplitude_parser_keys();
   test_epithelial_boundary_fixture();
   test_operating_envelope_fixture();
