@@ -186,7 +186,7 @@ gutibm_add_test(layer2_segment test_layer2_segment.cpp
   LABELS "unit"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(layer2_reentry test_layer2_reentry.cpp LABELS "unit"
-  SHARDS eligibility boundary_witness)
+  SHARDS eligibility boundary_witness rejected_boundary)
 gutibm_add_test(layer3_chain test_layer3_chain.cpp
   LABELS "unit"
   COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

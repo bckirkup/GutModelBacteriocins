@@ -253,6 +253,7 @@ class MucusSegment {
   void washout_tabulated(Patch& patch, Real dt, bool ledger);
   void step_live(Patch& patch, Real dt);
   void pool_phase(Real dt);
+  bool insert_pool_packet(Patch& dest, std::vector<Agent>& cells);
   void audit_check();
   void shadow_step(Patch& live_patch, Real dt);
   void guard_update(Patch& patch);

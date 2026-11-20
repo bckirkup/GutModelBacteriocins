@@ -148,26 +148,30 @@ void eligibility() {
   }
 }
 
-void boundary_witness() {
-  const auto cfg = single_slot(true, true);
+void check_boundary_grid(Real depth, Int z_stride, Real expected_z) {
+  auto cfg = single_slot(true, true);
+  cfg.layer2.patch_depth_m = depth;
+  cfg.domain.grid_dx = 2e-6;
+  cfg.domain.chemistry_stride[2] = z_stride;
   for (const auto seed : {3u, 4u}) {
     MucusSegment seg;
     seg.init(cfg);
     Fixture::export_at_surface(seg, cfg.time.bio_dt, cfg.layer2.patch_depth_m);
     const Agent source = only_cell(seg, true);
-    assert(source.x[2] >= cfg.layer2.patch_depth_m);
+    assert(source.x[2] == depth);  // Real boundary hook, including the exact face.
     arm_route(Fixture::prepare(seg, PatchStatus::Active), seed);
     Fixture::route(seg, cfg.time.bio_dt);
     const Agent& inserted = only_cell(seg, false);
     check_identity(inserted, source);
     assert(seg.ledger().reseeds == 1 && seg.ledger().distal_losses == 0);
-    // Report the landing predicate without requiring today's invalid z or
-    // prescribing a replacement height. Observe it before the next live step.
     std::cout << "packet_seed=" << seed << " target=0 status=active tag="
               << source.identity.tag << " source=(" << source.x[0] << ','
               << source.x[1] << ',' << source.x[2] << ") inserted=("
               << inserted.x[0] << ',' << inserted.x[1] << ',' << inserted.x[2]
-              << ") local=" << local_position(inserted.x, cfg.layer2) << '\n';
+              << ") expected_z=" << expected_z << std::endl;
+    assert(inserted.x[0] == source.x[0] && inserted.x[1] == source.x[1]);
+    assert(std::abs(inserted.x[2] - expected_z) < 1e-18);
+    assert(local_position(inserted.x, cfg.layer2));
     const Int before = seg.ledger().washout_departures;
     Fixture::advance_live(seg, cfg.time.bio_dt);
     const bool reexported = !seg.pool().empty();
@@ -176,11 +180,47 @@ void boundary_witness() {
     std::cout << "next_live_phase=" << (reexported ? "washout" : "resident") << '\n';
   }
 }
+
+void boundary_witness() {
+  check_boundary_grid(30e-6, 1, 29e-6);    // 15 layers of 2 µm
+  check_boundary_grid(30.5e-6, 3, 27e-6);  // 5 layers of 6 µm, rounded grid
+}
+
+void check_rejected_boundary(PatchStatus status, Real p_est, Real depth = 30e-6) {
+  auto cfg = single_slot(true, true);
+  cfg.layer2.establish_prob_single = p_est;
+  cfg.layer2.patch_depth_m = depth;
+  MucusSegment seg;
+  seg.init(cfg);
+  Fixture::export_at_surface(seg, cfg.time.bio_dt, depth);
+  const Agent source = only_cell(seg, true);
+  auto& packet = Fixture::prepare(seg, status);
+  const auto id = packet.id;
+  RNG expected_rng = arm_route(packet, 3);
+  if (status == PatchStatus::Active) {
+    assert(expected_rng.bernoulli(p_est) == (p_est == 1.0));
+  }
+  Fixture::route(seg, cfg.time.bio_dt);
+  const Agent& retained = only_cell(seg, true);
+  check_identity(retained, source);
+  assert(retained.x == source.x && seg.ledger().reseeds == 0);
+  assert(seg.pool().front().id == id);
+  assert(seg.pool().front().rng.engine() == expected_rng.engine());
+}
+
+void rejected_boundary() {
+  check_rejected_boundary(PatchStatus::BloomHalted, 1.0);
+  check_rejected_boundary(PatchStatus::SpatialHalted, 1.0);
+  check_rejected_boundary(PatchStatus::Active, 0.0);
+  // The single 2 µm grid cell's center is on the face, not inside.
+  check_rejected_boundary(PatchStatus::Active, 1.0, 1e-6);
+}
 }  // namespace
 
 int main(int argc, char** argv) {
-  const std::array<testshards::NamedTest, 2> tests = {{
-      {"eligibility", eligibility}, {"boundary_witness", boundary_witness}}};
+  const std::array<testshards::NamedTest, 3> tests = {{
+      {"eligibility", eligibility}, {"boundary_witness", boundary_witness},
+      {"rejected_boundary", rejected_boundary}}};
   return testshards::shard_main({argv, static_cast<std::size_t>(argc)}, tests,
                                 "Single-slot re-entry\n", "Transfers checked.\n");
 }
