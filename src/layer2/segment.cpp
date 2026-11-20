@@ -713,6 +713,36 @@ void MucusSegment::step(Real dt) {
   ++step_count_;
 }
 
+bool MucusSegment::insert_pool_packet(Patch& dest, std::vector<Agent>& cells) {
+  if (!dest.live) {
+    for (auto& cell : cells) dest.colonists.push_back(std::move(cell));
+    return true;
+  }
+
+  Simulation& sim = *live_.at(dest.id).sim;
+  const Domain& domain = sim.domain();
+  const auto& lo = domain.lo();
+  const auto& hi = domain.hi();
+  const Real surface_center = domain.cell_center(0, 0, domain.nz() - 1)[2];
+  const auto landing_z = [&](Real z) {
+    return std::isfinite(z) && z >= hi[2] ? surface_center : z;
+  };
+  // Check the whole packet before changing any cell or its ownership.
+  for (const auto& cell : cells) {
+    const auto& [x, y, z] = cell.x;
+    const Real arrival = landing_z(z);
+    if (!(lo[0] <= x && x < hi[0] && lo[1] <= y && y < hi[1] &&
+          lo[2] <= arrival && arrival < hi[2])) return false;
+  }
+  for (auto& cell : cells) {
+    cell.x[2] = landing_z(cell.x[2]);
+    cell.identity.owner_rank = 0;
+    cell.grid_cell = -1;
+    sim.agents().push_back(std::move(cell));
+  }
+  return true;
+}
+
 void MucusSegment::pool_phase(Real dt) {
   const auto& c = cfg_->layer2;
   const Real k_decay = kLn2 / std::max(c.transit_half_life_s, 1e-12);
@@ -740,20 +770,9 @@ void MucusSegment::pool_phase(Real dt) {
       const Real p_est = packet.kind == PacketKind::Fragment
                              ? p_frag
                              : c.establish_prob_single;
-      if (dest.status == PatchStatus::Active && packet.rng.bernoulli(p_est)) {
+      if (dest.status == PatchStatus::Active && packet.rng.bernoulli(p_est) &&
+          insert_pool_packet(dest, packet.cells)) {
         ledger_.reseeds += static_cast<Int>(packet.cells.size());
-        if (dest.live) {
-          auto& agents = live_.at(dest.id).sim->agents();
-          for (auto& cell : packet.cells) {
-            cell.identity.owner_rank = 0;
-            cell.grid_cell = -1;
-            agents.push_back(std::move(cell));
-          }
-        } else {
-          for (auto& cell : packet.cells) {
-            dest.colonists.push_back(std::move(cell));
-          }
-        }
         continue;
       }
     }

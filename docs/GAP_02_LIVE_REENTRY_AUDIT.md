@@ -1,8 +1,19 @@
 # GAP-02: live packet re-entry (v1)
 
-**Decision:** Require an `Active` destination for either Layer-2 slot. The tagged single-slot test below establishes a boundary placement failure in the fixture, not in the archived runs. It does not establish a coordinate-frame mismatch.
+**Decision:** Require an `Active` destination for either Layer-2 slot. For live pool returns, preserve valid local coordinates. For finite `z >= D`, preserve x/y and use the z-center of the receiving domain's outermost grid cell. This is a numerical insertion convention, not a biological attachment depth. Count reseeds only after insertion; if the packet cannot be placed wholly inside the live box, leave it pooled.
 
-## Single-slot transfer results
+## Grid landing regression
+
+The [focused fixture](../tests/test_layer2_reentry.cpp) exports tag 1 through the live boundary hook and routes it back to slot 0 (segment seed 1234, packet seeds 3 and 4). The new landing assertion failed on `632a509`: at the 30 µm face the returned z was 30 µm, not 29 µm. After the fix:
+
+| Export z (µm) | Receiving z grid | Inserted z (µm) | Next live step |
+|---:|---|---:|---|
+| 30 | 15 × 2 µm | 29 | Resident |
+| 30.5 | 5 × 6 µm (z stride 3) | 27 | Resident |
+
+Each return preserved the exported x/y (7.05556, 11 µm) and identity, counted one reseed, and closed stocks. Residence is observed, not required. The halted states, a failed establishment draw and a one-cell grid with no interior center retained the original packet with zero reseeds. Interior returns and tabulated eligibility were unchanged. These results are for the neutral fixture, not the archived runs.
+
+## Single-slot transfer results before the grid rule
 
 [Neutral fixture](../tests/test_layer2_reentry.cpp): one tagged cell, segment seed 1234, packet seeds 3 and 4. With one transit half-life per routing phase, both streams survive distal exit, attempt reattachment, and draw slot 0. Establishment probability is one. All live steps use a single inactive Fix. Read placement immediately after pool routing; read fate after one live step, **before** another routing opportunity.
 
@@ -16,7 +27,7 @@
 
 Stocks closed throughout. The eligibility test checks identity, lineage, position, pool ownership and per-cell reseeds; a retained halted packet's RNG is at the post-target draw, not the pre-attempt state.
 
-**Open height decision:** The box is 40 × 40 × 30 µm. The boundary hook exported tag 1 at exactly `z = D`. The accepted cell already failed `0 <= z < D` **before** its subsequent washout. The separate `layer2_reentry_boundary_witness` reports this predicate; passing its transfer checks is not a passing placement result. The establishment kernel specifies a chance, not an arrival height. Should such a packet remain pooled, or what valid entry height should it receive? No translation, depth or distribution is introduced for either input.
+**Original failure:** In the 40 × 40 × 30 µm box, the boundary hook exported tag 1 at exactly `z = D`. The accepted cell already failed `0 <= z < D` **before** its subsequent washout. The original witness reported this predicate without asserting it; the grid regression above now checks the landing before the next live step.
 
 ## What main does at `28242fd`
 
@@ -36,7 +47,7 @@ An in-bounds local point needs no patch-ID translation. But a [boundary export](
 - **Existing unit coverage (source inspection):** [live influx](../tests/test_layer2_segment.cpp#L604-L630) seeds 60 pool singles, targets the only (live) patch and requires positive reseeds, more than 20 colonists and ledger closure. It stops at first success; it does not check the arriving tags, coordinates or next-step fate. [Handoff](../tests/test_layer2_segment.cpp#L632-L674) checks distal exit with reattachment disabled. [Bloom halt](../tests/test_layer2_segment.cpp#L322-L351) uses tabulated slots, not a transfer into an already halted live slot.
 - **Archived measurements:** The [placement archive](../analysis/spec13_placement/out/) (reported build `778c2af`, seeds 20261027–20261031) has 20 incubator runs, each with one live slot among ten. Across their provenance ledgers: 1,569 washout departures, **zero cells reseeded**, all 20 closed. No successful placement to inspect; zero does not count attempts. Four churn ledgers each report one reseeded cell (crypt, seeds 20261029/31, both lysis arms); that segment-wide count does not identify a live destination or landing position.
 
-## Smallest follow-up
+## Original single-slot test proposal (now exercised above)
 
 Use a deterministic single-slot transfer test with a tagged packet and a known establishment draw. For either halted state, verify the target was selected, no insert or reseed occurred, and the packet remained pooled. On an active target, test an interior input and a boundary export: require exactly one transfer per cell, preserved identity/lineage, finite destination-local coordinates (`0 <= x,y < L; 0 <= z < D`) before the next step, and ledger closure. Record destination status, source and inserted positions, then the tagged cell's next-step fate. An invalid coordinate **on an accepted cell** demonstrates a placement failure; later washout alone does not. Choose an entry rule for invalid points, not a new landing distribution for valid ones.
 
