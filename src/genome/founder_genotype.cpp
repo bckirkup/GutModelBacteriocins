@@ -14,6 +14,12 @@ BICluster configured_plasmid_cluster(const SimulationConfig& cfg,
   BICluster cluster = entry.cluster;
   cluster.retardation =
       retardation_from_pI(cluster.pI, cfg.fixes.bacteriocin.mucin_charge);
+  if (cluster.release_mode != ReleaseMode::CONTINUOUS
+      && (cfg.fixes.bacteriocin.D_free_colicin_explicit
+          || cfg.fixes.bacteriocin.D_free_colicin
+                 != kDefaultColicinFreeDiffCoeff)) {
+    cluster.diff_coeff = cfg.fixes.bacteriocin.D_free_colicin;
+  }
   if (const auto it = cfg.plasmid_overrides.find(entry.name);
       it != cfg.plasmid_overrides.end()) {
     const auto& values = it->second;

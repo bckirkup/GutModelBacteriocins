@@ -455,10 +455,12 @@ std::vector<Probe> build_probes() {
               [](const SimulationConfig& c) {
                 return c.carbon_epithelial_flux;
               });
-  v.push_back(R("sos_lysis_prob", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_lysis_prob; }));
+  v.push_back(R("sos_lysis_prob", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_lysis_prob; }, 0.25));
+  v.push_back(R("bacteriocin.sos_lysis_prob", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_lysis_prob; }, 0.25, false));
   v.push_back(R("sos_basal_rate", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_basal_rate; }));
   v.push_back(R("sos_cross_induction_rate", [](const SimulationConfig& c) { return c.fixes.bacteriocin.sos_cross_induction_rate; }));
-  v.push_back(R("D_free_colicin", [](const SimulationConfig& c) { return c.fixes.bacteriocin.D_free_colicin; }));
+  v.push_back(R("D_free_colicin", [](const SimulationConfig& c) { return c.fixes.bacteriocin.D_free_colicin; }, 7.0e-11));
+  v.push_back(R("bacteriocin.D_free_colicin", [](const SimulationConfig& c) { return c.fixes.bacteriocin.D_free_colicin; }, 7.0e-11, false));
   v.push_back(R("burst_release_tau", [](const SimulationConfig& c) { return c.fixes.bacteriocin.burst_release_tau; }));
   v.push_back(R("microcin_mu_penalty", [](const SimulationConfig& c) { return c.fixes.bacteriocin.microcin_mu_penalty; }));
 
@@ -474,6 +476,18 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return c.fixes.metabolism.carbon_maintenance_rate;
                 }, 2.0e-5, false));
+  v.push_back(B("b12_growth_essential",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.b12_growth_essential;
+                }));
+  v.push_back(B("metabolism.b12_growth_essential",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.b12_growth_essential;
+                }, false));
+  v.push_back(B("metabolism_b12_growth_essential",
+                [](const SimulationConfig& c) {
+                  return c.fixes.metabolism.b12_growth_essential;
+                }, false));
   v.push_back(R("metE_penalty", [](const SimulationConfig& c) { return c.fixes.metabolism.metE_penalty; }));
   v.push_back(R("metE_acetate_km", [](const SimulationConfig& c) { return c.fixes.metabolism.metE_acetate_km; }));
   v.push_back(R("metE_acetate_max_factor", [](const SimulationConfig& c) { return c.fixes.metabolism.metE_acetate_max_factor; }));
@@ -558,6 +572,20 @@ std::vector<Probe> build_probes() {
   v.push_back(R("kill_rate_colicin", [](const SimulationConfig& c) { return c.fixes.receptor.kill_rate_colicin; }));
   v.push_back(R("kill_rate_microcin", [](const SimulationConfig& c) { return c.fixes.receptor.kill_rate_microcin; }));
   v.push_back(R("immunity_factor", [](const SimulationConfig& c) { return c.fixes.receptor.immunity_factor; }));
+  const auto btub_comp_get = [](const SimulationConfig& c) {
+    return c.fixes.receptor.btuB_competitor_conc;
+  };
+  v.push_back(R("receptor.btub_competitor_conc", btub_comp_get, 1.0e-5));
+  v.push_back(R("btub_competitor_conc", btub_comp_get, 1.0e-5, false));
+  v.push_back(R("receptor.btuB_competitor_conc", btub_comp_get, 1.0e-5, false));
+  v.push_back(R("btuB_competitor_conc", btub_comp_get, 1.0e-5, false));
+  v.push_back(R("receptor.btuB_free_corrinoid_conc", btub_comp_get, 1.0e-5, false));
+  v.push_back(R("btuB_free_corrinoid_conc", btub_comp_get, 1.0e-5, false));
+  const auto b12_free_frac_get = [](const SimulationConfig& c) {
+    return c.fixes.receptor.b12_free_fraction;
+  };
+  v.push_back(R("receptor.b12_free_fraction", b12_free_frac_get, 0.25));
+  v.push_back(R("b12_free_fraction", b12_free_frac_get, 0.25, false));
 
   // ── Conjugation Fix tunables ──────────────────────────────────────────────
   v.push_back(R("pili_length", [](const SimulationConfig& c) { return c.fixes.conjugation.pili_length; }));
@@ -869,6 +897,7 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
       "advection", "washout", "closure", "bacteriocin", "mucin_charge",
+      "metabolism", "receptor",
       "layer2", "layer3",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",

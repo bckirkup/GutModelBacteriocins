@@ -279,7 +279,8 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   buffers.d_reac_acetate =
       i_acetate >= 0 ? cg.reac_device(i_acetate) : nullptr;
   buffers.iron_uptake_enabled = cfg.iron_uptake_enabled ? 1 : 0;
-  buffers.b12_uptake_enabled = cfg.b12_uptake_enabled ? 1 : 0;
+  buffers.b12_uptake_enabled =
+      (cfg.b12_uptake_enabled && cfg.b12_growth_essential) ? 1 : 0;
   buffers.eut_enabled = cfg.eut_enabled ? 1 : 0;
   buffers.fur_enabled = fur_cfg.enabled ? 1 : 0;
   buffers.fur_Km = fur_cfg.Km;
@@ -934,11 +935,13 @@ void FixMetabolism::compute_growth_rate(Agent& agent, Real dt) {
   Int i_iron   = chem.find(species::IRON);
   Int i_b12    = chem.find(species::B12);
 
+  const bool b12_growth_limited =
+      cfg_.b12_uptake_enabled && cfg_.b12_growth_essential;
   Real S_carbon = (i_carbon >= 0)
       ? chem.conc_global(i_carbon, cell) : 1.0;
   Real S_iron   = (cfg_.iron_uptake_enabled && i_iron >= 0)
       ? chem.conc_global(i_iron, cell) : 1.0;
-  Real S_b12    = (cfg_.b12_uptake_enabled && i_b12 >= 0)
+  Real S_b12    = (b12_growth_limited && i_b12 >= 0)
       ? chem.conc_global(i_b12, cell) : 1.0;
 
   if (const auto& fur_cfg = sim_.config().cell_bio.fur;
@@ -1000,7 +1003,7 @@ void FixMetabolism::compute_growth_rate(Agent& agent, Real dt) {
 
   // Triple Monod kinetics (uncoupled)
   Real monod_carbon = S_carbon / (Km_carb + S_carbon);
-  Real monod_b12 = cfg_.b12_uptake_enabled
+  Real monod_b12 = b12_growth_limited
       ? S_b12 / (Km_b12 + S_b12) : 1.0;
 
   Real mu = agent.mu_max * monod_carbon * monod_iron * monod_b12;

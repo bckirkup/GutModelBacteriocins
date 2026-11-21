@@ -25,11 +25,17 @@
 namespace gutibm {
 
 struct BacteriocinConfig {
-  Real sos_lysis_prob       = 0.01;    // 1% per division
+  // Per-division probability p in [0, 1] that >= 1 SOS induction event occurs
+  // across the post-division daughter pair when non-division hazards are zero
+  // (each daughter uses hazard -0.5 * log1p(-p) / bio_dt, giving p_daughter = 1 - sqrt(1 - p)).
+  Real sos_lysis_prob       = 0.01;    // 1% per division pair
   Real sos_basal_rate       = 1.0e-6;  // spontaneous SOS induction (1/s)
 
-  // Free diffusion coefficient for ~50kDa protein (m^2/s)
-  Real D_free_colicin       = 4.0e-11;
+  // Free diffusion coefficient for ~50kDa colicin (m^2/s); serves as the
+  // fallback diffusivity for colicin plasmids and bacteriocin fields when
+  // explicitly configured and not overridden via plasmid_overrides.<name>.diff_coeff.
+  Real D_free_colicin       = kDefaultColicinFreeDiffCoeff;
+  bool D_free_colicin_explicit = false;
 
   // Exponential release timescale for finite lysis inventory
   Real burst_release_tau    = 300.0;

@@ -12,6 +12,9 @@
 
 namespace gutibm {
 
+// Default free-solution diffusivity for ~50-60 kDa colicins (m^2/s).
+inline constexpr Real kDefaultColicinFreeDiffCoeff = 4.0e-11;
+
 struct MucinChargeConfig {
   Real r_min = 1.2;
   Real amplitude = 60.0;

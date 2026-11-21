@@ -112,9 +112,18 @@ void add_burst(Simulation& sim, Real strength) {
   sim.add_toxin_burst(burst);
 }
 
-BurstRun run_case(bool gpu_enabled, Real strength) {
+BurstRun run_case(bool gpu_enabled, Real strength,
+                  Real b12_conc = 0.0, Real btuB_competitor_conc = -1.0) {
   Simulation sim;
   SimulationConfig cfg = make_config(gpu_enabled);
+  cfg.b12_initial_conc = b12_conc;
+  for (auto& chemical : cfg.chemicals) {
+    if (chemical.name == species::B12) {
+      chemical.initial_conc = b12_conc;
+      chemical.boundary_conc = b12_conc;
+    }
+  }
+  cfg.fixes.receptor.btuB_competitor_conc = btuB_competitor_conc;
   sim.init(cfg);
   add_burst(sim, strength);
   sim.step(cfg.time.bio_dt);
@@ -206,6 +215,10 @@ int main() {
     // kill, so intermediate CPU/GPU counts need not match exactly.
     assert(std::abs(cpu_kills[i] - gpu_kills[i]) <= 1);
   }
+  const BurstRun cpu_decoupled = run_case(false, 10.0 * strength, 1.0e-3, 0.0);
+  const BurstRun gpu_decoupled = run_case(true, 10.0 * strength, 1.0e-3, 0.0);
+  assert(cpu_decoupled.colicin_kills == target_count);
+  assert(gpu_decoupled.colicin_kills == target_count);
   std::cout << "  deterministic kill parity: " << cpu_kills[0] << ", "
             << cpu_kills[1] << ", " << cpu_kills[2] << ", " << cpu_kills[3]
             << "\n";

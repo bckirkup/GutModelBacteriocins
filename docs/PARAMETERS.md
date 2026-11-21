@@ -481,6 +481,7 @@ default.
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
 | `metabolism.division_threshold` | 2.0 | — | Biomass ratio for division |
+| `metabolism.b12_growth_essential` | true | bool | When `true` (legacy default), exogenous B12 limits growth via `monod_b12 = [B12] / (Km_b12 + [B12])`; when `false` (cobalamin-independent MetE prototroph), `monod_b12 = 1.0` while BtuB-downregulated strains (`expr_btuB < 0.5`) retain their `metE_penalty` + `eut` cost |
 | `metabolism.metE_penalty` | 0.05 | — | MetE pathway base cost (BtuB loss) |
 | `metabolism.metE_acetate_km` | 40.0 | mol/m³ | Half-saturation for acetate inhibition of MetE |
 | `metabolism.metE_acetate_max_factor` | 2.5 | — | Max scaling factor at saturating acetate |
@@ -670,6 +671,8 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 | `receptor.kill_rate_colicin` | `kill_rate_colicin` | 1e-3 | 1/s | Single-hit colicin kill rate |
 | `receptor.kill_rate_microcin` | `kill_rate_microcin` | 5e-4 | 1/s | Microcin kill rate (slower) |
 | `receptor.cirA_linearized_fraction` | `cirA_linearized_fraction` | 0.3 | — | Fraction of ferric enterobactin represented as the CirA linearized ligand |
+| `receptor.btub_competitor_conc` | `receptor.btub_competitor_conc`, `btub_competitor_conc`, `receptor.btuB_competitor_conc`, `btuB_competitor_conc`, `receptor.btuB_free_corrinoid_conc`, `btuB_free_corrinoid_conc` | -1.0 | mol/m³ | Explicit free competing corrinoid/analogue concentration at BtuB when `>= 0.0`, decoupling BtuB shielding from the growth-substrate `[B12]` field; `-1.0` uses `b12_free_fraction * [B12]` |
+| `receptor.b12_free_fraction` | `receptor.b12_free_fraction`, `b12_free_fraction` | 1.0 | — | Fraction (`[0, 1]`) of the local `[B12]` field that competes at BtuB when `btub_competitor_conc < 0.0` |
 | `chemical.b12_initial_conc` | `b12.initial_conc`, `b12_initial_conc`, `corrinoid.initial_conc`, `corrinoid_initial_conc` | 1e-3 | mol/m³ | Uniform initial and boundary concentration of the corrinoid/B12 pool |
 
 ---
@@ -678,10 +681,10 @@ Weber–Fechner chemotaxis (via `fix_motility`).
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
-| `bacteriocin.sos_lysis_prob` | 0.01 | — | SOS induction probability per division (active when `just_divided`) |
+| `bacteriocin.sos_lysis_prob` | 0.01 | — | Per-division probability `p in [0, 1]` that `>= 1` SOS induction event occurs across the post-division daughter pair when non-division hazards are zero (`post_division_rate = -0.5 * log1p(-p) / bio_dt` per daughter; `p_daughter = 1 - sqrt(1 - p)`) |
 | `bacteriocin.sos_basal_rate` | 1e-6 | 1/s | Spontaneous SOS rate |
 | `bacteriocin.sos_cross_induction_rate` | 1e3 | 1/s per mol/m³ | Nuclease provoker rate, applied to per-agent exposure sampled from nuclease BI sources |
-| `bacteriocin.D_free_colicin` | 4e-11 | m^2/s | Free diffusion (~50kDa protein) |
+| `bacteriocin.D_free_colicin` | 4e-11 | m^2/s | Base free diffusion coefficient (~50kDa colicin); propagates to bacteriocin chemical fields, QSSA fallback, and colicin plasmids when explicitly configured and not overridden via `plasmid_overrides.<name>.diff_coeff` |
 | `bacteriocin.burst_release_tau` | 300 | s | Exponential release timescale; total delivered dose is tau-invariant, while tau sets peak versus duration |
 | `bacteriocin.microcin_mu_penalty` | 0.03 | — | Growth cost of microcin secretion |
 | `bacteriocin.mucin_charge.r_min` | 1.2 | — | Minimum bacteriocin retardation |

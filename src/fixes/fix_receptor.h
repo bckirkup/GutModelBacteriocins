@@ -49,6 +49,13 @@ struct ReceptorConfig {
 
   // Immunity protection factor
   Real immunity_factor    = 0.001;    // 1000x protection
+
+  // Spec 14 §8 V1 (GAP-01): Decouple BtuB competitive corrinoid/analogue
+  // shielding from growth-limiting species::B12.
+  // When btuB_competitor_conc >= 0.0, it overrides the local B12 field at BtuB.
+  // When < 0.0 (default -1.0), BtuB competition reads b12_free_fraction * [B12].
+  Real btuB_competitor_conc = -1.0;
+  Real b12_free_fraction    = 1.0;
 };
 
 class FixReceptor : public Fix {

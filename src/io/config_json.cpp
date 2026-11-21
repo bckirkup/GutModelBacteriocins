@@ -711,6 +711,10 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
       cursor.parse_chemistry_object(cfg);
     } else if (key == "bacteriocin") {
       cursor.parse_bacteriocin_object(cfg);
+    } else if (key == "metabolism") {
+      cursor.parse_prefixed_object(cfg, "metabolism", "metabolism");
+    } else if (key == "receptor") {
+      cursor.parse_prefixed_object(cfg, "receptor", "receptor");
     } else {
       apply_json_scalar(cfg, key, cursor);
     }
@@ -948,6 +952,8 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("acid_inhibition_max", cfg.fixes.metabolism.acid_inhibition_max);
   real_key("acid_inhibition_Ki", cfg.fixes.metabolism.acid_inhibition_Ki);
   real_key("acetate_pKa", cfg.fixes.metabolism.acetate_pKa);
+  bool_key("metabolism.b12_growth_essential",
+           cfg.fixes.metabolism.b12_growth_essential);
   real_key("metE_penalty", cfg.fixes.metabolism.metE_penalty);
   real_key("metE_acetate_km", cfg.fixes.metabolism.metE_acetate_km);
   real_key("metE_acetate_max_factor", cfg.fixes.metabolism.metE_acetate_max_factor);
@@ -966,6 +972,10 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("kill_rate_colicin", cfg.fixes.receptor.kill_rate_colicin);
   real_key("kill_rate_microcin", cfg.fixes.receptor.kill_rate_microcin);
   real_key("immunity_factor", cfg.fixes.receptor.immunity_factor);
+  real_key("receptor.btub_competitor_conc",
+           cfg.fixes.receptor.btuB_competitor_conc);
+  real_key("receptor.b12_free_fraction",
+           cfg.fixes.receptor.b12_free_fraction);
   real_key("sos_lysis_prob", cfg.fixes.bacteriocin.sos_lysis_prob);
   real_key("sos_basal_rate", cfg.fixes.bacteriocin.sos_basal_rate);
   real_key("D_free_colicin", cfg.fixes.bacteriocin.D_free_colicin);

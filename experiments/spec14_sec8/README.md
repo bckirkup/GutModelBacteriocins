@@ -29,12 +29,15 @@ able to drift from the §8 configuration it extends.
 
 ## Arms
 
-Every arm is paired within seed against a **null**: identical founders, seed,
-and configuration with the ColE2 plasmid removed from type 1. Plasmid carriage
-cost, corrinoid-limited growth, and crowding therefore cancel in the difference
-and only the colicin contributes. Nothing in these configs may be retuned to
-make the producer win; the ladder brackets the shipped corrinoid value from
-1000× above `kd_b12_btuB` to below it.
+`prepare.py` generates paired competition and control arms across `vitro` and `vivo`:
+- `producer`: type 1 carries `ColE2` (`BtuB` target, nuclease, `SOS_LYSIS`), type 2 is plasmid-free sensitive.
+- `null`: plasmid-free reference null (`plasmids=[]` on both strains).
+- `kill_null`: plasmid-carriage-matched kill-null control (type 1 carries `ColE2` with identical metabolic carriage and SOS lysis cost; `kill_rate_colicin = 0`, `kill_rate_microcin = 0`, `sos_cross_induction_rate = 0`). Pairing `producer - kill_null` isolates receptor-mediated killing from plasmid carriage/lysis burden, while `kill_null - null` isolates producer carriage/lysis cost.
+- `immunity_null`: carriage- and immunity-matched control (both type 1 and type 2 carry `ColE2`).
+- `colIa_producer` and `colIa_kill_null`: non-`BtuB` comparator targeting `CirA` (`ColIa`, paired with its carriage-matched kill-null).
+- `colB_producer` and `colB_kill_null`: non-`BtuB` comparator targeting `FepA` (`ColB`, paired with its carriage-matched kill-null). (`ColE1` also targets `BtuB` and is never used as a non-`BtuB` control.)
+
+Optional CLI flags (`--no-b12-growth-essential`, `--btub-competitor-conc`, `--b12-free-fraction`) decouple extracellular `BtuB` competitive corrinoid shielding from obligate `B12` Monod growth limitation.
 
 ## Assertions
 

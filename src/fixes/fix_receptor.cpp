@@ -116,7 +116,7 @@ Real FixReceptor::compute_kill_prob(const Agent& agent, Int agent_index, Real dt
                                         sim_.qssa().toxin_lumping()),
        species::B12,
        &ReceptorConfig::kd_colicinE_btuB, &ReceptorConfig::kd_b12_btuB,
-       &ReceptorConfig::kill_rate_colicin, 1.0, 0},
+       &ReceptorConfig::kill_rate_colicin, cfg_.b12_free_fraction, 0},
       {ReceptorType::FepA,
        species::bacteriocin_species_for(ReceptorType::FepA,
                                         sim_.qssa().toxin_lumping()),
@@ -162,12 +162,17 @@ Real FixReceptor::compute_receptor_hazard(
     const Agent& agent, Real dt, const ReceptorDescriptor& descriptor,
     Real toxin_concentration, KillAssessment* diagnostics) const {
   const Int receptor_index = to_underlying(descriptor.receptor);
-  const Int ligand_index =
-      sim_.chemical_field().find(descriptor.ligand_species);
-  const Real ligand_concentration = ligand_index >= 0
-      ? sim_.chemical_field().conc_global(ligand_index, agent.grid_cell)
-          * descriptor.ligand_scale
-      : 0.0;
+  Real ligand_concentration = 0.0;
+  if (descriptor.receptor == ReceptorType::BtuB
+      && cfg_.btuB_competitor_conc >= 0.0) {
+    ligand_concentration = cfg_.btuB_competitor_conc;
+  } else if (const Int ligand_index =
+                 sim_.chemical_field().find(descriptor.ligand_species);
+             ligand_index >= 0) {
+    ligand_concentration =
+        sim_.chemical_field().conc_global(ligand_index, agent.grid_cell)
+        * descriptor.ligand_scale;
+  }
   const Real occupancy = toxin_occupancy(
       toxin_concentration, ligand_concentration, cfg_.*descriptor.kd_toxin,
       cfg_.*descriptor.kd_ligand, agent.receptor_expr[receptor_index],

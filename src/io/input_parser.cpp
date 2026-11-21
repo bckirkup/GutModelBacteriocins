@@ -557,6 +557,42 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         0.0, false, k_z_lambda, true);
   }
 
+  if (!std::isfinite(cfg.fixes.bacteriocin.sos_lysis_prob)
+      || cfg.fixes.bacteriocin.sos_lysis_prob < 0.0
+      || cfg.fixes.bacteriocin.sos_lysis_prob > 1.0) {
+    throw ConfigError(
+        "config key 'sos_lysis_prob' must be finite and in [0, 1]");
+  }
+  if (!std::isfinite(cfg.fixes.bacteriocin.D_free_colicin)
+      || cfg.fixes.bacteriocin.D_free_colicin <= 0.0) {
+    throw ConfigError(
+        "config key 'D_free_colicin' must be positive and finite");
+  }
+  if (cfg.fixes.bacteriocin.D_free_colicin_explicit
+      || cfg.fixes.bacteriocin.D_free_colicin
+             != kDefaultColicinFreeDiffCoeff) {
+    cfg.qssa.fallback_diff_coeff = cfg.fixes.bacteriocin.D_free_colicin;
+    for (auto& spec : cfg.chemicals) {
+      if (is_toxin_species(spec.name)) {
+        spec.diff_coeff = cfg.fixes.bacteriocin.D_free_colicin;
+      }
+    }
+  }
+  if (!std::isfinite(cfg.fixes.receptor.btuB_competitor_conc)
+      || (cfg.fixes.receptor.btuB_competitor_conc < 0.0
+          && cfg.fixes.receptor.btuB_competitor_conc != -1.0)) {
+    throw ConfigError(
+        "config key 'receptor.btub_competitor_conc' must be finite and "
+        "non-negative (or -1 to use the B12 field)");
+  }
+  if (!std::isfinite(cfg.fixes.receptor.b12_free_fraction)
+      || cfg.fixes.receptor.b12_free_fraction < 0.0
+      || cfg.fixes.receptor.b12_free_fraction > 1.0) {
+    throw ConfigError(
+        "config key 'receptor.b12_free_fraction' must be finite and in "
+        "[0, 1]");
+  }
+
   configure_toxin_species(cfg);
 
   const Real slab_height = cfg.domain.hi[2] - cfg.domain.lo[2];
@@ -1010,13 +1046,32 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
     cfg.oxygen_z_gradient_enabled = parse_bool_config(val);
     return true;
   }
-  if (key == "sos_lysis_prob")       { cfg.fixes.bacteriocin.sos_lysis_prob = parse_config_real(key, val); return true; }
+  if (key == "sos_lysis_prob") {
+    const Real prob = parse_config_real(key, val);
+    if (!std::isfinite(prob) || prob < 0.0 || prob > 1.0) {
+      throw ConfigError("config key '" + std::string(key)
+                        + "' must be finite and in [0, 1]");
+    }
+    cfg.fixes.bacteriocin.sos_lysis_prob = prob;
+    return true;
+  }
   if (key == "sos_basal_rate")       { cfg.fixes.bacteriocin.sos_basal_rate = parse_config_real(key, val); return true; }
   if (key == "sos_cross_induction_rate") {
     cfg.fixes.bacteriocin.sos_cross_induction_rate = parse_config_real(key, val);
     return true;
   }
-  if (key == "D_free_colicin")       { cfg.fixes.bacteriocin.D_free_colicin = parse_config_real(key, val); return true; }
+  if (key == "D_free_colicin") {
+    const Real d_free = parse_positive_config_real(key, val);
+    cfg.fixes.bacteriocin.D_free_colicin = d_free;
+    cfg.fixes.bacteriocin.D_free_colicin_explicit = true;
+    cfg.qssa.fallback_diff_coeff = d_free;
+    for (auto& c : cfg.chemicals) {
+      if (is_toxin_species(c.name)) {
+        c.diff_coeff = d_free;
+      }
+    }
+    return true;
+  }
   if (key == "burst_release_tau")    { cfg.fixes.bacteriocin.burst_release_tau = parse_positive_config_real(key, val); return true; }
   if (key == "microcin_mu_penalty")  { cfg.fixes.bacteriocin.microcin_mu_penalty = parse_config_real(key, val); return true; }
   return false;
@@ -1024,6 +1079,12 @@ bool apply_chemical_key(SimulationConfig& cfg, std::string_view key, const std::
 
 bool apply_bacteriocin_key(SimulationConfig& cfg, std::string_view key,
                            const std::string& val) {
+  if (key == "bacteriocin.sos_lysis_prob") {
+    return apply_chemical_key(cfg, "sos_lysis_prob", val);
+  }
+  if (key == "bacteriocin.D_free_colicin") {
+    return apply_chemical_key(cfg, "D_free_colicin", val);
+  }
   if (key == "bacteriocin.mucin_charge.r_min") {
     cfg.fixes.bacteriocin.mucin_charge.r_min =
         parse_config_real(key, val);
@@ -1110,6 +1171,31 @@ bool apply_receptor_key(SimulationConfig& cfg, std::string_view key, const std::
   if (key == "kill_rate_colicin")     { cfg.fixes.receptor.kill_rate_colicin = parse_config_real(key, val); return true; }
   if (key == "kill_rate_microcin")    { cfg.fixes.receptor.kill_rate_microcin = parse_config_real(key, val); return true; }
   if (key == "immunity_factor")       { cfg.fixes.receptor.immunity_factor = parse_config_real(key, val); return true; }
+  if (key == "receptor.btub_competitor_conc"
+      || key == "btub_competitor_conc"
+      || key == "receptor.btuB_competitor_conc"
+      || key == "btuB_competitor_conc"
+      || key == "receptor.btuB_free_corrinoid_conc"
+      || key == "btuB_free_corrinoid_conc") {
+    const Real conc = parse_config_real(key, val);
+    if (!std::isfinite(conc) || (conc < 0.0 && conc != -1.0)) {
+      throw ConfigError(
+          "config key '" + std::string(key)
+          + "' must be finite and non-negative (or -1 to use the B12 field)");
+    }
+    cfg.fixes.receptor.btuB_competitor_conc = conc;
+    return true;
+  }
+  if (key == "receptor.b12_free_fraction"
+      || key == "b12_free_fraction") {
+    const Real frac = parse_config_real(key, val);
+    if (!std::isfinite(frac) || frac < 0.0 || frac > 1.0) {
+      throw ConfigError("config key '" + std::string(key)
+                        + "' must be finite and in [0, 1]");
+    }
+    cfg.fixes.receptor.b12_free_fraction = frac;
+    return true;
+  }
   return false;
 }
 
@@ -1409,6 +1495,12 @@ bool apply_metabolism_key(SimulationConfig& cfg, std::string_view key, const std
       || key == "metabolism.acetate_pKa"
       || key == "metabolism_acetate_pKa") {
     cfg.fixes.metabolism.acetate_pKa = parse_config_real(key, val); return true;
+  }
+  if (key == "b12_growth_essential"
+      || key == "metabolism.b12_growth_essential"
+      || key == "metabolism_b12_growth_essential") {
+    cfg.fixes.metabolism.b12_growth_essential = parse_bool_config(val);
+    return true;
   }
   if (key == "metE_penalty")            { cfg.fixes.metabolism.metE_penalty = parse_config_real(key, val); return true; }
   if (key == "metE_acetate_km")         { cfg.fixes.metabolism.metE_acetate_km = parse_config_real(key, val); return true; }

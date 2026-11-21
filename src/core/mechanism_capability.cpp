@@ -81,6 +81,10 @@ std::vector<std::string> unexecuted_mechanism_params(
             "fixes.receptor.kill_rate_microcin", out);
     flag_if(v.immunity_factor != d.immunity_factor,
             "fixes.receptor.immunity_factor", out);
+    flag_if(v.btuB_competitor_conc != d.btuB_competitor_conc,
+            "fixes.receptor.btuB_competitor_conc", out);
+    flag_if(v.b12_free_fraction != d.b12_free_fraction,
+            "fixes.receptor.b12_free_fraction", out);
   }
 
   // HGT / genome dynamics.
