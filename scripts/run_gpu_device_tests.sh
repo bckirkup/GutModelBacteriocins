@@ -190,7 +190,10 @@ BUILD_PUSH_START="$(date +%s)"
 echo "==> Build ${IMAGE_URI}"
 aws ecr get-login-password --region "${AWS_REGION}" \
   | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+# Newer BuildKit emits OCI provenance attestations by default; ECR rejects the
+# attestation manifest's existence probe (403 on HEAD), so disable them.
 docker build \
+  --provenance=false \
   --file "${ROOT}/deploy/aws/Dockerfile.gputest" \
   --build-arg "GPU_TARGETS=${GPU_TARGETS}" \
   --build-arg "GUTIBM_GIT_SHA=${GIT_SHA}" \

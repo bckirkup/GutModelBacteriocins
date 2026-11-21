@@ -216,6 +216,7 @@ void ColonicChain::write_provenance(const std::string& path) const {
   out << "  \"ledger\": {\n"
       << "    \"initial_cells\": " << ledger_.initial_cells << ",\n"
       << "    \"mucosal_births\": " << ledger_.mucosal_births << ",\n"
+      << "    \"mucosal_deaths\": " << ledger_.mucosal_deaths << ",\n"
       << "    \"luminal_births\": " << ledger_.luminal_births << ",\n"
       << "    \"stool_exports\": " << ledger_.stool_exports << ",\n"
       << "    \"luminal_deaths\": " << ledger_.luminal_deaths << ",\n"

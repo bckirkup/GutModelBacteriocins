@@ -26,8 +26,14 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <fstream>
 #include <iostream>
 #include <numeric>
+#include <set>
+#include <sstream>
+#include <string>
+#include <tuple>
 #include <vector>
 
 using namespace gutibm;
@@ -314,6 +320,47 @@ void test_layer2_config_parsing() {
                   0.02 / 3600.0) < 1e-15);
   assert(std::abs(cfg.layer2.exposed_proximal.supply_mult - 1.5) < 1e-12);
   assert(std::abs(cfg.layer2.establish_ratio - 25.0) < 1e-12);
+
+  // Nested and flat JSON parsing for audit.patch_indices + validation rejections
+  {
+    const std::string tmp = secure_temp_file("gutibm_l2_cfg_");
+    {
+      std::ofstream out(tmp);
+      out << R"({"layer2": {"enabled": true, "n_patches": 8, "audit": {"patch_indices": [0, 3, 7], "halt_on_exceed": false, "tolerance": 0.4}}})";
+    }
+    SimulationConfig parsed = InputParser::parse(tmp);
+    assert((parsed.layer2.audit.patch_indices == std::vector<Int>{0, 3, 7}));
+    assert(!parsed.layer2.audit.halt_on_exceed);
+    assert(std::abs(parsed.layer2.audit.tolerance - 0.4) < 1e-12);
+
+    // Reject specifying both patch_index and patch_indices in JSON
+    {
+      std::ofstream out(tmp);
+      out << R"({"layer2": {"enabled": true, "n_patches": 8, "audit": {"patch_index": 0, "patch_indices": [1]}}})";
+    }
+    bool rejected_both = false;
+    try {
+      (void)InputParser::parse(tmp);
+    } catch (const ConfigError&) {
+      rejected_both = true;
+    }
+    assert(rejected_both);
+
+    // Reject duplicate entries in patch_indices in JSON
+    {
+      std::ofstream out(tmp);
+      out << R"({"layer2.enabled": true, "layer2.n_patches": 8, "layer2.audit.patch_indices": [2, 2]})";
+    }
+    bool rejected_dup = false;
+    try {
+      (void)InputParser::parse(tmp);
+    } catch (const ConfigError&) {
+      rejected_dup = true;
+    }
+    assert(rejected_dup);
+    std::remove(tmp.c_str());
+  }
+
   std::cout << "config_parsing: n_patches=" << cfg.layer2.n_patches
             << " ratio=" << cfg.layer2.establish_ratio << '\n';
 }
@@ -719,6 +766,579 @@ void test_audit_slot_admits_mechanism_config() {
                "with live slot\n";
 }
 
+// Minimal RFC-8259 unique-key checker for JSON documents emitted by prov.json.
+bool has_unique_json_keys(const std::string& text) {
+  size_t pos = 0;
+  const auto skip_ws = [&]() {
+    while (pos < text.size() &&
+           std::isspace(static_cast<unsigned char>(text[pos]))) {
+      ++pos;
+    }
+  };
+  const auto parse_str = [&]() -> std::string {
+    assert(pos < text.size() && text[pos] == '"');
+    ++pos;
+    std::string s;
+    while (pos < text.size()) {
+      const char ch = text[pos++];
+      if (ch == '"') return s;
+      if (ch == '\\' && pos < text.size()) {
+        s.push_back(text[pos++]);
+      } else {
+        s.push_back(ch);
+      }
+    }
+    assert(false && "unterminated JSON string");
+    return s;
+  };
+
+  std::function<bool()> parse_val = [&]() -> bool {
+    skip_ws();
+    assert(pos < text.size());
+    const char c = text[pos];
+    if (c == '{') {
+      ++pos;
+      skip_ws();
+      if (pos < text.size() && text[pos] == '}') {
+        ++pos;
+        return true;
+      }
+      std::set<std::string> seen_keys;
+      while (true) {
+        skip_ws();
+        const std::string key = parse_str();
+        if (!seen_keys.insert(key).second) {
+          return false;  // duplicate key in same JSON object
+        }
+        skip_ws();
+        assert(pos < text.size() && text[pos] == ':');
+        ++pos;
+        if (!parse_val()) return false;
+        skip_ws();
+        assert(pos < text.size());
+        if (text[pos] == '}') {
+          ++pos;
+          return true;
+        }
+        assert(text[pos] == ',');
+        ++pos;
+      }
+    }
+    if (c == '[') {
+      ++pos;
+      skip_ws();
+      if (pos < text.size() && text[pos] == ']') {
+        ++pos;
+        return true;
+      }
+      while (true) {
+        if (!parse_val()) return false;
+        skip_ws();
+        assert(pos < text.size());
+        if (text[pos] == ']') {
+          ++pos;
+          return true;
+        }
+        assert(text[pos] == ',');
+        ++pos;
+      }
+    }
+    if (c == '"') {
+      (void)parse_str();
+      return true;
+    }
+    while (pos < text.size() && text[pos] != ',' && text[pos] != '}' &&
+           text[pos] != ']' &&
+           !std::isspace(static_cast<unsigned char>(text[pos]))) {
+      ++pos;
+    }
+    return true;
+  };
+  return parse_val();
+}
+
+// ── Issue #476: terminal deduplication, horizon cause, multi-slot prov.json ─
+void test_layer2_io_dedup_horizon_and_provenance() {
+  assert(has_unique_json_keys(R"({"a": 1, "b": [{"a": 2}, {"a": 3}]})"));
+  assert(!has_unique_json_keys(R"({"audit_live": {"patch": 0}, "audit_live": {"patch": 1}})"));
+
+  const std::string ts_path = secure_temp_file("gutibm_l2_io_ts_");
+  const std::string lin_path = secure_temp_file("gutibm_l2_io_lineage_");
+  const std::string prov_path = secure_temp_file("gutibm_l2_io_prov_");
+
+  // Case A: total_steps (4) % summary_interval_steps (2) == 0, 2 live patches,
+  // plus BloomHalted patch transition.
+  {
+    SimulationConfig cfg = base_cfg();
+    cfg.time.bio_dt = 60.0;
+    cfg.time.total_time = 240.0;  // 4 steps
+    auto& l = cfg.layer2;
+    l.n_patches = 4;
+    l.patch_lateral_m = 60.0e-6;
+    l.patch_depth_m = 60.0e-6;
+    l.initial_patch_fraction = 1.0;
+    l.initial_founder_cells = 6;
+    l.initial_pool_cells = 300;
+    l.transit_half_life_s = 60.0;
+    l.reattach_prob_per_transit = 1.0;
+    l.establish_prob_single = 1.0;
+    l.bloom_factor = 1.2;
+    l.bloom_sustain_s = 0.0;
+    l.contraction_rate_per_min = 0.0;
+    l.invalid_patch_fraction_stop = 1.0;
+    l.summary_interval_steps = 2;
+    l.audit.patch_indices = {0, 2};
+    l.audit.halt_on_exceed = false;
+    l.audit.lineage_file = lin_path;
+    l.timeseries_file = ts_path;
+    l.provenance_file = prov_path;
+
+    MucusSegment seg;
+    seg.init(cfg);
+    const int rc = seg.run();
+    assert(rc == 0);
+    assert(seg.termination_cause() == TerminationCause::HorizonReached);
+    assert(seg.termination_detail() == "reached configured horizon");
+    assert(!seg.halted_patches().empty());
+
+    // Verify ts.csv: steps {0, 2, 4} each emitted exactly once.
+    {
+      std::ifstream in(ts_path);
+      std::string header;
+      assert(std::getline(in, header));
+      assert(header.find("deaths_cum,sos_lysis_deaths_cum,toxin_kill_deaths_cum") !=
+             std::string::npos);
+      std::vector<Int> steps;
+      std::string line;
+      while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        std::istringstream ss(line);
+        std::string step_tok;
+        assert(std::getline(ss, step_tok, ','));
+        steps.push_back(std::stoi(step_tok));
+      }
+      assert((steps == std::vector<Int>{0, 2, 4}));
+    }
+
+    // Verify lineage.csv: unique (step, patch_id, lineage_id) rows, steps {0, 2, 4},
+    // and both live patches {0, 2} present.
+    {
+      std::ifstream in(lin_path);
+      std::string header;
+      assert(std::getline(in, header));
+      std::set<std::tuple<Int, Int, TagID>> seen;
+      std::set<Int> steps;
+      std::set<Int> patches;
+      std::string line;
+      while (std::getline(in, line)) {
+        if (line.empty()) continue;
+        std::istringstream ss(line);
+        std::string step_s;
+        std::string time_s;
+        std::string patch_s;
+        std::string lin_s;
+        assert(std::getline(ss, step_s, ','));
+        assert(std::getline(ss, time_s, ','));
+        assert(std::getline(ss, patch_s, ','));
+        assert(std::getline(ss, lin_s, ','));
+        const Int st = std::stoi(step_s);
+        const Int pid = std::stoi(patch_s);
+        const TagID lid = std::stoll(lin_s);
+        assert(seen.emplace(st, pid, lid).second);
+        steps.insert(st);
+        patches.insert(pid);
+      }
+      assert((steps == std::set<Int>{0, 2, 4}));
+      assert((patches == std::set<Int>{0, 2}));
+    }
+
+    // Verify prov.json: RFC-8259 unique keys, horizon_reached, audit_live_patches,
+    // halted_patches, and split death ledger keys.
+    {
+      std::ifstream in(prov_path);
+      std::ostringstream ss;
+      ss << in.rdbuf();
+      const std::string prov = ss.str();
+      assert(has_unique_json_keys(prov));
+      assert(prov.find("\"termination_cause\": \"horizon_reached\"") !=
+             std::string::npos);
+      assert(prov.find("\"incomplete_unknown\"") == std::string::npos);
+      assert(prov.find("\"audit_live\":") == std::string::npos);
+      assert(prov.find("\"audit_live_patches\": [{\"patch\": 0, \"live_seed\": ") !=
+             std::string::npos);
+      assert(prov.find("{\"patch\": 2, \"live_seed\": ") != std::string::npos);
+      assert(prov.find("\"halted_patches\": [{\"patch_id\": ") !=
+             std::string::npos);
+      assert(prov.find("\"status\": \"bloom_halted\"") != std::string::npos);
+      assert(prov.find("\"sos_lysis_deaths\": ") != std::string::npos);
+      assert(prov.find("\"toxin_kill_deaths\": ") != std::string::npos);
+    }
+  }
+
+  // Case B: total_steps (3) % summary_interval_steps (2) != 0, 1 live patch
+  // (backward-compatible "audit_live" + "audit_live_patches"), plus SpatialHalted.
+  {
+    SimulationConfig cfg = base_cfg();
+    cfg.time.bio_dt = 60.0;
+    cfg.time.total_time = 180.0;  // 3 steps
+    auto& l = cfg.layer2;
+    l.n_patches = 2;
+    l.patch_lateral_m = 40.0e-6;
+    l.patch_depth_m = 30.0e-6;
+    l.cell_radius_m = 10.0e-6;  // small spatial capacity (~6 cells)
+    l.spatial_packing_fraction = 0.6;
+    l.initial_patch_fraction = 1.0;
+    l.initial_founder_cells = 4;
+    l.initial_pool_cells = 80;
+    l.transit_half_life_s = 60.0;
+    l.reattach_prob_per_transit = 1.0;
+    l.establish_prob_single = 1.0;
+    l.bloom_factor = 100.0;
+    l.contraction_rate_per_min = 0.0;
+    l.invalid_patch_fraction_stop = 1.0;
+    l.summary_interval_steps = 2;
+    l.audit.patch_indices = {1};
+    l.audit.halt_on_exceed = false;
+    l.audit.lineage_file = lin_path;
+    l.timeseries_file = ts_path;
+    l.provenance_file = prov_path;
+
+    MucusSegment seg;
+    seg.init(cfg);
+    const int rc = seg.run();
+    assert(rc == 0);
+    assert(seg.termination_cause() == TerminationCause::HorizonReached);
+
+    std::ifstream in(ts_path);
+    std::string header;
+    assert(std::getline(in, header));
+    std::vector<Int> steps;
+    std::string line;
+    while (std::getline(in, line)) {
+      if (line.empty()) continue;
+      std::istringstream ss(line);
+      std::string step_tok;
+      assert(std::getline(ss, step_tok, ','));
+      steps.push_back(std::stoi(step_tok));
+    }
+    assert((steps == std::vector<Int>{0, 2, 3}));
+
+    std::ifstream pin(prov_path);
+    std::ostringstream pss;
+    pss << pin.rdbuf();
+    const std::string prov = pss.str();
+    assert(has_unique_json_keys(prov));
+    assert(prov.find("\"audit_live\": {\"patch\": 1,") != std::string::npos);
+    assert(prov.find("\"audit_live_patches\": [{\"patch\": 1,") !=
+           std::string::npos);
+    assert(prov.find("\"status\": \"spatial_halted\"") != std::string::npos);
+  }
+
+  std::remove(ts_path.c_str());
+  std::remove(lin_path.c_str());
+  std::remove(prov_path.c_str());
+  std::cout << "layer2_io_dedup_horizon_and_provenance: passed\n";
+}
+
+// ── Issue #465: single-slot patch_indices: [k] vs patch_index: k parity ──
+void test_single_slot_patch_indices_bitwise_parity() {
+  // Config validation rejects simultaneous specification, duplicates, and OOB.
+  {
+    SimulationConfig bad = live_cfg_for_test();
+    bad.layer2.n_patches = 4;
+    bad.layer2.audit.patch_index = 0;
+    bad.layer2.audit.patch_indices = {1};
+    bool rejected = false;
+    try {
+      MucusSegment seg;
+      seg.init(bad);
+    } catch (const ConfigError&) {
+      rejected = true;
+    }
+    assert(rejected);
+  }
+  {
+    SimulationConfig bad = live_cfg_for_test();
+    bad.layer2.n_patches = 4;
+    bad.layer2.audit.patch_index = -1;
+    bad.layer2.audit.patch_indices = {2, 2};
+    bool rejected = false;
+    try {
+      MucusSegment seg;
+      seg.init(bad);
+    } catch (const ConfigError&) {
+      rejected = true;
+    }
+    assert(rejected);
+  }
+  {
+    SimulationConfig bad = live_cfg_for_test();
+    bad.layer2.n_patches = 4;
+    bad.layer2.audit.patch_index = -1;
+    bad.layer2.audit.patch_indices = {0, 4};
+    bool rejected = false;
+    try {
+      MucusSegment seg;
+      seg.init(bad);
+    } catch (const ConfigError&) {
+      rejected = true;
+    }
+    assert(rejected);
+  }
+
+  for (const Int k : {0, 2}) {
+    SimulationConfig cfg_scalar = live_cfg_for_test();
+    cfg_scalar.layer2.n_patches = 4;
+    cfg_scalar.layer2.initial_founder_cells = 12;
+    cfg_scalar.layer2.initial_pool_cells = 15;
+    cfg_scalar.layer2.contraction_rate_per_min = 20.0;
+    cfg_scalar.layer2.reattach_prob_per_transit = 0.8;
+    cfg_scalar.layer2.establish_prob_single = 0.8;
+    cfg_scalar.fixes.bacteriocin.sos_basal_rate = 0.01;
+    cfg_scalar.layer2.audit.patch_index = k;
+    cfg_scalar.layer2.audit.patch_indices.clear();
+
+    SimulationConfig cfg_vec = cfg_scalar;
+    cfg_vec.layer2.audit.patch_index = -1;
+    cfg_vec.layer2.audit.patch_indices = {k};
+
+    MucusSegment seg_scalar;
+    seg_scalar.init(cfg_scalar);
+    MucusSegment seg_vec;
+    seg_vec.init(cfg_vec);
+    assert(seg_scalar.fingerprint() == seg_vec.fingerprint());
+
+    for (int step = 0; step < 15; ++step) {
+      seg_scalar.step(cfg_scalar.time.bio_dt);
+      seg_vec.step(cfg_vec.time.bio_dt);
+      assert(seg_scalar.fingerprint() == seg_vec.fingerprint());
+      assert(seg_scalar.ledger().births == seg_vec.ledger().births);
+      assert(seg_scalar.ledger().reseeds == seg_vec.ledger().reseeds);
+      assert(seg_scalar.ledger().biological_deaths ==
+             seg_vec.ledger().biological_deaths);
+      assert(seg_scalar.ledger().sos_lysis_deaths ==
+             seg_vec.ledger().sos_lysis_deaths);
+      assert(seg_scalar.ledger().toxin_kill_deaths ==
+             seg_vec.ledger().toxin_kill_deaths);
+    }
+
+    std::vector<Agent> cells_s;
+    std::vector<Agent> cells_v;
+    seg_scalar.for_each_colonist([&](const Agent& a) { cells_s.push_back(a); });
+    seg_vec.for_each_colonist([&](const Agent& a) { cells_v.push_back(a); });
+    assert(cells_s.size() == cells_v.size());
+    for (size_t i = 0; i < cells_s.size(); ++i) {
+      assert(cells_s[i].identity.tag == cells_v[i].identity.tag);
+      assert(cells_s[i].genome.lineage_id == cells_v[i].genome.lineage_id);
+      assert(cells_s[i].x == cells_v[i].x);
+    }
+  }
+  std::cout << "single_slot_patch_indices_bitwise_parity: passed\n";
+}
+
+// ── Issue #465: live try_deposit onto Active vs Halted live patches ──────
+void test_live_try_deposit_active_vs_halted() {
+  SimulationConfig cfg = live_cfg_for_test();
+  cfg.layer2.n_patches = 1;
+  cfg.layer2.patch_lateral_m = 40.0e-6;
+  cfg.layer2.patch_depth_m = 30.0e-6;
+  cfg.domain.grid_dx = 2.0e-6;
+  cfg.layer2.initial_founder_cells = 1;
+  cfg.layer2.audit.patch_index = -1;
+  cfg.layer2.audit.patch_indices = {0};
+
+  MucusSegment seg;
+  seg.init(cfg);
+  assert(seg.patches()[0].live);
+  assert(seg.patches()[0].status == PatchStatus::Active);
+
+  // Upper-boundary arrival (z >= D = 30 um) lands at outermost grid cell
+  // center z = L_z - 0.5 * dz = 29 um.
+  const TagID deposit_tag = (static_cast<TagID>(0xFF) << 48) | 1;
+  Agent boundary_cell =
+      Agent::create_default(deposit_tag, 1, Vec3{7.0e-6, 11.0e-6, 30.0e-6},
+                            5.0e-4);
+  boundary_cell.genome.lineage_id = deposit_tag;
+  assert(seg.try_deposit(std::move(boundary_cell), 101));
+  assert(seg.ledger().external_arrivals == 1);
+  assert(seg.ledger_closed());
+
+  bool found_boundary = false;
+  seg.for_each_colonist([&](const Agent& a) {
+    if (a.identity.tag == deposit_tag) {
+      found_boundary = true;
+      assert(std::abs(a.x[0] - 7.0e-6) < 1e-18);
+      assert(std::abs(a.x[1] - 11.0e-6) < 1e-18);
+      assert(std::abs(a.x[2] - 29.0e-6) < 1e-18);
+    }
+  });
+  assert(found_boundary);
+
+  // Out-of-bounds lateral coordinate is rejected without incrementing ledger.
+  Agent bad_cell =
+      Agent::create_default(deposit_tag + 1, 1,
+                            Vec3{-1.0e-6, 11.0e-6, 15.0e-6}, 5.0e-4);
+  assert(!seg.try_deposit(std::move(bad_cell), 102));
+  assert(seg.ledger().external_arrivals == 1);
+  assert(seg.ledger_closed());
+
+  // Transition patch 0 to BloomHalted and verify try_deposit rejects it.
+  SimulationConfig halt_cfg = cfg;
+  halt_cfg.layer2.bloom_factor = 0.4;
+  halt_cfg.layer2.bloom_sustain_s = 0.0;
+  halt_cfg.layer2.invalid_patch_fraction_stop = 1.0;
+  MucusSegment halted_seg;
+  halted_seg.init(halt_cfg);
+  halted_seg.step(halt_cfg.time.bio_dt);
+  assert(halted_seg.patches()[0].status == PatchStatus::BloomHalted);
+  Agent halted_attempt =
+      Agent::create_default(deposit_tag + 2, 1,
+                            Vec3{7.0e-6, 11.0e-6, 30.0e-6}, 5.0e-4);
+  assert(!halted_seg.try_deposit(std::move(halted_attempt), 103));
+  assert(halted_seg.ledger().external_arrivals == 0);
+  assert(halted_seg.ledger_closed());
+  std::cout << "live_try_deposit_active_vs_halted: passed\n";
+}
+
+// ── Issue #465: multi-slot (2, 3, and 10 all-live) C/S/R reseeding & split deaths ─
+void run_multi_slot_csr_case(Int n_patches,
+                             const std::vector<Int>& live_indices,
+                             int n_steps) {
+  SimulationConfig cfg = base_cfg();
+  cfg.seed = 20261121;
+  cfg.b12_initial_conc = 1.0e-5;  // unshielded BtuB so colicin E kills fire
+  for (auto& chem : cfg.chemicals) {
+    if (chem.name == "b12") {
+      chem.initial_conc = 1.0e-5;
+      chem.boundary_conc = 1.0e-5;
+    }
+  }
+  cfg.fixes.bacteriocin.sos_basal_rate = 0.005;
+  cfg.fixes.bacteriocin.burst_release_tau = 60.0;
+  cfg.fixes.receptor.kill_rate_colicin = 0.1;
+
+  cfg.initial_strains.clear();
+  // Strain 1: Producer (C) carrying ColE2
+  SimulationConfig::InitialStrain c_strain;
+  c_strain.type = 1;
+  c_strain.count = 35;
+  c_strain.mu_max = 8.0e-4;
+  c_strain.plasmids = {"ColE2"};
+  // Strain 2: Sensitive (S)
+  SimulationConfig::InitialStrain s_strain;
+  s_strain.type = 2;
+  s_strain.count = 35;
+  s_strain.mu_max = 8.0e-4;
+  // Strain 3: Resistant (R, BtuB = 0.0)
+  SimulationConfig::InitialStrain r_strain;
+  r_strain.type = 3;
+  r_strain.count = 30;
+  r_strain.mu_max = 7.5e-4;
+  test::declare_resistant_founder(r_strain);
+  cfg.initial_strains = {c_strain, s_strain, r_strain};
+
+  auto& l = cfg.layer2;
+  l.enabled = true;
+  l.n_patches = n_patches;
+  l.patch_lateral_m = 40.0e-6;
+  l.patch_depth_m = 30.0e-6;
+  l.initial_patch_fraction = 1.0;
+  l.initial_founder_cells = 20;
+  l.initial_pool_cells = 0;
+  l.contraction_rate_per_min = 30.0;
+  l.agent_loss_fraction = 0.25;
+  l.crypt.disruption_prob = 0.6;
+  l.exposed_proximal.disruption_prob = 0.6;
+  l.exposed_distal.disruption_prob = 0.6;
+  l.transit_half_life_s = 120.0;
+  l.reattach_prob_per_transit = 1.0;
+  l.establish_prob_single = 1.0;
+  l.establish_ratio = 10.0;
+  l.bloom_factor = 100.0;
+  l.invalid_patch_fraction_stop = 1.0;
+  l.audit.patch_index = -1;
+  l.audit.patch_indices = live_indices;
+  l.audit.halt_on_exceed = false;
+
+  MucusSegment seg;
+  seg.init(cfg);
+
+  for (const Int idx : live_indices) {
+    assert(seg.patches()[static_cast<size_t>(idx)].live);
+  }
+
+  Int max_cross_patch_colonists = 0;
+  for (int step = 0; step < n_steps; ++step) {
+    seg.step(cfg.time.bio_dt);
+    assert(seg.termination_cause() == TerminationCause::IncompleteUnknown);
+    assert(seg.ledger_closed());
+
+    const SegmentLedger& L = seg.ledger();
+    assert(L.biological_deaths == L.sos_lysis_deaths + L.toxin_kill_deaths);
+
+    Int alive_patch = 0;
+    seg.for_each_colonist([&](const Agent&) { ++alive_patch; });
+    Int alive_pool = 0;
+    for (const auto& pkt : seg.pool()) {
+      alive_pool += static_cast<Int>(pkt.cells.size());
+    }
+    // Exact closed cell conservation identity across patches + pool:
+    assert(L.initial_cells + L.births + L.external_arrivals ==
+           alive_patch + alive_pool + L.distal_losses + L.biological_deaths);
+    // Pool balance identity: departures from patches feed pool, reseeds and
+    // distal exits drain pool:
+    assert(L.washout_departures + L.contraction_departures +
+               L.edge_departures ==
+           alive_pool + L.reseeds + L.distal_losses);
+
+    std::vector<Int> counts_per_patch;
+    counts_per_patch.reserve(seg.patches().size());
+    for (const auto& p : seg.patches()) {
+      counts_per_patch.push_back(seg.patch_count(p));
+    }
+    Int cur_patch = 0;
+    Int idx_in_patch = 0;
+    Int step_cross_patch = 0;
+    seg.for_each_colonist([&](const Agent& a) {
+      while (cur_patch < static_cast<Int>(counts_per_patch.size()) &&
+             idx_in_patch >= counts_per_patch[static_cast<size_t>(cur_patch)]) {
+        ++cur_patch;
+        idx_in_patch = 0;
+      }
+      assert(cur_patch < n_patches);
+      const Int origin_patch =
+          static_cast<Int>((a.genome.lineage_id >> 32) - 1);
+      assert(origin_patch >= 0 && origin_patch < n_patches);
+      if (origin_patch != cur_patch) {
+        ++step_cross_patch;
+      }
+      ++idx_in_patch;
+    });
+    max_cross_patch_colonists =
+        std::max(max_cross_patch_colonists, step_cross_patch);
+  }
+
+  const SegmentLedger& L = seg.ledger();
+  assert(L.reseeds > 0);
+  assert(L.sos_lysis_deaths > 0);
+  assert(L.toxin_kill_deaths > 0);
+  assert(L.biological_deaths == L.sos_lysis_deaths + L.toxin_kill_deaths);
+  assert(max_cross_patch_colonists > 0);
+  std::cout << "multi_slot_csr(n_patches=" << n_patches
+            << ", live=" << live_indices.size()
+            << "): reseeds=" << L.reseeds
+            << " max_cross_patch=" << max_cross_patch_colonists
+            << " sos_lysis=" << L.sos_lysis_deaths
+            << " toxin_kills=" << L.toxin_kill_deaths
+            << " total_deaths=" << L.biological_deaths << '\n';
+}
+
+void test_multi_slot_csr_interpatch_reseed_and_split_deaths() {
+  run_multi_slot_csr_case(2, {0, 1}, 12);
+  run_multi_slot_csr_case(3, {0, 1, 2}, 12);
+  run_multi_slot_csr_case(10, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, 8);
+}
+
 }  // namespace
 
 int main() {
@@ -738,6 +1358,10 @@ int main() {
   test_live_patch_pool_handoff();
   test_live_patch_seed_invariance();
   test_audit_slot_admits_mechanism_config();
+  test_layer2_io_dedup_horizon_and_provenance();
+  test_single_slot_patch_indices_bitwise_parity();
+  test_live_try_deposit_active_vs_halted();
+  test_multi_slot_csr_interpatch_reseed_and_split_deaths();
   std::cout << "test_layer2_segment: all passed\n";
   return 0;
 }

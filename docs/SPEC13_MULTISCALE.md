@@ -30,11 +30,10 @@ twice in the body's reference list; reproduced as received.
 
 ## Status
 
-**Nothing in this spec is implemented.** Layer 1 is the existing single-patch
-IBM; Layers 2 and 3 do not exist in any form. The spec is committed here as the
-architecture of record so that the gap analysis and the phased plan in
-[`SPEC13_IMPLEMENTATION_REVIEW.md`](SPEC13_IMPLEMENTATION_REVIEW.md) have a
-stable referent.
+**Core Layer 2 and Layer 3 multiscale components are implemented on `main`; Cycle 2 extensions are tracked in open issues.**
+Specifically, `src/layer2/` (`MucusSegment`, `PatchTable`, `PatchType` Crypt/Proximal/Distal mechanics, contraction-driven fragment loss vs single-cell washout, luminal transport pool, and live Layer-1 patch audit slots) and `src/layer3/` (`CompartmentChain` across cecum, transverse, and descending colon with replicating anaerobic luminal populations, daily washout purges, and `flora_density_cfu_ml = 1.0e8 CFU/mL` observation denominators) are shipped and validated across `analysis/spec13_occupancy/`, `analysis/spec13_gradient/`, and `analysis/spec13_placement/`. Remaining Cycle 2 gaps — multi-slot (`>= 2`) live patches and split biological-death ledgers (#465), configurable live-slot crypt flow refugia and oxygen/ROS inheritance (#466), mucosal occupancy sensitivity (#467), and fecal-pellet LOD censoring / Layer-2 perturbation pulses (#474) — are tracked in [`open_gaps_and_validation_matrix.csv`](open_gaps_and_validation_matrix.csv) and [`SPEC13_14_MODEL_AUDIT.md`](SPEC13_14_MODEL_AUDIT.md).
+
+*(Note: the historical gap-mapping table immediately below reflects the pre-implementation baseline at the time `SPEC13_IMPLEMENTATION_REVIEW.md` was drafted; consult `docs/SPEC13_14_MODEL_AUDIT.md` for current line-pinned file coverage.)*
 
 ## What already exists that the spec's layers map onto
 

@@ -7,6 +7,7 @@
 #include "plasmid.h"
 #include "simulation.h"
 #include "input_parser.h"
+#include "path_utils.h"
 #include "species_names.h"
 #include "qssa_solver.h"
 #include <array>
@@ -536,7 +537,8 @@ void test_decoupled_btub_shielding_and_non_essential_b12_growth() {
   SimulationConfig occ_cfg = InputParser::default_config();
   occ_cfg.initial_strains.clear();
   occ_cfg.hdf5.enabled = true;
-  occ_cfg.hdf5.filename = "/tmp/gut_ibm_test_receptor_decoupled.h5";
+  occ_cfg.hdf5.filename =
+      resolve_test_h5_path("GUTIBM_RECEPTOR_DECOUPLED_H5", "receptor_decoupled");
   occ_cfg.hdf5.schedule.provenance = 1;
   occ_cfg.domain.hi = {50e-6, 50e-6, 25e-6};
   occ_cfg.domain.grid_dx = 5e-6;

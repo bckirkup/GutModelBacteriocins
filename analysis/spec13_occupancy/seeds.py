@@ -65,9 +65,12 @@ def main() -> int:
     tally = {}
     for name, s, occ, mean, admissible in out:
         tally.setdefault(name, []).append(bool(admissible))
-    robust = sum(1 for flags in tally.values() if sum(flags) >= 4)
-    marginal = sum(1 for flags in tally.values() if 0 < sum(flags) < 4)
-    dead = sum(1 for flags in tally.values() if sum(flags) == 0)
+    # Stage-A already passed on 1 seed for every arm in `adm`, so total passing
+    # seeds out of 6 equals `1 + sum(flags)` where `flags` spans the 5 Stage-B seeds.
+    robust_5of6 = sum(1 for flags in tally.values() if sum(flags) >= 4)
+    robust_4of6 = sum(1 for flags in tally.values() if sum(flags) >= 3)
+    marginal_2to3of6 = sum(1 for flags in tally.values() if 1 <= sum(flags) < 3)
+    stage_a_only_1of6 = sum(1 for flags in tally.values() if sum(flags) == 0)
 
     with SEED_RESULTS.open("w", newline="") as fh:
         w = csv.writer(fh)
@@ -75,9 +78,10 @@ def main() -> int:
         for name, s, occ, mean, admissible in sorted(out):
             w.writerow([name, s, occ, mean, admissible])
 
-    print(f"robust (>=4/6 incl. stage-A): {robust}")
-    print(f"marginal (1-3/6): {marginal}")
-    print(f"not admissible at any seed: {dead}")
+    print(f"robust >=5/6 incl. stage-A (>=4/5 stage-B): {robust_5of6}")
+    print(f"robust >=4/6 incl. stage-A (>=3/5 stage-B): {robust_4of6}")
+    print(f"marginal 2-3/6 incl. stage-A (1-2/5 stage-B): {marginal_2to3of6}")
+    print(f"stage-A only 1/6 (0/5 stage-B): {stage_a_only_1of6}")
     print(f"wrote {SEED_RESULTS}")
     return 0
 

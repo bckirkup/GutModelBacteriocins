@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import h5py
+import numpy as np
 import pytest
 
 from gut_ibm_tools import GutIBMData, validation
@@ -61,3 +62,36 @@ def test_validate_genomic_signatures_single_step(single_step_hdf5: Path) -> None
         result = validation.validate_genomic_signatures(data)
 
     assert result == {"error": -1.0}
+
+
+def test_compute_lineage_retention_skewed_vs_unweighted() -> None:
+    # Initial founder distribution: lineage 1 has 90% of cells, lineages 2..10 have ~1.1% each.
+    # Final state: lineage 1 survives at 95% share; lineages 2..9 go extinct; lineage 10 has 1/200 cells (0.5%).
+    first_ids = np.array([1] * 90 + list(range(2, 11)), dtype=np.int32)
+    last_ids = np.array([1] * 190 + [10] * 1 + [99] * 9, dtype=np.int32)
+
+    no_lod = validation.compute_lineage_retention_metrics(first_ids, last_ids, lod_relative_abundance=0.0)
+    # Unweighted: 2 of 10 founder lineages survive (0.20), whereas initial-abundance-weighted
+    # survival is (90 + 1) / 99 = 91.9%!
+    assert no_lod["resident_retention"] == pytest.approx(0.20, abs=1e-9)
+    assert no_lod["founder_lineage_persistence"] == pytest.approx(0.20, abs=1e-9)
+    assert no_lod["abundance_weighted_retention"] == pytest.approx(91.0 / 99.0, rel=1e-6)
+    assert no_lod["final_resident_abundance_fraction"] == pytest.approx(191.0 / 200.0, rel=1e-6)
+
+    # Under a 1% metagenomic/pellet LOD, lineage 10 (0.5%) falls below detection -> 1/10 unweighted, 90/99 weighted
+    with_lod = validation.compute_lineage_retention_metrics(first_ids, last_ids, lod_relative_abundance=0.01)
+    assert with_lod["resident_retention"] == pytest.approx(0.10, abs=1e-9)
+    assert with_lod["abundance_weighted_retention"] == pytest.approx(90.0 / 99.0, rel=1e-6)
+    assert with_lod["final_resident_abundance_fraction"] == pytest.approx(190.0 / 200.0, rel=1e-6)
+
+
+def test_validate_spatial_signatures_optical_depth_window(sample_hdf5: Path) -> None:
+    with GutIBMData(sample_hdf5) as data:
+        agents = data.get_agents("step_000000")
+        z_med = float(sum(agents["z"]) / len(agents["z"]))
+        z_max = float(max(agents["z"]))
+        sliced = validation.validate_spatial_signatures(
+            data, "step_000000", depth_window_m=(z_med, z_max + 1e-6)
+        )
+    assert "monochromatic_score" in sliced
+    assert sliced["comet_tail_ratio"] > 0.0

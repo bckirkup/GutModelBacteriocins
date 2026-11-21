@@ -96,39 +96,65 @@ void ColonicChain::validate_config() const {
       c.lumen_seed_cells < 0.0 || c.flatness_bound <= 0.0) {
     throw ConfigError("layer3 global parameters out of range");
   }
-  if (cfg_->layer2.audit.patch_index >= 0) {
+  const auto& audit = cfg_->layer2.audit;
+  if (audit.patch_index != -1 && !audit.patch_indices.empty()) {
     throw ConfigError(
-        "layer3 does not support the live-patch audit slot (embedded "
-        "Simulation state is not chain-serializable)");
+        "layer3 cannot specify both layer2.audit.patch_index and "
+        "layer2.audit.patch_indices");
+  }
+  if (audit.patch_index < -1 ||
+      audit.patch_index >= c.n_patches_per_region) {
+    throw ConfigError("layer2.audit_patch_index out of range for layer3");
+  }
+  for (size_t i = 0; i < audit.patch_indices.size(); ++i) {
+    const Int idx = audit.patch_indices[i];
+    if (idx < 0 || idx >= c.n_patches_per_region) {
+      throw ConfigError(
+          "layer2.audit.patch_indices entry out of range for layer3");
+    }
+    for (size_t j = 0; j < i; ++j) {
+      if (audit.patch_indices[j] == idx) {
+        throw ConfigError(
+            "layer2.audit.patch_indices contains duplicate patch index");
+      }
+    }
   }
   if (cfg_->initial_strains.empty()) {
     throw ConfigError("layer3 requires at least one initial_strains entry");
   }
-  // Capability limit: no live patch runs at this layer — a config
-  // sweeping mechanism parameters would produce identical outputs, so
-  // report it instead of accepting the sweep.
-  if (const auto dead = unexecuted_mechanism_params(*cfg_); !dead.empty()) {
-    std::string keys;
-    for (const auto& k : dead) {
-      keys += " " + k;
+  // Capability limit: with no live patch the tabulated chain executes
+  // no mechanism-dynamics parameters — a config sweeping mechanism
+  // parameters would produce identical outputs, so report it instead
+  // of accepting the sweep.
+  if (!audit.has_live_patches()) {
+    if (const auto dead = unexecuted_mechanism_params(*cfg_); !dead.empty()) {
+      std::string keys;
+      for (const auto& k : dead) {
+        keys += " " + k;
+      }
+      throw ConfigError(
+          "layer3 executes no mechanism-dynamics parameters:" + keys +
+          ". Founder genotype state still propagates; to execute a "
+          "mechanism use a live Simulation.");
     }
-    throw ConfigError(
-        "layer3 executes no mechanism-dynamics parameters:" + keys +
-        ". Founder genotype state still propagates; to execute a "
-        "mechanism use a live Simulation.");
   }
 }
 
 std::vector<Agent> ColonicChain::seed_lumen_exemplars() const {
   // Luminal seed lineages carry the configured founders' genotypes with
   // region-independent seed tags: the same inoculum genotype is one
-  // lineage everywhere it appears.
+  // lineage everywhere it appears. Position is placed at the luminal
+  // surface (z = patch_depth_m) so try_deposit onto an Active live patch
+  // lands at the receiving domain's outermost grid cell center.
+  const Vec3 surface_pos{0.5 * cfg_->layer2.patch_lateral_m,
+                         0.5 * cfg_->layer2.patch_lateral_m,
+                         cfg_->layer2.patch_depth_m};
   std::vector<Agent> out;
   Int si = 0;
   for (const auto& strain : cfg_->initial_strains) {
     ++si;
     Agent a = Agent::create_default(kSeedMarker | si, strain.type,
-                                    Vec3{0, 0, 0}, strain.mu_max);
+                                    surface_pos, strain.mu_max);
     a.genome.lineage_id = a.identity.tag;
     a.genome.parent_id = 0;
     apply_founder_genotype(a, strain, *cfg_);
@@ -387,9 +413,12 @@ void ColonicChain::step(Real dt) {
   }
 
   ledger_.mucosal_births = 0.0;
+  ledger_.mucosal_deaths = 0.0;
   for (const RegionState& rs : regions_) {
     ledger_.mucosal_births +=
         static_cast<Real>(rs.segment->ledger().births);
+    ledger_.mucosal_deaths +=
+        static_cast<Real>(rs.segment->ledger().biological_deaths);
   }
 
   if (!ledger_closed()) {

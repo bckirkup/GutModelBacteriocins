@@ -886,6 +886,16 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "quorum_sensing.chi_ai2", "quorum_sensing_chi_ai2",
               [](const SimulationConfig& c) { return c.quorum_sensing.chi_ai2; });
 
+  // ── Layer 2 audit slot ────────────────────────────────────────────────────
+  v.push_back(I("layer2.audit_patch_index",
+                [](const SimulationConfig& c) {
+                  return static_cast<long long>(c.layer2.audit.patch_index);
+                }));
+  v.push_back(I("layer2.audit.patch_index",
+                [](const SimulationConfig& c) {
+                  return static_cast<long long>(c.layer2.audit.patch_index);
+                }, false));
+
   return v;
 }
 
@@ -898,7 +908,8 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
       "advection", "washout", "closure", "bacteriocin", "mucin_charge",
       "metabolism", "receptor",
-      "layer2", "layer3",
+      "layer2", "layer3", "audit",
+      "layer2.audit_patch_indices", "layer2.audit.patch_indices",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity", "receptor_expression", "receptor_genotype", "receptors",
@@ -1102,7 +1113,8 @@ void test_strain_and_array_keys() {
       "ColE1": {"retardation": 25.0, "diff_coeff": 8e-11, "burst_size": 2e5}
     },
     "fixes": ["metabolism", "mechanics"],
-    "hdf5.schedule.grid_species": ["carbon", "oxygen"]
+    "hdf5.schedule.grid_species": ["carbon", "oxygen"],
+    "layer2.audit_patch_indices": [0, 3]
   })";
 
   const std::string path = source_path("tests/fixtures/_config_ingestion_strains.json");
@@ -1142,6 +1154,10 @@ void test_strain_and_array_keys() {
              && cfg.hdf5.schedule.grid_species[0] == "carbon"
              && cfg.hdf5.schedule.grid_species[1] == "oxygen",
          "'hdf5.schedule.grid_species' array not ingested");
+  expect(cfg.layer2.audit.patch_indices.size() == 2
+             && cfg.layer2.audit.patch_indices[0] == 0
+             && cfg.layer2.audit.patch_indices[1] == 3,
+         "'layer2.audit_patch_indices' array not ingested");
   const auto override_it = cfg.plasmid_overrides.find("ColE1");
   expect(override_it != cfg.plasmid_overrides.end(),
          "'plasmid_overrides' object not ingested");
@@ -1155,6 +1171,54 @@ void test_strain_and_array_keys() {
     expect(override_it->second.burst_size.has_value()
                && std::abs(*override_it->second.burst_size - 2e5) < 1e-6,
            "plasmid burst override not ingested");
+  }
+
+  // Nested layer2.audit.patch_indices + flat apply_flat_key probes
+  {
+    const std::string nested_json = R"({
+      "layer2": {
+        "n_patches": 10,
+        "audit": {"patch_indices": [1, 4, 7]}
+      }
+    })";
+    {
+      std::ofstream out(path);
+      out << nested_json;
+    }
+    const SimulationConfig nested_cfg = InputParser::parse(path);
+    std::remove(path.c_str());
+    expect(nested_cfg.layer2.audit.patch_indices == std::vector<Int>{1, 4, 7},
+           "nested 'layer2.audit.patch_indices' array not ingested");
+
+    SimulationConfig flat_cfg = InputParser::default_config();
+    expect(InputParser::apply_flat_key(flat_cfg, "layer2.audit.patch_indices",
+                                       "[2, 5]"),
+           "flat 'layer2.audit.patch_indices' not handled");
+    expect(flat_cfg.layer2.audit.patch_indices == std::vector<Int>{2, 5},
+           "flat 'layer2.audit.patch_indices' value mismatch");
+  }
+
+  // Validation probes: simultaneous patch_index + patch_indices, duplicate, out-of-range
+  for (const char* bad_json : {
+           R"({"layer2": {"n_patches": 5, "audit_patch_index": 0, "audit_patch_indices": [1]}})",
+           R"({"layer2": {"n_patches": 5, "audit_patch_indices": [1, 1]}})",
+           R"({"layer2": {"n_patches": 5, "audit_patch_indices": [0, 5]}})",
+           R"({"layer2": {"n_patches": 5, "audit_patch_indices": [-1]}})",
+       }) {
+    {
+      std::ofstream out(path);
+      out << bad_json;
+    }
+    bool rejected = false;
+    try {
+      (void)InputParser::parse(path);
+    } catch (const ConfigError&) {
+      rejected = true;
+    }
+    std::remove(path.c_str());
+    expect(rejected,
+           std::string("invalid layer2.audit config should throw ConfigError: ")
+               + bad_json);
   }
 
   std::cout << "  test_strain_and_array_keys: checked strain + array keys\n";

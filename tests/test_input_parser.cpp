@@ -1543,8 +1543,8 @@ void test_uptake_limit_rejects_unknown_modes() {
 }
 
 void test_spec14_bacteriocin_and_btub_decoupling_keys() {
-  const std::string path =
-      "/tmp/gut_ibm_test_spec14_bacteriocin_btub_keys.json";
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/_spec14_bacteriocin_btub_keys.json";
   {
     std::ofstream out(path);
     out << R"({

@@ -270,3 +270,191 @@ def comet_tail_index(
     mean_up = np.mean(upstream) if len(upstream) > 0 else 1e-30
 
     return float(mean_down / max(mean_up, 1e-30))
+
+
+def _window_slice_arrays(
+    times_s: np.ndarray,
+    counts_focal: np.ndarray,
+    counts_competitor: np.ndarray,
+    *,
+    pseudocount: float,
+    window_s: float | None,
+    t_end_s: float | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Extract sorted time and log10((n1 + eps) / (n2 + eps)) arrays on [t_end - window_s, t_end]."""
+    if pseudocount <= 0.0:
+        raise ValueError("pseudocount must be positive")
+    t = np.asarray(times_s, dtype=np.float64).ravel()
+    n1 = np.asarray(counts_focal, dtype=np.float64).ravel()
+    n2 = np.asarray(counts_competitor, dtype=np.float64).ravel()
+    if not (len(t) == len(n1) == len(n2)):
+        raise ValueError("times_s, counts_focal, and counts_competitor must have equal length")
+    if len(t) == 0:
+        return np.array([], dtype=np.float64), np.array([], dtype=np.float64)
+    if np.any(n1 < 0.0) or np.any(n2 < 0.0):
+        raise ValueError("strain counts must be non-negative")
+
+    order = np.argsort(t, kind="mergesort")
+    t = t[order]
+    n1 = n1[order]
+    n2 = n2[order]
+
+    t_hi = float(t[-1]) if t_end_s is None else float(t_end_s)
+    mask = t <= t_hi + 1e-12
+    if window_s is not None:
+        if window_s <= 0.0:
+            raise ValueError("window_s must be positive when provided")
+        mask &= t >= (t_hi - float(window_s) - 1e-12)
+
+    t_sel = t[mask]
+    ratios = np.log10((n1[mask] + pseudocount) / (n2[mask] + pseudocount))
+    return t_sel, ratios
+
+
+def log_ratio_ols_slope(
+    times_s: np.ndarray | list[float],
+    counts_focal: np.ndarray | list[int] | list[float],
+    counts_competitor: np.ndarray | list[int] | list[float],
+    *,
+    pseudocount: float = 0.5,
+    window_s: float | None = None,
+    t_end_s: float | None = None,
+    doubling_time_s: float = 2700.0,
+    wave_warning_threshold_decades: float = 0.10,
+    min_recommended_cycles: float = 2.0,
+) -> dict[str, float | int | bool | None]:
+    """
+    Division-wave-robust ordinary-least-squares slope of log10((n1 + eps)/(n2 + eps)).
+
+    Uniformly initialized cohorts divide in partially synchronized waves whose
+    single-step endpoint ratio can oscillate by +-0.2 decades (overstating
+    competitive advantage by >2x). Fitting over multiple division cycles and
+    inspecting detrended peak-to-trough residuals guards against phase aliasing.
+    """
+    if doubling_time_s <= 0.0:
+        raise ValueError("doubling_time_s must be positive")
+    t_sel, y_sel = _window_slice_arrays(
+        np.asarray(times_s),
+        np.asarray(counts_focal),
+        np.asarray(counts_competitor),
+        pseudocount=pseudocount,
+        window_s=window_s,
+        t_end_s=t_end_s,
+    )
+    n_samples = len(t_sel)
+    if n_samples < 2:
+        return {
+            "slope_decades_per_h": None,
+            "slope_se_decades_per_h": None,
+            "intercept_log10_ratio": None,
+            "n_samples": n_samples,
+            "span_s": 0.0,
+            "estimated_cycles": 0.0,
+            "residual_peak_to_trough_decades": None,
+            "wave_aliasing_warning": True,
+        }
+
+    span_s = float(t_sel[-1] - t_sel[0])
+    if span_s <= 1e-12:
+        return {
+            "slope_decades_per_h": None,
+            "slope_se_decades_per_h": None,
+            "intercept_log10_ratio": None,
+            "n_samples": n_samples,
+            "span_s": span_s,
+            "estimated_cycles": 0.0,
+            "residual_peak_to_trough_decades": 0.0,
+            "wave_aliasing_warning": True,
+        }
+
+    t_centered = t_sel - np.mean(t_sel)
+    y_mean = float(np.mean(y_sel))
+    s_xx = float(np.sum(t_centered * t_centered))
+    slope_per_s = float(np.sum(t_centered * (y_sel - y_mean)) / s_xx)
+    intercept = float(y_mean - slope_per_s * float(np.mean(t_sel)))
+    residuals = y_sel - (intercept + slope_per_s * t_sel)
+
+    if n_samples > 2:
+        s2 = float(np.sum(residuals * residuals) / (n_samples - 2))
+        slope_se_per_h = float(np.sqrt(max(s2, 0.0) / s_xx) * 3600.0)
+    else:
+        slope_se_per_h = None
+
+    resid_ptp = float(np.max(residuals) - np.min(residuals))
+    est_cycles = span_s / float(doubling_time_s)
+    aliasing_warn = bool(
+        (est_cycles < min_recommended_cycles)
+        or (resid_ptp > wave_warning_threshold_decades)
+    )
+
+    return {
+        "slope_decades_per_h": slope_per_s * 3600.0,
+        "slope_se_decades_per_h": slope_se_per_h,
+        "intercept_log10_ratio": intercept,
+        "n_samples": n_samples,
+        "span_s": span_s,
+        "estimated_cycles": est_cycles,
+        "residual_peak_to_trough_decades": resid_ptp,
+        "wave_aliasing_warning": aliasing_warn,
+    }
+
+
+def wave_averaged_log_ratio(
+    times_s: np.ndarray | list[float],
+    counts_focal: np.ndarray | list[int] | list[float],
+    counts_competitor: np.ndarray | list[int] | list[float],
+    *,
+    pseudocount: float = 0.5,
+    tail_window_s: float = 7200.0,
+    t_end_s: float | None = None,
+    wave_warning_threshold_decades: float = 0.10,
+) -> dict[str, float | int | bool | None]:
+    """
+    Compute trapezoid time-averaged and median log10 strain ratios over a trailing window.
+
+    Reports ``endpoint_bias_decades = endpoint_log10_ratio - trapezoid_mean_log10_ratio``
+    to quantify single-timepoint synchronized division-wave aliasing directly.
+    """
+    t_sel, y_sel = _window_slice_arrays(
+        np.asarray(times_s),
+        np.asarray(counts_focal),
+        np.asarray(counts_competitor),
+        pseudocount=pseudocount,
+        window_s=tail_window_s,
+        t_end_s=t_end_s,
+    )
+    n_samples = len(t_sel)
+    if n_samples == 0:
+        return {
+            "trapezoid_mean_log10_ratio": None,
+            "tail_median_log10_ratio": None,
+            "endpoint_log10_ratio": None,
+            "endpoint_bias_decades": None,
+            "peak_to_trough_decades": None,
+            "n_samples": 0,
+            "span_s": 0.0,
+            "wave_aliasing_warning": True,
+        }
+
+    endpoint = float(y_sel[-1])
+    median_val = float(np.median(y_sel))
+    ptp = float(np.max(y_sel) - np.min(y_sel))
+    span_s = float(t_sel[-1] - t_sel[0])
+
+    if span_s > 1e-12:
+        trapz_fn = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
+        trap_mean = float(trapz_fn(y_sel, t_sel) / span_s)
+    else:
+        trap_mean = float(np.mean(y_sel))
+
+    bias = endpoint - trap_mean
+    return {
+        "trapezoid_mean_log10_ratio": trap_mean,
+        "tail_median_log10_ratio": median_val,
+        "endpoint_log10_ratio": endpoint,
+        "endpoint_bias_decades": bias,
+        "peak_to_trough_decades": ptp,
+        "n_samples": n_samples,
+        "span_s": span_s,
+        "wave_aliasing_warning": bool(ptp > wave_warning_threshold_decades or span_s <= 1e-12),
+    }

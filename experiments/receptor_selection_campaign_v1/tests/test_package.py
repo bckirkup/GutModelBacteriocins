@@ -44,16 +44,18 @@ class PackageTests(unittest.TestCase):
   d=json.loads((ROOT/'campaign_decision_record.json').read_text())
   by_gate={x['gate']:x for x in d['decisions']}
   self.assertEqual(by_gate['A_pass']['execution_source_sha'],'b884cc54b1c0684c079a90195c031e388fe70534')
-  self.assertEqual(by_gate['B_pass']['selected_b12_initial_conc_mol_m3'],1e-3)
+  self.assertTrue(math.isclose(by_gate['B_pass']['selected_b12_initial_conc_mol_m3'],1e-3,rel_tol=1e-12))
   self.assertEqual(by_gate['C_population_gate']['execution_source_sha'],'3f176b26c0d18a22a61db218e56106b1355b781e')
   self.assertEqual(by_gate['PR416_intrinsic_transport_gate']['status'],'INVALID_FAILED_SUPERSEDED')
-  self.assertEqual(by_gate['single_source_transport_assay_v1']['status'],'PENDING_ADAPTIVE_RUNS'); self.assertEqual(by_gate['single_source_transport_assay_v1']['jobs'],18); self.assertEqual(by_gate['issue420_ecological_refinement']['status'],'PENDING_SEPARATE')
-  self.assertEqual(
-      by_gate['single_source_transport_assay_v1']['prior_attempt']['status'],
-      'BLOCKED',
-  )
-  self.assertEqual(by_gate['D_release']['status'],'BLOCKED')
-  self.assertEqual(by_gate['D_release']['conditional_selected_mucin_charge_amplitude'],15)
+  self.assertEqual(by_gate['single_source_transport_assay_v1']['status'],'PASS')
+  self.assertEqual(by_gate['single_source_transport_assay_v1']['jobs'],18)
+  self.assertEqual(by_gate['issue420_ecological_refinement']['status'],'PASS')
+  self.assertEqual(by_gate['single_source_transport_assay_v1']['prior_attempt']['status'],'BLOCKED')
+  self.assertEqual(by_gate['D_release']['status'],'RELEASED')
+  self.assertTrue(math.isclose(by_gate['D_release']['selected_mucin_charge_amplitude'],15.0,rel_tol=1e-12))
+  stage_d_approval=json.loads((ROOT/'approval_stage_D.json').read_text())
+  self.assertTrue(stage_d_approval['C_transport_gate'])
+  self.assertTrue(math.isclose(stage_d_approval['selected_mucin_charge_amplitude'],15.0,rel_tol=1e-12))
   approval=json.loads((ROOT/'approval.json').read_text())
   self.assertTrue(approval['record_status'].startswith('HISTORICAL_'))
   self.assertEqual(approval['recorded_execution_source_sha'],'3f176b26c0d18a22a61db218e56106b1355b781e')
@@ -112,4 +114,57 @@ class PackageTests(unittest.TestCase):
    self.assertTrue(math.isclose(d,deff,rel_tol=1e-3,abs_tol=0.0),amp)
   self.assertEqual(at.CAUSE_LYSIS,5); self.assertEqual(at.BURST_PRUNE_S,1500.0)
   self.assertTrue((ROOT/'analyze_transport.py').is_file())
+ def test_stage_d_preflight_rejects_decision_record_axis_mismatch(self):
+  sys.path.insert(0,str(ROOT)); import preflight as pf
+  pf.ERR.clear()
+  by_gate=pf.check_decision_record()
+  self.assertEqual(pf.ERR,[])
+  m=json.loads((ROOT/'generated/stage_D/manifest.json').read_text())
+  cfgs={e['run_id']:json.loads((ROOT/e['input_relpath']).read_text()) for e in m['runs']}
+  # Uniformly shift all 15 Stage D configs to amplitude=60 (passes len(tuples)==1, must fail decision record check!)
+  for c in cfgs.values():
+   c[pf.MUCIN_AMPLITUDE_KEY]=60.0
+  pf.check_stage_d(cfgs,by_gate)
+  self.assertTrue(any('mucin_charge.amplitude' in err for err in pf.ERR),pf.ERR)
+  pf.ERR.clear()
+ def test_analyze_authenticates_hdf5_container_image_digest(self):
+  import tempfile
+  import h5py
+  import numpy as np
+  sys.path.insert(0,str(ROOT)); import analyze
+  digest_bare='sha256:'+'f'*64
+  digest_uri='994254241749.dkr.ecr.us-east-1.amazonaws.com/gutibm@'+digest_bare
+  wrong_digest='sha256:'+'0'*64
+  cfg={'bio_dt':60.0,'seed':20260911}
+  meta={'stage':'D','arm':'producer','model_baseline_sha':BASELINE,'execution_source_sha':'29fd563ce73b28059cb439694e92466f451ddb4a'}
+  def make_h5(path: Path, img_digest: str | None) -> None:
+   with h5py.File(path,'w') as h:
+    rp=h.create_group('run_provenance')
+    rp.create_dataset('git_sha',data=np.bytes_('29fd563ce73b28059cb439694e92466f451ddb4a'))
+    rp.create_dataset('chemistry_placement',data=np.bytes_('device_delivery'))
+    rp.create_dataset('termination_cause',data=np.bytes_('horizon_reached'))
+    if img_digest is not None:
+     rp.create_dataset('container_image_digest',data=np.bytes_(img_digest))
+    sg=h.create_group('summary/step_000010')
+    sg.create_dataset('time',data=600.0)
+    ag=h.create_group('agents/step_000010')
+    ag.create_dataset('type',data=np.array([1,1,2],dtype=np.int32))
+    ag.create_dataset('mu_realized',data=np.array([1e-4,1e-4,1e-4],dtype=np.float64))
+  with tempfile.TemporaryDirectory() as td:
+   p_ok=Path(td)/'ok.h5'; make_h5(p_ok,digest_uri)
+   base_ok={'run_id':'D_prod','stage':'D','arm':'producer','seed':20260911}
+   with h5py.File(p_ok,'r') as h:
+    analyze.run_metrics(h,cfg,meta,base_ok,expected_image_digest=digest_bare)
+   self.assertTrue(base_ok['container_image_digest_match'])
+   self.assertEqual(base_ok['container_image_digest_canonical'],digest_bare)
+   p_bad=Path(td)/'bad.h5'; make_h5(p_bad,wrong_digest)
+   base_bad={'run_id':'D_null','stage':'D','arm':'plasmid_free_null','seed':20260911}
+   with h5py.File(p_bad,'r') as h:
+    analyze.run_metrics(h,cfg,{**meta,'arm':'plasmid_free_null'},base_bad,expected_image_digest=digest_bare)
+   self.assertFalse(base_bad['container_image_digest_match'])
+   pairs=analyze.paired_rows([base_ok,base_bad],{'container_image_digest':digest_bare})
+   self.assertEqual(len(pairs),1)
+   self.assertFalse(pairs[0]['container_image_digest_match_both'])
+   gates=analyze.gate_statuses([base_ok,base_bad],expected_image_digest=digest_bare)
+   self.assertEqual(gates['D']['status'],'FAIL_CONTAINER_IMAGE_PROVENANCE')
 if __name__=='__main__': unittest.main(verbosity=2)
