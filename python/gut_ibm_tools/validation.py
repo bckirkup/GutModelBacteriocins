@@ -54,6 +54,9 @@ def validate_spatial_signatures(
     data: GutIBMData,
     step: str,
     rng: np.random.Generator | None = None,
+    *,
+    depth_window_m: tuple[float, float] | None = None,
+    depth_axis: int = 2,
 ) -> dict[str, float]:
     """
     Validate spatial signatures via exclusion-radius clustering (VADI §75).
@@ -80,6 +83,15 @@ def validate_spatial_signatures(
 
     positions = np.column_stack([agents["x"], agents["y"], agents["z"]])
     types = agents["type"]
+    if depth_window_m is not None:
+        lo_m, hi_m = depth_window_m
+        if lo_m > hi_m:
+            raise ValueError("depth_window_m lower bound must be <= upper bound")
+        if depth_axis not in (0, 1, 2):
+            raise ValueError("depth_axis must be 0, 1, or 2")
+        slab_mask = (positions[:, depth_axis] >= lo_m) & (positions[:, depth_axis] <= hi_m)
+        positions = positions[slab_mask]
+        types = types[slab_mask]
 
     # --- retained metrics ------------------------------------------------
     mono_score = monochromatic_patch_score(positions, types)
@@ -111,7 +123,20 @@ def validate_spatial_signatures(
             f"{len(bacteriocin)} does not match grid size {expected_length}"
         )
     grid_pos = data.grid_cell_centers()
-    reference = _toxin_source_reference(agents, grid_pos)
+    if depth_window_m is not None:
+        lo_m, hi_m = depth_window_m
+        slab_agents = {
+            k: np.asarray(v)[slab_mask]
+            for k, v in agents.items()
+            if len(v) == len(slab_mask)
+        }
+        grid_slab = (grid_pos[:, depth_axis] >= lo_m) & (grid_pos[:, depth_axis] <= hi_m)
+        if np.any(grid_slab):
+            grid_pos = grid_pos[grid_slab]
+            bacteriocin = bacteriocin[grid_slab]
+        reference = _toxin_source_reference(slab_agents, grid_pos)
+    else:
+        reference = _toxin_source_reference(agents, grid_pos)
     period = data.grid_periods()[0]
     comet = comet_tail_index(
         grid_pos,
@@ -158,14 +183,95 @@ def validate_spatial_signatures(
     }
 
 
-def validate_genomic_signatures(data: GutIBMData) -> dict[str, float]:
+def compute_lineage_retention_metrics(
+    first_lineage_ids: np.ndarray,
+    last_lineage_ids: np.ndarray,
+    *,
+    lod_relative_abundance: float = 0.0,
+) -> dict[str, float]:
+    """
+    Compute unweighted founder-lineage persistence and abundance-weighted retention.
+
+    Parameters
+    ----------
+    first_lineage_ids, last_lineage_ids:
+        Per-agent founder/lineage integer identifiers at initial and final steps.
+    lod_relative_abundance:
+        Minimum final relative abundance in ``[0, 1)`` required for a lineage to
+        count as detected at the final endpoint (models metagenomic/culture LOD).
+
+    Returns
+    -------
+    dict with keys:
+        - ``resident_retention``: unweighted fraction of initial lineages detected at end
+        - ``founder_lineage_persistence``: explicit alias of ``resident_retention``
+        - ``abundance_weighted_retention``: initial-abundance-weighted mass of surviving
+          founder lineages detected above *lod_relative_abundance*
+        - ``final_resident_abundance_fraction``: share of final population belonging to
+          detected initial founder lineages
+    """
+    if not 0.0 <= lod_relative_abundance < 1.0:
+        raise ValueError("lod_relative_abundance must be in [0, 1)")
+
+    first_arr = np.asarray(first_lineage_ids).ravel()
+    last_arr = np.asarray(last_lineage_ids).ravel()
+    if len(first_arr) == 0:
+        return {
+            "resident_retention": 0.0,
+            "founder_lineage_persistence": 0.0,
+            "abundance_weighted_retention": 0.0,
+            "final_resident_abundance_fraction": 0.0,
+        }
+
+    init_ids, init_counts = np.unique(first_arr, return_counts=True)
+    init_weights = {
+        int(lid): float(cnt) / float(len(first_arr))
+        for lid, cnt in zip(init_ids, init_counts)
+    }
+
+    if len(last_arr) == 0:
+        return {
+            "resident_retention": 0.0,
+            "founder_lineage_persistence": 0.0,
+            "abundance_weighted_retention": 0.0,
+            "final_resident_abundance_fraction": 0.0,
+        }
+
+    final_ids, final_counts = np.unique(last_arr, return_counts=True)
+    n_final = float(len(last_arr))
+    detected_final = {
+        int(lid): float(cnt) / n_final
+        for lid, cnt in zip(final_ids, final_counts)
+        if (float(cnt) / n_final) >= lod_relative_abundance and cnt > 0
+    }
+
+    retained = set(init_weights) & set(detected_final)
+    unweighted = float(len(retained)) / float(len(init_weights))
+    init_weighted = float(sum(init_weights[lid] for lid in retained))
+    final_share = float(sum(detected_final[lid] for lid in retained))
+
+    return {
+        "resident_retention": unweighted,
+        "founder_lineage_persistence": unweighted,
+        "abundance_weighted_retention": init_weighted,
+        "final_resident_abundance_fraction": final_share,
+    }
+
+
+def validate_genomic_signatures(
+    data: GutIBMData,
+    *,
+    lod_relative_abundance: float = 0.0,
+) -> dict[str, float]:
     """
     Validate longitudinal genomic predictions.
 
     Metrics:
-    - resident_retention: should be 70-80%
-    - dominant_bi_loci: residents should have more BI clusters
-    - transient_receptor_downreg: transients should show lower expression
+    - resident_retention / founder_lineage_persistence: unweighted founder survival
+    - abundance_weighted_retention: initial-share-weighted founder persistence
+    - final_resident_abundance_fraction: final population share of surviving founders
+    - resident_mean_bi_loci: residents should have more BI clusters
+    - transient_mean_btuB_expression: transients should show lower expression
     """
     steps = data.steps
     if len(steps) < 2:
@@ -177,26 +283,40 @@ def validate_genomic_signatures(data: GutIBMData) -> dict[str, float]:
     first_agents = data.get_agents(first_step)
     last_agents = data.get_agents(last_step)
 
-    first_lineages = set(np.unique(first_agents.get("lineage", np.array([]))))
-    last_lineages = set(np.unique(last_agents.get("lineage", np.array([]))))
+    first_arr = np.asarray(first_agents.get("lineage", np.array([])))
+    last_arr = np.asarray(last_agents.get("lineage", np.array([])))
 
-    if not first_lineages:
+    if len(first_arr) == 0:
         return {"resident_retention": 0.0}
 
-    retained = first_lineages & last_lineages
-    retention = len(retained) / len(first_lineages)
+    retention_metrics = compute_lineage_retention_metrics(
+        first_arr,
+        last_arr,
+        lod_relative_abundance=lod_relative_abundance,
+    )
+    first_lineages = set(np.unique(first_arr))
+    if len(last_arr) > 0:
+        final_ids, final_counts = np.unique(last_arr, return_counts=True)
+        n_final = float(len(last_arr))
+        detected_final_ids = {
+            int(lid)
+            for lid, cnt in zip(final_ids, final_counts)
+            if (float(cnt) / n_final) >= lod_relative_abundance and cnt > 0
+        }
+    else:
+        detected_final_ids = set()
+    retained = first_lineages & detected_final_ids
 
     # BI loci complexity of residents vs transients
     last_lin = data.get_lineage(last_step)
     n_bi = last_lin.get("num_bi_loci", np.array([]))
 
     if len(n_bi) > 0:
-        last_lineage_ids = last_agents.get("lineage", np.array([]))
-        resident_mask = np.isin(last_lineage_ids, list(retained))
+        resident_mask = np.isin(last_arr, list(retained))
         transient_mask = ~resident_mask
 
-        resident_bi = float(np.mean(n_bi[resident_mask])) if np.any(resident_mask) else 0
-        transient_bi = float(np.mean(n_bi[transient_mask])) if np.any(transient_mask) else 0
+        resident_bi = float(np.mean(n_bi[resident_mask])) if np.any(resident_mask) else 0.0
+        transient_bi = float(np.mean(n_bi[transient_mask])) if np.any(transient_mask) else 0.0
     else:
         resident_bi = 0.0
         transient_bi = 0.0
@@ -204,14 +324,13 @@ def validate_genomic_signatures(data: GutIBMData) -> dict[str, float]:
     # Receptor expression of transients
     btub_expr = last_lin.get("btuB_expression", np.array([]))
     if len(btub_expr) > 0:
-        last_lineage_ids = last_agents.get("lineage", np.array([]))
-        transient_mask = ~np.isin(last_lineage_ids, list(retained))
+        transient_mask = ~np.isin(last_arr, list(retained))
         transient_expr = float(np.mean(btub_expr[transient_mask])) if np.any(transient_mask) else 1.0
     else:
         transient_expr = 1.0
 
     return {
-        "resident_retention": retention,
+        **retention_metrics,
         "resident_mean_bi_loci": resident_bi,
         "transient_mean_bi_loci": transient_bi,
         "transient_mean_btuB_expression": transient_expr,

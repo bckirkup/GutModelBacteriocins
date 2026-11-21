@@ -12,8 +12,7 @@ recoverable.*
 **Verdict: admissible region found.** Across the SPEC13_MULTISCALE
 physiological table, a nonempty region of parameter space produces
 stationary patch occupancy in the 0.1–1% band with segment mean density
-in 1e4–1e5 CFU/mL. 578 of 4374 grid cells are robust-admissible
-(band occupancy on >=4/6 seeds); 745 are admissible on at least one seed.
+in 1e4–1e5 CFU/mL. 578 of 4374 grid cells pass >=4/5 Stage-B follow-up seeds (>=5/6 total seeds including Stage A; 647 pass >=3/5 Stage-B = >=4/6 total seeds; 745 pass >=1/5 Stage-B = >=2/6 total seeds; 790 pass the Stage-A screen).
 
 ## Question
 
@@ -41,9 +40,7 @@ establishment ratio?
   distal 45%; supply multipliers 2.0/1.0/0.5; per-type single-cell loss
   0.02/0.10/0.20 per h; p_establish(single) = 0.01.
 - `results.csv`: every arm's tail-window observables.
-- `seeds.py` / `results_seeds.csv`: every stage-A admissible cell re-run
-  at 5 additional seeds; a cell is robust-admissible if >=4/6 seeds land
-  in band.
+- `seeds.py` / `results_seeds.csv`: every Stage-A admissible cell (790 arms on seed 20261015) is re-run at 5 additional Stage-B seeds (777001-777005; conditional two-stage screen). Across those 5 follow-up seeds, 578 cells pass >=4/5 (>=5/6 total) and 647 pass >=3/5 (>=4/6 total).
 
 ## Result
 
@@ -56,7 +53,7 @@ Outcome classes over 4374 arms:
 | stationary occupancy above 1% | 82 |
 | occupancy in band, segment mean below 1e4 CFU/mL | 538 |
 | occupancy in band, segment mean above 1e5 CFU/mL | 5 |
-| **admissible (both bands)** | **790 (578 robust)** |
+| **admissible (both bands)** | **790 Stage-A (647 at >=4/6 total; 578 at >=5/6 total)** |
 
 The admissible region is **carried entirely by crypt-type patches**: in
 admissible arms, median occ_crypt = 5.0% (of crypt patches) with
