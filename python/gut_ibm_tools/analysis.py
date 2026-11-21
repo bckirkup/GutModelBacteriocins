@@ -341,7 +341,7 @@ def log_ratio_ols_slope(
         window_s=window_s,
         t_end_s=t_end_s,
     )
-    n_samples = int(len(t_sel))
+    n_samples = len(t_sel)
     if n_samples < 2:
         return {
             "slope_decades_per_h": None,
@@ -423,7 +423,7 @@ def wave_averaged_log_ratio(
         window_s=tail_window_s,
         t_end_s=t_end_s,
     )
-    n_samples = int(len(t_sel))
+    n_samples = len(t_sel)
     if n_samples == 0:
         return {
             "trapezoid_mean_log10_ratio": None,
@@ -442,7 +442,7 @@ def wave_averaged_log_ratio(
     span_s = float(t_sel[-1] - t_sel[0])
 
     if span_s > 1e-12:
-        trapz_fn = getattr(np, "trapezoid", None) or getattr(np, "trapz")
+        trapz_fn = np.trapezoid if hasattr(np, "trapezoid") else np.trapz
         trap_mean = float(trapz_fn(y_sel, t_sel) / span_s)
     else:
         trap_mean = float(np.mean(y_sel))
