@@ -14,12 +14,24 @@ parameter combination it pins. A gradient-collapsed-to-uniform arm
 
 Arms: {gradient, uniform} x seeds {1001, 1002, 1003}, 72 h at dt = 60 s,
 mucosal purge (90% luminal) at 48 h. Runs are sequential (~2.7 GB RSS each).
+
+Issue #467 (GAP-05) hygiene:
+- Preserves legacy 145-sample tail keys (`47h50m-71h50m` inclusive) so
+  historical `verdicts.csv` comparisons remain invariant.
+- Separates strictly post-purge tail-window statistics (`t > 48 h`, 143 samples
+  `173,400-258,600 s`, where `purged_cum > 0`) from the last CSV sample
+  (`71h50m`, `258,600 s`) and exact `72 h` (`259,200 s`) `prov.json` endpoints.
+- Reports per-patch and per-occupied-patch cell densities alongside count-
+  thresholded occupancy (`N >= 1`, `N >= 10`, `N >= 50` cells/patch, reading
+  direct threshold columns when exported or homogeneous-Poisson reference
+  expectations from `mean_cells_per_patch` on legacy summaries).
 """
 
 import csv
 import importlib.util
 import io
 import json
+import math
 import subprocess
 import sys
 import types
@@ -56,6 +68,7 @@ except ModuleNotFoundError as error:
     validate_input_path = path_utils.validate_input_path
     write_json_file = path_utils.write_json_file
     write_text_file = path_utils.write_text_file
+
 BINARY = REPO / "build-serial" / "gut_ibm"
 CONFIG_DIR = HERE / "configs"
 RUN_DIR = HERE / "out"
@@ -65,8 +78,10 @@ VERDICTS = HERE / "verdicts.csv"
 DT = 60.0
 HORIZON_S = 259200.0  # 72 h
 PURGE_H = 48.0
+FLORA_DENSITY_CFU_ML = 1.0e8
 SEEDS = [1001, 1002, 1003]
 ARMS = ["gradient", "uniform"]
+COUNT_THRESHOLDS = (1, 10, 50)
 
 STOOL_LO, STOOL_HI = 1e6, 1e8  # CFU/g target band
 FLATNESS_BOUND = 4.0  # declared bound: max/min regional fraction
@@ -137,13 +152,23 @@ LAYER3 = {
     "descending_outflow_survival": 0.88,
 }
 
+REGIONS = ("cecum", "transverse", "descending")
 
-def arm_config(arm: str, seed: int) -> dict:
-    out_ts = RUN_DIR / f"{arm}_seed{seed}_timeseries.csv"
-    out_prov = RUN_DIR / f"{arm}_seed{seed}_prov.json"
+
+def arm_config(
+    arm: str,
+    seed: int,
+    *,
+    reattach_p0: float | None = None,
+    run_dir: Path = RUN_DIR,
+) -> dict:
+    out_ts = run_dir / f"{arm}_seed{seed}_timeseries.csv"
+    out_prov = run_dir / f"{arm}_seed{seed}_prov.json"
     layer3 = dict(LAYER3)
     layer3["enabled"] = True
     layer3["uniform_profile"] = arm == "uniform"
+    if reattach_p0 is not None:
+        layer3["reattach_p0"] = float(reattach_p0)
     layer3["timeseries_file"] = str(out_ts.relative_to(REPO))
     layer3["provenance_file"] = str(out_prov.relative_to(REPO))
     layer2 = dict(LAYER2)
@@ -192,11 +217,208 @@ def rows_for(path: Path) -> list[dict]:
         return [r for r in csv.DictReader(f) if r["region"] in REGIONS]
 
 
-REGIONS = ("cecum", "transverse", "descending")
-
-
 def window(rows: list[dict], t_lo: float, t_hi: float) -> list[dict]:
     return [r for r in rows if t_lo <= float(r["time_s"]) < t_hi]
+
+
+def poisson_tail_ge(lam: float, k_min: int) -> float:
+    """Return P(X >= k_min) for X ~ Poisson(lam)."""
+    if k_min <= 0:
+        return 1.0
+    if lam <= 0.0:
+        return 0.0
+    if lam >= 100.0 and k_min <= 50:
+        # Complement sum in log space avoids exp(-lam) underflow.
+        cdf_lt = 0.0
+        for k in range(k_min):
+            log_pmf = -lam + k * math.log(lam) - math.lgamma(k + 1)
+            cdf_lt += math.exp(log_pmf)
+        return max(0.0, min(1.0, 1.0 - cdf_lt))
+    term = math.exp(-lam)
+    cdf_lt = term
+    for k in range(1, k_min):
+        term *= lam / k
+        cdf_lt += term
+    return max(0.0, min(1.0, 1.0 - cdf_lt))
+
+
+def _region_threshold_metrics(
+    region_rows: list[dict],
+    n_patches: int,
+) -> dict:
+    """Summarize patch cell density and count-thresholded occupancy over rows."""
+    n_rows = max(1, len(region_rows))
+    occ_ge_1 = sum(float(r["occ_frac"]) for r in region_rows) / n_rows
+    mean_cells_patch = (
+        sum(float(r["patch_cells"]) / max(1, n_patches) for r in region_rows)
+        / n_rows
+    )
+    mean_cells_occupied = (
+        sum(
+            float(r["patch_cells"])
+            / max(1.0, float(r["occ_frac"]) * n_patches)
+            for r in region_rows
+        )
+        / n_rows
+    )
+
+    sample_row = region_rows[0] if region_rows else {}
+    has_direct_cols = all(
+        f"occ_ge_{thr}_frac" in sample_row for thr in (10, 50)
+    )
+    if has_direct_cols:
+        occ_ge_10 = (
+            sum(float(r["occ_ge_10_frac"]) for r in region_rows) / n_rows
+        )
+        occ_ge_50 = (
+            sum(float(r["occ_ge_50_frac"]) for r in region_rows) / n_rows
+        )
+        threshold_source = "timeseries_direct"
+    else:
+        occ_ge_10 = (
+            sum(
+                poisson_tail_ge(float(r["patch_cells"]) / max(1, n_patches), 10)
+                for r in region_rows
+            )
+            / n_rows
+        )
+        occ_ge_50 = (
+            sum(
+                poisson_tail_ge(float(r["patch_cells"]) / max(1, n_patches), 50)
+                for r in region_rows
+            )
+            / n_rows
+        )
+        threshold_source = "poisson_reference_from_mean_cells_per_patch"
+
+    return {
+        "occ_ge_1_frac": occ_ge_1,
+        "occ_ge_10_frac": occ_ge_10,
+        "occ_ge_50_frac": occ_ge_50,
+        "threshold_source": threshold_source,
+        "mean_cells_per_patch": mean_cells_patch,
+        "mean_cells_per_occupied_patch": mean_cells_occupied,
+    }
+
+
+def _strict_post_purge_metrics(
+    rows: list[dict],
+    desc: list[dict],
+    prov: dict,
+) -> dict:
+    """Compute strictly post-purge (`time_s > purge_at_s`) window & 72h endpoint metrics."""
+    purge_at_s = float(
+        prov.get("layer3", {}).get("purge_at_s", PURGE_H * 3600.0)
+    )
+    n_patches = int(
+        prov.get("layer3", {}).get(
+            "n_patches_per_region", LAYER3["n_patches_per_region"]
+        )
+    )
+    stool_g_per_day = float(
+        prov.get("layer3", {}).get("stool_g_per_day", LAYER3["stool_g_per_day"])
+    )
+
+    post_rows = [r for r in rows if float(r["time_s"]) > purge_at_s]
+    desc_post = [r for r in desc if float(r["time_s"]) > purge_at_s]
+
+    if len(desc_post) >= 2:
+        span_days = (
+            float(desc_post[-1]["time_s"]) - float(desc_post[0]["time_s"])
+        ) / 86400.0
+        stool_delta = float(desc_post[-1]["stool_cum"]) - float(
+            desc_post[0]["stool_cum"]
+        )
+        post_stool_cfu_g = (
+            stool_delta / span_days / stool_g_per_day
+            if span_days > 0.0
+            else float("nan")
+        )
+        time_range_s = [
+            float(desc_post[0]["time_s"]),
+            float(desc_post[-1]["time_s"]),
+        ]
+    else:
+        post_stool_cfu_g = float("nan")
+        time_range_s = []
+
+    post_fractions: dict[str, float] = {}
+    post_occ: dict[str, float] = {}
+    post_density: dict[str, dict] = {}
+    for region in REGIONS:
+        r_post = [r for r in post_rows if r["region"] == region]
+        n_r = max(1, len(r_post))
+        post_fractions[region] = (
+            sum(float(r["mean_cfu_ml"]) for r in r_post)
+            / n_r
+            / FLORA_DENSITY_CFU_ML
+        )
+        post_occ[region] = sum(float(r["occ_frac"]) for r in r_post) / n_r
+        post_density[region] = _region_threshold_metrics(r_post, n_patches)
+
+    fvals = [v for v in post_fractions.values() if v > 0.0]
+    post_flatness = (
+        max(fvals) / min(fvals) if len(fvals) == len(REGIONS) else float("nan")
+    )
+
+    last_t = max(float(r["time_s"]) for r in rows)
+    last_csv: dict[str, dict] = {}
+    for region in REGIONS:
+        r_reg = sorted(
+            [r for r in rows if r["region"] == region],
+            key=lambda x: float(x["time_s"]),
+        )
+        last_row = r_reg[-1]
+        occ_val = float(last_row["occ_frac"])
+        p_cells = float(last_row["patch_cells"])
+        last_csv[region] = {
+            "time_s": last_t,
+            "occ_frac": occ_val,
+            "patch_cells": int(round(p_cells)),
+            "mean_cells_per_patch": p_cells / max(1, n_patches),
+            "mean_cells_per_occupied_patch": p_cells
+            / max(1.0, occ_val * n_patches),
+            "mean_cfu_ml": float(last_row["mean_cfu_ml"]),
+            "fraction_at_1e8": float(last_row["mean_cfu_ml"])
+            / FLORA_DENSITY_CFU_ML,
+        }
+
+    endpoint_72h_regions: dict[str, dict] = {}
+    for reg_obs in prov.get("observables", {}).get("regions", []):
+        rname = reg_obs["name"]
+        occ_val = float(reg_obs["occupancy_frac"])
+        p_cells = float(reg_obs["patch_cells"])
+        endpoint_72h_regions[rname] = {
+            "occupancy_frac": occ_val,
+            "patch_cells": int(round(p_cells)),
+            "mean_cells_per_patch": p_cells / max(1, n_patches),
+            "mean_cells_per_occupied_patch": p_cells
+            / max(1.0, occ_val * n_patches),
+            "mean_cfu_ml": float(reg_obs["mean_cfu_ml"]),
+            "fraction_at_1e8": float(reg_obs["mean_cfu_ml"])
+            / FLORA_DENSITY_CFU_ML,
+        }
+
+    return {
+        "post_purge_window_gt_48h": {
+            "purge_at_s": purge_at_s,
+            "sample_count_per_region": len(desc_post),
+            "time_range_s": time_range_s,
+            "stool_cfu_g": post_stool_cfu_g,
+            "fractions": post_fractions,
+            "flatness": post_flatness,
+            "occupancy": post_occ,
+            "patch_density_and_thresholds": post_density,
+        },
+        "last_csv_sample": last_csv,
+        "endpoint_72h_prov": {
+            "wall_time_s": float(prov.get("wall_time_s", HORIZON_S)),
+            "cumulative_stool_cfu_per_g": float(
+                prov.get("observables", {}).get("stool_cfu_per_g", float("nan"))
+            ),
+            "regions": endpoint_72h_regions,
+        },
+    }
 
 
 def tail_metrics(ts_path: Path) -> dict:
@@ -212,34 +434,30 @@ def tail_metrics(ts_path: Path) -> dict:
         key=lambda r: float(r["time_s"]),
     )
     desc_tail = window(desc, t_tail, t_end + 1)
-    stool_cells = float(desc_tail[-1]["stool_cum"]) - float(desc_tail[0]["stool_cum"])
+    stool_cells = float(desc_tail[-1]["stool_cum"]) - float(
+        desc_tail[0]["stool_cum"]
+    )
     days = TAIL_H / 24.0
     stool_cfu_g = stool_cells / days / LAYER3["stool_g_per_day"]
 
     # Mucosal flatness: Enterobacteriaceae fraction per region vs flora proxy.
     # Denominator = shipped layer3 flora_density_cfu_ml default (1e8 cells/mL,
     # FISH-scale total community; docs/gutibm_density_reconciliation.md).
-    flora_density = 1e8
     fractions = {}
     occ = {}
     for region in REGIONS:
         region_tail = [r for r in tail if r["region"] == region]
-        fractions[region] = sum(
-            float(r["mean_cfu_ml"]) for r in region_tail
-        ) / max(1, len(region_tail)) / flora_density
+        fractions[region] = (
+            sum(float(r["mean_cfu_ml"]) for r in region_tail)
+            / max(1, len(region_tail))
+            / FLORA_DENSITY_CFU_ML
+        )
         occ[region] = sum(float(r["occ_frac"]) for r in region_tail) / max(
             1, len(region_tail)
         )
     fvals = [v for v in fractions.values() if v > 0]
     flatness = max(fvals) / min(fvals) if len(fvals) == 3 else float("nan")
 
-    # Retention: mean residence in region i = lumen_cells_i / outflow_rate_i.
-    # Outflow rate estimated as net lumen deltas + stool/death flows is noisy;
-    # use lumen_cells_i / (washout flux implied by transit tau_i) directly:
-    # residence_i ~= tau_i at steady state, so report realized mean age as
-    # lumen_cells_i / outflow_cells_rate_i where the rate is reconstructed
-    # from (lumen_births - delta_stocks) is fragile. Instead report the
-    # configured chain transit and the realized lumen census per region.
     lumen_cells = {}
     lumen_mu = {}
     for region in REGIONS:
@@ -259,7 +477,7 @@ def tail_metrics(ts_path: Path) -> dict:
         hour = int((float(r["time_s"]) / 3600.0) % 24)
         by_hour[hour] = by_hour.get(hour, 0.0) + float(r["stool_cum"]) - prev
         prev = float(r["stool_cum"])
-    counts = {}
+    counts: dict[int, int] = {}
     for r in desc[1:]:
         hour = int((float(r["time_s"]) / 3600.0) % 24)
         counts[hour] = counts.get(hour, 0) + 1
@@ -277,12 +495,14 @@ def tail_metrics(ts_path: Path) -> dict:
     pre = window(desc, purge_t - 12 * 3600.0, purge_t)
     post = window(desc, purge_t, purge_t + 12 * 3600.0)
     pre_rate = (
-        (float(pre[-1]["stool_cum"]) - float(pre[0]["stool_cum"]))
-        / (12.0) if len(pre) > 1 else float("nan")
+        (float(pre[-1]["stool_cum"]) - float(pre[0]["stool_cum"])) / 12.0
+        if len(pre) > 1
+        else float("nan")
     )
     post_rate = (
-        (float(post[-1]["stool_cum"]) - float(post[0]["stool_cum"]))
-        / 12.0 if len(post) > 1 else float("nan")
+        (float(post[-1]["stool_cum"]) - float(post[0]["stool_cum"])) / 12.0
+        if len(post) > 1
+        else float("nan")
     )
     recovery_ratio = post_rate / pre_rate if pre_rate else float("nan")
 
@@ -294,8 +514,11 @@ def tail_metrics(ts_path: Path) -> dict:
     led = prov["ledger"]
     amplification = (
         led["luminal_births"] / led["stool_exports"]
-        if led["stool_exports"] > 0 else float("inf")
+        if led["stool_exports"] > 0
+        else float("inf")
     )
+
+    extra = _strict_post_purge_metrics(rows, desc, prov)
 
     return {
         "stool_cfu_g": stool_cfu_g,
@@ -309,6 +532,7 @@ def tail_metrics(ts_path: Path) -> dict:
         "amplification": amplification,
         "termination_cause": prov["termination"]["cause"],
         "ledger": led,
+        **extra,
     }
 
 

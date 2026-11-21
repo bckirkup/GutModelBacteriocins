@@ -439,12 +439,20 @@ constant while the other half scales with generation time.
 
 The default `oxygen.epithelial_conc = 55e-6 mol/m³` is approximately
 `0.042 mmHg` dissolved oxygen, not the approximately `42 mmHg` stated by the
-former comment. A dissolved concentration corresponding to approximately
-`42 mmHg` would be about `5.5e-2 mol/m³`. The numerical default remains
-unchanged; experiment configurations may set the sourced tissue-side value
-`C_tissue = 5.0e-2 mol/m³` explicitly. The sourced Robin transfer coefficient
-is `k = 1.2e-6 m/s` (rat mucus+mucosa permeability); neither value is a new
-default.
+former comment. Choosing `oxygen.epithelial_conc` requires distinguishing two
+physical boundary formulations at `z = 0` (validated presets in
+`examples/oxygen_boundary_presets/`):
+
+| Formulation | `oxygen.epithelial_boundary` | `oxygen.epithelial_conc` (`mol/m³`) | `oxygen.epithelial_transfer_coeff` (`m/s`) | `oxygen.z_gradient` | Physical Compartment Prior |
+|---|---|---:|---:|---|---|
+| Apical Dirichlet (human anoxic) | `dirichlet` | `5.5e-5` (`~0.042 mmHg`) | `0` | `false` (PDE) or `true` (imposed) | Post-colonocyte apical mucus base (`< 1 mmHg` steady state) |
+| Apical Dirichlet (murine surface) | `dirichlet` | `1.3e-3–6.5e-3` (`1–5 mmHg`) | `0` | `false` | Murine distal colonic surface / crypt oxygenation (Konjar 2021; Albenberg 2014) |
+| Tissue-reservoir Robin (homeostatic) | `robin` | `5.0e-2–5.5e-2` (`38–42 mmHg`) | `1.2e-6` | `false` (required) | Vascularized lamina propria coupled across intact mucosal permeability |
+| Tissue-reservoir Robin (inflamed) | `robin` | `5.5e-2` (`42 mmHg`) | `3.6e-6` (with lower `oxygen.vbf_sink`) | `false` (required) | Hyperemic / leaky epithelium with depleted strict-anaerobe O₂ scavenging |
+
+Neither the tissue-reservoir concentration nor `k = 1.2e-6 m/s` replaces the
+shipped default (`55e-6 mol/m³`, `dirichlet`), preserving default-off trajectory
+invariance.
 
 ---
 
@@ -536,10 +544,14 @@ The non-growth-associated maintenance anchors are:
   molecular weight `180 g/mol`, the aerobic anchor is approximately
   `2.1e-5 mol/(s·kg biomass)`, or `1.7e-20 mol/s` for the `8.14e-16 kg`
   Sherwood-campaign agent.
-- At approximately `2 ATP/glucose` fermentatively, the anaerobic requirement is
-  approximately `15×` higher: `3.2e-4 mol/(s·kg)`, or
-  `2.6e-19 mol/s/cell`. This is the same order as the agent's full-growth
-  carbon demand of `2.0e-19 mol/s`.
+- At approximately `2 ATP/glucose` fermentatively, the idealized ATP-ratio
+  ceiling is approximately `15×` higher (`oxygen.anaerobic_maintenance_factor = 15.0`
+  default, inert while `carbon_maintenance_rate = 0.0`): `3.2e-4 mol/(s·kg)`, or
+  `2.6e-19 mol/s/cell`, comparable to the agent's full-growth carbon demand of
+  `2.0e-19 mol/s`. Empirical chemostat and metabolic-flux comparisons place
+  realized anaerobic-to-aerobic specific maintenance ratios lower, at **`3.4×–8.0×`**
+  (`Boecker et al. 2021`; `Carlson et al. 2026` conditional scenarios; `5.5×`
+  midpoint in `examples/oxygen_boundary_presets/`).
 
 When `oxygen.metabolic_switch_enabled` is enabled, carbon maintenance
 interpolates between these aerobic and anaerobic anchors using the realized
@@ -561,8 +573,8 @@ cheaper than the literature comparison. Varma's `0.524 gDW/g glucose`, with
 `30%` dry fraction and `180 g/mol`, implies approximately `3.2 mol glucose per
 kg wet biomass`. The default yield remains unchanged.
 
-The proposed multi-scale architecture, which would make these patch-level
-parameters per-patch and per-segment, is not implemented; see
+For how patch-type carbon supply multipliers and regional luminal profiles
+parameterize these quantities at segment and colonic-chain scales, see
 [`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md) and
 [`SPEC13_IMPLEMENTATION_REVIEW.md`](SPEC13_IMPLEMENTATION_REVIEW.md).
 

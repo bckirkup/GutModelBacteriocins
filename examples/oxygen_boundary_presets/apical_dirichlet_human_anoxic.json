@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "GAP-08 (#470) Preset A1: Apical mucus-base Dirichlet O2 prior (healthy human steady-state near-anoxic interface).",
+    "Fixes z=0 dissolved O2 at 5.5e-5 mol/m^3 (~0.042 mmHg) with dynamic reaction-diffusion (oxygen.z_gradient = false)",
+    "and empirical anaerobic carbon maintenance scaling (5.5x within the 3.4x-8.0x Boecker 2021 / Carlson 2026 range)."
+  ],
+  "seed": 20261101,
+  "total_time": 7200,
+  "bio_dt": 60,
+  "domain_x": 0.0001,
+  "domain_y": 0.0001,
+  "domain_z": 0.0001,
+  "grid_dx": 4e-06,
+  "mucus_thickness": 0.0001,
+  "dysbiosis_threshold": 0,
+  "hdf5": {
+    "enabled": false
+  },
+  "oxygen.enabled": true,
+  "oxygen.epithelial_boundary": "dirichlet",
+  "oxygen.epithelial_conc": 5.5e-05,
+  "oxygen.z_gradient": false,
+  "oxygen.vbf_sink": 0.001,
+  "oxygen.metabolic_switch_enabled": true,
+  "carbon_maintenance_rate": 2.1e-05,
+  "oxygen.anaerobic_maintenance_factor": 5.5,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [
+        "ColE2"
+      ],
+      "conjugative": false
+    },
+    {
+      "type": 2,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ]
+}

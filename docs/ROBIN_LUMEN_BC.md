@@ -3,6 +3,9 @@
 Status: implemented. Numbers below are measured, not assumed; independent
 reference calculations are described where they are used.
 
+> **Scope note (Luminal QSSA Toxin Robin BC vs Epithelial Nutrient/O₂ PDE Robin BC):**
+> This specification governs the **luminal (`z = z_hi`) Robin mass-transfer boundary** (`qssa.lumen_kc`) on the steady-state QSSA Green's function for secreted bacteriocins. For the **epithelial (`z = z_lo = 0`) Robin mass-transfer boundary** coupling submucosal oxygen (`5.0e-2–5.5e-2 mol/m³`, `~38–42 mmHg`) or carbon across mucosal permeability (`oxygen.epithelial_boundary = "robin"`, `oxygen.epithelial_transfer_coeff`, `oxygen.z_gradient = false`), see [`PARAMETERS.md`](PARAMETERS.md#oxygen-spec-1) and [`examples/oxygen_boundary_presets/`](../examples/oxygen_boundary_presets/README.md).
+
 ## 1. What is being replaced and why
 
 The corrected two-wall series from #359 enforces no flux at **both** walls, i.e.

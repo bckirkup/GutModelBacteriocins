@@ -1,0 +1,50 @@
+{
+  "_comment": [
+    "GAP-08 (#470) Preset B1: Submucosal tissue-reservoir Robin O2 boundary (healthy vascularized mucosa, ~42 mmHg).",
+    "Couples c_tissue = 5.5e-2 mol/m^3 across epithelial permeability k = 1.2e-6 m/s (oxygen.z_gradient = false required)",
+    "with delivery-limited funded respiration and 5.5x empirical anaerobic maintenance factor."
+  ],
+  "seed": 20261101,
+  "total_time": 7200,
+  "bio_dt": 60,
+  "domain_x": 0.0001,
+  "domain_y": 0.0001,
+  "domain_z": 0.0001,
+  "grid_dx": 4e-06,
+  "mucus_thickness": 0.0001,
+  "dysbiosis_threshold": 0,
+  "hdf5": {
+    "enabled": false
+  },
+  "uptake_limit": "delivery",
+  "delivery_far_field_radius": 1e-05,
+  "oxygen.enabled": true,
+  "oxygen.epithelial_boundary": "robin",
+  "oxygen.epithelial_conc": 0.055,
+  "oxygen.epithelial_transfer_coeff": 1.2e-06,
+  "oxygen.z_gradient": false,
+  "oxygen.delivery_uptake_enabled": true,
+  "oxygen.respiration_driver": "funded",
+  "oxygen.vbf_sink": 0.001,
+  "oxygen.metabolic_switch_enabled": true,
+  "carbon_maintenance_rate": 2.1e-05,
+  "oxygen.anaerobic_maintenance_factor": 5.5,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [
+        "ColE2"
+      ],
+      "conjugative": false
+    },
+    {
+      "type": 2,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ]
+}
