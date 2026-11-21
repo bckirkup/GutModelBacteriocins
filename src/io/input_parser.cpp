@@ -723,6 +723,31 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         cfg.oxygen_epithelial_boundary,
         cfg.oxygen_epithelial_transfer_coeff, cfg.oxygen_epithelial_flux);
   }
+  const auto& audit = cfg.layer2.audit;
+  const Int max_patches = cfg.layer3.enabled
+                              ? cfg.layer3.n_patches_per_region
+                              : cfg.layer2.n_patches;
+  if (audit.patch_index != -1 && !audit.patch_indices.empty()) {
+    throw ConfigError(
+        "layer2 cannot specify both audit.patch_index and "
+        "audit.patch_indices");
+  }
+  if (audit.patch_index < -1 ||
+      (max_patches > 0 && audit.patch_index >= max_patches)) {
+    throw ConfigError("layer2.audit_patch_index out of range");
+  }
+  for (size_t i = 0; i < audit.patch_indices.size(); ++i) {
+    const Int idx = audit.patch_indices[i];
+    if (idx < 0 || (max_patches > 0 && idx >= max_patches)) {
+      throw ConfigError("layer2.audit.patch_indices entry out of range");
+    }
+    for (size_t j = 0; j < i; ++j) {
+      if (audit.patch_indices[j] == idx) {
+        throw ConfigError(
+            "layer2.audit.patch_indices contains duplicate patch index");
+      }
+    }
+  }
 }
 
 namespace {
@@ -1806,6 +1831,31 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
+std::vector<Int> parse_config_int_list(std::string_view key,
+                                       const std::string& val) {
+  std::string inner = trim_config(val);
+  if (inner.size() >= 2 && inner.front() == '[' && inner.back() == ']') {
+    inner = trim_config(std::string_view(inner).substr(1, inner.size() - 2));
+  }
+  std::vector<Int> out;
+  if (inner.empty()) return out;
+  size_t start = 0;
+  while (start <= inner.size()) {
+    const size_t comma = inner.find(',', start);
+    const std::string token = trim_config(
+        comma == std::string::npos
+            ? std::string_view(inner).substr(start)
+            : std::string_view(inner).substr(start, comma - start));
+    if (token.empty()) {
+      throw ConfigError("empty integer entry in '" + std::string(key) + "'");
+    }
+    out.push_back(parse_config_int(key, token));
+    if (comma == std::string::npos) break;
+    start = comma + 1;
+  }
+  return out;
+}
+
 // Spec 13 Phase 1 — Layer-2 mucus-segment keys (layer2.*). All flat;
 // per-type fields are spelled layer2.<crypt|proximal|distal>_<field>
 // where field ∈ {fraction, disruption_prob, single_cell_loss_per_h,
@@ -1866,11 +1916,38 @@ bool apply_layer2_key(SimulationConfig& cfg, std::string_view key,
   if (sub == "segment_dysbiosis_threshold") { c.segment_dysbiosis_threshold = parse_config_real(key, val); return true; }
   if (sub == "segment_guard_window_s") { c.segment_guard_window_s = parse_positive_config_real(key, val); return true; }
   if (sub == "invalid_patch_fraction_stop") { c.invalid_patch_fraction_stop = parse_config_real(key, val); return true; }
-  if (sub == "audit_patch_index") { c.audit.patch_index = parse_config_int(key, val); return true; }
-  if (sub == "audit_interval_s") { c.audit.interval_s = parse_positive_config_real(key, val); return true; }
-  if (sub == "audit_tolerance") { c.audit.tolerance = parse_positive_config_real(key, val); return true; }
-  if (sub == "audit_halt") { c.audit.halt_on_exceed = parse_bool_config(val); return true; }
-  if (sub == "audit_lineage_file") { c.audit.lineage_file = val; return true; }
+  if (key == "layer2.audit_patch_index" || key == "layer2.audit.patch_index") {
+    if (!c.audit.patch_indices.empty()) {
+      throw ConfigError(
+          "layer2 cannot specify both audit.patch_index and "
+          "audit.patch_indices");
+    }
+    c.audit.patch_index = parse_config_int(key, val);
+    return true;
+  }
+  if (key == "layer2.audit_patch_indices" ||
+      key == "layer2.audit.patch_indices") {
+    if (c.audit.patch_index != -1) {
+      throw ConfigError(
+          "layer2 cannot specify both audit.patch_index and "
+          "audit.patch_indices");
+    }
+    c.audit.patch_indices = parse_config_int_list(key, val);
+    return true;
+  }
+  if (sub == "audit_interval_s" || sub == "audit.interval_s") {
+    c.audit.interval_s = parse_positive_config_real(key, val); return true;
+  }
+  if (sub == "audit_tolerance" || sub == "audit.tolerance") {
+    c.audit.tolerance = parse_positive_config_real(key, val); return true;
+  }
+  if (sub == "audit_halt" || sub == "audit.halt" ||
+      sub == "audit.halt_on_exceed") {
+    c.audit.halt_on_exceed = parse_bool_config(val); return true;
+  }
+  if (sub == "audit_lineage_file" || sub == "audit.lineage_file") {
+    c.audit.lineage_file = val; return true;
+  }
   if (sub == "timeseries_file") { c.timeseries_file = val; return true; }
   if (sub == "summary_interval_steps") { c.summary_interval_steps = parse_positive_config_int(key, val); return true; }
   if (sub == "provenance_file") { c.provenance_file = val; return true; }

@@ -335,6 +335,110 @@ void test_checkpoint_roundtrip() {
 }
 #endif  // GUTIBM_HDF5
 
+// ── Issue #465: Layer-3 multi-slot live pass-through & try_deposit ─────
+void test_layer3_live_patch_try_deposit_and_closure() {
+  SimulationConfig cfg = base_cfg();
+  cfg.b12_initial_conc = 1.0e-5;
+  for (auto& chem : cfg.chemicals) {
+    if (chem.name == "b12") {
+      chem.initial_conc = 1.0e-5;
+      chem.boundary_conc = 1.0e-5;
+    }
+  }
+  cfg.fixes.bacteriocin.sos_basal_rate = 0.015;
+  cfg.fixes.bacteriocin.burst_release_tau = 60.0;
+  cfg.fixes.receptor.kill_rate_colicin = 0.1;
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain c_strain;
+  c_strain.type = 1;
+  c_strain.count = 40;
+  c_strain.mu_max = 8.0e-4;
+  c_strain.plasmids = {"ColE2"};
+  SimulationConfig::InitialStrain s_strain;
+  s_strain.type = 2;
+  s_strain.count = 40;
+  s_strain.mu_max = 8.0e-4;
+  SimulationConfig::InitialStrain r_strain;
+  r_strain.type = 3;
+  r_strain.count = 20;
+  r_strain.mu_max = 7.5e-4;
+  test::declare_resistant_founder(r_strain);
+  cfg.initial_strains = {c_strain, s_strain, r_strain};
+
+  cfg.domain.grid_dx = 2.0e-6;
+  cfg.layer2.patch_lateral_m = 40.0e-6;
+  cfg.layer2.patch_depth_m = 30.0e-6;
+  cfg.layer2.initial_patch_fraction = 0.5;
+  cfg.layer2.initial_founder_cells = 12;
+  cfg.layer2.initial_pool_cells = 12;
+  cfg.layer2.bloom_factor = 100.0;
+  cfg.layer2.audit.patch_index = -1;
+  cfg.layer2.audit.patch_indices = {0, 1};
+  cfg.layer2.audit.halt_on_exceed = false;
+
+  cfg.layer3.n_patches_per_region = 2;
+  cfg.layer3.lumen_seed_cells = 3000.0;
+  cfg.layer3.reattach_p0 = 0.9;
+
+  ColonicChain chain;
+  chain.init(cfg);
+
+  // Verify after step 1 that luminal-to-mucosal try_deposit lands on Active
+  // live patches at outermost grid cell center z = L_z - 0.5 * dz = 29 um.
+  chain.step(cfg.time.bio_dt);
+  assert(chain.termination_cause() == TerminationCause::IncompleteUnknown);
+  assert(chain.ledger_closed());
+
+  Int step1_live_deposits = 0;
+  for (Int r = 0; r < kRegionCount; ++r) {
+    const auto rv = chain.region(r);
+    assert(rv.segment.patches()[0].live && rv.segment.patches()[1].live);
+    assert(rv.segment.ledger_closed());
+    rv.segment.for_each_colonist([&](const Agent& a) {
+      if (is_deposit_tag(a.identity.tag)) {
+        ++step1_live_deposits;
+        assert(std::abs(a.x[2] - 29.0e-6) < 1e-18);
+      }
+    });
+  }
+  assert(step1_live_deposits > 0);
+
+  for (int step = 1; step < 8; ++step) {
+    chain.step(cfg.time.bio_dt);
+    assert(chain.termination_cause() == TerminationCause::IncompleteUnknown);
+    assert(chain.ledger_closed());
+    for (Int r = 0; r < kRegionCount; ++r) {
+      const auto rv = chain.region(r);
+      assert(rv.segment.ledger_closed());
+      const auto& L = rv.segment.ledger();
+      assert(L.biological_deaths == L.sos_lysis_deaths + L.toxin_kill_deaths);
+    }
+  }
+
+  Int total_external = 0;
+  Int total_deaths = 0;
+  Int total_sos = 0;
+  Int total_kill = 0;
+  for (Int r = 0; r < kRegionCount; ++r) {
+    const auto& L = chain.region(r).segment.ledger();
+    total_external += L.external_arrivals;
+    total_deaths += L.biological_deaths;
+    total_sos += L.sos_lysis_deaths;
+    total_kill += L.toxin_kill_deaths;
+  }
+  assert(total_external > 0);
+  assert(total_sos > 0);
+  assert(total_kill > 0);
+  assert(total_deaths == total_sos + total_kill);
+  assert(std::abs(chain.ledger().mucosal_deaths -
+                  static_cast<Real>(total_deaths)) < 1e-9);
+  std::cout << "layer3_live_try_deposit: external=" << total_external
+            << " sos_lysis=" << total_sos
+            << " toxin_kills=" << total_kill
+            << " mucosal_deaths=" << total_deaths << '\n';
+}
+
 }  // namespace
 
 int main() {
@@ -346,6 +450,7 @@ int main() {
 #endif
   test_lumen_exemplar_genotype();
   test_capability_limit_reports_dead_params();
+  test_layer3_live_patch_try_deposit_and_closure();
   std::cout << "test_layer3_chain: all tests passed\n";
   return 0;
 }

@@ -49,11 +49,12 @@ struct ChainLedger {
   Real luminal_births = 0.0;   // deterministic luminal divisions
   Real stool_exports = 0.0;    // cells leaving region 2 to stool
   Real luminal_deaths = 0.0;   // transfer-survival losses between regions
+  Real mucosal_deaths = 0.0;   // sum of segment ledger.biological_deaths
   Real purged = 0.0;           // one-time luminal flush (recovery probe)
 
   [[nodiscard]] Real expected_stocks() const {
     return initial_cells + mucosal_births + luminal_births - stool_exports -
-           luminal_deaths - purged;
+           luminal_deaths - mucosal_deaths - purged;
   }
 };
 

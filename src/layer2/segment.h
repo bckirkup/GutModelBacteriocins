@@ -43,6 +43,7 @@ extern "C" {
 #include <deque>
 #include <fstream>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -92,7 +93,8 @@ struct LuminalPacket {
 // luminal decrement). `biological_deaths` is the only channel that
 // removes a cell without a packet: kills inside a live patch
 // (colicin/CDI/lysis) harvested from the embedded Simulation's
-// StepEvents mortality counters each step.
+// StepEvents mortality counters each step, decomposed into
+// `sos_lysis_deaths` and `toxin_kill_deaths`.
 struct SegmentLedger {
   Int initial_cells = 0;
   Int births = 0;
@@ -103,6 +105,8 @@ struct SegmentLedger {
   Int distal_losses = 0;           // cells pool->distal exit
   Int external_arrivals = 0;       // cells external->patch (Layer-3)
   Int biological_deaths = 0;       // cells killed inside a live patch
+  Int sos_lysis_deaths = 0;        // producer SOS/phage lysis deaths
+  Int toxin_kill_deaths = 0;       // receptor colicin + CDI kill deaths
 
   [[nodiscard]] Int expected_stocks() const {
     return initial_cells + births + external_arrivals - distal_losses -
@@ -136,7 +140,14 @@ struct AuditRecord {
   Real rel_diff = 0.0;
 };
 
-// Internal bookkeeping for the live audit slot.
+struct HaltedPatchRecord {
+  Int patch_id = -1;
+  PatchStatus status = PatchStatus::Active;
+  Int halt_step = 0;
+  Real halt_time_s = 0.0;
+};
+
+// Internal bookkeeping for a live audit slot.
 struct LivePatchState {
   std::unique_ptr<Simulation> sim;
   std::vector<Agent> harvested_singles;   // washout exports pending packets
@@ -146,8 +157,10 @@ struct LivePatchState {
   Real window_start_time = -1;
   bool shadow_valid = false;
   Int last_live_birth_count = 0;
-  Int last_live_death_count = 0;   // cumulative mortality counters seen
-  TagID live_seed = 0;             // resolved Simulation seed (provenance)
+  Int last_live_death_count = 0;      // cumulative mortality counters seen
+  Int last_live_sos_lysis_count = 0;  // cumulative SOS/phage lysis seen
+  Int last_live_toxin_kill_count = 0; // cumulative colicin/CDI kills seen
+  TagID live_seed = 0;                // resolved Simulation seed (provenance)
   // Cumulative cells exported patch->pool per founder lineage
   // (single-channel cells + fragment-channel cells).
   std::unordered_map<TagID, Int> emigrants_by_lineage;
@@ -194,7 +207,8 @@ class MucusSegment {
   // One external arrival attempt into the mucosal layer: the target
   // patch is drawn uniformly via `stream_key` (caller supplies an
   // order-stable key so results are order-invariant under G3).
-  // Succeeds only when the draw lands on an Active, non-live patch;
+  // Succeeds when the draw lands on an Active patch (and for a live
+  // patch, within-domain coordinates after outermost-cell z-landing);
   // returns false otherwise and the caller keeps the cell.
   bool try_deposit(Agent&& a, uint64_t stream_key);
 
@@ -202,6 +216,7 @@ class MucusSegment {
   [[nodiscard]] const std::deque<LuminalPacket>& pool() const { return pool_; }
   [[nodiscard]] const SegmentLedger& ledger() const { return ledger_; }
   [[nodiscard]] SegmentObservables observables() const;
+  [[nodiscard]] Int patch_count(const Patch& patch) const;
 
   // Read-only traversal of every live patch colonist (testing/audit
   // observability; no RNG draws).
@@ -217,6 +232,9 @@ class MucusSegment {
   [[nodiscard]] Int step_count() const { return step_count_; }
   [[nodiscard]] const std::vector<AuditRecord>& audit_records() const {
     return audit_records_;
+  }
+  [[nodiscard]] const std::vector<HaltedPatchRecord>& halted_patches() const {
+    return halted_patches_;
   }
   [[nodiscard]] bool ledger_closed() const;
 
@@ -241,7 +259,7 @@ class MucusSegment {
   void seed_initial_colonists();
   void seed_initial_pool();
   void admissibility_check() const;
-  void init_audit_slot();
+  void init_live_slots();
   SimulationConfig live_config_for(const Patch& patch) const;
 
   // per-step phases
@@ -256,7 +274,7 @@ class MucusSegment {
   bool insert_pool_packet(Patch& dest, std::vector<Agent>& cells);
   void audit_check();
   void shadow_step(Patch& live_patch, Real dt);
-  void guard_update(Patch& patch);
+  void guard_update(Patch& patch, Real dt);
   void run_level_guards();
   void emit_timeseries_row(std::ofstream& out) const;
   void emit_lineage_rows(std::ofstream& out) const;
@@ -272,7 +290,6 @@ class MucusSegment {
   // helpers
   const Layer2TypeConfig& type_config(PatchType t) const;
   Real patch_volume_mL() const;
-  Int patch_count(const Patch& patch) const;
   Int spatial_capacity_cells() const;
   // `stream_key` seeds the packet's RNG; callers pass an order-stable
   // identity (departing cell tag or patch id x step) so results are
@@ -289,7 +306,7 @@ class MucusSegment {
   std::vector<Patch> patches_;
   std::vector<Int> order_;          // patch iteration order (G3-invariant)
   std::deque<LuminalPacket> pool_;
-  std::unordered_map<Int, LivePatchState> live_;  // by patch id
+  std::map<Int, LivePatchState> live_;  // ordered by patch id
   std::unique_ptr<class PatchTable> table_;
 
   SegmentLedger ledger_;
@@ -307,6 +324,7 @@ class MucusSegment {
   TerminationCause termination_cause_ = TerminationCause::IncompleteUnknown;
   std::string termination_detail_;
   std::vector<AuditRecord> audit_records_;
+  std::vector<HaltedPatchRecord> halted_patches_;
 
   // Layer-3 coupling state (inert in standalone runs).
   Real contraction_rate_override_ = -1.0;  // <0 = use config value

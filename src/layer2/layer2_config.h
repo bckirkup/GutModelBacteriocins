@@ -13,6 +13,7 @@
 
 #include "types.h"
 #include <string>
+#include <vector>
 
 namespace gutibm {
 
@@ -43,11 +44,26 @@ struct Layer2TypeConfig {
 };
 
 struct Layer2AuditConfig {
-  Int patch_index = -1;        // -1 disables the live-patch audit gate
-  Real interval_s = 21600.0;   // discrepancy comparison cadence (6 h)
-  Real tolerance = 0.25;       // |N_live - N_shadow| / max(N_shadow, 1) bound
-  bool halt_on_exceed = true;  // terminate run vs record-only
-  std::string lineage_file;    // CSV per-lineage live-patch census; empty off
+  Int patch_index = -1;              // -1 disables the live-patch audit gate
+  std::vector<Int> patch_indices;    // multi-slot live-patch indices (0..N)
+  Real interval_s = 21600.0;         // discrepancy comparison cadence (6 h)
+  Real tolerance = 0.25;             // |N_live - N_shadow| / max(N_shadow, 1) bound
+  bool halt_on_exceed = true;        // terminate run vs record-only
+  std::string lineage_file;          // CSV per-lineage live-patch census; empty off
+
+  [[nodiscard]] bool has_live_patches() const {
+    return patch_index >= 0 || !patch_indices.empty();
+  }
+
+  [[nodiscard]] std::vector<Int> resolved_patch_indices() const {
+    if (!patch_indices.empty()) {
+      return patch_indices;
+    }
+    if (patch_index >= 0) {
+      return {patch_index};
+    }
+    return {};
+  }
 };
 
 struct Layer2Config {
