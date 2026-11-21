@@ -37,6 +37,111 @@
     "expected_stocks": 4500560000.0,
     "stocks": 4500560000.0,
     "closed": true
+   },
+   "post_purge_window_gt_48h": {
+    "purge_at_s": 172800.0,
+    "sample_count_per_region": 143,
+    "time_range_s": [
+     173400.0,
+     258600.0
+    ],
+    "stool_cfu_g": 8115686.6197183095,
+    "fractions": {
+     "cecum": 0.013797642937062937,
+     "transverse": 0.019312702097902097,
+     "descending": 0.04060197202797203
+    },
+    "flatness": 2.942674499780529,
+    "occupancy": {
+     "cecum": 0.994458041958042,
+     "transverse": 0.9984965034965034,
+     "descending": 0.9981293706293708
+    },
+    "patch_density_and_thresholds": {
+     "cecum": {
+      "occ_ge_1_frac": 0.994458041958042,
+      "occ_ge_10_frac": 0.9716038102722713,
+      "occ_ge_50_frac": 5.392673413800581e-08,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 18.342902097902098,
+      "mean_cells_per_occupied_patch": 18.435913293905344
+     },
+     "transverse": {
+      "occ_ge_1_frac": 0.9984965034965034,
+      "occ_ge_10_frac": 0.9996583583657768,
+      "occ_ge_50_frac": 0.00017138534055501678,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 26.06776223776224,
+      "mean_cells_per_occupied_patch": 26.107329495021254
+     },
+     "descending": {
+      "occ_ge_1_frac": 0.9981293706293708,
+      "occ_ge_10_frac": 0.9999999999995284,
+      "occ_ge_50_frac": 0.7631108140363565,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 57.21395104895105,
+      "mean_cells_per_occupied_patch": 57.314825676671965
+     }
+    }
+   },
+   "last_csv_sample": {
+    "cecum": {
+     "time_s": 258600.0,
+     "occ_frac": 0.9025,
+     "patch_cells": 6017,
+     "mean_cells_per_patch": 15.0425,
+     "mean_cells_per_occupied_patch": 16.667590027700832,
+     "mean_cfu_ml": 1135090.0,
+     "fraction_at_1e8": 0.0113509
+    },
+    "transverse": {
+     "time_s": 258600.0,
+     "occ_frac": 0.9975,
+     "patch_cells": 12484,
+     "mean_cells_per_patch": 31.21,
+     "mean_cells_per_occupied_patch": 31.288220551378448,
+     "mean_cfu_ml": 2312740.0,
+     "fraction_at_1e8": 0.0231274
+    },
+    "descending": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 27716,
+     "mean_cells_per_patch": 69.29,
+     "mean_cells_per_occupied_patch": 69.29,
+     "mean_cfu_ml": 4909740.0,
+     "fraction_at_1e8": 0.0490974
+    }
+   },
+   "endpoint_72h_prov": {
+    "wall_time_s": 259200.0,
+    "cumulative_stool_cfu_per_g": 14046100.0,
+    "regions": {
+     "cecum": {
+      "occupancy_frac": 0.8975,
+      "patch_cells": 6244,
+      "mean_cells_per_patch": 15.61,
+      "mean_cells_per_occupied_patch": 17.39275766016713,
+      "mean_cfu_ml": 1176700.0,
+      "fraction_at_1e8": 0.011767
+     },
+     "transverse": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 12782,
+      "mean_cells_per_patch": 31.955,
+      "mean_cells_per_occupied_patch": 31.955,
+      "mean_cfu_ml": 2367990.0,
+      "fraction_at_1e8": 0.0236799
+     },
+     "descending": {
+      "occupancy_frac": 0.9975,
+      "patch_cells": 27231,
+      "mean_cells_per_patch": 68.0775,
+      "mean_cells_per_occupied_patch": 68.24812030075188,
+      "mean_cfu_ml": 4824720.0,
+      "fraction_at_1e8": 0.0482472
+     }
+    }
    }
   },
   "1002": {
@@ -76,6 +181,111 @@
     "expected_stocks": 4500520000.0,
     "stocks": 4500520000.0,
     "closed": true
+   },
+   "post_purge_window_gt_48h": {
+    "purge_at_s": 172800.0,
+    "sample_count_per_region": 143,
+    "time_range_s": [
+     173400.0,
+     258600.0
+    ],
+    "stool_cfu_g": 8115607.394366196,
+    "fractions": {
+     "cecum": 0.013847712937062938,
+     "transverse": 0.020631906293706294,
+     "descending": 0.030135231468531472
+    },
+    "flatness": 2.176188342832811,
+    "occupancy": {
+     "cecum": 0.9963986013986015,
+     "transverse": 0.9984440559440559,
+     "descending": 0.9981993006993007
+    },
+    "patch_density_and_thresholds": {
+     "cecum": {
+      "occ_ge_1_frac": 0.9963986013986015,
+      "occ_ge_10_frac": 0.9312076236400274,
+      "occ_ge_50_frac": 5.8258324295271135e-09,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 16.422010489510487,
+      "mean_cells_per_occupied_patch": 16.474451627062653
+     },
+     "transverse": {
+      "occ_ge_1_frac": 0.9984440559440559,
+      "occ_ge_10_frac": 0.9999140564189188,
+      "occ_ge_50_frac": 0.0010958994661931377,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 28.36874125874126,
+      "mean_cells_per_occupied_patch": 28.417116854098346
+     },
+     "descending": {
+      "occ_ge_1_frac": 0.9981993006993007,
+      "occ_ge_10_frac": 0.9999999984760196,
+      "occ_ge_50_frac": 0.1936191660450455,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 43.21669580419581,
+      "mean_cells_per_occupied_patch": 43.292858869086544
+     }
+    }
+   },
+   "last_csv_sample": {
+    "cecum": {
+     "time_s": 258600.0,
+     "occ_frac": 0.96,
+     "patch_cells": 5170,
+     "mean_cells_per_patch": 12.925,
+     "mean_cells_per_occupied_patch": 13.463541666666666,
+     "mean_cfu_ml": 1130640.0,
+     "fraction_at_1e8": 0.0113064
+    },
+    "transverse": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 10992,
+     "mean_cells_per_patch": 27.48,
+     "mean_cells_per_occupied_patch": 27.48,
+     "mean_cfu_ml": 2001690.0,
+     "fraction_at_1e8": 0.0200169
+    },
+    "descending": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 20153,
+     "mean_cells_per_patch": 50.3825,
+     "mean_cells_per_occupied_patch": 50.3825,
+     "mean_cfu_ml": 3511430.0,
+     "fraction_at_1e8": 0.0351143
+    }
+   },
+   "endpoint_72h_prov": {
+    "wall_time_s": 259200.0,
+    "cumulative_stool_cfu_per_g": 14049200.0,
+    "regions": {
+     "cecum": {
+      "occupancy_frac": 0.9625,
+      "patch_cells": 5169,
+      "mean_cells_per_patch": 12.9225,
+      "mean_cells_per_occupied_patch": 13.425974025974027,
+      "mean_cfu_ml": 1130930.0,
+      "fraction_at_1e8": 0.0113093
+     },
+     "transverse": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 11445,
+      "mean_cells_per_patch": 28.6125,
+      "mean_cells_per_occupied_patch": 28.6125,
+      "mean_cfu_ml": 2084810.0,
+      "fraction_at_1e8": 0.0208481
+     },
+     "descending": {
+      "occupancy_frac": 0.9975,
+      "patch_cells": 19255,
+      "mean_cells_per_patch": 48.1375,
+      "mean_cells_per_occupied_patch": 48.258145363408524,
+      "mean_cfu_ml": 3353660.0,
+      "fraction_at_1e8": 0.0335366
+     }
+    }
    }
   },
   "1003": {
@@ -115,6 +325,111 @@
     "expected_stocks": 4500510000.0,
     "stocks": 4500510000.0,
     "closed": true
+   },
+   "post_purge_window_gt_48h": {
+    "purge_at_s": 172800.0,
+    "sample_count_per_region": 143,
+    "time_range_s": [
+     173400.0,
+     258600.0
+    ],
+    "stool_cfu_g": 8115528.169014084,
+    "fractions": {
+     "cecum": 0.013558581958041957,
+     "transverse": 0.019322596503496502,
+     "descending": 0.027811683916083914
+    },
+    "flatness": 2.0512236458170365,
+    "occupancy": {
+     "cecum": 0.995034965034965,
+     "transverse": 0.9984615384615385,
+     "descending": 0.9981643356643357
+    },
+    "patch_density_and_thresholds": {
+     "cecum": {
+      "occ_ge_1_frac": 0.995034965034965,
+      "occ_ge_10_frac": 0.9669482191711036,
+      "occ_ge_50_frac": 4.951013738418453e-07,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 18.870174825174825,
+      "mean_cells_per_occupied_patch": 18.95381394909303
+     },
+     "transverse": {
+      "occ_ge_1_frac": 0.9984615384615385,
+      "occ_ge_10_frac": 0.9981401036829025,
+      "occ_ge_50_frac": 2.6556269584399127e-06,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 22.322342657342656,
+      "mean_cells_per_occupied_patch": 22.356083159458386
+     },
+     "descending": {
+      "occ_ge_1_frac": 0.9981643356643357,
+      "occ_ge_10_frac": 0.9999997068915573,
+      "occ_ge_50_frac": 0.022089199436380026,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 36.02122377622378,
+      "mean_cells_per_occupied_patch": 36.086386766503296
+     }
+    }
+   },
+   "last_csv_sample": {
+    "cecum": {
+     "time_s": 258600.0,
+     "occ_frac": 0.905,
+     "patch_cells": 6119,
+     "mean_cells_per_patch": 15.2975,
+     "mean_cells_per_occupied_patch": 16.903314917127073,
+     "mean_cfu_ml": 1089900.0,
+     "fraction_at_1e8": 0.010899
+    },
+    "transverse": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 10388,
+     "mean_cells_per_patch": 25.97,
+     "mean_cells_per_occupied_patch": 25.97,
+     "mean_cfu_ml": 2222100.0,
+     "fraction_at_1e8": 0.022221
+    },
+    "descending": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 15275,
+     "mean_cells_per_patch": 38.1875,
+     "mean_cells_per_occupied_patch": 38.1875,
+     "mean_cfu_ml": 2944520.0,
+     "fraction_at_1e8": 0.0294452
+    }
+   },
+   "endpoint_72h_prov": {
+    "wall_time_s": 259200.0,
+    "cumulative_stool_cfu_per_g": 14046100.0,
+    "regions": {
+     "cecum": {
+      "occupancy_frac": 0.9125,
+      "patch_cells": 6214,
+      "mean_cells_per_patch": 15.535,
+      "mean_cells_per_occupied_patch": 17.024657534246575,
+      "mean_cfu_ml": 1110060.0,
+      "fraction_at_1e8": 0.0111006
+     },
+     "transverse": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 10160,
+      "mean_cells_per_patch": 25.4,
+      "mean_cells_per_occupied_patch": 25.4,
+      "mean_cfu_ml": 2189470.0,
+      "fraction_at_1e8": 0.0218947
+     },
+     "descending": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 14705,
+      "mean_cells_per_patch": 36.7625,
+      "mean_cells_per_occupied_patch": 36.7625,
+      "mean_cfu_ml": 2836680.0,
+      "fraction_at_1e8": 0.0283668
+     }
+    }
    }
   }
  },
@@ -156,6 +471,111 @@
     "expected_stocks": 3124960000.0,
     "stocks": 3124960000.0,
     "closed": true
+   },
+   "post_purge_window_gt_48h": {
+    "purge_at_s": 172800.0,
+    "sample_count_per_region": 143,
+    "time_range_s": [
+     173400.0,
+     258600.0
+    ],
+    "stool_cfu_g": 8000889.084507042,
+    "fractions": {
+     "cecum": 0.019741293706293708,
+     "transverse": 0.016666404895104892,
+     "descending": 0.01769837062937063
+    },
+    "flatness": 1.1844962264232488,
+    "occupancy": {
+     "cecum": 0.9984265734265735,
+     "transverse": 0.9981468531468533,
+     "descending": 0.9972027972027971
+    },
+    "patch_density_and_thresholds": {
+     "cecum": {
+      "occ_ge_1_frac": 0.9984265734265735,
+      "occ_ge_10_frac": 0.9998247404325276,
+      "occ_ge_50_frac": 6.498808261013288e-05,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 26.176573426573427,
+      "mean_cells_per_occupied_patch": 26.217316598458137
+     },
+     "transverse": {
+      "occ_ge_1_frac": 0.9981468531468533,
+      "occ_ge_10_frac": 0.9973734736141282,
+      "occ_ge_50_frac": 1.6078538973773328e-05,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 22.495716783216782,
+      "mean_cells_per_occupied_patch": 22.537059226696787
+     },
+     "descending": {
+      "occ_ge_1_frac": 0.9972027972027971,
+      "occ_ge_10_frac": 0.9995460932897823,
+      "occ_ge_50_frac": 3.7893958344157135e-05,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 24.763863636363638,
+      "mean_cells_per_occupied_patch": 24.833474925269154
+     }
+    }
+   },
+   "last_csv_sample": {
+    "cecum": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 11425,
+     "mean_cells_per_patch": 28.5625,
+     "mean_cells_per_occupied_patch": 28.5625,
+     "mean_cfu_ml": 2152400.0,
+     "fraction_at_1e8": 0.021524
+    },
+    "transverse": {
+     "time_s": 258600.0,
+     "occ_frac": 0.9975,
+     "patch_cells": 11272,
+     "mean_cells_per_patch": 28.18,
+     "mean_cells_per_occupied_patch": 28.25062656641604,
+     "mean_cfu_ml": 2088260.0,
+     "fraction_at_1e8": 0.0208826
+    },
+    "descending": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 12279,
+     "mean_cells_per_patch": 30.6975,
+     "mean_cells_per_occupied_patch": 30.6975,
+     "mean_cfu_ml": 2190280.0,
+     "fraction_at_1e8": 0.0219028
+    }
+   },
+   "endpoint_72h_prov": {
+    "wall_time_s": 259200.0,
+    "cumulative_stool_cfu_per_g": 10615900.0,
+    "regions": {
+     "cecum": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 10531,
+      "mean_cells_per_patch": 26.3275,
+      "mean_cells_per_occupied_patch": 26.3275,
+      "mean_cfu_ml": 1985790.0,
+      "fraction_at_1e8": 0.0198579
+     },
+     "transverse": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 11732,
+      "mean_cells_per_patch": 29.33,
+      "mean_cells_per_occupied_patch": 29.33,
+      "mean_cfu_ml": 2172570.0,
+      "fraction_at_1e8": 0.0217257
+     },
+     "descending": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 12087,
+      "mean_cells_per_patch": 30.2175,
+      "mean_cells_per_occupied_patch": 30.2175,
+      "mean_cfu_ml": 2154000.0,
+      "fraction_at_1e8": 0.02154
+     }
+    }
    }
   },
   "1002": {
@@ -195,6 +615,111 @@
     "expected_stocks": 3124950000.0,
     "stocks": 3124950000.0,
     "closed": true
+   },
+   "post_purge_window_gt_48h": {
+    "purge_at_s": 172800.0,
+    "sample_count_per_region": 143,
+    "time_range_s": [
+     173400.0,
+     258600.0
+    ],
+    "stool_cfu_g": 8000889.084507042,
+    "fractions": {
+     "cecum": 0.01900173006993007,
+     "transverse": 0.02146430909090909,
+     "descending": 0.01556431118881119
+    },
+    "flatness": 1.3790722140237897,
+    "occupancy": {
+     "cecum": 0.998548951048951,
+     "transverse": 0.9982167832167832,
+     "descending": 0.9971328671328672
+    },
+    "patch_density_and_thresholds": {
+     "cecum": {
+      "occ_ge_1_frac": 0.998548951048951,
+      "occ_ge_10_frac": 0.9972769316166095,
+      "occ_ge_50_frac": 2.374234549364405e-06,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 21.951748251748253,
+      "mean_cells_per_occupied_patch": 21.982698318056194
+     },
+     "transverse": {
+      "occ_ge_1_frac": 0.9982167832167832,
+      "occ_ge_10_frac": 0.9999681535210017,
+      "occ_ge_50_frac": 0.0009018929979244437,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 29.523006993006994,
+      "mean_cells_per_occupied_patch": 29.578028760973282
+     },
+     "descending": {
+      "occ_ge_1_frac": 0.9971328671328672,
+      "occ_ge_10_frac": 0.9981118195379979,
+      "occ_ge_50_frac": 8.37207502913683e-07,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 22.0986013986014,
+      "mean_cells_per_occupied_patch": 22.16249668230137
+     }
+    }
+   },
+   "last_csv_sample": {
+    "cecum": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 10047,
+     "mean_cells_per_patch": 25.1175,
+     "mean_cells_per_occupied_patch": 25.1175,
+     "mean_cfu_ml": 2180920.0,
+     "fraction_at_1e8": 0.0218092
+    },
+    "transverse": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 10927,
+     "mean_cells_per_patch": 27.3175,
+     "mean_cells_per_occupied_patch": 27.3175,
+     "mean_cfu_ml": 1986440.0,
+     "fraction_at_1e8": 0.0198644
+    },
+    "descending": {
+     "time_s": 258600.0,
+     "occ_frac": 0.9975,
+     "patch_cells": 8796,
+     "mean_cells_per_patch": 21.99,
+     "mean_cells_per_occupied_patch": 22.045112781954888,
+     "mean_cfu_ml": 1550310.0,
+     "fraction_at_1e8": 0.0155031
+    }
+   },
+   "endpoint_72h_prov": {
+    "wall_time_s": 259200.0,
+    "cumulative_stool_cfu_per_g": 10619200.0,
+    "regions": {
+     "cecum": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 9914,
+      "mean_cells_per_patch": 24.785,
+      "mean_cells_per_occupied_patch": 24.785,
+      "mean_cfu_ml": 2164590.0,
+      "fraction_at_1e8": 0.0216459
+     },
+     "transverse": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 11107,
+      "mean_cells_per_patch": 27.7675,
+      "mean_cells_per_occupied_patch": 27.7675,
+      "mean_cfu_ml": 2019880.0,
+      "fraction_at_1e8": 0.0201988
+     },
+     "descending": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 8992,
+      "mean_cells_per_patch": 22.48,
+      "mean_cells_per_occupied_patch": 22.48,
+      "mean_cfu_ml": 1585990.0,
+      "fraction_at_1e8": 0.0158599
+     }
+    }
    }
   },
   "1003": {
@@ -234,6 +759,111 @@
     "expected_stocks": 3124950000.0,
     "stocks": 3124950000.0,
     "closed": true
+   },
+   "post_purge_window_gt_48h": {
+    "purge_at_s": 172800.0,
+    "sample_count_per_region": 143,
+    "time_range_s": [
+     173400.0,
+     258600.0
+    ],
+    "stool_cfu_g": 8000809.859154929,
+    "fractions": {
+     "cecum": 0.017235187412587415,
+     "transverse": 0.019583641958041957,
+     "descending": 0.01704384965034965
+    },
+    "flatness": 1.1490151790701935,
+    "occupancy": {
+     "cecum": 0.9981818181818183,
+     "transverse": 0.9982867132867133,
+     "descending": 0.9971153846153846
+    },
+    "patch_density_and_thresholds": {
+     "cecum": {
+      "occ_ge_1_frac": 0.9981818181818183,
+      "occ_ge_10_frac": 0.9988922292666061,
+      "occ_ge_50_frac": 1.9118791668531216e-05,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 24.07944055944056,
+      "mean_cells_per_occupied_patch": 24.11999573905935
+     },
+     "transverse": {
+      "occ_ge_1_frac": 0.9982867132867133,
+      "occ_ge_10_frac": 0.9985199622536114,
+      "occ_ge_50_frac": 1.307177971828148e-06,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 22.572412587412586,
+      "mean_cells_per_occupied_patch": 22.609936847499963
+     },
+     "descending": {
+      "occ_ge_1_frac": 0.9971153846153846,
+      "occ_ge_10_frac": 0.9956105107494987,
+      "occ_ge_50_frac": 8.145696059314421e-05,
+      "threshold_source": "poisson_reference_from_mean_cells_per_patch",
+      "mean_cells_per_patch": 22.196083916083914,
+      "mean_cells_per_occupied_patch": 22.255300279443894
+     }
+    }
+   },
+   "last_csv_sample": {
+    "cecum": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 9186,
+     "mean_cells_per_patch": 22.965,
+     "mean_cells_per_occupied_patch": 22.965,
+     "mean_cfu_ml": 1643910.0,
+     "fraction_at_1e8": 0.0164391
+    },
+    "transverse": {
+     "time_s": 258600.0,
+     "occ_frac": 1.0,
+     "patch_cells": 8929,
+     "mean_cells_per_patch": 22.3225,
+     "mean_cells_per_occupied_patch": 22.3225,
+     "mean_cfu_ml": 1929670.0,
+     "fraction_at_1e8": 0.0192967
+    },
+    "descending": {
+     "time_s": 258600.0,
+     "occ_frac": 0.9975,
+     "patch_cells": 12080,
+     "mean_cells_per_patch": 30.2,
+     "mean_cells_per_occupied_patch": 30.275689223057643,
+     "mean_cfu_ml": 2324170.0,
+     "fraction_at_1e8": 0.0232417
+    }
+   },
+   "endpoint_72h_prov": {
+    "wall_time_s": 259200.0,
+    "cumulative_stool_cfu_per_g": 10614900.0,
+    "regions": {
+     "cecum": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 9854,
+      "mean_cells_per_patch": 24.635,
+      "mean_cells_per_occupied_patch": 24.635,
+      "mean_cfu_ml": 1767510.0,
+      "fraction_at_1e8": 0.0176751
+     },
+     "transverse": {
+      "occupancy_frac": 0.9975,
+      "patch_cells": 9073,
+      "mean_cells_per_patch": 22.6825,
+      "mean_cells_per_occupied_patch": 22.739348370927317,
+      "mean_cfu_ml": 1963160.0,
+      "fraction_at_1e8": 0.0196316
+     },
+     "descending": {
+      "occupancy_frac": 1.0,
+      "patch_cells": 11683,
+      "mean_cells_per_patch": 29.2075,
+      "mean_cells_per_occupied_patch": 29.2075,
+      "mean_cfu_ml": 2249200.0,
+      "fraction_at_1e8": 0.022492
+     }
+    }
    }
   }
  }

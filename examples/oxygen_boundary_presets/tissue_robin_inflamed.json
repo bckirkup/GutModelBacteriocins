@@ -1,0 +1,50 @@
+{
+  "_comment": [
+    "GAP-08 (#470) Preset B2: Submucosal tissue-reservoir Robin O2 boundary (inflamed / dysbiotic mucosa).",
+    "Models elevated epithelial O2 transfer (k = 3.6e-6 m/s) and depleted obligate-anaerobe scavenging (vbf_sink = 2.0e-4 /s)",
+    "expanding the micro-oxic zone for facultative Enterobacteriaceae respiration."
+  ],
+  "seed": 20261101,
+  "total_time": 7200,
+  "bio_dt": 60,
+  "domain_x": 0.0001,
+  "domain_y": 0.0001,
+  "domain_z": 0.0001,
+  "grid_dx": 4e-06,
+  "mucus_thickness": 0.0001,
+  "dysbiosis_threshold": 0,
+  "hdf5": {
+    "enabled": false
+  },
+  "uptake_limit": "delivery",
+  "delivery_far_field_radius": 1e-05,
+  "oxygen.enabled": true,
+  "oxygen.epithelial_boundary": "robin",
+  "oxygen.epithelial_conc": 0.055,
+  "oxygen.epithelial_transfer_coeff": 3.6e-06,
+  "oxygen.z_gradient": false,
+  "oxygen.delivery_uptake_enabled": true,
+  "oxygen.respiration_driver": "funded",
+  "oxygen.vbf_sink": 0.0002,
+  "oxygen.metabolic_switch_enabled": true,
+  "carbon_maintenance_rate": 2.1e-05,
+  "oxygen.anaerobic_maintenance_factor": 5.5,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [
+        "ColE2"
+      ],
+      "conjugative": false
+    },
+    {
+      "type": 2,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ]
+}

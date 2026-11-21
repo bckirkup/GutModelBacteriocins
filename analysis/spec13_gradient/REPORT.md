@@ -82,6 +82,35 @@ CFU/mL and stool CFU/g are unchanged, as are the six closed ledgers and
 all non-fraction summary fields. Both arms still pass stool and flatness;
 `verdicts.csv` is byte-identical to the historical file.
 
+### Post-purge window (`> 48 h`) vs `71h50m` sample vs `72 h` endpoint (GAP-05 / #467)
+
+Because the `48 h` (`172,800 s`) luminal purge executes after step `2880` is emitted (`purged_cum = 0` at both `t = 172,200 s` and `t = 172,800 s`, jumping to `5.68e9` at `t = 173,400 s`), `run_readout.py` now reports three distinct temporal summaries alongside the preserved 145-sample legacy window (`47h50m–71h50m`):
+
+1. **Strictly post-purge window (`t > 48 h`, `173,400–258,600 s`, 143 samples/region):** Stool output is `8.12e6 CFU/g` (`gradient`) and `8.00e6 CFU/g` (`uniform`), with mucosal flatness `2.05–2.94` (`gradient`) and `1.15–1.38` (`uniform`) — preserving every Phase-3 gate verdict.
+2. **Last time-series CSV sample (`71h50m`, `258,600 s`) vs exact `72 h` (`259,200 s`) `prov.json` endpoint:** Terminal contraction/HAPC shedding lowers instantaneous cecal binary occupancy to `90.25%–96.00%` at `71h50m` and `89.75%–96.25%` at exact `72 h` (`gradient`), distinct from the `99.45%–99.64%` post-purge window mean.
+3. **Microcolony density & count-thresholded reference occupancy (`N >= 1, 10, 50` cells/patch):** Occupied patches carry `16.5–19.0` (`cecum`), `22.4–28.4` (`transverse`), and `36.1–57.3` (`descending`) cells per occupied patch in the `gradient` arm (`22.0–29.6` in `uniform`), confirming multi-cell microcolonies rather than single transient immigrants, while high-threshold (`N >= 50` Poisson reference) occupancy separates descending mucosa (`2.2%–76.3%`) from cecum/transverse (`<= 0.11%`). A dedicated `2 x 3` `reattach_p0` (`0.1x, 0.3x, 1.0x`) x (`gradient`, `uniform`) sensitivity generator is staged in `experiments/spec13_occupancy_sensitivity/prepare.py`.
+
+| Arm | Seed | Region | Post-48h `N>=1` (%) | `71h50m` (%) | `72h` prov (%) | Cells / occ patch | Poisson ref `N>=10` / `N>=50` (%) |
+|---|---:|---|---:|---:|---:|---:|---:|
+| Gradient | 1001 | Cecum | 99.45 | 90.25 | 89.75 | 18.44 | 97.16 / 0.00 |
+| Gradient | 1001 | Transverse | 99.85 | 99.75 | 100.00 | 26.11 | 99.97 / 0.02 |
+| Gradient | 1001 | Descending | 99.81 | 100.00 | 99.75 | 57.31 | 100.00 / 76.31 |
+| Gradient | 1002 | Cecum | 99.64 | 96.00 | 96.25 | 16.47 | 93.12 / 0.00 |
+| Gradient | 1002 | Transverse | 99.84 | 100.00 | 100.00 | 28.42 | 99.99 / 0.11 |
+| Gradient | 1002 | Descending | 99.82 | 100.00 | 99.75 | 43.29 | 100.00 / 19.36 |
+| Gradient | 1003 | Cecum | 99.50 | 90.50 | 91.25 | 18.95 | 96.69 / 0.00 |
+| Gradient | 1003 | Transverse | 99.85 | 100.00 | 100.00 | 22.36 | 99.81 / 0.00 |
+| Gradient | 1003 | Descending | 99.82 | 100.00 | 100.00 | 36.09 | 100.00 / 2.21 |
+| Uniform | 1001 | Cecum | 99.84 | 100.00 | 100.00 | 26.22 | 99.98 / 0.01 |
+| Uniform | 1001 | Transverse | 99.81 | 99.75 | 100.00 | 22.54 | 99.74 / 0.00 |
+| Uniform | 1001 | Descending | 99.72 | 100.00 | 100.00 | 24.83 | 99.95 / 0.00 |
+| Uniform | 1002 | Cecum | 99.85 | 100.00 | 100.00 | 21.98 | 99.73 / 0.00 |
+| Uniform | 1002 | Transverse | 99.82 | 100.00 | 100.00 | 29.58 | 100.00 / 0.09 |
+| Uniform | 1002 | Descending | 99.71 | 99.75 | 100.00 | 22.16 | 99.81 / 0.00 |
+| Uniform | 1003 | Cecum | 99.82 | 100.00 | 100.00 | 24.12 | 99.89 / 0.00 |
+| Uniform | 1003 | Transverse | 99.83 | 100.00 | 99.75 | 22.61 | 99.85 / 0.00 |
+| Uniform | 1003 | Descending | 99.71 | 99.75 | 100.00 | 22.26 | 99.56 / 0.01 |
+
 ## S9 observable set — what each pins
 
 | Observable | Result | Parameter(s) it pins |

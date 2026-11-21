@@ -1,0 +1,45 @@
+{
+  "_comment": [
+    "GAP-08 (#470) Preset A2: Apical mucus-base Dirichlet O2 prior (murine distal colonic mucosal surface ~3 mmHg).",
+    "Fixes z=0 dissolved O2 at 3.93e-3 mol/m^3 (~3.0 mmHg; Konjar 2021 / Albenberg 2014 surface micro-oxic zone)",
+    "with dynamic reaction-diffusion (oxygen.z_gradient = false) and 5.5x anaerobic maintenance factor."
+  ],
+  "seed": 20261101,
+  "total_time": 7200,
+  "bio_dt": 60,
+  "domain_x": 0.0001,
+  "domain_y": 0.0001,
+  "domain_z": 0.0001,
+  "grid_dx": 4e-06,
+  "mucus_thickness": 0.0001,
+  "dysbiosis_threshold": 0,
+  "hdf5": {
+    "enabled": false
+  },
+  "oxygen.enabled": true,
+  "oxygen.epithelial_boundary": "dirichlet",
+  "oxygen.epithelial_conc": 0.00393,
+  "oxygen.z_gradient": false,
+  "oxygen.vbf_sink": 0.001,
+  "oxygen.metabolic_switch_enabled": true,
+  "carbon_maintenance_rate": 2.1e-05,
+  "oxygen.anaerobic_maintenance_factor": 5.5,
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [
+        "ColE2"
+      ],
+      "conjugative": false
+    },
+    {
+      "type": 2,
+      "count": 80,
+      "mu_max": 0.00055,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ]
+}
