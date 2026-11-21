@@ -2,7 +2,7 @@
 
 Living kanban for open work on [GutModelBacteriocins](https://github.com/bckirkup/GutModelBacteriocins).
 
-**Last updated:** 2026-08-13
+**Last updated:** 2026-11-21
 
 ## One-click setup (local)
 
@@ -30,7 +30,27 @@ This creates GitHub labels, milestones, a Projects v2 board, and links open issu
 
 ---
 
-## Current board state (Aug 2026)
+## Current board state (Nov 2026 — Cycle 2 Empirical Calibration & Multiscale Dispatch)
+
+The Sep–Nov 2026 campaigns and Layer 2/3 multiscale architecture waves (#307–#473) are **merged**, delivering Spec 12 delivery/ROS campaigns, Gate C single-source & ecological refinement adjudication (#429), Layer 2/3 `MucusSegment` + `CompartmentChain` + live audit patches (#453–#463), and the Cycle 2 210-DOI empirical calibration synthesis & Spec 13–14 audit (#456, #457, #473). Active Cycle 2 work is tracked across **#464–#483** (with automated S3 collector index maintained in #446).
+
+### Active Cycle 2 Queue (#464–#483)
+
+| Issue | Track | Priority | Scope |
+| :--- | :--- | :--- | :--- |
+| #464 | Spec 14 (`GAP-01`) | `critical` | Decouple BtuB receptor corrinoid shielding from obligate B12 Monod growth arrest + carriage-matched ColE2/ColIa/ColB controls |
+| #465, #476 | Spec 13 (`GAP-02` + I/O) | `critical` | Multi-slot (`0..N`) live patches, Active `try_deposit`, split `sos_lysis` vs `toxin_kill` ledger, and `segment_io.cpp` fixes |
+| #466 | Spec 13 (`GAP-03`) | `important` | Configurable `live_config_for` per-PatchType crypt flow refugia and oxygen/ROS inheritance |
+| #467 | Spec 13 (`GAP-05`) | `important` | Layer 3 mucosal occupancy sensitivity (`reattach_p0` vs luminal growth) and post-48h window vs 72h endpoint separation |
+| #468, #477 | Bacteriocin (`GAP-06`) | `important` | Per-division pair SOS normalization (`sos_lysis_prob`) and `D_free_colicin` vs per-plasmid `diff_coeff` contract |
+| #469, #470 | Spec 12 (`GAP-07`/`08`) | `important` | Wet-mass (`1,100 kg/m^3`) documentation, live-slot `delivery` sync, and Dirichlet vs Robin O2 presets + GPU maintenance guard |
+| #471, #474, #481 | Observation & Analysis | `important` | Optical-slice `depth_window_m`, abundance-weighted retention, Kirkup & Riley pellet/cage LOD censoring, and division-wave slope guards |
+| #472, #478, #479, #480 | Numerics, Metabolism & HPC | `important` | Layer-1 checkpoint RNG serialization, QSSA transient/wall-normal drift bounds, implicit iron VBF sink, GPU funded respiration, and MPI/GPU memory |
+| #475 | Spec 14 (`GAP-10`) | `gated (#464)` | Temperate prophage carriage, DNA-damage Hill induction, superinfection immunity, and lysogen conversion |
+| #482 | Campaign Governance | `important` | Stage D decision-record axis enforcement in `preflight.py` and HDF5 `container_image_digest` authentication in `analyze.py` |
+| #159 | GPU FMM Far-Field | `backlog` | Sub-quadratic CPU M2L delivered in #164; full device-side octree traversal remains low-priority backlog |
+
+### Historical Jul/Aug 2026 summary
 
 The Jul/Aug 2026 implementation wave (#256–#306, with #303 superseded before
 merge) is **closed**. It completed the MPI ownership and ledger work, the
@@ -69,7 +89,7 @@ _None_
 | #157 | GPU mechanics force kernel | #164 |
 | #159 | Sub-quadratic FMM M2L | #164 |
 | #160 | Metabolic washout trap long-horizon regression | #167 |
-| #161 | OpenMP stochastic toxin-kill parity | (PR pending) |
+| #161 | OpenMP stochastic toxin-kill parity | #168 |
 
 ### Done (Aug 2026 wave)
 

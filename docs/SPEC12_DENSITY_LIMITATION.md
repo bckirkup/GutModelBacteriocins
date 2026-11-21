@@ -71,6 +71,8 @@ an exploratory run.
 | 7 | Metabolic inertia lag | Not implemented |
 | 8 | Nutrient blocking fraction | Implemented, but **per species and per output interval, domain-wide** (`agent uptake + maintenance` over `that + VBF sink`), not per voxel as the spec asks |
 
+> **Repository parser warning:** Do not copy raw keys (`oxygen.aerobic_yield_factor`, `oxygen.acid_inhibition_enabled`, `Ki_acetate`) from the historical spec section below; use the shipped parser keys documented at the top of this file (`oxygen.aerobic_carbon_cost_factor`, `metabolism.acid_inhibition_enabled`, `metabolism.acid_inhibition_Ki`).
+
 ### Validation config (spec §"Validation config")
 
 Five of its fourteen keys are not parser keys and are rejected by default (or
