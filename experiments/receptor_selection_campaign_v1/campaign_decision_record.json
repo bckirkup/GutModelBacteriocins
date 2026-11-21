@@ -122,11 +122,11 @@
     }
   ],
   "constraints": [
-    "The d7b16c attempt remains historically BLOCKED, but its HDF5 is scientifically supportive under the corrected physical device contract.",
-    "The adaptive 18-job intrinsic assay remains pending because d7b16c did not test amplitudes 20/30.",
+    "The d7b16c attempt remains historically BLOCKED, though its HDF5 is scientifically supportive under the corrected physical device contract.",
+    "The adaptive 18-job intrinsic assay (cd7fc9b3-e6b6-43e6-ab23-a98ef1b1e4ee) passed at SHA 29fd563ce73b28059cb439694e92466f451ddb4a across amplitudes 0/15/20/30/60.",
     "Intrinsic assay inputs enable only bacteriocin and receptor; they must not add metabolism merely to obtain device_delivery.",
-    "The issue420 12-job ecological refinement is separate and pending; do not submit C_amp jobs as SS_amp jobs.",
-    "Do not release Stage D or change its selection until the pending evidence is completed and explicitly adjudicated.",
+    "The issue420 12-job ecological refinement (2355877a-a3a0-4765-8863-b84346868e0d) passed separately; never submit C_amp jobs as SS_amp jobs.",
+    "Stage D release at amplitude 15.0 is bound to approval_stage_D.json, SHA 29fd563ce73b28059cb439694e92466f451ddb4a, and digest sha256:fafc77ee802882bee6e47321515057aed20c0326d622bfb287862ef15304f748; any change to selection, SHA, or digest requires a new stage-specific approval.",
     "approval.json remains historical and is not current authorization."
   ]
 }

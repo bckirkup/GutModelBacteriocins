@@ -13,7 +13,7 @@ retained only as realized_lysis_per_total_division and must not be used as the
 Stage D lysis response.
 """
 from __future__ import annotations
-import argparse,csv,gzip,json,math,shutil,tempfile
+import argparse,csv,gzip,json,math,re,shutil,tempfile
 from pathlib import Path
 try:
  import numpy as np
@@ -29,6 +29,11 @@ except Exception as exc:
  H5PY_IMPORT_ERROR=f'{type(exc).__name__}: {exc}'
 ROOT=Path(__file__).resolve().parent; G=ROOT/'generated'
 TAIL_S=7200; SENS_S=3600
+SHA256_DIGEST=re.compile(r'sha256:[0-9a-f]{64}')
+def canonical_image_digest(raw):
+ if not isinstance(raw,str): return None
+ m=SHA256_DIGEST.search(raw.strip())
+ return m.group(0) if m else None
 def val(x):
  a=np.asarray(x[()]); v=a.reshape(-1)[0] if a.size else None
  if isinstance(v,(bytes,np.bytes_)): return v.decode(errors='replace')
@@ -106,10 +111,13 @@ def stage_c_metrics(h,base):
  has_source_coords=('provenance' in h) or ('kill_provenance' in h)
  if base['btuB_grid_present'] and has_source_coords: base['source_centered_profile_status']='AVAILABLE_FOR_POSTPROCESSING'
  else: base['source_centered_profile_status']='BLOCKED_MISSING_SOURCE_EVENT_COORDINATES'
-def run_metrics(h,cfg,m,base):
+def run_metrics(h,cfg,m,base,expected_image_digest=None):
  for req in ('run_provenance','summary','agents'):
   if req not in h: raise ValueError(f'missing /{req}')
  rp=h['run_provenance']; source=str(val(rp['git_sha'])) if 'git_sha' in rp else None; placement=str(val(rp['chemistry_placement'])) if 'chemistry_placement' in rp else None
+ obs_img_raw=str(val(rp['container_image_digest'])) if 'container_image_digest' in rp else None
+ obs_img=canonical_image_digest(obs_img_raw); exp_img=canonical_image_digest(expected_image_digest)
+ img_match=(obs_img is not None and obs_img==exp_img) if exp_img is not None else None
  term=str(val(rp['termination_cause'])) if 'termination_cause' in rp else 'missing'
  ss=steps(h['summary']); aa=steps(h['agents']); series=composition_series(h,cfg,aa)
  tend=series[-1][0]; last=h['summary'][ss[-1]]
@@ -117,17 +125,17 @@ def run_metrics(h,cfg,m,base):
  events=event_metrics(last)
  mean_btu=final_agent_metrics(h,aa,base)
  # Own-end windows are diagnostics; paired contrasts recompute on t_common below.
- base.update({'output_status':'complete' if term=='horizon_reached' else 'terminated','execution_source_sha_observed':source,'execution_source_sha_match':source==m['execution_source_sha'],'chemistry_placement':placement,'termination_cause':term,'t_end_s':tend,**w2,'sensitivity_1h_slope_log10_ratio_per_h':w1['slope_log10_ratio_per_h'],'sensitivity_1h_tail_median_log10_ratio':w1['tail_median_log10_ratio'],**events,'mean_btuB_expression_final':mean_btu,'_series':series})
+ base.update({'output_status':'complete' if term=='horizon_reached' else 'terminated','execution_source_sha_observed':source,'execution_source_sha_match':source==m['execution_source_sha'],'container_image_digest_observed':obs_img_raw,'container_image_digest_canonical':obs_img,'container_image_digest_match':img_match,'chemistry_placement':placement,'termination_cause':term,'t_end_s':tend,**w2,'sensitivity_1h_slope_log10_ratio_per_h':w1['slope_log10_ratio_per_h'],'sensitivity_1h_tail_median_log10_ratio':w1['tail_median_log10_ratio'],**events,'mean_btuB_expression_final':mean_btu,'_series':series})
  if m['stage']=='C': stage_c_metrics(h,base)
-def one(entry):
+def one(entry,expected_image_digest=None):
  cfg=json.loads((ROOT/entry['input_relpath']).read_text()); m=cfg['_campaign']; p=output_for(m['stage'],entry['array_index'],entry)
- base={'run_id':entry['run_id'],'stage':m['stage'],'arm':m['arm'],'seed':cfg['seed'],'output_status':'missing','output_path':str(p) if p else None,'analysis_error':None,'model_baseline_sha':m['model_baseline_sha'],'execution_source_sha_expected':m['execution_source_sha']}
+ base={'run_id':entry['run_id'],'stage':m['stage'],'arm':m['arm'],'seed':cfg['seed'],'output_status':'missing','output_path':str(p) if p else None,'analysis_error':None,'model_baseline_sha':m['model_baseline_sha'],'execution_source_sha_expected':m['execution_source_sha'],'container_image_digest_expected':expected_image_digest,'container_image_digest_observed':None,'container_image_digest_canonical':None,'container_image_digest_match':None}
  for k,v in m['axes'].items(): base['axis_'+k]=v
  if not p:return base
  temp=None
  try:
   h,temp=open_h5(p)
-  with h: run_metrics(h,cfg,m,base)
+  with h: run_metrics(h,cfg,m,base,expected_image_digest=expected_image_digest)
  except Exception as e: base['output_status']='invalid';base['analysis_error']=f'{type(e).__name__}: {e}'
  finally:
   if temp: temp.unlink(missing_ok=True)
@@ -151,35 +159,49 @@ def control_for(r,complete,idx):
  return ctrl,label
 def paired_rows(complete,cm):
  idx={(r['stage'],r['arm'],r['seed'],r.get('axis_kd_corrinoid_btuB_mol_m3'),r.get('axis_amplitude')):r for r in complete}; pairs=[]
+ exp_img=canonical_image_digest(cm.get('container_image_digest'))
  for r in complete:
   ctrl,label=control_for(r,complete,idx)
   if ctrl:
    pair=paired_contrast(r,ctrl,label)
-   pair.update({'execution_source_sha_expected':r['execution_source_sha_expected'],'container_image_digest':cm.get('container_image_digest'),'same_stage_control':ctrl['stage']==r['stage'],'execution_source_sha_match_both':bool(r.get('execution_source_sha_match') and ctrl.get('execution_source_sha_match'))})
+   r_can=r.get('container_image_digest_canonical'); c_can=ctrl.get('container_image_digest_canonical')
+   if exp_img is not None:
+    img_both=bool(r.get('container_image_digest_match') and ctrl.get('container_image_digest_match') and r_can==c_can)
+   elif r_can is not None or c_can is not None:
+    img_both=bool(r_can is not None and r_can==c_can)
+   else:
+    img_both=None
+   pair.update({'execution_source_sha_expected':r.get('execution_source_sha_expected'),'container_image_digest':cm.get('container_image_digest'),'container_image_digest_expected':cm.get('container_image_digest'),'container_image_digest_treatment':r.get('container_image_digest_observed'),'container_image_digest_control':ctrl.get('container_image_digest_observed'),'container_image_digest_match_both':img_both,'same_stage_control':ctrl['stage']==r['stage'],'execution_source_sha_match_both':bool(r.get('execution_source_sha_match') and ctrl.get('execution_source_sha_match'))})
    pairs.append(pair)
  return pairs
-def provenance_gate_overrides(stages,gates):
+def provenance_gate_overrides(stages,gates,expected_image_digest=None):
+ exp_img=canonical_image_digest(expected_image_digest)
  q=stages['Q']
- if all(r['output_status'] in READABLE for r in q) and any(not r.get('execution_source_sha_match') or r.get('chemistry_placement')!='device_delivery' for r in q): gates['Q']['status']='FAIL_PROVENANCE_OR_PLACEMENT'
+ if all(r['output_status'] in READABLE for r in q) and any(not r.get('execution_source_sha_match') or r.get('chemistry_placement')!='device_delivery' or (exp_img is not None and not r.get('container_image_digest_match')) for r in q): gates['Q']['status']='FAIL_PROVENANCE_OR_PLACEMENT'
  cgood=[r for r in stages['C'] if r['output_status'] in READABLE]
  if len(cgood)==12 and any(not r.get('btuB_grid_present') or r.get('source_centered_profile_status','').startswith('BLOCKED') for r in cgood): gates['C']['status']='BLOCKED_TRANSPORT_PROVENANCE'
  dgood=[r for r in stages['D'] if r['output_status'] in READABLE]
  if len(dgood)==15 and any(not r.get('execution_source_sha_match') for r in dgood): gates['D']['status']='FAIL_EXECUTION_SOURCE_PROVENANCE'
  if len(dgood)==15 and sum(r['arm']=='plasmid_free_null' for r in dgood)!=3: gates['D']['status']='BLOCKED_MISSING_SAME_IMAGE_NULLS'
-def gate_statuses(rows):
+ if exp_img is not None:
+  for s in 'ABCD':
+   sgood=[r for r in stages[s] if r['output_status'] in READABLE]
+   if sgood and len(sgood)==len(stages[s]) and any(not r.get('container_image_digest_match') for r in sgood) and not gates[s]['status'].startswith('FAIL_'):
+    gates[s]['status']='FAIL_CONTAINER_IMAGE_PROVENANCE'
+def gate_statuses(rows,expected_image_digest=None):
  stages={s:[r for r in rows if r['stage']==s] for s in 'QABCD'}; gates={}
  for s in 'QABCD':
   miss=sum(r['output_status'] not in READABLE for r in stages[s]); gates[s]={'status':'BLOCKED_MISSING_OUTPUTS' if miss else 'READY_FOR_SCIENTIFIC_REVIEW','expected':len(stages[s]),'missing_or_invalid':miss}
- provenance_gate_overrides(stages,gates)
+ provenance_gate_overrides(stages,gates,expected_image_digest=expected_image_digest)
  return gates
 def main():
  ap=argparse.ArgumentParser();ap.add_argument('--results-dir',type=Path,default=ROOT/'analysis');a=ap.parse_args();a.results_dir.mkdir(parents=True,exist_ok=True)
- cm=json.loads((G/'campaign_manifest.json').read_text()); rows=[one(e) for e in cm['runs']]; pub=[public_row(r) for r in rows]
+ cm=json.loads((G/'campaign_manifest.json').read_text()); exp_img=cm.get('container_image_digest'); rows=[one(e,expected_image_digest=exp_img) for e in cm['runs']]; pub=[public_row(r) for r in rows]
  write_csv(a.results_dir/'run_metrics.csv',pub);(a.results_dir/'run_metrics.json').write_text(json.dumps(pub,indent=2,allow_nan=False)+'\n')
  complete=[r for r in rows if r['output_status'] in READABLE]; missing=[public_row(r) for r in rows if r['output_status'] not in READABLE]
  pairs=paired_rows(complete,cm)
  write_csv(a.results_dir/'paired_metrics.csv',pairs);(a.results_dir/'paired_metrics.json').write_text(json.dumps(pairs,indent=2)+'\n')
- gates=gate_statuses(rows)
+ gates=gate_statuses(rows,expected_image_digest=exp_img)
  report={'campaign_id':cm['campaign_id'],'runs_total':len(rows),'outputs_readable':len(complete),'missing_or_invalid':len(missing),'gates':gates,'interpretation':'Sequential scientific gates require review of all seed-level rows; this analyzer never auto-promotes downstream stages. Paired deltas use a shared calendar window ending at t_common_s. realized_lysis_per_division uses integer cumulative_divisions_by_type[1] when present.'}
  (a.results_dir/'missing_outputs.json').write_text(json.dumps(missing,indent=2)+'\n');(a.results_dir/'gate_status.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2));return 0
 if __name__=='__main__': raise SystemExit(main())
