@@ -47,7 +47,9 @@ __global__ void receptor_kill_prob_kernel(
     double kill_rate_microcin,
     int global_nx, int global_ny, int storage_nx,
     int owned_global_x_begin, int owned_global_x_end,
-    int owned_storage_x_begin) {
+    int owned_storage_x_begin,
+    double btuB_competitor_conc,
+    double b12_free_fraction) {
   int i = blockIdx.x * blockDim.x + threadIdx.x;
   if (i >= num_agents) return;
   if (state[i] == 3 || state[i] == 4) {
@@ -80,7 +82,9 @@ __global__ void receptor_kill_prob_kernel(
   double total_kill = 0.0;
 
   if (tox_btuB > 0.0) {
-    const double ligand = conc_b12 ? conc_b12[cell] : 0.0;
+    const double ligand = btuB_competitor_conc >= 0.0
+        ? btuB_competitor_conc
+        : (conc_b12 ? conc_b12[cell] * b12_free_fraction : 0.0);
     const double occ = toxin_occupancy_device(
         tox_btuB, ligand, kd_colicinE_btuB, kd_b12_btuB,
         rex_base[0 * num_agents + i], tox ? tox[0] : 1.0, lig_base[0 * num_agents + i]);
@@ -145,7 +149,9 @@ void launch_receptor_kill_prob_kernel(
     int global_nx, int global_ny, int storage_nx,
     int owned_global_x_begin, int owned_global_x_end,
     int owned_storage_x_begin,
-    cudaStream_t stream) {
+    cudaStream_t stream,
+    double btuB_competitor_conc,
+    double b12_free_fraction) {
   if (num_agents <= 0) return;
   int block = 256;
   int grid = (num_agents + block - 1) / block;
@@ -158,7 +164,8 @@ void launch_receptor_kill_prob_kernel(
       kd_lin_enterobactin, kd_colicinIa_cirA, kd_colicinM_fhuA, kd_ferrichrome,
       cirA_linearized_fraction, kill_rate_colicin, kill_rate_microcin,
       global_nx, global_ny, storage_nx, owned_global_x_begin,
-      owned_global_x_end, owned_storage_x_begin);
+      owned_global_x_end, owned_storage_x_begin,
+      btuB_competitor_conc, b12_free_fraction);
 }
 
 }  // namespace gpu

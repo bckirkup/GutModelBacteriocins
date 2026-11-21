@@ -85,8 +85,20 @@ void FixBacteriocin::check_sos_induction(Agent& agent, Real dt,
 
   const Real bio_dt = sim_.config().time.bio_dt;
   const Real basal_rate = cfg_.sos_basal_rate;
-  const Real post_division_rate = agent.flags.just_divided && bio_dt > 0.0
-      ? cfg_.sos_lysis_prob / bio_dt : 0.0;
+  Real post_division_rate = 0.0;
+  const bool forced_division_induction =
+      agent.flags.just_divided && bio_dt > 0.0 && cfg_.sos_lysis_prob >= 1.0;
+  if (agent.flags.just_divided && bio_dt > 0.0 && cfg_.sos_lysis_prob > 0.0) {
+    if (cfg_.sos_lysis_prob < 1.0) {
+      // Both post-division cells carry just_divided = true. Symmetric daughter
+      // hazard -0.5 * log1p(-p) / bio_dt gives per-daughter probability
+      // 1 - sqrt(1 - p) over dt = bio_dt, so P(>= 1 event in pair) == p.
+      post_division_rate = -0.5 * std::log1p(-cfg_.sos_lysis_prob) / bio_dt;
+    } else {
+      constexpr Real kSaturatedComplement = 1.0e-16;
+      post_division_rate = -0.5 * std::log(kSaturatedComplement) / bio_dt;
+    }
+  }
   const Real nuclease_rate = nuclease_cross_induction_rate(agent, agent_index);
   // Funded metabolism commits respiratory oxygen in post_chemistry, while
   // this fix runs during biology; funded ROS therefore intentionally uses the
@@ -102,7 +114,9 @@ void FixBacteriocin::check_sos_induction(Agent& agent, Real dt,
   rate_total += nuclease_rate;
   rate_total += ros_rate;
 
-  const Real p_sos = 1.0 - std::exp(-rate_total * dt);
+  const Real p_sos = forced_division_induction
+      ? 1.0
+      : 1.0 - std::exp(-rate_total * dt);
 
   if (sim_.rng().bernoulli(p_sos)) {
     agent.state     = PhenoState::SOS_INDUCED;
@@ -149,6 +163,10 @@ void FixBacteriocin::check_phage_induction(Agent& agent, const BICluster& bi, Re
 
 void FixBacteriocin::lyse_agent(Agent& agent) {
   const Real creation_time = sim_.time();
+  const bool use_global_colicin_d =
+      (cfg_.D_free_colicin_explicit
+       || cfg_.D_free_colicin != kDefaultColicinFreeDiffCoeff)
+      && sim_.config().plasmid_overrides.empty();
 
   for (const auto& bi : agent.genome.bi_loci) {
     if (bi.release_mode == ReleaseMode::CONTINUOUS) continue;
@@ -156,7 +174,8 @@ void FixBacteriocin::lyse_agent(Agent& agent) {
 
     ToxinBurstSource burst;
     burst.pos = agent.x;
-    burst.params.diff_coeff = bi.diff_coeff;
+    burst.params.diff_coeff =
+        use_global_colicin_d ? cfg_.D_free_colicin : bi.diff_coeff;
     burst.params.retardation = bi.retardation;
     burst.params.pI = bi.pI;
     const Real inventory = bi.burst_size / AVOGADRO;

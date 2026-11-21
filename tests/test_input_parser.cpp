@@ -1542,6 +1542,60 @@ void test_uptake_limit_rejects_unknown_modes() {
   std::cout << "  test_uptake_limit_rejects_unknown_modes: PASSED\n";
 }
 
+void test_spec14_bacteriocin_and_btub_decoupling_keys() {
+  const std::string path = std::string(GUTIBM_SOURCE_DIR)
+      + "/tests/fixtures/_spec14_bacteriocin_btub_keys.json";
+  {
+    std::ofstream out(path);
+    out << R"({
+      "total_time": 60,
+      "bio_dt": 60,
+      "bacteriocin": {
+        "sos_lysis_prob": 0.05,
+        "D_free_colicin": 6.5e-11
+      },
+      "metabolism": {
+        "b12_growth_essential": false
+      },
+      "receptor": {
+        "btub_competitor_conc": 2.5e-6,
+        "b12_free_fraction": 0.1
+      }
+    })";
+  }
+  const SimulationConfig cfg = InputParser::parse(path);
+  std::remove(path.c_str());
+
+  assert(std::abs(cfg.fixes.bacteriocin.sos_lysis_prob - 0.05) < 1e-15);
+  assert(std::abs(cfg.fixes.bacteriocin.D_free_colicin - 6.5e-11) < 1e-20);
+  assert(cfg.fixes.bacteriocin.D_free_colicin_explicit);
+  assert(std::abs(cfg.qssa.fallback_diff_coeff - 6.5e-11) < 1e-20);
+  assert(!cfg.fixes.metabolism.b12_growth_essential);
+  assert(std::abs(cfg.fixes.receptor.btuB_competitor_conc - 2.5e-6) < 1e-18);
+  assert(std::abs(cfg.fixes.receptor.b12_free_fraction - 0.1) < 1e-15);
+
+  // Invalid bounds must throw ConfigError
+  for (const auto& [key, bad_val] :
+       std::vector<std::pair<std::string, std::string>>{
+           {"sos_lysis_prob", "-0.01"},
+           {"sos_lysis_prob", "1.01"},
+           {"D_free_colicin", "0.0"},
+           {"D_free_colicin", "-1e-11"},
+           {"receptor.btub_competitor_conc", "-0.5"},
+           {"receptor.b12_free_fraction", "-0.1"},
+           {"receptor.b12_free_fraction", "1.1"}}) {
+    SimulationConfig bad_cfg = InputParser::default_config();
+    bool threw = false;
+    try {
+      (void)InputParser::apply_flat_key(bad_cfg, key, bad_val);
+    } catch (const ConfigError&) {
+      threw = true;
+    }
+    assert(threw);
+  }
+  std::cout << "  test_spec14_bacteriocin_and_btub_decoupling_keys: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -1606,6 +1660,7 @@ int main() {
   test_uptake_limit_rejects_unknown_modes();
   test_carbon_maintenance_fixture();
   test_metabolic_mode_fixture();
+  test_spec14_bacteriocin_and_btub_decoupling_keys();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }

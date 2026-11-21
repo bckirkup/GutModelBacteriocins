@@ -190,13 +190,30 @@ BUILD_PUSH_START="$(date +%s)"
 echo "==> Build ${IMAGE_URI}"
 aws ecr get-login-password --region "${AWS_REGION}" \
   | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+# Newer BuildKit emits OCI provenance attestations by default; ECR rejects the
+# attestation manifest's existence probe (403 on HEAD), so disable them.
 docker build \
+  --provenance=false \
   --file "${ROOT}/deploy/aws/Dockerfile.gputest" \
   --build-arg "GPU_TARGETS=${GPU_TARGETS}" \
   --build-arg "GUTIBM_GIT_SHA=${GIT_SHA}" \
   --tag "${IMAGE_URI}" \
   "${ROOT}"
-docker push "${IMAGE_URI}"
+# Push with crane instead of docker push: the containerd pusher HEADs the tag
+# manifest before PUT, and the CI role is push-only (no ecr:BatchGetImage), so
+# ECR answers 403 and the push aborts after the layers are already up. crane
+# uploads blobs and then PUTs the manifest directly — only granted actions.
+CRANE_VERSION="v0.22.1"
+CRANE_SHA256="0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0"
+PUSH_WORK="$(mktemp -d)"
+curl -fsSL --proto '=https' --tlsv1.2 \
+  "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+  -o "${PUSH_WORK}/crane.tar.gz"
+echo "${CRANE_SHA256}  ${PUSH_WORK}/crane.tar.gz" | sha256sum --check --strict
+tar -xzf "${PUSH_WORK}/crane.tar.gz" -C "${PUSH_WORK}" crane
+docker save -o "${PUSH_WORK}/image.tar" "${IMAGE_URI}"
+"${PUSH_WORK}/crane" push "${PUSH_WORK}/image.tar" "${IMAGE_URI}"
+rm -rf "${PUSH_WORK}"
 IMAGE_DIGEST=""
 for _ in $(seq 1 12); do
   IMAGE_DIGEST="$(aws ecr describe-images \

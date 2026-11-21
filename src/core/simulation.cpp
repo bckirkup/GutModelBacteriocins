@@ -178,7 +178,8 @@ void validate_required_species(const SimulationConfig& cfg,
       require_species(chem, "fix_metabolism", species::IRON,
                       "fixes.metabolism.iron_uptake_enabled");
     }
-    if (cfg.fixes.metabolism.b12_uptake_enabled) {
+    if (cfg.fixes.metabolism.b12_uptake_enabled
+        && cfg.fixes.metabolism.b12_growth_essential) {
       require_species(chem, "fix_metabolism", species::B12,
                       "fixes.metabolism.b12_uptake_enabled");
     }

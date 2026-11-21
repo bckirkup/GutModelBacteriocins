@@ -138,7 +138,9 @@ bool gpu_compute_receptor_kill_probs_host_packed(
       chem_gpu.slab_mode() ? chem_gpu.owned_x_begin() : 0,
       chem_gpu.slab_mode() ? chem_gpu.owned_x_end() : chem_gpu.global_nx(),
       chem_gpu.owned_storage_x_begin(),
-      gpu_compute_stream());
+      gpu_compute_stream(),
+      cfg.btuB_competitor_conc,
+      cfg.b12_free_fraction);
   gpu_sync_compute();
   gpu_check_error("receptor_kill_prob_kernel");
 

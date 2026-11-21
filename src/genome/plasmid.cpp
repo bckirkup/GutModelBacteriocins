@@ -41,7 +41,7 @@ BICluster PlasmidLibrary::colicin_E1() {
     .target          = ReceptorType::BtuB,
     .bclass          = classify_by_pI(9.0),
     .pI              = 9.0,
-    .diff_coeff      = 4.0e-11,    // ~50 kDa protein
+    .diff_coeff      = kDefaultColicinFreeDiffCoeff,  // ~50 kDa protein (overridable via D_free_colicin or plasmid_overrides)
     .retardation     = retardation_from_pI(9.0, MucinChargeConfig{}),
     .molecular_weight = 57000.0,
     .protease_half_life = 1800.0,
@@ -77,7 +77,7 @@ BICluster PlasmidLibrary::colicin_B() {
     .target          = ReceptorType::FepA,
     .bclass          = classify_by_pI(5.4),
     .pI              = 5.4,
-    .diff_coeff      = 4.0e-11,
+    .diff_coeff      = kDefaultColicinFreeDiffCoeff,
     .retardation     = retardation_from_pI(5.4, MucinChargeConfig{}),
     .molecular_weight = 54800.0,
     .protease_half_life = 900.0,
@@ -94,7 +94,7 @@ BICluster PlasmidLibrary::colicin_Ia() {
     .target          = ReceptorType::CirA,
     .bclass          = classify_by_pI(7.2),
     .pI              = 7.2,
-    .diff_coeff      = 4.0e-11,
+    .diff_coeff      = kDefaultColicinFreeDiffCoeff,
     .retardation     = retardation_from_pI(7.2, MucinChargeConfig{}),
     .molecular_weight = 69400.0,
     .protease_half_life = 2400.0,

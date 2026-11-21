@@ -38,6 +38,11 @@ struct MetabolismConfig {
   // They disable optional uptake terms in carbon_only mode.
   bool iron_uptake_enabled = true;
   bool b12_uptake_enabled = true;
+  // Spec 14 §8 V1 (GAP-01): When true (legacy default), exogenous B12 limits
+  // growth via monod_b12 = [B12] / (Km_b12 + [B12]). When false (cobalamin-
+  // independent MetE prototroph), monod_b12 = 1.0 while BtuB-downregulated
+  // cells (expr_btuB < 0.5) retain their configured MetE + eut penalty.
+  bool b12_growth_essential = true;
   bool eut_enabled = true;
   Real division_threshold = 2.0;      // divide at 2x initial biomass
   Real bacteriostasis_threshold = 1.0e-6; // classify viable non-growing cells

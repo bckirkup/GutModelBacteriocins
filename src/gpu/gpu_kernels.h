@@ -293,7 +293,9 @@ void launch_receptor_kill_prob_kernel(
     int global_nx, int global_ny, int storage_nx,
     int owned_global_x_begin, int owned_global_x_end,
     int owned_storage_x_begin,
-    cudaStream_t stream);
+    cudaStream_t stream,
+    double btuB_competitor_conc = -1.0,
+    double b12_free_fraction = 1.0);
 
 int diffusion_max_line_length();
 

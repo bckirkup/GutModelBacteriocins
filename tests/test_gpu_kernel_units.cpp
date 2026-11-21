@@ -1148,6 +1148,31 @@ void test_receptor_kill_probability() {
       1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr);
   synchronize();
   assert(download(kill, 1)[0] < baseline);
+
+  // Explicit btuB_competitor_conc = 0.0 overrides high bulk B12 competitor (10.0)
+  // and restores unshielded baseline kill probability.
+  toxin.upload(std::vector<double>{1.0});
+  competitor.upload(std::vector<double>{10.0});
+  gutibm::gpu::launch_receptor_kill_prob_kernel(
+      cell.data(), state.data(), receptor.data(), ligand.data(),
+      toxin_affinity.data(), immunity.data(), toxin.data(), zero.data(),
+      zero.data(), zero.data(), competitor.data(), zero.data(), zero.data(),
+      kill.data(), 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+      1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr,
+      /*btuB_competitor_conc=*/0.0, /*b12_free_fraction=*/1.0);
+  synchronize();
+  assert(close(download(kill, 1)[0], baseline));
+
+  // b12_free_fraction = 0.0 with btuB_competitor_conc = -1.0 also restores baseline.
+  gutibm::gpu::launch_receptor_kill_prob_kernel(
+      cell.data(), state.data(), receptor.data(), ligand.data(),
+      toxin_affinity.data(), immunity.data(), toxin.data(), zero.data(),
+      zero.data(), zero.data(), competitor.data(), zero.data(), zero.data(),
+      kill.data(), 1, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+      1.0, 1.0, kNx, kNy, kNx, 0, kNx, 0, nullptr,
+      /*btuB_competitor_conc=*/-1.0, /*b12_free_fraction=*/0.0);
+  synchronize();
+  assert(close(download(kill, 1)[0], baseline));
 }
 
 template <typename Function>

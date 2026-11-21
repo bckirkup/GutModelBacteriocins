@@ -31,13 +31,15 @@ rate_basal = cfg_.sos_basal_rate   // default 1e-6 /s
 
 **b) Replication-coupled rate** (NEW — uses the currently unused `sos_lysis_prob`):
 ```
-rate_replication = agent.just_divided ? cfg_.sos_lysis_prob / cfg_.bio_dt : 0
+rate_replication = agent.just_divided ? -0.5 * log1p(-cfg_.sos_lysis_prob) / cfg_.bio_dt : 0
 ```
 
 This requires a `bool just_divided` flag on Agent, set by `fix_metabolism.cpp`
-during division and cleared at the start of each timestep. The flag converts
-the per-division probability into a per-timestep rate only during the step
-in which division occurred.
+on both post-division daughters during division and cleared at the start of
+each timestep. The symmetric per-daughter hazard `-0.5 * log1p(-p) / bio_dt`
+gives per-daughter induction probability `1 - sqrt(1 - p)` over `dt = bio_dt`
+when non-division hazards are zero, so the per-division probability that at
+least one daughter induces across the division pair is exactly `p = sos_lysis_prob`.
 
 Biological basis: >75% of enteric bacteriocin promoters are SOS-regulated via
 LexA cleavage. Replication stress during division is a primary trigger. The

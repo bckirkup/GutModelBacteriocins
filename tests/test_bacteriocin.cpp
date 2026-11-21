@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "fix_bacteriocin.h"
+#include "founder_genotype.h"
 #include "plasmid.h"
 #include "simulation.h"
 #include "input_parser.h"
@@ -637,6 +638,261 @@ void test_ros_funded_generation_round_trip() {
   std::cout << "  test_ros_funded_generation_round_trip: PASSED\n";
 }
 
+void test_sos_division_pair_probability_binomial() {
+  constexpr Int num_divisions = 60000;
+  constexpr Real bio_dt = 60.0;
+  const std::array<Real, 2> target_probs = {0.01, 0.10};
+
+  for (size_t idx = 0; idx < target_probs.size(); ++idx) {
+    const Real p = target_probs[idx];
+    SimulationConfig cfg = InputParser::default_config();
+    cfg.initial_strains.clear();
+    cfg.hdf5.enabled = false;
+    cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+    cfg.domain.grid_dx = 5e-6;
+    cfg.time.bio_dt = bio_dt;
+    cfg.seed = 9001 + idx * 100;
+    cfg.chem_env.oxygen.enabled = false;
+    cfg.chem_env.oxygen.k_ROS = 0.0;
+    cfg.fixes.bacteriocin.sos_basal_rate = 0.0;
+    cfg.fixes.bacteriocin.sos_cross_induction_rate = 0.0;
+    cfg.fixes.bacteriocin.sos_lysis_prob = p;
+    InputParser::finalize_config(cfg);
+
+    Simulation sim;
+    sim.init(cfg);
+    const BICluster col_e1 = PlasmidLibrary::colicin_E1();
+
+    for (Int i = 0; i < 2 * num_divisions; ++i) {
+      Agent daughter = make_agent_at_center(sim, 1);
+      daughter.genome.bi_loci.push_back(col_e1);
+      daughter.flags.just_divided = true;
+      sim.agents().push_back(std::move(daughter));
+    }
+
+    FixBacteriocin fix(sim, sim.config().fixes.bacteriocin);
+    fix.compute(bio_dt);
+
+    Int pair_events = 0;
+    Int induced_cells = 0;
+    for (Int pair = 0; pair < num_divisions; ++pair) {
+      const bool d0 =
+          sim.agents()[2 * pair].state == PhenoState::SOS_INDUCED;
+      const bool d1 =
+          sim.agents()[2 * pair + 1].state == PhenoState::SOS_INDUCED;
+      if (d0 || d1) ++pair_events;
+      if (d0) ++induced_cells;
+      if (d1) ++induced_cells;
+    }
+
+    const Real empirical_pair_prob =
+        static_cast<Real>(pair_events) / static_cast<Real>(num_divisions);
+    const Real se =
+        std::sqrt(p * (1.0 - p) / static_cast<Real>(num_divisions));
+    const Real legacy_unnormalized_pair_prob = 1.0 - std::exp(-2.0 * p);
+    assert(std::abs(empirical_pair_prob - p) <= 3.0 * se);
+    assert(std::abs(empirical_pair_prob - legacy_unnormalized_pair_prob)
+           > 5.0 * se);
+
+    const Real empirical_cells_per_div =
+        static_cast<Real>(induced_cells) / static_cast<Real>(num_divisions);
+    const Real expected_cells_per_div = 2.0 * (1.0 - std::sqrt(1.0 - p));
+    assert(std::abs(empirical_cells_per_div - expected_cells_per_div)
+           <= 3.5 * se);
+  }
+
+  std::cout << "  test_sos_division_pair_probability_binomial: PASSED\n";
+}
+
+void test_sos_division_probability_boundaries() {
+  constexpr Real bio_dt = 60.0;
+  // p = 0.0 -> zero inductions and zero post-division hazard
+  {
+    SimulationConfig cfg = InputParser::default_config();
+    cfg.initial_strains.clear();
+    cfg.hdf5.enabled = false;
+    cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+    cfg.domain.grid_dx = 5e-6;
+    cfg.time.bio_dt = bio_dt;
+    cfg.seed = 9401;
+    cfg.chem_env.oxygen.enabled = false;
+    cfg.fixes.bacteriocin.sos_basal_rate = 0.0;
+    cfg.fixes.bacteriocin.sos_cross_induction_rate = 0.0;
+    cfg.fixes.bacteriocin.sos_lysis_prob = 0.0;
+    InputParser::finalize_config(cfg);
+
+    Simulation sim;
+    sim.init(cfg);
+    for (Int i = 0; i < 200; ++i) {
+      Agent a = make_agent_at_center(sim, 1);
+      a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
+      a.flags.just_divided = true;
+      sim.agents().push_back(std::move(a));
+    }
+    FixBacteriocin fix(sim, sim.config().fixes.bacteriocin);
+    fix.compute(bio_dt);
+    assert(sim.step_events().sos_inductions == 0);
+    assert(sim.step_events().sos_post_division_rate == 0.0);
+  }
+
+  // p = 1.0 -> all post-division cells induce with finite rate (no NaN/Inf)
+  {
+    SimulationConfig cfg = InputParser::default_config();
+    cfg.initial_strains.clear();
+    cfg.hdf5.enabled = false;
+    cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+    cfg.domain.grid_dx = 5e-6;
+    cfg.time.bio_dt = bio_dt;
+    cfg.seed = 9402;
+    cfg.chem_env.oxygen.enabled = false;
+    cfg.fixes.bacteriocin.sos_basal_rate = 0.0;
+    cfg.fixes.bacteriocin.sos_cross_induction_rate = 0.0;
+    cfg.fixes.bacteriocin.sos_lysis_prob = 1.0;
+    InputParser::finalize_config(cfg);
+
+    Simulation sim;
+    sim.init(cfg);
+    for (Int i = 0; i < 200; ++i) {
+      Agent a = make_agent_at_center(sim, 1);
+      a.genome.bi_loci.push_back(PlasmidLibrary::colicin_E1());
+      a.flags.just_divided = true;
+      sim.agents().push_back(std::move(a));
+    }
+    FixBacteriocin fix(sim, sim.config().fixes.bacteriocin);
+    fix.compute(bio_dt);
+    assert(sim.step_events().sos_inductions == 200);
+    assert(std::isfinite(sim.step_events().sos_post_division_rate));
+    assert(sim.step_events().sos_post_division_rate > 0.0);
+  }
+
+  // Out-of-range values (< 0 or > 1) are rejected by InputParser
+  for (const char* bad_val : {"-0.01", "1.01"}) {
+    SimulationConfig cfg = InputParser::default_config();
+    bool threw = false;
+    try {
+      InputParser::apply_flat_key(cfg, "sos_lysis_prob", bad_val);
+    } catch (const ConfigError&) {
+      threw = true;
+    }
+    assert(threw);
+  }
+
+  std::cout << "  test_sos_division_probability_boundaries: PASSED\n";
+}
+
+void test_d_free_colicin_runtime_propagation() {
+  // 1. Default config preserves library per-plasmid diff_coeff and 4e-11 field spec.
+  {
+    const SimulationConfig def = InputParser::default_config();
+    const PlasmidEntry* e2_entry = PlasmidLibrary::find("ColE2");
+    const PlasmidEntry* mcc_entry = PlasmidLibrary::find("MccV");
+    assert(e2_entry != nullptr && mcc_entry != nullptr);
+    const BICluster e2_def = configured_plasmid_cluster(def, *e2_entry);
+    const BICluster mcc_def = configured_plasmid_cluster(def, *mcc_entry);
+    assert(std::abs(e2_def.diff_coeff - 3.5e-11) < 1e-20);
+    assert(std::abs(mcc_def.diff_coeff - 1.0e-10) < 1e-20);
+  }
+
+  // 2. Setting bacteriocin.D_free_colicin propagates to chemical species,
+  //    QSSA fallback, configured colicin clusters, and runtime lysis bursts,
+  //    while explicit plasmid_overrides.<name>.diff_coeff takes precedence.
+  const std::array<Real, 3> d_values = {2.0e-11, 4.0e-11, 7.0e-11};
+  const std::array<const char*, 3> d_strings = {"2.0e-11", "4.0e-11", "7.0e-11"};
+  std::array<Real, 3> near_source_concs{};
+
+  for (size_t idx = 0; idx < d_values.size(); ++idx) {
+    SimulationConfig cfg = InputParser::default_config();
+    cfg.initial_strains.clear();
+    cfg.hdf5.enabled = false;
+    cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+    cfg.domain.grid_dx = 5e-6;
+    cfg.seed = 9500;
+    InputParser::apply_flat_key(
+        cfg, "bacteriocin.D_free_colicin", d_strings[idx]);
+    cfg.plasmid_overrides["ColE2"].retardation = 2.0;
+
+    SimulationConfig::InitialStrain producer;
+    producer.type = 1;
+    producer.count = 1;
+    producer.mu_max = 5.0e-4;
+    producer.plasmids = {"ColE2"};
+    cfg.initial_strains.push_back(producer);
+
+    Simulation sim;
+    sim.init(cfg);
+
+    for (const char* species_name : {
+             species::BACTERIOCIN_BTUB, species::BACTERIOCIN_FEPA,
+             species::BACTERIOCIN_CIRA, species::BACTERIOCIN_FHUA}) {
+      const Int sp_idx = sim.chemical_field().find(species_name);
+      assert(sp_idx >= 0);
+      assert(std::abs(sim.chemical_field().spec(sp_idx).diff_coeff
+                      - d_values[idx])
+             < 1e-20);
+    }
+    assert(std::abs(sim.config().qssa.fallback_diff_coeff - d_values[idx])
+           < 1e-20);
+
+    assert(sim.agents().size() == 1);
+    Agent& a = sim.agents()[0];
+    assert(a.genome.bi_loci.size() == 1);
+    assert(std::abs(a.genome.bi_loci[0].diff_coeff - d_values[idx]) < 1e-20);
+
+    // Force lysis and solve QSSA field to verify runtime field sensitivity to D.
+    a.x = {25e-6, 25e-6, 12.5e-6};
+    a.state = PhenoState::SOS_INDUCED;
+    a.timers.sos_timer = 1.0;
+    FixBacteriocin fix(sim, sim.config().fixes.bacteriocin);
+    fix.post_step(2.0);
+    assert(sim.toxin_bursts().size() == 1);
+    assert(std::abs(sim.toxin_bursts()[0].params.diff_coeff - d_values[idx])
+           < 1e-20);
+
+    sim.qssa().solve_all_bacteriocin_fields(
+        sim.agents(), sim.toxin_bursts(), sim.time(),
+        sim.config().chem_env.protease, sim.advection(),
+        sim.chemical_field(), nullptr, true);
+    const Int btub_idx =
+        sim.chemical_field().find(species::BACTERIOCIN_BTUB);
+    Int ix = 0;
+    Int iy = 0;
+    Int iz = 0;
+    sim.domain().pos_to_grid({30e-6, 25e-6, 12.5e-6}, ix, iy, iz);
+    near_source_concs[idx] =
+        sim.chemical_field().conc(btub_idx, sim.domain().cell_index(ix, iy, iz));
+    assert(std::isfinite(near_source_concs[idx])
+           && near_source_concs[idx] > 0.0);
+  }
+
+  // Higher free diffusivity spreads the point source faster, lowering peak
+  // concentration near the source (1 / (4 * pi * D_eff * r) scaling).
+  assert(near_source_concs[0] > near_source_concs[1]);
+  assert(near_source_concs[1] > near_source_concs[2]);
+
+  // 3. Explicit plasmid_overrides.<name>.diff_coeff overrides D_free_colicin
+  //    for that plasmid while other colicins inherit D_free_colicin.
+  {
+    SimulationConfig cfg = InputParser::default_config();
+    InputParser::apply_flat_key(cfg, "bacteriocin.D_free_colicin", "7.0e-11");
+    InputParser::apply_flat_key(
+        cfg, "plasmid_overrides.ColE2.diff_coeff", "9.0e-11");
+    InputParser::finalize_config(cfg);
+
+    const PlasmidEntry* e1 = PlasmidLibrary::find("ColE1");
+    const PlasmidEntry* e2 = PlasmidLibrary::find("ColE2");
+    const PlasmidEntry* mcc = PlasmidLibrary::find("MccV");
+    assert(e1 != nullptr && e2 != nullptr && mcc != nullptr);
+    assert(std::abs(configured_plasmid_cluster(cfg, *e1).diff_coeff - 7.0e-11)
+           < 1e-20);
+    assert(std::abs(configured_plasmid_cluster(cfg, *e2).diff_coeff - 9.0e-11)
+           < 1e-20);
+    assert(std::abs(configured_plasmid_cluster(cfg, *mcc).diff_coeff - 1.0e-10)
+           < 1e-20);
+  }
+
+  std::cout << "  test_d_free_colicin_runtime_propagation: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Bacteriocin Fix Tests ===\n";
   test_pi_diffusion_classes();
@@ -659,6 +915,9 @@ int main() {
   test_ros_funded_absolute_rate_sensitivity();
   test_ros_funded_specific_rate_preserved();
   test_ros_funded_generation_round_trip();
+  test_sos_division_pair_probability_binomial();
+  test_sos_division_probability_boundaries();
+  test_d_free_colicin_runtime_propagation();
   std::cout << "All bacteriocin fix tests passed.\n";
   return 0;
 }

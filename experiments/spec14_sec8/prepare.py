@@ -131,34 +131,205 @@ PRODUCER = {"type": 1, "count": 60, "mu_max": 5.5e-4,
 SENSITIVE = {"type": 2, "count": 60, "mu_max": 5.5e-4,
              "plasmids": [], "conjugative": False}
 
+KILL_NULL_OVERRIDES = {
+    "kill_rate_colicin": 0.0,
+    "kill_rate_microcin": 0.0,
+    "sos_cross_induction_rate": 0.0,
+}
 
-def emit(name: str, cfg: dict, note: str) -> None:
-    out = ROOT / "arms" / name
+# Non-BtuB receptor comparators must NEVER use ColE1 (which also binds BtuB).
+NON_BTUB_PLASMIDS = ("ColIa", "ColB")
+assert "ColE1" not in NON_BTUB_PLASMIDS
+
+TREATMENTS: dict[str, dict] = {
+    "producer": {
+        "producer": dict(PRODUCER),
+        "sensitive": dict(SENSITIVE),
+        "overrides": {},
+        "note": "ColE2 (BtuB nuclease) producer vs plasmid-free sensitive",
+    },
+    "null": {
+        "producer": dict(PRODUCER, plasmids=[]),
+        "sensitive": dict(SENSITIVE),
+        "overrides": {},
+        "note": "plasmid-free reference null (no plasmid carriage or lysis)",
+    },
+    "kill_null": {
+        "producer": dict(PRODUCER),
+        "sensitive": dict(SENSITIVE),
+        "overrides": dict(KILL_NULL_OVERRIDES),
+        "note": (
+            "carriage-matched ColE2 kill-null control (same plasmid carriage "
+            "and SOS lysis burden, zero receptor killing / cross-induction)"
+        ),
+    },
+    "immunity_null": {
+        "producer": dict(PRODUCER),
+        "sensitive": dict(SENSITIVE, plasmids=["ColE2"]),
+        "overrides": {},
+        "note": (
+            "carriage- and immunity-matched ColE2 control (both strains carry "
+            "ColE2 plasmid and immunity)"
+        ),
+    },
+    "colIa_producer": {
+        "producer": dict(PRODUCER, plasmids=["ColIa"], conjugative=False),
+        "sensitive": dict(SENSITIVE),
+        "overrides": {},
+        "note": "non-BtuB comparator: ColIa (CirA receptor) producer vs sensitive",
+    },
+    "colIa_kill_null": {
+        "producer": dict(PRODUCER, plasmids=["ColIa"], conjugative=False),
+        "sensitive": dict(SENSITIVE),
+        "overrides": dict(KILL_NULL_OVERRIDES),
+        "note": "carriage-matched ColIa (CirA receptor) kill-null control",
+    },
+    "colB_producer": {
+        "producer": dict(PRODUCER, plasmids=["ColB"], conjugative=False),
+        "sensitive": dict(SENSITIVE),
+        "overrides": {},
+        "note": "non-BtuB comparator: ColB (FepA receptor) producer vs sensitive",
+    },
+    "colB_kill_null": {
+        "producer": dict(PRODUCER, plasmids=["ColB"], conjugative=False),
+        "sensitive": dict(SENSITIVE),
+        "overrides": dict(KILL_NULL_OVERRIDES),
+        "note": "carriage-matched ColB (FepA receptor) kill-null control",
+    },
+}
+
+
+def build_arm_config(
+    cond_name: str,
+    treatment: str,
+    seed: int,
+    *,
+    b12_growth_essential: bool | None = None,
+    btub_competitor_conc: float | None = None,
+    b12_free_fraction: float | None = None,
+    extra_overrides: dict | None = None,
+) -> dict:
+    if cond_name not in CONDITIONS:
+        raise ValueError(f"Unknown condition: {cond_name}")
+    if treatment not in TREATMENTS:
+        raise ValueError(f"Unknown treatment: {treatment}")
+    spec = TREATMENTS[treatment]
+    for strain_key in ("producer", "sensitive"):
+        plasmids = spec[strain_key].get("plasmids", [])
+        if treatment.startswith(("colIa", "colB")) and "ColE1" in plasmids:
+            raise ValueError("ColE1 targets BtuB and cannot be used as a non-BtuB control")
+
+    cfg = dict(COMMON)
+    cfg.update(CONDITIONS[cond_name])
+    cfg.update(spec["overrides"])
+    if b12_growth_essential is not None:
+        cfg["metabolism.b12_growth_essential"] = bool(b12_growth_essential)
+    if btub_competitor_conc is not None:
+        cfg["receptor.btub_competitor_conc"] = float(btub_competitor_conc)
+    if b12_free_fraction is not None:
+        cfg["receptor.b12_free_fraction"] = float(b12_free_fraction)
+    if extra_overrides:
+        cfg.update(extra_overrides)
+    cfg["seed"] = seed
+    cfg["initial_strains"] = [dict(spec["producer"]), dict(spec["sensitive"])]
+    return cfg
+
+
+def emit(
+    name: str,
+    cfg: dict,
+    note: str,
+    *,
+    output_root: pathlib.Path | None = None,
+) -> pathlib.Path:
+    arms_root = (ROOT / "arms") if output_root is None else pathlib.Path(output_root)
+    out = arms_root / name
     out.mkdir(parents=True, exist_ok=True)
     cfg = dict(cfg)
     cfg["_comment"] = [
-        "Spec 14 Section 8 reversal validation; no code changes.",
-        "type 1 = ColE2 (E-type nuclease) producer, type 2 = sensitive.",
+        "Spec 14 Section 8 reversal validation & receptor/carriage controls.",
+        "type 1 = producer (or null/control counterpart), type 2 = sensitive.",
         "Read per arm: per-type counts from /agents/<step>/type, the",
         "population ledger (cumulative_mortality_colicin, divisions), and",
         "/run_provenance termination cause.",
         f"arm = {name}. {note}",
     ]
-    (out / "input.json").write_text(json.dumps(cfg, indent=1) + "\n")
+    out_file = out / "input.json"
+    out_file.write_text(json.dumps(cfg, indent=1) + "\n")
+    return out_file
 
 
-def main() -> None:
-    for cond_name, cond in CONDITIONS.items():
-        for treatment in ("producer", "null"):
-            producer = (dict(PRODUCER) if treatment == "producer"
-                        else dict(PRODUCER, plasmids=[]))
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Generate Spec 14 §8 V1/V2 competition and control arms."
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=pathlib.Path,
+        default=None,
+        help="Target directory for generated arm folders (default: arms/).",
+    )
+    parser.add_argument(
+        "--conditions",
+        nargs="+",
+        choices=tuple(CONDITIONS.keys()),
+        default=list(CONDITIONS.keys()),
+        help="Conditions to generate (default: vitro vivo).",
+    )
+    parser.add_argument(
+        "--treatments",
+        nargs="+",
+        choices=tuple(TREATMENTS.keys()),
+        default=list(TREATMENTS.keys()),
+        help="Treatments to generate (default: all producer/null/control arms).",
+    )
+    parser.add_argument(
+        "--b12-growth-essential",
+        dest="b12_growth_essential",
+        action="store_true",
+        default=None,
+        help="Explicitly require exogenous B12 for Monod growth.",
+    )
+    parser.add_argument(
+        "--no-b12-growth-essential",
+        dest="b12_growth_essential",
+        action="store_false",
+        help="Decouple Monod growth from exogenous B12 (wild-type MetE prototroph).",
+    )
+    parser.add_argument(
+        "--btub-competitor-conc",
+        type=float,
+        default=None,
+        help="Explicit free BtuB competing ligand concentration (mol/m^3).",
+    )
+    parser.add_argument(
+        "--b12-free-fraction",
+        type=float,
+        default=None,
+        help="Fraction of bulk B12 field available as free BtuB competitor in [0, 1].",
+    )
+    args = parser.parse_args(argv)
+
+    for cond_name in args.conditions:
+        for treatment in args.treatments:
+            spec = TREATMENTS[treatment]
             for seed in SEEDS:
-                cfg = dict(COMMON)
-                cfg.update(cond)
-                cfg["seed"] = seed
-                cfg["initial_strains"] = [producer, dict(SENSITIVE)]
-                emit(f"{cond_name}_{treatment}_s{seed}", cfg,
-                     f"{cond_name} condition, {treatment} treatment")
+                cfg = build_arm_config(
+                    cond_name,
+                    treatment,
+                    seed,
+                    b12_growth_essential=args.b12_growth_essential,
+                    btub_competitor_conc=args.btub_competitor_conc,
+                    b12_free_fraction=args.b12_free_fraction,
+                )
+                emit(
+                    f"{cond_name}_{treatment}_s{seed}",
+                    cfg,
+                    f"{cond_name} condition, {treatment} treatment ({spec['note']})",
+                    output_root=args.output_dir,
+                )
 
 
 if __name__ == "__main__":

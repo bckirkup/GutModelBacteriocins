@@ -89,10 +89,12 @@ def analyze(arm: str) -> dict:
         events = last["events"]
         divisions = int(scalar(events["cumulative_divisions"]))
         kills = int(scalar(events["cumulative_mortality_colicin"]))
+        condition, remainder = arm.split("_", 1)
+        treatment = remainder.rsplit("_s", 1)[0]
         record = {
             "arm": arm,
-            "condition": arm.split("_")[0],
-            "treatment": arm.split("_")[1],
+            "condition": condition,
+            "treatment": treatment,
             "seed": cfg["seed"],
             "termination_cause": text(
                 handle["run_provenance"]["termination_cause"]),

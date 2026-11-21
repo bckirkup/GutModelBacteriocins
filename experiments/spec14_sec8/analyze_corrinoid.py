@@ -78,7 +78,7 @@ def load(arm_dir: Path) -> dict:
     record = base.analyze(arm_dir.name)
     cfg = json.loads((arm_dir / "input.json").read_text())
     record["b12"] = float(cfg["b12_initial_conc"])
-    record["treatment"] = arm_dir.name.split("_")[1]
+    record["treatment"] = arm_dir.name.split("_", 1)[1].rsplit("_s", 1)[0]
     record["kills_per_lysis"] = (
         record["mortality_colicin"] / record["mortality_lysis"]
         if record["mortality_lysis"] else None)

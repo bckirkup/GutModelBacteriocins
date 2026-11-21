@@ -7,6 +7,7 @@
 #include "plasmid.h"
 #include "simulation.h"
 #include "input_parser.h"
+#include "path_utils.h"
 #include "species_names.h"
 #include "qssa_solver.h"
 #include <array>
@@ -476,6 +477,128 @@ void test_true_unit_receptor_regression() {
   std::cout << "  test_true_unit_receptor_regression: PASSED\n";
 }
 
+static Real measure_btuB_occupancy_with_config(
+    Simulation& sim, Real b12_conc, const ReceptorConfig& rcfg_in) {
+  Agent agent = make_susceptible_agent(sim);
+  agent.receptor_expr[to_underlying(ReceptorType::BtuB)] = 1.0;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  const Int cell = agent.grid_cell;
+  set_local_chemistry(sim, cell, 1.0e-5, b12_conc);
+  const Int i_fepa = sim.chemical_field().find(species::BACTERIOCIN_FEPA);
+  assert(i_fepa >= 0);
+  sim.chemical_field().conc(i_fepa, cell) = 1.0e-4;
+  sim.agents().push_back(std::move(agent));
+
+  ReceptorConfig rcfg = rcfg_in;
+  rcfg.kill_rate_colicin = 1.0;
+  FixReceptor fix(sim, rcfg);
+  fix.compute(60.0);
+
+  assert(sim.agents()[0].state == PhenoState::DEAD);
+  assert(sim.kill_provenance().size() == 1);
+  const Real occupancy = sim.kill_provenance().front().toxin_occupancy[0];
+  sim.agents().remove(0);
+  sim.clear_kill_provenance();
+  return occupancy;
+}
+
+static Real measure_growth_with_b12_essentiality(
+    Real b12_conc, bool b12_growth_essential, Real btub_expression = 1.0) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.initial_strains.clear();
+  cfg.hdf5.enabled = false;
+  cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  cfg.domain.grid_dx = 5e-6;
+  cfg.seed = 9700;
+  cfg.fixes.metabolism.b12_growth_essential = b12_growth_essential;
+
+  Simulation sim;
+  sim.init(cfg);
+  Agent agent = make_susceptible_agent(sim);
+  const Int btu_b = to_underlying(ReceptorType::BtuB);
+  agent.receptor_expr[btu_b] = btub_expression;
+  agent.receptor_expr_base[btu_b] = btub_expression;
+  agent.genome.receptor_expression[btu_b] = btub_expression;
+  agent.receptor_expr[to_underlying(ReceptorType::FepA)] = 1.0;
+  agent.receptor_expr[to_underlying(ReceptorType::CirA)] = 1.0;
+  const Int cell = agent.grid_cell;
+  auto& chem = sim.chemical_field();
+  chem.conc(chem.find(species::CARBON), cell) = 1.0;
+  chem.conc(chem.find(species::IRON), cell) = 1.0;
+  chem.conc(chem.find(species::B12), cell) = b12_conc;
+  sim.agents().push_back(std::move(agent));
+
+  FixMetabolism fix(sim, sim.config().fixes.metabolism);
+  fix.compute(1.0);
+  return sim.agents()[0].mu_realized;
+}
+
+void test_decoupled_btub_shielding_and_non_essential_b12_growth() {
+  SimulationConfig occ_cfg = InputParser::default_config();
+  occ_cfg.initial_strains.clear();
+  occ_cfg.hdf5.enabled = true;
+  occ_cfg.hdf5.filename =
+      resolve_test_h5_path("GUTIBM_RECEPTOR_DECOUPLED_H5", "receptor_decoupled");
+  occ_cfg.hdf5.schedule.provenance = 1;
+  occ_cfg.domain.hi = {50e-6, 50e-6, 25e-6};
+  occ_cfg.domain.grid_dx = 5e-6;
+  occ_cfg.seed = 9600;
+  Simulation occ_sim;
+  occ_sim.init(occ_cfg);
+
+  // 1. Explicit receptor.btub_competitor_conc grades BtuB occupancy at fixed
+  //    bulk [B12] = 1e-3 mol/m^3 without starving B12-dependent growth.
+  const std::array<Real, 3> competitor_levels = {0.0, 1.0e-5, 1.0e-3};
+  std::array<Real, 3> occupancies{};
+  for (size_t i = 0; i < competitor_levels.size(); ++i) {
+    ReceptorConfig rcfg;
+    rcfg.btuB_competitor_conc = competitor_levels[i];
+    occupancies[i] =
+        measure_btuB_occupancy_with_config(occ_sim, 1.0e-3, rcfg);
+    assert(std::isfinite(occupancies[i])
+           && occupancies[i] > 0.0 && occupancies[i] < 1.0);
+  }
+  assert(occupancies[0] > occupancies[1]);
+  assert(occupancies[1] > occupancies[2]);
+  assert(occupancies[0] > 10.0 * occupancies[2]);
+
+  // 2. receptor.b12_free_fraction scales effective BtuB competition at fixed
+  //    bulk [B12] = 1e-3 mol/m^3 and matches explicit competitor_conc = frac * [B12].
+  {
+    ReceptorConfig frac_cfg;
+    frac_cfg.b12_free_fraction = 0.01;
+    const Real occ_frac =
+        measure_btuB_occupancy_with_config(occ_sim, 1.0e-3, frac_cfg);
+    assert(std::abs(occ_frac - occupancies[1]) < 1.0e-12);
+  }
+
+  // 3. metabolism.b12_growth_essential = false prevents growth arrest when
+  //    [B12] is swept to nanomolar/zero, while preserving the MetE penalty on
+  //    BtuB-downregulated resistant strains (expr_btuB < 0.5).
+  const Real mu_legacy_high = measure_growth_with_b12_essentiality(1.0e-3, true);
+  const Real mu_legacy_low = measure_growth_with_b12_essentiality(1.0e-9, true);
+  const Real mu_legacy_zero = measure_growth_with_b12_essentiality(0.0, true);
+  assert(mu_legacy_low < 0.01 * mu_legacy_high);
+  assert(mu_legacy_zero <= 0.0);
+
+  const Real mu_prototroph_high =
+      measure_growth_with_b12_essentiality(1.0e-3, false);
+  const Real mu_prototroph_low =
+      measure_growth_with_b12_essentiality(1.0e-9, false);
+  const Real mu_prototroph_zero =
+      measure_growth_with_b12_essentiality(0.0, false);
+  assert(std::abs(mu_prototroph_high - mu_prototroph_low) < 1.0e-15);
+  assert(std::abs(mu_prototroph_high - mu_prototroph_zero) < 1.0e-15);
+  assert(mu_prototroph_zero > mu_legacy_high);
+
+  const Real mu_prototroph_btub_ko =
+      measure_growth_with_b12_essentiality(1.0e-9, false, 0.0);
+  assert(mu_prototroph_btub_ko < mu_prototroph_low);
+  assert(mu_prototroph_btub_ko > 0.8 * mu_prototroph_low);
+
+  std::cout << "  test_decoupled_btub_shielding_and_non_essential_b12_growth: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Receptor Fix Tests ===\n";
   test_high_toxin_kills_susceptible();
@@ -487,6 +610,7 @@ int main() {
   test_fepa_uses_ferric_enterobactin_not_iron();
   test_burst_kills_same_step();
   test_true_unit_receptor_regression();
+  test_decoupled_btub_shielding_and_non_essential_b12_growth();
   std::cout << "All receptor fix tests passed.\n";
   return 0;
 }
