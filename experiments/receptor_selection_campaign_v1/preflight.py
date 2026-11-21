@@ -9,6 +9,11 @@ K_ROS_KEY='oxygen.k_ROS'
 C=json.loads((ROOT/'campaign_contract.json').read_text()); G=ROOT/'generated'; ERR=[]; WARN=[]
 BASELINE=C['model_baseline_sha']; EXEC_PLACEHOLDER=C['execution_source_sha_policy']['planning_placeholder']
 SHA40=re.compile(r'[0-9a-f]{40}')
+SHA256_DIGEST=re.compile(r'sha256:[0-9a-f]{64}')
+def canonical_digest(raw):
+ if not isinstance(raw,str): return None
+ m=SHA256_DIGEST.search(raw.strip())
+ return m.group(0) if m else None
 def fail(x): ERR.append(x)
 def approx(a,b,tol=1e-12): return math.isclose(float(a),float(b),rel_tol=tol,abs_tol=tol*max(1,abs(float(b))))
 def strip_meta(x):
@@ -58,6 +63,24 @@ def check_execution_identity(a,head):
  if head is None: fail('deployment preflight requires a normal git checkout; retrieval-manifest-only/tarball provenance is planning-only')
  elif a.execution_source_sha!=head: fail(f'execution source SHA does not match git HEAD: {a.execution_source_sha} != {head}')
  else: check_committed_package()
+def _verify_released_stage_d(by_gate):
+ ss=by_gate.get('single_source_transport_assay_v1',{}); er=by_gate.get('issue420_ecological_refinement',{}); dr=by_gate.get('D_release',{})
+ if ss.get('status')!='PASS': fail('Stage D RELEASED requires single_source_transport_assay_v1 status PASS')
+ if er.get('status')!='PASS': fail('Stage D RELEASED requires issue420_ecological_refinement status PASS')
+ if dr.get('selected_mucin_charge_amplitude') is None or not approx(dr.get('selected_mucin_charge_amplitude'),15.0): fail('Stage D selected_mucin_charge_amplitude drift')
+ shas={ss.get('execution_source_sha'),er.get('execution_source_sha'),dr.get('execution_source_sha')}
+ if len(shas)!=1 or not SHA40.fullmatch(next(iter(shas)) or ''): fail('Stage C/D release execution_source_sha mismatch')
+ digs={canonical_digest(ss.get('container_image_digest')),canonical_digest(er.get('container_image_digest')),canonical_digest(dr.get('container_image_digest'))}
+ if None in digs or len(digs)!=1: fail('Stage C/D release container_image_digest mismatch')
+ ap_rel=dr.get('approval_file'); ss_ev=ss.get('evidence'); er_ev=er.get('evidence')
+ for label,relp in (('Stage D approval',ap_rel),('intrinsic assay gate',ss_ev),('ecological refinement gate',er_ev)):
+  if not relp or not (REPO/relp).is_file(): fail(f'missing {label} artifact: {relp}')
+ if ss_ev and (REPO/ss_ev).is_file():
+  ag=json.loads((REPO/ss_ev).read_text())
+  if ag.get('status')!='PASS' or ag.get('single_source_transport_gate') is not True: fail('intrinsic assay gate evidence is not PASS')
+ if er_ev and (REPO/er_ev).is_file():
+  rg=json.loads((REPO/er_ev).read_text())
+  if rg.get('status')!='PASS' or rg.get('C_transport_gate') is not True: fail('ecological refinement gate evidence is not PASS')
 def check_decision_record():
  try:
   decision=json.loads((ROOT/C['authoritative_decision_record']).read_text()); by_gate={x['gate']:x for x in decision['decisions']}
@@ -65,11 +88,20 @@ def check_decision_record():
   if by_gate['B_pass'].get('execution_source_sha')!='b884cc54b1c0684c079a90195c031e388fe70534' or not approx(by_gate['B_pass'].get('selected_b12_initial_conc_mol_m3'),1e-3): fail('authoritative Stage B decision drift')
   if by_gate['C_population_gate'].get('execution_source_sha')!='3f176b26c0d18a22a61db218e56106b1355b781e' or by_gate['C_population_gate'].get('amplitudes_tested')!=[0,15,60]: fail('authoritative ecological Stage C decision drift')
   if by_gate['PR416_intrinsic_transport_gate'].get('status')!='INVALID_FAILED_SUPERSEDED': fail('PR416 gate must remain superseded')
-  if by_gate['single_source_transport_assay_v1'].get('status') not in (
-      'PENDING', 'PENDING_RESUBMIT', 'PENDING_ADAPTIVE_RUNS'):
-    fail('revised transport assay must remain pending until a recorded pass')
-  if by_gate['D_release'].get('status')!='BLOCKED' or by_gate['D_release'].get('conditional_selected_mucin_charge_amplitude')!=15: fail('Stage D handoff must remain blocked/conditional')
- except Exception as e: fail(f'authoritative decision record missing/unreadable: {e}')
+  d_status=by_gate['D_release'].get('status')
+  if d_status=='BLOCKED':
+   if by_gate['single_source_transport_assay_v1'].get('status') not in ('PENDING','PENDING_RESUBMIT','PENDING_ADAPTIVE_RUNS'):
+    fail('revised transport assay must remain pending while Stage D is BLOCKED')
+   if by_gate['D_release'].get('conditional_selected_mucin_charge_amplitude') is None or not approx(by_gate['D_release'].get('conditional_selected_mucin_charge_amplitude'),15.0):
+    fail('Stage D conditional_selected_mucin_charge_amplitude must be 15')
+  elif d_status=='RELEASED':
+   _verify_released_stage_d(by_gate)
+  else:
+   fail(f'unexpected D_release status: {d_status!r}')
+  return by_gate
+ except Exception as e:
+  fail(f'authoritative decision record missing/unreadable: {e}')
+  return {}
 REQUIRED_EXACT_KEYS=['total_time','bio_dt','output_interval','seed','domain_x','domain_y','domain_z','grid_dx','mucus_thickness','radial_turnover','distal_transit','peristaltic_enabled','crypts_enabled','motility.enabled','carbon_z_gradient','carbon.boundary_conc','metabolism.uptake_limit',K_ROS_KEY,'dysbiosis_threshold','gpu_enabled','gpu_device_id','chemistry.toxin_evaluation','chemistry.toxin_lumping','initial_population.placement','initial_population.z_min','initial_population.z_max','fixes','hdf5_file','kd_corrinoid_btuB','kd_colicinE_btuB','b12_initial_conc',MUCIN_AMPLITUDE_KEY,'sos_basal_rate','sos_lysis_prob','grid_species','receptor_expression']
 def check_parser_keys():
  # Source-backed audit of every deliberate scalar key. Nested HDF5/strain objects are parsed by config_json.cpp.
@@ -162,18 +194,28 @@ def check_stage_d_arms(producers,nulls):
  if any(c['initial_strains'][0].get('plasmids')!=[] for c in nulls): fail('Stage D formal null unexpectedly carries a plasmid')
  if any(c['initial_strains'][0].get('plasmids')!=['ColE1'] for c in producers): fail('Stage D carrier arm lost ColE1')
  if any(c['_campaign']['axes'].get('nominal_target_per_generation') is not None for c in nulls): fail('Stage D null controls were accidentally crossed with the lysis axis')
-def check_stage_d(configs):
+def check_stage_d(configs,by_gate=None):
  D=[c for r,c in configs.items() if r.startswith('D_')]
- if len({(c['kd_corrinoid_btuB'],c['b12_initial_conc'],c[MUCIN_AMPLITUDE_KEY]) for c in D})!=1: fail('Stage D fixed upstream axes violated')
+ tuples={(c['kd_corrinoid_btuB'],c['b12_initial_conc'],c[MUCIN_AMPLITUDE_KEY]) for c in D}
+ if len(tuples)!=1: fail('Stage D fixed upstream axes violated')
+ elif by_gate:
+  kd_obs,b12_obs,amp_obs=next(iter(tuples))
+  kd_want=by_gate.get('A_pass',{}).get('selected_kd_corrinoid_btuB_mol_m3')
+  b12_want=by_gate.get('B_pass',{}).get('selected_b12_initial_conc_mol_m3')
+  dr=by_gate.get('D_release',{})
+  amp_want=dr.get('selected_mucin_charge_amplitude',dr.get('conditional_selected_mucin_charge_amplitude'))
+  if kd_want is None or not approx(kd_obs,kd_want): fail(f'Stage D kd_corrinoid_btuB {kd_obs!r} != decision record {kd_want!r}')
+  if b12_want is None or not approx(b12_obs,b12_want): fail(f'Stage D b12_initial_conc {b12_obs!r} != decision record {b12_want!r}')
+  if amp_want is None or not approx(amp_obs,amp_want): fail(f'Stage D mucin_charge.amplitude {amp_obs!r} != decision record {amp_want!r}')
  DP=[c for c in D if c['_campaign']['arm']=='producer']; DN=[c for c in D if c['_campaign']['arm']=='plasmid_free_null']
  if len(DP)!=12 or len(DN)!=3: fail('Stage D must contain exactly 12 ColE1 carriers plus 3 plasmid-free nulls')
  check_stage_d_arms(DP,DN); check_stage_d_carrier_lysis(DP); check_stage_d_null_controls(DN)
-def check_design(inv):
+def check_design(inv,by_gate=None):
  if len(inv.ids)!=len(set(inv.ids)): fail('run-id collision')
  if len(inv.signatures)!=65: fail(f'total explicit runs {len(inv.signatures)} != 65')
  q=[s for st,_,s in inv.signatures if st=='Q']
  if len(set(q))!=1: fail('Q repeats are not parser-identical')
- check_stage_a(inv.configs); check_stage_b(inv.configs); check_stage_c(inv.configs); check_stage_d(inv.configs)
+ check_stage_a(inv.configs); check_stage_b(inv.configs); check_stage_c(inv.configs); check_stage_d(inv.configs,by_gate)
 def check_provenance_sets(a,inv):
  if len(inv.image_digests)!=1: fail(f'mixed image digests: {inv.image_digests}')
  image=next(iter(inv.image_digests),None); pattern=C['execution']['image_digest_pattern']
@@ -185,14 +227,14 @@ def main():
  ap=argparse.ArgumentParser(); ap.add_argument('--deployment',action='store_true',help='require committed execution source at git HEAD and immutable image digest'); ap.add_argument('--execution-source-sha',help='required in deployment mode; must equal git HEAD and generated provenance'); a=ap.parse_args()
  head=git_identity(); verify_baseline(head,a.deployment)
  check_execution_identity(a,head)
- check_decision_record()
+ by_gate=check_decision_record()
  expected_exec=a.execution_source_sha if a.deployment else EXEC_PLACEHOLDER
  campaign_manifest=load_campaign_manifest()
  check_parser_keys()
  inv=Inventory()
  for stage,n in {'Q':2,'A':24,'B':12,'C':12,'D':15}.items(): check_stage_manifest(stage,n,expected_exec,inv)
  check_campaign_manifest(campaign_manifest,expected_exec)
- check_design(inv)
+ check_design(inv,by_gate)
  check_provenance_sets(a,inv)
  print(json.dumps({'status':'FAIL' if ERR else 'PASS','mode':'deployment' if a.deployment else 'planning','model_baseline_sha':BASELINE,'execution_source_sha':next(iter(inv.execution_shas),None),'git_head':head,'runs_checked':len(inv.signatures),'errors':ERR,'warnings':WARN},indent=2))
  return 1 if ERR else 0
