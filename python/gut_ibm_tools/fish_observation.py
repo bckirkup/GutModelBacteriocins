@@ -76,7 +76,13 @@ class FishProbe:
 
 @dataclass(frozen=True)
 class MicroscopyConfig:
-    """Synthetic wide-field or super-resolution microscopy parameters."""
+    """Synthetic wide-field, confocal optical-slice, or super-resolution parameters.
+
+    When *depth_window_m* ``(lo_m, hi_m)`` is provided, only agents within that
+    slab along the axis orthogonal to *projection* (``z`` for ``"xy"``, ``y``
+    for ``"xz"``, ``x`` for ``"yz"``) contribute to synthetic optical sections
+    and in-slice detection metrics.
+    """
 
     image_size_px: tuple[int, int] = (256, 256)
     pixel_size_m: float = 0.5e-6
@@ -85,6 +91,13 @@ class MicroscopyConfig:
     read_noise_std: float = 0.05
     projection: Literal["xy", "xz", "yz"] = "xy"
     margin_m: float = 5e-6
+    depth_window_m: tuple[float, float] | None = None
+
+    def __post_init__(self) -> None:
+        if self.depth_window_m is not None:
+            lo, hi = self.depth_window_m
+            if lo > hi:
+                raise ValueError("depth_window_m lower bound must be <= upper bound")
 
     @property
     def resolution_m(self) -> float:
@@ -235,6 +248,30 @@ def _projection_axes(projection: str) -> tuple[int, int]:
     return mapping[projection]
 
 
+def _orthogonal_depth_axis(projection: str) -> int:
+    mapping = {"xy": 2, "xz": 1, "yz": 0}
+    if projection not in mapping:
+        raise ValueError(f"unknown projection: {projection}")
+    return mapping[projection]
+
+
+def focal_slab_mask(
+    positions: np.ndarray,
+    projection: str = "xy",
+    depth_window_m: tuple[float, float] | None = None,
+) -> np.ndarray:
+    """Boolean mask of agents inside the optical focal slab along the depth axis."""
+    n = len(positions)
+    if depth_window_m is None or n == 0:
+        return np.ones(n, dtype=bool)
+    lo, hi = depth_window_m
+    if lo > hi:
+        raise ValueError("depth_window_m lower bound must be <= upper bound")
+    orth = _orthogonal_depth_axis(projection)
+    depth = positions[:, orth]
+    return (depth >= lo) & (depth <= hi)
+
+
 def render_synthetic_image(
     positions: np.ndarray,
     per_agent_signal: np.ndarray,
@@ -254,15 +291,18 @@ def render_synthetic_image(
         rng = np.random.default_rng(DEFAULT_FISH_RNG_SEED)
 
     ax0, ax1 = _projection_axes(config.projection)
-    coords = positions[:, [ax0, ax1]]
-    if len(coords) == 0:
+    in_slab = focal_slab_mask(positions, config.projection, config.depth_window_m)
+    coords = positions[:, [ax0, ax1]] if len(positions) > 0 else np.empty((0, 2))
+    slab_coords = coords[in_slab] if len(coords) > 0 else coords
+    if len(coords) == 0 or (config.depth_window_m is not None and len(slab_coords) == 0):
         h, w = config.image_size_px
         extent = (0.0, w * config.pixel_size_m, 0.0, h * config.pixel_size_m)
         return np.full((h, w), config.autofluorescence), extent
 
+    ref_coords = slab_coords if config.depth_window_m is not None else coords
     margin = config.margin_m
-    x_min, x_max = float(coords[:, 0].min() - margin), float(coords[:, 0].max() + margin)
-    y_min, y_max = float(coords[:, 1].min() - margin), float(coords[:, 1].max() + margin)
+    x_min, x_max = float(ref_coords[:, 0].min() - margin), float(ref_coords[:, 0].max() + margin)
+    y_min, y_max = float(ref_coords[:, 1].min() - margin), float(ref_coords[:, 1].max() + margin)
     extent = (x_min, x_max, y_min, y_max)
 
     h, w = config.image_size_px
@@ -272,7 +312,7 @@ def render_synthetic_image(
     y_span = max(y_max - y_min, 1e-12)
 
     for i in range(len(positions)):
-        if not detected[i]:
+        if not (detected[i] and in_slab[i]):
             continue
         px = int((coords[i, 0] - x_min) / x_span * (w - 1))
         py = int((coords[i, 1] - y_min) / y_span * (h - 1))
@@ -318,11 +358,22 @@ def simulate_fish_observation(
         background=microscopy.autofluorescence,
         read_noise_std=microscopy.read_noise_std,
     )
-    detected = detection_mask(snr, probe.detection_snr_threshold)
+    in_slab = focal_slab_mask(
+        positions, microscopy.projection, microscopy.depth_window_m
+    )
+    detected = detection_mask(snr, probe.detection_snr_threshold) & in_slab
 
     image, extent = render_synthetic_image(
         positions, signal, detected, microscopy, rng=rng,
     )
+
+    if microscopy.depth_window_m is None:
+        det_frac = float(np.mean(detected)) if n_agents else 0.0
+        mean_snr_val = float(np.mean(snr)) if n_agents else 0.0
+    else:
+        n_slab = int(np.sum(in_slab))
+        det_frac = float(np.mean(detected[in_slab])) if n_slab > 0 else 0.0
+        mean_snr_val = float(np.mean(snr[in_slab])) if n_slab > 0 else 0.0
 
     return FishObservationResult(
         probe=probe,
@@ -330,8 +381,8 @@ def simulate_fish_observation(
         raw_signal=signal,
         snr=snr,
         detected=detected,
-        detection_fraction=float(np.mean(detected)) if n_agents else 0.0,
-        mean_snr=float(np.mean(snr)) if n_agents else 0.0,
+        detection_fraction=det_frac,
+        mean_snr=mean_snr_val,
         image=image,
         extent_m=extent,
     )
@@ -401,18 +452,26 @@ def detected_spatial_clustering(
     detected: np.ndarray,
     *,
     radius: float = 10e-6,
+    projection: str = "xy",
+    depth_window_m: tuple[float, float] | None = None,
 ) -> dict[str, float]:
     """
     Monochromatic patch score computed only on FISH-detected agents.
 
-    Bridges simulated microscopy back to exclusion-radius validation metrics.
+    When *depth_window_m* is provided, restricts neighbor queries and the
+    detection denominator to the optical focal slab so stacked out-of-focus
+    microcolonies do not blend across depth.
     """
-    mask = detected.astype(bool)
+    in_slab = focal_slab_mask(positions, projection, depth_window_m)
+    mask = detected.astype(bool) & in_slab
+    denom_mask = in_slab if depth_window_m is not None else np.ones(len(detected), dtype=bool)
+    n_denom = int(np.sum(denom_mask))
+    det_frac = float(np.mean(mask[denom_mask])) if n_denom > 0 else 0.0
     n_detected = int(np.sum(mask))
     if n_detected < 2:
         return {
             "n_detected": float(n_detected),
-            "detection_fraction": float(np.mean(detected)),
+            "detection_fraction": det_frac,
             "monochromatic_score_detected": 0.0,
         }
 
@@ -421,7 +480,7 @@ def detected_spatial_clustering(
     )
     return {
         "n_detected": float(n_detected),
-        "detection_fraction": float(np.mean(detected)),
+        "detection_fraction": det_frac,
         "monochromatic_score_detected": score,
     }
 
@@ -457,7 +516,11 @@ def validate_fish_observability(
         data, step, PLASMID_DNA_FISH_PROBE, microscopy, rng=rng,
     )
     spatial = detected_spatial_clustering(
-        positions, types, plasmid_result.detected,
+        positions,
+        types,
+        plasmid_result.detected,
+        projection=microscopy.projection if microscopy is not None else "xy",
+        depth_window_m=microscopy.depth_window_m if microscopy is not None else None,
     )
 
     return {

@@ -188,3 +188,50 @@ def test_fish_probe_validation_errors() -> None:
             target_kind="rrna",
             hybridization_efficiency=1.5,
         )
+
+
+def test_optical_slice_depth_window_prevents_vertical_blending() -> None:
+    # Two monochromatic layers stacked directly on top of one another in x-y:
+    # Type 1 at z = 5 um, Type 2 at z = 45 um. Full-slab projection blends them
+    # in x-y (lowering 3D radius=50 um patch score to ~0.5), whereas a confocal
+    # z-slice [0, 10 um] isolates the pure Type-1 microcolony (score = 1.0).
+    rng = np.random.default_rng(99)
+    xy = rng.uniform(20e-6, 30e-6, size=(25, 2))
+    layer1 = np.column_stack([xy, np.full(25, 5e-6)])
+    layer2 = np.column_stack([xy, np.full(25, 45e-6)])
+    positions = np.vstack([layer1, layer2])
+    types = np.array([1] * 25 + [2] * 25, dtype=np.int32)
+    lineage = {"num_bi_loci": np.full(50, 2, dtype=np.int32)}
+    genome = {"has_conjugative_plasmid": np.ones(50, dtype=np.int32)}
+
+    full_cfg = MicroscopyConfig.optical(projection="xy", depth_window_m=None)
+    slice_cfg = MicroscopyConfig.optical(projection="xy", depth_window_m=(0.0, 10e-6))
+
+    full_obs = simulate_fish_observation(
+        positions, PLASMID_DNA_FISH_PROBE, lineage, genome, full_cfg, rng=np.random.default_rng(1)
+    )
+    slice_obs = simulate_fish_observation(
+        positions, PLASMID_DNA_FISH_PROBE, lineage, genome, slice_cfg, rng=np.random.default_rng(1)
+    )
+
+    assert int(np.sum(full_obs.detected)) == 50
+    assert int(np.sum(slice_obs.detected)) == 25
+    assert np.all(slice_obs.detected[:25])
+    assert not np.any(slice_obs.detected[25:])
+
+    full_clust = fish_observation.detected_spatial_clustering(
+        positions, types, full_obs.detected, radius=50e-6
+    )
+    slice_clust = fish_observation.detected_spatial_clustering(
+        positions,
+        types,
+        slice_obs.detected,
+        radius=50e-6,
+        projection="xy",
+        depth_window_m=(0.0, 10e-6),
+    )
+    assert full_clust["monochromatic_score_detected"] < 0.60
+    assert slice_clust["monochromatic_score_detected"] == pytest.approx(1.0, abs=1e-9)
+
+    with pytest.raises(ValueError, match="depth_window_m"):
+        MicroscopyConfig.optical(depth_window_m=(20e-6, 10e-6))
