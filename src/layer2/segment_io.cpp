@@ -52,7 +52,7 @@ const char* kTimeseriesHeader =
     "segment_mean_cfu_ml,segment_cfu_cm2,"
     "n_occupied_total,patch_cells,pool_cells,pool_packets,"
     "births_cum,washout_cum,contraction_cum,reseeds_cum,distal_cum,"
-    "edge_cum,external_cum,deaths_cum";
+    "edge_cum,external_cum,deaths_cum,sos_lysis_deaths_cum,toxin_kill_deaths_cum";
 
 const char* kLiveLineageHeader =
     "step,time_s,patch_id,lineage_id,alive_count,emigrants_cum";
@@ -77,6 +77,8 @@ std::string json_escape(const std::string& s) {
 int MucusSegment::run() {
   const auto& c = cfg_->layer2;
   const Real dt = cfg_->time.bio_dt;
+  Int last_ts_step = -1;
+  Int last_lin_step = -1;
 
   std::ofstream ts;
   if (!c.timeseries_file.empty()) {
@@ -88,6 +90,7 @@ int MucusSegment::run() {
     }
     ts << kTimeseriesHeader << '\n';
     emit_timeseries_row(ts);  // t=0 row
+    last_ts_step = step_count_;
   }
 
   std::ofstream lin;
@@ -100,6 +103,7 @@ int MucusSegment::run() {
     }
     lin << kLiveLineageHeader << '\n';
     emit_lineage_rows(lin);  // t=0 census
+    last_lin_step = step_count_;
   }
 
   while (time_ < cfg_->time.total_time &&
@@ -107,18 +111,28 @@ int MucusSegment::run() {
     step(dt);
     if (c.summary_interval_steps > 0 &&
         step_count_ % c.summary_interval_steps == 0) {
-      if (ts.is_open()) emit_timeseries_row(ts);
-      if (lin.is_open()) emit_lineage_rows(lin);
+      if (ts.is_open()) {
+        emit_timeseries_row(ts);
+        last_ts_step = step_count_;
+      }
+      if (lin.is_open()) {
+        emit_lineage_rows(lin);
+        last_lin_step = step_count_;
+      }
     }
     if (!c.checkpoint_file.empty() && c.checkpoint_interval_steps > 0 &&
         step_count_ % c.checkpoint_interval_steps == 0) {
       write_checkpoint_now();
     }
   }
-  if (ts.is_open()) {
+  if (termination_cause_ == TerminationCause::IncompleteUnknown &&
+      time_ >= cfg_->time.total_time) {
+    terminate(TerminationCause::HorizonReached, "reached configured horizon");
+  }
+  if (ts.is_open() && step_count_ != last_ts_step) {
     emit_timeseries_row(ts);
   }
-  if (lin.is_open()) {
+  if (lin.is_open() && step_count_ != last_lin_step) {
     emit_lineage_rows(lin);
   }
   if (c.checkpoint_final && !c.checkpoint_file.empty()) {
@@ -154,7 +168,8 @@ void MucusSegment::emit_timeseries_row(std::ofstream& out) const {
       << ledger_.washout_departures << ',' << ledger_.contraction_departures
       << ',' << ledger_.reseeds << ',' << ledger_.distal_losses << ','
       << ledger_.edge_departures << ',' << ledger_.external_arrivals
-      << ',' << ledger_.biological_deaths << '\n';
+      << ',' << ledger_.biological_deaths << ',' << ledger_.sos_lysis_deaths
+      << ',' << ledger_.toxin_kill_deaths << '\n';
 }
 
 void MucusSegment::emit_lineage_rows(std::ofstream& out) const {
@@ -226,11 +241,35 @@ void MucusSegment::write_provenance(const std::string& path) const {
       << ", \"reseeds\": " << ledger_.reseeds
       << ", \"distal\": " << ledger_.distal_losses
       << ", \"external\": " << ledger_.external_arrivals
-      << ", \"deaths\": " << ledger_.biological_deaths << "},\n";
-  for (const auto& [id, st] : live_) {
+      << ", \"deaths\": " << ledger_.biological_deaths
+      << ", \"biological_deaths\": " << ledger_.biological_deaths
+      << ", \"sos_lysis_deaths\": " << ledger_.sos_lysis_deaths
+      << ", \"toxin_kill_deaths\": " << ledger_.toxin_kill_deaths << "},\n";
+  if (live_.size() == 1) {
+    const auto& [id, st] = *live_.begin();
     out << "  \"audit_live\": {\"patch\": " << id
         << ", \"live_seed\": " << st.live_seed << "},\n";
   }
+  out << "  \"audit_live_patches\": [";
+  {
+    size_t i = 0;
+    for (const auto& [id, st] : live_) {
+      if (i++ > 0) out << ", ";
+      out << "{\"patch\": " << id
+          << ", \"live_seed\": " << st.live_seed << '}';
+    }
+  }
+  out << "],\n";
+  out << "  \"halted_patches\": [";
+  for (size_t i = 0; i < halted_patches_.size(); ++i) {
+    const auto& h = halted_patches_[i];
+    if (i > 0) out << ", ";
+    out << "{\"patch_id\": " << h.patch_id
+        << ", \"status\": \"" << patch_status_name(h.status) << "\""
+        << ", \"halt_step\": " << h.halt_step
+        << ", \"halt_time_s\": " << h.halt_time_s << '}';
+  }
+  out << "],\n";
   out << "  \"occupancy\": {";
   for (Int t = 0; t < kPatchTypeCount; ++t) {
     const auto& to = o.per_type[t];
@@ -399,6 +438,10 @@ void MucusSegment::write_state(hid_t fid,
                    ledger_.external_arrivals);
   write_scalar_i64(fid, p("/ledger/biological_deaths").c_str(),
                    ledger_.biological_deaths);
+  write_scalar_i64(fid, p("/ledger/sos_lysis_deaths").c_str(),
+                   ledger_.sos_lysis_deaths);
+  write_scalar_i64(fid, p("/ledger/toxin_kill_deaths").c_str(),
+                   ledger_.toxin_kill_deaths);
 
   write_vec(fid, p("/patches/id").c_str(), H5T_NATIVE_INT64, patch_ids);
   write_vec(fid, p("/patches/type").c_str(), H5T_NATIVE_INT32,
@@ -548,6 +591,10 @@ void MucusSegment::read_state(hid_t fid, const std::string& prefix) {
       read_scalar_i64_opt(fid, gp("/ledger/external_arrivals"), 0);
   ledger_.biological_deaths =
       read_scalar_i64_opt(fid, gp("/ledger/biological_deaths"), 0);
+  ledger_.sos_lysis_deaths =
+      read_scalar_i64_opt(fid, gp("/ledger/sos_lysis_deaths"), 0);
+  ledger_.toxin_kill_deaths =
+      read_scalar_i64_opt(fid, gp("/ledger/toxin_kill_deaths"), 0);
 
   const auto patch_ids = read_vec<int64_t>(fid, gp("/patches/id").c_str(),
                                            H5T_NATIVE_INT64);
@@ -569,6 +616,7 @@ void MucusSegment::read_state(hid_t fid, const std::string& prefix) {
       fid, gp("/patches/colonists").c_str(), H5T_STD_I8LE);
   const auto patch_rng = read_str_vec(fid, gp("/patches/rng_state").c_str());
 
+  const auto live_indices = cfg_->layer2.audit.resolved_patch_indices();
   patches_.clear();
   patches_.resize(patch_ids.size());
   for (size_t i = 0; i < patch_ids.size(); ++i) {
@@ -591,7 +639,8 @@ void MucusSegment::read_state(hid_t fid, const std::string& prefix) {
         throw HDF5Error("layer2 checkpoint patch colonist count mismatch");
       }
     }
-    if (p.live || cfg_->layer2.audit.patch_index == p.id) {
+    if (p.live || std::find(live_indices.begin(), live_indices.end(), p.id) !=
+                      live_indices.end()) {
       throw ConfigError(
           "layer2 checkpoint with a live audit slot is not supported in "
           "Phase 1");

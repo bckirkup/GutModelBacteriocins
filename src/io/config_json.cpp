@@ -187,6 +187,55 @@ class JsonCursor {
     return out;
   }
 
+  Int parse_int_element() {
+    skip_ws();
+    const size_t start = pos_;
+    if (pos_ < text_.size() && (text_[pos_] == '-' || text_[pos_] == '+')) {
+      ++pos_;
+    }
+    const size_t digits_start = pos_;
+    while (pos_ < text_.size() &&
+           std::isdigit(static_cast<unsigned char>(text_[pos_]))) {
+      ++pos_;
+    }
+    if (digits_start == pos_) {
+      throw ConfigError("expected JSON integer");
+    }
+    if (pos_ < text_.size() &&
+        (text_[pos_] == '.' || text_[pos_] == 'e' || text_[pos_] == 'E')) {
+      throw ConfigError("expected JSON integer, got floating-point number");
+    }
+    try {
+      size_t consumed = 0;
+      const long long value =
+          std::stoll(text_.substr(start, pos_ - start), &consumed);
+      if (consumed != pos_ - start ||
+          value < static_cast<long long>(std::numeric_limits<Int>::min()) ||
+          value > static_cast<long long>(std::numeric_limits<Int>::max())) {
+        throw ConfigError("JSON integer is out of range");
+      }
+      return static_cast<Int>(value);
+    } catch (const std::invalid_argument&) {
+      throw ConfigError("invalid JSON integer");
+    } catch (const std::out_of_range&) {
+      throw ConfigError("JSON integer is out of range");
+    }
+  }
+
+  std::vector<Int> parse_int_array() {
+    std::vector<Int> out;
+    if (!match('[')) throw ConfigError("expected JSON array");
+    skip_ws();
+    if (match(']')) return out;
+    while (true) {
+      out.push_back(parse_int_element());
+      skip_ws();
+      if (match(']')) break;
+      if (!match(',')) throw ConfigError("expected ',' in JSON array");
+    }
+    return out;
+  }
+
   std::vector<SimulationConfig::InitialStrain> parse_strain_array() {
     std::vector<SimulationConfig::InitialStrain> out;
     if (!match('[')) throw ConfigError("expected JSON array");
@@ -506,6 +555,24 @@ class JsonCursor {
     }
   }
 
+  void parse_layer2_object(SimulationConfig& cfg) {
+    if (!match('{')) throw ConfigError("expected JSON object for layer2");
+    skip_ws();
+    if (match('}')) return;
+    while (true) {
+      const std::string subkey = parse_string();
+      if (!match(':')) throw ConfigError("expected ':' in JSON object");
+      if (subkey == "audit") {
+        parse_prefixed_object(cfg, "layer2.audit", "layer2.audit");
+      } else {
+        apply_json_scalar(cfg, "layer2." + subkey, *this);
+      }
+      skip_ws();
+      if (match('}')) break;
+      if (!match(',')) throw ConfigError("expected ',' in JSON object");
+    }
+  }
+
   void parse_domain_object(SimulationConfig& cfg) {
     if (!match('{')) throw ConfigError("expected JSON object for domain");
     skip_ws();
@@ -547,6 +614,18 @@ void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor
   if (key == "hdf5.schedule.grid_species") {
     cfg.hdf5.schedule.grid_species = cursor.parse_string_array();
     return;
+  }
+  if (key == "layer2.audit_patch_indices" ||
+      key == "layer2.audit.patch_indices") {
+    if (cfg.layer2.audit.patch_index != -1) {
+      throw ConfigError(
+          "layer2 cannot specify both audit.patch_index and "
+          "audit.patch_indices");
+    }
+    if (cursor.peek() == '[') {
+      cfg.layer2.audit.patch_indices = cursor.parse_int_array();
+      return;
+    }
   }
   const char c = cursor.peek();
   bool handled = false;
@@ -698,7 +777,7 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
     } else if (key == "closure") {
       cursor.parse_prefixed_object(cfg, "closure", "closure");
     } else if (key == "layer2") {
-      cursor.parse_prefixed_object(cfg, "layer2", "layer2");
+      cursor.parse_layer2_object(cfg);
     } else if (key == "layer3") {
       cursor.parse_prefixed_object(cfg, "layer3", "layer3");
     } else if (key == "domain") {
