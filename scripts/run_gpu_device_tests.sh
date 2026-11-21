@@ -206,7 +206,7 @@ docker build \
 CRANE_VERSION="v0.22.1"
 CRANE_SHA256="0ab7a1d6932a213aed964ce97666c3077fe691c8606413674a8b3e0b9ec4cda0"
 PUSH_WORK="$(mktemp -d)"
-curl -fsSL \
+curl -fsSL --proto '=https' --tlsv1.2 \
   "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
   -o "${PUSH_WORK}/crane.tar.gz"
 echo "${CRANE_SHA256}  ${PUSH_WORK}/crane.tar.gz" | sha256sum --check --strict
