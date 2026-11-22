@@ -1513,8 +1513,12 @@ void test_multirank_prophage_founder_parity_and_migration() {
   cfg.seed = 9417;
   cfg.domain.lo = {0.0, 0.0, 0.0};
   cfg.domain.hi = {80e-6, 40e-6, 40e-6};
+  cfg.domain.periodic = {true, true, false};
   cfg.domain.grid_dx = 10e-6;
   cfg.domain.hash_cell_size = 10e-6;
+  cfg.advection.mucus_thickness = 40e-6;
+  cfg.advection.radial_turnover = 1.0e30;
+  cfg.advection.distal_transit_time = 1.0e30;
   cfg.time.bio_dt = 60.0;
   cfg.time.total_time = 180.0;
   cfg.time.output_interval = 60.0;
@@ -1522,9 +1526,13 @@ void test_multirank_prophage_founder_parity_and_migration() {
   cfg.prophage.enabled = true;
   cfg.prophage.lysogen_prevalence_init = 0.65;
   cfg.prophage.active_inducible_fraction = 0.5;
-  cfg.prophage.k_max_damage = 0.01;
+  cfg.prophage.k_spont = 0.0;
+  cfg.prophage.k_max_damage = 1.0;
   cfg.prophage.K_damage = 1.0e-6;
-  cfg.prophage.damage_stimulus = 1.0e-3;
+  cfg.prophage.damage_stimulus = 1.0;
+  cfg.prophage.lysis_delay_s = 120.0;
+  cfg.prophage.k_adsorb = 0.0;
+  cfg.fixes.bacteriocin.sos_basal_rate = 0.0;
   cfg.cell_bio.motility.enabled = true;
 
   SimulationConfig::InitialStrain s;
@@ -1571,20 +1579,34 @@ void test_multirank_prophage_founder_parity_and_migration() {
 
   for (int step = 0; step < 3; ++step) {
     sim.step(cfg.time.bio_dt);
+    assert_unique_tags(gather_live_tags_flat(sim));
   }
-  const Int ind = sim.cumulative_events().prophage_inductions
+  const Int local_ind = sim.cumulative_events().prophage_inductions
       + sim.step_events().prophage_inductions;
-  Int min_ind = ind;
-  Int max_ind = ind;
-  MPI_Allreduce(&ind, &min_ind, 1, MPI_INT64_T, MPI_MIN, MPI_COMM_WORLD);
-  MPI_Allreduce(&ind, &max_ind, 1, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
-  assert(min_ind == max_ind);
+  const Int local_lysis = sim.cumulative_events().mortality_lysis
+      + sim.step_events().mortality_lysis;
+  Int global_ind = 0;
+  Int global_lysis = 0;
+  Int local_live_after = 0;
+  for (const Agent& a : sim.agents()) {
+    if (a.state != PhenoState::DEAD && !a.flags.is_ghost) ++local_live_after;
+  }
+  Int global_live_after = 0;
+  MPI_Allreduce(&local_ind, &global_ind, 1, MPI_INT64_T, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_lysis, &global_lysis, 1, MPI_INT64_T, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_live_after, &global_live_after, 1, MPI_INT64_T, MPI_SUM,
+                MPI_COMM_WORLD);
+  assert(global_ind == global_inducible);
+  assert(global_lysis == global_inducible);
+  assert(global_live_after == 40 - global_inducible);
 
   if (rank == 0) {
     std::cout << "  test_multirank_prophage_founder_parity_and_migration: PASSED"
               << " (np=" << nprocs << ", immune=" << global_immune
               << ", inducible=" << global_inducible
-              << ", inductions=" << min_ind << ")\n";
+              << ", lysed=" << global_lysis << ")\n";
   }
 }
 

@@ -2023,25 +2023,48 @@ void test_live_oxygen_funded_reset_crypt_flag_and_stride() {
 void test_live_patch_prophage_lytic_mortality_closure() {
   SimulationConfig cfg = live_cfg_for_test();
   cfg.time.bio_dt = 60.0;
-  cfg.time.total_time = 240.0;
+  cfg.time.total_time = 300.0;
   cfg.layer2.n_patches = 2;
+  cfg.layer2.initial_founder_cells = 30;
   cfg.layer2.audit.patch_index = 0;
   cfg.layer2.audit.halt_on_exceed = false;
   cfg.layer2.contraction_rate_per_min = 0.0;
+
+  SimulationConfig::InitialStrain donor;
+  donor.type = 1;
+  donor.count = 10;
+  donor.mu_max = 0.0;
+  donor.lysogen_prevalence = 1.0;
+  donor.active_inducible_fraction = 1.0;
+
+  SimulationConfig::InitialStrain recipient;
+  recipient.type = 2;
+  recipient.count = 20;
+  recipient.mu_max = 0.0;
+  recipient.lysogen_prevalence = 0.0;
+  recipient.active_inducible_fraction = 0.0;
+  cfg.initial_strains = {donor, recipient};
+
   cfg.prophage.enabled = true;
-  cfg.prophage.lysogen_prevalence_init = 1.0;
-  cfg.prophage.active_inducible_fraction = 1.0;
   cfg.prophage.k_spont = 0.0;
   cfg.prophage.k_max_damage = 0.5;
   cfg.prophage.K_damage = 1.0e-6;
   cfg.prophage.damage_stimulus = 1.0e-2;
   cfg.prophage.lysis_delay_s = 0.0;
+  cfg.prophage.virion_burst_size = 250.0;
+  cfg.prophage.D_virion = 5.0e-10;
+  cfg.prophage.virion_retardation = 1.0;
+  cfg.prophage.k_virion_decay = 0.0;
+  cfg.prophage.virion_washout_scale = 0.0;
+  cfg.prophage.k_adsorb = 1.0e-12;
+  cfg.prophage.p_lysogeny = 0.0;
   InputParser::finalize_config(cfg);
 
   MucusSegment seg;
   seg.init(cfg);
-  assert(run_steps(seg, cfg.time.bio_dt, 2));
+  assert(run_steps(seg, cfg.time.bio_dt, 4));
   assert(seg.ledger_closed());
+  assert(seg.ledger().sos_lysis_deaths > 0);
   assert(seg.ledger().prophage_lytic_deaths > 0);
   assert(seg.ledger().biological_deaths ==
          seg.ledger().sos_lysis_deaths + seg.ledger().toxin_kill_deaths +

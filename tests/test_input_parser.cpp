@@ -1614,18 +1614,20 @@ void test_prophage_fixture_and_required_species() {
   }
   assert(has_virion);
 
-  // Programmatic config enabling prophage without VIRION in cfg.chemicals must
+  // Enabling prophage under a reduced species_subset that omits VIRION must
   // be rejected by validate_required_species during Simulation::init.
   SimulationConfig missing_virion = cfg;
   missing_virion.hdf5.enabled = false;
-  std::erase_if(missing_virion.chemicals,
-                [](const ChemicalSpec& c) { return c.name == species::VIRION; });
+  missing_virion.species_subset = "nutrient_only";
   bool rejected = false;
   try {
     Simulation sim;
     sim.init(missing_virion);
   } catch (const ConfigError& e) {
-    rejected = std::string(e.what()).find(species::VIRION) != std::string::npos;
+    const std::string msg = e.what();
+    rejected = msg.find("fix_prophage") != std::string::npos
+        && msg.find(species::VIRION) != std::string::npos
+        && msg.find("chemistry.species_subset") != std::string::npos;
   }
   assert(rejected);
   std::cout << "  test_prophage_fixture_and_required_species: PASSED\n";

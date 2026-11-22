@@ -401,7 +401,7 @@ void apply_species_subset(SimulationConfig& cfg) {
   retained.reserve(cfg.chemicals.size());
   for (const auto& spec : cfg.chemicals) {
     const bool keep = cfg.species_subset == "nutrient_only"
-        ? !is_toxin_species(spec.name)
+        ? (!is_toxin_species(spec.name) && spec.name != species::VIRION)
         : spec.name == species::CARBON;
     if (keep) retained.push_back(spec);
   }
@@ -693,7 +693,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
                    *strain.active_inducible_fraction);
       }
     }
-    if (pp.enabled) {
+    if (pp.enabled && cfg.species_subset == "full") {
       const Int idx = find_chemical_spec(cfg.chemicals, species::VIRION);
       if (idx < 0) {
         ChemicalSpec spec;
