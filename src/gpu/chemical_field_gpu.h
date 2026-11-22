@@ -12,8 +12,19 @@ class ChemicalField;
 class Domain;
 struct ChemicalSpec;
 
+struct ChemicalFieldGpuLink;
+
 class ChemicalFieldGpu {
  public:
+  ChemicalFieldGpu() = default;
+  ~ChemicalFieldGpu();
+  ChemicalFieldGpu(const ChemicalFieldGpu&) = delete;
+  ChemicalFieldGpu& operator=(const ChemicalFieldGpu&) = delete;
+  ChemicalFieldGpu(ChemicalFieldGpu&& other) noexcept;
+  ChemicalFieldGpu& operator=(ChemicalFieldGpu&& other) noexcept;
+
+  static bool device_conc_residency_enabled();
+
   void init(ChemicalField& field);
   void sync_to_device(ChemicalField& field);
   void sync_to_host(ChemicalField& field);
@@ -28,6 +39,8 @@ class ChemicalFieldGpu {
   void audit_reactions(const ChemicalField& field) const;
   void sync_species_concentrations_to_host(ChemicalField& field, Int spec);
   void sync_species_concentrations_to_device(ChemicalField& field, Int spec);
+  void download_species_for_host_read(const ChemicalField& field,
+                                      Int spec) const;
   void zero_species_concentration_on_device(Int spec);
   void zero_reactions_on_device();
 
@@ -44,12 +57,15 @@ class ChemicalFieldGpu {
   Real delivery_negative_fraction(Int spec) const;
   void prepare_delivery_species(
       Int spec, const std::vector<Real>& sink,
-      const std::vector<Real>& prescribed);
+      const std::vector<Real>& prescribed,
+      bool has_sink_rate = true);
   void snapshot_delivery_species(Int spec);
   void restore_delivery_species(Int spec);
   void restore_delivery_original(Int spec);
   void download_delivery_species(Int spec, std::vector<Real>& concentration,
                                  std::vector<Real>& realized) const;
+  void download_delivery_realized(Int spec,
+                                  std::vector<Real>& realized) const;
   void upload_delivery_concentration(Int spec,
                                      const std::vector<Real>& concentration);
   void upload_delivery_prescribed(const std::vector<Real>& prescribed);
@@ -102,6 +118,13 @@ class ChemicalFieldGpu {
   bool slab_mode() const { return slab_mode_; }
 
  private:
+  void detach_link() noexcept;
+  void ensure_delivery_buffers();
+  void stage_h2d(DeviceBuffer<double>& dst, const double* src,
+                 size_t count) const;
+  void stage_d2h(double* dst, const DeviceBuffer<double>& src,
+                 size_t count) const;
+
   bool active_ = false;
   Int nspec_ = 0;
   Int ncells_ = 0;
@@ -114,6 +137,10 @@ class ChemicalFieldGpu {
   Int storage_nx_ = 0;
   bool slab_mode_ = false;
   bool diffusion_fallback_warning_emitted_ = false;
+  bool delivery_buffers_allocated_ = false;
+  std::shared_ptr<ChemicalFieldGpuLink> link_;
+  mutable PinnedHostBuffer<double> pinned_staging_;
+  mutable bool pinned_staging_unavailable_ = false;
   std::vector<DeviceBuffer<double>> d_conc_;
   std::vector<DeviceBuffer<double>> d_reac_;
   DeviceBuffer<double> d_reaction_scratch_;

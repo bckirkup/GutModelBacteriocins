@@ -665,6 +665,19 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "grid-dependent single-voxel delivery model",
         metabolism.delivery_far_field_radius));
   }
+  if (!std::isfinite(cfg.memory.max_host_chemical_gb)
+      || cfg.memory.max_host_chemical_gb < 0.0) {
+    throw ConfigError(
+        "memory.max_host_chemical_gb must be finite and non-negative");
+  }
+  if (cfg.memory.replicated_oom_policy != "error"
+      && cfg.memory.replicated_oom_policy != "auto_slab"
+      && cfg.memory.replicated_oom_policy != "warn") {
+    throw ConfigError(
+        "invalid memory.replicated_oom_policy: expected 'error', "
+        "'auto_slab', or 'warn', got '"
+        + cfg.memory.replicated_oom_policy + "'");
+  }
   if (cfg.chem_env.oxygen.respiration_driver != "ambient"
       && cfg.chem_env.oxygen.respiration_driver != "funded") {
     throw ConfigError(
@@ -2141,7 +2154,30 @@ bool apply_layer3_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 33> k_flat_key_handlers = {
+bool apply_memory_key(SimulationConfig& cfg, std::string_view key,
+                      const std::string& val) {
+  if (key == "memory.max_host_chemical_gb") {
+    const Real max_gb = parse_config_real(key, val);
+    if (!std::isfinite(max_gb) || max_gb < 0.0) {
+      throw ConfigError(
+          "memory.max_host_chemical_gb must be finite and non-negative");
+    }
+    cfg.memory.max_host_chemical_gb = max_gb;
+    return true;
+  }
+  if (key == "memory.replicated_oom_policy") {
+    if (val != "error" && val != "auto_slab" && val != "warn") {
+      throw ConfigError(
+          "invalid memory.replicated_oom_policy: expected 'error', "
+          "'auto_slab', or 'warn', got '" + val + "'");
+    }
+    cfg.memory.replicated_oom_policy = val;
+    return true;
+  }
+  return false;
+}
+
+constexpr std::array<FlatKeyHandler, 34> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_chemistry_key,
@@ -2162,6 +2198,7 @@ constexpr std::array<FlatKeyHandler, 33> k_flat_key_handlers = {
   apply_immigration_key,
   apply_initial_population_key,
   apply_closure_key,
+  apply_memory_key,
   apply_misc_key,
   apply_oxygen_key,
   apply_acetate_dyn_key,

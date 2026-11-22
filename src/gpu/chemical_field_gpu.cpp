@@ -96,7 +96,176 @@ void warn_diffusion_line_length_fallback(
 }  // namespace
 #endif
 
+bool ChemicalFieldGpu::device_conc_residency_enabled() {
+  static const bool enabled = [] {
+    const char* value = std::getenv("GUTIBM_GPU_CONC_RESIDENCY");
+    return value == nullptr || value[0] != '0';
+  }();
+  return enabled;
+}
+
+ChemicalFieldGpu::~ChemicalFieldGpu() {
+  detach_link();
+}
+
+ChemicalFieldGpu::ChemicalFieldGpu(ChemicalFieldGpu&& other) noexcept
+    : active_(other.active_),
+      nspec_(other.nspec_),
+      ncells_(other.ncells_),
+      global_nx_(other.global_nx_),
+      global_ny_(other.global_ny_),
+      global_nz_(other.global_nz_),
+      owned_x_begin_(other.owned_x_begin_),
+      owned_x_end_(other.owned_x_end_),
+      halo_width_(other.halo_width_),
+      storage_nx_(other.storage_nx_),
+      slab_mode_(other.slab_mode_),
+      diffusion_fallback_warning_emitted_(
+          other.diffusion_fallback_warning_emitted_),
+      delivery_buffers_allocated_(other.delivery_buffers_allocated_),
+      link_(std::move(other.link_)),
+      pinned_staging_(std::move(other.pinned_staging_)),
+      pinned_staging_unavailable_(other.pinned_staging_unavailable_),
+      d_conc_(std::move(other.d_conc_)),
+      d_reac_(std::move(other.d_reac_)),
+      d_reaction_scratch_(std::move(other.d_reaction_scratch_)),
+      d_boundary_conc_(std::move(other.d_boundary_conc_)),
+      d_boundary_injected_(std::move(other.d_boundary_injected_)),
+      d_agent_uptake_(std::move(other.d_agent_uptake_)),
+      d_maintenance_available_(std::move(other.d_maintenance_available_)),
+      d_uptake_limit_totals_(std::move(other.d_uptake_limit_totals_)),
+      d_vbf_totals_(std::move(other.d_vbf_totals_)),
+      d_vbf_sink_rates_(std::move(other.d_vbf_sink_rates_)),
+      d_reaction_clip_(std::move(other.d_reaction_clip_)),
+      d_agent_counts_(std::move(other.d_agent_counts_)),
+      d_delivery_sink_(std::move(other.d_delivery_sink_)),
+      d_delivery_prescribed_(std::move(other.d_delivery_prescribed_)),
+      d_delivery_realized_(std::move(other.d_delivery_realized_)),
+      d_delivery_concentration_backup_(
+          std::move(other.d_delivery_concentration_backup_)),
+      d_delivery_realized_backup_(
+          std::move(other.d_delivery_realized_backup_)),
+      d_delivery_gradient_source_(std::move(other.d_delivery_gradient_source_)),
+      d_delivery_reaction_clip_(std::move(other.d_delivery_reaction_clip_)),
+      d_delivery_negative_count_(std::move(other.d_delivery_negative_count_)),
+      delivery_negative_count_host_(other.delivery_negative_count_host_),
+      delivery_negative_count_spec_(other.delivery_negative_count_spec_),
+      reactions_pending_(other.reactions_pending_) {
+  other.active_ = false;
+  if (link_ != nullptr) {
+    std::scoped_lock lock(link_->mutex);
+    link_->gpu = this;
+  }
+}
+
+ChemicalFieldGpu& ChemicalFieldGpu::operator=(
+    ChemicalFieldGpu&& other) noexcept {
+  if (this == &other) return *this;
+  detach_link();
+  active_ = other.active_;
+  nspec_ = other.nspec_;
+  ncells_ = other.ncells_;
+  global_nx_ = other.global_nx_;
+  global_ny_ = other.global_ny_;
+  global_nz_ = other.global_nz_;
+  owned_x_begin_ = other.owned_x_begin_;
+  owned_x_end_ = other.owned_x_end_;
+  halo_width_ = other.halo_width_;
+  storage_nx_ = other.storage_nx_;
+  slab_mode_ = other.slab_mode_;
+  diffusion_fallback_warning_emitted_ =
+      other.diffusion_fallback_warning_emitted_;
+  delivery_buffers_allocated_ = other.delivery_buffers_allocated_;
+  link_ = std::move(other.link_);
+  pinned_staging_ = std::move(other.pinned_staging_);
+  pinned_staging_unavailable_ = other.pinned_staging_unavailable_;
+  d_conc_ = std::move(other.d_conc_);
+  d_reac_ = std::move(other.d_reac_);
+  d_reaction_scratch_ = std::move(other.d_reaction_scratch_);
+  d_boundary_conc_ = std::move(other.d_boundary_conc_);
+  d_boundary_injected_ = std::move(other.d_boundary_injected_);
+  d_agent_uptake_ = std::move(other.d_agent_uptake_);
+  d_maintenance_available_ = std::move(other.d_maintenance_available_);
+  d_uptake_limit_totals_ = std::move(other.d_uptake_limit_totals_);
+  d_vbf_totals_ = std::move(other.d_vbf_totals_);
+  d_vbf_sink_rates_ = std::move(other.d_vbf_sink_rates_);
+  d_reaction_clip_ = std::move(other.d_reaction_clip_);
+  d_agent_counts_ = std::move(other.d_agent_counts_);
+  d_delivery_sink_ = std::move(other.d_delivery_sink_);
+  d_delivery_prescribed_ = std::move(other.d_delivery_prescribed_);
+  d_delivery_realized_ = std::move(other.d_delivery_realized_);
+  d_delivery_concentration_backup_ =
+      std::move(other.d_delivery_concentration_backup_);
+  d_delivery_realized_backup_ = std::move(other.d_delivery_realized_backup_);
+  d_delivery_gradient_source_ = std::move(other.d_delivery_gradient_source_);
+  d_delivery_reaction_clip_ = std::move(other.d_delivery_reaction_clip_);
+  d_delivery_negative_count_ = std::move(other.d_delivery_negative_count_);
+  delivery_negative_count_host_ = other.delivery_negative_count_host_;
+  delivery_negative_count_spec_ = other.delivery_negative_count_spec_;
+  reactions_pending_ = other.reactions_pending_;
+  other.active_ = false;
+  if (link_ != nullptr) {
+    std::scoped_lock lock(link_->mutex);
+    link_->gpu = this;
+  }
+  return *this;
+}
+
+void ChemicalFieldGpu::detach_link() noexcept {
+  if (link_ != nullptr) {
+    std::scoped_lock lock(link_->mutex);
+    if (link_->gpu == this) {
+      link_->gpu = nullptr;
+    }
+    link_.reset();
+  }
+}
+
+void ChemicalFieldGpu::ensure_delivery_buffers() {
+  if (!active_ || delivery_buffers_allocated_ || ncells_ <= 0) return;
+  d_delivery_sink_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_prescribed_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_realized_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_concentration_backup_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_realized_backup_.allocate(static_cast<size_t>(ncells_));
+  d_delivery_gradient_source_.allocate(1);
+  d_delivery_reaction_clip_.allocate(1);
+  d_delivery_negative_count_.allocate(1);
+  delivery_buffers_allocated_ = true;
+}
+
+void ChemicalFieldGpu::stage_h2d(
+    DeviceBuffer<double>& dst, const double* src, size_t count) const {
+  if (count == 0) return;
+  if (!pinned_staging_unavailable_) {
+    pinned_staging_.ensure_capacity(count);
+    if (pinned_staging_.is_pinned()) {
+      std::memcpy(pinned_staging_.data(), src, count * sizeof(double));
+      dst.upload(pinned_staging_, count);
+      return;
+    }
+    pinned_staging_unavailable_ = true;
+  }
+  dst.upload(src, count);
+}
+
+void ChemicalFieldGpu::stage_d2h(
+    double* dst, const DeviceBuffer<double>& src, size_t count) const {
+  if (count == 0) return;
+  if (!pinned_staging_unavailable_) {
+    pinned_staging_.ensure_capacity(count);
+    if (pinned_staging_.is_pinned()) {
+      src.download(pinned_staging_, count);
+      std::memcpy(dst, pinned_staging_.data(), count * sizeof(double));
+      return;
+    }
+    pinned_staging_unavailable_ = true;
+  }
+  src.download(dst, count);
+}
+
 void ChemicalFieldGpu::init(ChemicalField& field) {
+  detach_link();
   active_ = gpu_runtime_enabled();
   nspec_ = field.num_species();
   ncells_ = field.ncells();
@@ -109,7 +278,16 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   storage_nx_ = field.storage_nx();
   slab_mode_ = field.slab_mode();
   diffusion_fallback_warning_emitted_ = false;
-  if (!active_ || nspec_ <= 0 || ncells_ <= 0) return;
+  delivery_buffers_allocated_ = false;
+  pinned_staging_unavailable_ = false;
+  if (!active_ || nspec_ <= 0 || ncells_ <= 0) {
+    field.bind_gpu_mirror(nullptr);
+    return;
+  }
+
+  link_ = std::make_shared<ChemicalFieldGpuLink>();
+  link_->gpu = this;
+  field.bind_gpu_mirror(link_);
 
   d_conc_.resize(static_cast<size_t>(nspec_));
   d_reac_.resize(static_cast<size_t>(nspec_));
@@ -136,14 +314,11 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   }
   d_reaction_clip_.allocate(static_cast<size_t>(nspec_));
   d_agent_counts_.allocate(static_cast<size_t>(ncells_));
-  d_delivery_sink_.allocate(static_cast<size_t>(ncells_));
-  d_delivery_prescribed_.allocate(static_cast<size_t>(ncells_));
-  d_delivery_realized_.allocate(static_cast<size_t>(ncells_));
-  d_delivery_concentration_backup_.allocate(static_cast<size_t>(ncells_));
-  d_delivery_realized_backup_.allocate(static_cast<size_t>(ncells_));
-  d_delivery_gradient_source_.allocate(1);
-  d_delivery_reaction_clip_.allocate(1);
-  d_delivery_negative_count_.allocate(1);
+  const bool delivery_any = std::ranges::any_of(
+      field.specs(), [](const ChemicalSpec& s) { return s.delivery_enabled; });
+  if (delivery_any) {
+    ensure_delivery_buffers();
+  }
   zero_reactions_on_device();
   sync_to_device(field);
 }
@@ -228,7 +403,9 @@ void ChemicalFieldGpu::download_vbf_totals(
 void ChemicalFieldGpu::download_vbf_sink_rates(
     Int spec, std::vector<double>& values) const {
   if (!active_ || spec < 0 || spec >= nspec_) return;
-  d_vbf_sink_rates_[static_cast<size_t>(spec)].download(values);
+  values.resize(static_cast<size_t>(ncells_));
+  stage_d2h(values.data(), d_vbf_sink_rates_[static_cast<size_t>(spec)],
+            static_cast<size_t>(ncells_));
 }
 
 double* ChemicalFieldGpu::vbf_sink_rate_device(Int spec) {
@@ -291,10 +468,13 @@ void ChemicalFieldGpu::sync_concentrations_to_device(ChemicalField& field) {
   if (!active_) return;
   for (Int s = 0; s < nspec_; ++s) {
     if (!field.host_conc_dirty(s)) {
-      if (!gpu_residency_audit_enabled()) continue;
-      std::vector<double> device_row;
-      d_conc_[static_cast<size_t>(s)].download(device_row);
-      const auto& host_row = field.species_concentration(s);
+      if (!gpu_residency_audit_enabled() || field.device_conc_dirty(s)) {
+        continue;
+      }
+      std::vector<double> device_row(static_cast<size_t>(ncells_));
+      stage_d2h(device_row.data(), d_conc_[static_cast<size_t>(s)],
+                static_cast<size_t>(ncells_));
+      const auto& host_row = field.raw_species_concentration(s);
       if (device_row.size() != host_row.size()) {
         std::ostringstream message;
         message << "GPU concentration residency size mismatch for species '"
@@ -315,9 +495,10 @@ void ChemicalFieldGpu::sync_concentrations_to_device(ChemicalField& field) {
       }
       continue;
     }
-    const auto& row = field.species_concentration(s);
-    d_conc_[static_cast<size_t>(s)].upload(row.data(), row.size());
+    const auto& row = field.raw_species_concentration(s);
+    stage_h2d(d_conc_[static_cast<size_t>(s)], row.data(), row.size());
     field.clear_host_conc_dirty(s);
+    field.clear_device_conc_dirty(s);
   }
 }
 
@@ -331,7 +512,7 @@ void ChemicalFieldGpu::sync_reactions_to_device(ChemicalField& field) {
   if (!reaction_residency_enabled()) {
     for (Int s = 0; s < nspec_; ++s) {
       const auto& row = field.species_reaction(s);
-      d_reac_[static_cast<size_t>(s)].upload(row.data(), row.size());
+      stage_h2d(d_reac_[static_cast<size_t>(s)], row.data(), row.size());
       field.clear_host_reac_dirty(s);
     }
     reactions_pending_ = true;
@@ -341,7 +522,7 @@ void ChemicalFieldGpu::sync_reactions_to_device(ChemicalField& field) {
   for (Int s = 0; s < nspec_; ++s) {
     if (!field.host_reac_dirty(s)) continue;
     const auto& row = field.species_reaction(s);
-    d_reaction_scratch_.upload(row.data(), row.size());
+    stage_h2d(d_reaction_scratch_, row.data(), row.size());
     gpu::launch_add_into_kernel(
         d_reac_[static_cast<size_t>(s)].data(),
         d_reaction_scratch_.data(), ncells_, gpu_compute_stream());
@@ -358,11 +539,26 @@ void ChemicalFieldGpu::sync_reactions_to_device(ChemicalField& field) {
 #endif
 }
 
+void ChemicalFieldGpu::download_species_for_host_read(
+    const ChemicalField& field, Int spec) const {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  auto& row = field.raw_mutable_species_concentration(spec);
+  if (static_cast<Int>(row.size()) != ncells_) {
+    row.resize(static_cast<size_t>(ncells_));
+  }
+  stage_d2h(row.data(), d_conc_[static_cast<size_t>(spec)], row.size());
+}
+
 void ChemicalFieldGpu::sync_concentrations_to_host(ChemicalField& field) {
   if (!active_) return;
+  const bool residency = device_conc_residency_enabled();
+  const bool any_dirty = field.any_device_conc_dirty();
   for (Int s = 0; s < nspec_; ++s) {
-    auto& row = field.mutable_species_concentration(s);
-    d_conc_[static_cast<size_t>(s)].download(row.data(), row.size());
+    if (residency && any_dirty && !field.device_conc_dirty(s)) {
+      continue;
+    }
+    download_species_for_host_read(field, s);
+    field.clear_device_conc_dirty(s);
     field.clear_host_conc_dirty(s);
   }
 }
@@ -376,7 +572,7 @@ void ChemicalFieldGpu::sync_reactions_to_host(ChemicalField& field) {
   GpuTransferSite site("chem_reactions");
   for (Int s = 0; s < nspec_; ++s) {
     auto& row = field.mutable_species_reaction(s);
-    d_reac_[static_cast<size_t>(s)].download(row.data(), row.size());
+    stage_d2h(row.data(), d_reac_[static_cast<size_t>(s)], row.size());
     field.clear_host_reac_dirty(s);
   }
 }
@@ -389,9 +585,10 @@ void ChemicalFieldGpu::accumulate_reactions_to_host(ChemicalField& field) {
     return;
   }
   GpuTransferSite site("chem_reactions");
+  std::vector<double> device_reactions(static_cast<size_t>(ncells_));
   for (Int s = 0; s < nspec_; ++s) {
-    std::vector<double> device_reactions(static_cast<size_t>(ncells_));
-    d_reac_[static_cast<size_t>(s)].download(device_reactions);
+    stage_d2h(device_reactions.data(), d_reac_[static_cast<size_t>(s)],
+              static_cast<size_t>(ncells_));
     for (Int c = 0; c < ncells_; ++c) {
       field.reac(s, c) += device_reactions[static_cast<size_t>(c)];
     }
@@ -409,7 +606,8 @@ void ChemicalFieldGpu::materialize_reactions_on_host(ChemicalField& field) {
   GpuTransferSite site("chem_reactions");
   std::vector<double> device_reactions(static_cast<size_t>(ncells_));
   for (Int s = 0; s < nspec_; ++s) {
-    d_reac_[static_cast<size_t>(s)].download(device_reactions);
+    stage_d2h(device_reactions.data(), d_reac_[static_cast<size_t>(s)],
+              static_cast<size_t>(ncells_));
     auto& row = field.mutable_species_reaction(s);
     for (Int c = 0; c < ncells_; ++c) {
       row[static_cast<size_t>(c)] +=
@@ -422,20 +620,24 @@ void ChemicalFieldGpu::materialize_reactions_on_host(ChemicalField& field) {
 void ChemicalFieldGpu::sync_species_concentrations_to_host(ChemicalField& field,
                                                            Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
-  std::vector<double> host(static_cast<size_t>(ncells_));
-  d_conc_[static_cast<size_t>(spec)].download(host);
-  for (Int c = 0; c < ncells_; ++c) {
-    field.conc(spec, c) = host[static_cast<size_t>(c)];
+  if (device_conc_residency_enabled()) {
+    // Defer the D2H copy until a host consumer actually reads `spec` via
+    // ChemicalField lazy materialization; GPU-only consumers pay zero bytes.
+    field.mark_device_conc_dirty(spec);
+    return;
   }
+  download_species_for_host_read(field, spec);
+  field.clear_device_conc_dirty(spec);
   field.clear_host_conc_dirty(spec);
 }
 
 void ChemicalFieldGpu::sync_species_concentrations_to_device(
     ChemicalField& field, Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
-  d_conc_[static_cast<size_t>(spec)].upload(
-      field.conc_data()[static_cast<size_t>(spec)]);
+  const auto& row = field.raw_species_concentration(spec);
+  stage_h2d(d_conc_[static_cast<size_t>(spec)], row.data(), row.size());
   field.clear_host_conc_dirty(spec);
+  field.clear_device_conc_dirty(spec);
 }
 
 void ChemicalFieldGpu::zero_species_concentration_on_device(Int spec) {
@@ -548,6 +750,7 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
           d_boundary_injected_.data() + s, dt);
     }
     if (species_applied) {
+      field.mark_device_conc_dirty(s);
       applied = true;
     }
   }
@@ -577,7 +780,7 @@ bool ChemicalFieldGpu::apply_delivery_species(
   return false;
 #else
   if (!active_ || species < 0 || species >= nspec_) return false;
-#ifdef GUTIBM_CUDA
+  ensure_delivery_buffers();
   if (const cudaError_t realized_status = cudaMemset(
           d_delivery_realized_.data(), 0,
           static_cast<size_t>(ncells_) * sizeof(double));
@@ -597,7 +800,6 @@ bool ChemicalFieldGpu::apply_delivery_species(
     throw Error(std::string("delivery reaction-clip memset: ")
                 + cudaGetErrorString(clip_status));
   }
-#endif
   return gpu_apply_species_delivery_device(
       domain, spec, d_conc_[static_cast<size_t>(species)].data(),
       d_delivery_sink_.data(), d_delivery_prescribed_.data(),
@@ -610,11 +812,28 @@ bool ChemicalFieldGpu::apply_delivery_species(
 
 void ChemicalFieldGpu::prepare_delivery_species(
     Int spec, const std::vector<Real>& sink,
-    const std::vector<Real>& prescribed) {
+    const std::vector<Real>& prescribed,
+    bool has_sink_rate) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
+  ensure_delivery_buffers();
   GpuTransferSite site("delivery");
-  d_delivery_sink_.upload(sink);
-  d_delivery_prescribed_.upload(prescribed);
+#ifdef GUTIBM_CUDA
+  if (!has_sink_rate) {
+    if (const cudaError_t sink_status = cudaMemset(
+            d_delivery_sink_.data(), 0,
+            static_cast<size_t>(ncells_) * sizeof(double));
+        sink_status != cudaSuccess) {
+      throw Error(std::string("delivery sink memset: ")
+                  + cudaGetErrorString(sink_status));
+    }
+  } else {
+    stage_h2d(d_delivery_sink_, sink.data(), sink.size());
+  }
+#else
+  (void)has_sink_rate;
+  stage_h2d(d_delivery_sink_, sink.data(), sink.size());
+#endif
+  stage_h2d(d_delivery_prescribed_, prescribed.data(), prescribed.size());
 #ifdef GUTIBM_CUDA
   if (const cudaError_t realized_status = cudaMemset(
           d_delivery_realized_.data(), 0,
@@ -634,6 +853,7 @@ void ChemicalFieldGpu::prepare_delivery_species(
 
 void ChemicalFieldGpu::snapshot_delivery_species(Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
+  ensure_delivery_buffers();
 #ifdef GUTIBM_CUDA
   const size_t bytes = static_cast<size_t>(ncells_) * sizeof(double);
   if (const cudaError_t concentration_status = cudaMemcpy(
@@ -656,6 +876,7 @@ void ChemicalFieldGpu::snapshot_delivery_species(Int spec) {
 
 void ChemicalFieldGpu::restore_delivery_species(Int spec) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
+  ensure_delivery_buffers();
 #ifdef GUTIBM_CUDA
   const size_t bytes = static_cast<size_t>(ncells_) * sizeof(double);
   if (const cudaError_t concentration_status = cudaMemcpy(
@@ -684,14 +905,16 @@ void ChemicalFieldGpu::upload_delivery_concentration(
     Int spec, const std::vector<Real>& concentration) {
   if (!active_ || spec < 0 || spec >= nspec_) return;
   GpuTransferSite site("delivery");
-  d_conc_[static_cast<size_t>(spec)].upload(concentration);
+  stage_h2d(d_conc_[static_cast<size_t>(spec)],
+            concentration.data(), concentration.size());
 }
 
 void ChemicalFieldGpu::upload_delivery_prescribed(
     const std::vector<Real>& prescribed) {
   if (!active_) return;
+  ensure_delivery_buffers();
   GpuTransferSite site("delivery");
-  d_delivery_prescribed_.upload(prescribed);
+  stage_h2d(d_delivery_prescribed_, prescribed.data(), prescribed.size());
 }
 
 Real ChemicalFieldGpu::download_delivery_gradient_source() const {
@@ -718,8 +941,20 @@ void ChemicalFieldGpu::download_delivery_species(
   if (!active_ || spec < 0 || spec >= nspec_) return;
   GpuTransferSite site("delivery");
   gpu_sync_compute();
-  d_conc_[static_cast<size_t>(spec)].download(concentration);
-  d_delivery_realized_.download(realized);
+  concentration.resize(static_cast<size_t>(ncells_));
+  realized.resize(static_cast<size_t>(ncells_));
+  stage_d2h(concentration.data(), d_conc_[static_cast<size_t>(spec)],
+            concentration.size());
+  stage_d2h(realized.data(), d_delivery_realized_, realized.size());
+}
+
+void ChemicalFieldGpu::download_delivery_realized(
+    Int spec, std::vector<Real>& realized) const {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  GpuTransferSite site("delivery");
+  gpu_sync_compute();
+  realized.resize(static_cast<size_t>(ncells_));
+  stage_d2h(realized.data(), d_delivery_realized_, realized.size());
 }
 
 bool ChemicalFieldGpu::delivery_has_negative(Int spec) {
@@ -734,6 +969,7 @@ bool ChemicalFieldGpu::delivery_has_negative(Int spec) {
     delivery_negative_count_spec_ = -1;
     return false;
   }
+  ensure_delivery_buffers();
   GpuTransferSite site("delivery");
   if (const cudaError_t status = cudaMemset(
           d_delivery_negative_count_.data(), 0,
@@ -812,18 +1048,24 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
   for (Int s = 0; s < nspec_; ++s) {
     const ChemicalSpec& spec = field.spec(s);
     double* d_conc = d_conc_[static_cast<size_t>(s)].data();
+    bool touched = false;
     if (spec.epithelial_boundary_mode
         == EpithelialBoundaryMode::Dirichlet) {
       gpu::launch_set_epithelial_boundary(
           d_conc, nx, ny, owned_storage_begin, owned_storage_end,
           spec.boundary_conc, domain.cell_volume(),
           d_boundary_injected_.data() + s, gpu_compute_stream());
+      touched = true;
     }
     if (!spec.diffusion_enabled && nz >= 2) {
       gpu::launch_set_luminal_neumann(
           d_conc, nx, ny, nz,
           owned_storage_begin, owned_storage_end,
           gpu_compute_stream());
+      touched = true;
+    }
+    if (touched) {
+      field.mark_device_conc_dirty(s);
     }
   }
 

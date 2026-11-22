@@ -35,6 +35,7 @@ struct ChemistryPipelineInput {
   Int num_agents = 0;
   NutrientFluxAccounting& flux_accounting;
   StepProfile* step_profile = nullptr;
+  bool keep_device_resident = true;
 };
 
 struct ChemistryPipelineResult {

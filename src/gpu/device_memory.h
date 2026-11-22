@@ -23,6 +23,95 @@ inline void gpu_check_error(const char* what) {
 }
 
 template <typename T>
+class PinnedHostBuffer {
+ public:
+  PinnedHostBuffer() = default;
+  explicit PinnedHostBuffer(size_t count) { allocate(count); }
+  ~PinnedHostBuffer() { free(); }
+
+  PinnedHostBuffer(const PinnedHostBuffer&) = delete;
+  PinnedHostBuffer& operator=(const PinnedHostBuffer&) = delete;
+
+  PinnedHostBuffer(PinnedHostBuffer&& other) noexcept { move_from(other); }
+  PinnedHostBuffer& operator=(PinnedHostBuffer&& other) noexcept {
+    if (this != &other) {
+      free();
+      move_from(other);
+    }
+    return *this;
+  }
+
+  void allocate(size_t count) {
+    if (count == count_ && (count_ == 0 || data() != nullptr)) {
+      return;
+    }
+    free();
+    count_ = count;
+    if (count_ == 0) return;
+#ifdef GUTIBM_CUDA
+    void* raw = nullptr;
+    const cudaError_t status = cudaMallocHost(&raw, count_ * sizeof(T));
+    if (status == cudaSuccess && raw != nullptr) {
+      pinned_ptr_ = static_cast<T*>(raw);
+      pinned_ = true;
+      gpu_transfer_set_pinned_staging_active(true);
+      return;
+    }
+    // Clear the failed cudaMallocHost error (e.g., RLIMIT_MEMLOCK / container
+    // ulimit -l / no visible CUDA device) and fall back to pageable storage.
+    (void)cudaGetLastError();
+#endif
+    fallback_.resize(count_);
+    pinned_ = false;
+  }
+
+  void ensure_capacity(size_t count) {
+    if (count > count_) {
+      allocate(count);
+    }
+  }
+
+  void free() noexcept {
+#ifdef GUTIBM_CUDA
+    if (pinned_ptr_ != nullptr) {
+      cudaFreeHost(pinned_ptr_);
+      pinned_ptr_ = nullptr;
+    }
+#endif
+    fallback_.clear();
+    fallback_.shrink_to_fit();
+    count_ = 0;
+    pinned_ = false;
+  }
+
+  T* data() noexcept {
+    return pinned_ ? pinned_ptr_ : fallback_.data();
+  }
+  const T* data() const noexcept {
+    return pinned_ ? pinned_ptr_ : fallback_.data();
+  }
+  size_t size() const noexcept { return count_; }
+  bool empty() const noexcept { return count_ == 0; }
+  bool is_pinned() const noexcept { return pinned_; }
+
+ private:
+  T* pinned_ptr_ = nullptr;
+  std::vector<T> fallback_;
+  size_t count_ = 0;
+  bool pinned_ = false;
+
+  void move_from(PinnedHostBuffer& other) noexcept {
+    pinned_ptr_ = other.pinned_ptr_;
+    fallback_ = std::move(other.fallback_);
+    count_ = other.count_;
+    pinned_ = other.pinned_;
+    other.pinned_ptr_ = nullptr;
+    other.count_ = 0;
+    other.pinned_ = false;
+  }
+};
+
+template <typename T>
 class DeviceBuffer {
  public:
   DeviceBuffer() = default;
@@ -90,6 +179,10 @@ class DeviceBuffer {
 
   void upload(const std::vector<T>& host) { upload(host.data(), host.size()); }
 
+  void upload(const PinnedHostBuffer<T>& host, size_t count) {
+    upload(host.data(), count);
+  }
+
   void download(T* host, size_t count) const {
 #ifdef GUTIBM_CUDA
     if (count > 0) {
@@ -118,6 +211,11 @@ class DeviceBuffer {
   void download(std::vector<T>& host) const {
     host.resize(count_);
     download(host.data(), count_);
+  }
+
+  void download(PinnedHostBuffer<T>& host, size_t count) const {
+    host.ensure_capacity(count);
+    download(host.data(), count);
   }
 
   T*       data() { return ptr_; }

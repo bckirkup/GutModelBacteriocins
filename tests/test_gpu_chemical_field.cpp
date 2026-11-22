@@ -7,14 +7,20 @@
 #include "chemical_field_gpu.h"
 #include "dispatch.h"
 #include "domain.h"
+#include "gpu_profile.h"
+#include "input_parser.h"
+#include "simulation.h"
 #include "species_names.h"
 #include "gpu_test_support.h"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <string>
 #include <vector>
 
 using namespace gutibm;
@@ -63,9 +69,179 @@ Real max_abs_diff(const std::vector<Real>& a, const std::vector<Real>& b) {
   return max_diff;
 }
 
+Real max_rel_diff(const std::vector<Real>& host,
+                  const std::vector<Real>& device) {
+  Real max_err = 0.0;
+  const size_t n = std::min(host.size(), device.size());
+  for (size_t i = 0; i < n; ++i) {
+    const Real scale = std::max({1.0e-15, std::abs(host[i]), std::abs(device[i])});
+    max_err = std::max(max_err, std::abs(host[i] - device[i]) / scale);
+  }
+  return max_err;
+}
+
 void perturb_interior(ChemicalField& field, Int spec, const Domain& domain) {
   field.conc(spec, domain.cell_index(1, 1, 2)) += 0.05;
   field.conc(spec, domain.cell_index(2, 2, 3)) -= 0.03;
+}
+
+SimulationConfig make_ten_step_residency_config(
+    const std::string& uptake_mode, bool gpu_enabled) {
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.seed = 480;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.total_time = 600.0;
+  cfg.time.output_interval = 600.0;
+  cfg.hdf5.enabled = false;
+  cfg.profile_steps = false;
+  cfg.gpu.enabled = gpu_enabled;
+  cfg.gpu.device_id = 0;
+
+  // 24x24x12 grid keeps 10-step CPU+GPU parity fast while large enough that
+  // full-grid concentration fields dominate small scalar/agent transfers.
+  cfg.domain.lo = {0.0, 0.0, 0.0};
+  cfg.domain.hi = {120.0e-6, 120.0e-6, 60.0e-6};
+  cfg.domain.grid_dx = 5.0e-6;
+  cfg.domain.hash_cell_size = 10.0e-6;
+
+  cfg.fixes.metabolism.uptake_limit = uptake_mode;
+  cfg.chem_env.siderophore.enabled = false;
+  cfg.chem_env.oxygen.k_ROS = 0.0;
+  cfg.qssa.use_fmm = false;
+
+  // Eliminate stochastic discrete branching so CPU and GPU stay locked on the
+  // same trajectory and concentration parity can be asserted to <= 1e-12.
+  cfg.fixes.bacteriocin.sos_lysis_prob = 0.0;
+  cfg.fixes.bacteriocin.sos_basal_rate = 0.0;
+  cfg.disabled_fixes = {"conjugation", "mutation"};
+
+  cfg.initial_strains.clear();
+  SimulationConfig::InitialStrain producer;
+  producer.type = 1;
+  producer.count = 16;
+  producer.mu_max = 5.5e-4;
+  producer.plasmids = {"ColE1", "ColB"};
+  producer.conjugative = false;
+  cfg.initial_strains.push_back(producer);
+
+  SimulationConfig::InitialStrain sensitive;
+  sensitive.type = 2;
+  sensitive.count = 16;
+  sensitive.mu_max = 5.0e-4;
+  sensitive.plasmids = {};
+  sensitive.conjugative = false;
+  cfg.initial_strains.push_back(sensitive);
+
+  return cfg;
+}
+
+uint64_t site_bytes_for(const std::vector<GpuTransferSiteProfile>& sites,
+                        std::string_view label,
+                        bool h2d,
+                        bool d2h) {
+  uint64_t total = 0;
+  for (const auto& site : sites) {
+    if (site.label != label) continue;
+    if (h2d) total += site.h2d_bytes;
+    if (d2h) total += site.d2h_bytes;
+  }
+  return total;
+}
+
+void run_ten_step_residency_mode(const std::string& uptake_mode) {
+  constexpr int kTotalSteps = 10;
+  const SimulationConfig cfg_cpu =
+      make_ten_step_residency_config(uptake_mode, false);
+  const SimulationConfig cfg_gpu =
+      make_ten_step_residency_config(uptake_mode, true);
+
+  Simulation sim_cpu;
+  sim_cpu.init(cfg_cpu);
+
+  gpu_transfer_profile_set_enabled(false);
+  gpu_transfer_profile_reset();
+  Simulation sim_gpu;
+  sim_gpu.init(cfg_gpu);
+  assert(sim_gpu.gpu_active());
+
+  gpu_transfer_profile_set_enabled(true);
+  gpu_transfer_profile_reset();
+
+  uint64_t total_h2d_10 = 0;
+  uint64_t total_d2h_10 = 0;
+  uint64_t mid_step_conc_upload = 0;
+  uint64_t mid_step_diff_download = 0;
+  uint64_t mid_step_qssa_sync = 0;
+  uint64_t mid_step_chem_reactions = 0;
+
+  for (int step_idx = 0; step_idx < kTotalSteps; ++step_idx) {
+    gpu_transfer_profile_reset();
+    sim_cpu.step(cfg_cpu.time.bio_dt);
+    sim_gpu.step(cfg_gpu.time.bio_dt);
+
+    const GpuProfile xfer = gpu_transfer_profile_snapshot();
+    const auto sites = gpu_transfer_site_profiles();
+    total_h2d_10 += xfer.h2d_bytes;
+    total_d2h_10 += xfer.d2h_bytes;
+
+    // Steps 2..9 (0-based indices 1..8): full-grid concentrations must remain
+    // strictly device-resident with zero full-field H2D/D2H transfers.
+    if (step_idx >= 1 && step_idx <= 8) {
+      mid_step_conc_upload +=
+          site_bytes_for(sites, "step_conc_upload", true, false);
+      mid_step_diff_download +=
+          site_bytes_for(sites, "chem_diffusion_result", false, true);
+      mid_step_qssa_sync +=
+          site_bytes_for(sites, "qssa_toxin_host_sync", false, true);
+      mid_step_chem_reactions +=
+          site_bytes_for(sites, "chem_reactions", true, true);
+    }
+  }
+
+  assert(mid_step_conc_upload == 0ULL);
+  assert(mid_step_diff_download == 0ULL);
+  assert(mid_step_qssa_sync == 0ULL);
+  if (uptake_mode != "delivery") {
+    assert(mid_step_chem_reactions == 0ULL);
+    assert(std::string(sim_gpu.chemistry_placement()) == "device");
+  } else {
+    assert(std::string(sim_gpu.chemistry_placement()) == "device_delivery");
+  }
+
+  // Compare total 10-step PCIe volume against the historical un-resident
+  // baseline (~5 full-field grid transfers per step -> ~57 GB at 500x500x50).
+  const auto& chem_gpu = sim_gpu.chemical_field();
+  const auto& chem_cpu = sim_cpu.chemical_field();
+  const uint64_t full_field_bytes =
+      static_cast<uint64_t>(chem_gpu.num_species())
+      * static_cast<uint64_t>(chem_gpu.ncells()) * sizeof(Real);
+  const uint64_t historical_baseline_bytes =
+      5ULL * full_field_bytes * static_cast<uint64_t>(kTotalSteps);
+  const uint64_t total_pcie_bytes = total_h2d_10 + total_d2h_10;
+  assert(total_pcie_bytes * 10ULL < historical_baseline_bytes);
+
+  // Final step-10 read materializes device concentrations lazily on host and
+  // verifies <= 1e-12 relative parity across every chemical species.
+  Real worst_rel_err = 0.0;
+  assert(chem_cpu.num_species() == chem_gpu.num_species());
+  for (Int s = 0; s < chem_cpu.num_species(); ++s) {
+    const Real rel_err = max_rel_diff(
+        chem_cpu.species_concentration(s), chem_gpu.species_concentration(s));
+    worst_rel_err = std::max(worst_rel_err, rel_err);
+    assert(rel_err <= 1.0e-12);
+  }
+  assert(sim_cpu.agents().size() == sim_gpu.agents().size());
+
+  gpu_transfer_profile_set_enabled(false);
+  const double pct_of_baseline =
+      100.0 * static_cast<double>(total_pcie_bytes)
+      / static_cast<double>(historical_baseline_bytes);
+  std::cout << "  test_ten_step_device_resident[" << uptake_mode << "]: PASSED"
+            << " (max_rel_err=" << worst_rel_err
+            << ", pcie_bytes=" << total_pcie_bytes
+            << ", pct_of_baseline=" << pct_of_baseline << "%"
+            << ", pinned_staging_active="
+            << (gpu_transfer_pinned_staging_active() ? 1 : 0) << ")\n";
 }
 
 }  // namespace
@@ -180,6 +356,12 @@ void test_host_reaction_survives_gpu_round_trip() {
   std::cout << "  test_host_reaction_survives_gpu_round_trip: PASSED\n";
 }
 
+void test_ten_step_device_resident_parity_and_pcie_budget() {
+  run_ten_step_residency_mode("none");
+  run_ten_step_residency_mode("sherwood");
+  run_ten_step_residency_mode("delivery");
+}
+
 int main() {
   std::cout << "=== GPU ChemicalField Facade Tests ===\n";
   if (const int gpu_status = test::require_gpu("gpu_chemical_field");
@@ -203,6 +385,7 @@ int main() {
   test_gpu_facade_z_gradient_diffusion();
   test_gpu_facade_boundaries_diffusing_vs_static();
   test_host_reaction_survives_gpu_round_trip();
+  test_ten_step_device_resident_parity_and_pcie_budget();
 
   std::cout << "All GPU chemical-field facade tests passed.\n";
   return 0;

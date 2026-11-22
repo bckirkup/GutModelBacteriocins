@@ -923,6 +923,18 @@ std::vector<Probe> build_probes() {
                   return c.layer2.live_align_patch_table_delivery;
                 }));
 
+  // ── Host ChemicalField OOM guard ──────────────────────────────────────────
+  v.push_back(R("memory.max_host_chemical_gb",
+                [](const SimulationConfig& c) {
+                  return c.memory.max_host_chemical_gb;
+                },
+                12.5));
+  v.push_back(S("memory.replicated_oom_policy",
+                [](const SimulationConfig& c) {
+                  return c.memory.replicated_oom_policy;
+                },
+                "auto_slab"));
+
   return v;
 }
 
@@ -933,7 +945,7 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
   static const std::set<std::string, std::less<>> keys = {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
-      "advection", "washout", "closure", "bacteriocin", "mucin_charge",
+      "advection", "washout", "closure", "memory", "bacteriocin", "mucin_charge",
       "metabolism", "receptor",
       "layer2", "layer3", "audit", "pulses",
       "layer2.audit_patch_indices", "layer2.audit.patch_indices",

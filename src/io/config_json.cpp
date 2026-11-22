@@ -860,6 +860,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
       cursor.parse_initial_population_object(cfg);
     } else if (key == "closure") {
       cursor.parse_prefixed_object(cfg, "closure", "closure");
+    } else if (key == "memory") {
+      cursor.parse_prefixed_object(cfg, "memory", "memory");
     } else if (key == "layer2") {
       cursor.parse_layer2_object(cfg);
     } else if (key == "layer3") {
@@ -981,6 +983,8 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   int_key("immigration.step", cfg.immigration.step);
   real_key("immigration.rate", cfg.immigration.rate);
   string_key("chemistry_decomposition", cfg.chemistry_decomposition);
+  real_key("memory.max_host_chemical_gb", cfg.memory.max_host_chemical_gb);
+  string_key("memory.replicated_oom_policy", cfg.memory.replicated_oom_policy);
   string_key("species_subset", cfg.species_subset);
   string_key("uptake_limit", cfg.fixes.metabolism.uptake_limit);
   string_key("chemistry.toxin_evaluation", cfg.qssa.toxin_evaluation);

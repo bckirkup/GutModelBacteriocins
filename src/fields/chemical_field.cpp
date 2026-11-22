@@ -17,9 +17,12 @@
 #include <charconv>
 #include <cmath>
 #include <cstdlib>
+#include <format>
+#include <fstream>
 #include <iostream>
 #include <numeric>
 #include <ranges>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -1273,7 +1276,302 @@ void validate_epithelial_delivery(const std::vector<ChemicalSpec>& specs) {
   }
 }
 
+constexpr double kBytesPerGiB = 1024.0 * 1024.0 * 1024.0;
+constexpr uint64_t kDiagnosticNodeBytesThreshold = 1024ULL * 1024ULL * 1024ULL;
+constexpr uint64_t kDiagnosticLargeGridCells = 10000000ULL;
+
+double bytes_to_gib(uint64_t bytes) {
+  return static_cast<double>(bytes) / kBytesPerGiB;
+}
+
+uint64_t per_rank_bytes_for_cells(
+    uint64_t cells, uint64_t species, bool delivery_any,
+    uint64_t& conc_bytes, uint64_t& reac_bytes, uint64_t& scratch_bytes,
+    uint64_t& vbf_bytes, uint64_t& delivery_bytes) {
+  const uint64_t field_bytes = species * cells * sizeof(Real);
+  conc_bytes = field_bytes;
+  reac_bytes = field_bytes;
+  if (delivery_any) {
+    scratch_bytes = cells * (sizeof(char) + sizeof(Int));
+    vbf_bytes = 2ULL * field_bytes;
+    delivery_bytes = 4ULL * field_bytes;
+  } else {
+    scratch_bytes = 0;
+    vbf_bytes = 0;
+    delivery_bytes = 0;
+  }
+  return conc_bytes + reac_bytes + scratch_bytes + vbf_bytes + delivery_bytes;
+}
+
+std::string format_memory_guard_diagnostic(
+    const ChemicalFieldMemoryGuardInput& input,
+    const ChemicalFieldMemoryGuardDecision& decision) {
+  const auto& fp = decision.footprint;
+  const Int eff_nprocs = std::max<Int>(1, input.nprocs);
+  const Int eff_rpn = std::max<Int>(1, input.ranks_per_node);
+  std::ostringstream out;
+  out << "ChemicalField host memory "
+      << (decision.exceeds_budget ? "budget exceeded" : "diagnostic")
+      << " (mode=" << (input.slab_mode ? "slab" : "replicated")
+      << ", grid=" << input.nx << "x" << input.ny << "x" << input.nz
+      << " [" << fp.global_cells << " cells], species=" << input.num_species
+      << ", nprocs=" << eff_nprocs << ", ranks_per_node=" << eff_rpn
+      << ", delivery=" << (input.delivery_any ? "on" : "off") << "): "
+      << std::format("{:.2f} GiB/rank, {:.2f} GiB/node",
+                     bytes_to_gib(fp.total_bytes_per_rank),
+                     bytes_to_gib(fp.total_bytes_per_node));
+  if (decision.has_budget) {
+    out << std::format(" vs {:.2f} GiB budget",
+                       bytes_to_gib(decision.effective_budget_bytes));
+  }
+  if (!input.slab_mode && eff_nprocs > 1) {
+    out << std::format(
+        ". Switching to \"chemistry_decomposition\": \"slab\" reduces node "
+        "footprint to {:.2f} GiB/node ({:.2f} GiB/rank, {:.3f}x ~ 1/{} of "
+        "replicated)",
+        bytes_to_gib(fp.slab_bytes_per_node),
+        bytes_to_gib(fp.slab_bytes_per_rank),
+        fp.slab_savings_factor, eff_nprocs);
+    if (decision.switch_to_slab) {
+      out << " — auto_slab enabled; switching automatically to slab mode.";
+    } else if (decision.should_throw) {
+      out << ". Set \"chemistry_decomposition\": \"slab\" (with "
+             "\"metabolism.delivery_far_field_radius\": 0.0 if needed), set "
+             "\"memory.replicated_oom_policy\": \"auto_slab\", or increase "
+             "\"memory.max_host_chemical_gb\" / node RAM.";
+    }
+  } else if (decision.should_throw) {
+    out << ". Reduce grid resolution/species_subset, increase node count, or "
+           "adjust \"memory.max_host_chemical_gb\".";
+  }
+  return out.str();
+}
+
 }  // namespace
+
+ChemicalField::ChemicalField(const ChemicalField& other) {
+  other.materialize_all_from_device();
+  nspec_ = other.nspec_;
+  ncells_ = other.ncells_;
+  global_ncells_ = other.global_ncells_;
+  global_nx_ = other.global_nx_;
+  global_ny_ = other.global_ny_;
+  global_nz_ = other.global_nz_;
+  owned_x_begin_ = other.owned_x_begin_;
+  owned_x_end_ = other.owned_x_end_;
+  delivery_far_field_radius_ = other.delivery_far_field_radius_;
+  delivery_support_stencil_ = other.delivery_support_stencil_;
+  delivery_storage_allocated_ = other.delivery_storage_allocated_;
+  delivery_affected_mask_ = other.delivery_affected_mask_;
+  delivery_affected_cells_ = other.delivery_affected_cells_;
+  halo_width_ = other.halo_width_;
+  storage_nx_ = other.storage_nx_;
+  mode_ = other.mode_;
+  domain_ = other.domain_;
+  specs_ = other.specs_;
+  conc_ = other.conc_;
+  host_conc_dirty_ = other.host_conc_dirty_;
+  device_conc_dirty_.assign(static_cast<size_t>(std::max<Int>(0, nspec_)), 0);
+  gpu_link_.reset();
+  reac_ = other.reac_;
+  host_reac_dirty_ = other.host_reac_dirty_;
+  sink_rate_ = other.sink_rate_;
+  vbf_sink_rate_ = other.vbf_sink_rate_;
+  sink_realized_ = other.sink_realized_;
+  total_sink_realized_ = other.total_sink_realized_;
+  vbf_sink_realized_ = other.vbf_sink_realized_;
+  prescribed_sink_ = other.prescribed_sink_;
+  prescribed_active_ = other.prescribed_active_;
+  flux_accounting_ = other.flux_accounting_;
+  debug_initial_content_ = other.debug_initial_content_;
+}
+
+ChemicalField& ChemicalField::operator=(const ChemicalField& other) {
+  if (this == &other) return *this;
+  ChemicalField copy(other);
+  *this = std::move(copy);
+  return *this;
+}
+
+ChemicalFieldMemoryFootprint ChemicalField::estimate_memory_footprint(
+    Int nx, Int ny, Int nz, Int num_species, Int nprocs, Int ranks_per_node,
+    bool slab_mode, bool delivery_any, Int halo_width) {
+  ChemicalFieldMemoryFootprint fp;
+  if (nx <= 0 || ny <= 0 || nz <= 0 || num_species <= 0) {
+    return fp;
+  }
+  const auto u_nx = static_cast<uint64_t>(nx);
+  const auto u_ny = static_cast<uint64_t>(ny);
+  const auto u_nz = static_cast<uint64_t>(nz);
+  const auto u_spec = static_cast<uint64_t>(num_species);
+  const auto eff_nprocs = static_cast<uint64_t>(std::max<Int>(1, nprocs));
+  const auto eff_rpn = static_cast<uint64_t>(std::max<Int>(1, ranks_per_node));
+  const auto eff_halo = static_cast<uint64_t>(std::max<Int>(0, halo_width));
+
+  fp.global_cells = u_nx * u_ny * u_nz;
+  const uint64_t slab_local_nx = (u_nx + eff_nprocs - 1ULL) / eff_nprocs;
+  const uint64_t slab_storage_nx = slab_local_nx + 2ULL * eff_halo;
+  const uint64_t slab_cells = slab_storage_nx * u_ny * u_nz;
+  fp.storage_cells_per_rank = slab_mode ? slab_cells : fp.global_cells;
+
+  fp.total_bytes_per_rank = per_rank_bytes_for_cells(
+      fp.storage_cells_per_rank, u_spec, delivery_any,
+      fp.conc_bytes_per_rank, fp.reac_bytes_per_rank, fp.scratch_bytes_per_rank,
+      fp.vbf_bytes_per_rank, fp.delivery_bytes_per_rank);
+  fp.total_bytes_per_node = fp.total_bytes_per_rank * eff_rpn;
+
+  uint64_t slab_conc = 0;
+  uint64_t slab_reac = 0;
+  uint64_t slab_scratch = 0;
+  uint64_t slab_vbf = 0;
+  uint64_t slab_delivery = 0;
+  fp.slab_bytes_per_rank = per_rank_bytes_for_cells(
+      slab_cells, u_spec, delivery_any,
+      slab_conc, slab_reac, slab_scratch, slab_vbf, slab_delivery);
+  fp.slab_bytes_per_node = fp.slab_bytes_per_rank * eff_rpn;
+  if (fp.total_bytes_per_node > 0) {
+    fp.slab_savings_factor = static_cast<double>(fp.slab_bytes_per_node)
+        / static_cast<double>(fp.total_bytes_per_node);
+  }
+  return fp;
+}
+
+std::optional<uint64_t> ChemicalField::parse_proc_meminfo_available_bytes(
+    std::string_view meminfo) {
+  size_t pos = 0;
+  while (pos < meminfo.size()) {
+    const size_t newline = meminfo.find('\n', pos);
+    const std::string_view line = newline == std::string_view::npos
+        ? meminfo.substr(pos)
+        : meminfo.substr(pos, newline - pos);
+    if (line.starts_with("MemAvailable:")) {
+      std::string_view rest = line.substr(std::string_view("MemAvailable:").size());
+      while (!rest.empty() && (rest.front() == ' ' || rest.front() == '\t')) {
+        rest.remove_prefix(1);
+      }
+      uint64_t kib = 0;
+      const auto parsed = std::from_chars(
+          rest.data(), rest.data() + rest.size(), kib);
+      if (parsed.ec == std::errc{} && kib > 0) {
+        return kib * 1024ULL;
+      }
+      return std::nullopt;
+    }
+    if (newline == std::string_view::npos) break;
+    pos = newline + 1;
+  }
+  return std::nullopt;
+}
+
+std::optional<uint64_t> ChemicalField::query_available_host_memory_bytes() {
+  std::ifstream meminfo("/proc/meminfo");
+  if (!meminfo.is_open()) return std::nullopt;
+  std::ostringstream buffer;
+  buffer << meminfo.rdbuf();
+  return parse_proc_meminfo_available_bytes(buffer.str());
+}
+
+Int ChemicalField::query_ranks_per_node(Int fallback_nprocs) {
+#ifdef GUTIBM_MPI
+  int initialized = 0;
+  int finalized = 0;
+  MPI_Initialized(&initialized);
+  MPI_Finalized(&finalized);
+  if (initialized && !finalized) {
+    MPI_Comm shared_comm = MPI_COMM_NULL;
+    if (MPI_Comm_split_type(MPI_COMM_WORLD, MPI_COMM_TYPE_SHARED, 0,
+                            MPI_INFO_NULL, &shared_comm) == MPI_SUCCESS
+        && shared_comm != MPI_COMM_NULL) {
+      int shared_size = 1;
+      MPI_Comm_size(shared_comm, &shared_size);
+      MPI_Comm_free(&shared_comm);
+      return std::max<Int>(1, static_cast<Int>(shared_size));
+    }
+  }
+#endif
+  return std::max<Int>(1, fallback_nprocs);
+}
+
+ChemicalFieldMemoryGuardDecision ChemicalField::evaluate_memory_guard(
+    const ChemicalFieldMemoryGuardInput& input) {
+  ChemicalFieldMemoryGuardDecision decision;
+  const Int slab_halo = input.slab_mode
+      ? std::max<Int>(0, input.halo_width)
+      : std::max<Int>(0, input.required_slab_halo_width);
+  decision.footprint = estimate_memory_footprint(
+      input.nx, input.ny, input.nz, input.num_species,
+      input.nprocs, input.ranks_per_node, input.slab_mode,
+      input.delivery_any, slab_halo);
+
+  if (input.max_host_chemical_gb > 0.0) {
+    decision.has_budget = true;
+    decision.effective_budget_bytes = static_cast<uint64_t>(
+        static_cast<double>(input.max_host_chemical_gb) * kBytesPerGiB);
+  } else if (input.available_host_memory_bytes.has_value()
+             && *input.available_host_memory_bytes > 0) {
+    decision.has_budget = true;
+    decision.effective_budget_bytes =
+        (*input.available_host_memory_bytes / 10ULL) * 9ULL;
+  }
+
+  decision.exceeds_budget = decision.has_budget
+      && decision.footprint.total_bytes_per_node
+             > decision.effective_budget_bytes;
+  decision.emit_replicated_diagnostic = input.nprocs > 1 && !input.slab_mode
+      && (decision.footprint.total_bytes_per_node
+              > kDiagnosticNodeBytesThreshold
+          || decision.footprint.global_cells >= kDiagnosticLargeGridCells);
+
+  const Int eff_nprocs = std::max<Int>(1, input.nprocs);
+  const Int min_local_nx = input.nx / eff_nprocs;
+  const bool slab_geometry_ok = eff_nprocs > 1
+      && min_local_nx > 0
+      && min_local_nx >= std::max<Int>(0, input.required_slab_halo_width);
+  const bool slab_reduces =
+      decision.footprint.slab_bytes_per_node
+      < decision.footprint.total_bytes_per_node;
+  const bool slab_fits = !decision.has_budget
+      || decision.footprint.slab_bytes_per_node
+             <= decision.effective_budget_bytes;
+
+  if (decision.exceeds_budget && !input.slab_mode
+      && input.replicated_oom_policy == "auto_slab"
+      && input.slab_feature_eligible && slab_geometry_ok
+      && slab_reduces && slab_fits) {
+    decision.switch_to_slab = true;
+  }
+
+  if (decision.exceeds_budget) {
+    if (input.replicated_oom_policy == "warn") {
+      decision.should_throw = false;
+    } else if (input.replicated_oom_policy == "auto_slab") {
+      decision.should_throw = !decision.switch_to_slab;
+    } else {
+      decision.should_throw = true;
+    }
+  }
+
+  if (decision.emit_replicated_diagnostic || decision.exceeds_budget) {
+    decision.diagnostic_message =
+        format_memory_guard_diagnostic(input, decision);
+  }
+  return decision;
+}
+
+void ChemicalField::ensure_delivery_storage() {
+  if (delivery_storage_allocated_) return;
+  const auto species_count = static_cast<size_t>(std::max<Int>(0, nspec_));
+  const auto cell_count = static_cast<size_t>(std::max<Int>(0, ncells_));
+  delivery_affected_mask_.assign(cell_count, 0);
+  delivery_affected_cells_.reserve(cell_count);
+  sink_rate_.assign(species_count, std::vector<Real>(cell_count, 0.0));
+  vbf_sink_rate_.assign(species_count, std::vector<Real>(cell_count, 0.0));
+  sink_realized_.assign(species_count, std::vector<Real>(cell_count, 0.0));
+  total_sink_realized_.assign(species_count, std::vector<Real>(cell_count, 0.0));
+  vbf_sink_realized_.assign(species_count, std::vector<Real>(cell_count, 0.0));
+  prescribed_sink_.assign(species_count, std::vector<Real>(cell_count, 0.0));
+  delivery_storage_allocated_ = true;
+}
 
 void ChemicalField::init(const Domain& domain,
                           const std::vector<ChemicalSpec>& specs,
@@ -1303,31 +1601,35 @@ void ChemicalField::init(const Domain& domain,
   flux_accounting_.init(specs.size());
   delivery_support_stencil_ =
       make_delivery_support_stencil(domain, delivery_far_field_radius_);
-  delivery_affected_mask_.assign(static_cast<size_t>(ncells_), 0);
-  delivery_affected_cells_.reserve(static_cast<size_t>(ncells_));
 
   conc_.resize(nspec_);
   reac_.resize(nspec_);
   host_reac_dirty_.assign(static_cast<size_t>(nspec_), false);
-  sink_rate_.assign(static_cast<size_t>(nspec_),
-                    std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
-  vbf_sink_rate_.assign(
-      static_cast<size_t>(nspec_),
-      std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
-  sink_realized_.assign(static_cast<size_t>(nspec_),
-                        std::vector<Real>(
-                            static_cast<size_t>(ncells_), 0.0));
-  total_sink_realized_.assign(
-      static_cast<size_t>(nspec_),
-      std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
-  vbf_sink_realized_.assign(
-      static_cast<size_t>(nspec_),
-      std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
-  prescribed_sink_.assign(
-      static_cast<size_t>(nspec_),
-      std::vector<Real>(static_cast<size_t>(ncells_), 0.0));
   prescribed_active_.assign(static_cast<size_t>(nspec_), false);
   host_conc_dirty_.assign(static_cast<size_t>(nspec_), true);
+  device_conc_dirty_.assign(static_cast<size_t>(nspec_), 0);
+  if (gpu_link_ != nullptr) {
+    gpu_link_->dirty_count.store(0, std::memory_order_release);
+  }
+
+  // Only allocate the 6 per-species delivery arrays (~6x conc/reac) when at
+  // least one species uses delivery uptake; non-delivery callers allocate them
+  // lazily on first sink write, keeping default footprint at conc + reac.
+  delivery_storage_allocated_ = false;
+  delivery_affected_mask_.clear();
+  delivery_affected_cells_.clear();
+  sink_rate_.clear();
+  vbf_sink_rate_.clear();
+  sink_realized_.clear();
+  total_sink_realized_.clear();
+  vbf_sink_realized_.clear();
+  prescribed_sink_.clear();
+  const bool delivery_any = std::ranges::any_of(
+      specs_, [](const ChemicalSpec& s) { return s.delivery_enabled; });
+  if (delivery_any) {
+    ensure_delivery_storage();
+  }
+
   for (Int s = 0; s < nspec_; ++s) {
     conc_[s].assign(ncells_, specs_[s].initial_conc);
     reac_[s].assign(ncells_, 0.0);
@@ -1346,12 +1648,114 @@ void ChemicalField::init(const Domain& domain,
   }
 }
 
+void ChemicalField::bind_gpu_mirror(std::shared_ptr<ChemicalFieldGpuLink> link) {
+  gpu_link_ = std::move(link);
+  if (gpu_link_ != nullptr) {
+    uint32_t count = 0;
+    for (const uint8_t dirty : device_conc_dirty_) {
+      if (dirty != 0) ++count;
+    }
+    gpu_link_->dirty_count.store(count, std::memory_order_release);
+  }
+}
+
+void ChemicalField::mark_device_conc_dirty(Int spec) {
+  if (spec < 0 || spec >= nspec_) return;
+  const auto index = static_cast<size_t>(spec);
+  if (gpu_link_ != nullptr) {
+    std::scoped_lock lock(gpu_link_->mutex);
+    if (device_conc_dirty_[index] == 0) {
+      device_conc_dirty_[index] = 1;
+      gpu_link_->dirty_count.fetch_add(1, std::memory_order_release);
+    }
+    host_conc_dirty_[index] = false;
+    return;
+  }
+  device_conc_dirty_[index] = 1;
+  host_conc_dirty_[index] = false;
+}
+
+void ChemicalField::mark_all_device_conc_dirty() {
+  if (gpu_link_ != nullptr) {
+    std::scoped_lock lock(gpu_link_->mutex);
+    for (Int s = 0; s < nspec_; ++s) {
+      device_conc_dirty_[static_cast<size_t>(s)] = 1;
+      host_conc_dirty_[static_cast<size_t>(s)] = false;
+    }
+    gpu_link_->dirty_count.store(static_cast<uint32_t>(nspec_),
+                                 std::memory_order_release);
+    return;
+  }
+  std::ranges::fill(device_conc_dirty_, static_cast<uint8_t>(1));
+  host_conc_dirty_.assign(host_conc_dirty_.size(), false);
+}
+
+bool ChemicalField::device_conc_dirty(Int spec) const {
+  if (spec < 0 || spec >= nspec_) return false;
+  return device_conc_dirty_[static_cast<size_t>(spec)] != 0;
+}
+
+bool ChemicalField::any_device_conc_dirty() const {
+  if (gpu_link_ != nullptr) {
+    return gpu_link_->dirty_count.load(std::memory_order_acquire) != 0;
+  }
+  return std::ranges::any_of(
+      device_conc_dirty_, [](uint8_t flag) { return flag != 0; });
+}
+
+void ChemicalField::clear_device_conc_dirty(Int spec) {
+  if (spec < 0 || spec >= nspec_) return;
+  const auto index = static_cast<size_t>(spec);
+  if (gpu_link_ != nullptr) {
+    std::scoped_lock lock(gpu_link_->mutex);
+    if (device_conc_dirty_[index] != 0) {
+      device_conc_dirty_[index] = 0;
+      gpu_link_->dirty_count.fetch_sub(1, std::memory_order_release);
+    }
+    return;
+  }
+  device_conc_dirty_[index] = 0;
+}
+
+void ChemicalField::materialize_species_from_device(Int spec) const {
+  if (spec < 0 || spec >= nspec_ || gpu_link_ == nullptr) return;
+  std::scoped_lock lock(gpu_link_->mutex);
+  const auto index = static_cast<size_t>(spec);
+  if (device_conc_dirty_[index] == 0) return;
+  if (gpu_link_->gpu != nullptr) {
+    gpu_link_->gpu->download_species_for_host_read(*this, spec);
+  }
+  device_conc_dirty_[index] = 0;
+  host_conc_dirty_[index] = false;
+  gpu_link_->dirty_count.fetch_sub(1, std::memory_order_release);
+}
+
+void ChemicalField::materialize_all_from_device() const {
+  if (gpu_link_ == nullptr) return;
+  if (gpu_link_->dirty_count.load(std::memory_order_acquire) == 0) return;
+  std::scoped_lock lock(gpu_link_->mutex);
+  for (Int s = 0; s < nspec_; ++s) {
+    const auto index = static_cast<size_t>(s);
+    if (device_conc_dirty_[index] == 0) continue;
+    if (gpu_link_->gpu != nullptr) {
+      gpu_link_->gpu->download_species_for_host_read(*this, s);
+    }
+    device_conc_dirty_[index] = 0;
+    host_conc_dirty_[index] = false;
+    gpu_link_->dirty_count.fetch_sub(1, std::memory_order_release);
+  }
+}
+
 void ChemicalField::mark_host_conc_dirty(Int spec) {
   assert(spec >= 0 && spec < nspec_);
+  clear_device_conc_dirty(spec);
   host_conc_dirty_[static_cast<size_t>(spec)] = true;
 }
 
 void ChemicalField::mark_all_host_conc_dirty() {
+  for (Int s = 0; s < nspec_; ++s) {
+    clear_device_conc_dirty(s);
+  }
   std::fill(host_conc_dirty_.begin(), host_conc_dirty_.end(), true);
 }
 
@@ -1408,6 +1812,7 @@ void ChemicalField::exchange_concentration_halos() {
   const Int halo_cells = halo_width_ * plane_cells;
   const Int local_nx = owned_x_end_ - owned_x_begin_;
   if (halo_cells <= 0 || local_nx <= 0) return;
+  materialize_all_from_device();
   mark_all_host_conc_dirty();
 
   if (domain_->nprocs() <= 1) {
@@ -1494,12 +1899,14 @@ void ChemicalField::zero_reactions() {
   for (Int s = 0; s < nspec_; ++s) {
     std::ranges::fill(reac_[s], 0.0);
     host_reac_dirty_[static_cast<size_t>(s)] = false;
-    std::ranges::fill(sink_rate_[s], 0.0);
-    std::ranges::fill(vbf_sink_rate_[s], 0.0);
-    std::ranges::fill(sink_realized_[s], 0.0);
-    std::ranges::fill(total_sink_realized_[s], 0.0);
-    std::ranges::fill(vbf_sink_realized_[s], 0.0);
-    std::ranges::fill(prescribed_sink_[s], 0.0);
+    if (delivery_storage_allocated_) {
+      std::ranges::fill(sink_rate_[s], 0.0);
+      std::ranges::fill(vbf_sink_rate_[s], 0.0);
+      std::ranges::fill(sink_realized_[s], 0.0);
+      std::ranges::fill(total_sink_realized_[s], 0.0);
+      std::ranges::fill(vbf_sink_realized_[s], 0.0);
+      std::ranges::fill(prescribed_sink_[s], 0.0);
+    }
     flux_accounting_.negative_delivery_events_step[
         static_cast<size_t>(s)] = 0.0;
     flux_accounting_.negative_delivery_mass_step[
@@ -1507,6 +1914,7 @@ void ChemicalField::zero_reactions() {
     prescribed_active_[static_cast<size_t>(s)] = false;
   }
   if (!nutrient_debug_enabled() || domain_ == nullptr) return;
+  materialize_all_from_device();
   ++nutrient_debug_step_counter();
   debug_initial_content_.resize(static_cast<size_t>(nspec_));
   for (Int s = 0; s < nspec_; ++s) {
@@ -1544,6 +1952,9 @@ void ChemicalField::add_sink_rate_global(Int spec, Int cell, Real rate) {
   if (spec < 0 || spec >= nspec_ || storage_cell < 0 || rate <= 0.0) {
     return;
   }
+  if (!delivery_storage_allocated_) {
+    ensure_delivery_storage();
+  }
   #ifdef GUTIBM_OPENMP
   #pragma omp atomic
   #endif
@@ -1558,6 +1969,9 @@ void ChemicalField::add_prescribed_sink_global(
       || !owns_global_cell(cell) || amount <= 0.0) {
     return;
   }
+  if (!delivery_storage_allocated_) {
+    ensure_delivery_storage();
+  }
   #ifdef GUTIBM_OPENMP
   #pragma omp atomic
   #endif
@@ -1569,6 +1983,9 @@ void ChemicalField::add_prescribed_sink_global(
 void ChemicalField::add_prescribed_sinks(
     Int spec, const std::vector<Real>& amounts) {
   if (spec < 0 || spec >= nspec_) return;
+  if (!delivery_storage_allocated_) {
+    ensure_delivery_storage();
+  }
   auto& target = prescribed_sink_[static_cast<size_t>(spec)];
   const size_t count = std::min(target.size(), amounts.size());
   bool added = false;
@@ -1584,7 +2001,10 @@ void ChemicalField::add_prescribed_sinks(
 
 Real ChemicalField::prescribed_sink_global(Int spec, Int cell) const {
   const Int storage_cell = global_to_storage_cell(cell);
-  if (spec < 0 || spec >= nspec_ || storage_cell < 0) return 0.0;
+  if (!delivery_storage_allocated_ || spec < 0 || spec >= nspec_
+      || storage_cell < 0) {
+    return 0.0;
+  }
   return prescribed_sink_[static_cast<size_t>(spec)]
       [static_cast<size_t>(storage_cell)];
 }
@@ -1592,6 +2012,10 @@ Real ChemicalField::prescribed_sink_global(Int spec, Int cell) const {
 const std::vector<Real>& ChemicalField::prescribed_sink_storage(
     Int spec) const {
   assert(spec >= 0 && spec < nspec_);
+  if (!delivery_storage_allocated_) {
+    static const std::vector<Real> empty;
+    return empty;
+  }
   return prescribed_sink_[static_cast<size_t>(spec)];
 }
 
@@ -1609,6 +2033,9 @@ void ChemicalField::add_vbf_sink_rate_global(Int spec, Int cell, Real rate) {
   if (spec < 0 || spec >= nspec_ || storage_cell < 0 || rate <= 0.0) {
     return;
   }
+  if (!delivery_storage_allocated_) {
+    ensure_delivery_storage();
+  }
   #ifdef GUTIBM_OPENMP
   #pragma omp atomic
   #endif
@@ -1624,6 +2051,9 @@ void ChemicalField::add_vbf_sink_rate_global(Int spec, Int cell, Real rate) {
 void ChemicalField::add_vbf_sink_rates(
     Int spec, const std::vector<Real>& rates) {
   if (spec < 0 || spec >= nspec_) return;
+  if (!delivery_storage_allocated_) {
+    ensure_delivery_storage();
+  }
   auto& vbf_rates = vbf_sink_rate_[static_cast<size_t>(spec)];
   auto& total_rates = sink_rate_[static_cast<size_t>(spec)];
   if (rates.size() != vbf_rates.size()) {
@@ -1638,7 +2068,7 @@ void ChemicalField::add_vbf_sink_rates(
 }
 
 void ChemicalField::split_delivery_sink_realized(Int spec) {
-  if (spec < 0 || spec >= nspec_) return;
+  if (!delivery_storage_allocated_ || spec < 0 || spec >= nspec_) return;
   for (Int cell = 0; cell < global_ncells_; ++cell) {
     if (!owns_global_cell(cell)) continue;
     const Int storage_cell = global_to_storage_cell(cell);
@@ -1661,7 +2091,10 @@ void ChemicalField::add_sink_rate_global(Int cell, Real rate) {
 
 Real ChemicalField::sink_realized_global(Int spec, Int cell) const {
   const Int storage_cell = global_to_storage_cell(cell);
-  if (spec < 0 || spec >= nspec_ || storage_cell < 0) return 0.0;
+  if (!delivery_storage_allocated_ || spec < 0 || spec >= nspec_
+      || storage_cell < 0) {
+    return 0.0;
+  }
   return sink_realized_[static_cast<size_t>(spec)]
       [static_cast<size_t>(storage_cell)];
 }
@@ -1673,20 +2106,26 @@ Real ChemicalField::sink_realized_global(Int cell) const {
 
 Real ChemicalField::total_sink_realized_global(Int spec, Int cell) const {
   const Int storage_cell = global_to_storage_cell(cell);
-  if (spec < 0 || spec >= nspec_ || storage_cell < 0) return 0.0;
+  if (!delivery_storage_allocated_ || spec < 0 || spec >= nspec_
+      || storage_cell < 0) {
+    return 0.0;
+  }
   return total_sink_realized_[static_cast<size_t>(spec)]
       [static_cast<size_t>(storage_cell)];
 }
 
 Real ChemicalField::vbf_sink_realized_global(Int spec, Int cell) const {
   const Int storage_cell = global_to_storage_cell(cell);
-  if (spec < 0 || spec >= nspec_ || storage_cell < 0) return 0.0;
+  if (!delivery_storage_allocated_ || spec < 0 || spec >= nspec_
+      || storage_cell < 0) {
+    return 0.0;
+  }
   return vbf_sink_realized_[static_cast<size_t>(spec)]
       [static_cast<size_t>(storage_cell)];
 }
 
 Real ChemicalField::vbf_sink_realized(Int spec) const {
-  if (spec < 0 || spec >= nspec_) return 0.0;
+  if (!delivery_storage_allocated_ || spec < 0 || spec >= nspec_) return 0.0;
   Real total = 0.0;
   for (Int cell = 0; cell < global_ncells_; ++cell) {
     if (owns_global_cell(cell)) {
@@ -1698,9 +2137,10 @@ Real ChemicalField::vbf_sink_realized(Int spec) const {
 
 bool ChemicalField::has_sink_rate(Int spec) const {
   if (spec < 0 || spec >= nspec_) return false;
-  const bool local = std::ranges::any_of(
-      sink_rate_[static_cast<size_t>(spec)],
-      [](Real value) { return value > 0.0; });
+  const bool local = delivery_storage_allocated_
+      && std::ranges::any_of(
+          sink_rate_[static_cast<size_t>(spec)],
+          [](Real value) { return value > 0.0; });
 #ifdef GUTIBM_MPI
   int initialized = 0;
   int finalized = 0;
@@ -1745,9 +2185,16 @@ void ChemicalField::sum_reactions_across_ranks() {
     MPI_Allreduce(MPI_IN_PLACE, reaction.data(), ncells_, MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
   }
-  for (auto& sink : sink_rate_) {
-    MPI_Allreduce(MPI_IN_PLACE, sink.data(), ncells_, MPI_DOUBLE, MPI_SUM,
-                  MPI_COMM_WORLD);
+  int local_delivery = delivery_storage_allocated_ ? 1 : 0;
+  int global_delivery = 0;
+  MPI_Allreduce(&local_delivery, &global_delivery, 1, MPI_INT, MPI_MAX,
+                MPI_COMM_WORLD);
+  if (global_delivery != 0) {
+    ensure_delivery_storage();
+    for (auto& sink : sink_rate_) {
+      MPI_Allreduce(MPI_IN_PLACE, sink.data(), ncells_, MPI_DOUBLE, MPI_SUM,
+                    MPI_COMM_WORLD);
+    }
   }
   mark_all_host_reac_dirty();
 #endif
@@ -1798,6 +2245,12 @@ void ChemicalField::sum_prescribed_sinks_across_ranks() {
   int ranks = 1;
   MPI_Comm_size(MPI_COMM_WORLD, &ranks);
   if (ranks <= 1) return;
+  int local_delivery = delivery_storage_allocated_ ? 1 : 0;
+  int global_delivery = 0;
+  MPI_Allreduce(&local_delivery, &global_delivery, 1, MPI_INT, MPI_MAX,
+                MPI_COMM_WORLD);
+  if (global_delivery == 0) return;
+  ensure_delivery_storage();
   for (auto& prescribed : prescribed_sink_) {
     MPI_Allreduce(MPI_IN_PLACE, prescribed.data(), ncells_, MPI_DOUBLE,
                   MPI_SUM, MPI_COMM_WORLD);
@@ -3197,10 +3650,12 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
           domain, delivery_far_field_radius_)) {
     delivery_support_stencil_ =
         make_delivery_support_stencil(domain, delivery_far_field_radius_);
-    delivery_affected_mask_.assign(
-        static_cast<size_t>(ncells_), 0);
-    delivery_affected_cells_.clear();
-    delivery_affected_cells_.reserve(static_cast<size_t>(ncells_));
+    if (delivery_storage_allocated_) {
+      delivery_affected_mask_.assign(
+          static_cast<size_t>(ncells_), 0);
+      delivery_affected_cells_.clear();
+      delivery_affected_cells_.reserve(static_cast<size_t>(ncells_));
+    }
   }
   sum_prescribed_sinks_across_ranks();
   if (mode_ == DecompositionMode::Slab) {
@@ -3230,6 +3685,7 @@ bool ChemicalField::apply_diffusion_gpu(
     has_delivery |= chemical.diffuses() && chemical.delivery_enabled;
   }
   if (!has_delivery) return false;
+  ensure_delivery_storage();
   // Non-delivery species retain the existing constant-diagonal GPU kernels.
   bool has_non_delivery_diffusion = false;
   for (Int s = 0; s < nspec_; ++s) {
@@ -3247,35 +3703,36 @@ bool ChemicalField::apply_diffusion_gpu(
 
     auto& concentration = conc_[static_cast<size_t>(s)];
     auto& prescribed = prescribed_sink_[static_cast<size_t>(s)];
-    const auto concentration_snapshot = concentration;
     const auto flux_snapshot = flux_accounting_;
     assert(std::ranges::all_of(
         total_sink_realized_[static_cast<size_t>(s)],
-        [](const Real value) { return value == 0.0; }));
+        [](const Real value) { return value <= 0.0 && value >= 0.0; }));
     const auto realized_snapshot =
         total_sink_realized_[static_cast<size_t>(s)];
     const auto prescribed_snapshot = prescribed;
     gpu.snapshot_delivery_species(s);
     gpu.prepare_delivery_species(
-        s, sink_rate_[static_cast<size_t>(s)], prescribed);
+        s, sink_rate_[static_cast<size_t>(s)], prescribed, has_sink_rate(s));
+    bool prescribed_uploaded = true;
 
-    const auto restore = [&gpu, this, s, &concentration_snapshot,
-                          &flux_snapshot, &realized_snapshot] {
-      conc_[static_cast<size_t>(s)] = concentration_snapshot;
-      mark_host_conc_dirty(s);
+    const auto restore = [&gpu, this, s, &flux_snapshot, &realized_snapshot] {
       flux_accounting_ = flux_snapshot;
       total_sink_realized_[static_cast<size_t>(s)] = realized_snapshot;
       gpu.restore_delivery_species(s);
+      mark_device_conc_dirty(s);
     };
     const auto restore_original =
-        [&gpu, &restore, &prescribed, &prescribed_snapshot] {
+        [&restore, &prescribed, &prescribed_snapshot, &prescribed_uploaded] {
           restore();
           prescribed = prescribed_snapshot;
-          gpu.upload_delivery_prescribed(prescribed);
+          prescribed_uploaded = false;
         };
     const auto solve = [
-        &gpu, this, &domain, s, dt, &chemical] {
-      gpu.upload_delivery_prescribed(prescribed_sink_[static_cast<size_t>(s)]);
+        &gpu, this, &domain, s, dt, &chemical, &prescribed_uploaded] {
+      if (!prescribed_uploaded) {
+        gpu.upload_delivery_prescribed(prescribed_sink_[static_cast<size_t>(s)]);
+        prescribed_uploaded = true;
+      }
       gpu.reset_delivery_boundary(s);
       if (!gpu.apply_delivery_species(
               domain, chemical, s, dt,
@@ -3284,6 +3741,7 @@ bool ChemicalField::apply_diffusion_gpu(
             "CUDA delivery precondition failed for species '"
             + chemical.name + "'");
       }
+      mark_device_conc_dirty(s);
       flux_accounting_.add_boundary(
           s, gpu.download_delivery_boundary(s));
       flux_accounting_.add_gradient_source(
@@ -3307,24 +3765,28 @@ bool ChemicalField::apply_diffusion_gpu(
         [&gpu, s] {
           return gpu.delivery_negative_fraction(s);
         },
-        [this, &gpu, s, &domain, &owns_cell, &storage_cell] {
+        [this, &gpu, s, &domain, &owns_cell, &storage_cell,
+         &prescribed_uploaded] {
           // Retry dilation intentionally uses one device-to-host transfer;
           // duplicating the established support stencil on CUDA would add a
           // second scientific implementation for a rare path.
           std::vector<Real> realized;
           gpu.download_delivery_species(
               s, conc_[static_cast<size_t>(s)], realized);
-          mark_host_conc_dirty(s);
+          clear_device_conc_dirty(s);
+          clear_host_conc_dirty(s);
           auto& current = prescribed_sink_[static_cast<size_t>(s)];
           const Real reduced = reduce_prescribed_near_negative_cells(
               conc_[static_cast<size_t>(s)], current, domain,
               delivery_support_stencil_, delivery_affected_mask_,
               delivery_affected_cells_, global_ncells_,
               owns_cell, storage_cell);
-          gpu.upload_delivery_prescribed(current);
+          prescribed_uploaded = false;
           return reduced;
         },
-        [this, s]() -> std::vector<Real>& {
+        [this, s, &prescribed_uploaded]() -> std::vector<Real>& {
+          // Bisection mutates prescribed_sink_ directly via this reference.
+          prescribed_uploaded = false;
           return prescribed_sink_[static_cast<size_t>(s)];
         },
         [this, &owns_cell, &storage_cell](
@@ -3342,8 +3804,16 @@ bool ChemicalField::apply_diffusion_gpu(
     const auto result = run_delivery_rationing(
         prescribed_snapshot, callbacks);
     std::vector<Real> realized;
-    gpu.download_delivery_species(s, concentration, realized);
-    mark_host_conc_dirty(s);
+    if (result.negative_after_solve) {
+      gpu.download_delivery_species(s, concentration, realized);
+      clear_device_conc_dirty(s);
+      clear_host_conc_dirty(s);
+    } else {
+      // Keep delivery species concentration device-resident; only realized sink
+      // amounts are needed on host for agent/VBF splitting.
+      gpu.download_delivery_realized(s, realized);
+      mark_device_conc_dirty(s);
+    }
     auto& total_realized = total_sink_realized_[static_cast<size_t>(s)];
     assert(total_realized.size() == realized_snapshot.size());
     assert(total_realized.size() == realized.size());
@@ -3459,7 +3929,13 @@ void ChemicalField::apply_diffusion_species(
     const Domain& domain, Real dt, Int s) {
   const ChemicalSpec& chemical = specs_[s];
   if (!chemical.diffuses()) return;
+  materialize_species_from_device(s);
   mark_host_conc_dirty(s);
+  if (chemical.delivery_enabled) {
+    ensure_delivery_storage();
+  }
+  std::vector<Real> empty_sink;
+  std::vector<Real> empty_realized;
   const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
   const Real alpha_x = effective_diffusion * dt
       / (domain.dx_x() * domain.dx_x());
@@ -3469,15 +3945,18 @@ void ChemicalField::apply_diffusion_species(
       / (domain.dx_z() * domain.dx_z());
   ReplicatedDiffusionContext context{
       conc_[s], domain, chemical, flux_accounting_,
-      sink_rate_[static_cast<size_t>(s)],
-      total_sink_realized_[static_cast<size_t>(s)], s, dt, alpha_x, alpha_y,
-      alpha_z,
+      delivery_storage_allocated_ ? sink_rate_[static_cast<size_t>(s)]
+                                  : empty_sink,
+      delivery_storage_allocated_ ? total_sink_realized_[static_cast<size_t>(s)]
+                                  : empty_realized,
+      s, dt, alpha_x, alpha_y, alpha_z,
       domain.cell_volume(), chemical.boundary_conc,
       chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
       chemical.delivery_enabled,
       (chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0)
           ? &chemical : nullptr,
-      &prescribed_sink_[static_cast<size_t>(s)],
+      delivery_storage_allocated_ ? &prescribed_sink_[static_cast<size_t>(s)]
+                                  : nullptr,
       prescribed_active_[static_cast<size_t>(s)]};
   if (!context.delivery) {
     prepare_replicated_diffusion(context);
@@ -3501,6 +3980,7 @@ void ChemicalField::apply_diffusion_species(
 }
 
 void ChemicalField::finalize_delivery_realized(Int spec) {
+  if (!delivery_storage_allocated_) return;
   for (Int cell = 0; cell < global_ncells_; ++cell) {
     if (!owns_global_cell(cell)) continue;
     const Int storage = global_to_storage_cell(cell);
@@ -3527,6 +4007,7 @@ void ChemicalField::apply_periodic_x_diffusion(const Domain& domain, Real dt,
   if (dt <= 0.0 || domain.dx_x() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
   if (!chemical.diffuses()) return;
+  materialize_species_from_device(spec);
   mark_host_conc_dirty(spec);
   const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt
       / (domain.dx_x() * domain.dx_x());
@@ -3544,6 +4025,7 @@ void ChemicalField::apply_periodic_y_diffusion(const Domain& domain, Real dt,
   if (dt <= 0.0 || domain.dx_y() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
   if (!chemical.diffuses()) return;
+  materialize_species_from_device(spec);
   mark_host_conc_dirty(spec);
   const Real alpha = (chemical.diff_coeff / chemical.retardation) * dt
       / (domain.dx_y() * domain.dx_y());
@@ -3555,6 +4037,7 @@ void ChemicalField::apply_bounded_z_diffusion(const Domain& domain, Real dt,
   if (dt <= 0.0 || domain.dx_z() <= 0.0 || spec < 0 || spec >= nspec_) return;
   const ChemicalSpec& chemical = specs_[static_cast<size_t>(spec)];
   if (!chemical.diffuses()) return;
+  materialize_species_from_device(spec);
   mark_host_conc_dirty(spec);
   const Real effective_diffusion =
       chemical.diff_coeff / chemical.retardation;
@@ -3591,7 +4074,13 @@ void ChemicalField::apply_diffusion_slab_species(
     const Domain& domain, Real dt, Int s) {
   const ChemicalSpec& chemical = specs_[s];
   if (!chemical.diffuses()) return;
+  materialize_species_from_device(s);
   mark_host_conc_dirty(s);
+  if (chemical.delivery_enabled) {
+    ensure_delivery_storage();
+  }
+  std::vector<Real> empty_sink;
+  std::vector<Real> empty_realized;
   const Real effective_diffusion = chemical.diff_coeff / chemical.retardation;
   const Real alpha_x = effective_diffusion * dt
       / (domain.dx_x() * domain.dx_x());
@@ -3601,16 +4090,19 @@ void ChemicalField::apply_diffusion_slab_species(
       / (domain.dx_z() * domain.dx_z());
   SlabDiffusionContext context{
       conc_[static_cast<size_t>(s)], domain, chemical, flux_accounting_,
-      sink_rate_[static_cast<size_t>(s)],
-      total_sink_realized_[static_cast<size_t>(s)], storage_nx_, halo_width_, s,
-      dt,
+      delivery_storage_allocated_ ? sink_rate_[static_cast<size_t>(s)]
+                                  : empty_sink,
+      delivery_storage_allocated_ ? total_sink_realized_[static_cast<size_t>(s)]
+                                  : empty_realized,
+      storage_nx_, halo_width_, s, dt,
       alpha_x, alpha_y, alpha_z, domain.cell_volume(),
       chemical.boundary_conc,
       chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0,
       chemical.delivery_enabled,
       (chemical.z_gradient_enabled && chemical.z_gradient_lambda > 0.0)
           ? &chemical : nullptr,
-      &prescribed_sink_[static_cast<size_t>(s)],
+      delivery_storage_allocated_ ? &prescribed_sink_[static_cast<size_t>(s)]
+                                  : nullptr,
       prescribed_active_[static_cast<size_t>(s)]};
   if (!context.delivery) {
     prepare_slab_diffusion(context);
@@ -3683,6 +4175,7 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
     // configured, this is the peak concentration at the epithelium.
     if (specs_[s].epithelial_boundary_mode
         == EpithelialBoundaryMode::Dirichlet) {
+      materialize_species_from_device(s);
       mark_host_conc_dirty(s);
       apply_epithelial_boundary_layer(
           conc_, domain, s, bc, flux_accounting_);
@@ -3691,6 +4184,7 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
     // The implicit z solve enforces the luminal zero-flux condition directly.
     // Non-diffusing fields retain the legacy mirrored top layer.
     if (!specs_[s].diffusion_enabled && nz >= 2) {
+      materialize_species_from_device(s);
       mark_host_conc_dirty(s);
       mirror_non_diffusing_top_layer(conc_, domain, s);
     }
@@ -3703,6 +4197,7 @@ void ChemicalField::apply_boundaries_slab(const Domain& domain) {
     auto& concentration = conc_[static_cast<size_t>(s)];
     if (specs_[s].epithelial_boundary_mode
         == EpithelialBoundaryMode::Dirichlet) {
+      materialize_species_from_device(s);
       mark_host_conc_dirty(s);
       flux_accounting_.add_boundary(
           s, set_epithelial_boundary_slab(
@@ -3710,6 +4205,7 @@ void ChemicalField::apply_boundaries_slab(const Domain& domain) {
                  specs_[s].boundary_conc, cell_volume));
     }
     if (!specs_[s].diffusion_enabled && domain.nz() >= 2) {
+      materialize_species_from_device(s);
       mark_host_conc_dirty(s);
       set_luminal_neumann_boundary_slab(
           concentration, domain, storage_nx_, halo_width_);
@@ -3727,6 +4223,7 @@ void ChemicalField::debug_report_step(const Domain& domain) const {
   const Int carbon = find(species::CARBON);
   for (const Int s : {oxygen, carbon}) {
     if (s < 0 || s >= nspec_) continue;
+    materialize_species_from_device(s);
     Real initial = debug_initial_content_[static_cast<size_t>(s)];
     Real after_content = mode_ == DecompositionMode::Slab
         ? owned_content_slab(

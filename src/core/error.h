@@ -20,6 +20,11 @@ class ConfigError : public Error {
   using Error::Error;
 };
 
+class MemoryLimitError : public ConfigError {
+ public:
+  using ConfigError::ConfigError;
+};
+
 class IOError : public Error {
  public:
   using Error::Error;
