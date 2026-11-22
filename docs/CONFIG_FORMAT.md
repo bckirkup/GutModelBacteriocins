@@ -29,9 +29,11 @@ Keys starting with `_` are ignored by the parser (except as documentation).
 |-----|------|-------------|
 | `_comment` | string or string[] | Documentation only (ignored) |
 | `total_time`, `bio_dt`, … | number | Scalar parameters — see [PARAMETERS.md](PARAMETERS.md) |
-| `initial_strains` | array | Strain objects with `type`, `count`, `plasmids`, … |
+| `initial_strains` | array | Strain objects with `type`, `count`, `plasmids`, `receptor_expression`, … |
 | `fixes` | string[] | Fix plugin names in execution order (empty = all registered) |
 | `oxygen.enabled`, `acetate.enabled`, … | bool | Nested toggles via dot keys |
+| `plasmid_overrides` | object | Per-plasmid overrides (`retardation`, `diff_coeff`, `burst_size`, …) |
+| `layer2` / `layer3` | object / dot keys | Spec 13 multiscale segment and colon-chain configuration |
 | `checkpoint_file` | string | HDF5 checkpoint for restart |
 | `checkpoint_step` | string | Optional step group name to restore |
 | `restart` | object | Closed midstream restart writer (`enabled`, `directory`, `interval_steps`) |
@@ -100,6 +102,7 @@ key; absence is never interpreted as an intentional disable.
   "mu_max": 5.5e-4,
   "plasmids": ["ColE1", "ColB"],
   "conjugative": true,
+  "receptor_expression": {"BtuB": 1.0, "FepA": 1.0},
   "cdi_type": 1,
   "cdi_immunity": 1
 }
@@ -157,6 +160,10 @@ key; absence is never interpreted as an intentional disable.
   "total_time": 172800
 }
 ```
+
+Same-seed, same-rank-count restarts restore serialized per-rank simulation and
+immigration RNG state for bitwise continuation (`hdf5_rng_replay`); changing
+`seed` or MPI rank count reseeds the RNG for a population-state fork.
 
 ## Validation
 

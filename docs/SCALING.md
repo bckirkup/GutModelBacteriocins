@@ -163,8 +163,8 @@ variable-length genomes would require indirection tables or a fixed-capacity
 locus array. The hybrid approach keeps HGT/mutation on CPU while offloading
 Monod growth and QSSA field updates.
 
-**VRAM estimate:** grid (~1.2 GB) + agent SoA (~32 B × N scalars) + hash buffers.
-At 10⁶ agents, plan for **≥ 2 GB** device memory with default grid.
+**VRAM estimate:** default 11-species grid (~2.2 GB; older 6-species ~1.2 GB) + agent SoA (~32 B × N scalars) + hash buffers.
+At 10⁶ agents, plan for **≥ 3 GB** device memory with the default grid.
 
 ## GPU numerical parity and reproducibility
 
@@ -184,11 +184,11 @@ two-repeat comparison only; total biomass was the compared output, and GPU
 atomic accumulation could still vary with larger populations or more occupied
 cells.
 
-The diagnostic runs only five biological steps. Whether a roughly `4e-7`
-per-run CPU-vs-GPU offset remains bounded or compounds over a 10,080-step
-seven-day campaign is unknown and has not been tested. CPU and GPU results
-should therefore not be treated as interchangeable over long campaigns
-without a dedicated long-horizon validation.
+The `gpu_reproducibility` CTest runs only five biological steps; longer
+host/device interchangeability (including a 1440-step agent-dense science arm)
+was subsequently characterized in
+[`GPU_PRECISION_CAMPAIGN_2026-09.md`](GPU_PRECISION_CAMPAIGN_2026-09.md). Seven-day
+(10,080-step) CPU/GPU interchangeability has not been separately validated.
 
 ## Recommended parameters by target scale
 
@@ -253,14 +253,14 @@ If auto-detection fails but buffers are known CUDA-aware, set `GUTIBM_CUDA_AWARE
   OOM-killing its runner during the two-rank case. Chemical-field storage is
   confirmed by code and a local OOM measurement to use the global grid on each
   rank; with the current 11 species and concentration/reaction arrays, two
-  ranks require approximately 16 GiB before other allocations. This memory
-  behavior is not fixed.
+  ranks require approximately 16 GiB before other allocations (tracked in #480).
 
 ## Known limits (v0.1.0)
 
 - All CTest MPI targets cover `nprocs=2` and `nprocs=4`; larger scaling uses
   `run_scaling_benchmark.sh`, `run_mpi_scaling_smoke.sh`, or manual `mpirun`.
-- GPU Barnes-Hut FMM is not offloaded — `use_fmm` far-field stays on CPU.
+- FMM octree M2L traversal stays on CPU (#159); far-field local-expansion
+  evaluation runs on GPU (`fmm_far_kernel.cu`) when dense locals are ready (≤ 256 nodes).
 - Agent memory includes per-agent heap allocations; pool allocators (#future) could
   reduce `bytes_per_agent` by ~30%.
 - Grid memory is the floor cost; shrinking `domain_x/y` reduces grid cells linearly.

@@ -1,5 +1,7 @@
 # Gate C analysis and Stage D unblock — follow-up session prompt
 
+> **Status (2026-11-22):** Historical handoff prompt — executed and closed via PR #429 (`experiments/adaptive_ecology_refinement_v1/analysis/GATE_C_ADJUDICATION_2026-09-27.md`), Stage D PRs #430–#441, and campaign preflight/digest hardening in PR #485 (#482).
+
 You are working in the bckirkup/GutModelBacteriocins repository on the Gate C
 analysis phase of the receptor-selection campaign (issue 420). Both Gate C
 evidence streams have now been executed on AWS Batch at one shared identity.

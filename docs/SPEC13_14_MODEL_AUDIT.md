@@ -10,6 +10,8 @@
 - [consensus_empirical_benchmarks.csv](consensus_empirical_benchmarks.csv) (41 primary-verified benchmarks)
 **Target Venues:** ASM *mSystems* / *mBio*
 
+> **Status (2026-11-22):** This audit records the `72cd284` baseline. Engineering remediations for `GAP-01` through `GAP-09`, `GAP-11`, and `GAP-12` have since landed on `main` via PRs #484–#492 (see [`open_gaps_and_validation_matrix.csv`](open_gaps_and_validation_matrix.csv) for per-gap resolution status); `GAP-10` (Spec 14 temperate prophage module, #475) remains open pending §8 V1 re-evaluation.
+
 ---
 
 ## 1. Executive Verdict

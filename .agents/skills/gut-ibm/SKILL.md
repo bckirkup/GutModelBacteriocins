@@ -58,7 +58,7 @@ sudo apt-get install nvidia-cuda-toolkit
 ```
 
 Sources are collected via `file(GLOB_RECURSE ...)` in `CMakeLists.txt` — new `.cpp`
-files under `src/{core,fields,diffusion,fixes,genome,io}/` are picked up automatically.
+files under `src/{core,fields,diffusion,fixes,genome,io,gpu,layer2,layer3}/` are picked up automatically.
 No manual source-list edit needed for new Fix or diffusion files.
 
 ## Run Tests
@@ -75,49 +75,60 @@ ctest -L 'integration|slow|benchmark' -LE gpu   # integration job
 ctest -L gpu                                     # CUDA job only
 ```
 
-`robin_lumen_bc`, `neumann_wall_normal_drift`, and `fmm` register one CTest
+`robin_lumen_bc`, `neumann_wall_normal_drift`, `fmm`, and `layer2_reentry` register one CTest
 entry per named sub-test (see the `SHARDS` argument in `tests/CMakeLists.txt`;
 the binaries accept sub-test names as arguments, or run all with none). A
 single shard is run as `ctest -R robin_lumen_bc_sealed_limit`.
 
-CTest targets (including custom script and MPI targets; inventory from
+CTest targets (161 total with MPI+HDF5 enabled, including shards, custom script, and MPI targets; inventory from
 `tests/CMakeLists.txt`):
 
 | Test | Labels | Focus |
 |------|--------|-------|
 | `metabolic_mode` | unit, metabolism | Metabolism mode selection |
+| `metabolism` | unit, metabolism | Growth, maintenance, and implicit iron VBF uptake |
 | `assertions_enabled` | unit | Test assertions remain enabled |
 | `progress_report` | unit | Progress output |
 | `dysbiosis_guardrail` | unit | Dysbiosis guard thresholds |
 | `spatial_hash` | unit | Insert, query, clear |
 | `greens_function` | unit | Radial symmetry and boundary kernels |
+| `neumann_image_series` | unit | Neumann image-series convergence |
+| `neumann_wall_normal_drift_<shard>` | unit | Wall-normal drift envelope (13 shards) |
+| `robin_lumen_bc_<shard>` | unit | Robin lumen-boundary transfer (18 shards) |
 | `agent` | unit | Agent pool and plasmid library |
 | `iron_fallback` | unit | Secondary iron receptors |
 | `octree` | unit | Barnes-Hut FMM versus exact Green's function |
 | `fmm_<shard>` | unit | Higher-order FMM accuracy (9 shards) |
-| `neumann_wall_normal_drift_<shard>` | unit | Wall-normal drift envelope (13 shards) |
-| `robin_lumen_bc_<shard>` | unit | Robin lumen-boundary transfer (18 shards) |
 | `qssa_stoichiometry` | unit | QSSA reaction stoichiometry |
+| `qssa_transient_bounds` | unit, science | QSSA vs transient PDE error bounds |
+| `chemical_field_reaction_residency` | unit | Host/device reaction accumulator residency |
 | `conjugation` | unit | Pili length heterogeneity and transfer |
 | `z_gradient` | unit | Z-dependent nutrient gradients |
 | `nutrient_diffusion` | unit | Implicit diffusion residuals and invariants |
 | `domain_decomp` | unit | Slab decomposition logic |
+| `chemical_field_residency` | unit | Host/device concentration residency |
 | `acetate_mete` | unit | Acetate inhibition of MetE |
 | `protease_decay` | unit | Protease half-life decay |
 | `oxygen_gradient` | unit | Oxygen registration and z-gradient |
 | `O2_growth_boost` | unit | Aerobic metabolism boost |
 | `mucin_liberation` | unit | Mucin-to-carbon liberation |
+| `vbf_velocity_channel` | unit | VBF velocity coupling channel |
+| `mucin_liberation_units` | unit | Mucin liberation per-cell dimensional units |
 | `mechanism_wiring` | integration | Cross-mechanism mass balance and coupling |
 | `advection_peristaltic` | unit | Peristaltic velocity modulation |
 | `ethanolamine` | unit | Nutrient-conditional EUT penalty |
 | `adaptive_dt` | unit | Adaptive timestep selection |
 | `agent_transfer` | unit | Agent pack/unpack round-trip |
 | `gpu_receptor_layout` | unit | GPU receptor layout |
+| `gpu_transfer_site_profile` | unit | GPU host-device transfer site profiling |
 | `fix_registry` | unit | Fix plugin registration |
 | `path_utils` | unit | Safe path handling |
 | `input_parser` | unit | Example and parser configurations |
 | `config_ingestion` | unit | Every parser key reaches `SimulationConfig` |
 | `kill_provenance` | unit | Kill provenance metadata |
+| `layer2_segment` | unit | Spec 13 Layer-2 mucus segment dynamics, live physics, and pulses |
+| `layer2_reentry_<shard>` | unit | Layer-2 live-patch re-entry (3 shards) |
+| `layer3_chain` | unit | Spec 13 Layer-3 multi-segment colon chain and pulse/death restore |
 | `counter_resume` | unit | Counter persistence and resume |
 | `divisions_by_type` | unit, hdf5 | Per-type mother divisions + restart continuity |
 | `vbf_accounting` | unit | VBF source/sink accounting |
@@ -132,6 +143,7 @@ CTest targets (including custom script and MPI targets; inventory from
 | `mutation` | unit | BI-locus evolution |
 | `fur` | unit | Fur regulation |
 | `uptake_limit` | unit | Agent uptake limitation |
+| `delivery_support_cache_race` | unit, openmp | Delivery support stencil concurrency safety |
 | `uptake_limit_population_resolution` | integration, slow | Population-scale delivery resolution |
 | `maintenance_carbon` | unit, integration | Maintenance carbon funding |
 | `cdi` | unit | Contact-dependent inhibition |
@@ -140,16 +152,19 @@ CTest targets (including custom script and MPI targets; inventory from
 | `immigration` | unit | Immigration schedules |
 | `scaling_benchmark` | benchmark, slow | Agent-count timing smoke |
 | `mechanics` | unit, slow | Hertzian contact and adhesion |
+| `mechanics_participation` | unit | Shared host/device mechanics participation predicate |
 | `immunity_escape` | unit, slow | Affinity-neutralization matrix |
 | `smoke` | integration | End-to-end mini simulation |
 | `toxin_sentinel` | integration, science | Toxin sentinel invariants |
 | `washout_trap` | integration, slow, science | Long-horizon metabolic washout |
 | `feature_combinations` | integration | Feature-combination scenarios |
 | `config_diversity` | integration | Distinct config fingerprints |
+| `hdf5_fail_closed` | unit | Fail-closed HDF5 error handling |
 | `openmp_parity` | openmp | Serial/OpenMP fingerprints |
 | `hdf5_roundtrip` | integration, hdf5 | HDF5 writer/reader parity |
 | `hdf5_checkpoint` | integration, hdf5 | HDF5 checkpoint writing |
 | `hdf5_restart` | integration, hdf5 | C++ checkpoint restart |
+| `hdf5_rng_replay` | integration, hdf5 | Bitwise RNG replay on same-seed checkpoint continuation |
 | `hdf5_schedule` | integration, hdf5 | HDF5 schedule handling |
 | `hdf5_compression` | integration, hdf5 | HDF5 compression |
 | `hdf5_live_agents` | integration, hdf5 | Live-agent HDF5 output |
@@ -158,29 +173,38 @@ CTest targets (including custom script and MPI targets; inventory from
 | `hdf5_roundtrip_parallel` | integration, mpi, hdf5 | Parallel HDF5 round-trip |
 | `hdf5_checkpoint_parallel` | integration, mpi, hdf5 | Parallel HDF5 checkpoint |
 | `mpi_multi_rank` | integration, mpi | Two-rank migration |
+| `vbf_density_replicated_mpi` | integration, mpi | Replicated VBF density parity under MPI |
+| `vbf_density_replicated_serial` | integration, mpi | Replicated VBF density serial baseline |
 | `mpi_four_rank` | integration, mpi | Four-rank slab and migration |
 | `mpi_gpu_multi_rank` | integration, mpi, gpu | MPI plus GPU chemistry |
 | `cuda_aware_mpi_reaction` | integration, mpi, gpu | CUDA-aware MPI reaction reduction |
 | `greens_function_gpu` | gpu | GPU/CPU Green's-function parity |
 | `gpu_diffusion` | gpu | GPU/CPU nutrient diffusion parity |
+| `gpu_diffusion_species_mask` | unit | GPU diffusion species mask selection |
 | `gpu_chemical_field` | gpu | GPU chemical-field facade parity |
+| `gpu_residency_audit` | gpu | GPU concentration residency audit |
+| `gpu_reaction_residency` | gpu | GPU reaction residency audit |
 | `gpu_feature_combinations` | gpu, integration | GPU feature combinations |
 | `gpu_production_path` | gpu, integration | Production GPU chemistry path |
 | `gpu_smoke` | gpu | CPU/GPU smoke fingerprint |
 | `gpu_reproducibility` | gpu, integration | GPU reproducibility |
 | `gpu_scaling_benchmark` | gpu, benchmark | GPU scaling smoke |
 | `qssa_gpu_parity` | gpu | GPU QSSA parity |
+| `neumann_image_series_gpu` | gpu | GPU Neumann image-series parity |
+| `robin_lumen_gpu` | gpu | GPU Robin lumen-boundary parity |
 | `gpu_toxin_burst_parity` | gpu, integration | GPU toxin burst parity |
+| `gpu_toxin_source_clearing` | gpu | GPU toxin source clearing between steps |
 | `gpu_nutrient_feedback` | gpu, integration | GPU nutrient feedback |
 | `gpu_metabolism_fur` | gpu, integration | GPU metabolism/Fur |
-| `gpu_uptake_limit` | gpu, integration | GPU uptake limitation |
+| `gpu_uptake_limit` | gpu, integration | GPU uptake limitation and device delivery |
 | `spatial_hash_gpu_csr` | gpu | GPU spatial hash CSR |
 | `mechanics_gpu_parity` | gpu | GPU mechanics parity |
 | `gpu_kernel_units` | gpu | GPU kernel units |
-| `gpu_target_manifest` | unit | GPU target manifest |
+| `gpu_target_manifest` | unit | GPU target manifest vs CI workflow |
 | `rebuild_and_run_script` | unit | Rebuild-and-run script |
 | `aws_capacity_script` | unit | AWS capacity script |
 | `checkpoint_retention` | unit | Checkpoint retention |
+| `aws_job_timeouts` | unit | AWS Batch job timeout config |
 | `aws_entrypoint_runtime_files` | unit | AWS entrypoint runtime files |
 | `process_group_signal` | unit | Process-group signal handling |
 
@@ -199,14 +223,13 @@ Single-process (debugging):
 
 No config argument → `InputParser::default_config()` (resident + immigrant strains).
 
-Examples: `examples/single_colony/input.json`, `examples/diversity_paradox/input.json`.
+Examples: `examples/single_colony/`, `examples/diversity_paradox/`, `examples/cell_biology/`, `examples/eari_vadi_validation/`, `examples/oxygen_boundary_presets/`, `examples/immigration_fork/`, `examples/fork_profile/`, `examples/batch_scan/`, `examples/gpu_cost_benefit_benchmark/`, `examples/scaling_benchmark/`.
 
 ## Python Analysis Tools
 
 ```bash
 cd python
-pip install -e ".[viz]"
-pip install ruff pytest   # dev tools (not in setup.py extras yet)
+pip install -e ".[viz,dev]"   # installs viz (matplotlib) and dev (ruff, pytest) extras
 ```
 
 Import from package root (re-exported in `__init__.py`):
@@ -235,7 +258,7 @@ Each biological step in `Simulation::step()`:
 2. `exchange_ghost_agents()` — MPI boundary ghosts for neighbor queries
 3. `rebuild_spatial_hash()`, `update_grid_coupling()`
 4. Fix `pre_step(dt)` hooks
-5. **Biology** — all Fixes `compute(dt)` (metabolism, bacteriocin, receptor, conjugation, mutation, mechanics)
+5. **Biology** — all Fixes `compute(dt)` (`metabolism`, `quorum_sensing`, `bacteriocin`, `receptor`, `motility`, `conjugation`, `cdi`, `mutation`, `mechanics`)
 6. Clear ghosts
 7. **Chemistry** — QSSA bacteriocin field, rank-summed nutrient reactions, VBF coupling, grid update, implicit nutrient diffusion, boundaries
 8. **Physics** — mucus advection, VBF drag, mechanics repulsion
@@ -255,7 +278,7 @@ Toxin transport is instantaneous QSSA. Nutrient and small-molecule transport use
 6. Add test in `tests/test_<name>.cpp` and register in `tests/CMakeLists.txt` (copy an existing test block)
 7. Update `examples/` if the feature is user-facing
 
-Current Fix modules (hardcoded order in `simulation.cpp`):
+Current Fix modules (default order in `FixRegistry::register_defaults()` in `src/fixes/fix_registry.cpp`):
 
 | Fix | Config struct | Role |
 |-----|---------------|------|
@@ -330,7 +353,7 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `protease.enabled`, `protease.default_half_life`, … | Protease toxin decay (Spec 1) |
 | `gpu_enabled` | GPU acceleration (CUDA build) |
 
-Invalid numerics log warnings; `GUTIBM_STRICT_CONFIG=1` aborts. Unknown keys are ignored.
+Unset or `GUTIBM_STRICT_CONFIG=1` aborts on invalid numerics and unknown keys; `GUTIBM_STRICT_CONFIG=0` is the explicit lenient escape hatch.
 
 ### Initial strains (JSON array or code)
 
@@ -383,16 +406,19 @@ halos; global agent cell indices map explicitly into storage. Periodic-x
 diffusion uses an exact full-line exchange, while y/z operators remain local.
 HDF5 grid output and checkpoint/restart support slab mode: owned x-blocks are
 gathered for global grid datasets, and checkpoint grids restore only owned
-cells before halo refresh. The GPU mirror still rejects slab mode pending a
-follow-up implementation.
+cells before halo refresh. The GPU mirror uses local x storage and owned-cell
+accounting in slab mode; periodic x diffusion takes an exact host transpose
+round trip.
 
 ### HDF5 output
 
 - Writer: `src/io/hdf5_writer.cpp` — parallel when MPI enabled
 - Reader: `src/io/hdf5_reader.cpp`; `Simulation::init_from_checkpoint` restores
   C++ checkpoints selected through `checkpoint.*` or closed `restart.*`
-  configuration. The `hdf5_checkpoint` and `hdf5_restart` CTest targets cover
-  these paths.
+  configuration, including serialized per-rank RNG state on same-seed,
+  same-rank-count continuation (reseeding on seed forks or rank-repartitioned
+  restarts). The `hdf5_checkpoint`, `hdf5_restart`, and `hdf5_rng_replay` CTest
+  targets cover these paths.
 - Layout per step: `atoms/`, `grid/`, `metadata/`, `lineage/`
 - Disable in tests: `cfg.hdf5.enabled = false`
 
@@ -416,15 +442,17 @@ For config keys and parser fixtures, extend `test_config_diversity.cpp` so disti
 
 ## Batch runs
 
-Resumable parameter scans: see [docs/BATCH_RUNNER.md](../../docs/BATCH_RUNNER.md).
+Resumable parameter scans: see [docs/BATCH_RUNNER.md](../../../docs/BATCH_RUNNER.md).
 For **AWS Batch Spot + CUDA** campaign runs (Stage 3 scale), see
-[docs/AWS_BATCH.md](../../docs/AWS_BATCH.md) and draft bits under `deploy/aws/`.
-Progress / Spot / cost helpers (local clone with AWS profile):
+[docs/AWS_BATCH.md](../../../docs/AWS_BATCH.md) and draft bits under `deploy/aws/`.
+Progress / Spot / cost / fork helpers (local clone with AWS profile):
 
 ```bash
 gut-ibm-aws-status <jobId> --checkpoint-prefix s3://…/ckpt --array-index 0
 gut-ibm-aws-estimate --instance-type g5.2xlarge --wall-hours 24 --array-size 12
 gut-ibm-aws-qa --output-prefix s3://…/out --input-prefix s3://…/jobs
+gut-ibm-aws-branch ...   # checkpoint fork submission helper
+gut-ibm-colony ...       # 3-D colony catalog CLI
 ```
 
 Quick commands:

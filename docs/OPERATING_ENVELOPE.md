@@ -48,8 +48,11 @@ patchiness and is therefore not meaningful as a proxy for a microcolony-scale
 measurement. Patchiness should instead be compared using areal density and
 patch-size distributions.
 
-Fecal CFU/g figures do not apply: GutIBM has no lumen compartment and models
-the outer loose colonic mucus layer, not fecal contents. A cells/g conversion
+Fecal CFU/g figures do not apply to the Layer-1 mucus-slab `Simulation`, which
+models the outer loose colonic mucus layer rather than fecal contents (for
+luminal compartments and fecal-pellet LOD censoring, see
+[`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md) and
+`gut_ibm_tools.pellet_observation`). A cells/g conversion
 would additionally require an explicit mucus mass-density assumption; the
 companion geometry report uses 1 g/mL only as a transparent conversion
 assumption, not as a model constant.
@@ -152,7 +155,7 @@ trigger-happy for the small campaign geometry described below.
 
 ## 4. Where shipped configurations sit
 
-Initial densities from `/home/ubuntu/envelope_geometry.md` are:
+Initial densities from the companion geometry inventory are:
 
 | Configuration family | Geometry/count | Initial density | Position |
 |---|---|---:|---|
@@ -199,16 +202,16 @@ The guardrail is a **bloom trajectory** check, not a density-only stop:
    the first sample to the last. This is a short but biologically meaningful
    fraction of the hours-scale *E. coli* growth timescale, while avoiding a
    one-sample response to noise.
-3. Every sample in the window must be strictly above `1e8 cells/mL`, strictly
-   increasing, and have a non-decreasing increment from the previous sample.
-   The final condition is the discrete second-difference test for a rise that
-   is not decelerating.
+3. Every sample in the window must be strictly above `1e8 cells/mL`, with a
+   positive net rise across the window and positive half-window mean increments
+   satisfying `second_half_mean >= first_half_mean` (`src/core/dysbiosis_guard.cpp`,
+   hardened in PR #287 so single-sample stochastic dips do not reset the window).
 
 Thus, a population that reaches `1.07e8 cells/mL` and plateaus is homeostasis
 at the top of the envelope and is not halted. A population that crosses
 `1e8 cells/mL` while still rising and accelerating is a bloom heading into
-the out-of-scope regime and is halted. The halt message reports the observed
-latest rise rate in cells/mL/s.
+the out-of-scope regime and is halted. The halt message reports the average
+net rise rate across the accepted window in cells/mL/s.
 
 The trajectory history is runtime-only and is not written to HDF5. A
 checkpoint restore starts with an empty history and must re-establish the

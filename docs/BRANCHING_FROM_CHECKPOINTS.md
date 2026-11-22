@@ -50,9 +50,12 @@ the finalized configuration rather than a selected-parameter summary. Keep
 this record with the origin SHA-256 and fork overlay. `/provenance/` is
 different: it contains per-kill provenance and does not identify the run.
 
-The seed is essential: a fork is a **population-state continuation**, not a
-bit-identical continuation. Tier-2 restart restores the population and
-chemistry, but RNG is reseeded from the fork job's seed.
+The seed is essential: a fork with a new `seed` is a **population-state
+branch**, not a bit-identical continuation. Tier-2 checkpoints serialize
+per-rank simulation and immigration RNG state (so a same-seed, same-rank-count
+resume reproduces a bitwise continuation via `hdf5_rng_replay`, PR #490), while
+forking with a new seed (or different rank count) reseeds the RNG from the fork
+job's seed (hardened in PR #492).
 
 ## 2. Plan wall time before requesting capacity
 

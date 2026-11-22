@@ -109,10 +109,13 @@ The QSSA solver deposits bacteriocin fields immediately before `fix_receptor` (s
 ### Delivery-limited carbon uptake
 
 With `metabolism.uptake_limit: "delivery"`, requested growth and maintenance
-carbon are held until chemistry completes. This mode is CPU-only:
-`gpu_enabled=true` together with `metabolism.uptake_limit="delivery"` is
-rejected during config finalization because CUDA parity is not implemented
-yet. Each owned agent contributes an analytic prescribed mass
+carbon are held until chemistry completes. Explicit `gpu_enabled=true` together
+with `metabolism.uptake_limit="delivery"` is supported: replicated single-rank
+runs within the CUDA delivery line limit (≤ 512) run Route-B device delivery
+and CUDA delivery prepare/commit (`device_delivery`), while slab mode,
+`nprocs > 1`, longer lines, or unsupported combinations fall back cleanly to
+host-forced delivery chemistry (`host_forced_delivery`), recorded in
+`/run_provenance/chemistry_placement` (see [`CUDA_DELIVERY_PARITY.md`](CUDA_DELIVERY_PARITY.md)). Each owned agent contributes an analytic prescribed mass
 `min(demand_total, Sherwood)` to its cell. The aggregate is applied as a
 zero-order right-hand-side draw, `-F_cell/(3*V_cell)`, in each directional
 backward-Euler solve. This is not the retired legacy zero-order sink: that sink
@@ -183,8 +186,9 @@ step/time datasets retain their historical meanings.
 
 **Equation:**
 ```
-mu = mu_max * [C]/(Km_C + [C]) * monod_iron * [B12]/(Km_B12 + [B12])
+mu = mu_max * [C]/(Km_C + [C]) * monod_iron * monod_b12
 ```
+where `monod_b12 = [B12]/(Km_B12 + [B12])` when `metabolism.b12_growth_essential` is `true` (default), or `1.0` when `false` (decoupling obligate B12 growth limitation from competitive BtuB receptor shielding, PR #488).
 
 **Aerobic boost (Spec 1, when `oxygen.enabled`):**
 ```
@@ -226,7 +230,8 @@ funded quantity exists. The mode is **one step lagged**: this step's growth-O₂
 demand is computed from the previous step's fermentation fraction, and this
 step's realized delivery updates the fraction for the next step. If demanded
 growth O₂ is zero, the ratio is undefined and the fraction is left unchanged.
-Funded respiration is CPU-only and is rejected with GPU execution.
+Funded respiration is supported on both host and CUDA delivery metabolism paths
+(PR #490; falling back to host outside Route-B delivery scope).
 This switch does not change `oxygen.epithelial_conc`.
 
 The oxygen epithelial boundary is configured with
@@ -238,7 +243,7 @@ concentration, not the imposed mucus-surface concentration; the surface value
 emerges from vascular delivery minus epithelial and bacterial consumption.
 The sourced experiment values are `k = 1.2e-6 m/s` for transfer and
 `C_tissue = 5.0e-2 mol/m³` for the tissue-side reservoir, and are not new
-defaults. The imposed 25 µm exponential oxygen profile must be disabled with
+defaults (see `examples/oxygen_boundary_presets/`). The imposed 25 µm exponential oxygen profile must be disabled with
 `oxygen.z_gradient=false` (or `oxygen_z_gradient=false`) in Robin mode.
 
 Acid inhibition uses undissociated acetate via Henderson–Hasselbalch. Its pH
@@ -251,7 +256,7 @@ acidified microenvironments.
 See [`SPEC12_DENSITY_LIMITATION.md`](SPEC12_DENSITY_LIMITATION.md) for the
 amended Spec 12 mechanism and implementation contract.
 
-See the proposed multi-scale architecture (not yet implemented) in
+See the implemented Layer-2/Layer-3 multi-scale architecture (`src/layer2/`, `src/layer3/`) in
 [`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md) and [`SPEC13_IMPLEMENTATION_REVIEW.md`](SPEC13_IMPLEMENTATION_REVIEW.md).
 
 **Graded iron uptake (Issue #10):** Rather than relying solely on FepA, iron acquisition uses four receptor systems in parallel with different affinities:
@@ -356,7 +361,7 @@ by the biomass-scaled `Vmax` for all tested timesteps from `1e-6` through
 
 **Division:** When biomass >= `division_threshold * initial_mass` (default 2x), cell divides. Daughter is offset by one cell diameter in a random direction.
 
-**Death:** Biomass below minimum threshold → cell dies.
+**Bacteriostasis (no starvation death):** Starvation does not kill cells (`bacteriostasis_threshold` classifies viable, non-reproducing cells reported in `bacteriostatic_live_agents`). Cells leave only via outflow/washout or explicit mortality channels (colicin, CDI, lysis).
 
 ### Non-growth-associated carbon maintenance
 
@@ -366,10 +371,10 @@ biological step. This sink is independent of the growth-rate
 `maintenance_rate` tax and is applied to bacteriostatic or otherwise
 non-growing agents as well as growing agents. Its budget follows the
 configured `uptake_limit` model: `none` charges the full request, `sherwood`
-applies the same quasi-steady diffusive delivery cap as growth uptake, and
-`voxel` limits the request to instantaneous voxel stock with a per-voxel
-reservation. The unfunded amount is recorded in mol as
-`maintenance_shortfall_*`; the separately reported
+applies the same quasi-steady diffusive delivery cap as growth uptake, `delivery`
+integrates it through the implicit delivery solve, and `voxel` limits the
+request to instantaneous voxel stock with a per-voxel reservation. The unfunded
+amount is recorded in mol as `maintenance_shortfall_*`; the separately reported
 `maintenance_limited_agents_*` fields count agent-steps that were capped.
 
 ---
@@ -390,13 +395,13 @@ SOS probability per biological timestep:
 
 ```
 rate_total = sos_basal_rate
-           + (just_divided ? sos_lysis_prob / bio_dt : 0)
+           + (just_divided ? -0.5 * log1p(-sos_lysis_prob) / bio_dt : 0)
            + sos_cross_induction_rate * [nuclease_bacteriocin]
            + ROS_rate
 p_sos = 1 - exp(-rate_total * dt)
 ```
 
-- `just_divided` is set on parent and daughter during division in `fix_metabolism`, cleared at the start of each `Simulation::step()`
+- `just_divided` is set on both daughters during division in `fix_metabolism` and cleared at the start of each `Simulation::step()`. The `-0.5 * log1p(-p) / bio_dt` conversion (`p_daughter = 1 - sqrt(1 - p)`, PR #488) makes the division-pair probability of at least one division-linked SOS induction equal `sos_lysis_prob` (`p`) exactly.
 - Cross-induction uses a per-agent QSSA exposure sampled from only
   `is_nuclease` sources after MPI source exchange. It is receptor-agnostic and
   therefore works identically for grid and agent toxin evaluation without
@@ -482,7 +487,7 @@ It is likewise recorded in kill provenance with cause `LYSIS`.
 ### c) Continuous microcin secretion
 
 MccV (`CONTINUOUS` mode) exports peptide without lysis:
-- Applies a one-per-step growth penalty (`microcin_mu_penalty`, default 3%)
+- Applies a one-time static growth penalty (`microcin_mu_penalty`, default 3%, guarded by `microcin_penalty_applied` across steps, MPI migration, checkpoints, and division; fixed in PR #350)
 - Contributes steady-state QSSA point sources
 
 **Per-colicin burst sizes** (default library): ColE1 1e5, ColE2 5e4, ColB/ColIa 1e4, ColM 2e5.
@@ -758,7 +763,7 @@ The adhesion force decays linearly to zero at `adhesion_range`, preventing long-
 
 An explicit 3-D stencil is unusable at the biological timestep: for O₂ at `D = 2.1e-9 m²/s`, `dt = 60 s`, and `dx = 5 µm`, the diffusion number is `D·dt/dx² = 5040`, versus the explicit stability limit `1/6`. GutIBM therefore uses backward-Euler directional splitting for enabled nutrient fields.
 
-Each directional pass solves a tridiagonal system in O(cells): x and y are periodic and the luminal z face has zero flux. The epithelial z=0 face defaults to a fixed concentration (`dirichlet`); configured species may instead use `robin`, `J = k(C_epi - c0)`, or `flux`, a fixed delivery rate in mol/m²/s. Delivery modes solve all `nz` cells with the epithelial cell as an unknown and record the realized post-solve exchange in the nutrient ledger. The method is L-stable; non-delivery reactions are clamped nonnegative after the solve, while prescribed delivery uses the local-then-global positivity rationing described above rather than clipping a draw. For species with a configured exponential z-gradient, diffusion acts on departures from that prescribed background profile rather than erasing it; the gradient is rejected with Robin or flux because its pinned reference assumes a Dirichlet boundary. The chemistry order is rank-local agent reactions → MPI sum → global VBF coupling → concentration update → implicit diffusion → boundary enforcement. On GPU-active steps, host-written reactions are uploaded before any device reaction kernel runs, so the device reaction buffer is the single accumulated source for the step; resulting concentrations are synchronized back to the host after device integration. Delivery uptake remains explicitly CPU-only because the GPU diffusion path has no equivalent prescribed-sink retry/rationing loop; configuration finalization rejects that unsupported combination rather than silently diverging.
+Each directional pass solves a tridiagonal system in O(cells): x and y are periodic and the luminal z face has zero flux. The epithelial z=0 face defaults to a fixed concentration (`dirichlet`); configured species may instead use `robin`, `J = k(C_epi - c0)`, or `flux`, a fixed delivery rate in mol/m²/s. Delivery modes solve all `nz` cells with the epithelial cell as an unknown and record the realized post-solve exchange in the nutrient ledger. The method is L-stable; non-delivery reactions are clamped nonnegative after the solve, while prescribed delivery uses the local-then-global positivity rationing described above rather than clipping a draw. For species with a configured exponential z-gradient, diffusion acts on departures from that prescribed background profile rather than erasing it; the gradient is rejected with Robin or flux because its pinned reference assumes a Dirichlet boundary. The chemistry order is rank-local agent reactions → MPI sum → global VBF coupling → concentration update → implicit diffusion → boundary enforcement. On GPU-active steps, host-written reactions are uploaded before any device reaction kernel runs, so the device reaction buffer is the single accumulated source for the step; per-species host/device residency tracking minimizes unnecessary full-grid syncs. Delivery uptake is supported with `gpu_enabled=true`: replicated single-rank runs within the Route-B device delivery line limit (≤ 512) solve on device (`device_delivery`), while configurations outside that scope fall back cleanly to host-forced delivery (`host_forced_delivery`), recorded in `/run_provenance/chemistry_placement`.
 
 ### Bacteriocin QSSA solver
 
@@ -860,7 +865,7 @@ Before the biology module, each rank exchanges **ghost agents** — copies of ag
 Ghost agents are read-only and discarded before the physics module to avoid double-counting position updates.
 
 ### Agent Migration
-After the physics module (advection + mechanics), agents that have moved past their slab boundary are serialized and sent to the appropriate neighbor rank via `MPI_Sendrecv`. The full agent state — position, velocity, metabolism, genome, BI clusters — is transferred.
+After the physics module (advection + mechanics), agents that have moved past their slab boundary are serialized and sent to the appropriate neighbor rank via non-blocking `MPI_Isend`/`MPI_Irecv` + `MPI_Waitall` (avoiding periodic-x ring deadlocks at `np > 2`). The full agent state — position, velocity, metabolism, genome, BI clusters — is transferred.
 
 ### Global Statistics
 `MPI_Allreduce` aggregates per-rank counts and growth rate sums to produce global agent count and mean growth rate. These are used for output and lineage tracking.
@@ -875,7 +880,7 @@ The summary also contains the instantaneous `bacteriostatic_live_agents` and
 part of population closure.
 
 ### HDF5 Parallel I/O
-When `hdf5.parallel = true`, the file is opened with `H5Pset_fapl_mpio` and agent data is written using collective hyperslab operations — each rank writes its local agents at a computed offset. In slab chemistry mode, all ranks pack owned x-cells for grid output and rank 0 assembles the global datasets; halo planes are never written. Checkpoint/restart restores owned global cells and refreshes concentration halos. The GPU mirror remains unsupported with slab chemistry.
+When `hdf5.parallel = true`, the file is opened with `H5Pset_fapl_mpio` and agent data is written using collective hyperslab operations — each rank writes its local agents at a computed offset. In slab chemistry mode, all ranks pack owned x-cells for grid output and rank 0 assembles the global datasets; halo planes are never written. Checkpoint/restart restores owned global cells and refreshes concentration halos. The GPU mirror supports slab chemistry using local x storage and owned-cell accounting, with periodic x diffusion taking an exact host transpose round trip.
 
 ---
 
@@ -926,12 +931,14 @@ realized agent carbon removal, `agent_uptake + maintenance`; unpaid
 maintenance shortfall is excluded. The denominator is that realized agent
 removal plus realized VBF sink removal.
 
-### Implicit oxygen background sink
+### Implicit oxygen and iron background sinks
 
-The non-delivery oxygen VBF sink is first-order in local oxygen concentration
-and is integrated implicitly over each biological timestep. Host and device
-use one shared closed-form helper, while delivery-enabled oxygen applies the
-same first-order sink through the implicit delivery diagonal.
+Both the non-delivery oxygen VBF sink and the non-delivery iron VBF sink (PR #490)
+are first-order in local concentration and are integrated implicitly over each
+biological timestep via the shared closed-form exponential helper
+`C * (1 - exp(-k * dt)) / dt` on host and device, guaranteeing positivity at
+arbitrarily large `k * dt`. Delivery-enabled oxygen applies the same
+first-order sink through the implicit delivery diagonal.
 
 ---
 
@@ -1009,7 +1016,7 @@ This couples the ongoing carbon source term to the same spatial gradient, mainta
 `k_liberation` is a per-cell specific rate in mol/(cell·s), so the product is
 a concentration rate, with goblet secretion at z=0. When `acetate.enabled`, VBF
 adds z-weighted acetate production and epithelial uptake. When
-`oxygen.enabled`, VBF applies a constant O₂ sink.
+`oxygen.enabled`, VBF applies the implicit first-order O₂ sink described above.
 
 ### Biological consequences
 - Agents near the epithelium (z ~ 0) have access to more carbon, leading to faster Monod growth.

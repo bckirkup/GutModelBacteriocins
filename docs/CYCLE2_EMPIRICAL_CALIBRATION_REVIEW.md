@@ -9,6 +9,8 @@
 - [parameter_provenance_audit.csv](parameter_provenance_audit.csv) (23 parameter-level C++ and documentation provenance entries)
 - [open_gaps_and_validation_matrix.csv](open_gaps_and_validation_matrix.csv) (12 reconciled engineering and scientific gaps, `GAP-01..GAP-12`)
 
+> **Status (2026-11-22):** This review records the reconciled Cycle 2 literature baseline (`28242fd`). Subsequent implementation PRs #484–#492 resolved `GAP-01` through `GAP-09`, `GAP-11`, and `GAP-12` in code (see [`open_gaps_and_validation_matrix.csv`](open_gaps_and_validation_matrix.csv)); `GAP-10` (#475) remains open pending §8 V1 re-evaluation.
+
 ---
 
 ## 1. Executive Summary

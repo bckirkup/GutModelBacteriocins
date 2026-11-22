@@ -177,7 +177,7 @@ With `wavelength = 0`, the spatial phase offset is omitted (uniform oscillation 
 | `carbon.epithelial_boundary` / `carbon_epithelial_boundary` | `dirichlet` | — | Epithelial z=0 mode: fixed concentration, Robin delivery, or fixed flux |
 | `carbon.epithelial_transfer_coeff` / `carbon_epithelial_transfer_coeff` | 0 | m/s | Robin mass-transfer coefficient `k` |
 | `carbon.epithelial_flux` / `carbon_epithelial_flux` | 0 | mol/m²/s | Fixed epithelial delivery flux `J` |
-| `uptake_limit` / `metabolism.uptake_limit` | `none` | — | Agent-side uptake limitation model: `none` (unfunded growth, default), `sherwood` (per-agent diffusive delivery cap using the configured delivery concentration), or `voxel` (diagnostic-only voxel-content cap, not biology) |
+| `uptake_limit` / `metabolism.uptake_limit` | `none` | — | Agent-side uptake limitation model: `none` (unfunded growth, default), `delivery` (prescribed mass integrated in implicit diffusion with positivity rationing; growth funded from realized removal), `sherwood` (per-agent diffusive delivery cap using the configured delivery concentration), or `voxel` (diagnostic-only voxel-content cap, not biology) |
 | `delivery_far_field_radius` / `metabolism.delivery_far_field_radius` | `1.0e-5` | m | Shared delivery neighborhood radius, defaulting to a 10 µm physical support for both the volume-weighted Sherwood concentration read and prescribed delivery deposition. A single-cell depletion at 10 µm is approximately 0.008% of far-field concentration, so this radius is not doing biological work. Supports clipped by nonperiodic z boundaries are renormalized over included cells. Positive values are refused with slab chemistry; slab configurations must explicitly set this key to `0.0` to opt into the grid-dependent single-voxel model. |
 
 When delivery-mode prescribed sinks would make an owned concentration
@@ -313,6 +313,10 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 | `toxin.lumen_transfer_basis` | effective | effective/free | Select `D_eff / δ` (default) or `D_free / δ` for the lumen transfer coefficient |
 | `qssa.drift_envelope_policy` | warn | — | Policy for the wall-normal-flow sealed image-series envelope: `warn`, `error`, or `allow` |
 | `qssa.drift_correction` | false | — | Enable the physical sealed wall-law correction; opt-in and host-evaluated when GPU diffusion is requested |
+| `qssa.low_screening_policy` | `warn` | — | Policy when the low-screening image-series truncation envelope is approached (`warn`, `error`, or `allow`) |
+| `image_series_mode` | `corrected` | — | Neumann image-series summation mode: `corrected` (default) or `legacy` (pre-fix 3-shell reference) |
+| `image_series_max_shells` | 512 | — | Maximum image shells summed in `corrected` mode (legacy mode maps the unchanged default to 3 shells) |
+| `image_series_relative_tolerance` | 1e-10 | — | Relative convergence tolerance for adaptive image-series shell truncation |
 | `chemistry.toxin_evaluation` | `grid` | — | Toxin exposure evaluation: `grid` samples each agent's chemistry cell center; `agents` evaluates the same Green's-function superposition at each agent position |
 | `chemistry.toxin_lumping` | `per_receptor` | — | Scientific toxin spatial model: `per_receptor` keeps four target-specific fields; `lumped` puts all sources in one field read by every receptor |
 | `qssa.nutrient_cutoff` | 50e-6 | m | Cutoff for nutrient depletion zones |
@@ -391,6 +395,7 @@ Per-colicin `protease_half_life` is set on each `BICluster` in the plasmid libra
 | `oxygen.epithelial_transfer_coeff` / `oxygen_epithelial_transfer_coeff` | 0 | m/s | Robin mass-transfer coefficient `k`; must be positive for Robin. The sourced experiment value is `1.2e-6 m/s`, not a new default |
 | `oxygen.epithelial_flux` / `oxygen_epithelial_flux` | 0 | mol/m²/s | Fixed epithelial delivery flux `J` for flux mode |
 | `oxygen.z_gradient` / `oxygen_z_gradient` | true | — | Imposed exponential z-profile toggle; must be false for Robin or flux |
+| `oxygen.delivery_uptake_enabled` / `oxygen_delivery_uptake_enabled` | false | bool | Route agent O₂ respiration through implicit delivery uptake; requires `metabolism.uptake_limit=delivery` |
 | `oxygen.respiration_driver` | `ambient` | — | Fermentation-mode driver: `ambient` preserves concentration-based switching; `funded` uses realized growth-O₂ delivery and requires oxygen delivery uptake with `metabolism.uptake_limit=delivery` |
 | `oxygen.ros_driver` | `ambient` | — | SOS ROS driver: `ambient` remains available as an explicit compatibility path but is inert by default because `oxygen.k_ROS` is `0.0`; `funded` uses funded respiratory oxygen flux and requires oxygen delivery uptake with `metabolism.uptake_limit=delivery` |
 | `oxygen.D_free` | 2.1e-9 | m²/s | O₂ diffusion coefficient |
@@ -408,9 +413,11 @@ default. The coefficient is an uncited term multiplying `[O₂]_ambient` —
 oxygen no cell paid for — and `k_ROS = 1e2` accounted for 99.5% of cumulative
 SOS hazard and every population loss in the oxygen series (#332). The ambient
 code path remains available by setting a positive `oxygen.k_ROS` explicitly.
-`oxygen.ros_driver` therefore remains `ambient`, and `metabolism.uptake_limit`
-remains `none`; changing those shipped defaults would break GPU configurations
-until CUDA delivery parity exists.
+`oxygen.ros_driver` remains `ambient` and `metabolism.uptake_limit` remains
+`none` by default; Route-B device delivery and CUDA delivery prepare/commit
+have landed for replicated single-rank runs (PR #343, #490; host-forced
+delivery fallback outside that scope, see [`CUDA_DELIVERY_PARITY.md`](CUDA_DELIVERY_PARITY.md)),
+while switching the shipped defaults remains an open calibration/benchmark decision.
 
 With `oxygen.ros_driver = funded`, exactly one of
 `oxygen.k_ROS_respiratory` and `oxygen.k_ROS_funded` must be positive.
@@ -1094,6 +1101,37 @@ largest feasible factor. MPI feasibility decisions are collective.
 final owned prescribed mass; retry counters include local and bisection solves.
 The nutrient-flux summary also emits the minimum rationing factor over the
 interval and run, plus an infeasible-step counter for negativity that remains
-at factor zero. Delivery uptake is CPU-only; GPU plus delivery uptake is
-rejected during configuration because GPU chemistry does not implement the
-same rationing loop.
+at factor zero. Delivery uptake is supported with `gpu_enabled=true`:
+replicated single-rank runs within the Route-B device delivery line limit
+(≤ 512) run device delivery and CUDA delivery prepare/commit
+(`device_delivery`), while configurations outside that scope fall back cleanly
+to host-forced delivery (`host_forced_delivery`) recorded in
+`/run_provenance/chemistry_placement` (see [`CUDA_DELIVERY_PARITY.md`](CUDA_DELIVERY_PARITY.md)).
+
+---
+
+## Closure Guards
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `closure.enforce_delivery_realization` | `true` | bool | Terminate with `closure_violation` if delivery demand produces zero realized removal past the grace window |
+| `closure.zero_realization_grace_steps` | `5` | steps | Consecutive zero-realization delivery steps tolerated before halting |
+| `closure.enforce_reaction_clip` | `false` | bool | Halt when interval reaction clipping exceeds `reaction_clip_tolerance_fraction` |
+| `closure.reaction_clip_tolerance_fraction` | `0.0` | fraction | Maximum tolerated clipped reaction fraction when `closure.enforce_reaction_clip` is enabled |
+
+---
+
+## Multiscale Layer 2 & Layer 3 (Spec 13)
+
+Key Layer-2 live-patch and audit controls (full Layer-2/Layer-3 schema in [`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md)):
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `layer2.audit.patch_index` | `-1` | index | Single live Layer-1 audit patch slot (`-1` disables) |
+| `layer2.audit.patch_indices` | `[]` | index[] | Multi-slot live Layer-1 patch indices (`0..N`) |
+| `layer2.live_physics_mode` | `"ladder_compat"` | — | Live-slot physics preset: `"ladder_compat"`, `"ladder_delivery"`, or `"inherit"` |
+| `layer2.live_crypt_flow_for_crypt_patches` | `false` | bool | Enable crypt flow refugia on live `Crypt` patches (auto-enabled by `"inherit"`) |
+| `layer2.live_crypt_contraction_shelter_scale` | `0.0` | fraction | Contraction shelter scaling `[0, 1]` to avoid double-counting crypt shelter |
+| `layer2.live_inherit_oxygen` | `false` | bool | Inherit outer `oxygen` and `k_ROS_*` settings into live slots (auto-enabled by `"inherit"`) |
+| `layer2.live_align_patch_table_delivery` | `false` | bool | Align live-slot `uptake_limit="delivery"` with `PatchTable` (auto-enabled by `"ladder_delivery"`) |
+| `layer2.pulses` | `[]` | object[] | Scheduled Layer-2 perturbation pulses (JSON array; see [`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md)) |

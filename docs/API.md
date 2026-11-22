@@ -33,15 +33,16 @@ Main orchestration engine. Manages the timestep loop inspired by NUFEB's `nufeb_
 ```
 step(dt):
   1. Pre-step: clear ghosts, zero reactions
-  2. Exchange ghost agents (MPI boundary layers)
+  2. Exchange ghost agents (non-blocking MPI Isend/Irecv + Waitall)
   3. Rebuild spatial hash, update grid coupling
   4. module_biology(dt)   — execute Fix modules; QSSA bacteriocin deposition runs
                               immediately before fix_receptor (same-step toxin field)
   5. Clear ghost agents
-  6. module_chemistry()   — QSSA steady-state fields (nutrients, VBF, reactions)
-  7. module_physics(dt)   — crypt migration, advection, drag, repulsion
-  8. Post-step: fix post-processing (division, lysis completion)
-  9. Migrate agents that crossed slab boundaries (MPI_Sendrecv)
+  6. module_chemistry()   — rank-summed nutrient reactions, VBF coupling,
+                              backward-Euler directional diffusion, boundaries
+  7. module_physics(dt)   — crypt migration, mucus advection (mechanics runs in FixMechanics)
+  8. Post-step: fix post-processing (delivery commit, division, lysis completion)
+  9. Migrate agents that crossed slab boundaries (non-blocking MPI Isend/Irecv)
  10. Cleanup: check washout (crypt agents exempt), remove dead agents
  11. MPI_Allreduce for global statistics
 ```
@@ -245,10 +246,13 @@ class Fix {
 
 | Fix | Config struct | Key parameters |
 |-----|--------------|----------------|
-| `FixMetabolism` | `MetabolismConfig` | `division_threshold`, `metE_penalty`, `metE_acetate_km`, `metE_acetate_max_factor`, `eut_km`, `eut_max_penalty`, `maintenance_rate`, `km_iron_primary`, `km_iron_iroN`, `km_iron_iutA`, `km_iron_fiu` |
-| `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `D_free_colicin`, `burst_release_tau`, `microcin_mu_penalty`; per-plasmid transport overrides are configured in `SimulationConfig` |
+| `FixMetabolism` | `MetabolismConfig` | `division_threshold`, `metE_penalty`, `metE_acetate_km`, `metE_acetate_max_factor`, `eut_km`, `eut_max_penalty`, `maintenance_rate`, `uptake_limit`, `b12_growth_essential`, `km_iron_primary`, `km_iron_iroN`, `km_iron_iutA`, `km_iron_fiu` |
+| `FixQuorumSensing` | `QuorumSensingConfig` | `enabled`, `ai2_basal_rate`, `ai2_growth_coupled`, `ai2_decay_rate`, `lsr_vmax`, `lsr_km`, `ai2_chemotaxis` |
+| `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `sos_lysis_prob`, `D_free_colicin`, `burst_release_tau`, `microcin_mu_penalty`; per-plasmid transport overrides are configured via `plasmid_overrides` |
 | `FixReceptor` | `ReceptorConfig` | `kd_*` binding affinities, `kill_rate_colicin/microcin`, `immunity_factor` |
+| `FixMotility` | `MotilityConfig` | `enabled`, `swim_speed`, `run_mean_duration`, `chemotaxis_enabled`, `aerotaxis_enabled`, `surface_sensing_enabled`, `mucin_drag_enabled` |
 | `FixConjugation` | `ConjugationConfig` | `base_transfer_prob`, `contact_radius`, `shear_crit` |
+| `FixCdi` | `CdiConfig` | `enabled`, `contact_radius`, `kill_rate`, `corpse_persistence` |
 | `FixMutation` | `MutationConfig` | Per-division rates for duplication, recombination, receptor downreg, partial resistance, super-killer, compensatory; `immunity_escape_prob`, `escape_affinity_lo/hi`, `missense_prob`, `missense_affinity_lo/hi` |
 | `FixMechanics` | `MechanicsConfig` | `hertz_k`, `hertzian_enabled`, `adhesion_enabled`, `adhesion_strength`, `adhesion_range` |
 
@@ -257,16 +261,14 @@ class Fix {
 ### `FixMechanics`
 **Header:** `src/fixes/fix_mechanics.h`
 
-Computes Hertzian contact forces between overlapping agents and optional EPS-mediated adhesion. Replaces the previous inline linear repulsion in `module_physics()`.
+Computes Hertzian contact forces between overlapping agents and optional EPS-mediated adhesion (including CDI corpse participation via the shared host/device predicate in `src/fixes/mechanics_participation.h`). Replaces the previous inline linear repulsion in `module_physics()`.
 
 ```cpp
 FixMechanics(Simulation& sim, const MechanicsConfig& cfg);
 void compute(Real dt) override;
 ```
 
-**Hertzian repulsion:** For each neighbor pair with overlap > 0, applies `F = hertz_k * overlap^1.5` as equal-and-opposite impulses weighted by reduced mass.
-
-**EPS adhesion:** When enabled, cells separated by gap < `adhesion_range` receive a linearly decaying attractive force `F = adhesion_strength * (1 - gap/range)`.
+**Overdamped Stokes displacement:** For each neighbor pair with overlap > 0, computes Hertzian repulsion `F = hertz_k * overlap^1.5` (and optional EPS adhesion `F = adhesion_strength * (1 - gap/range)` for gap < `adhesion_range`) and translates cells via overdamped Stokes mobility using `vbf_viscosity`, with per-step displacement capped at `0.1 * radius`.
 
 ---
 
@@ -306,16 +308,30 @@ void compute(Real dt) override;
 ### `PlasmidLibrary`
 **Header:** `src/genome/plasmid.h`
 
-Pre-characterized colicin/microcin entries:
+Pre-characterized colicin/microcin entries (canonical values in `src/genome/plasmid.cpp`, overridable per plasmid via `plasmid_overrides.<plasmid>.<field>`):
 
-| Entry | pI | Target | Class | MW (kDa) |
-|-------|-----|--------|-------|----------|
-| ColE1 | 9.2 | BtuB | Core | 57 |
-| ColE2 | 6.5 | BtuB | Halo | 62 (complex) |
-| ColB | 5.5 | FepA | Halo | 55 |
-| ColIa | 5.8 | CirA | Halo | 69 |
-| ColM | 4.8 | FhuA | Halo | 29 |
-| MccV | 8.8 | CirA | Core | 8.8 |
+| Entry | pI | Target | Class | Release mode | MW (kDa) |
+|-------|-----|--------|-------|--------------|----------|
+| ColE1 | 9.0 | BtuB | Core | SOS lysis | 57.0 |
+| ColE2 | 6.5 | BtuB | Halo | SOS lysis | 61.5 (complex) |
+| ColB | 5.4 | FepA | Halo | Phage lysis | 54.8 |
+| ColIa | 7.2 | CirA | Neutral | Phage lysis | 69.4 |
+| ColM | 9.3 | FhuA | Core | SOS lysis | 29.5 |
+| MccV | 5.0 | CirA | Halo | Continuous | 8.9 |
+
+---
+
+## Multiscale Layers (Spec 13)
+
+### Layer 2: `MucusSegment` & `PatchTable`
+**Headers:** `src/layer2/segment.h`, `src/layer2/patch_table.h`, `src/layer2/layer2_config.h`
+
+Coarse-grained mucus-segment simulator coupling a ring of `Patch` slots (`Crypt`, `ExposedProximal`, `ExposedDistal`) with a well-mixed luminal pool, `PatchTable` tabulated dynamics, optional multi-slot live Layer-1 `Simulation` patches (`live_physics_mode`, `live_inherit_oxygen`, `live_align_patch_table_delivery`), and scheduled perturbation pulses (`Layer2Pulse`). See [`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md).
+
+### Layer 3: `ColonicChain` & `LumenCompartment`
+**Headers:** `src/layer3/chain.h`, `src/layer3/lumen.h`, `src/layer3/layer3_config.h`
+
+Multi-region proximal-to-distal colon chain coupling per-region `MucusSegment` instances with advecting `LumenCompartment` pools, HAPC motility events, checkpoint/restore (including pulse and death ledgers), and mucosal occupancy readouts. See [`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md).
 
 ---
 
@@ -324,16 +340,18 @@ Pre-characterized colicin/microcin entries:
 ### `HDF5Writer`
 **Header:** `src/io/hdf5_writer.h`
 
-Writes simulation state in HDF5 format compatible with nufeb_tools.
+Writes Spec-4 layered HDF5 output (parallel when MPI enabled) compatible with `nufeb_tools` and `gut_ibm_tools`.
 
 ```
-/step_NNNN/
-  atoms/        → id, type, x, y, z, radius, biomass, mu, state, lineage
-  grid/         → carbon, iron, b12, bacteriocin
-  metadata/     → time, num_agents, num_lineages
+/run_provenance/      → git_sha, resolved_config, chemistry_placement, termination_*
+/summary/step_NNNNNN/ → scalar populations, event counts, chem means, nutrient_flux ledgers
+/step_NNNNNN/         (or /agents/, /grid/, /lineage/, /genome/ per schedule)
+  atoms/              → id, type, x, y, z, radius, biomass, mu, state, lineage
+  grid/               → carbon, iron, b12, bacteriocin_*, …
+  metadata/           → time, num_agents, num_lineages, rng/ (checkpoints)
 ```
 
-Set `HDF5Config.enabled = false` to suppress I/O (useful for testing).
+Set `HDF5Config.enabled = false` to suppress I/O (useful for testing). `HDF5Reader` (`src/io/hdf5_reader.h`) restores Tier-2 checkpoints via `Simulation::init_from_checkpoint()`, replaying serialized per-rank RNG state on same-seed, same-rank continuation (`hdf5_rng_replay`).
 
 ### `LineageTracker`
 **Header:** `src/genome/lineage_tracker.h`
@@ -395,16 +413,17 @@ CUDA GPU acceleration is optional (`-DGUTIBM_USE_CUDA=ON`). When disabled at com
 
 | Module | File | Notes |
 |--------|------|-------|
-| Green's function superposition | `src/gpu/greens_kernel.cu` | Brute-force QSSA path only; FMM stays on CPU |
-| Chemical field integration | `src/gpu/field_update_kernel.cu` | `conc += reac * dt`, boundary conditions |
-| Nutrient depletion | `src/gpu/field_update_kernel.cu` | Atomic writes to `reac_` |
-| Metabolism (Monod growth) | `src/gpu/agent_update_kernel.cu` | Division/death remain on CPU |
-| Grid coupling | `src/gpu/field_update_kernel.cu` | Agent position → `grid_cell` |
-| Spatial hash build | `src/gpu/spatial_hash_kernel.cu` | Cell-key sort; host hash still used for mechanics |
+| Green's function superposition | `src/gpu/greens_kernel.cu` | Brute-force QSSA near-field; FMM L-eval via `fmm_far_kernel.cu` |
+| Implicit nutrient diffusion & Route-B delivery | `src/gpu/diffusion_kernel.cu` | PCR tridiagonal solver (lines ≤ 1024; Route-B delivery lines ≤ 512) |
+| VBF coupling & O₂ respiration | `src/gpu/chemistry_kernel.cu` | Implicit carbon Monod, O₂, and iron VBF sinks |
+| Chemical field integration & grid coupling | `src/gpu/field_update_kernel.cu` | Reaction integration, boundaries, depletion, cell assignment |
+| Metabolism, Fur, acetate, & delivery prepare/commit | `src/gpu/agent_update_kernel.cu` | Monod growth, Fur modulation, acetate, delivery prepare/commit, funded respiration; division/death/siderophore chemistry remain on CPU |
+| Receptor kill probabilities | `src/gpu/receptor_kernel.cu` | Competitive binding kill probability on device; Bernoulli RNG on host |
+| Spatial hash CSR & overdamped mechanics | `src/gpu/spatial_hash_kernel.cu`, `src/gpu/mechanics_kernel.cu` | CSR neighbor lists, Hertzian repulsion + EPS adhesion + CDI corpse participation |
 
-**Still CPU-only:** mechanics, conjugation, mutation (RNG), receptor kill decisions, VBF coupling, FMM far-field, HDF5 I/O.
+**Still CPU-only:** FMM octree M2L traversal (#159), siderophore field chemistry, conjugation, mutation, receptor kill RNG, HDF5 I/O, multi-GPU NCCL.
 
-See `src/gpu/README.md` for build prerequisites and memory requirements.
+See `src/gpu/README.md` and [`CUDA_DELIVERY_PARITY.md`](CUDA_DELIVERY_PARITY.md) for build prerequisites, delivery scope, and memory requirements.
 
 ---
 
@@ -424,7 +443,7 @@ tuples from the genome layer's `id`, `bi_offset`, and `bi_count` datasets when
 available, returning an empty mapping for legacy genome layers.
 
 ### `analysis`
-Spatial statistics and exclusion-radius clustering metrics.
+Spatial statistics, exclusion-radius clustering metrics, and division-wave-safe strain-ratio estimators.
 
 | Function | Description |
 |----------|-------------|
@@ -436,6 +455,8 @@ Spatial statistics and exclusion-radius clustering metrics.
 | `hopkins_statistic(positions, n_samples=None)` | Hopkins clustering statistic over the full point cloud. H > 0.7 → clustered. |
 | `comet_tail_asymmetry_index(positions, concentrations, flow_direction=0)` | Concentration-weighted downstream elongation ratio. |
 | `comet_tail_index(positions, concentrations, flow_direction)` | Downstream/upstream mean concentration ratio. |
+| `log_ratio_ols_slope(...)` | OLS slope of `log10(n1/n2)` over a multi-wave window (avoids division-wave endpoint aliasing). |
+| `wave_averaged_log_ratio(...)` | Tail-median and multi-wave-averaged strain log-ratio estimator. |
 
 ### `validation`
 Compare simulation output to empirical targets using exclusion-radius clustering (VADI §75).
@@ -457,7 +478,7 @@ Compare simulation output to empirical targets using exclusion-radius clustering
 Plot agent distributions, chemical fields, lineage time-series.
 
 ### `validation_regression`
-Golden-file and threshold regression for CI (`python -m gut_ibm_tools.validation_regression`).
+Invariant and threshold regression for CI (`python -m gut_ibm_tools.validation_regression`).
 
 | Function | Description |
 |----------|-------------|
@@ -467,8 +488,13 @@ Golden-file and threshold regression for CI (`python -m gut_ibm_tools.validation
 | `check_thresholds(metrics)` | EARI/VADI biological invariants |
 | `check_fish_targets(metrics)` | FISH detection invariants |
 
-### `fish_observation`
-Simulated HiPR-FISH / DNA-FISH observation models for plasmid and immunity transcripts.
+### `fish_observation` & `pellet_observation`
+- `fish_observation`: Simulated HiPR-FISH / DNA-FISH observation models (including optical-slice `depth_window_m` FOVs) for plasmid and immunity transcripts.
+- `pellet_observation`: Fecal-pellet and host-cage limit-of-detection (LOD) censoring models (`analytical_detection_probability`, `censor_pellet_sample`, `pool_cage_samples`; PR #484).
+
+### `checkpoint_analyze` & AWS Batch helpers
+- `checkpoint_analyze` (`gut-ibm-analyze`): Stream Spec-4 `step_*.h5` restarts to CSV/PNG ([`CHECKPOINT_ANALYSIS.md`](CHECKPOINT_ANALYSIS.md)).
+- `aws_batch_{export,status,estimate,qa,branch}` (`gut-ibm-aws-*`): AWS Batch Spot campaign export, monitoring, cost estimation, QA, and checkpoint fork helpers ([`AWS_BATCH.md`](AWS_BATCH.md)).
 
 ### `batch_runner` / `batch_config` / `batch_manifest`
 Resumable parameter-scan CLI. See [BATCH_RUNNER.md](BATCH_RUNNER.md).

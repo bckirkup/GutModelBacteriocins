@@ -80,17 +80,23 @@ cd build && ctest -R "smoke|config_diversity" --output-on-failure
 5. Commit message cites rule keys and approximate issue count cleared.
 6. Re-scan on SonarCloud after merge before starting the next batch.
 
-## Remaining work map (Jul 2026 pragmatic clear-to-zero)
+## Remediation history and current policy (see `docs/SONARQUBE_PLAN.md`)
 
-**Baseline before Batch A:** 79 open `CODE_SMELL` (0 BUG / 0 VULN); quality gate OK.
+`docs/SONARQUBE_PLAN.md` is the authoritative batch status and accepted-debt policy.
+Key milestones already merged:
 
-| Batch | Scope | Outcome |
-|-------|-------|---------|
-| **A (done)** | ~25 mechanical smells (`S1192`, `S6009`, `S5566`, `S3358`, `S1854`, `S1905`, `S125`, `S5827`, `S5421`, `S1188`, `S5812`, `S6177`, `S5945`, `S6022`) | Fixed in code |
-| **B** | ~54 complexity/architecture smells (`S134`, `S107`, `S6004`, `S3776`, `S995`, `S5008`, `S1820`, `S1448`, `S3656`, `S924`, `S7034`) | Won’t Fix via `scripts/sonar_wont_fix_debt.py` after merge re-scan (auto-analysis ignores multicriteria) |
-| **C (done)** | `docs/SONARQUBE_PLAN.md` + this map | Policy + monitoring |
+| Batch / PR | Scope | Outcome |
+|------------|-------|---------|
+| **A (Jul 2026)** | ~25 mechanical smells (`S1192`, `S6009`, `S5566`, `S3358`, `S1854`, `S1905`, `S125`, `S5827`, `S5421`, `S1188`, `S5812`, `S6177`, `S5945`, `S6022`) | Fixed in code |
+| **D / E (PR #370, #371)** | `pythonsecurity:S6549` manifest path taint + `QSSASolver` `cpp:S8379` race | Fixed in code |
+| **J / E (PR #424)** | `pythonsecurity:S8707` (2) + remaining `cpp:S8379` (14) | Fixed in code |
+| **K (PR #425)** | `python:S3776` (16) refactored; C++ complexity (`cpp:S107`/`S134`/`S3776`) Won't Fix | Merged (Sep 2026) |
+| **Mechanical (PR #426)** | `cpp:S6004`, `S6197`, `S5827`, `S6012`, Python naming, misc | Fixed in code (Sep 2026) |
 
-**Target:** 0 open issues on the SonarCloud dashboard after A merge + B Won’t Fix.
+Accepted debt (Won't Fix via `scripts/sonar_wont_fix_debt.py`) covers only the four
+categories in `docs/SONARQUBE_PLAN.md` (C++23 library rules `S7034`/`S7035`, numerical
+reproducibility `S6179`, and research-prototype C++ architecture smells). `cpp:S6004`,
+`cpp:S8379`, and `python:S3776` are **code fixes**, not Won't Fix debt.
 Quality gate blocks BUG/VULNERABILITY on new code.
 
 ### Opportunistic fixes (when touching files)

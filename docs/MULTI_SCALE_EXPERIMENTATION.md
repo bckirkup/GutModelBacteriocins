@@ -125,9 +125,11 @@ of burn-ins:
 - Closed restarts: `restart.enabled`, `restart.directory`, `restart.interval_steps` (Stage 3 cadence often `60` ≈ 1 h at `bio_dt=60`)
 - Artifacts: immutable `restart/step_*.h5` + `latest.json` (local or S3; see [`AWS_BATCH.md`](AWS_BATCH.md))
 
-Tier-2 closed restarts restore agents (positions, genomes, µ / µ_max, crypt flags)
-and the full chemical grid. RNG is **reseeded** from the job `seed` on resume —
-forks are population-state branches, not bit-identical continuations.
+Tier-2 closed restarts restore agents (positions, genomes, µ / µ_max, crypt flags),
+the full chemical grid, and serialized per-rank RNG state (PR #490). A same-seed,
+same-rank-count resume reproduces a bitwise continuation (`hdf5_rng_replay`), while
+forking with a new `seed` reseeds the RNG (PR #492) — seed forks are population-state
+branches, not bit-identical continuations.
 
 ### Step 2 — Fork (cheap science)
 
@@ -268,8 +270,8 @@ these block the ladder above.
 | No spatial sub-window crop / resample from checkpoint | Cannot literally nest a 100 µm box inside a 2 mm restart | Use same-domain short forks or independent small windows |
 | No JSON microcolony template ICs | Patterned starts require checkpoint resume or C++ test seeding | Parameter transfer from L1 is the intended path |
 | No coupled nested multi-resolution PDE | Nesting is workflow-only | Intentional for now |
-| Tier-3 RNG serialize | Forks not bit-identical | Population-state branching is the science contract |
-| Full-grid chemistry per MPI rank | Stage 3 memory-bound; often `mpi_ranks: 1` | Slab-local chemistry is a future infra item |
+| Tier-2 RNG serialize | Same-seed/same-rank resumes are now bitwise (`hdf5_rng_replay`, PR #490); new-seed forks still reseed (PR #492) | Landed; population-state branching remains the fork contract |
+| Default replicated chemistry per MPI rank | Stage 3 memory-bound under default `replicated` (#480) | Opt-in `chemistry_decomposition="slab"` implemented on CPU and GPU (slab requires `delivery_far_field_radius=0.0`) |
 
 ---
 

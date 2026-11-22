@@ -115,7 +115,7 @@ conclusion is insensitive to the choice.
 
 So comet tails are a *core*-toxin phenomenon at these flow rates, and are
 essentially absent for halo toxins. The committed golden
-`comet_tail_ratio = 0.94` ([`python/tests/fixtures/eari_vadi_ci_golden.json`](../python/tests/fixtures/eari_vadi_ci_golden.json))
+`comet_tail_ratio = 0.94` (`python/tests/fixtures/eari_vadi_ci_golden.json`, removed in PR #259)
 is consistent with this, and is currently being locked in as "correct".
 
 ### D2 — Occupancy is saturated, so the kill radius is a numerical parameter
@@ -235,7 +235,7 @@ and ignores the other 99%. That alone disqualifies it as a structure measure.
 
 The committed golden is worse than that: it is exactly
 `monochromatic_score: 0.0`
-([`python/tests/fixtures/eari_vadi_ci_golden.json`](../python/tests/fixtures/eari_vadi_ci_golden.json)).
+(`python/tests/fixtures/eari_vadi_ci_golden.json`, removed in PR #259).
 That value is *only reachable through the empty-sample paths*: the neighbour
 query includes the focal agent itself, so any agent that survives the
 `len(neighbors) <= 1` guard contributes a strictly positive fraction, and a

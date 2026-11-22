@@ -66,9 +66,10 @@ Crypt refugia (`crypts_enabled`) and partial receptor missense mutations provide
 | Fix | Purpose |
 |---|---|
 | `fix_metabolism` | Triple Monod kinetics, graded iron uptake (FepA/IroN/IutA/Fiu), Fur regulation, acetate–MetE penalty, division, death |
+| `fix_quorum_sensing` | AI-2 production, Lsr import, and chemotaxis coupling (Spec 11) |
 | `fix_bacteriocin` | SOS / phage / continuous microcin release (Spec 2), pI-dependent diffusion classes |
 | `fix_receptor` | Competitive TBDT binding, immunity escape affinity, partial missense resistance |
-| `fix_motility` | Mucus-adapted run-and-reverse swimming, chemotaxis (Spec 3) |
+| `fix_motility` | Mucus-adapted run-and-reverse swimming, chemotaxis (Spec 3 / 10v2) |
 | `fix_conjugation` | F-pili HGT, shear-dependent MPS, pili length heterogeneity |
 | `fix_cdi` | Contact-dependent inhibition, corpse barriers (Spec 3) |
 | `fix_mutation` | BI duplication/recombination, receptor downregulation, super-killers, compensatory amelioration |
@@ -170,7 +171,7 @@ mpirun -np 8 ./gut_ibm ../examples/diversity_paradox/input.json
 ./gut_ibm ../examples/my_run/input.json   # with checkpoint_file in JSON
 ```
 
-Strict config parsing: set `GUTIBM_STRICT_CONFIG=1` to abort on invalid numerics.
+Strict config parsing is enabled by default (unset or `GUTIBM_STRICT_CONFIG=1` aborts on invalid numerics and unknown keys; set `GUTIBM_STRICT_CONFIG=0` for the explicit lenient escape hatch).
 
 ### Batch parameter scans
 
@@ -197,6 +198,10 @@ See [docs/BATCH_RUNNER.md](docs/BATCH_RUNNER.md) for sweep vs explicit-run JSON 
 | `examples/diversity_paradox/` | Full 7-day resident vs immigrant EARI/VADI run |
 | `examples/eari_vadi_validation/` | Short CI regression scenario (15 min sim) |
 | `examples/cell_biology/` | Fur, CDI, motility (Spec 3) |
+| `examples/oxygen_boundary_presets/` | Apical Dirichlet vs tissue-reservoir Robin O₂ BC presets |
+| `examples/immigration_fork/` | Checkpoint fork with scheduled immigration pulse |
+| `examples/fork_profile/` | Checkpoint fork profiling template |
+| `examples/gpu_cost_benefit_benchmark/` | Host vs T4 GPU cost/benefit benchmark templates |
 | `examples/scaling_benchmark/` | Large-agent-count templates (10⁵–10⁶) |
 | `examples/batch_scan/` | Batch runner sweep manifests |
 
@@ -232,18 +237,20 @@ python -m gut_ibm_tools.batch_runner examples/batch_scan/batch.json
 
 ## Output Format
 
-HDF5 file structure (compatible with `nufeb_tools`):
+HDF5 file structure (Spec 4 layered schedule; compatible with `nufeb_tools`):
 
 ```
+/run_provenance/ git_sha, resolved_config, chemistry_placement, termination_*
+/summary/step_000000/  scalar populations, event counts, chem means, nutrient_flux ledgers
 /step_000000/
   atoms/       id, type, x, y, z, radius, biomass, mu, state, lineage
   grid/        carbon, iron, b12, bacteriocin, …
-  metadata/    time, step, num_agents, num_lineages
+  metadata/    time, step, num_agents, num_lineages, rng/ (checkpoints)
   lineage/     btuB_expression, fepA_expression, num_bi_loci, generation
   genome/      has_conjugative_plasmid, plasmid_cost_amelioration, …
 ```
 
-Parallel HDF5 when built with MPI. Checkpoint groups support restart.
+Parallel HDF5 when built with MPI. Checkpoint groups support restart (including bitwise RNG replay on same-seed, same-rank continuation).
 
 ## Validation Targets
 
@@ -265,16 +272,18 @@ src/
   core/           Agent, Domain, SpatialHash, Simulation engine
   fields/         ChemicalField, AdvectionField, VBF
   diffusion/      Green's function kernels, QSSA solver, Barnes–Hut FMM
-  fixes/          Biological rule modules (8 Fix plugins)
-  genome/         Lineage tracker, plasmid library
+  fixes/          Biological rule modules (9 Fix plugins)
+  genome/         Lineage tracker, plasmid library, founder genotypes
+  layer2/         Spec 13 Layer-2 MucusSegment, patch table, live patches, pulses
+  layer3/         Spec 13 Layer-3 ColonicChain and LumenCompartment multi-segment dynamics
   io/             HDF5 reader/writer, JSON input parser
   gpu/            Optional CUDA kernels
 python/
-  gut_ibm_tools/  HDF5 reader, analysis, validation, batch runner, FISH models
+  gut_ibm_tools/  HDF5 reader, analysis, validation, batch runner, FISH/pellet models, AWS helpers
 examples/         Scenario JSON + batch manifests
 scripts/          CI helpers (validate, smoke, parity, scaling benchmark)
 tests/            CTest unit/integration/MPI/GPU targets
-docs/             Mechanisms, parameters, API, batch runner, scaling
+docs/             Mechanisms, parameters, API, batch runner, scaling, multiscale
 ```
 
 ## Documentation
@@ -283,26 +292,34 @@ docs/             Mechanisms, parameters, API, batch runner, scaling
 |----------|-------------|
 | [docs/CONFIG_FORMAT.md](docs/CONFIG_FORMAT.md) | Strict JSON input format, Fix selection, feature toggles |
 | [docs/BATCH_RUNNER.md](docs/BATCH_RUNNER.md) | Resumable parameter-scan CLI and manifest schema |
+| [docs/CHECKPOINT_ANALYSIS.md](docs/CHECKPOINT_ANALYSIS.md) | Stream Spec-4 `step_*.h5` checkpoints to CSV/PNG |
 | [docs/MECHANISMS.md](docs/MECHANISMS.md) | Biological mechanism deep-dives for each Fix module |
 | [docs/PARAMETERS.md](docs/PARAMETERS.md) | All configurable parameters with defaults and units |
 | [docs/API.md](docs/API.md) | C++ and Python class/function reference |
 | [docs/SCALING.md](docs/SCALING.md) | Agent-count benchmarks and profiling |
+| [docs/SPEC13_MULTISCALE.md](docs/SPEC13_MULTISCALE.md) | Layer-2/Layer-3 multiscale colon simulation architecture |
+| [docs/AWS_BATCH.md](docs/AWS_BATCH.md) | AWS Batch Spot + CUDA campaign deployment |
 | [EARI.md](EARI.md) | Eco-Advective Receptor Interference blueprint |
 | [VADI.md](VADI.md) | Viscous Advective-Diffusion Interference blueprint |
 | [AGENTS.md](AGENTS.md) | Developer/agent guidelines, CI map, known landmines |
 
-Spec design documents: `GutIBM Spec 1_ Chemical Environment.md`, `GutIBM Spec 2_ Bacteriocin Induction.md`, `GutIBM Spec 3_ Cell Biology.md`.
+Spec design documents: `GutIBM Spec 1_ Chemical Environment.md`, `GutIBM Spec 2_ Bacteriocin Induction.md`, `GutIBM Spec 3_ Cell Biology.md`, `GutIBM Spec 4 v2_ Mechanistic Gaps + Output Schedule.md`, `GutIBM Spec 5_ Species Wiring Fixes.md`.
 
 ## CI
 
-GitHub Actions (`.github/workflows/ci.yml`) on every push/PR to `main`:
+GitHub Actions (`.github/workflows/ci.yml` + `gpu-device-tests.yml`) on push/PR to `main`:
 
 | Job | What it runs |
 |-----|--------------|
 | `unit-tests` | Fast CTest unit shard (Release, MPI, HDF5) |
-| `integration-tests` | Smoke, config diversity, HDF5, batch runner smoke |
+| `serial-build` | Serial build (`GUTIBM_USE_MPI=OFF`, `GUTIBM_USE_HDF5=OFF`, `-Wall -Wextra`) |
+| `sanitizers` | ASan+UBSan unit tests (serial HDF5) |
+| `tsan` | ThreadSanitizer unit tests (serial HDF5) |
+| `integration-tests` | Smoke, config diversity, HDF5, MPI, slow unit, batch runner smoke, Python integration pytest |
 | `openmp-parity` | Serial vs OpenMP simulation fingerprints |
+| `gpu-parity` | CPU vs GPU simulation fingerprints |
 | `cuda-compile` | CUDA compile + GPU test targets (single arch) |
+| `gpu-device-tests` | Physical T4 GPU verification via AWS Batch (`gpu-device-tests.yml`) |
 | `eari-vadi-validation` | Short sim → HDF5 → invariant/bounds + FISH checks |
 | `python-lint` | JSON syntax, ruff, pytest, batch dry-run |
 

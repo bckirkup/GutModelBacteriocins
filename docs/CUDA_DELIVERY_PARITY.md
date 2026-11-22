@@ -20,7 +20,7 @@ and negative) and #344 (priced at `P + G(z)` twice) — it looks like biology.
 
 | Piece | Host | Device | Gap |
 |---|---|---|---|
-| Agent-side delivery prep and funded growth | `FixMetabolism::prepare_delivery_uptake`, `commit_delivery_uptake`, `post_chemistry` | `try_gpu_metabolism` returns `false` in delivery mode | None. Agent metabolism already falls back to host; this is a throughput cost, not a correctness gap. |
+| Agent-side delivery prep and funded growth | `FixMetabolism::prepare_delivery_uptake`, `commit_delivery_uptake`, `post_chemistry` | `AgentPoolGpu::run_delivery_prepare` and `run_delivery_commit` (`launch_delivery_prepare_kernel`, `launch_delivery_commit_kernel`, added in PR #490 / #479) | Closed on CUDA for supported delivery configurations; falls back to host otherwise. |
 | Prescribed z-gradient reference profile | `z_gradient_reference` + `shift_z_gradient` | `shift_z_gradient_kernel` | None. Verified identical: `boundary_conc` at `iz == 0`, `initial_conc · exp(-z_rel/λ)` above, with the same `nz-1 → nz-2` profile clamp. |
 | Epithelial boundary delivery (Dirichlet and flux) | `diffuse_bounded_z_delivery` | `solve_delivery_line` (`beta`, `flux_source`) | None. |
 | **Per-cell first-order agent sink inside the implicit z solve** | `diffuse_bounded_z_delivery_with_sink` | absent — `solve_delivery_line` builds `1 + 2α` diagonals with no `s·dt` term | **Real.** This is the funded-uptake mechanism itself. |
