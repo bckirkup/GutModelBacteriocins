@@ -296,6 +296,10 @@ void write_step_profile(hid_t fid, const StepProfile& profile,
   write_counter("gpu_d2h_bytes_total", profile.gpu_d2h_bytes);
   write_counter("gpu_h2d_calls_total", profile.gpu_h2d_calls);
   write_counter("gpu_d2h_calls_total", profile.gpu_d2h_calls);
+  const int32_t pinned_staging = profile.gpu_pinned_staging_active ? 1 : 0;
+  write_scalar_dataset(
+      fid, "run_provenance/step_profile/gpu_pinned_staging_active",
+      H5T_NATIVE_INT32, &pinned_staging);
   write_phase("gpu_slab_x_roundtrip_s", profile.gpu_slab_x_roundtrip_s);
   write_phase("mpi_reaction_reduce_s", profile.mpi_reaction_reduce_s);
   write_phase("hdf5_s", profile.hdf5_s);
@@ -328,6 +332,26 @@ void write_step_profile(hid_t fid, const StepProfile& profile,
   const int32_t step_count = profile.step_count;
   write_scalar_dataset(fid, "run_provenance/step_profile/step_count",
                        H5T_NATIVE_INT32, &step_count);
+}
+
+void write_gpu_transfer_provenance(hid_t fid, const Simulation& sim) {
+  const GpuTransferProfile live = gpu_transfer_profile_snapshot();
+  const auto h2d_bytes = static_cast<unsigned long long>(
+      sim.step_profile().gpu_h2d_bytes + live.h2d_bytes);
+  const auto d2h_bytes = static_cast<unsigned long long>(
+      sim.step_profile().gpu_d2h_bytes + live.d2h_bytes);
+  const int32_t pinned_staging_active =
+      (sim.step_profile().gpu_pinned_staging_active
+       || live.pinned_staging_active
+       || gpu_transfer_pinned_staging_active())
+          ? 1
+          : 0;
+  write_scalar_dataset(fid, "run_provenance/h2d_bytes",
+                       H5T_NATIVE_ULLONG, &h2d_bytes);
+  write_scalar_dataset(fid, "run_provenance/d2h_bytes",
+                       H5T_NATIVE_ULLONG, &d2h_bytes);
+  write_scalar_dataset(fid, "run_provenance/pinned_staging_active",
+                       H5T_NATIVE_INT32, &pinned_staging_active);
 }
 
 void write_file_attr(hid_t fid, const char* name, hid_t type, const void* value) {
@@ -781,6 +805,7 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) {
   write_scalar_dataset(fid, "run_provenance/green_function_kernel_evaluations",
                        H5T_NATIVE_ULLONG, &kernel_evaluations);
   write_step_profile(fid, sim.step_profile(), cfg_);
+  write_gpu_transfer_provenance(fid, sim);
   const auto robin_host_fallback_sources =
       static_cast<unsigned long long>(
           sim.qssa().gf().robin_host_fallback_sources());
@@ -927,6 +952,7 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
         fid, "run_provenance/green_function_kernel_evaluations",
         H5T_NATIVE_ULLONG, &kernel_evaluations);
     write_step_profile(fid, sim.step_profile(), cfg_);
+    write_gpu_transfer_provenance(fid, sim);
     H5Fflush(fid, H5F_SCOPE_LOCAL);
   }
   mpi_barrier(cfg_);

@@ -373,6 +373,17 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt,
   buffers.d_maintenance_available = cg.maintenance_available_device();
 
   if (cfg.uptake_limit_mode == UptakeLimitMode::Delivery) {
+    const bool carbon_prior_host_prescribed =
+        i_carbon >= 0 && chem.prescribed_sink_active(i_carbon);
+    const bool o2_prior_host_prescribed =
+        buffers.o2_delivery_enabled != 0 && i_o2 >= 0
+        && chem.prescribed_sink_active(i_o2);
+    buffers.d_prescribed_carbon =
+        i_carbon >= 0 ? cg.prepare_prescribed_sink_device(i_carbon) : nullptr;
+    buffers.d_prescribed_oxygen =
+        (buffers.o2_delivery_enabled != 0 && i_o2 >= 0)
+            ? cg.prepare_prescribed_sink_device(i_o2)
+            : nullptr;
     const GpuDeliverySupportCsr support = build_delivery_support_csr(
         agents, chem, cfg.delivery_far_field_radius, support_lookup);
     GpuDeliveryPrepareOutput output;
@@ -381,6 +392,12 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt,
             local_agent_count, output)) {
       return false;
     }
+    if (buffers.d_prescribed_carbon != nullptr) {
+      cg.download_prescribed_sink_device(i_carbon, output.prescribed_carbon);
+    }
+    if (buffers.d_prescribed_oxygen != nullptr) {
+      cg.download_prescribed_sink_device(i_o2, output.prescribed_oxygen);
+    }
     ag.sync_to_host(agents);
     ag.sync_delivery_to_host(agents);
     ag.sync_receptor_expression_to_host(agents);
@@ -388,11 +405,17 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt,
     auto& chem_mut = sim.chemical_field();
     if (i_carbon >= 0) {
       chem_mut.add_prescribed_sinks(i_carbon, output.prescribed_carbon);
+      if (!carbon_prior_host_prescribed && sim.domain().nprocs() == 1) {
+        cg.mark_prescribed_pre_diffusion_device_valid(i_carbon, true);
+      }
       chem_mut.flux_accounting().add_uptake_demand(
           i_carbon, output.carbon_demand);
     }
     if (buffers.o2_delivery_enabled != 0 && i_o2 >= 0) {
       chem_mut.add_prescribed_sinks(i_o2, output.prescribed_oxygen);
+      if (!o2_prior_host_prescribed && sim.domain().nprocs() == 1) {
+        cg.mark_prescribed_pre_diffusion_device_valid(i_o2, true);
+      }
       chem_mut.flux_accounting().add_uptake_demand(i_o2, output.oxygen_demand);
     }
     if (i_iron >= 0 && output.iron_uptake > 0.0) {
@@ -728,6 +751,7 @@ void FixMetabolism::post_chemistry(Real dt) {
     const GpuDeliveryCommitContext ctx{
         .domain = sim_.domain(),
         .chem = chem,
+        .chem_gpu = &cg,
         .oxygen = sim_.config().chem_env.oxygen,
         .support = support,
         .dt = dt,

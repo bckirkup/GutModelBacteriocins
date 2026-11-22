@@ -9,6 +9,7 @@
 #include "tridiagonal_factorization.h"
 #include <cassert>
 #include <chrono>
+#include <cstring>
 #include <string>
 #include <vector>
 
@@ -416,14 +417,33 @@ bool gpu_apply_species_diffusion_slab_device(
   const size_t bytes = count * sizeof(double);
   const auto start = std::chrono::steady_clock::now();
   auto& host_concentration =
-      context.field.mutable_species_concentration(context.spec_index);
-  if (const cudaError_t d2h_status = cudaMemcpy(
-          host_concentration.data(), d_conc, count * sizeof(double),
-          cudaMemcpyDeviceToHost);
+      context.field.raw_mutable_species_concentration(context.spec_index);
+  if (host_concentration.size() != count) {
+    host_concentration.resize(count);
+  }
+  static thread_local PinnedHostBuffer<double> slab_staging;
+  static thread_local bool slab_pinned_unavailable = false;
+  if (!slab_pinned_unavailable) {
+    slab_staging.ensure_capacity(count);
+    if (!slab_staging.is_pinned()) {
+      slab_pinned_unavailable = true;
+    }
+  }
+  const bool use_pinned = !slab_pinned_unavailable && slab_staging.is_pinned();
+  double* d2h_target = use_pinned ? slab_staging.data()
+                                  : host_concentration.data();
+  cudaStream_t stream = gpu_compute_stream();
+  if (const cudaError_t d2h_status = cudaMemcpyAsync(
+          d2h_target, d_conc, bytes, cudaMemcpyDeviceToHost, stream);
       d2h_status != cudaSuccess) {
     throw Error(std::string("slab diffusion D2H: ")
                 + cudaGetErrorString(d2h_status));
   }
+  gpu_sync_compute();
+  if (use_pinned) {
+    std::memcpy(host_concentration.data(), slab_staging.data(), bytes);
+  }
+  context.field.clear_device_conc_dirty(context.spec_index);
   context.field.clear_host_conc_dirty(context.spec_index);
   gpu_transfer_record_d2h(
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start)
@@ -432,14 +452,20 @@ bool gpu_apply_species_diffusion_slab_device(
   context.field.apply_periodic_x_diffusion(
       domain, dt, context.spec_index);
   const auto host_done = std::chrono::steady_clock::now();
-  if (const cudaError_t h2d_status = cudaMemcpy(
-          d_conc, host_concentration.data(), count * sizeof(double),
-          cudaMemcpyHostToDevice);
+  if (use_pinned) {
+    std::memcpy(slab_staging.data(), host_concentration.data(), bytes);
+  }
+  const double* h2d_source = use_pinned ? slab_staging.data()
+                                        : host_concentration.data();
+  if (const cudaError_t h2d_status = cudaMemcpyAsync(
+          d_conc, h2d_source, bytes, cudaMemcpyHostToDevice, stream);
       h2d_status != cudaSuccess) {
     throw Error(std::string("slab diffusion H2D: ")
                 + cudaGetErrorString(h2d_status));
   }
+  gpu_sync_compute();
   context.field.clear_host_conc_dirty(context.spec_index);
+  context.field.clear_device_conc_dirty(context.spec_index);
   gpu_transfer_record_h2d(
       std::chrono::duration<double>(std::chrono::steady_clock::now() - host_done)
           .count(),

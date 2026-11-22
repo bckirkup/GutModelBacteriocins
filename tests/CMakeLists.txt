@@ -155,6 +155,8 @@ gutibm_add_test(qssa_stoichiometry test_qssa_stoichiometry.cpp LABELS "unit")
 gutibm_add_test(qssa_transient_bounds test_qssa_transient_bounds.cpp LABELS "unit;science")
 gutibm_add_test(chemical_field_reaction_residency
   test_chemical_field_reaction_residency.cpp LABELS "unit")
+gutibm_add_test(chemical_field_memory_guard
+  test_chemical_field_memory_guard.cpp LABELS "unit")
 gutibm_add_test(conjugation test_conjugation.cpp LABELS "unit")
 gutibm_add_test(z_gradient test_z_gradient.cpp LABELS "unit")
 gutibm_add_test(nutrient_diffusion test_nutrient_diffusion.cpp LABELS "unit")

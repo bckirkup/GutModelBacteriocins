@@ -25,6 +25,7 @@ struct StepProfile {
   unsigned long long gpu_d2h_bytes = 0;
   unsigned long long gpu_h2d_calls = 0;
   unsigned long long gpu_d2h_calls = 0;
+  bool gpu_pinned_staging_active = false;
   std::vector<GpuTransferSiteProfile> gpu_transfer_sites;
   double gpu_slab_x_roundtrip_s = 0.0;
   double mpi_reaction_reduce_s = 0.0;
