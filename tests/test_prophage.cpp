@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <iostream>
 #include <string>
@@ -787,6 +788,221 @@ void test_mechanism_capability_refuses_prophage_on_tabulated_layers() {
   std::cout << "  test_mechanism_capability_refuses_prophage_on_tabulated_layers: PASSED\n";
 }
 
+void test_cognate_nuclease_immunity_specificity() {
+  // ColE2 (DNase targeting BtuB) triggers DNA-damage prophage induction.
+  // Carrying ColE1 (pore-former targeting BtuB, is_nuclease=false) must NOT
+  // cross-protect against ColE2 DNase induction, whereas carrying ColE2
+  // (cognate DNase immunity, is_nuclease=true) suppresses induction.
+  auto run_case = [](const std::vector<std::string>& lysogen_plasmids) -> Int {
+    SimulationConfig cfg = make_closed_prophage_base(7811);
+    cfg.domain.hi = {40.0e-6, 40.0e-6, 30.0e-6};
+    cfg.domain.grid_dx = 5.0e-6;
+    cfg.domain.hash_cell_size = 10.0e-6;
+    cfg.qssa.toxin_cutoff = 100.0e-6;
+    cfg.qssa.use_fmm = false;
+    cfg.prophage.enabled = true;
+    cfg.prophage.k_spont = 0.0;
+    cfg.prophage.k_max_damage = 0.05;
+    cfg.prophage.K_damage = 1.0e-12;
+    cfg.prophage.hill_n = 1.0;
+    cfg.prophage.nuclease_damage_weight = 1.0;
+    cfg.prophage.ros_damage_weight = 0.0;
+    cfg.prophage.damage_stimulus = 0.0;
+    cfg.prophage.k_adsorb = 0.0;
+    cfg.fixes.bacteriocin.sos_basal_rate = 0.0;
+    cfg.fixes.bacteriocin.sos_lysis_prob = 0.0;
+    cfg.fixes.bacteriocin.sos_cross_induction_rate = 0.0;
+    cfg.fixes.receptor.btuB_competitor_conc = 0.0;
+    cfg.fixes.receptor.kill_rate_colicin = 0.0;
+    cfg.fixes.receptor.immunity_factor = 0.0;
+    cfg.enabled_fixes = {"bacteriocin", "receptor", "prophage"};
+
+    SimulationConfig::InitialStrain donor;
+    donor.type = 1;
+    donor.count = 4;
+    donor.mu_max = 0.0;
+    donor.plasmids = {"ColE2"};
+    donor.lysogen_prevalence = 0.0;
+
+    SimulationConfig::InitialStrain target_lysogen;
+    target_lysogen.type = 2;
+    target_lysogen.count = 40;
+    target_lysogen.mu_max = 0.0;
+    target_lysogen.plasmids = lysogen_plasmids;
+    target_lysogen.lysogen_prevalence = 1.0;
+    target_lysogen.active_inducible_fraction = 1.0;
+
+    cfg.initial_strains = {donor, target_lysogen};
+    InputParser::finalize_config(cfg);
+
+    Simulation sim;
+    sim.init(cfg);
+    // Prime the ColE2 donor cells to lyse on Step 1 post_step without any
+    // plasmid SOS induction on target_lysogen cells.
+    for (Agent& a : sim.agents()) {
+      if (a.identity.type == 1) {
+        a.state = PhenoState::SOS_INDUCED;
+        a.timers.sos_timer = 10.0;
+      }
+    }
+    for (int s = 0; s < 6; ++s) {
+      sim.step(cfg.time.bio_dt);
+    }
+    return cumulative_total(sim).prophage_inductions;
+  };
+
+  const Int ind_unprotected = run_case({});
+  const Int ind_pore_btub = run_case({"ColE1"});
+  const Int ind_cognate_dnase = run_case({"ColE2"});
+
+  assert(ind_unprotected >= 25);
+  assert(ind_pore_btub == ind_unprotected);
+  assert(ind_cognate_dnase == 0);
+  std::cout << "  test_cognate_nuclease_immunity_specificity: PASSED"
+            << " (none=" << ind_unprotected
+            << ", ColE1=" << ind_pore_btub
+            << ", ColE2=" << ind_cognate_dnase << ")\n";
+}
+
+void test_latent_lysis_arrests_division_and_legacy_transfer_blob() {
+  // 1. Induced cells in latent lysis window (prophage_induced=true) must not
+  //    divide even when biomass exceeds division threshold.
+  {
+    SimulationConfig cfg = make_closed_prophage_base(7821);
+    cfg.prophage.enabled = true;
+    cfg.prophage.k_spont = 0.0;
+    cfg.prophage.k_max_damage = 1.0;
+    cfg.prophage.K_damage = 1.0e-6;
+    cfg.prophage.damage_stimulus = 1.0;
+    cfg.prophage.lysis_delay_s = 600.0;
+    cfg.fixes.metabolism.iron_uptake_enabled = false;
+    cfg.fixes.metabolism.b12_uptake_enabled = false;
+    cfg.fixes.metabolism.maintenance_rate = 0.0;
+    cfg.enabled_fixes = {"metabolism", "prophage"};
+    for (auto& c : cfg.chemicals) {
+      if (c.name == species::CARBON) {
+        c.initial_conc = 10.0;
+        c.boundary_conc = 10.0;
+      }
+    }
+
+    SimulationConfig::InitialStrain lys;
+    lys.type = 1;
+    lys.count = 16;
+    lys.mu_max = 0.05;
+    lys.lysogen_prevalence = 1.0;
+    lys.active_inducible_fraction = 1.0;
+    cfg.initial_strains = {lys};
+    InputParser::finalize_config(cfg);
+
+    Simulation sim;
+    sim.init(cfg);
+    sim.step(cfg.time.bio_dt);
+    const Int divs_step1 = cumulative_total(sim).divisions;
+    assert(cumulative_total(sim).prophage_inductions == 16);
+    for (int s = 0; s < 3; ++s) {
+      sim.step(cfg.time.bio_dt);
+    }
+    assert(cumulative_total(sim).divisions == divs_step1);
+    assert(cumulative_total(sim).prophage_lytic_kills == 0);
+  }
+
+  // 2. Legacy v1 agent_transfer blob (count >= 0 without magic header and
+  //    without prophage fields) deserializes cleanly with safe defaults.
+  {
+    struct LegacyId { int64_t tag; int32_t type; int32_t owner_rank; };
+    struct LegacySpatial {
+      std::array<double, 3> x;
+      std::array<double, 3> v;
+      double radius;
+      double mass;
+      double outer_radius;
+    };
+    struct LegacyMetab {
+      double mu_max;
+      double mu_realized;
+      double biomass;
+      double maintenance;
+      double realized_fermentation_fraction;
+      double pending_growth_chemistry_biomass;
+      double respired_oxygen_rate;
+      std::array<double, NUM_RECEPTORS> receptor_expr;
+      std::array<double, NUM_RECEPTORS> receptor_expr_base;
+      double km_iron;
+      double km_b12;
+      double km_carbon;
+    };
+    struct LegacyLife {
+      int32_t state;
+      double age;
+      double sos_timer;
+      double death_time;
+      int32_t grid_cell;
+      int32_t in_crypt;
+      int32_t microcin_penalty_applied;
+    };
+    struct LegacyMot {
+      std::array<double, 3> swim_direction;
+      double swim_speed;
+      double run_timer;
+      int32_t is_stopped;
+      double stop_timer;
+      double prev_carbon;
+      double prev_oxygen;
+      double prev_ai2;
+    };
+    struct LegacyGen {
+      int64_t lineage_id;
+      int64_t parent_id;
+      uint32_t generation;
+      uint32_t mutations;
+      int32_t has_conjugative_plasmid;
+      double plasmid_cost_amelioration;
+      uint16_t cdi_type;
+      uint16_t cdi_immunity;
+      std::array<double, NUM_RECEPTORS> genome_receptor_expr;
+      std::array<double, NUM_RECEPTORS> toxin_affinity;
+      std::array<double, NUM_RECEPTORS> ligand_affinity;
+      int32_t num_bi_loci;
+    };
+    struct LegacyBlobRec {
+      LegacyId id;
+      LegacySpatial sp;
+      LegacyMetab met;
+      LegacyLife life;
+      LegacyMot mot;
+      LegacyGen gen;
+    };
+
+    LegacyBlobRec rec{};
+    rec.id = {777, 2, 0};
+    rec.sp.x = {5e-6, 6e-6, 7e-6};
+    rec.sp.radius = 0.5e-6;
+    rec.met.mu_max = 4e-4;
+    rec.met.biomass = 1e-15;
+    rec.life.state = static_cast<int32_t>(to_underlying(PhenoState::NORMAL));
+    rec.life.sos_timer = -1.0;
+    rec.life.in_crypt = 1;
+    rec.gen.lineage_id = 777;
+    rec.gen.num_bi_loci = 0;
+
+    const int32_t legacy_count = 1;
+    std::vector<char> legacy_buf(sizeof(legacy_count) + sizeof(rec));
+    std::memcpy(legacy_buf.data(), &legacy_count, sizeof(legacy_count));
+    std::memcpy(legacy_buf.data() + sizeof(legacy_count), &rec, sizeof(rec));
+
+    const std::vector<Agent> out = agent_transfer_deserialize(legacy_buf);
+    assert(out.size() == 1);
+    assert(out[0].identity.tag == 777);
+    assert(out[0].flags.in_crypt);
+    assert(!out[0].flags.has_prophage_immunity);
+    assert(!out[0].flags.has_inducible_prophage);
+    assert(!out[0].flags.prophage_induced);
+    assert(std::abs(out[0].timers.prophage_lysis_timer - (-1.0)) < 1e-12);
+  }
+  std::cout << "  test_latent_lysis_arrests_division_and_legacy_transfer_blob: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -800,6 +1016,8 @@ int main() {
   test_henrot_in_vitro_vs_in_vivo_contrast();
   test_mpi_transfer_and_hdf5_checkpoint_roundtrip();
   test_mechanism_capability_refuses_prophage_on_tabulated_layers();
+  test_cognate_nuclease_immunity_specificity();
+  test_latent_lysis_arrests_division_and_legacy_transfer_blob();
   std::cout << "All Spec 14 temperate prophage tests passed.\n";
   return 0;
 }

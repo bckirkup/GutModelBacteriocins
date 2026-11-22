@@ -2020,6 +2020,50 @@ void test_live_oxygen_funded_reset_crypt_flag_and_stride() {
   std::cout << "live_oxygen_funded_reset_crypt_flag_and_stride: passed\n";
 }
 
+void test_live_patch_prophage_lytic_mortality_closure() {
+  SimulationConfig cfg = live_cfg_for_test();
+  cfg.time.bio_dt = 60.0;
+  cfg.time.total_time = 240.0;
+  cfg.layer2.n_patches = 2;
+  cfg.layer2.audit.patch_index = 0;
+  cfg.layer2.audit.halt_on_exceed = false;
+  cfg.layer2.contraction_rate_per_min = 0.0;
+  cfg.prophage.enabled = true;
+  cfg.prophage.lysogen_prevalence_init = 1.0;
+  cfg.prophage.active_inducible_fraction = 1.0;
+  cfg.prophage.k_spont = 0.0;
+  cfg.prophage.k_max_damage = 0.5;
+  cfg.prophage.K_damage = 1.0e-6;
+  cfg.prophage.damage_stimulus = 1.0e-2;
+  cfg.prophage.lysis_delay_s = 0.0;
+  InputParser::finalize_config(cfg);
+
+  MucusSegment seg;
+  seg.init(cfg);
+  assert(run_steps(seg, cfg.time.bio_dt, 2));
+  assert(seg.ledger_closed());
+  assert(seg.ledger().prophage_lytic_deaths > 0);
+  assert(seg.ledger().biological_deaths ==
+         seg.ledger().sos_lysis_deaths + seg.ledger().toxin_kill_deaths +
+             seg.ledger().prophage_lytic_deaths);
+
+#ifdef GUTIBM_HDF5
+  const std::string path =
+      resolve_test_h5_path("GUTIBM_LAYER2_PROPHAGE_CKPT_H5", "layer2_prophage");
+  seg.write_checkpoint(path);
+  MucusSegment restored;
+  restored.init_from_checkpoint(cfg, path);
+  assert(restored.ledger_closed());
+  assert(restored.ledger().prophage_lytic_deaths ==
+         seg.ledger().prophage_lytic_deaths);
+  assert(restored.ledger().biological_deaths ==
+         seg.ledger().biological_deaths);
+  std::remove(path.c_str());
+#endif
+  std::cout << "live_patch_prophage_lytic_mortality_closure: passed (lytic="
+            << seg.ledger().prophage_lytic_deaths << ")\n";
+}
+
 }  // namespace
 
 int main() {
@@ -2047,6 +2091,7 @@ int main() {
   test_live_delivery_alignment_and_patch_table_comparability();
   test_scheduled_perturbation_pulses();
   test_live_oxygen_funded_reset_crypt_flag_and_stride();
+  test_live_patch_prophage_lytic_mortality_closure();
   std::cout << "test_layer2_segment: all passed\n";
   return 0;
 }

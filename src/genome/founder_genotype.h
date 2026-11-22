@@ -13,13 +13,13 @@
 #define GUTIBM_FOUNDER_GENOTYPE_H
 
 #include "input_parser.h"
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace gutibm {
 
 class Agent;
-class RNG;
 struct BICluster;
 struct PlasmidEntry;
 
@@ -43,7 +43,7 @@ void assign_plasmids(Agent& agent, const std::vector<std::string>& plasmids,
 void apply_founder_genotype(Agent& agent,
                             const SimulationConfig::InitialStrain& strain,
                             const SimulationConfig& cfg,
-                            RNG* rng = nullptr);
+                            uint64_t founder_stream_id = 0);
 
 }  // namespace gutibm
 

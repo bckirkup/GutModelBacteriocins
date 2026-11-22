@@ -98,7 +98,7 @@ Real FixProphage::compute_damage_signal(const Agent& agent,
       if (conc <= 0.0) continue;
       Real immunity_factor = 1.0;
       for (const auto& bi : agent.genome.bi_loci) {
-        if (bi.target != target) continue;
+        if (bi.target != target || !bi.is_nuclease) continue;
         const Real candidate =
             sim_.config().fixes.receptor.immunity_factor
             * bi.immunity_binding_affinity;
@@ -130,8 +130,13 @@ void FixProphage::compute(Real dt) {
   if (cell_vol <= 0.0) return;
 
   Int live_owned = 0;
-  for (const Agent& a : sim_.agents()) {
+  for (Agent& a : sim_.agents()) {
     if (a.state != PhenoState::DEAD && !a.flags.is_ghost) {
+      Int ix = 0;
+      Int iy = 0;
+      Int iz = 0;
+      sim_.domain().pos_to_grid(a.x, ix, iy, iz);
+      a.grid_cell = sim_.domain().cell_index(ix, iy, iz);
       ++live_owned;
     }
   }

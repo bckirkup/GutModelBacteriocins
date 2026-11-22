@@ -255,6 +255,11 @@ void validate_required_species(const SimulationConfig& cfg,
                     "quorum_sensing.enabled");
   }
 
+  if (fix_enabled(cfg, "prophage") && cfg.prophage.enabled) {
+    require_species(chem, "fix_prophage", species::VIRION,
+                    "prophage.enabled");
+  }
+
   if (const bool vbf_carbon_enabled =
           cfg.vbf.mucin_liberation > 0.0
           || cfg.vbf.carbon_sink_vmax > 0.0
@@ -559,6 +564,11 @@ void Simulation::init(const SimulationConfig& cfg) {
              cfg_.fixes.metabolism.delivery_far_field_radius);
   validate_lumped_toxin_species(cfg_, chem_);
   validate_required_species(cfg_, chem_);
+  if (cfg_.prophage.enabled && !fix_enabled(cfg_, "prophage")
+      && domain_.rank() == 0) {
+    std::cerr << "Warning: prophage.enabled=true has no effect because "
+                 "'prophage' is excluded from fixes\n";
+  }
 
   // Advection
   advection_.init(cfg.advection, domain_);
@@ -791,8 +801,10 @@ void Simulation::init_population(const SimulationConfig& cfg) {
   const Real z_max = cfg.initial_population.placement == "z_slab"
       ? cfg.initial_population.z_max : domain_.hi()[2] * 0.5;
 
+  uint64_t founder_serial = 0;
   for (const auto& strain : cfg.initial_strains) {
     for (Int i = 0; i < strain.count; ++i) {
+      ++founder_serial;
       Vec3 pos = {
         rng_.uniform(domain_.lo()[0], domain_.hi()[0]),
         rng_.uniform(domain_.lo()[1], domain_.hi()[1]), 0.0
@@ -810,7 +822,7 @@ void Simulation::init_population(const SimulationConfig& cfg) {
       // Only keep agents that belong to this rank's slab
       if (!domain_.is_local(pos)) continue;
 
-      Agent a = create_strain_agent(strain, pos, !anatomic);
+      Agent a = create_strain_agent(strain, pos, !anatomic, founder_serial);
       agents_.push_back(std::move(a));
     }
   }
@@ -846,6 +858,11 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
              cfg_.fixes.metabolism.delivery_far_field_radius);
   validate_lumped_toxin_species(cfg_, chem_);
   validate_required_species(cfg_, chem_);
+  if (cfg_.prophage.enabled && !fix_enabled(cfg_, "prophage")
+      && domain_.rank() == 0) {
+    std::cerr << "Warning: prophage.enabled=true has no effect because "
+                 "'prophage' is excluded from fixes\n";
+  }
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
   const std::optional<RuntimeDriftEnvelopeBasis> runtime_drift_basis =
@@ -1260,11 +1277,12 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 }
 
 Agent Simulation::create_strain_agent(
-    const SimulationConfig::InitialStrain& strain, Vec3 pos, bool tag_crypt) {
+    const SimulationConfig::InitialStrain& strain, Vec3 pos, bool tag_crypt,
+    uint64_t founder_stream_id) {
   Agent agent = Agent::create_default(agents_.next_tag(), strain.type, pos,
                                       strain.mu_max);
   agent.identity.owner_rank = domain_.rank();
-  apply_founder_genotype(agent, strain, cfg_, &rng_);
+  apply_founder_genotype(agent, strain, cfg_, founder_stream_id);
   if (tag_crypt) tag_crypt_resident(agent, advection_);
   if (cfg_.cell_bio.motility.enabled) {
     FixMotility::init_agent_motility(agent, cfg_.cell_bio.motility,

@@ -4,6 +4,7 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "founder_genotype.h"
 #include "input_parser.h"
 #include "mpi_test_helpers.h"
 #include "species_names.h"
@@ -1502,6 +1503,91 @@ void test_multirank_closure_violation_is_synchronized() {
   }
 }
 
+void test_multirank_prophage_founder_parity_and_migration() {
+  int rank = 0;
+  int nprocs = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+  SimulationConfig cfg = InputParser::default_config();
+  cfg.seed = 9417;
+  cfg.domain.lo = {0.0, 0.0, 0.0};
+  cfg.domain.hi = {80e-6, 40e-6, 40e-6};
+  cfg.domain.grid_dx = 10e-6;
+  cfg.domain.hash_cell_size = 10e-6;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.total_time = 180.0;
+  cfg.time.output_interval = 60.0;
+  cfg.hdf5.enabled = false;
+  cfg.prophage.enabled = true;
+  cfg.prophage.lysogen_prevalence_init = 0.65;
+  cfg.prophage.active_inducible_fraction = 0.5;
+  cfg.prophage.k_max_damage = 0.01;
+  cfg.prophage.K_damage = 1.0e-6;
+  cfg.prophage.damage_stimulus = 1.0e-3;
+  cfg.cell_bio.motility.enabled = true;
+
+  SimulationConfig::InitialStrain s;
+  s.type = 1;
+  s.count = 40;
+  s.mu_max = 0.0;
+  cfg.initial_strains = {s};
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+
+  Int local_total = sim.agents().size();
+  Int local_immune = 0;
+  Int local_inducible = 0;
+  for (const Agent& a : sim.agents()) {
+    if (a.flags.has_prophage_immunity) ++local_immune;
+    if (a.flags.has_inducible_prophage) ++local_inducible;
+  }
+  Int global_total = 0;
+  Int global_immune = 0;
+  Int global_inducible = 0;
+  MPI_Allreduce(&local_total, &global_total, 1, MPI_INT64_T, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_immune, &global_immune, 1, MPI_INT64_T, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_inducible, &global_inducible, 1, MPI_INT64_T, MPI_SUM,
+                MPI_COMM_WORLD);
+  assert(global_total == 40);
+
+  Int ref_immune = 0;
+  Int ref_inducible = 0;
+  for (uint64_t serial = 1; serial <= 40; ++serial) {
+    Agent ref = Agent::create_default(static_cast<TagID>(serial), 1,
+                                      {0.0, 0.0, 0.0}, 0.0);
+    apply_founder_genotype(ref, s, cfg, serial);
+    if (ref.flags.has_prophage_immunity) ++ref_immune;
+    if (ref.flags.has_inducible_prophage) ++ref_inducible;
+  }
+  assert(global_immune == ref_immune);
+  assert(global_inducible == ref_inducible);
+  assert(global_immune > 0 && global_immune < 40);
+  assert(global_inducible > 0 && global_inducible <= global_immune);
+
+  for (int step = 0; step < 3; ++step) {
+    sim.step(cfg.time.bio_dt);
+  }
+  const Int ind = sim.cumulative_events().prophage_inductions
+      + sim.step_events().prophage_inductions;
+  Int min_ind = ind;
+  Int max_ind = ind;
+  MPI_Allreduce(&ind, &min_ind, 1, MPI_INT64_T, MPI_MIN, MPI_COMM_WORLD);
+  MPI_Allreduce(&ind, &max_ind, 1, MPI_INT64_T, MPI_MAX, MPI_COMM_WORLD);
+  assert(min_ind == max_ind);
+
+  if (rank == 0) {
+    std::cout << "  test_multirank_prophage_founder_parity_and_migration: PASSED"
+              << " (np=" << nprocs << ", immune=" << global_immune
+              << ", inducible=" << global_inducible
+              << ", inductions=" << min_ind << ")\n";
+  }
+}
+
 #endif  // GUTIBM_MPI
 
 }  // namespace
@@ -1534,6 +1620,7 @@ int main(int argc, char** argv) {
   test_adaptive_dt_is_rank_identical();
   test_multirank_immigration_ownership();
   test_multirank_closure_violation_is_synchronized();
+  test_multirank_prophage_founder_parity_and_migration();
 #ifdef GUTIBM_HDF5
   test_global_event_counter_reduction();
   test_population_ledger_closure();

@@ -70,6 +70,12 @@ Int live_toxin_kill_deaths(const Simulation& sim) {
          cu.mortality_colicin + cu.mortality_cdi;
 }
 
+Int live_prophage_lytic_deaths(const Simulation& sim) {
+  const StepEvents& ev = sim.step_events();
+  const StepEvents& cu = sim.cumulative_events();
+  return ev.prophage_lytic_kills + cu.prophage_lytic_kills;
+}
+
 Int live_divisions(const Simulation& sim) {
   return sim.step_events().divisions + sim.cumulative_events().divisions;
 }
@@ -781,8 +787,11 @@ void MucusSegment::init_live_slots() {
     state.last_live_birth_count = live_divisions(*state.sim);
     state.last_live_sos_lysis_count = live_sos_lysis_deaths(*state.sim);
     state.last_live_toxin_kill_count = live_toxin_kill_deaths(*state.sim);
+    state.last_live_prophage_lytic_count =
+        live_prophage_lytic_deaths(*state.sim);
     state.last_live_death_count =
-        state.last_live_sos_lysis_count + state.last_live_toxin_kill_count;
+        state.last_live_sos_lysis_count + state.last_live_toxin_kill_count +
+        state.last_live_prophage_lytic_count;
 
     patch.live = true;
     patch.colonists.clear();  // population lives inside the live sim now
@@ -797,20 +806,25 @@ void MucusSegment::step_live(Patch& patch, Real dt) {
   const Int born_before = st.last_live_birth_count;
   const Int sos_before = st.last_live_sos_lysis_count;
   const Int kill_before = st.last_live_toxin_kill_count;
+  const Int prophage_before = st.last_live_prophage_lytic_count;
   st.sim->step(dt);
   const Int divisions = live_divisions(*st.sim);
   ledger_.births += divisions - born_before;
   st.last_live_birth_count = divisions;
   const Int sos_deaths = live_sos_lysis_deaths(*st.sim);
   const Int kill_deaths = live_toxin_kill_deaths(*st.sim);
+  const Int prophage_deaths = live_prophage_lytic_deaths(*st.sim);
   const Int delta_sos = sos_deaths - sos_before;
   const Int delta_kill = kill_deaths - kill_before;
+  const Int delta_prophage = prophage_deaths - prophage_before;
   ledger_.sos_lysis_deaths += delta_sos;
   ledger_.toxin_kill_deaths += delta_kill;
-  ledger_.biological_deaths += delta_sos + delta_kill;
+  ledger_.prophage_lytic_deaths += delta_prophage;
+  ledger_.biological_deaths += delta_sos + delta_kill + delta_prophage;
   st.last_live_sos_lysis_count = sos_deaths;
   st.last_live_toxin_kill_count = kill_deaths;
-  st.last_live_death_count = sos_deaths + kill_deaths;
+  st.last_live_prophage_lytic_count = prophage_deaths;
+  st.last_live_death_count = sos_deaths + kill_deaths + prophage_deaths;
 
   if (!st.harvested_fragment.empty()) {
     ledger_.contraction_departures +=
@@ -1313,7 +1327,8 @@ SegmentObservables MucusSegment::observables() const {
 
 bool MucusSegment::ledger_closed() const {
   if (ledger_.biological_deaths !=
-      ledger_.sos_lysis_deaths + ledger_.toxin_kill_deaths) {
+      ledger_.sos_lysis_deaths + ledger_.toxin_kill_deaths +
+          ledger_.prophage_lytic_deaths) {
     return false;
   }
   Int stocks = 0;
@@ -1377,6 +1392,9 @@ uint64_t MucusSegment::fingerprint() const {
   h = hash_combine(h, static_cast<uint64_t>(ledger_.external_arrivals));
   h = hash_combine(h, static_cast<uint64_t>(ledger_.pulse_washout));
   h = hash_combine(h, static_cast<uint64_t>(ledger_.pulse_deaths));
+  if (ledger_.prophage_lytic_deaths != 0) {
+    h = hash_combine(h, static_cast<uint64_t>(ledger_.prophage_lytic_deaths));
+  }
   return h;
 }
 

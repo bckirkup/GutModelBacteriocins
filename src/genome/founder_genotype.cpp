@@ -3,7 +3,6 @@
 #include "agent.h"
 #include "error.h"
 #include "plasmid.h"
-#include "random.h"
 #include "types.h"
 
 #include <cmath>
@@ -14,10 +13,11 @@ namespace gutibm {
 
 namespace {
 
-// Deterministic [0, 1) draw from (seed, tag, salt) when no RNG is supplied
-// (e.g. tabulated Layer-2/Layer-3 founder construction).
-Real deterministic_unit_draw(uint64_t seed, TagID tag, uint64_t salt) {
-  uint64_t z = seed ^ (static_cast<uint64_t>(tag) * 0x9e3779b97f4a7c15ULL) ^ salt;
+// Deterministic [0, 1) SplitMix64 draw from (seed, stream_id, salt) so founder
+// prophage carriage/inducibility is invariant to MPI rank count and never
+// perturbs Simulation::rng_ position/motility draws.
+Real deterministic_unit_draw(uint64_t seed, uint64_t stream_id, uint64_t salt) {
+  uint64_t z = seed ^ (stream_id * 0x9e3779b97f4a7c15ULL) ^ salt;
   z = (z ^ (z >> 30U)) * 0xbf58476d1ce4e5b9ULL;
   z = (z ^ (z >> 27U)) * 0x94d049bb133111ebULL;
   z = z ^ (z >> 31U);
@@ -25,20 +25,17 @@ Real deterministic_unit_draw(uint64_t seed, TagID tag, uint64_t salt) {
   return static_cast<Real>(z >> 11U) * kScale;
 }
 
-bool draw_prophage_bernoulli(Real prob, RNG* rng, uint64_t seed,
-                             TagID tag, uint64_t salt) {
+bool draw_prophage_bernoulli(Real prob, uint64_t seed,
+                             uint64_t stream_id, uint64_t salt) {
   if (prob <= 0.0) return false;
   if (prob >= 1.0) return true;
-  if (rng != nullptr) {
-    return rng->bernoulli(prob);
-  }
-  return deterministic_unit_draw(seed, tag, salt) < prob;
+  return deterministic_unit_draw(seed, stream_id, salt) < prob;
 }
 
 void apply_founder_prophage_state(Agent& agent,
                                   const SimulationConfig::InitialStrain& strain,
                                   const SimulationConfig& cfg,
-                                  RNG* rng) {
+                                  uint64_t founder_stream_id) {
   const bool explicit_override = strain.lysogen_prevalence.has_value()
       || strain.active_inducible_fraction.has_value();
   if (!cfg.prophage.enabled && !explicit_override) {
@@ -57,12 +54,15 @@ void apply_founder_prophage_state(Agent& agent,
         "founder active_inducible_fraction must be finite and in [0, 1]");
   }
 
+  const uint64_t stream_id = founder_stream_id != 0
+      ? founder_stream_id
+      : static_cast<uint64_t>(agent.identity.tag);
   const bool has_immunity = draw_prophage_bernoulli(
-      prevalence, rng, cfg.seed, agent.identity.tag, 0x50524f5048414745ULL);
+      prevalence, cfg.seed, stream_id, 0x50524f5048414745ULL);
   agent.flags.has_prophage_immunity = has_immunity;
   agent.flags.has_inducible_prophage = has_immunity
-      && draw_prophage_bernoulli(active_frac, rng, cfg.seed,
-                                 agent.identity.tag, 0x494e44554349424cULL);
+      && draw_prophage_bernoulli(active_frac, cfg.seed,
+                                 stream_id, 0x494e44554349424cULL);
   agent.flags.prophage_induced = false;
   agent.timers.prophage_lysis_timer = -1.0;
 }
@@ -118,7 +118,7 @@ void assign_plasmids(Agent& agent, const std::vector<std::string>& plasmids,
 void apply_founder_genotype(Agent& agent,
                             const SimulationConfig::InitialStrain& strain,
                             const SimulationConfig& cfg,
-                            RNG* rng) {
+                            uint64_t founder_stream_id) {
   assign_plasmids(agent, strain.plasmids, cfg, /*rank=*/0);
   for (const auto& [name, expression] : strain.receptor_expression) {
     const auto receptor = receptor_type_from_name(name);
@@ -135,7 +135,7 @@ void apply_founder_genotype(Agent& agent,
   }
   agent.genome.cdi_type = strain.cdi_type;
   agent.genome.cdi_immunity = strain.cdi_immunity;
-  apply_founder_prophage_state(agent, strain, cfg, rng);
+  apply_founder_prophage_state(agent, strain, cfg, founder_stream_id);
 }
 
 }  // namespace gutibm

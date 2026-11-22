@@ -94,7 +94,7 @@ struct LuminalPacket {
 // removes a cell without a packet: kills inside a live patch
 // (colicin/CDI/lysis) harvested from the embedded Simulation's
 // StepEvents mortality counters each step, decomposed into
-// `sos_lysis_deaths` and `toxin_kill_deaths`.
+// `sos_lysis_deaths`, `toxin_kill_deaths`, and `prophage_lytic_deaths`.
 struct SegmentLedger {
   Int initial_cells = 0;
   Int births = 0;
@@ -105,8 +105,9 @@ struct SegmentLedger {
   Int distal_losses = 0;           // cells pool->distal exit
   Int external_arrivals = 0;       // cells external->patch (Layer-3)
   Int biological_deaths = 0;       // cells killed inside a live patch
-  Int sos_lysis_deaths = 0;        // producer SOS/phage lysis deaths
+  Int sos_lysis_deaths = 0;        // producer SOS/bacteriocin lysis deaths
   Int toxin_kill_deaths = 0;       // receptor colicin + CDI kill deaths
+  Int prophage_lytic_deaths = 0;   // Spec 14 temperate prophage lytic deaths
   Int pulse_washout = 0;           // cells flushed by scheduled layer2.pulses
   Int pulse_deaths = 0;            // cells killed by scheduled layer2.pulses
 
@@ -168,9 +169,10 @@ struct LivePatchState {
   Real window_start_time = -1;
   bool shadow_valid = false;
   Int last_live_birth_count = 0;
-  Int last_live_death_count = 0;      // cumulative mortality counters seen
-  Int last_live_sos_lysis_count = 0;  // cumulative SOS/phage lysis seen
-  Int last_live_toxin_kill_count = 0; // cumulative colicin/CDI kills seen
+  Int last_live_death_count = 0;          // cumulative mortality counters seen
+  Int last_live_sos_lysis_count = 0;      // cumulative SOS/bacteriocin lysis seen
+  Int last_live_toxin_kill_count = 0;     // cumulative colicin/CDI kills seen
+  Int last_live_prophage_lytic_count = 0; // cumulative Spec 14 prophage kills seen
   TagID live_seed = 0;                // resolved Simulation seed (provenance)
   // Cumulative cells exported patch->pool per founder lineage
   // (single-channel cells + fragment-channel cells).
