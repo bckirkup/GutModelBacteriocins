@@ -875,6 +875,11 @@ void solve_replicated_delivery_z_line(
       context.alpha * context.boundary.boundary_conc);
   face_exchange += delivery_face_exchange(
       context.alpha, context.boundary, line);
+  if (context.sink.prescribed_mass != nullptr) {
+    const Int wall_cell = context.domain.cell_index(ix, iy, 0);
+    face_exchange +=
+        (*context.sink.prescribed_mass)[static_cast<size_t>(wall_cell)] / 3.0;
+  }
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = context.domain.cell_index(ix, iy, iz);
     const auto index = static_cast<size_t>(iz - 1);
@@ -2000,6 +2005,12 @@ void solve_slab_delivery_line(
       context.alpha * context.boundary_conc);
   face_exchange += context.alpha
       * (context.boundary_conc - line.front()) * context.cell_volume;
+  if (context.prescribed_mass != nullptr) {
+    const Int wall_cell = slab_storage_index(
+        context.halo_width + ix, iy, 0, context.storage_nx, ny);
+    face_exchange +=
+        (*context.prescribed_mass)[static_cast<size_t>(wall_cell)] / 3.0;
+  }
   for (Int iz = 1; iz < nz; ++iz) {
     const Int cell = slab_storage_index(
         context.halo_width + ix, iy, iz, context.storage_nx, ny);

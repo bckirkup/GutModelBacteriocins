@@ -40,7 +40,7 @@ struct SimulationConfig;
 // (S8: same yield and acid-inhibition values, read off
 // SimulationConfig, never duplicated).
 struct LumenPhysio {
-  Real yield_carbon = 0.5;            // mol carbon per kg biomass
+  Real yield_carbon = 0.5;            // mol modeled substrate per kg wet cell mass
   Real carbon_cost_factor = 4.1;      // anaerobic multiplier on yield
   Real anaerobic_mu_factor = 0.55;
   Real ferm_acid_yield = 1.0;         // mol acetate per mol carbon

@@ -555,6 +555,84 @@ class JsonCursor {
     }
   }
 
+  std::vector<PatchType> parse_pulse_patch_types() {
+    const auto names = parse_string_array();
+    std::vector<PatchType> out;
+    for (const auto& name : names) {
+      if (name == "all") {
+        out.clear();
+        return out;
+      }
+      if (name == "crypt") {
+        out.push_back(PatchType::Crypt);
+      } else if (name == "exposed_proximal" || name == "proximal") {
+        out.push_back(PatchType::ExposedProximal);
+      } else if (name == "exposed_distal" || name == "distal") {
+        out.push_back(PatchType::ExposedDistal);
+      } else {
+        throw ConfigError("unknown patch_type in layer2.pulses: " + name);
+      }
+    }
+    return out;
+  }
+
+  void apply_layer2_pulse_field(Layer2Pulse& pulse,
+                                bool& has_time,
+                                const std::string& field) {
+    if (!field.empty() && field.front() == '_') {
+      skip_value();
+    } else if (field == "time_s") {
+      pulse.time_s = parse_number();
+      has_time = true;
+    } else if (field == "washout_fraction") {
+      pulse.washout_fraction = parse_number();
+    } else if (field == "mortality_fraction") {
+      pulse.mortality_fraction = parse_number();
+    } else if (field == "patch_types") {
+      pulse.patch_types = parse_pulse_patch_types();
+    } else {
+      throw ConfigError("unknown field in layer2.pulses entry: " + field);
+    }
+  }
+
+  Layer2Pulse parse_layer2_pulse_object() {
+    if (!match('{')) {
+      throw ConfigError("expected JSON object in layer2.pulses");
+    }
+    Layer2Pulse pulse{};
+    bool has_time = false;
+    skip_ws();
+    if (match('}')) {
+      throw ConfigError("layer2.pulses entry requires time_s");
+    }
+    while (true) {
+      const std::string field = parse_string();
+      if (!match(':')) throw ConfigError("expected ':' in layer2.pulses entry");
+      apply_layer2_pulse_field(pulse, has_time, field);
+      skip_ws();
+      if (match('}')) break;
+      if (!match(',')) throw ConfigError("expected ',' in layer2.pulses entry");
+    }
+    if (!has_time) {
+      throw ConfigError("layer2.pulses entry requires time_s");
+    }
+    return pulse;
+  }
+
+  std::vector<Layer2Pulse> parse_layer2_pulse_array() {
+    std::vector<Layer2Pulse> out;
+    if (!match('[')) throw ConfigError("expected JSON array for layer2.pulses");
+    skip_ws();
+    if (match(']')) return out;
+    while (true) {
+      out.push_back(parse_layer2_pulse_object());
+      skip_ws();
+      if (match(']')) break;
+      if (!match(',')) throw ConfigError("expected ',' in layer2.pulses array");
+    }
+    return out;
+  }
+
   void parse_layer2_object(SimulationConfig& cfg) {
     if (!match('{')) throw ConfigError("expected JSON object for layer2");
     skip_ws();
@@ -564,6 +642,8 @@ class JsonCursor {
       if (!match(':')) throw ConfigError("expected ':' in JSON object");
       if (subkey == "audit") {
         parse_prefixed_object(cfg, "layer2.audit", "layer2.audit");
+      } else if (subkey == "pulses") {
+        cfg.layer2.pulses = parse_layer2_pulse_array();
       } else {
         apply_json_scalar(cfg, "layer2." + subkey, *this);
       }
@@ -613,6 +693,10 @@ class JsonCursor {
 void apply_json_scalar(SimulationConfig& cfg, const std::string& key, JsonCursor& cursor) {
   if (key == "hdf5.schedule.grid_species") {
     cfg.hdf5.schedule.grid_species = cursor.parse_string_array();
+    return;
+  }
+  if (key == "layer2.pulses") {
+    cfg.layer2.pulses = cursor.parse_layer2_pulse_array();
     return;
   }
   if (key == "layer2.audit_patch_indices" ||

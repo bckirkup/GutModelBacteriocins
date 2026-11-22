@@ -60,7 +60,7 @@ Single bacterial cell. Each agent has spatial, metabolic, receptor, phenotype, a
 | `x` | `Vec3` | Position in meters |
 | `v` | `Vec3` | Velocity in m/s |
 | `radius` | `Real` | Cell radius (m) |
-| `biomass` | `Real` | Dry biomass (kg) |
+| `biomass` | `Real` | Wet cell biomass (kg, `volume × 1,100 kg/m³`; ~0.30 dry-to-wet fraction) |
 | `mu_max` | `Real` | Intrinsic max growth rate (1/s) |
 | `mu_realized` | `Real` | Current growth rate after penalties |
 | `receptor_expr` | `array<Real, 8>` | Expression level per receptor (0–1) |

@@ -45,13 +45,13 @@ struct Agent {
   Vec3   x;                // position (m)
   Vec3   v;                // velocity (m/s), set by advection + mechanics
   Real   radius;           // cell radius (m)
-  Real   mass;             // cell mass (kg)
+  Real   mass;             // mechanical wet cell mass (kg, equals biomass)
   Real   outer_radius;     // EPS/capsule outer radius
 
   // ── Metabolism ────────────────────────────────────────────────────────
   Real   mu_max;           // intrinsic max specific growth rate (1/s)
   Real   mu_realized;      // current realized growth rate after penalties
-  Real   biomass;          // dry biomass (kg)
+  Real   biomass;          // wet cell mass (kg, volume * CELL_DENSITY_DEFAULT = 1,100 kg/m^3; ~0.30 dry-to-wet fraction)
   Real   maintenance;      // maintenance energy coefficient
   Real   realized_fermentation_fraction = 0.0;
   Real   pending_growth_carbon = 0.0;

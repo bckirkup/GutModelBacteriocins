@@ -784,6 +784,7 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
       }
     }
   }
+  validate_layer2_live_physics_and_pulses(cfg.layer2);
 }
 
 namespace {
@@ -2039,6 +2040,23 @@ bool apply_layer2_key(SimulationConfig& cfg, std::string_view key,
   }
   if (sub == "audit_lineage_file" || sub == "audit.lineage_file") {
     c.audit.lineage_file = val; return true;
+  }
+  if (key == "layer2.live_physics_mode") {
+    c.live_physics_mode = val; return true;
+  }
+  if (key == "layer2.live_crypt_flow_for_crypt_patches" ||
+      key == "layer2.live_crypt_flow_on_crypt_patches") {
+    c.live_crypt_flow_for_crypt_patches = parse_bool_config(val); return true;
+  }
+  if (key == "layer2.live_inherit_oxygen") {
+    c.live_inherit_oxygen = parse_bool_config(val); return true;
+  }
+  if (key == "layer2.live_crypt_contraction_shelter_scale") {
+    c.live_crypt_contraction_shelter_scale = parse_config_real(key, val);
+    return true;
+  }
+  if (key == "layer2.live_align_patch_table_delivery") {
+    c.live_align_patch_table_delivery = parse_bool_config(val); return true;
   }
   if (sub == "timeseries_file") { c.timeseries_file = val; return true; }
   if (sub == "summary_interval_steps") { c.summary_interval_steps = parse_positive_config_int(key, val); return true; }
