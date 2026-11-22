@@ -1339,6 +1339,562 @@ void test_multi_slot_csr_interpatch_reseed_and_split_deaths() {
   run_multi_slot_csr_case(10, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, 8);
 }
 
+// ── Issue #466 (GAP-03): live_config_for crypt flow, oxygen/ROS inheritance,
+//    and anti-double-counting contraction shelter control ──────────────────
+void test_live_physics_crypt_and_oxygen_modes() {
+  // 1. Default ladder_compat preserves legacy live_config_for overrides.
+  {
+    SimulationConfig cfg = live_cfg_for_test();
+    cfg.layer2.n_patches = 3;
+    cfg.layer2.crypt.fraction = 1.0;
+    cfg.layer2.exposed_proximal.fraction = 0.0;
+    cfg.layer2.exposed_distal.fraction = 0.0;
+    cfg.chem_env.oxygen.enabled = true;
+    cfg.chem_env.oxygen.k_ROS = 1.0e-3;
+    cfg.chem_env.oxygen.k_ROS_respiratory = 2.0e-3;
+    cfg.chem_env.oxygen.k_ROS_funded = 3.0e-3;
+    cfg.advection.crypts_enabled = true;
+
+    MucusSegment seg;
+    seg.init(cfg);
+    assert(seg.patches()[0].type == PatchType::Crypt);
+    const SimulationConfig live = seg.live_config_for(seg.patches()[0]);
+    assert(!live.advection.crypts_enabled);
+    assert(!live.chem_env.oxygen.enabled);
+    assert(live.chem_env.oxygen.k_ROS == 0.0);
+    assert(live.chem_env.oxygen.k_ROS_respiratory == 0.0);
+    assert(live.chem_env.oxygen.k_ROS_funded == 0.0);
+  }
+
+  // 2. Selective per-PatchType crypt flow + oxygen/ROS inheritance.
+  {
+    SimulationConfig cfg = live_cfg_for_test();
+    cfg.layer2.n_patches = 6;
+    cfg.layer2.live_crypt_flow_for_crypt_patches = true;
+    cfg.layer2.live_inherit_oxygen = true;
+    cfg.chem_env.oxygen.enabled = true;
+    cfg.chem_env.oxygen.k_ROS = 1.5e-3;
+    cfg.chem_env.oxygen.k_ROS_respiratory = 2.5e-3;
+    cfg.chem_env.oxygen.k_ROS_funded = 0.0;
+
+    MucusSegment seg;
+    seg.init(cfg);
+
+    Patch crypt_patch;
+    crypt_patch.id = 0;
+    crypt_patch.type = PatchType::Crypt;
+    Patch prox_patch;
+    prox_patch.id = 1;
+    prox_patch.type = PatchType::ExposedProximal;
+    Patch dist_patch;
+    dist_patch.id = 2;
+    dist_patch.type = PatchType::ExposedDistal;
+
+    const SimulationConfig lc = seg.live_config_for(crypt_patch);
+    const SimulationConfig lp = seg.live_config_for(prox_patch);
+    const SimulationConfig ld = seg.live_config_for(dist_patch);
+    assert(lc.advection.crypts_enabled);
+    assert(!lp.advection.crypts_enabled);
+    assert(!ld.advection.crypts_enabled);
+    for (const SimulationConfig* live_ptr : {&lc, &lp, &ld}) {
+      assert(live_ptr->chem_env.oxygen.enabled);
+      assert(std::abs(live_ptr->chem_env.oxygen.k_ROS - 1.5e-3) < 1e-15);
+      assert(std::abs(live_ptr->chem_env.oxygen.k_ROS_respiratory - 2.5e-3) <
+             1e-15);
+    }
+
+    // Preset live_physics_mode = "inherit" turns both on without explicit flags.
+    SimulationConfig inherit_cfg = cfg;
+    inherit_cfg.layer2.live_physics_mode = "inherit";
+    inherit_cfg.layer2.live_crypt_flow_for_crypt_patches = false;
+    inherit_cfg.layer2.live_inherit_oxygen = false;
+    MucusSegment inherit_seg;
+    inherit_seg.init(inherit_cfg);
+    const SimulationConfig inc = inherit_seg.live_config_for(crypt_patch);
+    const SimulationConfig inp = inherit_seg.live_config_for(prox_patch);
+    assert(inc.advection.crypts_enabled);
+    assert(!inp.advection.crypts_enabled);
+    assert(inc.chem_env.oxygen.enabled);
+  }
+
+  // 3. Anti-double-counting shelter scale graded sweep + paired washout &
+  //    contraction comparison + prov.json provenance check.
+  {
+    Layer2Config l2;
+    l2.crypt.disruption_prob = 0.10;
+    l2.exposed_proximal.disruption_prob = 0.50;
+    l2.live_crypt_flow_for_crypt_patches = true;
+
+    const std::vector<Real> scales = {0.0, 0.5, 1.0};
+    std::vector<Real> eff_probs;
+    for (const Real s : scales) {
+      l2.live_crypt_contraction_shelter_scale = s;
+      eff_probs.push_back(l2.effective_live_crypt_disruption_prob());
+    }
+    assert(std::abs(eff_probs[0] - 0.50) < 1e-12);
+    assert(std::abs(eff_probs[1] - 0.30) < 1e-12);
+    assert(std::abs(eff_probs[2] - 0.10) < 1e-12);
+    l2.live_crypt_contraction_shelter_scale = 0.0;
+    assert(!l2.live_crypt_double_counting_risk());
+    l2.live_crypt_contraction_shelter_scale = 1.0;
+    assert(l2.live_crypt_double_counting_risk());
+  }
+
+  // Paired live Crypt washout/contraction comparison:
+  //   (a) crypts_enabled=false (legacy ladder_compat)
+  //   (b) crypts_enabled=true, shelter_scale=0.0 (anti-double-counting)
+  //   (c) crypts_enabled=true, shelter_scale=1.0 (double-counted L1+L2 shelter)
+  const auto run_crypt_arm = [](bool l1_crypt, Real shelter_scale,
+                                const std::string& prov_path) {
+    SimulationConfig cfg = live_cfg_for_test();
+    cfg.seed = 20261122;
+    cfg.time.bio_dt = 60.0;
+    cfg.time.total_time = 20.0 * 60.0;
+    cfg.layer2.n_patches = 1;
+    cfg.layer2.patch_lateral_m = 40.0e-6;
+    cfg.layer2.patch_depth_m = 40.0e-6;
+    cfg.layer2.crypt = {1.0, 0.10, 5.6e-6, 2.0};
+    cfg.layer2.exposed_proximal = {0.0, 0.90, 2.8e-5, 1.0};
+    cfg.layer2.exposed_distal = {0.0, 0.90, 5.6e-5, 0.5};
+    cfg.layer2.initial_patch_fraction = 1.0;
+    cfg.layer2.initial_founder_cells = 30;
+    cfg.layer2.contraction_rate_per_min = 60.0;  // contraction fires every step
+    cfg.layer2.agent_loss_fraction = 0.2;
+    cfg.layer2.reattach_prob_per_transit = 0.0;
+    cfg.layer2.bloom_factor = 100.0;
+    cfg.layer2.invalid_patch_fraction_stop = 1.0;
+    cfg.layer2.audit.patch_index = 0;
+    cfg.layer2.audit.halt_on_exceed = false;
+    cfg.layer2.live_crypt_flow_for_crypt_patches = l1_crypt;
+    cfg.layer2.live_crypt_contraction_shelter_scale = shelter_scale;
+    cfg.layer2.live_inherit_oxygen = true;
+    cfg.chem_env.oxygen.enabled = true;
+    cfg.advection.radial_turnover = 600.0;  // brisk flow to expose L1 shelter
+    cfg.advection.crypt_depth = 20.0e-6;
+    cfg.layer2.provenance_file = prov_path;
+
+    MucusSegment seg;
+    seg.init(cfg);
+    const int rc = seg.run();
+    assert(rc == 0);
+    assert(seg.ledger_closed());
+    return seg.ledger();
+  };
+
+  const std::string prov_safe = secure_temp_file("gutibm_l2_phys_safe_");
+  const std::string prov_risk = secure_temp_file("gutibm_l2_phys_risk_");
+  const SegmentLedger led_legacy = run_crypt_arm(false, 0.0, "");
+  const SegmentLedger led_safe = run_crypt_arm(true, 0.0, prov_safe);
+  const SegmentLedger led_double = run_crypt_arm(true, 1.0, prov_risk);
+
+  // Layer-1 crypt flow shelters cells near the epithelium from radial washout.
+  assert(led_safe.washout_departures <= led_legacy.washout_departures);
+  // Suppressing Layer-2 crypt contraction shelter (scale=0.0, p_disrupt=0.90)
+  // yields strictly more contraction departures than double-counting (scale=1.0,
+  // p_disrupt=0.10).
+  assert(led_safe.contraction_departures > led_double.contraction_departures);
+
+  // Verify prov.json records live_physics and double_counting_risk accurately.
+  {
+    std::ifstream in(prov_safe);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    const std::string prov = ss.str();
+    assert(has_unique_json_keys(prov));
+    assert(prov.find("\"live_physics\":") != std::string::npos);
+    assert(prov.find("\"crypt_flow_for_crypt_patches\": true") !=
+           std::string::npos);
+    assert(prov.find("\"inherit_oxygen\": true") != std::string::npos);
+    assert(prov.find("\"double_counting_risk\": false") != std::string::npos);
+  }
+  {
+    std::ifstream in(prov_risk);
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    const std::string prov = ss.str();
+    assert(has_unique_json_keys(prov));
+    assert(prov.find("\"double_counting_risk\": true") != std::string::npos);
+  }
+  std::remove(prov_safe.c_str());
+  std::remove(prov_risk.c_str());
+  std::cout << "live_physics_crypt_and_oxygen_modes: legacy_wash="
+            << led_legacy.washout_departures
+            << " safe_wash=" << led_safe.washout_departures
+            << " safe_contract=" << led_safe.contraction_departures
+            << " double_contract=" << led_double.contraction_departures
+            << " passed\n";
+}
+
+// ── Issue #469 (GAP-07): live-slot delivery alignment & PatchTable
+//    trajectory comparability (K ~ 57 vs runaway BloomHalted) ──────────────
+void test_live_delivery_alignment_and_patch_table_comparability() {
+  auto make_comparability_cfg = [](bool align_delivery) {
+    SimulationConfig cfg = InputParser::default_config();
+    cfg.hdf5.enabled = false;
+    cfg.profile_steps = false;
+    cfg.seed = 20261028;
+    cfg.time.bio_dt = 60.0;
+    cfg.time.total_time = 12.0 * 3600.0;
+    cfg.initial_strains.clear();
+    SimulationConfig::InitialStrain strain;
+    strain.type = 1;
+    strain.count = 30;
+    strain.mu_max = 5.0e-4;
+    cfg.initial_strains.push_back(strain);
+
+    // Match GAP-07 60x60x60 um crypt patch (2x supply => PatchTable K = 57.402)
+    // with default uniform founder placement and metabolism+mechanics.
+    cfg.enabled_fixes = {"metabolism", "mechanics"};
+
+    auto& l = cfg.layer2;
+    l.enabled = true;
+    l.n_patches = 1;
+    l.patch_lateral_m = 60.0e-6;
+    l.patch_depth_m = 60.0e-6;
+    l.crypt = {1.0, 0.0, 0.0, 2.0};
+    l.exposed_proximal = {0.0, 0.0, 0.0, 1.0};
+    l.exposed_distal = {0.0, 0.0, 0.0, 0.5};
+    l.initial_patch_fraction = 1.0;
+    l.initial_founder_cells = 30;
+    l.contraction_rate_per_min = 0.0;
+    l.reattach_prob_per_transit = 0.0;
+    l.bloom_factor = 10.0;
+    l.bloom_sustain_s = 3600.0;
+    l.invalid_patch_fraction_stop = 1.0;
+    l.audit.patch_index = 0;
+    l.audit.interval_s = 21600.0;
+    l.audit.halt_on_exceed = false;
+    if (align_delivery) {
+      l.live_physics_mode = "ladder_delivery";
+    }
+    return cfg;
+  };
+
+  // Config-level verification for ladder_compat vs ladder_delivery / explicit bool.
+  {
+    const SimulationConfig cfg_none = make_comparability_cfg(false);
+    MucusSegment seg_none;
+    seg_none.init(cfg_none);
+    const SimulationConfig lc_none = seg_none.live_config_for(seg_none.patches()[0]);
+    assert(lc_none.fixes.metabolism.uptake_limit == "none");
+    assert(lc_none.fixes.metabolism.uptake_limit_mode == UptakeLimitMode::None);
+
+    const SimulationConfig cfg_del = make_comparability_cfg(true);
+    MucusSegment seg_del;
+    seg_del.init(cfg_del);
+    const SimulationConfig lc_del = seg_del.live_config_for(seg_del.patches()[0]);
+    assert(lc_del.fixes.metabolism.uptake_limit == "delivery");
+    assert(lc_del.fixes.metabolism.uptake_limit_mode == UptakeLimitMode::Delivery);
+    assert(std::abs(lc_del.fixes.metabolism.delivery_far_field_radius - 1.0e-5) <
+           1e-15);
+    assert(std::abs(lc_del.domain.grid_dx - 4.0e-6) < 1e-15);
+    bool carbon_delivery = false;
+    for (const auto& c : lc_del.chemicals) {
+      if (c.name == "carbon") carbon_delivery = c.delivery_enabled;
+    }
+    assert(carbon_delivery);
+
+    SimulationConfig cfg_flag = make_comparability_cfg(false);
+    cfg_flag.layer2.live_align_patch_table_delivery = true;
+    MucusSegment seg_flag;
+    seg_flag.init(cfg_flag);
+    const SimulationConfig lc_flag = seg_flag.live_config_for(seg_flag.patches()[0]);
+    assert(lc_flag.fixes.metabolism.uptake_limit == "delivery");
+    assert(std::abs(lc_flag.domain.grid_dx - 4.0e-6) < 1e-15);
+  }
+
+  // Part A: Live-vs-shadow PatchTable comparability over 12.5 h.
+  //   - Incubator mismatch arm (damped advection, no contraction,
+  //     uptake_limit="none" — matching GAP-07 placement config): runs away
+  //     past 10x founders (300) and trips BloomHalted.
+  //   - Ladder-matched arm (shipped advection, default Layer-2 crypt
+  //     contraction, ladder_delivery): stays Active, persists (n_ladder > 0),
+  //     and tracks near PatchTable shadow K = 57.4.
+  SimulationConfig cfg_runaway = make_comparability_cfg(false);
+  cfg_runaway.domain.grid_dx = 4.0e-6;
+  cfg_runaway.advection.radial_turnover = 1.0e9;
+  cfg_runaway.advection.distal_transit_time = 1.0e9;
+  cfg_runaway.time.total_time = 12.5 * 3600.0;
+
+  SimulationConfig cfg_ladder = make_comparability_cfg(true);
+  cfg_ladder.layer2.contraction_rate_per_min = 0.5;
+  cfg_ladder.layer2.crypt.disruption_prob = 0.05;
+  cfg_ladder.layer2.agent_loss_fraction = 0.22;
+  cfg_ladder.time.total_time = 12.5 * 3600.0;
+
+  MucusSegment seg_runaway;
+  seg_runaway.init(cfg_runaway);
+  assert(seg_runaway.run() == 0);
+  assert(seg_runaway.ledger_closed());
+
+  MucusSegment seg_ladder;
+  seg_ladder.init(cfg_ladder);
+  assert(seg_ladder.run() == 0);
+  assert(seg_ladder.ledger_closed());
+
+  const Int n_runaway = seg_runaway.patch_count(seg_runaway.patches()[0]);
+  const Int n_ladder = seg_ladder.patch_count(seg_ladder.patches()[0]);
+  assert(seg_runaway.patches()[0].status == PatchStatus::BloomHalted);
+  assert(n_runaway > 300);
+  assert(seg_ladder.patches()[0].status == PatchStatus::Active);
+  assert(!seg_ladder.audit_records().empty());
+  const Int live_6h = seg_ladder.audit_records().front().n_live;
+  const Int shadow_6h = seg_ladder.audit_records().front().n_shadow;
+  assert(shadow_6h > 0 && shadow_6h <= 100);
+  assert(live_6h > 0 && live_6h < n_runaway);
+  assert(n_ladder > 0 && n_ladder < n_runaway);
+
+  // Part B: Pure uptake-regime contrast (none vs ladder_delivery) at matched
+  // damped advection, 4 um grid, and high carbon demand where delivery caps
+  // flux (literature wet-mass carbon demand scale).
+  SimulationConfig cfg_high_none = make_comparability_cfg(false);
+  cfg_high_none.domain.grid_dx = 4.0e-6;
+  cfg_high_none.advection.radial_turnover = 1.0e9;
+  cfg_high_none.advection.distal_transit_time = 1.0e9;
+  cfg_high_none.fixes.metabolism.yield_carbon = 20.0;  // mol C / kg wet mass
+  for (auto& c : cfg_high_none.chemicals) {
+    if (c.name == "carbon") c.z_gradient_enabled = false;
+  }
+  cfg_high_none.time.total_time = 4.0 * 3600.0;
+
+  SimulationConfig cfg_high_del = cfg_high_none;
+  cfg_high_del.layer2.live_physics_mode = "ladder_delivery";
+
+  MucusSegment seg_high_none;
+  seg_high_none.init(cfg_high_none);
+  assert(seg_high_none.run() == 0);
+  assert(seg_high_none.ledger_closed());
+
+  MucusSegment seg_high_del;
+  seg_high_del.init(cfg_high_del);
+  assert(seg_high_del.run() == 0);
+  assert(seg_high_del.ledger_closed());
+
+  const Int n_high_none = seg_high_none.patch_count(seg_high_none.patches()[0]);
+  const Int n_high_del = seg_high_del.patch_count(seg_high_del.patches()[0]);
+  assert(n_high_del < n_high_none);
+
+  std::cout << "live_delivery_alignment_and_patch_table_comparability: "
+            << "runaway_N=" << n_runaway
+            << " (" << patch_status_name(seg_runaway.patches()[0].status) << ")"
+            << " ladder_N=" << n_ladder
+            << " (" << patch_status_name(seg_ladder.patches()[0].status) << ")"
+            << " shadow_6h=" << shadow_6h
+            << " high_demand(none=" << n_high_none
+            << ", delivery=" << n_high_del << ") passed\n";
+}
+
+// ── Issue #474 (GAP-09): optional Layer-2 perturbation pulse schedule ───────
+void test_scheduled_perturbation_pulses() {
+  // 1. Graded sensitivity sweep over washout_fraction in {0.0, 0.5, 0.9}.
+  {
+    const std::vector<Real> fracs = {0.0, 0.5, 0.9};
+    std::vector<Int> washed_counts;
+    std::vector<Int> post_stocks;
+    for (const Real f : fracs) {
+      SimulationConfig cfg = base_cfg();
+      cfg.layer2.n_patches = 24;
+      cfg.layer2.initial_patch_fraction = 1.0;
+      cfg.layer2.initial_founder_cells = 40;
+      cfg.layer2.contraction_rate_per_min = 0.0;
+      cfg.layer2.crypt.single_cell_loss_per_s = 0.0;
+      cfg.layer2.exposed_proximal.single_cell_loss_per_s = 0.0;
+      cfg.layer2.exposed_distal.single_cell_loss_per_s = 0.0;
+      Layer2Pulse pulse;
+      pulse.time_s = 120.0;
+      pulse.washout_fraction = f;
+      cfg.layer2.pulses = {pulse};
+
+      MucusSegment seg;
+      seg.init(cfg);
+      assert(run_steps(seg, cfg.time.bio_dt, 5));
+      assert(seg.ledger_closed());
+      assert(seg.pulse_events().size() == 1);
+      washed_counts.push_back(seg.ledger().pulse_washout);
+      post_stocks.push_back(seg.observables().patch_cells);
+    }
+    assert(washed_counts[0] == 0);
+    assert(washed_counts[0] < washed_counts[1]);
+    assert(washed_counts[1] < washed_counts[2]);
+    assert(post_stocks[0] > post_stocks[1]);
+    assert(post_stocks[1] > post_stocks[2]);
+    assert(washed_counts[2] > washed_counts[1] + 100);
+  }
+
+  // 2. PatchType targeting (crypt refugia spared) + combined washout & mortality
+  //    + G3 patch-order permutation invariance + prov.json / ts.csv output.
+  {
+    const std::string ts_path = secure_temp_file("gutibm_l2_pulse_ts_");
+    const std::string prov_path = secure_temp_file("gutibm_l2_pulse_prov_");
+
+    SimulationConfig cfg = base_cfg();
+    cfg.time.bio_dt = 60.0;
+    cfg.time.total_time = 600.0;  // 10 steps
+    cfg.layer2.n_patches = 30;
+    cfg.layer2.initial_patch_fraction = 1.0;
+    cfg.layer2.initial_founder_cells = 30;
+    cfg.layer2.contraction_rate_per_min = 0.0;
+    cfg.layer2.crypt = {0.34, 0.0, 0.0, 2.0};
+    cfg.layer2.exposed_proximal = {0.33, 0.0, 0.0, 1.0};
+    cfg.layer2.exposed_distal = {0.33, 0.0, 0.0, 0.5};
+    cfg.layer2.summary_interval_steps = 5;
+    cfg.layer2.timeseries_file = ts_path;
+    cfg.layer2.provenance_file = prov_path;
+
+    Layer2Pulse exposed_pulse;
+    exposed_pulse.time_s = 180.0;
+    exposed_pulse.washout_fraction = 0.5;
+    exposed_pulse.mortality_fraction = 0.3;
+    exposed_pulse.patch_types = {PatchType::ExposedProximal,
+                                 PatchType::ExposedDistal};
+    cfg.layer2.pulses = {exposed_pulse};
+
+    MucusSegment seg_a;
+    seg_a.init(cfg);
+    // Count crypt cells before pulse fires (step 2 = t=120s).
+    assert(run_steps(seg_a, cfg.time.bio_dt, 2));
+    Int crypt_before = 0;
+    Int exposed_before = 0;
+    for (const auto& p : seg_a.patches()) {
+      if (p.type == PatchType::Crypt) {
+        crypt_before += seg_a.patch_count(p);
+      } else {
+        exposed_before += seg_a.patch_count(p);
+      }
+    }
+    assert(crypt_before > 0 && exposed_before > 0);
+    // Step 3 reaches t = 180 s -> pulse fires.
+    seg_a.step(cfg.time.bio_dt);
+    assert(seg_a.ledger_closed());
+    assert(seg_a.pulse_events().size() == 1);
+    assert(seg_a.ledger().pulse_washout > 0);
+    assert(seg_a.ledger().pulse_deaths > 0);
+
+    Int crypt_after = 0;
+    Int exposed_after = 0;
+    for (const auto& p : seg_a.patches()) {
+      if (p.type == PatchType::Crypt) {
+        crypt_after += seg_a.patch_count(p);
+      } else {
+        exposed_after += seg_a.patch_count(p);
+      }
+    }
+    // Crypt refugia were excluded by patch_types, so they only grew/stayed intact,
+    // while exposed patches dropped sharply (~80% removed).
+    assert(crypt_after >= crypt_before);
+    assert(exposed_after < exposed_before / 2);
+
+    // G3 invariance under reversed patch iteration order (run full horizon).
+    MucusSegment seg_ref;
+    seg_ref.init(cfg);
+    assert(seg_ref.run() == 0);
+    assert(seg_ref.ledger_closed());
+
+    SimulationConfig cfg_rev = cfg;
+    cfg_rev.layer2.timeseries_file.clear();
+    cfg_rev.layer2.provenance_file.clear();
+    MucusSegment seg_rev;
+    seg_rev.init(cfg_rev);
+    std::vector<Int> rev(static_cast<size_t>(cfg.layer2.n_patches));
+    std::iota(rev.begin(), rev.end(), 0);
+    std::reverse(rev.begin(), rev.end());
+    seg_rev.permute_patch_order_for_testing(rev);
+    assert(seg_rev.run() == 0);
+    assert(seg_ref.fingerprint() == seg_rev.fingerprint());
+
+    // Verify prov.json and ts.csv include pulse accounting.
+    {
+      std::ifstream in(prov_path);
+      std::ostringstream ss;
+      ss << in.rdbuf();
+      const std::string prov = ss.str();
+      assert(has_unique_json_keys(prov));
+      assert(prov.find("\"pulse_washout\": ") != std::string::npos);
+      assert(prov.find("\"pulse_deaths\": ") != std::string::npos);
+      assert(prov.find("\"pulses\": [{\"time_s\": 180") != std::string::npos);
+      assert(prov.find("\"pulse_events\": [{\"pulse_index\": 0") !=
+             std::string::npos);
+    }
+    {
+      std::ifstream in(ts_path);
+      std::string header;
+      assert(std::getline(in, header));
+      assert(header.find("pulse_washout_cum,pulse_deaths_cum") !=
+             std::string::npos);
+    }
+    std::remove(ts_path.c_str());
+    std::remove(prov_path.c_str());
+  }
+
+  // 3. Live-patch perturbation pulse: removes live agents cleanly without
+  //    corrupting biological_deaths split, and preserves strict ledger closure.
+  {
+    SimulationConfig cfg = live_cfg_for_test();
+    cfg.layer2.n_patches = 2;
+    cfg.layer2.initial_founder_cells = 30;
+    cfg.layer2.contraction_rate_per_min = 0.0;
+    cfg.layer2.audit.patch_index = 0;
+    cfg.layer2.audit.halt_on_exceed = false;
+    Layer2Pulse pulse;
+    pulse.time_s = 120.0;
+    pulse.washout_fraction = 0.5;
+    pulse.mortality_fraction = 0.2;
+    cfg.layer2.pulses = {pulse};
+
+    MucusSegment seg;
+    seg.init(cfg);
+    assert(run_steps(seg, cfg.time.bio_dt, 4));
+    assert(seg.ledger_closed());
+    assert(seg.pulse_events().size() == 1);
+    assert(seg.ledger().pulse_washout > 0);
+    assert(seg.ledger().pulse_deaths > 0);
+    assert(seg.ledger().biological_deaths ==
+           seg.ledger().sos_lysis_deaths + seg.ledger().toxin_kill_deaths);
+  }
+
+  // 4. HDF5 checkpoint round-trip across a two-pulse schedule (pulse 0 fires
+  //    before checkpoint; pulse 1 fires after restore; pulse 0 must NOT refire).
+#ifdef GUTIBM_HDF5
+  {
+    const std::string path =
+        resolve_test_h5_path("GUTIBM_LAYER2_PULSE_CKPT_H5", "layer2_pulses");
+    SimulationConfig cfg = base_cfg();
+    cfg.layer2.n_patches = 20;
+    cfg.layer2.initial_patch_fraction = 1.0;
+    cfg.layer2.initial_founder_cells = 30;
+    Layer2Pulse p0;
+    p0.time_s = 120.0;
+    p0.washout_fraction = 0.4;
+    Layer2Pulse p1;
+    p1.time_s = 360.0;
+    p1.washout_fraction = 0.3;
+    p1.mortality_fraction = 0.2;
+    cfg.layer2.pulses = {p0, p1};
+
+    MucusSegment seg_a;
+    seg_a.init(cfg);
+    assert(run_steps(seg_a, cfg.time.bio_dt, 4));  // t=240s: p0 fired, p1 pending
+    assert(seg_a.ledger().pulse_washout > 0);
+    assert(seg_a.ledger().pulse_deaths == 0);
+    seg_a.write_checkpoint(path);
+
+    MucusSegment seg_b;
+    seg_b.init_from_checkpoint(cfg, path);
+    assert(run_steps(seg_b, cfg.time.bio_dt, 4));  // t=480s: p1 fires once
+    assert(seg_b.ledger_closed());
+
+    MucusSegment seg_ref;
+    seg_ref.init(cfg);
+    assert(run_steps(seg_ref, cfg.time.bio_dt, 8));
+    assert(seg_b.fingerprint() == seg_ref.fingerprint());
+    assert(seg_b.ledger().pulse_washout == seg_ref.ledger().pulse_washout);
+    assert(seg_b.ledger().pulse_deaths == seg_ref.ledger().pulse_deaths);
+    assert(seg_b.ledger().pulse_deaths > 0);
+  }
+#endif
+  std::cout << "scheduled_perturbation_pulses: passed\n";
+}
+
 }  // namespace
 
 int main() {
@@ -1362,6 +1918,9 @@ int main() {
   test_single_slot_patch_indices_bitwise_parity();
   test_live_try_deposit_active_vs_halted();
   test_multi_slot_csr_interpatch_reseed_and_split_deaths();
+  test_live_physics_crypt_and_oxygen_modes();
+  test_live_delivery_alignment_and_patch_table_comparability();
+  test_scheduled_perturbation_pulses();
   std::cout << "test_layer2_segment: all passed\n";
   return 0;
 }

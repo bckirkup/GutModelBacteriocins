@@ -107,10 +107,12 @@ struct SegmentLedger {
   Int biological_deaths = 0;       // cells killed inside a live patch
   Int sos_lysis_deaths = 0;        // producer SOS/phage lysis deaths
   Int toxin_kill_deaths = 0;       // receptor colicin + CDI kill deaths
+  Int pulse_washout = 0;           // cells flushed by scheduled layer2.pulses
+  Int pulse_deaths = 0;            // cells killed by scheduled layer2.pulses
 
   [[nodiscard]] Int expected_stocks() const {
     return initial_cells + births + external_arrivals - distal_losses -
-           biological_deaths;
+           biological_deaths - pulse_washout - pulse_deaths;
   }
 };
 
@@ -145,6 +147,15 @@ struct HaltedPatchRecord {
   PatchStatus status = PatchStatus::Active;
   Int halt_step = 0;
   Real halt_time_s = 0.0;
+};
+
+struct PulseEventRecord {
+  Int pulse_index = -1;
+  Int step = 0;
+  Real time_s = 0.0;
+  Int washed_out = 0;
+  Int killed = 0;
+  Int patches_affected = 0;
 };
 
 // Internal bookkeeping for a live audit slot.
@@ -236,6 +247,10 @@ class MucusSegment {
   [[nodiscard]] const std::vector<HaltedPatchRecord>& halted_patches() const {
     return halted_patches_;
   }
+  [[nodiscard]] const std::vector<PulseEventRecord>& pulse_events() const {
+    return pulse_events_;
+  }
+  [[nodiscard]] SimulationConfig live_config_for(const Patch& patch) const;
   [[nodiscard]] bool ledger_closed() const;
 
   // Checkpoint I/O (requires GUTIBM_HDF5; throws ConfigError otherwise).
@@ -260,7 +275,6 @@ class MucusSegment {
   void seed_initial_pool();
   void admissibility_check() const;
   void init_live_slots();
-  SimulationConfig live_config_for(const Patch& patch) const;
 
   // per-step phases
   // `ledger=true` accounts births/departures into the real ledger and
@@ -271,6 +285,9 @@ class MucusSegment {
   void washout_tabulated(Patch& patch, Real dt, bool ledger);
   void step_live(Patch& patch, Real dt);
   void pool_phase(Real dt);
+  void apply_pulses(Real dt);
+  void apply_single_pulse(size_t pulse_idx, const Layer2Pulse& pulse,
+                          Real step_end);
   bool insert_pool_packet(Patch& dest, std::vector<Agent>& cells);
   void audit_check();
   void shadow_step(Patch& live_patch, Real dt);
@@ -325,6 +342,8 @@ class MucusSegment {
   std::string termination_detail_;
   std::vector<AuditRecord> audit_records_;
   std::vector<HaltedPatchRecord> halted_patches_;
+  std::vector<bool> pulse_fired_;
+  std::vector<PulseEventRecord> pulse_events_;
 
   // Layer-3 coupling state (inert in standalone runs).
   Real contraction_rate_override_ = -1.0;  // <0 = use config value

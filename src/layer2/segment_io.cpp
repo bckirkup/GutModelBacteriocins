@@ -52,7 +52,8 @@ const char* kTimeseriesHeader =
     "segment_mean_cfu_ml,segment_cfu_cm2,"
     "n_occupied_total,patch_cells,pool_cells,pool_packets,"
     "births_cum,washout_cum,contraction_cum,reseeds_cum,distal_cum,"
-    "edge_cum,external_cum,deaths_cum,sos_lysis_deaths_cum,toxin_kill_deaths_cum";
+    "edge_cum,external_cum,deaths_cum,sos_lysis_deaths_cum,toxin_kill_deaths_cum,"
+    "pulse_washout_cum,pulse_deaths_cum";
 
 const char* kLiveLineageHeader =
     "step,time_s,patch_id,lineage_id,alive_count,emigrants_cum";
@@ -70,6 +71,57 @@ std::string json_escape(const std::string& s) {
     }
   }
   return out;
+}
+
+void write_live_physics_json(std::ofstream& out, const Layer2Config& c) {
+  out << "  \"live_physics\": {\"mode\": \"" << json_escape(c.live_physics_mode)
+      << "\", \"crypt_flow_for_crypt_patches\": "
+      << (c.resolved_live_crypt_flow() ? "true" : "false")
+      << ", \"inherit_oxygen\": "
+      << (c.resolved_live_inherit_oxygen() ? "true" : "false")
+      << ", \"align_patch_table_delivery\": "
+      << (c.resolved_live_align_delivery() ? "true" : "false")
+      << ", \"crypt_contraction_shelter_scale\": "
+      << c.live_crypt_contraction_shelter_scale
+      << ", \"layer2_crypt_disruption_prob\": " << c.crypt.disruption_prob
+      << ", \"layer2_exposed_proximal_disruption_prob\": "
+      << c.exposed_proximal.disruption_prob
+      << ", \"effective_live_crypt_disruption_prob\": "
+      << c.effective_live_crypt_disruption_prob()
+      << ", \"double_counting_risk\": "
+      << (c.live_crypt_double_counting_risk() ? "true" : "false") << "},\n";
+}
+
+void write_pulses_json(std::ofstream& out,
+                       const std::vector<Layer2Pulse>& pulses,
+                       const std::vector<PulseEventRecord>& events) {
+  out << "  \"pulses\": [";
+  for (size_t i = 0; i < pulses.size(); ++i) {
+    const auto& p = pulses[i];
+    if (i > 0) out << ", ";
+    out << "{\"time_s\": " << p.time_s
+        << ", \"washout_fraction\": " << p.washout_fraction
+        << ", \"mortality_fraction\": " << p.mortality_fraction
+        << ", \"patch_types\": [";
+    for (size_t j = 0; j < p.patch_types.size(); ++j) {
+      if (j > 0) out << ", ";
+      out << '\"' << patch_type_name(p.patch_types[j]) << '\"';
+    }
+    out << "]}";
+  }
+  out << "],\n";
+  out << "  \"pulse_events\": [";
+  for (size_t i = 0; i < events.size(); ++i) {
+    const auto& ev = events[i];
+    if (i > 0) out << ", ";
+    out << "{\"pulse_index\": " << ev.pulse_index
+        << ", \"step\": " << ev.step
+        << ", \"time_s\": " << ev.time_s
+        << ", \"washed_out\": " << ev.washed_out
+        << ", \"killed\": " << ev.killed
+        << ", \"patches_affected\": " << ev.patches_affected << '}';
+  }
+  out << "],\n";
 }
 
 }  // namespace
@@ -169,7 +221,8 @@ void MucusSegment::emit_timeseries_row(std::ofstream& out) const {
       << ',' << ledger_.reseeds << ',' << ledger_.distal_losses << ','
       << ledger_.edge_departures << ',' << ledger_.external_arrivals
       << ',' << ledger_.biological_deaths << ',' << ledger_.sos_lysis_deaths
-      << ',' << ledger_.toxin_kill_deaths << '\n';
+      << ',' << ledger_.toxin_kill_deaths << ',' << ledger_.pulse_washout
+      << ',' << ledger_.pulse_deaths << '\n';
 }
 
 void MucusSegment::emit_lineage_rows(std::ofstream& out) const {
@@ -227,6 +280,7 @@ void MucusSegment::write_provenance(const std::string& path) const {
       << ",\n";
   out << "  \"establish_prob_single\": " << c.establish_prob_single << ",\n";
   out << "  \"establish_ratio\": " << c.establish_ratio << ",\n";
+  write_live_physics_json(out, c);
   out << "  \"termination_cause\": \""
       << termination_cause_name(termination_cause_) << "\",\n";
   out << "  \"termination_detail\": \""
@@ -244,7 +298,10 @@ void MucusSegment::write_provenance(const std::string& path) const {
       << ", \"deaths\": " << ledger_.biological_deaths
       << ", \"biological_deaths\": " << ledger_.biological_deaths
       << ", \"sos_lysis_deaths\": " << ledger_.sos_lysis_deaths
-      << ", \"toxin_kill_deaths\": " << ledger_.toxin_kill_deaths << "},\n";
+      << ", \"toxin_kill_deaths\": " << ledger_.toxin_kill_deaths
+      << ", \"pulse_washout\": " << ledger_.pulse_washout
+      << ", \"pulse_deaths\": " << ledger_.pulse_deaths << "},\n";
+  write_pulses_json(out, c.pulses, pulse_events_);
   if (live_.size() == 1) {
     const auto& [id, st] = *live_.begin();
     out << "  \"audit_live\": {\"patch\": " << id
@@ -408,6 +465,7 @@ void MucusSegment::write_state(hid_t fid,
   make_group(fid, p("/audit"));
   make_group(fid, p("/streams"));
   make_group(fid, p("/mean_window"));
+  make_group(fid, p("/pulses"));
 
   write_scalar_i64(fid, p("/format_version").c_str(), 1);
   write_scalar_f64(fid, p("/time").c_str(), static_cast<double>(time_));
@@ -442,6 +500,10 @@ void MucusSegment::write_state(hid_t fid,
                    ledger_.sos_lysis_deaths);
   write_scalar_i64(fid, p("/ledger/toxin_kill_deaths").c_str(),
                    ledger_.toxin_kill_deaths);
+  write_scalar_i64(fid, p("/ledger/pulse_washout").c_str(),
+                   ledger_.pulse_washout);
+  write_scalar_i64(fid, p("/ledger/pulse_deaths").c_str(),
+                   ledger_.pulse_deaths);
 
   write_vec(fid, p("/patches/id").c_str(), H5T_NATIVE_INT64, patch_ids);
   write_vec(fid, p("/patches/type").c_str(), H5T_NATIVE_INT32,
@@ -513,6 +575,14 @@ void MucusSegment::write_state(hid_t fid,
             win_time);
   write_vec(fid, p("/mean_window/value").c_str(), H5T_NATIVE_DOUBLE,
             win_value);
+
+  std::vector<int32_t> pulse_fired_i32;
+  pulse_fired_i32.reserve(pulse_fired_.size());
+  for (const bool fired : pulse_fired_) {
+    pulse_fired_i32.push_back(fired ? 1 : 0);
+  }
+  write_vec(fid, p("/pulses/fired").c_str(), H5T_NATIVE_INT32,
+            pulse_fired_i32);
 }
 #endif  // GUTIBM_HDF5
 
@@ -595,6 +665,10 @@ void MucusSegment::read_state(hid_t fid, const std::string& prefix) {
       read_scalar_i64_opt(fid, gp("/ledger/sos_lysis_deaths"), 0);
   ledger_.toxin_kill_deaths =
       read_scalar_i64_opt(fid, gp("/ledger/toxin_kill_deaths"), 0);
+  ledger_.pulse_washout =
+      read_scalar_i64_opt(fid, gp("/ledger/pulse_washout"), 0);
+  ledger_.pulse_deaths =
+      read_scalar_i64_opt(fid, gp("/ledger/pulse_deaths"), 0);
 
   const auto patch_ids = read_vec<int64_t>(fid, gp("/patches/id").c_str(),
                                            H5T_NATIVE_INT64);
@@ -716,6 +790,18 @@ void MucusSegment::read_state(hid_t fid, const std::string& prefix) {
   for (size_t i = 0; i < win_time.size(); ++i) {
     mean_window_.emplace_back(static_cast<Real>(win_time[i]),
                               static_cast<Real>(win_value[i]));
+  }
+
+  pulse_fired_.assign(cfg_->layer2.pulses.size(), false);
+  pulse_events_.clear();
+  if (H5Lexists(fid, gp("/pulses").c_str(), H5P_DEFAULT) > 0 &&
+      H5Lexists(fid, gp("/pulses/fired").c_str(), H5P_DEFAULT) > 0) {
+    const auto fired_i32 = read_vec<int32_t>(
+        fid, gp("/pulses/fired").c_str(), H5T_NATIVE_INT32);
+    const size_t n_copy = std::min(fired_i32.size(), pulse_fired_.size());
+    for (size_t i = 0; i < n_copy; ++i) {
+      pulse_fired_[i] = (fired_i32[i] != 0);
+    }
   }
 
   if (!ledger_closed()) {

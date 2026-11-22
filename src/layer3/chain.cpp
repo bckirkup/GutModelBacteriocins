@@ -418,7 +418,9 @@ void ColonicChain::step(Real dt) {
     ledger_.mucosal_births +=
         static_cast<Real>(rs.segment->ledger().births);
     ledger_.mucosal_deaths +=
-        static_cast<Real>(rs.segment->ledger().biological_deaths);
+        static_cast<Real>(rs.segment->ledger().biological_deaths +
+                          rs.segment->ledger().pulse_washout +
+                          rs.segment->ledger().pulse_deaths);
   }
 
   if (!ledger_closed()) {

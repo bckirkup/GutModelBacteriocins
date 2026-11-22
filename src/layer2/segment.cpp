@@ -147,6 +147,41 @@ Int MucusSegment::spatial_capacity_cells() const {
   return static_cast<Int>(std::floor(cap));
 }
 
+void validate_layer2_live_physics_and_pulses(const Layer2Config& c) {
+  if (c.live_physics_mode != "ladder_compat" &&
+      c.live_physics_mode != "ladder_delivery" &&
+      c.live_physics_mode != "inherit") {
+    throw ConfigError(
+        "layer2.live_physics_mode must be 'ladder_compat', 'ladder_delivery', "
+        "or 'inherit'");
+  }
+  if (!std::isfinite(c.live_crypt_contraction_shelter_scale) ||
+      c.live_crypt_contraction_shelter_scale < 0.0 ||
+      c.live_crypt_contraction_shelter_scale > 1.0) {
+    throw ConfigError(
+        "layer2.live_crypt_contraction_shelter_scale must be in [0, 1]");
+  }
+  for (const auto& pulse : c.pulses) {
+    if (!std::isfinite(pulse.time_s) || pulse.time_s < 0.0) {
+      throw ConfigError("layer2.pulses[].time_s must be finite and >= 0");
+    }
+    if (!std::isfinite(pulse.washout_fraction) ||
+        pulse.washout_fraction < 0.0 || pulse.washout_fraction > 1.0) {
+      throw ConfigError(
+          "layer2.pulses[].washout_fraction must be finite and in [0, 1]");
+    }
+    if (!std::isfinite(pulse.mortality_fraction) ||
+        pulse.mortality_fraction < 0.0 || pulse.mortality_fraction > 1.0) {
+      throw ConfigError(
+          "layer2.pulses[].mortality_fraction must be finite and in [0, 1]");
+    }
+    if (pulse.washout_fraction + pulse.mortality_fraction > 1.0) {
+      throw ConfigError(
+          "layer2.pulses[] washout_fraction + mortality_fraction must be <= 1");
+    }
+  }
+}
+
 void MucusSegment::validate_config() const {
   const Layer2Config& c = cfg_->layer2;
   if (c.n_patches <= 0) {
@@ -175,6 +210,7 @@ void MucusSegment::validate_config() const {
   if (cfg_->initial_strains.empty()) {
     throw ConfigError("layer2 requires at least one initial_strains entry");
   }
+  validate_layer2_live_physics_and_pulses(c);
   if (c.audit.patch_index != -1 && !c.audit.patch_indices.empty()) {
     throw ConfigError(
         "layer2 cannot specify both audit.patch_index and audit.patch_indices");
@@ -371,6 +407,8 @@ void MucusSegment::init(const SimulationConfig& cfg) {
   mean_window_.clear();
   audit_records_.clear();
   halted_patches_.clear();
+  pulse_fired_.assign(c.pulses.size(), false);
+  pulse_events_.clear();
   time_ = 0.0;
   step_count_ = 0;
   next_packet_id_ = 0;
@@ -539,12 +577,63 @@ void MucusSegment::washout_tabulated(Patch& patch, Real dt, bool ledger) {
 
 // ── Live patch (audit gate) ──────────────────────────────────────────────
 
+namespace {
+
+void configure_live_oxygen(SimulationConfig& live, bool inherit_oxygen) {
+  if (!inherit_oxygen) {
+    live.chem_env.oxygen.enabled = false;   // ladder condition
+    live.chem_env.oxygen.k_ROS = 0.0;
+    live.chem_env.oxygen.k_ROS_respiratory = 0.0;
+    live.chem_env.oxygen.k_ROS_funded = 0.0;
+    live.chem_env.oxygen.delivery_uptake_enabled = false;
+    for (auto& c : live.chemicals) {
+      if (c.name == species::OXYGEN) {
+        c.delivery_enabled = false;
+        break;
+      }
+    }
+    return;
+  }
+  if (!live.chem_env.oxygen.enabled) return;
+  const bool has_o2 = std::any_of(
+      live.chemicals.begin(), live.chemicals.end(),
+      [](const ChemicalSpec& c) { return c.name == species::OXYGEN; });
+  if (!has_o2) {
+    constexpr Real kDefaultZLambda = 30.0e-6;
+    live.chemicals.emplace_back(
+        species::OXYGEN, live.chem_env.oxygen.D_free, 1.0,
+        live.chem_env.oxygen.epithelial_conc,
+        live.chem_env.oxygen.epithelial_conc,
+        0.0, live.oxygen_z_gradient_enabled, kDefaultZLambda, true);
+  }
+}
+
+void configure_live_delivery(SimulationConfig& live) {
+  live.fixes.metabolism.uptake_limit = "delivery";
+  live.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+  live.fixes.metabolism.delivery_far_field_radius = 1.0e-5;
+  live.domain.grid_dx = 4.0e-6;
+  live.chemistry_decomposition = "replicated";
+  for (auto& c : live.chemicals) {
+    if (c.name == species::CARBON) {
+      c.delivery_enabled = true;
+    } else if (c.name == species::OXYGEN) {
+      c.delivery_enabled = live.chem_env.oxygen.enabled &&
+                           live.chem_env.oxygen.delivery_uptake_enabled;
+    } else {
+      c.delivery_enabled = false;
+    }
+  }
+}
+
+}  // namespace
+
 SimulationConfig MucusSegment::live_config_for(const Patch& patch) const {
   SimulationConfig live = *cfg_;
+  const Layer2Config& l2 = cfg_->layer2;
   const auto& tc = type_config(patch.type);
   live.domain.lo = {0.0, 0.0, 0.0};
-  live.domain.hi = {cfg_->layer2.patch_lateral_m, cfg_->layer2.patch_lateral_m,
-                    cfg_->layer2.patch_depth_m};
+  live.domain.hi = {l2.patch_lateral_m, l2.patch_lateral_m, l2.patch_depth_m};
   live.domain.periodic = {true, true, false};
   live.seed = mix_seed(cfg_->seed, static_cast<uint64_t>(patch.id),
                        tag_hash("live"));
@@ -563,12 +652,18 @@ SimulationConfig MucusSegment::live_config_for(const Patch& patch) const {
       break;
     }
   }
-  live.advection.mucus_thickness = cfg_->layer2.patch_depth_m;
-  live.advection.distal_length = cfg_->layer2.patch_lateral_m;
-  live.advection.crypts_enabled = false;  // S2: crypt is patch type only
-  live.chem_env.oxygen.enabled = false;   // ladder condition
-  live.chem_env.oxygen.k_ROS_respiratory = 0.0;
-  live.chem_env.oxygen.k_ROS_funded = 0.0;
+  live.advection.mucus_thickness = l2.patch_depth_m;
+  live.advection.distal_length = l2.patch_lateral_m;
+  // GAP-03 (#466): default ladder_compat disables Layer-1 crypt flow and
+  // oxygen/ROS on every live patch (bit-identical to legacy behavior).
+  live.advection.crypts_enabled =
+      l2.resolved_live_crypt_flow() && patch.type == PatchType::Crypt;
+  configure_live_oxygen(live, l2.resolved_live_inherit_oxygen());
+  // GAP-07 (#469): opt-in alignment with PatchTable carbon ladder delivery
+  // regime (10 um regularized delivery support on 4 um grid).
+  if (l2.resolved_live_align_delivery()) {
+    configure_live_delivery(live);
+  }
   live.dysbiosis_threshold = 0.0;         // guards live at segment level
   live.immigration.enabled = false;
   live.gpu.enabled = false;               // audit slots are CPU-only
@@ -746,6 +841,146 @@ void MucusSegment::shadow_step(Patch& live_patch, Real dt) {
   washout_tabulated(st.shadow, dt, false);
 }
 
+namespace {
+
+bool pulse_targets_type(const Layer2Pulse& pulse, PatchType type) {
+  if (pulse.patch_types.empty()) return true;
+  return std::find(pulse.patch_types.begin(), pulse.patch_types.end(), type) !=
+         pulse.patch_types.end();
+}
+
+void apply_pulse_to_colonists(std::vector<Agent>& cells,
+                              const Layer2Pulse& pulse,
+                              RNG& pulse_rng,
+                              Int& washed,
+                              Int& killed) {
+  const size_t n = cells.size();
+  if (n == 0) return;
+  std::vector<size_t> by_tag(n);
+  std::iota(by_tag.begin(), by_tag.end(), 0);
+  std::sort(by_tag.begin(), by_tag.end(), [&cells](size_t a, size_t b) {
+    return cells[a].identity.tag < cells[b].identity.tag;
+  });
+  std::vector<uint8_t> keep(n, 1);
+  const Real wash_cut = pulse.washout_fraction;
+  const Real total_cut = wash_cut + pulse.mortality_fraction;
+  for (const size_t idx : by_tag) {
+    const Real u = pulse_rng.uniform();
+    if (u < wash_cut) {
+      keep[idx] = 0;
+      ++washed;
+    } else if (u < total_cut) {
+      keep[idx] = 0;
+      ++killed;
+    }
+  }
+  size_t write = 0;
+  for (size_t i = 0; i < n; ++i) {
+    if (keep[i] == 0) continue;
+    if (write != i) {
+      cells[write] = std::move(cells[i]);
+    }
+    ++write;
+  }
+  cells.resize(write);
+}
+
+void apply_pulse_to_live_agents(AgentPool& agents,
+                                const Layer2Pulse& pulse,
+                                RNG& pulse_rng,
+                                Int& washed,
+                                Int& killed) {
+  std::vector<Int> live_indices;
+  live_indices.reserve(static_cast<size_t>(agents.size()));
+  for (Int i = 0; i < agents.size(); ++i) {
+    if (agents[i].state != PhenoState::DEAD) {
+      live_indices.push_back(i);
+    }
+  }
+  if (live_indices.empty()) return;
+  std::sort(live_indices.begin(), live_indices.end(),
+            [&agents](Int a, Int b) {
+              return agents[a].identity.tag < agents[b].identity.tag;
+            });
+  std::vector<Int> to_remove;
+  const Real wash_cut = pulse.washout_fraction;
+  const Real total_cut = wash_cut + pulse.mortality_fraction;
+  for (const Int idx : live_indices) {
+    const Real u = pulse_rng.uniform();
+    if (u < wash_cut) {
+      to_remove.push_back(idx);
+      ++washed;
+    } else if (u < total_cut) {
+      to_remove.push_back(idx);
+      ++killed;
+    }
+  }
+  std::sort(to_remove.begin(), to_remove.end(), std::greater<Int>{});
+  for (const Int idx : to_remove) {
+    agents.remove(idx);
+  }
+}
+
+}  // namespace
+
+void MucusSegment::apply_single_pulse(size_t pulse_idx,
+                                      const Layer2Pulse& pulse,
+                                      Real step_end) {
+  Int washed = 0;
+  Int killed = 0;
+  Int patches_hit = 0;
+  const uint64_t pulse_salt =
+      mix_seed(static_cast<uint64_t>(pulse_idx), tag_hash("pulse"));
+  const uint64_t shadow_salt =
+      mix_seed(static_cast<uint64_t>(pulse_idx), tag_hash("pulse_shadow"));
+  for (const Int idx : order_) {
+    Patch& patch = patches_[static_cast<size_t>(idx)];
+    if (patch.status != PatchStatus::Active) continue;
+    if (!pulse_targets_type(pulse, patch.type)) continue;
+    ++patches_hit;
+    RNG pulse_rng;
+    pulse_rng.seed(mix_seed(cfg_->seed, static_cast<uint64_t>(patch.id),
+                            pulse_salt));
+    if (!patch.live) {
+      apply_pulse_to_colonists(patch.colonists, pulse, pulse_rng, washed,
+                               killed);
+      continue;
+    }
+    LivePatchState& st = live_.at(patch.id);
+    apply_pulse_to_live_agents(st.sim->agents(), pulse, pulse_rng, washed,
+                               killed);
+    if (st.shadow_valid) {
+      RNG shadow_rng;
+      shadow_rng.seed(mix_seed(cfg_->seed, static_cast<uint64_t>(patch.id),
+                               shadow_salt));
+      Int shadow_washed = 0;
+      Int shadow_killed = 0;
+      apply_pulse_to_colonists(st.shadow.colonists, pulse, shadow_rng,
+                               shadow_washed, shadow_killed);
+    }
+  }
+  ledger_.pulse_washout += washed;
+  ledger_.pulse_deaths += killed;
+  pulse_events_.push_back({static_cast<Int>(pulse_idx), step_count_ + 1,
+                           step_end, washed, killed, patches_hit});
+}
+
+void MucusSegment::apply_pulses(Real dt) {
+  const auto& pulses = cfg_->layer2.pulses;
+  if (pulses.empty()) return;
+  if (pulse_fired_.size() != pulses.size()) {
+    pulse_fired_.assign(pulses.size(), false);
+  }
+  const Real step_end = time_ + dt;
+  for (size_t pi = 0; pi < pulses.size(); ++pi) {
+    if (pulse_fired_[pi]) continue;
+    const Layer2Pulse& pulse = pulses[pi];
+    if (step_end + 1e-9 < pulse.time_s) continue;
+    pulse_fired_[pi] = true;
+    apply_single_pulse(pi, pulse, step_end);
+  }
+}
+
 // ── Step driver ──────────────────────────────────────────────────────────
 
 void MucusSegment::step(Real dt) {
@@ -759,9 +994,13 @@ void MucusSegment::step(Real dt) {
 
   for (const Int idx : order_) {
     Patch& patch = patches_[static_cast<size_t>(idx)];
+    const Real p_disrupt =
+        (patch.live && patch.type == PatchType::Crypt)
+            ? cfg_->layer2.effective_live_crypt_disruption_prob()
+            : type_config(patch.type).disruption_prob;
     patch.disrupted =
         fire && patch.status == PatchStatus::Active &&
-        patch.rng.bernoulli(type_config(patch.type).disruption_prob);
+        patch.rng.bernoulli(p_disrupt);
   }
 
   for (const Int idx : order_) {
@@ -779,6 +1018,8 @@ void MucusSegment::step(Real dt) {
   }
 
   pool_phase(dt);
+
+  apply_pulses(dt);
 
   for (auto& patch : patches_) {
     guard_update(patch, dt);
@@ -1125,6 +1366,8 @@ uint64_t MucusSegment::fingerprint() const {
   h = hash_combine(h, static_cast<uint64_t>(ledger_.reseeds));
   h = hash_combine(h, static_cast<uint64_t>(ledger_.distal_losses));
   h = hash_combine(h, static_cast<uint64_t>(ledger_.external_arrivals));
+  h = hash_combine(h, static_cast<uint64_t>(ledger_.pulse_washout));
+  h = hash_combine(h, static_cast<uint64_t>(ledger_.pulse_deaths));
   return h;
 }
 

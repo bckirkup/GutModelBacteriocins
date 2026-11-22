@@ -656,8 +656,13 @@ __global__ void diffuse_z_bounded_delivery_kernel(
     const double boundary = boundary_mode == 1
         ? beta * (boundary_conc - rhs[0]) * cell_volume
         : flux_source * cell_volume;
-    atomicAdd(face_exchange, boundary_mode == 0
-        ? alpha * (boundary_conc - rhs[0]) * cell_volume : boundary);
+    double wall_exchange = boundary_mode == 0
+        ? alpha * (boundary_conc - rhs[0]) * cell_volume : boundary;
+    if (boundary_mode == 0 && prescribed != nullptr) {
+      const int wall_cell = cell_index(ix, iy, 0, storage_nx, ny);
+      wall_exchange += prescribed[wall_cell] / 3.0;
+    }
+    atomicAdd(face_exchange, wall_exchange);
   }
   if (tid < n) {
     const int iz = boundary_mode == 0 ? tid + 1 : tid;
