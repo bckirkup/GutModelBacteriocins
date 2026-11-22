@@ -57,7 +57,7 @@ __global__ void metabolism_kernel(
     double acetate_overflow_rate, double acetate_scavenge_rate,
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
-    int metabolic_switch_enabled, double mu_crit,
+    int metabolic_switch_enabled, int respiration_driver_mode, double mu_crit,
     double aerobic_mu_factor, double anaerobic_mu_factor,
     double aerobic_carbon_cost_factor, double anaerobic_carbon_cost_factor,
     double tau_metabolic_switch, double ferm_acid_yield,
@@ -144,10 +144,12 @@ __global__ void metabolism_kernel(
     const double availability =
         metabolic_mode::oxygen_availability(s_o2, o2_Km);
     if (metabolic_switch_enabled != 0) {
-      const double instantaneous = metabolic_mode::fermentation_fraction(
-          availability, mu, mu_crit);
-      fermentation_fraction[i] = metabolic_mode::relax(
-          fermentation_fraction[i], instantaneous, dt, tau_metabolic_switch);
+      if (respiration_driver_mode == 0) {
+        const double instantaneous = metabolic_mode::fermentation_fraction(
+            availability, mu, mu_crit);
+        fermentation_fraction[i] = metabolic_mode::relax(
+            fermentation_fraction[i], instantaneous, dt, tau_metabolic_switch);
+      }
       mu *= metabolic_mode::interpolate(
           aerobic_mu_factor, anaerobic_mu_factor, fermentation_fraction[i]);
     } else {
@@ -216,7 +218,7 @@ __global__ void metabolism_kernel(
   const double maintenance_factor = metabolic_switch_enabled != 0
       ? metabolic_mode::interpolate(1.0, anaerobic_maintenance_factor,
                                     fermentation_fraction[i]) : 1.0;
-  const double requested_maintenance = conc_carbon
+  const double requested_maintenance = (conc_carbon && cell_volume > 0.0)
       ? carbon_maintenance::requested(
           carbon_maintenance_rate * maintenance_factor, biomass[i], dt)
       : 0.0;
@@ -235,7 +237,8 @@ __global__ void metabolism_kernel(
       atomicAdd(&agent_uptake_totals[2], maintenance_draw);
     }
   }
-  if (requested_maintenance > maintenance_draw && agent_uptake_totals) {
+  if (requested_maintenance > maintenance_draw && cell_volume > 0.0
+      && agent_uptake_totals) {
     atomicAdd(&agent_uptake_totals[3],
               requested_maintenance - maintenance_draw);
     if (uptake_limit_totals) atomicAdd(&uptake_limit_totals[4], 1.0);
@@ -306,6 +309,466 @@ __global__ void metabolism_kernel(
   }
 }
 
+namespace {
+
+__device__ double delivery_support_mean_conc(
+    const double* conc, int cell, int agent_idx,
+    const int* support_offsets, const int* support_cells) {
+  if (support_offsets == nullptr || support_cells == nullptr) {
+    return conc[cell];
+  }
+  const int beg = support_offsets[agent_idx];
+  const int end = support_offsets[agent_idx + 1];
+  if (end <= beg) return 0.0;
+  double sum = 0.0;
+  for (int k = beg; k < end; ++k) {
+    sum += conc[support_cells[k]];
+  }
+  return sum / static_cast<double>(end - beg);
+}
+
+__device__ void delivery_deposit_mass(
+    double* target, int cell, int agent_idx, double amount,
+    const int* support_offsets, const int* support_cells) {
+  if (target == nullptr || amount <= 0.0) return;
+  if (support_offsets == nullptr || support_cells == nullptr) {
+    atomicAdd(&target[cell], amount);
+    return;
+  }
+  const int beg = support_offsets[agent_idx];
+  const int end = support_offsets[agent_idx + 1];
+  const int count = end - beg;
+  if (count <= 0) return;
+  const double per_cell = amount / static_cast<double>(count);
+  double deposited = 0.0;
+  for (int k = beg; k < end; ++k) {
+    const double share = (k + 1 == end) ? (amount - deposited) : per_cell;
+    atomicAdd(&target[support_cells[k]], share);
+    deposited += share;
+  }
+}
+
+__device__ double delivery_pro_rata_funding(
+    const double* prescribed, const double* demand_by_cell,
+    int cell, int agent_idx, double amount,
+    const int* support_offsets, const int* support_cells) {
+  if (prescribed == nullptr || demand_by_cell == nullptr || amount <= 0.0) {
+    return 0.0;
+  }
+  if (support_offsets == nullptr || support_cells == nullptr) {
+    const double req = demand_by_cell[cell];
+    return req > 0.0 ? prescribed[cell] * (amount / req) : 0.0;
+  }
+  const int beg = support_offsets[agent_idx];
+  const int end = support_offsets[agent_idx + 1];
+  const int count = end - beg;
+  if (count <= 0) return 0.0;
+  const double per_cell = amount / static_cast<double>(count);
+  double deposited = 0.0;
+  double funding = 0.0;
+  for (int k = beg; k < end; ++k) {
+    const double share = (k + 1 == end) ? (amount - deposited) : per_cell;
+    const int c = support_cells[k];
+    const double req = demand_by_cell[c];
+    if (req > 0.0) {
+      funding += prescribed[c] * (share / req);
+    }
+    deposited += share;
+  }
+  return funding;
+}
+
+struct DeviceDeliveryFunding {
+  double maintenance_paid = 0.0;
+  double growth_funded = 0.0;
+  double growth_fraction = 0.0;
+};
+
+__device__ DeviceDeliveryFunding compute_delivery_funding_device(
+    double growth_demand, double maint_demand, double funded_total) {
+  const double total_demand = growth_demand + maint_demand;
+  const double share = fmin(total_demand, fmax(0.0, funded_total));
+  DeviceDeliveryFunding funding;
+  funding.maintenance_paid = fmin(maint_demand, share);
+  funding.growth_funded = fmin(
+      growth_demand, fmax(0.0, share - funding.maintenance_paid));
+  funding.growth_fraction =
+      growth_demand > 0.0 ? funding.growth_funded / growth_demand : 0.0;
+  return funding;
+}
+
+__device__ void record_delivery_ledger_device(
+    double* ledger, double growth_demand, double maint_demand,
+    const DeviceDeliveryFunding& funding) {
+  if (ledger == nullptr) return;
+  if (funding.maintenance_paid > 0.0) {
+    atomicAdd(&ledger[0], funding.maintenance_paid);
+  }
+  if (maint_demand > funding.maintenance_paid) {
+    atomicAdd(&ledger[1], maint_demand - funding.maintenance_paid);
+    atomicAdd(&ledger[2], 1.0);
+  }
+  if (funding.growth_funded > 0.0) {
+    atomicAdd(&ledger[3], funding.growth_funded);
+  }
+  if (growth_demand > funding.growth_funded) {
+    atomicAdd(&ledger[4], growth_demand - funding.growth_funded);
+    atomicAdd(&ledger[5], 1.0);
+  }
+}
+
+__device__ void apply_delivery_deferred_growth_chemistry(
+    int i, int cell, double mu, double d_biomass,
+    const DeliveryPrepareParams& p,
+    const DeliveryPrepareDeviceBuffers& b) {
+  if (d_biomass <= 0.0 || p.dt <= 0.0 || p.cell_volume <= 0.0) return;
+  if (p.iron_uptake_enabled && b.reac_iron) {
+    const double uptake = d_biomass * p.yield_iron;
+    atomicAdd(&b.reac_iron[cell], -uptake / (p.cell_volume * p.dt));
+    if (b.iron_uptake_total) atomicAdd(b.iron_uptake_total, uptake);
+  }
+  if (p.acetate_enabled && b.reac_acetate) {
+    const double acetate_conc = b.conc_acetate ? b.conc_acetate[cell] : 0.0;
+    if (p.metabolic_switch_enabled == 0 && mu > p.acetate_overflow_threshold) {
+      atomicAdd(&b.reac_acetate[cell],
+                p.acetate_overflow_rate * b.biomass[i] / p.cell_volume);
+    }
+    if (p.metabolic_switch_enabled != 0) {
+      const double carbon_cost = p.yield_carbon * metabolic_mode::interpolate(
+          p.aerobic_carbon_cost_factor, p.anaerobic_carbon_cost_factor,
+          b.fermentation_fraction[i]);
+      const double acid = p.ferm_acid_yield * b.fermentation_fraction[i]
+          * d_biomass * carbon_cost;
+      if (acid > 0.0) {
+        atomicAdd(&b.reac_acetate[cell], acid / (p.cell_volume * p.dt));
+      }
+    }
+    const double scavenge = p.acetate_scavenge_rate * acetate_conc
+        / (p.acetate_scavenge_Km + acetate_conc)
+        * b.biomass[i] / p.cell_volume;
+    atomicAdd(&b.reac_acetate[cell], -scavenge);
+  }
+}
+
+}  // namespace
+
+__global__ void delivery_prepare_kernel(
+    DeliveryPrepareParams p, DeliveryPrepareDeviceBuffers b) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= p.num_agents) return;
+  if (b.state[i] == 3) return;
+
+  const int cell = map_global_cell_to_storage(
+      b.grid_cell[i], p.global_nx, p.global_ny, p.storage_nx,
+      p.owned_global_x_begin, p.owned_global_x_end, p.owned_storage_x_begin);
+  if (cell < 0) {
+    b.mu_realized[i] = 0.0;
+    return;
+  }
+
+  const double S_carbon = b.conc_carbon ? b.conc_carbon[cell] : 1.0;
+  const double S_iron =
+      p.iron_uptake_enabled && b.conc_iron ? b.conc_iron[cell] : 1.0;
+  const double S_b12 =
+      p.b12_uptake_enabled && b.conc_b12 ? b.conc_b12[cell] : 1.0;
+
+  if (p.fur_enabled && p.iron_uptake_enabled) {
+    const double fur_factor = 1.0 + p.fur_upregulation_max * p.fur_Km
+        / (p.fur_Km + S_iron);
+    for (int r = 0; r < p.receptor_count; ++r) {
+      const double base_expr = b.receptor_expr_base[r * p.agent_stride + i];
+      b.receptor_expr[r * p.agent_stride + i] = b.iron_receptor[r]
+          ? fmin(base_expr * fur_factor, p.fur_receptor_max)
+          : base_expr;
+    }
+  }
+
+  const double expr_fepA = b.receptor_expr[1 * p.agent_stride + i];
+  const double expr_iroN = b.receptor_expr[4 * p.agent_stride + i];
+  const double expr_iutA = b.receptor_expr[7 * p.agent_stride + i];
+  const double expr_fiu  = b.receptor_expr[5 * p.agent_stride + i];
+  const double expr_btuB = maxd(b.receptor_expr[0 * p.agent_stride + i], 0.01);
+
+  const double lig_fepA = maxd(b.ligand_affinity[1 * p.agent_stride + i], 0.01);
+  const double lig_btuB = maxd(b.ligand_affinity[0 * p.agent_stride + i], 0.01);
+  const double lig_iroN = maxd(b.ligand_affinity[4 * p.agent_stride + i], 0.01);
+  const double lig_iutA = maxd(b.ligand_affinity[7 * p.agent_stride + i], 0.01);
+  const double lig_fiu  = maxd(b.ligand_affinity[5 * p.agent_stride + i], 0.01);
+
+  double monod_iron = 1.0;
+  if (p.iron_uptake_enabled) {
+    double iron_uptake = 0.0;
+    iron_uptake += expr_fepA * lig_fepA * S_iron / (p.km_iron_primary + S_iron);
+    iron_uptake += expr_iroN * lig_iroN * S_iron / (p.km_iron_iroN + S_iron);
+    iron_uptake += expr_iutA * lig_iutA * S_iron / (p.km_iron_iutA + S_iron);
+    iron_uptake += expr_fiu * lig_fiu * S_iron / (p.km_iron_fiu + S_iron);
+    monod_iron = iron_uptake / (1.0 + expr_iroN + expr_iutA + expr_fiu);
+  }
+
+  const double Km_b12 = b.km_b12[i] / (expr_btuB * lig_btuB);
+  const double monod_carbon = S_carbon / (b.km_carbon[i] + S_carbon);
+  const double monod_b12 =
+      p.b12_uptake_enabled ? S_b12 / (Km_b12 + S_b12) : 1.0;
+  double mu = b.mu_max[i] * monod_carbon * monod_iron * monod_b12;
+
+  if (p.o2_enabled && b.conc_oxygen) {
+    const double s_o2 = b.conc_oxygen[cell];
+    const double availability =
+        metabolic_mode::oxygen_availability(s_o2, p.o2_Km);
+    if (p.metabolic_switch_enabled != 0) {
+      if (p.respiration_driver_mode == 0) {
+        const double instantaneous = metabolic_mode::fermentation_fraction(
+            availability, mu, p.mu_crit);
+        b.fermentation_fraction[i] = metabolic_mode::relax(
+            b.fermentation_fraction[i], instantaneous, p.dt,
+            p.tau_metabolic_switch);
+      }
+      mu *= metabolic_mode::interpolate(
+          p.aerobic_mu_factor, p.anaerobic_mu_factor,
+          b.fermentation_fraction[i]);
+    } else {
+      mu *= 1.0 + p.o2_boost_max * availability;
+    }
+  }
+
+  if (p.acid_inhibition_enabled != 0 && b.conc_acetate) {
+    const double inhibition = metabolic_mode::acid_inhibition(
+        b.conc_acetate[cell], p.environment_pH, p.acetate_pKa,
+        p.acid_inhibition_Ki, p.acid_inhibition_max);
+    mu *= 1.0 - inhibition;
+  }
+
+  if (expr_btuB < 0.5) {
+    double metE_eff = p.metE_penalty;
+    if (b.conc_acetate) {
+      const double acetate_conc = b.conc_acetate[cell];
+      const double acetate_factor = 1.0 + (p.metE_acetate_max_factor - 1.0)
+          * acetate_conc / (p.metE_acetate_km + acetate_conc);
+      metE_eff *= acetate_factor;
+    }
+    const double eut_conc =
+        p.eut_enabled && b.conc_eut ? b.conc_eut[cell] : 0.0;
+    const double eut_effect =
+        p.eut_enabled ? p.eut_max_penalty * eut_conc / (p.eut_km + eut_conc)
+                      : 0.0;
+    mu *= (1.0 - metE_eff - eut_effect);
+  }
+
+  const int n_loci = b.bi_loci_count[i];
+  if (n_loci > 0) {
+    const double per_locus = fmax(0.0, 0.02 - b.plasmid_amelioration[i]);
+    double plasmid_cost = per_locus * n_loci;
+    plasmid_cost = plasmid_cost > 0.10 ? 0.10 : plasmid_cost;
+    mu *= (1.0 - plasmid_cost);
+  }
+
+  mu -= p.maintenance_rate;
+  b.mu_realized[i] = mu;
+
+  if (i < p.local_agent_count && b.pending_growth_chemistry_biomass[i] > 0.0) {
+    apply_delivery_deferred_growth_chemistry(
+        i, cell, mu, b.pending_growth_chemistry_biomass[i], p, b);
+    b.pending_growth_chemistry_biomass[i] = 0.0;
+  }
+
+  b.pending_growth_carbon[i] = 0.0;
+  b.pending_maintenance_carbon[i] = 0.0;
+  b.pending_carbon_ceiling[i] = 0.0;
+  b.pending_carbon_funding[i] = 0.0;
+  b.pending_biomass[i] = 0.0;
+  b.pending_oxygen_growth[i] = 0.0;
+  b.pending_oxygen_maintenance[i] = 0.0;
+  b.pending_oxygen_ceiling[i] = 0.0;
+  b.pending_oxygen_funding[i] = 0.0;
+
+  if (i >= p.local_agent_count) return;
+
+  if (p.carbon_maintenance_rate > 0.0 && p.dt > 0.0 && b.conc_carbon != nullptr
+      && p.cell_volume > 0.0) {
+    const double maintenance_factor = p.metabolic_switch_enabled != 0
+        ? metabolic_mode::interpolate(1.0, p.anaerobic_maintenance_factor,
+                                      b.fermentation_fraction[i])
+        : 1.0;
+    b.pending_maintenance_carbon[i] = carbon_maintenance::requested(
+        p.carbon_maintenance_rate * maintenance_factor, b.biomass[i], p.dt);
+  }
+
+  if (b.conc_carbon != nullptr) {
+    const double d_biomass = mu * b.biomass[i] * p.dt;
+    const double carbon_cost = p.yield_carbon
+        * (p.metabolic_switch_enabled != 0
+            ? metabolic_mode::interpolate(
+                p.aerobic_carbon_cost_factor, p.anaerobic_carbon_cost_factor,
+                b.fermentation_fraction[i])
+            : 1.0);
+    const double growth_demand = (d_biomass > 0.0 ? d_biomass : 0.0)
+        * carbon_cost;
+    const double c_carbon = delivery_support_mean_conc(
+        b.conc_carbon, cell, i, b.support_offsets, b.support_cells);
+    const double demand_total = growth_demand + b.pending_maintenance_carbon[i];
+    const double sherwood_cap = uptake::allowed_uptake_mol(
+        static_cast<int>(UptakeLimitMode::Sherwood), c_carbon,
+        p.effective_diffusivity_carbon, b.radius[i], p.cell_volume, p.dt);
+    const double ceiling = fmin(demand_total, sherwood_cap);
+    const double ceiling_pos = ceiling > 0.0 ? ceiling : 0.0;
+    b.pending_growth_carbon[i] = growth_demand;
+    b.pending_carbon_funding[i] = ceiling_pos;
+    b.pending_carbon_ceiling[i] = ceiling_pos;
+    b.pending_biomass[i] = d_biomass;
+    if (b.carbon_demand_total != nullptr && growth_demand > 0.0) {
+      atomicAdd(b.carbon_demand_total, growth_demand);
+    }
+    delivery_deposit_mass(
+        b.prescribed_carbon, cell, i, ceiling,
+        b.support_offsets, b.support_cells);
+  }
+
+  if (p.o2_delivery_enabled != 0 && b.conc_oxygen != nullptr && p.dt > 0.0) {
+    const double resp_frac = p.metabolic_switch_enabled != 0
+        ? fmin(fmax(1.0 - b.fermentation_fraction[i], 0.0), 1.0)
+        : 1.0;
+    const double o2_growth = p.o2_q_consumption * (mu > 0.0 ? mu : 0.0)
+        * resp_frac * p.dt;
+    const double o2_maint = p.o2_q_maintenance * p.dt;
+    const double o2_demand_total = o2_growth + o2_maint;
+    const double c_o2 = delivery_support_mean_conc(
+        b.conc_oxygen, cell, i, b.support_offsets, b.support_cells);
+    const double o2_cap = uptake::allowed_uptake_mol(
+        static_cast<int>(UptakeLimitMode::Sherwood), c_o2,
+        p.effective_diffusivity_oxygen, b.radius[i], p.cell_volume, p.dt);
+    const double o2_ceiling = fmin(o2_demand_total, o2_cap);
+    const double o2_ceiling_pos = o2_ceiling > 0.0 ? o2_ceiling : 0.0;
+    b.pending_oxygen_growth[i] = o2_growth;
+    b.pending_oxygen_maintenance[i] = o2_maint;
+    b.pending_oxygen_funding[i] = o2_ceiling_pos;
+    b.pending_oxygen_ceiling[i] = o2_ceiling_pos;
+    if (b.oxygen_demand_total != nullptr && o2_growth > 0.0) {
+      atomicAdd(b.oxygen_demand_total, o2_growth);
+    }
+    delivery_deposit_mass(
+        b.prescribed_oxygen, cell, i, o2_ceiling,
+        b.support_offsets, b.support_cells);
+  }
+}
+
+__global__ void delivery_demand_by_cell_kernel(
+    const double* pending_funding,
+    const int* grid_cell,
+    const int* state,
+    const int* is_ghost,
+    const int* support_offsets,
+    const int* support_cells,
+    double* demand_by_cell,
+    int num_agents,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= num_agents) return;
+  if (state[i] == 3 || is_ghost[i] != 0) return;
+  const double amount = pending_funding[i];
+  if (amount <= 0.0) return;
+  const int cell = map_global_cell_to_storage(
+      grid_cell[i], global_nx, global_ny, storage_nx,
+      owned_global_x_begin, owned_global_x_end, owned_storage_x_begin);
+  if (cell < 0) return;
+  delivery_deposit_mass(
+      demand_by_cell, cell, i, amount, support_offsets, support_cells);
+}
+
+__global__ void delivery_commit_kernel(
+    DeliveryCommitParams p, DeliveryCommitDeviceBuffers b) {
+  const int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= p.num_agents) return;
+
+  const int cell = map_global_cell_to_storage(
+      b.grid_cell[i], p.global_nx, p.global_ny, p.storage_nx,
+      p.owned_global_x_begin, p.owned_global_x_end, p.owned_storage_x_begin);
+  const bool active = (b.state[i] != 3) && (b.is_ghost[i] == 0) && (cell >= 0);
+
+  if (!active) {
+    b.pending_carbon_funding[i] = 0.0;
+    if (p.o2_delivery_enabled != 0) {
+      b.pending_oxygen_funding[i] = 0.0;
+      b.respired_oxygen_rate[i] = 0.0;
+    }
+    return;
+  }
+
+  // Carbon delivery commit (funds maintenance first, then growth -> uptake_realized)
+  const double growth_demand = b.pending_growth_carbon[i];
+  const double maint_demand = b.pending_maintenance_carbon[i];
+  const double total_demand = growth_demand + maint_demand;
+  const double pending_bm = b.pending_biomass[i];
+  if (pending_bm < 0.0 && total_demand <= 0.0) {
+    const double updated = fmax(b.biomass[i] + pending_bm, 1.0e-20);
+    b.biomass[i] = updated;
+    b.radius[i] = cbrt(3.0 * (updated / p.cell_density) / (4.0 * PI_M));
+    b.mass[i] = updated;
+    b.age[i] += p.dt;
+  } else if (total_demand <= 0.0) {
+    b.age[i] += p.dt;
+  } else {
+    const double field_funding = delivery_pro_rata_funding(
+        b.prescribed_carbon, b.demand_carbon_by_cell, cell, i,
+        b.pending_carbon_funding[i], b.support_offsets, b.support_cells);
+    b.pending_carbon_funding[i] = field_funding;
+    const DeviceDeliveryFunding funding = compute_delivery_funding_device(
+        growth_demand, maint_demand, field_funding);
+    record_delivery_ledger_device(
+        b.carbon_ledger, growth_demand, maint_demand, funding);
+    if (pending_bm < 0.0) {
+      const double updated = fmax(b.biomass[i] + pending_bm, 1.0e-20);
+      b.biomass[i] = updated;
+      b.radius[i] = cbrt(3.0 * (updated / p.cell_density) / (4.0 * PI_M));
+      b.mass[i] = updated;
+      b.age[i] += p.dt;
+    } else {
+      if (b.mu_realized[i] > 0.0) {
+        b.mu_realized[i] *= funding.growth_fraction;
+      }
+      const double updated = fmax(
+          b.biomass[i] + pending_bm * funding.growth_fraction, 1.0e-20);
+      b.biomass[i] = updated;
+      b.radius[i] = cbrt(3.0 * (updated / p.cell_density) / (4.0 * PI_M));
+      b.mass[i] = updated;
+      b.age[i] += p.dt;
+    }
+    if (pending_bm > 0.0) {
+      b.pending_growth_chemistry_biomass[i] +=
+          pending_bm * funding.growth_fraction;
+    }
+  }
+
+  // Oxygen delivery commit (funded respiration + respired_oxygen_rate)
+  if (p.o2_delivery_enabled != 0) {
+    const double o2_growth = b.pending_oxygen_growth[i];
+    const double o2_maint = b.pending_oxygen_maintenance[i];
+    const double o2_total = o2_growth + o2_maint;
+    if (o2_total <= 0.0) {
+      b.respired_oxygen_rate[i] = 0.0;
+    } else {
+      const double o2_funding_raw = delivery_pro_rata_funding(
+          b.prescribed_oxygen, b.demand_oxygen_by_cell, cell, i,
+          b.pending_oxygen_funding[i], b.support_offsets, b.support_cells);
+      b.pending_oxygen_funding[i] = o2_funding_raw;
+      const DeviceDeliveryFunding o2_funding = compute_delivery_funding_device(
+          o2_growth, o2_maint, o2_funding_raw);
+      record_delivery_ledger_device(
+          b.oxygen_ledger, o2_growth, o2_maint, o2_funding);
+      if (p.respiration_driver_mode == 1 && p.metabolic_switch_enabled != 0
+          && o2_growth > 0.0) {
+        const double instantaneous = 1.0 - o2_funding.growth_fraction;
+        b.fermentation_fraction[i] = metabolic_mode::relax(
+            b.fermentation_fraction[i], instantaneous, p.dt,
+            p.tau_metabolic_switch);
+      }
+      b.respired_oxygen_rate[i] =
+          (o2_funding.growth_funded + o2_funding.maintenance_paid) / p.dt;
+    }
+  }
+}
+
 void launch_metabolism_kernel(
     const double* conc_carbon, const double* conc_iron, const double* conc_b12,
     const double* conc_acetate, const double* conc_eut,
@@ -334,7 +797,7 @@ void launch_metabolism_kernel(
     double acetate_overflow_rate, double acetate_scavenge_rate,
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
-    int metabolic_switch_enabled, double mu_crit,
+    int metabolic_switch_enabled, int respiration_driver_mode, double mu_crit,
     double aerobic_mu_factor, double anaerobic_mu_factor,
     double aerobic_carbon_cost_factor, double anaerobic_carbon_cost_factor,
     double tau_metabolic_switch, double ferm_acid_yield,
@@ -372,8 +835,8 @@ void launch_metabolism_kernel(
       acetate_enabled, acetate_overflow_threshold, acetate_overflow_rate,
       acetate_scavenge_rate, acetate_scavenge_Km,
       o2_enabled, o2_boost_max, o2_Km,
-      metabolic_switch_enabled, mu_crit, aerobic_mu_factor,
-      anaerobic_mu_factor, aerobic_carbon_cost_factor,
+      metabolic_switch_enabled, respiration_driver_mode, mu_crit,
+      aerobic_mu_factor, anaerobic_mu_factor, aerobic_carbon_cost_factor,
       anaerobic_carbon_cost_factor, tau_metabolic_switch, ferm_acid_yield,
       anaerobic_maintenance_factor, acid_inhibition_enabled,
       acid_inhibition_max, acid_inhibition_Ki, acetate_pKa, environment_pH,
@@ -383,6 +846,49 @@ void launch_metabolism_kernel(
       effective_diffusivity_iron, uptake_limit_totals,
       global_nx, global_ny, storage_nx, owned_global_x_begin,
       owned_global_x_end, owned_storage_x_begin);
+}
+
+void launch_delivery_prepare_kernel(
+    const DeliveryPrepareParams& params,
+    const DeliveryPrepareDeviceBuffers& buffers,
+    cudaStream_t stream) {
+  if (params.num_agents <= 0) return;
+  const int block = 256;
+  const int grid = (params.num_agents + block - 1) / block;
+  delivery_prepare_kernel<<<grid, block, 0, stream>>>(params, buffers);
+}
+
+void launch_delivery_demand_by_cell_kernel(
+    const double* pending_funding,
+    const int* grid_cell,
+    const int* state,
+    const int* is_ghost,
+    const int* support_offsets,
+    const int* support_cells,
+    double* demand_by_cell,
+    int num_agents,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin,
+    cudaStream_t stream) {
+  if (num_agents <= 0) return;
+  const int block = 256;
+  const int grid = (num_agents + block - 1) / block;
+  delivery_demand_by_cell_kernel<<<grid, block, 0, stream>>>(
+      pending_funding, grid_cell, state, is_ghost,
+      support_offsets, support_cells, demand_by_cell, num_agents,
+      global_nx, global_ny, storage_nx,
+      owned_global_x_begin, owned_global_x_end, owned_storage_x_begin);
+}
+
+void launch_delivery_commit_kernel(
+    const DeliveryCommitParams& params,
+    const DeliveryCommitDeviceBuffers& buffers,
+    cudaStream_t stream) {
+  if (params.num_agents <= 0) return;
+  const int block = 256;
+  const int grid = (params.num_agents + block - 1) / block;
+  delivery_commit_kernel<<<grid, block, 0, stream>>>(params, buffers);
 }
 
 }  // namespace gpu

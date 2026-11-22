@@ -30,10 +30,12 @@ struct VbfFluxTotals {
 struct VBFConfig {
   Real density          = 1.0e11;   // background cell density (#/m^3)
   // First-order iron uptake RATE CONSTANT (1/s): the sink applied by the VBF is
-  // concentration-dependent, reac -= nutrient_sink * [iron] (unsaturated /
-  // Monod-at-low-concentration limit), not a constant zero-order mol/m^3/s
-  // removal. At the default iron scale (~1e-4 mol/m^3) a zero-order 1e-4
-  // mol/m^3/s would deplete iron in ~1 s, which is unphysical.
+  // concentration-dependent and integrated implicitly via backward-Euler,
+  // reac -= [iron] * k / (1 + k * dt) so [iron]_new = [iron] / (1 + k * dt) > 0
+  // for arbitrary dt > 0 (unsaturated / Monod-at-low-concentration limit), not
+  // a constant zero-order mol/m^3/s removal. At the default iron scale (~1e-4
+  // mol/m^3) a zero-order 1e-4 mol/m^3/s would deplete iron in ~1 s, which is
+  // unphysical.
   Real nutrient_sink    = 1.0e-4;   // first-order iron uptake rate constant (1/s)
   Real mucin_liberation = 5.0e-5;   // monosaccharide release from mucin (mol/m^3/s)
   Real viscosity        = 0.01;     // effective viscosity (Pa·s), ~10x water

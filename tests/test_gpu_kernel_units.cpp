@@ -246,7 +246,9 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
                              bool activate_second_agent = false,
                              double acetate_concentration = 2.0,
                              double acetate_scavenge_rate = 0.1,
-                             double maintenance_rate = 0.0) {
+                             double maintenance_rate = 0.0,
+                             int respiration_driver_mode = 0,
+                             double anaerobic_maintenance_factor = 15.0) {
   constexpr int agents = 2;
   DeviceBuffer<double> concentration(kCells);
   DeviceBuffer<double> iron(kCells);
@@ -338,9 +340,10 @@ MetabolismRun run_metabolism(double seed, double maximum_growth,
       1, 1, 1, fur_enabled ? 1 : 0, 1.0e-5, 10.0, 5.0,
       acetate_enabled ? 1 : 0, 3.0e-4, 0.25, acetate_scavenge_rate, 2.0,
       metabolic_switch_enabled ? 1 : 0, 0.0, 1.0,
-      metabolic_switch_enabled ? 1 : 0, 3.0e-4, 1.0, 0.55, 1.0, 4.1,
-      0.0, 1.0, 15.0, 0, 0.8, 50.0, 4.76, 7.0, uptake.data(),
-      maintenance_available.data(),
+      metabolic_switch_enabled ? 1 : 0, respiration_driver_mode, 3.0e-4, 1.0,
+      0.55, 1.0, 4.1,
+      0.0, 1.0, anaerobic_maintenance_factor, 0, 0.8, 50.0, 4.76, 7.0,
+      uptake.data(), maintenance_available.data(),
       uptake_limit_mode, effective_diffusivity, effective_diffusivity,
       uptake_limit.data(),
       kNx, kNy, kNx, 0, kNx, 0, nullptr);
@@ -1175,6 +1178,338 @@ void test_receptor_kill_probability() {
   assert(close(download(kill, 1)[0], baseline));
 }
 
+void test_vbf_implicit_iron_sink() {
+  constexpr double dt = 60.0;
+  constexpr double initial_iron = 2.0e-5;
+  const std::array<double, 4> sink_rates = {1.0e-4, 1.0e-2, 1.0, 10.0};
+  double previous_sink = 0.0;
+  for (const double rate : sink_rates) {
+    DeviceBuffer<double> reaction_iron(kCells);
+    DeviceBuffer<double> conc_iron(kCells);
+    DeviceBuffer<double> vbf_totals(6);
+    reaction_iron.upload(std::vector<double>(kCells, 0.0));
+    conc_iron.upload(std::vector<double>(kCells, initial_iron));
+    vbf_totals.upload(std::vector<double>(6, 0.0));
+
+    VbfLaunchParams parameters{};
+    parameters.storage_nx = kNx;
+    parameters.owned_x_begin = 0;
+    parameters.owned_x_end = kNx;
+    parameters.global_nx = kNx;
+    parameters.ny = kNy;
+    parameters.nz = kNz;
+    parameters.dx_x = 1.0;
+    parameters.dx_y = 1.0;
+    parameters.dx_z = 1.0;
+    parameters.nutrient_sink = rate;
+    gutibm::gpu::launch_vbf_coupling_kernel(
+        kCells, parameters, nullptr, nullptr,
+        reaction_iron.data(), conc_iron.data(),
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        vbf_totals.data(), dt, nullptr);
+    synchronize();
+
+    const double expected_sink = gutibm::vbf::implicit_first_order_sink(
+        initial_iron, rate, dt);
+    const auto reactions = download(reaction_iron, kCells);
+    for (const double value : reactions) {
+      assert(std::abs(value + expected_sink)
+             <= 1.0e-12 * std::max(std::abs(expected_sink), 1.0e-30));
+      assert(initial_iron + value * dt > 0.0);
+    }
+    const auto totals = download(vbf_totals, 6);
+    const double expected_total = expected_sink * static_cast<double>(kCells) * dt;
+    assert(std::abs(totals[2] - expected_total)
+           <= 1.0e-12 * std::max(expected_total, 1.0e-30));
+    assert(expected_sink > previous_sink);
+    previous_sink = expected_sink;
+  }
+}
+
+void test_metabolism_funded_respiration_and_anaerobic_maintenance() {
+  const std::array<double, 2> initial_f{0.25, 0.75};
+  const MetabolismRun funded_run = run_metabolism(
+      0.0, 1.0e-3, false, false, 1.0, 0, 0.0, 0.0, true, 0.0,
+      initial_f, true, 0.0, 0.0, 0.0, /*respiration_driver_mode=*/1, 8.0);
+  // Funded mode must not overwrite fermentation_fraction from ambient O2.
+  assert(close(funded_run.fermentation_fraction, initial_f[0]));
+  assert(close(funded_run.fermentation_fraction_agent1, initial_f[1]));
+
+  const std::array<double, 4> factors{1.0, 4.0, 8.0, 15.0};
+  double previous_maint = 0.0;
+  for (const double factor : factors) {
+    const MetabolismRun run = run_metabolism(
+        0.0, 0.0, false, false, 1.0, 0, 0.0, 1.0e-3, true, 0.0,
+        std::array<double, 2>{0.5, 0.5}, false, 0.0, 0.0, 0.0,
+        /*respiration_driver_mode=*/1, factor);
+    const double expected_maint = 1.0e-3 * (1.0 + 0.5 * (factor - 1.0));
+    assert(close(run.maintenance, expected_maint));
+    assert(run.maintenance > previous_maint);
+    previous_maint = run.maintenance;
+  }
+}
+
+void test_delivery_prepare_and_commit_kernels() {
+  constexpr int agents = 2;
+  constexpr double dt = 60.0;
+  constexpr double cell_volume = 1.0;
+
+  DeviceBuffer<double> conc_carbon(kCells);
+  DeviceBuffer<double> conc_iron(kCells);
+  DeviceBuffer<double> conc_b12(kCells);
+  DeviceBuffer<double> conc_acetate(kCells);
+  DeviceBuffer<double> conc_eut(kCells);
+  DeviceBuffer<double> conc_oxygen(kCells);
+  DeviceBuffer<double> reac_iron(kCells);
+  DeviceBuffer<double> reac_acetate(kCells);
+  DeviceBuffer<double> prescribed_carbon(kCells);
+  DeviceBuffer<double> prescribed_oxygen(kCells);
+  DeviceBuffer<double> demand_carbon(kCells);
+  DeviceBuffer<double> demand_oxygen(kCells);
+
+  DeviceBuffer<double> mu(agents);
+  DeviceBuffer<double> biomass(agents);
+  DeviceBuffer<double> radius(agents);
+  DeviceBuffer<double> mass(agents);
+  DeviceBuffer<double> age(agents);
+  DeviceBuffer<double> fermentation_fraction(agents);
+  DeviceBuffer<double> respired_o2_rate(agents);
+  DeviceBuffer<double> pending_growth_carbon(agents);
+  DeviceBuffer<double> pending_maint_carbon(agents);
+  DeviceBuffer<double> pending_carbon_ceiling(agents);
+  DeviceBuffer<double> pending_carbon_funding(agents);
+  DeviceBuffer<double> pending_biomass(agents);
+  DeviceBuffer<double> pending_growth_chem(agents);
+  DeviceBuffer<double> pending_o2_growth(agents);
+  DeviceBuffer<double> pending_o2_maint(agents);
+  DeviceBuffer<double> pending_o2_ceiling(agents);
+  DeviceBuffer<double> pending_o2_funding(agents);
+  DeviceBuffer<int> cells(agents);
+  DeviceBuffer<int> state(agents);
+  DeviceBuffer<int> is_ghost(agents);
+  DeviceBuffer<double> mu_max(agents);
+  DeviceBuffer<double> km_b12(agents);
+  DeviceBuffer<double> km_carbon(agents);
+  DeviceBuffer<double> receptor(gutibm::NUM_RECEPTORS * agents);
+  DeviceBuffer<double> receptor_base(gutibm::NUM_RECEPTORS * agents);
+  DeviceBuffer<double> ligand(gutibm::NUM_RECEPTORS * agents);
+  DeviceBuffer<int> iron_receptor(gutibm::NUM_RECEPTORS);
+  DeviceBuffer<int> loci(agents);
+  DeviceBuffer<double> amelioration(agents);
+  DeviceBuffer<double> iron_total(1);
+  DeviceBuffer<double> carbon_demand_total(1);
+  DeviceBuffer<double> oxygen_demand_total(1);
+  DeviceBuffer<double> carbon_ledger(6);
+  DeviceBuffer<double> oxygen_ledger(6);
+
+  conc_carbon.upload(std::vector<double>(kCells, 1.0e-3));
+  conc_iron.upload(std::vector<double>(kCells, 1.0));
+  conc_b12.upload(std::vector<double>(kCells, 1.0));
+  conc_acetate.upload(std::vector<double>(kCells, 0.0));
+  conc_eut.upload(std::vector<double>(kCells, 0.0));
+  conc_oxygen.upload(std::vector<double>(kCells, 5.0e-5));
+  reac_iron.upload(std::vector<double>(kCells, 0.0));
+  reac_acetate.upload(std::vector<double>(kCells, 0.0));
+  prescribed_carbon.upload(std::vector<double>(kCells, 0.0));
+  prescribed_oxygen.upload(std::vector<double>(kCells, 0.0));
+  demand_carbon.upload(std::vector<double>(kCells, 0.0));
+  demand_oxygen.upload(std::vector<double>(kCells, 0.0));
+
+  mu.upload(std::vector<double>(agents, 0.0));
+  biomass.upload(std::vector<double>{1.0e-15, 1.0e-15});
+  radius.upload(std::vector<double>{0.5e-6, 0.5e-6});
+  mass.upload(std::vector<double>{1.0e-15, 1.0e-15});
+  age.upload(std::vector<double>{0.0, 0.0});
+  fermentation_fraction.upload(std::vector<double>{0.0, 0.5});
+  respired_o2_rate.upload(std::vector<double>{0.0, 0.0});
+  pending_growth_carbon.upload(std::vector<double>(agents, 0.0));
+  pending_maint_carbon.upload(std::vector<double>(agents, 0.0));
+  pending_carbon_ceiling.upload(std::vector<double>(agents, 0.0));
+  pending_carbon_funding.upload(std::vector<double>(agents, 0.0));
+  pending_biomass.upload(std::vector<double>(agents, 0.0));
+  pending_growth_chem.upload(std::vector<double>(agents, 0.0));
+  pending_o2_growth.upload(std::vector<double>(agents, 0.0));
+  pending_o2_maint.upload(std::vector<double>(agents, 0.0));
+  pending_o2_ceiling.upload(std::vector<double>(agents, 0.0));
+  pending_o2_funding.upload(std::vector<double>(agents, 0.0));
+  cells.upload(std::vector<int>{4, 5});
+  state.upload(std::vector<int>{0, 0});
+  is_ghost.upload(std::vector<int>{0, 0});
+  mu_max.upload(std::vector<double>{5.0e-4, 5.0e-4});
+  km_b12.upload(std::vector<double>{1.0e-6, 1.0e-6});
+  km_carbon.upload(std::vector<double>{1.0e-5, 1.0e-5});
+  receptor.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
+  receptor_base.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
+  ligand.upload(std::vector<double>(gutibm::NUM_RECEPTORS * agents, 1.0));
+  std::vector<int> iron_flags(gutibm::NUM_RECEPTORS, 0);
+  for (int r = 0; r < gutibm::NUM_RECEPTORS; ++r) {
+    iron_flags[static_cast<size_t>(r)] = gutibm::is_iron_receptor(r) ? 1 : 0;
+  }
+  iron_receptor.upload(iron_flags);
+  loci.upload(std::vector<int>(agents, 0));
+  amelioration.upload(std::vector<double>(agents, 0.0));
+  iron_total.upload(std::vector<double>{0.0});
+  carbon_demand_total.upload(std::vector<double>{0.0});
+  oxygen_demand_total.upload(std::vector<double>{0.0});
+  carbon_ledger.upload(std::vector<double>(6, 0.0));
+  oxygen_ledger.upload(std::vector<double>(6, 0.0));
+
+  gutibm::gpu::DeliveryPrepareParams prep{};
+  prep.num_agents = agents;
+  prep.local_agent_count = agents;
+  prep.agent_stride = agents;
+  prep.receptor_count = gutibm::NUM_RECEPTORS;
+  prep.dt = dt;
+  prep.cell_volume = cell_volume;
+  prep.km_iron_primary = 1.0e-6;
+  prep.km_iron_iroN = 1.0e-6;
+  prep.km_iron_iutA = 1.0e-6;
+  prep.km_iron_fiu = 1.0e-6;
+  prep.carbon_maintenance_rate = 1.0e-3;
+  prep.yield_carbon = 1.0;
+  prep.yield_iron = 0.01;
+  prep.iron_uptake_enabled = 1;
+  prep.o2_enabled = 1;
+  prep.o2_delivery_enabled = 1;
+  prep.o2_Km = 1.0e-5;
+  prep.o2_q_consumption = 1.0e-12;
+  prep.o2_q_maintenance = 1.0e-17;
+  prep.metabolic_switch_enabled = 1;
+  prep.respiration_driver_mode = 1;  // Funded
+  prep.aerobic_mu_factor = 1.0;
+  prep.anaerobic_mu_factor = 0.55;
+  prep.aerobic_carbon_cost_factor = 1.0;
+  prep.anaerobic_carbon_cost_factor = 4.1;
+  prep.tau_metabolic_switch = 60.0;
+  prep.anaerobic_maintenance_factor = 8.0;
+  prep.effective_diffusivity_carbon = 6.0e-10;
+  prep.effective_diffusivity_oxygen = 2.0e-9;
+  prep.global_nx = kNx;
+  prep.global_ny = kNy;
+  prep.storage_nx = kNx;
+  prep.owned_global_x_begin = 0;
+  prep.owned_global_x_end = kNx;
+  prep.owned_storage_x_begin = 0;
+
+  gutibm::gpu::DeliveryPrepareDeviceBuffers prep_buf{};
+  prep_buf.conc_carbon = conc_carbon.data();
+  prep_buf.conc_iron = conc_iron.data();
+  prep_buf.conc_b12 = conc_b12.data();
+  prep_buf.conc_acetate = conc_acetate.data();
+  prep_buf.conc_eut = conc_eut.data();
+  prep_buf.conc_oxygen = conc_oxygen.data();
+  prep_buf.reac_iron = reac_iron.data();
+  prep_buf.reac_acetate = reac_acetate.data();
+  prep_buf.prescribed_carbon = prescribed_carbon.data();
+  prep_buf.prescribed_oxygen = prescribed_oxygen.data();
+  prep_buf.mu_realized = mu.data();
+  prep_buf.biomass = biomass.data();
+  prep_buf.radius = radius.data();
+  prep_buf.fermentation_fraction = fermentation_fraction.data();
+  prep_buf.pending_growth_carbon = pending_growth_carbon.data();
+  prep_buf.pending_maintenance_carbon = pending_maint_carbon.data();
+  prep_buf.pending_carbon_ceiling = pending_carbon_ceiling.data();
+  prep_buf.pending_carbon_funding = pending_carbon_funding.data();
+  prep_buf.pending_biomass = pending_biomass.data();
+  prep_buf.pending_growth_chemistry_biomass = pending_growth_chem.data();
+  prep_buf.pending_oxygen_growth = pending_o2_growth.data();
+  prep_buf.pending_oxygen_maintenance = pending_o2_maint.data();
+  prep_buf.pending_oxygen_ceiling = pending_o2_ceiling.data();
+  prep_buf.pending_oxygen_funding = pending_o2_funding.data();
+  prep_buf.grid_cell = cells.data();
+  prep_buf.state = state.data();
+  prep_buf.mu_max = mu_max.data();
+  prep_buf.km_b12 = km_b12.data();
+  prep_buf.km_carbon = km_carbon.data();
+  prep_buf.receptor_expr = receptor.data();
+  prep_buf.receptor_expr_base = receptor_base.data();
+  prep_buf.ligand_affinity = ligand.data();
+  prep_buf.iron_receptor = iron_receptor.data();
+  prep_buf.bi_loci_count = loci.data();
+  prep_buf.plasmid_amelioration = amelioration.data();
+  prep_buf.iron_uptake_total = iron_total.data();
+  prep_buf.carbon_demand_total = carbon_demand_total.data();
+  prep_buf.oxygen_demand_total = oxygen_demand_total.data();
+
+  gutibm::gpu::launch_delivery_prepare_kernel(prep, prep_buf, nullptr);
+  synchronize();
+
+  const auto p_maint = download(pending_maint_carbon, agents);
+  assert(p_maint[1] > p_maint[0]);
+  assert(close(p_maint[1] / p_maint[0], 1.0 + 0.5 * (8.0 - 1.0)));
+
+  gutibm::gpu::launch_delivery_demand_by_cell_kernel(
+      pending_carbon_funding.data(), cells.data(), state.data(),
+      is_ghost.data(), nullptr, nullptr, demand_carbon.data(), agents,
+      kNx, kNy, kNx, 0, kNx, 0, nullptr);
+  gutibm::gpu::launch_delivery_demand_by_cell_kernel(
+      pending_o2_funding.data(), cells.data(), state.data(),
+      is_ghost.data(), nullptr, nullptr, demand_oxygen.data(), agents,
+      kNx, kNy, kNx, 0, kNx, 0, nullptr);
+  synchronize();
+
+  // Simulate 50% oxygen rationing on cell 4 (aerobic agent) so funded
+  // respiration shifts fermentation_fraction upward from 0.0.
+  auto host_presc_o2 = download(prescribed_oxygen, kCells);
+  host_presc_o2[4] *= 0.5;
+  prescribed_oxygen.upload(host_presc_o2);
+
+  gutibm::gpu::DeliveryCommitParams commit{};
+  commit.num_agents = agents;
+  commit.dt = dt;
+  commit.cell_density = 280.0;
+  commit.o2_delivery_enabled = 1;
+  commit.metabolic_switch_enabled = 1;
+  commit.respiration_driver_mode = 1;  // Funded
+  commit.tau_metabolic_switch = 60.0;
+  commit.global_nx = kNx;
+  commit.global_ny = kNy;
+  commit.storage_nx = kNx;
+  commit.owned_global_x_begin = 0;
+  commit.owned_global_x_end = kNx;
+  commit.owned_storage_x_begin = 0;
+
+  gutibm::gpu::DeliveryCommitDeviceBuffers commit_buf{};
+  commit_buf.prescribed_carbon = prescribed_carbon.data();
+  commit_buf.demand_carbon_by_cell = demand_carbon.data();
+  commit_buf.prescribed_oxygen = prescribed_oxygen.data();
+  commit_buf.demand_oxygen_by_cell = demand_oxygen.data();
+  commit_buf.mu_realized = mu.data();
+  commit_buf.biomass = biomass.data();
+  commit_buf.radius = radius.data();
+  commit_buf.mass = mass.data();
+  commit_buf.age = age.data();
+  commit_buf.fermentation_fraction = fermentation_fraction.data();
+  commit_buf.respired_oxygen_rate = respired_o2_rate.data();
+  commit_buf.pending_growth_carbon = pending_growth_carbon.data();
+  commit_buf.pending_maintenance_carbon = pending_maint_carbon.data();
+  commit_buf.pending_carbon_funding = pending_carbon_funding.data();
+  commit_buf.pending_biomass = pending_biomass.data();
+  commit_buf.pending_growth_chemistry_biomass = pending_growth_chem.data();
+  commit_buf.pending_oxygen_growth = pending_o2_growth.data();
+  commit_buf.pending_oxygen_maintenance = pending_o2_maint.data();
+  commit_buf.pending_oxygen_funding = pending_o2_funding.data();
+  commit_buf.grid_cell = cells.data();
+  commit_buf.state = state.data();
+  commit_buf.is_ghost = is_ghost.data();
+  commit_buf.carbon_ledger = carbon_ledger.data();
+  commit_buf.oxygen_ledger = oxygen_ledger.data();
+
+  gutibm::gpu::launch_delivery_commit_kernel(commit, commit_buf, nullptr);
+  synchronize();
+
+  const auto c_ledger = download(carbon_ledger, 6);
+  const auto o_ledger = download(oxygen_ledger, 6);
+  const auto f_after = download(fermentation_fraction, agents);
+  const auto resp_after = download(respired_o2_rate, agents);
+  assert(c_ledger[0] > 0.0);  // maintenance paid
+  assert(c_ledger[3] > 0.0);  // uptake_realized (growth funded)
+  assert(o_ledger[3] > 0.0);  // oxygen growth funded
+  assert(f_after[0] > 0.0);   // rationed O2 relaxes f upward from 0.0
+  assert(resp_after[0] > 0.0);
+  assert(resp_after[1] > 0.0);
+}
+
 template <typename Function>
 void run_case(const char* name, Function function) {
   function();
@@ -1208,6 +1543,10 @@ int main() {
   run_case("launch_metabolism_kernel acetate", test_metabolism_acetate);
   run_case("launch_metabolism_kernel metabolic mode",
            test_metabolism_metabolic_mode);
+  run_case("launch_metabolism_kernel funded respiration & anaerobic maintenance",
+           test_metabolism_funded_respiration_and_anaerobic_maintenance);
+  run_case("launch_delivery_prepare/demand/commit kernels",
+           test_delivery_prepare_and_commit_kernels);
   run_case("launch_diffuse_x_periodic", test_diffuse_x_periodic);
   run_case("launch_diffuse_y_periodic", test_diffuse_y_periodic);
   run_case("launch_diffuse_z_bounded", test_diffuse_z_bounded);
@@ -1222,6 +1561,8 @@ int main() {
   run_case("launch_vbf_coupling_kernel", test_vbf_coupling);
   run_case("launch_vbf_coupling_kernel implicit carbon sink",
            test_vbf_implicit_carbon_sink);
+  run_case("launch_vbf_coupling_kernel implicit iron sink",
+           test_vbf_implicit_iron_sink);
   run_case("launch_vbf_coupling_kernel implicit first-order sink",
            test_vbf_implicit_first_order_sink);
   run_case("launch_o2_depletion_kernel", test_o2_depletion);
@@ -1232,7 +1573,7 @@ int main() {
   run_case("launch_mechanics_forces_kernel", test_mechanics_forces);
   run_case("launch_mechanics_apply_kernel", test_mechanics_apply);
   run_case("launch_receptor_kill_prob_kernel", test_receptor_kill_probability);
-  std::cout << "All 22 GPU launch entry points were invoked directly.\n";
+  std::cout << "All GPU launch entry points were invoked directly.\n";
   return 0;
 #endif
 }

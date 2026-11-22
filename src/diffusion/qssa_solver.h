@@ -145,6 +145,8 @@ class QSSASolver {
   Int sampled_toxin_sample_count(Int species_idx) const;
   Real sampled_nuclease_conc(Int agent_index) const;
   Real sampled_nuclease_conc(Int agent_index, ReceptorType target) const;
+  void restore_sampled_nuclease_conc(const AgentPool& agents,
+                                     const std::vector<Real>& flat_values);
   Real sampled_toxin_max(Int species_idx) const;
   bool agent_sampling() const { return cfg_.toxin_evaluation == "agents"; }
   bool toxin_lumping() const { return cfg_.toxin_lumping == "lumped"; }

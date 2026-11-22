@@ -101,10 +101,10 @@ void apply_iron_sink(ChemicalField& chem, Int cell,
                      Real cell_volume,
                      Real dt) {
   if (ctx.idx.iron < 0) return;
-  // First-order (concentration-dependent) uptake: nutrient_sink is a rate
-  // constant (1/s). See VBFConfig::nutrient_sink for why this is not a
-  // zero-order mol/m^3/s removal.
-  const Real sink = ctx.cfg.nutrient_sink * chem.conc(ctx.idx.iron, cell);
+  // Implicit first-order (concentration-dependent) uptake: nutrient_sink is a
+  // rate constant (1/s), giving c_new = c / (1 + k * dt) > 0 for arbitrary dt.
+  const Real sink = vbf::implicit_first_order_sink(
+      chem.conc(ctx.idx.iron, cell), ctx.cfg.nutrient_sink, dt);
   chem.reac(ctx.idx.iron, cell) -= sink;
   if (totals != nullptr) totals->iron_sink += sink * cell_volume * dt;
 }

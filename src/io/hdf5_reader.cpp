@@ -11,6 +11,8 @@
 #include <cassert>
 #include <string_view>
 #include "error.h"
+#include "h5_util.h"
+#include "species_names.h"
 
 #ifdef GUTIBM_HDF5
 extern "C" {
@@ -158,6 +160,36 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
     out.microcin_penalty_applied = read_dataset_1d<int32_t>(
         file, prefix + "microcin_penalty_applied", H5T_NATIVE_INT32);
   }
+  const auto read_opt_double = [&](const std::string& name, std::vector<double>& dst) {
+    if (link_exists(file, prefix + name)) {
+      dst = read_dataset_1d<double>(file, prefix + name, H5T_NATIVE_DOUBLE);
+    }
+  };
+  const auto read_opt_i32 = [&](const std::string& name, std::vector<int32_t>& dst) {
+    if (link_exists(file, prefix + name)) {
+      dst = read_dataset_1d<int32_t>(file, prefix + name, H5T_NATIVE_INT32);
+    }
+  };
+  read_opt_double("mass", out.mass);
+  read_opt_double("outer_radius", out.outer_radius);
+  read_opt_double("age", out.age);
+  read_opt_double("sos_timer", out.sos_timer);
+  read_opt_double("death_time", out.death_time);
+  read_opt_double("pending_growth_chemistry_biomass",
+                  out.pending_growth_chemistry_biomass);
+  read_opt_double("receptor_expr", out.receptor_expr);
+  read_opt_double("receptor_expr_base", out.receptor_expr_base);
+  read_opt_double("motility_dir_x", out.motility_dir_x);
+  read_opt_double("motility_dir_y", out.motility_dir_y);
+  read_opt_double("motility_dir_z", out.motility_dir_z);
+  read_opt_double("motility_swim_speed", out.motility_swim_speed);
+  read_opt_double("motility_run_timer", out.motility_run_timer);
+  read_opt_i32("motility_is_stopped", out.motility_is_stopped);
+  read_opt_double("motility_stop_timer", out.motility_stop_timer);
+  read_opt_double("motility_prev_carbon", out.motility_prev_carbon);
+  read_opt_double("motility_prev_oxygen", out.motility_prev_oxygen);
+  read_opt_double("motility_prev_ai2", out.motility_prev_ai2);
+  read_opt_double("sampled_nuclease_conc", out.sampled_nuclease_conc);
 
   const std::string lineage_path = link_exists(file, prefix + "lineage_id")
       ? prefix + "lineage_id" : prefix + "lineage";
@@ -169,25 +201,39 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
       out.biomass.size() != n || out.mu.size() != n || out.lineage.size() != n) {
     throw HDF5Error("inconsistent agent dataset lengths in agents/" + step);
   }
-  if (!out.mu_max.empty() && out.mu_max.size() != out.id.size()) {
-    throw HDF5Error("inconsistent mu_max length in agents/" + step);
-  }
-  if (!out.realized_fermentation_fraction.empty()
-      && out.realized_fermentation_fraction.size() != out.id.size()) {
-    throw HDF5Error("inconsistent realized fermentation length in agents/" + step);
-  }
-  if (!out.respired_oxygen_rate.empty()
-      && out.respired_oxygen_rate.size() != out.id.size()) {
-    throw HDF5Error("inconsistent respired oxygen rate length in agents/" + step);
-  }
-  if (!out.in_crypt.empty() && out.in_crypt.size() != out.id.size()) {
-    throw HDF5Error("inconsistent in_crypt length in agents/" + step);
-  }
-  if (!out.microcin_penalty_applied.empty()
-      && out.microcin_penalty_applied.size() != out.id.size()) {
-    throw HDF5Error(
-        "inconsistent microcin penalty length in agents/" + step);
-  }
+  const auto check_opt_len = [&](size_t sz, size_t expected, const char* label) {
+    if (sz != 0 && sz != expected) {
+      throw HDF5Error(std::string("inconsistent ") + label + " length in agents/" + step);
+    }
+  };
+  const auto n = out.id.size();
+  check_opt_len(out.mu_max.size(), n, "mu_max");
+  check_opt_len(out.realized_fermentation_fraction.size(), n, "realized fermentation");
+  check_opt_len(out.respired_oxygen_rate.size(), n, "respired oxygen rate");
+  check_opt_len(out.in_crypt.size(), n, "in_crypt");
+  check_opt_len(out.microcin_penalty_applied.size(), n, "microcin penalty");
+  check_opt_len(out.mass.size(), n, "mass");
+  check_opt_len(out.outer_radius.size(), n, "outer_radius");
+  check_opt_len(out.age.size(), n, "age");
+  check_opt_len(out.sos_timer.size(), n, "sos_timer");
+  check_opt_len(out.death_time.size(), n, "death_time");
+  check_opt_len(out.pending_growth_chemistry_biomass.size(), n,
+                "pending_growth_chemistry_biomass");
+  check_opt_len(out.receptor_expr.size(), n * NUM_RECEPTORS, "receptor_expr");
+  check_opt_len(out.receptor_expr_base.size(), n * NUM_RECEPTORS, "receptor_expr_base");
+  check_opt_len(out.motility_dir_x.size(), n, "motility_dir_x");
+  check_opt_len(out.motility_dir_y.size(), n, "motility_dir_y");
+  check_opt_len(out.motility_dir_z.size(), n, "motility_dir_z");
+  check_opt_len(out.motility_swim_speed.size(), n, "motility_swim_speed");
+  check_opt_len(out.motility_run_timer.size(), n, "motility_run_timer");
+  check_opt_len(out.motility_is_stopped.size(), n, "motility_is_stopped");
+  check_opt_len(out.motility_stop_timer.size(), n, "motility_stop_timer");
+  check_opt_len(out.motility_prev_carbon.size(), n, "motility_prev_carbon");
+  check_opt_len(out.motility_prev_oxygen.size(), n, "motility_prev_oxygen");
+  check_opt_len(out.motility_prev_ai2.size(), n, "motility_prev_ai2");
+  check_opt_len(out.sampled_nuclease_conc.size(),
+                n * species::BACTERIOCIN_RECEPTOR_TARGETS.size(),
+                "sampled_nuclease_conc");
   return out;
 }
 
@@ -261,6 +307,30 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
   out.bi_immunity_binding_affinity =
       read_dataset_1d<double>(file, prefix + "bi_immunity_binding_affinity",
                               H5T_NATIVE_DOUBLE);
+  if (link_exists(file, prefix + "bi_protease_half_life")) {
+    out.bi_protease_half_life = read_dataset_1d<double>(
+        file, prefix + "bi_protease_half_life", H5T_NATIVE_DOUBLE);
+  }
+  if (link_exists(file, prefix + "bi_is_nuclease")) {
+    out.bi_is_nuclease = read_dataset_1d<int32_t>(
+        file, prefix + "bi_is_nuclease", H5T_NATIVE_INT32);
+  }
+  if (link_exists(file, prefix + "bi_burst_size")) {
+    out.bi_burst_size = read_dataset_1d<double>(
+        file, prefix + "bi_burst_size", H5T_NATIVE_DOUBLE);
+  }
+  if (link_exists(file, prefix + "bi_phage_induction_rate")) {
+    out.bi_phage_induction_rate = read_dataset_1d<double>(
+        file, prefix + "bi_phage_induction_rate", H5T_NATIVE_DOUBLE);
+  }
+  if (link_exists(file, prefix + "bi_phage_burst_size")) {
+    out.bi_phage_burst_size = read_dataset_1d<double>(
+        file, prefix + "bi_phage_burst_size", H5T_NATIVE_DOUBLE);
+  }
+  if (link_exists(file, prefix + "bi_phage_lysogeny_rate")) {
+    out.bi_phage_lysogeny_rate = read_dataset_1d<double>(
+        file, prefix + "bi_phage_lysogeny_rate", H5T_NATIVE_DOUBLE);
+  }
 
   if (const auto n = out.parent_id.size();
       out.mutations.size() != n || out.has_conjugative_plasmid.size() != n ||
@@ -277,7 +347,13 @@ HDF5CheckpointGenome read_genome(hid_t file, const std::string& step) {
       out.bi_diff_coeff.size() != n_bi || out.bi_retardation.size() != n_bi ||
       out.bi_molecular_weight.size() != n_bi ||
       out.bi_immunity_binding_affinity.size() != n_bi ||
-      (!out.bi_release_mode.empty() && out.bi_release_mode.size() != n_bi)) {
+      (!out.bi_release_mode.empty() && out.bi_release_mode.size() != n_bi) ||
+      (!out.bi_protease_half_life.empty() && out.bi_protease_half_life.size() != n_bi) ||
+      (!out.bi_is_nuclease.empty() && out.bi_is_nuclease.size() != n_bi) ||
+      (!out.bi_burst_size.empty() && out.bi_burst_size.size() != n_bi) ||
+      (!out.bi_phage_induction_rate.empty() && out.bi_phage_induction_rate.size() != n_bi) ||
+      (!out.bi_phage_burst_size.empty() && out.bi_phage_burst_size.size() != n_bi) ||
+      (!out.bi_phage_lysogeny_rate.empty() && out.bi_phage_lysogeny_rate.size() != n_bi)) {
     throw HDF5Error("inconsistent BI locus dataset lengths in genome/" + step);
   }
 
@@ -441,6 +517,88 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
             meta.flux_accounting.reaction_clip_interval);
   read_flux("reaction_clip_cumulative",
             meta.flux_accounting.reaction_clip_cumulative);
+
+  const std::string rng_prefix = prefix + "rng/";
+  if (link_exists(file, prefix + "rng")
+      && link_exists(file, rng_prefix + "simulation_state")) {
+    meta.simulation_rng_states =
+        h5::read_str_vec(file, (rng_prefix + "simulation_state").c_str());
+    meta.has_rng_state = !meta.simulation_rng_states.empty();
+    if (link_exists(file, rng_prefix + "immigration_state")) {
+      const auto imm =
+          h5::read_str_vec(file, (rng_prefix + "immigration_state").c_str());
+      if (!imm.empty()) {
+        meta.immigration_rng_state = imm.front();
+      }
+    }
+    if (link_exists(file, rng_prefix + "immigration_start_step")) {
+      meta.immigration_start_step = read_scalar<int32_t>(
+          file, rng_prefix + "immigration_start_step", H5T_NATIVE_INT32);
+      meta.has_immigration_start_step = true;
+    }
+    if (link_exists(file, rng_prefix + "next_tag")) {
+      meta.next_tags =
+          read_dataset_1d<int64_t>(file, rng_prefix + "next_tag", H5T_NATIVE_INT64);
+    }
+  }
+
+  const std::string burst_prefix = prefix + "toxin_bursts/";
+  if (link_exists(file, prefix + "toxin_bursts")
+      && link_exists(file, burst_prefix + "pos_x")) {
+    meta.has_toxin_bursts = true;
+    const auto pos_x = read_dataset_1d<double>(file, burst_prefix + "pos_x", H5T_NATIVE_DOUBLE);
+    const auto pos_y = read_dataset_1d<double>(file, burst_prefix + "pos_y", H5T_NATIVE_DOUBLE);
+    const auto pos_z = read_dataset_1d<double>(file, burst_prefix + "pos_z", H5T_NATIVE_DOUBLE);
+    const auto diff = read_dataset_1d<double>(file, burst_prefix + "diff_coeff", H5T_NATIVE_DOUBLE);
+    const auto source = read_dataset_1d<double>(file, burst_prefix + "source_rate", H5T_NATIVE_DOUBLE);
+    const auto pI = read_dataset_1d<double>(file, burst_prefix + "pI", H5T_NATIVE_DOUBLE);
+    const auto ret = read_dataset_1d<double>(file, burst_prefix + "retardation", H5T_NATIVE_DOUBLE);
+    const auto decay = read_dataset_1d<double>(file, burst_prefix + "decay_rate", H5T_NATIVE_DOUBLE);
+    const auto lumen_len = read_dataset_1d<double>(file, burst_prefix + "lumen_transfer_length", H5T_NATIVE_DOUBLE);
+    const auto lumen_free = read_dataset_1d<int32_t>(file, burst_prefix + "lumen_transfer_basis_free", H5T_NATIVE_INT32);
+    const auto robin_cut = read_dataset_1d<double>(file, burst_prefix + "robin_cutoff", H5T_NATIVE_DOUBLE);
+    const auto img_tol = read_dataset_1d<double>(file, burst_prefix + "image_series_relative_tolerance", H5T_NATIVE_DOUBLE);
+    const auto img_shells = read_dataset_1d<int32_t>(file, burst_prefix + "image_series_max_shells", H5T_NATIVE_INT32);
+    const auto img_explicit = read_dataset_1d<int32_t>(file, burst_prefix + "image_series_max_shells_explicit", H5T_NATIVE_INT32);
+    const auto img_legacy = read_dataset_1d<int32_t>(file, burst_prefix + "image_series_legacy_reflections", H5T_NATIVE_INT32);
+    const auto drift_corr = read_dataset_1d<int32_t>(file, burst_prefix + "drift_correction", H5T_NATIVE_INT32);
+    const auto creation = read_dataset_1d<double>(file, burst_prefix + "creation_time", H5T_NATIVE_DOUBLE);
+    const auto tau = read_dataset_1d<double>(file, burst_prefix + "release_tau", H5T_NATIVE_DOUBLE);
+    const auto nuclease = read_dataset_1d<int32_t>(file, burst_prefix + "is_nuclease", H5T_NATIVE_INT32);
+    const auto target = read_dataset_1d<int32_t>(file, burst_prefix + "target", H5T_NATIVE_INT32);
+    const size_t nb = pos_x.size();
+    if (pos_y.size() != nb || pos_z.size() != nb || diff.size() != nb
+        || source.size() != nb || pI.size() != nb || ret.size() != nb
+        || decay.size() != nb || lumen_len.size() != nb || lumen_free.size() != nb
+        || robin_cut.size() != nb || img_tol.size() != nb || img_shells.size() != nb
+        || img_explicit.size() != nb || img_legacy.size() != nb || drift_corr.size() != nb
+        || creation.size() != nb || tau.size() != nb || nuclease.size() != nb
+        || target.size() != nb) {
+      throw HDF5Error("inconsistent toxin_bursts dataset lengths in summary/" + step);
+    }
+    meta.toxin_bursts.resize(nb);
+    for (size_t i = 0; i < nb; ++i) {
+      ToxinBurstSource& b = meta.toxin_bursts[i];
+      b.pos = {pos_x[i], pos_y[i], pos_z[i]};
+      b.params.diff_coeff = diff[i];
+      b.params.source_rate = source[i];
+      b.params.pI = pI[i];
+      b.params.retardation = ret[i];
+      b.params.decay_rate = decay[i];
+      b.params.lumen_transfer_length = lumen_len[i];
+      b.params.lumen_transfer_basis_free = (lumen_free[i] != 0);
+      b.params.robin_cutoff = robin_cut[i];
+      b.params.image_series_relative_tolerance = img_tol[i];
+      b.params.image_series_max_shells = img_shells[i];
+      b.params.image_series_max_shells_explicit = (img_explicit[i] != 0);
+      b.params.image_series_legacy_reflections = (img_legacy[i] != 0);
+      b.params.drift_correction = (drift_corr[i] != 0);
+      b.creation_time = creation[i];
+      b.release_tau = tau[i];
+      b.is_nuclease = (nuclease[i] != 0);
+      b.target = static_cast<ReceptorType>(target[i]);
+    }
+  }
   return meta;
 }
 

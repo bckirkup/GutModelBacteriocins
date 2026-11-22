@@ -114,6 +114,85 @@ struct MechanicsLaunchParams {
   int nz_cells = 0;
 };
 
+struct DeliveryPrepareParams {
+  int num_agents = 0;
+  int local_agent_count = 0;
+  int agent_stride = 0;
+  int receptor_count = 0;
+  double dt = 0.0;
+  double cell_volume = 0.0;
+  double km_iron_primary = 0.0;
+  double km_iron_iroN = 0.0;
+  double km_iron_iutA = 0.0;
+  double km_iron_fiu = 0.0;
+  double maintenance_rate = 0.0;
+  double metE_penalty = 0.0;
+  double metE_acetate_max_factor = 1.0;
+  double carbon_maintenance_rate = 0.0;
+  double metE_acetate_km = 0.0;
+  double eut_max_penalty = 0.0;
+  double eut_km = 0.0;
+  double yield_carbon = 0.0;
+  double yield_iron = 0.0;
+  int iron_uptake_enabled = 1;
+  int b12_uptake_enabled = 1;
+  int eut_enabled = 1;
+  int fur_enabled = 0;
+  double fur_Km = 0.0;
+  double fur_upregulation_max = 0.0;
+  double fur_receptor_max = 0.0;
+  int acetate_enabled = 0;
+  double acetate_overflow_threshold = 0.0;
+  double acetate_overflow_rate = 0.0;
+  double acetate_scavenge_rate = 0.0;
+  double acetate_scavenge_Km = 0.0;
+  int o2_enabled = 0;
+  int o2_delivery_enabled = 0;
+  double o2_boost_max = 0.0;
+  double o2_Km = 0.0;
+  double o2_q_consumption = 0.0;
+  double o2_q_maintenance = 0.0;
+  int metabolic_switch_enabled = 0;
+  int respiration_driver_mode = 0;  // 0 = Ambient, 1 = Funded
+  double mu_crit = 0.0;
+  double aerobic_mu_factor = 1.0;
+  double anaerobic_mu_factor = 1.0;
+  double aerobic_carbon_cost_factor = 1.0;
+  double anaerobic_carbon_cost_factor = 1.0;
+  double tau_metabolic_switch = 0.0;
+  double ferm_acid_yield = 0.0;
+  double anaerobic_maintenance_factor = 1.0;
+  int acid_inhibition_enabled = 0;
+  double acid_inhibition_max = 0.0;
+  double acid_inhibition_Ki = 0.0;
+  double acetate_pKa = 0.0;
+  double environment_pH = 7.0;
+  double effective_diffusivity_carbon = 0.0;
+  double effective_diffusivity_oxygen = 0.0;
+  int global_nx = 0;
+  int global_ny = 0;
+  int storage_nx = 0;
+  int owned_global_x_begin = 0;
+  int owned_global_x_end = 0;
+  int owned_storage_x_begin = 0;
+};
+
+struct DeliveryCommitParams {
+  int num_agents = 0;
+  double dt = 0.0;
+  double cell_density = 0.0;
+  int o2_delivery_enabled = 0;
+  int metabolic_switch_enabled = 0;
+  int respiration_driver_mode = 0;  // 0 = Ambient, 1 = Funded
+  double tau_metabolic_switch = 0.0;
+  int global_nx = 0;
+  int global_ny = 0;
+  int storage_nx = 0;
+  int owned_global_x_begin = 0;
+  int owned_global_x_end = 0;
+  int owned_storage_x_begin = 0;
+};
+
 }  // namespace gutibm::gpu
 
 #endif  // GUTIBM_GPU_TYPES_H

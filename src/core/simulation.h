@@ -117,6 +117,8 @@ class Simulation {
   const LineageTracker&  lineage_tracker() const { return lineage_; }
 
   RNG&                   rng()             { return rng_; }
+  const RNG&             rng()       const { return rng_; }
+  const ImmigrationEngine& immigration() const { return immigration_; }
 
   Real                   time()      const { return clock_.time; }
   Int                    step_count() const { return clock_.step_count; }

@@ -1561,11 +1561,33 @@ void ChemicalField::add_prescribed_sink_global(
   prescribed_active_[static_cast<size_t>(spec)] = true;
 }
 
+void ChemicalField::add_prescribed_sinks(
+    Int spec, const std::vector<Real>& amounts) {
+  if (spec < 0 || spec >= nspec_) return;
+  auto& target = prescribed_sink_[static_cast<size_t>(spec)];
+  const size_t count = std::min(target.size(), amounts.size());
+  bool added = false;
+  for (size_t i = 0; i < count; ++i) {
+    if (amounts[i] <= 0.0) continue;
+    target[i] += amounts[i];
+    added = true;
+  }
+  if (added) {
+    prescribed_active_[static_cast<size_t>(spec)] = true;
+  }
+}
+
 Real ChemicalField::prescribed_sink_global(Int spec, Int cell) const {
   const Int storage_cell = global_to_storage_cell(cell);
   if (spec < 0 || spec >= nspec_ || storage_cell < 0) return 0.0;
   return prescribed_sink_[static_cast<size_t>(spec)]
       [static_cast<size_t>(storage_cell)];
+}
+
+const std::vector<Real>& ChemicalField::prescribed_sink_storage(
+    Int spec) const {
+  assert(spec >= 0 && spec < nspec_);
+  return prescribed_sink_[static_cast<size_t>(spec)];
 }
 
 void ChemicalField::add_delivery_reduction(Int spec, Real amount) {

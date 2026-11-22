@@ -34,6 +34,7 @@
 #include <ranges>
 #include <iomanip>
 #include <set>
+#include <sstream>
 #include "error.h"
 #include <utility>
 #ifdef GUTIBM_OPENMP
@@ -360,6 +361,24 @@ void restore_bi_loci(Agent& agent,
     bi.retardation = gen.bi_retardation[b];
     bi.molecular_weight = gen.bi_molecular_weight[b];
     bi.immunity_binding_affinity = gen.bi_immunity_binding_affinity[b];
+    if (b < gen.bi_protease_half_life.size()) {
+      bi.protease_half_life = gen.bi_protease_half_life[b];
+    }
+    if (b < gen.bi_is_nuclease.size()) {
+      bi.is_nuclease = (gen.bi_is_nuclease[b] != 0);
+    }
+    if (b < gen.bi_burst_size.size()) {
+      bi.burst_size = gen.bi_burst_size[b];
+    }
+    if (b < gen.bi_phage_induction_rate.size()) {
+      bi.phage_induction_rate = gen.bi_phage_induction_rate[b];
+    }
+    if (b < gen.bi_phage_burst_size.size()) {
+      bi.phage_burst_size = gen.bi_phage_burst_size[b];
+    }
+    if (b < gen.bi_phage_lysogeny_rate.size()) {
+      bi.phage_lysogeny_rate = gen.bi_phage_lysogeny_rate[b];
+    }
     agent.genome.bi_loci.push_back(bi);
   }
 }
@@ -901,6 +920,14 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
   const std::vector<size_t> bi_offsets = build_bi_offsets(lin.num_bi_loci);
   validate_checkpoint_genome(snap, bi_offsets);
 
+  constexpr size_t kNucTargets = species::BACTERIOCIN_RECEPTOR_TARGETS.size();
+  const bool has_sampled_nuclease =
+      atoms.sampled_nuclease_conc.size() == n * kNucTargets;
+  std::vector<Real> local_sampled_nuclease;
+  if (has_sampled_nuclease) {
+    local_sampled_nuclease.reserve(n * kNucTargets);
+  }
+
   size_t i = 0;
   for (int64_t id : atoms.id) {
     (void)id;
@@ -916,10 +943,19 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     a.identity.owner_rank   = domain_.rank();
     a.state        = static_cast<PhenoState>(atoms.state[i]);
     a.radius       = atoms.radius[i];
-    a.outer_radius = atoms.radius[i] * 1.05;
-    a.mass         = sphere_mass(a.radius, CELL_DENSITY_DEFAULT);
+    a.outer_radius = (i < atoms.outer_radius.size())
+        ? atoms.outer_radius[i] : atoms.radius[i] * 1.05;
     a.biomass      = atoms.biomass[i];
+    a.mass         = (i < atoms.mass.size())
+        ? atoms.mass[i] : sphere_mass(a.radius, CELL_DENSITY_DEFAULT);
     a.mu_realized  = atoms.mu[i];
+    if (i < atoms.age.size()) a.timers.age = atoms.age[i];
+    if (i < atoms.sos_timer.size()) a.timers.sos_timer = atoms.sos_timer[i];
+    if (i < atoms.death_time.size()) a.timers.death_time = atoms.death_time[i];
+    if (i < atoms.pending_growth_chemistry_biomass.size()) {
+      a.pending_growth_chemistry_biomass =
+          atoms.pending_growth_chemistry_biomass[i];
+    }
     // Intrinsic capacity must survive low mu_realized snapshots. Older files
     // omit /mu_max — fall back to the matching strain (never to mu_realized).
     if (i < atoms.mu_max.size() && atoms.mu_max[i] > 0.0) {
@@ -961,6 +997,46 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 #endif
     }
 
+    if ((i + 1) * NUM_RECEPTORS <= atoms.receptor_expr.size()) {
+      for (Int r = 0; r < NUM_RECEPTORS; ++r) {
+        a.receptor_expr[r] =
+            atoms.receptor_expr[i * NUM_RECEPTORS + static_cast<size_t>(r)];
+      }
+    }
+    if ((i + 1) * NUM_RECEPTORS <= atoms.receptor_expr_base.size()) {
+      for (Int r = 0; r < NUM_RECEPTORS; ++r) {
+        a.receptor_expr_base[r] =
+            atoms.receptor_expr_base[i * NUM_RECEPTORS + static_cast<size_t>(r)];
+      }
+    }
+    if (i < atoms.motility_dir_x.size() && i < atoms.motility_dir_y.size()
+        && i < atoms.motility_dir_z.size()) {
+      a.motility.swim_direction = {
+          atoms.motility_dir_x[i], atoms.motility_dir_y[i],
+          atoms.motility_dir_z[i]};
+    }
+    if (i < atoms.motility_swim_speed.size()) {
+      a.motility.swim_speed = atoms.motility_swim_speed[i];
+    }
+    if (i < atoms.motility_run_timer.size()) {
+      a.motility.run_timer = atoms.motility_run_timer[i];
+    }
+    if (i < atoms.motility_is_stopped.size()) {
+      a.motility.is_stopped = (atoms.motility_is_stopped[i] != 0);
+    }
+    if (i < atoms.motility_stop_timer.size()) {
+      a.motility.stop_timer = atoms.motility_stop_timer[i];
+    }
+    if (i < atoms.motility_prev_carbon.size()) {
+      a.motility.prev_carbon = atoms.motility_prev_carbon[i];
+    }
+    if (i < atoms.motility_prev_oxygen.size()) {
+      a.motility.prev_oxygen = atoms.motility_prev_oxygen[i];
+    }
+    if (i < atoms.motility_prev_ai2.size()) {
+      a.motility.prev_ai2 = atoms.motility_prev_ai2[i];
+    }
+
     if (i < atoms.in_crypt.size()) {
       a.flags.in_crypt = (atoms.in_crypt[i] != 0);
     } else {
@@ -978,12 +1054,39 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 
     max_tag = std::max(max_tag, static_cast<TagID>(atoms.id[i]));
     agents_.push_back(std::move(a));
+    if (has_sampled_nuclease) {
+      for (size_t t = 0; t < kNucTargets; ++t) {
+        local_sampled_nuclease.push_back(
+            atoms.sampled_nuclease_conc[i * kNucTargets + t]);
+      }
+    }
     ++i;
   }
 
-  agents_.configure_tags(
-      AgentPool::next_tag_after_max(max_tag, domain_.rank(), domain_.nprocs()),
-      AgentPool::tag_stride(domain_.nprocs()));
+  if (has_sampled_nuclease) {
+    qssa_.restore_sampled_nuclease_conc(agents_, local_sampled_nuclease);
+  }
+
+  if (const auto rank_idx = static_cast<size_t>(domain_.rank());
+      rank_idx < snap.metadata.next_tags.size()
+      && snap.metadata.next_tags[rank_idx] > 0) {
+    agents_.configure_tags(
+        static_cast<TagID>(snap.metadata.next_tags[rank_idx]),
+        AgentPool::tag_stride(domain_.nprocs()));
+  } else {
+    agents_.configure_tags(
+        AgentPool::next_tag_after_max(max_tag, domain_.rank(), domain_.nprocs()),
+        AgentPool::tag_stride(domain_.nprocs()));
+  }
+
+  bacteriocin_.bursts.clear();
+  if (snap.metadata.has_toxin_bursts) {
+    for (const ToxinBurstSource& burst : snap.metadata.toxin_bursts) {
+      if (domain_.nprocs() <= 1 || domain_.is_local(burst.pos)) {
+        bacteriocin_.bursts.push_back(burst);
+      }
+    }
+  }
 
   restore_checkpoint_grid(chem_, domain_, snap);
 
@@ -1088,7 +1191,28 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
   event_ledger_.window_start_time = snap.metadata.event_window_end_step > 0
       ? snap.metadata.event_window_end_time
       : clock_.time;
-  immigration_.set_start_step(clock_.step_count);
+
+  if (snap.metadata.has_rng_state) {
+    const auto rank_idx = static_cast<size_t>(domain_.rank());
+    if (rank_idx < snap.metadata.simulation_rng_states.size()
+        && !snap.metadata.simulation_rng_states[rank_idx].empty()) {
+      std::istringstream iss(snap.metadata.simulation_rng_states[rank_idx]);
+      if (!(iss >> rng_.engine())) {
+        throw CheckpointError("corrupt simulation RNG state in HDF5 checkpoint");
+      }
+    }
+    if (!snap.metadata.immigration_rng_state.empty()) {
+      std::istringstream iss(snap.metadata.immigration_rng_state);
+      if (!(iss >> immigration_.rng().engine())) {
+        throw CheckpointError("corrupt immigration RNG state in HDF5 checkpoint");
+      }
+    }
+  }
+  if (snap.metadata.has_immigration_start_step) {
+    immigration_.set_start_step(snap.metadata.immigration_start_step);
+  } else {
+    immigration_.set_start_step(clock_.step_count);
+  }
   schedule_output_from_time(clock_.time, cfg_.time.output_interval, clock_.next_output, clock_.next_snapshot);
 }
 

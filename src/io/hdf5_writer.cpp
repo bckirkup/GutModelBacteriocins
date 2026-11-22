@@ -10,6 +10,7 @@
 #include "step_events.h"
 #include "config_json.h"
 #include "error.h"
+#include "h5_util.h"
 #include "robin_correction_table.h"
 
 #ifdef GUTIBM_HDF5
@@ -1314,6 +1315,149 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
 
   }
 
+  // Gather per-rank RNG states, next_tag values, and active toxin bursts to rank 0.
+  const std::string local_rng_str = h5::rng_to_string(sim.rng());
+  std::vector<char> local_rng_buf(static_cast<size_t>(h5::kRngStrLen), '\0');
+  std::copy_n(local_rng_str.data(),
+              std::min(local_rng_str.size(),
+                       static_cast<size_t>(h5::kRngStrLen - 1)),
+              local_rng_buf.data());
+  const auto local_next_tag = static_cast<int64_t>(sim.agents().next_tag_value());
+  std::vector<std::string> gathered_rng_states;
+  std::vector<int64_t> gathered_next_tags;
+  std::vector<ToxinBurstSource> gathered_bursts;
+#ifdef GUTIBM_MPI
+  if (mpi_multi_rank()) {
+    const int nprocs = mpi_nprocs_world();
+    const int rank = mpi_rank_world();
+    std::vector<char> all_rng_bufs(
+        rank == 0 ? static_cast<size_t>(nprocs) * static_cast<size_t>(h5::kRngStrLen) : 0,
+        '\0');
+    MPI_Gather(local_rng_buf.data(), static_cast<int>(h5::kRngStrLen), MPI_CHAR,
+               all_rng_bufs.data(), static_cast<int>(h5::kRngStrLen), MPI_CHAR,
+               0, MPI_COMM_WORLD);
+    gathered_next_tags.resize(rank == 0 ? static_cast<size_t>(nprocs) : 0, 0);
+    MPI_Gather(&local_next_tag, 1, MPI_INT64_T,
+               gathered_next_tags.data(), 1, MPI_INT64_T, 0, MPI_COMM_WORLD);
+    if (rank == 0) {
+      gathered_rng_states.resize(static_cast<size_t>(nprocs));
+      for (int r = 0; r < nprocs; ++r) {
+        const char* base =
+            all_rng_bufs.data() + static_cast<size_t>(r) * static_cast<size_t>(h5::kRngStrLen);
+        gathered_rng_states[static_cast<size_t>(r)] = std::string(base);
+      }
+    }
+    const auto& local_bursts = sim.toxin_bursts();
+    const auto local_bytes =
+        static_cast<int>(local_bursts.size() * sizeof(ToxinBurstSource));
+    std::vector<int> recv_counts(rank == 0 ? static_cast<size_t>(nprocs) : 0, 0);
+    MPI_Gather(&local_bytes, 1, MPI_INT, recv_counts.data(), 1, MPI_INT,
+               0, MPI_COMM_WORLD);
+    std::vector<int> displs(rank == 0 ? static_cast<size_t>(nprocs) : 0, 0);
+    int total_bytes = 0;
+    if (rank == 0) {
+      for (int r = 0; r < nprocs; ++r) {
+        displs[static_cast<size_t>(r)] = total_bytes;
+        total_bytes += recv_counts[static_cast<size_t>(r)];
+      }
+      gathered_bursts.resize(
+          static_cast<size_t>(total_bytes) / sizeof(ToxinBurstSource));
+    }
+    MPI_Gatherv(local_bursts.data(), local_bytes, MPI_BYTE,
+                gathered_bursts.data(), recv_counts.data(), displs.data(),
+                MPI_BYTE, 0, MPI_COMM_WORLD);
+  } else
+#endif
+  {
+    gathered_rng_states.push_back(local_rng_str);
+    gathered_next_tags.push_back(local_next_tag);
+    gathered_bursts = sim.toxin_bursts();
+  }
+
+  if (io_rank(cfg_) == 0 && file_id_ >= 0) {
+    auto fid = static_cast<hid_t>(file_id_);
+    const std::string rng_group = group + "/rng";
+    ensure_group(fid, rng_group, cfg_);
+    h5::write_str_vec(fid, (rng_group + "/simulation_state").c_str(),
+                      gathered_rng_states);
+    const std::vector<std::string> imm_state = {
+        h5::rng_to_string(sim.immigration().rng())};
+    h5::write_str_vec(fid, (rng_group + "/immigration_state").c_str(),
+                      imm_state);
+    const int32_t imm_start = sim.immigration().start_step();
+    write_scalar_dataset(fid, rng_group + "/immigration_start_step",
+                         H5T_NATIVE_INT32, &imm_start);
+    h5::write_vec(fid, (rng_group + "/next_tag").c_str(),
+                  H5T_NATIVE_INT64, gathered_next_tags);
+
+    const std::string burst_group = group + "/toxin_bursts";
+    ensure_group(fid, burst_group, cfg_);
+    const size_t nb = gathered_bursts.size();
+    std::vector<double> b_pos_x(nb);
+    std::vector<double> b_pos_y(nb);
+    std::vector<double> b_pos_z(nb);
+    std::vector<double> b_diff(nb);
+    std::vector<double> b_source(nb);
+    std::vector<double> b_pI(nb);
+    std::vector<double> b_ret(nb);
+    std::vector<double> b_decay(nb);
+    std::vector<double> b_lumen_len(nb);
+    std::vector<int32_t> b_lumen_free(nb);
+    std::vector<double> b_robin_cut(nb);
+    std::vector<double> b_img_tol(nb);
+    std::vector<int32_t> b_img_shells(nb);
+    std::vector<int32_t> b_img_explicit(nb);
+    std::vector<int32_t> b_img_legacy(nb);
+    std::vector<int32_t> b_drift_corr(nb);
+    std::vector<double> b_creation(nb);
+    std::vector<double> b_tau(nb);
+    std::vector<int32_t> b_nuclease(nb);
+    std::vector<int32_t> b_target(nb);
+    for (size_t i = 0; i < nb; ++i) {
+      const ToxinBurstSource& b = gathered_bursts[i];
+      b_pos_x[i] = b.pos[0];
+      b_pos_y[i] = b.pos[1];
+      b_pos_z[i] = b.pos[2];
+      b_diff[i] = b.params.diff_coeff;
+      b_source[i] = b.params.source_rate;
+      b_pI[i] = b.params.pI;
+      b_ret[i] = b.params.retardation;
+      b_decay[i] = b.params.decay_rate;
+      b_lumen_len[i] = b.params.lumen_transfer_length;
+      b_lumen_free[i] = b.params.lumen_transfer_basis_free ? 1 : 0;
+      b_robin_cut[i] = b.params.robin_cutoff;
+      b_img_tol[i] = b.params.image_series_relative_tolerance;
+      b_img_shells[i] = b.params.image_series_max_shells;
+      b_img_explicit[i] = b.params.image_series_max_shells_explicit ? 1 : 0;
+      b_img_legacy[i] = b.params.image_series_legacy_reflections ? 1 : 0;
+      b_drift_corr[i] = b.params.drift_correction ? 1 : 0;
+      b_creation[i] = b.creation_time;
+      b_tau[i] = b.release_tau;
+      b_nuclease[i] = b.is_nuclease ? 1 : 0;
+      b_target[i] = static_cast<int32_t>(to_underlying(b.target));
+    }
+    h5::write_vec(fid, (burst_group + "/pos_x").c_str(), H5T_NATIVE_DOUBLE, b_pos_x);
+    h5::write_vec(fid, (burst_group + "/pos_y").c_str(), H5T_NATIVE_DOUBLE, b_pos_y);
+    h5::write_vec(fid, (burst_group + "/pos_z").c_str(), H5T_NATIVE_DOUBLE, b_pos_z);
+    h5::write_vec(fid, (burst_group + "/diff_coeff").c_str(), H5T_NATIVE_DOUBLE, b_diff);
+    h5::write_vec(fid, (burst_group + "/source_rate").c_str(), H5T_NATIVE_DOUBLE, b_source);
+    h5::write_vec(fid, (burst_group + "/pI").c_str(), H5T_NATIVE_DOUBLE, b_pI);
+    h5::write_vec(fid, (burst_group + "/retardation").c_str(), H5T_NATIVE_DOUBLE, b_ret);
+    h5::write_vec(fid, (burst_group + "/decay_rate").c_str(), H5T_NATIVE_DOUBLE, b_decay);
+    h5::write_vec(fid, (burst_group + "/lumen_transfer_length").c_str(), H5T_NATIVE_DOUBLE, b_lumen_len);
+    h5::write_vec(fid, (burst_group + "/lumen_transfer_basis_free").c_str(), H5T_NATIVE_INT32, b_lumen_free);
+    h5::write_vec(fid, (burst_group + "/robin_cutoff").c_str(), H5T_NATIVE_DOUBLE, b_robin_cut);
+    h5::write_vec(fid, (burst_group + "/image_series_relative_tolerance").c_str(), H5T_NATIVE_DOUBLE, b_img_tol);
+    h5::write_vec(fid, (burst_group + "/image_series_max_shells").c_str(), H5T_NATIVE_INT32, b_img_shells);
+    h5::write_vec(fid, (burst_group + "/image_series_max_shells_explicit").c_str(), H5T_NATIVE_INT32, b_img_explicit);
+    h5::write_vec(fid, (burst_group + "/image_series_legacy_reflections").c_str(), H5T_NATIVE_INT32, b_img_legacy);
+    h5::write_vec(fid, (burst_group + "/drift_correction").c_str(), H5T_NATIVE_INT32, b_drift_corr);
+    h5::write_vec(fid, (burst_group + "/creation_time").c_str(), H5T_NATIVE_DOUBLE, b_creation);
+    h5::write_vec(fid, (burst_group + "/release_tau").c_str(), H5T_NATIVE_DOUBLE, b_tau);
+    h5::write_vec(fid, (burst_group + "/is_nuclease").c_str(), H5T_NATIVE_INT32, b_nuclease);
+    h5::write_vec(fid, (burst_group + "/target").c_str(), H5T_NATIVE_INT32, b_target);
+  }
+
   mpi_barrier(cfg_);
 #else
   (void)sim; (void)group; (void)step; (void)time; (void)dt;
@@ -1414,8 +1558,28 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   std::vector<int32_t> microcin_penalty_applied(static_cast<size_t>(n));
   std::vector<int32_t> n_bi(static_cast<size_t>(n));
   std::vector<double> radius(static_cast<size_t>(n));
+  std::vector<double> mass(static_cast<size_t>(n));
+  std::vector<double> outer_radius(static_cast<size_t>(n));
+  std::vector<double> age(static_cast<size_t>(n));
+  std::vector<double> sos_timer(static_cast<size_t>(n));
+  std::vector<double> death_time(static_cast<size_t>(n));
+  std::vector<double> pending_growth_chemistry_biomass(static_cast<size_t>(n));
   std::vector<int64_t> lineage_id(static_cast<size_t>(n));
   std::vector<double> receptor_expr(static_cast<size_t>(n) * NUM_RECEPTORS);
+  std::vector<double> receptor_expr_base(static_cast<size_t>(n) * NUM_RECEPTORS);
+  std::vector<double> motility_dir_x(static_cast<size_t>(n));
+  std::vector<double> motility_dir_y(static_cast<size_t>(n));
+  std::vector<double> motility_dir_z(static_cast<size_t>(n));
+  std::vector<double> motility_swim_speed(static_cast<size_t>(n));
+  std::vector<double> motility_run_timer(static_cast<size_t>(n));
+  std::vector<int32_t> motility_is_stopped(static_cast<size_t>(n));
+  std::vector<double> motility_stop_timer(static_cast<size_t>(n));
+  std::vector<double> motility_prev_carbon(static_cast<size_t>(n));
+  std::vector<double> motility_prev_oxygen(static_cast<size_t>(n));
+  std::vector<double> motility_prev_ai2(static_cast<size_t>(n));
+  constexpr size_t kNucTargets = species::BACTERIOCIN_RECEPTOR_TARGETS.size();
+  std::vector<double> sampled_nuclease_conc(static_cast<size_t>(n) * kNucTargets, 0.0);
+  const Agent* agents_base = sim.agents().size() > 0 ? &sim.agents()[0] : nullptr;
 
   for (Int i = 0; i < n; ++i) {
     const Agent& a = *agents[static_cast<size_t>(i)];
@@ -1436,9 +1600,35 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
         a.flags.microcin_penalty_applied ? 1 : 0;
     n_bi[idx] = static_cast<int32_t>(a.genome.bi_loci.size());
     radius[idx] = a.radius;
+    mass[idx] = a.mass;
+    outer_radius[idx] = a.outer_radius;
+    age[idx] = a.timers.age;
+    sos_timer[idx] = a.timers.sos_timer;
+    death_time[idx] = a.timers.death_time;
+    pending_growth_chemistry_biomass[idx] = a.pending_growth_chemistry_biomass;
     lineage_id[idx] = static_cast<int64_t>(a.genome.lineage_id);
     for (Int r = 0; r < NUM_RECEPTORS; ++r) {
       receptor_expr[idx * NUM_RECEPTORS + static_cast<size_t>(r)] = a.receptor_expr[r];
+      receptor_expr_base[idx * NUM_RECEPTORS + static_cast<size_t>(r)] =
+          a.receptor_expr_base[r];
+    }
+    motility_dir_x[idx] = a.motility.swim_direction[0];
+    motility_dir_y[idx] = a.motility.swim_direction[1];
+    motility_dir_z[idx] = a.motility.swim_direction[2];
+    motility_swim_speed[idx] = a.motility.swim_speed;
+    motility_run_timer[idx] = a.motility.run_timer;
+    motility_is_stopped[idx] = a.motility.is_stopped ? 1 : 0;
+    motility_stop_timer[idx] = a.motility.stop_timer;
+    motility_prev_carbon[idx] = a.motility.prev_carbon;
+    motility_prev_oxygen[idx] = a.motility.prev_oxygen;
+    motility_prev_ai2[idx] = a.motility.prev_ai2;
+    if (agents_base != nullptr) {
+      const auto agent_index = static_cast<Int>(&a - agents_base);
+      for (size_t t = 0; t < kNucTargets; ++t) {
+        sampled_nuclease_conc[idx * kNucTargets + t] =
+            sim.qssa().sampled_nuclease_conc(
+                agent_index, species::BACTERIOCIN_RECEPTOR_TARGETS[t]);
+      }
     }
   }
 
@@ -1464,9 +1654,30 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
                    local_n, cfg_);
   write_dataset_1d(fid, group + "/n_bi_loci", H5T_NATIVE_INT32, n_bi.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/radius", H5T_NATIVE_DOUBLE, radius.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/mass", H5T_NATIVE_DOUBLE, mass.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/outer_radius", H5T_NATIVE_DOUBLE, outer_radius.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/age", H5T_NATIVE_DOUBLE, age.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/sos_timer", H5T_NATIVE_DOUBLE, sos_timer.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/death_time", H5T_NATIVE_DOUBLE, death_time.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/pending_growth_chemistry_biomass", H5T_NATIVE_DOUBLE,
+                   pending_growth_chemistry_biomass.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/lineage_id", H5T_NATIVE_INT64, lineage_id.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/receptor_expr", H5T_NATIVE_DOUBLE,
                    receptor_expr.data(), local_n * NUM_RECEPTORS, cfg_);
+  write_dataset_1d(fid, group + "/receptor_expr_base", H5T_NATIVE_DOUBLE,
+                   receptor_expr_base.data(), local_n * NUM_RECEPTORS, cfg_);
+  write_dataset_1d(fid, group + "/motility_dir_x", H5T_NATIVE_DOUBLE, motility_dir_x.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/motility_dir_y", H5T_NATIVE_DOUBLE, motility_dir_y.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/motility_dir_z", H5T_NATIVE_DOUBLE, motility_dir_z.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/motility_swim_speed", H5T_NATIVE_DOUBLE, motility_swim_speed.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/motility_run_timer", H5T_NATIVE_DOUBLE, motility_run_timer.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/motility_is_stopped", H5T_NATIVE_INT32, motility_is_stopped.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/motility_stop_timer", H5T_NATIVE_DOUBLE, motility_stop_timer.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/motility_prev_carbon", H5T_NATIVE_DOUBLE, motility_prev_carbon.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/motility_prev_oxygen", H5T_NATIVE_DOUBLE, motility_prev_oxygen.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/motility_prev_ai2", H5T_NATIVE_DOUBLE, motility_prev_ai2.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/sampled_nuclease_conc", H5T_NATIVE_DOUBLE,
+                   sampled_nuclease_conc.data(), local_n * kNucTargets, cfg_);
   mpi_barrier(cfg_);
 #else
   (void)sim; (void)group;
@@ -1715,6 +1926,12 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
   std::vector<double> bi_ret;
   std::vector<double> bi_mw;
   std::vector<double> bi_imm_aff;
+  std::vector<double> bi_protease_hl;
+  std::vector<int32_t> bi_is_nuclease;
+  std::vector<double> bi_burst_size;
+  std::vector<double> bi_phage_ind;
+  std::vector<double> bi_phage_burst;
+  std::vector<double> bi_phage_lys;
 
   for (Int i = 0; i < n; ++i) {
     const Agent& a = *agents[static_cast<size_t>(i)];
@@ -1747,6 +1964,12 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
       bi_ret.push_back(bi.retardation);
       bi_mw.push_back(bi.molecular_weight);
       bi_imm_aff.push_back(bi.immunity_binding_affinity);
+      bi_protease_hl.push_back(bi.protease_half_life);
+      bi_is_nuclease.push_back(bi.is_nuclease ? 1 : 0);
+      bi_burst_size.push_back(bi.burst_size);
+      bi_phage_ind.push_back(bi.phage_induction_rate);
+      bi_phage_burst.push_back(bi.phage_burst_size);
+      bi_phage_lys.push_back(bi.phage_lysogeny_rate);
     }
   }
 
@@ -1803,6 +2026,18 @@ void HDF5Writer::write_genome_layer(const Simulation& sim,
                    bi_mw.data(), local_bi, cfg_);
   write_dataset_1d(fid, group + "/bi_immunity_binding_affinity", H5T_NATIVE_DOUBLE,
                    bi_imm_aff.data(), local_bi, cfg_);
+  write_dataset_1d(fid, group + "/bi_protease_half_life", H5T_NATIVE_DOUBLE,
+                   bi_protease_hl.data(), local_bi, cfg_);
+  write_dataset_1d(fid, group + "/bi_is_nuclease", H5T_NATIVE_INT32,
+                   bi_is_nuclease.data(), local_bi, cfg_);
+  write_dataset_1d(fid, group + "/bi_burst_size", H5T_NATIVE_DOUBLE,
+                   bi_burst_size.data(), local_bi, cfg_);
+  write_dataset_1d(fid, group + "/bi_phage_induction_rate", H5T_NATIVE_DOUBLE,
+                   bi_phage_ind.data(), local_bi, cfg_);
+  write_dataset_1d(fid, group + "/bi_phage_burst_size", H5T_NATIVE_DOUBLE,
+                   bi_phage_burst.data(), local_bi, cfg_);
+  write_dataset_1d(fid, group + "/bi_phage_lysogeny_rate", H5T_NATIVE_DOUBLE,
+                   bi_phage_lys.data(), local_bi, cfg_);
   mpi_barrier(cfg_);
 #else
   (void)sim; (void)group;

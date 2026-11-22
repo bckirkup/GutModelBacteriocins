@@ -150,6 +150,7 @@ gutibm_add_test(fmm test_fmm.cpp LABELS "unit"
     large_tree_locals_ready
     config_defaults)
 gutibm_add_test(qssa_stoichiometry test_qssa_stoichiometry.cpp LABELS "unit")
+gutibm_add_test(qssa_transient_bounds test_qssa_transient_bounds.cpp LABELS "unit;science")
 gutibm_add_test(chemical_field_reaction_residency
   test_chemical_field_reaction_residency.cpp LABELS "unit")
 gutibm_add_test(conjugation test_conjugation.cpp LABELS "unit")
@@ -239,6 +240,7 @@ if(GUTIBM_USE_HDF5)
   gutibm_add_test(hdf5_roundtrip test_hdf5_roundtrip.cpp LABELS "integration;hdf5")
   gutibm_add_test(hdf5_checkpoint test_hdf5_checkpoint.cpp LABELS "integration;hdf5")
   gutibm_add_test(hdf5_restart test_hdf5_restart.cpp LABELS "integration;hdf5")
+  gutibm_add_test(hdf5_rng_replay test_hdf5_rng_replay.cpp LABELS "integration;hdf5")
   gutibm_add_test(hdf5_schedule test_hdf5_schedule.cpp LABELS "integration;hdf5")
   gutibm_add_test(hdf5_compression test_hdf5_compression.cpp LABELS "integration;hdf5")
   gutibm_add_test(hdf5_live_agents test_hdf5_live_agents.cpp LABELS "integration;hdf5")

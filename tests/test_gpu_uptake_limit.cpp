@@ -300,6 +300,8 @@ void test_delivery_device_parity_and_provenance() {
 
   assert(std::string(cpu_delivery.chemistry_placement()) == "host");
   assert(std::string(delivery.chemistry_placement()) == "device_delivery");
+  assert(delivery.agents_gpu().metabolism_gpu_steps() > 0);
+  assert(delivery.agents_gpu().delivery_commit_gpu_steps() > 0);
   assert_delivery_oxygen_shape(cpu_delivery);
   assert_delivery_oxygen_shape(delivery);
   const auto& cpu_flux = cpu_delivery.chemical_field().flux_accounting();
@@ -432,6 +434,71 @@ void test_delivery_device_parity_and_provenance() {
             << format_real(none_field_realized) << "\n";
   std::cout << "  test_delivery_device_parity_and_provenance: PASSED\n";
 }
+
+void test_funded_respiration_and_anaerobic_maintenance_parity() {
+  for (const Real far_field_radius : {0.0, 10.0e-6}) {
+    SimulationConfig cfg = make_config(UptakeLimitMode::Delivery);
+    cfg.fixes.metabolism.delivery_far_field_radius = far_field_radius;
+    cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
+    cfg.chem_env.oxygen.enabled = true;
+    cfg.chem_env.oxygen.delivery_uptake_enabled = true;
+    cfg.chem_env.oxygen.metabolic_switch_enabled = true;
+    cfg.chem_env.oxygen.respiration_driver = "funded";
+    cfg.chem_env.oxygen.ros_driver = "funded";
+    cfg.chem_env.oxygen.k_ROS_funded = 1.0e-3;
+    cfg.chem_env.oxygen.tau_metabolic_switch = 120.0;
+    cfg.chem_env.oxygen.anaerobic_maintenance_factor = 8.0;
+
+    Simulation cpu = run(cfg, false);
+    Simulation gpu = run(cfg, true);
+
+    assert(std::string(gpu.chemistry_placement()) == "device_delivery");
+    assert(gpu.agents_gpu().metabolism_gpu_steps() > 0);
+    assert(gpu.agents_gpu().delivery_commit_gpu_steps() > 0);
+    assert(cpu.agents().size() == gpu.agents().size());
+
+    Real cpu_f_sum = 0.0;
+    Real gpu_f_sum = 0.0;
+    Real cpu_resp_sum = 0.0;
+    Real gpu_resp_sum = 0.0;
+    Real cpu_bio_sum = 0.0;
+    Real gpu_bio_sum = 0.0;
+    for (Int i = 0; i < cpu.agents().size(); ++i) {
+      cpu_f_sum += cpu.agents()[i].realized_fermentation_fraction;
+      gpu_f_sum += gpu.agents()[i].realized_fermentation_fraction;
+      cpu_resp_sum += cpu.agents()[i].respired_oxygen_rate;
+      gpu_resp_sum += gpu.agents()[i].respired_oxygen_rate;
+      cpu_bio_sum += cpu.agents()[i].biomass;
+      gpu_bio_sum += gpu.agents()[i].biomass;
+    }
+
+    const auto& cpu_flux = cpu.chemical_field().flux_accounting();
+    const auto& gpu_flux = gpu.chemical_field().flux_accounting();
+    const Real cpu_uptake = flux_value(
+        cpu, cpu_flux.agent_uptake_cumulative, cpu_flux.agent_uptake_interval);
+    const Real gpu_uptake = flux_value(
+        gpu, gpu_flux.agent_uptake_cumulative, gpu_flux.agent_uptake_interval);
+    const MaintenanceLedger cpu_maint = maintenance_ledger(cpu);
+    const MaintenanceLedger gpu_maint = maintenance_ledger(gpu);
+
+    constexpr Real tol = 1.0e-8;
+    assert(report_residual("funded_mu", total_mu(cpu), total_mu(gpu)) <= tol);
+    assert(report_residual("funded_biomass", cpu_bio_sum, gpu_bio_sum) <= tol);
+    assert(report_residual("funded_fermentation_fraction",
+                           cpu_f_sum, gpu_f_sum) <= tol);
+    assert(report_residual("funded_respired_oxygen_rate",
+                           cpu_resp_sum, gpu_resp_sum) <= tol);
+    assert(report_residual("funded_uptake_realized",
+                           cpu_uptake, gpu_uptake) <= tol);
+    assert(report_residual("funded_maintenance_realized",
+                           cpu_maint.realized, gpu_maint.realized) <= tol);
+    assert(report_residual("funded_maintenance_shortfall",
+                           cpu_maint.shortfall, gpu_maint.shortfall) <= tol);
+    assert(cpu_resp_sum > 0.0);
+    assert(cpu_maint.realized > 0.0);
+  }
+  std::cout << "  test_funded_respiration_and_anaerobic_maintenance_parity: PASSED\n";
+}
 #endif
 
 }  // namespace
@@ -449,6 +516,7 @@ int main() {
   test_sherwood_parity();
   test_none_mode_parity_and_absence_of_limitation();
   test_delivery_device_parity_and_provenance();
+  test_funded_respiration_and_anaerobic_maintenance_parity();
   std::cout << "GPU uptake limitation parity tests passed.\n";
   return 0;
 #endif
