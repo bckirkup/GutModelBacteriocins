@@ -1895,6 +1895,131 @@ void test_scheduled_perturbation_pulses() {
   std::cout << "scheduled_perturbation_pulses: passed\n";
 }
 
+
+// ── Post-merge hardening: funded O2/ROS reset when !inherit_oxygen,
+//    chemistry_stride={1,1,1} under live delivery, stale in_crypt cleared on
+//    surface reattachment, and pulse_events checkpoint persistence ───────────
+void test_live_oxygen_funded_reset_crypt_flag_and_stride() {
+  // 1. Parent config with funded O2 respiration + funded ROS + coarse
+  //    chemistry_stride={2,2,2} must initialize ladder_delivery cleanly
+  //    (!inherit_oxygen resets drivers to ambient; delivery resets stride={1,1,1}).
+  {
+    SimulationConfig cfg = live_cfg_for_test();
+    cfg.domain.chemistry_stride = {2, 2, 2};
+    cfg.chem_env.oxygen.enabled = true;
+    cfg.chem_env.oxygen.delivery_uptake_enabled = true;
+    cfg.chem_env.oxygen.respiration_driver = "funded";
+    cfg.chem_env.oxygen.respiration_driver_mode = RespirationDriver::Funded;
+    cfg.chem_env.oxygen.ros_driver = "funded";
+    cfg.chem_env.oxygen.ros_driver_mode = RosDriver::Funded;
+    cfg.chem_env.oxygen.k_ROS_funded = 1.0e12;
+    cfg.fixes.metabolism.uptake_limit = "delivery";
+    cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+    bool saw_o2 = false;
+    for (auto& c : cfg.chemicals) {
+      if (c.name == "carbon" || c.name == "oxygen") c.delivery_enabled = true;
+      if (c.name == "oxygen") saw_o2 = true;
+    }
+    if (!saw_o2) {
+      ChemicalSpec o2("oxygen", cfg.chem_env.oxygen.D_free, 1.0,
+                      cfg.chem_env.oxygen.epithelial_conc,
+                      cfg.chem_env.oxygen.epithelial_conc, 0.0, true, 30.0e-6,
+                      true);
+      o2.delivery_enabled = true;
+      cfg.chemicals.push_back(o2);
+    }
+
+    cfg.layer2.live_physics_mode = "ladder_delivery";  // inherit_oxygen = false
+    cfg.layer2.n_patches = 2;
+    cfg.layer2.audit.patch_index = -1;
+    cfg.layer2.audit.patch_indices = {0};
+
+    MucusSegment seg;
+    seg.init(cfg);
+    const SimulationConfig lc = seg.live_config_for(seg.patches()[0]);
+    assert(!lc.chem_env.oxygen.enabled);
+    assert(lc.chem_env.oxygen.respiration_driver == "ambient");
+    assert(lc.chem_env.oxygen.respiration_driver_mode ==
+           RespirationDriver::Ambient);
+    assert(lc.chem_env.oxygen.ros_driver == "ambient");
+    assert(lc.chem_env.oxygen.ros_driver_mode == RosDriver::Ambient);
+    assert(lc.domain.chemistry_stride[0] == 1 &&
+           lc.domain.chemistry_stride[1] == 1 &&
+           lc.domain.chemistry_stride[2] == 1);
+    assert(run_steps(seg, cfg.time.bio_dt, 2));
+    assert(seg.ledger_closed());
+  }
+
+  // 2. An external/pool cell carrying stale flags.in_crypt = true deposited onto
+  //    an Active exposed live patch (crypts_enabled = false) must have in_crypt
+  //    cleared on surface landing.
+  {
+    SimulationConfig cfg = live_cfg_for_test();
+    cfg.layer2.n_patches = 1;
+    cfg.layer2.crypt = {0.0, 0.0, 0.0, 2.0};
+    cfg.layer2.exposed_proximal = {1.0, 0.0, 0.0, 1.0};
+    cfg.layer2.exposed_distal = {0.0, 0.0, 0.0, 0.5};
+    cfg.layer2.initial_founder_cells = 2;
+    cfg.layer2.live_physics_mode = "inherit";
+    cfg.layer2.audit.patch_index = 0;
+
+    MucusSegment seg;
+    seg.init(cfg);
+    assert(seg.patches()[0].type == PatchType::ExposedProximal);
+
+    const TagID probe_tag = 999999ULL;
+    Agent emigrant = Agent::create_default(
+        probe_tag, 1,
+        {0.5 * cfg.layer2.patch_lateral_m, 0.5 * cfg.layer2.patch_lateral_m,
+         cfg.layer2.patch_depth_m},
+        5.0e-4);
+    emigrant.flags.in_crypt = true;
+    assert(seg.try_deposit(std::move(emigrant), 42ULL));
+
+    bool found_probe = false;
+    seg.for_each_colonist([&](const Agent& a) {
+      if (a.identity.tag == probe_tag) {
+        found_probe = true;
+        assert(!a.flags.in_crypt);
+      }
+    });
+    assert(found_probe);
+    assert(seg.ledger_closed());
+  }
+
+#ifdef GUTIBM_HDF5
+  // 3. PulseEventRecord history survives Layer-2 HDF5 checkpoint round-trip.
+  {
+    const std::string path = resolve_test_h5_path(
+        "GUTIBM_LAYER2_PULSE_EVENTS_CKPT_H5", "layer2_pulse_events");
+    SimulationConfig cfg = base_cfg();
+    cfg.layer2.n_patches = 12;
+    cfg.layer2.initial_patch_fraction = 1.0;
+    cfg.layer2.initial_founder_cells = 25;
+    Layer2Pulse p0;
+    p0.time_s = 120.0;
+    p0.washout_fraction = 0.5;
+    p0.mortality_fraction = 0.2;
+    cfg.layer2.pulses = {p0};
+
+    MucusSegment seg_a;
+    seg_a.init(cfg);
+    assert(run_steps(seg_a, cfg.time.bio_dt, 3));
+    assert(seg_a.pulse_events().size() == 1);
+    seg_a.write_checkpoint(path);
+
+    MucusSegment seg_b;
+    seg_b.init_from_checkpoint(cfg, path);
+    assert(seg_b.pulse_events().size() == 1);
+    assert(seg_b.pulse_events()[0].washed_out ==
+           seg_a.pulse_events()[0].washed_out);
+    assert(seg_b.pulse_events()[0].killed == seg_a.pulse_events()[0].killed);
+    std::remove(path.c_str());
+  }
+#endif
+  std::cout << "live_oxygen_funded_reset_crypt_flag_and_stride: passed\n";
+}
+
 }  // namespace
 
 int main() {
@@ -1921,6 +2046,7 @@ int main() {
   test_live_physics_crypt_and_oxygen_modes();
   test_live_delivery_alignment_and_patch_table_comparability();
   test_scheduled_perturbation_pulses();
+  test_live_oxygen_funded_reset_crypt_flag_and_stride();
   std::cout << "test_layer2_segment: all passed\n";
   return 0;
 }

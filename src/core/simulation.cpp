@@ -930,7 +930,7 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 
   size_t i = 0;
   for (int64_t id : atoms.id) {
-    (void)id;
+    max_tag = std::max(max_tag, static_cast<TagID>(id));
     Vec3 pos = {atoms.x[i], atoms.y[i], atoms.z[i]};
     if (!domain_.is_local(pos)) {
       ++i;
@@ -1067,9 +1067,10 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     qssa_.restore_sampled_nuclease_conc(agents_, local_sampled_nuclease);
   }
 
+  const bool same_tag_partition =
+      snap.metadata.next_tags.size() == static_cast<size_t>(domain_.nprocs());
   if (const auto rank_idx = static_cast<size_t>(domain_.rank());
-      rank_idx < snap.metadata.next_tags.size()
-      && snap.metadata.next_tags[rank_idx] > 0) {
+      same_tag_partition && snap.metadata.next_tags[rank_idx] > 0) {
     agents_.configure_tags(
         static_cast<TagID>(snap.metadata.next_tags[rank_idx]),
         AgentPool::tag_stride(domain_.nprocs()));
@@ -1192,10 +1193,15 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
       ? snap.metadata.event_window_end_time
       : clock_.time;
 
-  if (snap.metadata.has_rng_state) {
+  const bool same_seed =
+      !snap.metadata.has_rng_seed || snap.metadata.rng_seed == cfg_.seed;
+  const bool same_rng_partition =
+      snap.metadata.simulation_rng_states.size() ==
+      static_cast<size_t>(domain_.nprocs());
+  const bool exact_continuation = same_seed && same_rng_partition;
+  if (snap.metadata.has_rng_state && exact_continuation) {
     const auto rank_idx = static_cast<size_t>(domain_.rank());
-    if (rank_idx < snap.metadata.simulation_rng_states.size()
-        && !snap.metadata.simulation_rng_states[rank_idx].empty()) {
+    if (!snap.metadata.simulation_rng_states[rank_idx].empty()) {
       std::istringstream iss(snap.metadata.simulation_rng_states[rank_idx]);
       if (!(iss >> rng_.engine())) {
         throw CheckpointError("corrupt simulation RNG state in HDF5 checkpoint");
@@ -1207,8 +1213,17 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
         throw CheckpointError("corrupt immigration RNG state in HDF5 checkpoint");
       }
     }
+  } else if (domain_.rank() > 0) {
+    // Burn-in fork or MPI rank-repartitioned restart: ensure distinct per-rank
+    // simulation RNG streams when not replaying rank-matched checkpoint states.
+    rng_.seed(cfg_.seed ^
+              (static_cast<uint64_t>(domain_.rank()) * 0x9e3779b97f4a7c15ULL));
   }
-  if (snap.metadata.has_immigration_start_step) {
+  const bool preserve_immigration_phase =
+      exact_continuation && snap.metadata.has_immigration_start_step &&
+      (!snap.metadata.has_immigration_enabled ||
+       snap.metadata.immigration_was_enabled == cfg_.immigration.enabled);
+  if (preserve_immigration_phase) {
     immigration_.set_start_step(snap.metadata.immigration_start_step);
   } else {
     immigration_.set_start_step(clock_.step_count);

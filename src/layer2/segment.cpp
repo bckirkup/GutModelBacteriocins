@@ -586,6 +586,10 @@ void configure_live_oxygen(SimulationConfig& live, bool inherit_oxygen) {
     live.chem_env.oxygen.k_ROS_respiratory = 0.0;
     live.chem_env.oxygen.k_ROS_funded = 0.0;
     live.chem_env.oxygen.delivery_uptake_enabled = false;
+    live.chem_env.oxygen.respiration_driver = "ambient";
+    live.chem_env.oxygen.respiration_driver_mode = RespirationDriver::Ambient;
+    live.chem_env.oxygen.ros_driver = "ambient";
+    live.chem_env.oxygen.ros_driver_mode = RosDriver::Ambient;
     for (auto& c : live.chemicals) {
       if (c.name == species::OXYGEN) {
         c.delivery_enabled = false;
@@ -613,6 +617,7 @@ void configure_live_delivery(SimulationConfig& live) {
   live.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
   live.fixes.metabolism.delivery_far_field_radius = 1.0e-5;
   live.domain.grid_dx = 4.0e-6;
+  live.domain.chemistry_stride = {1, 1, 1};
   live.chemistry_decomposition = "replicated";
   for (auto& c : live.chemicals) {
     if (c.name == species::CARBON) {
@@ -1033,7 +1038,10 @@ void MucusSegment::step(Real dt) {
 
 bool MucusSegment::insert_pool_packet(Patch& dest, std::vector<Agent>& cells) {
   if (!dest.live) {
-    for (auto& cell : cells) dest.colonists.push_back(std::move(cell));
+    for (auto& cell : cells) {
+      cell.flags.in_crypt = false;
+      dest.colonists.push_back(std::move(cell));
+    }
     return true;
   }
 
@@ -1054,6 +1062,7 @@ bool MucusSegment::insert_pool_packet(Patch& dest, std::vector<Agent>& cells) {
   }
   for (auto& cell : cells) {
     cell.x[2] = landing_z(cell.x[2]);
+    cell.flags.in_crypt = false;
     cell.identity.owner_rank = 0;
     cell.grid_cell = -1;
     sim.agents().push_back(std::move(cell));
@@ -1174,7 +1183,7 @@ void MucusSegment::run_level_guards() {
   }
 
   const SegmentObservables stocks = observables();
-  if (stocks.patch_cells + stocks.pool_cells == 0) {
+  if (!allow_empty_survival_ && stocks.patch_cells + stocks.pool_cells == 0) {
     terminate(TerminationCause::PopulationStop,
               "all cells lost from patches and pool");
     return;

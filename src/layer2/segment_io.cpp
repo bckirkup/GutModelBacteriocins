@@ -583,6 +583,36 @@ void MucusSegment::write_state(hid_t fid,
   }
   write_vec(fid, p("/pulses/fired").c_str(), H5T_NATIVE_INT32,
             pulse_fired_i32);
+
+  std::vector<int64_t> ev_index;
+  std::vector<int64_t> ev_step;
+  std::vector<double> ev_time;
+  std::vector<int64_t> ev_washed;
+  std::vector<int64_t> ev_killed;
+  std::vector<int64_t> ev_patches;
+  ev_index.reserve(pulse_events_.size());
+  ev_step.reserve(pulse_events_.size());
+  ev_time.reserve(pulse_events_.size());
+  ev_washed.reserve(pulse_events_.size());
+  ev_killed.reserve(pulse_events_.size());
+  ev_patches.reserve(pulse_events_.size());
+  for (const auto& ev : pulse_events_) {
+    ev_index.push_back(ev.pulse_index);
+    ev_step.push_back(ev.step);
+    ev_time.push_back(static_cast<double>(ev.time_s));
+    ev_washed.push_back(ev.washed_out);
+    ev_killed.push_back(ev.killed);
+    ev_patches.push_back(ev.patches_affected);
+  }
+  write_vec(fid, p("/pulses/event_index").c_str(), H5T_NATIVE_INT64, ev_index);
+  write_vec(fid, p("/pulses/event_step").c_str(), H5T_NATIVE_INT64, ev_step);
+  write_vec(fid, p("/pulses/event_time_s").c_str(), H5T_NATIVE_DOUBLE, ev_time);
+  write_vec(fid, p("/pulses/event_washed_out").c_str(), H5T_NATIVE_INT64,
+            ev_washed);
+  write_vec(fid, p("/pulses/event_killed").c_str(), H5T_NATIVE_INT64,
+            ev_killed);
+  write_vec(fid, p("/pulses/event_patches_affected").c_str(), H5T_NATIVE_INT64,
+            ev_patches);
 }
 #endif  // GUTIBM_HDF5
 
@@ -794,13 +824,43 @@ void MucusSegment::read_state(hid_t fid, const std::string& prefix) {
 
   pulse_fired_.assign(cfg_->layer2.pulses.size(), false);
   pulse_events_.clear();
-  if (H5Lexists(fid, gp("/pulses").c_str(), H5P_DEFAULT) > 0 &&
-      H5Lexists(fid, gp("/pulses/fired").c_str(), H5P_DEFAULT) > 0) {
-    const auto fired_i32 = read_vec<int32_t>(
-        fid, gp("/pulses/fired").c_str(), H5T_NATIVE_INT32);
-    const size_t n_copy = std::min(fired_i32.size(), pulse_fired_.size());
-    for (size_t i = 0; i < n_copy; ++i) {
-      pulse_fired_[i] = (fired_i32[i] != 0);
+  if (H5Lexists(fid, gp("/pulses").c_str(), H5P_DEFAULT) > 0) {
+    if (H5Lexists(fid, gp("/pulses/fired").c_str(), H5P_DEFAULT) > 0) {
+      const auto fired_i32 = read_vec<int32_t>(
+          fid, gp("/pulses/fired").c_str(), H5T_NATIVE_INT32);
+      const size_t n_copy = std::min(fired_i32.size(), pulse_fired_.size());
+      for (size_t i = 0; i < n_copy; ++i) {
+        pulse_fired_[i] = (fired_i32[i] != 0);
+      }
+    }
+    if (H5Lexists(fid, gp("/pulses/event_index").c_str(), H5P_DEFAULT) > 0) {
+      const auto ev_index = read_vec<int64_t>(
+          fid, gp("/pulses/event_index").c_str(), H5T_NATIVE_INT64);
+      const auto ev_step = read_vec<int64_t>(
+          fid, gp("/pulses/event_step").c_str(), H5T_NATIVE_INT64);
+      const auto ev_time = read_vec<double>(
+          fid, gp("/pulses/event_time_s").c_str(), H5T_NATIVE_DOUBLE);
+      const auto ev_washed = read_vec<int64_t>(
+          fid, gp("/pulses/event_washed_out").c_str(), H5T_NATIVE_INT64);
+      const auto ev_killed = read_vec<int64_t>(
+          fid, gp("/pulses/event_killed").c_str(), H5T_NATIVE_INT64);
+      const auto ev_patches = read_vec<int64_t>(
+          fid, gp("/pulses/event_patches_affected").c_str(), H5T_NATIVE_INT64);
+      const size_t n_ev = ev_index.size();
+      if (ev_step.size() != n_ev || ev_time.size() != n_ev ||
+          ev_washed.size() != n_ev || ev_killed.size() != n_ev ||
+          ev_patches.size() != n_ev) {
+        throw HDF5Error("layer2 checkpoint pulse event arrays inconsistent");
+      }
+      pulse_events_.reserve(n_ev);
+      for (size_t i = 0; i < n_ev; ++i) {
+        pulse_events_.push_back({static_cast<Int>(ev_index[i]),
+                                 static_cast<Int>(ev_step[i]),
+                                 static_cast<Real>(ev_time[i]),
+                                 static_cast<Int>(ev_washed[i]),
+                                 static_cast<Int>(ev_killed[i]),
+                                 static_cast<Int>(ev_patches[i])});
+      }
     }
   }
 
