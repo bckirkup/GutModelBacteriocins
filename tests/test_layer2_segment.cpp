@@ -2022,10 +2022,16 @@ void test_live_oxygen_funded_reset_crypt_flag_and_stride() {
 
 void test_live_patch_prophage_lytic_mortality_closure() {
   SimulationConfig cfg = live_cfg_for_test();
+  const std::string ts_path = secure_temp_file("gutibm_l2_prophage_ts_");
+  const std::string prov_path = secure_temp_file("gutibm_l2_prophage_prov_");
+
   cfg.time.bio_dt = 60.0;
-  cfg.time.total_time = 300.0;
+  cfg.time.total_time = 240.0;
   cfg.layer2.n_patches = 2;
   cfg.layer2.initial_founder_cells = 30;
+  cfg.layer2.summary_interval_steps = 2;
+  cfg.layer2.timeseries_file = ts_path;
+  cfg.layer2.provenance_file = prov_path;
   cfg.layer2.audit.patch_index = 0;
   cfg.layer2.audit.halt_on_exceed = false;
   cfg.layer2.contraction_rate_per_min = 0.0;
@@ -2062,26 +2068,82 @@ void test_live_patch_prophage_lytic_mortality_closure() {
 
   MucusSegment seg;
   seg.init(cfg);
-  assert(run_steps(seg, cfg.time.bio_dt, 4));
+  assert(seg.run() == 0);
   assert(seg.ledger_closed());
   assert(seg.ledger().sos_lysis_deaths > 0);
   assert(seg.ledger().prophage_lytic_deaths > 0);
   assert(seg.ledger().biological_deaths ==
          seg.ledger().sos_lysis_deaths + seg.ledger().toxin_kill_deaths +
              seg.ledger().prophage_lytic_deaths);
+  {
+    std::ifstream prov_in(prov_path);
+    const std::string prov_json((std::istreambuf_iterator<char>(prov_in)),
+                                std::istreambuf_iterator<char>());
+    const std::string expected_kv =
+        "\"prophage_lytic_deaths\": " +
+        std::to_string(seg.ledger().prophage_lytic_deaths);
+    assert(prov_json.find(expected_kv) != std::string::npos);
+
+    std::ifstream ts_in(ts_path);
+    std::string ts_header;
+    assert(std::getline(ts_in, ts_header));
+    assert(ts_header.find("prophage_lytic_deaths_cum") != std::string::npos);
+  }
+  std::remove(ts_path.c_str());
+  std::remove(prov_path.c_str());
 
 #ifdef GUTIBM_HDF5
-  const std::string path =
-      resolve_test_h5_path("GUTIBM_LAYER2_PROPHAGE_CKPT_H5", "layer2_prophage");
-  seg.write_checkpoint(path);
-  MucusSegment restored;
-  restored.init_from_checkpoint(cfg, path);
-  assert(restored.ledger_closed());
-  assert(restored.ledger().prophage_lytic_deaths ==
-         seg.ledger().prophage_lytic_deaths);
-  assert(restored.ledger().biological_deaths ==
-         seg.ledger().biological_deaths);
-  std::remove(path.c_str());
+  // Phase-1 Layer-2 HDF5 checkpoints operate on tabulated segments (live audit
+  // slots are rejected by design); verify ledger dataset + founder lysogen
+  // immunity/inducible flags round-trip cleanly across patches and luminal pool.
+  {
+    const std::string path = resolve_test_h5_path(
+        "GUTIBM_LAYER2_PROPHAGE_CKPT_H5", "layer2_prophage");
+    SimulationConfig tab_cfg = base_cfg();
+    tab_cfg.layer2.n_patches = 6;
+    tab_cfg.layer2.initial_patch_fraction = 1.0;
+    tab_cfg.layer2.initial_founder_cells = 16;
+    tab_cfg.layer2.initial_pool_cells = 8;
+    auto& founder = tab_cfg.initial_strains.front();
+    founder.lysogen_prevalence = 1.0;
+    founder.active_inducible_fraction = 0.5;
+    InputParser::finalize_config(tab_cfg);
+
+    MucusSegment tab_seg;
+    tab_seg.init(tab_cfg);
+    assert(run_steps(tab_seg, tab_cfg.time.bio_dt, 2));
+    tab_seg.write_checkpoint(path);
+
+    {
+      hid_t fid = H5Fopen(path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+      assert(fid >= 0);
+      assert(H5Lexists(fid, "/ledger/prophage_lytic_deaths", H5P_DEFAULT) > 0);
+      H5Fclose(fid);
+    }
+
+    MucusSegment restored;
+    restored.init_from_checkpoint(tab_cfg, path);
+    assert(restored.ledger_closed());
+    assert(restored.fingerprint() == tab_seg.fingerprint());
+    assert(restored.ledger().prophage_lytic_deaths ==
+           tab_seg.ledger().prophage_lytic_deaths);
+
+    Int immune_count = 0;
+    Int inducible_count = 0;
+    Int cryptic_count = 0;
+    restored.for_each_colonist([&](const Agent& a) {
+      if (a.flags.has_prophage_immunity) ++immune_count;
+      if (a.flags.has_inducible_prophage) {
+        ++inducible_count;
+      } else {
+        ++cryptic_count;
+      }
+    });
+    assert(immune_count > 0);
+    assert(inducible_count > 0);
+    assert(cryptic_count > 0);
+    std::remove(path.c_str());
+  }
 #endif
   std::cout << "live_patch_prophage_lytic_mortality_closure: passed (lytic="
             << seg.ledger().prophage_lytic_deaths << ")\n";

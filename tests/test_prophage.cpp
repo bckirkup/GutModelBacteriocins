@@ -685,6 +685,7 @@ void test_mpi_transfer_and_hdf5_checkpoint_roundtrip() {
   active.active_inducible_fraction = 1.0;
 
   cfg.initial_strains = {cryptic, active};
+  InputParser::finalize_config(cfg);
 
   {
     Simulation sim;
