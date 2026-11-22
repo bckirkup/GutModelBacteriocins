@@ -439,6 +439,67 @@ void test_layer3_live_patch_try_deposit_and_closure() {
             << " mucosal_deaths=" << total_deaths << '\n';
 }
 
+
+// ── Post-merge hardening: 100% mucosal pulse clearance re-colonizes from
+//    regional lumen without premature PopulationStop, and init_from_checkpoint
+//    immediately restores chain.ledger().mucosal_deaths & ledger_closed() ─────
+void test_layer3_pulse_recovery_and_checkpoint_mucosal_deaths() {
+  SimulationConfig cfg = base_cfg();
+  cfg.layer2.n_patches = 12;
+  cfg.layer2.initial_patch_fraction = 1.0;
+  cfg.layer2.initial_founder_cells = 15;
+  cfg.layer2.initial_pool_cells = 0;
+  cfg.layer2.contraction_rate_per_min = 0.0;
+  cfg.layer3.n_patches_per_region = 12;
+  cfg.layer3.lumen_seed_cells = 5000.0;
+  cfg.layer3.reattach_p0 = 0.95;
+  cfg.layer3.hapc_rate_per_day = 0.0;
+  cfg.layer3.purge_at_s = -1.0;
+
+  // Complete mucosal mortality pulse at t = 120 s empties every mucosal patch
+  // and pool while the lumen remains populated (~5000 cells/region).
+  Layer2Pulse wipe_mucosa;
+  wipe_mucosa.time_s = 120.0;
+  wipe_mucosa.washout_fraction = 0.0;
+  wipe_mucosa.mortality_fraction = 1.0;
+  cfg.layer2.pulses = {wipe_mucosa};
+
+  ColonicChain chain;
+  chain.init(cfg);
+  for (int step = 0; step < 6; ++step) {
+    chain.step(cfg.time.bio_dt);
+    assert(chain.termination_cause() == TerminationCause::IncompleteUnknown);
+    assert(chain.ledger_closed());
+  }
+  assert(chain.ledger().mucosal_deaths > 0.0);
+
+  Int mucosal_recolonized = 0;
+  for (Int r = 0; r < kRegionCount; ++r) {
+    mucosal_recolonized += chain.region(r).segment.observables().patch_cells;
+  }
+  assert(mucosal_recolonized > 0);
+
+#ifdef GUTIBM_HDF5
+  const std::string path = resolve_test_h5_path(
+      "GUTIBM_LAYER3_PULSE_CKPT_H5", "layer3_pulse_mucosal_deaths");
+  chain.write_checkpoint(path);
+
+  ColonicChain restored;
+  restored.init_from_checkpoint(cfg, path);
+  assert(std::abs(restored.ledger().mucosal_deaths -
+                  chain.ledger().mucosal_deaths) <= 1e-9);
+  assert(restored.ledger_closed());
+
+  restored.step(cfg.time.bio_dt);
+  chain.step(cfg.time.bio_dt);
+  assert(restored.ledger_closed());
+  assert(restored.fingerprint() == chain.fingerprint());
+#endif
+  std::cout << "layer3_pulse_recovery_and_checkpoint_mucosal_deaths: "
+               "mucosal_deaths=" << chain.ledger().mucosal_deaths
+            << " recolonized=" << mucosal_recolonized << '\n';
+}
+
 }  // namespace
 
 int main() {
@@ -451,6 +512,7 @@ int main() {
   test_lumen_exemplar_genotype();
   test_capability_limit_reports_dead_params();
   test_layer3_live_patch_try_deposit_and_closure();
+  test_layer3_pulse_recovery_and_checkpoint_mucosal_deaths();
   std::cout << "test_layer3_chain: all tests passed\n";
   return 0;
 }

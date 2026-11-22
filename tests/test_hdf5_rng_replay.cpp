@@ -4,11 +4,13 @@
 
 #include "simulation.h"
 #include "input_parser.h"
+#include "h5_util.h"
 #include "hdf5_reader.h"
 #include "hdf5_writer.h"
 #include "path_utils.h"
 
 #include <cassert>
+#include <unordered_set>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -339,6 +341,150 @@ void test_bitwise_checkpoint_replay() {
   fs::remove_all(scratch);
 }
 
+
+void test_checkpoint_fork_reseed_and_tag_repartition() {
+#ifdef GUTIBM_HDF5
+  const std::string base_path =
+      resolve_test_h5_path("GUTIBM_TEST_RNG_FORK_H5", "rng_fork_base");
+  const fs::path scratch =
+      fs::path(base_path).parent_path() / "gutibm_rng_fork_artifacts";
+  const fs::path restart_dir = scratch / "ckpt";
+  fs::remove_all(scratch);
+  fs::create_directories(restart_dir);
+
+  constexpr Real dt = 60.0;
+  constexpr int burn_steps = 6;
+  constexpr int fork_steps = 6;
+
+  // Burn-in run WITHOUT immigration enabled (seed = 1001).
+  SimulationConfig burn_cfg = make_stochastic_config(restart_dir.string());
+  burn_cfg.seed = 1001;
+  burn_cfg.immigration.enabled = false;
+  burn_cfg.time.total_time = static_cast<Real>(burn_steps) * dt;
+
+  Simulation burn_sim;
+  burn_sim.init(burn_cfg);
+  for (int s = 1; s <= burn_steps; ++s) {
+    burn_sim.step(dt);
+    burn_sim.reset_step_events_after_summary(s, burn_sim.time());
+  }
+  const fs::path ckpt_path = restart_dir / "step_000006.h5";
+  assert(HDF5Writer::write_closed_restart(
+      burn_sim, ckpt_path.string(), burn_steps, burn_sim.time(), dt, true));
+
+  const HDF5CheckpointSnapshot snap =
+      HDF5Reader::load_snapshot(ckpt_path.string(), "");
+  assert(snap.metadata.has_rng_seed);
+  assert(snap.metadata.rng_seed == 1001ULL);
+  assert(snap.metadata.has_immigration_enabled);
+  assert(!snap.metadata.immigration_was_enabled);
+
+  // Fork A (seed = 2002) and Fork B (seed = 3003) from the same burn-in
+  // checkpoint, enabling a single-pulse immigration schedule (schedule="pulse",
+  // step=0, count=3), which fires when relative_step == 0 at fork start.
+  auto run_fork = [&](uint64_t fork_seed, Simulation& out_sim) {
+    SimulationConfig fcfg = burn_cfg;
+    fcfg.restart.enabled = false;
+    fcfg.restart.directory.clear();
+    fcfg.seed = fork_seed;
+    fcfg.immigration.enabled = true;
+    fcfg.immigration.schedule = "pulse";
+    fcfg.immigration.step = 0;
+    fcfg.immigration.count = 3;
+    fcfg.immigration.rate = 0.0;
+    fcfg.immigration.strain_index = 1;
+    out_sim.init_from_checkpoint(fcfg, ckpt_path.string(), "");
+    assert(out_sim.immigration().start_step() == burn_steps);
+    for (int s = burn_steps + 1; s <= burn_steps + fork_steps; ++s) {
+      out_sim.step(dt);
+      out_sim.reset_step_events_after_summary(s, out_sim.time());
+    }
+  };
+
+  Simulation fork_a;
+  Simulation fork_b;
+  run_fork(2002, fork_a);
+  run_fork(3003, fork_b);
+
+  // Single-pulse immigration at fork start must have injected 3 immigrants on
+  // the first post-checkpoint step.
+  assert(fork_a.cumulative_events().immigrations == 3);
+  assert(fork_b.cumulative_events().immigrations == 3);
+
+  // Distinct fork seeds must produce distinct stochastic trajectories instead
+  // of replaying the burn-in RNG state identically.
+  bool diverged = fork_a.agents().size() != fork_b.agents().size();
+  for (Int i = 0; !diverged && i < fork_a.agents().size(); ++i) {
+    if (!bitwise_equal_vec3(fork_a.agents()[i].x, fork_b.agents()[i].x) ||
+        !bitwise_equal(fork_a.agents()[i].biomass,
+                       fork_b.agents()[i].biomass)) {
+      diverged = true;
+    }
+  }
+  assert(diverged);
+
+  // Simulate an MPI rank-repartitioned checkpoint (e.g., 2-rank checkpoint
+  // loaded on a 1-rank process) where next_tag = {1, 2} would collide with live
+  // founder tags if next_tags.size() != domain.nprocs() were not guarded, and
+  // verify bounded h5::read_str_vec on a non-null-terminated string dataset.
+  const fs::path repart_path = restart_dir / "repart_step_000006.h5";
+  fs::copy_file(ckpt_path, repart_path, fs::copy_options::overwrite_existing);
+  {
+    hid_t fid = H5Fopen(repart_path.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+    assert(fid >= 0);
+    if (H5Lexists(fid, "/summary/step_000006/rng/next_tag", H5P_DEFAULT) > 0) {
+      assert(H5Ldelete(fid, "/summary/step_000006/rng/next_tag",
+                       H5P_DEFAULT) >= 0);
+    }
+    const std::vector<int64_t> two_rank_tags = {1, 2};
+    h5::write_vec(fid, "/summary/step_000006/rng/next_tag", H5T_NATIVE_INT64,
+                  two_rank_tags);
+
+    hsize_t dims[1] = {2};
+    hid_t sp = H5Screate_simple(1, dims, nullptr);
+    hid_t tp = H5Tcopy(H5T_C_S1);
+    H5Tset_size(tp, h5::kRngStrLen);
+    hid_t ds = H5Dcreate2(fid, "/summary/step_000006/rng/non_nul_probe", tp, sp,
+                          H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+    assert(ds >= 0);
+    std::vector<char> raw(2 * h5::kRngStrLen, 'X');
+    assert(H5Dwrite(ds, tp, H5S_ALL, H5S_ALL, H5P_DEFAULT, raw.data()) >= 0);
+    H5Dclose(ds);
+    H5Tclose(tp);
+    H5Sclose(sp);
+
+    const auto bounded =
+        h5::read_str_vec(fid, "/summary/step_000006/rng/non_nul_probe");
+    assert(bounded.size() == 2);
+    assert(bounded[0].size() == h5::kRngStrLen);
+    assert(bounded[1].size() == h5::kRngStrLen);
+    H5Fclose(fid);
+  }
+
+  Simulation repart_sim;
+  SimulationConfig repart_cfg = burn_cfg;
+  repart_cfg.restart.enabled = false;
+  repart_cfg.immigration.enabled = true;
+  repart_cfg.immigration.schedule = "pulse";
+  repart_cfg.immigration.step = 0;
+  repart_cfg.immigration.count = 4;
+  repart_cfg.immigration.rate = 0.0;
+  repart_sim.init_from_checkpoint(repart_cfg, repart_path.string(), "");
+  for (int s = burn_steps + 1; s <= burn_steps + 4; ++s) {
+    repart_sim.step(dt);
+  }
+  std::unordered_set<TagID> seen_tags;
+  for (Int i = 0; i < repart_sim.agents().size(); ++i) {
+    const TagID tag = repart_sim.agents()[i].identity.tag;
+    assert(tag > 0);
+    assert(seen_tags.insert(tag).second);
+  }
+  std::cout << "  PASS: seed-fork RNG divergence, fork pulse immigration, "
+               "rank-repartition tag uniqueness, and bounded read_str_vec\n";
+  fs::remove_all(scratch);
+#endif
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -350,6 +496,7 @@ int main(int argc, char** argv) {
 #endif
   std::cout << "=== Layer-1 HDF5 RNG Bitwise Replay Tests ===\n";
   test_bitwise_checkpoint_replay();
+  test_checkpoint_fork_reseed_and_tag_repartition();
   std::cout << "All HDF5 RNG bitwise replay tests passed.\n";
 #ifdef GUTIBM_MPI
   MPI_Finalize();

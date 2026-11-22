@@ -22,6 +22,7 @@ extern "C" {
 #include <algorithm>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace gutibm::h5 {
@@ -197,25 +198,33 @@ inline std::vector<std::string> read_str_vec(hid_t fid,
     throw HDF5Error(std::string("checkpoint missing dataset: ") + name);
   }
   hid_t space = H5Dget_space(ds);
+  if (H5Sget_simple_extent_ndims(space) != 1) {
+    H5Sclose(space);
+    H5Dclose(ds);
+    throw HDF5Error(std::string("expected 1D string dataset: ") + name);
+  }
   hsize_t dims[1] = {0};
   H5Sget_simple_extent_dims(space, dims, nullptr);
   hid_t type = H5Tcopy(H5T_C_S1);
   H5Tset_size(type, kRngStrLen);
   std::vector<std::string> out(dims[0]);
   if (dims[0] > 0) {
-    std::vector<char> flat(dims[0] * kRngStrLen);
-    H5Dread(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, flat.data());
+    std::vector<char> flat(dims[0] * kRngStrLen, '\0');
+    if (H5Dread(ds, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, flat.data()) < 0) {
+      H5Tclose(type);
+      H5Sclose(space);
+      H5Dclose(ds);
+      throw HDF5Error(std::string("failed to read string dataset: ") + name);
+    }
     for (size_t i = 0; i < dims[0]; ++i) {
-      out[i] = std::string(flat.data() + i * kRngStrLen);
-      const auto nul = out[i].find('\0');
-      if (nul != std::string::npos) {
-        out[i].resize(nul);
-      }
+      const std::string_view sv(flat.data() + i * kRngStrLen, kRngStrLen);
+      const auto nul = sv.find('\0');
+      out[i] = std::string(sv.substr(0, nul));
     }
   }
+  H5Tclose(type);
   H5Sclose(space);
   H5Dclose(ds);
-  H5Tclose(type);
   return out;
 }
 

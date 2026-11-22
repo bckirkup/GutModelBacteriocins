@@ -221,6 +221,7 @@ SimulationConfig& ColonicChain::emplace_region_cfg(
 void ColonicChain::wire_region(Int r) {
   const auto i = static_cast<size_t>(r);
   RegionState& rs = regions_[i];
+  rs.segment->set_allow_empty_survival(true);
   rs.segment->set_pool_exit_sink([this, i](std::vector<Agent>&& cells) {
     regions_[i].lumen.add_cells(cells);
   });
@@ -428,6 +429,12 @@ void ColonicChain::step(Real dt) {
               std::format("chain ledger diverged: stocks {:.6e} vs "
                           "expected {:.6e}",
                           stocks(), ledger_.expected_stocks()));
+    return;
+  }
+
+  if (stocks() <= 0.0) {
+    terminate(TerminationCause::PopulationStop,
+              "all cells lost from mucosa and lumen across all regions");
     return;
   }
 

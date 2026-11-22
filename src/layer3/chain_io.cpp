@@ -342,6 +342,7 @@ void ColonicChain::write_checkpoint(const std::string& path) const {
   make_group(fg.f, "/ledger");
   write_scalar_f64(fg.f, "/ledger/initial_cells", ledger_.initial_cells);
   write_scalar_f64(fg.f, "/ledger/mucosal_births", ledger_.mucosal_births);
+  write_scalar_f64(fg.f, "/ledger/mucosal_deaths", ledger_.mucosal_deaths);
   write_scalar_f64(fg.f, "/ledger/luminal_births", ledger_.luminal_births);
   write_scalar_f64(fg.f, "/ledger/stool_exports", ledger_.stool_exports);
   write_scalar_f64(fg.f, "/ledger/luminal_deaths",
@@ -389,8 +390,16 @@ void ColonicChain::init_from_checkpoint(const SimulationConfig& cfg,
   }
 
   ledger_.initial_cells = read_scalar_f64(fg.f, "/ledger/initial_cells");
-  ledger_.mucosal_births =
-      read_scalar_f64(fg.f, "/ledger/mucosal_births");
+  ledger_.mucosal_births = 0.0;
+  ledger_.mucosal_deaths = 0.0;
+  for (const RegionState& rs : regions_) {
+    ledger_.mucosal_births +=
+        static_cast<Real>(rs.segment->ledger().births);
+    ledger_.mucosal_deaths +=
+        static_cast<Real>(rs.segment->ledger().biological_deaths +
+                          rs.segment->ledger().pulse_washout +
+                          rs.segment->ledger().pulse_deaths);
+  }
   ledger_.luminal_births =
       read_scalar_f64(fg.f, "/ledger/luminal_births");
   ledger_.stool_exports = read_scalar_f64(fg.f, "/ledger/stool_exports");
@@ -403,6 +412,9 @@ void ColonicChain::init_from_checkpoint(const SimulationConfig& cfg,
   last_hapc_ = {};
   termination_cause_ = TerminationCause::IncompleteUnknown;
   termination_detail_.clear();
+  if (!ledger_closed()) {
+    throw HDF5Error("layer3 checkpoint restored a ledger that does not close");
+  }
 }
 
 #else  // !GUTIBM_HDF5

@@ -215,6 +215,9 @@ class MucusSegment {
   // cells still count as distal_losses at this ledger; the receiving
   // (luminal) ledger books the same cells as arrivals.
   void set_pool_exit_sink(std::function<void(std::vector<Agent>&&)> sink);
+  // Suppress standalone segment-level PopulationStop when an external luminal
+  // compartment (Layer-3 ColonicChain) can re-colonize empty Active patches.
+  void set_allow_empty_survival(bool allow) { allow_empty_survival_ = allow; }
   // One external arrival attempt into the mucosal layer: the target
   // patch is drawn uniformly via `stream_key` (caller supplies an
   // order-stable key so results are order-invariant under G3).
@@ -348,6 +351,7 @@ class MucusSegment {
   // Layer-3 coupling state (inert in standalone runs).
   Real contraction_rate_override_ = -1.0;  // <0 = use config value
   std::function<void(std::vector<Agent>&&)> pool_exit_sink_;
+  bool allow_empty_survival_ = false;
 };
 
 }  // namespace gutibm

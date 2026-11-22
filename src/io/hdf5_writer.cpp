@@ -1344,7 +1344,10 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
       for (int r = 0; r < nprocs; ++r) {
         const char* base =
             all_rng_bufs.data() + static_cast<size_t>(r) * static_cast<size_t>(h5::kRngStrLen);
-        gathered_rng_states[static_cast<size_t>(r)] = std::string(base);
+        const std::string_view sv(base, static_cast<size_t>(h5::kRngStrLen));
+        const auto nul = sv.find('\0');
+        gathered_rng_states[static_cast<size_t>(r)] =
+            std::string(sv.substr(0, nul));
       }
     }
     const auto& local_bursts = sim.toxin_bursts();
@@ -1384,6 +1387,13 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
         h5::rng_to_string(sim.immigration().rng())};
     h5::write_str_vec(fid, (rng_group + "/immigration_state").c_str(),
                       imm_state);
+    const auto origin_seed =
+        static_cast<unsigned long long>(sim.config().seed);
+    write_scalar_dataset(fid, rng_group + "/seed",
+                         H5T_NATIVE_ULLONG, &origin_seed);
+    const int32_t imm_enabled = sim.config().immigration.enabled ? 1 : 0;
+    write_scalar_dataset(fid, rng_group + "/immigration_enabled",
+                         H5T_NATIVE_INT32, &imm_enabled);
     const int32_t imm_start = sim.immigration().start_step();
     write_scalar_dataset(fid, rng_group + "/immigration_start_step",
                          H5T_NATIVE_INT32, &imm_start);

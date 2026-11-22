@@ -531,6 +531,16 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
         meta.immigration_rng_state = imm.front();
       }
     }
+    if (link_exists(file, rng_prefix + "seed")) {
+      meta.rng_seed = static_cast<uint64_t>(read_scalar<unsigned long long>(
+          file, rng_prefix + "seed", H5T_NATIVE_ULLONG));
+      meta.has_rng_seed = true;
+    }
+    if (link_exists(file, rng_prefix + "immigration_enabled")) {
+      meta.immigration_was_enabled = read_scalar<int32_t>(
+          file, rng_prefix + "immigration_enabled", H5T_NATIVE_INT32) != 0;
+      meta.has_immigration_enabled = true;
+    }
     if (link_exists(file, rng_prefix + "immigration_start_step")) {
       meta.immigration_start_step = read_scalar<int32_t>(
           file, rng_prefix + "immigration_start_step", H5T_NATIVE_INT32);

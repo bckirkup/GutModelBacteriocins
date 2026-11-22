@@ -33,10 +33,14 @@ struct HDF5CheckpointMetadata {
   bool has_grid_spacing = false;
   // Optional RNG / restart state (absent in legacy checkpoints).
   bool has_rng_state = false;
+  bool has_rng_seed = false;
+  uint64_t rng_seed = 0;
   std::vector<std::string> simulation_rng_states;
   std::string immigration_rng_state;
   Int immigration_start_step = 0;
   bool has_immigration_start_step = false;
+  bool has_immigration_enabled = false;
+  bool immigration_was_enabled = false;
   std::vector<int64_t> next_tags;
   bool has_toxin_bursts = false;
   std::vector<ToxinBurstSource> toxin_bursts;
