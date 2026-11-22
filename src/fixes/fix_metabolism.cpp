@@ -229,9 +229,35 @@ Real implicit_ferric_enterobactin_reimport(
   return (ferric_after_production - ferric_after_reimport) / dt;
 }
 
-bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
+template <typename SupportLookup>
+GpuDeliverySupportCsr build_delivery_support_csr(
+    const AgentPool& agents, const ChemicalField& chem, Real radius,
+    const SupportLookup& support_lookup) {
+  GpuDeliverySupportCsr csr;
+  if (radius <= 0.0 || agents.size() <= 0) return csr;
+  csr.offsets.resize(static_cast<size_t>(agents.size()) + 1, 0);
+  for (Int i = 0; i < agents.size(); ++i) {
+    const Agent& agent = agents[i];
+    if (agent.state != PhenoState::DEAD && !agent.flags.is_ghost
+        && agent.grid_cell >= 0) {
+      const auto& support = support_lookup(agent);
+      for (const Int global_cell : support) {
+        const Int storage_cell = chem.global_to_storage_cell(global_cell);
+        if (storage_cell >= 0) {
+          csr.cells.push_back(static_cast<int>(storage_cell));
+        }
+      }
+    }
+    csr.offsets[static_cast<size_t>(i) + 1] =
+        static_cast<int>(csr.cells.size());
+  }
+  return csr;
+}
+
+template <typename SupportLookup>
+bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt,
+                        const SupportLookup& support_lookup) {
   if (!sim.gpu_active()) return false;
-  if (cfg.uptake_limit_mode == UptakeLimitMode::Delivery) return false;
 
   auto& agents = sim.agents();
   Int local_agent_count = 0;
@@ -295,6 +321,12 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
   buffers.o2_boost_max = o2cfg.boost_max;
   buffers.o2_Km = o2cfg.Km;
   buffers.metabolic_switch_enabled = o2cfg.metabolic_switch_enabled ? 1 : 0;
+  buffers.respiration_driver_mode =
+      o2cfg.respiration_driver_mode == RespirationDriver::Funded ? 1 : 0;
+  buffers.o2_delivery_enabled =
+      (o2cfg.enabled && o2cfg.delivery_uptake_enabled && i_o2 >= 0) ? 1 : 0;
+  buffers.o2_q_consumption = o2cfg.q_consumption;
+  buffers.o2_q_maintenance = o2cfg.q_maintenance;
   buffers.mu_crit = o2cfg.mu_crit;
   buffers.aerobic_mu_factor = o2cfg.aerobic_mu_factor;
   buffers.anaerobic_mu_factor = o2cfg.anaerobic_mu_factor;
@@ -332,8 +364,43 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
     buffers.effective_diffusivity_iron = uptake::effective_diffusivity(
         iron_spec.diff_coeff, iron_spec.retardation);
   }
+  if (i_o2 >= 0) {
+    const ChemicalSpec& oxygen_spec = chem.spec(i_o2);
+    buffers.effective_diffusivity_oxygen = uptake::effective_diffusivity(
+        oxygen_spec.diff_coeff, oxygen_spec.retardation);
+  }
   buffers.d_uptake_limit_totals = cg.uptake_limit_totals_device();
   buffers.d_maintenance_available = cg.maintenance_available_device();
+
+  if (cfg.uptake_limit_mode == UptakeLimitMode::Delivery) {
+    const GpuDeliverySupportCsr support = build_delivery_support_csr(
+        agents, chem, cfg.delivery_far_field_radius, support_lookup);
+    GpuDeliveryPrepareOutput output;
+    if (!ag.run_delivery_prepare(
+            sim.domain(), cfg, buffers, support, chem.ncells(), dt,
+            local_agent_count, output)) {
+      return false;
+    }
+    ag.sync_to_host(agents);
+    ag.sync_delivery_to_host(agents);
+    ag.sync_receptor_expression_to_host(agents);
+    cg.accumulate_reactions_to_host(sim.chemical_field());
+    auto& chem_mut = sim.chemical_field();
+    if (i_carbon >= 0) {
+      chem_mut.add_prescribed_sinks(i_carbon, output.prescribed_carbon);
+      chem_mut.flux_accounting().add_uptake_demand(
+          i_carbon, output.carbon_demand);
+    }
+    if (buffers.o2_delivery_enabled != 0 && i_o2 >= 0) {
+      chem_mut.add_prescribed_sinks(i_o2, output.prescribed_oxygen);
+      chem_mut.flux_accounting().add_uptake_demand(i_o2, output.oxygen_demand);
+    }
+    if (i_iron >= 0 && output.iron_uptake > 0.0) {
+      chem_mut.flux_accounting().add_agent_uptake(i_iron, output.iron_uptake);
+    }
+    return true;
+  }
+
   if (!ag.run_metabolism(
           sim.domain(), cfg, buffers, cg.agent_uptake_device(), dt,
           local_agent_count)) {
@@ -350,7 +417,10 @@ bool try_gpu_metabolism(Simulation& sim, const MetabolismConfig& cfg, Real dt) {
 }  // namespace
 
 void FixMetabolism::compute(Real dt) {
-  if (try_gpu_metabolism(sim_, cfg_, dt)) {
+  prepare_delivery_support_cache();
+  if (try_gpu_metabolism(sim_, cfg_, dt, [this](const Agent& agent) -> const std::vector<Int>& {
+        return delivery_support_cells(agent);
+      })) {
     // Division stays in compute (same as CPU path) so fix_bacteriocin in this
     // biology pass can observe just_divided during the division timestep.
     apply_siderophore_chemistry(dt);
@@ -358,7 +428,6 @@ void FixMetabolism::compute(Real dt) {
     return;
   }
 
-  prepare_delivery_support_cache();
   auto& agents = sim_.agents();
   prepare_carbon_maintenance();
   #ifdef GUTIBM_OPENMP
@@ -645,8 +714,38 @@ void FixMetabolism::commit_delivery_oxygen(Real dt, Int oxygen) {
 
 void FixMetabolism::post_chemistry(Real dt) {
   if (cfg_.uptake_limit_mode != UptakeLimitMode::Delivery) return;
-  commit_delivery_uptake(dt);
   auto& chem = sim_.chemical_field();
+  bool committed_on_gpu = false;
+  if (sim_.gpu_active() && dt > 0.0 && sim_.agents().size() > 0) {
+    auto& ag = sim_.agents_gpu();
+    const auto& cg = sim_.chem_gpu();
+    ag.sync_from_host(sim_.agents());
+    const GpuDeliverySupportCsr support = build_delivery_support_csr(
+        sim_.agents(), chem, cfg_.delivery_far_field_radius,
+        [this](const Agent& agent) -> const std::vector<Int>& {
+          return delivery_support_cells(agent);
+        });
+    const GpuDeliveryCommitContext ctx{
+        .domain = sim_.domain(),
+        .chem = chem,
+        .oxygen = sim_.config().chem_env.oxygen,
+        .support = support,
+        .dt = dt,
+        .storage_nx = cg.storage_nx(),
+        .owned_global_x_begin = cg.slab_mode() ? cg.owned_x_begin() : 0,
+        .owned_global_x_end =
+            cg.slab_mode() ? cg.owned_x_end() : sim_.domain().nx(),
+        .owned_storage_x_begin = cg.owned_storage_x_begin(),
+    };
+    if (ag.run_delivery_commit(ctx)) {
+      ag.sync_to_host(sim_.agents());
+      ag.sync_delivery_to_host(sim_.agents());
+      committed_on_gpu = true;
+    }
+  }
+  if (!committed_on_gpu) {
+    commit_delivery_uptake(dt);
+  }
   chem.sum_agent_uptake_across_ranks();
   chem.flux_accounting().commit_agent_uptake_step();
 }

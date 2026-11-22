@@ -1,6 +1,7 @@
 #include "chemical_field.h"
 #include "chem_environment_config.h"
 #include "domain.h"
+#include "agent_pool_gpu.h"
 #include "chemical_field_gpu.h"
 #include "device.h"
 #include "dispatch.h"
@@ -226,6 +227,97 @@ void test_implicit_oxygen_sink_split(const Domain& domain) {
   std::cout << "PASS: implicit oxygen VBF sink is positive and proportional\n";
 }
 
+void test_implicit_iron_sink_positivity_and_closure(const Domain& domain) {
+  constexpr Real dt = 60.0;
+  constexpr Real initial_iron = 2.0e-5;
+  ChemicalSpec iron;
+  iron.name = species::IRON;
+  iron.initial_conc = initial_iron;
+  iron.diffusion_enabled = false;
+
+  const std::array<Real, 5> sink_rates = {1.0e-4, 1.0e-2, 0.1, 1.0, 10.0};
+  const Real cell_volume = domain.cell_volume();
+  Real previous_removed = 0.0;
+  for (const Real rate : sink_rates) {
+    ChemicalField chem;
+    chem.init(domain, {iron});
+    const Int iron_index = chem.find(species::IRON);
+    assert(iron_index >= 0);
+
+    VBFConfig vbf_cfg;
+    vbf_cfg.mucin_liberation = 0.0;
+    vbf_cfg.carbon_sink_vmax = 0.0;
+    vbf_cfg.nutrient_sink = rate;
+    VBF vbf;
+    vbf.init(vbf_cfg, domain);
+    OxygenConfig oxygen;
+    oxygen.enabled = false;
+    AcetateConfig acetate;
+    acetate.enabled = false;
+    MucinConfig mucin;
+    mucin.enabled = false;
+
+    VbfFluxTotals totals;
+    vbf.apply_nutrient_coupling(
+        chem, domain, dt, oxygen, acetate, mucin, &totals);
+
+    const Real expected_after = initial_iron / (1.0 + rate * dt);
+    const Real expected_reac = -(initial_iron - expected_after) / dt;
+    Real applied_total = 0.0;
+    for (Int cell = 0; cell < chem.ncells(); ++cell) {
+      const Real reac = chem.reac(iron_index, cell);
+      assert(std::abs(reac - expected_reac)
+             <= 1.0e-12 * std::max(std::abs(expected_reac), 1.0e-30));
+      const Real updated = chem.conc(iron_index, cell) + reac * dt;
+      assert(updated > 0.0);
+      assert(std::abs(updated - expected_after)
+             <= 1.0e-12 * std::max(expected_after, 1.0e-30));
+      applied_total += -reac * cell_volume * dt;
+    }
+    assert(std::abs(applied_total - totals.iron_sink)
+           <= 1.0e-12 * std::max(applied_total, 1.0e-30));
+    assert(applied_total < initial_iron * static_cast<Real>(chem.ncells())
+           * cell_volume);
+    assert(applied_total > previous_removed);
+    previous_removed = applied_total;
+  }
+
+  // Multi-step mass closure with stiff k*dt = 60 > 1 (zero reaction clip).
+  ChemicalField chem;
+  chem.init(domain, {iron});
+  const Int iron_index = chem.find(species::IRON);
+  VBFConfig stiff_cfg;
+  stiff_cfg.mucin_liberation = 0.0;
+  stiff_cfg.carbon_sink_vmax = 0.0;
+  stiff_cfg.nutrient_sink = 1.0;
+  VBF vbf;
+  vbf.init(stiff_cfg, domain);
+  OxygenConfig oxygen;
+  AcetateConfig acetate;
+  MucinConfig mucin;
+  const Real before = initial_iron * static_cast<Real>(chem.ncells())
+      * cell_volume;
+  Real total_sink = 0.0;
+  for (int step = 0; step < 5; ++step) {
+    chem.zero_reactions();
+    VbfFluxTotals totals;
+    vbf.apply_nutrient_coupling(
+        chem, domain, dt, oxygen, acetate, mucin, &totals);
+    total_sink += totals.iron_sink;
+    for (Int cell = 0; cell < chem.ncells(); ++cell) {
+      const Real updated =
+          chem.conc(iron_index, cell) + chem.reac(iron_index, cell) * dt;
+      assert(updated > 0.0);
+      chem.conc(iron_index, cell) = updated;
+    }
+  }
+  const Real after = chem.conc(iron_index, 0)
+      * static_cast<Real>(chem.ncells()) * cell_volume;
+  const Real scale = std::abs(before) + std::abs(after) + std::abs(total_sink);
+  assert(std::abs((after - before) + total_sink) < 1.0e-12 * scale);
+  std::cout << "PASS: implicit iron VBF sink is unconditionally positive and closed\n";
+}
+
 }  // namespace
 
 int main() {
@@ -291,6 +383,7 @@ int main() {
   }
   test_implicit_sink_mass_closure(domain, carbon);
   test_implicit_oxygen_sink_split(domain);
+  test_implicit_iron_sink_positivity_and_closure(domain);
   std::vector empty_counts(static_cast<size_t>(domain.ncells()), 0);
   std::vector<Int> dense_counts = empty_counts;
   dense_counts[0] = 1;
@@ -359,10 +452,11 @@ int main() {
     gpu_field.init(gpu_reference);
     gpu_field.sync_to_device(gpu_reference);
     gpu_field.zero_reactions_on_device();
+    AgentPoolGpu empty_agents_gpu;
     VbfFluxTotals gpu_totals;
     assert(gpu_apply_vbf_coupling(
         gpu_field, gpu_reference, domain, vbf, oxygen, acetate, mucin,
-        gpu_totals, dt));
+        empty_agents_gpu, gpu_totals, dt));
     gpu_field.sync_reactions_to_host(gpu_reference);
     Real gpu_applied_amount = 0.0;
     for (Int cell = 0; cell < gpu_reference.ncells(); ++cell) {
@@ -373,6 +467,46 @@ int main() {
            < 1.0e-12 * gpu_applied_amount);
     assert(std::abs(gpu_totals.carbon_sink - totals.carbon_sink)
            < 1.0e-12 * totals.carbon_sink);
+
+    // Verify GPU implicit iron VBF sink parity (including stiff k*dt = 60 > 1).
+    ChemicalSpec iron;
+    iron.name = species::IRON;
+    iron.initial_conc = 2.0e-5;
+    iron.diffusion_enabled = false;
+    for (const Real rate : {1.0e-4, 1.0}) {
+      VBFConfig iron_vbf_cfg;
+      iron_vbf_cfg.mucin_liberation = 0.0;
+      iron_vbf_cfg.carbon_sink_vmax = 0.0;
+      iron_vbf_cfg.nutrient_sink = rate;
+      VBF iron_vbf;
+      iron_vbf.init(iron_vbf_cfg, domain);
+      ChemicalField cpu_iron;
+      cpu_iron.init(domain, {iron});
+      ChemicalField gpu_iron_ref;
+      gpu_iron_ref.init(domain, {iron});
+      const Int iron_idx = cpu_iron.find(species::IRON);
+      VbfFluxTotals cpu_iron_totals;
+      iron_vbf.apply_nutrient_coupling(
+          cpu_iron, domain, 60.0, oxygen, acetate, mucin, &cpu_iron_totals);
+      ChemicalFieldGpu gpu_iron_field;
+      gpu_iron_field.init(gpu_iron_ref);
+      gpu_iron_field.sync_to_device(gpu_iron_ref);
+      gpu_iron_field.zero_reactions_on_device();
+      VbfFluxTotals gpu_iron_totals;
+      assert(gpu_apply_vbf_coupling(
+          gpu_iron_field, gpu_iron_ref, domain, iron_vbf, oxygen, acetate,
+          mucin, empty_agents_gpu, gpu_iron_totals, 60.0));
+      gpu_iron_field.sync_reactions_to_host(gpu_iron_ref);
+      assert(std::abs(gpu_iron_totals.iron_sink - cpu_iron_totals.iron_sink)
+             <= 1.0e-12 * std::max(cpu_iron_totals.iron_sink, 1.0e-30));
+      for (Int cell = 0; cell < gpu_iron_ref.ncells(); ++cell) {
+        const Real cpu_r = cpu_iron.reac(iron_idx, cell);
+        const Real gpu_r = gpu_iron_ref.reac(iron_idx, cell);
+        assert(std::abs(gpu_r - cpu_r)
+               <= 1.0e-12 * std::max(std::abs(cpu_r), 1.0e-30));
+        assert(gpu_iron_ref.conc(iron_idx, cell) + gpu_r * 60.0 > 0.0);
+      }
+    }
   }
 #endif
   std::cout << "PASS: VBF reported carbon sink equals applied reaction integral\n";

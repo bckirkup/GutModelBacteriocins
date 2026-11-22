@@ -1108,6 +1108,28 @@ Real QSSASolver::sampled_nuclease_conc(
   return samples[static_cast<size_t>(agent_index)];
 }
 
+void QSSASolver::restore_sampled_nuclease_conc(
+    const AgentPool& agents, const std::vector<Real>& flat_values) {
+  sampled_agents_ = &agents;
+  const size_t n_agents = static_cast<size_t>(agents.size());
+  const size_t n_targets = species::BACTERIOCIN_RECEPTOR_TARGETS.size();
+  if (flat_values.size() != n_agents * n_targets) {
+    sampled_nuclease_sources_ = false;
+    for (auto& field : sampled_nuclease_fields_) {
+      field.samples.clear();
+    }
+    return;
+  }
+  sampled_nuclease_sources_ = true;
+  for (size_t slot = 0; slot < n_targets; ++slot) {
+    auto& samples = sampled_nuclease_fields_[slot].samples;
+    samples.resize(n_agents);
+    for (size_t i = 0; i < n_agents; ++i) {
+      samples[i] = flat_values[i * n_targets + slot];
+    }
+  }
+}
+
 Real QSSASolver::sampled_toxin_max(Int species_idx) const {
   if (const Int sample_idx = sampled_slot_for_species(species_idx);
       sample_idx < 0) return 0.0;

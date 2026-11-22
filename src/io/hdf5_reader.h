@@ -9,6 +9,7 @@
 #include "types.h"
 #include "step_events.h"
 #include "chemical_field.h"
+#include "qssa_solver.h"
 #include <cstdint>
 #include <map>
 #include <string>
@@ -30,6 +31,15 @@ struct HDF5CheckpointMetadata {
   NutrientFluxAccounting flux_accounting;
   Vec3 grid_spacing = {0.0, 0.0, 0.0};
   bool has_grid_spacing = false;
+  // Optional RNG / restart state (absent in legacy checkpoints).
+  bool has_rng_state = false;
+  std::vector<std::string> simulation_rng_states;
+  std::string immigration_rng_state;
+  Int immigration_start_step = 0;
+  bool has_immigration_start_step = false;
+  std::vector<int64_t> next_tags;
+  bool has_toxin_bursts = false;
+  std::vector<ToxinBurstSource> toxin_bursts;
 };
 
 struct HDF5CheckpointAgents {
@@ -48,6 +58,25 @@ struct HDF5CheckpointAgents {
   std::vector<double>  respired_oxygen_rate;
   std::vector<int32_t> in_crypt;
   std::vector<int32_t> microcin_penalty_applied;
+  std::vector<double>  mass;
+  std::vector<double>  outer_radius;
+  std::vector<double>  age;
+  std::vector<double>  sos_timer;
+  std::vector<double>  death_time;
+  std::vector<double>  pending_growth_chemistry_biomass;
+  std::vector<double>  receptor_expr;       // N * NUM_RECEPTORS
+  std::vector<double>  receptor_expr_base;  // N * NUM_RECEPTORS
+  std::vector<double>  motility_dir_x;
+  std::vector<double>  motility_dir_y;
+  std::vector<double>  motility_dir_z;
+  std::vector<double>  motility_swim_speed;
+  std::vector<double>  motility_run_timer;
+  std::vector<int32_t> motility_is_stopped;
+  std::vector<double>  motility_stop_timer;
+  std::vector<double>  motility_prev_carbon;
+  std::vector<double>  motility_prev_oxygen;
+  std::vector<double>  motility_prev_ai2;
+  std::vector<double>  sampled_nuclease_conc;  // N * 4 (BtuB, FepA, CirA, FhuA)
   std::vector<int64_t> lineage;
 };
 
@@ -82,6 +111,13 @@ struct HDF5CheckpointGenome {
   std::vector<double>  bi_retardation;
   std::vector<double>  bi_molecular_weight;
   std::vector<double>  bi_immunity_binding_affinity;
+  // Optional BI locus fields (empty when absent in older checkpoints).
+  std::vector<double>  bi_protease_half_life;
+  std::vector<int32_t> bi_is_nuclease;
+  std::vector<double>  bi_burst_size;
+  std::vector<double>  bi_phage_induction_rate;
+  std::vector<double>  bi_phage_burst_size;
+  std::vector<double>  bi_phage_lysogeny_rate;
 };
 
 struct HDF5CheckpointGrid {

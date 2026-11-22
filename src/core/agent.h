@@ -127,6 +127,7 @@ class AgentPool {
     return id;
   }
   void set_next_tag(TagID t) { next_tag_ = t; }
+  TagID next_tag_value() const { return next_tag_; }
 
   // Globally unique tags: id = rank + 1 + k * nprocs (k = 0, 1, 2, ...)
   static TagID first_tag_for_rank(Int rank, Int nprocs);

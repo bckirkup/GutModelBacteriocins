@@ -21,6 +21,9 @@ class ImmigrationEngine {
  public:
   void seed(uint64_t seed) { rng_.seed(seed); }
   void set_start_step(Int step) { start_step_ = step; }
+  Int start_step() const { return start_step_; }
+  RNG& rng() { return rng_; }
+  const RNG& rng() const { return rng_; }
 
   void validate(const ImmigrationConfig& cfg, Int initial_strain_count,
                 const Vec3& lo, const Vec3& hi) const;

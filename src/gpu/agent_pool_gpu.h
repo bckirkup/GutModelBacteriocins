@@ -39,6 +39,10 @@ struct GpuMetabolismBuffers {
   double o2_boost_max = 0.0;
   double o2_Km = 0.0;
   int metabolic_switch_enabled = 0;
+  int respiration_driver_mode = 0;  // 0 = Ambient, 1 = Funded
+  int o2_delivery_enabled = 0;
+  double o2_q_consumption = 0.0;
+  double o2_q_maintenance = 0.0;
   double mu_crit = 0.0;
   double aerobic_mu_factor = 1.0;
   double anaerobic_mu_factor = 1.0;
@@ -61,8 +65,38 @@ struct GpuMetabolismBuffers {
   int receptor_count = 0;
   double effective_diffusivity_carbon = 0.0;
   double effective_diffusivity_iron = 0.0;
+  double effective_diffusivity_oxygen = 0.0;
   double* d_uptake_limit_totals = nullptr;
   double* d_maintenance_available = nullptr;
+};
+
+class ChemicalField;
+struct OxygenConfig;
+
+struct GpuDeliverySupportCsr {
+  std::vector<int> offsets;
+  std::vector<int> cells;
+  bool active() const { return !offsets.empty(); }
+};
+
+struct GpuDeliveryPrepareOutput {
+  std::vector<Real> prescribed_carbon;
+  std::vector<Real> prescribed_oxygen;
+  double iron_uptake = 0.0;
+  double carbon_demand = 0.0;
+  double oxygen_demand = 0.0;
+};
+
+struct GpuDeliveryCommitContext {
+  const Domain& domain;
+  ChemicalField& chem;
+  const OxygenConfig& oxygen;
+  const GpuDeliverySupportCsr& support;
+  double dt = 0.0;
+  Int storage_nx = 0;
+  Int owned_global_x_begin = 0;
+  Int owned_global_x_end = 0;
+  Int owned_storage_x_begin = 0;
 };
 
 class AgentPoolGpu {
@@ -70,6 +104,7 @@ class AgentPoolGpu {
   void resize(Int n);
   void sync_from_host(const AgentPool& pool);
   void sync_to_host(AgentPool& pool) const;
+  void sync_delivery_to_host(AgentPool& pool) const;
   void sync_receptor_expression_to_host(AgentPool& pool) const;
 
   Int size() const { return size_; }
@@ -112,13 +147,21 @@ class AgentPoolGpu {
   bool run_metabolism(const Domain& domain, const MetabolismConfig& cfg,
                       const GpuMetabolismBuffers& buffers, double* uptake_totals,
                       double dt, Int num_agents);
+  bool run_delivery_prepare(const Domain& domain, const MetabolismConfig& cfg,
+                            const GpuMetabolismBuffers& buffers,
+                            const GpuDeliverySupportCsr& support,
+                            Int ncells, double dt, Int local_agent_count,
+                            GpuDeliveryPrepareOutput& output);
+  bool run_delivery_commit(const GpuDeliveryCommitContext& ctx);
   Int metabolism_gpu_steps() const { return metabolism_gpu_steps_; }
+  Int delivery_commit_gpu_steps() const { return delivery_commit_gpu_steps_; }
 
   void sync_positions_to_host(AgentPool& pool) const;
 
  private:
   Int size_ = 0;
   Int metabolism_gpu_steps_ = 0;
+  Int delivery_commit_gpu_steps_ = 0;
   DeviceBuffer<double> d_x_;
   DeviceBuffer<double> d_y_;
   DeviceBuffer<double> d_z_;
@@ -141,6 +184,17 @@ class AgentPoolGpu {
   DeviceBuffer<double> d_ligand_affinity_;
   DeviceBuffer<int> d_iron_receptor_;
   DeviceBuffer<double> d_plasmid_amelioration_;
+  DeviceBuffer<double> d_pending_growth_carbon_;
+  DeviceBuffer<double> d_pending_maintenance_carbon_;
+  DeviceBuffer<double> d_pending_carbon_ceiling_;
+  DeviceBuffer<double> d_pending_carbon_funding_;
+  DeviceBuffer<double> d_pending_biomass_;
+  DeviceBuffer<double> d_pending_growth_chemistry_biomass_;
+  DeviceBuffer<double> d_pending_oxygen_growth_;
+  DeviceBuffer<double> d_pending_oxygen_maintenance_;
+  DeviceBuffer<double> d_pending_oxygen_ceiling_;
+  DeviceBuffer<double> d_pending_oxygen_funding_;
+  DeviceBuffer<double> d_respired_oxygen_rate_;
 };
 
 }  // namespace gutibm

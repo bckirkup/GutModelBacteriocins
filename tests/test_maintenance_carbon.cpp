@@ -243,6 +243,121 @@ void test_uptake_limit_mode_contrast() {
   std::cout << "  test_uptake_limit_mode_contrast: PASSED\n";
 }
 
+void test_epithelial_oxygen_default_unchanged() {
+  const SimulationConfig cfg = InputParser::default_config();
+  assert(std::abs(cfg.chem_env.oxygen.epithelial_conc - 55.0e-6) <= 1.0e-18);
+  std::cout << "  test_epithelial_oxygen_default_unchanged: PASSED\n";
+}
+
+void test_anaerobic_maintenance_factor_scaling() {
+  const std::vector<Real> factors = {1.0, 3.4, 8.0, 15.0};
+  std::vector<Real> draws;
+  draws.reserve(factors.size());
+  for (const Real factor : factors) {
+    SimulationConfig cfg = base_config();
+    cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-4;
+    cfg.chem_env.oxygen.enabled = true;
+    cfg.chem_env.oxygen.metabolic_switch_enabled = true;
+    cfg.chem_env.oxygen.tau_metabolic_switch = 0.0;
+    cfg.chem_env.oxygen.anaerobic_maintenance_factor = factor;
+    cfg.chem_env.oxygen.epithelial_conc = 0.0;
+    for (auto& chemical : cfg.chemicals) {
+      if (chemical.name == species::OXYGEN) {
+        chemical.initial_conc = 0.0;
+        chemical.boundary_conc = 0.0;
+      }
+    }
+    Simulation sim;
+    sim.init(cfg);
+    sim.agents()[0].realized_fermentation_fraction = 1.0;
+    const Real biomass = sim.agents()[0].biomass;
+    FixMetabolism metabolism(sim, sim.config().fixes.metabolism);
+    metabolism.compute(kDt);
+    const Int carbon = sim.chemical_field().find(species::CARBON);
+    assert(carbon >= 0);
+    const Real draw = sim.chemical_field().flux_accounting()
+        .maintenance_step[static_cast<size_t>(carbon)];
+    const Real expected = 1.0e-4 * factor * biomass * kDt;
+    assert(std::abs(draw - expected) <= expected * 1.0e-12);
+    draws.push_back(draw);
+  }
+  for (size_t i = 1; i < draws.size(); ++i) {
+    assert(draws[i] > draws[i - 1]);
+  }
+  std::cout << "  test_anaerobic_maintenance_factor_scaling: PASSED\n";
+}
+
+void test_carbon_maintenance_gpu_contract() {
+  // When gpu.enabled is requested alongside carbon_maintenance_rate > 0 and
+  // anaerobic_maintenance_factor > 1, execution must match CPU (either via
+  // device kernels with exact parity or clean host fallback when no GPU is
+  // present) and never silently diverge.
+  for (const UptakeLimitMode mode :
+       {UptakeLimitMode::None, UptakeLimitMode::Delivery}) {
+    SimulationConfig cfg = base_config();
+    cfg.domain.hi = {20.0e-6, 20.0e-6, 20.0e-6};
+    cfg.domain.grid_dx = 5.0e-6;
+    cfg.time.total_time = 180.0;
+    cfg.time.bio_dt = kDt;
+    cfg.time.output_interval = 180.0;
+    cfg.fixes.metabolism.carbon_maintenance_rate = 1.0e-3;
+    cfg.fixes.metabolism.uptake_limit_mode = mode;
+    cfg.fixes.metabolism.uptake_limit =
+        mode == UptakeLimitMode::Delivery ? "delivery" : "none";
+    cfg.chem_env.oxygen.enabled = true;
+    cfg.chem_env.oxygen.metabolic_switch_enabled = true;
+    cfg.chem_env.oxygen.anaerobic_maintenance_factor = 8.0;
+    cfg.chem_env.oxygen.delivery_uptake_enabled =
+        (mode == UptakeLimitMode::Delivery);
+    cfg.chem_env.oxygen.respiration_driver =
+        mode == UptakeLimitMode::Delivery ? "funded" : "ambient";
+    cfg.oxygen_epithelial_boundary = "dirichlet";
+    cfg.oxygen_z_gradient_enabled = false;
+    cfg.initial_strains[0].count = 4;
+    cfg.initial_strains[0].mu_max = 4.0e-4;
+    for (auto& chemical : cfg.chemicals) {
+      if (chemical.name == species::CARBON) {
+        chemical.initial_conc = 1.0e-5;
+        chemical.boundary_conc = 1.0e-5;
+        chemical.delivery_enabled = (mode == UptakeLimitMode::Delivery);
+      }
+    }
+
+    Simulation cpu;
+    cpu.init(cfg);
+    cpu.run();
+
+    SimulationConfig gpu_cfg = cfg;
+    gpu_cfg.gpu.enabled = true;
+    Simulation gpu;
+    gpu.init(gpu_cfg);
+    gpu.run();
+
+    const Int carbon = cpu.chemical_field().find(species::CARBON);
+    assert(carbon >= 0);
+    const auto idx = static_cast<size_t>(carbon);
+    const auto& cf = cpu.chemical_field().flux_accounting();
+    const auto& gf = gpu.chemical_field().flux_accounting();
+    const Real cpu_maint =
+        cf.maintenance_cumulative[idx] + cf.maintenance_interval[idx];
+    const Real gpu_maint =
+        gf.maintenance_cumulative[idx] + gf.maintenance_interval[idx];
+    assert(cpu_maint > 0.0);
+    assert(std::abs(cpu_maint - gpu_maint)
+           <= 1.0e-9 * std::max({std::abs(cpu_maint), std::abs(gpu_maint), 1.0e-30}));
+    assert(cpu.agents().size() == gpu.agents().size());
+    for (Int i = 0; i < cpu.agents().size(); ++i) {
+      const Real scale = std::max({std::abs(cpu.agents()[i].biomass), 1.0e-30});
+      assert(std::abs(cpu.agents()[i].biomass - gpu.agents()[i].biomass)
+             <= 1.0e-9 * scale);
+      assert(std::abs(cpu.agents()[i].realized_fermentation_fraction
+                      - gpu.agents()[i].realized_fermentation_fraction)
+             <= 1.0e-9);
+    }
+  }
+  std::cout << "  test_carbon_maintenance_gpu_contract: PASSED\n";
+}
+
 }  // namespace
 
 int main() {
@@ -253,6 +368,9 @@ int main() {
   test_trajectory_sensitivity_and_zero_compatibility();
   test_maintenance_ledger_closure();
   test_uptake_limit_mode_contrast();
+  test_epithelial_oxygen_default_unchanged();
+  test_anaerobic_maintenance_factor_scaling();
+  test_carbon_maintenance_gpu_contract();
   std::cout << "All carbon maintenance tests passed.\n";
   return 0;
 }

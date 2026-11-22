@@ -64,7 +64,8 @@ __device__ void apply_vbf_at_cell(int cell,
   }
 
   if (reac_iron && conc_iron) {
-    const double sink = p.nutrient_sink * conc_iron[cell];
+    const double sink = vbf::implicit_first_order_sink(
+        conc_iron[cell], p.nutrient_sink, dt);
     reac_iron[cell] -= sink;
     if (vbf_totals) atomicAdd(&vbf_totals[2], sink * cell_volume * dt);
   }

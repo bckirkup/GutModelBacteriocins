@@ -102,7 +102,7 @@ void launch_metabolism_kernel(
     double acetate_overflow_rate, double acetate_scavenge_rate,
     double acetate_scavenge_Km,
     int o2_enabled, double o2_boost_max, double o2_Km,
-    int metabolic_switch_enabled, double mu_crit,
+    int metabolic_switch_enabled, int respiration_driver_mode, double mu_crit,
     double aerobic_mu_factor, double anaerobic_mu_factor,
     double aerobic_carbon_cost_factor, double anaerobic_carbon_cost_factor,
     double tau_metabolic_switch, double ferm_acid_yield,
@@ -116,6 +116,104 @@ void launch_metabolism_kernel(
     int global_nx, int global_ny, int storage_nx,
     int owned_global_x_begin, int owned_global_x_end,
     int owned_storage_x_begin,
+    cudaStream_t stream);
+
+struct DeliveryPrepareDeviceBuffers {
+  const double* conc_carbon = nullptr;
+  const double* conc_iron = nullptr;
+  const double* conc_b12 = nullptr;
+  const double* conc_acetate = nullptr;
+  const double* conc_eut = nullptr;
+  const double* conc_oxygen = nullptr;
+  double* reac_iron = nullptr;
+  double* reac_acetate = nullptr;
+  double* prescribed_carbon = nullptr;
+  double* prescribed_oxygen = nullptr;
+  double* mu_realized = nullptr;
+  const double* biomass = nullptr;
+  const double* radius = nullptr;
+  double* fermentation_fraction = nullptr;
+  double* pending_growth_carbon = nullptr;
+  double* pending_maintenance_carbon = nullptr;
+  double* pending_carbon_ceiling = nullptr;
+  double* pending_carbon_funding = nullptr;
+  double* pending_biomass = nullptr;
+  double* pending_growth_chemistry_biomass = nullptr;
+  double* pending_oxygen_growth = nullptr;
+  double* pending_oxygen_maintenance = nullptr;
+  double* pending_oxygen_ceiling = nullptr;
+  double* pending_oxygen_funding = nullptr;
+  const int* grid_cell = nullptr;
+  const int* state = nullptr;
+  const double* mu_max = nullptr;
+  const double* km_b12 = nullptr;
+  const double* km_carbon = nullptr;
+  double* receptor_expr = nullptr;
+  const double* receptor_expr_base = nullptr;
+  const double* ligand_affinity = nullptr;
+  const int* iron_receptor = nullptr;
+  const int* bi_loci_count = nullptr;
+  const double* plasmid_amelioration = nullptr;
+  const int* support_offsets = nullptr;
+  const int* support_cells = nullptr;
+  double* iron_uptake_total = nullptr;
+  double* carbon_demand_total = nullptr;
+  double* oxygen_demand_total = nullptr;
+};
+
+struct DeliveryCommitDeviceBuffers {
+  const double* prescribed_carbon = nullptr;
+  const double* demand_carbon_by_cell = nullptr;
+  const double* prescribed_oxygen = nullptr;
+  const double* demand_oxygen_by_cell = nullptr;
+  double* mu_realized = nullptr;
+  double* biomass = nullptr;
+  double* radius = nullptr;
+  double* mass = nullptr;
+  double* age = nullptr;
+  double* fermentation_fraction = nullptr;
+  double* respired_oxygen_rate = nullptr;
+  const double* pending_growth_carbon = nullptr;
+  const double* pending_maintenance_carbon = nullptr;
+  double* pending_carbon_funding = nullptr;
+  const double* pending_biomass = nullptr;
+  double* pending_growth_chemistry_biomass = nullptr;
+  const double* pending_oxygen_growth = nullptr;
+  const double* pending_oxygen_maintenance = nullptr;
+  double* pending_oxygen_funding = nullptr;
+  const int* grid_cell = nullptr;
+  const int* state = nullptr;
+  const int* is_ghost = nullptr;
+  const int* support_offsets = nullptr;
+  const int* support_cells = nullptr;
+  // [0]=maint_paid, [1]=maint_shortfall, [2]=maint_limited,
+  // [3]=growth_funded (uptake_realized), [4]=uptake_shortfall, [5]=uptake_limited
+  double* carbon_ledger = nullptr;
+  double* oxygen_ledger = nullptr;
+};
+
+void launch_delivery_prepare_kernel(
+    const DeliveryPrepareParams& params,
+    const DeliveryPrepareDeviceBuffers& buffers,
+    cudaStream_t stream);
+
+void launch_delivery_demand_by_cell_kernel(
+    const double* pending_funding,
+    const int* grid_cell,
+    const int* state,
+    const int* is_ghost,
+    const int* support_offsets,
+    const int* support_cells,
+    double* demand_by_cell,
+    int num_agents,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin,
+    cudaStream_t stream);
+
+void launch_delivery_commit_kernel(
+    const DeliveryCommitParams& params,
+    const DeliveryCommitDeviceBuffers& buffers,
     cudaStream_t stream);
 
 void launch_spatial_hash_build_kernel(
