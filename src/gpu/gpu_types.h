@@ -46,6 +46,9 @@ struct GfSourceParams {
   double image_series_relative_tolerance;
   int image_series_max_shells;
   int image_series_legacy_reflections;
+  int drift_correction = 0;
+  int drift_auto_dispatch = 0;
+  double peclet_z_threshold = 0.05;
 };
 
 struct VbfLaunchParams {

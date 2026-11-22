@@ -251,6 +251,12 @@ class Simulation {
   uint64_t neumann_drift_envelope_evaluations() const {
     return neumann_drift_envelope_evaluations_;
   }
+  uint64_t neumann_drift_modal_evaluations() const {
+    return neumann_drift_modal_evaluations_;
+  }
+  uint64_t neumann_peclet_auto_dispatched_sources() const {
+    return neumann_peclet_auto_dispatched_sources_;
+  }
   uint64_t neumann_negative_field_count() const {
     return neumann_negative_field_count_;
   }
@@ -408,6 +414,8 @@ class Simulation {
   uint64_t neumann_image_series_cap_hits_ = 0;
   uint64_t neumann_low_screening_evaluations_ = 0;
   uint64_t neumann_drift_envelope_evaluations_ = 0;
+  uint64_t neumann_drift_modal_evaluations_ = 0;
+  uint64_t neumann_peclet_auto_dispatched_sources_ = 0;
   uint64_t neumann_negative_field_count_ = 0;
   Real neumann_most_negative_field_ = 0.0;
   uint64_t green_function_kernel_evaluations_ = 0;

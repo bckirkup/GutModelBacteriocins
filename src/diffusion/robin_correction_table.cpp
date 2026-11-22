@@ -540,6 +540,18 @@ double normalized_robin_field(
       (flow_x * rho + flow_z * (z_target - z_source)) / (2.0 * d_eff));
 }
 
+double normalized_robin_radial(
+    double z_source, double z_target, double rho, double z_lo, double z_hi,
+    double d_eff, double d_free, double decay_rate,
+    double lumen_transfer_length,
+    double flow_x, double flow_y, double flow_z, int mode_count,
+    TransferBasis basis) {
+  return mode_sum(
+      z_source, z_target, rho, z_lo, z_hi, d_eff, decay_rate,
+      d_free, lumen_transfer_length, flow_x, flow_y, flow_z,
+      true, mode_count, basis, SealedReference::Physical);
+}
+
 double normalized_sealed_field(const SealedFieldParams& params) {
   const double radial = mode_sum(
       params.z_source, params.z_target, params.rho, params.z_lo, params.z_hi,

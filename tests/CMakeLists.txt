@@ -124,6 +124,7 @@ gutibm_add_test(neumann_wall_normal_drift test_neumann_wall_normal_drift.cpp LAB
     correction_improves_with_wall_normal_flow
     robin_composition
     default_off_identity)
+gutibm_add_test(wall_normal_peclet test_wall_normal_peclet.cpp LABELS "unit")
 # Sharded: the eviction exercise alone builds 60+ Robin tables; one CTest
 # entry per sub-test lets --parallel keep the job's wall clock near the
 # longest shard instead of the whole binary.

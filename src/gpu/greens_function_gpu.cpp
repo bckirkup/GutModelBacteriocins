@@ -3,6 +3,7 @@
 #include "device_memory.h"
 #include "gpu_types.h"
 #include "gpu_kernels.h"
+#include "neumann_image_series.h"
 #include "robin_correction_table.h"
 
 #ifdef GUTIBM_CUDA
@@ -81,7 +82,9 @@ bool launch_superpose(const Domain& domain,
                       uint64_t* kernel_evaluations,
                       uint64_t* low_screening_evaluations,
                       uint64_t* negative_field_count,
-                      Real* most_negative_field) {
+                      Real* most_negative_field,
+                      uint64_t* drift_envelope_evaluations,
+                      uint64_t* drift_modal_evaluations) {
   if (!gpu_runtime_enabled() || sources.empty()) return false;
   if (d_grid == nullptr) return false;
   GpuTransferSite site("greens_near_field");
@@ -90,6 +93,8 @@ bool launch_superpose(const Domain& domain,
   if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
   if (negative_field_count != nullptr) *negative_field_count = 0;
   if (most_negative_field != nullptr) *most_negative_field = 0.0;
+  if (drift_envelope_evaluations != nullptr) *drift_envelope_evaluations = 0;
+  if (drift_modal_evaluations != nullptr) *drift_modal_evaluations = 0;
   std::scoped_lock table_lock(robin_table_device_mutex);
 
   Int ncells = domain.ncells();
@@ -100,6 +105,7 @@ bool launch_superpose(const Domain& domain,
   std::vector<double> sz(sources.size());
   std::vector<gpu::GfSourceParams> sp(params.size());
   std::vector<std::shared_ptr<const robin::Table>> source_tables(params.size());
+  const double slab_height = domain.hi()[2] - domain.lo()[2];
   for (size_t i = 0; i < sources.size(); ++i) {
     sx[i] = sources[i][0];
     sy[i] = sources[i][1];
@@ -122,12 +128,20 @@ bool launch_superpose(const Domain& domain,
         params[i].image_series_legacy_reflections ? 1 : 0;
     sp[i].lumen_transfer_basis_free =
         params[i].lumen_transfer_basis_free ? 1 : 0;
+    sp[i].drift_correction = params[i].drift_correction ? 1 : 0;
+    sp[i].drift_auto_dispatch = params[i].drift_auto_dispatch ? 1 : 0;
+    sp[i].peclet_z_threshold = params[i].peclet_z_threshold;
     sp[i].robin_table_index = -1;
     if (robin::transfer_enabled(params[i].lumen_transfer_length)) {
+      const double d_eff = params[i].diff_coeff / params[i].retardation;
+      const Vec3 flow = adv.velocity(sources[i]);
+      const bool use_drift = params[i].drift_correction
+          || (params[i].drift_auto_dispatch && std::abs(flow[2]) > 0.0
+              && neumann::drift_envelope_exceeded(
+                  flow[2], slab_height, d_eff, params[i].peclet_z_threshold));
       const auto table = robin::global_table_cache().get(
           adv, domain.lo()[2], domain.hi()[2], params[i].diff_coeff,
-          params[i].diff_coeff / params[i].retardation,
-          params[i].decay_rate, params[i].lumen_transfer_length,
+          d_eff, params[i].decay_rate, params[i].lumen_transfer_length,
           params[i].robin_cutoff,
           params[i].lumen_transfer_basis_free
               ? robin::TransferBasis::Free
@@ -135,7 +149,8 @@ bool launch_superpose(const Domain& domain,
           params[i].image_series_relative_tolerance,
           params[i].image_series_max_shells,
           params[i].image_series_max_shells_explicit,
-          params[i].image_series_legacy_reflections);
+          params[i].image_series_legacy_reflections,
+          use_drift);
       source_tables[i] = table;
     }
   }
@@ -158,9 +173,11 @@ bool launch_superpose(const Domain& domain,
     robin_table_values.reserve(
         robin_tables.size() * robin::kTableValueCount);
     for (const auto& table : robin_tables) {
+      const auto& values = table->drift_correction
+          ? table->physical_values : table->legacy_values;
       robin_table_values.insert(robin_table_values.end(),
-                                table->legacy_values.begin(),
-                                table->legacy_values.end());
+                                values.begin(),
+                                values.end());
     }
     robin_table_device_buffer.upload(robin_table_values);
     robin_table_device_set = robin_tables;
@@ -195,11 +212,15 @@ bool launch_superpose(const Domain& domain,
   DeviceBuffer<unsigned long long> d_negative_field_count;
   DeviceBuffer<double> d_most_negative_field;
   DeviceBuffer<unsigned long long> d_kernel_evaluations;
+  DeviceBuffer<unsigned long long> d_drift_envelope_evaluations;
+  DeviceBuffer<unsigned long long> d_drift_modal_evaluations;
   unsigned long long* cap_hits_device = nullptr;
   unsigned long long* low_screening_evaluations_device = nullptr;
   unsigned long long* negative_field_count_device = nullptr;
   double* most_negative_field_device = nullptr;
   unsigned long long* kernel_evaluations_device = nullptr;
+  unsigned long long* drift_envelope_evaluations_device = nullptr;
+  unsigned long long* drift_modal_evaluations_device = nullptr;
   if (cap_hits != nullptr) {
     d_cap_hits.allocate(1);
     cudaMemset(d_cap_hits.data(), 0, sizeof(unsigned long long));
@@ -226,6 +247,18 @@ bool launch_superpose(const Domain& domain,
     cudaMemset(d_kernel_evaluations.data(), 0, sizeof(unsigned long long));
     kernel_evaluations_device = d_kernel_evaluations.data();
   }
+  if (drift_envelope_evaluations != nullptr) {
+    d_drift_envelope_evaluations.allocate(1);
+    cudaMemset(d_drift_envelope_evaluations.data(), 0,
+               sizeof(unsigned long long));
+    drift_envelope_evaluations_device = d_drift_envelope_evaluations.data();
+  }
+  if (drift_modal_evaluations != nullptr) {
+    d_drift_modal_evaluations.allocate(1);
+    cudaMemset(d_drift_modal_evaluations.data(), 0,
+               sizeof(unsigned long long));
+    drift_modal_evaluations_device = d_drift_modal_evaluations.data();
+  }
 
   gpu::launch_superpose_kernel(
       d_sx.data(), d_sy.data(), d_sz.data(), d_params.data(), d_grid,
@@ -234,7 +267,8 @@ bool launch_superpose(const Domain& domain,
       static_cast<int>(robin_tables.size()), robin_index_error,
       gpu_compute_stream(), cap_hits_device, low_screening_evaluations_device,
       negative_field_count_device, most_negative_field_device,
-      kernel_evaluations_device);
+      kernel_evaluations_device, drift_envelope_evaluations_device,
+      drift_modal_evaluations_device);
 
   gpu_sync_compute();
   gpu_check_error("superpose_kernel");
@@ -270,6 +304,16 @@ bool launch_superpose(const Domain& domain,
   }
   if (most_negative_field != nullptr) {
     d_most_negative_field.download(most_negative_field, 1);
+  }
+  if (drift_envelope_evaluations != nullptr) {
+    unsigned long long count = 0;
+    d_drift_envelope_evaluations.download(&count, 1);
+    *drift_envelope_evaluations = static_cast<uint64_t>(count);
+  }
+  if (drift_modal_evaluations != nullptr) {
+    unsigned long long count = 0;
+    d_drift_modal_evaluations.download(&count, 1);
+    *drift_modal_evaluations = static_cast<uint64_t>(count);
   }
   return true;
 }
@@ -313,10 +357,10 @@ std::vector<size_t> robin_host_fallback_sources(
       {domain.dx_x(), domain.dx_y(), domain.dx_z()});
   std::vector<size_t> fallback;
   for (size_t source = 0; source < sources.size(); ++source) {
-    if (params[source].drift_correction) {
-      fallback.push_back(source);
-      continue;
-    }
+    // Sealed drift-corrected sources execute natively on device via
+    // robin::evaluate_physical_sealed_concentration without host fallback.
+    // Only finite-lumen-transfer near-wall Robin sources require direct modal
+    // evaluation on the host.
     if (!robin::transfer_enabled(params[source].lumen_transfer_length)) {
       continue;
     }
@@ -340,7 +384,9 @@ bool gpu_superpose_to_grid(
     uint64_t* kernel_evaluations,
     uint64_t* low_screening_evaluations,
     uint64_t* negative_field_count,
-    Real* most_negative_field) {
+    Real* most_negative_field,
+    uint64_t* drift_envelope_evaluations,
+    uint64_t* drift_modal_evaluations) {
 
 #ifndef GUTIBM_CUDA
   (void)domain;
@@ -355,6 +401,8 @@ bool gpu_superpose_to_grid(
   (void)low_screening_evaluations;
   (void)negative_field_count;
   (void)most_negative_field;
+  (void)drift_envelope_evaluations;
+  (void)drift_modal_evaluations;
   return false;
 #else
   GpuTransferSite site("greens_grid_download");
@@ -365,6 +413,8 @@ bool gpu_superpose_to_grid(
     if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
     if (negative_field_count != nullptr) *negative_field_count = 0;
     if (most_negative_field != nullptr) *most_negative_field = 0.0;
+    if (drift_envelope_evaluations != nullptr) *drift_envelope_evaluations = 0;
+    if (drift_modal_evaluations != nullptr) *drift_modal_evaluations = 0;
     return true;
   }
 
@@ -373,7 +423,8 @@ bool gpu_superpose_to_grid(
   if (!launch_superpose(domain, adv, sources, params, strength_factors,
                         d_grid.data(), cutoff_radius, cap_hits,
                         kernel_evaluations, low_screening_evaluations,
-                        negative_field_count, most_negative_field)) {
+                        negative_field_count, most_negative_field,
+                        drift_envelope_evaluations, drift_modal_evaluations)) {
     return false;
   }
   d_grid.download(grid_conc);
@@ -392,7 +443,9 @@ bool gpu_superpose_to_device(
     uint64_t* kernel_evaluations,
     uint64_t* low_screening_evaluations,
     uint64_t* negative_field_count,
-    Real* most_negative_field) {
+    Real* most_negative_field,
+    uint64_t* drift_envelope_evaluations,
+    uint64_t* drift_modal_evaluations) {
 
 #ifndef GUTIBM_CUDA
   (void)domain;
@@ -407,6 +460,8 @@ bool gpu_superpose_to_device(
   (void)low_screening_evaluations;
   (void)negative_field_count;
   (void)most_negative_field;
+  (void)drift_envelope_evaluations;
+  (void)drift_modal_evaluations;
   return false;
 #else
   if (sources.empty()) {
@@ -419,12 +474,15 @@ bool gpu_superpose_to_device(
     if (low_screening_evaluations != nullptr) *low_screening_evaluations = 0;
     if (negative_field_count != nullptr) *negative_field_count = 0;
     if (most_negative_field != nullptr) *most_negative_field = 0.0;
+    if (drift_envelope_evaluations != nullptr) *drift_envelope_evaluations = 0;
+    if (drift_modal_evaluations != nullptr) *drift_modal_evaluations = 0;
     return true;
   }
   return launch_superpose(domain, adv, sources, params, strength_factors,
                           d_grid_conc, cutoff_radius, cap_hits,
                           kernel_evaluations, low_screening_evaluations,
-                          negative_field_count, most_negative_field);
+                          negative_field_count, most_negative_field,
+                          drift_envelope_evaluations, drift_modal_evaluations);
 #endif
 }
 

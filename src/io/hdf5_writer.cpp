@@ -752,10 +752,23 @@ void HDF5Writer::write_run_provenance(const Simulation& sim) {
       sim.neumann_drift_envelope_evaluations());
   write_scalar_dataset(fid, "run_provenance/neumann_drift_envelope_evaluations",
                        H5T_NATIVE_ULLONG, &drift_envelope);
+  const auto drift_modal = static_cast<unsigned long long>(
+      sim.neumann_drift_modal_evaluations());
+  write_scalar_dataset(fid, "run_provenance/drift_modal_evaluations",
+                       H5T_NATIVE_ULLONG, &drift_modal);
+  const auto peclet_dispatched = static_cast<unsigned long long>(
+      sim.neumann_peclet_auto_dispatched_sources());
+  write_scalar_dataset(fid, "run_provenance/peclet_auto_dispatched_sources",
+                       H5T_NATIVE_ULLONG, &peclet_dispatched);
   const auto drift_correction =
       static_cast<int32_t>(sim.config().qssa.drift_correction);
   write_scalar_dataset(fid, "run_provenance/neumann_drift_correction",
                        H5T_NATIVE_INT32, &drift_correction);
+  write_string_dataset(fid, "run_provenance/qssa_drift_envelope_policy",
+                       sim.config().qssa.drift_envelope_policy);
+  const double peclet_threshold = sim.config().qssa.peclet_z_threshold;
+  write_scalar_dataset(fid, "run_provenance/qssa_peclet_z_threshold",
+                       H5T_NATIVE_DOUBLE, &peclet_threshold);
   const auto negative_count = static_cast<unsigned long long>(
       sim.neumann_negative_field_count());
   write_scalar_dataset(fid, "run_provenance/neumann_negative_field_count",
@@ -875,11 +888,26 @@ void HDF5Writer::write_run_termination(const Simulation& sim, Int step,
     write_scalar_dataset(
         fid, "run_provenance/neumann_drift_envelope_evaluations",
         H5T_NATIVE_ULLONG, &drift_envelope);
+    const auto drift_modal = static_cast<unsigned long long>(
+        sim.neumann_drift_modal_evaluations());
+    write_scalar_dataset(
+        fid, "run_provenance/drift_modal_evaluations",
+        H5T_NATIVE_ULLONG, &drift_modal);
+    const auto peclet_dispatched = static_cast<unsigned long long>(
+        sim.neumann_peclet_auto_dispatched_sources());
+    write_scalar_dataset(
+        fid, "run_provenance/peclet_auto_dispatched_sources",
+        H5T_NATIVE_ULLONG, &peclet_dispatched);
     const auto drift_correction =
         static_cast<int32_t>(sim.config().qssa.drift_correction);
     write_scalar_dataset(
         fid, "run_provenance/neumann_drift_correction",
         H5T_NATIVE_INT32, &drift_correction);
+    write_string_dataset(fid, "run_provenance/qssa_drift_envelope_policy",
+                         sim.config().qssa.drift_envelope_policy);
+    const double peclet_threshold = sim.config().qssa.peclet_z_threshold;
+    write_scalar_dataset(fid, "run_provenance/qssa_peclet_z_threshold",
+                         H5T_NATIVE_DOUBLE, &peclet_threshold);
     const auto negative_count = static_cast<unsigned long long>(
         sim.neumann_negative_field_count());
     write_scalar_dataset(fid, "run_provenance/neumann_negative_field_count",
