@@ -30,7 +30,7 @@ $$C_{\text{PDE}}(\mathbf{x}, t) = \int_0^t Q(t - s)\, e^{-k_{\text{dec}} s} \sum
 
 ### 3.1 Compact `60 um` Geometry ($60 \times 60 \times 50\text{ }\mu\text{m}$)
 
-| Plasmid | Direction | Distance ($\mu$m) | Max $|\Delta\theta|$ (60 s / 300 s, uncomp.) | $P_{\text{kill,QSSA}}$ (60 s) | $P_{\text{kill,PDE}}$ (60 s) | $|\Delta P_{\text{kill}}|$ (60 s) | $P_{\text{kill,QSSA}}$ (300 s) | $P_{\text{kill,PDE}}$ (300 s) | $|\Delta P_{\text{kill}}|$ (300 s) | $|\Delta P_{\text{kill}}|$ (300 s, shipped $B_{12}$) |
+| Plasmid | Direction | Distance (um) | Max abs(d_theta) (60 s / 300 s, uncomp.) | P_kill,QSSA (60 s) | P_kill,PDE (60 s) | abs(dP_kill) (60 s) | P_kill,QSSA (300 s) | P_kill,PDE (300 s) | abs(dP_kill) (300 s) | abs(dP_kill) (300 s, shipped B12) |
 |---------|-----------|-------------------:|---------------------------------------------:|------------------------------:|-----------------------------:|----------------------------------:|-------------------------------:|------------------------------:|-----------------------------------:|------------------------------------------------------:|
 | ColE1 | downstream | 5.0 | 0.0412 | 0.0558 | 0.0531 | 0.0027 | 0.2445 | 0.2413 | 0.0032 | 0.0005 |
 | ColE1 | downstream | 10.0 | 0.6783 | 0.0535 | 0.0472 | 0.0063 | 0.2314 | 0.2250 | 0.0064 | 0.0003 |
@@ -51,7 +51,7 @@ $$C_{\text{PDE}}(\mathbf{x}, t) = \int_0^t Q(t - s)\, e^{-k_{\text{dec}} s} \sum
 
 ### 3.2 Colonic Mucus `200 um` Geometry ($200 \times 200 \times 100\text{ }\mu\text{m}$)
 
-| Plasmid | Direction | Distance ($\mu$m) | Max $|\Delta\theta|$ (60 s / 300 s, uncomp.) | $P_{\text{kill,QSSA}}$ (60 s) | $P_{\text{kill,PDE}}$ (60 s) | $|\Delta P_{\text{kill}}|$ (60 s) | $P_{\text{kill,QSSA}}$ (300 s) | $P_{\text{kill,PDE}}$ (300 s) | $|\Delta P_{\text{kill}}|$ (300 s) | $|\Delta P_{\text{kill}}|$ (300 s, shipped $B_{12}$) |
+| Plasmid | Direction | Distance (um) | Max abs(d_theta) (60 s / 300 s, uncomp.) | P_kill,QSSA (60 s) | P_kill,PDE (60 s) | abs(dP_kill) (60 s) | P_kill,QSSA (300 s) | P_kill,PDE (300 s) | abs(dP_kill) (300 s) | abs(dP_kill) (300 s, shipped B12) |
 |---------|-----------|-------------------:|---------------------------------------------:|------------------------------:|-----------------------------:|----------------------------------:|-------------------------------:|------------------------------:|-----------------------------------:|------------------------------------------------------:|
 | ColE1 | downstream | 5.0 | 0.0412 | 0.0558 | 0.0531 | 0.0027 | 0.2445 | 0.2413 | 0.0032 | 0.0005 |
 | ColE1 | downstream | 10.0 | 0.6783 | 0.0535 | 0.0472 | 0.0063 | 0.2314 | 0.2250 | 0.0064 | 0.0003 |

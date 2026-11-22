@@ -1372,8 +1372,8 @@ void test_delivery_prepare_and_commit_kernels() {
   prep.o2_enabled = 1;
   prep.o2_delivery_enabled = 1;
   prep.o2_Km = 1.0e-5;
-  prep.o2_q_consumption = 1.0e-12;
-  prep.o2_q_maintenance = 1.0e-17;
+  prep.o2_q_consumption = 5.0e-16;
+  prep.o2_q_maintenance = 1.0e-19;
   prep.metabolic_switch_enabled = 1;
   prep.respiration_driver_mode = 1;  // Funded
   prep.aerobic_mu_factor = 1.0;
@@ -1504,8 +1504,11 @@ void test_delivery_prepare_and_commit_kernels() {
   const auto resp_after = download(respired_o2_rate, agents);
   assert(c_ledger[0] > 0.0);  // maintenance paid
   assert(c_ledger[3] > 0.0);  // uptake_realized (growth funded)
+  assert(o_ledger[0] > 0.0);  // oxygen maintenance paid
   assert(o_ledger[3] > 0.0);  // oxygen growth funded
+  assert(o_ledger[4] > 0.0);  // oxygen growth shortfall under 50% rationing
   assert(f_after[0] > 0.0);   // rationed O2 relaxes f upward from 0.0
+  assert(f_after[1] < 0.5);   // fully funded O2 relaxes f downward from 0.5
   assert(resp_after[0] > 0.0);
   assert(resp_after[1] > 0.0);
 }
