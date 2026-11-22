@@ -25,6 +25,7 @@
 
 #include <cassert>
 #include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <iostream>
 #include <string>
@@ -450,6 +451,13 @@ void test_layer3_pulse_recovery_and_checkpoint_mucosal_deaths() {
   cfg.layer2.initial_founder_cells = 15;
   cfg.layer2.initial_pool_cells = 0;
   cfg.layer2.contraction_rate_per_min = 0.0;
+  cfg.layer2.crypt.single_cell_loss_per_s = 0.0;
+  cfg.layer2.exposed_proximal.single_cell_loss_per_s = 0.0;
+  cfg.layer2.exposed_distal.single_cell_loss_per_s = 0.0;
+  cfg.layer3.f_edge = 0.0;
+  cfg.layer3.cecum.contraction_k0_per_min = 0.0;
+  cfg.layer3.transverse.contraction_k0_per_min = 0.0;
+  cfg.layer3.descending.contraction_k0_per_min = 0.0;
   cfg.layer3.n_patches_per_region = 12;
   cfg.layer3.lumen_seed_cells = 5000.0;
   cfg.layer3.reattach_p0 = 0.95;
@@ -494,6 +502,7 @@ void test_layer3_pulse_recovery_and_checkpoint_mucosal_deaths() {
   chain.step(cfg.time.bio_dt);
   assert(restored.ledger_closed());
   assert(restored.fingerprint() == chain.fingerprint());
+  std::remove(path.c_str());
 #endif
   std::cout << "layer3_pulse_recovery_and_checkpoint_mucosal_deaths: "
                "mucosal_deaths=" << chain.ledger().mucosal_deaths

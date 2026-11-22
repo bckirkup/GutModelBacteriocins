@@ -1915,8 +1915,18 @@ void test_live_oxygen_funded_reset_crypt_flag_and_stride() {
     cfg.chem_env.oxygen.k_ROS_funded = 1.0e12;
     cfg.fixes.metabolism.uptake_limit = "delivery";
     cfg.fixes.metabolism.uptake_limit_mode = UptakeLimitMode::Delivery;
+    bool saw_o2 = false;
     for (auto& c : cfg.chemicals) {
       if (c.name == "carbon" || c.name == "oxygen") c.delivery_enabled = true;
+      if (c.name == "oxygen") saw_o2 = true;
+    }
+    if (!saw_o2) {
+      ChemicalSpec o2("oxygen", cfg.chem_env.oxygen.D_free, 1.0,
+                      cfg.chem_env.oxygen.epithelial_conc,
+                      cfg.chem_env.oxygen.epithelial_conc, 0.0, true, 30.0e-6,
+                      true);
+      o2.delivery_enabled = true;
+      cfg.chemicals.push_back(o2);
     }
 
     cfg.layer2.live_physics_mode = "ladder_delivery";  // inherit_oxygen = false
@@ -1950,7 +1960,7 @@ void test_live_oxygen_funded_reset_crypt_flag_and_stride() {
     cfg.layer2.exposed_proximal = {1.0, 0.0, 0.0, 1.0};
     cfg.layer2.exposed_distal = {0.0, 0.0, 0.0, 0.5};
     cfg.layer2.initial_founder_cells = 2;
-    cfg.layer2.live_physics_mode = "Crypt_Coupled";
+    cfg.layer2.live_physics_mode = "inherit";
     cfg.layer2.audit.patch_index = 0;
 
     MucusSegment seg;
@@ -2004,6 +2014,7 @@ void test_live_oxygen_funded_reset_crypt_flag_and_stride() {
     assert(seg_b.pulse_events()[0].washed_out ==
            seg_a.pulse_events()[0].washed_out);
     assert(seg_b.pulse_events()[0].killed == seg_a.pulse_events()[0].killed);
+    std::remove(path.c_str());
   }
 #endif
   std::cout << "live_oxygen_funded_reset_crypt_flag_and_stride: passed\n";
