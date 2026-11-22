@@ -886,7 +886,7 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "quorum_sensing.chi_ai2", "quorum_sensing_chi_ai2",
               [](const SimulationConfig& c) { return c.quorum_sensing.chi_ai2; });
 
-  // ── Layer 2 audit slot ────────────────────────────────────────────────────
+  // ── Layer 2 audit slot & live-slot physics ────────────────────────────────
   v.push_back(I("layer2.audit_patch_index",
                 [](const SimulationConfig& c) {
                   return static_cast<long long>(c.layer2.audit.patch_index);
@@ -895,6 +895,33 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return static_cast<long long>(c.layer2.audit.patch_index);
                 }, false));
+  v.push_back(S("layer2.live_physics_mode",
+                [](const SimulationConfig& c) {
+                  return c.layer2.live_physics_mode;
+                },
+                "inherit"));
+  v.push_back(B("layer2.live_crypt_flow_for_crypt_patches",
+                [](const SimulationConfig& c) {
+                  return c.layer2.live_crypt_flow_for_crypt_patches;
+                }));
+  v.push_back(B("layer2.live_crypt_flow_on_crypt_patches",
+                [](const SimulationConfig& c) {
+                  return c.layer2.live_crypt_flow_for_crypt_patches;
+                },
+                false));
+  v.push_back(B("layer2.live_inherit_oxygen",
+                [](const SimulationConfig& c) {
+                  return c.layer2.live_inherit_oxygen;
+                }));
+  v.push_back(R("layer2.live_crypt_contraction_shelter_scale",
+                [](const SimulationConfig& c) {
+                  return c.layer2.live_crypt_contraction_shelter_scale;
+                },
+                0.5));
+  v.push_back(B("layer2.live_align_patch_table_delivery",
+                [](const SimulationConfig& c) {
+                  return c.layer2.live_align_patch_table_delivery;
+                }));
 
   return v;
 }
@@ -908,8 +935,9 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
       "advection", "washout", "closure", "bacteriocin", "mucin_charge",
       "metabolism", "receptor",
-      "layer2", "layer3", "audit",
+      "layer2", "layer3", "audit", "pulses",
       "layer2.audit_patch_indices", "layer2.audit.patch_indices",
+      "layer2.pulses",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity", "receptor_expression", "receptor_genotype", "receptors",
@@ -1198,12 +1226,89 @@ void test_strain_and_array_keys() {
            "flat 'layer2.audit.patch_indices' value mismatch");
   }
 
-  // Validation probes: simultaneous patch_index + patch_indices, duplicate, out-of-range
+  // Nested + flat layer2.pulses and live-slot physics JSON probes
+  {
+    const std::string pulse_json = R"({
+      "layer2": {
+        "n_patches": 10,
+        "live_physics_mode": "ladder_delivery",
+        "live_crypt_flow_for_crypt_patches": true,
+        "live_inherit_oxygen": true,
+        "live_crypt_contraction_shelter_scale": 0.25,
+        "live_align_patch_table_delivery": true,
+        "pulses": [
+          {"time_s": 1800.0, "washout_fraction": 0.75, "mortality_fraction": 0.10,
+           "patch_types": ["exposed_proximal", "distal"]},
+          {"time_s": 3600.0, "washout_fraction": 0.50, "patch_types": ["all"]}
+        ]
+      }
+    })";
+    {
+      std::ofstream out(path);
+      out << pulse_json;
+    }
+    const SimulationConfig pcfg = InputParser::parse(path);
+    std::remove(path.c_str());
+    expect(pcfg.layer2.live_physics_mode == "ladder_delivery",
+           "nested 'layer2.live_physics_mode' not ingested");
+    expect(pcfg.layer2.live_crypt_flow_for_crypt_patches,
+           "nested 'layer2.live_crypt_flow_for_crypt_patches' not ingested");
+    expect(pcfg.layer2.live_inherit_oxygen,
+           "nested 'layer2.live_inherit_oxygen' not ingested");
+    expect(std::abs(pcfg.layer2.live_crypt_contraction_shelter_scale - 0.25) < 1e-12,
+           "nested 'layer2.live_crypt_contraction_shelter_scale' not ingested");
+    expect(pcfg.layer2.live_align_patch_table_delivery,
+           "nested 'layer2.live_align_patch_table_delivery' not ingested");
+    expect(pcfg.layer2.pulses.size() == 2,
+           "nested 'layer2.pulses' array size mismatch");
+    if (pcfg.layer2.pulses.size() == 2) {
+      expect(std::abs(pcfg.layer2.pulses[0].time_s - 1800.0) < 1e-12,
+             "pulse[0].time_s mismatch");
+      expect(std::abs(pcfg.layer2.pulses[0].washout_fraction - 0.75) < 1e-12,
+             "pulse[0].washout_fraction mismatch");
+      expect(std::abs(pcfg.layer2.pulses[0].mortality_fraction - 0.10) < 1e-12,
+             "pulse[0].mortality_fraction mismatch");
+      expect(pcfg.layer2.pulses[0].patch_types.size() == 2 &&
+                 pcfg.layer2.pulses[0].patch_types[0] == PatchType::ExposedProximal &&
+                 pcfg.layer2.pulses[0].patch_types[1] == PatchType::ExposedDistal,
+             "pulse[0].patch_types mismatch");
+      expect(std::abs(pcfg.layer2.pulses[1].time_s - 3600.0) < 1e-12,
+             "pulse[1].time_s mismatch");
+      expect(pcfg.layer2.pulses[1].patch_types.empty(),
+             "pulse[1] 'all' should normalize to empty patch_types");
+    }
+
+    const std::string flat_pulse_json = R"({
+      "layer2.pulses": [
+        {"time_s": 600.0, "washout_fraction": 0.4, "patch_types": ["crypt"]}
+      ]
+    })";
+    {
+      std::ofstream out(path);
+      out << flat_pulse_json;
+    }
+    const SimulationConfig fpcfg = InputParser::parse(path);
+    std::remove(path.c_str());
+    expect(fpcfg.layer2.pulses.size() == 1 &&
+               fpcfg.layer2.pulses[0].patch_types.size() == 1 &&
+               fpcfg.layer2.pulses[0].patch_types[0] == PatchType::Crypt,
+           "flat 'layer2.pulses' array not ingested");
+  }
+
+  // Validation probes: simultaneous patch_index + patch_indices, duplicate, OOB,
+  // bad live_physics_mode/shelter_scale, and invalid pulses
   for (const char* bad_json : {
            R"({"layer2": {"n_patches": 5, "audit_patch_index": 0, "audit_patch_indices": [1]}})",
            R"({"layer2": {"n_patches": 5, "audit_patch_indices": [1, 1]}})",
            R"({"layer2": {"n_patches": 5, "audit_patch_indices": [0, 5]}})",
            R"({"layer2": {"n_patches": 5, "audit_patch_indices": [-1]}})",
+           R"({"layer2": {"live_physics_mode": "invalid_mode"}})",
+           R"({"layer2": {"live_crypt_contraction_shelter_scale": 1.5}})",
+           R"({"layer2": {"live_crypt_contraction_shelter_scale": -0.1}})",
+           R"({"layer2": {"pulses": [{"washout_fraction": 0.5}]}})",
+           R"({"layer2": {"pulses": [{"time_s": -10.0, "washout_fraction": 0.5}]}})",
+           R"({"layer2": {"pulses": [{"time_s": 60.0, "washout_fraction": 0.7, "mortality_fraction": 0.5}]}})",
+           R"({"layer2": {"pulses": [{"time_s": 60.0, "washout_fraction": 0.5, "patch_types": ["bogus"]}]}})",
        }) {
     {
       std::ofstream out(path);
@@ -1217,7 +1322,7 @@ void test_strain_and_array_keys() {
     }
     std::remove(path.c_str());
     expect(rejected,
-           std::string("invalid layer2.audit config should throw ConfigError: ")
+           std::string("invalid layer2 config should throw ConfigError: ")
                + bad_json);
   }
 

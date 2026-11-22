@@ -47,14 +47,17 @@ struct MetabolismConfig {
   Real division_threshold = 2.0;      // divide at 2x initial biomass
   Real bacteriostasis_threshold = 1.0e-6; // classify viable non-growing cells
   Real maintenance_rate   = 1.0e-5;   // maintenance (1/s)
-  Real carbon_maintenance_rate = 0.0; // non-growth carbon use (mol/(s kg))
-  Real yield_carbon       = 0.5;      // carbon yield coefficient
+  Real carbon_maintenance_rate = 0.0; // non-growth carbon use (mol/(s kg wet mass))
+  // Carbon yield in mol modeled substrate per kg wet cell mass
+  // (Agent::biomass = volume * 1,100 kg/m^3; apply ~0.30 dry-to-wet fraction
+  // when comparing against literature g dry biomass / g glucose yields).
+  Real yield_carbon       = 0.5;
   bool acid_inhibition_enabled = false;
   Real acid_inhibition_max = 0.8;
   Real acid_inhibition_Ki = 50.0;       // mol/m^3 undissociated acetate
   Real acetate_pKa = 4.76;
-  Real yield_iron         = 1.0e-6;   // iron yield (mol Fe / kg biomass)
-  Real yield_b12          = 1.0e-9;   // B12 yield
+  Real yield_iron         = 1.0e-6;   // iron yield (mol Fe / kg wet cell mass)
+  Real yield_b12          = 1.0e-9;   // B12 yield (mol B12 / kg wet cell mass)
 
   // Iron uptake Km values per receptor system
   Real km_iron_primary    = 10.0e-6;  // FepA: 10 nM in mol/m^3

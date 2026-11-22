@@ -12,6 +12,7 @@
 #define GUTIBM_LAYER2_CONFIG_H
 
 #include "types.h"
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,16 @@ struct Layer2TypeConfig {
   Real disruption_prob = 0.0;         // probability disrupted per contraction
   Real single_cell_loss_per_s = 0.0;  // first-order single-cell export rate
   Real supply_mult = 1.0;             // epithelial carbon amplitude vs 1x ladder arm
+};
+
+// Scheduled mucosal perturbation pulse (GAP-09 / #474).
+// Fires once on the first step whose end time (time_ + dt) >= time_s.
+// Empty `patch_types` targets all Active patch types.
+struct Layer2Pulse {
+  Real time_s = 0.0;                  // trigger simulation time (s), >= 0
+  Real washout_fraction = 0.0;        // [0, 1] fraction flushed from targeted patches
+  Real mortality_fraction = 0.0;      // [0, 1] fraction killed in-place
+  std::vector<PatchType> patch_types; // empty = all patch types
 };
 
 struct Layer2AuditConfig {
@@ -120,13 +131,76 @@ struct Layer2Config {
 
   Layer2AuditConfig audit;
 
+  // Live-slot physics policy (GAP-03 / #466, GAP-07 / #469):
+  //   "ladder_compat" (default): preserves bit-identical legacy live-slot
+  //     overrides (crypts_enabled = false, oxygen.enabled = false,
+  //     k_ROS_* = 0.0) unless explicit opt-in flags below are enabled.
+  //   "ladder_delivery": keeps ladder_compat crypt/oxygen overrides AND aligns
+  //     live slots with the PatchTable ladder delivery regime
+  //     (uptake_limit = "delivery", delivery_far_field_radius = 10 um,
+  //     grid_dx = 4 um).
+  //   "inherit": inherits outer chem_env.oxygen / k_ROS_* settings AND enables
+  //     Layer-1 advection.crypts_enabled on PatchType::Crypt live patches.
+  std::string live_physics_mode = "ladder_compat";
+  bool live_crypt_flow_for_crypt_patches = false;
+  bool live_inherit_oxygen = false;
+  // Anti-double-counting control for Layer-2 PatchType::Crypt contraction
+  // shelter when Layer-1 crypt flow shelter is active on a live Crypt patch:
+  //   p_eff = p_crypt + (1 - scale) * max(0, p_exposed_proximal - p_crypt)
+  // 0.0 (default) suppresses Layer-2 crypt contraction shelter on live Crypt
+  // patches when Layer-1 crypt flow is active; 1.0 retains full Layer-2
+  // crypt.disruption_prob alongside Layer-1 shelter (flagged in prov.json).
+  Real live_crypt_contraction_shelter_scale = 0.0;
+  // GAP-07 / #469: explicitly align live slots with PatchTable delivery mode
+  // (uptake_limit = "delivery", delivery_far_field_radius = 10 um, dx = 4 um).
+  bool live_align_patch_table_delivery = false;
+
+  // GAP-09 / #474: optional scheduled washout/mortality perturbation pulses
+  // (default empty = inert).
+  std::vector<Layer2Pulse> pulses;
+
   std::string timeseries_file;        // CSV path; empty disables
   Int summary_interval_steps = 60;    // observables cadence
   std::string provenance_file;        // JSON run record; empty disables
   std::string checkpoint_file;        // HDF5 checkpoint path; empty disables
   Int checkpoint_interval_steps = 0;  // 0 = no periodic checkpoint
   bool checkpoint_final = false;      // write checkpoint at run end
+
+  [[nodiscard]] bool resolved_live_crypt_flow() const {
+    return live_crypt_flow_for_crypt_patches || live_physics_mode == "inherit";
+  }
+
+  [[nodiscard]] bool resolved_live_inherit_oxygen() const {
+    return live_inherit_oxygen || live_physics_mode == "inherit";
+  }
+
+  [[nodiscard]] bool resolved_live_align_delivery() const {
+    return live_align_patch_table_delivery ||
+           live_physics_mode == "ladder_delivery";
+  }
+
+  [[nodiscard]] Real effective_live_crypt_disruption_prob() const {
+    if (!resolved_live_crypt_flow()) {
+      return crypt.disruption_prob;
+    }
+    const Real shelter = std::max<Real>(
+        0.0, exposed_proximal.disruption_prob - crypt.disruption_prob);
+    return std::clamp<Real>(
+        crypt.disruption_prob +
+            (1.0 - live_crypt_contraction_shelter_scale) * shelter,
+        0.0, 1.0);
+  }
+
+  [[nodiscard]] bool live_crypt_double_counting_risk() const {
+    return resolved_live_crypt_flow() &&
+           live_crypt_contraction_shelter_scale > 0.0 &&
+           crypt.disruption_prob < exposed_proximal.disruption_prob;
+  }
 };
+
+// Validates live_physics_mode, live_crypt_contraction_shelter_scale, and all
+// Layer2Pulse entries; throws ConfigError on invalid values.
+void validate_layer2_live_physics_and_pulses(const Layer2Config& c);
 
 }  // namespace gutibm
 

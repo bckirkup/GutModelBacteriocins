@@ -27,6 +27,13 @@ Table sources: [ladder setup and peaks][ladder], [run config][config], [crypt de
 
 **Smallest next balance check.** For one existing carbon-field interval with before/after stocks and fluxes, evaluate the [implemented residual][residual] in mol: initial + signed boundary + gradient source + VBF source − agent uptake − paid maintenance − VBF sink + reaction clip − final. Report the clip separately from the residual; a zero residual can include mass supplied by the clamp. The placement census lacks these terms. Even field closure would not demonstrate elemental balance into biomass and products: that requires a declared substrate and biomass basis first.
 
+## Locked Convention & Live-Slot Delivery Alignment (#469)
+
+- **Wet-mass `Agent::biomass` convention:** `Agent::biomass` is standardized as wet cell mass (`volume × CELL_DENSITY_DEFAULT = 1,100 kg/m³`), matching `Agent::mass` and cell-radius updates in `FixMetabolism`. Stale `"dry biomass (kg)"` comments in `src/core/agent.h`, `src/fixes/fix_metabolism.h`, `src/layer3/lumen.h`, and `docs/API.md` now declare wet cell mass explicitly.
+- **`yield_carbon` units and literature conversion:** `metabolism.yield_carbon` (default `0.5`) is expressed in **mol modeled substrate per kg wet cell mass**. When comparing against dry-weight literature yields (e.g. Varma & Palsson 1993/1994 `0.524 g dry biomass / g glucose` at `180 g/mol`), convert using an explicit `dry_mass_fraction = 0.30`: `1 / (0.524 × 0.180) × 0.30 ≈ 3.18 mol glucose / kg wet` (`≈ 19.1 mol C / kg wet`).
+- **Live-slot `PatchTable` delivery alignment:** `MucusSegment::live_config_for` preserves `ladder_compat` defaults (`uptake_limit` inherited from outer config) for backward compatibility, and provides explicit opt-in alignment via `layer2.live_align_patch_table_delivery = true` or `layer2.live_physics_mode = "ladder_delivery"`. When enabled, live slots set `metabolism.uptake_limit = "delivery"`, `delivery_far_field_radius = 10 µm`, `domain.grid_dx = 4 µm`, and `carbon.delivery_enabled = true` to match the `PatchTable` carbon ladder (`K = 57.402` at `2×` crypt supply).
+- **Molar balance & comparability tests:** `tests/test_metabolism.cpp` verifies exact carbon molar closure (`residual ≈ 0` and `reaction_clip == 0` under `closure.enforce_reaction_clip = true`) over a multi-step `delivery`-mode growth window; `tests/test_layer2_segment.cpp` verifies live-vs-shadow `PatchTable` trajectory comparability in delivery-aligned mode versus runaway `BloomHalted` under `uptake_limit = "none"`.
+
 [prov]: ../analysis/spec13_placement/out/incub_ship_ly0.1_s20261027_prov.json
 [config]: ../analysis/spec13_placement/out/cfg_incub_ship_ly0.1_s20261027.json
 [placement]: ../analysis/spec13_placement/REPORT.md#arms
