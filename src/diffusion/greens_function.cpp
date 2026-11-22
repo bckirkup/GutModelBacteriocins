@@ -157,12 +157,15 @@ bool try_gpu_superpose(const Domain& domain,
                        uint64_t* kernel_evaluations,
                        uint64_t* low_screening_evaluations,
                        uint64_t* negative_field_count,
-                       Real* most_negative_field) {
+                       Real* most_negative_field,
+                       uint64_t* drift_envelope_evaluations,
+                       uint64_t* drift_modal_evaluations) {
   if (!gpu_runtime_enabled()) return false;
   return gpu_superpose_to_grid(domain, adv, sources, params, {}, grid_conc,
                                cutoff_radius, cap_hits, kernel_evaluations,
                                low_screening_evaluations, negative_field_count,
-                               most_negative_field);
+                               most_negative_field, drift_envelope_evaluations,
+                               drift_modal_evaluations);
 }
 #endif
 
@@ -272,6 +275,8 @@ void GreensFunction::init(const Domain& domain, const AdvectionField& adv) {
   z_hi_   = domain.hi()[2];
   diag_->robin_direct_evaluations.store(0);
   diag_->robin_host_fallback_sources.store(0);
+  diag_->drift_modal_evaluations.store(0);
+  diag_->peclet_auto_dispatched_sources.store(0);
 }
 
 void GreensFunction::require_init() const {
@@ -279,6 +284,38 @@ void GreensFunction::require_init() const {
     throw SimulationError(
         "GreensFunction::init() must be called before concentration queries");
   }
+}
+
+bool GreensFunction::should_use_drift_correction(
+    const Vec3& source, const GreensFunctionParams& params) const {
+  if (params.drift_correction) return true;
+  if (!params.drift_auto_dispatch) return false;
+  const Real d_eff = params.diff_coeff / params.retardation;
+  if (!(d_eff > 0.0)) return false;
+  const Vec3 flow = adv_->velocity(source);
+  if (std::abs(flow[2]) <= 0.0) return false;
+  const Real threshold = params.peclet_z_threshold >= 0.0
+      ? params.peclet_z_threshold : neumann::kDriftEnvelopePeZ;
+  return neumann::drift_envelope_exceeded(
+      flow[2], z_hi_ - z_lo_, d_eff, threshold);
+}
+
+std::vector<GreensFunctionParams> GreensFunction::resolve_auto_dispatch_params(
+    const std::vector<Vec3>& sources,
+    const std::vector<GreensFunctionParams>& params) const {
+  std::vector<GreensFunctionParams> resolved = params;
+  uint64_t dispatched = 0;
+  for (size_t i = 0; i < sources.size(); ++i) {
+    if (!resolved[i].drift_correction && resolved[i].drift_auto_dispatch
+        && should_use_drift_correction(sources[i], resolved[i])) {
+      resolved[i].drift_correction = true;
+      ++dispatched;
+    }
+  }
+  if (dispatched != 0) {
+    diag_->peclet_auto_dispatched_sources.fetch_add(dispatched);
+  }
+  return resolved;
 }
 
 void GreensFunction::set_kernel_evaluation_counting(bool enabled) {
@@ -368,11 +405,38 @@ Real GreensFunction::concentration_sealed(
   require_init();
   Real D_eff = params.diff_coeff / params.retardation;
   Vec3 flow  = adv_->velocity(source);
-  if (neumann::drift_envelope_exceeded(
-          flow[2], z_hi_ - z_lo_, D_eff)) {
+  const Real threshold = params.peclet_z_threshold >= 0.0
+      ? params.peclet_z_threshold : neumann::kDriftEnvelopePeZ;
+  const bool drift_exceeded = neumann::drift_envelope_exceeded(
+      flow[2], z_hi_ - z_lo_, D_eff, threshold);
+  if (drift_exceeded) {
     diag_->drift_envelope_evaluations.fetch_add(1);
   }
   const Real Q = params.source_rate;
+  const bool use_drift = params.drift_correction
+      || (params.drift_auto_dispatch && std::abs(flow[2]) > 0.0
+          && drift_exceeded);
+  if (use_drift) {
+    diag_->drift_modal_evaluations.fetch_add(1);
+    if (kernel_evaluation_counting_enabled_) {
+      int slot = 0;
+#ifdef GUTIBM_OPENMP
+      slot = omp_get_thread_num();
+#endif
+      diag_->kernel_evaluations_by_thread[static_cast<std::size_t>(slot)]
+          .count.fetch_add(1);
+    }
+    const Vec3 delta = domain_->min_image_delta(source, target);
+    const Real total = robin::evaluate_physical_sealed_concentration(
+        delta[0], delta[1], source[2], target[2], z_lo_, z_hi_, D_eff, Q,
+        params.decay_rate, flow[0], flow[1], flow[2],
+        params.image_series_relative_tolerance);
+    if (total < 0.0) {
+      diag_->negative_field_count.fetch_add(1);
+      diag_->record_negative_field(total);
+    }
+    return std::max(total, 0.0);
+  }
   const auto evaluate_image = [this, &source, &target, D_eff, Q,
                                decay_rate = params.decay_rate, flow](
                                   Real image_z, int reflected) {
@@ -420,29 +484,6 @@ Real GreensFunction::concentration_sealed(
   if (low_screening_floor != 0) {
     diag_->low_screening_evaluations.fetch_add(1);
   }
-  if (params.drift_correction) {
-    const auto table = robin_table(params);
-    // Table rows use the mean profile flow; the runtime gauge uses the local
-    // velocity, matching the shipped Green's-function convention.
-    const Vec3 delta = domain_->min_image_delta(source, target);
-    const Real rho = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]);
-    const bool use_direct = robin::requires_direct_evaluation(
-        source[2], target[2], rho, z_lo_, z_hi_,
-        std::min({domain_->dx_x(), domain_->dx_y(), domain_->dx_z()}));
-    if (use_direct) {
-      // normalized_sealed_field() already carries the gauge factor, so the
-      // image base is replaced outright rather than corrected.
-      total = Q / (4.0 * PI * D_eff) * robin::normalized_sealed_field({
-          source[2], target[2], rho, z_lo_, z_hi_, D_eff, params.decay_rate,
-          flow[0], flow[1], flow[2], robin::kTableModeCount});
-    } else {
-      const Real drift = robin::interpolate_drift(
-          *table, source[2], target[2], rho);
-      total += Q / (4.0 * PI * D_eff) * drift * std::exp(
-          (flow[0] * delta[0] + flow[1] * delta[1]
-           + flow[2] * delta[2]) / (2.0 * D_eff));
-    }
-  }
   if (total < 0.0) {
     diag_->negative_field_count.fetch_add(1);
     diag_->record_negative_field(total);
@@ -458,54 +499,63 @@ Real GreensFunction::concentration_bounded(
     return concentration_sealed(source, target, params);
   }
 
+  const bool use_drift = should_use_drift_correction(source, params);
+  GreensFunctionParams effective_params = params;
+  effective_params.drift_correction = use_drift;
+
   const Vec3 delta = domain_->min_image_delta(source, target);
-  const Real d_eff = params.diff_coeff / params.retardation;
+  const Real d_eff = effective_params.diff_coeff / effective_params.retardation;
   const Vec3 flow = adv_->velocity(source);
-  const Vec3 correction_flow = params.drift_correction
+  const Vec3 correction_flow = use_drift
       ? flow : adv_->mean_velocity(source);
-  const std::shared_ptr<const robin::Table> table = robin_table(params);
   const Real rho = std::sqrt(delta[0] * delta[0] + delta[1] * delta[1]);
   const bool use_direct = robin::requires_direct_evaluation(
       source[2], target[2], rho, z_lo_, z_hi_,
       std::min({domain_->dx_x(), domain_->dx_y(), domain_->dx_z()}));
-  Real correction_base = 0.0;
-  if (use_direct) {
-    diag_->robin_direct_evaluations.fetch_add(1);
-    correction_base = robin::normalized_correction(
-        source[2], target[2], rho, z_lo_, z_hi_, d_eff,
-        params.diff_coeff, params.decay_rate,
-        params.lumen_transfer_length, correction_flow[0], correction_flow[1],
-        correction_flow[2], robin::kTableModeCount,
-        params.lumen_transfer_basis_free
-            ? robin::TransferBasis::Free
-            : robin::TransferBasis::Effective,
-        params.drift_correction
-            ? robin::SealedReference::Physical
-            : robin::SealedReference::ImageConsistent);
-  } else {
-    correction_base = params.drift_correction
-        ? robin::interpolate_physical_correction(
-            *table, source[2], target[2], rho)
-        : robin::interpolate_legacy(*table, source[2], target[2], rho);
-  }
-  const Real correction = correction_base * std::exp(
+  const robin::TransferBasis basis = effective_params.lumen_transfer_basis_free
+      ? robin::TransferBasis::Free : robin::TransferBasis::Effective;
+  const Real gauge_factor = std::exp(
       (flow[0] * delta[0] + flow[1] * delta[1] + flow[2] * delta[2])
       / (2.0 * d_eff));
+
   Real total = 0.0;
-  if (params.drift_correction && use_direct) {
-    const Real robin_field = robin::normalized_robin_field(
-        source[2], target[2], rho, z_lo_, z_hi_, d_eff, params.diff_coeff,
-        params.decay_rate, params.lumen_transfer_length, flow[0], flow[1],
-        flow[2], robin::kTableModeCount,
-        params.lumen_transfer_basis_free
-            ? robin::TransferBasis::Free
-            : robin::TransferBasis::Effective);
-    // normalized_robin_field() already carries the gauge factor.
-    total = params.source_rate / (4.0 * PI * d_eff) * robin_field;
+  if (use_drift && use_direct) {
+    diag_->robin_direct_evaluations.fetch_add(1);
+    const Real threshold = effective_params.peclet_z_threshold >= 0.0
+        ? effective_params.peclet_z_threshold : neumann::kDriftEnvelopePeZ;
+    if (neumann::drift_envelope_exceeded(
+            flow[2], z_hi_ - z_lo_, d_eff, threshold)) {
+      diag_->drift_envelope_evaluations.fetch_add(1);
+    }
+    diag_->drift_modal_evaluations.fetch_add(1);
+    const Real robin_radial = robin::normalized_robin_radial(
+        source[2], target[2], rho, z_lo_, z_hi_, d_eff,
+        effective_params.diff_coeff, effective_params.decay_rate,
+        effective_params.lumen_transfer_length, flow[0], flow[1], flow[2],
+        robin::kTableModeCount, basis);
+    total = effective_params.source_rate / (4.0 * PI * d_eff)
+        * robin_radial * gauge_factor;
   } else {
-    const Real sealed = concentration_sealed(source, target, params);
-    total = sealed + params.source_rate
-        / (4.0 * PI * d_eff) * correction;
+    Real correction_base = 0.0;
+    if (use_direct) {
+      diag_->robin_direct_evaluations.fetch_add(1);
+      correction_base = robin::normalized_correction(
+          source[2], target[2], rho, z_lo_, z_hi_, d_eff,
+          effective_params.diff_coeff, effective_params.decay_rate,
+          effective_params.lumen_transfer_length, correction_flow[0],
+          correction_flow[1], correction_flow[2], robin::kTableModeCount,
+          basis, robin::SealedReference::ImageConsistent);
+    } else {
+      const std::shared_ptr<const robin::Table> table =
+          robin_table(effective_params);
+      correction_base = use_drift
+          ? robin::interpolate_physical_correction(
+              *table, source[2], target[2], rho)
+          : robin::interpolate_legacy(*table, source[2], target[2], rho);
+    }
+    const Real sealed = concentration_sealed(source, target, effective_params);
+    total = sealed + effective_params.source_rate
+        / (4.0 * PI * d_eff) * correction_base * gauge_factor;
   }
   if (total < 0.0) {
     diag_->negative_field_count.fetch_add(1);
@@ -523,25 +573,33 @@ void GreensFunction::superpose_to_grid(
 
   const Int ncells = domain_->ncells();
   grid_conc.assign(ncells, 0.0);
+  const std::vector<GreensFunctionParams> effective_params =
+      resolve_auto_dispatch_params(sources, params);
 
 #ifdef GUTIBM_CUDA
   uint64_t gpu_kernel_evaluations = 0;
   uint64_t gpu_low_screening = 0;
   uint64_t gpu_negative_count = 0;
+  uint64_t gpu_drift_envelope = 0;
+  uint64_t gpu_drift_modal = 0;
   Real gpu_most_negative = 0.0;
   uint64_t* kernel_evaluations = kernel_evaluation_counting_enabled_
       ? &gpu_kernel_evaluations
       : nullptr;
   if (const std::vector<size_t> fallback =
-          ::gutibm::robin_host_fallback_sources(*domain_, sources, params);
+          ::gutibm::robin_host_fallback_sources(
+              *domain_, sources, effective_params);
       fallback.empty()) {
     uint64_t gpu_cap_hits = 0;
     if (adv_ && domain_ && try_gpu_superpose(
-            *domain_, *adv_, sources, params, grid_conc, cutoff_radius,
-            &gpu_cap_hits, kernel_evaluations, &gpu_low_screening,
-            &gpu_negative_count, &gpu_most_negative)) {
+            *domain_, *adv_, sources, effective_params, grid_conc,
+            cutoff_radius, &gpu_cap_hits, kernel_evaluations,
+            &gpu_low_screening, &gpu_negative_count, &gpu_most_negative,
+            &gpu_drift_envelope, &gpu_drift_modal)) {
       add_image_series_cap_hits(gpu_cap_hits);
       add_low_screening_evaluations(gpu_low_screening);
+      add_drift_envelope_evaluations(gpu_drift_envelope);
+      add_drift_modal_evaluations(gpu_drift_modal);
       add_negative_field_diagnostics(gpu_negative_count, gpu_most_negative);
       if (kernel_evaluations != nullptr) {
         add_kernel_evaluations(gpu_kernel_evaluations);
@@ -558,10 +616,10 @@ void GreensFunction::superpose_to_grid(
     for (size_t index = 0; index < sources.size(); ++index) {
       if (is_fallback[index] != 0) {
         host_sources.push_back(sources[index]);
-        host_params.push_back(params[index]);
+        host_params.push_back(effective_params[index]);
       } else {
         gpu_sources.push_back(sources[index]);
-        gpu_params.push_back(params[index]);
+        gpu_params.push_back(effective_params[index]);
       }
     }
     std::vector<Real> gpu_grid;
@@ -570,7 +628,8 @@ void GreensFunction::superpose_to_grid(
         || try_gpu_superpose(*domain_, *adv_, gpu_sources, gpu_params,
                              gpu_grid, cutoff_radius, &gpu_cap_hits,
                              kernel_evaluations, &gpu_low_screening,
-                             &gpu_negative_count, &gpu_most_negative);
+                             &gpu_negative_count, &gpu_most_negative,
+                             &gpu_drift_envelope, &gpu_drift_modal);
     if (gpu_ok) {
       if (gpu_sources.empty()) {
         gpu_grid.assign(static_cast<size_t>(ncells), 0.0);
@@ -584,6 +643,8 @@ void GreensFunction::superpose_to_grid(
       }
       add_image_series_cap_hits(gpu_cap_hits);
       add_low_screening_evaluations(gpu_low_screening);
+      add_drift_envelope_evaluations(gpu_drift_envelope);
+      add_drift_modal_evaluations(gpu_drift_modal);
       add_negative_field_diagnostics(gpu_negative_count, gpu_most_negative);
       if (kernel_evaluations != nullptr) {
         add_kernel_evaluations(gpu_kernel_evaluations);
@@ -594,7 +655,7 @@ void GreensFunction::superpose_to_grid(
   }
 #endif
 
-  superpose_cpu(*domain_, *this, sources, params, nullptr, grid_conc,
+  superpose_cpu(*domain_, *this, sources, effective_params, nullptr, grid_conc,
                 cutoff_radius);
 }
 
@@ -607,7 +668,9 @@ void GreensFunction::superpose_to_grid(
   require_init();
   assert(strength_factors.size() == sources.size());
   grid_conc.assign(domain_->ncells(), 0.0);
-  superpose_cpu(*domain_, *this, sources, params, &strength_factors,
+  const std::vector<GreensFunctionParams> effective_params =
+      resolve_auto_dispatch_params(sources, params);
+  superpose_cpu(*domain_, *this, sources, effective_params, &strength_factors,
                 grid_conc, cutoff_radius);
 }
 
@@ -619,9 +682,11 @@ void GreensFunction::superpose_to_local_grid(
     Int storage_nx, Int halo_width) const {
   require_init();
   assert(strength_factors.size() == sources.size());
-  superpose_cpu_local(*domain_, *this, sources, params, &strength_factors,
-                      grid_conc, cutoff_radius, x_begin, x_end, storage_nx,
-                      halo_width);
+  const std::vector<GreensFunctionParams> effective_params =
+      resolve_auto_dispatch_params(sources, params);
+  superpose_cpu_local(*domain_, *this, sources, effective_params,
+                      &strength_factors, grid_conc, cutoff_radius, x_begin,
+                      x_end, storage_nx, halo_width);
 }
 
 Real GreensFunction::peclet(const Vec3& pos, Real D_eff, Real length_scale) const {

@@ -22,7 +22,9 @@ __global__ void superpose_kernel(
     unsigned long long* low_screening_evaluations,
     unsigned long long* negative_field_count,
     double* most_negative_field,
-    unsigned long long* kernel_evaluations) {
+    unsigned long long* kernel_evaluations,
+    unsigned long long* drift_envelope_evaluations,
+    unsigned long long* drift_modal_evaluations) {
 
   int sid = blockIdx.x;
   if (sid >= num_sources) return;
@@ -68,7 +70,7 @@ __global__ void superpose_kernel(
       src, tgt, params[sid], dom, adv, robin_tables, robin_table_count,
       robin_index_error, cap_hits, low_screening_evaluations,
       negative_field_count, most_negative_field,
-      kernel_evaluations);
+      kernel_evaluations, drift_envelope_evaluations, drift_modal_evaluations);
   int idx = cell_index(dom, ix, iy, iz);
   atomicAdd(&grid_conc[idx], c);
 }
@@ -84,7 +86,9 @@ void launch_superpose_kernel(
     unsigned long long* low_screening_evaluations,
     unsigned long long* negative_field_count,
     double* most_negative_field,
-    unsigned long long* kernel_evaluations) {
+    unsigned long long* kernel_evaluations,
+    unsigned long long* drift_envelope_evaluations,
+    unsigned long long* drift_modal_evaluations) {
 
   if (num_sources == 0) return;
   int stencil_vol = (2 * span_x + 1) * (2 * span_y + 1) * (2 * span_z + 1);
@@ -94,7 +98,8 @@ void launch_superpose_kernel(
       src_x, src_y, src_z, params, grid_conc, robin_tables, dom, adv,
       num_sources, span_x, span_y, span_z, robin_table_count,
       robin_index_error, cap_hits, low_screening_evaluations,
-      negative_field_count, most_negative_field, kernel_evaluations);
+      negative_field_count, most_negative_field, kernel_evaluations,
+      drift_envelope_evaluations, drift_modal_evaluations);
 }
 
 }  // namespace gpu

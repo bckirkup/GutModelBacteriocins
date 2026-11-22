@@ -83,85 +83,134 @@ __device__ inline double concentration_bounded(const double src[3], const double
                                                unsigned long long* low_screening_evaluations,
                                                unsigned long long* negative_field_count,
                                                double* most_negative_field,
-                                               unsigned long long* kernel_evaluations) {
+                                               unsigned long long* kernel_evaluations,
+                                               unsigned long long* drift_envelope_evaluations = nullptr,
+                                               unsigned long long* drift_modal_evaluations = nullptr) {
   double D_eff = p.diff_coeff / p.retardation;
   double flow[3];
   flow_velocity(adv, src[0], src[2], flow[0], flow[1], flow[2]);
-  struct ImageKernel {
-    const double* source;
-    const double* target;
-    double diff_coeff;
-    double source_rate;
-    double decay_rate;
-    const double* flow;
-    const DomainParams* domain;
-    unsigned long long* kernel_evaluations;
+  const double threshold = p.peclet_z_threshold >= 0.0
+      ? p.peclet_z_threshold : neumann::kDriftEnvelopePeZ;
+  const bool drift_exceeded = neumann::drift_envelope_exceeded(
+      flow[2], dom.z_hi - dom.z_lo, D_eff, threshold);
+  if (drift_exceeded && drift_envelope_evaluations != nullptr) {
+    atomicAdd(drift_envelope_evaluations, 1ULL);
+  }
+  const bool use_drift = (p.drift_correction != 0)
+      || (p.drift_auto_dispatch != 0 && fabs(flow[2]) > 0.0 && drift_exceeded);
 
-    __device__ double operator()(double image_z, int reflected) const {
-      double image[3] = {source[0], source[1], image_z};
-      double image_flow[3] = {flow[0], flow[1], flow[2]};
-      if (reflected != 0) {
-        image_flow[2] = -image_flow[2];
-      }
-      return single_kernel(image, target, diff_coeff, source_rate,
-                           decay_rate, image_flow, *domain,
-                           kernel_evaluations);
-    }
-  };
-  const ImageKernel kernel = {src, tgt, D_eff, p.source_rate, p.decay_rate,
-                              flow, &dom, kernel_evaluations};
-  int cap_hit = 0;
-  int low_screening_floor = 0;
-  const double flow_magnitude = sqrt(
-      flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]);
-  const auto budget = neumann::image_series_budget(
-      D_eff, p.decay_rate, flow_magnitude, fabs(flow[2]),
-      dom.z_hi - dom.z_lo, p.image_series_relative_tolerance);
   double total = 0.0;
-  if (p.image_series_legacy_reflections != 0) {
-    total = kernel(src[2], 0);
-    for (int m = 1; m <= p.image_series_max_shells; ++m) {
-      const double offset = 2.0 * static_cast<double>(m)
-          * (dom.z_hi - dom.z_lo);
-      total += kernel(2.0 * dom.z_lo - src[2] - offset, 0)
-          + kernel(2.0 * dom.z_hi - src[2] + offset, 0)
-          + kernel(2.0 * dom.z_lo - src[2] + offset, 0)
-          + kernel(2.0 * dom.z_hi - src[2] - offset, 0);
+  if (use_drift) {
+    if (drift_modal_evaluations != nullptr) {
+      atomicAdd(drift_modal_evaluations, 1ULL);
+    }
+    if (kernel_evaluations != nullptr) {
+      atomicAdd(kernel_evaluations, 1ULL);
+    }
+    const double dx = minimum_image_delta(
+        tgt[0] - src[0], dom.extent[0], dom.periodic[0]);
+    const double dy = minimum_image_delta(
+        tgt[1] - src[1], dom.extent[1], dom.periodic[1]);
+    total = robin::evaluate_physical_sealed_concentration(
+        dx, dy, src[2], tgt[2], dom.z_lo, dom.z_hi, D_eff, p.source_rate,
+        p.decay_rate, flow[0], flow[1], flow[2],
+        p.image_series_relative_tolerance);
+    if (robin::transfer_enabled(p.lumen_transfer_length)) {
+      if (p.robin_table_index < 0
+          || p.robin_table_index >= robin_table_count
+          || robin_tables == nullptr) {
+        if (robin_index_error != nullptr) {
+          atomicExch(robin_index_error, 1U);
+        }
+        return total > 0.0 ? total : 0.0;
+      }
+      const double rho = sqrt(dx * dx + dy * dy);
+      robin::TableView table{
+          robin_tables + p.robin_table_index * robin::kTableValueCount,
+          dom.z_lo, dom.z_hi - dom.z_lo, p.robin_cutoff};
+      double correction = robin::interpolate_log(table, src[2], tgt[2], rho);
+      const double dz = minimum_image_delta(
+          tgt[2] - src[2], dom.extent[2], dom.periodic[2]);
+      correction *= exp((flow[0] * dx + flow[1] * dy + flow[2] * dz)
+                        / (2.0 * D_eff));
+      total += p.source_rate / (4.0 * PI_GPU * D_eff) * correction;
     }
   } else {
-    total = neumann::sum_image_series(
-        src[2], dom.z_lo, dom.z_hi, kernel,
-        p.image_series_relative_tolerance, budget.max_shells,
-        nullptr, &cap_hit);
-    low_screening_floor = budget.low_screening_floor ? 1 : 0;
-  }
-  if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
-  if (low_screening_floor != 0 && low_screening_evaluations != nullptr) {
-    atomicAdd(low_screening_evaluations, 1ULL);
-  }
-  if (robin::transfer_enabled(p.lumen_transfer_length)) {
-    if (p.robin_table_index < 0
-        || p.robin_table_index >= robin_table_count
-        || robin_tables == nullptr) {
-      if (robin_index_error != nullptr) {
-        atomicExch(robin_index_error, 1U);
+    struct ImageKernel {
+      const double* source;
+      const double* target;
+      double diff_coeff;
+      double source_rate;
+      double decay_rate;
+      const double* flow;
+      const DomainParams* domain;
+      unsigned long long* kernel_evaluations;
+
+      __device__ double operator()(double image_z, int reflected) const {
+        double image[3] = {source[0], source[1], image_z};
+        double image_flow[3] = {flow[0], flow[1], flow[2]};
+        if (reflected != 0) {
+          image_flow[2] = -image_flow[2];
+        }
+        return single_kernel(image, target, diff_coeff, source_rate,
+                             decay_rate, image_flow, *domain,
+                             kernel_evaluations);
       }
-      return total > 0.0 ? total : 0.0;
+    };
+    const ImageKernel kernel = {src, tgt, D_eff, p.source_rate, p.decay_rate,
+                                flow, &dom, kernel_evaluations};
+    int cap_hit = 0;
+    int low_screening_floor = 0;
+    const double flow_magnitude = sqrt(
+        flow[0] * flow[0] + flow[1] * flow[1] + flow[2] * flow[2]);
+    const auto budget = neumann::image_series_budget(
+        D_eff, p.decay_rate, flow_magnitude, fabs(flow[2]),
+        dom.z_hi - dom.z_lo, p.image_series_relative_tolerance);
+    if (p.image_series_legacy_reflections != 0) {
+      total = kernel(src[2], 0);
+      for (int m = 1; m <= p.image_series_max_shells; ++m) {
+        const double offset = 2.0 * static_cast<double>(m)
+            * (dom.z_hi - dom.z_lo);
+        total += kernel(2.0 * dom.z_lo - src[2] - offset, 0)
+            + kernel(2.0 * dom.z_hi - src[2] + offset, 0)
+            + kernel(2.0 * dom.z_lo - src[2] + offset, 0)
+            + kernel(2.0 * dom.z_hi - src[2] - offset, 0);
+      }
+    } else {
+      total = neumann::sum_image_series(
+          src[2], dom.z_lo, dom.z_hi, kernel,
+          p.image_series_relative_tolerance, budget.max_shells,
+          nullptr, &cap_hit);
+      low_screening_floor = budget.low_screening_floor ? 1 : 0;
     }
-    double dx = minimum_image_delta(
-        tgt[0] - src[0], dom.extent[0], dom.periodic[0]);
-    double dy = minimum_image_delta(
-        tgt[1] - src[1], dom.extent[1], dom.periodic[1]);
-    double rho = sqrt(dx * dx + dy * dy);
-    robin::TableView table{
-        robin_tables + p.robin_table_index * robin::kTableValueCount,
-        dom.z_lo, dom.z_hi - dom.z_lo, p.robin_cutoff};
-    double correction = robin::interpolate_uniform(table, src[2], tgt[2], rho);
-    double dz = minimum_image_delta(
-        tgt[2] - src[2], dom.extent[2], dom.periodic[2]);
-    correction *= exp((flow[0] * dx + flow[1] * dy + flow[2] * dz)
-                      / (2.0 * D_eff));
-    total += p.source_rate / (4.0 * PI_GPU * D_eff) * correction;
+    if (cap_hit != 0 && cap_hits != nullptr) atomicAdd(cap_hits, 1ULL);
+    if (low_screening_floor != 0 && low_screening_evaluations != nullptr) {
+      atomicAdd(low_screening_evaluations, 1ULL);
+    }
+    if (robin::transfer_enabled(p.lumen_transfer_length)) {
+      if (p.robin_table_index < 0
+          || p.robin_table_index >= robin_table_count
+          || robin_tables == nullptr) {
+        if (robin_index_error != nullptr) {
+          atomicExch(robin_index_error, 1U);
+        }
+        return total > 0.0 ? total : 0.0;
+      }
+      double dx = minimum_image_delta(
+          tgt[0] - src[0], dom.extent[0], dom.periodic[0]);
+      double dy = minimum_image_delta(
+          tgt[1] - src[1], dom.extent[1], dom.periodic[1]);
+      double rho = sqrt(dx * dx + dy * dy);
+      robin::TableView table{
+          robin_tables + p.robin_table_index * robin::kTableValueCount,
+          dom.z_lo, dom.z_hi - dom.z_lo, p.robin_cutoff};
+      double correction = robin::interpolate_uniform(table, src[2], tgt[2], rho);
+      double dz = minimum_image_delta(
+          tgt[2] - src[2], dom.extent[2], dom.periodic[2]);
+      correction *= exp((flow[0] * dx + flow[1] * dy + flow[2] * dz)
+                        / (2.0 * D_eff));
+      total += p.source_rate / (4.0 * PI_GPU * D_eff) * correction;
+    }
   }
   if (total < 0.0) {
     if (negative_field_count != nullptr) {

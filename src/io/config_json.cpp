@@ -1097,6 +1097,7 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   string_key("qssa.drift_envelope_policy",
              cfg.qssa.drift_envelope_policy);
   bool_key("qssa.drift_correction", cfg.qssa.drift_correction);
+  real_key("qssa.peclet_z_threshold", cfg.qssa.peclet_z_threshold);
   real_key("nutrient_cutoff", cfg.qssa.nutrient_cutoff);
   real_key("colicin_release_rate", cfg.qssa.colicin_release_rate);
   real_key("microcin_secretion", cfg.qssa.microcin_secretion);

@@ -350,6 +350,10 @@ std::vector<Probe> build_probes() {
                 [](const SimulationConfig& c) {
                   return c.qssa.drift_correction;
                 }));
+  v.push_back(R("qssa.peclet_z_threshold",
+                [](const SimulationConfig& c) {
+                  return c.qssa.peclet_z_threshold;
+                }, 0.125));
   v.push_back(R("lumen_transfer_length", [](const SimulationConfig& c) {
     return c.qssa.lumen_transfer_length;
   }, 123.0e-6, false));

@@ -1769,6 +1769,10 @@ void Simulation::finalize_neumann_image_series_stats() {
       qssa_.gf().low_screening_evaluations();
   const uint64_t local_drift_envelope =
       qssa_.gf().drift_envelope_evaluations();
+  const uint64_t local_drift_modal =
+      qssa_.gf().drift_modal_evaluations();
+  const uint64_t local_peclet_dispatched =
+      qssa_.gf().peclet_auto_dispatched_sources();
   const uint64_t local_negative_count =
       qssa_.gf().negative_field_count();
   const Real local_most_negative = qssa_.gf().most_negative_field();
@@ -1783,6 +1787,8 @@ void Simulation::finalize_neumann_image_series_stats() {
     neumann_image_series_cap_hits_ = local_hits;
     neumann_low_screening_evaluations_ = local_low_screening;
     neumann_drift_envelope_evaluations_ = local_drift_envelope;
+    neumann_drift_modal_evaluations_ = local_drift_modal;
+    neumann_peclet_auto_dispatched_sources_ = local_peclet_dispatched;
     neumann_negative_field_count_ = local_negative_count;
     neumann_most_negative_field_ = local_most_negative;
     green_function_kernel_evaluations_ = local_kernel_evaluations;
@@ -1791,6 +1797,8 @@ void Simulation::finalize_neumann_image_series_stats() {
   unsigned long long global_hits = 0;
   unsigned long long global_low_screening = 0;
   unsigned long long global_drift_envelope = 0;
+  unsigned long long global_drift_modal = 0;
+  unsigned long long global_peclet_dispatched = 0;
   unsigned long long global_negative_count = 0;
   unsigned long long global_kernel_evaluations = 0;
   const auto local_value =
@@ -1801,6 +1809,10 @@ void Simulation::finalize_neumann_image_series_stats() {
       static_cast<unsigned long long>(local_low_screening);
   const auto local_drift_envelope_value =
       static_cast<unsigned long long>(local_drift_envelope);
+  const auto local_drift_modal_value =
+      static_cast<unsigned long long>(local_drift_modal);
+  const auto local_peclet_dispatched_value =
+      static_cast<unsigned long long>(local_peclet_dispatched);
   const auto local_negative_count_value =
       static_cast<unsigned long long>(local_negative_count);
   MPI_Allreduce(&local_value, &global_hits, 1, MPI_UNSIGNED_LONG_LONG,
@@ -1808,6 +1820,10 @@ void Simulation::finalize_neumann_image_series_stats() {
   MPI_Allreduce(&local_low_screening_value, &global_low_screening, 1,
                 MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&local_drift_envelope_value, &global_drift_envelope, 1,
+                MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_drift_modal_value, &global_drift_modal, 1,
+                MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_peclet_dispatched_value, &global_peclet_dispatched, 1,
                 MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&local_negative_count_value, &global_negative_count, 1,
                 MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
@@ -1821,6 +1837,10 @@ void Simulation::finalize_neumann_image_series_stats() {
       static_cast<uint64_t>(global_low_screening);
   neumann_drift_envelope_evaluations_ =
       static_cast<uint64_t>(global_drift_envelope);
+  neumann_drift_modal_evaluations_ =
+      static_cast<uint64_t>(global_drift_modal);
+  neumann_peclet_auto_dispatched_sources_ =
+      static_cast<uint64_t>(global_peclet_dispatched);
   neumann_negative_field_count_ =
       static_cast<uint64_t>(global_negative_count);
   neumann_most_negative_field_ = global_most_negative;
@@ -1830,6 +1850,8 @@ void Simulation::finalize_neumann_image_series_stats() {
   neumann_image_series_cap_hits_ = local_hits;
   neumann_low_screening_evaluations_ = local_low_screening;
   neumann_drift_envelope_evaluations_ = local_drift_envelope;
+  neumann_drift_modal_evaluations_ = local_drift_modal;
+  neumann_peclet_auto_dispatched_sources_ = local_peclet_dispatched;
   neumann_negative_field_count_ = local_negative_count;
   neumann_most_negative_field_ = local_most_negative;
   green_function_kernel_evaluations_ = local_kernel_evaluations;
