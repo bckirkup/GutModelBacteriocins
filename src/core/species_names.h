@@ -32,6 +32,7 @@ inline constexpr const char* SIDEROPHORE         = "siderophore";
 inline constexpr const char* FERRIC_ENTEROBACTIN  = "ferric_enterobactin";
 inline constexpr const char* FERRICHROME         = "ferrichrome";
 inline constexpr const char* AI2                 = "ai2";
+inline constexpr const char* VIRION              = "virion";
 
 // Per-receptor toxin field for a TonB-dependent transporter target.
 inline const char* bacteriocin_species_for(ReceptorType target) {

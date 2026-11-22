@@ -886,6 +886,75 @@ std::vector<Probe> build_probes() {
   add_ns_real(v, "quorum_sensing.chi_ai2", "quorum_sensing_chi_ai2",
               [](const SimulationConfig& c) { return c.quorum_sensing.chi_ai2; });
 
+  // ── Spec 14 temperate prophage ───────────────────────────────────────────
+  v.push_back(B("prophage.enabled",
+                [](const SimulationConfig& c) { return c.prophage.enabled; }));
+  v.push_back(R("prophage.lysogen_prevalence_init",
+                [](const SimulationConfig& c) {
+                  return c.prophage.lysogen_prevalence_init;
+                },
+                0.45));
+  v.push_back(R("prophage.active_inducible_fraction",
+                [](const SimulationConfig& c) {
+                  return c.prophage.active_inducible_fraction;
+                },
+                0.65));
+  v.push_back(R("prophage.k_spont",
+                [](const SimulationConfig& c) { return c.prophage.k_spont; }));
+  v.push_back(R("prophage.k_max_damage",
+                [](const SimulationConfig& c) {
+                  return c.prophage.k_max_damage;
+                }));
+  v.push_back(R("prophage.K_damage",
+                [](const SimulationConfig& c) { return c.prophage.K_damage; }));
+  v.push_back(R("prophage.hill_n",
+                [](const SimulationConfig& c) { return c.prophage.hill_n; }));
+  v.push_back(R("prophage.damage_stimulus",
+                [](const SimulationConfig& c) {
+                  return c.prophage.damage_stimulus;
+                }));
+  v.push_back(R("prophage.nuclease_damage_weight",
+                [](const SimulationConfig& c) {
+                  return c.prophage.nuclease_damage_weight;
+                }));
+  v.push_back(R("prophage.ros_damage_weight",
+                [](const SimulationConfig& c) {
+                  return c.prophage.ros_damage_weight;
+                }));
+  v.push_back(R("prophage.lysis_delay_s",
+                [](const SimulationConfig& c) {
+                  return c.prophage.lysis_delay_s;
+                }));
+  v.push_back(R("prophage.virion_burst_size",
+                [](const SimulationConfig& c) {
+                  return c.prophage.virion_burst_size;
+                }));
+  v.push_back(R("prophage.D_virion",
+                [](const SimulationConfig& c) { return c.prophage.D_virion; }));
+  v.push_back(R("prophage.virion_retardation",
+                [](const SimulationConfig& c) {
+                  return c.prophage.virion_retardation;
+                },
+                2.5));
+  v.push_back(R("prophage.k_virion_decay",
+                [](const SimulationConfig& c) {
+                  return c.prophage.k_virion_decay;
+                }));
+  v.push_back(R("prophage.virion_washout_scale",
+                [](const SimulationConfig& c) {
+                  return c.prophage.virion_washout_scale;
+                }));
+  v.push_back(R("prophage.k_adsorb",
+                [](const SimulationConfig& c) { return c.prophage.k_adsorb; }));
+  v.push_back(R("prophage.p_lysogeny",
+                [](const SimulationConfig& c) { return c.prophage.p_lysogeny; },
+                0.42));
+  v.push_back(S("prophage.adsorption_receptor",
+                [](const SimulationConfig& c) {
+                  return c.prophage.adsorption_receptor;
+                },
+                "FhuA"));
+
   // ── Layer 2 audit slot & live-slot physics ────────────────────────────────
   v.push_back(I("layer2.audit_patch_index",
                 [](const SimulationConfig& c) {
@@ -934,13 +1003,14 @@ const std::set<std::string, std::less<>>& array_and_strain_keys() {
       "initial_strains", "fixes", "hdf5", "schedule", "grid_species", "restart",
       "immigration", "initial_population", "chemistry", "domain", "chemistry_stride",
       "advection", "washout", "closure", "bacteriocin", "mucin_charge",
-      "metabolism", "receptor",
+      "metabolism", "receptor", "prophage",
       "layer2", "layer3", "audit", "pulses",
       "layer2.audit_patch_indices", "layer2.audit.patch_indices",
       "layer2.pulses",
       "type",         "count",
       "mu_max",          "plasmids", "conjugative", "cdi_type",
       "cdi_immunity", "receptor_expression", "receptor_genotype", "receptors",
+      "lysogen_prevalence", "active_inducible_fraction",
       "plasmid_overrides", "hdf5.schedule.grid_species",
       "disabled_fixes", "disabled_mechanisms"};
   return keys;
@@ -1135,8 +1205,14 @@ void test_strain_and_array_keys() {
     "initial_strains": [
       {"type": 3, "count": 9, "mu_max": 7e-4, "plasmids": ["ColE1", "ColB"],
        "conjugative": true, "cdi_type": 5, "cdi_immunity": 6,
-       "receptor_expression": {"BtuB": 0.0, "FepA": 0.35}}
+       "receptor_expression": {"BtuB": 0.0, "FepA": 0.35},
+       "lysogen_prevalence": 0.75, "active_inducible_fraction": 0.4}
     ],
+    "prophage": {
+      "enabled": true,
+      "k_spont": 2.5e-6,
+      "hill_n": 3.0
+    },
     "plasmid_overrides": {
       "ColE1": {"retardation": 25.0, "diff_coeff": 8e-11, "burst_size": 2e5}
     },
@@ -1171,7 +1247,18 @@ void test_strain_and_array_keys() {
            "strain BtuB expression not ingested");
     expect(std::abs(s.receptor_expression.at("FepA") - 0.35) < 1e-12,
            "strain FepA expression not ingested");
+    expect(s.lysogen_prevalence.has_value()
+               && std::abs(*s.lysogen_prevalence - 0.75) < 1e-12,
+           "strain 'lysogen_prevalence' not ingested");
+    expect(s.active_inducible_fraction.has_value()
+               && std::abs(*s.active_inducible_fraction - 0.4) < 1e-12,
+           "strain 'active_inducible_fraction' not ingested");
   }
+  expect(cfg.prophage.enabled, "nested 'prophage.enabled' not ingested");
+  expect(std::abs(cfg.prophage.k_spont - 2.5e-6) < 1e-12,
+         "nested 'prophage.k_spont' not ingested");
+  expect(std::abs(cfg.prophage.hill_n - 3.0) < 1e-12,
+         "nested 'prophage.hill_n' not ingested");
 
   expect(cfg.enabled_fixes.size() == 2, "'fixes' array not ingested");
   if (cfg.enabled_fixes.size() == 2) {

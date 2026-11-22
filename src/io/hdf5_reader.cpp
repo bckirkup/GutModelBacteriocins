@@ -174,7 +174,11 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
   read_opt_double("outer_radius", out.outer_radius);
   read_opt_double("age", out.age);
   read_opt_double("sos_timer", out.sos_timer);
+  read_opt_double("prophage_lysis_timer", out.prophage_lysis_timer);
   read_opt_double("death_time", out.death_time);
+  read_opt_i32("has_prophage_immunity", out.has_prophage_immunity);
+  read_opt_i32("has_inducible_prophage", out.has_inducible_prophage);
+  read_opt_i32("prophage_induced", out.prophage_induced);
   read_opt_double("pending_growth_chemistry_biomass",
                   out.pending_growth_chemistry_biomass);
   read_opt_double("receptor_expr", out.receptor_expr);
@@ -212,10 +216,14 @@ HDF5CheckpointAgents read_agents(hid_t file, const std::string& step) {
   check_opt_len(out.respired_oxygen_rate.size(), n, "respired oxygen rate");
   check_opt_len(out.in_crypt.size(), n, "in_crypt");
   check_opt_len(out.microcin_penalty_applied.size(), n, "microcin penalty");
+  check_opt_len(out.has_prophage_immunity.size(), n, "has_prophage_immunity");
+  check_opt_len(out.has_inducible_prophage.size(), n, "has_inducible_prophage");
+  check_opt_len(out.prophage_induced.size(), n, "prophage_induced");
   check_opt_len(out.mass.size(), n, "mass");
   check_opt_len(out.outer_radius.size(), n, "outer_radius");
   check_opt_len(out.age.size(), n, "age");
   check_opt_len(out.sos_timer.size(), n, "sos_timer");
+  check_opt_len(out.prophage_lysis_timer.size(), n, "prophage_lysis_timer");
   check_opt_len(out.death_time.size(), n, "death_time");
   check_opt_len(out.pending_growth_chemistry_biomass.size(), n,
                 "pending_growth_chemistry_biomass");
@@ -407,6 +415,10 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
   read_event("conjugation_transfers", meta.interval_events.conjugation_transfers);
   read_event("mutations", meta.interval_events.mutations);
   read_event("immigrations", meta.interval_events.immigrations);
+  read_event("prophage_inductions", meta.interval_events.prophage_inductions);
+  read_event("prophage_lytic_kills", meta.interval_events.prophage_lytic_kills);
+  read_event("prophage_lysogen_conversions",
+             meta.interval_events.prophage_lysogen_conversions);
   read_event("cumulative_sos_inductions", meta.cumulative_events.sos_inductions);
   read_event("cumulative_phage_inductions", meta.cumulative_events.phage_inductions);
   read_event("cumulative_mortality_colicin", meta.cumulative_events.mortality_colicin);
@@ -426,11 +438,34 @@ HDF5CheckpointMetadata read_metadata(hid_t file, const std::string& step) {
              meta.cumulative_events.conjugation_transfers);
   read_event("cumulative_mutations", meta.cumulative_events.mutations);
   read_event("cumulative_immigrations", meta.cumulative_events.immigrations);
+  read_event("cumulative_prophage_inductions",
+             meta.cumulative_events.prophage_inductions);
+  read_event("cumulative_prophage_lytic_kills",
+             meta.cumulative_events.prophage_lytic_kills);
+  read_event("cumulative_prophage_lysogen_conversions",
+             meta.cumulative_events.prophage_lysogen_conversions);
   const auto read_rate = [&](const std::string& name, Real& value) {
     if (link_exists(file, events + name)) {
       value = read_scalar<double>(file, events + name, H5T_NATIVE_DOUBLE);
     }
   };
+  read_rate("virions_released", meta.interval_events.virions_released);
+  read_rate("virions_adsorbed", meta.interval_events.virions_adsorbed);
+  read_rate("virions_decayed", meta.interval_events.virions_decayed);
+  read_rate("prophage_bacterium_seconds",
+            meta.interval_events.prophage_bacterium_seconds);
+  read_rate("prophage_induction_rate_per_bacterium_day",
+            meta.interval_events.prophage_induction_rate_per_bacterium_day);
+  read_rate("cumulative_virions_released",
+            meta.cumulative_events.virions_released);
+  read_rate("cumulative_virions_adsorbed",
+            meta.cumulative_events.virions_adsorbed);
+  read_rate("cumulative_virions_decayed",
+            meta.cumulative_events.virions_decayed);
+  read_rate("cumulative_prophage_bacterium_seconds",
+            meta.cumulative_events.prophage_bacterium_seconds);
+  read_rate("cumulative_prophage_induction_rate_per_bacterium_day",
+            meta.cumulative_events.prophage_induction_rate_per_bacterium_day);
   read_rate("sos_basal_rate", meta.interval_events.sos_basal_rate);
   read_rate("sos_post_division_rate",
             meta.interval_events.sos_post_division_rate);

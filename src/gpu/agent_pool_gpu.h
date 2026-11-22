@@ -121,6 +121,13 @@ class AgentPoolGpu {
   int*    state() { return d_state_.data(); }
   const int* state() const { return d_state_.data(); }
   const int* is_ghost() const { return d_is_ghost_.data(); }
+  const int* has_prophage_immunity() const {
+    return d_has_prophage_immunity_.data();
+  }
+  const int* has_inducible_prophage() const {
+    return d_has_inducible_prophage_.data();
+  }
+  const int* prophage_induced() const { return d_prophage_induced_.data(); }
   double* mu_realized() { return d_mu_realized_.data(); }
   const double* mu_realized() const { return d_mu_realized_.data(); }
   double* fermentation_fraction() { return d_fermentation_fraction_.data(); }
@@ -169,6 +176,9 @@ class AgentPoolGpu {
   DeviceBuffer<int> d_grid_cell_;
   DeviceBuffer<int> d_state_;
   DeviceBuffer<int> d_is_ghost_;
+  DeviceBuffer<int> d_has_prophage_immunity_;
+  DeviceBuffer<int> d_has_inducible_prophage_;
+  DeviceBuffer<int> d_prophage_induced_;
   DeviceBuffer<int> d_bi_loci_count_;
   DeviceBuffer<double> d_mu_realized_;
   DeviceBuffer<double> d_fermentation_fraction_;

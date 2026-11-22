@@ -670,9 +670,10 @@ void Simulation::init(const SimulationConfig& cfg) {
 
 void Simulation::prepare_step_events_for_summary() {
   event_ledger_.summary_events = event_ledger_.step_events;
+  event_ledger_.summary_events.refresh_prophage_daily_rate();
 #ifdef GUTIBM_MPI
   if (domain_.nprocs() > 1) {
-    std::array<Int, 11 + MAX_AGENT_TYPES> local = {
+    std::array<Int, 14 + MAX_AGENT_TYPES> local = {
         event_ledger_.step_events.sos_inductions,
         event_ledger_.step_events.phage_inductions,
         event_ledger_.step_events.mortality_colicin,
@@ -683,12 +684,15 @@ void Simulation::prepare_step_events_for_summary() {
         event_ledger_.step_events.divisions,
         event_ledger_.step_events.conjugation_transfers,
         event_ledger_.step_events.mutations,
-        event_ledger_.step_events.immigrations};
+        event_ledger_.step_events.immigrations,
+        event_ledger_.step_events.prophage_inductions,
+        event_ledger_.step_events.prophage_lytic_kills,
+        event_ledger_.step_events.prophage_lysogen_conversions};
     for (Int i = 0; i < MAX_AGENT_TYPES; ++i) {
-      local[static_cast<size_t>(11 + i)] =
+      local[static_cast<size_t>(14 + i)] =
           event_ledger_.step_events.divisions_by_type[static_cast<size_t>(i)];
     }
-    std::array<Int, 11 + MAX_AGENT_TYPES> global{};
+    std::array<Int, 14 + MAX_AGENT_TYPES> global{};
     MPI_Allreduce(local.data(), global.data(), static_cast<int>(local.size()),
                   MPI_INT, MPI_SUM, MPI_COMM_WORLD);
     event_ledger_.summary_events.sos_inductions = global[0];
@@ -702,16 +706,23 @@ void Simulation::prepare_step_events_for_summary() {
     event_ledger_.summary_events.conjugation_transfers = global[8];
     event_ledger_.summary_events.mutations = global[9];
     event_ledger_.summary_events.immigrations = global[10];
+    event_ledger_.summary_events.prophage_inductions = global[11];
+    event_ledger_.summary_events.prophage_lytic_kills = global[12];
+    event_ledger_.summary_events.prophage_lysogen_conversions = global[13];
     for (Int i = 0; i < MAX_AGENT_TYPES; ++i) {
       event_ledger_.summary_events.divisions_by_type[static_cast<size_t>(i)] =
-          global[static_cast<size_t>(11 + i)];
+          global[static_cast<size_t>(14 + i)];
     }
-    const std::array<Real, 4> local_rates = {
+    const std::array<Real, 8> local_rates = {
         event_ledger_.step_events.sos_basal_rate,
         event_ledger_.step_events.sos_post_division_rate,
         event_ledger_.step_events.sos_nuclease_cross_induction_rate,
-        event_ledger_.step_events.sos_ros_rate};
-    std::array<Real, 4> global_rates{};
+        event_ledger_.step_events.sos_ros_rate,
+        event_ledger_.step_events.virions_released,
+        event_ledger_.step_events.virions_adsorbed,
+        event_ledger_.step_events.virions_decayed,
+        event_ledger_.step_events.prophage_bacterium_seconds};
+    std::array<Real, 8> global_rates{};
     MPI_Allreduce(local_rates.data(), global_rates.data(),
                   static_cast<int>(local_rates.size()), MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
@@ -720,6 +731,11 @@ void Simulation::prepare_step_events_for_summary() {
     event_ledger_.summary_events.sos_nuclease_cross_induction_rate =
         global_rates[2];
     event_ledger_.summary_events.sos_ros_rate = global_rates[3];
+    event_ledger_.summary_events.virions_released = global_rates[4];
+    event_ledger_.summary_events.virions_adsorbed = global_rates[5];
+    event_ledger_.summary_events.virions_decayed = global_rates[6];
+    event_ledger_.summary_events.prophage_bacterium_seconds = global_rates[7];
+    event_ledger_.summary_events.refresh_prophage_daily_rate();
   }
 #endif
 }
@@ -951,6 +967,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     a.mu_realized  = atoms.mu[i];
     if (i < atoms.age.size()) a.timers.age = atoms.age[i];
     if (i < atoms.sos_timer.size()) a.timers.sos_timer = atoms.sos_timer[i];
+    if (i < atoms.prophage_lysis_timer.size()) {
+      a.timers.prophage_lysis_timer = atoms.prophage_lysis_timer[i];
+    }
     if (i < atoms.death_time.size()) a.timers.death_time = atoms.death_time[i];
     if (i < atoms.pending_growth_chemistry_biomass.size()) {
       a.pending_growth_chemistry_biomass =
@@ -1050,6 +1069,15 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
           a.genome.bi_loci, [](const BICluster& bi) {
             return bi.release_mode == ReleaseMode::CONTINUOUS;
           });
+    }
+    if (i < atoms.has_prophage_immunity.size()) {
+      a.flags.has_prophage_immunity = (atoms.has_prophage_immunity[i] != 0);
+    }
+    if (i < atoms.has_inducible_prophage.size()) {
+      a.flags.has_inducible_prophage = (atoms.has_inducible_prophage[i] != 0);
+    }
+    if (i < atoms.prophage_induced.size()) {
+      a.flags.prophage_induced = (atoms.prophage_induced[i] != 0);
     }
 
     max_tag = std::max(max_tag, static_cast<TagID>(atoms.id[i]));
@@ -1236,7 +1264,7 @@ Agent Simulation::create_strain_agent(
   Agent agent = Agent::create_default(agents_.next_tag(), strain.type, pos,
                                       strain.mu_max);
   agent.identity.owner_rank = domain_.rank();
-  apply_founder_genotype(agent, strain, cfg_);
+  apply_founder_genotype(agent, strain, cfg_, &rng_);
   if (tag_crypt) tag_crypt_resident(agent, advection_);
   if (cfg_.cell_bio.motility.enabled) {
     FixMotility::init_agent_motility(agent, cfg_.cell_bio.motility,
@@ -2067,9 +2095,10 @@ void Simulation::materialize_bacteriocin_fields_for_output() {
 
 void Simulation::module_biology(Real dt) {
   for (const auto& fix : fixes_) {
-    // Receptor killing reads the chemical grid; deposit current-step toxin
-    // sources (microcin producers + active bursts) before fix_receptor runs.
-    if (fix->name() == "receptor") {
+    // Receptor killing and DNA-damage prophage induction read the current-step
+    // bacteriocin/nuclease fields; deposit active sources before either runs.
+    if (fix->name() == "receptor"
+        || (cfg_.prophage.enabled && fix->name() == "prophage")) {
       update_bacteriocin_fields();
     }
     fix->compute(dt);

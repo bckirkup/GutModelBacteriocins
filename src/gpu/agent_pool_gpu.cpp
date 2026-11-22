@@ -44,6 +44,9 @@ void AgentPoolGpu::resize(Int n) {
   d_grid_cell_.allocate(count);
   d_state_.allocate(count);
   d_is_ghost_.allocate(count);
+  d_has_prophage_immunity_.allocate(count);
+  d_has_inducible_prophage_.allocate(count);
+  d_prophage_induced_.allocate(count);
   d_mu_realized_.allocate(count);
   d_fermentation_fraction_.allocate(count);
   d_biomass_.allocate(count);
@@ -84,6 +87,9 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   std::vector<int> grid_cell(n);
   std::vector<int> state(n);
   std::vector<int> is_ghost(n);
+  std::vector<int> has_prophage_immunity(n);
+  std::vector<int> has_inducible_prophage(n);
+  std::vector<int> prophage_induced(n);
   std::vector<int> bi_loci_count(n);
   std::vector<double> mu_realized(n);
   std::vector<double> fermentation_fraction(n);
@@ -121,6 +127,9 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
     grid_cell[i] = a.grid_cell;
     state[i] = static_cast<int>(to_underlying(a.state));
     is_ghost[i] = a.flags.is_ghost ? 1 : 0;
+    has_prophage_immunity[i] = a.flags.has_prophage_immunity ? 1 : 0;
+    has_inducible_prophage[i] = a.flags.has_inducible_prophage ? 1 : 0;
+    prophage_induced[i] = a.flags.prophage_induced ? 1 : 0;
     mu_realized[i] = a.mu_realized;
     fermentation_fraction[i] = a.realized_fermentation_fraction;
     biomass[i] = a.biomass;
@@ -163,6 +172,9 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   d_grid_cell_.upload(grid_cell);
   d_state_.upload(state);
   d_is_ghost_.upload(is_ghost);
+  d_has_prophage_immunity_.upload(has_prophage_immunity);
+  d_has_inducible_prophage_.upload(has_inducible_prophage);
+  d_prophage_induced_.upload(prophage_induced);
   d_mu_realized_.upload(mu_realized);
   d_fermentation_fraction_.upload(fermentation_fraction);
   d_biomass_.upload(biomass);

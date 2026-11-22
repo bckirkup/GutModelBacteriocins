@@ -62,10 +62,14 @@ struct HDF5CheckpointAgents {
   std::vector<double>  respired_oxygen_rate;
   std::vector<int32_t> in_crypt;
   std::vector<int32_t> microcin_penalty_applied;
+  std::vector<int32_t> has_prophage_immunity;
+  std::vector<int32_t> has_inducible_prophage;
+  std::vector<int32_t> prophage_induced;
   std::vector<double>  mass;
   std::vector<double>  outer_radius;
   std::vector<double>  age;
   std::vector<double>  sos_timer;
+  std::vector<double>  prophage_lysis_timer;
   std::vector<double>  death_time;
   std::vector<double>  pending_growth_chemistry_biomass;
   std::vector<double>  receptor_expr;       // N * NUM_RECEPTORS

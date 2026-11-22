@@ -46,10 +46,14 @@ struct AgentLifecycleXfer {
   int32_t state;
   double age;
   double sos_timer;
+  double prophage_lysis_timer;
   double death_time;
   int32_t grid_cell;
   int32_t in_crypt;
   int32_t microcin_penalty_applied;
+  int32_t has_prophage_immunity;
+  int32_t has_inducible_prophage;
+  int32_t prophage_induced;
 };
 
 struct AgentMotilityXfer {
@@ -136,11 +140,15 @@ void pack_agent(const Agent& a, AgentTransferData& d) {
   d.lifecycle.state = static_cast<int32_t>(to_underlying(a.state));
   d.lifecycle.age = a.timers.age;
   d.lifecycle.sos_timer = a.timers.sos_timer;
+  d.lifecycle.prophage_lysis_timer = a.timers.prophage_lysis_timer;
   d.lifecycle.death_time = a.timers.death_time;
   d.lifecycle.grid_cell = a.grid_cell;
   d.lifecycle.in_crypt = a.flags.in_crypt ? 1 : 0;
   d.lifecycle.microcin_penalty_applied =
       a.flags.microcin_penalty_applied ? 1 : 0;
+  d.lifecycle.has_prophage_immunity = a.flags.has_prophage_immunity ? 1 : 0;
+  d.lifecycle.has_inducible_prophage = a.flags.has_inducible_prophage ? 1 : 0;
+  d.lifecycle.prophage_induced = a.flags.prophage_induced ? 1 : 0;
   for (int k = 0; k < 3; ++k)
     d.motility.swim_direction[k] = a.motility.swim_direction[k];
   d.motility.swim_speed = a.motility.swim_speed;
@@ -212,11 +220,15 @@ Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_d
   a.state = static_cast<PhenoState>(d.lifecycle.state);
   a.timers.age = d.lifecycle.age;
   a.timers.sos_timer = d.lifecycle.sos_timer;
+  a.timers.prophage_lysis_timer = d.lifecycle.prophage_lysis_timer;
   a.timers.death_time = d.lifecycle.death_time;
   a.grid_cell = d.lifecycle.grid_cell;
   a.flags.in_crypt = (d.lifecycle.in_crypt != 0);
   a.flags.microcin_penalty_applied =
       (d.lifecycle.microcin_penalty_applied != 0);
+  a.flags.has_prophage_immunity = (d.lifecycle.has_prophage_immunity != 0);
+  a.flags.has_inducible_prophage = (d.lifecycle.has_inducible_prophage != 0);
+  a.flags.prophage_induced = (d.lifecycle.prophage_induced != 0);
   a.flags.is_ghost = false;
   for (int k = 0; k < 3; ++k)
     a.motility.swim_direction[k] = d.motility.swim_direction[k];

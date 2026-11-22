@@ -16,6 +16,7 @@ enum class ProvenanceCause : Int {
   WASHOUT = 2,
   BOUNDARY = 3,
   LYSIS = 5,
+  PROPHAGE_LYTIC = 6,
   // Value 4 was STARVATION and is retired.
 };
 
@@ -54,6 +55,15 @@ struct StepEvents {
   Int conjugation_transfers = 0;
   Int mutations = 0;
   Int immigrations = 0;
+  // Spec 14 temperate prophage counters and virion conservation ledger
+  Int prophage_inductions = 0;
+  Int prophage_lytic_kills = 0;
+  Int prophage_lysogen_conversions = 0;
+  Real virions_released = 0.0;
+  Real virions_adsorbed = 0.0;
+  Real virions_decayed = 0.0;
+  Real prophage_bacterium_seconds = 0.0;
+  Real prophage_induction_rate_per_bacterium_day = 0.0;
   Real sos_basal_rate = 0.0;
   Real sos_post_division_rate = 0.0;
   Real sos_nuclease_cross_induction_rate = 0.0;
@@ -64,6 +74,14 @@ struct StepEvents {
     if (agent_type >= 0 && agent_type < MAX_AGENT_TYPES) {
       ++divisions_by_type[static_cast<size_t>(agent_type)];
     }
+  }
+
+  void refresh_prophage_daily_rate() {
+    prophage_induction_rate_per_bacterium_day =
+        prophage_bacterium_seconds > 0.0
+            ? (static_cast<Real>(prophage_inductions)
+               / prophage_bacterium_seconds) * 86400.0
+            : 0.0;
   }
 
   void add(const StepEvents& other) {
@@ -82,6 +100,14 @@ struct StepEvents {
     conjugation_transfers += other.conjugation_transfers;
     mutations += other.mutations;
     immigrations += other.immigrations;
+    prophage_inductions += other.prophage_inductions;
+    prophage_lytic_kills += other.prophage_lytic_kills;
+    prophage_lysogen_conversions += other.prophage_lysogen_conversions;
+    virions_released += other.virions_released;
+    virions_adsorbed += other.virions_adsorbed;
+    virions_decayed += other.virions_decayed;
+    prophage_bacterium_seconds += other.prophage_bacterium_seconds;
+    refresh_prophage_daily_rate();
     sos_basal_rate += other.sos_basal_rate;
     sos_post_division_rate += other.sos_post_division_rate;
     sos_nuclease_cross_induction_rate += other.sos_nuclease_cross_induction_rate;

@@ -19,6 +19,7 @@
 namespace gutibm {
 
 class Agent;
+class RNG;
 struct BICluster;
 struct PlasmidEntry;
 
@@ -36,11 +37,13 @@ void assign_plasmids(Agent& agent, const std::vector<std::string>& plasmids,
 
 // Apply one initial_strains[] declaration to a freshly created agent:
 // declared receptor expression (including the PhenoState::RESISTANT
-// marker), plasmid BI clusters via configured_plasmid_cluster, and CDI
-// type/immunity. Throws ConfigError on an unknown receptor name.
+// marker), plasmid BI clusters via configured_plasmid_cluster, CDI
+// type/immunity, and temperate prophage carriage/inducibility flags.
+// Throws ConfigError on an unknown receptor name.
 void apply_founder_genotype(Agent& agent,
                             const SimulationConfig::InitialStrain& strain,
-                            const SimulationConfig& cfg);
+                            const SimulationConfig& cfg,
+                            RNG* rng = nullptr);
 
 }  // namespace gutibm
 
