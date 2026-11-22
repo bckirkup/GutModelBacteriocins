@@ -69,6 +69,13 @@ class ChemicalFieldGpu {
   void upload_delivery_concentration(Int spec,
                                      const std::vector<Real>& concentration);
   void upload_delivery_prescribed(const std::vector<Real>& prescribed);
+  double* prepare_prescribed_sink_device(Int spec);
+  void download_prescribed_sink_device(Int spec, std::vector<Real>& host) const;
+  void mark_prescribed_pre_diffusion_device_valid(Int spec, bool valid);
+  void invalidate_prescribed_device(Int spec);
+  void invalidate_all_prescribed_device();
+  void cache_post_diffusion_prescribed_device(Int spec);
+  const double* post_diffusion_prescribed_device(Int spec) const;
   Real download_delivery_gradient_source() const;
   bool apply_boundaries(const Domain& domain, ChemicalField& field);
   void reset_agent_uptake();
@@ -153,6 +160,9 @@ class ChemicalFieldGpu {
   std::vector<DeviceBuffer<double>> d_vbf_sink_rates_;
   DeviceBuffer<double> d_reaction_clip_;
   DeviceBuffer<int> d_agent_counts_;
+  std::vector<DeviceBuffer<double>> d_prescribed_sink_;
+  std::vector<uint8_t> prescribed_pre_diffusion_device_valid_;
+  std::vector<uint8_t> prescribed_post_diffusion_device_valid_;
   DeviceBuffer<double> d_delivery_sink_;
   DeviceBuffer<double> d_delivery_prescribed_;
   DeviceBuffer<double> d_delivery_realized_;

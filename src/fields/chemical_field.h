@@ -693,6 +693,7 @@ class ChemicalField {
   Real vbf_sink_realized(Int spec) const;
   Real prescribed_sink_global(Int spec, Int cell) const;
   const std::vector<Real>& prescribed_sink_storage(Int spec) const;
+  bool prescribed_sink_active(Int spec) const;
   void add_delivery_reduction(Int spec, Real amount);
   bool has_sink_rate(Int spec) const;
   bool has_sink_rate() const;
@@ -792,6 +793,8 @@ class ChemicalField {
     }
   }
   void ensure_delivery_storage();
+  void invalidate_gpu_prescribed_sink(Int spec);
+  void invalidate_all_gpu_prescribed_sinks();
 
   Int nspec_  = 0;
   Int ncells_ = 0;

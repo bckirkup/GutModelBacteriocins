@@ -138,6 +138,11 @@ ChemicalFieldGpu::ChemicalFieldGpu(ChemicalFieldGpu&& other) noexcept
       d_vbf_sink_rates_(std::move(other.d_vbf_sink_rates_)),
       d_reaction_clip_(std::move(other.d_reaction_clip_)),
       d_agent_counts_(std::move(other.d_agent_counts_)),
+      d_prescribed_sink_(std::move(other.d_prescribed_sink_)),
+      prescribed_pre_diffusion_device_valid_(
+          std::move(other.prescribed_pre_diffusion_device_valid_)),
+      prescribed_post_diffusion_device_valid_(
+          std::move(other.prescribed_post_diffusion_device_valid_)),
       d_delivery_sink_(std::move(other.d_delivery_sink_)),
       d_delivery_prescribed_(std::move(other.d_delivery_prescribed_)),
       d_delivery_realized_(std::move(other.d_delivery_realized_)),
@@ -191,6 +196,11 @@ ChemicalFieldGpu& ChemicalFieldGpu::operator=(
   d_vbf_sink_rates_ = std::move(other.d_vbf_sink_rates_);
   d_reaction_clip_ = std::move(other.d_reaction_clip_);
   d_agent_counts_ = std::move(other.d_agent_counts_);
+  d_prescribed_sink_ = std::move(other.d_prescribed_sink_);
+  prescribed_pre_diffusion_device_valid_ =
+      std::move(other.prescribed_pre_diffusion_device_valid_);
+  prescribed_post_diffusion_device_valid_ =
+      std::move(other.prescribed_post_diffusion_device_valid_);
   d_delivery_sink_ = std::move(other.d_delivery_sink_);
   d_delivery_prescribed_ = std::move(other.d_delivery_prescribed_);
   d_delivery_realized_ = std::move(other.d_delivery_realized_);
@@ -308,6 +318,12 @@ void ChemicalFieldGpu::init(ChemicalField& field) {
   d_uptake_limit_totals_.allocate(5);
   d_vbf_totals_.allocate(4);
   d_vbf_sink_rates_.resize(static_cast<size_t>(nspec_));
+  d_prescribed_sink_.clear();
+  d_prescribed_sink_.resize(static_cast<size_t>(nspec_));
+  prescribed_pre_diffusion_device_valid_.assign(
+      static_cast<size_t>(nspec_), 0);
+  prescribed_post_diffusion_device_valid_.assign(
+      static_cast<size_t>(nspec_), 0);
   for (Int s = 0; s < nspec_; ++s) {
     d_vbf_sink_rates_[static_cast<size_t>(s)].allocate(
         static_cast<size_t>(ncells_));
@@ -652,6 +668,7 @@ void ChemicalFieldGpu::zero_species_concentration_on_device(Int spec) {
 }
 
 void ChemicalFieldGpu::zero_reactions_on_device() {
+  invalidate_all_prescribed_device();
 #ifndef GUTIBM_CUDA
   reactions_pending_ = false;
   return;
@@ -731,8 +748,7 @@ bool ChemicalFieldGpu::apply_diffusion(const Domain& domain,
   }
 
   bool applied = false;
-  std::vector zero(static_cast<size_t>(nspec_), 0.0);
-  d_boundary_injected_.upload(zero);
+  d_boundary_injected_.zero();
   const Int owned_storage_begin = owned_storage_x_begin();
   const Int owned_storage_end = owned_storage_x_end();
   for (Int s = 0; s < nspec_; ++s) {
@@ -833,7 +849,27 @@ void ChemicalFieldGpu::prepare_delivery_species(
   (void)has_sink_rate;
   stage_h2d(d_delivery_sink_, sink.data(), sink.size());
 #endif
+#ifdef GUTIBM_CUDA
+  const auto spec_index = static_cast<size_t>(spec);
+  if (spec_index < prescribed_pre_diffusion_device_valid_.size()
+      && prescribed_pre_diffusion_device_valid_[spec_index] != 0
+      && d_prescribed_sink_[spec_index].size()
+             == static_cast<size_t>(ncells_)) {
+    if (const cudaError_t copy_status = cudaMemcpy(
+            d_delivery_prescribed_.data(),
+            d_prescribed_sink_[spec_index].data(),
+            static_cast<size_t>(ncells_) * sizeof(double),
+            cudaMemcpyDeviceToDevice);
+        copy_status != cudaSuccess) {
+      throw Error(std::string("delivery prescribed D2D copy: ")
+                  + cudaGetErrorString(copy_status));
+    }
+  } else {
+    stage_h2d(d_delivery_prescribed_, prescribed.data(), prescribed.size());
+  }
+#else
   stage_h2d(d_delivery_prescribed_, prescribed.data(), prescribed.size());
+#endif
 #ifdef GUTIBM_CUDA
   if (const cudaError_t realized_status = cudaMemset(
           d_delivery_realized_.data(), 0,
@@ -915,6 +951,117 @@ void ChemicalFieldGpu::upload_delivery_prescribed(
   ensure_delivery_buffers();
   GpuTransferSite site("delivery");
   stage_h2d(d_delivery_prescribed_, prescribed.data(), prescribed.size());
+}
+
+double* ChemicalFieldGpu::prepare_prescribed_sink_device(Int spec) {
+#ifndef GUTIBM_CUDA
+  (void)spec;
+  return nullptr;
+#else
+  if (!active_ || spec < 0 || spec >= nspec_ || ncells_ <= 0) return nullptr;
+  const auto index = static_cast<size_t>(spec);
+  if (d_prescribed_sink_.size() != static_cast<size_t>(nspec_)) {
+    d_prescribed_sink_.resize(static_cast<size_t>(nspec_));
+    prescribed_pre_diffusion_device_valid_.assign(
+        static_cast<size_t>(nspec_), 0);
+    prescribed_post_diffusion_device_valid_.assign(
+        static_cast<size_t>(nspec_), 0);
+  }
+  auto& buffer = d_prescribed_sink_[index];
+  if (buffer.size() != static_cast<size_t>(ncells_)) {
+    buffer.allocate(static_cast<size_t>(ncells_));
+  }
+  buffer.zero();
+  prescribed_pre_diffusion_device_valid_[index] = 0;
+  prescribed_post_diffusion_device_valid_[index] = 0;
+  return buffer.data();
+#endif
+}
+
+void ChemicalFieldGpu::download_prescribed_sink_device(
+    Int spec, std::vector<Real>& host) const {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  const auto index = static_cast<size_t>(spec);
+  if (index >= d_prescribed_sink_.size()
+      || d_prescribed_sink_[index].size() != static_cast<size_t>(ncells_)) {
+    host.assign(static_cast<size_t>(ncells_), 0.0);
+    return;
+  }
+  GpuTransferSite site("delivery");
+  host.resize(static_cast<size_t>(ncells_));
+  stage_d2h(host.data(), d_prescribed_sink_[index], host.size());
+}
+
+void ChemicalFieldGpu::mark_prescribed_pre_diffusion_device_valid(
+    Int spec, bool valid) {
+  if (!active_ || spec < 0 || spec >= nspec_) return;
+  const auto index = static_cast<size_t>(spec);
+  if (index >= prescribed_pre_diffusion_device_valid_.size()) return;
+  prescribed_pre_diffusion_device_valid_[index] = valid ? 1 : 0;
+  if (!valid) {
+    prescribed_post_diffusion_device_valid_[index] = 0;
+  }
+}
+
+void ChemicalFieldGpu::invalidate_prescribed_device(Int spec) {
+  if (spec < 0 || spec >= nspec_) return;
+  const auto index = static_cast<size_t>(spec);
+  if (index < prescribed_pre_diffusion_device_valid_.size()) {
+    prescribed_pre_diffusion_device_valid_[index] = 0;
+  }
+  if (index < prescribed_post_diffusion_device_valid_.size()) {
+    prescribed_post_diffusion_device_valid_[index] = 0;
+  }
+}
+
+void ChemicalFieldGpu::invalidate_all_prescribed_device() {
+  std::ranges::fill(prescribed_pre_diffusion_device_valid_,
+                    static_cast<uint8_t>(0));
+  std::ranges::fill(prescribed_post_diffusion_device_valid_,
+                    static_cast<uint8_t>(0));
+}
+
+void ChemicalFieldGpu::cache_post_diffusion_prescribed_device(Int spec) {
+#ifndef GUTIBM_CUDA
+  (void)spec;
+#else
+  if (!active_ || spec < 0 || spec >= nspec_ || ncells_ <= 0) return;
+  ensure_delivery_buffers();
+  const auto index = static_cast<size_t>(spec);
+  if (d_prescribed_sink_.size() != static_cast<size_t>(nspec_)) {
+    d_prescribed_sink_.resize(static_cast<size_t>(nspec_));
+    prescribed_pre_diffusion_device_valid_.assign(
+        static_cast<size_t>(nspec_), 0);
+    prescribed_post_diffusion_device_valid_.assign(
+        static_cast<size_t>(nspec_), 0);
+  }
+  auto& dst = d_prescribed_sink_[index];
+  if (dst.size() != static_cast<size_t>(ncells_)) {
+    dst.allocate(static_cast<size_t>(ncells_));
+  }
+  if (const cudaError_t copy_status = cudaMemcpy(
+          dst.data(), d_delivery_prescribed_.data(),
+          static_cast<size_t>(ncells_) * sizeof(double),
+          cudaMemcpyDeviceToDevice);
+      copy_status != cudaSuccess) {
+    throw Error(std::string("delivery post-diffusion prescribed D2D copy: ")
+                + cudaGetErrorString(copy_status));
+  }
+  prescribed_post_diffusion_device_valid_[index] = 1;
+#endif
+}
+
+const double* ChemicalFieldGpu::post_diffusion_prescribed_device(
+    Int spec) const {
+  if (!active_ || spec < 0 || spec >= nspec_) return nullptr;
+  const auto index = static_cast<size_t>(spec);
+  if (index >= prescribed_post_diffusion_device_valid_.size()
+      || prescribed_post_diffusion_device_valid_[index] == 0
+      || index >= d_prescribed_sink_.size()
+      || d_prescribed_sink_[index].size() != static_cast<size_t>(ncells_)) {
+    return nullptr;
+  }
+  return d_prescribed_sink_[index].data();
 }
 
 Real ChemicalFieldGpu::download_delivery_gradient_source() const {

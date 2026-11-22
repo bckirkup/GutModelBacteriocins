@@ -152,6 +152,17 @@ class DeviceBuffer {
     count_ = 0;
   }
 
+  void zero() {
+#ifdef GUTIBM_CUDA
+    if (ptr_ != nullptr && count_ > 0) {
+      if (const cudaError_t err = cudaMemset(ptr_, 0, count_ * sizeof(T));
+          err != cudaSuccess) {
+        throw Error(std::string("cudaMemset: ") + cudaGetErrorString(err));
+      }
+    }
+#endif
+  }
+
   void upload(const T* host, size_t count) {
     if (count > count_) allocate(count);
 #ifdef GUTIBM_CUDA

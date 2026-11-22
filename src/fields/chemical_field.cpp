@@ -1896,6 +1896,7 @@ void ChemicalField::exchange_concentration_halos() {
 }
 
 void ChemicalField::zero_reactions() {
+  invalidate_all_gpu_prescribed_sinks();
   for (Int s = 0; s < nspec_; ++s) {
     std::ranges::fill(reac_[s], 0.0);
     host_reac_dirty_[static_cast<size_t>(s)] = false;
@@ -1978,6 +1979,7 @@ void ChemicalField::add_prescribed_sink_global(
   prescribed_sink_[static_cast<size_t>(spec)]
       [static_cast<size_t>(storage_cell)] += amount;
   prescribed_active_[static_cast<size_t>(spec)] = true;
+  invalidate_gpu_prescribed_sink(spec);
 }
 
 void ChemicalField::add_prescribed_sinks(
@@ -1996,6 +1998,7 @@ void ChemicalField::add_prescribed_sinks(
   }
   if (added) {
     prescribed_active_[static_cast<size_t>(spec)] = true;
+    invalidate_gpu_prescribed_sink(spec);
   }
 }
 
@@ -2017,6 +2020,27 @@ const std::vector<Real>& ChemicalField::prescribed_sink_storage(
     return empty;
   }
   return prescribed_sink_[static_cast<size_t>(spec)];
+}
+
+bool ChemicalField::prescribed_sink_active(Int spec) const {
+  return delivery_storage_allocated_ && spec >= 0 && spec < nspec_
+      && prescribed_active_[static_cast<size_t>(spec)];
+}
+
+void ChemicalField::invalidate_gpu_prescribed_sink(Int spec) {
+  if (gpu_link_ == nullptr) return;
+  std::scoped_lock lock(gpu_link_->mutex);
+  if (gpu_link_->gpu != nullptr) {
+    gpu_link_->gpu->invalidate_prescribed_device(spec);
+  }
+}
+
+void ChemicalField::invalidate_all_gpu_prescribed_sinks() {
+  if (gpu_link_ == nullptr) return;
+  std::scoped_lock lock(gpu_link_->mutex);
+  if (gpu_link_->gpu != nullptr) {
+    gpu_link_->gpu->invalidate_all_prescribed_device();
+  }
 }
 
 void ChemicalField::add_delivery_reduction(Int spec, Real amount) {
@@ -2251,6 +2275,7 @@ void ChemicalField::sum_prescribed_sinks_across_ranks() {
                 MPI_COMM_WORLD);
   if (global_delivery == 0) return;
   ensure_delivery_storage();
+  invalidate_all_gpu_prescribed_sinks();
   for (auto& prescribed : prescribed_sink_) {
     MPI_Allreduce(MPI_IN_PLACE, prescribed.data(), ncells_, MPI_DOUBLE,
                   MPI_SUM, MPI_COMM_WORLD);
@@ -3657,6 +3682,7 @@ void ChemicalField::apply_diffusion(const Domain& domain, Real dt) {
       delivery_affected_cells_.reserve(static_cast<size_t>(ncells_));
     }
   }
+  invalidate_all_gpu_prescribed_sinks();
   sum_prescribed_sinks_across_ranks();
   if (mode_ == DecompositionMode::Slab) {
     apply_diffusion_slab(domain, dt);
@@ -3803,22 +3829,27 @@ bool ChemicalField::apply_diffusion_gpu(
         }};
     const auto result = run_delivery_rationing(
         prescribed_snapshot, callbacks);
+    gpu.cache_post_diffusion_prescribed_device(s);
     std::vector<Real> realized;
     if (result.negative_after_solve) {
       gpu.download_delivery_species(s, concentration, realized);
       clear_device_conc_dirty(s);
       clear_host_conc_dirty(s);
-    } else {
-      // Keep delivery species concentration device-resident; only realized sink
-      // amounts are needed on host for agent/VBF splitting.
+    } else if (has_sink_rate(s)) {
+      // Keep delivery species concentration device-resident; realized sink
+      // amounts are only non-zero on host when a first-order sink_rate is active.
       gpu.download_delivery_realized(s, realized);
       mark_device_conc_dirty(s);
+    } else {
+      mark_device_conc_dirty(s);
     }
-    auto& total_realized = total_sink_realized_[static_cast<size_t>(s)];
-    assert(total_realized.size() == realized_snapshot.size());
-    assert(total_realized.size() == realized.size());
-    for (size_t i = 0; i < total_realized.size(); ++i) {
-      total_realized[i] = realized_snapshot[i] + realized[i];
+    if (!realized.empty()) {
+      auto& total_realized = total_sink_realized_[static_cast<size_t>(s)];
+      assert(total_realized.size() == realized_snapshot.size());
+      assert(total_realized.size() == realized.size());
+      for (size_t i = 0; i < total_realized.size(); ++i) {
+        total_realized[i] = realized_snapshot[i] + realized[i];
+      }
     }
     record_delivery_rationing(s, chemical, result);
   }
