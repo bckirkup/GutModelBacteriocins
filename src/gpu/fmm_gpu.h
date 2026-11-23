@@ -2,24 +2,47 @@
 #define GUTIBM_FMM_GPU_H
 
 #include "types.h"
-#include <vector>
+#include "greens_function.h"
 
 namespace gutibm {
 
+class AdvectionField;
+class ChemicalFieldGpu;
 class Domain;
 class FMM;
 
-bool gpu_accumulate_far_field_local(const FMM& fmm,
-                                    const Domain& domain,
-                                    int expansion_order,
-                                    const std::vector<Real>& near_conc,
-                                    std::vector<Real>& toxin_conc);
+// Device-resident GPU FMM far-field accumulation directly into chem_gpu's
+// concentration buffer for toxin_species_idx. Supports both locals_ready()==true
+// (Mode A: device octree lookup + local expansion + residual U-list) and
+// locals_ready()==false (Mode B: stack-based GPU octree multipole traversal),
+// across both replicated and MPI slab chemical layouts. Uploads only the
+// compact O(N_nodes) octree; performs zero full-grid H2D/D2H transfers.
+bool gpu_accumulate_far_field_device(const FMM& fmm,
+                                     const Domain& domain,
+                                     const AdvectionField& adv,
+                                     const GreensFunctionParams& avg_params,
+                                     Real theta,
+                                     Real near_cutoff,
+                                     ChemicalFieldGpu* chem_gpu,
+                                     Int toxin_species_idx);
 
-bool gpu_accumulate_far_field_local_device(const FMM& fmm,
-                                           const Domain& domain,
-                                           int expansion_order,
-                                           double* d_near_conc,
-                                           double* d_out_conc);
+struct FmmDeviceLayout {
+  Int storage_nx = 0;
+  Int owned_storage_x_begin = 0;
+  Int owned_storage_x_end = 0;
+  Int local_global_x_begin = 0;
+};
+
+// Low-level variant operating on a caller-owned device concentration buffer
+// and explicit replicated or slab storage layout.
+bool gpu_accumulate_far_field_device(const FMM& fmm,
+                                     const Domain& domain,
+                                     const AdvectionField& adv,
+                                     const GreensFunctionParams& avg_params,
+                                     Real theta,
+                                     Real near_cutoff,
+                                     double* d_conc,
+                                     const FmmDeviceLayout& layout);
 
 }  // namespace gutibm
 

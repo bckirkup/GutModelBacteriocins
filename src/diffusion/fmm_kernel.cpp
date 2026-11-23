@@ -3,6 +3,7 @@
    ----------------------------------------------------------------------- */
 
 #include "fmm_kernel.h"
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -118,6 +119,26 @@ void shift_expansion(std::vector<Real>& out,
   });
 }
 
+void shift_local_coeffs(std::vector<Real>& out,
+                        const std::vector<Real>& in,
+                        int order,
+                        const Vec3& delta) {
+  // L2L polynomial re-expansion:
+  //   sum_beta L_beta ((x - c_child) + delta)^beta
+  //     = sum_alpha [ sum_{beta >= alpha} C(beta, alpha) L_beta delta^{beta - alpha} ] (x - c_child)^alpha
+  // where delta = c_child - c_parent.
+  for_each_multi_index(order, [&out, order, &in, delta](int aix, int aiy, int aiz, int aidx) {
+    Real sum = 0.0;
+    for_each_multi_index(order, [&sum, &in, aix, aiy, aiz, delta](int bix, int biy, int biz, int bidx) {
+      if (bix < aix || biy < aiy || biz < aiz) return;
+      const Real coeff = binomial(bix, aix) * binomial(biy, aiy) * binomial(biz, aiz);
+      const Real pow = delta_power(bix - aix, biy - aiy, biz - aiz, delta);
+      sum += coeff * in[bidx] * pow;
+    });
+    out[aidx] = sum;
+  });
+}
+
 template <typename FieldFn>
 void fill_first_derivatives(std::vector<Real>& values,
                             int order,
@@ -139,6 +160,7 @@ void fill_first_derivatives(std::vector<Real>& values,
 template <typename FieldFn>
 Real second_derivative(int d1, int d2,
                        const Vec3& center,
+                       Real center_val,
                        Real h,
                        FieldFn&& field) {
   if (d1 == d2) {
@@ -146,7 +168,7 @@ Real second_derivative(int d1, int d2,
     Vec3 minus = center;
     plus[d1] += h;
     minus[d1] -= h;
-    return (field(plus) - 2.0 * field(center) + field(minus)) / (h * h);
+    return (field(plus) - 2.0 * center_val + field(minus)) / (h * h);
   }
 
   Vec3 pp = center;
@@ -164,16 +186,19 @@ template <typename FieldFn>
 void fill_second_derivatives(std::vector<Real>& values,
                              int order,
                              const Vec3& center,
+                             Real center_val,
                              Real h,
-                             const FieldFn& field,
-                             Real scale = 1.0) {
+                             const FieldFn& field) {
   for (int d1 = 0; d1 < 3; ++d1) {
     for (int d2 = d1; d2 < 3; ++d2) {
-      const Real val = second_derivative(d1, d2, center, h, field);
+      const Real val = second_derivative(d1, d2, center, center_val, h, field);
       const int ox = (d1 == 0 ? 1 : 0) + (d2 == 0 ? 1 : 0);
       const int oy = (d1 == 1 ? 1 : 0) + (d2 == 1 ? 1 : 0);
       const int oz = (d1 == 2 ? 1 : 0) + (d2 == 2 ? 1 : 0);
       const int idx = coeff_index(ox, oy, oz, order);
+      // Taylor coefficient 1/(ox! oy! oz!): 0.5 for diagonal (d1 == d2),
+      // 1.0 for upper-triangular mixed partial (d1 < d2).
+      const Real scale = (d1 == d2) ? 0.5 : 1.0;
       values[idx] = val * scale;
     }
   }
@@ -185,7 +210,7 @@ void fill_third_derivatives(std::vector<Real>& values,
                             const Vec3& center,
                             Real h,
                             FieldFn&& field,
-                            Real scale = 1.0) {
+                            Real scale = 1.0 / 6.0) {
   for (int d = 0; d < 3; ++d) {
     Vec3 plus2 = center;
     Vec3 minus2 = center;
@@ -341,7 +366,8 @@ KernelTaylorCoeffs kernel_taylor_at_source(
   fmm_detail::fill_first_derivatives(out.values, max_order, source, fmm_detail::fd_step(1, L), eval);
   if (max_order < 2) return out;
 
-  fmm_detail::fill_second_derivatives(out.values, max_order, source, fmm_detail::fd_step(2, L), eval);
+  fmm_detail::fill_second_derivatives(
+      out.values, max_order, source, out.values[0], fmm_detail::fd_step(2, L), eval);
   if (max_order < 3) return out;
 
   fmm_detail::fill_third_derivatives(out.values, max_order, source, fmm_detail::fd_step(3, L), eval);
@@ -357,6 +383,77 @@ Real evaluate_multipole(const std::vector<Real>& moments,
   return sum;
 }
 
+Real evaluate_multipole_at_source(const GreensFunction& gf,
+                                  const std::vector<Real>& moments,
+                                  int order,
+                                  const Vec3& source,
+                                  const Vec3& target,
+                                  const GreensFunctionParams& params) {
+  GreensFunctionParams unit = params;
+  unit.source_rate = 1.0;
+
+  const Real L = fmm_detail::separation_length(source, target);
+  const auto eval = [&gf, &unit, target](const Vec3& src) {
+    return gf.concentration_bounded(src, target, unit);
+  };
+
+  const Real g0 = eval(source);
+  Real sum = moments[0] * g0;
+  if (order < 1) return sum;
+
+  // Order 1: skip identically zero centroid dipole moments.
+  const Real h1 = fmm_detail::fd_step(1, L);
+  for (int d = 0; d < 3; ++d) {
+    const Real m1 = moments[1 + d];
+    if (std::abs(m1) <= 0.0) continue;
+    Vec3 plus = source;
+    Vec3 minus = source;
+    plus[d] += h1;
+    minus[d] -= h1;
+    sum += m1 * ((eval(plus) - eval(minus)) / (2.0 * h1));
+  }
+  if (order < 2) return sum;
+
+  // Order 2: skip zero quadrupole moments and reuse g0.
+  const Real h2 = fmm_detail::fd_step(2, L);
+  const std::array<int, 3> diag_idx = {4, 6, 9};
+  for (int d = 0; d < 3; ++d) {
+    const Real m2 = moments[static_cast<size_t>(diag_idx[static_cast<size_t>(d)])];
+    if (std::abs(m2) <= 0.0) continue;
+    sum += m2 * 0.5 * fmm_detail::second_derivative(d, d, source, g0, h2, eval);
+  }
+  const std::array<int, 3> md1 = {0, 0, 1};
+  const std::array<int, 3> md2 = {1, 2, 2};
+  const std::array<int, 3> midx = {5, 7, 8};
+  for (int m = 0; m < 3; ++m) {
+    const Real m2 = moments[static_cast<size_t>(midx[static_cast<size_t>(m)])];
+    if (std::abs(m2) <= 0.0) continue;
+    sum += m2 * fmm_detail::second_derivative(
+        md1[static_cast<size_t>(m)], md2[static_cast<size_t>(m)], source, g0, h2, eval);
+  }
+  if (order < 3) return sum;
+
+  // Order 3: pure single-axis derivatives with 1/3! = 1/6 Taylor factor.
+  const Real h3 = fmm_detail::fd_step(3, L);
+  const std::array<int, 3> third_idx = {10, 13, 19};
+  for (int d = 0; d < 3; ++d) {
+    const Real m3 = moments[static_cast<size_t>(third_idx[static_cast<size_t>(d)])];
+    if (std::abs(m3) <= 0.0) continue;
+    Vec3 p2 = source;
+    Vec3 m2 = source;
+    Vec3 p1 = source;
+    Vec3 m1 = source;
+    p2[d] += 2.0 * h3;
+    m2[d] -= 2.0 * h3;
+    p1[d] += h3;
+    m1[d] -= h3;
+    const Real deriv = (eval(p2) - 2.0 * eval(p1) + 2.0 * eval(m1) - eval(m2))
+                     / (12.0 * h3 * h3 * h3);
+    sum += m3 * deriv;
+  }
+  return sum;
+}
+
 std::vector<Real> multipole_to_local(
     const std::vector<Real>& moments,
     int order,
@@ -369,9 +466,8 @@ std::vector<Real> multipole_to_local(
 
   const Real L = fmm_detail::separation_length(source_center, target_center);
   const auto multipole_field = [&gf, &moments, order, source_center, avg_params](const Vec3& eval_target) {
-    KernelTaylorCoeffs k = kernel_taylor_at_source(
-        gf, source_center, eval_target, avg_params, order);
-    return evaluate_multipole(moments, order, k);
+    return evaluate_multipole_at_source(
+        gf, moments, order, source_center, eval_target, avg_params);
   };
 
   local[0] = multipole_field(target_center);
@@ -380,10 +476,11 @@ std::vector<Real> multipole_to_local(
   fmm_detail::fill_first_derivatives(local, order, target_center, fmm_detail::fd_step(1, L), multipole_field);
   if (order < 2) return local;
 
-  fmm_detail::fill_second_derivatives(local, order, target_center, fmm_detail::fd_step(2, L), multipole_field, 0.5);
+  fmm_detail::fill_second_derivatives(
+      local, order, target_center, local[0], fmm_detail::fd_step(2, L), multipole_field);
   if (order < 3) return local;
 
-  fmm_detail::fill_third_derivatives(local, order, target_center, fmm_detail::fd_step(3, L), multipole_field, 1.0 / 6.0);
+  fmm_detail::fill_third_derivatives(local, order, target_center, fmm_detail::fd_step(3, L), multipole_field);
   return local;
 }
 
@@ -397,7 +494,7 @@ std::vector<Real> shift_local_expansion(const std::vector<Real>& parent_local,
   const Vec3 delta = {child_center[0] - parent_center[0],
                       child_center[1] - parent_center[1],
                       child_center[2] - parent_center[2]};
-  fmm_detail::shift_expansion(child, parent_local, order, delta);
+  fmm_detail::shift_local_coeffs(child, parent_local, order, delta);
   return child;
 }
 

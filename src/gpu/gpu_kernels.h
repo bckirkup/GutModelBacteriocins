@@ -345,6 +345,60 @@ void launch_fmm_far_local_kernel(
     int nx, int ny,
     cudaStream_t stream);
 
+struct FmmDeviceTreeView {
+  const double* center = nullptr;
+  const double* half_size = nullptr;
+  const double* center_of_source = nullptr;
+  const double* total_source_strength = nullptr;
+  const int* children = nullptr;
+  const int* is_leaf = nullptr;
+  const double* multipole = nullptr;
+  const double* local = nullptr;
+  const int* near_offsets = nullptr;
+  const int* near_nodes = nullptr;
+  int num_nodes = 0;
+  int coeffs_per_node = 0;
+  int expansion_order = 1;
+};
+
+struct FmmGridLayout {
+  int global_nx = 0;
+  int global_ny = 0;
+  int global_nz = 0;
+  int storage_nx = 0;
+  int owned_storage_x_begin = 0;
+  int owned_storage_x_end = 0;
+  int local_global_x_begin = 0;
+};
+
+struct FmmFarLaunchParams {
+  DomainParams dom{};
+  AdvectionParams adv{};
+  GfSourceParams avg_params{};
+  FmmGridLayout grid{};
+  double theta = 0.5;
+  double near_cutoff = 0.0;
+  double fd_rel_1 = 0.0;
+  double fd_rel_2 = 0.0;
+  double fd_rel_3 = 0.0;
+  const double* robin_tables = nullptr;
+  int robin_table_count = 0;
+  int robin_table_index_legacy = -1;
+  int robin_table_index_physical = -1;
+};
+
+void launch_fmm_far_local_device_kernel(
+    const FmmDeviceTreeView& tree,
+    const FmmFarLaunchParams& params,
+    double* d_conc,
+    cudaStream_t stream);
+
+void launch_fmm_far_tree_device_kernel(
+    const FmmDeviceTreeView& tree,
+    const FmmFarLaunchParams& params,
+    double* d_conc,
+    cudaStream_t stream);
+
 void launch_mechanics_clear_kernel(double* dx, double* dy, double* dz,
                                    int* clamp_count, int num_agents,
                                    cudaStream_t stream);

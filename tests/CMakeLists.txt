@@ -150,7 +150,11 @@ gutibm_add_test(fmm test_fmm.cpp LABELS "unit"
     local_expansion_nonnegative
     kernel_derivative_accuracy
     large_tree_locals_ready
-    config_defaults)
+    config_defaults
+    periodic_cross_seam_accuracy
+    subquadratic_m2l_scaling
+    benchmark_100k_sources)
+set_tests_properties(fmm_benchmark_100k_sources PROPERTIES LABELS "benchmark;slow")
 gutibm_add_test(qssa_stoichiometry test_qssa_stoichiometry.cpp LABELS "unit")
 gutibm_add_test(qssa_transient_bounds test_qssa_transient_bounds.cpp LABELS "unit;science")
 gutibm_add_test(chemical_field_reaction_residency
@@ -403,6 +407,7 @@ gutibm_add_test(spatial_hash_gpu_csr test_spatial_hash_gpu_csr.cpp LABELS "gpu")
 gutibm_add_test(mechanics_gpu_parity test_mechanics_gpu_parity.cpp LABELS "gpu")
 gutibm_add_test(gpu_kernel_units test_gpu_kernel_units.cpp LABELS "gpu")
 gutibm_add_test(gpu_prophage_parity test_gpu_prophage_parity.cpp LABELS "gpu")
+gutibm_add_test(gpu_fmm_parity test_gpu_fmm_parity.cpp LABELS "gpu")
 
 add_test(
   NAME gpu_target_manifest

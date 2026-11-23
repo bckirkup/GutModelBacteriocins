@@ -87,5 +87,311 @@ void launch_fmm_far_local_kernel(
       lo0, lo1, lo2, dx_x, dx_y, dx_z, nx, ny);
 }
 
+namespace {
+
+constexpr double kSqrt3Gpu = 1.732050807568877293527446341505872367;
+constexpr int kFmmTraversalStackCap = 128;
+
+__device__ inline bool decode_owned_voxel(int tid,
+                                          const FmmGridLayout& grid,
+                                          const DomainParams& dom,
+                                          double tgt[3],
+                                          int& storage_cell) {
+  const int owned_nx = grid.owned_storage_x_end - grid.owned_storage_x_begin;
+  const int total_owned = owned_nx * grid.global_ny * grid.global_nz;
+  if (tid >= total_owned) return false;
+
+  const int plane = owned_nx * grid.global_ny;
+  const int iz = tid / plane;
+  const int rem = tid - iz * plane;
+  const int iy = rem / owned_nx;
+  const int local_offset = rem - iy * owned_nx;
+  const int ix_storage = grid.owned_storage_x_begin + local_offset;
+  const int ix_global = grid.local_global_x_begin + local_offset;
+
+  tgt[0] = dom.lo[0] + (static_cast<double>(ix_global) + 0.5) * dom.dx_x;
+  tgt[1] = dom.lo[1] + (static_cast<double>(iy) + 0.5) * dom.dx_y;
+  tgt[2] = dom.lo[2] + (static_cast<double>(iz) + 0.5) * dom.dx_z;
+  storage_cell = iz * (grid.storage_nx * grid.global_ny)
+               + iy * grid.storage_nx + ix_storage;
+  return true;
+}
+
+__device__ inline int find_containing_node_device(const FmmDeviceTreeView& tree,
+                                                  const double tgt[3]) {
+  int node_idx = 0;
+  while (tree.is_leaf[node_idx] == 0) {
+    const double* c = tree.center + static_cast<size_t>(node_idx) * 3;
+    int oct = 0;
+    if (tgt[0] >= c[0]) oct |= 1;
+    if (tgt[1] >= c[1]) oct |= 2;
+    if (tgt[2] >= c[2]) oct |= 4;
+    const int child = tree.children[static_cast<size_t>(node_idx) * 8 + oct];
+    if (child < 0) break;
+    node_idx = child;
+  }
+  return node_idx;
+}
+
+__device__ inline double eval_gf_unit_device(const double src[3],
+                                             const double tgt[3],
+                                             const FmmFarLaunchParams& p) {
+  GfSourceParams unit = p.avg_params;
+  unit.source_rate = 1.0;
+  if (robin::transfer_enabled(unit.lumen_transfer_length)) {
+    const double d_eff = unit.diff_coeff / unit.retardation;
+    double vx = 0.0;
+    double vy = 0.0;
+    double vz = 0.0;
+    flow_velocity(p.adv, src[0], src[2], vx, vy, vz);
+    const double threshold = unit.peclet_z_threshold >= 0.0
+        ? unit.peclet_z_threshold : neumann::kDriftEnvelopePeZ;
+    const bool drift_exceeded = neumann::drift_envelope_exceeded(
+        vz, p.dom.z_hi - p.dom.z_lo, d_eff, threshold);
+    const bool use_drift = (unit.drift_correction != 0)
+        || (unit.drift_auto_dispatch != 0 && fabs(vz) > 0.0 && drift_exceeded);
+    unit.robin_table_index = use_drift
+        ? p.robin_table_index_physical : p.robin_table_index_legacy;
+  }
+  return concentration_bounded(
+      src, tgt, unit, p.dom, p.adv, p.robin_tables, p.robin_table_count,
+      nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr);
+}
+
+__device__ double eval_multipole_node_device(const double* moments,
+                                             int order,
+                                             const double virtual_src[3],
+                                             const double tgt[3],
+                                             double dist,
+                                             const FmmFarLaunchParams& p) {
+  const double length_scale = dist > 1.0e-9 ? dist : 1.0e-9;
+  const double g0 = eval_gf_unit_device(virtual_src, tgt, p);
+  double sum = moments[0] * g0;
+  if (order < 1) return sum;
+
+  // Order 1: (1,0,0)->1, (0,1,0)->2, (0,0,1)->3.
+  // Moments centered at center_of_source have identically zero dipoles.
+  const double h1 = length_scale * p.fd_rel_1;
+  const double inv_2h1 = 1.0 / (2.0 * h1);
+  for (int d = 0; d < 3; ++d) {
+    const double m1 = moments[1 + d];
+    if (fabs(m1) <= 0.0) continue;
+    double plus[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    double minus[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    plus[d] += h1;
+    minus[d] -= h1;
+    const double deriv = (eval_gf_unit_device(plus, tgt, p)
+                          - eval_gf_unit_device(minus, tgt, p)) * inv_2h1;
+    sum += m1 * deriv;
+  }
+  if (order < 2) return sum;
+
+  // Order 2: (2,0,0)->4, (1,1,0)->5, (0,2,0)->6, (1,0,1)->7, (0,1,1)->8, (0,0,2)->9.
+  // Taylor coefficients: 1/2! = 0.5 for diagonal terms, 1/(1!1!) = 1.0 for mixed terms.
+  const double h2 = length_scale * p.fd_rel_2;
+  const double inv_h2_sq = 1.0 / (h2 * h2);
+  const double inv_2h2_sq = 0.5 * inv_h2_sq;
+  const double inv_4h2_sq = 0.25 * inv_h2_sq;
+  const int diag_idx[3] = {4, 6, 9};
+  for (int d = 0; d < 3; ++d) {
+    double plus[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    double minus[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    plus[d] += h2;
+    minus[d] -= h2;
+    const double deriv = (eval_gf_unit_device(plus, tgt, p) - 2.0 * g0
+                          + eval_gf_unit_device(minus, tgt, p)) * inv_2h2_sq;
+    sum += moments[diag_idx[d]] * deriv;
+  }
+  const int mixed_d1[3] = {0, 0, 1};
+  const int mixed_d2[3] = {1, 2, 2};
+  const int mixed_idx[3] = {5, 7, 8};
+  for (int m = 0; m < 3; ++m) {
+    const int d1 = mixed_d1[m];
+    const int d2 = mixed_d2[m];
+    double pp[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    double pm[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    double mp[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    double mm[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    pp[d1] += h2; pp[d2] += h2;
+    pm[d1] += h2; pm[d2] -= h2;
+    mp[d1] -= h2; mp[d2] += h2;
+    mm[d1] -= h2; mm[d2] -= h2;
+    const double deriv = (eval_gf_unit_device(pp, tgt, p)
+                          - eval_gf_unit_device(pm, tgt, p)
+                          - eval_gf_unit_device(mp, tgt, p)
+                          + eval_gf_unit_device(mm, tgt, p)) * inv_4h2_sq;
+    sum += moments[mixed_idx[m]] * deriv;
+  }
+  if (order < 3) return sum;
+
+  // Order 3: pure single-axis derivatives (3,0,0)->10, (0,3,0)->13, (0,0,3)->19,
+  // with Taylor coefficient 1/3! = 1/6 (combined divisor 12 * h3^3).
+  const double h3 = length_scale * p.fd_rel_3;
+  const double inv_12h3_cu = 1.0 / (12.0 * h3 * h3 * h3);
+  const int third_idx[3] = {10, 13, 19};
+  for (int d = 0; d < 3; ++d) {
+    double p2[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    double p1[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    double m1[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    double m2[3] = {virtual_src[0], virtual_src[1], virtual_src[2]};
+    p2[d] += 2.0 * h3;
+    p1[d] += h3;
+    m1[d] -= h3;
+    m2[d] -= 2.0 * h3;
+    const double deriv = (eval_gf_unit_device(p2, tgt, p)
+                          - 2.0 * eval_gf_unit_device(p1, tgt, p)
+                          + 2.0 * eval_gf_unit_device(m1, tgt, p)
+                          - eval_gf_unit_device(m2, tgt, p)) * inv_12h3_cu;
+    sum += moments[third_idx[d]] * deriv;
+  }
+  return sum;
+}
+
+__device__ void traverse_far_device(int root_node,
+                                    const FmmDeviceTreeView& tree,
+                                    const double tgt[3],
+                                    const FmmFarLaunchParams& p,
+                                    double& accumulator) {
+  int stack[kFmmTraversalStackCap];
+  int sp = 0;
+  stack[sp++] = root_node;
+
+  const double near_cutoff = p.near_cutoff;
+  const double near_cutoff2 = near_cutoff * near_cutoff;
+
+  while (sp > 0) {
+    const int node_idx = stack[--sp];
+    if (tree.total_source_strength[node_idx] <= 0.0) continue;
+
+    const double* cos_pos = tree.center_of_source + static_cast<size_t>(node_idx) * 3;
+    const double dx = minimum_image_delta(
+        tgt[0] - cos_pos[0], p.dom.extent[0], p.dom.periodic[0]);
+    const double dy = minimum_image_delta(
+        tgt[1] - cos_pos[1], p.dom.extent[1], p.dom.periodic[1]);
+    const double dz = minimum_image_delta(
+        tgt[2] - cos_pos[2], p.dom.extent[2], p.dom.periodic[2]);
+    const double dist2 = dx * dx + dy * dy + dz * dz;
+    const double dist = sqrt(dist2);
+    const double hs = tree.half_size[node_idx];
+    const double diag = hs * kSqrt3Gpu;
+
+    if (near_cutoff > 0.0) {
+      const double* box_pos = tree.center + static_cast<size_t>(node_idx) * 3;
+      const double bdx = minimum_image_delta(
+          tgt[0] - box_pos[0], p.dom.extent[0], p.dom.periodic[0]);
+      const double bdy = minimum_image_delta(
+          tgt[1] - box_pos[1], p.dom.extent[1], p.dom.periodic[1]);
+      const double bdz = minimum_image_delta(
+          tgt[2] - box_pos[2], p.dom.extent[2], p.dom.periodic[2]);
+      const double box_dist = sqrt(bdx * bdx + bdy * bdy + bdz * bdz);
+      if (box_dist + diag <= near_cutoff) continue;
+    }
+
+    if (tree.is_leaf[node_idx] == 0) {
+      const double cell_size = 2.0 * hs;
+      const double denom = dist > 1.0e-30 ? dist : 1.0e-30;
+      const bool fails_mac = (cell_size / denom) >= p.theta;
+      const bool straddles = (near_cutoff > 0.0) && (dist - diag <= near_cutoff);
+      if (fails_mac || straddles) {
+        const int* children = tree.children + static_cast<size_t>(node_idx) * 8;
+        for (int c = 7; c >= 0; --c) {
+          if (children[c] >= 0 && sp < kFmmTraversalStackCap) {
+            stack[sp++] = children[c];
+          }
+        }
+        continue;
+      }
+    }
+
+    if (dist2 <= near_cutoff2) continue;
+
+    const double virtual_src[3] = {tgt[0] - dx, tgt[1] - dy, tgt[2] - dz};
+    const double* moments = tree.multipole
+        + static_cast<size_t>(node_idx) * tree.coeffs_per_node;
+    accumulator += eval_multipole_node_device(
+        moments, tree.expansion_order, virtual_src, tgt, dist, p);
+  }
+}
+
+__global__ void fmm_far_local_device_kernel(
+    FmmDeviceTreeView tree,
+    FmmFarLaunchParams params,
+    double* d_conc) {
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  double tgt[3];
+  int storage_cell = 0;
+  if (!decode_owned_voxel(tid, params.grid, params.dom, tgt, storage_cell)) {
+    return;
+  }
+
+  const int node_idx = find_containing_node_device(tree, tgt);
+  const double* local = tree.local
+      + static_cast<size_t>(node_idx) * tree.coeffs_per_node;
+  const double* center = tree.center + static_cast<size_t>(node_idx) * 3;
+  double far = eval_local_expansion(
+      local, tree.expansion_order, center[0], center[1], center[2],
+      tgt[0], tgt[1], tgt[2]);
+
+  if (tree.near_offsets != nullptr && tree.near_nodes != nullptr) {
+    const int nb = tree.near_offsets[node_idx];
+    const int ne = tree.near_offsets[node_idx + 1];
+    for (int k = nb; k < ne; ++k) {
+      traverse_far_device(tree.near_nodes[k], tree, tgt, params, far);
+    }
+  }
+
+  if (far > 0.0) {
+    d_conc[storage_cell] += far;
+  }
+}
+
+__global__ void fmm_far_tree_device_kernel(
+    FmmDeviceTreeView tree,
+    FmmFarLaunchParams params,
+    double* d_conc) {
+  const int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  double tgt[3];
+  int storage_cell = 0;
+  if (!decode_owned_voxel(tid, params.grid, params.dom, tgt, storage_cell)) {
+    return;
+  }
+
+  double far = 0.0;
+  traverse_far_device(0, tree, tgt, params, far);
+  if (far > 0.0) {
+    d_conc[storage_cell] += far;
+  }
+}
+
+}  // namespace
+
+void launch_fmm_far_local_device_kernel(
+    const FmmDeviceTreeView& tree,
+    const FmmFarLaunchParams& params,
+    double* d_conc,
+    cudaStream_t stream) {
+  const int owned_nx = params.grid.owned_storage_x_end
+                     - params.grid.owned_storage_x_begin;
+  const int total_owned = owned_nx * params.grid.global_ny * params.grid.global_nz;
+  if (total_owned <= 0 || tree.num_nodes <= 0 || d_conc == nullptr) return;
+  constexpr int kBlock = 128;
+  const int grid = (total_owned + kBlock - 1) / kBlock;
+  fmm_far_local_device_kernel<<<grid, kBlock, 0, stream>>>(tree, params, d_conc);
+}
+
+void launch_fmm_far_tree_device_kernel(
+    const FmmDeviceTreeView& tree,
+    const FmmFarLaunchParams& params,
+    double* d_conc,
+    cudaStream_t stream) {
+  const int owned_nx = params.grid.owned_storage_x_end
+                     - params.grid.owned_storage_x_begin;
+  const int total_owned = owned_nx * params.grid.global_ny * params.grid.global_nz;
+  if (total_owned <= 0 || tree.num_nodes <= 0 || d_conc == nullptr) return;
+  constexpr int kBlock = 128;
+  const int grid = (total_owned + kBlock - 1) / kBlock;
+  fmm_far_tree_device_kernel<<<grid, kBlock, 0, stream>>>(tree, params, d_conc);
+}
+
 }  // namespace gpu
 }  // namespace gutibm

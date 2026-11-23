@@ -36,6 +36,15 @@ Real evaluate_multipole(const std::vector<Real>& moments,
                         int order,
                         const KernelTaylorCoeffs& kernel);
 
+// Evaluate multipole expansion directly at target, skipping vanishing moments
+// (e.g. centroid dipole moments) and reusing the center Green's function call.
+Real evaluate_multipole_at_source(const GreensFunction& gf,
+                                  const std::vector<Real>& moments,
+                                  int order,
+                                  const Vec3& source,
+                                  const Vec3& target,
+                                  const GreensFunctionParams& params);
+
 // Convert remote multipole at source_center into local expansion at target_center.
 std::vector<Real> multipole_to_local(const std::vector<Real>& moments,
                                      int order,
