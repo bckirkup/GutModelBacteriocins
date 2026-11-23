@@ -36,7 +36,9 @@ bool gpu_superpose_to_grid(
     uint64_t* kernel_evaluations = nullptr,
     uint64_t* low_screening_evaluations = nullptr,
     uint64_t* negative_field_count = nullptr,
-    Real* most_negative_field = nullptr);
+    Real* most_negative_field = nullptr,
+    uint64_t* drift_envelope_evaluations = nullptr,
+    uint64_t* drift_modal_evaluations = nullptr);
 
 // Deposit near-field superposition directly into a device concentration buffer.
 bool gpu_superpose_to_device(
@@ -50,7 +52,9 @@ bool gpu_superpose_to_device(
     uint64_t* kernel_evaluations = nullptr,
     uint64_t* low_screening_evaluations = nullptr,
     uint64_t* negative_field_count = nullptr,
-    Real* most_negative_field = nullptr);
+    Real* most_negative_field = nullptr,
+    uint64_t* drift_envelope_evaluations = nullptr,
+    uint64_t* drift_modal_evaluations = nullptr);
 
 }  // namespace gutibm
 

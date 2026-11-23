@@ -68,9 +68,12 @@ struct GpuMetabolismBuffers {
   double effective_diffusivity_oxygen = 0.0;
   double* d_uptake_limit_totals = nullptr;
   double* d_maintenance_available = nullptr;
+  double* d_prescribed_carbon = nullptr;
+  double* d_prescribed_oxygen = nullptr;
 };
 
 class ChemicalField;
+class ChemicalFieldGpu;
 struct OxygenConfig;
 
 struct GpuDeliverySupportCsr {
@@ -90,6 +93,7 @@ struct GpuDeliveryPrepareOutput {
 struct GpuDeliveryCommitContext {
   const Domain& domain;
   ChemicalField& chem;
+  const ChemicalFieldGpu* chem_gpu = nullptr;
   const OxygenConfig& oxygen;
   const GpuDeliverySupportCsr& support;
   double dt = 0.0;

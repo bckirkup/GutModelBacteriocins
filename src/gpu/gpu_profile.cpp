@@ -17,6 +17,7 @@ struct GpuTransferState {
   unsigned long long h2d_calls = 0;
   unsigned long long d2h_calls = 0;
   double slab_x_roundtrip_s = 0.0;
+  bool pinned_staging_active = false;
 };
 
 thread_local const char* current_transfer_site = "unattributed";
@@ -96,10 +97,18 @@ void gpu_transfer_record_d2h(double seconds, unsigned long long bytes) {
   }
 }
 
+void gpu_transfer_set_pinned_staging_active(bool active) {
+  state().pinned_staging_active = active;
+}
+
+bool gpu_transfer_pinned_staging_active() {
+  return state().pinned_staging_active;
+}
+
 GpuTransferProfile gpu_transfer_profile_snapshot() {
   const auto& s = state();
   return {s.h2d_s, s.d2h_s, s.h2d_bytes, s.d2h_bytes, s.h2d_calls,
-          s.d2h_calls, s.slab_x_roundtrip_s};
+          s.d2h_calls, s.slab_x_roundtrip_s, s.pinned_staging_active};
 }
 
 std::vector<GpuTransferSiteProfile> gpu_transfer_site_profiles() {

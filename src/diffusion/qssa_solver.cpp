@@ -89,15 +89,14 @@ void enforce_drift_envelope_policy(
     const QSSAConfig& cfg, const Domain& domain, const AdvectionField& adv,
     const std::vector<ChemicalSpec>* chemicals,
     const RuntimeDriftEnvelopeBasis* runtime_basis) {
+  const Real threshold = cfg.peclet_z_threshold >= 0.0
+      ? cfg.peclet_z_threshold : neumann::kDriftEnvelopePeZ;
   if (cfg.drift_correction) {
-    // The corrected sealed field satisfies the physical zero-total-flux wall
-    // law, so the first-order Pe_z envelope no longer describes its error; the
-    // remaining error is table interpolation only.
+    // The corrected sealed field uses the exact hybrid Sturm-Liouville / Hankel
+    // kernel satisfying the physical zero-total-flux wall law on CPU and GPU.
     std::cerr << "NOTE: wall-normal drift correction enabled: the sealed "
-                 "Neumann field uses the physical zero-total-flux wall law; "
-                 "the residual error is correction-table interpolation, "
-                 "measured at 1.22e-4 median, 3.88e-3 p90, and 1.55e-1 "
-                 "maximum at the ColE1 basis; see "
+                 "Neumann field uses the exact physical zero-total-flux "
+                 "Sturm-Liouville/Hankel kernel on CPU and GPU; see "
                  "docs/NEUMANN_WALL_NORMAL_DRIFT.md\n";
     return;
   }
@@ -125,14 +124,24 @@ void enforce_drift_envelope_policy(
   if (runtime_basis != nullptr && runtime_basis->d_eff > 0.0) {
     const Real pe_z = neumann::wall_normal_peclet(
         flow[2], height, runtime_basis->d_eff);
-    if (std::abs(pe_z) > std::abs(worst_pe_z)) {
+    if (std::abs(pe_z) >= std::abs(worst_pe_z) && std::abs(pe_z) > 0.0) {
       worst_pe_z = pe_z;
       worst_d_eff = runtime_basis->d_eff;
       worst_basis = "configured-plasmid basis: " + runtime_basis->label;
     }
   }
   if (!neumann::drift_envelope_exceeded(
-          flow[2], height, worst_d_eff)) {
+          flow[2], height, worst_d_eff, threshold)) {
+    return;
+  }
+  if (cfg.drift_envelope_policy == "auto") {
+    std::cerr << "NOTE: wall-normal drift auto-dispatch enabled "
+                 "(qssa.drift_envelope_policy=auto): Pe_z="
+              << worst_pe_z << " (" << worst_basis << "; D_eff="
+              << worst_d_eff << ") exceeds |Pe_z| <= " << threshold
+              << "; high-Pe_z sources will dispatch automatically to the "
+                 "physical Sturm-Liouville/Hankel kernel; see "
+                 "docs/NEUMANN_WALL_NORMAL_DRIFT.md\n";
     return;
   }
   const std::string error_description =
@@ -143,14 +152,15 @@ void enforce_drift_envelope_policy(
       : "worst-case relative field error is approximately 0.44*Pe_z";
   const std::string message = std::format(
       "wall-normal drift in sealed Neumann image series: Pe_z={:.6g} "
-      "({}; D_eff={:.6g}); envelope is |Pe_z| <= 0.05; {}; see "
+      "({}; D_eff={:.6g}); envelope is |Pe_z| <= {:.6g}; {}; see "
       "docs/NEUMANN_WALL_NORMAL_DRIFT.md",
-      worst_pe_z, worst_basis, worst_d_eff, error_description);
+      worst_pe_z, worst_basis, worst_d_eff, threshold, error_description);
   if (cfg.drift_envelope_policy == "error") {
     throw SimulationError(message);
   }
   std::cerr << "WARNING: " << message
-            << "; use qssa.drift_envelope_policy=allow for deliberate "
+            << "; use qssa.drift_envelope_policy=auto for automatic exact "
+               "dispatch or qssa.drift_envelope_policy=allow for deliberate "
                "high-wall-normal-flow diagnostics\n";
 }
 
@@ -348,6 +358,8 @@ GreensFunctionParams weighted_avg_params(
   avg_params.image_series_legacy_reflections =
       cfg.image_series_mode == "pre_fix_duplicated_reflection";
   avg_params.drift_correction = cfg.drift_correction;
+  avg_params.drift_auto_dispatch = cfg.drift_envelope_policy == "auto";
+  avg_params.peclet_z_threshold = cfg.peclet_z_threshold;
   return avg_params;
 }
 
@@ -420,14 +432,18 @@ bool try_gpu_near_field(const Domain& domain,
                         uint64_t* kernel_evaluations,
                         uint64_t* low_screening_evaluations,
                         uint64_t* negative_field_count,
-                        Real* most_negative_field) {
+                        Real* most_negative_field,
+                        uint64_t* drift_envelope_evaluations,
+                        uint64_t* drift_modal_evaluations) {
   if (chem_gpu == nullptr || !chem_gpu->active()) return false;
   double* d_conc = chem_gpu->conc_device(toxin_species_idx);
   if (d_conc == nullptr) return false;
   if (!gpu_superpose_to_device(domain, adv, sources, params, strength_factors,
                                d_conc, cutoff_radius, cap_hits,
                                kernel_evaluations, low_screening_evaluations,
-                               negative_field_count, most_negative_field)) {
+                               negative_field_count, most_negative_field,
+                               drift_envelope_evaluations,
+                               drift_modal_evaluations)) {
     return false;
   }
   if (!defer_host_sync) {
@@ -452,6 +468,8 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
   uint64_t gpu_kernel_evaluations = 0;
   uint64_t gpu_low_screening = 0;
   uint64_t gpu_negative_count = 0;
+  uint64_t gpu_drift_envelope = 0;
+  uint64_t gpu_drift_modal = 0;
   Real gpu_most_negative = 0.0;
   uint64_t* kernel_evaluations = gf.kernel_evaluation_counting_enabled()
       ? &gpu_kernel_evaluations
@@ -463,9 +481,12 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
             domain, adv, sources, params, strength_factors, cutoff_radius,
             chem, toxin_species_idx, chem_gpu, defer_host_sync,
             &gpu_cap_hits, kernel_evaluations, &gpu_low_screening,
-            &gpu_negative_count, &gpu_most_negative)) {
+            &gpu_negative_count, &gpu_most_negative,
+            &gpu_drift_envelope, &gpu_drift_modal)) {
       gf.add_image_series_cap_hits(gpu_cap_hits);
       gf.add_low_screening_evaluations(gpu_low_screening);
+      gf.add_drift_envelope_evaluations(gpu_drift_envelope);
+      gf.add_drift_modal_evaluations(gpu_drift_modal);
       gf.add_negative_field_diagnostics(gpu_negative_count,
                                         gpu_most_negative);
       if (kernel_evaluations != nullptr) {
@@ -497,7 +518,8 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
             domain, adv, gpu_sources, gpu_params, gpu_strengths,
             cutoff_radius, chem, toxin_species_idx, chem_gpu,
             true, &gpu_cap_hits, kernel_evaluations, &gpu_low_screening,
-            &gpu_negative_count, &gpu_most_negative)) {
+            &gpu_negative_count, &gpu_most_negative,
+            &gpu_drift_envelope, &gpu_drift_modal)) {
       std::vector<Real> host_grid;
       gf.superpose_to_grid(
           host_sources, host_params, host_strengths, host_grid,
@@ -513,6 +535,8 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
       chem_gpu->sync_species_concentrations_to_device(chem, toxin_species_idx);
       gf.add_image_series_cap_hits(gpu_cap_hits);
       gf.add_low_screening_evaluations(gpu_low_screening);
+      gf.add_drift_envelope_evaluations(gpu_drift_envelope);
+      gf.add_drift_modal_evaluations(gpu_drift_modal);
       gf.add_negative_field_diagnostics(gpu_negative_count,
                                         gpu_most_negative);
       if (kernel_evaluations != nullptr) {
@@ -525,6 +549,61 @@ bool accumulate_near_field_gpu_or_cpu(const Domain& domain,
   gf.superpose_to_grid(sources, params, strength_factors, toxin_conc,
                        cutoff_radius);
   return false;
+}
+
+void apply_qssa_source_params(
+    const QSSAConfig& cfg, const Domain& domain, const AdvectionField& adv,
+    const GreensFunction& gf, const std::vector<Vec3>& sources,
+    const std::vector<ReceptorType>& targets,
+    std::vector<GreensFunctionParams>& params) {
+  const Real height = domain.hi()[2] - domain.lo()[2];
+  const Real threshold = cfg.peclet_z_threshold >= 0.0
+      ? cfg.peclet_z_threshold : neumann::kDriftEnvelopePeZ;
+  const bool auto_policy = cfg.drift_envelope_policy == "auto";
+  const bool error_policy = cfg.drift_envelope_policy == "error";
+  uint64_t auto_dispatched = 0;
+  for (size_t i = 0; i < params.size(); ++i) {
+    auto& param = params[i];
+    param.lumen_transfer_length = cfg.lumen_transfer_length;
+    param.lumen_transfer_basis_free = cfg.lumen_transfer_basis == "free";
+    param.robin_cutoff = cfg.toxin_cutoff;
+    param.image_series_relative_tolerance =
+        cfg.image_series_relative_tolerance;
+    param.image_series_max_shells = image_series_shells(cfg);
+    param.image_series_max_shells_explicit =
+        cfg.image_series_max_shells_explicit;
+    param.image_series_legacy_reflections =
+        cfg.image_series_mode == "pre_fix_duplicated_reflection";
+    param.drift_correction = cfg.drift_correction;
+    param.drift_auto_dispatch = auto_policy;
+    param.peclet_z_threshold = threshold;
+    if (param.drift_correction || (!auto_policy && !error_policy)) continue;
+
+    const Real d_eff = param.diff_coeff / param.retardation;
+    if (!(d_eff > 0.0)) continue;
+    const Vec3 flow = adv.velocity(sources[i]);
+    if (std::abs(flow[2]) <= 0.0) continue;
+    if (!neumann::drift_envelope_exceeded(
+            flow[2], height, d_eff, threshold)) {
+      continue;
+    }
+    if (auto_policy) {
+      param.drift_correction = true;
+      ++auto_dispatched;
+    } else if (error_policy) {
+      const Real pe_z = neumann::wall_normal_peclet(flow[2], height, d_eff);
+      const char* species_name = species::bacteriocin_species_for(targets[i]);
+      throw SimulationError(std::format(
+          "wall-normal drift in sealed Neumann image series: runtime source "
+          "Pe_z={:.6g} (target={}; D_eff={:.6g}); envelope is |Pe_z| <= {:.6g}; "
+          "set qssa.drift_envelope_policy=auto or qssa.drift_correction=true",
+          pe_z, species_name != nullptr ? species_name : "bacteriocin",
+          d_eff, threshold));
+    }
+  }
+  if (auto_dispatched != 0) {
+    gf.add_peclet_auto_dispatched_sources(auto_dispatched);
+  }
 }
 
 void collect_microcin_sources(const AgentPool& agents,
@@ -732,19 +811,8 @@ void QSSASolver::solve_bacteriocin_field(
 
   collect_microcin_sources(agents, cfg_, protease, adv, *domain_, buffers);
   append_burst_sources(bursts, current_time, *domain_, buffers);
-  for (auto& param : all_params) {
-    param.lumen_transfer_length = cfg_.lumen_transfer_length;
-    param.lumen_transfer_basis_free = cfg_.lumen_transfer_basis == "free";
-    param.robin_cutoff = cfg_.toxin_cutoff;
-    param.image_series_relative_tolerance =
-        cfg_.image_series_relative_tolerance;
-    param.image_series_max_shells = image_series_shells(cfg_);
-    param.image_series_max_shells_explicit =
-        cfg_.image_series_max_shells_explicit;
-    param.image_series_legacy_reflections =
-        cfg_.image_series_mode == "pre_fix_duplicated_reflection";
-    param.drift_correction = cfg_.drift_correction;
-  }
+  apply_qssa_source_params(
+      cfg_, *domain_, adv, gf_, all_sources, all_targets, all_params);
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
   sample_nuclease_sources(all_sources, all_params, all_strengths, is_nuclease,
@@ -849,19 +917,8 @@ void QSSASolver::solve_all_bacteriocin_fields(
                                 is_nuclease, all_targets};
   collect_microcin_sources(agents, cfg_, protease, adv, *domain_, buffers);
   append_burst_sources(bursts, current_time, *domain_, buffers);
-  for (auto& param : all_params) {
-    param.lumen_transfer_length = cfg_.lumen_transfer_length;
-    param.lumen_transfer_basis_free = cfg_.lumen_transfer_basis == "free";
-    param.robin_cutoff = cfg_.toxin_cutoff;
-    param.image_series_relative_tolerance =
-        cfg_.image_series_relative_tolerance;
-    param.image_series_max_shells = image_series_shells(cfg_);
-    param.image_series_max_shells_explicit =
-        cfg_.image_series_max_shells_explicit;
-    param.image_series_legacy_reflections =
-        cfg_.image_series_mode == "pre_fix_duplicated_reflection";
-    param.drift_correction = cfg_.drift_correction;
-  }
+  apply_qssa_source_params(
+      cfg_, *domain_, adv, gf_, all_sources, all_targets, all_params);
   exchange_toxin_sources(all_sources, all_params, all_strengths, is_nuclease,
                          all_targets);
   sample_nuclease_sources(all_sources, all_params, all_strengths, is_nuclease,

@@ -9,8 +9,13 @@
 #include "types.h"
 #include "delivery_support.h"
 #include <algorithm>
+#include <atomic>
 #include <cassert>
+#include <cstdint>
 #include <functional>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,6 +24,55 @@ namespace gutibm {
 
 class Domain;
 class ChemicalFieldGpu;
+
+struct ChemicalFieldGpuLink {
+  ChemicalFieldGpu* gpu = nullptr;
+  std::mutex mutex;
+  std::atomic<uint32_t> dirty_count{0};
+};
+
+struct ChemicalFieldMemoryFootprint {
+  uint64_t global_cells = 0;
+  uint64_t storage_cells_per_rank = 0;
+  uint64_t conc_bytes_per_rank = 0;
+  uint64_t reac_bytes_per_rank = 0;
+  uint64_t scratch_bytes_per_rank = 0;
+  uint64_t vbf_bytes_per_rank = 0;
+  uint64_t delivery_bytes_per_rank = 0;
+  uint64_t total_bytes_per_rank = 0;
+  uint64_t total_bytes_per_node = 0;
+  uint64_t slab_bytes_per_rank = 0;
+  uint64_t slab_bytes_per_node = 0;
+  double slab_savings_factor = 1.0;
+};
+
+struct ChemicalFieldMemoryGuardInput {
+  Int nx = 0;
+  Int ny = 0;
+  Int nz = 0;
+  Int num_species = 0;
+  Int nprocs = 1;
+  Int ranks_per_node = 1;
+  bool slab_mode = false;
+  bool delivery_any = false;
+  Int halo_width = 0;
+  Int required_slab_halo_width = 0;
+  bool slab_feature_eligible = true;
+  Real max_host_chemical_gb = 0.0;
+  std::string_view replicated_oom_policy = "error";
+  std::optional<uint64_t> available_host_memory_bytes = std::nullopt;
+};
+
+struct ChemicalFieldMemoryGuardDecision {
+  ChemicalFieldMemoryFootprint footprint;
+  uint64_t effective_budget_bytes = 0;
+  bool has_budget = false;
+  bool exceeds_budget = false;
+  bool emit_replicated_diagnostic = false;
+  bool switch_to_slab = false;
+  bool should_throw = false;
+  std::string diagnostic_message;
+};
 
 struct NutrientFluxAccounting {
   // *_step vectors are mid-step scratch.  The commit methods copy their
@@ -492,6 +546,25 @@ class ChemicalField {
   enum class DecompositionMode { Replicated, Slab };
 
   ChemicalField() = default;
+  ChemicalField(const ChemicalField& other);
+  ChemicalField& operator=(const ChemicalField& other);
+  ChemicalField(ChemicalField&& other) noexcept = default;
+  ChemicalField& operator=(ChemicalField&& other) noexcept = default;
+  ~ChemicalField() = default;
+
+  // Pure pre-allocation host memory estimator across concentration, reaction,
+  // scratch, VBF, and delivery vectors.
+  [[nodiscard]] static ChemicalFieldMemoryFootprint estimate_memory_footprint(
+      Int nx, Int ny, Int nz, Int num_species, Int nprocs, Int ranks_per_node,
+      bool slab_mode, bool delivery_any, Int halo_width = 0);
+
+  [[nodiscard]] static std::optional<uint64_t>
+  parse_proc_meminfo_available_bytes(std::string_view meminfo);
+  [[nodiscard]] static std::optional<uint64_t>
+  query_available_host_memory_bytes();
+  [[nodiscard]] static Int query_ranks_per_node(Int fallback_nprocs = 1);
+  [[nodiscard]] static ChemicalFieldMemoryGuardDecision evaluate_memory_guard(
+      const ChemicalFieldMemoryGuardInput& input);
 
   void init(const Domain& domain, const std::vector<ChemicalSpec>& specs,
             std::string_view decomposition = "replicated",
@@ -511,24 +584,31 @@ class ChemicalField {
   Int global_ny() const { return global_ny_; }
   Int global_nz() const { return global_nz_; }
   Int storage_nx() const { return storage_nx_; }
+  bool delivery_storage_allocated() const {
+    return delivery_storage_allocated_;
+  }
 
   // Concentration accessors [species][storage cell].
   Real conc(Int spec, Int cell) const {
     assert(cell >= 0 && cell < ncells_);
+    ensure_host_conc_current(spec);
     return conc_[spec][cell];
   }
   Real& conc(Int spec, Int cell) {
     assert(cell >= 0 && cell < ncells_);
+    ensure_host_conc_current(spec);
     return conc_[spec][cell];
   }
   Real conc_global(Int spec, Int cell) const {
     const Int storage_cell = global_to_storage_cell(cell);
     assert(storage_cell >= 0);
+    ensure_host_conc_current(spec);
     return conc_[spec][storage_cell];
   }
   Real& conc_global(Int spec, Int cell) {
     const Int storage_cell = global_to_storage_cell(cell);
     assert(storage_cell >= 0);
+    ensure_host_conc_current(spec);
     return conc_[spec][storage_cell];
   }
 
@@ -577,6 +657,18 @@ class ChemicalField {
   bool host_conc_dirty(Int spec) const;
   void clear_host_conc_dirty(Int spec);
 
+  // Device concentration residency invariant:
+  // the flag means the device row holds writes not yet downloaded to host.
+  // Host concentration readers lazily materialize only the requested species.
+  void bind_gpu_mirror(std::shared_ptr<ChemicalFieldGpuLink> link);
+  void mark_device_conc_dirty(Int spec);
+  void mark_all_device_conc_dirty();
+  bool device_conc_dirty(Int spec) const;
+  bool any_device_conc_dirty() const;
+  void clear_device_conc_dirty(Int spec);
+  void materialize_species_from_device(Int spec) const;
+  void materialize_all_from_device() const;
+
   // Reset reaction rates to zero each timestep
   void zero_reactions();
   // The flag means the host row may hold writes that are not on the device.
@@ -601,6 +693,7 @@ class ChemicalField {
   Real vbf_sink_realized(Int spec) const;
   Real prescribed_sink_global(Int spec, Int cell) const;
   const std::vector<Real>& prescribed_sink_storage(Int spec) const;
+  bool prescribed_sink_active(Int spec) const;
   void add_delivery_reduction(Int spec, Real amount);
   bool has_sink_rate(Int spec) const;
   bool has_sink_rate() const;
@@ -642,9 +735,13 @@ class ChemicalField {
   }
 
   // Raw data for HDF5 output
-  const std::vector<std::vector<Real>>& conc_data() const { return conc_; }
+  const std::vector<std::vector<Real>>& conc_data() const {
+    ensure_all_host_conc_current();
+    return conc_;
+  }
   const std::vector<Real>& species_concentration(Int spec) const {
     assert(spec >= 0 && spec < nspec_);
+    ensure_host_conc_current(spec);
     const auto& row = conc_[static_cast<size_t>(spec)];
     assert(static_cast<Int>(row.size()) == ncells_);
     return row;
@@ -657,6 +754,7 @@ class ChemicalField {
   }
   std::vector<Real>& mutable_species_concentration(Int spec) {
     assert(spec >= 0 && spec < nspec_);
+    ensure_host_conc_current(spec);
     auto& row = conc_[static_cast<size_t>(spec)];
     assert(static_cast<Int>(row.size()) == ncells_);
     mark_host_conc_dirty(spec);
@@ -670,7 +768,34 @@ class ChemicalField {
     return row;
   }
 
+  // Direct buffer access for ChemicalFieldGpu mirror transfers without
+  // re-entering lazy materialization.
+  const std::vector<Real>& raw_species_concentration(Int spec) const {
+    assert(spec >= 0 && spec < nspec_);
+    return conc_[static_cast<size_t>(spec)];
+  }
+  std::vector<Real>& raw_mutable_species_concentration(Int spec) const {
+    assert(spec >= 0 && spec < nspec_);
+    return conc_[static_cast<size_t>(spec)];
+  }
+
  private:
+  void ensure_host_conc_current(Int spec) const {
+    if (gpu_link_ != nullptr
+        && gpu_link_->dirty_count.load(std::memory_order_acquire) != 0) {
+      materialize_species_from_device(spec);
+    }
+  }
+  void ensure_all_host_conc_current() const {
+    if (gpu_link_ != nullptr
+        && gpu_link_->dirty_count.load(std::memory_order_acquire) != 0) {
+      materialize_all_from_device();
+    }
+  }
+  void ensure_delivery_storage();
+  void invalidate_gpu_prescribed_sink(Int spec);
+  void invalidate_all_gpu_prescribed_sinks();
+
   Int nspec_  = 0;
   Int ncells_ = 0;
   Int global_ncells_ = 0;
@@ -681,6 +806,7 @@ class ChemicalField {
   Int owned_x_end_ = 0;
   Real delivery_far_field_radius_ = 0.0;
   DeliverySupportStencil delivery_support_stencil_;
+  bool delivery_storage_allocated_ = false;
   std::vector<char> delivery_affected_mask_;
   std::vector<Int> delivery_affected_cells_;
   Int halo_width_ = 0;
@@ -688,8 +814,10 @@ class ChemicalField {
   DecompositionMode mode_ = DecompositionMode::Replicated;
   const Domain* domain_ = nullptr;
   std::vector<ChemicalSpec> specs_;
-  std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
-  std::vector<bool> host_conc_dirty_;
+  mutable std::vector<std::vector<Real>> conc_;   // [nspec][ncells]
+  mutable std::vector<bool> host_conc_dirty_;
+  mutable std::vector<uint8_t> device_conc_dirty_;
+  std::shared_ptr<ChemicalFieldGpuLink> gpu_link_;
   std::vector<std::vector<Real>> reac_;   // [nspec][ncells]
   std::vector<bool> host_reac_dirty_;
   std::vector<std::vector<Real>> sink_rate_;      // [species][ncells], 1/s

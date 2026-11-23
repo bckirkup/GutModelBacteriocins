@@ -8,14 +8,23 @@ function of the wall-normal Péclet number, and the validity envelope that is
 now enforced.
 
 Summary of the result: the legacy reflected-image series enforces the wrong
-sealed wall law when wall-normal flow is present. The opt-in
-`qssa.drift_correction` path now uses the physical modal sealed field, a 33³
-log-rho correction table against the exact runtime image series, and direct
-modal evaluation for the near-wall singular geometry. The correction is off by
-default, preserving shipped values bit-for-bit; drift-corrected GPU diffusion
-uses the host fallback rather than silently diverging. The measured
-interpolation residual is median `1.22e-4`, p90 `3.88e-3`, and max `1.55e-1`
-over 300 off-node geometries.
+sealed wall law when wall-normal flow is present. The physical drift-corrected
+path (`qssa.drift_correction=true` or per-source automatic dispatch via
+`qssa.drift_envelope_policy=auto` above `qssa.peclet_z_threshold`, default
+`0.05`) now evaluates an exact three-branch hybrid Sturm-Liouville / Hankel
+sealed kernel directly on both CPU and CUDA GPU (`robin::evaluate_physical_sealed_concentration`),
+replacing the earlier 33³ log-rho interpolation table for sealed drift-corrected
+sources and eliminating the host-only GPU fallback. On the 300 off-node
+geometries at the configured ColE1 basis (`Pe_z = 0.822`), the previous 33³
+table's median `1.22e-4`, p90 `3.88e-3`, and max `1.55e-1` error drops to
+median `1.65e-14` and max `2.86e-13`. Against both a 500-mode Sturm-Liouville
+expansion and a fine-grid axisymmetric finite-volume Robin advection-diffusion
+reference across `ColE1` (`R = 50.2`, `Pe_z = 0.822` and `2.325`) and `ColE2`
+(`R = 2.04` and `1.2`), relative interior and wall L2 errors are at most
+`2.50e-12` (vs Sturm-Liouville) and `1.29e-3` (vs FVM), with zero negative
+overshoot and sealed wall flux `|J_z| / (Q / A) <= 1.17e-10`. The shipped
+default policy remains `warn` with `qssa.drift_correction=false` to preserve
+historical runs bit-for-bit.
 
 ## 1. Operator, gauge transform, and the sealed wall law
 
@@ -147,11 +156,43 @@ regression test asserts, precisely so that a change to the reflected family
 cannot pass unnoticed behind a symmetric worst case.
 
 Per-image reweighting is therefore rejected on evidence, not on taste. The
-implemented correction does not reweight images: it tabulates
-`T_drift = sealed_modal(physical) - image_series(runtime)` on the log-rho grid,
-then adds that difference to the runtime image base. This preserves the exact
-series budget and makes the corrected composition converge to the physical
-modal sealed field without a hot-loop Bessel evaluation.
+initial PR #391 implementation tabulated
+`T_drift = sealed_modal(physical) - image_series(runtime)` on a 33³ log-rho
+grid and fell back to the host on GPU. That table still exhibited up to
+`1.55e-1` off-node relative error for three reasons: (1) near the walls,
+`T_drift` retained a singular `(1 - exp(-2a ζ)) / r_lo` reflection mismatch
+that trilinear interpolation on 33 nodes could not resolve; (2) linear
+interpolation of the exponentially screened field `exp(-κ ρ)` across 33
+log-spaced nodes (where `Δρ ~ 35 µm` near the cutoff against `1/κ ~ 3.9 µm`
+for retarded ColE1 under distal flow) incurred severe interpolation error; and
+(3) the near-wall direct path previously used a radial-only gauge factor rather
+than the 3D angle-aware gauge `exp((U_x Δx + U_y Δy + U_z Δz) / (2D))`.
+
+Issue #478 replaces sealed drift-corrected table lookup with a shared
+`__host__ __device__` three-branch hybrid Sturm-Liouville / Hankel kernel
+(`robin::evaluate_physical_sealed_concentration` in
+`src/diffusion/robin_correction_table.h`) based on the exact decomposition
+`ψ_phys(ρ, z_s, z_t) = ψ_N(ρ, z_s, z_t; κ) + F(ρ, z_s + z_t)`, where `ψ_N` is
+the pure-Neumann image series (satisfying `∂ψ/∂z = 0`) and `F` depends only on
+`σ = z_s + z_t` and `ρ`:
+
+- **Strong screening (`(κ - |a|) H >= 2.0`, e.g., retarded ColE1 under distal
+  flow):** pure-Neumann image series plus non-oscillatory positive real-space
+  drift integrals `I_+` and `I_-` evaluated with 24-point Gauss-Legendre
+  quadrature with the 3D exponential gauge folded inside the integrand to avoid
+  overflow and catastrophic cancellation.
+- **Weak screening, mid/far lateral range (`(κ - |a|) H < 2.0`, `ρ >= 0.15 H`):**
+  exact closed-form physical Sturm-Liouville eigenmode sum (`β_n = nπ/H`,
+  scaled `K_0e` with monotonic early exit).
+- **Weak screening, near-axis (`(κ - |a|) H < 2.0`, `ρ < 0.15 H`, including
+  `ρ = 0`):** pure-Neumann image series plus exact `m = 0` `I_±` wall integrals
+  and a rapidly decaying `exp(-2γH)` Hankel tail with pole-cancelling
+  substitution `u = δ (exp(s) - 1)`.
+
+For finite `lumen_transfer_length` Robin boundaries with drift correction,
+`normalized_robin_radial` restores the full 3D angle-aware gauge on the direct
+near-wall path while the smooth Robin-minus-physical-sealed correction table
+retains `table->physical_values`.
 
 ## 4. Measured error versus `Pe_z`
 
@@ -186,14 +227,30 @@ cross-check was not independent evidence: it encoded the same reflection
 coefficient as the legacy image family.
 
 The legacy image arithmetic remains unchanged when the correction is disabled.
-When enabled, the correction table uses 33 nodes in each of `(z_source,
-z_target,rho)`, with `rho` geometrically spaced from `0.25e-6` to the cutoff
-and interpolation performed on `log(rho / rho_min)`. The same log-rho axis is
-used for the Robin correction values. At the singular near-wall geometries,
-`requires_direct_evaluation()` bypasses interpolation and evaluates the
-physical modal field directly. The measured off-node correction residual is
-median `1.22e-4`, p90 `3.88e-3`, and max `1.55e-1` over 300 geometries at the
-configured ColE1 basis.
+When enabled (`qssa.drift_correction=true` or per-source
+`qssa.drift_envelope_policy=auto`), the sealed path evaluates the exact
+three-branch hybrid Sturm-Liouville / Hankel kernel directly on both CPU and
+CUDA GPU without table interpolation. On the 300 off-node geometries at the
+configured ColE1 basis (`Pe_z = 0.822`), the residual against the converged
+physical Sturm-Liouville reference drops from the PR #391 33³ log-rho table's
+median `1.22e-4` / p90 `3.88e-3` / max `1.55e-1` to median `1.65e-14` / max
+`2.86e-13`.
+
+Measured before/after accuracy across `ColE1` (`R = 50.2`) and `ColE2`
+(`R = 2.04` and `1.2`) over `z_s in {0.1H, 0.5H, 0.9H}` (`tests/test_wall_normal_peclet.cpp`,
+zero negative overshoot in all cases):
+
+| Benchmark case | `Pe_z` | Legacy image wall L2 (vs 500-mode SL) | Hybrid interior L2 (vs 500-mode SL) | Hybrid wall L2 (vs 500-mode SL) | Hybrid interior L2 (vs FVM) | Hybrid wall L2 (vs FVM) | Max sealed wall flux `\|J_z\|/(Q/A)` |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `ColE1` mid-depth (`R = 50.2`) | 0.822 | `2.37e-1` | `1.27e-13` | `1.20e-13` | `1.07e-3` | `1.28e-3` | `4.06e-11` |
+| `ColE1` near-lumen (`R = 50.2`) | 2.324 | `5.02e-1` | `1.78e-14` | `3.01e-13` | `1.13e-3` | `1.29e-3` | `5.02e-11` |
+| `ColE2` near-lumen (`R = 2.04`) | 0.108 | `4.39e-2` | `1.83e-12` | `1.49e-12` | `9.08e-4` | `9.69e-4` | `1.03e-10` |
+| `ColE2` near-lumen (`R = 1.2`) | 0.064 | `2.64e-2` | `2.18e-12` | `2.50e-12` | `5.20e-4` | `5.12e-4` | `1.17e-10` |
+| 300 off-node geometries (`ColE1`) | 0.822 | `1.55e-1` max (PR #391 33³ table) | — | `2.86e-13` max (`1.65e-14` median) | — | — | — |
+
+Under combined 3D distal plus wall-normal flow (`U_x != 0`, `U_z != 0`,
+`Pe_z = 0.822` on `ColE1`), the hybrid kernel satisfies the physical sealed
+wall law with max relative wall residual `4.59e-8` across `z_lo` and `z_hi`.
 
 The Hankel cross-check is useful for the physical Robin mathematics, but it is
 not independent evidence against the legacy image family: it is built from
@@ -233,12 +290,12 @@ E2, and microcin V.
 When correction is disabled, the Robin correction retains the legacy composition:
 `normalized_correction` returns `robin_modal - sealed_modal` and the caller adds
 it to the image-series sealed base, preserving shipped values. With correction
-enabled, the table stores `robin_modal - physical_sealed_modal` and the sealed
-base adds the independently tabulated `physical_sealed_modal - image_series`;
-the composition therefore approaches the physical Robin modal field. Near-wall
-cases use the direct physical modal field and do not add the image base twice.
-`toxin.ln_length` is infinite (Robin disabled) by default, so under shipped
-defaults the sealed image series remains the field.
+enabled, the sealed base uses `evaluate_physical_sealed_concentration` directly
+and the smooth Robin table stores `robin_modal - physical_sealed_modal`; near-wall
+Robin evaluations use `normalized_robin_radial` with the full 3D angle-aware
+gauge and do not add the image base twice. `toxin.ln_length` is infinite (Robin
+disabled) by default, so under shipped defaults the sealed image series remains
+the field.
 
 ## 6. The validity envelope and runtime policy
 
@@ -252,48 +309,60 @@ set):
 | ≤ 3% worst case | 0.068 |
 | ≤ 5% worst case | 0.114 |
 
-`kDriftEnvelopePeZ = 0.05` (≤ ~2% worst case, with median approximately
-`0.167*|Pe_z|` in the settled low-drift fit) remains the legacy-image
-validity envelope. `qssa.drift_envelope_policy` mirrors
-`qssa.low_screening_policy`: `warn` (default), `error`, `allow`, evaluated once
-during QSSA initialization from the same mid-domain flow probe. Run provenance
-records `neumann_drift_envelope_evaluations`, the number of kernel evaluations
-whose source-local `|Pe_z|` exceeded the envelope, separately from
-`neumann_image_series_cap_hits` and
-`neumann_low_screening_evaluations`. At shipped defaults the ChemicalSpec midpoint basis gives `Pe_z = 0.164` and
-the configured-plasmid ColE1 basis gives `Pe_z = 0.822`, both outside the
-legacy envelope. With `qssa.drift_correction=true`, this Pe_z warning is
-suppressed and replaced by a note describing the measured interpolation
-residual envelope.
+`qssa.peclet_z_threshold` (default `kDriftEnvelopePeZ = 0.05`, ≤ ~2% worst case
+for the legacy image series) configures the wall-normal Péclet threshold.
+`qssa.drift_envelope_policy` accepts four values:
 
-The correction is deliberately opt-in through `qssa.drift_correction` and does
-not change any shipped default. Its provenance dataset is
-`/run_provenance/neumann_drift_correction`; the existing
-`neumann_drift_envelope_evaluations` counter remains available for legacy image
-series evaluations. When correction is enabled, the initialization message
-states the measured interpolation envelope rather than treating `|Pe_z| > 0.05`
-alone as a failure. Device table upload and device-side corrected evaluation are
-follow-up work; drift-corrected GPU diffusion is routed to the host fallback.
+- `warn` (default): logs a warning during QSSA initialization whenever the
+  configured-species or configured-plasmid midpoint `|Pe_z|` exceeds
+  `qssa.peclet_z_threshold`, and retains the legacy image series unless
+  `qssa.drift_correction=true`.
+- `auto`: automatically promotes each source whose local `|U_z| > 0` and
+  `|Pe_z| > qssa.peclet_z_threshold` to the exact hybrid physical kernel while
+  keeping low-`Pe_z` sources on the fast image series; logs a concise `NOTE`
+  during initialization rather than a warning.
+- `error`: fails closed (throwing `SimulationError` naming the offending
+  species/plasmid and `Pe_z`) at initialization and whenever a runtime source
+  exceeds `qssa.peclet_z_threshold` without drift correction enabled.
+- `allow`: suppresses the warning and retains the legacy image series for
+  deliberate diagnostic comparisons.
+
+Run provenance under `/run_provenance/` records:
+
+- `neumann_drift_correction`: whether global `qssa.drift_correction` was enabled.
+- `qssa_drift_envelope_policy`: configured policy (`warn`, `auto`, `error`, `allow`).
+- `qssa_peclet_z_threshold`: configured `|Pe_z|` threshold.
+- `neumann_drift_envelope_evaluations`: kernel evaluations whose source-local
+  `|Pe_z|` exceeded the threshold (separate from `neumann_image_series_cap_hits`
+  and `neumann_low_screening_evaluations`).
+- `drift_modal_evaluations`: kernel evaluations executed by the physical
+  Sturm-Liouville / Hankel drift kernel (summed across MPI ranks and folded
+  from device atomics on GPU).
+- `peclet_auto_dispatched_sources`: source solves automatically promoted to the
+  physical drift kernel under `qssa.drift_envelope_policy=auto` (counted once
+  per owned source before MPI broadcast).
 
 ## 7. What this change does and does not alter
 
-With `qssa.drift_correction` unset or false, the sealed and bounded paths retain
-the legacy image-consistent table and interpolation axis, preserving shipped
-results bit-for-bit within a build. The default-off regression is that
-same-binary contract, not a hexadecimal pin: the shipped parameter object must
-match an explicit disabled correction, and the legacy median error at the
-ColE1 mid-depth basis must stay at least 0.05 (measured 0.151 on the five
-probes; the §4 nine-probe median is 0.132) rather than collapse onto the
-physical modal field. Literals captured with GCC 13 matched Ubuntu 24.04 CI
-and diverged when `ubuntu-latest` moved to GCC 15.2, without any change to
-the series.
+With `qssa.drift_correction` unset or false and `qssa.drift_envelope_policy=warn`
+(shipped defaults), the sealed and bounded paths retain the legacy
+image-consistent table and interpolation axis, preserving shipped results
+bit-for-bit within a build. The default-off regression is that same-binary
+contract, not a hexadecimal pin: the shipped parameter object must match an
+explicit disabled correction, and the legacy median error at the ColE1 mid-depth
+basis must stay at least 0.05 (measured 0.151 on the five probes; the §4
+nine-probe median is 0.132) rather than collapse onto the physical modal field.
+Literals captured with GCC 13 matched Ubuntu 24.04 CI and diverged when
+`ubuntu-latest` moved to GCC 15.2, without any change to the series.
 
-The opt-in host correction adds the physical sealed modal
-reference and the runtime-budget-matched drift table; it records
-`/run_provenance/neumann_drift_correction` and preserves the existing
-`neumann_drift_envelope_evaluations` counter. Near-wall direct evaluation avoids
-adding the image base twice. Drift-corrected GPU diffusion is declined to the
-host fallback until device table upload and T4 evidence are available.
+With `qssa.drift_correction=true` or `qssa.drift_envelope_policy=auto`, both
+CPU and CUDA GPU execute the same shared `__host__ __device__` hybrid physical
+kernel (`robin::evaluate_physical_sealed_concentration`) directly in
+`src/diffusion/robin_correction_table.h` and `src/gpu/gpu_common.cuh`. Sealed
+drift-corrected and auto-dispatched sources no longer fall back to the host on
+GPU (`robin_host_fallback_sources == 0`); only near-wall finite-`lumen_transfer_length`
+Robin sources retain the existing host fallback. `tests/test_greens_function_gpu.cpp`
+asserts `<= 1e-6` relative L2 CPU/GPU parity on both high-`Pe_z` `ColE1`
+drift-corrected fields and mixed `ColE1`/`ColE2` auto-dispatched fields, and
+verifies zero host fallback on the T4 `gpu-device-tests` CI job.
 
-Device evidence for CUDA remains a CI concern: there is no CUDA toolkit or GPU
-on the development machine used for this work.

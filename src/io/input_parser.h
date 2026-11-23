@@ -97,10 +97,21 @@ struct ClosureConfig {
   Real reaction_clip_tolerance_fraction = 0.0;
 };
 
+struct MemoryConfig {
+  // Maximum host memory budget (GiB) allowed for node-total ChemicalField
+  // allocations. 0.0 uses 90% of available host RAM from /proc/meminfo.
+  Real max_host_chemical_gb = 0.0;
+  // Action when replicated ChemicalField exceeds the host budget:
+  // "error" (fail fast before allocation), "auto_slab" (switch to slab when
+  // active features support slab mode), or "warn" (log diagnostic and proceed).
+  std::string replicated_oom_policy = "error";
+};
+
 struct SimulationConfig {
   TimeControlConfig time;
   AdaptiveTimestepConfig adaptive_dt;
   ClosureConfig closure;
+  MemoryConfig memory;
 
   DomainConfig domain;
   // Chemistry layout selector; stage 2a retains global storage in both modes.

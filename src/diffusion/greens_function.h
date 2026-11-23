@@ -22,6 +22,7 @@
 #define GUTIBM_GREENS_FUNCTION_H
 
 #include "types.h"
+#include "neumann_image_series.h"
 #include "robin_correction_table.h"
 #include <algorithm>
 #include <atomic>
@@ -56,6 +57,8 @@ struct GreensFunctionParams {
   bool image_series_max_shells_explicit = false;
   bool image_series_legacy_reflections = false;
   bool drift_correction = false;
+  bool drift_auto_dispatch = false;
+  Real peclet_z_threshold = neumann::kDriftEnvelopePeZ;
 
   // NOTE: bacteriocin pI classification lives in a single source of truth,
   // `classify_by_pI()` in src/genome/plasmid.h (pI > 8.5 → CORE, pI < 7.0 →
@@ -74,6 +77,8 @@ struct GreensFunctionDiagnostics {
   std::atomic<uint64_t> image_series_cap_hits{0};
   std::atomic<uint64_t> low_screening_evaluations{0};
   std::atomic<uint64_t> drift_envelope_evaluations{0};
+  std::atomic<uint64_t> drift_modal_evaluations{0};
+  std::atomic<uint64_t> peclet_auto_dispatched_sources{0};
   std::atomic<uint64_t> negative_field_count{0};
   std::atomic<Real> most_negative_field{0.0};
   std::atomic<uint64_t> robin_direct_evaluations{0};
@@ -133,6 +138,11 @@ class GreensFunction {
   // Peclet number at position: Pe = U*L/D
   Real peclet(const Vec3& pos, Real D_eff, Real length_scale) const;
 
+  // Returns true if this source should use the physical drift-corrected kernel
+  // (either explicitly requested or auto-dispatched above peclet_z_threshold).
+  bool should_use_drift_correction(const Vec3& source,
+                                   const GreensFunctionParams& params) const;
+
   uint64_t image_series_cap_hits() const {
     return diag_->image_series_cap_hits.load();
   }
@@ -141,6 +151,12 @@ class GreensFunction {
   }
   uint64_t drift_envelope_evaluations() const {
     return diag_->drift_envelope_evaluations.load();
+  }
+  uint64_t drift_modal_evaluations() const {
+    return diag_->drift_modal_evaluations.load();
+  }
+  uint64_t peclet_auto_dispatched_sources() const {
+    return diag_->peclet_auto_dispatched_sources.load();
   }
   uint64_t negative_field_count() const {
     return diag_->negative_field_count.load();
@@ -174,6 +190,12 @@ class GreensFunction {
   void add_drift_envelope_evaluations(uint64_t count) const {
     diag_->drift_envelope_evaluations.fetch_add(count);
   }
+  void add_drift_modal_evaluations(uint64_t count) const {
+    diag_->drift_modal_evaluations.fetch_add(count);
+  }
+  void add_peclet_auto_dispatched_sources(uint64_t count) const {
+    diag_->peclet_auto_dispatched_sources.fetch_add(count);
+  }
   void add_negative_field_diagnostics(uint64_t count,
                                       Real most_negative) const;
   void add_kernel_evaluations(uint64_t count) const {
@@ -188,6 +210,8 @@ class GreensFunction {
   void reset_low_screening_diagnostics() {
     diag_->low_screening_evaluations.store(0);
     diag_->drift_envelope_evaluations.store(0);
+    diag_->drift_modal_evaluations.store(0);
+    diag_->peclet_auto_dispatched_sources.store(0);
     diag_->negative_field_count.store(0);
     diag_->most_negative_field.store(0.0);
   }
@@ -202,6 +226,9 @@ class GreensFunction {
 
  private:
   void require_init() const;
+  std::vector<GreensFunctionParams> resolve_auto_dispatch_params(
+      const std::vector<Vec3>& sources,
+      const std::vector<GreensFunctionParams>& params) const;
   Real concentration_sealed(const Vec3& source, const Vec3& target,
                             const GreensFunctionParams& params) const;
   std::shared_ptr<const robin::Table> robin_table(

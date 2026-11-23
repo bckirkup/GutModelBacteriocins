@@ -14,7 +14,10 @@ struct GpuTransferProfile {
   unsigned long long h2d_calls = 0;
   unsigned long long d2h_calls = 0;
   double slab_x_roundtrip_s = 0.0;
+  bool pinned_staging_active = false;
 };
+
+using GpuProfile = GpuTransferProfile;
 
 struct GpuTransferSiteProfile {
   std::string label;
@@ -48,6 +51,8 @@ void gpu_transfer_profile_set_enabled(bool enabled);
 void gpu_transfer_profile_reset();
 void gpu_transfer_record_h2d(double seconds, unsigned long long bytes);
 void gpu_transfer_record_d2h(double seconds, unsigned long long bytes);
+void gpu_transfer_set_pinned_staging_active(bool active);
+bool gpu_transfer_pinned_staging_active();
 GpuTransferProfile gpu_transfer_profile_snapshot();
 std::vector<GpuTransferSiteProfile> gpu_transfer_site_profiles();
 void gpu_transfer_record_slab_x_roundtrip(double seconds);

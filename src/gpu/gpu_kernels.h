@@ -52,7 +52,9 @@ void launch_superpose_kernel(
     unsigned long long* low_screening_evaluations = nullptr,
     unsigned long long* negative_field_count = nullptr,
     double* most_negative_field = nullptr,
-    unsigned long long* kernel_evaluations = nullptr);
+    unsigned long long* kernel_evaluations = nullptr,
+    unsigned long long* drift_envelope_evaluations = nullptr,
+    unsigned long long* drift_modal_evaluations = nullptr);
 
 void launch_field_update_kernel(
     double* conc, const double* reac, int ncells, int num_species,

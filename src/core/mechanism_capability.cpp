@@ -327,6 +327,8 @@ std::vector<std::string> unexecuted_mechanism_params(
             "qssa.drift_envelope_policy", out);
     flag_if(v.drift_correction != d.drift_correction,
             "qssa.drift_correction", out);
+    flag_if(v.peclet_z_threshold != d.peclet_z_threshold,
+            "qssa.peclet_z_threshold", out);
     flag_if(v.nutrient_cutoff != d.nutrient_cutoff, "qssa.nutrient_cutoff",
             out);
     flag_if(v.colicin_release_rate != d.colicin_release_rate,
