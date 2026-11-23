@@ -16,7 +16,9 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifdef GUTIBM_MPI
@@ -33,6 +35,75 @@ bool is_exact_zero(Real value) {
 
 bool bitwise_equal(Real a, Real b) {
   return std::memcmp(&a, &b, sizeof(Real)) == 0;
+}
+
+Domain make_unit_domain() {
+  DomainConfig dcfg;
+  dcfg.lo = {0.0, 0.0, 0.0};
+  dcfg.hi = {20.0e-6, 20.0e-6, 40.0e-6};
+  dcfg.grid_dx = 5.0e-6;
+  dcfg.grid_halo_width = 2;
+  Domain domain;
+  domain.init(dcfg);
+  return domain;
+}
+
+std::vector<ChemicalSpec> make_carbon_mucin_specs(Real carbon_init,
+                                                  Real mucin_init) {
+  ChemicalSpec carbon_spec;
+  carbon_spec.name = species::CARBON;
+  carbon_spec.initial_conc = carbon_init;
+  carbon_spec.diffusion_enabled = false;
+
+  ChemicalSpec mucin_spec;
+  mucin_spec.name = species::MUCIN;
+  mucin_spec.initial_conc = mucin_init;
+  mucin_spec.boundary_conc = mucin_init;
+  mucin_spec.diffusion_enabled = false;
+  return {carbon_spec, mucin_spec};
+}
+
+VBFConfig make_dynamic_vbf_config(Real lambda = 25.0e-6,
+                                  bool use_dynamic = true) {
+  VBFConfig vcfg;
+  vcfg.density = 1.0e11;
+  vcfg.use_dynamic_mucin = use_dynamic;
+  vcfg.mucin_z_gradient_enabled = true;
+  vcfg.mucin_z_gradient_lambda = lambda;
+  vcfg.carbon_sink_vmax = 0.0;
+  vcfg.nutrient_sink = 0.0;
+  return vcfg;
+}
+
+MucinConfig make_dynamic_mucin_config(bool enabled = true,
+                                      Real k_liberation = 5.0e-16) {
+  MucinConfig mcfg;
+  mcfg.enabled = enabled;
+  mcfg.initial_conc = 1.0e-2;
+  mcfg.secretion_rate = 0.0;
+  mcfg.Km_degradation = 1.0e-3;
+  mcfg.k_liberation = k_liberation;
+  return mcfg;
+}
+
+ChemicalField run_vbf_step(const Domain& domain,
+                           const VBFConfig& vcfg,
+                           const MucinConfig& mcfg,
+                           std::string_view decomposition,
+                           Real carbon_init,
+                           Real mucin_init,
+                           Real dt,
+                           VbfFluxTotals* totals = nullptr) {
+  ChemicalField chem;
+  chem.init(domain, make_carbon_mucin_specs(carbon_init, mucin_init),
+            decomposition);
+  chem.zero_reactions();
+  VBF vbf;
+  vbf.init(vcfg, domain);
+  OxygenConfig oxygen;
+  AcetateConfig acetate;
+  vbf.apply_nutrient_coupling(chem, domain, dt, oxygen, acetate, mcfg, totals);
+  return chem;
 }
 
 Real global_owned_sum(const ChemicalField& chem,
@@ -69,7 +140,7 @@ Real global_max_value(Real local_value, const Domain& domain) {
 }
 
 SimulationConfig make_closed_dynamic_mucin_config(
-    const std::string& decomposition,
+    std::string_view decomposition,
     bool mucin_z_gradient_enabled,
     bool mucin_diffusion_enabled,
     Real secretion_rate) {
@@ -80,7 +151,7 @@ SimulationConfig make_closed_dynamic_mucin_config(
   cfg.domain.hash_cell_size = 10.0e-6;
   cfg.domain.ghost_width = 10.0e-6;
   cfg.domain.grid_halo_width = 1;
-  cfg.chemistry_decomposition = decomposition;
+  cfg.chemistry_decomposition = std::string(decomposition);
   cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
 
   cfg.time.bio_dt = 60.0;
@@ -100,16 +171,11 @@ SimulationConfig make_closed_dynamic_mucin_config(
   cfg.chem_env.mucin.initial_conc = 1.0e-6;
   cfg.chem_env.mucin.secretion_rate = secretion_rate;
   cfg.chem_env.mucin.Km_degradation = 1.0e-3;
-  // k_liberation * density = 1e-14 * 1e11 = 1e-3 mol/(m^3 s), so explicit
-  // forward Euler at dt = 60 s would overshoot initial mucin (1e-6) by ~60x.
+  // Explicit forward Euler over 60 s would overshoot initial mucin by ~60x.
   cfg.chem_env.mucin.k_liberation = 1.0e-14;
 
-  cfg.vbf.density = 1.0e11;
-  cfg.vbf.use_dynamic_mucin = true;
+  cfg.vbf = make_dynamic_vbf_config(25.0e-6, true);
   cfg.vbf.mucin_z_gradient_enabled = mucin_z_gradient_enabled;
-  cfg.vbf.mucin_z_gradient_lambda = 25.0e-6;
-  cfg.vbf.carbon_sink_vmax = 0.0;
-  cfg.vbf.nutrient_sink = 0.0;
   cfg.qssa.drift_envelope_policy = "allow";
 
   cfg.carbon_epithelial_boundary = "flux";
@@ -138,7 +204,7 @@ SimulationConfig make_closed_dynamic_mucin_config(
   return cfg;
 }
 
-Real run_closed_domain_case(const std::string& decomposition,
+Real run_closed_domain_case(std::string_view decomposition,
                             bool mucin_z_gradient_enabled,
                             bool mucin_diffusion_enabled,
                             Real secretion_rate,
@@ -201,17 +267,22 @@ Real run_closed_domain_case(const std::string& decomposition,
 
 void test_closed_domain_mass_conservation(int rank) {
   Real worst_err = 0.0;
+  // Uniform immobile mucin, depth-weighted immobile mucin (default polymer),
+  // depth-weighted diffusing mucin, and basal epithelial secretion.
   worst_err = std::max(
       worst_err, run_closed_domain_case("replicated", false, false, 0.0, 20));
   worst_err = std::max(
       worst_err, run_closed_domain_case("slab", false, false, 0.0, 20));
   worst_err = std::max(
+      worst_err, run_closed_domain_case("replicated", true, false, 0.0, 20));
+  worst_err = std::max(
+      worst_err, run_closed_domain_case("slab", true, false, 0.0, 20));
+  worst_err = std::max(
       worst_err, run_closed_domain_case("replicated", true, true, 0.0, 20));
   worst_err = std::max(
       worst_err, run_closed_domain_case("slab", true, true, 0.0, 20));
-  // Basal epithelial secretion at iz == 0 adds positive mucin flux cleanly.
   worst_err = std::max(
-      worst_err, run_closed_domain_case("replicated", true, true, 2.0e-7, 10));
+      worst_err, run_closed_domain_case("replicated", true, false, 2.0e-7, 10));
 
   if (rank == 0) {
     std::cout << "  test_closed_domain_mass_conservation: PASSED"
@@ -220,53 +291,15 @@ void test_closed_domain_mass_conservation(int rank) {
 }
 
 void test_near_saturating_steady_limit_and_bounds(int rank) {
-  DomainConfig dcfg;
-  dcfg.lo = {0.0, 0.0, 0.0};
-  dcfg.hi = {20.0e-6, 20.0e-6, 40.0e-6};
-  dcfg.grid_dx = 5.0e-6;
-  Domain domain;
-  domain.init(dcfg);
+  const Domain domain = make_unit_domain();
+  const VBFConfig vcfg = make_dynamic_vbf_config();
+  const MucinConfig mcfg = make_dynamic_mucin_config();
+  constexpr Real small_dt = 0.01;
+  const ChemicalField chem = run_vbf_step(
+      domain, vcfg, mcfg, "replicated", 0.0, mcfg.initial_conc, small_dt);
 
-  ChemicalSpec carbon_spec;
-  carbon_spec.name = species::CARBON;
-  carbon_spec.initial_conc = 0.0;
-  carbon_spec.diffusion_enabled = false;
-
-  ChemicalSpec mucin_spec;
-  mucin_spec.name = species::MUCIN;
-  mucin_spec.initial_conc = 1.0e-2;
-  mucin_spec.boundary_conc = 1.0e-2;
-  mucin_spec.diffusion_enabled = false;
-
-  ChemicalField chem;
-  chem.init(domain, {carbon_spec, mucin_spec});
   const Int i_carbon = chem.find(species::CARBON);
   const Int i_mucin = chem.find(species::MUCIN);
-
-  VBFConfig vcfg;
-  vcfg.density = 1.0e11;
-  vcfg.use_dynamic_mucin = true;
-  vcfg.mucin_z_gradient_enabled = true;
-  vcfg.mucin_z_gradient_lambda = 25.0e-6;
-  vcfg.carbon_sink_vmax = 0.0;
-  vcfg.nutrient_sink = 0.0;
-
-  MucinConfig mcfg;
-  mcfg.enabled = true;
-  mcfg.initial_conc = 1.0e-2;
-  mcfg.secretion_rate = 0.0;
-  mcfg.Km_degradation = 1.0e-3;
-  mcfg.k_liberation = 5.0e-16;
-
-  OxygenConfig oxygen;
-  AcetateConfig acetate;
-  VBF vbf;
-  vbf.init(vcfg, domain);
-
-  constexpr Real small_dt = 0.01;
-  chem.zero_reactions();
-  vbf.apply_nutrient_coupling(chem, domain, small_dt, oxygen, acetate, mcfg);
-
   for (Int iz = 0; iz < domain.nz(); ++iz) {
     const Real z_rel = (iz + 0.5) * domain.dx_z();
     const Real z_weight = std::exp(-z_rel / vcfg.mucin_z_gradient_lambda);
@@ -284,7 +317,7 @@ void test_near_saturating_steady_limit_and_bounds(int rank) {
     assert(rel_err <= 1.0e-5);
   }
 
-  // Direct edge-case bounds for implicit_mucin_liberation.
+  // Boundary inputs for the shared host/device helper.
   assert(is_exact_zero(
       vbf::implicit_mucin_liberation(0.0, 5.0e-16, 1.0e11, 1.0, 1.0e-3, 60.0)));
   assert(is_exact_zero(vbf::implicit_mucin_liberation(
@@ -307,68 +340,50 @@ void test_near_saturating_steady_limit_and_bounds(int rank) {
     }
   }
 
+  // Subnormal regression: rounding overshoot on tiny mucin concentrations
+  // must terminate via nextafter and preserve mucin_conc - rate * dt >= 0.
+  const Real denorm_min = std::numeric_limits<Real>::denorm_min();
+  const Real subnormal_example = 7.7e-322;
+  const Real ex_rate = vbf::implicit_mucin_liberation(
+      subnormal_example, 5.0e-16, 1.0e11, std::exp(-3.0e-6 / 25.0e-6),
+      1.0e-3, 60.0);
+  assert(std::isfinite(ex_rate));
+  assert(ex_rate >= 0.0);
+  assert(subnormal_example - ex_rate * 60.0 >= 0.0);
+
+  for (int k = 1; k <= 200; ++k) {
+    const Real m_sub = static_cast<Real>(k) * denorm_min;
+    const Real r_sub = vbf::implicit_mucin_liberation(
+        m_sub, 5.0e-16, 1.0e11, 1.0, 1.0e-3, 60.0);
+    assert(std::isfinite(r_sub));
+    assert(r_sub >= 0.0);
+    assert(m_sub - r_sub * 60.0 >= 0.0);
+  }
+
   if (rank == 0) {
     std::cout << "  test_near_saturating_steady_limit_and_bounds: PASSED\n";
   }
 }
 
-void verify_z_gradient_profile_for_mode(const std::string& decomposition) {
-  DomainConfig dcfg;
-  dcfg.lo = {0.0, 0.0, 0.0};
-  dcfg.hi = {20.0e-6, 20.0e-6, 40.0e-6};
-  dcfg.grid_dx = 5.0e-6;
-  dcfg.grid_halo_width = 2;
-  Domain domain;
-  domain.init(dcfg);
-
-  ChemicalSpec carbon_spec;
-  carbon_spec.name = species::CARBON;
-  carbon_spec.initial_conc = 0.0;
-  carbon_spec.diffusion_enabled = false;
-
-  ChemicalSpec mucin_spec;
-  mucin_spec.name = species::MUCIN;
-  mucin_spec.initial_conc = 1.0e-2;
-  mucin_spec.boundary_conc = 1.0e-2;
-  mucin_spec.diffusion_enabled = false;
-
-  ChemicalField chem;
-  chem.init(domain, {carbon_spec, mucin_spec}, decomposition);
-  const Int i_carbon = chem.find(species::CARBON);
-  const Int i_mucin = chem.find(species::MUCIN);
-
-  VBFConfig vcfg;
-  vcfg.density = 1.0e11;
-  vcfg.use_dynamic_mucin = true;
-  vcfg.mucin_z_gradient_enabled = true;
-  vcfg.mucin_z_gradient_lambda = 25.0e-6;
-  vcfg.carbon_sink_vmax = 0.0;
-  vcfg.nutrient_sink = 0.0;
-
-  MucinConfig mcfg;
-  mcfg.enabled = true;
-  mcfg.initial_conc = 1.0e-2;
-  mcfg.secretion_rate = 0.0;
-  mcfg.Km_degradation = 1.0e-3;
-  mcfg.k_liberation = 5.0e-16;
-
-  OxygenConfig oxygen;
-  AcetateConfig acetate;
-  VBF vbf;
-  vbf.init(vcfg, domain);
-
+void verify_z_gradient_profile_for_mode(std::string_view decomposition) {
+  const Domain domain = make_unit_domain();
+  const VBFConfig vcfg = make_dynamic_vbf_config();
+  const MucinConfig mcfg = make_dynamic_mucin_config();
   const Int owned_ix = domain.local_grid_x_begin();
 
   // Small dt recovers the exact exponential z-gradient ratio.
   constexpr Real small_dt = 0.01;
-  chem.zero_reactions();
-  vbf.apply_nutrient_coupling(chem, domain, small_dt, oxygen, acetate, mcfg);
-  const Real r0_small = chem.reac_global(i_carbon, domain.cell_index(owned_ix, 0, 0));
+  const ChemicalField chem_small = run_vbf_step(
+      domain, vcfg, mcfg, decomposition, 0.0, mcfg.initial_conc, small_dt);
+  const Int i_carbon = chem_small.find(species::CARBON);
+  const Int i_mucin = chem_small.find(species::MUCIN);
+  const Real r0_small =
+      chem_small.reac_global(i_carbon, domain.cell_index(owned_ix, 0, 0));
   assert(r0_small > 0.0);
   for (Int iz = 0; iz < domain.nz(); ++iz) {
     const Int gcell = domain.cell_index(owned_ix, 0, iz);
-    const Real r_c = chem.reac_global(i_carbon, gcell);
-    const Real r_m = chem.reac_global(i_mucin, gcell);
+    const Real r_c = chem_small.reac_global(i_carbon, gcell);
+    const Real r_m = chem_small.reac_global(i_mucin, gcell);
     assert(std::abs(r_c + r_m) <= 1.0e-15 * r_c);
 
     const Real ratio = r_c / r0_small;
@@ -378,15 +393,15 @@ void verify_z_gradient_profile_for_mode(const std::string& decomposition) {
     assert(std::abs(ratio - expected_ratio) / expected_ratio <= 1.0e-5);
   }
 
-  // Full bio_dt = 60 s matches exact implicit formula at every z layer.
+  // Full bio_dt matches the exact implicit formula at every z layer.
   constexpr Real bio_dt = 60.0;
-  chem.zero_reactions();
-  vbf.apply_nutrient_coupling(chem, domain, bio_dt, oxygen, acetate, mcfg);
+  const ChemicalField chem_bio = run_vbf_step(
+      domain, vcfg, mcfg, decomposition, 0.0, mcfg.initial_conc, bio_dt);
   Real prev_rate = 0.0;
   for (Int iz = 0; iz < domain.nz(); ++iz) {
     const Int gcell = domain.cell_index(owned_ix, 0, iz);
-    const Real r_c = chem.reac_global(i_carbon, gcell);
-    const Real r_m = chem.reac_global(i_mucin, gcell);
+    const Real r_c = chem_bio.reac_global(i_carbon, gcell);
+    const Real r_m = chem_bio.reac_global(i_mucin, gcell);
     const Real z_rel = (iz + 0.5) * domain.dx_z();
     const Real z_weight = std::exp(-z_rel / vcfg.mucin_z_gradient_lambda);
     const Real expected = vbf::implicit_mucin_liberation(
@@ -405,58 +420,16 @@ void test_mucin_z_gradient_profile_parity(int rank) {
   verify_z_gradient_profile_for_mode("replicated");
   verify_z_gradient_profile_for_mode("slab");
 
-  // Direct replicated vs slab cellwise parity and graded lambda sensitivity.
-  DomainConfig dcfg;
-  dcfg.lo = {0.0, 0.0, 0.0};
-  dcfg.hi = {20.0e-6, 20.0e-6, 40.0e-6};
-  dcfg.grid_dx = 5.0e-6;
-  dcfg.grid_halo_width = 2;
-  Domain domain;
-  domain.init(dcfg);
-
-  ChemicalSpec carbon_spec;
-  carbon_spec.name = species::CARBON;
-  carbon_spec.initial_conc = 0.0;
-  carbon_spec.diffusion_enabled = false;
-
-  ChemicalSpec mucin_spec;
-  mucin_spec.name = species::MUCIN;
-  mucin_spec.initial_conc = 1.0e-2;
-  mucin_spec.boundary_conc = 1.0e-2;
-  mucin_spec.diffusion_enabled = false;
-
-  MucinConfig mcfg;
-  mcfg.enabled = true;
-  mcfg.initial_conc = 1.0e-2;
-  mcfg.secretion_rate = 0.0;
-  mcfg.Km_degradation = 1.0e-3;
-  mcfg.k_liberation = 5.0e-16;
-  OxygenConfig oxygen;
-  AcetateConfig acetate;
-
+  const Domain domain = make_unit_domain();
+  const MucinConfig mcfg = make_dynamic_mucin_config();
   const std::array<Real, 3> lambdas = {10.0e-6, 25.0e-6, 100.0e-6};
   std::array<Real, 3> top_to_bottom_ratios{};
   for (size_t i = 0; i < lambdas.size(); ++i) {
-    VBFConfig vcfg;
-    vcfg.density = 1.0e11;
-    vcfg.use_dynamic_mucin = true;
-    vcfg.mucin_z_gradient_enabled = true;
-    vcfg.mucin_z_gradient_lambda = lambdas[i];
-    vcfg.carbon_sink_vmax = 0.0;
-    vcfg.nutrient_sink = 0.0;
-
-    VBF vbf;
-    vbf.init(vcfg, domain);
-
-    ChemicalField chem_rep;
-    chem_rep.init(domain, {carbon_spec, mucin_spec}, "replicated");
-    chem_rep.zero_reactions();
-    vbf.apply_nutrient_coupling(chem_rep, domain, 60.0, oxygen, acetate, mcfg);
-
-    ChemicalField chem_slab;
-    chem_slab.init(domain, {carbon_spec, mucin_spec}, "slab");
-    chem_slab.zero_reactions();
-    vbf.apply_nutrient_coupling(chem_slab, domain, 60.0, oxygen, acetate, mcfg);
+    const VBFConfig vcfg = make_dynamic_vbf_config(lambdas[i], true);
+    const ChemicalField chem_rep = run_vbf_step(
+        domain, vcfg, mcfg, "replicated", 0.0, mcfg.initial_conc, 60.0);
+    const ChemicalField chem_slab = run_vbf_step(
+        domain, vcfg, mcfg, "slab", 0.0, mcfg.initial_conc, 60.0);
 
     const Int i_carbon = chem_rep.find(species::CARBON);
     const Int i_mucin = chem_rep.find(species::MUCIN);
@@ -490,70 +463,33 @@ void test_default_off_bitwise_guard(int rank) {
   assert(!defaults.chem_env.mucin.enabled);
   assert(!defaults.vbf.use_dynamic_mucin);
 
-  DomainConfig dcfg;
-  dcfg.lo = {0.0, 0.0, 0.0};
-  dcfg.hi = {20.0e-6, 20.0e-6, 40.0e-6};
-  dcfg.grid_dx = 5.0e-6;
-  Domain domain;
-  domain.init(dcfg);
-
-  ChemicalSpec carbon_spec;
-  carbon_spec.name = species::CARBON;
-  carbon_spec.initial_conc = 1.0e-3;
-  carbon_spec.diffusion_enabled = false;
-
-  ChemicalSpec mucin_spec;
-  mucin_spec.name = species::MUCIN;
-  mucin_spec.initial_conc = 1.0e-2;
-  mucin_spec.diffusion_enabled = false;
-
-  OxygenConfig oxygen;
-  AcetateConfig acetate;
-
-  VBFConfig vcfg_static;
-  vcfg_static.density = 1.0e11;
+  const Domain domain = make_unit_domain();
+  VBFConfig vcfg_static = make_dynamic_vbf_config(25.0e-6, false);
   vcfg_static.mucin_liberation = 5.0e-5;
-  vcfg_static.mucin_z_gradient_enabled = true;
-  vcfg_static.mucin_z_gradient_lambda = 25.0e-6;
-  vcfg_static.use_dynamic_mucin = false;
   vcfg_static.carbon_sink_vmax = 5.5e-5;
   vcfg_static.carbon_sink_km = 1.0e-4;
 
-  MucinConfig mcfg_off;
-  mcfg_off.enabled = false;
-  mcfg_off.secretion_rate = 0.0;
+  const MucinConfig mcfg_off = make_dynamic_mucin_config(false);
+  const MucinConfig mcfg_on = make_dynamic_mucin_config(true);
 
-  ChemicalField chem_baseline;
-  chem_baseline.init(domain, {carbon_spec, mucin_spec});
-  chem_baseline.zero_reactions();
-  VBF vbf_static;
-  vbf_static.init(vcfg_static, domain);
   VbfFluxTotals totals_baseline;
-  vbf_static.apply_nutrient_coupling(
-      chem_baseline, domain, 60.0, oxygen, acetate, mcfg_off, &totals_baseline);
+  const ChemicalField chem_baseline = run_vbf_step(
+      domain, vcfg_static, mcfg_off, "replicated", 1.0e-3, 1.0e-2, 60.0,
+      &totals_baseline);
 
-  // Case A: use_dynamic_mucin = false, mucin.enabled = true
-  MucinConfig mcfg_on;
-  mcfg_on.enabled = true;
-  mcfg_on.secretion_rate = 0.0;
-  ChemicalField chem_a;
-  chem_a.init(domain, {carbon_spec, mucin_spec});
-  chem_a.zero_reactions();
+  // Dynamic toggle disabled while mucin field is enabled.
   VbfFluxTotals totals_a;
-  vbf_static.apply_nutrient_coupling(
-      chem_a, domain, 60.0, oxygen, acetate, mcfg_on, &totals_a);
+  const ChemicalField chem_a = run_vbf_step(
+      domain, vcfg_static, mcfg_on, "replicated", 1.0e-3, 1.0e-2, 60.0,
+      &totals_a);
 
-  // Case B: use_dynamic_mucin = true, mucin.enabled = false
+  // Dynamic toggle enabled while mucin field is disabled.
   VBFConfig vcfg_dyn_flag = vcfg_static;
   vcfg_dyn_flag.use_dynamic_mucin = true;
-  VBF vbf_dyn_flag;
-  vbf_dyn_flag.init(vcfg_dyn_flag, domain);
-  ChemicalField chem_b;
-  chem_b.init(domain, {carbon_spec, mucin_spec});
-  chem_b.zero_reactions();
   VbfFluxTotals totals_b;
-  vbf_dyn_flag.apply_nutrient_coupling(
-      chem_b, domain, 60.0, oxygen, acetate, mcfg_off, &totals_b);
+  const ChemicalField chem_b = run_vbf_step(
+      domain, vcfg_dyn_flag, mcfg_off, "replicated", 1.0e-3, 1.0e-2, 60.0,
+      &totals_b);
 
   const Int i_carbon = chem_baseline.find(species::CARBON);
   const Int i_mucin = chem_baseline.find(species::MUCIN);

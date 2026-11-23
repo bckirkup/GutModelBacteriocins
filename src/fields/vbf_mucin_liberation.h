@@ -47,10 +47,14 @@ GUTIBM_VBF_HOST_DEVICE inline double implicit_mucin_liberation(
     }
   }
 
-  // Guard against 1-ULP IEEE-754 rounding overshoot when mucin_after << M.
-  constexpr double kOneMinusEps = 1.0 - 2.220446049250313e-16;
+  // Step down by one representable binary64 value (including subnormals) if
+  // rounding makes rate * dt overshoot mucin_conc.
   while (mucin_conc - rate * dt < 0.0 && rate > 0.0) {
-    rate *= kOneMinusEps;
+#ifdef __CUDACC__
+    rate = ::nextafter(rate, 0.0);
+#else
+    rate = std::nextafter(rate, 0.0);
+#endif
   }
   return rate;
 }

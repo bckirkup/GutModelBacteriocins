@@ -379,21 +379,14 @@ void test_gpu_dynamic_mucin_depletion_z_gradient_parity() {
   constexpr Real dt = 60.0;
   constexpr int kSteps = 5;
 
-  ChemicalSpec carbon_spec;
-  carbon_spec.name = species::CARBON;
-  carbon_spec.initial_conc = 0.0;
-  carbon_spec.boundary_conc = 0.0;
+  ChemicalSpec carbon_spec = static_species(0.0, 0.0);
   carbon_spec.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
   carbon_spec.epithelial_flux = 0.0;
-  carbon_spec.diffusion_enabled = false;
 
-  ChemicalSpec mucin_spec;
+  ChemicalSpec mucin_spec = static_species(1.0e-6, 1.0e-6);
   mucin_spec.name = species::MUCIN;
-  mucin_spec.initial_conc = 1.0e-6;
-  mucin_spec.boundary_conc = 1.0e-6;
   mucin_spec.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
   mucin_spec.epithelial_flux = 0.0;
-  mucin_spec.diffusion_enabled = false;
 
   VBFConfig vcfg;
   vcfg.density = 1.0e11;
@@ -408,12 +401,11 @@ void test_gpu_dynamic_mucin_depletion_z_gradient_parity() {
   mcfg.initial_conc = 1.0e-6;
   mcfg.secretion_rate = 1.0e-8;
   mcfg.Km_degradation = 1.0e-3;
-  // Severe depletion: k_liberation * density * dt = 6e-2 >> [mucin]_0 = 1e-6.
+  // Severe depletion: k_liberation * density * dt exceeds initial mucin by 60x.
   mcfg.k_liberation = 1.0e-14;
 
   OxygenConfig oxygen;
   AcetateConfig acetate;
-
   VBF vbf;
   vbf.init(vcfg, domain);
 
@@ -443,6 +435,7 @@ void test_gpu_dynamic_mucin_depletion_z_gradient_parity() {
         chem_cpu.conc(s, c) = updated;
       }
     }
+    chem_cpu.apply_boundaries(domain);
 
     chem_gpu.zero_reactions_on_device();
     chem_gpu.reset_vbf_totals();
@@ -452,6 +445,7 @@ void test_gpu_dynamic_mucin_depletion_z_gradient_parity() {
         empty_agents_gpu, gpu_totals, dt));
     assert(chem_gpu.apply_reactions(dt, domain));
     chem_gpu.download_reaction_clip(chem_gpu_ref);
+    assert(chem_gpu.apply_boundaries(domain, chem_gpu_ref));
 
     const auto& gpu_flux = chem_gpu_ref.flux_accounting();
     assert(!(gpu_flux.reaction_clip_step[static_cast<size_t>(i_mucin)] > 0.0));
@@ -476,8 +470,12 @@ void test_gpu_dynamic_mucin_depletion_z_gradient_parity() {
 
   const Int bottom_cell = domain.cell_index(0, 0, 0);
   const Int top_cell = domain.cell_index(0, 0, domain.nz() - 1);
+  const Int below_top_cell = domain.cell_index(0, 0, domain.nz() - 2);
   assert(chem_gpu_ref.conc(i_carbon, bottom_cell)
          > chem_gpu_ref.conc(i_carbon, top_cell));
+  // Immobile mucin top layer stays independent of the layer below.
+  assert(chem_gpu_ref.conc(i_mucin, top_cell)
+         > chem_gpu_ref.conc(i_mucin, below_top_cell));
   for (Int c = 0; c < chem_gpu_ref.ncells(); ++c) {
     assert(chem_gpu_ref.conc(i_mucin, c) >= 0.0);
     assert(chem_gpu_ref.conc(i_carbon, c) > 0.0);

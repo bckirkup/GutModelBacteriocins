@@ -445,8 +445,13 @@ maximum rate `vmax = k_liberation * vbf.density * z_weight` (where
 timestep (`reaction_clip[mucin] == 0`), `reac[carbon] += liberation` never
 credits carbon exceeding available mucin, and basal epithelial secretion at
 `iz == 0` (`mucin.secretion_rate`) stoichiometrically replenishes the mucin
-pool. `mucin.enabled` and `vbf.use_dynamic_mucin` remain `false` by default so
-shipped configurations are bitwise unchanged.
+pool under flux/non-Dirichlet epithelial boundaries (while under fixed
+Dirichlet boundaries, `apply_boundaries` pins `iz == 0` to `boundary_conc`
+after reactions). The immobile mucin field is excluded from the legacy
+non-diffusing luminal top-layer mirror on both CPU (`replicated` and `slab`)
+and CUDA GPU so depth-weighted depletion at `iz == nz - 1` is preserved without
+unaccounted mass loss. `mucin.enabled` and `vbf.use_dynamic_mucin` remain
+`false` by default so shipped configurations are bitwise unchanged.
 
 ## Conclusion
 

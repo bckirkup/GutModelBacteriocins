@@ -4213,8 +4213,11 @@ void ChemicalField::apply_boundaries(const Domain& domain) {
     }
 
     // The implicit z solve enforces the luminal zero-flux condition directly.
-    // Non-diffusing fields retain the legacy mirrored top layer.
-    if (!specs_[s].diffusion_enabled && nz >= 2) {
+    // Non-diffusing fields retain the legacy mirrored top layer, except the
+    // immobile mucin polymer field whose depth-weighted degradation leaves a
+    // distinct top-layer concentration that must not be overwritten.
+    if (!specs_[s].diffusion_enabled && specs_[s].name != species::MUCIN
+        && nz >= 2) {
       materialize_species_from_device(s);
       mark_host_conc_dirty(s);
       mirror_non_diffusing_top_layer(conc_, domain, s);
@@ -4235,7 +4238,8 @@ void ChemicalField::apply_boundaries_slab(const Domain& domain) {
                  concentration, domain, storage_nx_, halo_width_,
                  specs_[s].boundary_conc, cell_volume));
     }
-    if (!specs_[s].diffusion_enabled && domain.nz() >= 2) {
+    if (!specs_[s].diffusion_enabled && specs_[s].name != species::MUCIN
+        && domain.nz() >= 2) {
       materialize_species_from_device(s);
       mark_host_conc_dirty(s);
       set_luminal_neumann_boundary_slab(
