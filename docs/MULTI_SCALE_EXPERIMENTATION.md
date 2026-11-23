@@ -90,7 +90,7 @@ flowchart TB
 
 | Level | Spatial / temporal | Scientific target | Must *not* claim |
 |-------|-------------------|-------------------|------------------|
-| **L0** unit / CI | Tiny domain or pure unit tests; minutes–hours | Kernel fidelity: toxin shape, washout inequality \(\mu < \gamma_{\mathrm{flow}}\), receptor Kd sensitivity, Fix wiring | Host diversity, sweep statistics |
+| **L0** unit / CI | Tiny domain or pure unit tests; minutes–hours | Kernel fidelity: toxin shape, washout inequality `mu < gamma_flow`, receptor Kd sensitivity, Fix wiring | Host diversity, sweep statistics |
 | **L1** microcolony window | ~50–500 µm, 0.25–2 h, ~20–150 agents | Local antagonism efficacy, colony doubling, CDI/contact kill, motility/taxis stability | Cross-patch coexistence, retention over days |
 | **L2** patterned patch | ~0.5–1 mm (or same domain as burn-in), 1–24 h, **started from established state** | Whether a resident halo/comet maintains exclusion; immigrant washout under flow; Hopkins / monochromatic / exclusion radius | Full host retention curves; mutation-driven BI expansion |
 | **L3** host campaign | 2 mm, 2–7 d, sparse ensembles | Retention ~70–80%, sweep timing, modest across-seed diversity; Kd / mechanism ablations | Fine-grid parameter tuning (do that at L0–L2) |
@@ -103,7 +103,7 @@ immigrant-arrival overlays), not a larger spatial domain.
 | Scientific question | Level | Primary configs / tests | Primary observables |
 |---------------------|-------|-------------------------|---------------------|
 | Are Lethal Core vs Halo / comet-tail kernels correct? | L0 | `greens_function`, `fmm`, `examples/eari_vadi_validation/` | Radial/comet profiles; golden FISH/spatial metrics |
-| Does \(\mu_{\mathrm{realized}} < \gamma_{\mathrm{flow}}\) wash out stressed cells? | L0 | `washout_trap`, iron-fallback / receptor unit tests | Live counts; fingerprint divergence |
+| Does `mu_realized < gamma_flow` wash out stressed cells? | L0 | `washout_trap`, iron-fallback / receptor unit tests | Live counts; fingerprint divergence |
 | Does a microcolony grow / kill locally as expected under Kd / toxin / CDI? | L1 | Stage 1–2; `examples/cell_biology/`; `examples/single_colony/` (shortened) | `events/*` kills/divisions; mean µ; local NND |
 | Does motility/taxis stabilize colonization on short horizon? | L1 | Stage 1 (`1a`–`1f`) | Population viability; z-bias |
 | Do O₂ / acetate / crypts / CDI wire without NaNs and with expected direction? | L1 | Stage 2 (`2a`–`2f`) | Mechanism-specific summary scalars |
@@ -125,9 +125,11 @@ of burn-ins:
 - Closed restarts: `restart.enabled`, `restart.directory`, `restart.interval_steps` (Stage 3 cadence often `60` ≈ 1 h at `bio_dt=60`)
 - Artifacts: immutable `restart/step_*.h5` + `latest.json` (local or S3; see [`AWS_BATCH.md`](AWS_BATCH.md))
 
-Tier-2 closed restarts restore agents (positions, genomes, µ / µ_max, crypt flags)
-and the full chemical grid. RNG is **reseeded** from the job `seed` on resume —
-forks are population-state branches, not bit-identical continuations.
+Tier-2 closed restarts restore agents (positions, genomes, µ / µ_max, crypt flags),
+the full chemical grid, and serialized per-rank RNG state (PR #490). A same-seed,
+same-rank-count resume reproduces a bitwise continuation (`hdf5_rng_replay`), while
+forking with a new `seed` reseeds the RNG (PR #492) — seed forks are population-state
+branches, not bit-identical continuations.
 
 ### Step 2 — Fork (cheap science)
 
@@ -268,8 +270,8 @@ these block the ladder above.
 | No spatial sub-window crop / resample from checkpoint | Cannot literally nest a 100 µm box inside a 2 mm restart | Use same-domain short forks or independent small windows |
 | No JSON microcolony template ICs | Patterned starts require checkpoint resume or C++ test seeding | Parameter transfer from L1 is the intended path |
 | No coupled nested multi-resolution PDE | Nesting is workflow-only | Intentional for now |
-| Tier-3 RNG serialize | Forks not bit-identical | Population-state branching is the science contract |
-| Full-grid chemistry per MPI rank | Stage 3 memory-bound; often `mpi_ranks: 1` | Slab-local chemistry is a future infra item |
+| Tier-2 RNG serialize | Same-seed/same-rank resumes are now bitwise (`hdf5_rng_replay`, PR #490); new-seed forks still reseed (PR #492) | Landed; population-state branching remains the fork contract |
+| Default replicated chemistry per MPI rank | Stage 3 memory-bound under default `replicated` (#480) | Opt-in `chemistry_decomposition="slab"` implemented on CPU and GPU (slab requires `delivery_far_field_radius=0.0`) |
 
 ---
 

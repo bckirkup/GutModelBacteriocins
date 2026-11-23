@@ -22,15 +22,15 @@ that parses but never changes an outcome is *dead wiring*.
 
 | Species | Source(s) | Sink(s) | Loop closed? | Notes |
 |---------|-----------|---------|--------------|-------|
-| **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z=0 boundary | **Agent uptake `fix_metabolism.cpp grow_agent` (canonical, Spec 6)**; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1) | Yes | Implicit diffusion transports local source/sink changes with `D=5e-10 m²/s`; the metabolism Fix is the single per-agent uptake site. With `uptake_limit=sherwood` (or `voxel`) that uptake is capped and the funded fraction also scales `mu_realized`. |
+| **carbon** | VBF mucin liberation `vbf.cpp apply_carbon_source`; z=0 boundary (`dirichlet`, `robin`, or `flux`) | **Agent uptake `fix_metabolism.cpp grow_agent` (canonical, Spec 6)**; **VBF carbon sink** `vbf.cpp apply_carbon_sink` (Spec 5 §1) | Yes | Implicit diffusion transports local source/sink changes with `D=5e-10 m²/s`; the metabolism Fix is the single per-agent uptake site. With `uptake_limit=delivery` or `sherwood` (or diagnostic `voxel`), uptake is capped and the funded fraction scales `mu_realized`. |
 | **b12 / corrinoid** | z=0 boundary | **none — not consumed (Spec 6 §3)** | N/A (constant pool) | The ~1 µM bioavailable pool remains spatially uniform under implicit diffusion (`D=5e-10 m²/s`). |
-| **iron** | z=0 boundary; siderophore liberation; FeEnt reimport | VBF first-order sink `apply_iron_sink`; **agent uptake `grow_agent` (canonical, Spec 6)**; ferric-enterobactin reimport | Yes | Implicit diffusion (`D=7e-10 m²/s`) couples local depletion to the epithelial supply. |
+| **iron** | z=0 boundary; siderophore liberation; FeEnt reimport | VBF implicit first-order sink `apply_iron_sink` (PR #490); **agent uptake `grow_agent` (canonical, Spec 6)**; ferric-enterobactin reimport | Yes | Implicit diffusion (`D=7e-10 m²/s`) couples local depletion to the epithelial supply. |
 | **siderophore** | apo-enterobactin secretion | `grow_agent`: secretion and chelation consumption | Yes | Apo pool is consumed with iron to produce `ferric_enterobactin`. |
 | **ferric_enterobactin** | apo-enterobactin + iron chelation | `grow_agent`: chelation product; FepA reimport and receptor competition | Yes | Distinct extracellular ferric ligand; reimport consumes it and returns iron. |
 | **ferrichrome** | optional ambient/boundary configuration | FhuA receptor competition | Yes | Exogenous field only; disabled and zero by default. |
-| **oxygen** | Epithelial Dirichlet boundary `chemical_field.cpp apply_boundaries` | **Agent Pirt respiration** `qssa_solver.cpp solve_nutrient_depletion`; first-order VBF background sink `apply_oxygen_sink` | Yes | Implicit diffusion (`D=2.1e-9 m²/s`) replaces checkerboard-prone local-only updates and preserves a smooth boundary-fed gradient. |
+| **oxygen** | Epithelial z=0 boundary (`dirichlet`, `robin`, or `flux`) `chemical_field.cpp apply_boundaries` | **Agent Pirt respiration** `qssa_solver.cpp solve_nutrient_depletion` (or implicit delivery sink when `oxygen.delivery_uptake_enabled=true`); implicit first-order VBF background sink `apply_oxygen_sink` | Yes | Implicit diffusion (`D=2.1e-9 m²/s`) replaces checkerboard-prone local-only updates and preserves a smooth boundary-fed gradient. |
 | **acetate** | VBF fermentation `apply_acetate_coupling`; agent overflow | VBF cross-feeding; MetE uptake | Yes | Closed. |
-| **mucin** | Goblet secretion `apply_mucin_secretion` | VBF degradation → carbon | Yes | Closed. |
+| **mucin** | Goblet secretion `apply_mucin_secretion` | VBF degradation → carbon | Open (stoichiometry) | `mucin.enabled=false` by default; `k_liberation` units are fixed (`5e-16 mol/(cell·s)`), but carbon liberation is not yet stoichiometrically limited by the mucin pool (see `AGENTS.md`). |
 | **bacteriocins** (btuB/fepA/cirA/fhuA) | Producer burst `fix_bacteriocin` → MPI source exchange → QSSA deposition | First-order decay; diffusion out | Yes | QSSA analytic field, recomputed each step from the global source list. |
 
 ---
@@ -41,11 +41,11 @@ that parses but never changes an outcome is *dead wiring*.
 |----------|-----------------|-----------------|----------|------------|
 | Agent growth → carbon/iron depletion | metabolism Fix | ChemicalField reac | `grow_agent` (yield-based, canonical) | `test_mechanism_wiring`, `smoke` |
 | O₂ field → aerobic growth boost | ChemicalField | metabolism Fix | `fix_metabolism` O2 Monod boost | `test_O2_growth_boost` |
-| Agents → O₂ depletion | QSSA | ChemicalField | `solve_nutrient_depletion` | `test_mechanism_wiring::test_o2_consumption_wired`, `test_qssa_stoichiometry` |
+| Agents → O₂ depletion | QSSA / delivery | ChemicalField | `solve_nutrient_depletion` / delivery sink | `test_mechanism_wiring::test_o2_consumption_wired`, `test_qssa_stoichiometry` |
 | VBF continuum → carbon/iron/O₂/acetate/mucin | VBF | ChemicalField | `apply_nutrient_coupling` | `test_mucin_liberation`, `test_mechanism_wiring` |
 | Toxin field → receptor killing | QSSA bacteriocin | receptor Fix | `fix_receptor` | `test_receptor`, `smoke::test_receptor_killing`, `mpi_multi_rank::test_cross_rank_bacteriocin_source_exchange` |
-| Fur (iron) → receptor expression → toxin susceptibility | cell-bio Fur | receptor Fix | `fix_fur`, `fix_receptor` | `test_fur` |
-| μ_realized < γ_flow → washout (VADI) | metabolism + advection | Simulation washout | `simulation.cpp check_washout` | `smoke::test_metabolic_washout_*` | `washout_trap` (issue #160) |
+| Fur (iron) → receptor expression → toxin susceptibility | cell-bio Fur (`fix_metabolism`) | receptor Fix | `fix_metabolism`, `fix_receptor` | `test_fur` |
+| μ_realized < γ_flow → washout (VADI) | metabolism + advection | Simulation washout | `simulation.cpp check_washout` | `smoke::test_metabolic_washout_*`, `washout_trap` (issue #160) |
 | Density blow-up → halt (Spec 5 §4) | Simulation | run loop | `simulation.cpp run()` dysbiosis check | `test_mechanism_wiring::test_dysbiosis_halt` |
 | Local nutrient reactions → neighboring grid cells (Spec 7) | metabolism/QSSA/VBF | ChemicalField | `sum_reactions_across_ranks` → `apply_diffusion` | `test_nutrient_diffusion`, `test_mpi_multi_rank`, `gpu_smoke` |
 
@@ -61,11 +61,9 @@ that parses but never changes an outcome is *dead wiring*.
   constant ~1 µM pool (neither produced nor consumed), so a source term is no
   longer meaningful; `vbf_b12_production` was deleted.
 - **§4 Dysbiosis threshold** — density-based run halt (`dysbiosis_threshold`,
-  cells/mL). Off by default.
+  cells/mL; defaults to `1e8 cells/mL`, `0` disables; see `docs/OPERATING_ENVELOPE.md`).
 
-Spec 6 re-baselined the `eari-vadi` golden references (see
-`python/tests/fixtures/eari_vadi_ci*_golden.json`) because activating the carbon
-sink and correcting the corrinoid pool shift the reference metrics.
+> **Note:** Trajectory golden JSON fixtures (`eari_vadi_ci*_golden.json`) were subsequently removed in PR #259 in favor of invariant/bounds + FISH checks (`scripts/validate_eari_vadi.sh`).
 
 ### 3.2 O₂ consumption — wired in Spec 1, made density-tracking post-Spec 6
 Agent O₂ consumption lives in `src/diffusion/qssa_solver.cpp`

@@ -284,9 +284,11 @@ primitive:
 5. Enable **S3 versioning** on the outputs bucket as a seatbelt.
 6. Campaign job def `retryStrategy` retries `Host EC2*` reclaim reasons.
 
-**Science contract:** Tier 2 restores population + chemistry. RNG is **reseeded** from
-the job `seed` (not bit-identical continuation). Document forks as population-state
-branches unless Tier 3 RNG serialize lands later.
+**Science contract:** Tier 2 restores population, chemistry, and serialized
+per-rank simulation/immigration RNG state (PR #490/#472), so a same-seed,
+same-rank-count Spot resume is a bitwise continuation (`hdf5_rng_replay`).
+Forking with a new `seed` (or different rank count) reseeds the RNG (PR #492);
+document seed forks as population-state branches.
 
 **Cadence (Stage 3):** `restart.interval_steps: 60` (~1 h sim at `bio_dt=60`) is a
 good default; entry sync every 300 s uploads whatever closed files appeared.

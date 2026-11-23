@@ -29,7 +29,7 @@ with GutIBMData("single_colony_output.h5") as data:
     step = data.steps[-1]
     grid = data.get_grid(step)
     comet = analysis.comet_tail_index(
-        grid_positions, grid["bacteriocin"]
+        grid_positions, grid["bacteriocin_BtuB"]
     )
     print(f"Comet tail ratio: {comet:.2f}")
 ```

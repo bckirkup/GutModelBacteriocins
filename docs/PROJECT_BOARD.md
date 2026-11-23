@@ -2,7 +2,7 @@
 
 Living kanban for open work on [GutModelBacteriocins](https://github.com/bckirkup/GutModelBacteriocins).
 
-**Last updated:** 2026-11-21
+**Last updated:** 2026-11-22
 
 ## One-click setup (local)
 
@@ -30,25 +30,33 @@ This creates GitHub labels, milestones, a Projects v2 board, and links open issu
 
 ---
 
-## Current board state (Nov 2026 — Cycle 2 Empirical Calibration & Multiscale Dispatch)
+## Current board state (Nov 2026 — Post–Cycle 2 Hardening)
 
-The Sep–Nov 2026 campaigns and Layer 2/3 multiscale architecture waves (#307–#473) are **merged**, delivering Spec 12 delivery/ROS campaigns, Gate C single-source & ecological refinement adjudication (#429), Layer 2/3 `MucusSegment` + `CompartmentChain` + live audit patches (#453–#463), and the Cycle 2 210-DOI empirical calibration synthesis & Spec 13–14 audit (#456, #457, #473). Active Cycle 2 work is tracked across **#464–#483** (with automated S3 collector index maintained in #446).
+The Sep–Nov 2026 campaigns, Layer 2/3 multiscale architecture waves (#307–#473), and all Cycle 2 implementation PRs (**#484–#495**) are **merged**, closing the entire `#464–#483` Cycle 2 issue queue. Two issues remain open on GitHub:
 
-### Active Cycle 2 Queue (#464–#483)
+### Open Issues (2 open as of 2026-11-22)
 
 | Issue | Track | Priority | Scope |
 | :--- | :--- | :--- | :--- |
-| #464 | Spec 14 (`GAP-01`) | `critical` | Decouple BtuB receptor corrinoid shielding from obligate B12 Monod growth arrest + carriage-matched ColE2/ColIa/ColB controls |
-| #465, #476 | Spec 13 (`GAP-02` + I/O) | `critical` | Multi-slot (`0..N`) live patches, Active `try_deposit`, split `sos_lysis` vs `toxin_kill` ledger, and `segment_io.cpp` fixes |
-| #466 | Spec 13 (`GAP-03`) | `important` | Configurable `live_config_for` per-PatchType crypt flow refugia and oxygen/ROS inheritance |
-| #467 | Spec 13 (`GAP-05`) | `important` | Layer 3 mucosal occupancy sensitivity (`reattach_p0` vs luminal growth) and post-48h window vs 72h endpoint separation |
-| #468, #477 | Bacteriocin (`GAP-06`) | `important` | Per-division pair SOS normalization (`sos_lysis_prob`) and `D_free_colicin` vs per-plasmid `diff_coeff` contract |
-| #469, #470 | Spec 12 (`GAP-07`/`08`) | `important` | Wet-mass (`1,100 kg/m^3`) documentation, live-slot `delivery` sync, and Dirichlet vs Robin O2 presets + GPU maintenance guard |
-| #471, #474, #481 | Observation & Analysis | `important` | Optical-slice `depth_window_m`, abundance-weighted retention, Kirkup & Riley pellet/cage LOD censoring, and division-wave slope guards |
-| #472, #478, #479, #480 | Numerics, Metabolism & HPC | `important` | Layer-1 checkpoint RNG serialization, QSSA transient/wall-normal drift bounds, implicit iron VBF sink, GPU funded respiration, and MPI/GPU memory |
-| #475 | Spec 14 (`GAP-10`) | `gated (#464)` | Temperate prophage carriage, DNA-damage Hill induction, superinfection immunity, and lysogen conversion |
-| #482 | Campaign Governance | `important` | Stage D decision-record axis enforcement in `preflight.py` and HDF5 `container_image_digest` authentication in `analyze.py` |
-| #159 | GPU FMM Far-Field | `backlog` | Sub-quadratic CPU M2L delivered in #164; full device-side octree traversal remains low-priority backlog |
+| #446 | Campaign Ops | `maintenance` | Campaign storage index (automated S3 collector) |
+| #159 | GPU FMM Far-Field | `backlog` | Sub-quadratic CPU M2L delivered in #164; full device-side octree traversal remains open |
+
+### Done (Nov 2026 Cycle 2 wave — PRs #484–#495)
+
+| Issue(s) | Track | PR | Scope |
+| :--- | :--- | :--- | :--- |
+| #483 | Docs / Tracker Hygiene | #486 | Reconciled Spec 12/13 prose, project board, and legacy P6 issues (#155–#161) |
+| #482 | Campaign Governance | #485 | Stage D decision-record axis enforcement in `preflight.py` and HDF5 `container_image_digest` auth in `analyze.py` |
+| #471, #474, #481 | Observation & Analysis | #484 | Optical-slice `depth_window_m`, abundance-weighted retention, pellet/cage LOD censoring, and canonical division-wave slope/tail-median estimators |
+| #465, #476 | Spec 13 (`GAP-02` + I/O) | #487 | Multi-slot live patches, active `try_deposit`, split `sos_lysis`/`toxin_kill` ledger, and `segment_io.cpp` fixes |
+| #464, #468, #477 | Spec 14 & Bacteriocin | #488 | Per-division pair SOS normalization, `D_free_colicin` wiring, BtuB/B12 decoupling (`metabolism.b12_growth_essential`), and carriage-matched controls |
+| #467, #470 | Spec 13 & Oxygen BCs | #489 | Post-48h occupancy readout, 2×3 `reattach_p0` sensitivity, and Dirichlet/Robin O₂ BC presets |
+| #466, #469, #474 | Spec 13 Layer 2 | #491 | Configurable `live_physics_mode`, delivery alignment & wet-mass docs (`1,100 kg/m³`), and perturbation pulse schedules |
+| #470, #472, #479 | Metabolism, GPU & HDF5 | #490 | Implicit iron VBF sink, CUDA delivery/funded metabolism, bitwise checkpoint RNG replay (`hdf5_rng_replay`), and QSSA transient bounds |
+| Wave 2 hardening | Checkpoint & Layer 2/3 | #492 | Seed-fork RNG/tag hardening, live O₂/stride inheritance, and Layer-3 pulse/death checkpoint restore |
+| #478 | Numerics / QSSA | #495 | Hybrid Sturm-Liouville / Hankel wall-normal Peclet sealed kernel on CPU + CUDA GPU and `qssa.drift_envelope_policy=auto` |
+| #480 | HPC / GPU & MPI Memory | #493 | Pre-allocation `ChemicalField` multi-rank OOM guard (`auto_slab`/`error`/`warn`), lazy delivery vectors, device-resident GPU stepping, and `PinnedHostBuffer<T>` staging |
+| #475 | Spec 14 (`GAP-10`) | #494 | Default-off `FixProphage` temperate prophage carriage, DNA-damage Hill induction, virion PDE/adsorption ledger, CUDA parity, and human/murine presets |
 
 ### Historical Jul/Aug 2026 summary
 

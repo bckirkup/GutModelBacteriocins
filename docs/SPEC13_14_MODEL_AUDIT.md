@@ -10,6 +10,8 @@
 - [consensus_empirical_benchmarks.csv](consensus_empirical_benchmarks.csv) (41 primary-verified benchmarks)
 **Target Venues:** ASM *mSystems* / *mBio*
 
+> **Status (2026-11-22):** This audit records the `72cd284` baseline. Engineering remediations for `GAP-01` through `GAP-12` have since landed on `main` via PRs #484–#495—including default-off `FixProphage` (`GAP-10`, PR #494), the hybrid CPU/GPU wall-normal Peclet solver (#478, PR #495), and the `ChemicalField` multi-rank OOM guard + device-resident GPU stepping (#480, PR #493; see [`open_gaps_and_validation_matrix.csv`](open_gaps_and_validation_matrix.csv) for per-gap resolution status). Empirical §8 V1 and *in vivo* lysogen-displacement campaigns remain open scientific evaluations.
+
 ---
 
 ## 1. Executive Verdict

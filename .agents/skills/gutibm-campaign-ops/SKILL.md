@@ -62,8 +62,11 @@ Do not infer durability from stdout, a local file, or a `status.json` field
 alone.
 
 For a fork, record the origin step, object SHA-256, new seed, overlay revision,
-and output prefix. Tier-2 restart restores population and chemistry, but RNG is
-reseeded: a fork is a population-state branch, not a bit-identical continuation.
+and output prefix. Tier-2 checkpoints serialize per-rank simulation and
+immigration RNG state, so a same-seed, same-rank-count resume reproduces a
+bitwise continuation (`hdf5_rng_replay`), whereas a fork with a new seed (or
+different rank count) reseeds the RNG and is a population-state branch rather
+than a bit-identical continuation.
 
 ## Classify a stopped job before reacting
 

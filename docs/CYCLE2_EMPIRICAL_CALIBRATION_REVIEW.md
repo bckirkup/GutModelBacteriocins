@@ -9,6 +9,8 @@
 - [parameter_provenance_audit.csv](parameter_provenance_audit.csv) (23 parameter-level C++ and documentation provenance entries)
 - [open_gaps_and_validation_matrix.csv](open_gaps_and_validation_matrix.csv) (12 reconciled engineering and scientific gaps, `GAP-01..GAP-12`)
 
+> **Status (2026-11-22):** This review records the reconciled Cycle 2 literature baseline (`28242fd`). Subsequent implementation PRs #484–#495 resolved `GAP-01` through `GAP-12` in code—including default-off `FixProphage` (`GAP-10`, PR #494), the hybrid CPU/GPU wall-normal Peclet solver (#478, PR #495), and the `ChemicalField` multi-rank OOM guard + device-resident GPU stepping (#480, PR #493; see [`open_gaps_and_validation_matrix.csv`](open_gaps_and_validation_matrix.csv)). Empirical §8 V1 and *in vivo* lysogen-displacement campaigns remain open scientific evaluations.
+
 ---
 
 ## 1. Executive Summary

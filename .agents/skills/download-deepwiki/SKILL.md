@@ -38,7 +38,7 @@ python3 .agents/skills/download-deepwiki/fetch_deepwiki.py <owner/repo> --output
 
 ```bash
 # This repo
-python3 .agents/skills/download-deepwiki/fetch_deepwiki.py bckirkup/Crusher_to_the_Bridge --tar
+python3 .agents/skills/download-deepwiki/fetch_deepwiki.py bckirkup/GutModelBacteriocins --tar
 
 # Any other public repo
 python3 .agents/skills/download-deepwiki/fetch_deepwiki.py facebook/react --tar
@@ -69,12 +69,10 @@ options:
 ## Output Structure
 
 ```
-Crusher_to_the_Bridge_deepwiki/
+GutModelBacteriocins_deepwiki/
 ├── 1-architecture-overview.md
-├── 1.1-infection-dynamics-bridge.md
-├── 1.2-four-pathway-transmission-core.md
 ├── ...
-└── 8-glossary.md
+└── ...
 ```
 
 Each file is self-contained markdown with headings, tables, code blocks, and links back to source files on GitHub.

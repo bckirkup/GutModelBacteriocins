@@ -1,8 +1,8 @@
 # EARI/VADI CI Validation Scenario
 
 Short deterministic simulation used by the CI **eari-vadi-validation** job
-(issue #56). Runs a resident–immigrant diversity-paradox setup for 1 simulated
-hour and writes HDF5 output for Python regression checks.
+(issue #56). Runs a resident–immigrant diversity-paradox setup for 15 simulated
+minutes (`total_time = 900` s) and writes HDF5 output for Python regression checks.
 
 ## Biological focus
 

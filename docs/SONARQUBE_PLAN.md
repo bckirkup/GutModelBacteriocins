@@ -17,10 +17,10 @@ is left sitting on the dashboard as "probably fine".
 | **F** | Type/template modernization sweep (125) | Fixed in code |
 | **F2** | `cpp:S6185`/`cpp:S6484` `std::format` (11) | Reopened from debt — fixed in code |
 | **G** | Algorithms, control flow, and the `cpp:S1669` BLOCKER | Queued |
-| **H** | `cpp:S6004` init-if (56) | Queued — reclassified from accepted debt to code fix |
-| **I** | Python / Docker / shell findings (9) | Queued |
+| **H** | `cpp:S6004` init-if (56) | Done in code (PR #426) — reclassified from accepted debt |
+| **I** | Python / Docker / shell findings (9) | Done in code (PR #426) |
 | **J** | `pythonsecurity:S8707` (2) + `cpp:S8379` (14) | Fixed in code (PR #424) |
-| **K** | `python:S3776` (16) refactored; `cpp:S107`/`S134`/`S3776` (18) Won't Fix | In progress |
+| **K** | `python:S3776` (16) refactored; `cpp:S107`/`S134`/`S3776` (18) Won't Fix | Done (PR #425) |
 
 ## Policy
 
@@ -260,12 +260,12 @@ componentKeys=bckirkup_GutModelBacteriocins&resolved=false&facets=types&ps=1" \
 **Target:** 0 open BUG/VULNERABILITY at all times; 0 total open issues after
 Batch A merge + Batch B Won’t Fix.
 
-**Sep 2026 sequence:** PR #424 cleared security (`pythonsecurity:S8707` x2) and
-reliability (`cpp:S8379` x14). The next PR refactors the 16 `python:S3776`
-findings in code and resolves the 18 C++ complexity findings (`cpp:S107` x7,
-`cpp:S134` x6, `cpp:S3776` x5) as Batch B debt. The ~90 remaining mechanical
-smells (`cpp:S6004`, `S6197`, `S5827`, `S6012`, `python:S116`/`S117`, …) follow
-as a separate code-fix batch.
+**Sep 2026 sequence (completed):** PR #424 cleared security
+(`pythonsecurity:S8707` x2) and reliability (`cpp:S8379` x14). PR #425
+refactored the 16 `python:S3776` findings in code and resolved the 18 C++
+complexity findings (`cpp:S107` x7, `cpp:S134` x6, `cpp:S3776` x5) as Batch B
+debt. PR #426 cleared the mechanical smells (`cpp:S6004`, `S6197`, `S5827`,
+`S6012`, `python:S116`/`S117`, …) as a separate code-fix batch.
 
 ## Related docs
 

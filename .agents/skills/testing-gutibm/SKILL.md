@@ -164,11 +164,11 @@ stop-requested or otherwise cut short still prints `Simulation complete.` with a
 Assert `termination_reason_code == 0` **and** `termination_time == total_time`;
 report both. A process that exits 0 has not necessarily reached its horizon.
 
-**`/run_provenance/git_sha` is stamped at CMake *configure* time, not build
-time.** If you `git checkout` a new commit and only re-run `make`, the binary
-contains the new code but the HDF5 records the *old* SHA, which makes output
-look like it came from the wrong commit. Re-run `cmake ..` after every checkout
-in a reused build dir, and cross-check the recorded SHA against
+**`/run_provenance/git_sha` is stamped at build time** via the `gutibm_git_sha`
+custom target (`cmake/generate_git_sha.cmake`), which appends `-dirty` when the
+working tree has uncommitted changes and honors `-DGUTIBM_GIT_SHA=<sha>` if
+explicitly overridden in CMake cache. After switching commits or clearing an
+override, rebuild and cross-check `/run_provenance/git_sha` against
 `git rev-parse HEAD` before trusting a provenance-based claim.
 
 To confirm a failure is preexisting, checkout the base branch, rebuild, and run the specific test:
@@ -213,8 +213,9 @@ cd python && PYTHONPATH=$PWD $VENV -m pytest tests/ -m "not integration" -q
 PYTHONPATH=$PWD $VENV -c "import gut_ibm_tools; print(gut_ibm_tools.__file__)"
 ```
 
-Python tests: 131 non-integration tests pass, 2 deselected (integration marker)
-as of PR #308/#309.
+Python tests: 280 test functions across `python/tests/` (most non-integration;
+integration-marked tests live in `test_batch_runner.py`, `test_gpu_cost_benefit.py`,
+`test_gpu_precision.py`, and `test_hdf5_writer_roundtrip.py`).
 
 ## Language standard: C++20, not C++23
 
@@ -402,8 +403,12 @@ as a regression.
 
 ### Config rejection ergonomics
 
-Invalid delivery configurations (`gpu_enabled` + delivery, bogus `uptake_limit`,
-positive radius + slab chemistry) surface as an **uncaught `gutibm::ConfigError`
+Invalid delivery configurations (bogus `uptake_limit`,
+`oxygen.delivery_uptake_enabled=true` without `uptake_limit="delivery"`,
+`gpu_enabled=true` with `species_subset != "full"`, or positive
+`delivery_far_field_radius` + slab chemistry; note `gpu_enabled` + `delivery` is
+now permitted via device delivery or host-forced delivery recorded in
+`/run_provenance/chemistry_placement`) surface as an **uncaught `gutibm::ConfigError`
 → `terminate` → SIGABRT, exit 134**, not a graceful exit with a clean message on
 stderr only. The message text is correct and names the offending keys; the exit
 path is ugly. Report it as ergonomics, and note that when the same message is
