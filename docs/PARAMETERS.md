@@ -297,8 +297,7 @@ VBF mechanics is overdamped: agent translation comes from advection and
 mechanics displacement, with no inertial velocity channel or carrying-capacity
 mechanism.
 
-**Mucin liberation profile:** When `mucin_z_gradient_enabled`, the liberation rate varies as:
-`rate(z) = mucin_liberation * exp(-z_rel / mucin_z_gradient_lambda)`
+**Mucin liberation profile:** When `mucin_z_gradient_enabled`, the spatial weight is `z_weight(z) = exp(-z_rel / mucin_z_gradient_lambda)` (otherwise `1.0`). In the static path (`use_dynamic_mucin = false`), the liberation rate is `rate(z) = mucin_liberation * z_weight(z)`. In the dynamic mucin path (`mucin.enabled = true` and `use_dynamic_mucin = true`), the same `z_weight(z)` scales the per-cell maximum degradation rate `vmax(z) = mucin.k_liberation * vbf.density * z_weight(z)` inside the exact implicit backward-Euler Monod depletion step (`vbf::implicit_mucin_liberation`), guaranteeing nonnegative `[mucin]` and exact 1:1 molar conservation between degraded mucin and liberated carbon on both CPU and CUDA GPU.
 
 This ensures the carbon source term fed into the chemical field is strongest near the epithelium and decays toward the lumen, consistent with the chemical concentration gradient.
 
@@ -489,6 +488,8 @@ invariance.
 | `mucin.secretion_rate` | 1e-4 | mol/m³/s | Goblet cell secretion at epithelium |
 | `mucin.Km_degradation` | 1e-3 | mol/m³ | Half-saturation for VBF mucin degradation |
 | `mucin.k_liberation` | 5e-16 | mol/(cell·s) | Per-cell specific mucin → monosaccharide liberation rate |
+
+When `mucin.enabled = true` and `vbf.use_dynamic_mucin = true`, mucin-to-carbon liberation is integrated implicitly over `dt` via the shared host/device helper `gutibm::vbf::implicit_mucin_liberation` (`src/fields/vbf_mucin_liberation.h`) with depth-weighted maximum rate `vmax(z) = mucin.k_liberation * vbf.density * z_weight(z)` (`z_weight(z) = exp(-z_rel / vbf.mucin_z_gradient_lambda)` when `vbf.mucin_z_gradient_enabled = true`, else `1.0`). The exact backward-Euler Monod root guarantees `0 <= liberation * dt <= max(0, [mucin])` unconditionally, so mucin degradation produces zero `reaction_clip` events and deposits strictly equal-and-opposite molar rates into `reac[mucin]` and `reac[carbon]`, while `mucin.secretion_rate` replenishes the basal epithelial layer (`iz == 0`).
 
 ---
 

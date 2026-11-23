@@ -9,18 +9,12 @@
 #include "chem_environment_config.h"
 #include "vbf_carbon_sink.h"
 #include "vbf_first_order_sink.h"
+#include "vbf_mucin_liberation.h"
 #include <cmath>
 
 namespace gutibm {
 
 namespace {
-
-Real dynamic_mucin_liberation(Real mucin_conc,
-                              const VBFConfig& vbf_cfg,
-                              const MucinConfig& mucin_cfg) {
-  const Real substrate = mucin_conc / (mucin_cfg.Km_degradation + mucin_conc);
-  return mucin_cfg.k_liberation * vbf_cfg.density * substrate;
-}
 
 struct VbfSpeciesIndices {
   Int carbon = -1;
@@ -56,8 +50,13 @@ void apply_carbon_source(ChemicalField& chem, Int cell,
                          Real cell_volume,
                          Real dt) {
   if (ctx.cfg.use_dynamic_mucin && ctx.mucin.enabled && ctx.idx.mucin >= 0) {
-    const Real liberation =
-        dynamic_mucin_liberation(chem.conc(ctx.idx.mucin, cell), ctx.cfg, ctx.mucin);
+    const Real liberation = vbf::implicit_mucin_liberation(
+        chem.conc(ctx.idx.mucin, cell),
+        ctx.mucin.k_liberation,
+        ctx.cfg.density,
+        ctx.z_weight,
+        ctx.mucin.Km_degradation,
+        dt);
     chem.reac(ctx.idx.mucin, cell) -= liberation;
     if (ctx.idx.carbon >= 0) {
       chem.reac(ctx.idx.carbon, cell) += liberation;
@@ -207,6 +206,8 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
   const Int ny = domain.ny();
   const Int nz = domain.nz();
   const Real cell_volume = domain.cell_volume();
+  const bool dynamic_mucin_active =
+      cfg_.use_dynamic_mucin && mucin.enabled && idx.mucin >= 0;
 
   if (chem.slab_mode()) {
     for (Int iz = 0; iz < nz; ++iz) {
@@ -214,7 +215,7 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
       const Real z_weight = cfg_.mucin_z_gradient_enabled
           ? std::exp(-z_rel / cfg_.mucin_z_gradient_lambda) : 1.0;
       const Real static_liberation =
-          cfg_.use_dynamic_mucin ? 0.0 : mucin_rate(z_rel);
+          dynamic_mucin_active ? 0.0 : mucin_rate(z_rel);
       const VbfCellContext ctx{cfg_, oxygen, acetate, mucin, idx,
                                static_liberation, z_weight, iz};
       for (Int iy = 0; iy < ny; ++iy) {
@@ -237,7 +238,8 @@ void VBF::apply_nutrient_coupling(ChemicalField& chem, const Domain& domain,
     const Real z_weight = cfg_.mucin_z_gradient_enabled
         ? std::exp(-z_rel / cfg_.mucin_z_gradient_lambda)
         : 1.0;
-    const Real static_liberation = cfg_.use_dynamic_mucin ? 0.0 : mucin_rate(z_rel);
+    const Real static_liberation =
+        dynamic_mucin_active ? 0.0 : mucin_rate(z_rel);
 
     const VbfCellContext ctx{cfg_, oxygen, acetate, mucin, idx,
                              static_liberation, z_weight, iz};
