@@ -444,6 +444,7 @@ void test_gpu_dynamic_mucin_depletion_z_gradient_parity() {
         chem_gpu, chem_gpu_ref, domain, vbf, oxygen, acetate, mcfg,
         empty_agents_gpu, gpu_totals, dt));
     assert(chem_gpu.apply_reactions(dt, domain));
+    chem_gpu_ref.mark_all_device_conc_dirty();
     chem_gpu.download_reaction_clip(chem_gpu_ref);
     assert(chem_gpu.apply_boundaries(domain, chem_gpu_ref));
 
