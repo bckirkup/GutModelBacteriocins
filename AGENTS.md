@@ -262,6 +262,7 @@ or `"warn"`) and emitting a rank-0 diagnostic recommending
 | Chemical environment (Spec 1) | `oxygen.enabled`, `acetate.enabled`, `mucin.enabled`, `protease.enabled` + nested keys in `docs/PARAMETERS.md` |
 | Cell biology (Spec 3 / 10v2) | `fur.enabled`, `cdi.enabled`, `motility.enabled` + aerotaxis/energy/surface/mucin keys; per-strain `cdi_type`, `cdi_immunity` |
 | Quorum sensing (Spec 11) | `quorum_sensing.enabled` + AI-2 production/import/chemotaxis keys in `docs/PARAMETERS.md` |
+| Temperate prophage (Spec 14) | `prophage.enabled` + carriage/Hill induction/virion keys in `docs/SPEC14_PROPHAGE_MODULE.md` and `docs/PARAMETERS.md` |
 | GPU | `gpu_enabled` in input JSON (CUDA build required) |
 | Immigration | `immigration.enabled` plus `immigration.count`, `strain_index`, placement and schedule keys; pulse `step` is relative to run start |
 | Initial founder placement | `initial_population.placement=z_slab` plus `initial_population.z_min`/`z_max`; scenario-wide founder band, independent of `domain_z` when configured |

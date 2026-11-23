@@ -12,16 +12,17 @@ using namespace gutibm;
 
 void test_default_fix_order() {
   auto names = FixRegistry::registered_names();
-  assert(names.size() == 9);
+  assert(names.size() == 10);
   assert(names[0] == "metabolism");
   assert(names[1] == "quorum_sensing");
   assert(names[2] == "bacteriocin");
   assert(names[3] == "receptor");
-  assert(names[4] == "motility");
-  assert(names[5] == "conjugation");
-  assert(names[6] == "cdi");
-  assert(names[7] == "mutation");
-  assert(names[8] == "mechanics");
+  assert(names[4] == "prophage");
+  assert(names[5] == "motility");
+  assert(names[6] == "conjugation");
+  assert(names[7] == "cdi");
+  assert(names[8] == "mutation");
+  assert(names[9] == "mechanics");
   std::cout << "  test_default_fix_order: PASSED\n";
 }
 
@@ -35,10 +36,11 @@ void test_create_all_fixes() {
   sim.init(cfg);
 
   auto names = sim.fix_names();
-  assert(names.size() == 9);
+  assert(names.size() == 10);
   assert(names[0] == "metabolism");
   assert(names[1] == "quorum_sensing");
-  assert(names[8] == "mechanics");
+  assert(names[4] == "prophage");
+  assert(names[9] == "mechanics");
   std::cout << "  test_create_all_fixes: PASSED\n";
 }
 

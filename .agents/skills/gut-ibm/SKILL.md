@@ -266,6 +266,7 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `FixMotility` | `MotilityConfig` | Run-and-reverse + Weber–Fechner taxis (Spec 10v2/11) |
 | `FixConjugation` | `ConjugationConfig` | F-pili HGT, shear-dependent MPS |
 | `FixCdi` | `CdiConfig` | Contact-dependent inhibition |
+| `FixProphage` | `ProphageConfig` | Temperate prophage carriage, Hill DNA-damage induction, virion field, lysogeny vs lysis (Spec 14) |
 | `FixMutation` | `MutationConfig` | BI locus evolution, receptor downregulation |
 | `FixMechanics` | `MechanicsConfig` | Hertzian repulsion, EPS adhesion |
 
@@ -308,6 +309,7 @@ Current Fix modules (hardcoded order in `simulation.cpp`):
 | `kd_colicinE_btuB`, `kill_rate_colicin`, … | Receptor Fix tunables |
 | `base_transfer_rate`, `pili_heterogeneity`, … | Conjugation Fix tunables |
 | `bi_duplication_rate`, `max_bi_loci`, … | Mutation Fix tunables |
+| `prophage.enabled`, `prophage.lysogen_prevalence_init`, `prophage.active_inducible_fraction`, `prophage.k_spont`, `prophage.k_max_damage`, `prophage.K_damage`, `prophage.hill_n`, … | Temperate prophage Fix tunables (Spec 14) |
 | `use_fmm`, `fmm_theta`, `fmm_expansion_order` | Barnes-Hut FMM |
 | `peristaltic_enabled`, `peristaltic_period`, … | Peristaltic advection |
 | `oxygen.enabled`, `oxygen.epithelial_conc`, … | O₂ field and aerobic boost (Spec 1) |

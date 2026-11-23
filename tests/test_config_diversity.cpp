@@ -154,6 +154,7 @@ void test_fixture_configs_produce_distinct_fingerprints() {
       Scenario{"fmm_peristaltic", "parser_fmm_peristaltic.json"},
       Scenario{"immigration", "parser_immigration.json"},
       Scenario{"initial_population", "parser_initial_population.json"},
+      Scenario{"prophage", "parser_prophage.json"},
   };
 
   std::vector<std::pair<std::string, uint64_t>> fingerprints;
@@ -401,7 +402,7 @@ void test_washout_trap_modes_change_outcome() {
   imposed.advection.washout_trap = WashoutTrapMode::IMPOSED;
   imposed.advection.radial_turnover = 1.0e7;
   imposed.initial_strains.clear();
-  imposed.initial_strains.push_back({2, 12, 1e-9, {}, false, 0, 0, {}});
+  imposed.initial_strains.push_back({2, 12, 1e-9, {}, false, 0, 0, {}, std::nullopt, std::nullopt});
   SimulationConfig emergent = imposed;
   emergent.advection.washout_trap = WashoutTrapMode::EMERGENT;
   assert(run_fingerprint(imposed) != run_fingerprint(emergent));
@@ -466,6 +467,23 @@ void test_uptake_limit_changes_outcome() {
   std::cout << "  test_uptake_limit_changes_outcome: PASSED\n";
 }
 
+void test_prophage_toggle_changes_outcome() {
+  SimulationConfig off = growth_baseline(8041);
+  SimulationConfig on = off;
+  on.prophage.enabled = true;
+  on.prophage.lysogen_prevalence_init = 1.0;
+  on.prophage.active_inducible_fraction = 1.0;
+  on.prophage.k_max_damage = 0.02;
+  on.prophage.K_damage = 1.0e-6;
+  on.prophage.damage_stimulus = 1.0e-3;
+  InputParser::finalize_config(on);
+
+  const uint64_t fp_off = run_fingerprint(off);
+  const uint64_t fp_on = run_fingerprint(on);
+  assert(fp_off != fp_on);
+  std::cout << "  test_prophage_toggle_changes_outcome: PASSED\n";
+}
+
 void test_same_config_is_reproducible() {
   SimulationConfig cfg = growth_baseline(9001);
   const uint64_t fp1 = run_fingerprint(cfg);
@@ -491,6 +509,7 @@ int main() {
   test_washout_trap_modes_change_outcome();
   test_carbon_epithelial_boundary_changes_outcome();
   test_uptake_limit_changes_outcome();
+  test_prophage_toggle_changes_outcome();
   test_same_config_is_reproducible();
   std::cout << "All config diversity tests passed.\n";
   return 0;

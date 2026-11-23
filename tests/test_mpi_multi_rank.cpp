@@ -4,6 +4,7 @@
    ----------------------------------------------------------------------- */
 
 #include "simulation.h"
+#include "founder_genotype.h"
 #include "input_parser.h"
 #include "mpi_test_helpers.h"
 #include "species_names.h"
@@ -1502,6 +1503,148 @@ void test_multirank_closure_violation_is_synchronized() {
   }
 }
 
+void test_multirank_prophage_founder_parity_and_migration() {
+  require_mpi_ranks(2);
+
+  int rank = 0;
+  int nprocs = 1;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+  SimulationConfig cfg = make_mpi_config(9417, 40);
+  cfg.domain.periodic = {true, true, false};
+  cfg.initial_population.placement = "z_slab";
+  cfg.initial_population.z_min = 5.0e-6;
+  cfg.initial_population.z_max = 20.0e-6;
+  cfg.advection.radial_turnover = 1.0e30;
+  cfg.advection.distal_transit_time = 1.0e30;
+  cfg.advection.peristaltic_enabled = false;
+  cfg.time.bio_dt = 60.0;
+  cfg.time.total_time = 180.0;
+  cfg.time.output_interval = 300.0;
+  cfg.hdf5.enabled = false;
+  cfg.prophage.enabled = true;
+  cfg.prophage.lysogen_prevalence_init = 0.65;
+  cfg.prophage.active_inducible_fraction = 0.5;
+  cfg.prophage.k_spont = 0.0;
+  cfg.prophage.k_max_damage = 1.0;
+  cfg.prophage.K_damage = 1.0e-6;
+  cfg.prophage.damage_stimulus = 1.0;
+  cfg.prophage.lysis_delay_s = 120.0;
+  cfg.prophage.k_adsorb = 0.0;
+  cfg.fixes.bacteriocin.sos_basal_rate = 0.0;
+  cfg.initial_strains[0].mu_max = 0.0;
+  const SimulationConfig::InitialStrain s = cfg.initial_strains[0];
+  InputParser::finalize_config(cfg);
+
+  Simulation sim;
+  sim.init(cfg);
+
+  Int local_total = 0;
+  Int local_immune = 0;
+  Int local_inducible = 0;
+  for (const Agent& a : sim.agents()) {
+    if (a.flags.is_ghost || a.state == PhenoState::DEAD) continue;
+    ++local_total;
+    if (a.flags.has_prophage_immunity) ++local_immune;
+    if (a.flags.has_inducible_prophage) ++local_inducible;
+  }
+  Int global_total = 0;
+  Int global_immune = 0;
+  Int global_inducible = 0;
+  MPI_Allreduce(&local_total, &global_total, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_immune, &global_immune, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_inducible, &global_inducible, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  assert(global_total == 40);
+
+  Int ref_immune = 0;
+  Int ref_inducible = 0;
+  for (uint64_t serial = 1; serial <= 40; ++serial) {
+    Agent ref = Agent::create_default(static_cast<TagID>(serial), 1,
+                                      {0.0, 0.0, 0.0}, 0.0);
+    apply_founder_genotype(ref, s, cfg, serial);
+    if (ref.flags.has_prophage_immunity) ++ref_immune;
+    if (ref.flags.has_inducible_prophage) ++ref_inducible;
+  }
+  assert(global_immune == ref_immune);
+  assert(global_inducible == ref_inducible);
+  assert(global_immune > 0 && global_immune < 40);
+  assert(global_inducible > 0 && global_inducible <= global_immune);
+
+  // Step 1 induces all inducible lysogens (prophage_lysis_timer = 120 s).
+  sim.step(cfg.time.bio_dt);
+  assert_unique_tags(gather_live_tags_flat(sim));
+
+  // Deterministically push one induced lysogen and one cryptic carrier across
+  // the rank-0/rank-1 slab boundary before step 2 so agent_transfer packs and
+  // unpacks both prophage_induced + prophage_lysis_timer and cryptic immunity.
+  if (rank == 0) {
+    bool moved_induced = false;
+    bool moved_cryptic = false;
+    for (Agent& a : sim.agents()) {
+      if (a.flags.is_ghost || a.state == PhenoState::DEAD) continue;
+      if (!moved_induced && a.flags.prophage_induced) {
+        a.x[0] = sim.domain().local_hi_x() + 5.0e-6;
+        a.x[2] = 12.0e-6;
+        moved_induced = true;
+      } else if (!moved_cryptic && a.flags.has_prophage_immunity
+                 && !a.flags.has_inducible_prophage) {
+        a.x[0] = sim.domain().local_hi_x() + 5.0e-6;
+        a.x[2] = 14.0e-6;
+        moved_cryptic = true;
+      }
+    }
+  }
+
+  // Step 2 decrements prophage_lysis_timer to 60 s and migrates the displaced
+  // cells from rank 0 to rank 1; Step 3 completes the 120 s latent window on
+  // the destination rank and lyses every induced
+  // lysogen regardless of which MPI rank now owns it.
+  sim.step(cfg.time.bio_dt);
+  assert_unique_tags(gather_live_tags_flat(sim));
+  sim.step(cfg.time.bio_dt);
+  assert_unique_tags(gather_live_tags_flat(sim));
+
+  const Int local_ind = sim.cumulative_events().prophage_inductions
+      + sim.step_events().prophage_inductions;
+  const Int local_lysis = sim.cumulative_events().mortality_lysis
+      + sim.step_events().mortality_lysis;
+  const Int local_outflow = sim.cumulative_events().outflow_washout
+      + sim.step_events().outflow_washout
+      + sim.cumulative_events().outflow_boundary
+      + sim.step_events().outflow_boundary;
+  Int global_ind = 0;
+  Int global_lysis = 0;
+  Int global_outflow = 0;
+  Int local_live_after = 0;
+  for (const Agent& a : sim.agents()) {
+    if (a.state != PhenoState::DEAD && !a.flags.is_ghost) ++local_live_after;
+  }
+  Int global_live_after = 0;
+  MPI_Allreduce(&local_ind, &global_ind, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_lysis, &global_lysis, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_outflow, &global_outflow, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  MPI_Allreduce(&local_live_after, &global_live_after, 1, MPI_INT, MPI_SUM,
+                MPI_COMM_WORLD);
+  assert(global_outflow == 0);
+  assert(global_ind == global_inducible);
+  assert(global_lysis == global_inducible);
+  assert(global_live_after == 40 - global_inducible);
+
+  if (rank == 0) {
+    std::cout << "  test_multirank_prophage_founder_parity_and_migration: PASSED"
+              << " (np=" << nprocs << ", immune=" << global_immune
+              << ", inducible=" << global_inducible
+              << ", lysed=" << global_lysis << ")\n";
+  }
+}
+
 #endif  // GUTIBM_MPI
 
 }  // namespace
@@ -1534,6 +1677,7 @@ int main(int argc, char** argv) {
   test_adaptive_dt_is_rank_identical();
   test_multirank_immigration_ownership();
   test_multirank_closure_violation_is_synchronized();
+  test_multirank_prophage_founder_parity_and_migration();
 #ifdef GUTIBM_HDF5
   test_global_event_counter_reduction();
   test_population_ledger_closure();

@@ -1,0 +1,85 @@
+{
+  "_comment": [
+    "Spec 14 (GAP-10) temperate prophage preset: murine monoxenic elevated-SOS regime.",
+    "Full active lysogen carriage (lysogen_prevalence_init = 1.0, active_inducible_fraction = 1.0)",
+    "with spontaneous/gut-SOS induction hazard k_spont = 2.0e-6 1/s (~0.173 /bacterium/day),",
+    "within the De Paepe et al. (2016) / Frazao et al. (2022) monoxenic mouse E. coli",
+    "1.70e-6 to 4.44e-6 1/s induction regime. In-vivo bacteriocin-driven lysogen",
+    "displacement remains hypothesis / regime-dependent (Henrot et al. 2026)."
+  ],
+
+  "total_time": 86400,
+  "bio_dt": 60,
+  "output_interval": 3600,
+  "seed": 1402,
+
+  "domain_x": 0.0002,
+  "domain_y": 0.0002,
+  "domain_z": 0.0001,
+  "grid_dx": 4e-6,
+
+  "mucus_thickness": 100e-6,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+
+  "prophage": {
+    "enabled": true,
+    "lysogen_prevalence_init": 1.0,
+    "active_inducible_fraction": 1.0,
+    "k_spont": 2.0e-6,
+    "k_max_damage": 2.0e-3,
+    "K_damage": 1.0e-6,
+    "hill_n": 2.0,
+    "damage_stimulus": 0.0,
+    "nuclease_damage_weight": 1.0,
+    "ros_damage_weight": 1.0,
+    "lysis_delay_s": 0.0,
+    "virion_burst_size": 12.1,
+    "D_virion": 4.0e-12,
+    "virion_retardation": 1.0,
+    "k_virion_decay": 1.0e-4,
+    "virion_washout_scale": 1.0,
+    "k_adsorb": 1.0e-15,
+    "p_lysogeny": 0.19,
+    "adsorption_receptor": "none"
+  },
+
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 200,
+      "mu_max": 5.5e-4,
+      "plasmids": ["ColE2"],
+      "conjugative": false,
+      "lysogen_prevalence": 0.0
+    },
+    {
+      "type": 2,
+      "count": 200,
+      "mu_max": 5.0e-4,
+      "plasmids": [],
+      "conjugative": false,
+      "lysogen_prevalence": 1.0,
+      "active_inducible_fraction": 1.0
+    },
+    {
+      "type": 3,
+      "count": 200,
+      "mu_max": 5.0e-4,
+      "plasmids": [],
+      "conjugative": false,
+      "lysogen_prevalence": 0.0
+    }
+  ],
+
+  "hdf5_file": "prophage_murine_monoxenic_output.h5",
+  "hdf5": {
+    "schedule": {
+      "summary": 1,
+      "agents": 60,
+      "grid": 0,
+      "lineage": 100,
+      "genome": 100
+    }
+  }
+}

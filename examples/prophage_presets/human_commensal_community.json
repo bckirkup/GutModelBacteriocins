@@ -1,0 +1,77 @@
+{
+  "_comment": [
+    "Spec 14 (GAP-10) temperate prophage preset: human commensal community baseline.",
+    "Separates sequence-detected genomic carriage (lysogen_prevalence_init = 0.80,",
+    "Dikareva et al. 2023 upper-bound prior) from functionally active inducibility",
+    "(active_inducible_fraction = 0.375 -> effective active prevalence 0.30).",
+    "Spontaneous hazard k_spont = 1.2e-7 1/s gives ~0.0031 inductions/bacterium/day,",
+    "inside the Lopez et al. (2025) / Current Biology 2025 human-gut community band",
+    "(0.001-0.01 inductions/bacterium/day). In-vivo bacteriocin-driven lysogen",
+    "displacement remains hypothesis / regime-dependent (Henrot et al. 2026)."
+  ],
+
+  "total_time": 86400,
+  "bio_dt": 60,
+  "output_interval": 3600,
+  "seed": 1401,
+
+  "domain_x": 0.0002,
+  "domain_y": 0.0002,
+  "domain_z": 0.0001,
+  "grid_dx": 4e-6,
+
+  "mucus_thickness": 100e-6,
+  "radial_turnover": 5400,
+  "distal_transit": 43200,
+
+  "prophage": {
+    "enabled": true,
+    "lysogen_prevalence_init": 0.8,
+    "active_inducible_fraction": 0.375,
+    "k_spont": 1.2e-7,
+    "k_max_damage": 1.0e-3,
+    "K_damage": 1.0e-6,
+    "hill_n": 2.0,
+    "damage_stimulus": 0.0,
+    "nuclease_damage_weight": 1.0,
+    "ros_damage_weight": 1.0,
+    "lysis_delay_s": 0.0,
+    "virion_burst_size": 12.1,
+    "D_virion": 4.0e-12,
+    "virion_retardation": 1.0,
+    "k_virion_decay": 1.0e-4,
+    "virion_washout_scale": 1.0,
+    "k_adsorb": 1.0e-15,
+    "p_lysogeny": 0.19,
+    "adsorption_receptor": "none"
+  },
+
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 200,
+      "mu_max": 5.5e-4,
+      "plasmids": ["ColE2"],
+      "conjugative": false,
+      "lysogen_prevalence": 0.0
+    },
+    {
+      "type": 2,
+      "count": 400,
+      "mu_max": 5.0e-4,
+      "plasmids": [],
+      "conjugative": false
+    }
+  ],
+
+  "hdf5_file": "prophage_human_commensal_output.h5",
+  "hdf5": {
+    "schedule": {
+      "summary": 1,
+      "agents": 60,
+      "grid": 0,
+      "lineage": 100,
+      "genome": 100
+    }
+  }
+}

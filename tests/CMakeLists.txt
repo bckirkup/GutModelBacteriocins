@@ -218,6 +218,9 @@ gutibm_add_test(maintenance_carbon test_maintenance_carbon.cpp LABELS "unit;inte
 gutibm_add_test(cdi test_cdi.cpp LABELS "unit")
 gutibm_add_test(motility test_motility.cpp LABELS "unit")
 gutibm_add_test(quorum_sensing test_quorum_sensing.cpp LABELS "unit")
+gutibm_add_test(prophage test_prophage.cpp
+  LABELS "unit;integration"
+  COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(immigration test_immigration.cpp LABELS "unit")
 
 # Scaling benchmark smoke (issue #55) — modest agent counts for CI.
@@ -399,6 +402,7 @@ gutibm_add_test(gpu_uptake_limit test_gpu_uptake_limit.cpp LABELS "gpu;integrati
 gutibm_add_test(spatial_hash_gpu_csr test_spatial_hash_gpu_csr.cpp LABELS "gpu")
 gutibm_add_test(mechanics_gpu_parity test_mechanics_gpu_parity.cpp LABELS "gpu")
 gutibm_add_test(gpu_kernel_units test_gpu_kernel_units.cpp LABELS "gpu")
+gutibm_add_test(gpu_prophage_parity test_gpu_prophage_parity.cpp LABELS "gpu")
 
 add_test(
   NAME gpu_target_manifest

@@ -46,10 +46,14 @@ struct AgentLifecycleXfer {
   int32_t state;
   double age;
   double sos_timer;
+  double prophage_lysis_timer;
   double death_time;
   int32_t grid_cell;
   int32_t in_crypt;
   int32_t microcin_penalty_applied;
+  int32_t has_prophage_immunity;
+  int32_t has_inducible_prophage;
+  int32_t prophage_induced;
 };
 
 struct AgentMotilityXfer {
@@ -78,6 +82,27 @@ struct AgentGenomeXfer {
   int32_t num_bi_loci;
 };
 
+constexpr int32_t kAgentTransferV2Magic = -2;
+
+struct LegacyAgentLifecycleXfer {
+  int32_t state;
+  double age;
+  double sos_timer;
+  double death_time;
+  int32_t grid_cell;
+  int32_t in_crypt;
+  int32_t microcin_penalty_applied;
+};
+
+struct LegacyAgentTransferData {
+  AgentIdentityXfer identity;
+  AgentSpatialXfer spatial;
+  AgentMetabolismXfer metabolism;
+  LegacyAgentLifecycleXfer lifecycle;
+  AgentMotilityXfer motility;
+  AgentGenomeXfer genome;
+};
+
 struct AgentTransferData {
   AgentIdentityXfer identity;
   AgentSpatialXfer spatial;
@@ -86,6 +111,27 @@ struct AgentTransferData {
   AgentMotilityXfer motility;
   AgentGenomeXfer genome;
 };
+
+AgentTransferData upgrade_legacy_transfer(const LegacyAgentTransferData& leg) {
+  AgentTransferData d{};
+  d.identity = leg.identity;
+  d.spatial = leg.spatial;
+  d.metabolism = leg.metabolism;
+  d.lifecycle.state = leg.lifecycle.state;
+  d.lifecycle.age = leg.lifecycle.age;
+  d.lifecycle.sos_timer = leg.lifecycle.sos_timer;
+  d.lifecycle.prophage_lysis_timer = -1.0;
+  d.lifecycle.death_time = leg.lifecycle.death_time;
+  d.lifecycle.grid_cell = leg.lifecycle.grid_cell;
+  d.lifecycle.in_crypt = leg.lifecycle.in_crypt;
+  d.lifecycle.microcin_penalty_applied = leg.lifecycle.microcin_penalty_applied;
+  d.lifecycle.has_prophage_immunity = 0;
+  d.lifecycle.has_inducible_prophage = 0;
+  d.lifecycle.prophage_induced = 0;
+  d.motility = leg.motility;
+  d.genome = leg.genome;
+  return d;
+}
 
 struct BIClusterTransferData {
   uint16_t toxin_id;
@@ -136,11 +182,15 @@ void pack_agent(const Agent& a, AgentTransferData& d) {
   d.lifecycle.state = static_cast<int32_t>(to_underlying(a.state));
   d.lifecycle.age = a.timers.age;
   d.lifecycle.sos_timer = a.timers.sos_timer;
+  d.lifecycle.prophage_lysis_timer = a.timers.prophage_lysis_timer;
   d.lifecycle.death_time = a.timers.death_time;
   d.lifecycle.grid_cell = a.grid_cell;
   d.lifecycle.in_crypt = a.flags.in_crypt ? 1 : 0;
   d.lifecycle.microcin_penalty_applied =
       a.flags.microcin_penalty_applied ? 1 : 0;
+  d.lifecycle.has_prophage_immunity = a.flags.has_prophage_immunity ? 1 : 0;
+  d.lifecycle.has_inducible_prophage = a.flags.has_inducible_prophage ? 1 : 0;
+  d.lifecycle.prophage_induced = a.flags.prophage_induced ? 1 : 0;
   for (int k = 0; k < 3; ++k)
     d.motility.swim_direction[k] = a.motility.swim_direction[k];
   d.motility.swim_speed = a.motility.swim_speed;
@@ -212,11 +262,15 @@ Agent unpack_agent(const AgentTransferData& d, const BIClusterTransferData* bi_d
   a.state = static_cast<PhenoState>(d.lifecycle.state);
   a.timers.age = d.lifecycle.age;
   a.timers.sos_timer = d.lifecycle.sos_timer;
+  a.timers.prophage_lysis_timer = d.lifecycle.prophage_lysis_timer;
   a.timers.death_time = d.lifecycle.death_time;
   a.grid_cell = d.lifecycle.grid_cell;
   a.flags.in_crypt = (d.lifecycle.in_crypt != 0);
   a.flags.microcin_penalty_applied =
       (d.lifecycle.microcin_penalty_applied != 0);
+  a.flags.has_prophage_immunity = (d.lifecycle.has_prophage_immunity != 0);
+  a.flags.has_inducible_prophage = (d.lifecycle.has_inducible_prophage != 0);
+  a.flags.prophage_induced = (d.lifecycle.prophage_induced != 0);
   a.flags.is_ghost = false;
   for (int k = 0; k < 3; ++k)
     a.motility.swim_direction[k] = d.motility.swim_direction[k];
@@ -282,14 +336,15 @@ void append_bytes(std::vector<char>& buf, const T& value) {
 void agent_transfer_serialize(const std::vector<Agent>& agents,
                               std::vector<char>& buf) {
   buf.clear();
+  append_bytes(buf, kAgentTransferV2Magic);
   auto count = static_cast<int32_t>(agents.size());
   append_bytes(buf, count);
   for (const auto& a : agents) {
-    AgentTransferData d;
+    AgentTransferData d{};
     pack_agent(a, d);
     append_bytes(buf, d);
     for (const auto& c : a.genome.bi_loci) {
-      BIClusterTransferData bd;
+      BIClusterTransferData bd{};
       pack_bi_cluster(c, bd);
       append_bytes(buf, bd);
     }
@@ -300,23 +355,49 @@ std::vector<Agent> agent_transfer_deserialize(const std::vector<char>& buf) {
   std::vector<Agent> result;
   if (buf.size() < sizeof(int32_t)) return result;
   size_t offset = 0;
-  int32_t count;
-  std::memcpy(&count, buf.data() + offset, sizeof(count));
-  offset += sizeof(count);
+  int32_t header = 0;
+  std::memcpy(&header, buf.data() + offset, sizeof(header));
+  offset += sizeof(header);
 
-  result.reserve(count);
+  bool v2_format = false;
+  int32_t count = header;
+  if (header == kAgentTransferV2Magic) {
+    if (offset + sizeof(int32_t) > buf.size()) return result;
+    std::memcpy(&count, buf.data() + offset, sizeof(count));
+    offset += sizeof(count);
+    v2_format = true;
+  }
+  if (count <= 0) return result;
+
+  result.reserve(static_cast<size_t>(count));
   for (int32_t i = 0; i < count; ++i) {
-    if (offset + sizeof(AgentTransferData) > buf.size()) break;
-    AgentTransferData d;
-    std::memcpy(&d, buf.data() + offset, sizeof(d));
-    offset += sizeof(d);
-
-    std::vector<BIClusterTransferData> bi_data(d.genome.num_bi_loci);
-    for (int32_t k = 0; k < d.genome.num_bi_loci; ++k) {
-      if (offset + sizeof(BIClusterTransferData) > buf.size()) break;
-      std::memcpy(&bi_data[k], buf.data() + offset, sizeof(bi_data[k]));
-      offset += sizeof(bi_data[k]);
+    AgentTransferData d{};
+    if (v2_format) {
+      if (offset + sizeof(AgentTransferData) > buf.size()) break;
+      std::memcpy(&d, buf.data() + offset, sizeof(d));
+      offset += sizeof(d);
+    } else {
+      if (offset + sizeof(LegacyAgentTransferData) > buf.size()) break;
+      LegacyAgentTransferData leg{};
+      std::memcpy(&leg, buf.data() + offset, sizeof(leg));
+      offset += sizeof(leg);
+      d = upgrade_legacy_transfer(leg);
     }
+    if (d.genome.num_bi_loci < 0) break;
+
+    std::vector<BIClusterTransferData> bi_data(
+        static_cast<size_t>(d.genome.num_bi_loci));
+    bool truncated = false;
+    for (int32_t k = 0; k < d.genome.num_bi_loci; ++k) {
+      if (offset + sizeof(BIClusterTransferData) > buf.size()) {
+        truncated = true;
+        break;
+      }
+      std::memcpy(&bi_data[static_cast<size_t>(k)], buf.data() + offset,
+                  sizeof(BIClusterTransferData));
+      offset += sizeof(BIClusterTransferData);
+    }
+    if (truncated) break;
     result.push_back(unpack_agent(d, bi_data.data()));
   }
   return result;

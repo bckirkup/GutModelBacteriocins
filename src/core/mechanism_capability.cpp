@@ -1,4 +1,5 @@
 #include "mechanism_capability.h"
+#include <cmath>
 
 namespace gutibm {
 
@@ -261,6 +262,46 @@ std::vector<std::string> unexecuted_mechanism_params(
     flag_if(v.ai2_chemotaxis_enabled != d.ai2_chemotaxis_enabled,
             "quorum_sensing.ai2_chemotaxis_enabled", out);
     flag_if(v.chi_ai2 != d.chi_ai2, "quorum_sensing.chi_ai2", out);
+  }
+  {
+    const auto& v = cfg.prophage;
+    const auto& d = def.prophage;
+    const auto real_differs = [](Real a, Real b) {
+      return std::abs(a - b) > 0.0;
+    };
+    flag_if(v.enabled != d.enabled, "prophage.enabled", out);
+    flag_if(real_differs(v.lysogen_prevalence_init, d.lysogen_prevalence_init),
+            "prophage.lysogen_prevalence_init", out);
+    flag_if(real_differs(v.active_inducible_fraction,
+                         d.active_inducible_fraction),
+            "prophage.active_inducible_fraction", out);
+    flag_if(real_differs(v.k_spont, d.k_spont), "prophage.k_spont", out);
+    flag_if(real_differs(v.k_max_damage, d.k_max_damage),
+            "prophage.k_max_damage", out);
+    flag_if(real_differs(v.K_damage, d.K_damage), "prophage.K_damage", out);
+    flag_if(real_differs(v.hill_n, d.hill_n), "prophage.hill_n", out);
+    flag_if(real_differs(v.damage_stimulus, d.damage_stimulus),
+            "prophage.damage_stimulus", out);
+    flag_if(real_differs(v.nuclease_damage_weight, d.nuclease_damage_weight),
+            "prophage.nuclease_damage_weight", out);
+    flag_if(real_differs(v.ros_damage_weight, d.ros_damage_weight),
+            "prophage.ros_damage_weight", out);
+    flag_if(real_differs(v.lysis_delay_s, d.lysis_delay_s),
+            "prophage.lysis_delay_s", out);
+    flag_if(real_differs(v.virion_burst_size, d.virion_burst_size),
+            "prophage.virion_burst_size", out);
+    flag_if(real_differs(v.D_virion, d.D_virion), "prophage.D_virion", out);
+    flag_if(real_differs(v.virion_retardation, d.virion_retardation),
+            "prophage.virion_retardation", out);
+    flag_if(real_differs(v.k_virion_decay, d.k_virion_decay),
+            "prophage.k_virion_decay", out);
+    flag_if(real_differs(v.virion_washout_scale, d.virion_washout_scale),
+            "prophage.virion_washout_scale", out);
+    flag_if(real_differs(v.k_adsorb, d.k_adsorb), "prophage.k_adsorb", out);
+    flag_if(real_differs(v.p_lysogeny, d.p_lysogeny),
+            "prophage.p_lysogeny", out);
+    flag_if(v.adsorption_receptor != d.adsorption_receptor,
+            "prophage.adsorption_receptor", out);
   }
   flag_if(cfg.immigration.enabled, "immigration.enabled", out);
 

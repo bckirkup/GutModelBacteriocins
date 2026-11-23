@@ -19,6 +19,7 @@
 #include "fix_metabolism.h"
 #include "fix_receptor.h"
 #include "fix_bacteriocin.h"
+#include "fix_prophage.h"
 #include "fix_conjugation.h"
 #include "fix_mutation.h"
 #include "fix_mechanics.h"
@@ -158,6 +159,8 @@ struct SimulationConfig {
     uint16_t cdi_type = 0;
     uint16_t cdi_immunity = 0;
     std::map<std::string, Real, std::less<>> receptor_expression;
+    std::optional<Real> lysogen_prevalence;
+    std::optional<Real> active_inducible_fraction;
   };
   struct PlasmidOverride {
     std::optional<Real> retardation;
@@ -176,6 +179,7 @@ struct SimulationConfig {
   ChemicalEnvironmentConfig chem_env;
   CellBiologyConfig cell_bio;
   QuorumSensingConfig quorum_sensing;
+  ProphageConfig prophage;
   ImmigrationConfig immigration;
   bool profile_steps = false;
 

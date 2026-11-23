@@ -1293,10 +1293,20 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_event("conjugation_transfers", events.conjugation_transfers);
   write_event("mutations", events.mutations);
   write_event("immigrations", events.immigrations);
+  write_event("prophage_inductions", events.prophage_inductions);
+  write_event("prophage_lytic_kills", events.prophage_lytic_kills);
+  write_event("prophage_lysogen_conversions",
+              events.prophage_lysogen_conversions);
   const auto write_rate = [&](const char* name, Real value) {
     write_scalar_dataset(fid, group + std::string("/events/") + name,
                          H5T_NATIVE_DOUBLE, &value);
   };
+  write_rate("virions_released", events.virions_released);
+  write_rate("virions_adsorbed", events.virions_adsorbed);
+  write_rate("virions_decayed", events.virions_decayed);
+  write_rate("prophage_bacterium_seconds", events.prophage_bacterium_seconds);
+  write_rate("prophage_induction_rate_per_bacterium_day",
+             events.prophage_induction_rate_per_bacterium_day);
   write_rate("sos_basal_rate", events.sos_basal_rate);
   write_rate("sos_post_division_rate", events.sos_post_division_rate);
   write_rate("sos_nuclease_cross_induction_rate",
@@ -1334,6 +1344,18 @@ void HDF5Writer::write_summary(Simulation& sim, const std::string& group,
   write_cumulative_event("conjugation_transfers", cumulative.conjugation_transfers);
   write_cumulative_event("mutations", cumulative.mutations);
   write_cumulative_event("immigrations", cumulative.immigrations);
+  write_cumulative_event("prophage_inductions", cumulative.prophage_inductions);
+  write_cumulative_event("prophage_lytic_kills",
+                         cumulative.prophage_lytic_kills);
+  write_cumulative_event("prophage_lysogen_conversions",
+                         cumulative.prophage_lysogen_conversions);
+  write_rate("cumulative_virions_released", cumulative.virions_released);
+  write_rate("cumulative_virions_adsorbed", cumulative.virions_adsorbed);
+  write_rate("cumulative_virions_decayed", cumulative.virions_decayed);
+  write_rate("cumulative_prophage_bacterium_seconds",
+             cumulative.prophage_bacterium_seconds);
+  write_rate("cumulative_prophage_induction_rate_per_bacterium_day",
+             cumulative.prophage_induction_rate_per_bacterium_day);
   write_rate("cumulative_sos_basal_rate", cumulative.sos_basal_rate);
   write_rate("cumulative_sos_post_division_rate",
              cumulative.sos_post_division_rate);
@@ -1620,12 +1642,16 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   std::vector<double> biomass(static_cast<size_t>(n));
   std::vector<int32_t> in_crypt(static_cast<size_t>(n));
   std::vector<int32_t> microcin_penalty_applied(static_cast<size_t>(n));
+  std::vector<int32_t> has_prophage_immunity(static_cast<size_t>(n));
+  std::vector<int32_t> has_inducible_prophage(static_cast<size_t>(n));
+  std::vector<int32_t> prophage_induced(static_cast<size_t>(n));
   std::vector<int32_t> n_bi(static_cast<size_t>(n));
   std::vector<double> radius(static_cast<size_t>(n));
   std::vector<double> mass(static_cast<size_t>(n));
   std::vector<double> outer_radius(static_cast<size_t>(n));
   std::vector<double> age(static_cast<size_t>(n));
   std::vector<double> sos_timer(static_cast<size_t>(n));
+  std::vector<double> prophage_lysis_timer(static_cast<size_t>(n));
   std::vector<double> death_time(static_cast<size_t>(n));
   std::vector<double> pending_growth_chemistry_biomass(static_cast<size_t>(n));
   std::vector<int64_t> lineage_id(static_cast<size_t>(n));
@@ -1662,12 +1688,16 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
     in_crypt[idx] = a.flags.in_crypt ? 1 : 0;
     microcin_penalty_applied[idx] =
         a.flags.microcin_penalty_applied ? 1 : 0;
+    has_prophage_immunity[idx] = a.flags.has_prophage_immunity ? 1 : 0;
+    has_inducible_prophage[idx] = a.flags.has_inducible_prophage ? 1 : 0;
+    prophage_induced[idx] = a.flags.prophage_induced ? 1 : 0;
     n_bi[idx] = static_cast<int32_t>(a.genome.bi_loci.size());
     radius[idx] = a.radius;
     mass[idx] = a.mass;
     outer_radius[idx] = a.outer_radius;
     age[idx] = a.timers.age;
     sos_timer[idx] = a.timers.sos_timer;
+    prophage_lysis_timer[idx] = a.timers.prophage_lysis_timer;
     death_time[idx] = a.timers.death_time;
     pending_growth_chemistry_biomass[idx] = a.pending_growth_chemistry_biomass;
     lineage_id[idx] = static_cast<int64_t>(a.genome.lineage_id);
@@ -1716,12 +1746,23 @@ void HDF5Writer::write_agents_layer(const Simulation& sim,
   write_dataset_1d(fid, group + "/microcin_penalty_applied",
                    H5T_NATIVE_INT32, microcin_penalty_applied.data(),
                    local_n, cfg_);
+  write_dataset_1d(fid, group + "/has_prophage_immunity",
+                   H5T_NATIVE_INT32, has_prophage_immunity.data(),
+                   local_n, cfg_);
+  write_dataset_1d(fid, group + "/has_inducible_prophage",
+                   H5T_NATIVE_INT32, has_inducible_prophage.data(),
+                   local_n, cfg_);
+  write_dataset_1d(fid, group + "/prophage_induced",
+                   H5T_NATIVE_INT32, prophage_induced.data(),
+                   local_n, cfg_);
   write_dataset_1d(fid, group + "/n_bi_loci", H5T_NATIVE_INT32, n_bi.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/radius", H5T_NATIVE_DOUBLE, radius.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/mass", H5T_NATIVE_DOUBLE, mass.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/outer_radius", H5T_NATIVE_DOUBLE, outer_radius.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/age", H5T_NATIVE_DOUBLE, age.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/sos_timer", H5T_NATIVE_DOUBLE, sos_timer.data(), local_n, cfg_);
+  write_dataset_1d(fid, group + "/prophage_lysis_timer", H5T_NATIVE_DOUBLE,
+                   prophage_lysis_timer.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/death_time", H5T_NATIVE_DOUBLE, death_time.data(), local_n, cfg_);
   write_dataset_1d(fid, group + "/pending_growth_chemistry_biomass", H5T_NATIVE_DOUBLE,
                    pending_growth_chemistry_biomass.data(), local_n, cfg_);

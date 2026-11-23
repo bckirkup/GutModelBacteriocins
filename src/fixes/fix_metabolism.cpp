@@ -984,7 +984,10 @@ void FixMetabolism::perform_divisions() {
   std::vector<Agent> new_agents;
 
   for (Agent& a : agents) {
-    if (a.state == PhenoState::DEAD || a.flags.is_ghost) continue;
+    if (a.state == PhenoState::DEAD || a.flags.is_ghost
+        || a.flags.prophage_induced) {
+      continue;
+    }
 
     Real initial_mass = sphere_mass(CELL_RADIUS_DEFAULT, CELL_DENSITY_DEFAULT);
     if (a.biomass >= cfg_.division_threshold * initial_mass) {
