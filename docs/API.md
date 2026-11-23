@@ -250,6 +250,7 @@ class Fix {
 | `FixQuorumSensing` | `QuorumSensingConfig` | `enabled`, `ai2_basal_rate`, `ai2_growth_coupled`, `ai2_decay_rate`, `lsr_vmax`, `lsr_km`, `ai2_chemotaxis` |
 | `FixBacteriocin` | `BacteriocinConfig` | `sos_basal_rate`, `sos_lysis_prob`, `D_free_colicin`, `burst_release_tau`, `microcin_mu_penalty`; per-plasmid transport overrides are configured via `plasmid_overrides` |
 | `FixReceptor` | `ReceptorConfig` | `kd_*` binding affinities, `kill_rate_colicin/microcin`, `immunity_factor` |
+| `FixProphage` | `ProphageConfig` | `enabled`, `lysogen_prevalence_init`, `active_inducible_fraction`, `k_spont`, `k_max_damage`, `K_damage`, `hill_n`, `burst_size`, `D_virion`, `k_adsorb`, `lysogeny_prob` |
 | `FixMotility` | `MotilityConfig` | `enabled`, `swim_speed`, `run_mean_duration`, `chemotaxis_enabled`, `aerotaxis_enabled`, `surface_sensing_enabled`, `mucin_drag_enabled` |
 | `FixConjugation` | `ConjugationConfig` | `base_transfer_prob`, `contact_radius`, `shear_crit` |
 | `FixCdi` | `CdiConfig` | `enabled`, `contact_radius`, `kill_rate`, `corpse_persistence` |
@@ -413,12 +414,13 @@ CUDA GPU acceleration is optional (`-DGUTIBM_USE_CUDA=ON`). When disabled at com
 
 | Module | File | Notes |
 |--------|------|-------|
-| Green's function superposition | `src/gpu/greens_kernel.cu` | Brute-force QSSA near-field; FMM L-eval via `fmm_far_kernel.cu` |
+| Green's function superposition | `src/gpu/greens_kernel.cu` | Brute-force QSSA near-field + hybrid Sturm-Liouville / Hankel wall-normal Peclet kernel; FMM L-eval via `fmm_far_kernel.cu` |
 | Implicit nutrient diffusion & Route-B delivery | `src/gpu/diffusion_kernel.cu` | PCR tridiagonal solver (lines ≤ 1024; Route-B delivery lines ≤ 512) |
 | VBF coupling & O₂ respiration | `src/gpu/chemistry_kernel.cu` | Implicit carbon Monod, O₂, and iron VBF sinks |
 | Chemical field integration & grid coupling | `src/gpu/field_update_kernel.cu` | Reaction integration, boundaries, depletion, cell assignment |
 | Metabolism, Fur, acetate, & delivery prepare/commit | `src/gpu/agent_update_kernel.cu` | Monod growth, Fur modulation, acetate, delivery prepare/commit, funded respiration; division/death/siderophore chemistry remain on CPU |
 | Receptor kill probabilities | `src/gpu/receptor_kernel.cu` | Competitive binding kill probability on device; Bernoulli RNG on host |
+| Temperate prophage hazard & virion adsorption | `src/gpu/prophage_kernel.cu` | DNA-damage Hill induction probabilities and per-voxel competing-rate virion clearance on device; Bernoulli fate draws on host |
 | Spatial hash CSR & overdamped mechanics | `src/gpu/spatial_hash_kernel.cu`, `src/gpu/mechanics_kernel.cu` | CSR neighbor lists, Hertzian repulsion + EPS adhesion + CDI corpse participation |
 
 **Still CPU-only:** FMM octree M2L traversal (#159), siderophore field chemistry, conjugation, mutation, receptor kill RNG, HDF5 I/O, multi-GPU NCCL.

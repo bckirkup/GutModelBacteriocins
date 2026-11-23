@@ -19,6 +19,7 @@
 #include "fix_metabolism.h"
 #include "fix_receptor.h"
 #include "fix_bacteriocin.h"
+#include "fix_prophage.h"
 #include "fix_conjugation.h"
 #include "fix_mutation.h"
 #include "fix_mechanics.h"
@@ -96,10 +97,21 @@ struct ClosureConfig {
   Real reaction_clip_tolerance_fraction = 0.0;
 };
 
+struct MemoryConfig {
+  // Maximum host memory budget (GiB) allowed for node-total ChemicalField
+  // allocations. 0.0 uses 90% of available host RAM from /proc/meminfo.
+  Real max_host_chemical_gb = 0.0;
+  // Action when replicated ChemicalField exceeds the host budget:
+  // "error" (fail fast before allocation), "auto_slab" (switch to slab when
+  // active features support slab mode), or "warn" (log diagnostic and proceed).
+  std::string replicated_oom_policy = "error";
+};
+
 struct SimulationConfig {
   TimeControlConfig time;
   AdaptiveTimestepConfig adaptive_dt;
   ClosureConfig closure;
+  MemoryConfig memory;
 
   DomainConfig domain;
   // Chemistry layout selector; stage 2a retains global storage in both modes.
@@ -147,6 +159,8 @@ struct SimulationConfig {
     uint16_t cdi_type = 0;
     uint16_t cdi_immunity = 0;
     std::map<std::string, Real, std::less<>> receptor_expression;
+    std::optional<Real> lysogen_prevalence;
+    std::optional<Real> active_inducible_fraction;
   };
   struct PlasmidOverride {
     std::optional<Real> retardation;
@@ -165,6 +179,7 @@ struct SimulationConfig {
   ChemicalEnvironmentConfig chem_env;
   CellBiologyConfig cell_bio;
   QuorumSensingConfig quorum_sensing;
+  ProphageConfig prophage;
   ImmigrationConfig immigration;
   bool profile_steps = false;
 

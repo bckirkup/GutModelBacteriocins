@@ -34,6 +34,8 @@ Keys starting with `_` are ignored by the parser (except as documentation).
 | `oxygen.enabled`, `acetate.enabled`, … | bool | Nested toggles via dot keys |
 | `plasmid_overrides` | object | Per-plasmid overrides (`retardation`, `diff_coeff`, `burst_size`, …) |
 | `layer2` / `layer3` | object / dot keys | Spec 13 multiscale segment and colon-chain configuration |
+| `prophage` | object / dot keys | Spec 14 temperate prophage carriage, Hill induction, and virion parameters |
+| `memory` | object / dot keys | Host chemical-field RAM budget and replicated multi-rank OOM policy |
 | `checkpoint_file` | string | HDF5 checkpoint for restart |
 | `checkpoint_step` | string | Optional step group name to restore |
 | `restart` | object | Closed midstream restart writer (`enabled`, `directory`, `interval_steps`) |
@@ -43,7 +45,7 @@ Keys starting with `_` are ignored by the parser (except as documentation).
 Registered Fix plugins (default execution order when `fixes` is omitted):
 
 ```
-metabolism → quorum_sensing → bacteriocin → receptor → motility → conjugation → cdi → mutation → mechanics
+metabolism → quorum_sensing → bacteriocin → receptor → prophage → motility → conjugation → cdi → mutation → mechanics
 ```
 
 Override with a `fixes` array:
@@ -68,6 +70,7 @@ Many subsystems use **dot-key toggles** in flat JSON:
 | `cdi.enabled` | false | Contact-dependent inhibition |
 | `motility.enabled` | true | Run-and-reverse swimming (Spec 10v2 behavioral modes) |
 | `quorum_sensing.enabled` | false | AI-2 production / Lsr import / chemotaxis (Spec 11) |
+| `prophage.enabled` | false | Temperate prophage carriage, SOS/damage induction, and virion field (Spec 14) |
 | `crypts_enabled` | false | Crypt refugia (zero-flow zones) |
 | `adaptive_dt_enabled` | false | CFL-like adaptive biological timestep |
 | `use_fmm` | false | Barnes–Hut FMM far-field acceleration |

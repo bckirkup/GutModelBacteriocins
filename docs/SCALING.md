@@ -84,8 +84,8 @@ nx = 500, ny = 500, nz = 50  →  12.5 × 10⁶ cells
 ```
 
 The finalized default configuration has 11 chemical species (including
-siderophore and ferric-enterobactin). Eleven species × (`conc` + `reac`) ×
-8 bytes ≈ **2.2 GB** host memory, independent of agent count. The older
+siderophore and ferric-enterobactin; 12 when `prophage.enabled = true`). Eleven species × (`conc` + `reac`) ×
+8 bytes ≈ **2.2 GB** host memory at `500x500x50` (`~8.20 GiB / rank` at `1000x1000x50` with lazy delivery-vector allocation), independent of agent count. In `replicated` mode each MPI rank holds the full grid, so `Simulation::init()` checks `ChemicalField::evaluate_memory_guard()` (`memory.max_host_chemical_gb`, `memory.replicated_oom_policy`) before allocating and recommends `"chemistry_decomposition": "slab"` for multi-rank campaigns (PR #493). The older
 six-species estimate was ≈1.2 GB and is no longer the shipped default.
 Doubling domain linearly increases grid memory.
 

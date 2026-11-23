@@ -95,10 +95,11 @@ Chemical transport is applied once per biological step. Toxins use instantaneous
 | `docs/GPU_COST_BENEFIT_2026-08.md` | Measured T4 cost/benefit per uptake mode and scale, with raw records under `bench_results/` |
 | `docs/GPU_PRECISION_CAMPAIGN_2026-09.md` | Host/device outcome interchangeability (p1 precision + 1440-step agent-dense science arm) and speedup vs agent load, records under `bench_results/gpu_precision_2026-09/` |
 | `docs/SPEC13_MULTISCALE.md` | Layer-2/Layer-3 multiscale architecture, live physics, and occupancy readouts |
+| `docs/SPEC14_PROPHAGE_MODULE.md` | Spec 14 temperate prophage carriage, Hill induction, virion PDE, and presets |
 | `docs/QSSA_TRANSIENT_BOUNDS.md` | QSSA vs transient PDE error bounds (`qssa_transient_bounds` CTest) |
 | `python/gut_ibm_tools/` | HDF5 reader, analysis, validation, visualization, pellet/FISH observation, checkpoint analyze CLI |
 | `python/gut_ibm_tools/colony.py` and `spatial_stats.py` | Colony catalogs and 3-D spatial observables |
-| `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `oxygen_boundary_presets/`, `immigration_fork/`, `fork_profile/`, `batch_scan/`, `gpu_cost_benefit_benchmark/`, `scaling_benchmark/` |
+| `examples/` | `single_colony/`, `diversity_paradox/`, `eari_vadi_validation/`, `cell_biology/`, `oxygen_boundary_presets/`, `prophage_presets/`, `immigration_fork/`, `fork_profile/`, `batch_scan/`, `gpu_cost_benefit_benchmark/`, `scaling_benchmark/` |
 | `tests/` | CTest targets (see test map below) |
 | `.agents/skills/gut-ibm/SKILL.md` | Hands-on development reference |
 | `.agents/skills/gutibm-campaign-ops/SKILL.md` | AWS campaign operations and checkpoint safety |
@@ -126,16 +127,16 @@ Resolved landmines live in `docs/LANDMINES_ARCHIVE.md` (same table format plus a
 | Issue | Status | Notes |
 |-------|--------|-------|
 | **Shipped ROS/uptake defaults after the delivery/ROS campaign** | Partially decided | `oxygen.k_ROS` now ships as `0.0`, so the ambient ROS mortality path is retired by default while remaining available through an explicit positive coefficient. `oxygen.ros_driver=ambient` and `metabolism.uptake_limit=none` remain shipped; explicit GPU delivery is permitted via device delivery (`device_delivery`) or host-forced delivery (`host_forced_delivery`) recorded in `/run_provenance/chemistry_placement`, and agent-side delivery prepare/commit + funded respiration now run on CUDA (PR #490, `docs/CUDA_DELIVERY_PARITY.md`). The remaining open decision is whether and how to enable funded uptake/ROS defaults after benchmark evidence. |
-| GPU portability | Open, cost/benefit measured | Production chemistry + mechanics + delivery metabolism on GPU; CDI corpse participation is parity-preserving through a shared host/device predicate; FMM M2L tree-walk on CPU (#159); multi-GPU NCCL not wired. Device coverage is evidenced only by the T4 CI job. Post-fix T4 at 500x500x50 with OpenMP: device chemistry is 1.91x faster than host for `uptake_limit=none` and 2.86x end-to-end at 1e5 agents — the earlier 1.29x 'regression' was host-device marshalling, since removed. Transfers: 57 GB per ten steps at 4.7-4.8 GB/s pageable (#480), so residency, not pinning, is the remaining lever; only the A1/A4 `s1` pair is post-fix. See `docs/GPU_COST_BENEFIT_2026-08.md`. |
+| GPU portability | Open, cost/benefit measured | Production chemistry + mechanics + delivery metabolism + prophage hazard/adsorption on GPU; CDI corpse participation is parity-preserving through a shared host/device predicate; FMM M2L tree-walk on CPU (#159); multi-GPU NCCL not wired. Device coverage is evidenced only by the T4 CI job. Post-fix T4 at 500x500x50 with OpenMP: device chemistry is 1.91x faster than host for `uptake_limit=none` and 2.86x end-to-end at 1e5 agents — the earlier 1.29x 'regression' was host-device marshalling, since removed. Device-resident stepping (#408/#409/#480, PR #493) keeps `d_conc_` and `d_reac_` on device across consecutive GPU steps (eliminating full-grid `step_conc_upload`, `chem_diffusion_result`, `qssa_toxin_host_sync`, and `chem_reactions` transfers between output dumps) and routes unavoidable staging through RAII `PinnedHostBuffer<T>` (`cudaMallocHost` with pageable fallback), reporting `h2d_bytes`, `d2h_bytes`, and `pinned_staging_active` in `GpuProfile` and `/run_provenance/`. Full-matrix T4 wall-clock remeasurement awaits the next `g4dn.xlarge` Batch pass. See `docs/GPU_COST_BENEFIT_2026-08.md`. |
 | Large-scale MPI scaling | Partial | `mpi_four_rank` CTest (`mpirun -np 4`, includes periodic-x ring); manual `mpirun -np 8+` on HPC |
-| Image series with wall-normal flow | Open (#478) | Translations + z-reversed reflections satisfy zero diffusive flux at both walls but do not solve the drift PDE when `U_z != 0` (residual `2.9e-1` vs `1.4e-3` for a converged mode sum); exact only for wall-parallel flow. The enforced gate uses the configured-species basis (shipped midpoint `Pe_z=0.164`) and configured-plasmid basis (ColE1 `Pe_z=0.822` at mid-depth, 2.325 at the lumen surface); the default warning fires because both exceed 0.05. The audit's sub-percent characterization applies only to weakly retarded toxins — strongly retarded ColE1 and colicin M carry 5-15% median and 20-40% worst-case field errors. The arithmetic is unchanged, and killing/induction outcome movement remains untested. See `docs/EXTERNAL_AUDIT_2026-08.md` and `docs/NEUMANN_WALL_NORMAL_DRIFT.md`. |
+| Image series with wall-normal flow | Mitigated (`auto` + hybrid CPU/GPU kernel, PR #495); legacy default retained | Translations + z-reversed reflections satisfy zero diffusive flux at both walls rather than physical zero total flux `-D dC/dz + U_z C = 0` when `U_z != 0`; exact only for wall-parallel flow. The exact three-branch hybrid Sturm-Liouville / Hankel kernel (`robin::evaluate_physical_sealed_concentration`) now runs natively on both CPU and CUDA GPU (`rel L2 <= 2.5e-12` vs 500-mode SL and `<= 1.3e-3` vs axisymmetric FVM across ColE1 `Pe_z = 0.822–2.325` and ColE2; zero sealed GPU host fallback), selectable globally via `qssa.drift_correction=true` or automatically per high-`Pe_z` source via `qssa.drift_envelope_policy=auto` above `qssa.peclet_z_threshold` (default `0.05`). Shipped defaults retain `qssa.drift_envelope_policy=warn` and `qssa.drift_correction=false` for historical bit-reproducibility (so the warning still fires at shipped ColE1 `Pe_z=0.822/2.325`), and killing/induction outcome movement between legacy and `auto` modes remains to be measured in a campaign. Device parity is evidenced by the T4 CI job (`greens_function_gpu`, `qssa_gpu_parity`). See `docs/EXTERNAL_AUDIT_2026-08.md` and `docs/NEUMANN_WALL_NORMAL_DRIFT.md`. |
 | **Dynamic mucin carbon liberation is dimensionally wrong** | Units fixed; stoichiometry still open | Units half resolved: `k_liberation` is now a per-cell specific rate, `5.0e-16 mol/(cell·s)`, so `k_liberation * vbf.density * Monod(M)` is a genuine `mol/m^3/s` reproducing the static `vbf.mucin_liberation` term at default density; no host or device expression changed (derivation in `docs/UNITS_AUDIT.md` §11). Still open: liberation is not limited by the mucin actually present and ignores the `mucin_z_gradient` weighting the static path applies — the two species are not stoichiometrically coupled and `mucin.secretion_rate` stays inert under Monod saturation. `mucin.enabled` is `false` by default; a mucin-driven carbon arm must not be run until release is mucin-limited. Original defect measured `3.4e7` mol/m^3 carbon at 26 µm after one 60 s step; see `docs/CARBON_LADDER_CAMPAIGN.md`. |
 | **Colicin retardation and burst size are hardcoded per plasmid** | Open, partly corrected | `plasmid.cpp` derives retardation from pI (`retardation_from_pI`): 50.2 for ColE1 (pI 9.0, basic, mucin-bound) but **2.04** for ColE2 (complex pI 6.5, near-neutral) — the nuclease colicin is nearly unretarded (`D_eff = 1.7e-11 m²/s`), so transport is *not* what limits it; ColE1 remains 72x below the literature analogue `7e-11/1.2`. The dead global `retardation_basic/neutral/acidic` keys and `retardation_for_pI` were removed in `0fdf590` (PR #300; recorded in `docs/LANDMINES_ARCHIVE.md`), and per-plasmid `retardation`, `diff_coeff`, and `burst_size` are configurable via `plasmid_overrides.<plasmid>.<field>` — what stays open is whether the *shipped* values are right, since a lysis coefficient calibrated at current retardation absorbs the transport error. See `experiments/rps_campaign/rps_spec_audit.md` §B and `docs/SPEC13_LYSIS_SELECTION.md`. |
 | **~~No configurable resistant strain~~ — withdrawn; the cost is the real gap** | Open (cost unmeasured) | The withdrawn claim was wrong: `initial_strains[].receptor_expression` (aliases `receptor_genotype`, `receptors`) is parsed, range-validated, applied to `receptor_expr`, inherited, MPI-shipped, and checkpointed — a `{"BtuB": 0.0}` founder is a complete *btuB* R-strain phenocopy, so C/S/R is constructible today. The open gap is the **cost**: `Km_b12 = km_b12/(expr·affinity)` clamps at a 100x Km inflation — a ~9% growth penalty at shipped `b12_initial_conc=1e-3` — still unmeasured at population scale (the probe that was to demonstrate it is the next row). Classify strains by `receptor_expr[BtuB]` or agent `type`, never `state`. See `docs/SPEC13_LYSIS_SELECTION.md` §4a. |
 | **Strain composition is not observable at patch scale** | Open | The 12-arm `experiments/rps_probe/` run at `3c166c1` found a 200x200x100 µm patch cannot report *which* strain wins, only how many cells there are: founders collapse to ~30 live against hundreds of boundary exports, then whichever few lineages survived the crash sweep it — identical-treatment seeds gave R-only, S-only, and C+S finals; one strain was extinct in 8 of 12 arms. RPS/displacement contrasts need Layer 2 reseeding or Layer 3, >=5 seeds with paired within-seed statistics, never between-arm mean ratios; the producer treatment was nearly inert in the same run (11 receptor-mediated kills vs 7629 divisions). See `docs/SPEC13_LYSIS_SELECTION.md` §4a-result and `docs/CARBON_LADDER_CAMPAIGN.md`. |
 | **Colicin E potency is set by the corrinoid pool, and it ships where colicins do not matter** | Open (decoupling toggle added in #488) | `FixReceptor::toxin_occupancy` is competitive (`apparent_kd = kd_colicinE_btuB * (1 + [corrinoid]/kd_b12_btuB)`); shipped `b12_initial_conc = 1e-3` leaves BtuB corrinoid-occupied 1000-fold, so colicin E faces an apparent Kd of `5e-4` rather than `5e-7`. A five-level corrinoid ladder (`experiments/spec14_sec8/`, 50 arms, paired nulls, five seeds) swings kills per producer lysis 61x (0.121 to 7.38); PR #488 (#464) added `metabolism.b12_growth_essential` (default `true`) so experiments can decouple BtuB receptor shielding from obligate B12 Monod growth arrest, plus carriage-matched ColE2/ColIa/ColB controls. Efficacy results at the shipped pool still describe a near-inert toxin; whether ~1 µM free mucus corrinoid is right remains a parameter decision. See `docs/SPEC14_SECTION8_VALIDATION.md`. |
 | **A ratio read off the final output step measures the division wave, not selection** | Open (analysis practice; canonical estimator added in #484) | Dense cultures divide in alternating synchronized waves, so a last-sample `log10(n1/n2)` oscillates ±0.2 decades with the phase — at `b12=1e-5` the final sample reported +0.16 decades against a +0.065 wave-averaged value (2.5x overstatement). Report a tail median and a fitted slope over multiple waves using the canonical estimators in `gut_ibm_tools.analysis` (PR #484, #481) and `experiments/spec14_sec8/analyze_corrinoid.py`; this is the second final-sample statistic after `rps_probe` to produce a wrong campaign number. |
-| **Spec 14's motivating in-vitro exclusion does not occur in GutIBM** | Open (re-test unblocked by #488; Spec 14 Changes 1-3 gated on #475) | The §8 no-code validation (`docs/SPEC14_SECTION8_VALIDATION.md`, run at `5fb4250`) found **V1 FAIL at every corrinoid level**: the Spec 14 target is 100x exclusion in 6 h (0.33 decades/h) and the ladder's best was 0.090 decades/h — parametric (corrinoid competition) and structural (a lysis forfeits a whole lineage while a killed sensitive is largely replaced; break-even sits between 1.17 and 7.38 kills per lysis). PR #488 landed the `b12_growth_essential` decoupling and carriage-matched controls for re-running §8 V1; **Spec 14 Changes 1-3 (#475) remain gated** until V1 is re-evaluated. V2 (in vivo) was not obtained. |
+| **Spec 14's motivating in-vitro exclusion does not occur in GutIBM** | Open (campaign re-evaluation; `FixProphage` landed default-off in #494) | The §8 no-code validation (`docs/SPEC14_SECTION8_VALIDATION.md`, run at `5fb4250`) found **V1 FAIL at every corrinoid level**: the Spec 14 target is 100x exclusion in 6 h (0.33 decades/h) and the ladder's best was 0.090 decades/h — parametric (corrinoid competition) and structural (a lysis forfeits a whole lineage while a killed sensitive is largely replaced; break-even sits between 1.17 and 7.38 kills per lysis). PR #488 (#464) landed `b12_growth_essential` decoupling and carriage-matched controls, and PR #494 (#475) landed the default-off temperate prophage module (`prophage.enabled=false`, `docs/SPEC14_PROPHAGE_MODULE.md`); empirical §8 V1 re-evaluation and *in vivo* lysogen-displacement testing remain open campaign work. |
 | **A sequence census is an upper bound on a functionally-defined parameter, not its central value** | Open (parameterization practice) | When a functionally-defined parameter (inducible, viable, active) is sourced from a sequence census, the census value is an upper bound — three instances: mucosal density (16S qPCR 100-1000x CFU; `docs/gutibm_density_reconciliation.md`), lysogen prevalence (`lysogen_prevalence_init` counts *inducible* prophage but surveys count integrated sequences), induction rate. Record the census value as a bound and sweep the functional fraction; prevalence and per-lysogen rate are not independent axes since the observable is their product. See `docs/SPEC14_PRIOR_REVIEW.md`. |
 
 `uptake_limit=voxel` is retained as the grid-artifact probe behind the Spec 12 findings (exercised by the `tests/test_uptake_limit.cpp` resolution probes; rationale in `docs/SPEC12_DENSITY_LIMITATION.md`), not as a production uptake mode.
@@ -146,23 +147,23 @@ When writing tests that involve plasmids, use **`ColE1`/`ColB`** (legacy `colici
 
 ### C++ (CTest)
 
-**Fast unit (`ctest -L unit -LE slow`):** 112 targets covering spatial hash, Green's functions, Neumann image series & wall-normal drift (13 shards), Robin lumen BC (18 shards), agent/plasmid, iron fallback, octree, FMM (9 shards), qssa stoichiometry, QSSA transient bounds (`qssa_transient_bounds`), metabolism, conjugation, z-gradient, nutrient diffusion, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation & units, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), bacteriocin, receptor, mutation, fur, cdi, motility, quorum sensing, immigration, uptake limitation, delivery support cache concurrency, mechanics participation, HDF5 fail-closed, Spec 13 Layer-2 (`layer2_segment`, `layer2_reentry` 3 shards) and Layer-3 (`layer3_chain`), and AWS/ops helper scripts.
+**Fast unit (`ctest -L unit -LE slow`):** 115 targets covering spatial hash, Green's functions, Neumann image series & wall-normal drift (13 shards + `wall_normal_peclet`), Robin lumen BC (18 shards), agent/plasmid, iron fallback, octree, FMM (9 shards), qssa stoichiometry, QSSA transient bounds (`qssa_transient_bounds`), metabolism, chemical field memory guard (`chemical_field_memory_guard`), conjugation, z-gradient, nutrient diffusion, domain decomp, acetate/MetE, protease decay, oxygen gradient, O₂ growth boost, mucin liberation & units, peristaltic advection, ethanolamine, adaptive dt, agent transfer pack/unpack, fix registry, input parser, config ingestion (every parser key is tracked into `SimulationConfig`), bacteriocin, receptor, temperate prophage (`prophage`), mutation, fur, cdi, motility, quorum sensing, immigration, uptake limitation, delivery support cache concurrency, mechanics participation, HDF5 fail-closed, Spec 13 Layer-2 (`layer2_segment`, `layer2_reentry` 3 shards) and Layer-3 (`layer3_chain`), and AWS/ops helper scripts.
 
 **Slow unit:** mechanics, immunity escape.
 
-**Integration (`ctest -L integration`):** 32 targets covering smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), feature combinations, mechanism wiring (cross-spec mass-balance + directional coupling; see `docs/WIRING_AUDIT.md`), toxin sentinel, population-scale delivery resolution (`uptake_limit_population_resolution`), maintenance carbon funding, HDF5 round-trip/checkpoint/restart/RNG-replay (`hdf5_rng_replay`)/schedule/compression/live-agents/graceful-shutdown/summary-events, MPI, GPU integration, and washout trap long-horizon regression (`washout_trap`, issue #160).
+**Integration (`ctest -L integration`):** 33 targets covering smoke (end-to-end biology), config diversity (fixture/example fingerprints must differ), feature combinations, mechanism wiring (cross-spec mass-balance + directional coupling; see `docs/WIRING_AUDIT.md`), toxin sentinel, temperate prophage (`prophage`), population-scale delivery resolution (`uptake_limit_population_resolution`), maintenance carbon funding, HDF5 round-trip/checkpoint/restart/RNG-replay (`hdf5_rng_replay`)/schedule/compression/live-agents/graceful-shutdown/summary-events, MPI, GPU integration, and washout trap long-horizon regression (`washout_trap`, issue #160).
 
 **MPI:** `mpi_multi_rank` (`mpirun -np 2`), `mpi_four_rank` (`mpirun -np 4`), `mpi_gpu_multi_rank` (2-rank + `gpu_enabled`), `cuda_aware_mpi_reaction` (CUDA-aware device Allreduce when available), `hdf5_roundtrip_parallel`, `hdf5_checkpoint_parallel`, `vbf_density_replicated_mpi`, `vbf_density_replicated_serial`.
 
 **OpenMP:** `openmp_parity` + `delivery_support_cache_race` + `scripts/compare_openmp_parity.sh` (serial vs OpenMP deterministic + stochastic toxin-kill fingerprints)
 
-**GPU (CUDA job — 23 `gpu`-labelled targets):** `greens_function_gpu`, `gpu_diffusion`,
+**GPU (CUDA job — 24 `gpu`-labelled targets):** `greens_function_gpu`, `gpu_diffusion`,
 `gpu_chemical_field`, `gpu_residency_audit`, `gpu_reaction_residency`,
 `gpu_feature_combinations`, `gpu_production_path`,
 `gpu_smoke`, `gpu_reproducibility`, `gpu_scaling_benchmark`,
 `qssa_gpu_parity`, `neumann_image_series_gpu`, `robin_lumen_gpu`,
 `gpu_toxin_burst_parity`, `gpu_toxin_source_clearing`, `gpu_nutrient_feedback`,
-`gpu_metabolism_fur`, `gpu_uptake_limit`,
+`gpu_metabolism_fur`, `gpu_uptake_limit`, `gpu_prophage_parity`,
 `spatial_hash_gpu_csr`, `mechanics_gpu_parity`, `gpu_kernel_units`,
 `mpi_gpu_multi_rank`, and `cuda_aware_mpi_reaction`, plus
 `scripts/compare_gpu_parity.sh`. GPU-labelled CTest targets return CTest's skip
@@ -179,10 +180,15 @@ CUDA compilation alone is not equivalent to physical GPU execution. New
 scaling sweeps are on-demand only via
 `scripts/run_scaling_benchmark.sh` and
 `scripts/run_gpu_scaling_benchmark.sh`; the nightly workflow was removed after
-OOM failures at the `1000x1000x50` grid in the two-rank case. Chemical-field
-storage is confirmed by code and a local OOM measurement to use the global
-grid per rank, requiring approximately 16 GiB for two ranks before other
-allocations. This memory behavior is tracked in #480.
+OOM failures at the `1000x1000x50` grid in the two-rank case. In `replicated`
+mode, `ChemicalField` allocates the global grid per rank (`~8.20 GiB / rank`,
+`~16.39 GiB / 2 ranks`, `~65.57 GiB / 8 ranks` at `1000x1000x50` across 11
+species after #480 lazy delivery-vector allocation). `Simulation::init()` now
+runs `ChemicalField::evaluate_memory_guard()` before allocating, enforcing
+`memory.max_host_chemical_gb` (or 90% of `/proc/meminfo` `MemAvailable`) across
+`ranks_per_node` with `memory.replicated_oom_policy` (`"error"`, `"auto_slab"`,
+or `"warn"`) and emitting a rank-0 diagnostic recommending
+`"chemistry_decomposition": "slab"` (PR #493).
 
 **Config diversity guardrail:** `test_config_diversity` runs short simulations from parser fixtures and example JSON files and asserts distinct deterministic fingerprints — catches configs silently reverting to defaults.
 
@@ -267,7 +273,10 @@ allocations. This memory behavior is tracked in #480.
 | Cell biology (Spec 3 / 10v2) | `fur.enabled`, `cdi.enabled`, `motility.enabled` + aerotaxis/energy/surface/mucin keys; per-strain `cdi_type`, `cdi_immunity` |
 | Quorum sensing (Spec 11) | `quorum_sensing.enabled` + AI-2 production/import/chemotaxis keys in `docs/PARAMETERS.md` |
 | BtuB/B12 decoupling | `metabolism.b12_growth_essential` (default `true`; set `false` to decouple B12 growth limitation from BtuB receptor competition) |
+| Wall-normal Peclet QSSA | `qssa.drift_envelope_policy` (`warn`/`error`/`allow`/`auto`), `qssa.peclet_z_threshold` (`0.05`), `qssa.drift_correction` — see `docs/NEUMANN_WALL_NORMAL_DRIFT.md` |
+| Chemical memory guard | `memory.max_host_chemical_gb` (`0.0` = 90% available RAM) and `memory.replicated_oom_policy` (`error`/`auto_slab`/`warn`) |
 | Multiscale Layer 2 / Layer 3 (Spec 13) | `layer2.*` (including `live_physics_mode`, `live_inherit_oxygen`, `live_align_patch_table_delivery`, `audit.patch_indices`, perturbation pulses) and `layer3.*` — see `docs/SPEC13_MULTISCALE.md` |
+| Temperate prophage (Spec 14) | `prophage.enabled` + carriage/Hill induction/virion keys in `docs/SPEC14_PROPHAGE_MODULE.md` and `docs/PARAMETERS.md` (presets in `examples/prophage_presets/`) |
 | GPU | `gpu_enabled` in input JSON (CUDA build required) |
 | Immigration | `immigration.enabled` plus `immigration.count`, `strain_index`, placement and schedule keys; pulse `step` is relative to run start |
 | Initial founder placement | `initial_population.placement=z_slab` plus `initial_population.z_min`/`z_max`; scenario-wide founder band, independent of `domain_z` when configured |
@@ -289,6 +298,7 @@ Full parameter docs: `docs/PARAMETERS.md`.
 - `docs/AWS_BATCH.md` — AWS Batch Spot + CUDA deployment + Phase Observability
 - `docs/MULTI_SCALE_EXPERIMENTATION.md` — nested short/small vs host-scale experiment ladder
 - `docs/SPEC13_MULTISCALE.md` — Layer-2/Layer-3 multiscale colon simulation reference
+- `docs/SPEC14_PROPHAGE_MODULE.md` — Spec 14 temperate prophage module and dual-regime presets
 - `docs/BRANCHING_FROM_CHECKPOINTS.md` — measured calibration checkpoint fork runbook
 - `docs/PRE_SUBMISSION_CHECKLIST.md` — operator checks before campaign submission
 
@@ -312,13 +322,10 @@ Full parameter docs: `docs/PARAMETERS.md`.
 
 ## Open Issue Tracker (Nov 2026)
 
-Jun–Aug 2026 queues (#40–#81, #154–#161 except #159, #256–#306) and Nov 2026 Cycle 2 implementation issues (#464–#474, #476–#477, #479, #481–#483 via PRs #484–#492) are **closed**. Open GitHub issues as of 2026-11-22:
+Jun–Aug 2026 queues (#40–#81, #154–#161 except #159, #256–#306) and the entire Nov 2026 Cycle 2 queue (#464–#483 via PRs #484–#495) are **closed**. Open GitHub issues as of 2026-11-22:
 
 | Issue | Topic | Status |
 |-------|-------|--------|
-| #475 | Spec 14 (`GAP-10`) temperate prophage module (gated on §8 V1 re-test unblocked by #488) | Open |
-| #478 | Bound or replace method-of-images Green's function under wall-normal advection (`U_z != 0`) | Open |
-| #480 | Replicated `ChemicalField` multi-rank OOM (~16 GiB at `1000x1000x50`) & 57 GB/10-step GPU transfers | Open |
 | #446 | Campaign storage index (automated S3 collector) | Open |
 | #159 | FMM: sub-quadratic CPU M2L landed (#164); full GPU far-field octree traversal remains open | Open |
 
@@ -338,7 +345,7 @@ for building/running/testing in this environment.
   `CC=gcc CXX=g++` (gcc-13, which has full dev libs and matches CI):
   `CC=gcc CXX=g++ cmake .. -DGUTIBM_USE_MPI=ON -DGUTIBM_USE_HDF5=ON`. Standard
   build/test/run commands are in `.agents/skills/gut-ibm/SKILL.md`.
-- **Non-GPU CTest targets pass here (161 total with MPI+HDF5 enabled; 23 `gpu`-labelled targets skip without CUDA/GPU).** The `libhwloc`/MPI "preexisting failures"
+- **Non-GPU CTest targets pass here (165 total with MPI+HDF5 enabled; 24 `gpu`-labelled targets skip without CUDA/GPU).** The `libhwloc`/MPI "preexisting failures"
   table in `.agents/skills/testing-gutibm/SKILL.md` describes a *different* (Devin)
   VM; on Cursor Cloud MPI/HDF5 init works and the full non-GPU suite (incl. `mpi_multi_rank`,
   `hdf5_*`, `scaling_benchmark`) passes.

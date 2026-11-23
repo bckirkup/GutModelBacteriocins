@@ -27,6 +27,7 @@ struct AgentKm {
 struct AgentTimers {
   Real age = 0;
   Real sos_timer = 0;
+  Real prophage_lysis_timer = -1.0;
   Real death_time = -1.0;
 };
 
@@ -35,6 +36,12 @@ struct AgentFlags {
   bool just_divided = false;
   bool microcin_penalty_applied = false;
   bool is_ghost = false;
+  // Spec 14 temperate prophage state (docs/SPEC14_PRIOR_REVIEW.md §3):
+  // Carriage of superinfection immunity (all lysogens, including cryptic) is
+  // tracked separately from active inducibility (excision/virion burst).
+  bool has_prophage_immunity = false;
+  bool has_inducible_prophage = false;
+  bool prophage_induced = false;
 };
 
 struct Agent {

@@ -80,7 +80,7 @@ entry per named sub-test (see the `SHARDS` argument in `tests/CMakeLists.txt`;
 the binaries accept sub-test names as arguments, or run all with none). A
 single shard is run as `ctest -R robin_lumen_bc_sealed_limit`.
 
-CTest targets (161 total with MPI+HDF5 enabled, including shards, custom script, and MPI targets; inventory from
+CTest targets (165 total with MPI+HDF5 enabled, including shards, custom script, and MPI targets; inventory from
 `tests/CMakeLists.txt`):
 
 | Test | Labels | Focus |
@@ -94,6 +94,7 @@ CTest targets (161 total with MPI+HDF5 enabled, including shards, custom script,
 | `greens_function` | unit | Radial symmetry and boundary kernels |
 | `neumann_image_series` | unit | Neumann image-series convergence |
 | `neumann_wall_normal_drift_<shard>` | unit | Wall-normal drift envelope (13 shards) |
+| `wall_normal_peclet` | unit | Hybrid Sturm-Liouville / Hankel sealed wall-normal Peclet solver and `auto` dispatch |
 | `robin_lumen_bc_<shard>` | unit | Robin lumen-boundary transfer (18 shards) |
 | `agent` | unit | Agent pool and plasmid library |
 | `iron_fallback` | unit | Secondary iron receptors |
@@ -107,6 +108,7 @@ CTest targets (161 total with MPI+HDF5 enabled, including shards, custom script,
 | `nutrient_diffusion` | unit | Implicit diffusion residuals and invariants |
 | `domain_decomp` | unit | Slab decomposition logic |
 | `chemical_field_residency` | unit | Host/device concentration residency |
+| `chemical_field_memory_guard` | unit | Multi-rank replicated `ChemicalField` host OOM guard and `auto_slab` policy |
 | `acetate_mete` | unit | Acetate inhibition of MetE |
 | `protease_decay` | unit | Protease half-life decay |
 | `oxygen_gradient` | unit | Oxygen registration and z-gradient |
@@ -140,6 +142,7 @@ CTest targets (161 total with MPI+HDF5 enabled, including shards, custom script,
 | `agent_toxin_sampling` | unit | Agent toxin sampling |
 | `siderophore_depletion` | unit | Siderophore depletion |
 | `receptor` | unit | TBDT binding and killing |
+| `prophage` | unit, integration | Spec 14 temperate prophage carriage, Hill induction, virion field, and lysogeny |
 | `mutation` | unit | BI-locus evolution |
 | `fur` | unit | Fur regulation |
 | `uptake_limit` | unit | Agent uptake limitation |
@@ -197,6 +200,7 @@ CTest targets (161 total with MPI+HDF5 enabled, including shards, custom script,
 | `gpu_nutrient_feedback` | gpu, integration | GPU nutrient feedback |
 | `gpu_metabolism_fur` | gpu, integration | GPU metabolism/Fur |
 | `gpu_uptake_limit` | gpu, integration | GPU uptake limitation and device delivery |
+| `gpu_prophage_parity` | gpu, integration | GPU/CPU parity for temperate prophage induction and virion adsorption |
 | `spatial_hash_gpu_csr` | gpu | GPU spatial hash CSR |
 | `mechanics_gpu_parity` | gpu | GPU mechanics parity |
 | `gpu_kernel_units` | gpu | GPU kernel units |
@@ -223,7 +227,7 @@ Single-process (debugging):
 
 No config argument → `InputParser::default_config()` (resident + immigrant strains).
 
-Examples: `examples/single_colony/`, `examples/diversity_paradox/`, `examples/cell_biology/`, `examples/eari_vadi_validation/`, `examples/oxygen_boundary_presets/`, `examples/immigration_fork/`, `examples/fork_profile/`, `examples/batch_scan/`, `examples/gpu_cost_benefit_benchmark/`, `examples/scaling_benchmark/`.
+Examples: `examples/single_colony/`, `examples/diversity_paradox/`, `examples/cell_biology/`, `examples/eari_vadi_validation/`, `examples/oxygen_boundary_presets/`, `examples/prophage_presets/`, `examples/immigration_fork/`, `examples/fork_profile/`, `examples/batch_scan/`, `examples/gpu_cost_benefit_benchmark/`, `examples/scaling_benchmark/`.
 
 ## Python Analysis Tools
 
@@ -258,7 +262,7 @@ Each biological step in `Simulation::step()`:
 2. `exchange_ghost_agents()` — MPI boundary ghosts for neighbor queries
 3. `rebuild_spatial_hash()`, `update_grid_coupling()`
 4. Fix `pre_step(dt)` hooks
-5. **Biology** — all Fixes `compute(dt)` (`metabolism`, `quorum_sensing`, `bacteriocin`, `receptor`, `motility`, `conjugation`, `cdi`, `mutation`, `mechanics`)
+5. **Biology** — all Fixes `compute(dt)` (`metabolism`, `quorum_sensing`, `bacteriocin`, `receptor`, `prophage`, `motility`, `conjugation`, `cdi`, `mutation`, `mechanics`)
 6. Clear ghosts
 7. **Chemistry** — QSSA bacteriocin field, rank-summed nutrient reactions, VBF coupling, grid update, implicit nutrient diffusion, boundaries
 8. **Physics** — mucus advection, VBF drag, mechanics repulsion
@@ -286,6 +290,7 @@ Current Fix modules (default order in `FixRegistry::register_defaults()` in `src
 | `FixQuorumSensing` | `QuorumSensingConfig` | AI-2 production / Lsr import (Spec 11) |
 | `FixBacteriocin` | `BacteriocinConfig` | SOS lysis, microcin secretion |
 | `FixReceptor` | `ReceptorConfig` | TBDT competitive binding, toxin killing |
+| `FixProphage` | `ProphageConfig` | Temperate prophage carriage, Hill DNA-damage induction, virion field, lysogeny vs lysis (Spec 14) |
 | `FixMotility` | `MotilityConfig` | Run-and-reverse + Weber–Fechner taxis (Spec 10v2/11) |
 | `FixConjugation` | `ConjugationConfig` | F-pili HGT, shear-dependent MPS |
 | `FixCdi` | `CdiConfig` | Contact-dependent inhibition |
@@ -331,7 +336,10 @@ Current Fix modules (default order in `FixRegistry::register_defaults()` in `src
 | `kd_colicinE_btuB`, `kill_rate_colicin`, … | Receptor Fix tunables |
 | `base_transfer_rate`, `pili_heterogeneity`, … | Conjugation Fix tunables |
 | `bi_duplication_rate`, `max_bi_loci`, … | Mutation Fix tunables |
+| `prophage.enabled`, `prophage.lysogen_prevalence_init`, `prophage.active_inducible_fraction`, `prophage.k_spont`, `prophage.k_max_damage`, `prophage.K_damage`, `prophage.hill_n`, … | Temperate prophage Fix tunables (Spec 14) |
 | `use_fmm`, `fmm_theta`, `fmm_expansion_order` | Barnes-Hut FMM |
+| `qssa.drift_envelope_policy`, `qssa.peclet_z_threshold`, `qssa.drift_correction` | Sealed wall-normal Peclet QSSA policy (`warn`/`error`/`allow`/`auto`, default threshold `0.05`) |
+| `memory.max_host_chemical_gb`, `memory.replicated_oom_policy` | Multi-rank replicated `ChemicalField` host RAM guard (`error`/`auto_slab`/`warn`) |
 | `peristaltic_enabled`, `peristaltic_period`, … | Peristaltic advection |
 | `oxygen.enabled`, `oxygen.epithelial_conc`, … | O₂ field and aerobic boost (Spec 1) |
 | `oxygen.delivery_uptake_enabled` | Oxygen delivery uptake; default `false`, requires delivery uptake mode |

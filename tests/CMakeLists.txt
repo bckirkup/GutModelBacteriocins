@@ -124,6 +124,7 @@ gutibm_add_test(neumann_wall_normal_drift test_neumann_wall_normal_drift.cpp LAB
     correction_improves_with_wall_normal_flow
     robin_composition
     default_off_identity)
+gutibm_add_test(wall_normal_peclet test_wall_normal_peclet.cpp LABELS "unit")
 # Sharded: the eviction exercise alone builds 60+ Robin tables; one CTest
 # entry per sub-test lets --parallel keep the job's wall clock near the
 # longest shard instead of the whole binary.
@@ -154,6 +155,8 @@ gutibm_add_test(qssa_stoichiometry test_qssa_stoichiometry.cpp LABELS "unit")
 gutibm_add_test(qssa_transient_bounds test_qssa_transient_bounds.cpp LABELS "unit;science")
 gutibm_add_test(chemical_field_reaction_residency
   test_chemical_field_reaction_residency.cpp LABELS "unit")
+gutibm_add_test(chemical_field_memory_guard
+  test_chemical_field_memory_guard.cpp LABELS "unit")
 gutibm_add_test(conjugation test_conjugation.cpp LABELS "unit")
 gutibm_add_test(z_gradient test_z_gradient.cpp LABELS "unit")
 gutibm_add_test(nutrient_diffusion test_nutrient_diffusion.cpp LABELS "unit")
@@ -215,6 +218,9 @@ gutibm_add_test(maintenance_carbon test_maintenance_carbon.cpp LABELS "unit;inte
 gutibm_add_test(cdi test_cdi.cpp LABELS "unit")
 gutibm_add_test(motility test_motility.cpp LABELS "unit")
 gutibm_add_test(quorum_sensing test_quorum_sensing.cpp LABELS "unit")
+gutibm_add_test(prophage test_prophage.cpp
+  LABELS "unit;integration"
+  COMPILE_DEFINITIONS GUTIBM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 gutibm_add_test(immigration test_immigration.cpp LABELS "unit")
 
 # Scaling benchmark smoke (issue #55) — modest agent counts for CI.
@@ -396,6 +402,7 @@ gutibm_add_test(gpu_uptake_limit test_gpu_uptake_limit.cpp LABELS "gpu;integrati
 gutibm_add_test(spatial_hash_gpu_csr test_spatial_hash_gpu_csr.cpp LABELS "gpu")
 gutibm_add_test(mechanics_gpu_parity test_mechanics_gpu_parity.cpp LABELS "gpu")
 gutibm_add_test(gpu_kernel_units test_gpu_kernel_units.cpp LABELS "gpu")
+gutibm_add_test(gpu_prophage_parity test_gpu_prophage_parity.cpp LABELS "gpu")
 
 add_test(
   NAME gpu_target_manifest

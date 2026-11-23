@@ -1,0 +1,51 @@
+{
+  "seed": 7714,
+  "total_time": 180.0,
+  "bio_dt": 60.0,
+  "output_interval": 180.0,
+  "domain_x": 6e-05,
+  "domain_y": 6e-05,
+  "domain_z": 4e-05,
+  "grid_dx": 1e-05,
+  "prophage": {
+    "enabled": true,
+    "lysogen_prevalence_init": 0.75,
+    "active_inducible_fraction": 0.5,
+    "k_spont": 2e-05,
+    "k_max_damage": 0.02,
+    "K_damage": 1e-06,
+    "hill_n": 2.0,
+    "damage_stimulus": 0.001,
+    "nuclease_damage_weight": 1.5,
+    "ros_damage_weight": 0.5,
+    "lysis_delay_s": 0.0,
+    "virion_burst_size": 15.0,
+    "D_virion": 6e-12,
+    "virion_retardation": 2.0,
+    "k_virion_decay": 0.0002,
+    "virion_washout_scale": 1.0,
+    "k_adsorb": 2e-15,
+    "p_lysogeny": 0.25,
+    "adsorption_receptor": "BtuB"
+  },
+  "initial_strains": [
+    {
+      "type": 1,
+      "count": 20,
+      "mu_max": 0.0004,
+      "plasmids": [
+        "ColE2"
+      ],
+      "lysogen_prevalence": 1.0,
+      "active_inducible_fraction": 0.8
+    },
+    {
+      "type": 2,
+      "count": 16,
+      "mu_max": 0.0004,
+      "plasmids": [],
+      "lysogen_prevalence": 0.25,
+      "active_inducible_fraction": 0.0
+    }
+  ]
+}

@@ -6,7 +6,7 @@ CUDA GPU acceleration for GutIBM (issue #33). OpenMP remains the CPU shared-memo
 
 | File | Role |
 |------|------|
-| `greens_kernel.cu` | QSSA Green's function superposition (brute-force path) |
+| `greens_kernel.cu` | QSSA Green's function superposition (brute-force path + hybrid Sturm-Liouville / Hankel wall-normal Peclet sealed kernel) |
 | `field_update_kernel.cu` | Reaction integration, boundaries, nutrient depletion, grid coupling |
 | `agent_update_kernel.cu` | Metabolism Monod growth, biomass update, Fur modulation, acetate overflow/scavenging, delivery prepare/commit, and funded respiration (`receptor_expr` / `ligand_affinity` are **SoA**: `r * num_agents + i`) |
 | `chemistry_kernel.cu` | Agent O₂ respiration + VBF nutrient coupling (implicit carbon Monod, O₂, and iron sinks) |
@@ -14,9 +14,10 @@ CUDA GPU acceleration for GutIBM (issue #33). OpenMP remains the CPU shared-memo
 | `diffusion_kernel.cu` | PCR tridiagonal solver for backward-Euler directional diffusion (x/y periodic, z bounded) + Route-B device delivery |
 | `fmm_far_kernel.cu` | FMM local-expansion far-field grid deposit (when M2L locals ready) |
 | `receptor_kernel.cu` | Receptor competitive-binding kill probability on device |
+| `prophage_kernel.cu` | Spec 14 temperate prophage DNA-damage Hill induction hazard and per-voxel competing-rate virion adsorption |
 | `mechanics_kernel.cu` | Overdamped Stokes Hertzian repulsion + EPS adhesion via CSR neighbor lists (including shared host/device CDI corpse participation predicate) |
 
-Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `greens_function_gpu.cpp`, `chemical_field_gpu.cpp`, `agent_pool_gpu.cpp`, `spatial_hash_gpu.cpp`, `fmm_gpu.cpp`, `receptor_gpu.cpp`, `mechanics_gpu.cpp`, `qssa_gpu.cpp`, `vbf_gpu.cpp`, `diffusion_gpu.cpp`, `gpu_profile.cpp`.
+Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `greens_function_gpu.cpp`, `chemical_field_gpu.cpp`, `cuda_aware_mpi.cpp`, `agent_pool_gpu.cpp`, `spatial_hash_gpu.cpp`, `fmm_gpu.cpp`, `receptor_gpu.cpp`, `prophage_gpu.cpp`, `mechanics_gpu.cpp`, `qssa_gpu.cpp`, `vbf_gpu.cpp`, `diffusion_gpu.cpp`, `gpu_profile.cpp`.
 
 ### Production chemistry path (Spec 9 PR5)
 
@@ -26,7 +27,7 @@ Host-side facades: `device.cpp`, `dispatch.cpp`, `chemistry_pipeline.cpp`, `gree
 2. Single host download for `MPI_Allreduce` on reaction grids (or device Allreduce when CUDA-aware MPI is active)
 3. VBF coupling on device when the O₂ GPU path succeeded (or CPU fallback + upload)
 4. Reaction integration, implicit diffusion (including Route-B device delivery for replicated single-rank lines ≤ 512), and boundaries on device
-5. Per-species host/device residency tracking minimizes unnecessary full-grid syncs (see `docs/LANDMINES_ARCHIVE.md`)
+5. Device-resident stepping keeps `d_conc_` and `d_reac_` on device across consecutive GPU steps between output dumps and stages unavoidable transfers through RAII `PinnedHostBuffer<T>` (`h2d_bytes`, `d2h_bytes`, and `pinned_staging_active` in `GpuProfile` and `/run_provenance/`; PR #493)
 
 A dedicated `cudaStream_t` from `gpu_compute_stream()` serializes chemistry kernels without per-kernel device-wide syncs. QSSA near-field superposition runs on GPU via `gpu_superpose_to_device`; FMM far-field uses `fmm_far_kernel.cu` when dense M2L locals are ready (trees with >256 nodes fall back to CPU `traverse_far`).
 
@@ -53,7 +54,7 @@ When `GUTIBM_CUDA_AWARE_MPI=1` **and** the linked MPI library reports CUDA buffe
 
 Validation: `mpirun -np 2 ./test_cuda_aware_mpi_reaction` (device parity runs only when CUDA-aware MPI is detected). Broader MPI smoke: `bash scripts/run_mpi_scaling_smoke.sh`.
 
-Parity and production smoke: 23 `gpu`-labelled CTest targets (`ctest -L gpu`), including `gpu_smoke`, `qssa_gpu_parity`, `gpu_scaling_benchmark`, `spatial_hash_gpu_csr`, `mechanics_gpu_parity`, `gpu_feature_combinations`, `gpu_production_path`, `gpu_uptake_limit`, `gpu_residency_audit`, `gpu_reaction_residency`, `mpi_gpu_multi_rank`, `cuda_aware_mpi_reaction`, plus `scripts/compare_gpu_parity.sh`.
+Parity and production smoke: 24 `gpu`-labelled CTest targets (`ctest -L gpu`), including `gpu_smoke`, `qssa_gpu_parity`, `gpu_scaling_benchmark`, `spatial_hash_gpu_csr`, `mechanics_gpu_parity`, `gpu_feature_combinations`, `gpu_production_path`, `gpu_uptake_limit`, `gpu_prophage_parity`, `gpu_residency_audit`, `gpu_reaction_residency`, `mpi_gpu_multi_rank`, `cuda_aware_mpi_reaction`, plus `scripts/compare_gpu_parity.sh`.
 
 ## Build
 
@@ -104,7 +105,7 @@ Agent genomes (`bi_loci` variable length) remain on the host; SoA device buffers
 ## Memory
 
 Default 1 mm × 1 mm × 100 µm grid at 2 µm resolution:
-- ~12.5M cells × 6 species × (`conc` + `reac`) ≈ **1.2 GB** device memory for `ChemicalFieldGpu`
+- ~12.5M cells × 11 default species × (`conc` + `reac`) ≈ **2.2 GB** device memory for `ChemicalFieldGpu` (~1.2 GB for older 6-species subset; 12 species when `prophage.enabled=true`)
 - Agent SoA scales ~O(N) with additional VRAM
 
 Production example (`diversity_paradox` scale, 2 mm × 2 µm): nx=1000 fits the standard PCR line limit (1024); Route-B device delivery supports line lengths up to 512 (longer lines fall back to host-forced delivery recorded in `/run_provenance/chemistry_placement`).

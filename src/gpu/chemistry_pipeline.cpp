@@ -172,6 +172,7 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     in.chem_gpu.audit_reactions(in.chem);
     result.reactions_on_gpu = in.chem_gpu.apply_reactions(dt, in.domain);
     if (result.reactions_on_gpu) {
+      in.chem.mark_all_device_conc_dirty();
       in.chem_gpu.download_reaction_clip(in.chem);
     } else {
       in.chem_gpu.materialize_reactions_on_host(in.chem);
@@ -179,6 +180,9 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
   }
 
   if (!result.reactions_on_gpu) {
+    if (in.gpu_active) {
+      in.chem.materialize_all_from_device();
+    }
     const Real cell_volume = in.domain.cell_volume();
     Int s = 0;
     for (const auto& conc_row : in.chem.conc_data()) {
@@ -218,7 +222,9 @@ ChemistryPipelineResult run_chemistry_pipeline(ChemistryPipelineInput& in, Real 
     }
     if (result.diffusion_on_gpu) {
       in.chem_gpu.apply_boundaries(in.domain, in.chem);
-      {
+      in.chem.mark_all_device_conc_dirty();
+      if (!in.keep_device_resident
+          || !ChemicalFieldGpu::device_conc_residency_enabled()) {
         GpuTransferSite site("chem_diffusion_result");
         in.chem_gpu.sync_concentrations_to_host(in.chem);
       }

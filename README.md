@@ -69,6 +69,7 @@ Crypt refugia (`crypts_enabled`) and partial receptor missense mutations provide
 | `fix_quorum_sensing` | AI-2 production, Lsr import, and chemotaxis coupling (Spec 11) |
 | `fix_bacteriocin` | SOS / phage / continuous microcin release (Spec 2), pI-dependent diffusion classes |
 | `fix_receptor` | Competitive TBDT binding, immunity escape affinity, partial missense resistance |
+| `fix_prophage` | Temperate prophage carriage, DNA-damage Hill induction, virion PDE, and lysogeny vs lysis (Spec 14; default-off) |
 | `fix_motility` | Mucus-adapted run-and-reverse swimming, chemotaxis (Spec 3 / 10v2) |
 | `fix_conjugation` | F-pili HGT, shear-dependent MPS, pili length heterogeneity |
 | `fix_cdi` | Contact-dependent inhibition, corpse barriers (Spec 3) |
@@ -199,6 +200,7 @@ See [docs/BATCH_RUNNER.md](docs/BATCH_RUNNER.md) for sweep vs explicit-run JSON 
 | `examples/eari_vadi_validation/` | Short CI regression scenario (15 min sim) |
 | `examples/cell_biology/` | Fur, CDI, motility (Spec 3) |
 | `examples/oxygen_boundary_presets/` | Apical Dirichlet vs tissue-reservoir Robin O₂ BC presets |
+| `examples/prophage_presets/` | Human commensal vs murine monoxenic SOS temperate prophage presets (Spec 14) |
 | `examples/immigration_fork/` | Checkpoint fork with scheduled immigration pulse |
 | `examples/fork_profile/` | Checkpoint fork profiling template |
 | `examples/gpu_cost_benefit_benchmark/` | Host vs T4 GPU cost/benefit benchmark templates |
@@ -272,7 +274,7 @@ src/
   core/           Agent, Domain, SpatialHash, Simulation engine
   fields/         ChemicalField, AdvectionField, VBF
   diffusion/      Green's function kernels, QSSA solver, Barnes–Hut FMM
-  fixes/          Biological rule modules (9 Fix plugins)
+  fixes/          Biological rule modules (10 Fix plugins)
   genome/         Lineage tracker, plasmid library, founder genotypes
   layer2/         Spec 13 Layer-2 MucusSegment, patch table, live patches, pulses
   layer3/         Spec 13 Layer-3 ColonicChain and LumenCompartment multi-segment dynamics
@@ -298,6 +300,7 @@ docs/             Mechanisms, parameters, API, batch runner, scaling, multiscale
 | [docs/API.md](docs/API.md) | C++ and Python class/function reference |
 | [docs/SCALING.md](docs/SCALING.md) | Agent-count benchmarks and profiling |
 | [docs/SPEC13_MULTISCALE.md](docs/SPEC13_MULTISCALE.md) | Layer-2/Layer-3 multiscale colon simulation architecture |
+| [docs/SPEC14_PROPHAGE_MODULE.md](docs/SPEC14_PROPHAGE_MODULE.md) | Spec 14 temperate prophage module, virion ledger, and empirical hazard presets |
 | [docs/AWS_BATCH.md](docs/AWS_BATCH.md) | AWS Batch Spot + CUDA campaign deployment |
 | [EARI.md](EARI.md) | Eco-Advective Receptor Interference blueprint |
 | [VADI.md](VADI.md) | Viscous Advective-Diffusion Interference blueprint |

@@ -1596,6 +1596,43 @@ void test_spec14_bacteriocin_and_btub_decoupling_keys() {
   std::cout << "  test_spec14_bacteriocin_and_btub_decoupling_keys: PASSED\n";
 }
 
+void test_prophage_fixture_and_required_species() {
+  const std::string path =
+      std::string(GUTIBM_SOURCE_DIR) + "/tests/fixtures/parser_prophage.json";
+  SimulationConfig cfg = InputParser::parse(path);
+  assert(cfg.prophage.enabled);
+  assert(std::abs(cfg.prophage.lysogen_prevalence_init - 0.75) < 1e-12);
+  assert(std::abs(cfg.prophage.active_inducible_fraction - 0.5) < 1e-12);
+  assert(std::abs(cfg.prophage.virion_burst_size - 15.0) < 1e-12);
+  assert(cfg.prophage.adsorption_receptor == "BtuB");
+  assert(cfg.initial_strains.size() == 2);
+  assert(cfg.initial_strains[0].lysogen_prevalence.has_value());
+  assert(std::abs(*cfg.initial_strains[0].lysogen_prevalence - 1.0) < 1e-12);
+  bool has_virion = false;
+  for (const auto& c : cfg.chemicals) {
+    if (c.name == species::VIRION) has_virion = true;
+  }
+  assert(has_virion);
+
+  // Enabling prophage under a reduced species_subset that omits VIRION must
+  // be rejected by validate_required_species during Simulation::init.
+  SimulationConfig missing_virion = cfg;
+  missing_virion.hdf5.enabled = false;
+  missing_virion.species_subset = "nutrient_only";
+  bool rejected = false;
+  try {
+    Simulation sim;
+    sim.init(missing_virion);
+  } catch (const ConfigError& e) {
+    const std::string msg = e.what();
+    rejected = msg.find("fix_prophage") != std::string::npos
+        && msg.find(species::VIRION) != std::string::npos
+        && msg.find("chemistry.species_subset") != std::string::npos;
+  }
+  assert(rejected);
+  std::cout << "  test_prophage_fixture_and_required_species: PASSED\n";
+}
+
 int main() {
   std::cout << "=== Input Parser Example Tests ===\n";
   test_single_colony_example();
@@ -1661,6 +1698,7 @@ int main() {
   test_carbon_maintenance_fixture();
   test_metabolic_mode_fixture();
   test_spec14_bacteriocin_and_btub_decoupling_keys();
+  test_prophage_fixture_and_required_species();
   std::cout << "All input parser example tests passed.\n";
   return 0;
 }

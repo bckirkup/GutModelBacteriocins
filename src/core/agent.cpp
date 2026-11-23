@@ -67,7 +67,11 @@ Agent Agent::create_default(TagID id, Int type, Vec3 pos, Real mu_max_val) {
 
   a.timers.age       = 0.0;
   a.timers.sos_timer = -1.0;
+  a.timers.prophage_lysis_timer = -1.0;
   a.flags.in_crypt   = false;
+  a.flags.has_prophage_immunity = false;
+  a.flags.has_inducible_prophage = false;
+  a.flags.prophage_induced = false;
   a.grid_cell = -1;
 
   return a;

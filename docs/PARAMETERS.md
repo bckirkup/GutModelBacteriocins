@@ -311,8 +311,9 @@ This ensures the carbon source term fed into the chemical field is strongest nea
 | `qssa.toxin_cutoff` | 200e-6 | m | Green's function evaluation radius for toxins |
 | `toxin.lumen_transfer_length` | inf (disabled) | m | Lumen unstirred-layer transfer length; infinity disables the Robin correction and preserves sealed boundaries |
 | `toxin.lumen_transfer_basis` | effective | effective/free | Select `D_eff / δ` (default) or `D_free / δ` for the lumen transfer coefficient |
-| `qssa.drift_envelope_policy` | warn | — | Policy for the wall-normal-flow sealed image-series envelope: `warn`, `error`, or `allow` |
-| `qssa.drift_correction` | false | — | Enable the physical sealed wall-law correction; opt-in and host-evaluated when GPU diffusion is requested |
+| `qssa.drift_envelope_policy` | `warn` | — | Policy for the wall-normal-flow sealed image-series envelope: `warn`, `error`, `allow`, or `auto` (`auto` dispatches high-`Pe_z` sources above `qssa.peclet_z_threshold` to the hybrid physical sealed kernel) |
+| `qssa.peclet_z_threshold` | `0.05` | — | Dimensionless wall-normal Peclet threshold above which `warn`/`error` fire and `auto` selects the physical sealed kernel |
+| `qssa.drift_correction` | `false` | — | Globally enable the hybrid Sturm-Liouville / Hankel physical sealed wall-law kernel on CPU and CUDA GPU (see [`NEUMANN_WALL_NORMAL_DRIFT.md`](NEUMANN_WALL_NORMAL_DRIFT.md)) |
 | `qssa.low_screening_policy` | `warn` | — | Policy when the low-screening image-series truncation envelope is approached (`warn`, `error`, or `allow`) |
 | `image_series_mode` | `corrected` | — | Neumann image-series summation mode: `corrected` (default) or `legacy` (pre-fix 3-shell reference) |
 | `image_series_max_shells` | 512 | — | Maximum image shells summed in `corrected` mode (legacy mode maps the unchanged default to 3 shells) |
@@ -1043,7 +1044,7 @@ midstream restart/checkpoint files.
 Optional `fixes` array in the input JSON selects which Fix modules run and in what order.
 When omitted, all registered defaults are used in registry order:
 
-`metabolism` → `bacteriocin` → `receptor` → `conjugation` → `mutation` → `mechanics`
+`metabolism` → `quorum_sensing` → `bacteriocin` → `receptor` → `prophage` → `motility` → `conjugation` → `cdi` → `mutation` → `mechanics`
 
 | Config key | Maps to | Description |
 |------------|---------|-------------|
@@ -1110,7 +1111,7 @@ to host-forced delivery (`host_forced_delivery`) recorded in
 
 ---
 
-## Closure Guards
+## Closure & Memory Guards
 
 | Parameter | Default | Units | Description |
 |-----------|---------|-------|-------------|
@@ -1118,6 +1119,8 @@ to host-forced delivery (`host_forced_delivery`) recorded in
 | `closure.zero_realization_grace_steps` | `5` | steps | Consecutive zero-realization delivery steps tolerated before halting |
 | `closure.enforce_reaction_clip` | `false` | bool | Halt when interval reaction clipping exceeds `reaction_clip_tolerance_fraction` |
 | `closure.reaction_clip_tolerance_fraction` | `0.0` | fraction | Maximum tolerated clipped reaction fraction when `closure.enforce_reaction_clip` is enabled |
+| `memory.max_host_chemical_gb` | `0.0` | GiB | Maximum node-total host RAM allowed for `ChemicalField` allocations across local MPI ranks (`0.0` uses 90% of `/proc/meminfo` `MemAvailable`) |
+| `memory.replicated_oom_policy` | `"error"` | — | Action when `replicated` `ChemicalField` exceeds the host budget: `"error"` (fail before allocating), `"auto_slab"` (switch to `slab` when compatible), or `"warn"` |
 
 ---
 
@@ -1135,3 +1138,23 @@ Key Layer-2 live-patch and audit controls (full Layer-2/Layer-3 schema in [`SPEC
 | `layer2.live_inherit_oxygen` | `false` | bool | Inherit outer `oxygen` and `k_ROS_*` settings into live slots (auto-enabled by `"inherit"`) |
 | `layer2.live_align_patch_table_delivery` | `false` | bool | Align live-slot `uptake_limit="delivery"` with `PatchTable` (auto-enabled by `"ladder_delivery"`) |
 | `layer2.pulses` | `[]` | object[] | Scheduled Layer-2 perturbation pulses (JSON array; see [`SPEC13_MULTISCALE.md`](SPEC13_MULTISCALE.md)) |
+
+---
+
+## Temperate Prophage (Spec 14)
+
+Default-off temperate prophage carriage, Hill DNA-damage induction, virion diffusion/adsorption, and superinfection immunity (`FixProphage`, registered as `"prophage"`). Full mathematical specification and empirical presets (`examples/prophage_presets/`) are in [`SPEC14_PROPHAGE_MODULE.md`](SPEC14_PROPHAGE_MODULE.md).
+
+| Parameter | Default | Units | Description |
+|-----------|---------|-------|-------------|
+| `prophage.enabled` | `false` | bool | Enable `FixProphage` and register the continuum `virion` field |
+| `prophage.lysogen_prevalence_init` | `0.0` | fraction | Initial founder genomic prophage carriage fraction in `[0, 1]` (confers `has_prophage_immunity`; overridable per strain via `initial_strains[].lysogen_prevalence`) |
+| `prophage.active_inducible_fraction` | `1.0` | fraction | Conditional fraction of prophage carriers with excision/lysis-competent prophage (`has_inducible_prophage`; overridable per strain) |
+| `prophage.k_spont` | `1.2e-7` | 1/s | Basal spontaneous prophage induction hazard per active lysogen |
+| `prophage.k_max_damage` | `5.0e-4` | 1/s | Maximum DNA-damage-stimulated Hill induction hazard |
+| `prophage.K_damage` | `1.0e-7` | driver units | Half-saturation constant for the DNA-damage Hill induction response |
+| `prophage.hill_n` | `2.0` | — | Cooperativity exponent for DNA-damage Hill induction |
+| `prophage.burst_size` | `50.0` | virions/lysis | Free virions released upon lytic induction or lytic superinfection |
+| `prophage.D_virion` | `4.0e-12` | m²/s | Mucus virion diffusion coefficient (with optional `prophage.virion_retardation >= 1.0`) |
+| `prophage.k_adsorb` | `2.0e-16` | m³/s | Per-cell virion adsorption rate constant |
+| `prophage.lysogeny_prob` | `0.20` | fraction | Probability that productive adsorption on a non-immune cell converts it to a lysogen rather than lysing it |

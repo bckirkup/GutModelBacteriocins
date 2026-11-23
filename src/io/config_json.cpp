@@ -383,6 +383,19 @@ class JsonCursor {
       } else if (key == "receptor_expression"
                  || key == "receptor_genotype" || key == "receptors") {
         parse_receptor_expression_object(strain.receptor_expression);
+      } else if (key == "lysogen_prevalence") {
+        const Real value = parse_number();
+        if (!std::isfinite(value) || value < 0.0 || value > 1.0) {
+          throw ConfigError("lysogen_prevalence must be finite and in [0, 1]");
+        }
+        strain.lysogen_prevalence = value;
+      } else if (key == "active_inducible_fraction") {
+        const Real value = parse_number();
+        if (!std::isfinite(value) || value < 0.0 || value > 1.0) {
+          throw ConfigError(
+              "active_inducible_fraction must be finite and in [0, 1]");
+        }
+        strain.active_inducible_fraction = value;
       } else {
         skip_value();
       }
@@ -860,6 +873,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
       cursor.parse_initial_population_object(cfg);
     } else if (key == "closure") {
       cursor.parse_prefixed_object(cfg, "closure", "closure");
+    } else if (key == "memory") {
+      cursor.parse_prefixed_object(cfg, "memory", "memory");
     } else if (key == "layer2") {
       cursor.parse_layer2_object(cfg);
     } else if (key == "layer3") {
@@ -878,6 +893,8 @@ bool ConfigJson::parse_document(SimulationConfig& cfg, const std::string& conten
       cursor.parse_prefixed_object(cfg, "metabolism", "metabolism");
     } else if (key == "receptor") {
       cursor.parse_prefixed_object(cfg, "receptor", "receptor");
+    } else if (key == "prophage") {
+      cursor.parse_prefixed_object(cfg, "prophage", "prophage");
     } else {
       apply_json_scalar(cfg, key, cursor);
     }
@@ -981,6 +998,8 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   int_key("immigration.step", cfg.immigration.step);
   real_key("immigration.rate", cfg.immigration.rate);
   string_key("chemistry_decomposition", cfg.chemistry_decomposition);
+  real_key("memory.max_host_chemical_gb", cfg.memory.max_host_chemical_gb);
+  string_key("memory.replicated_oom_policy", cfg.memory.replicated_oom_policy);
   string_key("species_subset", cfg.species_subset);
   string_key("uptake_limit", cfg.fixes.metabolism.uptake_limit);
   string_key("chemistry.toxin_evaluation", cfg.qssa.toxin_evaluation);
@@ -1086,6 +1105,27 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   real_key("quorum_sensing.ai2_decay_rate", cfg.quorum_sensing.ai2_decay_rate);
   bool_key("quorum_sensing.ai2_chemotaxis", cfg.quorum_sensing.ai2_chemotaxis_enabled);
   real_key("quorum_sensing.chi_ai2", cfg.quorum_sensing.chi_ai2);
+  bool_key("prophage.enabled", cfg.prophage.enabled);
+  real_key("prophage.lysogen_prevalence_init", cfg.prophage.lysogen_prevalence_init);
+  real_key("prophage.active_inducible_fraction",
+           cfg.prophage.active_inducible_fraction);
+  real_key("prophage.k_spont", cfg.prophage.k_spont);
+  real_key("prophage.k_max_damage", cfg.prophage.k_max_damage);
+  real_key("prophage.K_damage", cfg.prophage.K_damage);
+  real_key("prophage.hill_n", cfg.prophage.hill_n);
+  real_key("prophage.damage_stimulus", cfg.prophage.damage_stimulus);
+  real_key("prophage.nuclease_damage_weight",
+           cfg.prophage.nuclease_damage_weight);
+  real_key("prophage.ros_damage_weight", cfg.prophage.ros_damage_weight);
+  real_key("prophage.lysis_delay_s", cfg.prophage.lysis_delay_s);
+  real_key("prophage.virion_burst_size", cfg.prophage.virion_burst_size);
+  real_key("prophage.D_virion", cfg.prophage.D_virion);
+  real_key("prophage.virion_retardation", cfg.prophage.virion_retardation);
+  real_key("prophage.k_virion_decay", cfg.prophage.k_virion_decay);
+  real_key("prophage.virion_washout_scale", cfg.prophage.virion_washout_scale);
+  real_key("prophage.k_adsorb", cfg.prophage.k_adsorb);
+  real_key("prophage.p_lysogeny", cfg.prophage.p_lysogeny);
+  string_key("prophage.adsorption_receptor", cfg.prophage.adsorption_receptor);
   real_key("toxin_cutoff", cfg.qssa.toxin_cutoff);
   real_key("toxin.lumen_transfer_length", cfg.qssa.lumen_transfer_length);
   string_key("toxin.lumen_transfer_basis", cfg.qssa.lumen_transfer_basis);
@@ -1097,6 +1137,7 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
   string_key("qssa.drift_envelope_policy",
              cfg.qssa.drift_envelope_policy);
   bool_key("qssa.drift_correction", cfg.qssa.drift_correction);
+  real_key("qssa.peclet_z_threshold", cfg.qssa.peclet_z_threshold);
   real_key("nutrient_cutoff", cfg.qssa.nutrient_cutoff);
   real_key("colicin_release_rate", cfg.qssa.colicin_release_rate);
   real_key("microcin_secretion", cfg.qssa.microcin_secretion);
@@ -1239,7 +1280,15 @@ std::string ConfigJson::serialize_document(const SimulationConfig& cfg) {
       string_value(name);
       out << ':' << expression;
     }
-    out << "}}";
+    out << '}';
+    if (strain.lysogen_prevalence.has_value()) {
+      out << ",\"lysogen_prevalence\":" << *strain.lysogen_prevalence;
+    }
+    if (strain.active_inducible_fraction.has_value()) {
+      out << ",\"active_inducible_fraction\":"
+          << *strain.active_inducible_fraction;
+    }
+    out << '}';
   }
   out << "],\"plasmid_overrides\":{";
   size_t plasmid_index = 0;

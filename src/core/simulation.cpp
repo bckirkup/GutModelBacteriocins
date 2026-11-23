@@ -72,6 +72,96 @@ void reject_unsupported_delivery_configuration(const SimulationConfig& cfg) {
           cfg.fixes.metabolism.delivery_far_field_radius));
 }
 
+void enforce_chemical_memory_guard(SimulationConfig& cfg, Domain& domain) {
+  const Int nprocs = std::max<Int>(1, domain.nprocs());
+  Int ranks_per_node = ChemicalField::query_ranks_per_node(nprocs);
+  std::optional<uint64_t> available_bytes =
+      ChemicalField::query_available_host_memory_bytes();
+#ifdef GUTIBM_MPI
+  int mpi_initialized = 0;
+  int mpi_finalized = 0;
+  MPI_Initialized(&mpi_initialized);
+  MPI_Finalized(&mpi_finalized);
+  if (mpi_initialized && !mpi_finalized && nprocs > 1) {
+    Int max_ranks_per_node = ranks_per_node;
+    MPI_Allreduce(&ranks_per_node, &max_ranks_per_node, 1, MPI_INT,
+                  MPI_MAX, MPI_COMM_WORLD);
+    ranks_per_node = std::max<Int>(1, max_ranks_per_node);
+
+    int has_avail = available_bytes.has_value() ? 1 : 0;
+    int all_have_avail = 0;
+    MPI_Allreduce(&has_avail, &all_have_avail, 1, MPI_INT,
+                  MPI_MIN, MPI_COMM_WORLD);
+    if (all_have_avail != 0) {
+      unsigned long long local_avail =
+          static_cast<unsigned long long>(*available_bytes);
+      unsigned long long min_avail = local_avail;
+      MPI_Allreduce(&local_avail, &min_avail, 1, MPI_UNSIGNED_LONG_LONG,
+                    MPI_MIN, MPI_COMM_WORLD);
+      available_bytes = static_cast<uint64_t>(min_avail);
+    } else {
+      available_bytes = std::nullopt;
+    }
+  }
+#endif
+
+  const Int required_halo = std::max<Int>(
+      1, static_cast<Int>(std::ceil(domain.ghost_width() / domain.dx_x())));
+  const Int effective_slab_halo =
+      std::max(cfg.domain.grid_halo_width, required_halo);
+  const Int min_local_nx = domain.nx() / nprocs;
+  const bool delivery_any = std::ranges::any_of(
+      cfg.chemicals, [](const ChemicalSpec& spec) {
+        return spec.delivery_enabled;
+      });
+  const bool slab_feature_eligible =
+      (cfg.fixes.metabolism.uptake_limit_mode != UptakeLimitMode::Delivery
+       || cfg.fixes.metabolism.delivery_far_field_radius <= 0.0)
+      && (min_local_nx >= effective_slab_halo);
+
+  ChemicalFieldMemoryGuardInput input;
+  input.nx = domain.nx();
+  input.ny = domain.ny();
+  input.nz = domain.nz();
+  input.num_species = static_cast<Int>(cfg.chemicals.size());
+  input.nprocs = nprocs;
+  input.ranks_per_node = ranks_per_node;
+  input.slab_mode = (cfg.chemistry_decomposition == "slab");
+  input.delivery_any = delivery_any;
+  input.halo_width = domain.grid_halo_width();
+  input.required_slab_halo_width = effective_slab_halo;
+  input.slab_feature_eligible = slab_feature_eligible;
+  input.max_host_chemical_gb = cfg.memory.max_host_chemical_gb;
+  input.replicated_oom_policy = cfg.memory.replicated_oom_policy;
+  input.available_host_memory_bytes = available_bytes;
+
+  const ChemicalFieldMemoryGuardDecision decision =
+      ChemicalField::evaluate_memory_guard(input);
+
+  if (domain.rank() == 0
+      && (decision.emit_replicated_diagnostic
+          || (decision.exceeds_budget && !decision.should_throw))
+      && !decision.diagnostic_message.empty()) {
+    std::cerr << decision.diagnostic_message << "\n";
+  }
+
+  if (decision.switch_to_slab) {
+    cfg.chemistry_decomposition = "slab";
+    if (cfg.fixes.metabolism.uptake_limit_mode != UptakeLimitMode::Delivery) {
+      cfg.fixes.metabolism.delivery_far_field_radius = 0.0;
+    }
+    if (cfg.domain.grid_halo_width < effective_slab_halo) {
+      cfg.domain.grid_halo_width = effective_slab_halo;
+      domain.init(cfg.domain);
+    }
+    return;
+  }
+
+  if (decision.should_throw) {
+    throw MemoryLimitError(decision.diagnostic_message);
+  }
+}
+
 Real global_density_cells_per_mL(const Domain& domain, Int global_agents) {
   const Vec3 size = domain.size();
   const Real volume_m3 = size[0] * size[1] * size[2];
@@ -253,6 +343,11 @@ void validate_required_species(const SimulationConfig& cfg,
   if (fix_enabled(cfg, "quorum_sensing") && cfg.quorum_sensing.enabled) {
     require_species(chem, "fix_quorum_sensing", species::AI2,
                     "quorum_sensing.enabled");
+  }
+
+  if (fix_enabled(cfg, "prophage") && cfg.prophage.enabled) {
+    require_species(chem, "fix_prophage", species::VIRION,
+                    "prophage.enabled");
   }
 
   if (const bool vbf_carbon_enabled =
@@ -551,7 +646,8 @@ void Simulation::init(const SimulationConfig& cfg) {
   immigration_.set_start_step(0);
 
   // Domain
-  domain_.init(cfg.domain);
+  domain_.init(cfg_.domain);
+  enforce_chemical_memory_guard(cfg_, domain_);
   reject_unsupported_slab_surfaces(cfg_, domain_);
 
   // Chemical fields
@@ -559,6 +655,11 @@ void Simulation::init(const SimulationConfig& cfg) {
              cfg_.fixes.metabolism.delivery_far_field_radius);
   validate_lumped_toxin_species(cfg_, chem_);
   validate_required_species(cfg_, chem_);
+  if (cfg_.prophage.enabled && !fix_enabled(cfg_, "prophage")
+      && domain_.rank() == 0) {
+    std::cerr << "Warning: prophage.enabled=true has no effect because "
+                 "'prophage' is excluded from fixes\n";
+  }
 
   // Advection
   advection_.init(cfg.advection, domain_);
@@ -670,9 +771,10 @@ void Simulation::init(const SimulationConfig& cfg) {
 
 void Simulation::prepare_step_events_for_summary() {
   event_ledger_.summary_events = event_ledger_.step_events;
+  event_ledger_.summary_events.refresh_prophage_daily_rate();
 #ifdef GUTIBM_MPI
   if (domain_.nprocs() > 1) {
-    std::array<Int, 11 + MAX_AGENT_TYPES> local = {
+    std::array<Int, 14 + MAX_AGENT_TYPES> local = {
         event_ledger_.step_events.sos_inductions,
         event_ledger_.step_events.phage_inductions,
         event_ledger_.step_events.mortality_colicin,
@@ -683,12 +785,15 @@ void Simulation::prepare_step_events_for_summary() {
         event_ledger_.step_events.divisions,
         event_ledger_.step_events.conjugation_transfers,
         event_ledger_.step_events.mutations,
-        event_ledger_.step_events.immigrations};
+        event_ledger_.step_events.immigrations,
+        event_ledger_.step_events.prophage_inductions,
+        event_ledger_.step_events.prophage_lytic_kills,
+        event_ledger_.step_events.prophage_lysogen_conversions};
     for (Int i = 0; i < MAX_AGENT_TYPES; ++i) {
-      local[static_cast<size_t>(11 + i)] =
+      local[static_cast<size_t>(14 + i)] =
           event_ledger_.step_events.divisions_by_type[static_cast<size_t>(i)];
     }
-    std::array<Int, 11 + MAX_AGENT_TYPES> global{};
+    std::array<Int, 14 + MAX_AGENT_TYPES> global{};
     MPI_Allreduce(local.data(), global.data(), static_cast<int>(local.size()),
                   MPI_INT, MPI_SUM, MPI_COMM_WORLD);
     event_ledger_.summary_events.sos_inductions = global[0];
@@ -702,16 +807,23 @@ void Simulation::prepare_step_events_for_summary() {
     event_ledger_.summary_events.conjugation_transfers = global[8];
     event_ledger_.summary_events.mutations = global[9];
     event_ledger_.summary_events.immigrations = global[10];
+    event_ledger_.summary_events.prophage_inductions = global[11];
+    event_ledger_.summary_events.prophage_lytic_kills = global[12];
+    event_ledger_.summary_events.prophage_lysogen_conversions = global[13];
     for (Int i = 0; i < MAX_AGENT_TYPES; ++i) {
       event_ledger_.summary_events.divisions_by_type[static_cast<size_t>(i)] =
-          global[static_cast<size_t>(11 + i)];
+          global[static_cast<size_t>(14 + i)];
     }
-    const std::array<Real, 4> local_rates = {
+    const std::array<Real, 8> local_rates = {
         event_ledger_.step_events.sos_basal_rate,
         event_ledger_.step_events.sos_post_division_rate,
         event_ledger_.step_events.sos_nuclease_cross_induction_rate,
-        event_ledger_.step_events.sos_ros_rate};
-    std::array<Real, 4> global_rates{};
+        event_ledger_.step_events.sos_ros_rate,
+        event_ledger_.step_events.virions_released,
+        event_ledger_.step_events.virions_adsorbed,
+        event_ledger_.step_events.virions_decayed,
+        event_ledger_.step_events.prophage_bacterium_seconds};
+    std::array<Real, 8> global_rates{};
     MPI_Allreduce(local_rates.data(), global_rates.data(),
                   static_cast<int>(local_rates.size()), MPI_DOUBLE, MPI_SUM,
                   MPI_COMM_WORLD);
@@ -720,6 +832,11 @@ void Simulation::prepare_step_events_for_summary() {
     event_ledger_.summary_events.sos_nuclease_cross_induction_rate =
         global_rates[2];
     event_ledger_.summary_events.sos_ros_rate = global_rates[3];
+    event_ledger_.summary_events.virions_released = global_rates[4];
+    event_ledger_.summary_events.virions_adsorbed = global_rates[5];
+    event_ledger_.summary_events.virions_decayed = global_rates[6];
+    event_ledger_.summary_events.prophage_bacterium_seconds = global_rates[7];
+    event_ledger_.summary_events.refresh_prophage_daily_rate();
   }
 #endif
 }
@@ -775,8 +892,10 @@ void Simulation::init_population(const SimulationConfig& cfg) {
   const Real z_max = cfg.initial_population.placement == "z_slab"
       ? cfg.initial_population.z_max : domain_.hi()[2] * 0.5;
 
+  uint64_t founder_serial = 0;
   for (const auto& strain : cfg.initial_strains) {
     for (Int i = 0; i < strain.count; ++i) {
+      ++founder_serial;
       Vec3 pos = {
         rng_.uniform(domain_.lo()[0], domain_.hi()[0]),
         rng_.uniform(domain_.lo()[1], domain_.hi()[1]), 0.0
@@ -794,7 +913,7 @@ void Simulation::init_population(const SimulationConfig& cfg) {
       // Only keep agents that belong to this rank's slab
       if (!domain_.is_local(pos)) continue;
 
-      Agent a = create_strain_agent(strain, pos, !anatomic);
+      Agent a = create_strain_agent(strain, pos, !anatomic, founder_serial);
       agents_.push_back(std::move(a));
     }
   }
@@ -825,11 +944,17 @@ void Simulation::init_from_checkpoint(const SimulationConfig& cfg,
   immigration_.seed(cfg_.seed ^ kImmigrationSeedMix);
 
   domain_.init(cfg_.domain);
+  enforce_chemical_memory_guard(cfg_, domain_);
   reject_unsupported_slab_surfaces(cfg_, domain_);
   chem_.init(domain_, cfg_.chemicals, cfg_.chemistry_decomposition,
              cfg_.fixes.metabolism.delivery_far_field_radius);
   validate_lumped_toxin_species(cfg_, chem_);
   validate_required_species(cfg_, chem_);
+  if (cfg_.prophage.enabled && !fix_enabled(cfg_, "prophage")
+      && domain_.rank() == 0) {
+    std::cerr << "Warning: prophage.enabled=true has no effect because "
+                 "'prophage' is excluded from fixes\n";
+  }
   advection_.init(cfg.advection, domain_);
   vbf_.init(cfg.vbf, domain_);
   const std::optional<RuntimeDriftEnvelopeBasis> runtime_drift_basis =
@@ -951,6 +1076,9 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
     a.mu_realized  = atoms.mu[i];
     if (i < atoms.age.size()) a.timers.age = atoms.age[i];
     if (i < atoms.sos_timer.size()) a.timers.sos_timer = atoms.sos_timer[i];
+    if (i < atoms.prophage_lysis_timer.size()) {
+      a.timers.prophage_lysis_timer = atoms.prophage_lysis_timer[i];
+    }
     if (i < atoms.death_time.size()) a.timers.death_time = atoms.death_time[i];
     if (i < atoms.pending_growth_chemistry_biomass.size()) {
       a.pending_growth_chemistry_biomass =
@@ -1050,6 +1178,15 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
           a.genome.bi_loci, [](const BICluster& bi) {
             return bi.release_mode == ReleaseMode::CONTINUOUS;
           });
+    }
+    if (i < atoms.has_prophage_immunity.size()) {
+      a.flags.has_prophage_immunity = (atoms.has_prophage_immunity[i] != 0);
+    }
+    if (i < atoms.has_inducible_prophage.size()) {
+      a.flags.has_inducible_prophage = (atoms.has_inducible_prophage[i] != 0);
+    }
+    if (i < atoms.prophage_induced.size()) {
+      a.flags.prophage_induced = (atoms.prophage_induced[i] != 0);
     }
 
     max_tag = std::max(max_tag, static_cast<TagID>(atoms.id[i]));
@@ -1232,11 +1369,12 @@ void Simulation::apply_checkpoint_snapshot(const HDF5CheckpointSnapshot& snap) {
 }
 
 Agent Simulation::create_strain_agent(
-    const SimulationConfig::InitialStrain& strain, Vec3 pos, bool tag_crypt) {
+    const SimulationConfig::InitialStrain& strain, Vec3 pos, bool tag_crypt,
+    uint64_t founder_stream_id) {
   Agent agent = Agent::create_default(agents_.next_tag(), strain.type, pos,
                                       strain.mu_max);
   agent.identity.owner_rank = domain_.rank();
-  apply_founder_genotype(agent, strain, cfg_);
+  apply_founder_genotype(agent, strain, cfg_, founder_stream_id);
   if (tag_crypt) tag_crypt_resident(agent, advection_);
   if (cfg_.cell_bio.motility.enabled) {
     FixMotility::init_agent_motility(agent, cfg_.cell_bio.motility,
@@ -1358,6 +1496,8 @@ void Simulation::print_step_profile() const {
             << "  gpu_d2h_bytes_total=" << step_profile_.gpu_d2h_bytes << "\n"
             << "  gpu_h2d_calls_total=" << step_profile_.gpu_h2d_calls << "\n"
             << "  gpu_d2h_calls_total=" << step_profile_.gpu_d2h_calls << "\n"
+            << "  gpu_pinned_staging_active="
+            << (step_profile_.gpu_pinned_staging_active ? 1 : 0) << "\n"
             << "  gpu_slab_x_roundtrip="
             << step_profile_.gpu_slab_x_roundtrip_s * inv << "\n"
             << "  mpi_reaction_reduce=" << step_profile_.mpi_reaction_reduce_s * inv << "\n"
@@ -1395,6 +1535,8 @@ void Simulation::print_step_profile() const {
             << " gpu_d2h_bytes_total=" << step_profile_.gpu_d2h_bytes
             << " gpu_h2d_calls_total=" << step_profile_.gpu_h2d_calls
             << " gpu_d2h_calls_total=" << step_profile_.gpu_d2h_calls
+            << " gpu_pinned_staging_active="
+            << (step_profile_.gpu_pinned_staging_active ? 1 : 0)
             << " gpu_slab_x_roundtrip_s="
             << step_profile_.gpu_slab_x_roundtrip_s * inv
             << " mpi_reaction_reduce_s=" << step_profile_.mpi_reaction_reduce_s * inv
@@ -1784,6 +1926,10 @@ void Simulation::finalize_neumann_image_series_stats() {
       qssa_.gf().low_screening_evaluations();
   const uint64_t local_drift_envelope =
       qssa_.gf().drift_envelope_evaluations();
+  const uint64_t local_drift_modal =
+      qssa_.gf().drift_modal_evaluations();
+  const uint64_t local_peclet_dispatched =
+      qssa_.gf().peclet_auto_dispatched_sources();
   const uint64_t local_negative_count =
       qssa_.gf().negative_field_count();
   const Real local_most_negative = qssa_.gf().most_negative_field();
@@ -1798,6 +1944,8 @@ void Simulation::finalize_neumann_image_series_stats() {
     neumann_image_series_cap_hits_ = local_hits;
     neumann_low_screening_evaluations_ = local_low_screening;
     neumann_drift_envelope_evaluations_ = local_drift_envelope;
+    neumann_drift_modal_evaluations_ = local_drift_modal;
+    neumann_peclet_auto_dispatched_sources_ = local_peclet_dispatched;
     neumann_negative_field_count_ = local_negative_count;
     neumann_most_negative_field_ = local_most_negative;
     green_function_kernel_evaluations_ = local_kernel_evaluations;
@@ -1806,6 +1954,8 @@ void Simulation::finalize_neumann_image_series_stats() {
   unsigned long long global_hits = 0;
   unsigned long long global_low_screening = 0;
   unsigned long long global_drift_envelope = 0;
+  unsigned long long global_drift_modal = 0;
+  unsigned long long global_peclet_dispatched = 0;
   unsigned long long global_negative_count = 0;
   unsigned long long global_kernel_evaluations = 0;
   const auto local_value =
@@ -1816,6 +1966,10 @@ void Simulation::finalize_neumann_image_series_stats() {
       static_cast<unsigned long long>(local_low_screening);
   const auto local_drift_envelope_value =
       static_cast<unsigned long long>(local_drift_envelope);
+  const auto local_drift_modal_value =
+      static_cast<unsigned long long>(local_drift_modal);
+  const auto local_peclet_dispatched_value =
+      static_cast<unsigned long long>(local_peclet_dispatched);
   const auto local_negative_count_value =
       static_cast<unsigned long long>(local_negative_count);
   MPI_Allreduce(&local_value, &global_hits, 1, MPI_UNSIGNED_LONG_LONG,
@@ -1823,6 +1977,10 @@ void Simulation::finalize_neumann_image_series_stats() {
   MPI_Allreduce(&local_low_screening_value, &global_low_screening, 1,
                 MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&local_drift_envelope_value, &global_drift_envelope, 1,
+                MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_drift_modal_value, &global_drift_modal, 1,
+                MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&local_peclet_dispatched_value, &global_peclet_dispatched, 1,
                 MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
   MPI_Allreduce(&local_negative_count_value, &global_negative_count, 1,
                 MPI_UNSIGNED_LONG_LONG, MPI_SUM, MPI_COMM_WORLD);
@@ -1836,6 +1994,10 @@ void Simulation::finalize_neumann_image_series_stats() {
       static_cast<uint64_t>(global_low_screening);
   neumann_drift_envelope_evaluations_ =
       static_cast<uint64_t>(global_drift_envelope);
+  neumann_drift_modal_evaluations_ =
+      static_cast<uint64_t>(global_drift_modal);
+  neumann_peclet_auto_dispatched_sources_ =
+      static_cast<uint64_t>(global_peclet_dispatched);
   neumann_negative_field_count_ =
       static_cast<uint64_t>(global_negative_count);
   neumann_most_negative_field_ = global_most_negative;
@@ -1845,6 +2007,8 @@ void Simulation::finalize_neumann_image_series_stats() {
   neumann_image_series_cap_hits_ = local_hits;
   neumann_low_screening_evaluations_ = local_low_screening;
   neumann_drift_envelope_evaluations_ = local_drift_envelope;
+  neumann_drift_modal_evaluations_ = local_drift_modal;
+  neumann_peclet_auto_dispatched_sources_ = local_peclet_dispatched;
   neumann_negative_field_count_ = local_negative_count;
   neumann_most_negative_field_ = local_most_negative;
   green_function_kernel_evaluations_ = local_kernel_evaluations;
@@ -1989,10 +2153,6 @@ void Simulation::step(Real dt) {
   migrate_agents();
   profiler.lap(step_profile_.mpi_migrate_s);
 
-  if (gpu_.active) {
-    gpu_.agents.sync_from_host(agents_);
-  }
-
   // Spec 13 Layer-2 hook: post-migration, pre-washout/cleanup.
   if (late_step_hook_) {
     late_step_hook_();
@@ -2016,6 +2176,10 @@ void Simulation::step(Real dt) {
     step_profile_.gpu_d2h_bytes += xfer.d2h_bytes;
     step_profile_.gpu_h2d_calls += xfer.h2d_calls;
     step_profile_.gpu_d2h_calls += xfer.d2h_calls;
+    step_profile_.gpu_pinned_staging_active =
+        step_profile_.gpu_pinned_staging_active
+        || xfer.pinned_staging_active
+        || gpu_transfer_pinned_staging_active();
     for (const auto& site : sites) {
       const auto existing = std::ranges::find_if(
           step_profile_.gpu_transfer_sites,
@@ -2067,9 +2231,10 @@ void Simulation::materialize_bacteriocin_fields_for_output() {
 
 void Simulation::module_biology(Real dt) {
   for (const auto& fix : fixes_) {
-    // Receptor killing reads the chemical grid; deposit current-step toxin
-    // sources (microcin producers + active bursts) before fix_receptor runs.
-    if (fix->name() == "receptor") {
+    // Receptor killing and DNA-damage prophage induction read the current-step
+    // bacteriocin/nuclease fields; deposit active sources before either runs.
+    if (fix->name() == "receptor"
+        || (cfg_.prophage.enabled && fix->name() == "prophage")) {
       update_bacteriocin_fields();
     }
     fix->compute(dt);
@@ -2673,6 +2838,7 @@ Real Simulation::ros_induction_rate(const Agent& agent) const {
         * agent.respired_oxygen_rate
         / agent.biomass;
   }
+  if (cfg_.chem_env.oxygen.k_ROS <= 0.0) return 0.0;
   return cfg_.chem_env.oxygen.k_ROS * local_O2(agent) * std::max(agent.mu_realized, 0.0);
 }
 

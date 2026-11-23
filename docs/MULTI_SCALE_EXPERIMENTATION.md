@@ -90,7 +90,7 @@ flowchart TB
 
 | Level | Spatial / temporal | Scientific target | Must *not* claim |
 |-------|-------------------|-------------------|------------------|
-| **L0** unit / CI | Tiny domain or pure unit tests; minutes–hours | Kernel fidelity: toxin shape, washout inequality \(\mu < \gamma_{\mathrm{flow}}\), receptor Kd sensitivity, Fix wiring | Host diversity, sweep statistics |
+| **L0** unit / CI | Tiny domain or pure unit tests; minutes–hours | Kernel fidelity: toxin shape, washout inequality `mu < gamma_flow`, receptor Kd sensitivity, Fix wiring | Host diversity, sweep statistics |
 | **L1** microcolony window | ~50–500 µm, 0.25–2 h, ~20–150 agents | Local antagonism efficacy, colony doubling, CDI/contact kill, motility/taxis stability | Cross-patch coexistence, retention over days |
 | **L2** patterned patch | ~0.5–1 mm (or same domain as burn-in), 1–24 h, **started from established state** | Whether a resident halo/comet maintains exclusion; immigrant washout under flow; Hopkins / monochromatic / exclusion radius | Full host retention curves; mutation-driven BI expansion |
 | **L3** host campaign | 2 mm, 2–7 d, sparse ensembles | Retention ~70–80%, sweep timing, modest across-seed diversity; Kd / mechanism ablations | Fine-grid parameter tuning (do that at L0–L2) |
@@ -103,7 +103,7 @@ immigrant-arrival overlays), not a larger spatial domain.
 | Scientific question | Level | Primary configs / tests | Primary observables |
 |---------------------|-------|-------------------------|---------------------|
 | Are Lethal Core vs Halo / comet-tail kernels correct? | L0 | `greens_function`, `fmm`, `examples/eari_vadi_validation/` | Radial/comet profiles; golden FISH/spatial metrics |
-| Does \(\mu_{\mathrm{realized}} < \gamma_{\mathrm{flow}}\) wash out stressed cells? | L0 | `washout_trap`, iron-fallback / receptor unit tests | Live counts; fingerprint divergence |
+| Does `mu_realized < gamma_flow` wash out stressed cells? | L0 | `washout_trap`, iron-fallback / receptor unit tests | Live counts; fingerprint divergence |
 | Does a microcolony grow / kill locally as expected under Kd / toxin / CDI? | L1 | Stage 1–2; `examples/cell_biology/`; `examples/single_colony/` (shortened) | `events/*` kills/divisions; mean µ; local NND |
 | Does motility/taxis stabilize colonization on short horizon? | L1 | Stage 1 (`1a`–`1f`) | Population viability; z-bias |
 | Do O₂ / acetate / crypts / CDI wire without NaNs and with expected direction? | L1 | Stage 2 (`2a`–`2f`) | Mechanism-specific summary scalars |

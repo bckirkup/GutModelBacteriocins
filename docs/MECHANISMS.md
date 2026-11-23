@@ -1043,3 +1043,14 @@ adds z-weighted acetate production and epithelial uptake. When
 | `comet_tail_asymmetry` | Concentration-weighted downstream elongation | > 1.0 |
 
 The exclusion radius captures the characteristic "no-go zone" each bacteriocin-producing strain creates around itself; NND between competing clones quantifies how far apart rival phylogroups settle; the Hopkins statistic confirms non-random spatial arrangement.
+
+---
+
+## Temperate Prophage Dynamics (Spec 14)
+
+`FixProphage` (`prophage.enabled = true`, default `false` for bitwise backward parity) models mucosal temperate phage ecology separately from plasmid SOS bacteriocin lysis (`docs/SPEC14_PROPHAGE_MODULE.md`):
+
+1. **Separate Genomic Carriage vs Active Inducibility:** Founders and lysogenized cells track superinfection immunity (`has_prophage_immunity`, initialized with probability `lysogen_prevalence_init`, default `0.80`) separately from inducible intact prophages (`has_inducible_prophage`, conditional probability `active_inducible_fraction`, default `0.375`), capturing cryptic/defective prophage remnants that confer repressor immunity and act as non-productive virion sinks.
+2. **Spontaneous + DNA-Damage Hill Induction:** Active uninduced lysogens evaluate per-cell DNA damage `D` from exogenous `damage_stimulus`, cognate-unprotected nuclease colicin exposure (e.g., ColE2 DNase on BtuB; non-nuclease pore-formers on the same receptor do not confer cross-immunity), and local ROS induction rate, triggering induction at rate `k_spont + k_max_damage * D^n / (K_damage^n + D^n)`. Induced cells arrest division during optional `lysis_delay_s` before bursting and releasing `virion_burst_size` free virions into `species::VIRION`.
+3. **Virion Transport, Adsorption, and Lysogenic Conversion:** Free virions diffuse implicitly (`D_virion / virion_retardation`), decay and wash out with mucus turnover, and adsorb onto live non-SOS cells (`k_adsorb` gated by `adsorption_receptor`). Adsorbed virions are neutralized on immune carriers (`has_prophage_immunity == true`) and infect susceptible non-lysogens with probability `p_lysogeny` (converting to active lysogens) vs `1 - p_lysogeny` (lytic death and burst).
+

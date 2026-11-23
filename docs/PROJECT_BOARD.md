@@ -32,19 +32,16 @@ This creates GitHub labels, milestones, a Projects v2 board, and links open issu
 
 ## Current board state (Nov 2026 — Post–Cycle 2 Hardening)
 
-The Sep–Nov 2026 campaigns, Layer 2/3 multiscale architecture waves (#307–#473), and Cycle 2 implementation PRs (**#484–#492**) are **merged**, closing `#464–#474`, `#476–#477`, `#479`, and `#481–#483`. Five issues remain open on GitHub:
+The Sep–Nov 2026 campaigns, Layer 2/3 multiscale architecture waves (#307–#473), and all Cycle 2 implementation PRs (**#484–#495**) are **merged**, closing the entire `#464–#483` Cycle 2 issue queue. Two issues remain open on GitHub:
 
-### Open Issues (5 open as of 2026-11-22)
+### Open Issues (2 open as of 2026-11-22)
 
 | Issue | Track | Priority | Scope |
 | :--- | :--- | :--- | :--- |
-| #475 | Spec 14 (`GAP-10`) | `gated (#464)` | Temperate prophage carriage, DNA-damage Hill induction, superinfection immunity, and lysogen conversion (re-evaluation of §8 V1 unblocked by PR #488) |
-| #478 | Numerics / QSSA | `important` | Bound or replace method-of-images Green's function under wall-normal mucus advection (`U_z != 0`, `Pe_z > 0.05` on retarded ColE1) |
-| #480 | HPC / GPU & MPI Memory | `important` | Mitigate replicated `ChemicalField` multi-rank OOM (~16 GiB at `1000x1000x50`) and 57 GB/10-step pageable GPU host-device transfers |
 | #446 | Campaign Ops | `maintenance` | Campaign storage index (automated S3 collector) |
 | #159 | GPU FMM Far-Field | `backlog` | Sub-quadratic CPU M2L delivered in #164; full device-side octree traversal remains open |
 
-### Done (Nov 2026 Cycle 2 wave — PRs #484–#492)
+### Done (Nov 2026 Cycle 2 wave — PRs #484–#495)
 
 | Issue(s) | Track | PR | Scope |
 | :--- | :--- | :--- | :--- |
@@ -57,6 +54,9 @@ The Sep–Nov 2026 campaigns, Layer 2/3 multiscale architecture waves (#307–#4
 | #466, #469, #474 | Spec 13 Layer 2 | #491 | Configurable `live_physics_mode`, delivery alignment & wet-mass docs (`1,100 kg/m³`), and perturbation pulse schedules |
 | #470, #472, #479 | Metabolism, GPU & HDF5 | #490 | Implicit iron VBF sink, CUDA delivery/funded metabolism, bitwise checkpoint RNG replay (`hdf5_rng_replay`), and QSSA transient bounds |
 | Wave 2 hardening | Checkpoint & Layer 2/3 | #492 | Seed-fork RNG/tag hardening, live O₂/stride inheritance, and Layer-3 pulse/death checkpoint restore |
+| #478 | Numerics / QSSA | #495 | Hybrid Sturm-Liouville / Hankel wall-normal Peclet sealed kernel on CPU + CUDA GPU and `qssa.drift_envelope_policy=auto` |
+| #480 | HPC / GPU & MPI Memory | #493 | Pre-allocation `ChemicalField` multi-rank OOM guard (`auto_slab`/`error`/`warn`), lazy delivery vectors, device-resident GPU stepping, and `PinnedHostBuffer<T>` staging |
+| #475 | Spec 14 (`GAP-10`) | #494 | Default-off `FixProphage` temperate prophage carriage, DNA-damage Hill induction, virion PDE/adsorption ledger, CUDA parity, and human/murine presets |
 
 ### Historical Jul/Aug 2026 summary
 

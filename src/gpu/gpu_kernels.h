@@ -52,7 +52,9 @@ void launch_superpose_kernel(
     unsigned long long* low_screening_evaluations = nullptr,
     unsigned long long* negative_field_count = nullptr,
     double* most_negative_field = nullptr,
-    unsigned long long* kernel_evaluations = nullptr);
+    unsigned long long* kernel_evaluations = nullptr,
+    unsigned long long* drift_envelope_evaluations = nullptr,
+    unsigned long long* drift_modal_evaluations = nullptr);
 
 void launch_field_update_kernel(
     double* conc, const double* reac, int ncells, int num_species,
@@ -394,6 +396,67 @@ void launch_receptor_kill_prob_kernel(
     cudaStream_t stream,
     double btuB_competitor_conc = -1.0,
     double b12_free_fraction = 1.0);
+
+void launch_prophage_induction_prob_kernel(
+    const int* state,
+    const int* is_ghost,
+    const int* has_inducible_prophage,
+    const int* prophage_induced,
+    const double* damage_signal,
+    double* induction_probs,
+    int num_agents,
+    double k_spont,
+    double k_max_damage,
+    double K_damage,
+    double hill_n,
+    double dt,
+    cudaStream_t stream);
+
+void launch_prophage_adsorption_accum_kernel(
+    const int* grid_cell,
+    const int* state,
+    const int* is_ghost,
+    const double* receptor_expr,
+    double* cell_adsorption_rate,
+    int num_agents,
+    int receptor_index,
+    double k_adsorb,
+    double cell_volume,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin,
+    cudaStream_t stream);
+
+void launch_prophage_cell_removal_kernel(
+    const double* conc_virion,
+    const double* cell_adsorption_rate,
+    const double* washout_by_z,
+    double* reac_delta,
+    double* cell_adsorb_factor,
+    double* totals_out,
+    int storage_nx, int global_ny, int global_nz,
+    int owned_storage_x_begin, int owned_storage_x_end,
+    double k_virion_decay,
+    double cell_volume,
+    double dt,
+    cudaStream_t stream);
+
+void launch_prophage_infect_prob_kernel(
+    const int* grid_cell,
+    const int* state,
+    const int* is_ghost,
+    const int* has_prophage_immunity,
+    const double* receptor_expr,
+    const double* cell_adsorb_factor,
+    double* infect_probs,
+    int num_agents,
+    int receptor_index,
+    double k_adsorb,
+    double cell_volume,
+    int global_nx, int global_ny, int storage_nx,
+    int owned_global_x_begin, int owned_global_x_end,
+    int owned_storage_x_begin,
+    cudaStream_t stream);
 
 int diffusion_max_line_length();
 

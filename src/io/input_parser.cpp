@@ -401,7 +401,7 @@ void apply_species_subset(SimulationConfig& cfg) {
   retained.reserve(cfg.chemicals.size());
   for (const auto& spec : cfg.chemicals) {
     const bool keep = cfg.species_subset == "nutrient_only"
-        ? !is_toxin_species(spec.name)
+        ? (!is_toxin_species(spec.name) && spec.name != species::VIRION)
         : spec.name == species::CARBON;
     if (keep) retained.push_back(spec);
   }
@@ -422,10 +422,16 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
   }
   if (cfg.qssa.drift_envelope_policy != "warn"
       && cfg.qssa.drift_envelope_policy != "error"
-      && cfg.qssa.drift_envelope_policy != "allow") {
+      && cfg.qssa.drift_envelope_policy != "allow"
+      && cfg.qssa.drift_envelope_policy != "auto") {
     throw ConfigError(
         "invalid qssa.drift_envelope_policy: expected 'warn', 'error', "
-        "or 'allow'");
+        "'allow', or 'auto'");
+  }
+  if (!std::isfinite(cfg.qssa.peclet_z_threshold)
+      || cfg.qssa.peclet_z_threshold < 0.0) {
+    throw ConfigError(
+        "invalid qssa.peclet_z_threshold: must be finite and nonnegative");
   }
 
   if (cfg.closure.zero_realization_grace_steps < 0) {
@@ -636,6 +642,94 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
     }
   }
 
+  // Spec 14 (GAP-10) — Temperate prophage config validation & virion field
+  {
+    const auto& pp = cfg.prophage;
+    const auto check_unit = [](std::string_view key, Real value) {
+      if (!std::isfinite(value) || value < 0.0 || value > 1.0) {
+        throw ConfigError("config key '" + std::string(key)
+                          + "' must be finite and in [0, 1]");
+      }
+    };
+    const auto check_nonneg = [](std::string_view key, Real value) {
+      if (!std::isfinite(value) || value < 0.0) {
+        throw ConfigError("config key '" + std::string(key)
+                          + "' must be finite and non-negative");
+      }
+    };
+    const auto check_pos = [](std::string_view key, Real value) {
+      if (!std::isfinite(value) || value <= 0.0) {
+        throw ConfigError("config key '" + std::string(key)
+                          + "' must be a finite positive real");
+      }
+    };
+    check_unit("prophage.lysogen_prevalence_init", pp.lysogen_prevalence_init);
+    check_unit("prophage.active_inducible_fraction",
+               pp.active_inducible_fraction);
+    check_nonneg("prophage.k_spont", pp.k_spont);
+    check_nonneg("prophage.k_max_damage", pp.k_max_damage);
+    check_pos("prophage.K_damage", pp.K_damage);
+    check_pos("prophage.hill_n", pp.hill_n);
+    check_nonneg("prophage.damage_stimulus", pp.damage_stimulus);
+    check_nonneg("prophage.nuclease_damage_weight", pp.nuclease_damage_weight);
+    check_nonneg("prophage.ros_damage_weight", pp.ros_damage_weight);
+    check_nonneg("prophage.lysis_delay_s", pp.lysis_delay_s);
+    check_nonneg("prophage.virion_burst_size", pp.virion_burst_size);
+    check_nonneg("prophage.D_virion", pp.D_virion);
+    if (!std::isfinite(pp.virion_retardation) || pp.virion_retardation < 1.0) {
+      throw ConfigError(
+          "config key 'prophage.virion_retardation' must be finite and >= 1");
+    }
+    check_nonneg("prophage.k_virion_decay", pp.k_virion_decay);
+    check_nonneg("prophage.virion_washout_scale", pp.virion_washout_scale);
+    check_nonneg("prophage.k_adsorb", pp.k_adsorb);
+    check_unit("prophage.p_lysogeny", pp.p_lysogeny);
+    if (!pp.adsorption_receptor.empty() && pp.adsorption_receptor != "none"
+        && !receptor_type_from_name(pp.adsorption_receptor).has_value()) {
+      throw ConfigError("unknown prophage.adsorption_receptor: '"
+                        + pp.adsorption_receptor + "'");
+    }
+    for (const auto& strain : cfg.initial_strains) {
+      if (strain.lysogen_prevalence.has_value()) {
+        check_unit("initial_strains[].lysogen_prevalence",
+                   *strain.lysogen_prevalence);
+      }
+      if (strain.active_inducible_fraction.has_value()) {
+        check_unit("initial_strains[].active_inducible_fraction",
+                   *strain.active_inducible_fraction);
+      }
+    }
+    if (pp.enabled && cfg.species_subset == "full") {
+      const Int idx = find_chemical_spec(cfg.chemicals, species::VIRION);
+      if (idx < 0) {
+        ChemicalSpec spec;
+        spec.name = species::VIRION;
+        spec.diff_coeff = pp.D_virion;
+        spec.retardation = pp.virion_retardation;
+        spec.initial_conc = 0.0;
+        spec.boundary_conc = 0.0;
+        spec.decay_rate = pp.k_virion_decay;
+        spec.z_gradient_enabled = false;
+        spec.z_gradient_lambda = k_z_lambda;
+        spec.diffusion_enabled = true;
+        spec.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
+        spec.epithelial_flux = 0.0;
+        cfg.chemicals.push_back(std::move(spec));
+      } else {
+        auto& spec = cfg.chemicals[static_cast<size_t>(idx)];
+        spec.diff_coeff = pp.D_virion;
+        spec.retardation = pp.virion_retardation;
+        spec.initial_conc = 0.0;
+        spec.boundary_conc = 0.0;
+        spec.decay_rate = pp.k_virion_decay;
+        spec.z_gradient_enabled = false;
+        spec.diffusion_enabled = true;
+        spec.epithelial_boundary_mode = EpithelialBoundaryMode::Flux;
+        spec.epithelial_flux = 0.0;
+      }
+    }
+  }
+
   auto& metabolism = cfg.fixes.metabolism;
   if (metabolism.uptake_limit == "none") {
     metabolism.uptake_limit_mode = UptakeLimitMode::None;
@@ -664,6 +758,19 @@ void InputParser::finalize_config(SimulationConfig& cfg) {
         "metabolism.delivery_far_field_radius = 0.0 to opt into the "
         "grid-dependent single-voxel delivery model",
         metabolism.delivery_far_field_radius));
+  }
+  if (!std::isfinite(cfg.memory.max_host_chemical_gb)
+      || cfg.memory.max_host_chemical_gb < 0.0) {
+    throw ConfigError(
+        "memory.max_host_chemical_gb must be finite and non-negative");
+  }
+  if (cfg.memory.replicated_oom_policy != "error"
+      && cfg.memory.replicated_oom_policy != "auto_slab"
+      && cfg.memory.replicated_oom_policy != "warn") {
+    throw ConfigError(
+        "invalid memory.replicated_oom_policy: expected 'error', "
+        "'auto_slab', or 'warn', got '"
+        + cfg.memory.replicated_oom_policy + "'");
   }
   if (cfg.chem_env.oxygen.respiration_driver != "ambient"
       && cfg.chem_env.oxygen.respiration_driver != "funded") {
@@ -927,10 +1034,10 @@ bool apply_drift_envelope_policy_key(
     SimulationConfig& cfg, std::string_view key, std::string_view val) {
   if (key == "drift_envelope_policy"
       || key == "qssa.drift_envelope_policy") {
-    if (val != "warn" && val != "error" && val != "allow") {
+    if (val != "warn" && val != "error" && val != "allow" && val != "auto") {
       throw ConfigError(
           "invalid qssa.drift_envelope_policy: expected 'warn', 'error', "
-          "or 'allow'");
+          "'allow', or 'auto'");
     }
     cfg.qssa.drift_envelope_policy = val;
     return true;
@@ -974,6 +1081,15 @@ bool apply_qssa_key(SimulationConfig& cfg, std::string_view key, const std::stri
   if (apply_drift_envelope_policy_key(cfg, key, val)) return true;
   if (key == "qssa.drift_correction") {
     cfg.qssa.drift_correction = parse_bool_config(val);
+    return true;
+  }
+  if (key == "qssa.peclet_z_threshold") {
+    const Real threshold = parse_config_real(key, val);
+    if (!std::isfinite(threshold) || threshold < 0.0) {
+      throw ConfigError(
+          "invalid qssa.peclet_z_threshold: must be finite and nonnegative");
+    }
+    cfg.qssa.peclet_z_threshold = threshold;
     return true;
   }
   if (key == "nutrient_cutoff")      { cfg.qssa.nutrient_cutoff = parse_config_real(key, val); return true; }
@@ -1924,6 +2040,68 @@ bool apply_quorum_sensing_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
+bool apply_prophage_key(SimulationConfig& cfg, std::string_view key,
+                        const std::string& val) {
+  if (key == "prophage.enabled") {
+    cfg.prophage.enabled = parse_bool_config(val); return true;
+  }
+  if (key == "prophage.lysogen_prevalence_init") {
+    cfg.prophage.lysogen_prevalence_init = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.active_inducible_fraction") {
+    cfg.prophage.active_inducible_fraction = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.k_spont") {
+    cfg.prophage.k_spont = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.k_max_damage") {
+    cfg.prophage.k_max_damage = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.K_damage") {
+    cfg.prophage.K_damage = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.hill_n") {
+    cfg.prophage.hill_n = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.damage_stimulus") {
+    cfg.prophage.damage_stimulus = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.nuclease_damage_weight") {
+    cfg.prophage.nuclease_damage_weight = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.ros_damage_weight") {
+    cfg.prophage.ros_damage_weight = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.lysis_delay_s") {
+    cfg.prophage.lysis_delay_s = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.virion_burst_size") {
+    cfg.prophage.virion_burst_size = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.D_virion") {
+    cfg.prophage.D_virion = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.virion_retardation") {
+    cfg.prophage.virion_retardation = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.k_virion_decay") {
+    cfg.prophage.k_virion_decay = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.virion_washout_scale") {
+    cfg.prophage.virion_washout_scale = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.k_adsorb") {
+    cfg.prophage.k_adsorb = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.p_lysogeny") {
+    cfg.prophage.p_lysogeny = parse_config_real(key, val); return true;
+  }
+  if (key == "prophage.adsorption_receptor") {
+    cfg.prophage.adsorption_receptor = val; return true;
+  }
+  return false;
+}
+
 std::vector<Int> parse_config_int_list(std::string_view key,
                                        const std::string& val) {
   std::string inner = trim_config(val);
@@ -2141,7 +2319,30 @@ bool apply_layer3_key(SimulationConfig& cfg, std::string_view key,
   return false;
 }
 
-constexpr std::array<FlatKeyHandler, 33> k_flat_key_handlers = {
+bool apply_memory_key(SimulationConfig& cfg, std::string_view key,
+                      const std::string& val) {
+  if (key == "memory.max_host_chemical_gb") {
+    const Real max_gb = parse_config_real(key, val);
+    if (!std::isfinite(max_gb) || max_gb < 0.0) {
+      throw ConfigError(
+          "memory.max_host_chemical_gb must be finite and non-negative");
+    }
+    cfg.memory.max_host_chemical_gb = max_gb;
+    return true;
+  }
+  if (key == "memory.replicated_oom_policy") {
+    if (val != "error" && val != "auto_slab" && val != "warn") {
+      throw ConfigError(
+          "invalid memory.replicated_oom_policy: expected 'error', "
+          "'auto_slab', or 'warn', got '" + val + "'");
+    }
+    cfg.memory.replicated_oom_policy = val;
+    return true;
+  }
+  return false;
+}
+
+constexpr std::array<FlatKeyHandler, 35> k_flat_key_handlers = {
   apply_time_key,
   apply_domain_key,
   apply_chemistry_key,
@@ -2162,6 +2363,7 @@ constexpr std::array<FlatKeyHandler, 33> k_flat_key_handlers = {
   apply_immigration_key,
   apply_initial_population_key,
   apply_closure_key,
+  apply_memory_key,
   apply_misc_key,
   apply_oxygen_key,
   apply_acetate_dyn_key,
@@ -2173,6 +2375,7 @@ constexpr std::array<FlatKeyHandler, 33> k_flat_key_handlers = {
   apply_cdi_key,
   apply_motility_key,
   apply_quorum_sensing_key,
+  apply_prophage_key,
   apply_layer2_key,
   apply_layer3_key,
 };

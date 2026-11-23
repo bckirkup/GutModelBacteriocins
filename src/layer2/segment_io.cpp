@@ -53,7 +53,7 @@ const char* kTimeseriesHeader =
     "n_occupied_total,patch_cells,pool_cells,pool_packets,"
     "births_cum,washout_cum,contraction_cum,reseeds_cum,distal_cum,"
     "edge_cum,external_cum,deaths_cum,sos_lysis_deaths_cum,toxin_kill_deaths_cum,"
-    "pulse_washout_cum,pulse_deaths_cum";
+    "pulse_washout_cum,pulse_deaths_cum,prophage_lytic_deaths_cum";
 
 const char* kLiveLineageHeader =
     "step,time_s,patch_id,lineage_id,alive_count,emigrants_cum";
@@ -222,7 +222,7 @@ void MucusSegment::emit_timeseries_row(std::ofstream& out) const {
       << ledger_.edge_departures << ',' << ledger_.external_arrivals
       << ',' << ledger_.biological_deaths << ',' << ledger_.sos_lysis_deaths
       << ',' << ledger_.toxin_kill_deaths << ',' << ledger_.pulse_washout
-      << ',' << ledger_.pulse_deaths << '\n';
+      << ',' << ledger_.pulse_deaths << ',' << ledger_.prophage_lytic_deaths << '\n';
 }
 
 void MucusSegment::emit_lineage_rows(std::ofstream& out) const {
@@ -299,6 +299,7 @@ void MucusSegment::write_provenance(const std::string& path) const {
       << ", \"biological_deaths\": " << ledger_.biological_deaths
       << ", \"sos_lysis_deaths\": " << ledger_.sos_lysis_deaths
       << ", \"toxin_kill_deaths\": " << ledger_.toxin_kill_deaths
+      << ", \"prophage_lytic_deaths\": " << ledger_.prophage_lytic_deaths
       << ", \"pulse_washout\": " << ledger_.pulse_washout
       << ", \"pulse_deaths\": " << ledger_.pulse_deaths << "},\n";
   write_pulses_json(out, c.pulses, pulse_events_);
@@ -500,6 +501,8 @@ void MucusSegment::write_state(hid_t fid,
                    ledger_.sos_lysis_deaths);
   write_scalar_i64(fid, p("/ledger/toxin_kill_deaths").c_str(),
                    ledger_.toxin_kill_deaths);
+  write_scalar_i64(fid, p("/ledger/prophage_lytic_deaths").c_str(),
+                   ledger_.prophage_lytic_deaths);
   write_scalar_i64(fid, p("/ledger/pulse_washout").c_str(),
                    ledger_.pulse_washout);
   write_scalar_i64(fid, p("/ledger/pulse_deaths").c_str(),
@@ -695,6 +698,8 @@ void MucusSegment::read_state(hid_t fid, const std::string& prefix) {
       read_scalar_i64_opt(fid, gp("/ledger/sos_lysis_deaths"), 0);
   ledger_.toxin_kill_deaths =
       read_scalar_i64_opt(fid, gp("/ledger/toxin_kill_deaths"), 0);
+  ledger_.prophage_lytic_deaths =
+      read_scalar_i64_opt(fid, gp("/ledger/prophage_lytic_deaths"), 0);
   ledger_.pulse_washout =
       read_scalar_i64_opt(fid, gp("/ledger/pulse_washout"), 0);
   ledger_.pulse_deaths =

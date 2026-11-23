@@ -1,6 +1,7 @@
 #include "agent_pool_gpu.h"
 #include "agent.h"
 #include "chemical_field.h"
+#include "chemical_field_gpu.h"
 #include "chem_environment_config.h"
 #include "domain.h"
 #include "fix_metabolism.h"
@@ -44,6 +45,9 @@ void AgentPoolGpu::resize(Int n) {
   d_grid_cell_.allocate(count);
   d_state_.allocate(count);
   d_is_ghost_.allocate(count);
+  d_has_prophage_immunity_.allocate(count);
+  d_has_inducible_prophage_.allocate(count);
+  d_prophage_induced_.allocate(count);
   d_mu_realized_.allocate(count);
   d_fermentation_fraction_.allocate(count);
   d_biomass_.allocate(count);
@@ -84,6 +88,9 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   std::vector<int> grid_cell(n);
   std::vector<int> state(n);
   std::vector<int> is_ghost(n);
+  std::vector<int> has_prophage_immunity(n);
+  std::vector<int> has_inducible_prophage(n);
+  std::vector<int> prophage_induced(n);
   std::vector<int> bi_loci_count(n);
   std::vector<double> mu_realized(n);
   std::vector<double> fermentation_fraction(n);
@@ -121,6 +128,9 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
     grid_cell[i] = a.grid_cell;
     state[i] = static_cast<int>(to_underlying(a.state));
     is_ghost[i] = a.flags.is_ghost ? 1 : 0;
+    has_prophage_immunity[i] = a.flags.has_prophage_immunity ? 1 : 0;
+    has_inducible_prophage[i] = a.flags.has_inducible_prophage ? 1 : 0;
+    prophage_induced[i] = a.flags.prophage_induced ? 1 : 0;
     mu_realized[i] = a.mu_realized;
     fermentation_fraction[i] = a.realized_fermentation_fraction;
     biomass[i] = a.biomass;
@@ -163,6 +173,9 @@ void AgentPoolGpu::sync_from_host(const AgentPool& pool) {
   d_grid_cell_.upload(grid_cell);
   d_state_.upload(state);
   d_is_ghost_.upload(is_ghost);
+  d_has_prophage_immunity_.upload(has_prophage_immunity);
+  d_has_inducible_prophage_.upload(has_inducible_prophage);
+  d_prophage_induced_.upload(prophage_induced);
   d_mu_realized_.upload(mu_realized);
   d_fermentation_fraction_.upload(fermentation_fraction);
   d_biomass_.upload(biomass);
@@ -396,15 +409,25 @@ bool AgentPoolGpu::run_delivery_prepare(
   assert(buffers.receptor_count == NUM_RECEPTORS);
 
   const auto cell_count = static_cast<size_t>(ncells);
-  DeviceBuffer<double> d_prescribed_carbon(cell_count);
-  d_prescribed_carbon.upload(std::vector(cell_count, 0.0));
-  DeviceBuffer<double> d_prescribed_oxygen;
+  DeviceBuffer<double> d_prescribed_carbon_local;
+  double* prescribed_carbon_ptr = buffers.d_prescribed_carbon;
+  if (prescribed_carbon_ptr == nullptr) {
+    d_prescribed_carbon_local.allocate(cell_count);
+    d_prescribed_carbon_local.zero();
+    prescribed_carbon_ptr = d_prescribed_carbon_local.data();
+  }
+  DeviceBuffer<double> d_prescribed_oxygen_local;
+  double* prescribed_oxygen_ptr = nullptr;
   if (buffers.o2_delivery_enabled != 0) {
-    d_prescribed_oxygen.allocate(cell_count);
-    d_prescribed_oxygen.upload(std::vector(cell_count, 0.0));
+    prescribed_oxygen_ptr = buffers.d_prescribed_oxygen;
+    if (prescribed_oxygen_ptr == nullptr) {
+      d_prescribed_oxygen_local.allocate(cell_count);
+      d_prescribed_oxygen_local.zero();
+      prescribed_oxygen_ptr = d_prescribed_oxygen_local.data();
+    }
   }
   DeviceBuffer<double> d_totals(3);
-  d_totals.upload(std::vector(3, 0.0));
+  d_totals.zero();
 
   DeviceBuffer<int> d_support_offsets;
   DeviceBuffer<int> d_support_cells;
@@ -486,9 +509,8 @@ bool AgentPoolGpu::run_delivery_prepare(
   dev.conc_oxygen = buffers.d_conc_oxygen;
   dev.reac_iron = buffers.d_reac_iron;
   dev.reac_acetate = buffers.d_reac_acetate;
-  dev.prescribed_carbon = d_prescribed_carbon.data();
-  dev.prescribed_oxygen =
-      buffers.o2_delivery_enabled != 0 ? d_prescribed_oxygen.data() : nullptr;
+  dev.prescribed_carbon = prescribed_carbon_ptr;
+  dev.prescribed_oxygen = prescribed_oxygen_ptr;
   dev.mu_realized = d_mu_realized_.data();
   dev.biomass = d_biomass_.data();
   dev.radius = d_radius_.data();
@@ -527,9 +549,13 @@ bool AgentPoolGpu::run_delivery_prepare(
   gpu_sync_compute();
   gpu_check_error("delivery_prepare_kernel");
 
-  d_prescribed_carbon.download(output.prescribed_carbon);
+  if (buffers.d_prescribed_carbon == nullptr) {
+    d_prescribed_carbon_local.download(output.prescribed_carbon);
+  }
   if (buffers.o2_delivery_enabled != 0) {
-    d_prescribed_oxygen.download(output.prescribed_oxygen);
+    if (buffers.d_prescribed_oxygen == nullptr) {
+      d_prescribed_oxygen_local.download(output.prescribed_oxygen);
+    }
   } else {
     output.prescribed_oxygen.clear();
   }
@@ -576,9 +602,10 @@ bool AgentPoolGpu::run_delivery_commit(const GpuDeliveryCommitContext& ctx) {
   const auto cell_count = static_cast<size_t>(ncells);
   DeviceBuffer<double> d_demand_carbon;
   DeviceBuffer<double> d_prescribed_carbon;
+  const double* prescribed_carbon_ptr = nullptr;
   if (carbon >= 0) {
     d_demand_carbon.allocate(cell_count);
-    d_demand_carbon.upload(std::vector(cell_count, 0.0));
+    d_demand_carbon.zero();
     gpu::launch_delivery_demand_by_cell_kernel(
         d_pending_carbon_funding_.data(), d_grid_cell_.data(), d_state_.data(),
         d_is_ghost_.data(), support_offsets_ptr, support_cells_ptr,
@@ -592,14 +619,22 @@ bool AgentPoolGpu::run_delivery_commit(const GpuDeliveryCommitContext& ctx) {
       ctx.chem.sum_values_across_ranks(demand_host);
       d_demand_carbon.upload(demand_host);
     }
-    d_prescribed_carbon.upload(ctx.chem.prescribed_sink_storage(carbon));
+    prescribed_carbon_ptr =
+        ctx.chem_gpu != nullptr
+            ? ctx.chem_gpu->post_diffusion_prescribed_device(carbon)
+            : nullptr;
+    if (prescribed_carbon_ptr == nullptr) {
+      d_prescribed_carbon.upload(ctx.chem.prescribed_sink_storage(carbon));
+      prescribed_carbon_ptr = d_prescribed_carbon.data();
+    }
   }
 
   DeviceBuffer<double> d_demand_oxygen;
   DeviceBuffer<double> d_prescribed_oxygen;
+  const double* prescribed_oxygen_ptr = nullptr;
   if (o2_delivery) {
     d_demand_oxygen.allocate(cell_count);
-    d_demand_oxygen.upload(std::vector(cell_count, 0.0));
+    d_demand_oxygen.zero();
     gpu::launch_delivery_demand_by_cell_kernel(
         d_pending_oxygen_funding_.data(), d_grid_cell_.data(), d_state_.data(),
         d_is_ghost_.data(), support_offsets_ptr, support_cells_ptr,
@@ -613,13 +648,20 @@ bool AgentPoolGpu::run_delivery_commit(const GpuDeliveryCommitContext& ctx) {
       ctx.chem.sum_values_across_ranks(demand_host);
       d_demand_oxygen.upload(demand_host);
     }
-    d_prescribed_oxygen.upload(ctx.chem.prescribed_sink_storage(oxygen));
+    prescribed_oxygen_ptr =
+        ctx.chem_gpu != nullptr
+            ? ctx.chem_gpu->post_diffusion_prescribed_device(oxygen)
+            : nullptr;
+    if (prescribed_oxygen_ptr == nullptr) {
+      d_prescribed_oxygen.upload(ctx.chem.prescribed_sink_storage(oxygen));
+      prescribed_oxygen_ptr = d_prescribed_oxygen.data();
+    }
   }
 
   DeviceBuffer<double> d_carbon_ledger(6);
-  d_carbon_ledger.upload(std::vector(6, 0.0));
+  d_carbon_ledger.zero();
   DeviceBuffer<double> d_oxygen_ledger(6);
-  d_oxygen_ledger.upload(std::vector(6, 0.0));
+  d_oxygen_ledger.zero();
 
   gpu::DeliveryCommitParams params;
   params.num_agents = size_;
@@ -639,9 +681,9 @@ bool AgentPoolGpu::run_delivery_commit(const GpuDeliveryCommitContext& ctx) {
   params.owned_storage_x_begin = ctx.owned_storage_x_begin;
 
   gpu::DeliveryCommitDeviceBuffers dev;
-  dev.prescribed_carbon = carbon >= 0 ? d_prescribed_carbon.data() : nullptr;
+  dev.prescribed_carbon = prescribed_carbon_ptr;
   dev.demand_carbon_by_cell = carbon >= 0 ? d_demand_carbon.data() : nullptr;
-  dev.prescribed_oxygen = o2_delivery ? d_prescribed_oxygen.data() : nullptr;
+  dev.prescribed_oxygen = prescribed_oxygen_ptr;
   dev.demand_oxygen_by_cell = o2_delivery ? d_demand_oxygen.data() : nullptr;
   dev.mu_realized = d_mu_realized_.data();
   dev.biomass = d_biomass_.data();

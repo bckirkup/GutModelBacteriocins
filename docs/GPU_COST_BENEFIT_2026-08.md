@@ -381,3 +381,73 @@ corrected sealed kernel routes to host by design (#394), so there is no device
 arm to measure. No precision or scientific-outcome column is populated by this
 campaign — `precision_summary` reads "not recorded" on every record, and any
 GPU-vs-CPU numerical comparison remains unmeasured.
+
+## Post-residency & multi-rank host memory guard (#480)
+
+Building on #408 (concentration host-dirty tracking) and #409 (reaction device
+residency), #480 closes the remaining full-grid host↔device transfer channels
+and adds a pre-allocation multi-rank `ChemicalField` memory guard:
+
+### 1. Device-resident stepping & pinned staging
+
+In the committed #404 `A4`/`s1` attribution table (`59.93 GB` over 10 profiled
+steps at `500 × 500 × 50`, 11 species), five full-grid copy channels accounted
+for `50.60 GB` (`84.4%` of total traffic; `>97%` when FMM is inactive):
+
+| Transfer site | #404 baseline (10 steps) | Post-#480 steady-step behavior (steps 2..9 without intermediate HDF5) |
+|---|---:|---|
+| `chem_reactions` | 22.00 GB | 0 B (device-resident via #409; host delta only if a host-only writer runs) |
+| `step_conc_upload` | 11.00 GB | 0 B (host-dirty bit stays clear; audit skipped while device is authoritative) |
+| `chem_diffusion_result` | 11.00 GB | 0 B (`keep_device_resident` defers D2H until lazy host read / HDF5 dump) |
+| `qssa_toxin_host_sync` | 4.00 GB | 0 B (`sync_species_concentrations_to_host` marks `device_conc_dirty` instead of downloading) |
+| `qssa_toxin_zero` | 2.60 GB | 0 B (device-side `cudaMemset` in `zero_species_concentration_on_device`) |
+
+Unavoidable staging transfers — step-end HDF5/summary downloads via lazy
+per-species materialization, slab periodic-x transpose buffers, and delivery
+prescribed/realized staging — now route through RAII `PinnedHostBuffer<T>`
+(`cudaMallocHost` / `cudaFreeHost` with automatic pageable fallback when
+`RLIMIT_MEMLOCK` blocks pinning) using `cudaMemcpyAsync`. Exact cumulative
+transfer counters and pinning status are recorded in `GpuProfile`
+(`h2d_bytes`, `d2h_bytes`, `pinned_staging_active`), `PROFILE_CSV`, and
+`/run_provenance/{h2d_bytes,d2h_bytes,pinned_staging_active}`.
+
+On-device verification of 10-step residency (`0` full-grid bytes across steps
+2..9, `< 10%` of baseline PCIe volume, and `<= 1e-12` relative error vs host
+across `none`, `sherwood`, and `delivery`) is enforced by
+`tests/test_gpu_chemical_field.cpp` in the T4 `gpu-device-tests` CI job.
+Wall-clock T4 remeasurement across `A1`–`A6` awaits the next `g4dn.xlarge`
+Batch pass using the refreshed `scripts/run_gpu_scaling_benchmark.sh` harness
+(which emits `wall_s`, `step_s`, `h2d_gb_per_10steps`, `d2h_gb_per_10steps`,
+`pcie_gb_per_10steps`, `pinned_staging_active`, and `rss_mb`).
+
+### 2. Multi-rank `ChemicalField` host memory estimator & OOM guard
+
+Non-delivery runs no longer eagerly allocate the six per-species delivery arrays
+in `ChemicalField::init()`, cutting host `ChemicalField` storage 4× to exact
+`conc_ + reac_` (`2 × num_species × storage_cells × 8 B`). Analytical host
+`ChemicalField` footprint for the shipped 11-species `full` subset
+(`ChemicalField::estimate_memory_footprint`, `delivery_any = false`, zero halo):
+
+| Grid | Ranks/node | Replicated per-rank | Replicated per-node | Slab per-rank | Slab per-node |
+|---|---:|---:|---:|---:|---:|
+| `500 × 500 × 50` | 1 | 2.05 GiB | 2.05 GiB | 2.05 GiB | 2.05 GiB |
+| `500 × 500 × 50` | 2 | 2.05 GiB | 4.10 GiB | 1.02 GiB | 2.05 GiB |
+| `500 × 500 × 50` | 4 | 2.05 GiB | 8.20 GiB | 0.51 GiB | 2.05 GiB |
+| `500 × 500 × 50` | 8 | 2.05 GiB | 16.39 GiB | 0.26 GiB | 2.05 GiB |
+| `1000 × 1000 × 50` | 1 | 8.20 GiB | 8.20 GiB | 8.20 GiB | 8.20 GiB |
+| `1000 × 1000 × 50` | 2 | 8.20 GiB | 16.39 GiB | 4.10 GiB | 8.20 GiB |
+| `1000 × 1000 × 50` | 4 | 8.20 GiB | 32.78 GiB | 2.05 GiB | 8.20 GiB |
+| `1000 × 1000 × 50` | 8 | 8.20 GiB | 65.57 GiB | 1.02 GiB | 8.20 GiB |
+
+Before `ChemicalField::init()` allocates a single vector, `Simulation::init()`
+and `Simulation::init_from_checkpoint()` evaluate the node-total footprint
+against `memory.max_host_chemical_gb` (or 90% of `/proc/meminfo` `MemAvailable`
+when unset/`0.0`) across `ranks_per_node` (`MPI_COMM_TYPE_SHARED`):
+- `memory.replicated_oom_policy = "error"` (default): throws `MemoryLimitError`
+  (`ConfigError`) recommending `"chemistry_decomposition": "slab"`.
+- `memory.replicated_oom_policy = "auto_slab"`: switches cleanly to `"slab"`
+  (and sizes `grid_halo_width`) when all active features support slab mode and
+  slab fits inside the budget; otherwise fails fast.
+- `memory.replicated_oom_policy = "warn"`: logs the diagnostic on rank 0 and
+  proceeds.
+
