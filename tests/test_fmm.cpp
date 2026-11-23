@@ -488,6 +488,76 @@ void test_fmm_periodic_cross_seam_accuracy() {
     assert(rel_l2_local <= 2.0e-2);
   }
 
+  // Single-source VoxelBox near+far disjoint partition check:
+  // Diagonal voxels inside the [-span..span] near box but outside the radial
+  // cutoff sphere must not be double-counted when combining superpose_to_grid
+  // with VoxelBox FMM far-field.
+  {
+    const std::vector<Vec3> single_pos = {{100.0e-6, 100.0e-6, 50.0e-6}};
+    const std::vector<GreensFunctionParams> single_params = {params[0]};
+    const std::vector<Real> single_str = {params[0].source_rate};
+    constexpr Real kBoxCutoff = 40.0e-6;
+    std::vector<Real> near_grid;
+    gf.superpose_to_grid(single_pos, single_params, near_grid, kBoxCutoff);
+
+    FMM fmm_box;
+    fmm_box.build(single_pos, single_str, domain, 2);
+    fmm_box.compute_local_expansions(
+        kTheta, gf, avg, kBoxCutoff, FmmNearCutoffShape::VoxelBox);
+
+    // Check diagonal inside box (dx=30um, dy=30um -> r=42.4um > 40um) and far cell.
+    for (const std::array<Int, 3>& cell :
+         std::vector<std::array<Int, 3>>{{13, 13, 5}, {16, 10, 5}, {2, 10, 5}}) {
+      const Vec3 tgt = domain.cell_center(cell[0], cell[1], cell[2]);
+      const Int flat = cell[2] * domain.nx() * domain.ny()
+                     + cell[1] * domain.nx() + cell[0];
+      const Real near = near_grid[static_cast<size_t>(flat)];
+      const Real far = fmm_box.evaluate_far_field(
+          tgt, kTheta, kBoxCutoff, gf, avg, FmmNearCutoffShape::VoxelBox);
+      const Real ref = gf.concentration_bounded(single_pos[0], tgt, single_params[0]);
+      assert(ref > 0.0);
+      assert(std::abs((near + far) - ref) / ref <= 1.0e-12);
+    }
+  }
+
+  // Nonzero distal advection across periodic half-domain branch cut (|dx| ~ L_x/2).
+  {
+    AdvectionConfig flow_cfg = acfg;
+    flow_cfg.distal_transit_time = 200.0;  // v_distal_max = 1 um/s along +x
+    flow_cfg.radial_turnover = 1e20;
+    AdvectionField flow_adv;
+    flow_adv.init(flow_cfg, domain);
+    GreensFunction flow_gf;
+    flow_gf.init(domain, flow_adv);
+
+    FMM fmm_flow;
+    fmm_flow.build(positions, strengths, domain, 2);
+    fmm_flow.compute_local_expansions(kTheta, flow_gf, avg, kCutoff);
+
+    const std::vector<Vec3> cut_targets = {
+        {102.0e-6, 100.0e-6, 50.0e-6},
+        {105.0e-6, 100.0e-6, 50.0e-6},
+        {108.0e-6, 100.0e-6, 50.0e-6},
+        {195.0e-6, 100.0e-6, 50.0e-6},
+    };
+    Real flow_err_sq = 0.0;
+    Real flow_ref_sq = 0.0;
+    for (const Vec3& tgt : cut_targets) {
+      Real ref = 0.0;
+      for (size_t s = 0; s < positions.size(); ++s) {
+        ref += flow_gf.concentration_bounded(positions[s], tgt, params[s]);
+      }
+      const Real est = fmm_flow.evaluate_field(
+          tgt, kTheta, kCutoff, flow_gf, positions, params, avg);
+      assert(std::isfinite(est) && est >= 0.0);
+      flow_err_sq += (est - ref) * (est - ref);
+      flow_ref_sq += ref * ref;
+    }
+    const Real flow_rel_l2 = std::sqrt(flow_err_sq / flow_ref_sq);
+    std::cout << "    nonzero-flow branch-cut rel_l2=" << flow_rel_l2 << "\n";
+    assert(flow_rel_l2 <= 2.0e-2);
+  }
+
   std::cout << "  test_fmm_periodic_cross_seam_accuracy: PASSED\n";
 }
 

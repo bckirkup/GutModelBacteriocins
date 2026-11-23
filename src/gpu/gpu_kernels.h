@@ -356,6 +356,9 @@ struct FmmDeviceTreeView {
   const double* local = nullptr;
   const int* near_offsets = nullptr;
   const int* near_nodes = nullptr;
+  const int* leaf_src_offsets = nullptr;
+  const double* leaf_src_pos = nullptr;
+  const double* leaf_src_strength = nullptr;
   int num_nodes = 0;
   int coeffs_per_node = 0;
   int expansion_order = 1;
@@ -378,6 +381,10 @@ struct FmmFarLaunchParams {
   FmmGridLayout grid{};
   double theta = 0.5;
   double near_cutoff = 0.0;
+  int cutoff_shape = 0;  // 0 = Sphere, 1 = VoxelBox
+  int span_x = 0;
+  int span_y = 0;
+  int span_z = 0;
   double fd_rel_1 = 0.0;
   double fd_rel_2 = 0.0;
   double fd_rel_3 = 0.0;

@@ -99,7 +99,7 @@ CTest targets (165 total with MPI+HDF5 enabled, including shards, custom script,
 | `agent` | unit | Agent pool and plasmid library |
 | `iron_fallback` | unit | Secondary iron receptors |
 | `octree` | unit | Barnes-Hut FMM versus exact Green's function |
-| `fmm_<shard>` | unit | Higher-order FMM accuracy (9 shards) |
+| `fmm_<shard>` | unit (11), benchmark/slow (1) | Higher-order FMM accuracy, periodic M2L, sub-quadratic scaling, and 100k-source benchmark (12 shards) |
 | `qssa_stoichiometry` | unit | QSSA reaction stoichiometry |
 | `qssa_transient_bounds` | unit, science | QSSA vs transient PDE error bounds |
 | `chemical_field_reaction_residency` | unit | Host/device reaction accumulator residency |
@@ -193,6 +193,7 @@ CTest targets (165 total with MPI+HDF5 enabled, including shards, custom script,
 | `gpu_reproducibility` | gpu, integration | GPU reproducibility |
 | `gpu_scaling_benchmark` | gpu, benchmark | GPU scaling smoke |
 | `qssa_gpu_parity` | gpu | GPU QSSA parity |
+| `gpu_fmm_parity` | gpu | GPU/CPU FMM far-field parity (local & tree, replicated & slab) and zero full-grid transfer residency |
 | `neumann_image_series_gpu` | gpu | GPU Neumann image-series parity |
 | `robin_lumen_gpu` | gpu | GPU Robin lumen-boundary parity |
 | `gpu_toxin_burst_parity` | gpu, integration | GPU toxin burst parity |

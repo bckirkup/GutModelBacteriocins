@@ -12,6 +12,7 @@
 #include <cuda_runtime.h>
 #endif
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <vector>
@@ -131,13 +132,37 @@ void prepare_fmm_robin_tables(const Domain& domain,
   launch_params.robin_table_count = next_idx;
 }
 
+bool fmm_needs_robin_direct_fallback(const FMM& fmm,
+                                     const Domain& domain,
+                                     const GreensFunctionParams& avg_params) {
+  if (!robin::transfer_enabled(avg_params.lumen_transfer_length)) return false;
+  const double z_lo = domain.lo()[2];
+  const double z_hi = domain.hi()[2];
+  const double cell_radius =
+      std::min({domain.dx_x(), domain.dx_y(), domain.dx_z()});
+  if (!(cell_radius > 0.0) || !(z_hi > z_lo)) return false;
+  for (const Vec3& pos : fmm.source_positions()) {
+    const double wall_dist = std::min(pos[2] - z_lo, z_hi - pos[2]);
+    if (wall_dist < cell_radius) return true;
+  }
+  for (int i = 0; i < fmm.num_nodes(); ++i) {
+    const double z = fmm.node(i).center_of_source[2];
+    const double wall_dist = std::min(z - z_lo, z_hi - z);
+    if (wall_dist < cell_radius) return true;
+  }
+  return false;
+}
+
 struct PackedTreeOffsets {
   size_t half_size = 0;
   size_t center_of_source = 0;
   size_t strength = 0;
   size_t multipole = 0;
   size_t local = 0;
+  size_t leaf_src_pos = 0;
+  size_t leaf_src_strength = 0;
   size_t is_leaf = 0;
+  size_t leaf_src_offsets = 0;
   size_t near_offsets = 0;
   size_t near_nodes = 0;
 };
@@ -151,29 +176,43 @@ PackedTreeOffsets pack_fmm_tree_buffers(const FMM& fmm,
   const auto ncoeff = static_cast<size_t>(
       FMM::num_coefficients(fmm.expansion_order()));
 
+  size_t total_leaf_sources = 0;
+  size_t total_near = 0;
+  for (int i = 0; i < fmm.num_nodes(); ++i) {
+    const FMMNode& node = fmm.node(i);
+    if (node.is_leaf) {
+      total_leaf_sources += node.sources.size();
+    }
+    if (use_locals) {
+      total_near += node.near_list.size();
+    }
+  }
+
   // Pack all double arrays into a single contiguous H2D buffer.
   off.half_size = 3 * n;
   off.center_of_source = off.half_size + n;
   off.strength = off.center_of_source + 3 * n;
   off.multipole = off.strength + n;
   off.local = off.multipole + n * ncoeff;
-  const size_t real_total = use_locals ? (off.local + n * ncoeff) : off.local;
+  const size_t after_local = use_locals ? (off.local + n * ncoeff) : off.local;
+  off.leaf_src_pos = after_local;
+  off.leaf_src_strength = off.leaf_src_pos + 3 * total_leaf_sources;
+  const size_t real_total = off.leaf_src_strength + total_leaf_sources;
   real_tree.assign(real_total, 0.0);
-
-  size_t total_near = 0;
-  if (use_locals) {
-    for (int i = 0; i < fmm.num_nodes(); ++i) {
-      total_near += fmm.node(i).near_list.size();
-    }
-  }
 
   // Pack all int arrays into a single contiguous H2D buffer.
   off.is_leaf = 8 * n;
-  off.near_offsets = off.is_leaf + n;
+  off.leaf_src_offsets = off.is_leaf + n;
+  off.near_offsets = off.leaf_src_offsets + n + 1;
   off.near_nodes = use_locals ? (off.near_offsets + n + 1) : off.near_offsets;
-  const size_t int_total = use_locals ? (off.near_nodes + total_near) : off.near_offsets;
+  const size_t int_total = use_locals
+      ? (off.near_nodes + total_near)
+      : off.near_offsets;
   int_tree.assign(int_total, 0);
 
+  const auto& src_positions = fmm.source_positions();
+  const auto& src_strengths = fmm.source_strengths();
+  size_t leaf_src_cursor = 0;
   size_t near_cursor = 0;
   for (int i = 0; i < fmm.num_nodes(); ++i) {
     const auto idx = static_cast<size_t>(i);
@@ -202,6 +241,18 @@ PackedTreeOffsets pack_fmm_tree_buffers(const FMM& fmm,
     }
     int_tree[off.is_leaf + idx] = node.is_leaf ? 1 : 0;
 
+    int_tree[off.leaf_src_offsets + idx] = static_cast<int>(leaf_src_cursor);
+    if (node.is_leaf) {
+      for (int sid : node.sources) {
+        const auto s = static_cast<size_t>(sid);
+        real_tree[off.leaf_src_pos + 3 * leaf_src_cursor + 0] = src_positions[s][0];
+        real_tree[off.leaf_src_pos + 3 * leaf_src_cursor + 1] = src_positions[s][1];
+        real_tree[off.leaf_src_pos + 3 * leaf_src_cursor + 2] = src_positions[s][2];
+        real_tree[off.leaf_src_strength + leaf_src_cursor] = src_strengths[s];
+        ++leaf_src_cursor;
+      }
+    }
+
     if (use_locals) {
       int_tree[off.near_offsets + idx] = static_cast<int>(near_cursor);
       for (int src_idx : node.near_list) {
@@ -209,6 +260,7 @@ PackedTreeOffsets pack_fmm_tree_buffers(const FMM& fmm,
       }
     }
   }
+  int_tree[off.leaf_src_offsets + n] = static_cast<int>(leaf_src_cursor);
   if (use_locals) {
     int_tree[off.near_offsets + n] = static_cast<int>(near_cursor);
   }
@@ -225,7 +277,8 @@ bool gpu_accumulate_far_field_device(const FMM& fmm,
                                      Real theta,
                                      Real near_cutoff,
                                      double* d_conc,
-                                     const FmmDeviceLayout& layout) {
+                                     const FmmDeviceLayout& layout,
+                                     FmmNearCutoffShape cutoff_shape) {
 #ifndef GUTIBM_CUDA
   (void)fmm;
   (void)domain;
@@ -235,15 +288,17 @@ bool gpu_accumulate_far_field_device(const FMM& fmm,
   (void)near_cutoff;
   (void)d_conc;
   (void)layout;
+  (void)cutoff_shape;
   return false;
 #else
   if (!gpu_runtime_enabled() || d_conc == nullptr) return false;
   if (fmm.empty()) return true;
   if (layout.owned_storage_x_end <= layout.owned_storage_x_begin) return true;
+  if (fmm_needs_robin_direct_fallback(fmm, domain, avg_params)) return false;
 
   GpuTransferSite site("qssa_fmm_tree");
 
-  const bool use_locals = fmm.locals_match_query(theta, near_cutoff);
+  const bool use_locals = fmm.locals_match_query(theta, near_cutoff, cutoff_shape);
   std::vector<double> real_tree;
   std::vector<int> int_tree;
   const PackedTreeOffsets off = pack_fmm_tree_buffers(
@@ -262,6 +317,11 @@ bool gpu_accumulate_far_field_device(const FMM& fmm,
   tree.multipole = d_real_tree.data() + off.multipole;
   tree.children = d_int_tree.data();
   tree.is_leaf = d_int_tree.data() + off.is_leaf;
+  tree.leaf_src_offsets = d_int_tree.data() + off.leaf_src_offsets;
+  if (off.leaf_src_strength > off.leaf_src_pos) {
+    tree.leaf_src_pos = d_real_tree.data() + off.leaf_src_pos;
+    tree.leaf_src_strength = d_real_tree.data() + off.leaf_src_strength;
+  }
   tree.num_nodes = fmm.num_nodes();
   tree.coeffs_per_node = FMM::num_coefficients(fmm.expansion_order());
   tree.expansion_order = fmm.expansion_order();
@@ -286,11 +346,17 @@ bool gpu_accumulate_far_field_device(const FMM& fmm,
   launch.grid.local_global_x_begin = layout.local_global_x_begin;
   launch.theta = theta;
   launch.near_cutoff = near_cutoff;
+  launch.cutoff_shape = to_underlying(cutoff_shape);
+  if (near_cutoff > 0.0) {
+    launch.span_x = static_cast<int>(std::ceil(near_cutoff / domain.dx_x()));
+    launch.span_y = static_cast<int>(std::ceil(near_cutoff / domain.dx_y()));
+    launch.span_z = static_cast<int>(std::ceil(near_cutoff / domain.dx_z()));
+  }
 
   const double eps = std::numeric_limits<double>::epsilon();
   launch.fd_rel_1 = std::cbrt(eps);
-  launch.fd_rel_2 = std::pow(eps, 0.25);
-  launch.fd_rel_3 = std::pow(eps, 0.2);
+  launch.fd_rel_2 = std::pow(eps, 1.0 / 6.0);
+  launch.fd_rel_3 = std::pow(eps, 1.0 / 7.0);
 
   DeviceBuffer<double> d_robin_tables;
   prepare_fmm_robin_tables(domain, adv, avg_params, d_robin_tables, launch);
@@ -317,7 +383,8 @@ bool gpu_accumulate_far_field_device(const FMM& fmm,
                                      Real theta,
                                      Real near_cutoff,
                                      ChemicalFieldGpu* chem_gpu,
-                                     Int toxin_species_idx) {
+                                     Int toxin_species_idx,
+                                     FmmNearCutoffShape cutoff_shape) {
   if (chem_gpu == nullptr || !chem_gpu->active()) return false;
   double* d_conc = chem_gpu->conc_device(toxin_species_idx);
   if (d_conc == nullptr) return false;
@@ -329,7 +396,8 @@ bool gpu_accumulate_far_field_device(const FMM& fmm,
       ? domain.local_grid_x_begin()
       : 0;
   return gpu_accumulate_far_field_device(
-      fmm, domain, adv, avg_params, theta, near_cutoff, d_conc, layout);
+      fmm, domain, adv, avg_params, theta, near_cutoff, d_conc, layout,
+      cutoff_shape);
 }
 
 }  // namespace gutibm

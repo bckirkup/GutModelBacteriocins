@@ -237,7 +237,7 @@ void verify_parity_for_layout(const CrossSeamFixture& fx,
       std::cout << "    layout=" << layout_name << " order=" << order
                 << " locals_ready=" << (use_locals ? 1 : 0)
                 << " rel_l2_vs_cpu=" << rel_vs_cpu
-                << " rel_l2_vs_exact=" << rel_vs_exact << "\n";
+                << " rel_l2_vs_exact=" << rel_vs_exact << std::endl;
       assert(rel_vs_cpu <= 1.0e-10);
       if (order >= 2) {
         assert(rel_vs_exact <= 2.0e-2);
@@ -264,7 +264,7 @@ void test_gpu_fmm_replicated_and_slab_parity() {
   slab.local_global_x_begin = 10;  // global x in [10, 20), touching x = hi[0] seam
   verify_parity_for_layout(fx, "slab", slab, true);
 
-  std::cout << "  test_gpu_fmm_replicated_and_slab_parity: PASSED\n";
+  std::cout << "  test_gpu_fmm_replicated_and_slab_parity: PASSED" << std::endl;
 }
 
 void test_gpu_fmm_zero_full_grid_transfers() {
@@ -289,7 +289,7 @@ void test_gpu_fmm_zero_full_grid_transfers() {
   qcfg.fmm_theta = 0.5;
   qcfg.fmm_expansion_order = 2;
   qcfg.toxin_cutoff = 40.0e-6;
-  qcfg.microcin_secretion = 1.0e-20;
+  qcfg.colicin_release_rate = 1.0e-18;
 
   QSSASolver qssa_cpu;
   qssa_cpu.init(qcfg, domain, adv);
@@ -302,18 +302,20 @@ void test_gpu_fmm_zero_full_grid_transfers() {
   ChemicalField chem_gpu_host;
   chem_gpu_host.init(domain, default_cfg.chemicals);
 
-  const Int cira_idx = chem_cpu.find(species::BACTERIOCIN_CIRA);
-  assert(cira_idx >= 0);
+  const Int btub_idx = chem_cpu.find(species::BACTERIOCIN_BTUB);
+  assert(btub_idx >= 0);
 
   ChemicalFieldGpu chem_gpu;
   chem_gpu.init(chem_gpu_host);
   assert(chem_gpu.active());
   assert(ChemicalFieldGpu::device_conc_residency_enabled());
 
-  // Populate microcin-secreting agents including clusters near x=lo and x=hi.
+  // Populate ColE1-carrying agents and active ColE1 lysis bursts near x=lo,
+  // interior, and x=hi to exercise periodic cross-seam FMM on GPU.
   AgentPool agents;
-  const PlasmidEntry* mccv = PlasmidLibrary::find("MccV");
-  assert(mccv != nullptr);
+  std::vector<ToxinBurstSource> bursts;
+  const PlasmidEntry* cole1 = PlasmidLibrary::find("ColE1");
+  assert(cole1 != nullptr);
   RNG rng(15999);
   for (int i = 0; i < 48; ++i) {
     Agent a{};
@@ -322,25 +324,38 @@ void test_gpu_fmm_zero_full_grid_transfers() {
                  : (i < 32) ? rng.uniform(90.0e-6, 110.0e-6)
                             : rng.uniform(191.0e-6, 198.0e-6);
     a.x = {x, rng.uniform(10.0e-6, 190.0e-6), rng.uniform(20.0e-6, 80.0e-6)};
-    a.genome.bi_loci.push_back(mccv->cluster);
+    a.genome.bi_loci.push_back(cole1->cluster);
+    assert(!a.genome.bi_loci.empty());
     agents.push_back(a);
+
+    ToxinBurstSource burst{};
+    burst.pos = a.x;
+    burst.params.diff_coeff = cole1->cluster.diff_coeff;
+    burst.params.source_rate = qcfg.colicin_release_rate;
+    burst.params.pI = cole1->cluster.pI;
+    burst.params.retardation = cole1->cluster.retardation;
+    burst.params.decay_rate = 1.0e-3;
+    burst.creation_time = 0.0;
+    burst.release_tau = 300.0;
+    burst.is_nuclease = false;
+    burst.target = ReceptorType::BtuB;
+    bursts.push_back(burst);
   }
 
   const ProteaseConfig protease{};
-  const std::vector<ToxinBurstSource> bursts;
 
   // CPU reference solve.
   qssa_cpu.solve_bacteriocin_field(
-      agents, bursts, 0.0, protease, adv, chem_cpu, cira_idx,
-      ReceptorType::CirA, nullptr, true);
+      agents, bursts, 0.0, protease, adv, chem_cpu, btub_idx,
+      ReceptorType::BtuB, nullptr, true);
 
   // GPU device-resident solve with transfer profiling.
   gpu_transfer_profile_set_enabled(true);
   gpu_transfer_profile_reset();
 
   qssa_gpu.solve_bacteriocin_field(
-      agents, bursts, 0.0, protease, adv, chem_gpu_host, cira_idx,
-      ReceptorType::CirA, &chem_gpu, true);
+      agents, bursts, 0.0, protease, adv, chem_gpu_host, btub_idx,
+      ReceptorType::BtuB, &chem_gpu, true);
 
   const GpuProfile prof = gpu_transfer_profile_snapshot();
   const auto sites = gpu_transfer_site_profiles();
@@ -368,7 +383,7 @@ void test_gpu_fmm_zero_full_grid_transfers() {
             << " total_h2d=" << prof.h2d_bytes
             << " total_d2h=" << prof.d2h_bytes
             << " fmm_tree_h2d=" << fmm_tree_h2d
-            << " fmm_tree_d2h=" << fmm_tree_d2h << "\n";
+            << " fmm_tree_d2h=" << fmm_tree_d2h << std::endl;
 
   // Zero full-grid concentration H2D or D2H transfers during the solve.
   assert(fmm_tree_h2d > 0 && fmm_tree_h2d < full_grid_bytes);
@@ -384,14 +399,15 @@ void test_gpu_fmm_zero_full_grid_transfers() {
   std::vector<Real> cpu_field(static_cast<size_t>(ncells), 0.0);
   std::vector<Real> gpu_field(static_cast<size_t>(ncells), 0.0);
   for (Int c = 0; c < ncells; ++c) {
-    cpu_field[static_cast<size_t>(c)] = chem_cpu.conc(cira_idx, c);
-    gpu_field[static_cast<size_t>(c)] = chem_gpu_host.conc(cira_idx, c);
+    cpu_field[static_cast<size_t>(c)] = chem_cpu.conc(btub_idx, c);
+    gpu_field[static_cast<size_t>(c)] = chem_gpu_host.conc(btub_idx, c);
   }
   const Real rel_l2 = relative_l2(gpu_field, cpu_field);
-  std::cout << "    solve_bacteriocin_field CPU vs GPU rel_l2=" << rel_l2 << "\n";
+  std::cout << "    solve_bacteriocin_field CPU vs GPU rel_l2=" << rel_l2
+            << std::endl;
   assert(rel_l2 <= 1.0e-10);
 
-  std::cout << "  test_gpu_fmm_zero_full_grid_transfers: PASSED\n";
+  std::cout << "  test_gpu_fmm_zero_full_grid_transfers: PASSED" << std::endl;
 }
 
 }  // namespace

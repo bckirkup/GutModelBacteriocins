@@ -305,7 +305,8 @@ void accumulate_far_field_cell(
   const Int idx = iz * grid.storage_nx * grid.ny
       + iy * grid.storage_nx + ix - grid.x_begin + grid.halo_width;
   const Real contribution = fmm.evaluate_far_field(
-      tgt, grid.fmm_theta, toxin_cutoff, gf, avg_params);
+      tgt, grid.fmm_theta, toxin_cutoff, gf, avg_params,
+      FmmNearCutoffShape::VoxelBox);
   toxin_conc[static_cast<size_t>(idx)] += contribution;
 }
 
@@ -1212,7 +1213,8 @@ void QSSASolver::solve_bacteriocin_field_fmm(
   FMM fmm;
   fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
   fmm.compute_local_expansions(
-      cfg_.fmm_theta, gf_, avg_params, cfg_.toxin_cutoff);
+      cfg_.fmm_theta, gf_, avg_params, cfg_.toxin_cutoff,
+      FmmNearCutoffShape::VoxelBox);
 
   const bool gpu_active = chem_gpu != nullptr && chem_gpu->active();
   const bool defer_sync = gpu_active
@@ -1234,7 +1236,7 @@ void QSSASolver::solve_bacteriocin_field_fmm(
       }
       if (gpu_accumulate_far_field_device(
               fmm, *domain_, adv, avg_params, cfg_.fmm_theta, cfg_.toxin_cutoff,
-              chem_gpu, toxin_species_idx)) {
+              chem_gpu, toxin_species_idx, FmmNearCutoffShape::VoxelBox)) {
         chem.mark_device_conc_dirty(toxin_species_idx);
         chem.clear_host_conc_dirty(toxin_species_idx);
         if (!defer_sync) {
@@ -1255,7 +1257,7 @@ void QSSASolver::solve_bacteriocin_field_fmm(
       }
       if (gpu_accumulate_far_field_device(
               fmm, *domain_, adv, avg_params, cfg_.fmm_theta, cfg_.toxin_cutoff,
-              chem_gpu, toxin_species_idx)) {
+              chem_gpu, toxin_species_idx, FmmNearCutoffShape::VoxelBox)) {
         chem.mark_device_conc_dirty(toxin_species_idx);
         chem.clear_host_conc_dirty(toxin_species_idx);
         if (!defer_sync) {

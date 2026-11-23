@@ -24,12 +24,15 @@ struct KernelTaylorCoeffs {
 
 // Evaluate G and source-position Taylor coefficients at (source, target).
 // coeffs.values[k] = (1/(ix! iy! iz!)) * d^{ix+iy+iz} G / d sx^ix d sy^iy d sz^iz
+// When separation_L > 0, use it as the characteristic distance for FD step sizing
+// (preserving physical source coordinates under periodic minimum-image domains).
 KernelTaylorCoeffs kernel_taylor_at_source(
     const GreensFunction& gf,
     const Vec3& source,
     const Vec3& target,
     const GreensFunctionParams& params,
-    int max_order);
+    int max_order,
+    Real separation_L = -1.0);
 
 // Evaluate multipole expansion: sum_alpha M_alpha * kernel_taylor_alpha.
 Real evaluate_multipole(const std::vector<Real>& moments,
@@ -43,7 +46,8 @@ Real evaluate_multipole_at_source(const GreensFunction& gf,
                                   int order,
                                   const Vec3& source,
                                   const Vec3& target,
-                                  const GreensFunctionParams& params);
+                                  const GreensFunctionParams& params,
+                                  Real separation_L = -1.0);
 
 // Convert remote multipole at source_center into local expansion at target_center.
 std::vector<Real> multipole_to_local(const std::vector<Real>& moments,
@@ -51,7 +55,8 @@ std::vector<Real> multipole_to_local(const std::vector<Real>& moments,
                                      const Vec3& source_center,
                                      const Vec3& target_center,
                                      const GreensFunction& gf,
-                                     const GreensFunctionParams& avg_params);
+                                     const GreensFunctionParams& avg_params,
+                                     Real separation_L = -1.0);
 
 // Shift local expansion from parent_center to child_center.
 std::vector<Real> shift_local_expansion(const std::vector<Real>& parent_local,
