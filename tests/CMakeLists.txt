@@ -170,6 +170,7 @@ gutibm_add_test(O2_growth_boost test_O2_growth_boost.cpp LABELS "unit")
 gutibm_add_test(mucin_liberation test_mucin_liberation.cpp LABELS "unit")
 gutibm_add_test(vbf_velocity_channel test_vbf_velocity_channel.cpp LABELS "unit")
 gutibm_add_test(mucin_liberation_units test_mucin_liberation_units.cpp LABELS "unit")
+gutibm_add_test(vbf_mucin_stoichiometry test_vbf_mucin_stoichiometry.cpp LABELS "unit")
 gutibm_add_test(mechanism_wiring test_mechanism_wiring.cpp LABELS "integration")
 gutibm_add_test(advection_peristaltic test_advection_peristaltic.cpp LABELS "unit")
 gutibm_add_test(ethanolamine test_ethanolamine.cpp LABELS "unit")
@@ -292,6 +293,17 @@ if(GUTIBM_USE_MPI)
   set_tests_properties(mpi_multi_rank PROPERTIES
     LABELS "integration;mpi"
     PASS_REGULAR_EXPRESSION "All MPI multi-rank tests passed"
+    RESOURCE_LOCK mpi
+  )
+
+  add_test(
+    NAME vbf_mucin_stoichiometry_mpi
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 2
+            ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_vbf_mucin_stoichiometry> ${MPIEXEC_POSTFLAGS}
+  )
+  set_tests_properties(vbf_mucin_stoichiometry_mpi PROPERTIES
+    LABELS "integration;mpi"
+    PASS_REGULAR_EXPRESSION "All dynamic mucin stoichiometry tests passed"
     RESOURCE_LOCK mpi
   )
 

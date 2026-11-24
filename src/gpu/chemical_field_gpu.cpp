@@ -1204,7 +1204,7 @@ bool ChemicalFieldGpu::apply_boundaries(const Domain& domain,
           d_boundary_injected_.data() + s, gpu_compute_stream());
       touched = true;
     }
-    if (!spec.diffusion_enabled && nz >= 2) {
+    if (!spec.diffusion_enabled && spec.name != species::MUCIN && nz >= 2) {
       gpu::launch_set_luminal_neumann(
           d_conc, nx, ny, nz,
           owned_storage_begin, owned_storage_end,
