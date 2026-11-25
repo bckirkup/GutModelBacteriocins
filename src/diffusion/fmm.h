@@ -27,6 +27,15 @@ namespace gutibm {
 
 class Domain;
 
+// Shape of the near-field region excluded from FMM far-field evaluation.
+// Sphere matches radial min_image_dist_sq <= near_cutoff^2 (point/agent queries);
+// VoxelBox matches the integer voxel stencil [-span_x..span_x, -span_y..span_y,
+// -span_z..span_z] used by GreensFunction::superpose_to_grid / superpose_kernel.
+enum class FmmNearCutoffShape : int {
+  Sphere = 0,
+  VoxelBox = 1,
+};
+
 struct FMMNode {
   Vec3 center;
   Real half_size;
@@ -40,6 +49,11 @@ struct FMMNode {
   // Indexed by multi-index (ix, iy, iz) with ix+iy+iz <= expansion_order.
   std::vector<Real> multipole;
   std::vector<Real> local;
+
+  // Non-well-separated source node indices (U-list) used for exact residual
+  // far-field evaluation when locals_ready() is true (populated for leaves and
+  // internal nodes that have at least one empty child octant).
+  std::vector<int> near_list;
 };
 
 class FMM {
@@ -52,11 +66,16 @@ class FMM {
              const Domain& domain,
              int expansion_order);
 
-  // Tree-walk M2L at every node, then L2L downward to populate local expansions.
-  // Call once per solve before batch far-field evaluation.
-  void compute_local_expansions(Real theta,
-                                const GreensFunction& gf,
-                                const GreensFunctionParams& avg_params);
+  // Dual-tree M2L (O(N_nodes)), then L2L downward to populate local expansions.
+  // Call once per solve before batch far-field evaluation. When near_cutoff > 0,
+  // pairs within near_cutoff are excluded from M2L so near-field singularities
+  // never contaminate local Taylor expansions.
+  void compute_local_expansions(
+      Real theta,
+      const GreensFunction& gf,
+      const GreensFunctionParams& avg_params,
+      Real near_cutoff = 0.0,
+      FmmNearCutoffShape cutoff_shape = FmmNearCutoffShape::Sphere);
 
   // Total field from all sources (near + far) via multipole expansions.
   Real evaluate_total_field(const Vec3& target,
@@ -64,12 +83,14 @@ class FMM {
                             const GreensFunction& gf,
                             const GreensFunctionParams& avg_params) const;
 
-  // Far-field only: total minus exact near-source contributions within cutoff.
-  Real evaluate_far_field(const Vec3& target,
-                          Real theta,
-                          Real near_cutoff,
-                          const GreensFunction& gf,
-                          const GreensFunctionParams& avg_params) const;
+  // Far-field only: contributions beyond near_cutoff via local+residual or tree walk.
+  Real evaluate_far_field(
+      const Vec3& target,
+      Real theta,
+      Real near_cutoff,
+      const GreensFunction& gf,
+      const GreensFunctionParams& avg_params,
+      FmmNearCutoffShape cutoff_shape = FmmNearCutoffShape::Sphere) const;
 
   // Near + far field at a single target (for unit tests).
   Real evaluate_field(const Vec3& target,
@@ -84,7 +105,17 @@ class FMM {
   bool locals_ready() const { return locals_ready_; }
   bool empty() const { return nodes_.empty(); }
   const FMMNode& node(int i) const { return nodes_[i]; }
+  const std::vector<Vec3>& source_positions() const { return source_positions_; }
+  const std::vector<Real>& source_strengths() const { return source_strengths_; }
   int expansion_order() const { return expansion_order_; }
+  uint64_t m2l_interaction_count() const { return m2l_interaction_count_; }
+  Real locals_near_cutoff() const { return locals_near_cutoff_; }
+  Real locals_theta() const { return locals_theta_; }
+  FmmNearCutoffShape locals_cutoff_shape() const { return locals_cutoff_shape_; }
+  bool locals_match_query(
+      Real theta,
+      Real near_cutoff,
+      FmmNearCutoffShape cutoff_shape = FmmNearCutoffShape::Sphere) const;
 
   static constexpr int MAX_LEAF_SOURCES = 8;
   static constexpr int MAX_TREE_DEPTH = 64;
@@ -102,43 +133,72 @@ class FMM {
   void upward_pass(const std::vector<Vec3>& positions,
                    const std::vector<Real>& strengths);
 
-  void m2l_traverse_into_target(int target_idx,
-                                int src_idx,
-                                Real theta,
-                                const GreensFunction& gf,
-                                const GreensFunctionParams& avg_params);
-
-  void m2l_visit_children(int target_idx,
-                          int src_idx,
-                          Real theta,
-                          const GreensFunction& gf,
-                          const GreensFunctionParams& avg_params);
+  void collect_dual_tree_interactions(
+      int target_idx,
+      int src_idx,
+      Real theta,
+      Real near_cutoff,
+      FmmNearCutoffShape cutoff_shape,
+      std::vector<std::vector<int>>& m2l_sources);
 
   void l2l_downward(int node_idx);
 
   void traverse_far(int node_idx,
                     const Vec3& target,
                     Real theta,
-                    Real near_cutoff2,
+                    Real near_cutoff,
+                    FmmNearCutoffShape cutoff_shape,
                     const GreensFunction& gf,
                     const GreensFunctionParams& avg_params,
                     Real& accumulator) const;
 
-  Real evaluate_local_at(const Vec3& target,
-                         const GreensFunction& gf,
-                         const GreensFunctionParams& avg_params) const;
+  Real evaluate_local_with_residual(const Vec3& target,
+                                    Real theta,
+                                    Real near_cutoff,
+                                    FmmNearCutoffShape cutoff_shape,
+                                    const GreensFunction& gf,
+                                    const GreensFunctionParams& avg_params) const;
 
   int find_containing_node(const Vec3& target) const;
 
+  Real stencil_margin(Real dist) const;
+
+  bool crosses_periodic_branch_cut(const Vec3& delta, Real pad) const;
+
+  bool is_source_in_near_region(const Vec3& src,
+                                const Vec3& tgt,
+                                Real near_cutoff,
+                                FmmNearCutoffShape cutoff_shape) const;
+
+  bool pair_completely_inside_near(const Vec3& box_delta,
+                                   Real combined_half,
+                                   Real near_cutoff,
+                                   FmmNearCutoffShape cutoff_shape) const;
+
+  bool pair_completely_outside_near(const Vec3& box_delta,
+                                    Real combined_half,
+                                    Real near_cutoff,
+                                    FmmNearCutoffShape cutoff_shape) const;
+
+  bool well_separated(const FMMNode& source,
+                      const FMMNode& target,
+                      Real theta,
+                      Real near_cutoff,
+                      FmmNearCutoffShape cutoff_shape) const;
+
   static int octant(const Vec3& pos, const Vec3& center);
-  static bool well_separated(const FMMNode& source,
-                             const FMMNode& target,
-                             Real theta);
+  static bool has_empty_child(const FMMNode& node);
 
   std::vector<FMMNode> nodes_;
+  std::vector<Vec3> source_positions_;
+  std::vector<Real> source_strengths_;
   const Domain* domain_ = nullptr;
   int expansion_order_ = 1;
   bool locals_ready_ = false;
+  Real locals_theta_ = 0.0;
+  Real locals_near_cutoff_ = 0.0;
+  FmmNearCutoffShape locals_cutoff_shape_ = FmmNearCutoffShape::Sphere;
+  uint64_t m2l_interaction_count_ = 0;
 };
 
 }  // namespace gutibm

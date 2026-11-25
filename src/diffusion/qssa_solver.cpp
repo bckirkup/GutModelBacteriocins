@@ -299,21 +299,15 @@ void exchange_toxin_sources(
 void accumulate_far_field_cell(
     const FMM& fmm, const GreensFunction& gf,
     const GreensFunctionParams& avg_params, const FarFieldGridContext& grid,
-    std::vector<Real>& toxin_conc, Real toxin_cutoff, bool near_field_on_device,
+    std::vector<Real>& toxin_conc, Real toxin_cutoff,
     Int ix, Int iy, Int iz) {
   const Vec3 tgt = grid.domain.cell_center(ix, iy, iz);
   const Int idx = iz * grid.storage_nx * grid.ny
       + iy * grid.storage_nx + ix - grid.x_begin + grid.halo_width;
-  Real contribution = 0.0;
-  if (near_field_on_device) {
-    contribution = fmm.evaluate_far_field(
-        tgt, grid.fmm_theta, toxin_cutoff, gf, avg_params);
-  } else {
-    const Real total = fmm.evaluate_total_field(
-        tgt, grid.fmm_theta, gf, avg_params);
-    contribution = std::max(0.0, total - toxin_conc[idx]);
-  }
-  toxin_conc[idx] += contribution;
+  const Real contribution = fmm.evaluate_far_field(
+      tgt, grid.fmm_theta, toxin_cutoff, gf, avg_params,
+      FmmNearCutoffShape::VoxelBox);
+  toxin_conc[static_cast<size_t>(idx)] += contribution;
 }
 
 GreensFunctionParams weighted_avg_params(
@@ -368,14 +362,15 @@ void accumulate_far_field(const FMM& fmm,
                           const GreensFunctionParams& avg_params,
                           const FarFieldGridContext& grid,
                           std::vector<Real>& toxin_conc,
-                          Real toxin_cutoff,
-                          bool near_field_on_device) {
+                          Real toxin_cutoff) {
+  #ifdef GUTIBM_OPENMP
+  #pragma omp parallel for collapse(3) schedule(static)
+  #endif
   for (Int iz = 0; iz < grid.nz; ++iz) {
     for (Int iy = 0; iy < grid.ny; ++iy) {
       for (Int ix = grid.x_begin; ix < grid.x_end; ++ix) {
         accumulate_far_field_cell(fmm, gf, avg_params, grid, toxin_conc,
-                                  toxin_cutoff, near_field_on_device, ix, iy,
-                                  iz);
+                                  toxin_cutoff, ix, iy, iz);
       }
     }
   }
@@ -893,6 +888,9 @@ void QSSASolver::solve_bacteriocin_field_from_sources(
   }
   if (!near_on_gpu) {
     deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
+  } else if (defer_sync) {
+    chem.mark_device_conc_dirty(toxin_species_idx);
+    chem.clear_host_conc_dirty(toxin_species_idx);
   }
 }
 
@@ -1030,7 +1028,8 @@ void QSSASolver::sample_bacteriocin_field(
       params, strength_factors, cfg_, strengths);
   if (cfg_.use_fmm) {
     field.fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
-    field.fmm.compute_local_expansions(cfg_.fmm_theta, gf_, avg_params);
+    field.fmm.compute_local_expansions(
+        cfg_.fmm_theta, gf_, avg_params, cfg_.toxin_cutoff);
     field.fmm_ready = true;
   }
   for (Int i = 0; i < agents.size(); ++i) {
@@ -1062,7 +1061,7 @@ void QSSASolver::sample_nuclease_field(
     field.fmm.build(
         sources, strengths, *domain_, cfg_.fmm_expansion_order);
     field.fmm.compute_local_expansions(
-        cfg_.fmm_theta, gf_, avg_params);
+        cfg_.fmm_theta, gf_, avg_params, cfg_.toxin_cutoff);
     field.fmm_ready = true;
   }
   for (Int i = 0; i < agents.size(); ++i) {
@@ -1213,57 +1212,82 @@ void QSSASolver::solve_bacteriocin_field_fmm(
 
   FMM fmm;
   fmm.build(sources, strengths, *domain_, cfg_.fmm_expansion_order);
-  fmm.compute_local_expansions(cfg_.fmm_theta, gf_, avg_params);
+  fmm.compute_local_expansions(
+      cfg_.fmm_theta, gf_, avg_params, cfg_.toxin_cutoff,
+      FmmNearCutoffShape::VoxelBox);
 
-  const Int ncells = chem.slab_mode() ? chem.ncells() : domain_->ncells();
-  const FarFieldGridContext far_grid = make_far_field_grid(*domain_, cfg_.fmm_theta);
+  const bool gpu_active = chem_gpu != nullptr && chem_gpu->active();
+  const bool defer_sync = gpu_active
+      && ChemicalFieldGpu::device_conc_residency_enabled();
 
-  std::vector toxin_conc(static_cast<size_t>(ncells), 0.0);
-  const bool defer_sync = chem_gpu != nullptr && chem_gpu->active();
+  std::vector<Real> toxin_conc;
   bool near_on_gpu = false;
   if (chem.slab_mode()) {
+    toxin_conc.assign(static_cast<size_t>(chem.ncells()), 0.0);
     gf_.superpose_to_local_grid(
         sources, params, strength_factors, toxin_conc, cfg_.toxin_cutoff,
         domain_->local_grid_x_begin(), domain_->local_grid_x_end(),
         chem.storage_nx(), chem.owned_storage_x_begin());
+    if (gpu_active) {
+      deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
+      {
+        GpuTransferSite site("qssa_fmm_slab_near");
+        chem_gpu->sync_species_concentrations_to_device(chem, toxin_species_idx);
+      }
+      if (gpu_accumulate_far_field_device(
+              fmm, *domain_, adv, avg_params, cfg_.fmm_theta, cfg_.toxin_cutoff,
+              chem_gpu, toxin_species_idx, FmmNearCutoffShape::VoxelBox)) {
+        chem.mark_device_conc_dirty(toxin_species_idx);
+        chem.clear_host_conc_dirty(toxin_species_idx);
+        if (!defer_sync) {
+          chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
+        }
+        return;
+      }
+    }
   } else {
     near_on_gpu = accumulate_near_field_gpu_or_cpu(
         *domain_, gf_, adv, sources, params, strength_factors,
         cfg_.toxin_cutoff, toxin_conc, chem, toxin_species_idx, chem_gpu,
-        defer_sync);
-  }
-  if (near_on_gpu) {
-    if (chem_gpu == nullptr) {
-      throw SimulationError(
-          "GPU near-field evaluation succeeded without a GPU chemical field");
-    }
-    GpuTransferSite site("qssa_fmm");
-    chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
-    for (Int c = 0; c < ncells; ++c) {
-      toxin_conc[static_cast<size_t>(c)] = chem.conc(toxin_species_idx, c);
-    }
-  }
-  if (fmm.locals_ready()
-      && gpu_accumulate_far_field_local(
-          fmm, *domain_, cfg_.fmm_expansion_order, toxin_conc, toxin_conc)) {
-    // GPU far-field deposit complete.
-  } else {
-    if (chem.slab_mode()) {
-      FarFieldGridContext local_grid = far_grid;
-      local_grid.x_begin = domain_->local_grid_x_begin();
-      local_grid.x_end = domain_->local_grid_x_end();
-      local_grid.storage_nx = chem.storage_nx();
-      local_grid.halo_width = chem.owned_storage_x_begin();
-      accumulate_far_field(fmm, gf_, avg_params, local_grid, toxin_conc,
-                           cfg_.toxin_cutoff, false);
-    } else {
-      accumulate_far_field(fmm, gf_, avg_params, far_grid, toxin_conc,
-                           cfg_.toxin_cutoff, false);
+        true);
+    if (near_on_gpu) {
+      if (chem_gpu == nullptr) {
+        throw SimulationError(
+            "GPU near-field evaluation succeeded without a GPU chemical field");
+      }
+      if (gpu_accumulate_far_field_device(
+              fmm, *domain_, adv, avg_params, cfg_.fmm_theta, cfg_.toxin_cutoff,
+              chem_gpu, toxin_species_idx, FmmNearCutoffShape::VoxelBox)) {
+        chem.mark_device_conc_dirty(toxin_species_idx);
+        chem.clear_host_conc_dirty(toxin_species_idx);
+        if (!defer_sync) {
+          chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
+        }
+        return;
+      }
+      GpuTransferSite site("qssa_fmm_fallback");
+      chem_gpu->sync_species_concentrations_to_host(chem, toxin_species_idx);
+      const Int ncells = domain_->ncells();
+      toxin_conc.resize(static_cast<size_t>(ncells));
+      for (Int c = 0; c < ncells; ++c) {
+        toxin_conc[static_cast<size_t>(c)] = chem.conc(toxin_species_idx, c);
+      }
     }
   }
+
+  // CPU far-field path (or fallback when GPU far-field is unavailable).
+  FarFieldGridContext far_grid = make_far_field_grid(*domain_, cfg_.fmm_theta);
+  if (chem.slab_mode()) {
+    far_grid.x_begin = domain_->local_grid_x_begin();
+    far_grid.x_end = domain_->local_grid_x_end();
+    far_grid.storage_nx = chem.storage_nx();
+    far_grid.halo_width = chem.owned_storage_x_begin();
+  }
+  accumulate_far_field(fmm, gf_, avg_params, far_grid, toxin_conc,
+                       cfg_.toxin_cutoff);
   deposit_to_chemical_field(chem, toxin_species_idx, toxin_conc);
-  if (chem_gpu != nullptr && chem_gpu->active()) {
-    GpuTransferSite site("qssa_fmm");
+  if (gpu_active) {
+    GpuTransferSite site("qssa_fmm_fallback");
     chem_gpu->sync_species_concentrations_to_device(chem, toxin_species_idx);
   }
 }
