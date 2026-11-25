@@ -80,7 +80,7 @@ entry per named sub-test (see the `SHARDS` argument in `tests/CMakeLists.txt`;
 the binaries accept sub-test names as arguments, or run all with none). A
 single shard is run as `ctest -R robin_lumen_bc_sealed_limit`.
 
-CTest targets (165 total with MPI+HDF5 enabled, including shards, custom script, and MPI targets; inventory from
+CTest targets (171 total with MPI+HDF5 enabled, including shards, custom script, and MPI targets; inventory from
 `tests/CMakeLists.txt`):
 
 | Test | Labels | Focus |
@@ -116,6 +116,7 @@ CTest targets (165 total with MPI+HDF5 enabled, including shards, custom script,
 | `mucin_liberation` | unit | Mucin-to-carbon liberation |
 | `vbf_velocity_channel` | unit | VBF velocity coupling channel |
 | `mucin_liberation_units` | unit | Mucin liberation per-cell dimensional units |
+| `vbf_mucin_stoichiometry` | unit | Dynamic mucin implicit stoichiometry, subnormal bounds, and z-gradient parity |
 | `mechanism_wiring` | integration | Cross-mechanism mass balance and coupling |
 | `advection_peristaltic` | unit | Peristaltic velocity modulation |
 | `ethanolamine` | unit | Nutrient-conditional EUT penalty |
@@ -176,6 +177,7 @@ CTest targets (165 total with MPI+HDF5 enabled, including shards, custom script,
 | `hdf5_roundtrip_parallel` | integration, mpi, hdf5 | Parallel HDF5 round-trip |
 | `hdf5_checkpoint_parallel` | integration, mpi, hdf5 | Parallel HDF5 checkpoint |
 | `mpi_multi_rank` | integration, mpi | Two-rank migration |
+| `vbf_mucin_stoichiometry_mpi` | integration, mpi | Two-rank MPI slab/replicated dynamic mucin stoichiometry and z-gradient parity |
 | `vbf_density_replicated_mpi` | integration, mpi | Replicated VBF density parity under MPI |
 | `vbf_density_replicated_serial` | integration, mpi | Replicated VBF density serial baseline |
 | `mpi_four_rank` | integration, mpi | Four-rank slab and migration |

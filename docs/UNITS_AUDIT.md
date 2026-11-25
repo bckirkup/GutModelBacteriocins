@@ -430,15 +430,28 @@ molar release rate per background organism times an organism density. The
 parameter is therefore redeclared `mol cell^-1 s^-1` and its default set to
 `5.0e-16`, chosen so the dynamic path reproduces the static term it replaces at
 the default background density and near-saturating mucin
-(`5e-16 * 1e11 * 0.909 = 4.5e-5` against `5.0e-5`). No host or device code
-changed, so the two backends cannot diverge on this.
+(`5e-16 * 1e11 * 0.909 = 4.5e-5` against `5.0e-5`).
 
-Still open, and not addressed by the unit correction: the dynamic path is not
-stoichiometrically limited by the mucin actually present (mucin can be driven
-negative in a step while carbon receives the full amount), it ignores the
-`mucin_z_gradient` weighting the static path applies, and `mucin.enabled`
-remains `false` by default. Those are modelling decisions, tracked in the
-landmine table and `docs/CARBON_LADDER_CAMPAIGN.md`.
+**Stoichiometry and z-gradient closure.** Both CPU (`replicated` and `slab`
+paths in `src/fields/vbf.cpp`) and CUDA GPU (`src/gpu/chemistry_kernel.cu`) now
+evaluate dynamic mucin degradation through one shared host/device helper
+`gutibm::vbf::implicit_mucin_liberation` (`src/fields/vbf_mucin_liberation.h`).
+The helper solves the exact backward-Euler Monod depletion step
+`M_new = M - dt * vmax * M_new / (Km_degradation + M_new)` with depth-weighted
+maximum rate `vmax = k_liberation * vbf.density * z_weight` (where
+`z_weight = exp(-z_rel / mucin_z_gradient_lambda)` when
+`vbf.mucin_z_gradient_enabled = true`, else `1.0`), unconditionally enforcing
+`0 <= liberation * dt <= max(0, M)` so `[mucin]` never goes negative in a
+timestep (`reaction_clip[mucin] == 0`), `reac[carbon] += liberation` never
+credits carbon exceeding available mucin, and basal epithelial secretion at
+`iz == 0` (`mucin.secretion_rate`) stoichiometrically replenishes the mucin
+pool under flux/non-Dirichlet epithelial boundaries (while under fixed
+Dirichlet boundaries, `apply_boundaries` pins `iz == 0` to `boundary_conc`
+after reactions). The immobile mucin field is excluded from the legacy
+non-diffusing luminal top-layer mirror on both CPU (`replicated` and `slab`)
+and CUDA GPU so depth-weighted depletion at `iz == nz - 1` is preserved without
+unaccounted mass loss. `mucin.enabled` and `vbf.use_dynamic_mucin` remain
+`false` by default so shipped configurations are bitwise unchanged.
 
 ## Conclusion
 

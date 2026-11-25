@@ -1,6 +1,7 @@
 #include "gpu_kernels.h"
 #include "vbf_carbon_sink.h"
 #include "vbf_first_order_sink.h"
+#include "vbf_mucin_liberation.h"
 #include <cuda_runtime.h>
 #include <cmath>
 
@@ -8,13 +9,6 @@ namespace gutibm {
 namespace gpu {
 
 namespace {
-
-__device__ double dynamic_mucin_liberation(double mucin_conc,
-                                           const VbfLaunchParams& p) {
-  const double substrate =
-      mucin_conc / (p.mucin_Km_degradation + mucin_conc);
-  return p.mucin_k_liberation * p.vbf_density * substrate;
-}
 
 __device__ void apply_vbf_at_cell(int cell,
                                   int iz,
@@ -35,8 +29,13 @@ __device__ void apply_vbf_at_cell(int cell,
                                   double cell_volume,
                                   double dt) {
   if (p.use_dynamic_mucin && p.mucin_enabled && reac_mucin && conc_mucin) {
-    const double liberation =
-        dynamic_mucin_liberation(conc_mucin[cell], p);
+    const double liberation = vbf::implicit_mucin_liberation(
+        conc_mucin[cell],
+        p.mucin_k_liberation,
+        p.vbf_density,
+        z_weight,
+        p.mucin_Km_degradation,
+        dt);
     reac_mucin[cell] -= liberation;
     if (reac_carbon) {
       reac_carbon[cell] += liberation;
@@ -155,8 +154,11 @@ __global__ void vbf_coupling_kernel(int ncells,
   const double z_weight = params.mucin_z_gradient_enabled
       ? exp(-z_rel / params.mucin_z_gradient_lambda)
       : 1.0;
+  const bool dynamic_mucin_active =
+      params.use_dynamic_mucin && params.mucin_enabled
+      && reac_mucin != nullptr && conc_mucin != nullptr;
   double static_liberation = 0.0;
-  if (!params.use_dynamic_mucin) {
+  if (!dynamic_mucin_active) {
     static_liberation = params.mucin_liberation;
     if (params.mucin_z_gradient_enabled) {
       static_liberation *= exp(-z_rel / params.mucin_z_gradient_lambda);
